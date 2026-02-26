@@ -12,6 +12,24 @@
     members:
     exclude-members:
 
+### Preference Operators
+
+::: lazyllm.tools.data.operators.preference_ops
+    members:
+    exclude-members:
+
+### Tool-Use Operators
+
+::: lazyllm.tools.data.operators.tool_use_ops
+    members:
+    exclude-members:
+
+### Text2SQL Operators
+
+::: lazyllm.tools.data.operators.text2sql_ops
+    members:
+    exclude-members:
+
 ### PT Operators
 
 ::: lazyllm.tools.data.operators.pt_op
@@ -88,7 +106,7 @@
 ::: lazyllm.tools.data.operators.agentic_rag.agenticrag_width_qa_generator
     members:
     exclude-members:
-    
+
 ### Embedding synthesis
 ::: lazyllm.tools.data.operators.embedding_synthesis
     members:
@@ -125,7 +143,7 @@
 ::: lazyllm.tools.data.operators.reranker_synthesis
     members:
     exclude-members:
-    
+
 ## Data Processing Pipeline
 
 ### Demo Pipeline
