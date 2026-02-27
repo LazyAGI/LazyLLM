@@ -12,7 +12,7 @@ from .layout import LayoutNodeParser
 from .treebuilder import TreeBuilderParser
 from .treefixer import TreeFixerParser
 from .groupby import GroupNodeParser
-from .base import RuleSet, Rule, build_rule
+from .base import RuleSet, Rule
 from .contentfilter import ContentFiltParser
 
 __all__ = [
@@ -21,5 +21,5 @@ __all__ = [
     'RecursiveSplitter', 'build_nodes_from_splits', 'MarkdownSplitter', 'CodeSplitter',
     'JSONSplitter', 'YAMLSplitter', 'HTMLSplitter', 'XMLSplitter', 'GeneralCodeSplitter', 'JSONLSplitter',
     'RichTransform', 'LayoutNodeParser', 'TreeBuilderParser', 'TreeFixerParser', 'GroupNodeParser',
-    'RuleSet', 'Rule', 'build_rule', 'ContentFiltParser',
+    'RuleSet', 'Rule', 'ContentFiltParser',
 ]

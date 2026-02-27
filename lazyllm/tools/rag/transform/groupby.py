@@ -40,13 +40,10 @@ class GroupNodeParser(NodeTransform):
         def _group_by_level(node_groups: List[List[DocNode]], node: DocNode) -> List[List[DocNode]]:
             text_level = node.metadata.get('text_level', 0)
 
-            if text_level > 0:
+            if text_level > 0 or not node_groups:
                 node_groups.append([node])
             else:
-                if not node_groups:
-                    node_groups.append([node])
-                else:
-                    node_groups[-1].append(node)
+                node_groups[-1].append(node)
 
             return node_groups
 

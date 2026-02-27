@@ -1,10 +1,10 @@
 from typing import List, Optional
 
-from .base import NodeTransform, RuleSet, build_rule
+from .base import NodeTransform, RuleSet, Rule
 from ..doc_node import DocNode
 
 
-DEFAULT_NON_EMPTY_RULE = RuleSet([build_rule(
+DEFAULT_NON_EMPTY_RULE = RuleSet([Rule.build(
     'non_empty',
     rule=lambda n: bool(n.text.strip() if getattr(n, 'text', '') else ''),
     apply=lambda n, r: n,

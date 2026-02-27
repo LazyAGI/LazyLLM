@@ -52,7 +52,7 @@ class TreeFixerParser(NodeTransform):
         if not flat_nodes:
             return []
         self._reset_state()
-        self.process(flat_nodes, self._on_match, self._on_miss)
+        self.process(flat_nodes, self._on_match_handler, self._on_miss_handler)
         self._update_text_levels(self._result)
         return self._result
 
@@ -151,10 +151,10 @@ class TreeFixerParser(NodeTransform):
             if children:
                 self._update_text_levels(children, level + 1)
 
-    def _on_match(self, node: DocNode, matched: tuple, ctx: _Context) -> DocNode:
+    def _on_match_handler(self, node: DocNode, matched: tuple, ctx: _Context) -> DocNode:
         return node
 
-    def _on_miss(self, node: DocNode, ctx: _Context) -> DocNode:
+    def _on_miss_handler(self, node: DocNode, ctx: _Context) -> DocNode:
         if self._should_skip_numbering(node):
             self._attach_non_title_node(node, self._last_content_parent)
             return node

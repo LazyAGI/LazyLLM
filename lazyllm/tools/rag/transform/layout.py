@@ -1,7 +1,7 @@
 import itertools
 from typing import List, Optional, Callable, Any
 
-from .base import NodeTransform, RuleSet, build_rule
+from .base import NodeTransform, RuleSet, Rule
 from ..doc_node import DocNode
 
 NO_GROUPING = object()
@@ -19,7 +19,7 @@ def _default_layout_post_process(nodes: List[DocNode]) -> List[DocNode]:
 
 def _get_simple_layout_rules() -> RuleSet:
     return RuleSet([
-        build_rule(
+        Rule.build(
             'noop',
             rule=lambda node: True,
             apply=lambda node, rule: node,

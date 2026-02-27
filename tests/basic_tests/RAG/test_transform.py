@@ -2,9 +2,11 @@ import lazyllm
 from lazyllm.tools.rag.transform import (
     SentenceSplitter, CharacterSplitter, RecursiveSplitter, MarkdownSplitter,
     CodeSplitter, JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter,
-    GeneralCodeSplitter, JSONLSplitter
+    GeneralCodeSplitter, JSONLSplitter, LayoutNodeParser, GroupNodeParser,
+    ContentFiltParser, TreeBuilderParser, TreeFixerParser, Rule, RuleSet
 )
 from lazyllm.tools.rag.transform.markdown import _MdSplit
+from lazyllm.tools.rag.transform.layout import NO_GROUPING
 from lazyllm.tools.rag.transform.base import _TextSplitterBase, _Split, _TokenTextSplitter
 from lazyllm.tools.rag.doc_node import DocNode
 import pytest
@@ -1167,7 +1169,7 @@ class TestTextSplitterBase:
 
     def test_transform_returns_chunks(self, doc_node):
         splitter = _TextSplitterBase(chunk_size=20, overlap=10)
-        chunks = splitter.forward([doc_node])
+        chunks = splitter([doc_node])
         assert isinstance(chunks, list)
         assert all(isinstance(c, DocNode) for c in chunks)
 
@@ -1281,7 +1283,7 @@ class TestTokenTextSplitter:
 
     def test_token_splitter_transform_with_docnode(self, doc_node):
         token_splitter = _TokenTextSplitter(chunk_size=10, overlap=3)
-        chunks = token_splitter.forward([doc_node])
+        chunks = token_splitter([doc_node])
         assert isinstance(chunks, list)
         assert all(isinstance(c, DocNode) for c in chunks)
 
@@ -1451,3 +1453,219 @@ class TestDIYDocumentSplit:
         retriever = Retriever(document, group_name='character_test', similarity='bm25', topk=3)
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
+
+
+class TestContentFiltParser:
+    def setup_method(self):
+        self.filter_parser = ContentFiltParser()
+
+    def test_filter_empty_nodes(self):
+        nodes = [
+            DocNode(text='Hello'),
+            DocNode(text=''),
+            DocNode(text='   '),
+            DocNode(text='World'),
+            DocNode(text='\n\n'),
+        ]
+        result = self.filter_parser.forward(nodes)
+        assert len(result) == 2
+        assert result[0].text == 'Hello'
+        assert result[1].text == 'World'
+
+    def test_filter_with_custom_rules(self):
+        rule = RuleSet([Rule.build(
+            'short_filter',
+            rule=lambda n: len(n.text) >= 5,
+            apply=lambda n, r: n,
+        )])
+        filter_parser = ContentFiltParser(rules=rule)
+        nodes = [
+            DocNode(text='Hello'),
+            DocNode(text='World'),
+            DocNode(text='Hi'),
+        ]
+        result = filter_parser.forward(nodes)
+        assert len(result) == 2
+
+    def test_single_node(self):
+        node = DocNode(text='Test')
+        result = self.filter_parser.forward(node)
+        assert len(result) == 1
+        assert result[0].text == 'Test'
+
+
+class TestGroupNodeParser:
+    def setup_method(self):
+        self.parser = GroupNodeParser()
+
+    def test_group_by_level(self):
+        nodes = [
+            DocNode(text='Title', metadata={'text_level': 1}),
+            DocNode(text='Content 1', metadata={'text_level': 0}),
+            DocNode(text='Content 2', metadata={'text_level': 0}),
+            DocNode(text='Subtitle', metadata={'text_level': 2}),
+            DocNode(text='Content 3', metadata={'text_level': 0}),
+        ]
+        result = self.parser.forward(nodes)
+        assert len(result) > 0
+
+    def test_empty_list(self):
+        result = self.parser.forward([])
+        assert result == []
+
+    def test_single_node(self):
+        nodes = [DocNode(text='Only one', metadata={'text_level': 0})]
+        result = self.parser.forward(nodes)
+        assert len(result) >= 1
+
+    def test_merge_title(self):
+        parser = GroupNodeParser(merge_title=True)
+        nodes = [
+            DocNode(text='Title', metadata={'text_level': 1}),
+            DocNode(text='Content', metadata={'text_level': 0}),
+        ]
+        result = parser.forward(nodes)
+        assert len(result) >= 1
+
+
+class TestLayoutNodeParser:
+    def setup_method(self):
+        self.parser = LayoutNodeParser()
+
+    def test_default_group_by_filename(self):
+        nodes = [
+            DocNode(text='Page 1', metadata={'file_name': 'doc1.pdf', 'index': 2}),
+            DocNode(text='Page 2', metadata={'file_name': 'doc1.pdf', 'index': 1}),
+            DocNode(text='Page 3', metadata={'file_name': 'doc2.pdf', 'index': 1}),
+        ]
+        result = self.parser.forward(nodes)
+        assert len(result) == 3
+        assert result[0].metadata['index'] == 0
+        assert result[1].metadata['index'] == 1
+
+    def test_no_grouping(self):
+        parser = LayoutNodeParser(group_by=NO_GROUPING)
+        nodes = [
+            DocNode(text='A', metadata={'index': 3}),
+            DocNode(text='B', metadata={'index': 1}),
+            DocNode(text='C', metadata={'index': 2}),
+        ]
+        result = parser.forward(nodes)
+        assert len(result) == 3
+        assert result[0].text == 'B'
+        assert result[1].text == 'C'
+        assert result[2].text == 'A'
+
+    def test_custom_group_by(self):
+        parser = LayoutNodeParser(group_by=lambda n: n.metadata.get('category', ''))
+        nodes = [
+            DocNode(text='A', metadata={'category': 'cat1', 'index': 1}),
+            DocNode(text='B', metadata={'category': 'cat2', 'index': 1}),
+            DocNode(text='C', metadata={'category': 'cat1', 'index': 0}),
+        ]
+        result = parser.forward(nodes)
+        assert len(result) == 3
+
+    def test_custom_sort_by(self):
+        parser = LayoutNodeParser(sort_by=lambda n: n.metadata.get('page_num', 0))
+        nodes = [
+            DocNode(text='Page 3', metadata={'file_name': 'doc.pdf', 'page_num': 3}),
+            DocNode(text='Page 1', metadata={'file_name': 'doc.pdf', 'page_num': 1}),
+            DocNode(text='Page 2', metadata={'file_name': 'doc.pdf', 'page_num': 2}),
+        ]
+        result = parser.forward(nodes)
+        assert result[0].text == 'Page 1'
+        assert result[1].text == 'Page 2'
+        assert result[2].text == 'Page 3'
+
+
+class TestTreeBuilderParser:
+    def setup_method(self):
+        self.parser = TreeBuilderParser()
+
+    def test_build_simple_tree(self):
+        nodes = [
+            DocNode(text='1. Title', metadata={'text_level': 1}),
+            DocNode(text='1.1 Subtitle', metadata={'text_level': 2}),
+            DocNode(text='1.2 Subtitle', metadata={'text_level': 2}),
+            DocNode(text='2. Title', metadata={'text_level': 1}),
+        ]
+        result = self.parser.forward(nodes)
+        assert len(result) >= 1
+
+    def test_flat_nodes(self):
+        nodes = [
+            DocNode(text='Content without level'),
+            DocNode(text='Another content'),
+        ]
+        result = self.parser.forward(nodes)
+        assert len(result) == 2
+
+    def test_empty_list(self):
+        result = self.parser.forward([])
+        assert result == []
+
+    def test_custom_get_level(self):
+        parser = TreeBuilderParser(get_level=lambda n: n.metadata.get('level', 0))
+        nodes = [
+            DocNode(text='Level 1', metadata={'level': 1}),
+            DocNode(text='Level 2', metadata={'level': 2}),
+        ]
+        result = parser.forward(nodes)
+        assert len(result) >= 1
+
+
+class TestTreeFixerParser:
+    def setup_method(self):
+        self.parser = TreeFixerParser()
+
+    def test_fix_digit_numbering(self):
+        nodes = [
+            DocNode(text='1. First', metadata={'text_level': 1}),
+            DocNode(text='2. Second', metadata={'text_level': 1}),
+            DocNode(text='3. Third', metadata={'text_level': 1}),
+        ]
+        result = self.parser.forward(nodes)
+        assert len(result) >= 1
+
+    def test_fix_chinese_numbering(self):
+        nodes = [
+            DocNode(text='一、第一条', metadata={'text_level': 1}),
+            DocNode(text='二、第二条', metadata={'text_level': 1}),
+            DocNode(text='三、第三条', metadata={'text_level': 1}),
+        ]
+        result = self.parser.forward(nodes)
+        assert len(result) >= 1
+
+    def test_fix_multilevel(self):
+        nodes = [
+            DocNode(text='1. First', metadata={'text_level': 1}),
+            DocNode(text='1.1 Sub first', metadata={'text_level': 2}),
+            DocNode(text='1.2 Sub second', metadata={'text_level': 2}),
+            DocNode(text='2. Second', metadata={'text_level': 1}),
+        ]
+        result = self.parser.forward(nodes)
+        assert len(result) >= 1
+
+    def test_empty_list(self):
+        result = self.parser.forward([])
+        assert result == []
+
+    def test_skip_level_under(self):
+        parser = TreeFixerParser(skip_level_under=2)
+        nodes = [
+            DocNode(text='Level 1', metadata={'text_level': 1}),
+            DocNode(text='Level 2', metadata={'text_level': 2}),
+        ]
+        result = parser.forward(nodes)
+        assert len(result) >= 1
+
+    def test_with_children(self):
+        nodes = [
+            DocNode(text='1. Title', metadata={'text_level': 1, 'children': [
+                DocNode(text='Child 1', metadata={'text_level': 2}),
+                DocNode(text='Child 2', metadata={'text_level': 2}),
+            ]}),
+        ]
+        result = self.parser.forward(nodes)
+        assert len(result) >= 1

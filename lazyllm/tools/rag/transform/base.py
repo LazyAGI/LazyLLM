@@ -7,6 +7,7 @@ from typing import (
 )
 from lazyllm import LOG
 from ..doc_node import DocNode, RichDocNode
+from ....common.deprecated import deprecated
 from lazyllm import ThreadPoolExecutor
 from itertools import chain
 import re
@@ -69,9 +70,9 @@ class NodeTransform(ModuleBase):
         super().__init__(return_trace=return_trace, **kwargs)
         self._number_workers = num_workers
         self._name = None
-        self.rules = rules if rules is not None else RuleSet()
-        self.on_match: Optional[Callable[[Any, Tuple['Rule', Any], '_Context'], Any]] = None
-        self.on_miss: Optional[Callable[[Any, '_Context'], Any]] = None
+        self._rules = rules or RuleSet()
+        self._on_match: Optional[Callable[[Any, Tuple['Rule', Any], '_Context'], Any]] = None
+        self._on_miss: Optional[Callable[[Any, '_Context'], Any]] = None
 
     def _get_ref_nodes(self, node, ref_path):
         current = [node]
@@ -89,7 +90,7 @@ class NodeTransform(ModuleBase):
         documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
 
         if getattr(self.__class__, '__requires_all_nodes__', False):
-            return self._batch_forward_all(documents, node_group, **kwargs)
+            return self._collective_forward(documents, node_group, **kwargs)
 
         def impl(node: DocNode):
             ref_nodes = self._get_ref_nodes(node, ref_path) if ref_path else []
@@ -112,7 +113,7 @@ class NodeTransform(ModuleBase):
         else:
             return sum([impl(node) for node in documents], [])
 
-    def _batch_forward_all(self, documents, node_group, **kwargs):
+    def _collective_forward(self, documents, node_group, **kwargs):
         pending = [d for d in documents if node_group not in d.children]
         if not pending:
             return []
@@ -130,10 +131,14 @@ class NodeTransform(ModuleBase):
             'Subclasses must implement forward() to process nodes'
         )
 
+    @deprecated('forward')
+    def transform(self, node: DocNode, **kwargs) -> List[Union[str, DocNode]]:
+        return self.forward([node], **kwargs)
+
     def process(self, nodes: List[Any], on_match: Optional[Callable] = None,
                 on_miss: Optional[Callable] = None) -> List[Any]:
-        instance_match = getattr(self, 'on_match', None)
-        instance_miss = getattr(self, 'on_miss', None)
+        instance_match = self._on_match
+        instance_miss = self._on_miss
 
         match_handler = (
             on_match if on_match is not None
@@ -149,7 +154,7 @@ class NodeTransform(ModuleBase):
 
         for i, node in enumerate(nodes):
             ctx.current_idx = i
-            match = self.rules.first(node)
+            match = self._rules.first(node)
             processed = match_handler(node, match, ctx) if match else miss_handler(node, ctx)
             results.append(processed)
             ctx.prev_node, ctx.prev_result = node, processed
@@ -461,21 +466,8 @@ class _TextSplitterBase(NodeTransform):
         if not isinstance(nodes, (list, tuple)):
             nodes = [nodes]
 
-        results: List[DocNode] = []
-        for node in nodes:
-            chunks = self.split_text(
-                node.get_text(),
-                metadata_size=self._get_metadata_size(node),
-            )
-            for c in chunks:
-                if c:
-                    if isinstance(c, str):
-                        results.append(DocNode(text=c))
-                    elif isinstance(c, DocNode):
-                        results.append(c)
-                    else:
-                        results.append(DocNode(text=str(c)))
-        return results
+        return [c if isinstance(c, DocNode) else DocNode(text=str(c)) for node in nodes
+                for c in self.split_text(node.get_text(), metadata_size=self._get_metadata_size(node)) if c]
 
     def set_split_fns(self, split_fns: List[Callable[[str], List[str]]],
                       sub_split_fns: Optional[List[Callable[[str], List[str]]]] = None) -> '_TextSplitterBase':
@@ -575,6 +567,26 @@ class Rule:
             pass
         return self.apply(data, self)
 
+    @staticmethod
+    def build(name: str, rule: Union[str, Callable[[Any], bool]],
+              apply: Callable[[Any, 'Rule'], Any], priority: int = 0) -> 'Rule':
+        if isinstance(rule, str):
+            compiled = re.compile(rule)
+            return Rule(
+                name=name,
+                match=lambda text: compiled.search(text),
+                apply=lambda text, match_result, r: apply(match_result, text),
+                priority=priority,
+            )
+        if callable(rule):
+            return Rule(
+                name=name,
+                match=lambda data: True if rule(data) else None,
+                apply=lambda data, _match_result, r: apply(data, r),
+                priority=priority,
+            )
+        raise TypeError('rule must be a pattern string or a predicate callable')
+
 @dataclass
 class _Context:
     total: int
@@ -582,26 +594,6 @@ class _Context:
     prev_node: Optional[Any] = None
     prev_result: Optional[Any] = None
     user_data: Dict[str, Any] = field(default_factory=dict)
-
-def build_rule(name: str, rule: Union[str, Callable[[Any], bool]],
-               apply: Callable[[Any, Rule], Any], priority: int = 0) -> Rule:
-    if isinstance(rule, str):
-        compiled = re.compile(rule)
-        return Rule(
-            name=name,
-            match=lambda text: compiled.search(text),
-            apply=lambda text, match_result, r: apply(match_result, text),
-            priority=priority,
-        )
-    if callable(rule):
-        return Rule(
-            name=name,
-            match=lambda data: True if rule(data) else None,
-            apply=lambda data, _match_result, r: apply(data, r),
-            priority=priority,
-        )
-    raise TypeError('rule must be a pattern string or a predicate callable')
-
 
 class RuleSet:
     def __init__(self, rules: Optional[List[Rule]] = None):

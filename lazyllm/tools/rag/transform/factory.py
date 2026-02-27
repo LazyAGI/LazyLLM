@@ -110,21 +110,11 @@ class FuncNodeTransform(NodeTransform):
         results: List[DocNode] = []
         for node in nodes:
             if ref := kwargs.get('ref', None):
-                assert self._need_ref, \
-                    'if node group has ref, the transform function must support ref parameter.'
+                assert self._need_ref, 'if node group has ref, the transform function must support ref parameter.'
                 kwargs['ref'] = ref if self._trans_node else [r.get_text() for r in ref]
-
-            result = self._func(node if self._trans_node else node.get_text(), **kwargs)
-            chunks = result if isinstance(result, list) else [result]
-
-            for c in chunks:
-                if c:
-                    if isinstance(c, str):
-                        results.append(DocNode(text=c))
-                    elif isinstance(c, DocNode):
-                        results.append(c)
-                    else:
-                        results.append(DocNode(text=str(c)))
+            chunks = self._func(node if self._trans_node else node.get_text(), **kwargs)
+            chunks = chunks if isinstance(chunks, list) else [chunks]
+            results.extend(c if isinstance(c, DocNode) else DocNode(text=str(c)) for c in chunks if c)
 
         return results
 
@@ -158,18 +148,9 @@ class LLMParser(NodeTransform):
                 inputs = encode_query_with_filepaths('Extract QA pairs from images.', [node.image_path])
             else:
                 inputs = node.get_text()
-            result = self._llm(inputs)
-            chunks = [result] if isinstance(result, str) else result
-
-            for c in chunks:
-                if c:
-                    if isinstance(c, str):
-                        results.append(DocNode(text=c))
-                    elif isinstance(c, DocNode):
-                        results.append(c)
-                    else:
-                        results.append(DocNode(text=str(c)))
-
+            chunks = self._llm(inputs)
+            chunks = [chunks] if isinstance(chunks, str) else chunks
+            results.extend(c if isinstance(c, DocNode) else DocNode(text=str(c)) for c in chunks if c)
         return results
 
     def _format(self, input):
