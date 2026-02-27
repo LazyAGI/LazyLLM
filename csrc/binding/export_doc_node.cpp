@@ -87,10 +87,10 @@ lazyllm::DocNode init(
 
 std::string DocNodeToString(const lazyllm::DocNode& node) {
     py::dict d;
-    const auto children = node.py_get_children();
+    const auto children = node.get_children();
     for (const auto& [group, nodes] : children) {
         py::list ids;
-        for (const auto* n : nodes) {
+        for (std::shared_ptr<lazyllm::DocNode> n : nodes) {
             if (n) ids.append(n->get_uid());
         }
         d[py::str(group)] = std::move(ids);
@@ -110,7 +110,7 @@ void exportDocNode(py::module& m) {
         .value("LLM", lazyllm::MetadataMode::LLM)
         .value("NONE", lazyllm::MetadataMode::NONE);
 
-    py::class_<lazyllm::DocNode>(m, "DocNode")
+    py::class_<lazyllm::DocNode, std::shared_ptr<lazyllm::DocNode>>(m, "DocNode")
         .def(py::init(&init),
             py::kw_only(),
             py::arg("uid") = py::none(),
@@ -167,7 +167,7 @@ void exportDocNode(py::module& m) {
             py::return_value_policy::reference
         )
         .def_property("children",
-            [](const lazyllm::DocNode& node) { return node.py_get_children(); },
+            [](const lazyllm::DocNode& node) { return node.get_children(); },
             [](lazyllm::DocNode& node, const lazyllm::DocNode::Children& children) {
                 node.set_children(children);
             }
@@ -221,10 +221,10 @@ void exportDocNode(py::module& m) {
         )
         .def("get_children_str", [](const lazyllm::DocNode& node) {
             py::dict d;
-            const auto children = node.py_get_children();
+            const auto children = node.get_children();
             for (const auto& [group, nodes] : children) {
                 py::list ids;
-                for (const auto* n : nodes) if (n) ids.append(n->get_uid());
+                for (std::shared_ptr<lazyllm::DocNode> n : nodes) if (n) ids.append(n->get_uid());
                 d[py::str(group)] = std::move(ids);
             }
             return py::str(d);

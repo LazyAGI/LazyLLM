@@ -12,28 +12,21 @@ class PyNodeTransform : public lazyllm::NodeTransform {
 public:
     using lazyllm::NodeTransform::NodeTransform;
 
-    std::vector<lazyllm::DocNode> transform(const lazyllm::DocNode* document) const override {
+    std::vector<lazyllm::PDocNode> transform(lazyllm::PDocNode node) const override {
         py::gil_scoped_acquire gil;
         py::function overload = py::get_override(static_cast<const lazyllm::NodeTransform*>(this), "transform");
         if (!overload) throw std::runtime_error("NodeTransform.transform is not implemented.");
 
-        py::object result = overload(document);
+        py::object result = overload(node);
         if (!py::isinstance<py::sequence>(result)) {
             throw std::runtime_error("NodeTransform.transform must return a sequence.");
         }
 
-        std::vector<lazyllm::DocNode> out;
+        std::vector<lazyllm::PDocNode> out;
         for (auto item : result) {
             py::object obj = py::reinterpret_borrow<py::object>(item);
             if (obj.is_none()) continue;
-
-            if (py::isinstance<py::str>(obj)) {
-                std::string text = obj.cast<std::string>();
-                if (text.empty()) continue;
-                out.emplace_back(std::move(text));
-            } else {
-                out.emplace_back(obj.cast<lazyllm::DocNode>());
-            }
+            out.emplace_back(obj.cast<lazyllm::PDocNode>());
         }
         return out;
     }
@@ -50,11 +43,11 @@ void exportNodeTransform(py::module& m) {
                const std::string& node_group,
                py::object /*ref_path*/,
                py::kwargs /*kwargs*/) {
-                std::vector<lazyllm::DocNode*> docs;
+                std::vector<lazyllm::PDocNode> docs;
                 if (py::isinstance<py::sequence>(documents)) {
-                    for (auto item : documents) docs.push_back(py::cast<lazyllm::DocNode*>(item));
+                    for (auto item : documents) docs.push_back(py::cast<lazyllm::PDocNode>(item));
                 } else
-                    docs.push_back(documents.cast<lazyllm::DocNode*>());
+                    docs.push_back(documents.cast<lazyllm::PDocNode>());
                 return self.batch_forward(docs, node_group);
             },
             py::arg("documents"),
@@ -63,16 +56,16 @@ void exportNodeTransform(py::module& m) {
             py::return_value_policy::reference
         )
         .def("transform",
-            [](const lazyllm::NodeTransform& self, lazyllm::DocNode* document, py::kwargs /*kwargs*/) {
-                if (document == nullptr) return std::vector<lazyllm::DocNode>{};
-                return self.transform(document);
+            [](const lazyllm::NodeTransform& self, lazyllm::PDocNode node, py::kwargs /*kwargs*/) {
+                if (node == nullptr) return std::vector<lazyllm::PDocNode>{};
+                return self.transform(node);
             },
             py::arg("document")
         )
         .def("__call__",
-            [](const lazyllm::NodeTransform& self, lazyllm::DocNode* node, py::kwargs /*kwargs*/) {
-                if (node == nullptr) return std::vector<lazyllm::DocNode>{};
-                return self(*node);
+            [](const lazyllm::NodeTransform& self, lazyllm::PDocNode node, py::kwargs /*kwargs*/) {
+                if (node == nullptr) return std::vector<lazyllm::PDocNode>{};
+                return self(node);
             },
             py::arg("node")
         )

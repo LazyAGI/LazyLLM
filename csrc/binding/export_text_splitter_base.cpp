@@ -198,6 +198,7 @@ void exportTextSpliterBase(py::module& m) {
             }
         )
         .def_static("get_default",
+            // TODO: too verbose
             [](py::object param_name) -> py::object {
                 const auto defaults = lazyllm::TextSplitterBase::_default_params.get_default();
                 if (param_name.is_none()) {

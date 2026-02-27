@@ -19,11 +19,12 @@ namespace lazyllm {
 
 enum class MetadataMode { ALL, EMBED, LLM, NONE };
 
-// TODO: Refactor docnode management from NodeTransform to "Parant" DocNode
+using PDocNode = PDocNode;
+
 class DocNode {
 public:
     using Metadata = std::unordered_map<std::string, std::any>;
-    using Children = std::unordered_map<std::string, std::vector<DocNode*>>;
+    using Children = std::unordered_map<std::string, std::vector<PDocNode>>;
     using EmbeddingFun = std::function<std::vector<double>(const std::string&, const std::string&)>;
     using EmbeddingVecs = std::unordered_map<std::string, std::vector<double>>;
 
@@ -50,7 +51,6 @@ private:
     std::shared_ptr<const AdaptorBase> _p_store = nullptr;
 
 public:
-    DocNode() = delete;
     explicit DocNode(
         const std::string_view& text_view,
         const std::string& group_name = "",
@@ -66,6 +66,11 @@ public:
         _p_global_metadata(global_metadata)
     {
         set_text_view(text_view);
+    }
+    DocNode() : DocNode("", "") {}
+    explicit DocNode(std::string&& text, const std::shared_ptr<Metadata>& global_metadata = {})
+        : DocNode(text, "", "", nullptr, {}, global_metadata) {
+        set_root_text(std::move(text));
     }
 
     DocNode(const DocNode&) = default;
@@ -122,14 +127,16 @@ public:
     size_t get_text_hash() const { return _text_hash; }
     const DocNode* get_parent_node() const { return _p_parent_node; }
     void set_parent_node(const DocNode* p_parent_node) { _p_parent_node = p_parent_node; }
-    Children py_get_children() const {
+    Children get_children() const {
         if (!_children.empty()) return _children;
         if (_p_store == nullptr) return Children();
         _children = std::any_cast<Children>(_p_store->call("get_node_children", {{"node", this}}));
         return _children;
     }
     void set_children(const Children& children) { _children = children; }
-    void set_children_group(const std::string& group_name, const std::vector<DocNode*>& children_group) {
+    void set_children_group(
+        const std::string& group_name,
+        const std::vector<PDocNode>& children_group) {
         _children[group_name] = children_group;
     }
     std::set<std::string> get_excluded_embed_metadata_keys() const {
@@ -152,8 +159,8 @@ public:
     void set_doc_path(const std::string& path) {
         get_root_node()->_p_global_metadata->operator[](std::string(RAGMetadataKeys::DOC_PATH)) = path;
     }
-    auto py_get_children_uid() const {
-        auto children = py_get_children();
+    auto get_children_uid() const {
+        auto children = get_children();
         std::unordered_map<std::string, std::vector<std::string>> children_uid;
         for (auto& [group_name, nodes] : children) {
             children_uid[group_name] = {};

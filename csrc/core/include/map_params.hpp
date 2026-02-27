@@ -23,6 +23,8 @@ public:
         std::lock_guard<std::mutex> guard(_lock);
         auto it = _params.find(std::string(param_name));
         if (it != _params.end()) return std::any_cast<T>(it->second);
+
+        // Don't set default value here to avoid parameter pollution.
         return default_value;
     }
 
