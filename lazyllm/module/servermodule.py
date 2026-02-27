@@ -25,6 +25,29 @@ from .module import ModuleBase, ActionModule
 
 _register_trim_module({'lazyllm.module.servermodule': ['__call__']})
 
+def _is_image_path(item) -> bool:
+    if not isinstance(item, str):
+        return False
+    if item.startswith(('http://', 'https://')):
+        return any(item.lower().endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))
+    return any(item.lower().endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))
+
+
+def _parse_interleaved_input(input_list: List) -> Tuple[str, List[str]]:
+    text_parts = []
+    image_paths = []
+
+    for item in input_list:
+        if _is_image_path(item):
+            image_paths.append(item)
+            text_parts.append('[Image]')
+        else:
+            text_parts.append(str(item))
+
+    concatenated_text = ''.join(text_parts)
+
+    return concatenated_text, image_paths
+
 
 class LLMBase(object):
     def __init__(self, stream: Union[bool, Dict[str, str]] = False,
@@ -38,6 +61,14 @@ class LLMBase(object):
         if isinstance(input, package):
             assert not lazyllm_files, 'Duplicate `files` argument provided by args and kwargs'
             input, lazyllm_files = input
+
+        if isinstance(input, list):
+            has_images = any(_is_image_path(item) for item in input)
+            if has_images:
+                assert not lazyllm_files, 'Cannot use both interleaved input and lazyllm_files parameter'
+                input, files = _parse_interleaved_input(input)
+                return input, files
+
         if isinstance(input, str) and input.startswith(LAZYLLM_QUERY_PREFIX):
             assert not lazyllm_files, 'Argument `files` is already provided by query'
             deinput = decode_query_with_filepaths(input)
