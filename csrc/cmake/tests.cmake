@@ -1,8 +1,6 @@
-include(FetchContent)
-
 FetchContent_Declare(
     googletest
-    URL https://codeload.github.com/google/googletest/zip/refs/tags/release-1.12.1
+    URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
 ) # Fix gtest version to maintain C++11 compatibility.
 
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)

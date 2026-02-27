@@ -871,8 +871,7 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
         modified_nodes.append(node)
         for k in miss:
             tasks_by_key[k].append(node)
-            if hasattr(node, '_embedding_state'):
-                node._embedding_state.add(k)
+            node.embedding_state.add(k)
 
     if not tasks_by_key:
         return []
@@ -907,9 +906,9 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
         except Exception as e:
             lazyllm.LOG.error(f'[LazyLLM - parallel_do_embedding][{k}] error: {e}')
             for n in knodes:
-                if hasattr(n, '_embedding_state') and k in n._embedding_state:
+                if k in n.embedding_state:
                     with n._lock:
-                        n._embedding_state.remove(k)
+                        n.embedding_state.remove(k)
             raise e
 
     with ThreadPoolExecutor(max_workers=min(max_workers, len(tasks_by_key))) as ex:
