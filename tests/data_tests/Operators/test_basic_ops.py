@@ -1,5 +1,6 @@
 import os
 import shutil
+import tempfile
 
 from lazyllm import config, LOG
 from lazyllm.tools.data import refine, chunker, filter
@@ -27,7 +28,7 @@ class MockModel:
 class TestRefineOperators:
 
     def setup_method(self):
-        self.root_dir = './test_data_op'
+        self.root_dir = tempfile.mkdtemp()
         self.keep_dir = config['data_process_path']
         os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
         config.refresh()
@@ -99,7 +100,7 @@ class TestRefineOperators:
 class TestChunkerOperators:
 
     def setup_method(self):
-        self.root_dir = './test_data_op'
+        self.root_dir = tempfile.mkdtemp()
         self.keep_dir = config['data_process_path']
         os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
         config.refresh()
@@ -131,7 +132,7 @@ class TestChunkerOperators:
 class TestFilterOperators:
 
     def setup_method(self):
-        self.root_dir = './test_data_op'
+        self.root_dir = tempfile.mkdtemp()
         self.keep_dir = config['data_process_path']
         os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
         config.refresh()
