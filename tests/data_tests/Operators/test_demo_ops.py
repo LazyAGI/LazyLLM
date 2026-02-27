@@ -4,6 +4,7 @@ import time
 import pytest
 import random
 import json
+import tempfile
 from lazyllm import config, LOG
 from lazyllm.tools.data import data_register, demo1, demo2, llm_json_base
 
@@ -30,7 +31,7 @@ class MockModel:
 class TestDataDemoOperators:
 
     def setup_method(self):
-        self.root_dir = './test_data_op'
+        self.root_dir = tempfile.mkdtemp()
         self.keep_dir = config['data_process_path']
         os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
         config.refresh()
@@ -168,7 +169,7 @@ class TestDataDemoOperators:
 class TestDataLLMDemoOperators:
 
     def setup_method(self):
-        self.root_dir = './test_data_op'
+        self.root_dir = tempfile.mkdtemp()
         self.keep_dir = config['data_process_path']
         os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
         config.refresh()
