@@ -1,8 +1,9 @@
 import os
 import shutil
+import tempfile
+
 from lazyllm import config
 from lazyllm.tools.data.operators import text2sql_ops
-import pytest  # noqa: F401
 
 class MockDatabaseManager:
     def __init__(self):
@@ -56,7 +57,7 @@ class MockModel:
 class TestText2SQLOperators:
 
     def setup_method(self):
-        self.root_dir = './test_text2sql_op'
+        self.root_dir = tempfile.mkdtemp()
         self.keep_dir = config['data_process_path']
         os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
         config.refresh()
