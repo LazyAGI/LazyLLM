@@ -234,7 +234,7 @@ class SQLRuntimeSieve(Text2SQLOps):
 class SQLIntentSynthesizer(Text2SQLOps):
     def __init__(self, model=None, embedding_model=None, database_manager=None,
                  input_query_num=5, prompt_template=None, system_prompt=None,
-                 input_intent_key='intent', **kwargs):
+                 input_intent_key='question', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.embedding_model = embedding_model
         self.database_manager = database_manager
@@ -517,7 +517,7 @@ class SQLContextAssembler(Text2SQLOps):
             f'Generate a SQL query for {db_engine}.'
         )
 
-    def forward(self, data, input_intent_key='intent', input_db_id_key='db_id',
+    def forward(self, data, input_intent_key='question', input_db_id_key='db_id',
                 input_evidence_key='evidence', output_prompt_key='prompt', **kwargs):
         assert isinstance(data, dict)
         if self.database_manager is None:
@@ -586,7 +586,7 @@ class SQLReasoningTracer(Text2SQLOps):
             f'Please provide a detailed step-by-step reasoning that leads to the correct SQL query.'
         )
 
-    def forward(self, data, input_sql_key='SQL', input_intent_key='intent',
+    def forward(self, data, input_sql_key='SQL', input_intent_key='question',
                 input_db_id_key='db_id', input_evidence_key='evidence',
                 output_cot_key='cot_responses', **kwargs):
         assert isinstance(data, dict)

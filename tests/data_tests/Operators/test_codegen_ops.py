@@ -50,7 +50,7 @@ class TestCodeGenOps:
         op = codegen_ops.CodeInstructionGenerator(model=model)
         data = {'messages': [{'role': 'user', 'content': 'test'}]}
         result = op.forward(data)
-        assert result['generated_instruction'] == mock_response
+        assert result['instruction'] == mock_response
 
     def test_code_instruction_to_code_generator(self):
         mock_response = "```python\nprint('hello')\n```"

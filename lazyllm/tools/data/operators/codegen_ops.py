@@ -58,7 +58,7 @@ def _parse_score_and_feedback(response) -> Tuple[int, str]:
 
 
 class CodeInstructionGenerator(CodeGenOps):
-    def __init__(self, model=None, prompt_template=None, input_key='messages', output_key='generated_instruction',
+    def __init__(self, model=None, prompt_template=None, input_key='messages', output_key='instruction',
                  **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key

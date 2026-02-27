@@ -1928,16 +1928,16 @@ add_chinese_doc('data.operators.codegen_ops.CodeInstructionGenerator', """\
 
 从原始对话消息（messages）中抽取用户指令，并将其重写为统一的“代码增强指令”，输出为一条英文描述 + 一个包含完整函数骨架的 Python 代码块。
 
-输出示例结构（默认 input_key='messages', output_key='generated_instruction'):
+输出示例结构（默认 input_key='messages', output_key='instruction'):
 
 - messages: 原始多轮对话（保持不变）
-- generated_instruction (str): 标准化后的英文指令 + Python 代码块
+- instruction (str): 标准化后的英文指令 + Python 代码块
 
 Args:
     model: LazyLLM 模型对象（必需），会被 share() 后复用。
     prompt_template (str|None): 可选，自定义系统提示词（若提供则替换默认 sys_prompt）。
     input_key (str): 输入对话字段名，默认 'messages'。
-    output_key (str): 输出标准化指令字段名，默认 'generated_instruction'。
+    output_key (str): 输出标准化指令字段名，默认 'instruction'。
     **kwargs: 传递给基类算子的其它参数（如 _max_workers、_save_data 等）。
 """)
 
@@ -1946,16 +1946,16 @@ Code-gen pipeline operator: CodeInstructionGenerator.
 
 Extracts the user instruction from raw messages and rewrites it into a standardized English instruction plus a Python function skeleton code block.
 
-Typical output structure (default input_key='messages', output_key='generated_instruction'):
+Typical output structure (default input_key='messages', output_key='instruction'):
 
 - messages: original multi-turn messages (unchanged)
-- generated_instruction (str): standardized English instruction + Python code block
+- instruction (str): standardized English instruction + Python code block
 
 Args:
     model: a LazyLLM model object (required), shared via share().
     prompt_template (str|None): optional custom system prompt (overrides default).
     input_key (str): input conversation field name, default 'messages'.
-    output_key (str): output standardized instruction field name, default 'generated_instruction'.
+    output_key (str): output standardized instruction field name, default 'instruction'.
     **kwargs: extra args forwarded to the base operator (e.g. _max_workers, _save_data).
 """)
 
@@ -1964,7 +1964,7 @@ from lazyllm.tools.data.operators.codegen_ops import CodeInstructionGenerator
 
 op = CodeInstructionGenerator(model=model,
                                          input_key='messages',
-                                         output_key='generated_instruction')
+                                         output_key='instruction')
 item = {
     'messages': [
         {'role': 'user', 'content': '写一个 Python 函数，打印 hello'}
@@ -1976,7 +1976,7 @@ print(res)
 # Output Example:
 # {
 #    'messages': [...],
-#    'generated_instruction': "Write a Python function that prints 'hello'.\\n"
+#    'instruction': "Write a Python function that prints 'hello'.\\n"
 #                             "```python\\n"
 #                             "def solution():\\n"
 #                             "    print('hello')\\n"
@@ -1987,7 +1987,7 @@ print(res)
 add_chinese_doc('data.operators.codegen_ops.ScriptSynthesizer', """\
 代码生成流水线算子：指令到代码生成器。
 
-给定自然语言代码指令（通常是上一阶段生成的 generated_instruction 或精简后的 instruction），生成对应的 Python 源代码文本，并尝试自动去掉 Markdown 代码块外壳，只保留代码本身。
+给定自然语言代码指令（通常是上一阶段生成的 instruction），生成对应的 Python 源代码文本，并尝试自动去掉 Markdown 代码块外壳，只保留代码本身。
 
 输出示例结构（默认 input_key='instruction', output_key='new_code'):
 
@@ -2005,7 +2005,7 @@ Args:
 add_english_doc('data.operators.codegen_ops.ScriptSynthesizer', """\
 Code-gen pipeline operator: ScriptSynthesizer.
 
-Given a natural language code instruction (often from the previous generated_instruction or a cleaned instruction field), generates the corresponding Python source code, stripping Markdown code fences when present.
+Given a natural language code instruction (often from the previous instruction), generates the corresponding Python source code, stripping Markdown code fences when present.
 
 Typical output structure (default input_key='instruction', output_key='new_code'):
 
@@ -2042,7 +2042,7 @@ print(res)
 add_chinese_doc('data.operators.codegen_ops.LogicIntegrityAuditor', """\
 代码生成流水线算子：代码质量评估器。
 
-对单条 (generated_instruction, generated_code) 样本进行自动代码评审，输出一个质量分数（0–10）与一段文字反馈，默认使用 JSON 格式进行解析。
+对单条 (instruction, new_code) 样本进行自动代码评审，输出一个质量分数（0–10）与一段文字反馈，默认使用 JSON 格式进行解析。
 
 输出示例结构（默认 input_instruction_key='instruction', input_code_key='new_code'):
 
@@ -2064,7 +2064,7 @@ Args:
 add_english_doc('data.operators.codegen_ops.LogicIntegrityAuditor', """\
 Code-gen pipeline operator: LogicIntegrityAuditor.
 
-Evaluates a single (generated_instruction, generated_code) sample, producing a quality score (0–10) and textual feedback, parsed from a JSON-formatted model response.
+Evaluates a single (instruction, new_code) sample, producing a quality score (0–10) and textual feedback, parsed from a JSON-formatted model response.
 
 Typical output structure (default input_instruction_key='instruction', input_code_key='new_code'):
 
