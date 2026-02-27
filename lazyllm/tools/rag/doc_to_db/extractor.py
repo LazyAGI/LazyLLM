@@ -65,15 +65,30 @@ class SchemaExtractor:
         'map': dict,
     }
 
-    def __init__(self, db_config: Dict[str, Any], llm: LLMBase, *, table_prefix: Optional[str] = None,
-                 force_refresh: bool = False, extraction_mode: ExtractionMode = ExtractionMode.TEXT,
-                 max_len: int = ONE_DOC_LENGTH_LIMIT, num_workers: int = 4):
-        if not isinstance(llm, LLMBase):
+    def __init__(self, db_config: Optional[Dict[str, Any]] = None, llm: LLMBase = None, *,
+                 table_prefix: Optional[str] = None, force_refresh: bool = False,
+                 extraction_mode: ExtractionMode = ExtractionMode.TEXT, max_len: int = ONE_DOC_LENGTH_LIMIT,
+                 num_workers: int = 4, sql_manager: Optional[SqlManager] = None):
+        if (db_config is None) == (sql_manager is None):
+            raise ValueError('Exactly one of db_config or sql_manager must be provided')
+        if llm is None or not isinstance(llm, LLMBase):
             raise TypeError('llm must be an instance of LLMBase')
         self._llm = llm
         self._table_prefix = table_prefix or self.TABLE_PREFIX
         self._sql_manager = None
-        self._db_config = db_config
+        if sql_manager is not None:
+            self._sql_manager = sql_manager
+            self._db_config = {
+                'db_type': sql_manager._db_type,
+                'user': getattr(sql_manager, '_user', None),
+                'password': getattr(sql_manager, '_password', None),
+                'host': getattr(sql_manager, '_host', None),
+                'port': getattr(sql_manager, '_port', None),
+                'db_name': getattr(sql_manager, '_db_name', None),
+                'options_str': getattr(sql_manager, '_options_str', None),
+            }
+        else:
+            self._db_config = db_config
         self._table_cache: Dict[str, Type[_TableBase]] = {}
         self._schema_registry: Dict[str, Type[BaseModel]] = {}
         self._force_refresh = force_refresh
@@ -179,7 +194,8 @@ class SchemaExtractor:
 
     @once_wrapper
     def _lazy_init(self):
-        self._sql_manager = self._init_sql_manager(self._db_config) if self._db_config else None
+        if self._sql_manager is None:
+            self._sql_manager = self._init_sql_manager(self._db_config) if self._db_config else None
         if self._sql_manager:
             self._ensure_management_tables()
 
