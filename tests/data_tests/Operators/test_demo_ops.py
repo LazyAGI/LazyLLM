@@ -1,12 +1,31 @@
 import os
+import shutil
 import time
 import pytest
 import random
-import shutil
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, data_register, llm_json_base
+from lazyllm.tools.data import data_register, demo1, demo2, llm_json_base
 
+
+class MockModel:
+    def __init__(self, mock_response: str):
+        self.mock_response = mock_response
+
+    def __call__(self, string: str, **kwargs):
+        return self.mock_response
+
+    def prompt(self, prompt):
+        return self
+
+    def formatter(self, formatter):
+        return self
+
+    def share(self):
+        return self
+
+    def start(self):
+        return self
 
 class TestDataDemoOperators:
 
@@ -144,23 +163,6 @@ class TestDataDemoOperators:
                 load_res.append(data)
         sorted_load = sorted(load_res, key=lambda x: x['id'])
         assert sorted_res == sorted_load
-
-
-class MockModel:
-    def __init__(self, mock_response: str):
-        self.mock_response = mock_response
-
-    def __call__(self, string: str, **kwargs):
-        return self.mock_response
-
-    def prompt(self, prompt):
-        return self
-
-    def formatter(self, formatter):
-        return self
-
-    def share(self):
-        return self
 
 
 class TestDataLLMDemoOperators:
