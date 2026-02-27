@@ -276,6 +276,14 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.transform.base.Rule
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.base.RuleSet
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.rag.transform.factory.LLMParser
     members:
     exclude-members:

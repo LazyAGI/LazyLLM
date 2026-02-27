@@ -5077,6 +5077,31 @@ Args:
     metadata (Dict[str, Any]): 规则的元数据。
 ''')
 
+add_english_doc('rag.transform.base.Rule.build', '''
+Build a rule from a pattern string or a predicate function.
+
+Args:
+    name (str): The name of the rule.
+    rule (Union[str, Callable[[Any], bool]]): The pattern string or the predicate function.
+    apply (Callable[[Any, 'Rule'], Any]): The function to apply to the nodes.
+''')
+
+add_chinese_doc('rag.transform.base.Rule.build', '''
+从模式字符串或谓词函数构建一个规则。
+
+Args:
+    name (str): 规则的名称。
+    rule (Union[str, Callable[[Any], bool]]): 模式字符串或谓词函数。
+    apply (Callable[[Any, 'Rule'], Any]): 应用节点的函数。
+''')
+
+add_example('rag.transform.base.Rule.build', '''
+>>> import lazyllm
+>>> from lazyllm.tools import Rule
+>>> rule = Rule.build(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)
+>>> print(rule)
+''')
+
 add_english_doc('rag.transform.base.RuleSet', '''
 A set of rules to apply to the nodes.
 
@@ -5098,29 +5123,100 @@ add_example('rag.transform.base.RuleSet', '''
 >>> print(rules)
 ''')
 
-add_english_doc('rag.transform.base.build_rule', '''
-Build a rule from a function.
+add_english_doc('rag.transform.base.RuleSet.add', '''
+Add a rule to the rule set.
 
 Args:
-    name (str): The name of the rule.
-    match (Callable): The function to match the nodes.
-    apply (Callable): The function to apply to the nodes.
+    *rules (Rule): The rules to add to the rule set.
 ''')
 
-add_chinese_doc('rag.transform.base.build_rule', '''
-构建一个规则。
+add_chinese_doc('rag.transform.base.RuleSet.add', '''
+添加一个规则到规则集。
 
 Args:
-    name (str): 规则的名称。
-    match (Callable): 匹配节点的函数。
-    apply (Callable): 应用节点的函数。
+    *rules (Rule): 要添加的规则。
 ''')
 
-add_example('rag.transform.base.build_rule', '''
+add_example('rag.transform.base.RuleSet.add', '''
 >>> import lazyllm
->>> from lazyllm.tools import build_rule
->>> rule = build_rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)
->>> print(rule)
+>>> from lazyllm.tools import RuleSet
+>>> rules = RuleSet([Rule(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)])
+>>> rules.add(Rule(name='rule2', rule=lambda n: n.text.endswith('World'), apply=lambda n, r: n))
+>>> print(rules)
+''')
+
+add_english_doc('rag.transform.base.RuleSet.extend', '''
+Extend the rule set with another rule set.
+
+Args:
+    rules (RuleSet): The rule set to extend.
+''')
+
+add_chinese_doc('rag.transform.base.RuleSet.extend', '''
+扩展规则集。
+
+Args:
+    rules (RuleSet): 要扩展的规则集。
+''')
+
+add_example('rag.transform.base.RuleSet.extend', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RuleSet
+>>> rules = RuleSet([Rule(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)])
+>>> rules.extend(RuleSet([Rule(name='rule2', rule=lambda n: n.text.endswith('World'), apply=lambda n, r: n)]))
+>>> print(rules)
+''')
+
+add_english_doc('rag.transform.base.RuleSet.first', '''
+Get the first rule that matches the data.
+
+Args:
+    data (Any): The data to match.
+''')
+add_chinese_doc('rag.transform.base.RuleSet.first', '''
+获取第一个匹配数据的规则。
+''')
+
+add_example('rag.transform.base.RuleSet.first', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RuleSet
+>>> rules = RuleSet([Rule(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)])
+>>> print(rules.first(Node(text='Hello World')))
+''')
+
+add_english_doc('rag.transform.base.RuleSet.all', '''
+Get all the rules that match the data.
+
+Args:
+    data (Any): The data to match.
+''')
+
+add_chinese_doc('rag.transform.base.RuleSet.all', '''
+获取所有匹配数据的规则。
+
+Args:
+    data (Any): 要匹配的数据。
+''')
+
+add_example('rag.transform.base.RuleSet.all', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RuleSet
+>>> rules = RuleSet([Rule(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)])
+>>> print(rules.all(Node(text='Hello World')))
+''')
+
+add_english_doc('rag.transform.base.RuleSet.filter', '''
+Filter the rule set with a predicate function.
+
+Args:
+    predicate (Callable[[Rule], bool]): The predicate function to filter the rule set.
+''')
+
+add_chinese_doc('rag.transform.base.RuleSet.filter', '''
+过滤规则集。
+
+Args:
+    predicate (Callable[[Rule], bool]): 过滤规则集的谓词函数。
 ''')
 
 add_english_doc('rag.transform.layout.LayoutNodeParser', '''
