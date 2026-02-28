@@ -340,4 +340,26 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         return lazyllm.make_repr('Module', 'OnlineChat', name=self._module_name, url=self._base_url,
                                  stream=bool(self._stream), return_trace=self._return_trace)
 
+    def _iter_sse_json(self, response, skip_brackets: bool = False, skip_comma: bool = False):
+        for raw in response.iter_lines():
+            if not raw:
+                continue
+            line = raw.decode('utf-8', errors='ignore').strip()
+            if not line or line.startswith('event:'):
+                continue
+            if line.startswith('data:'):
+                line = line[5:].strip()
+            if not line or line in ('[DONE]', 'DONE'):
+                return
+            if skip_brackets and line in ('[', ']'):
+                continue
+            if skip_comma and line.startswith(','):
+                line = line[1:].strip()
+                if not line:
+                    continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError as e:
+                lazyllm.LOG.warning(f"Failed to decode SSE line: '{line}', error: {e}")
+
 OnlineChatModuleBase = LazyLLMOnlineChatModuleBase

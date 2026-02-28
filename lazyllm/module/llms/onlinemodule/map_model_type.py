@@ -444,6 +444,14 @@ MODEL_MAPPING = {
     # ===== SiliconFlow =====
     'qwen/qwen-image-edit': 'image_editing',
     'qwen/qwen-image-edit-2509': 'image_editing',
+
+    # ===== Gemini =====
+    'gemini-2.5-flash': 'vlm',
+    'gemini-2.5-flash-image': 'sd',
+    'nano-banana-pro-preview': 'image_editing',
+
+    # ==== Claude ====
+    'claude-4-5-sonnet-latest': 'vlm',
 }
 _TOKEN_MAP = {
     'embed': ('embedding', 'embed'),
