@@ -65,3 +65,6 @@ build*
 lazyllm_cpp.egg-info/
 !build*.sh
 /data_pipeline_res
+*/imgs
+*.png
+*.pdf

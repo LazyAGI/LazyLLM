@@ -1,6 +1,6 @@
 from ..base_data import data_register
 from lazyllm.tools.rag import MineruPDFReader
-from lazyllm import LOG, OnlineChatModule, TrainableModule
+from lazyllm import LOG, TrainableModule
 from lazyllm.components.formatter import JsonFormatter
 from lazyllm.components.formatter import encode_query_with_filepaths
 import os
@@ -126,7 +126,7 @@ class PdfChunkToQA(Pdf2Qa):
                     shutil.copy(src_path, local_path)
             context = re.sub(r'!\[.*?\]\(images/[^)]+\)', '', chunk)
             query = context if context else 'Generate one QA pair based on the image.'
-            print('Save to', local_paths)
+            # save the img from mineru server to local
             out = self.model(encode_query_with_filepaths(query, local_paths))
             data[self.query_key] = out.get(self.query_key, '')
             data[self.answer_key] = out.get(self.answer_key, '')

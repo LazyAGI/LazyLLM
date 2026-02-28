@@ -149,7 +149,7 @@ def answer_verify(data, answer_key='reference', infer_key='llm_extracted', outpu
         parsed_llm = math_verify.parse(str(llm_answer))
         data[output_key] = math_verify.verify(parsed_real, parsed_llm)
 
-    except Exception as e:
+    except Exception:
         data[output_key] = False
 
     return data
