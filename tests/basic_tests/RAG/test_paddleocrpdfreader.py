@@ -94,7 +94,10 @@ class TestPaddleOCRPDFReader(object):
         assert len(docs) == 1, 'When split_doc=True, should return only one node'
         assert isinstance(docs[0], RichDocNode), 'Return result should be a RichDocNode'
 
-        splitted_nodes = SentenceSplitter(chunk_size=65536, chunk_overlap=10)([docs[0]])
+        # 打印所有node中metadata长度超过1024的内容
+        for node in docs[0].nodes:
+            print(f'node.metadata length: {SentenceSplitter()._get_metadata_size(node)}')
+        splitted_nodes = SentenceSplitter(chunk_size=1024, chunk_overlap=10)([docs[0]])
         assert isinstance(splitted_nodes, list)
         assert len(splitted_nodes) > 0, 'Return result should not be empty'
         assert isinstance(splitted_nodes[0], DocNode), 'Return result should be a DocNode'
