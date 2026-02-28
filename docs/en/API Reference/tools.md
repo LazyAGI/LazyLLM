@@ -271,7 +271,7 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.rag.transform.treebuilder.TreeBuildParser
+::: lazyllm.tools.rag.transform.treebuilder.TreeBuilderParser
     members:
     exclude-members:
 

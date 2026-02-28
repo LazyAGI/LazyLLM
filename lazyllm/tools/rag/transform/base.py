@@ -96,13 +96,14 @@ class NodeTransform(ModuleBase):
                     ref_nodes = self._get_ref_nodes(node, ref_path)
                     if not ref_nodes:
                         return []
+                    forward_kwargs = {**kwargs, 'ref': ref_nodes}
                     if self.__support_rich__:
                         input_node = RichDocNode(nodes=ref_nodes)
-                        splits = self.forward(input_node, **kwargs)
+                        splits = self.forward(input_node, **forward_kwargs)
                     else:
                         splits = []
                         for n in ref_nodes:
-                            splits.extend(self.forward(n, **kwargs))
+                            splits.extend(self.forward(n, **forward_kwargs))
                 else:
                     if isinstance(node, RichDocNode) and not self.__support_rich__:
                         splits = []
