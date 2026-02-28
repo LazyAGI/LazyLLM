@@ -252,7 +252,35 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.transform.layout.LayoutNodeParser
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.contentfilter.ContentFiltParser
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.treebuilder.TreeBuilderParser
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.treefixer.TreeFixerParser
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.groupby.GroupNodeParser
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.rag.transform.base.NodeTransform
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.base.Rule
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.base.RuleSet
     members:
     exclude-members:
 

@@ -169,7 +169,10 @@ class PaddleOCRPDFReader(_RichReader):
                     continue
                 true_img_path = img_map.get(img_paths[0])
                 block['content'] = f'![]({true_img_path})'
-                block['image_path'] = true_img_path
+                if self._images_dir is not None:
+                    block['image_path'] = true_img_path
+                else:
+                    block['image_path'] = img_paths[0]
             elif block['type'] == 'ocr':
                 block['type'] = 'page'
             elif block['type'] == 'display_formula':

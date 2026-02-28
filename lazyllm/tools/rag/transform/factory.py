@@ -69,14 +69,18 @@ class AdaptiveTransform(NodeTransform):
         if not isinstance(transforms, (tuple, list)): transforms = [transforms]
         self._transformers = [(t.get('pattern'), make_transform(t)) for t in transforms]
 
-    def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
-        if not isinstance(document, DocNode): LOG.warning(f'Invalud document type {type(document)} got')
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
+        if not isinstance(node, DocNode):
+            LOG.warning(f'Invalid document type {type(node)} got')
+            return []
         for pt, transform in self._transformers:
-            if pt and isinstance(pt, str) and not pt.startswith('*'): pt = os.path.join(os.getcwd(), pt)
-            if not pt or (callable(pt) and pt(document.docpath)) or (
-                    isinstance(pt, str) and fnmatch.fnmatch(document.docpath, pt)):
-                return transform(document, **kwargs)
-        LOG.warning(f'No transform found for document {document.docpath} with group name `{self._name}`')
+            if pt and isinstance(pt, str) and not pt.startswith('*'):
+                pt = os.path.join(os.getcwd(), pt)
+            if not pt or (callable(pt) and pt(node.docpath)) or (
+                    isinstance(pt, str) and fnmatch.fnmatch(node.docpath, pt)):
+                chunks = transform(node, **kwargs)
+                return list(chunks) if not isinstance(chunks, list) else chunks
+        LOG.warning(f'No transform found for document {node.docpath} with group name `{self._name}`')
         return []
 
 
@@ -87,13 +91,13 @@ class FuncNodeTransform(NodeTransform):
         self._func, self._trans_node = func, trans_node
         self._need_ref = 'ref' in inspect.signature(func).parameters
 
-    def transform(self, node: DocNode, **kwargs) -> List[Union[str, DocNode]]:
-        if ref := kwargs.pop('ref', None):
-            assert self._need_ref, \
-                'if node group has ref, the transform function must support ref parameter.'
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
+        if ref := kwargs.get('ref', None):
+            assert self._need_ref, 'if node group has ref, the transform function must support ref parameter.'
             kwargs['ref'] = ref if self._trans_node else [r.get_text() for r in ref]
-        result = self._func(node if self._trans_node else node.get_text(), **kwargs)
-        return result if isinstance(result, list) else [result]
+        chunks = self._func(node if self._trans_node else node.get_text(), **kwargs)
+        chunks = chunks if isinstance(chunks, list) else [chunks]
+        return [c if isinstance(c, DocNode) else DocNode(text=str(c)) for c in chunks if c]
 
 
 class LLMParser(NodeTransform):
@@ -115,13 +119,14 @@ class LLMParser(NodeTransform):
         self._llm = llm.share(prompt=AlpacaPrompter(prompt), stream=False, format=self._format)
         self._task_type = task_type
 
-    def transform(self, node: DocNode, **kwargs) -> List[str]:
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         if self._task_type == 'qa_img':
             inputs = encode_query_with_filepaths('Extract QA pairs from images.', [node.image_path])
         else:
             inputs = node.get_text()
-        result = self._llm(inputs)
-        return [result] if isinstance(result, str) else result
+        chunks = self._llm(inputs)
+        chunks = [chunks] if isinstance(chunks, str) else chunks
+        return [c if isinstance(c, DocNode) else DocNode(text=str(c)) for c in chunks if c]
 
     def _format(self, input):
         if isinstance(input, dict):
