@@ -40,13 +40,14 @@ def _parse_interleaved_input(input_list: List) -> Tuple[str, List[str]]:
     for item in input_list:
         if _is_image_path(item):
             image_paths.append(item)
-            text_parts.append('[Image]')
+            text_parts.append('![Image](image)')
         else:
-            text_parts.append(str(item))
-
-    concatenated_text = ''.join(text_parts)
-
-    return concatenated_text, image_paths
+            text_str = str(item)
+            assert '![Image](image)' not in text_str, \
+                'Input text cannot contain reserved placeholder "![Image](image)". ' \
+                'Please use a different format or avoid this exact string.'
+            text_parts.append(text_str)
+    return ''.join(text_parts), image_paths
 
 
 class LLMBase(object):
