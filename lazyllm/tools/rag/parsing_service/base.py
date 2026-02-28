@@ -1,15 +1,25 @@
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any
+from pydantic import BaseModel, Field, BeforeValidator
+from typing import Dict, List, Optional, Any, Annotated
 from enum import Enum
 from uuid import uuid4
 from datetime import datetime
 
+class TransferParams(BaseModel):
+    mode: Optional[str] = 'cp'  # cp or mv
+    target_algo_id: str
+    target_doc_id: str
+    target_kb_id: str
+
+
+EmptyTransfer = Annotated[TransferParams | None, BeforeValidator(lambda v: None if v == {} else v)]
 
 class FileInfo(BaseModel):
     file_path: Optional[str] = None
     doc_id: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = {}
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     reparse_group: Optional[str] = None
+    transformed_file_path: Optional[str] = None
+    transfer_params: EmptyTransfer = None
 
 
 class DBInfo(BaseModel):
@@ -72,6 +82,7 @@ class TaskType(str, Enum):
     DOC_DELETE = 'DOC_DELETE'
     DOC_UPDATE_META = 'DOC_UPDATE_META'
     DOC_REPARSE = 'DOC_REPARSE'
+    DOC_TRANSFER = 'DOC_TRANSFER'
 
 
 def _get_task_type_weight(task_type: str) -> int:
@@ -81,6 +92,7 @@ def _get_task_type_weight(task_type: str) -> int:
         TaskType.DOC_UPDATE_META.value: 30,
         TaskType.DOC_ADD.value: 100,
         TaskType.DOC_REPARSE.value: 100,
+        TaskType.DOC_TRANSFER.value: 100,
     }
     return weight_map.get(task_type, 100)
 
@@ -89,6 +101,44 @@ def _calculate_task_score(task_type: str, user_priority: int) -> int:
     '''calculate task score'''
     type_weight = _get_task_type_weight(task_type)
     return type_weight * 10 - user_priority * 15
+
+
+def _resolve_add_doc_task_type(request: AddDocRequest) -> str:  # noqa: C901
+    new_file_ids = []
+    reparse_file_ids = []
+    transfer_mode = None
+    target_algo_id = None
+    target_kb_id = None
+
+    for file_info in request.file_infos:
+        if file_info.reparse_group is not None:
+            reparse_file_ids.append(file_info.doc_id)
+        else:
+            new_file_ids.append(file_info.doc_id)
+            if file_info.transfer_params:
+                if target_algo_id is not None and target_algo_id != file_info.transfer_params.target_algo_id:
+                    raise ValueError('transfer_params.target_algo_id must be the same for all files')
+                if target_kb_id is not None and target_kb_id != file_info.transfer_params.target_kb_id:
+                    raise ValueError('transfer_params.target_kb_id must be the same for all files')
+                if transfer_mode is not None and transfer_mode != file_info.transfer_params.mode:
+                    raise ValueError('transfer_params.mode must be the same for all files')
+                if file_info.transfer_params.target_algo_id != request.algo_id:
+                    raise ValueError('transfer_params.target_algo_id must be the same for all files')
+                target_algo_id = file_info.transfer_params.target_algo_id
+                target_kb_id = file_info.transfer_params.target_kb_id
+                transfer_mode = file_info.transfer_params.mode
+                if transfer_mode not in ['cp', 'mv']:
+                    raise ValueError('transfer_params.mode must be one of [cp, mv]')
+
+    if new_file_ids and reparse_file_ids:
+        raise ValueError('new_file_ids and reparse_file_ids cannot be specified at the same time')
+    if transfer_mode:
+        return TaskType.DOC_TRANSFER.value
+    if new_file_ids:
+        return TaskType.DOC_ADD.value
+    if reparse_file_ids:
+        return TaskType.DOC_REPARSE.value
+    raise ValueError('no input files or reparse group specified')
 
 
 # Waiting task queue table
@@ -108,8 +158,16 @@ WAITING_TASK_QUEUE_TABLE_INFO = {
          'comment': 'Calculated task score (for sorting, lower score is higher priority)'},
         {'name': 'message', 'data_type': 'string', 'nullable': False,
          'comment': 'Task message (json string, serialized from request body)'},
+        {'name': 'status', 'data_type': 'string', 'nullable': False, 'default': TaskStatus.WAITING.value,
+         'comment': 'Task status: WAITING, WORKING'},
+        {'name': 'worker_id', 'data_type': 'string', 'nullable': True,
+         'comment': 'Worker ID holding the lease'},
+        {'name': 'lease_expires_at', 'data_type': 'datetime', 'nullable': True,
+         'comment': 'Lease expiration time for in-progress task'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,
-         'comment': 'Creation time (auto-generated)', 'default': datetime.now()},
+         'comment': 'Creation time (auto-generated)', 'default': datetime.now},
+        {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False,
+         'comment': 'Last update time (auto-generated)', 'default': datetime.now},
     ]
 }
 
