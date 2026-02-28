@@ -7,12 +7,21 @@ from lazyllm.tools.rag.transform import (
 )
 from lazyllm.tools.rag.transform.markdown import _MdSplit
 from lazyllm.tools.rag.transform.layout import NO_GROUPING
-from lazyllm.tools.rag.transform.base import _TextSplitterBase, _Split, _TokenTextSplitter
-from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.transform.base import NodeTransform, _TextSplitterBase, _Split, _TokenTextSplitter
+from lazyllm.tools.rag.doc_node import DocNode, RichDocNode
+from lazyllm.tools.rag.global_metadata import RAG_DOC_ID
 import pytest
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.document import Document
 from lazyllm.tools.rag.retriever import Retriever
+from lazyllm.tools.rag.store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from lazyllm.tools.rag.store.document_store import _DocumentStore
+from lazyllm.tools.rag.parsing_service import _Processor
+from lazyllm.tools.rag.utils import gen_docid
+from lazyllm.tools.rag.global_metadata import RAG_KB_ID
+from lazyllm.tools.rag import TransformArgs
+import os
+import tempfile
 
 @pytest.fixture
 def doc_node():
@@ -1669,3 +1678,124 @@ class TestTreeFixerParser:
         ]
         result = self.parser.forward(nodes)
         assert len(result) >= 1
+
+
+class TestBatchForwardRefPath:
+    class _CollectRefTransform(NodeTransform):
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+
+        def forward(self, nodes, **kwargs):
+            self.calls.append([n.text for n in nodes])
+            return [DocNode(text=f'out-{n.text}') for n in nodes]
+
+    def test_batch_forward_uses_ref_path_per_parent(self):
+        transform = self._CollectRefTransform()
+        doc_a = DocNode(text='doc-a', global_metadata={RAG_DOC_ID: 'doc-a'})
+        doc_b = DocNode(text='doc-b', global_metadata={RAG_DOC_ID: 'doc-b'})
+        doc_a.children['section'] = [DocNode(text='a1'), DocNode(text='a2')]
+        doc_b.children['section'] = [DocNode(text='b1'), DocNode(text='b2')]
+
+        outputs = transform.batch_forward(
+            [doc_a, doc_b], node_group='layout_test', ref_path=['section']
+        )
+        assert len(transform.calls) == 2
+        assert transform.calls[0] == ['a1', 'a2']
+        assert transform.calls[1] == ['b1', 'b2']
+        assert [n.text for n in doc_a.children['layout_test']] == ['out-a1', 'out-a2']
+        assert [n.text for n in doc_b.children['layout_test']] == ['out-b1', 'out-b2']
+        assert len(outputs) == 4
+
+    def test_batch_forward_rich_doc_node_no_ref_path(self):
+        transform = self._CollectRefTransform()
+        n1, n2, n3 = DocNode(text='p1'), DocNode(text='p2'), DocNode(text='p3')
+        rich = RichDocNode(nodes=[n1, n2, n3])
+        outputs = transform.batch_forward([rich], node_group='chunk')
+        assert len(transform.calls) == 1
+        assert transform.calls[0] == ['p1', 'p2', 'p3']
+        assert len(rich.children['chunk']) == 3
+        assert [n.text for n in rich.children['chunk']] == ['out-p1', 'out-p2', 'out-p3']
+        assert len(outputs) == 3
+
+    def test_batch_forward_rich_doc_node_with_ref_path(self):
+        transform = self._CollectRefTransform()
+        a1, a2 = DocNode(text='a1'), DocNode(text='a2')
+        rich = RichDocNode(nodes=[DocNode(text='dummy')])
+        rich.children['section'] = [a1, a2]
+        outputs = transform.batch_forward([rich], node_group='out', ref_path=['section'])
+        assert len(transform.calls) == 1
+        assert transform.calls[0] == ['a1', 'a2']
+        assert [n.text for n in rich.children['out']] == ['out-a1', 'out-a2']
+        assert len(outputs) == 2
+
+    def test_parsing_service_ref_path_maintained_in_add_doc(self):
+        recorded_groups_per_call = []
+        recorded_doc_ids_per_call = []
+
+        class SectionTransform(NodeTransform):
+            def forward(self, nodes, **kwargs):
+                out = []
+                for n in nodes:
+                    out.append(DocNode(text=f'{n.text}-s1'))
+                    out.append(DocNode(text=f'{n.text}-s2'))
+                return out
+
+        class RefConsumerTransform(NodeTransform):
+            def forward(self, nodes, **kwargs):
+                recorded_groups_per_call.append([getattr(n, '_group', None) or getattr(n, 'group', None) for n in nodes])
+                recorded_doc_ids_per_call.append([n.global_metadata.get(RAG_DOC_ID) for n in nodes])
+                return [DocNode(text=f'ref-{n.text}') for n in nodes]
+
+        store = _DocumentStore(algo_name='test_ref_path', store={'type': 'map'}, embed={})
+        store.impl.need_embedding = False
+        store.activate_group(LAZY_ROOT_NAME)
+        store.activate_group('section')
+        store.activate_group('group_with_ref')
+
+        node_groups = {
+            LAZY_ROOT_NAME: {'parent': '', 'transform': None, 'ref': None},
+            'section': {
+                'parent': LAZY_ROOT_NAME,
+                'transform': TransformArgs(f=SectionTransform),
+                'ref': None,
+            },
+            'group_with_ref': {
+                'parent': LAZY_ROOT_NAME,
+                'ref': 'section',
+                'transform': TransformArgs(f=RefConsumerTransform),
+            },
+        }
+
+        with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as f1, \
+             tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as f2:
+            p1, p2 = f1.name, f2.name
+        try:
+            id1, id2 = gen_docid(p1), gen_docid(p2)
+            root1 = DocNode(text='d1', group=LAZY_ROOT_NAME,
+                            global_metadata={RAG_DOC_ID: id1, RAG_KB_ID: 'default'})
+            root2 = DocNode(text='d2', group=LAZY_ROOT_NAME,
+                            global_metadata={RAG_DOC_ID: id2, RAG_KB_ID: 'default'})
+            reader = MagicMock()
+            reader.load_data.return_value = {
+                LAZY_ROOT_NAME: [root1, root2],
+                LAZY_IMAGE_GROUP: [],
+            }
+
+            processor = _Processor(
+                algo_id='test_ref_path',
+                store=store,
+                reader=reader,
+                node_groups=node_groups,
+            )
+            processor.add_doc(input_files=[p1, p2], ids=[id1, id2], metadatas=[{}, {}])
+
+            assert len(recorded_groups_per_call) == 2
+            assert recorded_groups_per_call[0] == ['section', 'section']
+            assert recorded_groups_per_call[1] == ['section', 'section']
+            assert recorded_doc_ids_per_call[0] == [id1, id1]
+            assert recorded_doc_ids_per_call[1] == [id2, id2]
+        finally:
+            for p in (p1, p2):
+                if os.path.exists(p):
+                    os.unlink(p)

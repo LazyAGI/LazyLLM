@@ -44,8 +44,6 @@ def _default_is_valid_child(parent: DocNode, child: DocNode) -> bool:
 
 
 class TreeBuilderParser(NodeTransform):
-    __requires_all_nodes__ = True
-
     def __init__(self, rules: Optional[RuleSet] = None, *, get_level: Optional[Callable[[DocNode], int]] = None,
                  is_valid_child: Optional[Callable[[DocNode, DocNode], bool]] = None, return_trace: bool = False,
                  **kwargs

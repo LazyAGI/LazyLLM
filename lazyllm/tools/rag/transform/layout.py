@@ -28,8 +28,6 @@ def _get_simple_layout_rules() -> RuleSet:
 
 
 class LayoutNodeParser(NodeTransform):
-    __requires_all_nodes__ = True
-
     def __init__(self, rules: Optional[RuleSet] = None, *, group_by: Optional[Callable[[DocNode], Any]] = None,
                  post_process: Optional[Callable[[List[DocNode]], List[DocNode]]] = None,
                  sort_by: Optional[Callable[[DocNode], Any]] = None, return_trace: bool = False, **kwargs

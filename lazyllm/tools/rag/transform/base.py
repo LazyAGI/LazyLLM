@@ -63,7 +63,6 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 
 class NodeTransform(ModuleBase):
     __support_rich__ = False
-    __requires_all_nodes__ = False
 
     def __init__(self, num_workers: int = 0, rules: Optional['RuleSet'] = None,
                  return_trace: bool = False, **kwargs):
@@ -89,17 +88,23 @@ class NodeTransform(ModuleBase):
     ) -> List[DocNode]:
         documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
 
-        if getattr(self.__class__, '__requires_all_nodes__', False):
-            return self._collective_forward(documents, node_group, **kwargs)
+        def _expand_input(nodes: List[DocNode]) -> List[DocNode]:
+            return list(chain.from_iterable(
+                n.nodes if isinstance(n, RichDocNode) and not self.__support_rich__ else [n] for n in nodes
+            ))
 
         def impl(node: DocNode):
-            ref_nodes = self._get_ref_nodes(node, ref_path) if ref_path else []
+            if ref_path:
+                nodes_to_process = self._get_ref_nodes(node, ref_path)
+                if not nodes_to_process:
+                    return []
+            else:
+                nodes_to_process = _expand_input([node]) if (
+                    isinstance(node, RichDocNode) and not self.__support_rich__) else [node]
             with node._lock:
-                if node_group in node.children: return []
-                if isinstance(node, RichDocNode) and not self.__support_rich__:
-                    splits = list(chain.from_iterable(self(n, ref=ref_nodes, **kwargs) for n in node.nodes))
-                else:
-                    splits = self(node, ref=ref_nodes, **kwargs)
+                if node_group in node.children:
+                    return []
+                splits = self.forward(nodes_to_process, **kwargs)
                 for s in splits:
                     s.parent = node
                     s._group = node_group
@@ -112,19 +117,6 @@ class NodeTransform(ModuleBase):
             return sum([f.result() for f in fs], [])
         else:
             return sum([impl(node) for node in documents], [])
-
-    def _collective_forward(self, documents, node_group, **kwargs):
-        pending = [d for d in documents if node_group not in d.children]
-        if not pending:
-            return []
-        all_input = list(chain.from_iterable(
-            d.nodes if isinstance(d, RichDocNode) and not self.__support_rich__ else [d] for d in pending))
-        splits = self.forward(all_input, **kwargs)
-        for s in splits:
-            s._group = node_group
-        for d in pending:
-            d.children[node_group] = splits
-        return splits
 
     def forward(self, nodes: Union[List[DocNode], DocNode], **kwargs) -> List[DocNode]:
         raise NotImplementedError(
