@@ -253,8 +253,9 @@ class VQAGenerator(PT_MM):
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
         paths = _normalize_image_paths(data.get(self.image_key, ''))
-        context = data.get(self.context_key, '')
-        if not paths or not context:
+        context = data.get(self.context_key, 'No Context.')
+        # pure img dataset has no context
+        if not paths:
             return []
         try:
             query = f'Context: {context}\n\nGenerate {self.num_qa} QA pairs based on the context and image(s).'

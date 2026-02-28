@@ -1,28 +1,15 @@
 import re
-from lazyllm import LOG, TrainableModule, config
+from lazyllm import LOG, TrainableModule
 from lazyllm.tools.data import data_register
 from lazyllm.thirdparty import transformers
-import regex
 from lazyllm.components.formatter import JsonFormatter
 
 import os
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
-DEFAULT_MODEL = 'qwen2.5-0.5b-instruct'
+DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
 DEFAULT_TOKENIZER = 'Qwen/Qwen2.5-0.5B'
-if config['model_path']:
-    token_path = os.path.join(config['model_path'], DEFAULT_MODEL)
-    if os.path.exists(token_path):
-        DEFAULT_TOKENIZER = token_path
-
 Text2qa = data_register.new_group('Text2qa')
-
-def boxed_res_extractor(text):
-    if not isinstance(text, str):
-        return None
-    pattern = r'\\boxed\{(?P<content>(?:[^{}]+|\{(?&content)\})*)\}'
-    matches = regex.findall(pattern, text)
-    return matches[-1].strip() if matches else None
 
 class TextToChunks(Text2qa):
     def __init__(self,
@@ -159,8 +146,8 @@ class ChunkToQA(Text2qa):
         output_structure = f'''
         输出格式要求：
         {{
-            "{self.query_key}": "生成的问题",
-            "{self.answer_key}": "答案"
+            '{self.query_key}': '生成的问题',
+            '{self.answer_key}': '答案'
         }}
         '''
 
@@ -214,7 +201,7 @@ class QAScorer(Text2qa):
         output_structure = f'''
         输出格式要求：
         {{
-            "{self.output_key}": 0 or 1
+            '{self.output_key}': 0 or 1
         }}
         '''
 
@@ -259,3 +246,64 @@ class QAScorer(Text2qa):
 
         data[self.output_key] = res.get(self.output_key, 0)
         return data
+
+@data_register('data.Text2qa', rewrite_func='forward')
+def qa_score_filter(data, input_key, min_score):
+    score = data.get(input_key, 0)
+    if score >= min_score:
+        return None
+    return []
+
+@data_register('data.Text2qa', rewrite_func='forward')
+def to_alpaca_sft(
+        data,
+        query_key='query',
+        context_key='context',
+        answer_key='output'
+):
+
+    instruction = data.get(query_key)
+    context = data.get(context_key, '')
+    answer = data.get(answer_key)
+
+    if not instruction or not answer:
+        return None
+
+    return {
+        'instruction': instruction,
+        'input': context if context else '',
+        'output': answer
+    }
+
+@data_register('data.Text2qa', rewrite_func='forward')
+def to_chat_sft(
+        data,
+        query_key='query',
+        context_key='context',
+        answer_key='output'
+):
+
+    query = data.get(query_key)
+    context = data.get(context_key, '')
+    answer = data.get(answer_key)
+
+    if not query or not answer:
+        return None
+
+    if context:
+        user_content = f'{context}\n\n问题：{query}'
+    else:
+        user_content = query
+
+    return {
+        'messages': [
+            {
+                'role': 'user',
+                'content': user_content
+            },
+            {
+                'role': 'assistant',
+                'content': answer
+            }
+        ]
+    }
