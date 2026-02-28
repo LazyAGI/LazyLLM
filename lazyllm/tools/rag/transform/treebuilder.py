@@ -2,7 +2,7 @@ import re
 from typing import Any, List, Optional, Callable
 
 from .base import NodeTransform, RuleSet
-from ..doc_node import DocNode
+from ..doc_node import DocNode, RichDocNode
 
 def _default_get_level(node: DocNode) -> int:
     try:
@@ -44,6 +44,8 @@ def _default_is_valid_child(parent: DocNode, child: DocNode) -> bool:
 
 
 class TreeBuilderParser(NodeTransform):
+    __support_rich__ = True
+
     def __init__(self, rules: Optional[RuleSet] = None, *, get_level: Optional[Callable[[DocNode], int]] = None,
                  is_valid_child: Optional[Callable[[DocNode, DocNode], bool]] = None, return_trace: bool = False,
                  **kwargs
@@ -52,8 +54,9 @@ class TreeBuilderParser(NodeTransform):
         self._get_level = get_level or _default_get_level
         self._is_valid_child = is_valid_child or _default_is_valid_child
 
-    def forward(self, document: List[DocNode], **kwargs) -> List[DocNode]:
-        return self._parse_nodes(document, **kwargs)
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
+        nodes = node.nodes if isinstance(node, RichDocNode) else [node]
+        return self._parse_nodes(nodes, **kwargs)
 
     def _parse_nodes(self, nodes: List[DocNode], **kwargs: Any) -> List[DocNode]:  # noqa: C901
         if not nodes:

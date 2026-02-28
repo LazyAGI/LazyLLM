@@ -2,7 +2,7 @@ from .base import _TextSplitterBase, _UNSET, NodeTransform
 from .recursive import RecursiveSplitter
 from lazyllm.thirdparty import xml
 from lazyllm.thirdparty import bs4
-from typing import List, Optional, Dict, Type, Union
+from typing import List, Optional, Dict, Type
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm import LOG
 import copy
@@ -19,18 +19,11 @@ class _LanguageSplitterBase(_TextSplitterBase):
         self._filetype = filetype
         self._extra_params = kwargs
 
-    def forward(self, nodes: Union[List[DocNode], DocNode], **kwargs) -> List[DocNode]:
-        if not isinstance(nodes, (list, tuple)):
-            nodes = [nodes]
-
-        results: List[DocNode] = []
-        for node in nodes:
-            chunks = self.split_text(
-                node.get_text(),
-                metadata_size=self._get_metadata_size(node)
-            )
-            results.extend(chunks)
-        return results
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
+        return self.split_text(
+            node.get_text(),
+            metadata_size=self._get_metadata_size(node)
+        )
 
     def split_text(self, text: str, metadata_size: int) -> List[DocNode]:
         if text == '':
@@ -941,19 +934,11 @@ class CodeSplitter(_TextSplitterBase):
             **self._extra_params
         )
 
-    def forward(self, nodes: Union[List[DocNode], DocNode], **kwargs) -> List[DocNode]:
-        if not isinstance(nodes, (list, tuple)):
-            nodes = [nodes]
-
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         if self._splitter is None:
             LOG.warning('Filetype not specified, cannot determine split method')
-            results: List[DocNode] = []
-            for node in nodes:
-                results.append(DocNode(text=node.get_text(), metadata={'tag': 'unknown_type'}))
-            return results
-
-        # _splitter is also migrated to forward, call it with nodes
-        return self._splitter.forward(nodes, **kwargs)
+            return [DocNode(text=node.get_text(), metadata={'tag': 'unknown_type'})]
+        return self._splitter.forward(node, **kwargs)
 
     def split_text(self, text: str, metadata_size: int = 0) -> List[DocNode]:
         if self._splitter is None:

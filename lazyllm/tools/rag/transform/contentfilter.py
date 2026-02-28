@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from .base import NodeTransform, RuleSet, Rule
-from ..doc_node import DocNode
+from ..doc_node import DocNode, RichDocNode
 
 
 DEFAULT_NON_EMPTY_RULE = RuleSet([Rule.build(
@@ -16,8 +16,8 @@ class ContentFiltParser(NodeTransform):
         rules = rules if rules is not None else DEFAULT_NON_EMPTY_RULE
         super().__init__(num_workers=num_workers, rules=rules, **kwargs)
 
-    def forward(self, document: List[DocNode], **kwargs) -> List[DocNode]:
-        nodes = document if isinstance(document, (list, tuple)) else [document]
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
+        nodes = node.nodes if isinstance(node, RichDocNode) else [node]
         results = self.process(
             nodes,
             on_match=lambda node, match, ctx: node,

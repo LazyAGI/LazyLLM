@@ -1476,7 +1476,7 @@ class TestContentFiltParser:
             DocNode(text='World'),
             DocNode(text='\n\n'),
         ]
-        result = self.filter_parser.forward(nodes)
+        result = self.filter_parser.forward(RichDocNode(nodes=nodes))
         assert len(result) == 2
         assert result[0].text == 'Hello'
         assert result[1].text == 'World'
@@ -1493,7 +1493,7 @@ class TestContentFiltParser:
             DocNode(text='World'),
             DocNode(text='Hi'),
         ]
-        result = filter_parser.forward(nodes)
+        result = filter_parser.forward(RichDocNode(nodes=nodes))
         assert len(result) == 2
 
     def test_single_node(self):
@@ -1515,16 +1515,16 @@ class TestGroupNodeParser:
             DocNode(text='Subtitle', metadata={'text_level': 2}),
             DocNode(text='Content 3', metadata={'text_level': 0}),
         ]
-        result = self.parser.forward(nodes)
+        result = self.parser.forward(RichDocNode(nodes=nodes))
         assert len(result) > 0
 
     def test_empty_list(self):
-        result = self.parser.forward([])
+        result = self.parser.forward(RichDocNode(nodes=[]))
         assert result == []
 
     def test_single_node(self):
         nodes = [DocNode(text='Only one', metadata={'text_level': 0})]
-        result = self.parser.forward(nodes)
+        result = self.parser.forward(RichDocNode(nodes=nodes))
         assert len(result) >= 1
 
     def test_merge_title(self):
@@ -1533,7 +1533,7 @@ class TestGroupNodeParser:
             DocNode(text='Title', metadata={'text_level': 1}),
             DocNode(text='Content', metadata={'text_level': 0}),
         ]
-        result = parser.forward(nodes)
+        result = parser.forward(RichDocNode(nodes=nodes))
         assert len(result) >= 1
 
 
@@ -1547,7 +1547,7 @@ class TestLayoutNodeParser:
             DocNode(text='Page 2', metadata={'file_name': 'doc1.pdf', 'index': 1}),
             DocNode(text='Page 3', metadata={'file_name': 'doc2.pdf', 'index': 1}),
         ]
-        result = self.parser.forward(nodes)
+        result = self.parser.forward(RichDocNode(nodes=nodes))
         assert len(result) == 3
         assert result[0].metadata['index'] == 0
         assert result[1].metadata['index'] == 1
@@ -1559,7 +1559,7 @@ class TestLayoutNodeParser:
             DocNode(text='B', metadata={'index': 1}),
             DocNode(text='C', metadata={'index': 2}),
         ]
-        result = parser.forward(nodes)
+        result = parser.forward(RichDocNode(nodes=nodes))
         assert len(result) == 3
         assert result[0].text == 'B'
         assert result[1].text == 'C'
@@ -1572,7 +1572,7 @@ class TestLayoutNodeParser:
             DocNode(text='B', metadata={'category': 'cat2', 'index': 1}),
             DocNode(text='C', metadata={'category': 'cat1', 'index': 0}),
         ]
-        result = parser.forward(nodes)
+        result = parser.forward(RichDocNode(nodes=nodes))
         assert len(result) == 3
 
     def test_custom_sort_by(self):
@@ -1582,7 +1582,7 @@ class TestLayoutNodeParser:
             DocNode(text='Page 1', metadata={'file_name': 'doc.pdf', 'page_num': 1}),
             DocNode(text='Page 2', metadata={'file_name': 'doc.pdf', 'page_num': 2}),
         ]
-        result = parser.forward(nodes)
+        result = parser.forward(RichDocNode(nodes=nodes))
         assert result[0].text == 'Page 1'
         assert result[1].text == 'Page 2'
         assert result[2].text == 'Page 3'
@@ -1599,7 +1599,7 @@ class TestTreeBuilderParser:
             DocNode(text='1.2 Subtitle', metadata={'text_level': 2}),
             DocNode(text='2. Title', metadata={'text_level': 1}),
         ]
-        result = self.parser.forward(nodes)
+        result = self.parser.forward(RichDocNode(nodes=nodes))
         assert len(result) >= 1
 
     def test_flat_nodes(self):
@@ -1607,11 +1607,11 @@ class TestTreeBuilderParser:
             DocNode(text='Content without level'),
             DocNode(text='Another content'),
         ]
-        result = self.parser.forward(nodes)
+        result = self.parser.forward(RichDocNode(nodes=nodes))
         assert len(result) == 2
 
     def test_empty_list(self):
-        result = self.parser.forward([])
+        result = self.parser.forward(RichDocNode(nodes=[]))
         assert result == []
 
     def test_custom_get_level(self):
@@ -1620,7 +1620,7 @@ class TestTreeBuilderParser:
             DocNode(text='Level 1', metadata={'level': 1}),
             DocNode(text='Level 2', metadata={'level': 2}),
         ]
-        result = parser.forward(nodes)
+        result = parser.forward(RichDocNode(nodes=nodes))
         assert len(result) >= 1
 
 
@@ -1634,7 +1634,7 @@ class TestTreeFixerParser:
             DocNode(text='2. Second', metadata={'text_level': 1}),
             DocNode(text='3. Third', metadata={'text_level': 1}),
         ]
-        result = self.parser.forward(nodes)
+        result = self.parser.forward(RichDocNode(nodes=nodes))
         assert len(result) >= 1
 
     def test_fix_chinese_numbering(self):
@@ -1643,7 +1643,7 @@ class TestTreeFixerParser:
             DocNode(text='二、第二条', metadata={'text_level': 1}),
             DocNode(text='三、第三条', metadata={'text_level': 1}),
         ]
-        result = self.parser.forward(nodes)
+        result = self.parser.forward(RichDocNode(nodes=nodes))
         assert len(result) >= 1
 
     def test_fix_multilevel(self):
@@ -1653,11 +1653,11 @@ class TestTreeFixerParser:
             DocNode(text='1.2 Sub second', metadata={'text_level': 2}),
             DocNode(text='2. Second', metadata={'text_level': 1}),
         ]
-        result = self.parser.forward(nodes)
+        result = self.parser.forward(RichDocNode(nodes=nodes))
         assert len(result) >= 1
 
     def test_empty_list(self):
-        result = self.parser.forward([])
+        result = self.parser.forward(RichDocNode(nodes=[]))
         assert result == []
 
     def test_skip_level_under(self):
@@ -1666,7 +1666,7 @@ class TestTreeFixerParser:
             DocNode(text='Level 1', metadata={'text_level': 1}),
             DocNode(text='Level 2', metadata={'text_level': 2}),
         ]
-        result = parser.forward(nodes)
+        result = parser.forward(RichDocNode(nodes=nodes))
         assert len(result) >= 1
 
     def test_with_children(self):
@@ -1676,17 +1676,20 @@ class TestTreeFixerParser:
                 DocNode(text='Child 2', metadata={'text_level': 2}),
             ]}),
         ]
-        result = self.parser.forward(nodes)
+        result = self.parser.forward(RichDocNode(nodes=nodes))
         assert len(result) >= 1
 
 
 class TestBatchForwardRefPath:
     class _CollectRefTransform(NodeTransform):
+        __support_rich__ = True
+
         def __init__(self):
             super().__init__()
             self.calls = []
 
-        def forward(self, nodes, **kwargs):
+        def forward(self, node, **kwargs):
+            nodes = node.nodes if isinstance(node, RichDocNode) else [node]
             self.calls.append([n.text for n in nodes])
             return [DocNode(text=f'out-{n.text}') for n in nodes]
 
@@ -1734,7 +1737,8 @@ class TestBatchForwardRefPath:
         recorded_doc_ids_per_call = []
 
         class SectionTransform(NodeTransform):
-            def forward(self, nodes, **kwargs):
+            def forward(self, node, **kwargs):
+                nodes = node.nodes if isinstance(node, RichDocNode) else [node]
                 out = []
                 for n in nodes:
                     out.append(DocNode(text=f'{n.text}-s1'))
@@ -1742,7 +1746,10 @@ class TestBatchForwardRefPath:
                 return out
 
         class RefConsumerTransform(NodeTransform):
-            def forward(self, nodes, **kwargs):
+            __support_rich__ = True
+
+            def forward(self, node, **kwargs):
+                nodes = node.nodes if isinstance(node, RichDocNode) else [node]
                 recorded_groups_per_call.append([getattr(n, '_group', None) or getattr(n, 'group', None) for n in nodes])
                 recorded_doc_ids_per_call.append([n.global_metadata.get(RAG_DOC_ID) for n in nodes])
                 return [DocNode(text=f'ref-{n.text}') for n in nodes]

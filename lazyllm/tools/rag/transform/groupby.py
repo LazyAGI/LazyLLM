@@ -3,11 +3,13 @@ import functools
 import re
 from typing import Any, List, Optional, Callable
 
-from ..doc_node import DocNode
+from ..doc_node import DocNode, RichDocNode
 from .base import NodeTransform, RuleSet
 
 
 class GroupNodeParser(NodeTransform):
+    __support_rich__ = True
+
     def __init__(self, num_workers: int = 0, max_length: int = 2048,
                  merge_title: bool = True, return_trace: bool = False, **kwargs):
         rules = RuleSet()
@@ -20,8 +22,9 @@ class GroupNodeParser(NodeTransform):
         self.on_match = self._default_group_handler
         self.on_miss = self._default_group_handler
 
-    def forward(self, document: List[DocNode], **kwargs) -> List[DocNode]:
-        return self._parse_nodes(document, **kwargs)
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
+        nodes = node.nodes if isinstance(node, RichDocNode) else [node]
+        return self._parse_nodes(nodes, **kwargs)
 
     def _default_group_handler(self, node, match_result_or_ctx, ctx_or_none=None):
         return node

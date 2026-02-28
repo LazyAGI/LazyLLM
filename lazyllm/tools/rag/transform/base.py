@@ -88,23 +88,28 @@ class NodeTransform(ModuleBase):
     ) -> List[DocNode]:
         documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
 
-        def _expand_input(nodes: List[DocNode]) -> List[DocNode]:
-            return list(chain.from_iterable(
-                n.nodes if isinstance(n, RichDocNode) and not self.__support_rich__ else [n] for n in nodes
-            ))
-
         def impl(node: DocNode):
-            if ref_path:
-                nodes_to_process = self._get_ref_nodes(node, ref_path)
-                if not nodes_to_process:
-                    return []
-            else:
-                nodes_to_process = _expand_input([node]) if (
-                    isinstance(node, RichDocNode) and not self.__support_rich__) else [node]
             with node._lock:
                 if node_group in node.children:
                     return []
-                splits = self.forward(nodes_to_process, **kwargs)
+                if ref_path:
+                    ref_nodes = self._get_ref_nodes(node, ref_path)
+                    if not ref_nodes:
+                        return []
+                    if self.__support_rich__:
+                        input_node = RichDocNode(nodes=ref_nodes)
+                        splits = self.forward(input_node, **kwargs)
+                    else:
+                        splits = []
+                        for n in ref_nodes:
+                            splits.extend(self.forward(n, **kwargs))
+                else:
+                    if isinstance(node, RichDocNode) and not self.__support_rich__:
+                        splits = []
+                        for sub in node.nodes:
+                            splits.extend(self.forward(sub, **kwargs))
+                    else:
+                        splits = self.forward(node, **kwargs)
                 for s in splits:
                     s.parent = node
                     s._group = node_group
@@ -118,14 +123,14 @@ class NodeTransform(ModuleBase):
         else:
             return sum([impl(node) for node in documents], [])
 
-    def forward(self, nodes: Union[List[DocNode], DocNode], **kwargs) -> List[DocNode]:
+    def forward(self, nodes: DocNode, **kwargs) -> List[DocNode]:
         raise NotImplementedError(
-            'Subclasses must implement forward() to process nodes'
+            'Subclasses must implement forward() to process a single DocNode or RichDocNode'
         )
 
     @deprecated('forward')
     def transform(self, node: DocNode, **kwargs) -> List[Union[str, DocNode]]:
-        return self.forward([node], **kwargs)
+        return self.forward(node, **kwargs)
 
     def process(self, nodes: List[Any], on_match: Optional[Callable] = None,
                 on_miss: Optional[Callable] = None) -> List[Any]:
@@ -174,22 +179,23 @@ class NodeTransform(ModuleBase):
                         f'__call__() expects DocNode objects, got {type(n).__name__} '
                         f'in list. Use forward() directly if you need to process other types.'
                     )
-        else:
-            if not isinstance(node_or_nodes, DocNode):
-                raise TypeError(
-                    f'__call__() expects DocNode, got {type(node_or_nodes).__name__}'
-                )
-            nodes = [node_or_nodes]
-
-        if len(nodes) == 1 and isinstance(nodes[0], RichDocNode) and not self.__support_rich__:
-            rich_node = nodes[0]
             results = []
-            for sub_node in rich_node.nodes:
-                sub_results = super().__call__([sub_node], **kwargs)
-                results.extend(sub_results)
+            for n in nodes:
+                results.extend(self._forward_single(n, **kwargs))
             return results
+        if not isinstance(node_or_nodes, DocNode):
+            raise TypeError(
+                f'__call__() expects DocNode or RichDocNode, got {type(node_or_nodes).__name__}'
+            )
+        return self._forward_single(node_or_nodes, **kwargs)
 
-        return super().__call__(nodes, **kwargs)
+    def _forward_single(self, node: Union[DocNode, RichDocNode], **kwargs: Any) -> List[DocNode]:
+        if isinstance(node, RichDocNode) and not self.__support_rich__:
+            results = []
+            for sub in node.nodes:
+                results.extend(self.forward(sub, **kwargs))
+            return results
+        return self.forward(node, **kwargs)
 
 
 _tiktoken_env_lock = threading.Lock()
@@ -454,12 +460,9 @@ class _TextSplitterBase(NodeTransform):
         result.insert(0, end_split.text)
         return result
 
-    def forward(self, nodes: Union[List[DocNode], DocNode], **kwargs) -> List[DocNode]:
-        if not isinstance(nodes, (list, tuple)):
-            nodes = [nodes]
-
-        return [c if isinstance(c, DocNode) else DocNode(text=str(c)) for node in nodes
-                for c in self.split_text(node.get_text(), metadata_size=self._get_metadata_size(node)) if c]
+    def forward(self, node: Union[DocNode, RichDocNode], **kwargs) -> List[DocNode]:
+        return [c if isinstance(c, DocNode) else DocNode(text=str(c)) for c in
+                self.split_text(node.get_text(), metadata_size=self._get_metadata_size(node)) if c]
 
     def set_split_fns(self, split_fns: List[Callable[[str], List[str]]],
                       sub_split_fns: Optional[List[Callable[[str], List[str]]]] = None) -> '_TextSplitterBase':

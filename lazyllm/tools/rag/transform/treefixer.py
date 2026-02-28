@@ -1,7 +1,7 @@
 import re
 from typing import List, Optional, Tuple, Any
 
-from ..doc_node import DocNode
+from ..doc_node import DocNode, RichDocNode
 from .base import NodeTransform, RuleSet, _Context
 
 
@@ -24,6 +24,7 @@ _CHINESE_UNITS = {'十': 10, '百': 100, '千': 1000, '万': 10000}
 
 
 class TreeFixerParser(NodeTransform):
+    __support_rich__ = True
 
     def __init__(self, patterns: Optional[List[Tuple[str, str]]] = None, *, skip_level_under: Optional[int] = None,
                  extra_patterns: Optional[List[Tuple[str, str]]] = None, return_trace: bool = False, **kwargs
@@ -45,10 +46,11 @@ class TreeFixerParser(NodeTransform):
         self._format_tracker: dict = {}
         self._last_content_parent: Optional[DocNode] = None
 
-    def forward(self, document: List[DocNode], **kwargs) -> List[DocNode]:
-        if not document:
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
+        nodes = node.nodes if isinstance(node, RichDocNode) else [node]
+        if not nodes:
             return []
-        flat_nodes = self._flatten_nodes(document)
+        flat_nodes = self._flatten_nodes(nodes)
         if not flat_nodes:
             return []
         self._reset_state()

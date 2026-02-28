@@ -2,7 +2,7 @@ import itertools
 from typing import List, Optional, Callable, Any
 
 from .base import NodeTransform, RuleSet, Rule
-from ..doc_node import DocNode
+from ..doc_node import DocNode, RichDocNode
 
 NO_GROUPING = object()
 
@@ -28,6 +28,8 @@ def _get_simple_layout_rules() -> RuleSet:
 
 
 class LayoutNodeParser(NodeTransform):
+    __support_rich__ = True
+
     def __init__(self, rules: Optional[RuleSet] = None, *, group_by: Optional[Callable[[DocNode], Any]] = None,
                  post_process: Optional[Callable[[List[DocNode]], List[DocNode]]] = None,
                  sort_by: Optional[Callable[[DocNode], Any]] = None, return_trace: bool = False, **kwargs
@@ -44,10 +46,11 @@ class LayoutNodeParser(NodeTransform):
         self._sort_by = sort_by if sort_by is not None else _default_layout_sort_key
         self._post_process = post_process if post_process is not None else _default_layout_post_process
 
-    def forward(self, document: List[DocNode], **kwargs) -> List[DocNode]:
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
+        nodes = node.nodes if isinstance(node, RichDocNode) else [node]
         result_nodes = []
         if not self._no_grouping:
-            nodes = sorted(document, key=self._group_by)
+            nodes = sorted(nodes, key=self._group_by)
             for _key, group in itertools.groupby(nodes, key=self._group_by):
                 grouped_nodes = list(group)
                 if not grouped_nodes:
@@ -60,7 +63,7 @@ class LayoutNodeParser(NodeTransform):
                 )
                 result_nodes.extend(processed)
         else:
-            grouped_nodes = sorted(document, key=self._sort_by)
+            grouped_nodes = sorted(nodes, key=self._sort_by)
             processed = self.process(
                 grouped_nodes,
                 on_match=lambda n, mr, ctx: mr[1],
