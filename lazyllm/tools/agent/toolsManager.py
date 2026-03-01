@@ -200,6 +200,12 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def __reduce__(self):
         if os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON':
             orig = ModuleTool._get_orig_apply_func(self.apply)
+            if orig is not None and orig.__module__ != '__main__':
+                import types
+                orig = types.FunctionType(
+                    orig.__code__, orig.__globals__, orig.__name__,
+                    orig.__defaults__, orig.__closure__)
+                orig.__module__ = '__main__'
             return (ModuleTool._rebuild_from_reduce, (self._module_id, orig or self.__class__))
         return super().__reduce__()
 
@@ -248,6 +254,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return ret
 
     def to_sandbox_code(self, tool_arguments: Dict[str, Any]) -> str:
+        from lazyllm.tools.sandbox.sandbox_base import SANDBOX_TOOL_RESULT_PREFIX
         args_dump = lazyllm.dump_obj(tool_arguments)
         tool_dump = lazyllm.dump_obj(self)
         return f'''
@@ -256,7 +263,7 @@ import cloudpickle
 tool = cloudpickle.loads(base64.b64decode({repr(tool_dump)}.encode('utf-8')))
 kwargs = cloudpickle.loads(base64.b64decode({repr(args_dump)}.encode('utf-8')))
 result = tool(kwargs)
-print(f'tool result: {{result}}')  # noqa print
+print(f'{SANDBOX_TOOL_RESULT_PREFIX}{{result}}')  # noqa print
 '''
 
 register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool',

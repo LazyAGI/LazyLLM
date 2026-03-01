@@ -1,6 +1,6 @@
-import lazyllm
-from lazyllm import config, call_once, once_flag
+from lazyllm import call_once, once_flag
 from lazyllm.tools import fc_register
+from lazyllm.tools.sandbox.sandbox_base import create_sandbox as _create_sandbox_impl
 
 _sandbox = None
 _sandbox_once = once_flag()
@@ -8,23 +8,14 @@ _sandbox_once = once_flag()
 
 def _create_sandbox():
     global _sandbox
-    try:
-        sandbox_cls = lazyllm.sandbox[config['sandbox_type']]
-    except KeyError as e:
-        message = (
-            f'Sandbox type {config["sandbox_type"]} not found, '
-            'the code interpreter tool only supports the following sandbox types: '
-            f'{list(lazyllm.sandbox.keys())}'
-        )
-        raise ValueError(message) from e
-    _sandbox = sandbox_cls()
+    _sandbox = _create_sandbox_impl(return_sandbox_result=True)
     return _sandbox
 
 
 @fc_register('tool', execute_in_sandbox=False)
 def code_interpreter(code: str, language: str = 'python') -> str:
     '''
-    Interpret the code and return the result.
+    Interpret the code and return the code interpreter result (include stdout, stderr, returncode, etc.).
 
     Args:
         code (str): The code to interpret.

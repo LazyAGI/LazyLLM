@@ -15,8 +15,10 @@ class DummySandbox(LazyLLMSandboxBase):
     __lazyllm_registry_key__ = 'dummy'
     SUPPORTED_LANGUAGES: List[str] = ['python']
 
-    def __init__(self, timeout: int = 30, return_trace: bool = True, project_dir: Optional[str] = None):
-        super().__init__(return_trace=return_trace, project_dir=project_dir)
+    def __init__(self, timeout: int = 30, return_trace: bool = True, project_dir: Optional[str] = None,
+                 return_sandbox_result: bool = False):
+        super().__init__(return_trace=return_trace, project_dir=project_dir,
+                         return_sandbox_result=return_sandbox_result)
         self._timeout = timeout
 
     def _check_available(self) -> bool:

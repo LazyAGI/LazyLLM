@@ -18,9 +18,10 @@ class SandboxFusion(LazyLLMSandboxBase):
     SUPPORTED_LANGUAGES: List[str] = ['python', 'bash']
 
     def __init__(self, base_url: str = config['sandbox_fusion_base_url'], compile_timeout: int = 10,
-                 run_timeout: int = 10, memory_limit_mb: int = -1, project_dir: str = None):
+                 run_timeout: int = 10, memory_limit_mb: int = -1, project_dir: str = None,
+                 return_sandbox_result: bool = False, return_trace: bool = True):
+        super().__init__(return_trace=return_trace, project_dir=project_dir, return_sandbox_result=return_sandbox_result)
         self._base_url = base_url
-        super().__init__(project_dir=project_dir)
         self._compile_timeout = compile_timeout
         self._run_timeout = run_timeout
         self._memory_limit_mb = memory_limit_mb

@@ -7,9 +7,7 @@ from typing import List, Any, Dict, Union, Callable, Optional
 from .base import LazyLLMAgentBase
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
-from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
-from lazyllm import config
-import lazyllm
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 import re
 import json
 
@@ -49,15 +47,7 @@ class FunctionCall(ModuleBase):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
-            try:
-                self._sandbox = sandbox or lazyllm.sandbox[config['sandbox_type']]()
-            except KeyError as e:
-                message = (
-                    f'Sandbox type {config["sandbox_type"]} not found, '
-                    'the function call agent only supports the following sandbox '
-                    f'types: {list(lazyllm.sandbox.keys())}'
-                )
-                raise ValueError(message) from e
+            self._sandbox = sandbox or create_sandbox()
             self._tools_manager = ToolManager(tools, return_trace=return_trace, sandbox=self._sandbox)
         else:
             self._tools_manager = _tool_manager

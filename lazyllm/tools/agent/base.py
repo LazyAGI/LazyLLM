@@ -3,8 +3,8 @@ from typing import Iterable, Optional, Union
 
 import lazyllm
 from lazyllm.module import ModuleBase
-from lazyllm import locals, once_wrapper, config
-from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
+from lazyllm import locals, once_wrapper
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager, SKILLS_PROMPT
 from .file_tool import (  # noqa: F401
@@ -38,15 +38,7 @@ class LazyLLMAgentBase(ModuleBase):
         self._workspace = self._init_workspace(workspace)
         self._agent = None
         self._skill_manager = None
-        try:
-            self._sandbox = sandbox or lazyllm.sandbox[config['sandbox_type']]()
-        except KeyError as e:
-            message = (
-                f'Sandbox type {config["sandbox_type"]} not found, '
-                'the agent only supports the following sandbox types: '
-                f'{list(lazyllm.sandbox.keys())}'
-            )
-            raise ValueError(message) from e
+        self._sandbox = sandbox or create_sandbox()
 
         if use_skills:
             self._skill_manager = SkillManager(skills=self._skills)

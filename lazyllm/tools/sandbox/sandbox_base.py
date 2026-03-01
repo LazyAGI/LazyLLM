@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Generator, List, Optional, Tuple
 from lazyllm import config
@@ -6,6 +7,20 @@ from lazyllm.module.module import ModuleBase
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 
 config.add('sandbox_type', str, 'dummy', 'SANDBOX_TYPE')
+
+SANDBOX_TOOL_RESULT_PREFIX = 'LAZYLLM_TOOL_RESULT:'
+
+
+def create_sandbox(sandbox_type=None, **kwargs):
+    import lazyllm
+    sandbox_type = sandbox_type or config['sandbox_type']
+    try:
+        return lazyllm.sandbox[sandbox_type](**kwargs)
+    except KeyError as e:
+        raise ValueError(
+            f'Sandbox type {sandbox_type!r} not found, '
+            f'supported sandbox types: {list(lazyllm.sandbox.keys())}'
+        ) from e
 
 
 @dataclass
@@ -25,13 +40,14 @@ class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     SUPPORTED_LANGUAGES: List[str] = []
 
     def __init__(self, output_dir_path: Optional[str] = None, return_trace: bool = True,
-                 project_dir: Optional[str] = None):
+                 project_dir: Optional[str] = None, return_sandbox_result: bool = False):
         super().__init__(return_trace=return_trace)
         self._output_dir_path = output_dir_path or os.getcwd()
         self._project_dir = project_dir
         if self._project_dir and not os.path.isdir(self._project_dir):
             raise FileNotFoundError(f'Project directory not found: {self._project_dir}')
         self._available_checked = False
+        self._return_sandbox_result = return_sandbox_result
 
     def _check_available(self) -> None:
         raise NotImplementedError
@@ -96,6 +112,13 @@ class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
             if output_files and result.success:
                 result.output_files = self._process_output_files(result, output_files, context)
-            return result.to_dict()
+
+            if self._return_sandbox_result:
+                return result.to_dict()
+            else:
+                if result.success:
+                    match = re.search(rf'^{SANDBOX_TOOL_RESULT_PREFIX}(.*)', result.stdout, re.MULTILINE)
+                    return match.group(1) if match else result.stdout
+                return result.stderr
         finally:
             self._cleanup_context(context)

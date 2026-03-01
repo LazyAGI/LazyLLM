@@ -1,15 +1,15 @@
-:::: lazyllm.tools.agent.code_interpreter
+::: lazyllm.tools.agent.code_interpreter
     exclude-members:
 
-:::: lazyllm.tools.sandbox.LazyLLMSandboxBase
+::: lazyllm.tools.sandbox.LazyLLMSandboxBase
     members:
     exclude-members:
 
-:::: lazyllm.tools.sandbox.DummySandbox
+::: lazyllm.tools.sandbox.DummySandbox
     members:
     exclude-members:
 
-:::: lazyllm.tools.sandbox.SandboxFusion
+::: lazyllm.tools.sandbox.SandboxFusion
     members:
     exclude-members:
 
