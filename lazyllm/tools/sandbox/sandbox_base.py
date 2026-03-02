@@ -15,7 +15,7 @@ def create_sandbox(sandbox_type=None, **kwargs):
     import lazyllm
     sandbox_type = sandbox_type or config['sandbox_type']
     try:
-        return lazyllm.sandbox[sandbox_type](**kwargs)
+        return getattr(lazyllm.sandbox, sandbox_type)(**kwargs)
     except KeyError as e:
         raise ValueError(
             f'Sandbox type {sandbox_type!r} not found, '

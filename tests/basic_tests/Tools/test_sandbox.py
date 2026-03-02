@@ -97,9 +97,9 @@ class TestDummySandbox:
         assert hasattr(lazyllm, 'sandbox')
         assert 'dummy' in lazyllm.sandbox
         assert 'sandbox_fusion' in lazyllm.sandbox
-        assert lazyllm.sandbox['dummy'] is DummySandbox
+        assert lazyllm.sandbox.dummy is DummySandbox
 
-        sandbox = lazyllm.sandbox['dummy'](timeout=5, return_sandbox_result=True)
+        sandbox = lazyllm.sandbox.dummy(timeout=5, return_sandbox_result=True)
         result = sandbox(code="print('registry_ok')")
         assert result['success']
         assert result['stdout'].strip() == 'registry_ok'

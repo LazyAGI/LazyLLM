@@ -12,7 +12,6 @@ from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, _SandboxResul
 
 
 class DummySandbox(LazyLLMSandboxBase):
-    __lazyllm_registry_key__ = 'dummy'
     SUPPORTED_LANGUAGES: List[str] = ['python']
 
     def __init__(self, timeout: int = 30, return_trace: bool = True, project_dir: Optional[str] = None,
