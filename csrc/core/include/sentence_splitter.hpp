@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -20,16 +21,6 @@ public:
 
 protected:
     std::vector<std::string> merge_chunks(const std::vector<ChunkView>& splits, int chunk_size) const override;
-
-private:
-    void close_chunk(
-        std::vector<std::string>& chunks,
-        std::vector<Chunk>& cur_chunk,
-        int& cur_chunk_len,
-        bool& is_chunk_new) const;
-
-    static std::string trim_ascii(std::string_view input);
-    static std::string join_parts(const std::vector<Chunk>& parts);
 };
 
 } // namespace lazyllm

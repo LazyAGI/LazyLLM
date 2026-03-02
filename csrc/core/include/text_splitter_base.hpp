@@ -27,30 +27,26 @@ public:
     static MapParams _default_params;
 
     explicit TextSplitterBase(
-        std::optional<unsigned> chunk_size,
-        std::optional<unsigned> overlap,
-        std::optional<unsigned> worker_num,
+        std::optional<unsigned> chunk_size = std::nullopt,
+        std::optional<unsigned> overlap = std::nullopt,
+        std::optional<unsigned> worker_num = std::nullopt,
         const std::string& encoding_name = "gpt2")
         : NodeTransform(_default_params.get_param_value<unsigned>("worker_num", worker_num, 0)),
           _chunk_size(_default_params.get_param_value<unsigned>("chunk_size", chunk_size, 1024)),
           _overlap(_default_params.get_param_value<unsigned>("overlap", overlap, 200))
     {
-        if (_overlap > _chunk_size) throw std::runtime_error("'overlap' should be less than 'chunk_size'.");
+        if (_overlap >= _chunk_size) throw std::runtime_error("'overlap' should be less than 'chunk_size'.");
         if (_chunk_size == 0) throw std::runtime_error("'chunk_size' should > 0");
 
         _tokenizer = std::make_shared<TiktokenTokenizer>(encoding_name);
     }
 
-    std::vector<DocNode> transform(const DocNode* node) const override {
-        if (node == nullptr) return {};
-        auto chunks = split_text(node->get_text_view(), get_node_metadata_size(node));
-        std::vector<DocNode> nodes;
+    std::vector<PDocNode> transform(PDocNode node) const override {
+        auto chunks = split_text(node->get_text_view(), get_node_metadata_size(*node));
+        std::vector<PDocNode> nodes;
         nodes.reserve(chunks.size());
-        for (const auto& chunk : chunks) {
-            DocNode chunk_node(chunk);
-            chunk_node.set_root_text(std::string(chunk));
-            nodes.emplace_back(std::move(chunk_node));
-        }
+        for (auto& chunk : chunks)
+            nodes.push_back(std::make_shared<DocNode>(std::move(chunk)));
         return nodes;
     }
 
@@ -82,13 +78,14 @@ protected:
 private:
     std::tuple<std::vector<std::string_view>, bool> split_by_functions(const std::string_view& text) const;
 
-    int get_node_metadata_size(const DocNode* node) const {
+    int get_node_metadata_size(const DocNode& node) const {
         return std::max(
-            get_token_size(node->get_metadata_string(MetadataMode::EMBED)),
-            get_token_size(node->get_metadata_string(MetadataMode::LLM)));
+            get_token_size(node.get_metadata_string(MetadataMode::EMBED)),
+            get_token_size(node.get_metadata_string(MetadataMode::LLM)));
     }
 
     int get_token_size(const std::string_view& view) const {
+        if (view.empty()) return 0;
         return static_cast<int>(_tokenizer->encode(view).size());
     }
 

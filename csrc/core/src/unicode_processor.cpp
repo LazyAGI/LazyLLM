@@ -32,6 +32,23 @@ void UnicodeProcessor::for_each_utf8_unit(const Utf8Visitor& visitor) const {
     }
 }
 
+/**
+ * UTF-8 text processing has three distinct layers:
+ * 1) Byte: the storage unit in std::string_view; one code point uses 1-4 UTF-8 bytes.
+ * 2) Code point: a Unicode scalar value (for example U+0061, U+4E2D), decoded by utf8proc_iterate.
+ * 3) Grapheme cluster: one user-perceived character, which may contain multiple code points
+ *    (for example base + combining mark, or emoji + VS/ZWJ sequences).
+ *
+ * This function splits by grapheme cluster, not by byte or code point:
+ * - for_each_utf8_unit() uses utf8proc_iterate to decode UTF-8 and provide
+ *   code point, byte offset, and byte length.
+ * - utf8proc_grapheme_break_stateful(prev, codepoint, &state) determines whether
+ *   there is a grapheme boundary between prev and the current code point.
+ * - When a boundary appears, we emit a string_view slice over byte range
+ *   [cluster_start, offset).
+ *
+ * This keeps splitting zero-copy (string_view) while following Unicode grapheme-boundary rules.
+ */
 std::vector<std::string_view> UnicodeProcessor::split_to_chars() const {
     std::vector<std::string_view> out;
     if (_text.empty()) return out;
@@ -67,7 +84,7 @@ std::vector<std::string_view> UnicodeProcessor::split_by_punctuation() const {
         if (is_sentence_punctuation(codepoint)) {
             if (chunk_start != std::string_view::npos) {
                 const size_t end = offset + byte_len;
-                out.emplace_back(_text.substr(chunk_start, end - chunk_start));
+                out.push_back(_text.substr(chunk_start, end - chunk_start));
                 chunk_start = std::string_view::npos;
             }
         } else if (chunk_start == std::string_view::npos) {

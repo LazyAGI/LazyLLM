@@ -27,7 +27,7 @@ public:
 
 } // namespace
 
-TEST(Tokenizer, AbstractInterfaceViaDerivedClass) {
+TEST(tokenizer, abstract_interface_via_derived_class) {
     std::unique_ptr<Tokenizer> tokenizer = std::make_unique<IdentityTokenizer>();
     const auto ids = tokenizer->encode("abc");
 
@@ -35,7 +35,7 @@ TEST(Tokenizer, AbstractInterfaceViaDerivedClass) {
     EXPECT_EQ(tokenizer->decode(ids), "abc");
 }
 
-TEST(TiktokenTokenizer, RoundTripEncoding) {
+TEST(tiktoken_tokenizer, round_trip_encoding) {
     TiktokenTokenizer tokenizer("gpt2");
     const std::string text = "hello tokenizer";
 
@@ -44,13 +44,13 @@ TEST(TiktokenTokenizer, RoundTripEncoding) {
     EXPECT_EQ(tokenizer.decode(token_ids), text);
 }
 
-TEST(TiktokenTokenizer, AliasNamesMapToSameEncoding) {
+TEST(tiktoken_tokenizer, alias_names_map_to_same_encoding) {
     TiktokenTokenizer gpt2("gpt2");
     TiktokenTokenizer r50k("r50k_base");
 
     EXPECT_EQ(gpt2.encode("same input"), r50k.encode("same input"));
 }
 
-TEST(TiktokenTokenizer, UnknownEncodingThrows) {
+TEST(tiktoken_tokenizer, unknown_encoding_throws) {
     EXPECT_THROW((void)TiktokenTokenizer("unknown_model"), std::runtime_error);
 }

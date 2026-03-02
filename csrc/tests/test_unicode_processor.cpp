@@ -5,37 +5,26 @@
 
 #include "unicode_processor.hpp"
 
-namespace {
-
-std::vector<std::string> ToStrings(const std::vector<std::string_view>& views) {
-    std::vector<std::string> out;
-    out.reserve(views.size());
-    for (const auto& view : views) out.emplace_back(view);
-    return out;
-}
-
-} // namespace
-
-TEST(UnicodeProcessor, SplitToCharsSupportsMultibyte) {
+TEST(unicode_processor, split_to_chars_supports_multibyte) {
     const std::string text = "a你🙂";
     const lazyllm::UnicodeProcessor processor(text);
 
-    const auto chars = ToStrings(processor.split_to_chars());
-    EXPECT_EQ(chars, (std::vector<std::string>{"a", "你", "🙂"}));
+    const auto chars = processor.split_to_chars();
+    EXPECT_EQ(chars, (std::vector<std::string_view>{"a", "你", "🙂"}));
 }
 
-TEST(UnicodeProcessor, SplitByPunctuationHandlesAsciiAndCjk) {
-    const std::string text = "Hello,world。你好！";
+TEST(unicode_processor, split_by_punctuation_for_ascii) {
+    const std::string text = "Hello,world!";
     const lazyllm::UnicodeProcessor processor(text);
 
-    const auto chunks = ToStrings(processor.split_by_punctuation());
-    EXPECT_EQ(chunks, (std::vector<std::string>{"Hello,", "world。", "你好！"}));
+    const auto chunks = processor.split_by_punctuation();
+    EXPECT_EQ(chunks, (std::vector<std::string_view>{"Hello,", "world!"}));
 }
 
-TEST(UnicodeProcessor, SplitByPunctuationFallbackWhenOnlyPunctuation) {
-    const std::string text = "!!!";
+TEST(unicode_processor, split_by_punctuation_for_cjk) {
+    const std::string text = "你好。世界！";
     const lazyllm::UnicodeProcessor processor(text);
 
-    const auto chunks = ToStrings(processor.split_by_punctuation());
-    EXPECT_EQ(chunks, (std::vector<std::string>{"!!!"}));
+    const auto chunks = processor.split_by_punctuation();
+    EXPECT_EQ(chunks, (std::vector<std::string_view>{"你好。", "世界！"}));
 }

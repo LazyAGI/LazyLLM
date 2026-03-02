@@ -19,7 +19,7 @@ namespace lazyllm {
 
 enum class MetadataMode { ALL, EMBED, LLM, NONE };
 
-using PDocNode = PDocNode;
+using PDocNode = std::shared_ptr<DocNode>;
 
 class DocNode {
 public:
@@ -119,7 +119,7 @@ public:
         const auto& metadata_string = get_metadata_string(mode);
         return metadata_string + "\n\n" + std::string(_text_view);
     }
-    void set_root_text(const std::string&& text) {
+    void set_root_text(std::string&& text) {
         _p_root_text = std::make_shared<std::string>(std::move(text));
         set_text_view(*_p_root_text);
     }

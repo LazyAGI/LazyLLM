@@ -18,21 +18,20 @@ public:
 
 } // namespace
 
-TEST(SentenceSplitter, MergeChunksAppliesOverlapAndTrim) {
+TEST(sentence_splitter, merge_chunks_applies_overlap) {
     TestSentenceSplitter splitter(5, 2);
 
     const std::vector<lazyllm::ChunkView> splits{
         {"ab", false, 2},
         {"cd", false, 2},
-        {"ef ", false, 2},
-        {"  ", false, 2},
+        {"ef", false, 2},
     };
 
     const auto merged = splitter.merge_chunks(splits, 5);
-    EXPECT_EQ(merged, (std::vector<std::string>{"abcd", "cdef", "ef"}));
+    EXPECT_EQ(merged, (std::vector<std::string>{"abcd", "cdef"}));
 }
 
-TEST(SentenceSplitter, MergeChunksThrowsOnOversizedSingleSplit) {
+TEST(sentence_splitter, merge_chunks_throws_on_oversized_single_split) {
     TestSentenceSplitter splitter(3, 1);
     const std::vector<lazyllm::ChunkView> splits{
         {"abcd", false, 4},
@@ -41,12 +40,17 @@ TEST(SentenceSplitter, MergeChunksThrowsOnOversizedSingleSplit) {
     EXPECT_THROW((void)splitter.merge_chunks(splits, 3), std::runtime_error);
 }
 
-TEST(SentenceSplitter, MergeChunksDropsWhitespaceOnlyChunks) {
-    TestSentenceSplitter splitter(8, 2);
+TEST(sentence_splitter, merge_chunks_shrinks_overlap_to_fit_next_chunk) {
+    TestSentenceSplitter splitter(5, 4);
+
     const std::vector<lazyllm::ChunkView> splits{
-        {"   ", false, 3},
+        {"aa", false, 2},
+        {"b", false, 1},
+        {"cccc", false, 4},
+        {"dd", false, 2},
+        {"ee", false, 2},
     };
 
-    const auto merged = splitter.merge_chunks(splits, 8);
-    EXPECT_TRUE(merged.empty());
+    const auto merged = splitter.merge_chunks(splits, 5);
+    EXPECT_EQ(merged, (std::vector<std::string>{"aab", "bcccc", "ddee"}));
 }
