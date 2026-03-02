@@ -4,7 +4,7 @@ import time
 import traceback
 import cloudpickle
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, List
 
 from lazyllm import (
     LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app,
@@ -14,7 +14,8 @@ from lazyllm.thirdparty import fastapi
 
 from .base import (
     ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
-    TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest, _calculate_task_score
+    TaskStatus, TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest,
+    _calculate_task_score, _resolve_add_doc_task_type
 )
 from .worker import DocumentProcessorWorker as Worker
 from .queue import _SQLBasedQueue as Queue
@@ -31,7 +32,10 @@ class DocumentProcessor(ModuleBase):
 
     class _Impl():
         def __init__(self, db_config: Optional[Dict[str, Any]] = None, num_workers: int = 1,
-                     post_func: Optional[Callable] = None, path_prefix: Optional[str] = None):
+                     post_func: Optional[Callable] = None, path_prefix: Optional[str] = None,
+                     lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
+                     high_priority_task_types: Optional[List[str]] = None,
+                     high_priority_workers: int = 1):
             self._db_config = db_config
             self._num_workers = num_workers
             self._post_func = post_func
@@ -39,12 +43,21 @@ class DocumentProcessor(ModuleBase):
                 raise ValueError('Invalid post function!')
             self._shutdown = False
             self._path_prefix = path_prefix
+            self._lease_duration = lease_duration
+            self._lease_renew_interval = lease_renew_interval
+            self._high_priority_task_types = (
+                high_priority_task_types
+                if high_priority_task_types is not None
+                else [TaskType.DOC_DELETE.value]
+            )
+            self._high_priority_workers = max(high_priority_workers, 0)
 
             self._db_manager = None
             self._waiting_task_queue = None
             self._finished_task_queue = None
             self._post_func_thread = None
             self._workers = None
+            self._high_priority_workers_module = None
 
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
@@ -68,8 +81,35 @@ class DocumentProcessor(ModuleBase):
             self._post_func_thread.start()
 
             if self._num_workers > 0:
-                self._workers = Worker(db_config=self._db_config, num_workers=self._num_workers)
-                self._workers.start()
+                high_priority_types = [t for t in (self._high_priority_task_types or []) if t]
+                high_priority_workers = 0
+                if high_priority_types and self._high_priority_workers > 0:
+                    if self._num_workers <= 1:
+                        LOG.warning('[DocumentProcessor] num_workers <= 1, high priority workers disabled')
+                    else:
+                        high_priority_workers = min(self._high_priority_workers, self._num_workers - 1)
+                        if high_priority_workers < self._high_priority_workers:
+                            LOG.warning('[DocumentProcessor] high_priority_workers trimmed to fit num_workers')
+                normal_workers = self._num_workers - high_priority_workers
+                if high_priority_workers > 0:
+                    self._high_priority_workers_module = Worker(
+                        db_config=self._db_config,
+                        num_workers=high_priority_workers,
+                        lease_duration=self._lease_duration,
+                        lease_renew_interval=self._lease_renew_interval,
+                        high_priority_task_types=high_priority_types,
+                        high_priority_only=True,
+                    )
+                    self._high_priority_workers_module.start()
+                if normal_workers > 0:
+                    self._workers = Worker(
+                        db_config=self._db_config,
+                        num_workers=normal_workers,
+                        lease_duration=self._lease_duration,
+                        lease_renew_interval=self._lease_renew_interval,
+                        high_priority_task_types=high_priority_types,
+                    )
+                    self._workers.start()
             LOG.info('[DocumentProcessor] Lazy initialization completed!')
 
         def __getstate__(self):
@@ -79,6 +119,7 @@ class DocumentProcessor(ModuleBase):
             state['_finished_task_queue'] = None
             state['_post_func_thread'] = None
             state['_workers'] = None
+            state['_high_priority_workers_module'] = None
             return state
 
         def __setstate__(self, state):
@@ -256,12 +297,11 @@ class DocumentProcessor(ModuleBase):
                 raise fastapi.HTTPException(status_code=500, detail=f'Failed to get group info: {str(e)}')
 
         @app.post('/doc/add')
-        def add_doc(self, request: AddDocRequest):
+        def add_doc(self, request: AddDocRequest):  # noqa: C901
             self._lazy_init()
             if self._shutdown:
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
-            payload = request.model_dump()
-            LOG.info(f'[DocumentProcessor] Received add doc request: {payload}')
+            LOG.info(f'[DocumentProcessor] Received add doc request (raw): {request.model_dump()}')
             task_id = request.task_id
             algo_id = request.algo_id
             file_infos = request.file_infos
@@ -271,38 +311,34 @@ class DocumentProcessor(ModuleBase):
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
             # NOTE: No idempotency key check, should be handled by the caller!
-            new_file_ids = []
-            reparse_file_ids = []
             for file_info in file_infos:
-                if self._path_prefix:
-                    file_info.file_path = create_file_path(path=file_info.file_path, prefix=self._path_prefix)
-                if file_info.reparse_group is not None:
-                    reparse_file_ids.append(file_info.doc_id)
-                else:
-                    new_file_ids.append(file_info.doc_id)
-            if new_file_ids and reparse_file_ids:
-                raise fastapi.HTTPException(
-                    status_code=400,
-                    detail='new_file_ids and reparse_file_ids cannot be specified at the same time'
-                )
-            if new_file_ids:
-                task_type = TaskType.DOC_ADD.value
-            elif reparse_file_ids:
-                task_type = TaskType.DOC_REPARSE.value
-            else:
-                raise fastapi.HTTPException(status_code=400, detail='no input files or reparse group specified')
+                parse_file_path = file_info.transformed_file_path if \
+                    file_info.transformed_file_path else file_info.file_path
+                file_info.file_path = create_file_path(parse_file_path, prefix=self._path_prefix)
+
+            try:
+                task_type = _resolve_add_doc_task_type(request)
+            except ValueError as e:
+                raise fastapi.HTTPException(status_code=400, detail=str(e))
+            payload = request.model_dump()
+            LOG.info(f'[DocumentProcessor] Received add doc request: {payload}')
             payload_json = json.dumps(payload, ensure_ascii=False)
 
             try:
                 user_priority = request.priority if request.priority is not None else 0
                 task_score = _calculate_task_score(task_type, user_priority)
+                now = datetime.now()
                 self._waiting_task_queue.enqueue(
                     task_id=task_id,
                     task_type=task_type,
                     user_priority=user_priority,
                     task_score=task_score,
                     message=payload_json,
-                    created_at=datetime.now(),
+                    status=TaskStatus.WAITING.value,
+                    worker_id=None,
+                    lease_expires_at=None,
+                    created_at=now,
+                    updated_at=now,
                 )
                 LOG.info(f'[DocumentProcessor] Task {task_id} (type={task_type}, user_priority={user_priority}, '
                          f'score={task_score}) submitted to database queue successfully')
@@ -321,8 +357,7 @@ class DocumentProcessor(ModuleBase):
             self._lazy_init()
             if self._shutdown:
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
-            payload = request.model_dump()
-            LOG.info(f'update doc meta for {payload}')
+            LOG.info(f'[DocumentProcessor] Received update meta request (raw): {request.model_dump()}')
             task_id = request.task_id
             algo_id = request.algo_id
             file_infos = request.file_infos
@@ -332,18 +367,25 @@ class DocumentProcessor(ModuleBase):
             algorithm = self._get_algo(algo_id)
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
+            payload = request.model_dump()
+            LOG.info(f'[DocumentProcessor] Received update meta request: {payload}')
             payload_json = json.dumps(payload, ensure_ascii=False)
             try:
                 task_type = TaskType.DOC_UPDATE_META.value
                 user_priority = request.priority if request.priority is not None else 0
                 task_score = _calculate_task_score(task_type, user_priority)
+                now = datetime.now()
                 self._waiting_task_queue.enqueue(
                     task_id=task_id,
                     task_type=task_type,
                     user_priority=user_priority,
                     task_score=task_score,
                     message=payload_json,
-                    created_at=datetime.now(),
+                    status=TaskStatus.WAITING.value,
+                    worker_id=None,
+                    lease_expires_at=None,
+                    created_at=now,
+                    updated_at=now,
                 )
                 LOG.info(f'[DocumentProcessor] Update meta task {task_id} (user_priority={user_priority}, '
                          f'score={task_score}) submitted to database queue successfully')
@@ -362,9 +404,7 @@ class DocumentProcessor(ModuleBase):
             self._lazy_init()
             if self._shutdown:
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
-            payload = request.model_dump()
-            LOG.info(f'[DocumentProcessor] Received delete doc request: {payload}')
-
+            LOG.info(f'[DocumentProcessor] Received delete doc request (raw): {request.model_dump()}')
             task_id = request.task_id
             algo_id = request.algo_id
             doc_ids = request.doc_ids
@@ -373,19 +413,25 @@ class DocumentProcessor(ModuleBase):
             algorithm = self._get_algo(algo_id)
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
-
+            payload = request.model_dump()
+            LOG.info(f'[DocumentProcessor] Received delete doc request: {payload}')
             payload_json = json.dumps(payload, ensure_ascii=False)
             try:
                 task_type = TaskType.DOC_DELETE.value
                 user_priority = request.priority if request.priority is not None else 0
                 task_score = _calculate_task_score(task_type, user_priority)
+                now = datetime.now()
                 self._waiting_task_queue.enqueue(
                     task_id=task_id,
                     task_type=task_type,
                     user_priority=user_priority,
                     task_score=task_score,
                     message=payload_json,
-                    created_at=datetime.now(),
+                    status=TaskStatus.WAITING.value,
+                    worker_id=None,
+                    lease_expires_at=None,
+                    created_at=now,
+                    updated_at=now,
                 )
                 LOG.info(f'[DocumentProcessor] Delete task {task_id} (user_priority={user_priority}, '
                          f'score={task_score}) submitted to database queue successfully')
@@ -404,15 +450,16 @@ class DocumentProcessor(ModuleBase):
             self._lazy_init()
             if self._shutdown:
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
-            payload = request.model_dump()
-            LOG.info(f'[DocumentProcessor] Received cancel task request: {payload}')
+            LOG.info(f'[DocumentProcessor] Received cancel task request (raw): {request.model_dump()}')
             task_id = request.task_id
             try:
                 # NOTE: only the task in waiting state can be canceled
                 cancel_status = False
-                waiting_task = self._waiting_task_queue.dequeue(filter_by={'task_id': task_id})
+                deleted = self._waiting_task_queue.delete(
+                    filter_by={'task_id': task_id, 'status': TaskStatus.WAITING.value}
+                )
                 message = ''
-                if waiting_task:
+                if deleted:
                     cancel_status = True
                     message = 'Canceled by user'
                 else:
@@ -470,14 +517,24 @@ class DocumentProcessor(ModuleBase):
     def __init__(self, port: int = None, url: str = None, num_workers: int = 1,
                  db_config: Optional[Dict[str, Any]] = None,
                  launcher: Optional[Launcher] = None, post_func: Optional[Callable] = None,
-                 path_prefix: Optional[str] = None):
+                 path_prefix: Optional[str] = None, lease_duration: float = 300.0,
+                 lease_renew_interval: float = 60.0, high_priority_task_types: Optional[List[str]] = None,
+                 high_priority_workers: int = 1):
         super().__init__()
         self._raw_impl = None  # save the reference of the original Impl object
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         if not url:
             # create the Impl object (lazy loading, no threads created)
-            self._raw_impl = DocumentProcessor._Impl(num_workers=num_workers, db_config=self._db_config,
-                                                     post_func=post_func, path_prefix=path_prefix)
+            self._raw_impl = DocumentProcessor._Impl(
+                num_workers=num_workers,
+                db_config=self._db_config,
+                post_func=post_func,
+                path_prefix=path_prefix,
+                lease_duration=lease_duration,
+                lease_renew_interval=lease_renew_interval,
+                high_priority_task_types=high_priority_task_types,
+                high_priority_workers=high_priority_workers,
+            )
             self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher)
         else:
             self._impl = UrlModule(url=ensure_call_endpoint(url))
