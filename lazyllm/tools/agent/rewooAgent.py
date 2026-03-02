@@ -1,10 +1,13 @@
-from lazyllm.module import ModuleBase
-from .base import LazyLLMAgentBase
-from lazyllm.components import ChatPrompter
-from lazyllm import pipeline, LOG, bind, Color, locals, ifs, once_wrapper
 from typing import Callable, Dict, List, Optional, Union
 import re
 import json
+
+from lazyllm.module import ModuleBase
+from lazyllm.components import ChatPrompter
+from lazyllm import pipeline, LOG, bind, Color, locals, ifs, once_wrapper
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
+from .base import LazyLLMAgentBase
+
 
 P_PROMPT_PREFIX = ('For the following tasks, make plans that can solve the problem step-by-step. '
                    'For each plan, indicate which external tool together with tool input to retrieve '
@@ -37,10 +40,10 @@ class ReWOOAgent(LazyLLMAgentBase):
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Union[bool, str, List[str], None] = None, desc: str = '',
-                 workspace: Optional[str] = None):
+                 workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None):
         super().__init__(llm=llm, tools=tools, return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls, skills=skills, desc=desc,
-                         workspace=workspace)
+                         workspace=workspace, sandbox=sandbox)
         if llm is None and plan_llm is None and solve_llm is None:
             raise ValueError('Either specify llm, or provide plan_llm/solve_llm.')
         if llm is None:
