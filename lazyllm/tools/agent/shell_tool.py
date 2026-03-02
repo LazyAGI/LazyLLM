@@ -36,8 +36,8 @@ def _detect_dangerous_command(cmd: str) -> Optional[str]:
     return None
 
 
-@register('builtin_tools')
-@register('tool')
+@register('builtin_tools', execute_in_sandbox=False)
+@register('tool', execute_in_sandbox=False)
 def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
                env: Optional[Dict[str, str]] = None, allow_unsafe: bool = False) -> dict:
     '''Run a shell command and return stdout/stderr/exit code.

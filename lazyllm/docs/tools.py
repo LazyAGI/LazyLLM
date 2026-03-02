@@ -18,6 +18,11 @@ add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=importli
 add_agent_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent'))
 add_agent_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent'))
 
+# functions for lazyllm.tools.sandbox
+add_sandbox_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.sandbox'))
+add_sandbox_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.sandbox'))
+add_sandbox_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.sandbox'))
+
 # functions for lazyllm.tools.services
 add_services_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.services'))
 add_services_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.services'))
@@ -7264,6 +7269,7 @@ ToolManager是一个工具管理类，用于提供工具信息和工具调用给
 Args:
     tools (List[str]): 工具名称字符串列表。
     return_trace (bool): 是否返回中间步骤和工具调用信息。
+    sandbox (LazyLLMSandboxBase | None): 沙箱实例。若提供，则当工具的 ``execute_in_sandbox`` 为 True 时，工具将在此沙箱中执行，并自动处理文件上传/下载。
 ''')
 
 add_english_doc('ToolManager', '''\
@@ -7274,6 +7280,7 @@ When constructing this management class, you need to pass in a list of tool name
 Args:
     tools (List[str]): A list of tool name strings.
     return_trace (bool): If True, return intermediate steps and tool calls.
+    sandbox (LazyLLMSandboxBase | None): A sandbox instance. When provided, tools with ``execute_in_sandbox`` set to True will be executed inside this sandbox, with automatic file upload/download handling.
 
 ''')
 
@@ -7328,17 +7335,235 @@ add_example('ToolManager', """\
 '{"location": "Beijing", "temperature": "85", "unit": "fahrenheit", "num_days": 3}'
 """)
 
+add_agent_chinese_doc('register', '''\
+工具注册器，用于将函数注册为可供 FunctionCall/Agent 调用的工具。
+
+Args:
+    group (str): 工具分组，建议使用 'tool'。
+    execute_in_sandbox (bool): 是否在沙箱中执行，默认 True；若不希望在沙箱执行，请设置为 False。
+    input_files_parm (str): 指定函数中哪个参数包含输入文件路径，沙箱会在执行前上传这些文件。该参数指向的函数参数类型必须为 ``str`` 或 ``List[str]``。
+    output_files_parm (str): 指定函数中哪个参数包含输出文件路径，沙箱执行完成后会下载这些文件。该参数指向的函数参数类型必须为 ``str`` 或 ``List[str]``。
+    output_files (List[str]): 额外的输出文件路径列表，用于工具中硬编码的输出文件名（不通过函数参数传递），沙箱执行后也会下载这些文件。
+''')
+
+add_agent_english_doc('register', '''\
+Tool registrar for registering functions as tools callable by FunctionCall/Agent.
+
+Args:
+    group (str): tool group, recommend using 'tool'.
+    execute_in_sandbox (bool): whether to execute in sandbox, default True; set False to disable sandbox execution.
+    input_files_parm (str): the name of the function parameter that holds input file paths; the sandbox uploads these files before execution. The parameter it points to must be of type ``str`` or ``List[str]``.
+    output_files_parm (str): the name of the function parameter that holds output file paths; the sandbox downloads these files after execution. The parameter it points to must be of type ``str`` or ``List[str]``.
+    output_files (List[str]): additional output file paths for the sandbox to download, for cases where output filenames are hardcoded in the tool rather than passed as parameters.
+''')
+
+add_agent_example('register', """\
+>>> from lazyllm.tools import fc_register
+>>> @fc_register("tool")
+>>> def my_tool(text: str):
+...     '''Simple tool.
+...
+...     Args:
+...         text (str): input text.
+...     '''
+...     return text.upper()
+
+>>> from typing import List, Optional
+>>> @fc_register("tool", input_files_parm="input_paths", output_files_parm="output_paths")
+>>> def file_tool(input_paths: Optional[List[str]] = None, output_paths: Optional[List[str]] = None):
+...     '''Process files in sandbox.
+...
+...     Args:
+...         input_paths (List[str] | None): input file paths.
+...         output_paths (List[str] | None): output file paths.
+...     '''
+...     return "done"
+""")
+
+add_agent_chinese_doc('code_interpreter', '''\
+内置代码解释工具，基于沙箱执行代码并返回结果。默认使用本地沙箱（DummySandbox），也可通过配置切换为远程沙箱（SandboxFusion）。
+
+沙箱选择：
+- config['sandbox_type'] == 'dummy'：使用 DummySandbox，仅支持 python。
+- config['sandbox_type'] == 'sandbox_fusion'：使用 SandboxFusion，支持 python / bash。
+
+环境变量：
+- LAZYLLM_SANDBOX_TYPE: 设置为 "dummy" 或 "sandbox_fusion"。
+- LAZYLLM_SANDBOX_FUSION_BASE_URL: 远程沙箱服务地址（仅 sandbox_fusion 模式需要）。
+
+Args:
+    code (str): 待执行的代码。
+    language (str): 代码语言，默认 'python'。
+
+**Returns:**\n
+    dict 或 str：成功时为执行结果字典（包含 stdout/stderr/returncode 等字段）；失败时为错误信息字符串。
+''')
+
+add_agent_english_doc('code_interpreter', '''\
+Built-in code interpreter tool that executes code inside a sandbox and returns the result.
+It uses DummySandbox by default, and can be switched to SandboxFusion via configuration.
+
+Sandbox selection:
+- config['sandbox_type'] == 'dummy': DummySandbox, python only.
+- config['sandbox_type'] == 'sandbox_fusion': SandboxFusion, python / bash.
+
+Environment variables:
+- LAZYLLM_SANDBOX_TYPE: set to "dummy" or "sandbox_fusion".
+- LAZYLLM_SANDBOX_FUSION_BASE_URL: remote sandbox base URL (sandbox_fusion only).
+
+Args:
+    code (str): code to execute.
+    language (str): code language, default 'python'.
+
+**Returns:**\n
+    dict or str: a result dict on success (stdout/stderr/returncode, etc.); error message string on failure.
+''')
+
+add_agent_example('code_interpreter', """\
+>>> from lazyllm.tools.agent import code_interpreter
+>>> result = code_interpreter("print('hello')")
+>>> print(result['stdout'].strip())
+hello
+""")
+
+add_sandbox_chinese_doc('LazyLLMSandboxBase', '''\
+沙箱执行基类，定义统一的代码执行接口与语言检查逻辑。
+
+Args:
+    output_dir_path (str | None): 输出文件保存目录，默认当前工作目录，可能会覆盖当前工作目录下的文件。
+    return_trace (bool): 是否返回中间执行信息（由 ModuleBase 控制）。
+
+Notes:
+    子类需实现 `_is_available` 与 `_execute` 方法。
+''')
+
+add_sandbox_english_doc('LazyLLMSandboxBase', '''\
+Base class for sandbox execution with a unified call interface and language validation.
+
+Args:
+    output_dir_path (str | None): output directory for generated files, default is cwd.
+    return_trace (bool): whether to return intermediate execution info (controlled by ModuleBase).
+
+Notes:
+    Subclasses must implement `_is_available` and `_execute`.
+''')
+
+add_sandbox_chinese_doc('LazyLLMSandboxBase.forward', '''\
+统一执行入口，负责语言校验并调用具体实现。
+
+Args:
+    code (str): 待执行的代码。
+    language (str): 代码语言，默认 'python'。
+    input_files (list[str] | None): 输入文件路径列表，可选。
+    output_files (list[str] | None): 需要回传的输出文件列表，可选。
+
+**Returns:**\n
+    由具体沙箱实现返回的结果（通常为 dict 或错误信息字符串）。
+''')
+
+add_sandbox_english_doc('LazyLLMSandboxBase.forward', '''\
+Unified execution entry that validates language and delegates to the implementation.
+
+Args:
+    code (str): code to execute.
+    language (str): code language, default 'python'.
+    input_files (list[str] | None): optional list of input file paths.
+    output_files (list[str] | None): optional list of output files to fetch.
+
+**Returns:**\n
+    Result produced by the sandbox implementation (usually a dict or an error message string).
+''')
+
+add_sandbox_chinese_doc('DummySandbox', '''\
+本地沙箱实现（python-only），用于在受限环境中执行代码。
+
+特点：
+- 通过 AST + SecurityVisitor 做基础安全检查。
+- 在临时目录中运行代码，执行完毕后清理。
+- 返回 stdout/stderr/returncode 的字典结果。
+
+Args:
+    timeout (int): 超时时间（秒），默认 30。
+    project_dir (str | None): 若指定，将项目内 .py 文件复制到沙箱执行目录，便于引用。
+    return_trace (bool): 是否返回中间执行信息。
+''')
+
+add_sandbox_english_doc('DummySandbox', '''\
+Local sandbox implementation (python-only) for executing code in a restricted environment.
+
+Features:
+- Basic safety checks with AST + SecurityVisitor.
+- Runs code in a temp directory and cleans up afterwards.
+- Returns a dict with stdout/stderr/returncode.
+
+Args:
+    timeout (int): timeout in seconds, default 30.
+    project_dir (str | None): if provided, copies .py files into sandbox for imports.
+    return_trace (bool): whether to return intermediate execution info.
+''')
+
+add_sandbox_example('DummySandbox', """\
+>>> from lazyllm.tools.sandbox import DummySandbox
+>>> sandbox = DummySandbox(timeout=10)
+>>> result = sandbox(code="print(1 + 1)")
+>>> print(result['stdout'].strip())
+2
+""")
+
+add_sandbox_chinese_doc('SandboxFusion', '''\
+远程沙箱实现，通过 HTTP API 执行代码并获取结果。
+
+支持语言：python / bash。可配置编译超时、运行超时、内存限制，并支持上传工程文件与拉取输出文件。
+
+Args:
+    base_url (str): 远程沙箱服务地址，默认来自 config['sandbox_fusion_base_url']。
+    compile_timeout (int): 编译超时（秒），默认 10。
+    run_timeout (int): 运行超时（秒），默认 10。
+    memory_limit_mb (int): 内存限制（MB），-1 表示不限制。
+    project_dir (str | None): 若指定，将工程目录下的 .py 文件上传到沙箱。
+
+Notes:
+    需要配置 LAZYLLM_SANDBOX_FUSION_BASE_URL 或显式传入 base_url。
+''')
+
+add_sandbox_english_doc('SandboxFusion', '''\
+Remote sandbox implementation that executes code via HTTP API.
+
+Supports python / bash. Configurable compile/run timeouts and memory limits. Can upload project files and fetch output files.
+
+Args:
+    base_url (str): remote sandbox base URL, defaults to config['sandbox_fusion_base_url'].
+    compile_timeout (int): compile timeout in seconds, default 10.
+    run_timeout (int): run timeout in seconds, default 10.
+    memory_limit_mb (int): memory limit in MB, -1 means no limit.
+    project_dir (str | None): if provided, uploads .py files from the project directory.
+
+Notes:
+    Set LAZYLLM_SANDBOX_FUSION_BASE_URL or pass base_url explicitly.
+''')
+
+add_sandbox_example('SandboxFusion', """\
+>>> from lazyllm import config
+>>> from lazyllm.tools.sandbox import SandboxFusion
+>>> config['sandbox_fusion_base_url'] = "http://localhost:8000"
+>>> sandbox = SandboxFusion(run_timeout=5)
+>>> result = sandbox(code="print('ok')")
+>>> print(result['stdout'].strip())
+ok
+""")
+
 add_chinese_doc('ModuleTool', '''\
 用于构建工具模块的基类。
 
 该类封装了函数签名和文档字符串的自动解析逻辑，可生成标准化的参数模式（基于 pydantic），并对输入进行校验和工具调用的标准封装。
 
-`__init__(self, verbose=False, return_trace=True)`
+`__init__(self, verbose=False, return_trace=True, execute_in_sandbox=True)`
 初始化工具模块。
 
 Args:
     verbose (bool): 是否在执行过程中输出详细日志。
     return_trace (bool): 是否在结果中保留中间执行痕迹。
+    execute_in_sandbox (bool): 是否在沙箱中执行，默认 True。当 ToolManager 配置了沙箱且此值为 True 时，工具将在沙箱中执行。
 ''')
 
 add_english_doc('ModuleTool', '''\
@@ -7346,12 +7571,13 @@ Base class for defining tools using callable Python functions.
 
 This class automatically parses function signatures and docstrings to build a parameter schema using `pydantic`. It also performs input validation and handles standardized tool execution.
 
-`__init__(self, verbose=False, return_trace=True)`
+`__init__(self, verbose=False, return_trace=True, execute_in_sandbox=True)`
 Initializes a tool wrapper module.
 
 Args:
     verbose (bool): Whether to print verbose logs during execution.
     return_trace (bool): Whether to keep intermediate execution trace in the result.
+    execute_in_sandbox (bool): Whether to execute in sandbox, default True. When ToolManager has a sandbox configured and this is True, the tool will be executed inside the sandbox.
 ''')
 
 add_example('ModuleTool', """
@@ -7428,6 +7654,31 @@ Args:
 
 **Returns:**\n
 - bool: True if valid and complete; False otherwise.
+''')
+
+add_chinese_doc("ModuleTool.to_sandbox_code", '''
+生成用于在沙箱中执行的代码字符串。
+
+该方法会序列化当前工具与传入参数，返回一段可在沙箱环境中反序列化并执行的 Python 代码。
+
+Args:
+    tool_arguments (Dict[str, Any]): 以字典形式提供的工具参数。
+
+**Returns:**\n
+- str: 可在沙箱中执行的 Python 代码字符串。
+''')
+
+add_english_doc("ModuleTool.to_sandbox_code", '''
+Generate a sandbox-executable code string.
+
+This method serializes the tool instance and arguments, and returns a Python code snippet
+that can be deserialized and executed inside a sandbox environment.
+
+Args:
+    tool_arguments (Dict[str, Any]): Tool arguments as a dict.
+
+**Returns:**\n
+- str: A Python code string executable in a sandbox environment.
 ''')
 
 add_chinese_doc('FunctionCall', '''\
