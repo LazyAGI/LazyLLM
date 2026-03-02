@@ -146,13 +146,16 @@ class Config(metaclass=_ConfigMeta):
             f'Invalid config type for {name}, type is {type}')
 
     def __getitem__(self, name):
+        if isinstance(name, bytes): name = name.decode('utf-8')
+        name = name.lower()
+        if name.startswith(f'{self._prefix.lower()}_'): name = name[len(self._prefix) + 1:]
         try:
-            if isinstance(name, bytes): name = name.decode('utf-8')
-            name = name.lower()
-            if name.startswith(f'{self._prefix.lower()}_'): name = name[len(self._prefix) + 1:]
             return self._impl[name]
-        except KeyError as e:
-            raise KeyError(f'Error occured when getting key `{name}` from lazyllm global config, msg is: {e}')
+        except KeyError:
+            raise KeyError(
+                f'Unknown config key: "{name}". '
+                'Please register it via config.add(...) before access.'
+            ) from None
 
     def __str__(self):
         return str(self._impl)
