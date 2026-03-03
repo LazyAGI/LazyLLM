@@ -7332,3 +7332,113 @@ print(res)
 # }
 ```
 """)
+
+# =========================
+# build_text2qa_pipeline
+# =========================
+
+add_chinese_doc('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
+构建文本到 QA 的数据处理流水线（Pipeline）。  
+
+该 pipeline 包含：
+1. 文本切分（TextToChunks）  
+2. 空白或噪声文本过滤（empty_or_noise_filter）  
+3. 非法 Unicode 清理（invalid_unicode_cleaner）  
+4. QA 生成（ChunkToQA）  
+5. QA 打分（QAScorer）  
+6. 根据分数过滤（qa_score_filter）  
+7. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）  
+
+Args:
+    text_key (str): 原始文本字段名，默认 'text'
+    chunk_key (str): 切分后文本块字段名，默认 'chunk'
+    instruction_key (str): QA 问题字段名，默认 'instruction'
+    output_key (str): QA 答案字段名，默认 'output'
+    model: QA 生成/评分模型实例
+    score_prompt: 打分提示词
+    tokenizer: 分词器
+    chunk_size (int): 文本切分长度，默认 200
+    tokenize (bool): 是否先进行分词，默认 False
+    qa_prompt: QA 生成提示词
+    threshold (float): QA 样本分数最低保留阈值，默认 1
+
+**Returns:**  
+    一个可调用的 pipeline 对象，调用时会按顺序执行上述算子。
+""")
+
+add_english_doc('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
+Build a text-to-QA data processing pipeline.  
+
+The pipeline includes:
+1. Text chunking (TextToChunks)  
+2. Empty or noise text filtering (empty_or_noise_filter)  
+3. Invalid Unicode cleaning (invalid_unicode_cleaner)  
+4. QA generation (ChunkToQA)  
+5. QA scoring (QAScorer)  
+6. Filtering by score (qa_score_filter)  
+7. Conversion to Alpaca-style SFT data (to_alpaca_sft)  
+
+Args:
+    text_key (str): original text field, default 'text'
+    chunk_key (str): field for text chunks, default 'chunk'
+    instruction_key (str): field for QA question, default 'instruction'
+    output_key (str): field for QA answer, default 'output'
+    model: QA generation/scoring model instance
+    score_prompt: prompt for QA scoring
+    tokenizer: tokenizer
+    chunk_size (int): chunk size for text, default 200
+    tokenize (bool): whether to tokenize first, default False
+    qa_prompt: prompt for QA generation
+    threshold (float): minimum QA score to retain, default 1
+
+**Returns:**  
+    A callable pipeline object that executes registered operators in sequence.
+""")
+
+add_example('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.text_pipelines import build_text2qa_pipeline
+
+class MockModel:
+    def __init__(self, mock_response):
+        self.mock_response = mock_response
+    def __call__(self, string: str, **kwargs):
+        return self.mock_response
+    def prompt(self, prompt):
+        return self
+    def formatter(self, formatter):
+        return self
+    def share(self):
+        return self
+    def start(self):
+        return self
+
+model = MockModel({
+    'chunk': '今天是晴天！',
+    'instruction': '今天的天气怎么样？',
+    'output': '今天是晴天！',
+    'score': 1
+})
+
+ppl = build_text2qa_pipeline(
+    model=model,
+    text_key='text',
+    chunk_key='chunk',
+    instruction_key='instruction',
+    output_key='output',
+    chunk_size=200,
+    tokenize=False,
+    threshold=1
+)
+
+data = [{'text': '今天是晴天！'}]
+res = ppl(data)
+print(res)
+# 返回 list，每个元素包含 instruction, output, input
+[{
+    'instruction': '今天的天气怎么样？',
+    'output': '今天是晴天！',
+    'input': ''
+}]
+```
+""")

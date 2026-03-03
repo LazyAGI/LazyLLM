@@ -46,7 +46,6 @@ class TestTextPipeline:
             'score': 1
         })
 
-
         ppl = build_text2qa_pipeline(
             model=model,
             text_key='text',
