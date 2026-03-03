@@ -1,4 +1,4 @@
-from lazyllm import pipeline, OnlineChatModule
+from lazyllm import pipeline
 from lazyllm.tools.data import Text2qa
 
 
@@ -8,14 +8,12 @@ def build_text2qa_pipeline(
         instruction_key='instruction',
         output_key='output',
         model=None,
-        user_prompt=None,
+        score_prompt=None,
         tokenizer=None,
-        chunk_size=100,
+        chunk_size=200,
         tokenize=False,
+        qa_prompt=None,
         threshold=1):
-
-    if model is None:
-        model = OnlineChatModule()
 
     with pipeline() as ppl:
 
@@ -39,7 +37,8 @@ def build_text2qa_pipeline(
             input_key=chunk_key,
             query_key=instruction_key,
             answer_key=output_key,
-            model=model
+            model=model,
+            user_prompt=qa_prompt
         )
 
         ppl.qa_scorer = Text2qa.QAScorer(
@@ -48,7 +47,7 @@ def build_text2qa_pipeline(
             query_key=instruction_key,
             answer_key=output_key,
             model=model,
-            user_prompt=user_prompt
+            user_prompt=score_prompt
         )
 
         ppl.score_filter = Text2qa.qa_score_filter(

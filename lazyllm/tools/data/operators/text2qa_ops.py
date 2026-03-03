@@ -146,9 +146,27 @@ class ChunkToQA(Text2qa):
         output_structure = f'''
         输出格式要求：
         {{
-            '{self.query_key}': '生成的问题',
-            '{self.answer_key}': '答案'
+            "{self.query_key}": "问题",
+            "{self.answer_key}": "答案"
         }}
+        '''
+
+        self.default_prompt = '''
+        任务：根据给定文本构造一个用于监督微调（SFT）的问答对。
+
+        约束条件：
+        - 提问需要具体，不可以出现文中xxx、今天是xxx、这种莫能两可的问题，
+        - 问题必须可以仅通过原文回答。
+        - 答案必须忠实于原文表达。
+        - 不允许添加任何外部知识。
+        - 不允许推测或扩展。
+        - 问题应覆盖文本中的核心事实或关键观点。
+        - 只生成一个问答对。
+
+        输出要求：
+        - 仅输出 JSON。
+        - 不要输出解释说明。
+        - 不要输出多余内容。
         '''
 
         if model is None:
@@ -169,11 +187,19 @@ class ChunkToQA(Text2qa):
             return data
 
         if self.user_prompt is None:
-            user_prompt = '根据下面文本生成一个 QA 对：\n'
+            user_prompt = self.default_prompt
         else:
             user_prompt = self.user_prompt
 
-        inp = f'{user_prompt}\n{chunk}'
+        inp = f'{user_prompt}\n原文：{chunk}\n'
+
+        inp += f'''
+        输出格式要求：
+        {{
+            "{self.query_key}": "问题",
+            "{self.answer_key}": "答案"
+        }}
+        '''
 
         qa = self.model(inp)
 
@@ -201,7 +227,7 @@ class QAScorer(Text2qa):
         output_structure = f'''
         输出格式要求：
         {{
-            '{self.output_key}': 0 or 1
+            "{self.output_key}": 0 or 1
         }}
         '''
 
@@ -236,15 +262,18 @@ class QAScorer(Text2qa):
 
         {qa}
 
-        规则：
-        - 严格基于原文 → 1
-        - 否则 → 0
+        评分规则：
+        - 如果问题和答案都严格基于原文内容，且答案可以从原文中直接或明确推断得到，打 1。
+        - 如果问题或答案与原文无关、编造内容、无法从原文得到依据、或语义混乱，打 0。
+        - 如果 QA 无意义或不构成有效问答，打 0。
+        输出格式示例：
+        {{"{self.output_key}": "0"}}
         '''
         else:
             user_prompt = self.user_prompt + qa
         res = self.model(user_prompt)
 
-        data[self.output_key] = res.get(self.output_key, 0)
+        data[self.output_key] = float(res.get(self.output_key, 0))
         return data
 
 @data_register('data.Text2qa', rewrite_func='forward')
