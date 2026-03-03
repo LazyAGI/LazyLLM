@@ -119,8 +119,16 @@ class PreferencePairConstructor(PreferenceOps):
             chosen, rejected = self.construct_pair(responses, scores)
 
             if chosen is not None and rejected is not None:
+                instruction = data.get(self.instruction_key, '')
+                if isinstance(instruction, dict):
+                    instruction = list(instruction.values())[0] if instruction else ''
+                elif isinstance(instruction, list):
+                    instruction = ' '.join(str(x) for x in instruction)
+                elif not isinstance(instruction, str):
+                    instruction = str(instruction)
+
                 return {
-                    'instruction': data.get(self.instruction_key, ''),
+                    'instruction': instruction,
                     self.output_chosen_key: chosen,
                     self.output_rejected_key: rejected
                 }

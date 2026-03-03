@@ -8,7 +8,6 @@ from lazyllm.tools.data.pipelines.codegen_pipelines import build_codegen_pipelin
 
 
 class MockModelCallable:
-    """A pickle-able callable class for mock model responses."""
     def __init__(self, responses):
         self.responses = responses
         self.call_count = 0
@@ -17,6 +16,7 @@ class MockModelCallable:
         idx = self.call_count % len(self.responses)
         self.call_count += 1
         return self.responses[idx]
+
 
 class TestCodegenPipeline:
 
@@ -37,7 +37,6 @@ class TestCodegenPipeline:
                 result = self.return_val(x)
             else:
                 result = self.return_val
-            # Apply formatter if set (e.g., JsonFormatter)
             if hasattr(self, '_formatter') and self._formatter is not None:
                 try:
                     import json
@@ -58,31 +57,12 @@ class TestCodegenPipeline:
         if os.path.exists(self.root_dir):
             shutil.rmtree(self.root_dir)
 
-    def test_codegen_pipeline(self):
-        responses = [
-            'Write a function to add two numbers.\n```python\ndef add(a, b):\n    return a + b\n```',  # CodeInstructionGenerator  # noqa
-            '```python\ndef add(a, b):\n    return a + b\n```',  # ScriptSynthesizer
-            json.dumps({'score': 8, 'feedback': 'Good code.'}),  # ThresholdSieve (LogicIntegrityAuditor)
-        ]
-
-        mock_model = self.MockModel(return_val=MockModelCallable(responses))
-
-        ppl = build_codegen_pipeline(model=mock_model, input_key='messages', min_score=7, max_score=10)
-        data = [{'messages': [{'role': 'user', 'content': 'Write a function to add two numbers.'}]}]
-        res = ppl(data)
-
-        assert len(res) == 1
-        assert 'instruction' in res[0]
-        assert 'new_code' in res[0]
-        assert 'quality_score' in res[0]
-        assert 'feedback' in res[0]
-        assert res[0]['quality_score_filter_label'] == 1
-
     def test_codegen_pipeline_filter(self):
         responses = [
-            'Write a function to add two numbers.\n```python\ndef add(a, b):\n    return a + b\n```',  # CodeInstructionGenerator  # noqa
-            '```python\ndef add(a, b):\n    return a + b\n```',  # ScriptSynthesizer
-            json.dumps({'score': 5, 'feedback': 'Incomplete code.'}),  # ThresholdSieve (LogicIntegrityAuditor)
+            'Write a function to add two numbers.\n```python\ndef add(a, b):\n    return a + b\n```',
+            '```python\ndef add(a, b):\n    return a + b\n```',
+            json.dumps({'score': 5, 'feedback': 'Incomplete code.'}),
+            json.dumps({'score': 5, 'feedback': 'Incomplete code.'}),
         ]
 
         mock_model = self.MockModel(return_val=MockModelCallable(responses))
@@ -91,5 +71,28 @@ class TestCodegenPipeline:
         data = [{'messages': [{'role': 'user', 'content': 'Write a function to add two numbers.'}]}]
         res = ppl(data)
 
-        # Should be filtered out due to low score
         assert len(res) == 0
+
+    def test_codegen_pipeline_success(self):
+        responses = [
+            'Write a function to add two numbers.\n```python\ndef add(a, b):\n    return a + b\n```',
+            '```python\ndef add(a, b):\n    return a + b\n```',
+            json.dumps({'score': 8, 'feedback': 'Good code.'}),
+            json.dumps({'score': 8, 'feedback': 'Good code.'}),
+        ]
+
+        mock_model = self.MockModel(return_val=MockModelCallable(responses))
+
+        ppl = build_codegen_pipeline(model=mock_model, input_key='messages', min_score=7, max_score=10)
+        data = [{'messages': [{'role': 'user', 'content': 'Write a function to add two numbers.'}]}]
+        res = ppl(data)
+
+        # CodeFeedbackFormatter now returns only {'instruction', 'input', 'output'}
+        assert len(res) == 1
+        assert 'instruction' in res[0]
+        assert 'input' in res[0]
+        assert 'output' in res[0]
+        assert res[0]['instruction'] == 'Write a function to add two numbers.'
+        assert res[0]['input'] == ''
+        assert 'def add(a, b):' in res[0]['output']
+        assert '专家反馈' in res[0]['output']

@@ -9,7 +9,7 @@ def build_text2sql_full_pipeline(model, database_manager, embedding_model=None,
             model=model,
             database_manager=database_manager,
             output_num=output_num
-        ).aslist(flat=True)
+        )
         ppl.sql_runtime_sieve = text2sql_ops.SQLRuntimeSieve(
             database_manager=database_manager
         )

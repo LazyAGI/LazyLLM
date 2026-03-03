@@ -77,32 +77,42 @@ class TestCodeGenOps:
         assert result['feedback'] == 'Good code.'
 
     def test_code_quality_score_filter(self):
-        mock_data_high = {
-            'score': 8,
-            'feedback': 'Good code.'
-        }
-        mock_response_high = json.dumps(mock_data_high)
-        model = MockModel(mock_response_high)
-        op = codegen_ops.ThresholdSieve(model=model, min_score=7)
+        op = codegen_ops.ThresholdSieve(min_score=7)
         data = {
             'instruction': 'print hello',
-            'new_code': "print('hello')"
+            'new_code': "print('hello')",
+            'quality_score': 8
         }
         result = op.forward(data)
 
         res_obj = result[0] if isinstance(result, list) else result
         assert res_obj['quality_score_filter_label'] == 1
 
-        mock_data_low = {
-            'score': 5,
-            'feedback': 'Bad code.'
-        }
-        mock_response_low = json.dumps(mock_data_low)
-        model_low = MockModel(mock_response_low)
-        op_low = codegen_ops.ThresholdSieve(model=model_low, min_score=7)
+        op_low = codegen_ops.ThresholdSieve(min_score=7)
         data_low = {
             'instruction': 'print hello',
-            'new_code': "print('hello')"
+            'new_code': "print('hello')",
+            'quality_score': 5
         }
         result_low = op_low.forward(data_low)
         assert result_low == []
+
+    def test_code_feedback_formatter(self):
+        op = codegen_ops.CodeFeedbackFormatter(
+            instruction_key='instruction',
+            input_code_key='input_code',
+            feedback_key='feedback',
+            output_key='formatted_data'
+        )
+        data = {
+            'instruction': 'Write a function to add two numbers.',
+            'input_code': 'def add(a, b):\n    return a + b',
+            'feedback': 'Good code, but add type hints.'
+        }
+        result = op.forward(data)
+        # Returns only {'instruction', 'input', 'output'}
+        assert isinstance(result, dict)
+        assert result['instruction'] == 'Write a function to add two numbers.'
+        assert result['input'] == ''
+        assert 'def add(a, b):' in result['output']
+        assert '专家反馈' in result['output']

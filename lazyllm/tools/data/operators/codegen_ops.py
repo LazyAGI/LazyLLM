@@ -181,44 +181,24 @@ class LogicIntegrityAuditor(CodeGenOps):
 class ThresholdSieve(CodeGenOps):
     def __init__(
         self,
-        model=None,
         min_score: int = 7,
         max_score: int = 10,
-        input_instruction_key: str = 'instruction',
-        input_code_key: str = 'new_code',
-        output_score_key: str = 'quality_score',
-        output_feedback_key: str = 'feedback',
+        input_score_key: str = 'quality_score',
         output_key: str = 'quality_score_filter_label',
         **kwargs,
     ):
-        super().__init__(**kwargs)
-        self.model = model
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.min_score = min_score
         self.max_score = max_score
-        self.input_instruction_key = input_instruction_key
-        self.input_code_key = input_code_key
-        self.output_score_key = output_score_key
-        self.output_feedback_key = output_feedback_key
+        self.input_score_key = input_score_key
         self.output_key = output_key
-        self.scorer = LogicIntegrityAuditor(
-            model=model,
-            input_instruction_key=input_instruction_key,
-            input_code_key=input_code_key,
-            output_score_key=output_score_key,
-            output_feedback_key=output_feedback_key,
-        )
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
-        if self.model is None:
-            raise ValueError('model is required')
         if self.output_key in data:
             raise ValueError(f'The following key already exists and would be overwritten: {self.output_key}')
 
-        if self.output_score_key not in data:
-            data = self.scorer.forward(data)
-
-        score = data.get(self.output_score_key, 0)
+        score = data.get(self.input_score_key, 0)
         try:
             score_int = int(score)
         except (ValueError, TypeError):
@@ -228,3 +208,45 @@ class ThresholdSieve(CodeGenOps):
         if pass_filter:
             return data
         return []
+
+
+class CodeFeedbackFormatter(CodeGenOps):
+    def __init__(
+        self,
+        instruction_key='instruction',
+        input_code_key='input_code',
+        feedback_key='feedback',
+        output_key='formatted_data',
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.instruction_key = instruction_key
+        self.input_code_key = input_code_key
+        self.feedback_key = feedback_key
+        self.output_key = output_key
+
+    def forward(self, data, **kwargs):
+        assert isinstance(data, dict), f"Input must be a dict, got {type(data)}"
+
+        if self.instruction_key not in data:
+            raise ValueError(f"Missing required key: {self.instruction_key}")
+        if self.input_code_key not in data:
+            raise ValueError(f"Missing required key: {self.input_code_key}")
+        if self.feedback_key not in data:
+            raise ValueError(f"Missing required key: {self.feedback_key}")
+
+        if self.output_key in data:
+            raise ValueError(f"The following key already exists and would be overwritten: {self.output_key}")
+
+        raw_instruction = data.get(self.instruction_key, '')
+        instruction = _extract_human_instruction(raw_instruction)
+        code = data.get(self.input_code_key, '')
+        feedback = data.get(self.feedback_key, '')
+
+        formatted_data = {
+            'instruction': instruction,
+            'input': '',
+            'output': f"{code}\n\n专家反馈: {feedback}"
+        }
+
+        return formatted_data

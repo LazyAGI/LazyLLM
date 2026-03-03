@@ -6,6 +6,7 @@ from collections import defaultdict
 from lazyllm.thirdparty import pandas as pd
 from tqdm import tqdm
 from lazyllm import LOG
+from lazyllm.components.formatter import JsonFormatter
 from .sql_evalhardness import EvalHardness, EvalHardnessLite, Schema
 
 
@@ -337,12 +338,24 @@ class SQLIntentSynthesizer(Text2SQLOps):
             f'You are a Text2SQL intent synthesizer.\n'
             f'Database engine: {db_engine}\n'
             f'db_id: {db_id}\n\n'
-            f'Given a SQL query, generate a natural language intent that matches it.\n'
+            f'Given a SQL query, generate a natural language question that matches it.\n'
             f'If helpful, you may use the following column descriptions:\n{column_info_text}\n\n'
-            f'Output format:\n'
-            f'[INTENT-START] ... [INTENT-END]\n'
-            f'[EXTERNAL-KNOWLEDGE-START] ... [EXTERNAL-KNOWLEDGE-END]\n\n'
-            f'SQL:\n{sql}\n'
+            f'You MUST strictly follow this output format with the exact tags:\n'
+            f'[QUESTION-START]your generated natural language question here[QUESTION-END]\n'
+            f'[EXTERNAL-KNOWLEDGE-START]any external knowledge or context here[EXTERNAL-KNOWLEDGE-END]\n\n'
+            f'IMPORTANT: Do NOT add markdown formatting, code blocks, or any other text. '
+            f'Only use the exact tags shown above.\n\n'
+            f'Example 1:\n'
+            f'SQL: SELECT name FROM employees WHERE salary > 50000\n'
+            f'Output:\n'
+            f'[QUESTION-START]What are the names of employees who earn more than 50000?[QUESTION-END]\n'
+            f'[EXTERNAL-KNOWLEDGE-START]salary refers to annual income[EXTERNAL-KNOWLEDGE-END]\n\n'
+            f'Example 2:\n'
+            f'SQL: SELECT COUNT(*) FROM orders WHERE order_date > "2023-01-01"\n'
+            f'Output:\n'
+            f'[QUESTION-START]How many orders were placed after January 1, 2023?[QUESTION-END]\n'
+            f'[EXTERNAL-KNOWLEDGE-START][EXTERNAL-KNOWLEDGE-END]\n\n'
+            f'Now generate for this SQL:\n{sql}\n'
         )
         return prompt, 'default'
 
@@ -420,7 +433,7 @@ class SQLIntentSynthesizer(Text2SQLOps):
         best = self._select_best_question(candidates, 0, embeddings)
 
         if best is not None:
-            data[output_intent_key] = best.get('question', '')
+            data['question'] = best.get('question', '')
             data[output_evidence_key] = best.get('external_knowledge', '')
 
         return data
@@ -811,11 +824,17 @@ class SQLEffortRanker(Text2SQLOps):
             data[output_difficulty_key] = 'unknown'
             return data
 
-        prompts = [prompt] * self.num_generations
         try:
-            responses = self.model(prompts)
-            if isinstance(responses, str):
-                responses = [responses]
+            # 使用循环调用模型，避免传入列表导致类型错误
+            responses = []
+            for _ in range(self.num_generations):
+                response = self.model(prompt)
+                if isinstance(response, str):
+                    responses.append(response)
+                elif isinstance(response, list):
+                    responses.extend(response)
+                else:
+                    responses.append(str(response))
         except Exception as e:
             LOG.error(f'Generation failed: {e}')
             responses = [''] * self.num_generations
