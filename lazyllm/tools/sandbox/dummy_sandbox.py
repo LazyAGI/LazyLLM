@@ -96,10 +96,7 @@ class DummySandbox(LazyLLMSandboxBase):
             script_path = os.path.join(temp_dir, '_script.py')
             with open(script_path, 'w', encoding='utf-8') as f:
                 f.write(code)
-            env = os.environ.copy()
-            env['HOME'] = temp_dir
-            env['PYTHONPATH'] = temp_dir
-            proc_result = self._run_in_subprocess(script_path, cwd=temp_dir, env=env)
+            proc_result = self._run_in_subprocess(script_path, cwd=temp_dir)
             return _SandboxResult(
                 success=(proc_result['returncode'] == 0),
                 stdout=proc_result['stdout'],
