@@ -79,3 +79,7 @@ __all__ = [
     'JSONLSplitter',
     'SchemaExtractor'
 ]
+
+from lazyllm.cpp import override_with_cpp_exports  # noqa E402
+override_with_cpp_exports(globals(), ['DocNode', 'NodeTransform', 'SentenceSplitter'])
+del override_with_cpp_exports

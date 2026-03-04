@@ -452,3 +452,7 @@ class _TokenTextSplitter(_TextSplitterBase):
 
     def _merge(self, splits: List[_Split], chunk_size: int) -> List[str]:
         return [split.text for split in splits]
+
+from lazyllm.cpp import override_with_cpp_exports  # noqa E402
+override_with_cpp_exports(globals(), ['_TextSplitterBase'])
+del override_with_cpp_exports
