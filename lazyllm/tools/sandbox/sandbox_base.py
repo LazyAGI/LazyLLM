@@ -39,7 +39,7 @@ class _SandboxResult:
 class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     SUPPORTED_LANGUAGES: List[str] = []
 
-    def __init__(self, output_dir_path: Optional[str] = None, return_trace: bool = True,
+    def __init__(self, output_dir_path: Optional[str] = None, return_trace: bool = False,
                  project_dir: Optional[str] = None, return_sandbox_result: bool = False):
         super().__init__(return_trace=return_trace)
         self._output_dir_path = output_dir_path or os.getcwd()

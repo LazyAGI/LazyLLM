@@ -52,7 +52,7 @@ def _check_return_type_is_the_same(doc_type_hints, func_type_hints) -> None:
 # ---------------------------------------------------------------------------- #
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, verbose: bool = False, return_trace: bool = True, execute_in_sandbox: bool = True):
+    def __init__(self, verbose: bool = False, return_trace: bool = False, execute_in_sandbox: bool = True):
         super().__init__(return_trace=return_trace)
         self._verbose = verbose
         func = getattr(self.apply, '__func__', self.apply)
