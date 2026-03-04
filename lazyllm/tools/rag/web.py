@@ -101,8 +101,11 @@ class WebUi:
                 with gr.TabItem('上传文件'):
 
                     def _upload_files(group_name, files):
+                        if not group_name:
+                            gr.Info('请先选择分组')
+                            return
                         if not files:
-                            gr.Info("请先选择要上传的文件")
+                            gr.Info('请先选择要上传的文件')
                             return
                         files_to_upload = [
                             ('files', (os.path.basename(file), open(file, 'rb')))
@@ -163,8 +166,11 @@ class WebUi:
                     delete_btn = gr.Button('删除')
 
                     def _delete_file(group_name, select_file):
+                        if not group_name:
+                            gr.Info('请先选择分组')
+                            return gr.update()
                         if not select_file:
-                            gr.Info("请先选择要删除的文件")
+                            gr.Info('请先选择要删除的文件')
                             return gr.update()
                         file_ids = [select_file.split(',')[0]]
                         gr.Info(self.delete_file(group_name, file_ids))
