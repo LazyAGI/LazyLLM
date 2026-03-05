@@ -29,7 +29,9 @@ def override_with_cpp_exports(module_globals: Dict[str, object], names: Iterable
     if cpp_module is None:
         return
 
+    missing = object()
     for name in names:
-        if not hasattr(cpp_module, name):
-            LOG.error(f'C++ module: {name} does not exist.')
-        module_globals[name] = getattr(cpp_module, name)
+        cpp_export = getattr(cpp_module, name, missing)
+        if cpp_export is missing:
+            raise AttributeError(f"module 'lazyllm.lazyllm_cpp' has no attribute '{name}'")
+        module_globals[name] = cpp_export

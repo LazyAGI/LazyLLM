@@ -34,6 +34,16 @@ pybind11_add_module(${INTERFACE_TARGET_NAME} ${LAZYLLM_BINDING_SOURCES})
 target_link_libraries(${INTERFACE_TARGET_NAME} PRIVATE lazyllm_core lazyllm_adaptor)
 target_compile_options(${INTERFACE_TARGET_NAME} PRIVATE -Werror -Wshadow)
 
+# Ensure lazyllm_cpp can find third-party shared libraries under lazyllm/cpp_lib.
+set(_lazyllm_cpp_rpath "$ORIGIN/cpp_lib")
+if (APPLE)
+    set(_lazyllm_cpp_rpath "@loader_path/cpp_lib")
+endif()
+set_target_properties(${INTERFACE_TARGET_NAME} PROPERTIES
+    BUILD_RPATH "${_lazyllm_cpp_rpath}"
+    INSTALL_RPATH "${_lazyllm_cpp_rpath}"
+)
+
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     # SHOW_SYMBOL
     set_target_properties(${INTERFACE_TARGET_NAME} PROPERTIES CXX_VISIBILITY_PRESET default)
@@ -41,7 +51,14 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 # Install
-install(TARGETS ${INTERFACE_TARGET_NAME} LIBRARY DESTINATION lazyllm)
+install(TARGETS ${INTERFACE_TARGET_NAME}
+    LIBRARY DESTINATION lazyllm COMPONENT lazyllm_cpp
+    RUNTIME DESTINATION lazyllm COMPONENT lazyllm_cpp
+)
+install(TARGETS tiktoken utf8proc
+    LIBRARY DESTINATION lazyllm/cpp_lib COMPONENT lazyllm_cpp
+    RUNTIME DESTINATION lazyllm/cpp_lib COMPONENT lazyllm_cpp
+)
 
 
 # TESTS
