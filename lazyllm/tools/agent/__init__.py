@@ -5,6 +5,7 @@ from .reactAgent import ReactAgent
 from .planAndSolveAgent import PlanAndSolveAgent
 from .rewooAgent import ReWOOAgent
 from .toolsManager import ModuleTool
+from .code_interpreter import code_interpreter
 from .skill_manager import SkillManager
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     'PlanAndSolveAgent',
     'ReWOOAgent',
     'ModuleTool',
+    'code_interpreter',
     'SkillManager',
 ]

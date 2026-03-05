@@ -119,10 +119,8 @@ def _file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Opt
         LOG.error(f'Error encoding file {file_path} to base64: {e}')
         return None
 
-
 def _image_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
     return _file_to_base64(file_path, IMAGE_MIME_TYPE)
-
 
 def _audio_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
     return _file_to_base64(file_path, AUDIO_MIME_TYPE)
@@ -130,6 +128,8 @@ def _audio_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
 def ocr_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
     return _file_to_base64(file_path, OCR_MIME_TYPE)
 
+def file_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
+    return _file_to_base64(file_path, {})
 
 def _base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str] = None) -> Union[str, list[str]]:
     '''

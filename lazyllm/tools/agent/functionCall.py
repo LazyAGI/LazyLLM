@@ -7,6 +7,7 @@ from typing import List, Any, Dict, Union, Callable, Optional
 from .base import LazyLLMAgentBase
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 import re
 import json
 
@@ -42,13 +43,15 @@ class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None, _tool_manager: Optional[ToolManager] = None,
-                 skill_manager=None, workspace: Optional[str] = None):
+                 skill_manager=None, workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
-            self._tools_manager = ToolManager(tools, return_trace=return_trace)
+            self._sandbox = sandbox or create_sandbox()
+            self._tools_manager = ToolManager(tools, return_trace=return_trace, sandbox=self._sandbox)
         else:
             self._tools_manager = _tool_manager
+            self._sandbox = _tool_manager.sandbox
         self._skill_manager = skill_manager
         self._workspace = workspace
         prompt = _prompt or FC_PROMPT
@@ -77,6 +80,16 @@ class FunctionCall(ModuleBase):
             self._impl.dis = StreamResponse('Decision-making or result in this round:',
                                             prefix_color=Color.yellow, color=Color.green, stream=stream)
             self._impl.post_action = self._post_action
+
+    @property
+    def sandbox(self) -> LazyLLMSandboxBase:
+        return self._sandbox
+
+    @sandbox.setter
+    def sandbox(self, sandbox: Optional[LazyLLMSandboxBase]):
+        self._sandbox = sandbox
+        if hasattr(self, '_tools_manager') and self._tools_manager is not None:
+            self._tools_manager.sandbox = sandbox
 
     def _build_history(self, input: Union[str, dict, list]):
         workspace = locals['_lazyllm_agent']['workspace']
