@@ -111,8 +111,8 @@ class TestCodeGenOps:
         }
         result = op.forward(data)
         # Returns only {'instruction', 'input', 'output'}
+        # input is empty, output contains only code
         assert isinstance(result, dict)
         assert result['instruction'] == 'Write a function to add two numbers.'
         assert result['input'] == ''
-        assert 'def add(a, b):' in result['output']
-        assert '专家反馈' in result['output']
+        assert result['output'] == 'def add(a, b):\n    return a + b'

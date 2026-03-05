@@ -2225,7 +2225,7 @@ print(res)
 # {
 #   'instruction': 'Write a function to add two numbers.',
 #   'input': '',
-#   'output': "def add(a, b):\\n    return a + b\\n\\n专家反馈: Good code, but add type hints."
+#   'output': "def add(a, b):\\n    return a + b"
 # }
 ```
 """)
@@ -4502,7 +4502,7 @@ from lazyllm.tools.data.pipelines.codegen_pipelines import build_codegen_pipelin
 ppl = build_codegen_pipeline(model=your_model, input_key='messages', min_score=7)
 data = [{'messages': [{'role': 'user', 'content': 'Write a function to add two numbers.'}]}]
 res = ppl(data)
-print(res[0])  # {'instruction': '...', 'input': '', 'output': 'code\\n\\n专家反馈: ...'}
+print(res[0])  # {'instruction': '...', 'input': '', 'output': 'code'}
 ```
 """)
 

@@ -9,7 +9,8 @@ def build_preference_pipeline(model, input_key='content', n=3, temperature=1.0,
         ppl.preference_response_generator = preference_ops.PreferenceResponseGenerator(
             model=model,
             n=n,
-            temperature=temperature
+            temperature=temperature,
+            system_prompt='你是一个 helpful 的 AI 助手。请直接回答问题，不要输出<think>标签或思维链内容。'
         )
         ppl.response_evaluator = preference_ops.ResponseEvaluator(model=model)
         ppl.preference_pair_constructor = preference_ops.PreferencePairConstructor(

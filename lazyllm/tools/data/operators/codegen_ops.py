@@ -60,7 +60,7 @@ def _parse_score_and_feedback(response) -> Tuple[int, str]:
 class CodeInstructionGenerator(CodeGenOps):
     def __init__(self, model=None, prompt_template=None, input_key='messages', output_key='instruction',
                  **kwargs):
-        super().__init__(_concurrency_mode='thread', **kwargs)
+        super().__init__(_concurrency_mode='thread', _save_data=False, **kwargs)
         self.input_key = input_key
         self.output_key = output_key
         sys_prompt = prompt_template or (
@@ -96,7 +96,7 @@ class CodeInstructionGenerator(CodeGenOps):
 
 class ScriptSynthesizer(CodeGenOps):
     def __init__(self, model=None, prompt_template=None, input_key='instruction', output_key='new_code', **kwargs):
-        super().__init__(_concurrency_mode='thread', **kwargs)
+        super().__init__(_concurrency_mode='thread', _save_data=False, **kwargs)
         self.input_key = input_key
         self.output_key = output_key
         sys_prompt = prompt_template or (
@@ -131,7 +131,7 @@ class LogicIntegrityAuditor(CodeGenOps):
         output_feedback_key='feedback',
         **kwargs,
     ):
-        super().__init__(_concurrency_mode='thread', **kwargs)
+        super().__init__(_concurrency_mode='thread', _save_data=False, **kwargs)
         self.input_instruction_key = input_instruction_key
         self.input_code_key = input_code_key
         self.output_score_key = output_score_key
@@ -187,7 +187,7 @@ class ThresholdSieve(CodeGenOps):
         output_key: str = 'quality_score_filter_label',
         **kwargs,
     ):
-        super().__init__(_concurrency_mode='thread', **kwargs)
+        super().__init__(_concurrency_mode='thread', _save_data=False, **kwargs)
         self.min_score = min_score
         self.max_score = max_score
         self.input_score_key = input_score_key
@@ -219,7 +219,8 @@ class CodeFeedbackFormatter(CodeGenOps):
         output_key='formatted_data',
         **kwargs
     ):
-        super().__init__(**kwargs)
+        # Disable data saving for formatter to avoid loading previous state
+        super().__init__(_save_data=False, **kwargs)
         self.instruction_key = instruction_key
         self.input_code_key = input_code_key
         self.feedback_key = feedback_key
@@ -241,12 +242,11 @@ class CodeFeedbackFormatter(CodeGenOps):
         raw_instruction = data.get(self.instruction_key, '')
         instruction = _extract_human_instruction(raw_instruction)
         code = data.get(self.input_code_key, '')
-        feedback = data.get(self.feedback_key, '')
 
         formatted_data = {
             'instruction': instruction,
-            'input': '',
-            'output': f"{code}\n\n专家反馈: {feedback}"
+            'input': "",
+            'output': code
         }
 
         return formatted_data

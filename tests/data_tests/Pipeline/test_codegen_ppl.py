@@ -88,11 +88,11 @@ class TestCodegenPipeline:
         res = ppl(data)
 
         # CodeFeedbackFormatter now returns only {'instruction', 'input', 'output'}
+        # input is empty, output contains only code
         assert len(res) == 1
         assert 'instruction' in res[0]
         assert 'input' in res[0]
         assert 'output' in res[0]
         assert res[0]['instruction'] == 'Write a function to add two numbers.'
         assert res[0]['input'] == ''
-        assert 'def add(a, b):' in res[0]['output']
-        assert '专家反馈' in res[0]['output']
+        assert res[0]['output'] == 'def add(a, b):\n    return a + b'
