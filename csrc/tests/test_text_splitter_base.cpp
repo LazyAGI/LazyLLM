@@ -79,9 +79,9 @@ TEST(text_splitter_base, split_recursive_falls_back_to_char_level) {
 
     const auto chunks = splitter.split_recursive("abc", 2);
     ASSERT_EQ(chunks.size(), 3u);
-    EXPECT_EQ(chunks[0], "a");
-    EXPECT_EQ(chunks[1], "b");
-    EXPECT_EQ(chunks[2], "c");
+    EXPECT_EQ(chunks[0].view, "a");
+    EXPECT_EQ(chunks[1].view, "b");
+    EXPECT_EQ(chunks[2].view, "c");
     EXPECT_FALSE(chunks[0].is_sentence);
 }
 

@@ -58,14 +58,14 @@ TEST(node_transform, batch_forward) {
     const auto children = transform.batch_forward(roots, "split");
 
     EXPECT_EQ(children.size(), 4u);
-    for (const auto* child : children) {
+    for (auto child : children) {
         EXPECT_NE(child->get_parent_node(), nullptr);
         EXPECT_EQ(child->_group_name, "split");
     }
 
-    for (const auto& root : roots) {
-        EXPECT_TRUE(root.is_children_group_exists("split"));
-        EXPECT_EQ(root.get_children().at("split").size(), 2u);
+    for (auto root : roots) {
+        EXPECT_TRUE(root->is_children_group_exists("split"));
+        EXPECT_EQ(root->get_children().at("split").size(), 2u);
     }
 }
 
@@ -76,8 +76,8 @@ TEST(node_transform, batch_forward_parallel_mode_respects_worker_num) {
 
     const auto children = transform.batch_forward(roots, "parallel");
     EXPECT_EQ(children.size(), roots.size());
-    for (const auto& root : roots) {
-        EXPECT_TRUE(root.is_children_group_exists("parallel"));
-        EXPECT_EQ(root.get_children().at("parallel").size(), 1u);
+    for (auto root : roots) {
+        EXPECT_TRUE(root->is_children_group_exists("parallel"));
+        EXPECT_EQ(root->get_children().at("parallel").size(), 1u);
     }
 }

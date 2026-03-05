@@ -81,9 +81,9 @@ class PyTextSplitterBase final : public lazyllm::TextSplitterBase {
 public:
     using lazyllm::TextSplitterBase::TextSplitterBase;
 
-    std::vector<lazyllm::DocNode> transform(const lazyllm::DocNode* node) const override {
+    std::vector<lazyllm::PDocNode> transform(const lazyllm::PDocNode node) const override {
         PYBIND11_OVERRIDE(
-            std::vector<lazyllm::DocNode>,
+            std::vector<lazyllm::PDocNode>,
             lazyllm::TextSplitterBase,
             transform,
             node

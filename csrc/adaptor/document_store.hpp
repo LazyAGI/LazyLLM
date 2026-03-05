@@ -61,15 +61,15 @@ public:
         for(auto& [current_group_name, group] : _node_groups_map) {
             if (group._parent != group_name) continue;
             if (!std::any_cast<bool>(call("is_group_active", {{"group", current_group_name}}))) continue;
-            auto nodes_in_group = std::any_cast<std::vector<DocNode*>>(call("get_nodes", {
+            auto nodes_in_group = std::any_cast<std::vector<PDocNode>>(call("get_nodes", {
                 {"group_name", current_group_name},
                 {"kb_id", kb_id},
                 {"doc_ids", std::vector<std::string>({doc_id})}
             }));
 
-            std::vector<DocNode*> children;
+            std::vector<PDocNode> children;
             children.reserve(nodes_in_group.size());
-            for (auto* n : nodes_in_group)
+            for (auto n : nodes_in_group)
                 if (n->get_parent_node() == node) children.push_back(n);
             out[current_group_name] = children;
         }

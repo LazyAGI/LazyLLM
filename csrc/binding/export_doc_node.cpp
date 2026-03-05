@@ -73,7 +73,7 @@ lazyllm::DocNode init(
             node.set_embedding_vec(key, vec);
     }
     if (content) {
-        if (const auto* s = std::get_if<std::string>(&*content))
+        if (const std::string* s = std::get_if<std::string>(&*content))
             node.set_root_text(std::move(*s));
         else
             node.set_root_texts(std::get<std::vector<std::string>>(*content));

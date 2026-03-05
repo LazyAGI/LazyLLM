@@ -112,8 +112,7 @@ TEST(doc_node, children_caching) {
     EXPECT_EQ(adaptor->call_count, 1);
     ASSERT_TRUE(first.find("cached") != first.end());
     ASSERT_EQ(first.at("cached").size(), 1u);
-    EXPECT_EQ(first.at("cached")[0], &child);
-    EXPECT_EQ(second.at("cached")[0], &child);
+    EXPECT_EQ(first.at("cached")[0], second.at("cached")[0]);
 }
 
 TEST(doc_node, doc_path_reads_from_root_global_metadata) {
