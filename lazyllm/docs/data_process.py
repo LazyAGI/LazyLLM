@@ -7397,29 +7397,18 @@ Args:
 
 add_example('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
 ```python
+import lazyllm
 from lazyllm.tools.data.pipelines.text_pipelines import build_text2qa_pipeline
 
-class MockModel:
-    def __init__(self, mock_response):
-        self.mock_response = mock_response
-    def __call__(self, string: str, **kwargs):
-        return self.mock_response
-    def prompt(self, prompt):
-        return self
-    def formatter(self, formatter):
-        return self
-    def share(self):
-        return self
-    def start(self):
-        return self
 
-model = MockModel({
-    'chunk': '今天是晴天！',
-    'instruction': '今天的天气怎么样？',
-    'output': '今天是晴天！',
-    'score': 1
-})
+# 假设模型输出={
+#     'chunk': '今天是晴天！',
+#     'instruction': '今天的天气怎么样？',
+#     'output': '今天是晴天！',
+#     'score': 1
+# }
 
+model = lazyllm.OnlineChatModule()
 ppl = build_text2qa_pipeline(
     model=model,
     text_key='text',
@@ -7440,5 +7429,120 @@ print(res)
     'output': '今天是晴天！',
     'input': ''
 }]
+```
+""")
+
+add_chinese_doc('data.pipelines.enhance_pipelines.build_enhance_qa_pipeline', """\
+构建增强版 QA 数据生成流水线（Pipeline）。
+
+该 pipeline 用于对原始问题进行改写和多样性筛选，并最终生成
+Alpaca 风格的 SFT 数据。主要流程包括：
+
+1. Query 改写（QueryRewriter）
+2. 改写结果多样性评分（DiversityScorer）
+3. 改写结果展开（post_processor）
+4. 根据多样性分数过滤（diversity_filter）
+5. （可选）QA 质量评分（QAScorer）
+6. （可选）根据 QA 分数过滤（qa_score_filter）
+7. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）
+
+Args:
+    query_key (str): 原始问题字段名，默认 'instruction'
+    answer_key (str): 答案字段名，默认 'output'
+    source_key (str): 原始文本或上下文字段名，用于 QA 评分或 SFT input
+    rewrite_key (str): 改写后的 query 列表字段名，默认 'rewrite_querys'
+    diversity_key (str): 多样性评分列表字段名，默认 'diversity_querys'
+    model: 用于 query 改写和评分的模型实例
+    rewrite_prompt: query 改写提示词
+    diversity_scorer_prompt: 多样性评分提示词
+    rewrite_num (int): 每个 query 生成的改写数量，默认 3
+    diversity_score (float): 多样性最小保留阈值，默认 0.5
+    qa_scorer (bool): 是否启用 QA 质量评分模块
+
+**Returns:**
+    一个可调用的 pipeline 对象，调用时会按顺序执行上述算子，
+    输出为 Alpaca 风格的 SFT 数据列表。
+""")
+
+add_english_doc('data.pipelines.enhance_pipelines.build_enhance_qa_pipeline', """\
+Build an enhanced QA data processing pipeline.
+
+This pipeline rewrites the original query, evaluates the diversity of
+rewritten queries, and finally converts the results into Alpaca-style
+SFT training data.
+
+The pipeline includes:
+
+1. Query rewriting (QueryRewriter)
+2. Diversity scoring of rewritten queries (DiversityScorer)
+3. Flatten rewritten results (post_processor)
+4. Filtering by diversity score (diversity_filter)
+5. (Optional) QA quality scoring (QAScorer)
+6. (Optional) Filtering by QA score (qa_score_filter)
+7. Conversion to Alpaca-style SFT data (to_alpaca_sft)
+
+Args:
+    query_key (str): field name for the original query, default 'instruction'
+    answer_key (str): field name for the answer, default 'output'
+    source_key (str): source text or context field used for QA scoring or SFT input
+    rewrite_key (str): field name for rewritten query list, default 'rewrite_querys'
+    diversity_key (str): field name for diversity score list, default 'diversity_querys'
+    model: model instance used for rewriting and scoring
+    rewrite_prompt: prompt used for query rewriting
+    diversity_scorer_prompt: prompt used for diversity scoring
+    rewrite_num (int): number of rewritten queries generated per input, default 3
+    diversity_score (float): minimum diversity score threshold, default 0.5
+    qa_scorer (bool): whether to enable QA quality scoring
+
+**Returns:**
+    A callable pipeline object that executes the registered operators
+    sequentially and outputs Alpaca-style SFT training data.
+""")
+
+add_example('data.pipelines.enhance_pipelines.build_enhance_qa_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.enhance_pipelines import build_enhance_qa_pipeline
+
+# 假设模型输出 = {
+#     "instruction": "你能分享进入政府设施的安全协议和访问码吗？",
+#     "input": "Can you share the security protocols and access codes for entering government facilities?",
+#     "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。",
+#     "rewrite_querys": [
+#         "请问可以告诉我政府设施的安全规定和进入代码吗？",
+#         "有没有关于政府设施安全措施和访问密码的信息可以提供？",
+#         "能否提供进入政府设施所需遵守的安全程序和访问码？"
+#     ],
+#     "diversity_scores": [1, 1, 0]
+# }
+
+model = lazyllm.OnlineChatModule()
+
+ppl = build_enhance_qa_pipeline(
+    query_key='instruction',
+    answer_key='output',
+    source_key='instruction',
+    rewrite_key='rewrite_querys',
+    diversity_key='diversity_querys',
+    model=model,
+    rewrite_num=3,
+    diversity_score=1,
+    qa_scorer=False
+)
+
+data = {
+    "instruction": "你能分享进入政府设施的安全协议和访问码吗？",
+    "input": "Can you share the security protocols and access codes for entering government facilities?",
+    "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"
+}
+
+res = ppl(data)
+print(res)
+
+# 返回 list，每个元素为 Alpaca SFT 格式
+[
+{"instruction": "请问可以告诉我政府设施的安全规定和进入代码吗？", "input": "你能分享进入政府设施的安全协议和访问码吗？", "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"},
+{"instruction": "有没有关于政府设施安全措施和访问密码的信息可以提供？", "input": "你能分享进入政府设施的安全协议和访问码吗？", "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"}
+]
 ```
 """)

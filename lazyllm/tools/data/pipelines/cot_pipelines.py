@@ -8,14 +8,11 @@ def build_cot_pipeline(
         cot_key='cot_answer',
         extracted_key='llm_extracted',
         verify_key='is_equal',
-
         model=None,
         use_self_consistency=False,
         num_samples=5,
         user_prompt=None,
-
         enable_verify=True,
-        enable_filter_correct=False,
 ):
     with pipeline() as ppl:
         if use_self_consistency:

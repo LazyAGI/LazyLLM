@@ -290,7 +290,6 @@ def to_alpaca_sft(
         context_key='context',
         answer_key='output'
 ):
-
     instruction = data.get(query_key)
     context = data.get(context_key, '')
     answer = data.get(answer_key)
