@@ -3609,6 +3609,8 @@ Tool-use data operator: multi-turn conversation generator (with tools).
 
 Given a composed task and a list of available functions, generates a multi-turn conversation JSON involving User, Assistant and Tool roles, suitable for tool-calling training data.
 
+If the input composed task is a list, the first element will be used automatically.
+
 Typical JSON structure:
 
 - messages: list of dicts:

@@ -247,7 +247,6 @@ class SQLRuntimeSieve(Text2SQLOps):
         sql = data.get(input_sql_key)
         db_id = data.get(input_db_id_key)
 
-        # Validate SQL is read-only before execution
         validated_sql = _validate_readonly_sql(sql)
         if not validated_sql:
             return []
@@ -707,7 +706,6 @@ class SQLConsensusUnifier(Text2SQLOps):
         queries = []
         for resp in cot_responses:
             sql = _parse_sql_response(resp)
-            # Validate SQL is read-only before adding to execution list
             validated_sql = _validate_readonly_sql(sql)
             if validated_sql:
                 queries.append((str(db_id).strip(), validated_sql))
@@ -793,12 +791,17 @@ class SQLEffortRanker(Text2SQLOps):
         }
         self.timeout = 5.0
 
-        if self.num_generations <= self.difficulty_config['thresholds'][-1]:
-            nearest_multiple = ((self.difficulty_config['thresholds'][-1] // 5) + 1) * 5
-            LOG.warning(f'num_generations is less than the last threshold, will be set to {nearest_multiple}')
-            self.num_generations = nearest_multiple
         if len(self.difficulty_config['thresholds']) != len(self.difficulty_config['labels']) - 1:
             raise ValueError('Thresholds and labels configuration mismatch')
+
+        largest_threshold = self.difficulty_config['thresholds'][-1]
+        if self.num_generations <= largest_threshold:
+            nearest_multiple = ((largest_threshold // 5) + 1) * 5
+            if nearest_multiple <= largest_threshold:
+                nearest_multiple += 5
+            LOG.warning(f'num_generations is less than the last threshold ({largest_threshold}), '
+                        f'will be set to {nearest_multiple}')
+            self.num_generations = nearest_multiple
 
     @staticmethod
     def parse_response(response):

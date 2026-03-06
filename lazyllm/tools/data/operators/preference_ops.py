@@ -133,7 +133,8 @@ class PreferencePairConstructor(PreferenceOps):
                     if instruction is None:
                         instruction = ''
                     else:
-                        LOG.warning(f'Expected instruction to be a string, got {type(instruction).__name__}: {instruction}')
+                        LOG.warning(f'Expected instruction to be a string, '
+                                    f'got {type(instruction).__name__}: {instruction}')
                         instruction = str(instruction)
 
                 return {
