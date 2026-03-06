@@ -426,7 +426,7 @@ class QuestionFusionGenerator(MathQA):
 
         return data
 
-@data_register('data.Text2qa', rewrite_func='forward')
+@data_register('data.MathQA', rewrite_func='forward')
 def wrong_answer_filter(data, input_key, min_score):
     score = data.get(input_key, 0)
     if score >= min_score:

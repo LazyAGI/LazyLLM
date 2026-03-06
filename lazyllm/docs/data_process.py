@@ -6989,7 +6989,7 @@ res = op([{'context': 'Some context.', 'image_path': '/path/to/image.jpg'}])
 ```
 """)
 
-add_chinese_doc('data.operators.genCot.wrong_filter', """\
+add_chinese_doc('data.operators.cot_ops.wrong_filter', """\
 筛选样本的算子。
 
 - 如果输入字段为 True，则表示样本正确，保留原始数据用于后续处理。  
@@ -7000,7 +7000,7 @@ Args:
     input_key (str): 用于判断正确与否的字段名，默认 'is_equal'
 """)
 
-add_english_doc('data.operators.genCot.wrong_filter', """\
+add_english_doc('data.operators.cot_ops.wrong_filter', """\
 Sample filtering operator.
 
 - If the specified field is True, the sample is considered correct and the original data is retained for further processing.  
@@ -7011,7 +7011,7 @@ Args:
     input_key (str): field name used to determine correctness, default 'is_equal'
 """)
 
-add_example('data.operators.genCot.wrong_filter', """\
+add_example('data.operators.cot_ops.wrong_filter', """\
 ```python
 from lazyllm.tools.data import genCot
 
@@ -7024,7 +7024,7 @@ print(op(data1))  # {'is_equal': True}, kept for further processing
 print(op(data2))  # None, filtered out
 """)
 
-add_chinese_doc('data.operators.Text2qa.wrong_answer_filter', """\
+add_chinese_doc('data.operators.math_ops.wrong_answer_filter', """\
 根据分数筛选问答样本。
 
 - 如果样本分数 >= 指定阈值，则返回 None（保留数据用于后续处理）。  
@@ -7036,7 +7036,7 @@ Args:
     min_score (float): 保留样本的最低分数阈值
 """)
 
-add_english_doc('data.operators.Text2qa.wrong_answer_filter', """\
+add_english_doc('data.operators.math_ops.wrong_answer_filter', """\
 Filter QA samples based on score.
 
 - If the sample score >= min_score, returns None (retained for further processing).  
@@ -7048,11 +7048,11 @@ Args:
     min_score (float): minimum score to retain the sample
 """)
 
-add_example('data.operators.Text2qa.wrong_answer_filter', """\
+add_example('data.operators.math_ops.wrong_answer_filter', """\
 ```python
-from lazyllm.tools.data import Text2qa
+from lazyllm.tools.data import MathQA
 
-op = Text2qa.wrong_answer_filter(input_key='score', min_score=0.8)
+op = MathQA.wrong_answer_filter(input_key='score', min_score=0.8)
 
 data1 = {'score': 0.9}
 data2 = {'score': 0.5}
@@ -7061,7 +7061,7 @@ print(op(data1)  # None, kept
 print(op(data2)  # [], filtered out
 """)
 
-add_chinese_doc('data.operators.Pdf2QA.multi_features_filter', """\
+add_chinese_doc('data.operators.pdf_ops.multi_features_filter', """\
 多特征值平均分筛选算子。
 
 - 将 data[input_key] 中的所有值转换为浮点数后计算平均值。  
@@ -7074,7 +7074,7 @@ Args:
     threshold (float): 平均值阈值，用于决定是否保留
 """)
 
-add_english_doc('data.operators.Pdf2QA.multi_features_filter', """\
+add_english_doc('data.operators.pdf_.multi_features_filter', """\
 Filter operator based on the average of multiple feature values.
 
 - Convert all values in data[input_key] to floats and compute the average.  
@@ -7087,7 +7087,7 @@ Args:
     threshold (float): threshold to retain the sample
 """)
 
-add_example('data.operators.Pdf2QA.multi_features_filter', """\
+add_example('data.operators.pdf_ops.multi_features_filter', """\
 ```python
 from lazyllm.tools.data import Pdf2QA
 
@@ -7102,7 +7102,7 @@ print(Pdf2QA.multi_features_filter(data2, input_key='features', threshold=0.7))
 """)
 
 
-add_chinese_doc('data.operators.Pdf2QA.PdfChunkToQA', """\
+add_chinese_doc('data.operators.pdf_ops.PdfChunkToQA', """\
 PDF 文本块生成 QA 的算子类。  
 
 - 支持从文本块和图片生成 QA 对。  
@@ -7122,7 +7122,7 @@ Args:
     **kwargs: 其它可选参数传给基类
 """)
 
-add_english_doc('data.operators.Pdf2QA.PdfChunkToQA', """\
+add_english_doc('data.operators.pdf_ops.PdfChunkToQA', """\
 Operator class that generates QA pairs from PDF text chunks.  
 
 - Supports QA generation from text and images.  
@@ -7142,7 +7142,7 @@ Args:
     **kwargs: additional optional arguments passed to base class
 """)
 
-add_example('data.operators.Pdf2QA.PdfChunkToQA', """\
+add_example('data.operators.pdf_ops.PdfChunkToQA', """\
 ```python
 from lazyllm.tools.data import Pdf2QA
 
@@ -7154,7 +7154,7 @@ print(res['question'], res['answer'])
 ```
 """)
 
-add_chinese_doc('data.operators.Pdf2QA.PdfQAScorer', """\
+add_chinese_doc('data.operators.pdf_ops.PdfQAScorer', """\
 PDF QA 样本打分算子类。  
 
 - 接收文本块、生成的问题和答案、可选图片路径。  
@@ -7173,7 +7173,7 @@ Args:
     **kwargs: 其它可选参数传给基类
 """)
 
-add_english_doc('data.operators.Pdf2QA.PdfQAScorer', """\
+add_english_doc('data.operators.pdf_ops.PdfQAScorer', """\
 Operator class that scores PDF QA samples.  
 
 - Receives text chunk, generated question & answer, optional image path.  
@@ -7192,7 +7192,7 @@ Args:
     **kwargs: additional optional arguments passed to base class
 """)
 
-add_example('data.operators.Pdf2QA.PdfQAScorer', """\
+add_example('data.operators.pdf_ops.PdfQAScorer', """\
 ```python
 from lazyllm.tools.data import Pdf2QA
 
@@ -7204,7 +7204,7 @@ print(res['score'])
 ```
 """)
 
-add_chinese_doc('data.operators.Text2qa.qa_score_filter', """\
+add_chinese_doc('data.operators.text2qa_ops.qa_score_filter', """\
 QA 样本评分过滤算子。  
 
 - 根据指定评分字段 input_key 的值判断是否保留样本。  
@@ -7217,7 +7217,7 @@ Args:
     min_score (float): 最低保留分数
 """)
 
-add_english_doc('data.operators.Text2qa.qa_score_filter', """\
+add_english_doc('data.operators.text2qa_ops.qa_score_filter', """\
 QA sample score filter operator.  
 
 - Keeps or filters a sample based on a score field input_key.  
@@ -7230,7 +7230,7 @@ Args:
     min_score (float): minimum score to retain the sample
 """)
 
-add_example('data.operators.Text2qa.qa_score_filter', """\
+add_example('data.operators.text2qa_ops.qa_score_filter', """\
 ```python
 from lazyllm.tools.data import Text2qa
 
@@ -7244,7 +7244,7 @@ print(Text2qa.qa_score_filter(data2, input_key='score', min_score=0.7))
 ```
 """)
 
-add_chinese_doc('data.operators.Text2qa.to_alpaca_sft', """\
+add_chinese_doc('data.operators.text2qa_ops.to_alpaca_sft', """\
 将 QA 样本转换为 Alpaca 风格的 SFT 数据格式。  
 
 - query_key 对应指令（instruction）  
@@ -7259,7 +7259,7 @@ Args:
     answer_key (str): 答案字段名，默认 'output'
 """)
 
-add_english_doc('data.operators.Text2qa.to_alpaca_sft', """\
+add_english_doc('data.operators.text2qa_ops.to_alpaca_sft', """\
 Convert QA sample to Alpaca-style SFT format.  
 
 - query_key → instruction  
@@ -7274,7 +7274,7 @@ Args:
     answer_key (str): field name for output answer, default 'output'
 """)
 
-add_example('data.operators.Text2qa.to_alpaca_sft', """\
+add_example('data.operators.text2qa_ops.to_alpaca_sft', """\
 ```python
 from lazyllm.tools.data import Text2qa
 
@@ -7285,7 +7285,7 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.Text2qa.to_chat_sft', """\
+add_chinese_doc('data.operators.text2qa_ops.to_chat_sft', """\
 将 QA 样本转换为 Chat 风格 SFT 数据格式。  
 
 - query_key 对应用户提问  
@@ -7301,7 +7301,7 @@ Args:
     answer_key (str): 答案字段名，默认 'output'
 """)
 
-add_english_doc('data.operators.Text2qa.to_chat_sft', """\
+add_english_doc('data.operators.text2qa_ops.to_chat_sft', """\
 Convert QA sample to Chat-style SFT format.  
 
 - query_key → user question  
@@ -7317,7 +7317,7 @@ Args:
     answer_key (str): field name for assistant answer, default 'output'
 """)
 
-add_example('data.operators.Text2qa.to_chat_sft', """\
+add_example('data.operators.text2qa_ops.to_chat_sft', """\
 ```python
 from lazyllm.tools.data import Text2qa
 
