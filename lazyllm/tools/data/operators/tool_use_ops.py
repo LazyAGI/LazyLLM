@@ -265,6 +265,9 @@ class ProtocolSpecifier(ToolUseOps):
         assert isinstance(data, dict)
         task = data.get(self.task_key, None)
         subtasks = data.get(self.subtask_key, None)
+        # If task is a list, take the first element
+        if isinstance(task, list) and len(task) > 0:
+            task = task[0]
         if task is None or task == '':
             data[self.output_key] = []
             return data
@@ -320,6 +323,9 @@ class DialogueSimulator(ToolUseOps):
         assert isinstance(data, dict)
         task = data.get(self.task_key, None)
         functions = data.get(self.functions_key, None)
+        # If task is a list, take the first element
+        if isinstance(task, list) and len(task) > 0:
+            task = task[0]
         if task is None or task == '':
             data[self.output_key] = []
             return data

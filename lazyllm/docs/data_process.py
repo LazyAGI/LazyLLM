@@ -1928,16 +1928,16 @@ add_chinese_doc('data.operators.codegen_ops.CodeInstructionGenerator', """\
 
 从原始对话消息（messages）中抽取用户指令，并将其重写为统一的“代码增强指令”，输出为一条英文描述 + 一个包含完整函数骨架的 Python 代码块。
 
-输出示例结构（默认 input_key='messages', output_key='generated_instruction'):
+输出示例结构（默认 input_key='messages', output_key='instruction'):
 
 - messages: 原始多轮对话（保持不变）
-- generated_instruction (str): 标准化后的英文指令 + Python 代码块
+- instruction (str): 标准化后的英文指令 + Python 代码块
 
 Args:
     model: LazyLLM 模型对象（必需），会被 share() 后复用。
     prompt_template (str|None): 可选，自定义系统提示词（若提供则替换默认 sys_prompt）。
     input_key (str): 输入对话字段名，默认 'messages'。
-    output_key (str): 输出标准化指令字段名，默认 'generated_instruction'。
+    output_key (str): 输出标准化指令字段名，默认 'instruction'。
     **kwargs: 传递给基类算子的其它参数（如 _max_workers、_save_data 等）。
 """)
 
@@ -1946,16 +1946,16 @@ Code-gen pipeline operator: CodeInstructionGenerator.
 
 Extracts the user instruction from raw messages and rewrites it into a standardized English instruction plus a Python function skeleton code block.
 
-Typical output structure (default input_key='messages', output_key='generated_instruction'):
+Typical output structure (default input_key='messages', output_key='instruction'):
 
 - messages: original multi-turn messages (unchanged)
-- generated_instruction (str): standardized English instruction + Python code block
+- instruction (str): standardized English instruction + Python code block
 
 Args:
     model: a LazyLLM model object (required), shared via share().
     prompt_template (str|None): optional custom system prompt (overrides default).
     input_key (str): input conversation field name, default 'messages'.
-    output_key (str): output standardized instruction field name, default 'generated_instruction'.
+    output_key (str): output standardized instruction field name, default 'instruction'.
     **kwargs: extra args forwarded to the base operator (e.g. _max_workers, _save_data).
 """)
 
@@ -1964,7 +1964,7 @@ from lazyllm.tools.data.operators.codegen_ops import CodeInstructionGenerator
 
 op = CodeInstructionGenerator(model=model,
                                          input_key='messages',
-                                         output_key='generated_instruction')
+                                         output_key='instruction')
 item = {
     'messages': [
         {'role': 'user', 'content': '写一个 Python 函数，打印 hello'}
@@ -1976,7 +1976,7 @@ print(res)
 # Output Example:
 # {
 #    'messages': [...],
-#    'generated_instruction': "Write a Python function that prints 'hello'.\\n"
+#    'instruction': "Write a Python function that prints 'hello'.\\n"
 #                             "```python\\n"
 #                             "def solution():\\n"
 #                             "    print('hello')\\n"
@@ -1987,7 +1987,7 @@ print(res)
 add_chinese_doc('data.operators.codegen_ops.ScriptSynthesizer', """\
 代码生成流水线算子：指令到代码生成器。
 
-给定自然语言代码指令（通常是上一阶段生成的 generated_instruction 或精简后的 instruction），生成对应的 Python 源代码文本，并尝试自动去掉 Markdown 代码块外壳，只保留代码本身。
+给定自然语言代码指令（通常是上一阶段生成的 instruction），生成对应的 Python 源代码文本，并尝试自动去掉 Markdown 代码块外壳，只保留代码本身。
 
 输出示例结构（默认 input_key='instruction', output_key='new_code'):
 
@@ -2005,7 +2005,7 @@ Args:
 add_english_doc('data.operators.codegen_ops.ScriptSynthesizer', """\
 Code-gen pipeline operator: ScriptSynthesizer.
 
-Given a natural language code instruction (often from the previous generated_instruction or a cleaned instruction field), generates the corresponding Python source code, stripping Markdown code fences when present.
+Given a natural language code instruction (often from the previous instruction), generates the corresponding Python source code, stripping Markdown code fences when present.
 
 Typical output structure (default input_key='instruction', output_key='new_code'):
 
@@ -2042,7 +2042,7 @@ print(res)
 add_chinese_doc('data.operators.codegen_ops.LogicIntegrityAuditor', """\
 代码生成流水线算子：代码质量评估器。
 
-对单条 (generated_instruction, generated_code) 样本进行自动代码评审，输出一个质量分数（0–10）与一段文字反馈，默认使用 JSON 格式进行解析。
+对单条 (instruction, new_code) 样本进行自动代码评审，输出一个质量分数（0–10）与一段文字反馈，默认使用 JSON 格式进行解析。
 
 输出示例结构（默认 input_instruction_key='instruction', input_code_key='new_code'):
 
@@ -2064,7 +2064,7 @@ Args:
 add_english_doc('data.operators.codegen_ops.LogicIntegrityAuditor', """\
 Code-gen pipeline operator: LogicIntegrityAuditor.
 
-Evaluates a single (generated_instruction, generated_code) sample, producing a quality score (0–10) and textual feedback, parsed from a JSON-formatted model response.
+Evaluates a single (instruction, new_code) sample, producing a quality score (0–10) and textual feedback, parsed from a JSON-formatted model response.
 
 Typical output structure (default input_instruction_key='instruction', input_code_key='new_code'):
 
@@ -2106,11 +2106,13 @@ print(res)
 add_chinese_doc('data.operators.codegen_ops.ThresholdSieve', """\
 代码生成流水线算子：代码质量分数过滤器。
 
-基于 LogicIntegrityAuditor 的打分结果，对样本进行区间过滤：
+基于 quality_score 对样本进行区间过滤：
 
-- 若样本尚未包含 quality_score/feedback，会先自动调用内部 scorer 进行评估；
+- 从输入数据中获取 quality_score 字段的值；
 - 若得分在 [min_score, max_score] 区间内，则为样本打上标签并保留；
 - 否则返回空列表 []，表示此样本在流水线中被过滤掉。
+
+注意：此算子不包含 model，仅做阈值判断。quality_score 需要由 LogicIntegrityAuditor 等前置算子生成。
 
 输出示例结构（默认 output_key='quality_score_filter_label'）：
 
@@ -2121,13 +2123,9 @@ add_chinese_doc('data.operators.codegen_ops.ThresholdSieve', """\
 - quality_score_filter_label: 1  （通过过滤为 1，未通过则样本被丢弃）
 
 Args:
-    model: LazyLLM 模型对象（必需），用于内部评估。
     min_score (int): 通过过滤的最小分数（含），默认 7。
     max_score (int): 通过过滤的最大分数（含），默认 10。
-    input_instruction_key (str): 输入指令字段名，默认 'instruction'。
-    input_code_key (str): 输入代码字段名，默认 'new_code'。
-    output_score_key (str): 分数字段名，默认 'quality_score'。
-    output_feedback_key (str): 反馈字段名，默认 'feedback'。
+    input_score_key (str): 输入分数字段名，默认 'quality_score'。
     output_key (str): 过滤标签字段名，默认 'quality_score_filter_label'。
     **kwargs: 传递给基类算子的其它参数。
 """)
@@ -2135,11 +2133,13 @@ Args:
 add_english_doc('data.operators.codegen_ops.ThresholdSieve', """\
 Code-gen pipeline operator: ThresholdSieve.
 
-Filters samples based on code quality scores produced by LogicIntegrityAuditor:
+Filters samples based on code quality scores:
 
-- If quality_score/feedback are missing, it first calls the internal scorer.
+- Reads the quality_score field from input data.
 - If the score is within [min_score, max_score], the sample is kept and labeled.
 - Otherwise, it returns an empty list [], effectively dropping the sample from the pipeline.
+
+Note: This operator does not contain a model and only performs threshold checking. The quality_score should be generated by a preceding operator such as LogicIntegrityAuditor.
 
 Typical output structure (default output_key='quality_score_filter_label'):
 
@@ -2150,13 +2150,9 @@ Typical output structure (default output_key='quality_score_filter_label'):
 - quality_score_filter_label: 1  (1 for passed, 0 otherwise; non-passed samples are dropped)
 
 Args:
-    model: a LazyLLM model object (required), used by the internal scorer.
     min_score (int): minimum score (inclusive) to pass the filter, default 7.
     max_score (int): maximum score (inclusive) to pass the filter, default 10.
-    input_instruction_key (str): input instruction field, default 'instruction'.
-    input_code_key (str): input code field, default 'new_code'.
-    output_score_key (str): score field name, default 'quality_score'.
-    output_feedback_key (str): feedback field name, default 'feedback'.
+    input_score_key (str): input score field name, default 'quality_score'.
     output_key (str): filter label field name, default 'quality_score_filter_label'.
     **kwargs: extra args forwarded to the base operator.
 """)
@@ -2165,10 +2161,13 @@ add_example('data.operators.codegen_ops.ThresholdSieve', """\
 ```python
 from lazyllm.tools.data.operators.codegen_ops import ThresholdSieve
 
-op = ThresholdSieve(model=model, min_score=7, max_score=10)
+# Note: ThresholdSieve does not require a model, it only checks the score
+op = ThresholdSieve(min_score=7, max_score=10)
 item = {
     'instruction': "Write a Python function that prints 'hello'.",
-    'new_code': "def solution():\\n    print('hello')"
+    'new_code': "def solution():\\n    print('hello')",
+    'quality_score': 8,  # This should be generated by LogicIntegrityAuditor
+    'feedback': 'Good code.'
 }
 res = op(item)
 print(res)
@@ -2176,8 +2175,57 @@ print(res)
 #   'instruction': '...',
 #   'new_code': '...',
 #   'quality_score': 8,
-#   'feedback': 'Good code. The logic is clear and follows PEP8.',
+#   'feedback': 'Good code.',
 #   'quality_score_filter_label': 1
+# }
+```
+""")
+
+add_chinese_doc('data.operators.codegen_ops.CodeFeedbackFormatter', """\
+代码反馈格式化算子。
+
+将指令、代码和反馈格式化为训练数据格式。
+
+Args:
+    instruction_key (str): 指令字段名，默认 'instruction'。
+    input_code_key (str): 代码字段名，默认 'input_code'。
+    feedback_key (str): 反馈字段名，默认 'feedback'。
+    output_key (str): 输出字段名，默认 'formatted_data'。
+""")
+
+add_english_doc('data.operators.codegen_ops.CodeFeedbackFormatter', """\
+Code feedback formatter operator.
+
+Formats instruction, code and feedback into training data format.
+
+Args:
+    instruction_key (str): instruction field name, default 'instruction'.
+    input_code_key (str): code field name, default 'input_code'.
+    feedback_key (str): feedback field name, default 'feedback'.
+    output_key (str): output field name, default 'formatted_data'.
+""")
+
+add_example('data.operators.codegen_ops.CodeFeedbackFormatter', """\
+```python
+from lazyllm.tools.data.operators.codegen_ops import CodeFeedbackFormatter
+
+op = CodeFeedbackFormatter(
+    instruction_key='instruction',
+    input_code_key='new_code',
+    feedback_key='feedback',
+    output_key='formatted_data'
+)
+item = {
+    'instruction': 'Write a function to add two numbers.',
+    'new_code': 'def add(a, b):\\n    return a + b',
+    'feedback': 'Good code, but add type hints.'
+}
+res = op(item)
+print(res)
+# {
+#   'instruction': 'Write a function to add two numbers.',
+#   'input': '',
+#   'output': "def add(a, b):\\n    return a + b"
 # }
 ```
 """)
@@ -3458,6 +3506,8 @@ add_chinese_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
 
 根据组合任务及其子任务，生成一组适合用于工具调用（function calling）的函数规格列表。
 
+若输入的组合任务为列表，则自动取第一个元素进行处理。
+
 输出 JSON 典型结构：
 
 - functions: 列表，每项包含：
@@ -3479,6 +3529,8 @@ add_english_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
 Tool-use data operator: function specification generator.
 
 Given a composed task and its subtasks, generates a list of function specifications suitable for tool calling.
+
+If the input composed task is a list, the first element will be used automatically.
 
 Typical JSON structure:
 
@@ -3533,6 +3585,8 @@ add_chinese_doc('data.operators.tool_use_ops.DialogueSimulator', """\
 
 根据组合任务与可用函数列表，生成带有 User / Assistant / Tool 三种角色的多轮对话 JSON，用于构造工具调用训练数据。
 
+若输入的组合任务为列表，则自动取第一个元素进行处理。
+
 输出 JSON 典型结构：
 
 - messages: 列表，每项为：
@@ -3554,6 +3608,8 @@ add_english_doc('data.operators.tool_use_ops.DialogueSimulator', """\
 Tool-use data operator: multi-turn conversation generator (with tools).
 
 Given a composed task and a list of available functions, generates a multi-turn conversation JSON involving User, Assistant and Tool roles, suitable for tool-calling training data.
+
+If the input composed task is a list, the first element will be used automatically.
 
 Typical JSON structure:
 
@@ -4404,6 +4460,284 @@ data = [{'text': 'lazyLLM'}]
 res = ppl(data)
 print(res)  # demonstrates how operators are combined and applied
 ```
+""")
+
+# codegen_pipelines
+add_chinese_doc('data.pipelines.codegen_pipelines.build_codegen_pipeline', """\
+构建代码生成数据处理流水线，用于生成高质量的代码训练数据。
+
+该流水线包含以下步骤：
+1. CodeInstructionGenerator: 标准化代码指令
+2. ScriptSynthesizer: 根据指令生成代码
+3. LogicIntegrityAuditor: 评估代码质量
+4. ThresholdSieve: 根据质量分数过滤
+5. CodeFeedbackFormatter: 格式化为训练数据格式
+
+Args:
+    model: LLM 模型对象
+    input_key (str): 输入字段名，默认 'messages'
+    min_score (int): 最低质量分数，默认 7
+    max_score (int): 最高质量分数，默认 10
+
+**Returns:**
+    一个可调用的 pipeline 对象，输出格式为 {'instruction', 'input', 'output'}。
+""")
+
+add_english_doc('data.pipelines.codegen_pipelines.build_codegen_pipeline', """\
+Build a code generation data processing pipeline for high-quality code training data.
+
+The pipeline includes the following steps:
+1. CodeInstructionGenerator: Standardize code instructions
+2. ScriptSynthesizer: Generate code from instructions
+3. LogicIntegrityAuditor: Evaluate code quality
+4. ThresholdSieve: Filter based on quality score
+5. CodeFeedbackFormatter: Format as training data
+
+Args:
+    model: LLM model object
+    input_key (str): input field name, default 'messages'
+    min_score (int): minimum quality score, default 7
+    max_score (int): maximum quality score, default 10
+
+**Returns:**
+    A callable pipeline object that outputs {'instruction', 'input', 'output'} format.
+""")
+
+add_example('data.pipelines.codegen_pipelines.build_codegen_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.codegen_pipelines import build_codegen_pipeline
+
+ppl = build_codegen_pipeline(model=your_model, input_key='messages', min_score=7)
+data = [{'messages': [{'role': 'user', 'content': 'Write a function to add two numbers.'}]}]
+res = ppl(data)
+print(res[0])  # {'instruction': '...', 'input': '', 'output': 'code'}
+```
+""")
+
+add_chinese_doc('data.pipelines.codegen_pipelines.build_simple_codegen_pipeline', """\
+构建简化版代码生成流水线，仅包含指令生成和代码合成。
+
+Args:
+    model: LLM 模型对象
+    input_key (str): 输入字段名，默认 'messages'
+
+**Returns:**
+    一个可调用的 pipeline 对象。
+""")
+
+add_english_doc('data.pipelines.codegen_pipelines.build_simple_codegen_pipeline', """\
+Build a simple code generation pipeline with only instruction generation and code synthesis.
+
+Args:
+    model: LLM model object
+    input_key (str): input field name, default 'messages'
+
+**Returns:**
+    A callable pipeline object.
+""")
+
+# preference_pipelines
+add_chinese_doc('data.pipelines.preference_pipelines.build_preference_pipeline', """\
+构建偏好数据处理流水线，用于构建偏好训练数据（chosen/rejected）。
+
+该流水线包含以下步骤：
+1. IntentExtractor: 提取用户意图
+2. PreferenceResponseGenerator: 生成多个候选回复
+3. ResponseEvaluator: 评估回复质量
+4. PreferencePairConstructor: 构建偏好对
+
+Args:
+    model: LLM 模型对象
+    input_key (str): 输入字段名，默认 'content'
+    n (int): 生成候选回复数量，默认 3
+    temperature (float): 采样温度，默认 1.0
+    strategy (str): 偏好对构建策略，默认 'max_min'
+    threshold (float): 分数阈值，默认 0.5
+
+**Returns:**
+    一个可调用的 pipeline 对象，输出包含 chosen 和 rejected 的偏好对。
+""")
+
+add_english_doc('data.pipelines.preference_pipelines.build_preference_pipeline', """\
+Build a preference data processing pipeline for constructing preference training data (chosen/rejected).
+
+The pipeline includes the following steps:
+1. IntentExtractor: Extract user intent
+2. PreferenceResponseGenerator: Generate multiple candidate responses
+3. ResponseEvaluator: Evaluate response quality
+4. PreferencePairConstructor: Build preference pairs
+
+Args:
+    model: LLM model object
+    input_key (str): input field name, default 'content'
+    n (int): number of candidate responses to generate, default 3
+    temperature (float): sampling temperature, default 1.0
+    strategy (str): preference pair construction strategy, default 'max_min'
+    threshold (float): score threshold, default 0.5
+
+**Returns:**
+    A callable pipeline object that outputs preference pairs with chosen and rejected.
+""")
+
+add_example('data.pipelines.preference_pipelines.build_preference_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.preference_pipelines import build_preference_pipeline
+
+ppl = build_preference_pipeline(model=your_model, input_key='content', n=2, strategy='max_min')
+data = [{'content': 'I want to book a hotel.'}]
+res = ppl(data)
+print(res[0])  # {'chosen': '...', 'rejected': '...', 'instruction': '...'}
+```
+""")
+
+# text2sql_pipelines
+add_chinese_doc('data.pipelines.text2sql_pipelines.build_text2sql_full_pipeline', """\
+构建 Text2SQL 完整数据处理流水线，用于生成 SQL 查询训练数据。
+
+该流水线包含以下步骤：
+1. SQLForge: 生成候选 SQL 查询
+2. SQLRuntimeSieve: 运行时过滤无效 SQL
+3. SQLIntentSynthesizer: 合成自然语言意图
+4. TSQLSemanticAuditor: 语义审核
+5. SQLContextAssembler: 组装上下文
+6. SQLReasoningTracer: 追踪推理过程
+7. SQLConsensusUnifier: 统一共识结果
+8. SQLSyntaxProfiler: 分析语法特征
+9. SQLEffortRanker: 排序选择最优结果
+
+Args:
+    model: LLM 模型对象
+    database_manager: 数据库管理器对象
+    embedding_model: 嵌入模型对象，可选
+    output_num (int): 输出数量，默认 300
+    num_generations (int): 生成次数，默认 10
+    input_query_num (int): 输入查询数量，默认 5
+
+**Returns:**
+    一个可调用的 pipeline 对象，用于生成高质量的 Text2SQL 训练数据。
+""")
+
+add_english_doc('data.pipelines.text2sql_pipelines.build_text2sql_full_pipeline', """\
+Build a full Text2SQL data processing pipeline for generating SQL query training data.
+
+The pipeline includes the following steps:
+1. SQLForge: Generate candidate SQL queries
+2. SQLRuntimeSieve: Filter invalid SQL at runtime
+3. SQLIntentSynthesizer: Synthesize natural language intents
+4. TSQLSemanticAuditor: Semantic auditing
+5. SQLContextAssembler: Assemble context
+6. SQLReasoningTracer: Trace reasoning process
+7. SQLConsensusUnifier: Unify consensus results
+8. SQLSyntaxProfiler: Analyze syntax features
+9. SQLEffortRanker: Rank and select optimal results
+
+Args:
+    model: LLM model object
+    database_manager: Database manager object
+    embedding_model: Embedding model object, optional
+    output_num (int): output number, default 300
+    num_generations (int): number of generations, default 10
+    input_query_num (int): input query number, default 5
+
+**Returns:**
+    A callable pipeline object for generating high-quality Text2SQL training data.
+""")
+
+add_example('data.pipelines.text2sql_pipelines.build_text2sql_full_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.text2sql_pipelines import build_text2sql_full_pipeline
+
+ppl = build_text2sql_full_pipeline(
+    model=your_model,
+    database_manager=db_manager,
+    output_num=100
+)
+data = [{'query': 'Find all users older than 18'}]
+res = ppl(data)
+print(res)  # List of generated SQL training samples
+```
+""")
+
+# tool_use_pipelines
+add_chinese_doc('data.pipelines.tool_use_pipelines.build_tool_use_pipeline', """\
+构建工具使用数据处理流水线，用于生成工具调用训练数据。
+
+该流水线包含以下步骤：
+1. ContextualBeacon: 生成场景上下文
+2. ScenarioDiverger: 扩展多样化场景
+3. DecompositionKernel: 分解原子任务
+4. ChainedLogicAssembler: 组装顺序任务链
+5. TopologyArchitect: 构建并行拓扑
+6. ViabilitySieve: 过滤不可行组合
+7. ProtocolSpecifier: 指定函数协议
+8. DialogueSimulator: 模拟对话交互
+
+Args:
+    model: LLM 模型对象
+    input_key (str): 输入字段名，默认 'content'
+    n_turns (int): 对话轮数，默认 6
+
+**Returns:**
+    一个可调用的 pipeline 对象，输出包含对话和工具调用信息的训练数据。
+""")
+
+add_english_doc('data.pipelines.tool_use_pipelines.build_tool_use_pipeline', """\
+Build a tool-use data processing pipeline for generating tool calling training data.
+
+The pipeline includes the following steps:
+1. ContextualBeacon: Generate scenario context
+2. ScenarioDiverger: Expand diverse scenarios
+3. DecompositionKernel: Decompose atomic tasks
+4. ChainedLogicAssembler: Assemble sequential task chains
+5. TopologyArchitect: Build parallel topology
+6. ViabilitySieve: Filter infeasible combinations
+7. ProtocolSpecifier: Specify function protocols
+8. DialogueSimulator: Simulate dialogue interactions
+
+Args:
+    model: LLM model object
+    input_key (str): input field name, default 'content'
+    n_turns (int): number of dialogue turns, default 6
+
+**Returns:**
+    A callable pipeline object that outputs training data with dialogue and tool calls.
+""")
+
+add_example('data.pipelines.tool_use_pipelines.build_tool_use_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.tool_use_pipelines import build_tool_use_pipeline
+
+ppl = build_tool_use_pipeline(model=your_model, input_key='content', n_turns=5)
+data = [{'content': 'Book a flight and hotel for my trip.'}]
+res = ppl(data)
+print(res[0])  # Contains 'conversation' with tool calls
+```
+""")
+
+add_chinese_doc('data.pipelines.tool_use_pipelines.build_simple_tool_use_pipeline', """\
+构建简化版工具使用流水线，包含场景生成、任务分解和对话模拟。
+
+Args:
+    model: LLM 模型对象
+    input_key (str): 输入字段名，默认 'content'
+    n_tasks (int): 任务数量，默认 5
+    n_turns (int): 对话轮数，默认 6
+
+**Returns:**
+    一个可调用的 pipeline 对象。
+""")
+
+add_english_doc('data.pipelines.tool_use_pipelines.build_simple_tool_use_pipeline', """\
+Build a simple tool-use pipeline with scenario generation, task decomposition and dialogue simulation.
+
+Args:
+    model: LLM model object
+    input_key (str): input field name, default 'content'
+    n_tasks (int): number of tasks, default 5
+    n_turns (int): number of dialogue turns, default 6
+
+**Returns:**
+    A callable pipeline object.
 """)
 
 # =========================
