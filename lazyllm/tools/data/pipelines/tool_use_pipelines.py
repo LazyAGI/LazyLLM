@@ -43,7 +43,7 @@ def build_tool_use_pipeline(model, input_key='content', n_turns=6):
         )
         ppl.dialogue_simulator = tool_use_ops.DialogueSimulator(
             model=model,
-            input_composition_key='composition_task',
+            input_composition_key='filtered_composition_tasks',
             input_functions_key='functions',
             output_key='conversation',
             n_turns=n_turns

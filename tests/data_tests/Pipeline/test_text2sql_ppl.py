@@ -80,13 +80,27 @@ class TestText2SQLPipeline:
             shutil.rmtree(self.root_dir)
 
     def test_text2sql_full_pipeline(self):
+        # Calculate needed responses:
+        # SQLForge: 1
+        # SQLIntentSynthesizer: 5 (input_query_num=5)
+        # TSQLSemanticAuditor: 1
+        # SQLReasoningTracer: 3 (default output_num=3)
+        # SQLEffortRanker: 10 (auto-adjusted from 3)
+        # Total: 20 responses needed
+        sql_forge_response = '```sql\nSELECT * FROM users\n```'
+        intent_response = ('[QUESTION-START] Show all users [QUESTION-END]\n'
+                           '[EXTERNAL-KNOWLEDGE-START none [EXTERNAL-KNOWLEDGE-END]')
+        auditor_response = 'Yes'
+        reasoning_response = 'Step 1: Identify the table. Step 2: Select all columns.'
+        effort_response = '```sql\nSELECT * FROM users\n```'
+
         responses = [
-            '```sql\nSELECT * FROM users\n```',  # SQLForge
-            ('[QUESTION-START] Show all users [QUESTION-END]\n'
-             '[EXTERNAL-KNOWLEDGE-START] none [EXTERNAL-KNOWLEDGE-END]'),  # SQLIntentSynthesizer
-            'Yes',  # TSQLSemanticAuditor
-            'Step 1: Identify the table. Step 2: Select all columns.',  # SQLReasoningTracer
-            '```sql\nSELECT * FROM users\n```',  # SQLEffortRanker
+            sql_forge_response,  # SQLForge (1)
+            intent_response, intent_response, intent_response, intent_response, intent_response,  # SQLIntentSynthesizer (5)
+            auditor_response,  # TSQLSemanticAuditor (1)
+            reasoning_response, reasoning_response, reasoning_response,  # SQLReasoningTracer (3)
+            effort_response, effort_response, effort_response, effort_response, effort_response,
+            effort_response, effort_response, effort_response, effort_response, effort_response,  # SQLEffortRanker (10)
         ]
 
         mock_model = self.MockModel(return_val=MockModelCallable(responses))
@@ -95,7 +109,8 @@ class TestText2SQLPipeline:
             model=mock_model,
             database_manager=self.db_manager,
             output_num=1,
-            num_generations=3
+            num_generations=3,
+            input_query_num=5,
         )
         data = [{'db_id': 'test_db'}]
         res = ppl(data)
@@ -108,13 +123,27 @@ class TestText2SQLPipeline:
         assert 'sql_execution_difficulty' in res[0]
 
     def test_text2sql_pipeline_with_embedding(self):
+        # Calculate needed responses:
+        # SQLForge: 1
+        # SQLIntentSynthesizer: 5 (input_query_num=5)
+        # TSQLSemanticAuditor: 1
+        # SQLReasoningTracer: 3 (default output_num=3)
+        # SQLEffortRanker: 10 (auto-adjusted from 2)
+        # Total: 20 responses needed
+        sql_forge_response = '```sql\nSELECT id FROM users\n```'
+        intent_response = ('[QUESTION-START] Get user ids [QUESTION-END]\n'
+                           '[EXTERNAL-KNOWLEDGE-START none [EXTERNAL-KNOWLEDGE-END]')
+        auditor_response = 'Yes'
+        reasoning_response = 'Step 1: Identify the users table. Step 2: Select id column.'
+        effort_response = '```sql\nSELECT id FROM users\n```'
+
         responses = [
-            '```sql\nSELECT id FROM users\n```',  # SQLForge
-            ('[QUESTION-START] Get user ids [QUESTION-END]\n'
-             '[EXTERNAL-KNOWLEDGE-START] none [EXTERNAL-KNOWLEDGE-END]'),  # SQLIntentSynthesizer
-            'Yes',  # TSQLSemanticAuditor
-            'Step 1: Identify the users table. Step 2: Select id column.',  # SQLReasoningTracer
-            '```sql\nSELECT id FROM users\n```',  # SQLEffortRanker
+            sql_forge_response,  # SQLForge (1)
+            intent_response, intent_response, intent_response, intent_response, intent_response,  # SQLIntentSynthesizer (5)
+            auditor_response,  # TSQLSemanticAuditor (1)
+            reasoning_response, reasoning_response, reasoning_response,  # SQLReasoningTracer (3)
+            effort_response, effort_response, effort_response, effort_response, effort_response,
+            effort_response, effort_response, effort_response, effort_response, effort_response,  # SQLEffortRanker (10)
         ]
 
         mock_model = self.MockModel(return_val=MockModelCallable(responses))
@@ -125,7 +154,8 @@ class TestText2SQLPipeline:
             database_manager=self.db_manager,
             embedding_model=None,
             output_num=1,
-            num_generations=2
+            num_generations=2,
+            input_query_num=5,
         )
         data = [{'db_id': 'test_db'}]
         res = ppl(data)

@@ -63,6 +63,39 @@ def _parse_sql_response(response):
     return ''
 
 
+def _validate_readonly_sql(sql):
+    if not isinstance(sql, str):
+        LOG.warning(f'Invalid SQL type: {type(sql).__name__}, expected string')
+        return ''
+
+    sql = sql.strip()
+    if not sql:
+        return ''
+
+    sql_wo_comments = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
+    sql_wo_comments = re.sub(r'--.*$', '', sql_wo_comments, flags=re.MULTILINE)
+    sql_wo_comments = sql_wo_comments.strip()
+
+    if not sql_wo_comments:
+        return ''
+
+    allowed_prefixes = ('select', 'with')
+    if sql_wo_comments.lower().startswith(allowed_prefixes):
+        dangerous_keywords = [
+            r'\binsert\b', r'\bupdate\b', r'\bdelete\b', r'\bdrop\b',
+            r'\balter\b', r'\bcreate\b', r'\breplace\b', r'\btruncate\b',
+            r'\bgrant\b', r'\brevoke\b', r'\bmerge\b', r'\bupsert\b'
+        ]
+        for pattern in dangerous_keywords:
+            if re.search(pattern, sql_wo_comments, re.IGNORECASE):
+                LOG.warning(f'SQL contains dangerous keyword, rejecting: {sql[:100]}...')
+                return ''
+        return sql
+
+    LOG.warning(f'SQL must start with SELECT or WITH, got: {sql[:100]}...')
+    return ''
+
+
 def _result_to_signature(result):
     if not result.success or not result.data:
         return None
@@ -214,7 +247,9 @@ class SQLRuntimeSieve(Text2SQLOps):
         sql = data.get(input_sql_key)
         db_id = data.get(input_db_id_key)
 
-        if not self.filter_select_sql(sql):
+        # Validate SQL is read-only before execution
+        validated_sql = _validate_readonly_sql(sql)
+        if not validated_sql:
             return []
 
         if not self.database_manager.database_exists(db_id):
@@ -222,7 +257,7 @@ class SQLRuntimeSieve(Text2SQLOps):
             return []
 
         try:
-            execution_results = self.database_manager.batch_explain_queries([(db_id, sql)])
+            execution_results = self.database_manager.batch_explain_queries([(db_id, validated_sql)])
             if execution_results and execution_results[0].success:
                 return data
         except Exception as e:
@@ -672,9 +707,11 @@ class SQLConsensusUnifier(Text2SQLOps):
         queries = []
         for resp in cot_responses:
             sql = _parse_sql_response(resp)
-            if sql:
-                queries.append((str(db_id).strip(), sql))
-                candidates.append({'cot': resp, 'sql': sql})
+            # Validate SQL is read-only before adding to execution list
+            validated_sql = _validate_readonly_sql(sql)
+            if validated_sql:
+                queries.append((str(db_id).strip(), validated_sql))
+                candidates.append({'cot': resp, 'sql': validated_sql})
 
         if not queries:
             data[output_cot_key] = ''
@@ -808,23 +845,8 @@ class SQLEffortRanker(Text2SQLOps):
             all_parsed_sqls.append(_parse_sql_response(response) if response else '')
         return all_parsed_sqls
 
-    def forward(self, data, input_db_id_key='db_id', input_sql_key='SQL',
-                input_prompt_key='prompt', output_difficulty_key='sql_execution_difficulty',
-                **kwargs):
-        assert isinstance(data, dict)
-        if self.model is None or self.database_manager is None:
-            raise ValueError('model and database_manager are required')
-
-        prompt = data.get(input_prompt_key)
-        ground_truth = data.get(input_sql_key)
-        db_id = data.get(input_db_id_key)
-
-        if not prompt or not ground_truth or not db_id:
-            data[output_difficulty_key] = 'unknown'
-            return data
-
+    def _get_responses(self, prompt):
         try:
-            # 使用循环调用模型，避免传入列表导致类型错误
             responses = []
             for _ in range(self.num_generations):
                 response = self.model(prompt)
@@ -834,16 +856,53 @@ class SQLEffortRanker(Text2SQLOps):
                     responses.extend(response)
                 else:
                     responses.append(str(response))
+            return responses
         except Exception as e:
             LOG.error(f'Generation failed: {e}')
-            responses = [''] * self.num_generations
+            return [''] * self.num_generations
 
+    def _get_valid_comparisons(self, parsed_sqls, db_id, validated_ground_truth):
+        comparisons = []
+        for sql in parsed_sqls:
+            validated_sql = _validate_readonly_sql(sql)
+            if validated_sql:
+                comparisons.append((db_id, validated_sql, validated_ground_truth))
+        return comparisons
+
+    def forward(self, data, input_db_id_key='db_id', input_sql_key='SQL',
+                input_prompt_key='prompt', output_difficulty_key='sql_execution_difficulty',
+                **kwargs):
+        assert isinstance(data, dict)
+        if self.model is None or self.database_manager is None:
+            raise ValueError('model and database_manager are required')
+
+        prompt, ground_truth, db_id = data.get(input_prompt_key), data.get(input_sql_key), data.get(input_db_id_key)
+        if not prompt or not ground_truth or not db_id:
+            data[output_difficulty_key] = 'unknown'
+            return data
+
+        responses = self._get_responses(prompt)
         parsed_sqls = [_parse_sql_response(r) if r else '' for r in responses]
 
-        comparisons = [(db_id, sql, ground_truth) for sql in parsed_sqls]
+        validated_ground_truth = _validate_readonly_sql(ground_truth)
+        if not validated_ground_truth:
+            LOG.warning(f'Ground truth SQL failed validation: {str(ground_truth)[:100]}...')
+            data[output_difficulty_key] = 'gold error'
+            return data
+
+        comparisons = self._get_valid_comparisons(parsed_sqls, db_id, validated_ground_truth)
+        if not comparisons:
+            LOG.warning('No valid SQL queries after validation')
+            data[output_difficulty_key] = 'gold error'
+            return data
+
         try:
             batch_results = self.database_manager.batch_compare_queries(comparisons)
             cnt_true = sum(1 for res in batch_results if res.res == 1)
+            valid_sql_count = len(comparisons)
+            if valid_sql_count < self.num_generations:
+                ratio = cnt_true / valid_sql_count if valid_sql_count > 0 else 0
+                cnt_true = int(ratio * self.num_generations)
             data[output_difficulty_key] = self.classify_difficulty(cnt_true)
         except Exception as e:
             LOG.error(f'Comparison failed: {e}')

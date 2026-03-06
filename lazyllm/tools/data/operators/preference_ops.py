@@ -129,24 +129,12 @@ class PreferencePairConstructor(PreferenceOps):
 
             if chosen is not None and rejected is not None:
                 instruction = data.get(self.instruction_key, '')
-                if isinstance(instruction, dict):
-                    instruction = list(instruction.values())[0] if instruction else ''
-                elif isinstance(instruction, list):
-                    if len(instruction) > 0:
-                        first_item = instruction[0]
-                        if isinstance(first_item, dict):
-                            if 'intent' in first_item:
-                                instruction = str(first_item['intent'])
-                            elif 'description' in first_item:
-                                instruction = str(first_item['description'])
-                            else:
-                                instruction = str(first_item)
-                        else:
-                            instruction = str(first_item)
-                    else:
+                if not isinstance(instruction, str):
+                    if instruction is None:
                         instruction = ''
-                elif not isinstance(instruction, str):
-                    instruction = str(instruction)
+                    else:
+                        LOG.warning(f'Expected instruction to be a string, got {type(instruction).__name__}: {instruction}')
+                        instruction = str(instruction)
 
                 return {
                     'instruction': instruction,

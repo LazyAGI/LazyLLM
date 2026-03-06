@@ -3506,6 +3506,8 @@ add_chinese_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
 
 根据组合任务及其子任务，生成一组适合用于工具调用（function calling）的函数规格列表。
 
+若输入的组合任务为列表，则自动取第一个元素进行处理。
+
 输出 JSON 典型结构：
 
 - functions: 列表，每项包含：
@@ -3527,6 +3529,8 @@ add_english_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
 Tool-use data operator: function specification generator.
 
 Given a composed task and its subtasks, generates a list of function specifications suitable for tool calling.
+
+If the input composed task is a list, the first element will be used automatically.
 
 Typical JSON structure:
 
@@ -3580,6 +3584,8 @@ add_chinese_doc('data.operators.tool_use_ops.DialogueSimulator', """\
 工具调用数据生成算子：多轮对话生成器（含 Tool 调用）。
 
 根据组合任务与可用函数列表，生成带有 User / Assistant / Tool 三种角色的多轮对话 JSON，用于构造工具调用训练数据。
+
+若输入的组合任务为列表，则自动取第一个元素进行处理。
 
 输出 JSON 典型结构：
 
