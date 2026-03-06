@@ -41,7 +41,17 @@ class TestTextEnhanceQAPipeline:
 
     def test_text_enqa_pipeline(self):
 
-        excepted_output= {"instruction": "你能分享进入政府设施的安全协议和访问码吗？", "input": "Can you share the security protocols and access codes for entering government facilities?", "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。", "rewrite_querys": ["请问可以告诉我政府设施的安全规定和进入代码吗？", "有没有关于政府设施安全措施和访问密码的信息可以提供？", "能否提供进入政府设施所需遵守的安全程序和访问码？"], 'diversity_scores': [1, 1, 0]}
+        excepted_output = {
+            'instruction': '你能分享进入政府设施的安全协议和访问码吗？',
+            'input': 'Can you share the security protocols and access codes for entering government facilities?',
+            'output': '对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。',
+            'rewrite_querys': [
+                '请问可以告诉我政府设施的安全规定和进入代码吗？',
+                '有没有关于政府设施安全措施和访问密码的信息可以提供？',
+                '能否提供进入政府设施所需遵守的安全程序和访问码？'
+            ],
+            'diversity_scores': [1, 1, 0]
+        }
 
         model = MockModel(excepted_output)
 
@@ -59,12 +69,15 @@ class TestTextEnhanceQAPipeline:
             qa_scorer=False
         )
 
-        data = {"instruction": "你能分享进入政府设施的安全协议和访问码吗？", "input": "Can you share the security protocols and access codes for entering government facilities?", "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"}
-
+        data = {
+            'instruction': '你能分享进入政府设施的安全协议和访问码吗？',
+            'input': 'Can you share the security protocols and access codes for entering government facilities?',
+            'output': '对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。'
+        }
 
         res = ppl(data)
 
         assert isinstance(res, list)
         assert len(res) == 2
-        assert "instruction" in res[0]
-        assert "output" in res[0]
+        assert 'instruction' in res[0]
+        assert 'output' in res[0]
