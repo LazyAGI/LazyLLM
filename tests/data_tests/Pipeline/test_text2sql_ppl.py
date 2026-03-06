@@ -41,7 +41,6 @@ class MockDatabaseManager:
 
 
 class MockModelCallable:
-    """A pickle-able callable class for mock model responses."""
     def __init__(self, responses):
         self.responses = responses
         self.call_count = 0

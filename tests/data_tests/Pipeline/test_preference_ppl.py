@@ -7,7 +7,6 @@ from lazyllm.tools.data.pipelines.preference_pipelines import build_preference_p
 
 
 class MockModelCallable:
-    """A pickle-able callable class for mock model responses."""
     def __init__(self, responses):
         self.responses = responses
         self.call_count = 0
@@ -46,10 +45,6 @@ class TestPreferencePipeline:
             shutil.rmtree(self.root_dir)
 
     def test_preference_pipeline(self):
-        # Call sequence:
-        # 1. IntentExtractor: 1 call -> dict
-        # 2. PreferenceResponseGenerator: n=2 calls -> 2 strings
-        # 3. ResponseEvaluator: 2 calls (one per response) -> 2 score dicts
         responses = [
             {'intent': 'book a hotel'},  # IntentExtractor
             'I can help you book a hotel in Beijing.',  # PreferenceResponseGenerator #1

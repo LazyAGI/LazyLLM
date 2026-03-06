@@ -6,7 +6,6 @@ from collections import defaultdict
 from lazyllm.thirdparty import pandas as pd
 from tqdm import tqdm
 from lazyllm import LOG
-from lazyllm.components.formatter import JsonFormatter
 from .sql_evalhardness import EvalHardness, EvalHardnessLite, Schema
 
 

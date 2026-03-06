@@ -24,7 +24,7 @@ class IntentExtractor(PreferenceOps):
         if isinstance(res, list) and len(res) > 0:
             res = res[0]
         if isinstance(res, dict):
-            for key, value in res.items():
+            for _, value in res.items():
                 if isinstance(value, str):
                     return value
                 break
