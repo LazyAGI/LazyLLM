@@ -167,3 +167,39 @@
 ::: lazyllm.tools.data.pipelines.demo_pipelines
     members:
     exclude-members:
+
+### Text to QA Pipeline
+
+::: lazyllm.tools.data.pipelines.text_pipelines
+    members:
+    exclude-members:
+
+### QA Enhancement Pipeline
+
+::: lazyllm.tools.data.pipelines.enhance_pipelines
+    members:
+    exclude-members:
+
+### Chain-of-Thought Pipeline
+
+::: lazyllm.tools.data.pipelines.cot_pipelines
+    members:
+    exclude-members:
+
+### Image Pipeline
+
+::: lazyllm.tools.data.pipelines.img_pipelines
+    members:
+    exclude-members:
+
+### Math Pipeline
+
+::: lazyllm.tools.data.pipelines.math_pipelines
+    members:
+    exclude-members:
+
+### PDF Pipeline
+
+::: lazyllm.tools.data.pipelines.pdf_pipelines
+    members:
+    exclude-members:
