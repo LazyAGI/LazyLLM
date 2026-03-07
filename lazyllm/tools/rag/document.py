@@ -12,11 +12,12 @@ from lazyllm.common.bind import _MetaBind
 from .doc_manager import DocManager
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
-from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files, SchemaExtractor
+from .doc_to_db import SchemaExtractor
+from lazyllm.tools.rag.doc_to_db.model import SchemaSetInfo, Table_ALGO_KB_SCHEMA
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .store.store_base import DEFAULT_KB_ID
 from .index_base import IndexBase
-from .utils import DocListManager, ensure_call_endpoint
+from .utils import DocListManager, ensure_call_endpoint, _get_default_db_config
 from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
 import copy
@@ -151,6 +152,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 'Only map store is supported for Document with temp-files')
 
         name = name or DocListManager.DEFAULT_GROUP_NAME
+        if schema_extractor is not None and not isinstance(schema_extractor, SchemaExtractor):
+            if isinstance(schema_extractor, LLMBase):
+                metadata_store_config = None
+                if isinstance(store_conf, dict):
+                    metadata_store_config = store_conf.get('metadata_store')
+                metadata_store_config = metadata_store_config or _get_default_db_config(
+                    db_name=f'{name}_metadata'
+                )
+                schema_extractor = SchemaExtractor(db_config=metadata_store_config, llm=schema_extractor)
+            else:
+                raise ValueError(f'Invalid type for schema extractor: {type(schema_extractor)}')
         self._schema_extractor: SchemaExtractor = schema_extractor
 
         if isinstance(manager, Document._Manager):
@@ -179,7 +191,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                                               display_name=display_name, description=description,
                                               schema_extractor=self._schema_extractor)
             self._curr_group = name
-        self._doc_to_db_processor: DocToDbProcessor = None
         self._graph_document: weakref.ref = None
 
     @staticmethod
@@ -231,63 +242,75 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         assert isinstance(self._manager._kbs, ServerModule), 'Document is not a service, please set `manager` to `True`'
         return self._manager._kbs._url
 
+    def _resolve_schema_extractor(self, sql_manager: SqlManager) -> SchemaExtractor:
+        if self._schema_extractor is None:
+            raise ValueError('schema_extractor is required to connect sql manager')
+        if not isinstance(self._schema_extractor, SchemaExtractor):
+            raise ValueError(f'Invalid type for schema extractor: {type(self._schema_extractor)}')
+        if sql_manager == self._schema_extractor.sql_manager:
+            return self._schema_extractor
+        return SchemaExtractor(sql_manager=sql_manager, llm=self._schema_extractor._llm)
+
+    @staticmethod
+    def _compare_schema_rows(rows: Union[List, object, None], schma: BaseModel,
+                             extractor: SchemaExtractor) -> bool:
+        if schma is None:
+            return False
+        sid = extractor.register_schema_set(schma)
+        if not rows:
+            return False
+        if not isinstance(rows, (list, tuple, set)):
+            rows = [rows]
+        return any(getattr(row, 'schema_set_id', row) == sid for row in rows)
+
+    def _get_schema_bind_rows(self, extractor: SchemaExtractor) -> List:
+        mgr = extractor.sql_manager
+        bind_cls = mgr.get_table_orm_class(Table_ALGO_KB_SCHEMA['name'])
+        if bind_cls is None:
+            return []
+        with mgr.get_session() as s:
+            return s.query(bind_cls).filter_by(algo_id=self._impl.algo_name).all()
+
     def connect_sql_manager(
-        self,
-        sql_manager: SqlManager,
-        schma: Optional[DocInfoSchema] = None,
+        self, sql_manager: SqlManager, schma: Optional[BaseModel] = None,
         force_refresh: bool = True,
     ):
-        def format_schema_to_dict(schema: DocInfoSchema):
-            if schema is None:
-                return None, None
-            desc_dict = {ele['key']: ele['desc'] for ele in schema}
-            type_dict = {ele['key']: ele['type'] for ele in schema}
-            return desc_dict, type_dict
-
-        def compare_schema(old_schema: DocInfoSchema, new_schema: DocInfoSchema):
-            old_desc_dict, old_type_dict = format_schema_to_dict(old_schema)
-            new_desc_dict, new_type_dict = format_schema_to_dict(new_schema)
-            return old_desc_dict == new_desc_dict and old_type_dict == new_type_dict
-
         # 1. Check valid arguments
         if sql_manager.check_connection().status != DBStatus.SUCCESS:
             raise RuntimeError(f'Failed to connect to sql manager: {sql_manager._gen_conn_url()}')
-        pre_doc_table_schema = None
-        if self._doc_to_db_processor:
-            pre_doc_table_schema = self._doc_to_db_processor.doc_info_schema
-        assert pre_doc_table_schema or schma, 'doc_table_schma must be given'
 
-        schema_equal = compare_schema(pre_doc_table_schema, schma)
+        extractor = self._resolve_schema_extractor(sql_manager)
+        rows = self._get_schema_bind_rows(extractor)
+        assert rows or schma, 'doc_table_schma must be given'
+
+        schema_equal = self._compare_schema_rows(rows, schma, extractor)
         assert (
             schema_equal or force_refresh is True
         ), 'When changing doc_table_schema, force_refresh should be set to True'
 
         # 2. Init handler if needed
-        need_init_processor = False
-        if self._doc_to_db_processor is None:
-            need_init_processor = True
-        else:
-            # avoid reinit for the same db
-            if sql_manager != self._doc_to_db_processor.sql_manager:
-                need_init_processor = True
-        if need_init_processor:
-            self._doc_to_db_processor = DocToDbProcessor(sql_manager)
+        if extractor is not self._schema_extractor:
+            # reuse the extractor instance used for schema comparison/registration
+            self._schema_extractor = extractor
+            self._impl._schema_extractor = extractor
 
         # 3. Reset doc_table_schema if needed
         if schma and not schema_equal:
             # This api call will clear existing db table 'lazyllm_doc_elements'
-            self._doc_to_db_processor._reset_doc_info_schema(schma)
+            schema_set_id = self._schema_extractor.register_schema_set(schma)
+            self._schema_extractor.register_schema_set_to_kb(
+                algo_id=self._impl._algo_name, schema_set_id=schema_set_id, force_refresh=True)
 
     def get_sql_manager(self):
-        if self._doc_to_db_processor is None:
+        if self._schema_extractor is None:
             raise ValueError('Please call connect_sql_manager to init handler first')
-        return self._doc_to_db_processor.sql_manager
+        return self._schema_extractor.sql_manager
 
     def extract_db_schema(
         self, llm: Union[OnlineChatModule, TrainableModule], print_schema: bool = False
-    ) -> DocInfoSchema:
-        file_paths = self._list_all_files_in_dataset()
-        schema = extract_db_schema_from_files(file_paths, llm)
+    ) -> SchemaSetInfo:
+
+        schema = self._forward('_analyze_schema_by_llm')
         if print_schema:
             lazyllm.LOG.info(f'Extracted Schema:\n\t{schema}\n')
         return schema
