@@ -1,8 +1,4 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-'''
-Git backend base: cross-platform Git operations (push, PR, review, merge) for agents.
-Implementations are registered via registry (GitHub, GitLab, Gitee, GitCode).
-'''
 import re
 import subprocess
 from abc import ABC, abstractmethod
@@ -16,7 +12,6 @@ _REMOTE_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
 
 
 def _validate_remote_name(remote_name: str) -> None:
-    '''Reject dangerous remote names (e.g. ext::) to prevent command injection.'''
     if not remote_name or not isinstance(remote_name, str):
         raise ValueError('remote_name must be a non-empty string')
     if '::' in remote_name or not _REMOTE_NAME_RE.match(remote_name):
@@ -27,14 +22,11 @@ def _validate_remote_name(remote_name: str) -> None:
 
 
 def _sanitize_path(path: str) -> str:
-    '''Reject path traversal (..) in API path.'''
-    if '..' in path:
-        raise ValueError('Path must not contain ".."')
+    if '..' in path: raise ValueError('Path must not contain ".."')
     return path
 
 
 class PrInfo:
-    '''Pull Request / Merge Request summary.'''
     def __init__(self, number: int, title: str, state: str, body: str = '',
                  source_branch: str = '', target_branch: str = '',
                  html_url: str = '', raw: Optional[Dict[str, Any]] = None):
@@ -61,7 +53,6 @@ class PrInfo:
 
 
 class ReviewCommentInfo:
-    '''Single review comment (optionally line-level).'''
     def __init__(self, id: Any, body: str, path: str = '', line: Optional[int] = None,
                  side: str = 'RIGHT', user: str = '', raw: Optional[Dict[str, Any]] = None):
         self.id = id
@@ -85,12 +76,6 @@ class ReviewCommentInfo:
 
 
 class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
-    '''
-    Unified Git platform base; implementations (GitHub, GitLab, Gitee, GitCode) are
-    registered via registry. Subclasses implement auth, API base URL, and abstract methods.
-    Agents get instances via lazyllm.git.github / lazyllm.git.gitlab etc.
-    '''
-
     def __init__(self, token: str, repo: str, api_base: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
         super().__init__(return_trace=return_trace)
@@ -101,7 +86,6 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
 
     def push_branch(self, local_branch: str, remote_branch: Optional[str] = None,
                     remote_name: str = 'origin', repo_path: Optional[str] = None) -> Dict[str, Any]:
-        '''Push local branch to remote. Validates remote_name to prevent command injection (e.g. ext::).'''
         _validate_remote_name(remote_name)
         remote_branch = remote_branch or local_branch
         cwd = repo_path or '.'
@@ -126,70 +110,58 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
     @abstractmethod
     def create_pull_request(self, source_branch: str, target_branch: str,
                             title: str, body: str = '', **kwargs) -> Dict[str, Any]:
-        '''Create a Pull Request / Merge Request. Returns success, number, html_url, message.'''
         raise NotImplementedError
 
     @abstractmethod
     def update_pull_request(self, number: int, title: Optional[str] = None,
                             body: Optional[str] = None, state: Optional[str] = None,
                             **kwargs) -> Dict[str, Any]:
-        '''Update PR/MR title, body or state. Returns success, message.'''
         raise NotImplementedError
 
     @abstractmethod
     def add_pr_labels(self, number: int, labels: List[str]) -> Dict[str, Any]:
-        '''Add labels to PR/MR. Returns success, message.'''
         raise NotImplementedError
 
     @abstractmethod
     def get_pull_request(self, number: int) -> Dict[str, Any]:
-        '''Get single PR/MR. Returns success, pr (PrInfo or dict), message.'''
         raise NotImplementedError
 
     @abstractmethod
     def list_pull_requests(self, state: str = 'open', head: Optional[str] = None,
                            base: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        '''List PRs/MRs. Returns success, list, message.'''
         raise NotImplementedError
 
     @abstractmethod
     def get_pr_diff(self, number: int) -> Dict[str, Any]:
-        '''Get PR/MR diff text. Returns success, diff, message.'''
         raise NotImplementedError
 
     @abstractmethod
     def list_review_comments(self, number: int) -> Dict[str, Any]:
-        '''List all review comments on PR/MR. Returns success, comments, message.'''
         raise NotImplementedError
 
     @abstractmethod
     def create_review_comment(self, number: int, body: str, path: str,
                               line: Optional[int] = None, side: str = 'RIGHT',
                               commit_id: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        '''Create a single review comment. Returns success, comment_id, message.'''
         raise NotImplementedError
 
     @abstractmethod
     def submit_review(self, number: int, event: str, body: str = '',
                       comment_ids: Optional[List[Any]] = None, **kwargs) -> Dict[str, Any]:
-        '''Submit review (APPROVE / REQUEST_CHANGES / COMMENT). Returns success, message.'''
         raise NotImplementedError
 
     @abstractmethod
     def approve_pull_request(self, number: int, **kwargs) -> Dict[str, Any]:
-        '''Approve PR/MR. Returns success, message.'''
         raise NotImplementedError
 
     @abstractmethod
     def merge_pull_request(self, number: int, merge_method: Optional[str] = None,
                            commit_title: Optional[str] = None,
                            commit_message: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        '''Merge PR/MR. Returns success, sha, message.'''
         raise NotImplementedError
 
     def check_review_resolution(self, number: int, comment_ids: Optional[List[Any]] = None
                                 ) -> Dict[str, Any]:
-        '''Check if review comments are resolved. Default: list comments; override for platform logic.'''
         out = self.list_review_comments(number)
         if not out.get('success'):
             return out

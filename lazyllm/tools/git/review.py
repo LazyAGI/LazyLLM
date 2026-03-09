@@ -202,32 +202,7 @@ def review(
     max_diff_chars: Optional[int] = 120000,
     max_hunks: Optional[int] = 50,
 ) -> Union[str, Dict[str, Any]]:
-    '''
-    Review a PR/MR: parse diff, call the model per hunk, optionally post line-level review
-    comments. Backend follows Git config/backend; repo can be owner/repo or full URL (e.g.
-    https://github.com/owner/repo or .../repo.git).
-
-    Args:
-        pr_number: PR/MR number.
-        repo: Repository: owner/repo, or full URL (https://.../owner/repo, .../repo.git);
-            .git is stripped; backend is inferred from URL host when not passed.
-        token: Access token; optional, resolved from env or gh per backend.
-        backend: If set, use this backend (github, gitlab, gitee, gitcode); else use config/env/gh.
-        llm: LLM for inference; if None uses lazyllm.OnlineChatModule().
-        api_base: API base URL for the backend.
-        post_to_github: If True, post each issue as a line-level comment on the platform.
-        max_diff_chars: Max diff length; None for no limit.
-        max_hunks: Max hunks to process; None for no limit.
-
-    Returns:
-        dict: summary, comments_posted count, and comments list.
-    '''
-    backend_inst = Git(
-        backend=backend,
-        token=token,
-        repo=repo,
-        api_base=api_base,
-    )
+    backend_inst = Git(backend=backend, token=token, repo=repo, api_base=api_base)
 
     pr_res = backend_inst.get_pull_request(pr_number)
     if not pr_res.get('success'):
