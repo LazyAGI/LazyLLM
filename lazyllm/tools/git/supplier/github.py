@@ -180,6 +180,13 @@ class GitHub(LazyLLMGitBase):
         data = r.json()
         return {'success': True, 'comment_id': data['id'], 'message': 'created'}
 
+    def add_issue_comment(self, number: int, body: str) -> Dict[str, Any]:
+        '''Add a comment to the PR (PR is an issue; comment appears in Conversation).'''
+        r = self._req('POST', f'/issues/{number}/comments', json={'body': body})
+        if r.status_code not in (200, 201):
+            return {'success': False, 'message': r.text or r.reason}
+        return {'success': True, 'message': 'created', 'url': r.json().get('html_url', '')}
+
     def submit_review(self, number: int, event: str, body: str = '',
                       comment_ids: Optional[List[Any]] = None, **kwargs) -> Dict[str, Any]:
         payload = {'event': event}

@@ -9,6 +9,7 @@ from .supplier.github import GitHub
 from .supplier.gitlab import GitLab
 from .supplier.gitee import Gitee
 from .supplier.gitcode import GitCode
+from .review import review
 
 __all__ = [
     'LazyLLMGitBase',
@@ -18,4 +19,5 @@ __all__ = [
     'GitLab',
     'Gitee',
     'GitCode',
+    'review',
 ]
