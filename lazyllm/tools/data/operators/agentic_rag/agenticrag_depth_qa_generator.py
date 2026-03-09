@@ -27,7 +27,7 @@ class DepthQAGGetIdentifier(agenticrag):
 
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
-            self._llm_serve = llm.share().prompt(system_prompt)
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()
         else:
             self._llm_serve = None
@@ -45,7 +45,14 @@ class DepthQAGGetIdentifier(agenticrag):
 
         try:
             result = self._llm_serve(user_prompt)
-            data['identifier'] = result
+            if isinstance(result, list) and len(result) > 0:
+                result = result[0]
+            if isinstance(result, dict) and 'content_identifier' in result:
+                data['identifier'] = str(result['content_identifier'])
+            elif isinstance(result, str):
+                data['identifier'] = result
+            else:
+                data['identifier'] = str(result) if result else ''
         except Exception as e:
             LOG.warning(f'Failed to get identifier: {e}')
             data['identifier'] = ''
@@ -137,7 +144,8 @@ class DepthQAGCheckSuperset(agenticrag):
     def _is_valid_superset(self, result) -> bool:
         try:
             if isinstance(result, dict):
-                return result.get('new_query') == 'valid'
+                new_query = result.get('new_query')
+                return str(new_query).lower() == 'valid' if new_query is not None else False
         except Exception as e:
             LOG.warning(f'[Error]: Failed to check superset: {e}')
         return False
