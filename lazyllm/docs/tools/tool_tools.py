@@ -263,7 +263,7 @@ add_tools_example('JsonConcentrator', '''
 >>> concentrator = JsonConcentrator(llm, schema='{"name": "", "age": 0, "city": ""}')
 >>> res = concentrator([{'name': '张三', 'age': 20, 'city': '北京'}, {'name': '李四', 'age': 25, 'city': '上海'}])
 >>> print(res)
-{'name': '张三,李四', 'age': 20 - 25, 'city': '北京,上海'}
+{'name': '张三,李四', 'age': '20-25', 'city': '北京,上海'}
 ''')
 # ---------------------------------------------------------------------------- #
 

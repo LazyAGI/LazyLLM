@@ -128,7 +128,7 @@ class Gitee(LazyLLMGitBase):
             return {'success': False, 'message': r.text or r.reason}
         data = r.json()
         diff_url = data.get('diff_url') or data.get('patch_url')
-        if diff_url and diff_url.startswith((self._api_base.rstrip('/'), 'https://gitee.com', 'http://gitee.com')):
+        if diff_url and diff_url.startswith((self._api_base.rstrip('/'), 'https://gitee.com')):
             rr = requests.get(diff_url, params={'access_token': self._token}, timeout=60)
             if rr.status_code == 200:
                 return {'success': True, 'diff': rr.text}
@@ -173,9 +173,7 @@ class Gitee(LazyLLMGitBase):
 
     def submit_review(self, number: int, event: str, body: str = '',
                       comment_ids: Optional[List[Any]] = None, **kwargs) -> Dict[str, Any]:
-        if event.upper() == 'APPROVE':
-            return self.approve_pull_request(number, **kwargs)
-        payload = {'body': body, 'event': event}
+        payload = {'body': body, 'event': event.upper() == 'APPROVE' and 'approve' or event}
         if comment_ids is not None:
             payload['comments'] = comment_ids
         payload.update(kwargs)
@@ -185,7 +183,7 @@ class Gitee(LazyLLMGitBase):
         return {'success': True, 'message': 'submitted'}
 
     def approve_pull_request(self, number: int, **kwargs) -> Dict[str, Any]:
-        return self.submit_review(number, 'approve', **kwargs)
+        return self.submit_review(number, 'APPROVE', **kwargs)
 
     def merge_pull_request(self, number: int, merge_method: Optional[str] = None,
                            commit_title: Optional[str] = None,

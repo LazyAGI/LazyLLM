@@ -127,6 +127,7 @@ _SUBMOD_MAP = {
         'GitLab',
         'Gitee',
         'GitCode',
+        'review',
     ],
 }
 _SUBMOD_MAP_REVERSE = {v: k for k, vs in _SUBMOD_MAP.items() for v in vs}

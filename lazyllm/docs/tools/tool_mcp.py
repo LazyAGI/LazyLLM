@@ -142,7 +142,7 @@ add_example('MCPClient', '''\
 >>> from lazyllm.tools.agent.reactAgent import ReactAgent
 >>> llm=OnlineChatModule(source="deepseek", stream=False)
 >>> agent = ReactAgent(llm.share(), file_client.get_tools())
->>> print(agent("Write a Chinese poem about the moon, and save it to a file named 'moon.txt".))
+>>> print(agent("Write a Chinese poem about the moon, and save it to a file named 'moon.txt'."))
 ''')
 
 
