@@ -1,6 +1,8 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 '''
 Unified Git client: selects backend by config, source, or auto-detect (env, gh CLI, default github).
+Backend selection: if user set config['git_backend'] (see lazyllm.configs), use it; else if no backend
+configured, check GITHUB_TOKEN etc. env vars and choose by that; else check gh CLI auth; else default github.
 '''
 import os
 import subprocess
@@ -75,7 +77,8 @@ def _detect_backend_gh_cli() -> Optional[str]:
 
 def _resolve_backend(backend: Optional[str], source: Optional[str]) -> str:
     '''
-    Final backend name: source overrides; else backend from config; else env; else gh; else github.
+    Final backend: source overrides; else backend param; else config git_backend (lazyllm.configs);
+    else env (GITHUB_TOKEN etc.); else gh CLI; else github.
     '''
     if source is not None and str(source).strip():
         return str(source).strip().lower()

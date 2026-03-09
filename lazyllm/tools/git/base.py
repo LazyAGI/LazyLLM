@@ -3,11 +3,34 @@
 Git backend base: cross-platform Git operations (push, PR, review, merge) for agents.
 Implementations are registered via registry (GitHub, GitLab, Gitee, GitCode).
 '''
+import re
+import subprocess
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
 from lazyllm.module import ModuleBase
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
+
+# Safe remote name: alphanumeric, underscore, hyphen only. Reject ext:: and other protocols.
+_REMOTE_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
+
+
+def _validate_remote_name(remote_name: str) -> None:
+    '''Reject dangerous remote names (e.g. ext::) to prevent command injection.'''
+    if not remote_name or not isinstance(remote_name, str):
+        raise ValueError('remote_name must be a non-empty string')
+    if '::' in remote_name or not _REMOTE_NAME_RE.match(remote_name):
+        raise ValueError(
+            'remote_name must be a safe identifier (alphanumeric, underscore, hyphen). '
+            'Dangerous protocols like ext:: are not allowed.'
+        )
+
+
+def _sanitize_path(path: str) -> str:
+    '''Reject path traversal (..) in API path.'''
+    if '..' in path:
+        raise ValueError('Path must not contain ".."')
+    return path
 
 
 class PrInfo:
@@ -76,11 +99,29 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
         self._api_base = (api_base or '').rstrip('/')
         self._kwargs = kwargs
 
-    @abstractmethod
     def push_branch(self, local_branch: str, remote_branch: Optional[str] = None,
                     remote_name: str = 'origin', repo_path: Optional[str] = None) -> Dict[str, Any]:
-        '''Push local branch to remote. Returns dict with success, message.'''
-        raise NotImplementedError
+        '''Push local branch to remote. Validates remote_name to prevent command injection (e.g. ext::).'''
+        _validate_remote_name(remote_name)
+        remote_branch = remote_branch or local_branch
+        cwd = repo_path or '.'
+        try:
+            out = subprocess.run(
+                ['git', 'push', remote_name, f'{local_branch}:{remote_branch}'],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=cwd,
+            )
+            if out.returncode != 0:
+                return {'success': False, 'message': out.stderr or out.stdout or 'git push failed'}
+            return {'success': True, 'message': out.stdout or 'pushed'}
+        except FileNotFoundError:
+            return {'success': False, 'message': 'git not found'}
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'message': 'git push timeout'}
+        except Exception as e:
+            return {'success': False, 'message': str(e)}
 
     @abstractmethod
     def create_pull_request(self, source_branch: str, target_branch: str,

@@ -1,12 +1,11 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 '''GitLab backend using REST API v4.'''
-import subprocess
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 import requests
 
-from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo
+from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo, _sanitize_path
 
 
 def _parse_repo(repo: str) -> str:
@@ -24,32 +23,10 @@ class GitLab(LazyLLMGitBase):
 
     def _url(self, path: str) -> str:
         proj = quote(self._project_path, safe='')
-        return f'{self._api_base}/projects/{proj}{path}'
+        return f'{self._api_base}/projects/{proj}{_sanitize_path(path)}'
 
     def _req(self, method: str, path: str, **kwargs) -> 'requests.Response':
         return self._session.request(method, self._url(path), **kwargs)
-
-    def push_branch(self, local_branch: str, remote_branch: Optional[str] = None,
-                    remote_name: str = 'origin', repo_path: Optional[str] = None) -> Dict[str, Any]:
-        remote_branch = remote_branch or local_branch
-        cwd = repo_path or '.'
-        try:
-            out = subprocess.run(
-                ['git', 'push', remote_name, f'{local_branch}:{remote_branch}'],
-                capture_output=True,
-                text=True,
-                timeout=120,
-                cwd=cwd,
-            )
-            if out.returncode != 0:
-                return {'success': False, 'message': out.stderr or out.stdout or 'git push failed'}
-            return {'success': True, 'message': out.stdout or 'pushed'}
-        except FileNotFoundError:
-            return {'success': False, 'message': 'git not found'}
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'message': 'git push timeout'}
-        except Exception as e:
-            return {'success': False, 'message': str(e)}
 
     def create_pull_request(self, source_branch: str, target_branch: str,
                             title: str, body: str = '', **kwargs) -> Dict[str, Any]:

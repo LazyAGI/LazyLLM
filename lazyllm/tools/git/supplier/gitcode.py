@@ -1,11 +1,10 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 '''GitCode (Huawei CodeArts) backend; API compatible with Gitee v5.'''
-import subprocess
 from typing import Any, Dict, List, Optional
 
 import requests
 
-from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo
+from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo, _sanitize_path
 from .gitee import _head_base_ref, _parse_repo
 
 
@@ -24,32 +23,10 @@ class GitCode(LazyLLMGitBase):
         self._session.params = {'access_token': self._token}
 
     def _url(self, path: str) -> str:
-        return f'{self._api_base}/repos/{self._owner}/{self._repo_name}{path}'
+        return f'{self._api_base}/repos/{self._owner}/{self._repo_name}{_sanitize_path(path)}'
 
     def _req(self, method: str, path: str, **kwargs) -> 'requests.Response':
         return self._session.request(method, self._url(path), **kwargs)
-
-    def push_branch(self, local_branch: str, remote_branch: Optional[str] = None,
-                    remote_name: str = 'origin', repo_path: Optional[str] = None) -> Dict[str, Any]:
-        remote_branch = remote_branch or local_branch
-        cwd = repo_path or '.'
-        try:
-            out = subprocess.run(
-                ['git', 'push', remote_name, f'{local_branch}:{remote_branch}'],
-                capture_output=True,
-                text=True,
-                timeout=120,
-                cwd=cwd,
-            )
-            if out.returncode != 0:
-                return {'success': False, 'message': out.stderr or out.stdout or 'git push failed'}
-            return {'success': True, 'message': out.stdout or 'pushed'}
-        except FileNotFoundError:
-            return {'success': False, 'message': 'git not found'}
-        except subprocess.TimeoutExpired:
-            return {'success': False, 'message': 'git push timeout'}
-        except Exception as e:
-            return {'success': False, 'message': str(e)}
 
     def create_pull_request(self, source_branch: str, target_branch: str,
                             title: str, body: str = '', **kwargs) -> Dict[str, Any]:
@@ -143,8 +120,8 @@ class GitCode(LazyLLMGitBase):
             return {'success': False, 'message': r.text or r.reason}
         data = r.json()
         diff_url = data.get('diff_url') or data.get('patch_url')
-        if diff_url:
-            rr = self._session.get(diff_url)
+        if diff_url and diff_url.startswith((self._api_base.rstrip('/'), 'https://gitcode.com', 'http://gitcode.com')):
+            rr = requests.get(diff_url, params={'access_token': self._token}, timeout=60)
             if rr.status_code == 200:
                 return {'success': True, 'diff': rr.text}
         r2 = self._req('GET', f'/pulls/{number}/files')
