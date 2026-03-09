@@ -86,6 +86,68 @@ _add_git_english('GitCode', '''\
 GitCode backend: Huawei CodeArts, OpenAPI similar to Gitee v5.
 ''')
 
+# Git
+_add_git_chinese('Git', '''\
+统一 Git 客户端：根据 backend/source 或配置、环境变量、gh CLI 自动选择后端（GitHub/GitLab/Gitee/GitCode）。
+传入 source 时直接使用该后端；否则先读 config["git_backend"]，再按 GITHUB_TOKEN 等环境变量，再 gh 登录，最后默认 github。
+
+Args:
+    backend (str, optional): 后端名（github/gitlab/gitee/gitcode），会被 source 覆盖。
+    source (str, optional): 若传入则直接作为后端，跳过自动检测。
+    token (str, optional): Access Token；缺省时从环境变量或 gh 解析。
+    repo (str): 仓库标识，如 owner/repo。
+    api_base (str, optional): 后端 API 根地址。
+    return_trace (bool): 是否返回调用追踪。
+''')
+_add_git_english('Git', '''\
+Unified Git client: selects backend by config, source, or auto-detect (env, gh CLI, default github).
+If source is provided, that backend is used; else config["git_backend"], then env (GITHUB_TOKEN, etc.), then gh, then github.
+
+Args:
+    backend (str, optional): Backend name (github, gitlab, gitee, gitcode); overridden by source.
+    source (str, optional): If set, use as backend and skip auto-detect.
+    token (str, optional): Access token; resolved from env or gh when None.
+    repo (str): Repository identifier, e.g. owner/repo.
+    api_base (str, optional): API base URL for the backend.
+    return_trace (bool): Whether to return call trace.
+''')
+
+# review
+_add_git_chinese('review', '''\
+对 PR/MR 做代码评审：解析 diff、按 hunk 调用模型，可选地提交行级评论。后端随 Git 配置/source；repo 支持完整 URL（如 https://.../owner/repo 或 .../repo.git）。
+
+Args:
+    pr_number (int): PR/MR 编号。
+    repo (str): 仓库：owner/repo 或完整 URL；.git 会被去掉；未传 source 时从 URL 推断。
+    token (str, optional): Access Token；缺省按后端从环境变量或 gh 解析。
+    source (str, optional): 指定后端（github/gitlab/gitee/gitcode）；不传则用配置/环境/gh。
+    llm: 推理用 LLM；None 时使用 lazyllm.OnlineChatModule()。
+    api_base (str, optional): 后端 API 根地址。
+    post_to_github (bool): 为 True 时把每条问题作为行级评论提交到平台。
+    max_diff_chars (int, optional): diff 最大字符数；None 表示不限制。
+    max_hunks (int, optional): 最多处理的 hunk 数；None 表示不限制。
+
+Returns:
+    dict: summary、comments_posted、comments。
+''')
+_add_git_english('review', '''\
+Review a PR/MR: parse diff, call model per hunk, optionally post line-level comments. Backend follows Git config/source; repo can be owner/repo or full URL (e.g. https://.../owner/repo or .../repo.git).
+
+Args:
+    pr_number (int): PR/MR number.
+    repo (str): Repository: owner/repo or full URL; .git is stripped; source inferred from URL when not passed.
+    token (str, optional): Access token; resolved from env or gh per backend.
+    source (str, optional): If set, use this backend (github, gitlab, gitee, gitcode); else config/env/gh.
+    llm: LLM for inference; None uses lazyllm.OnlineChatModule().
+    api_base (str, optional): API base URL for the backend.
+    post_to_github (bool): If True, post each issue as a line-level comment on the platform.
+    max_diff_chars (int, optional): Max diff length; None for no limit.
+    max_hunks (int, optional): Max hunks to process; None for no limit.
+
+Returns:
+    dict: summary, comments_posted, comments.
+''')
+
 # LazyLLMGitBase abstract methods
 _add_git_chinese('LazyLLMGitBase.push_branch', '''\
 将本地分支推送到远程仓库。
@@ -375,10 +437,31 @@ Returns:
     dict: success, sha, message.
 ''')
 
+_add_git_chinese('LazyLLMGitBase.check_review_resolution', '''\
+检查评审评论是否已解决。默认实现列出评论；子类可覆盖为平台逻辑。
+
+Args:
+    number (int): PR/MR 编号。
+    comment_ids (list, optional): 要检查的评论 ID 列表。
+
+Returns:
+    dict: 包含 success、resolved、comments、message。
+''')
+_add_git_english('LazyLLMGitBase.check_review_resolution', '''\
+Check if review comments are resolved. Default: list comments; override for platform-specific logic.
+
+Args:
+    number (int): PR/MR number.
+    comment_ids (list, optional): Comment IDs to check.
+
+Returns:
+    dict: success, resolved, comments, message.
+''')
+
 _add_git_example('LazyLLMGitBase', '''\
 >>> from lazyllm.tools import git
 >>> import lazyllm
->>> backend = lazyllm.git.GitHub(token='xxx', repo='owner/repo')
+>>> backend = lazyllm.tools.git.Git(source='github', token='xxx', repo='owner/repo')
 >>> backend.create_pull_request('feat', 'main', 'Title', 'Body')
 >>> backend.merge_pull_request(1)
 ''')

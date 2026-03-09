@@ -1,39 +1,78 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 '''
 Git PR code review: parses diff into hunks, calls the model per hunk, and posts line-level
-review comments (issue + suggestion) on the code. No single large comment. Auth via token,
-env vars, or gh CLI.
+review comments (issue + suggestion). Uses Git backend (config/source); repo supports full URL.
 '''
 import json
-import os
 import re
-import subprocess
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from .supplier.github import GitHub
+from .base import LazyLLMGitBase
+from .client import Git
 
 
-def _resolve_github_token(token: Optional[str] = None) -> str:
-    if token and token.strip():
-        return token.strip()
-    env_token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
-    if env_token and env_token.strip():
-        return env_token.strip()
-    try:
-        out = subprocess.run(
-            ['gh', 'auth', 'token'],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if out.returncode == 0 and out.stdout and out.stdout.strip():
-            return out.stdout.strip()
-    except (subprocess.TimeoutExpired, OSError):
-        pass
-    raise ValueError(
-        'No GitHub token. Use: 1) review(..., token="..."); '
-        '2) env GITHUB_TOKEN; 3) gh auth login then run again.'
-    )
+# Host -> backend name for inferring source from repo URL.
+_HOST_TO_SOURCE = {
+    'github.com': 'github',
+    'gitlab.com': 'gitlab',
+    'gitee.com': 'gitee',
+    'gitcode.com': 'gitcode',
+}
+
+
+def _normalize_repo(repo: str) -> Tuple[str, Optional[str]]:
+    '''
+    Normalize repo to (owner/repo or project_path, inferred_source).
+    Strips .git; if repo is a full URL, extract path and infer source from host.
+    '''
+    s = repo.strip().strip('/')
+    inferred: Optional[str] = None
+    if s.startswith('https://') or s.startswith('http://') or s.startswith('git@'):
+        # URL: strip .git, extract host and path
+        if s.endswith('.git'):
+            s = s[:-4]
+        if s.startswith('git@'):
+            # git@github.com:owner/repo -> github, owner/repo
+            m = re.match(r'git@([^:]+):(.+)', s)
+            if m:
+                host = m.group(1).lower()
+                inferred = _HOST_TO_SOURCE.get(host) or (
+                    'github' if 'github' in host else
+                    'gitlab' if 'gitlab' in host else
+                    'gitee' if 'gitee' in host else
+                    'gitcode' if 'gitcode' in host else None
+                )
+                s = m.group(2).strip('/')
+        else:
+            # https://host/path
+            parts = s.split('/', 3)
+            if len(parts) >= 3:
+                host = parts[2].lower()
+                inferred = _HOST_TO_SOURCE.get(host.split(':')[0])
+                path = parts[3] if len(parts) > 3 else ''
+                s = path.strip('/') or s
+    else:
+        if s.endswith('.git'):
+            s = s[:-4].strip('/')
+    if not s:
+        return repo.strip().strip('/'), inferred
+    return s, inferred
+
+
+def _get_head_sha_from_pr(pr: Any) -> Optional[str]:
+    '''Get head commit SHA from PR raw payload (GitHub head.sha, GitLab diff_refs.head_sha, etc.).'''
+    raw = getattr(pr, 'raw', None) or {}
+    if not isinstance(raw, dict):
+        return None
+    # GitHub / Gitee style
+    head = raw.get('head')
+    if isinstance(head, dict) and head.get('sha'):
+        return head['sha']
+    # GitLab MR: diff_refs.head_sha
+    diff_refs = raw.get('diff_refs', {})
+    if isinstance(diff_refs, dict) and diff_refs.get('head_sha'):
+        return diff_refs['head_sha']
+    return None
 
 
 def _parse_unified_diff(diff_text: str) -> List[Tuple[str, int, int, str]]:
@@ -181,9 +220,9 @@ def _collect_hunk_comments(
 
 
 def _post_review_comments(
-    gh: GitHub,
+    backend: LazyLLMGitBase,
     pr_number: int,
-    head_sha: str,
+    head_sha: Optional[str],
     all_comments: List[Dict[str, Any]],
 ) -> int:
     posted = 0
@@ -192,7 +231,7 @@ def _post_review_comments(
             f'**[{c.get("severity", "normal")}]** {c.get("problem", "")}\n\n'
             f'Suggestion: {c.get("suggestion", "")}'
         )
-        out = gh.create_review_comment(
+        out = backend.create_review_comment(
             pr_number, body=body, path=c['path'], line=c['line'], commit_id=head_sha,
         )
         if out.get('success'):
@@ -204,6 +243,7 @@ def review(
     pr_number: int,
     repo: str = 'LazyAGI/LazyLLM',
     token: Optional[str] = None,
+    source: Optional[str] = None,
     llm: Optional[Any] = None,
     api_base: Optional[str] = None,
     post_to_github: bool = False,
@@ -211,34 +251,43 @@ def review(
     max_hunks: Optional[int] = 50,
 ) -> Union[str, Dict[str, Any]]:
     '''
-    Review a GitHub PR: parse diff, call the model per hunk, post line-level review comments
-    (issue + suggestion) on the code. Does not post a single large conversation comment.
+    Review a PR/MR: parse diff, call the model per hunk, optionally post line-level review
+    comments. Backend follows Git config/source; repo can be owner/repo or full URL (e.g.
+    https://github.com/owner/repo or .../repo.git).
 
     Args:
-        pr_number: PR number.
-        repo: owner/repo.
-        token: GitHub token; optional, resolved from env or gh.
+        pr_number: PR/MR number.
+        repo: Repository: owner/repo, or full URL (https://.../owner/repo, .../repo.git);
+            .git is stripped; source is inferred from URL host when not passed.
+        token: Access token; optional, resolved from env or gh per backend.
+        source: If set, use this backend (github, gitlab, gitee, gitcode); else use config/env/gh.
         llm: LLM for inference; if None uses lazyllm.OnlineChatModule().
-        api_base: GitHub API base URL.
-        post_to_github: If True, post each issue as a line-level comment (visible in Files changed).
+        api_base: API base URL for the backend.
+        post_to_github: If True, post each issue as a line-level comment on the platform.
         max_diff_chars: Max diff length; None for no limit.
         max_hunks: Max hunks to process; None for no limit.
 
     Returns:
-        dict: summary, comments_posted count, and comments list; no submit if post_to_github=False.
+        dict: summary, comments_posted count, and comments list.
     '''
-    token = _resolve_github_token(token)
-    gh = GitHub(token=token, repo=repo, api_base=api_base or 'https://api.github.com')
+    repo_str, inferred_source = _normalize_repo(repo)
+    backend_name = source or inferred_source
+    backend = Git(
+        source=backend_name,
+        token=token,
+        repo=repo_str,
+        api_base=api_base,
+    )
 
-    pr_res = gh.get_pull_request(pr_number)
+    pr_res = backend.get_pull_request(pr_number)
     if not pr_res.get('success'):
         raise RuntimeError(f'Failed to get PR #{pr_number}: {pr_res.get("message", "unknown")}')
     pr = pr_res['pr']
-    head_sha = (pr.raw or {}).get('head', {}).get('sha')
+    head_sha = _get_head_sha_from_pr(pr)
     if not head_sha and post_to_github:
         raise RuntimeError('Cannot get PR head sha; cannot post line-level comments')
 
-    diff_res = gh.get_pr_diff(pr_number)
+    diff_res = backend.get_pr_diff(pr_number)
     if not diff_res.get('success'):
         raise RuntimeError(f'Failed to get PR #{pr_number} diff: {diff_res.get("message", "unknown")}')
     diff_text = diff_res.get('diff', '')
@@ -254,14 +303,14 @@ def review(
     all_comments = _collect_hunk_comments(llm, hunks)
 
     if post_to_github and head_sha:
-        posted = _post_review_comments(gh, pr_number, head_sha, all_comments)
+        posted = _post_review_comments(backend, pr_number, head_sha, all_comments)
         return {
             'summary': f'PR #{pr_number}: {len(all_comments)} review comment(s), {posted} line-level comment(s) posted.',
             'comments_posted': posted,
             'comments': all_comments,
         }
     return {
-        'summary': f'PR #{pr_number}: {len(all_comments)} review comment(s) (not posted to GitHub).',
+        'summary': f'PR #{pr_number}: {len(all_comments)} review comment(s) (not posted).',
         'comments_posted': 0,
         'comments': all_comments,
     }

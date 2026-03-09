@@ -23,20 +23,18 @@ def main():
     repo = 'LazyAGI/LazyLLM'
     pr_number = 1053
 
-    from lazyllm.tools.git.review import _resolve_github_token, review
-    from lazyllm.tools.git.supplier.github import GitHub
+    from lazyllm.tools.git import Git, review
 
-    print('1. Resolving GitHub token...')
+    print('1. Creating Git backend (token from env or gh CLI)...')
     try:
-        token = _resolve_github_token(None)
-        print('   Token resolved from env or gh CLI.')
+        backend = Git(source='github', repo=repo)
+        print('   Backend ready.')
     except ValueError as e:
         print(f'   Failed: {e}')
         return 1
 
-    print('2. Fetching PR and diff via GitHub API...')
-    gh = GitHub(token=token, repo=repo)
-    pr_res = gh.get_pull_request(pr_number)
+    print('2. Fetching PR and diff via API...')
+    pr_res = backend.get_pull_request(pr_number)
     if not pr_res.get('success'):
         print(f'   Failed to get PR: {pr_res.get("message")}')
         return 1
@@ -44,7 +42,7 @@ def main():
     print(f'   PR #{pr.number}: {pr.title}')
     print(f'   {pr.source_branch} -> {pr.target_branch}')
 
-    diff_res = gh.get_pr_diff(pr_number)
+    diff_res = backend.get_pr_diff(pr_number)
     if not diff_res.get('success'):
         print(f'   Failed to get diff: {diff_res.get("message")}')
         return 1
@@ -68,7 +66,7 @@ def main():
         out = review(
             pr_number,
             repo=repo,
-            token=token,
+            source='github',
             llm=llm,
             post_to_github=post_to_github,
         )

@@ -263,7 +263,9 @@ config = _NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Dis
               description='Whether to skip check keywords for deployment.'
         ).add('allow_internal_network', bool, False, 'ALLOW_INTERNAL_NETWORK',
               description='Whether to allow loading images from internal network addresses. '
-                          'Set to False for security in production environments.')
+                          'Set to False for security in production environments.'
+        ).add('git_backend', str, None, 'GIT_BACKEND',
+              description='Default git backend: github, gitlab, gitee, gitcode. None for auto-detect.')
 
 def refresh_config(key):
     if key in Config:

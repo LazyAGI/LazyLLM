@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from .http_request import HttpRequest, HttpExecutorResponse
     from .data import data_register
     from .review import get_errors, ChineseCorrector
-    from .git import (LazyLLMGitBase, PrInfo, ReviewCommentInfo,
+    from .git import (LazyLLMGitBase, PrInfo, ReviewCommentInfo, Git,
                       GitHub, GitLab, Gitee, GitCode)
 
 
@@ -122,6 +122,7 @@ _SUBMOD_MAP = {
         'LazyLLMGitBase',
         'PrInfo',
         'ReviewCommentInfo',
+        'Git',
         'GitHub',
         'GitLab',
         'Gitee',
