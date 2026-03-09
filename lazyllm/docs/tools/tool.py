@@ -1,8 +1,8 @@
 # flake8: noqa E501
 from audioop import add
 import importlib
-from . import utils
 import functools
+from .. import utils
 import lazyllm
 
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools'))
@@ -34,7 +34,14 @@ add_infer_service_chinese_doc = functools.partial(utils.add_chinese_doc, module=
 add_infer_service_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.infer_service'))
 add_infer_service_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.infer_service'))
 
-# ---------------------------------------------------------------------------- #
+
+# functions for lazyllm.tools.git
+add_git_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.git'))
+add_git_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.git'))
+add_git_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.git'))
+
+from . import git  # noqa: E402
+
 
 # classifier/intent_classifier.py
 
