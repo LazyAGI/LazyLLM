@@ -148,3 +148,27 @@
 ::: lazyllm.tools.data.pipelines.demo_pipelines
     members:
     exclude-members:
+
+### Agentic RAG Pipeline
+
+::: lazyllm.tools.data.pipelines.rag_pipelines
+    members:
+    exclude-members:
+
+### 知识库清洗Pipeline
+
+::: lazyllm.tools.data.pipelines.kc_pipelines
+    members:
+    exclude-members:
+
+### Embedding数据合成Pipeline
+
+::: lazyllm.tools.data.pipelines.embedding_pipelines
+    members:
+    exclude-members:
+
+### Reranker数据合成Pipeline
+
+::: lazyllm.tools.data.pipelines.reranker_pipelines
+    members:
+    exclude-members:

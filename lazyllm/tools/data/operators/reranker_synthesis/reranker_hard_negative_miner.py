@@ -61,34 +61,49 @@ def _compute_cosine_similarity(query_emb: np.ndarray, corpus_embs: np.ndarray) -
 def build_reranker_corpus(
     inputs: List[dict],
     input_pos_key: str = 'pos',
+    corpus_key: str = 'passage',
     corpus: Optional[List[str]] = None,
     corpus_dir: Optional[str] = None,
 ) -> List[dict]:
-    # Use external corpus if provided, otherwise build from inputs
-    if corpus is None:
-        all_passages = []
-        for item in inputs:
+    # Save corpus to file instead of storing in memory for each item
+    if corpus_dir is None:
+        corpus_dir = tempfile.gettempdir()
+    os.makedirs(corpus_dir, exist_ok=True)
+
+    results = []
+    for item in inputs:
+        # Use external corpus if provided, otherwise build from this item only
+        if corpus is None:
+            all_passages = []
             pos_list = item.get(input_pos_key, [])
             if isinstance(pos_list, list):
                 all_passages.extend(pos_list)
             else:
                 all_passages.append(pos_list)
-        corpus = list(set(all_passages))
-        LOG.info(f'Built corpus with {len(corpus)} unique passages from inputs.')
+            if corpus_key in item:
+                corpus_value = item[corpus_key]
+                if isinstance(corpus_value, list):
+                    all_passages.extend(corpus_value)
+                else:
+                    all_passages.append(corpus_value)
+            item_corpus = list(set(all_passages))
+        else:
+            item_corpus = corpus
+
+        # Save corpus to file for this item
+        corpus_path = os.path.join(corpus_dir, f'reranker_corpus_{id(item)}.json')
+        with open(corpus_path, 'w', encoding='utf-8') as f:
+            json.dump(item_corpus, f, ensure_ascii=False)
+
+        results.append({**item, '_corpus': corpus_path})
+
+    if corpus is None:
+        total_passages = sum(len(_load_corpus_from_path(r['_corpus'])) for r in results)
+        LOG.info(f'Built corpus with {total_passages} unique passages from {len(inputs)} items.')
     else:
         LOG.info(f'Using external corpus with {len(corpus)} passages.')
 
-    # Save corpus to file instead of storing in memory for each item
-    if corpus_dir is None:
-        corpus_dir = tempfile.gettempdir()
-    os.makedirs(corpus_dir, exist_ok=True)
-    corpus_path = os.path.join(corpus_dir, f'reranker_corpus_{id(inputs)}.json')
-    with open(corpus_path, 'w', encoding='utf-8') as f:
-        json.dump(corpus, f, ensure_ascii=False)
-
-    LOG.info(f'Saved corpus to {corpus_path}')
-
-    return [{**item, '_corpus': corpus_path} for item in inputs]
+    return results
 
 
 class RerankerInitBM25(reranker):
@@ -196,17 +211,23 @@ class RerankerInitSemantic(reranker):
 
 
 class RerankerMineRandomNegatives(reranker):
-    def __init__(self, num_negatives: int = 7, seed: int = 42, **kwargs):
+    def __init__(self,
+                 input_query_key: str = 'query',
+                 input_pos_key: str = 'pos',
+                 output_neg_key: str = 'neg',
+                 num_negatives: int = 7,
+                 seed: int = 42,
+                 **kwargs):
         super().__init__(_concurrency_mode='process', **kwargs)
+        self.input_query_key = input_query_key
+        self.input_pos_key = input_pos_key
+        self.output_neg_key = output_neg_key
         self.num_negatives = num_negatives
         self.seed = seed
 
     def forward(
         self,
         data: dict,
-        input_query_key: str = 'query',
-        input_pos_key: str = 'pos',
-        output_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
         # Load corpus from file path
@@ -220,13 +241,13 @@ class RerankerMineRandomNegatives(reranker):
             corpus = []
 
         if not corpus:
-            return {**data, output_neg_key: []}
+            return {**data, self.output_neg_key: []}
 
-        query = data.get(input_query_key, '')
-        pos_samples = data.get(input_pos_key, [])
+        query = data.get(self.input_query_key, '')
+        pos_samples = data.get(self.input_pos_key, [])
 
         if not query:
-            return {**data, output_neg_key: []}
+            return {**data, self.output_neg_key: []}
 
         pos_set = _normalize_pos_samples(pos_samples)
         candidates = [doc for doc in corpus if doc not in pos_set]
@@ -238,20 +259,25 @@ class RerankerMineRandomNegatives(reranker):
             local_random = random.Random(f'{self.seed}_{query}')
             negatives = local_random.sample(candidates, self.num_negatives)
 
-        return {**data, output_neg_key: negatives}
+        return {**data, self.output_neg_key: negatives}
 
 
 class RerankerMineBM25Negatives(reranker):
-    def __init__(self, num_negatives: int = 7, **kwargs):
+    def __init__(self,
+                 input_query_key: str = 'query',
+                 input_pos_key: str = 'pos',
+                 output_neg_key: str = 'neg',
+                 num_negatives: int = 7,
+                 **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
+        self.input_query_key = input_query_key
+        self.input_pos_key = input_pos_key
+        self.output_neg_key = output_neg_key
         self.num_negatives = num_negatives
 
     def forward(
         self,
         data: dict,
-        input_query_key: str = 'query',
-        input_pos_key: str = 'pos',
-        output_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
         bm25_index = data.get('_bm25')
@@ -262,13 +288,13 @@ class RerankerMineBM25Negatives(reranker):
 
         if bm25_index is None:
             LOG.warning('BM25 index not initialized.')
-            return {**data, output_neg_key: []}
+            return {**data, self.output_neg_key: []}
 
-        query = data.get(input_query_key, '')
-        pos_samples = data.get(input_pos_key, [])
+        query = data.get(self.input_query_key, '')
+        pos_samples = data.get(self.input_pos_key, [])
 
         if not query:
-            return {**data, output_neg_key: []}
+            return {**data, self.output_neg_key: []}
 
         pos_set = _normalize_pos_samples(pos_samples)
         tokenized_query = bm25s.tokenize(
@@ -281,7 +307,7 @@ class RerankerMineBM25Negatives(reranker):
 
         negatives = []
         if not corpus:
-            return {**data, output_neg_key: []}
+            return {**data, self.output_neg_key: []}
 
         for idx in indices[0]:
             doc = corpus[idx]
@@ -293,23 +319,28 @@ class RerankerMineBM25Negatives(reranker):
         result = {k: v for k, v in data.items() if k not in (
             '_bm25', '_bm25_corpus', '_bm25_tokenizer', '_bm25_stopwords', '_bm25_stemmer'
         )}
-        result[output_neg_key] = negatives
+        result[self.output_neg_key] = negatives
         return result
 
 
 class RerankerMineSemanticNegatives(reranker):
-    def __init__(self, num_negatives: int = 7,
-                 embedding_serving: Optional[Callable] = None, **kwargs):
+    def __init__(self,
+                 input_query_key: str = 'query',
+                 input_pos_key: str = 'pos',
+                 output_neg_key: str = 'neg',
+                 num_negatives: int = 7,
+                 embedding_serving: Optional[Callable] = None,
+                 **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
+        self.input_query_key = input_query_key
+        self.input_pos_key = input_pos_key
+        self.output_neg_key = output_neg_key
         self.num_negatives = num_negatives
         self.embedding_serving = embedding_serving
 
     def forward(
         self,
         data: dict,
-        input_query_key: str = 'query',
-        input_pos_key: str = 'pos',
-        output_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
         # Load embeddings from file path
@@ -319,18 +350,18 @@ class RerankerMineSemanticNegatives(reranker):
 
         if corpus_embeddings is None:
             LOG.warning('Semantic embeddings not initialized.')
-            return {**data, output_neg_key: []}
+            return {**data, self.output_neg_key: []}
 
-        query = data.get(input_query_key, '')
-        pos_samples = data.get(input_pos_key, [])
+        query = data.get(self.input_query_key, '')
+        pos_samples = data.get(self.input_pos_key, [])
 
         if not query:
-            return {**data, output_neg_key: []}
+            return {**data, self.output_neg_key: []}
 
         pos_set = _normalize_pos_samples(pos_samples)
 
         if self.embedding_serving is None:
-            return {**data, output_neg_key: []}
+            return {**data, self.output_neg_key: []}
 
         query_embedding = np.array(self.embedding_serving([query])[0])
         similarities = _compute_cosine_similarity(query_embedding, corpus_embeddings)
@@ -340,12 +371,21 @@ class RerankerMineSemanticNegatives(reranker):
         scored_docs.sort(key=lambda x: x[0], reverse=True)
 
         negatives = [doc for _, doc in scored_docs[:self.num_negatives]]
-        return {**data, output_neg_key: negatives}
+        return {**data, self.output_neg_key: negatives}
 
 
 class RerankerMineMixedNegatives(reranker):
-    def __init__(self, embedding_serving: Optional[Callable] = None,
-                 num_negatives: int = 7, bm25_ratio: float = 0.5, **kwargs):
+    def __init__(self,
+                 input_query_key: str = 'query',
+                 input_pos_key: str = 'pos',
+                 output_neg_key: str = 'neg',
+                 embedding_serving: Optional[Callable] = None,
+                 num_negatives: int = 7,
+                 bm25_ratio: float = 0.5,
+                 **kwargs):
+        self.input_query_key = input_query_key
+        self.input_pos_key = input_pos_key
+        self.output_neg_key = output_neg_key
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.num_negatives = num_negatives
         self.bm25_ratio = bm25_ratio
@@ -354,16 +394,13 @@ class RerankerMineMixedNegatives(reranker):
     def forward(
         self,
         data: dict,
-        input_query_key: str = 'query',
-        input_pos_key: str = 'pos',
-        output_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
-        query = data.get(input_query_key, '')
-        pos_samples = data.get(input_pos_key, [])
+        query = data.get(self.input_query_key, '')
+        pos_samples = data.get(self.input_pos_key, [])
 
         if not query:
-            return {**data, output_neg_key: []}
+            return {**data, self.output_neg_key: []}
 
         pos_set = _normalize_pos_samples(pos_samples)
 
@@ -420,5 +457,5 @@ class RerankerMineMixedNegatives(reranker):
         result = {k: v for k, v in data.items() if k not in (
             '_bm25', '_bm25_corpus', '_bm25_tokenizer', '_bm25_stopwords', '_bm25_stemmer'
         )}
-        result[output_neg_key] = negatives
+        result[self.output_neg_key] = negatives
         return result

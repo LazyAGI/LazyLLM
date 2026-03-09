@@ -194,9 +194,11 @@ class DepthQAGGenerateQuestion(agenticrag):
 
 class DepthQAGVerifyQuestion(agenticrag):
 
-    def __init__(self, llm=None, question_key: str = 'depth_question', **kwargs):
+    def __init__(self, llm=None, question_key: str = 'depth_question',
+                 filter_threshold: Optional[int] = 1, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.question_key = question_key
+        self.filter_threshold = filter_threshold
         self.answer_template = RAGDepthSolverPrompt()
         self.score_template = RAGDepthConsistencyScoringPrompt()
 
@@ -235,13 +237,17 @@ class DepthQAGVerifyQuestion(agenticrag):
         try:
             score_result = self._llm_score_serve(score_prompt)
             if isinstance(score_result, dict):
-                score = score_result.get('answer_score', 0)
+                raw_score = score_result.get('answer_score', 0)
+                try:
+                    score = int(raw_score) if raw_score is not None else 0
+                except (TypeError, ValueError):
+                    score = 0
             else:
                 score = 0
             data['llm_score'] = score
 
-            # Filter out easy questions (score >= 1)
-            if score >= 1:
+            # filter_threshold=None 表示不过滤；否则 score >= filter_threshold 时过滤
+            if self.filter_threshold is not None and score >= self.filter_threshold:
                 data.pop('llm_answer', None)
                 data.pop('llm_score', None)
                 return []

@@ -1,5 +1,5 @@
 import json
-from typing import List
+from typing import List, Optional
 
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
@@ -32,6 +32,38 @@ def _extract_json_content(item: str) -> str:
         .removesuffix('```')
         .strip()
     )
+
+
+def _extract_json_array_from_text(text: str):  # noqa: C901
+    if not text or not isinstance(text, str):
+        return None
+    text = _extract_json_content(text)
+    # 先尝试整体解析
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return parsed
+        if isinstance(parsed, dict) and 'conclusion' in parsed and 'R' in parsed:
+            return [parsed]
+        return None
+    except json.JSONDecodeError:
+        pass
+    # 查找第一个 '[' 与匹配的 ']'，再解析
+    start = text.find('[')
+    if start < 0:
+        return None
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == '[':
+            depth += 1
+        elif text[i] == ']':
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[start:i + 1])
+                except json.JSONDecodeError:
+                    return None
+    return None
 
 
 class AgenticRAGGetIdentifier(agenticrag):
@@ -77,7 +109,7 @@ class AgenticRAGGetConclusion(agenticrag):
 
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
-            self._llm_serve = llm.share().prompt(system_prompt)
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()
         else:
             self._llm_serve = None
@@ -104,21 +136,48 @@ class AgenticRAGExpandConclusions(agenticrag):
         super().__init__(**kwargs)
         self.max_per_task = max_per_task
 
-    def forward(self, data: dict) -> List[dict]:
-        conclusion_str = data.get('raw_conclusion', '')
+    def forward(self, data: dict) -> List[dict]:  # noqa: C901
+        raw_conclusion = data.get('raw_conclusion', '')
         identifier = data.get('identifier', '')
 
-        if not conclusion_str:
+        if raw_conclusion is None or (isinstance(raw_conclusion, str) and not raw_conclusion.strip()):
             return []
 
-        try:
-            parsed = json.loads(_extract_json_content(conclusion_str))
-            if isinstance(parsed, list):
-                parsed = parsed[:self.max_per_task]
+        parsed = None
+        # 1) 已是 list（GetConclusion 使用 JsonFormatter 时）
+        if isinstance(raw_conclusion, list):
+            parsed = raw_conclusion[:self.max_per_task]
+        # 2) 已是 dict：单条结论或包装结构
+        elif isinstance(raw_conclusion, dict):
+            if 'conclusion' in raw_conclusion and 'R' in raw_conclusion:
+                parsed = [raw_conclusion]
             else:
-                return []
-        except Exception as e:
-            LOG.warning(f'Failed to parse conclusion JSON: {e}')
+                # 常见包装键
+                for key in ('conclusions', 'items', 'data', 'result'):
+                    if key in raw_conclusion and isinstance(raw_conclusion[key], list):
+                        parsed = raw_conclusion[key][:self.max_per_task]
+                        break
+                if parsed is None:
+                    parsed = []
+        # 3) 字符串：先整体解析，失败则从文本中抽取 JSON 数组
+        elif isinstance(raw_conclusion, str) and raw_conclusion.strip():
+            try:
+                parsed = json.loads(_extract_json_content(raw_conclusion))
+                if isinstance(parsed, list):
+                    parsed = parsed[:self.max_per_task]
+                elif isinstance(parsed, dict) and 'conclusion' in parsed and 'R' in parsed:
+                    parsed = [parsed]
+                else:
+                    parsed = []
+            except json.JSONDecodeError:
+                parsed = _extract_json_array_from_text(raw_conclusion)
+                if parsed is not None:
+                    parsed = parsed[:self.max_per_task]
+                else:
+                    LOG.warning('Failed to parse conclusion JSON: no valid array found in raw_conclusion')
+                    return []
+
+        if not parsed:
             return []
 
         expanded_rows = []
@@ -206,8 +265,9 @@ class AgenticRAGCleanQA(agenticrag):
 
 class AgenticRAGLLMVerify(agenticrag):
 
-    def __init__(self, llm=None, **kwargs):
+    def __init__(self, llm=None, filter_threshold: Optional[int] = 1, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
+        self.filter_threshold = filter_threshold
         self.prompt_template = RAGTaskSolverPrompt()
         self.score_template = RAGConsistencyScoringPrompt()
         if llm is not None:
@@ -241,10 +301,15 @@ class AgenticRAGLLMVerify(agenticrag):
         try:
             score_result = self._llm_score_serve(score_prompt)
             if isinstance(score_result, dict):
-                score = score_result.get('answer_score', 0)
+                raw_score = score_result.get('answer_score', 0)
+                try:
+                    score = int(raw_score) if raw_score is not None else 0
+                except (TypeError, ValueError):
+                    score = 0
                 data['llm_score'] = score
 
-                if score >= 1:
+                # filter_threshold=None 表示不过滤；否则 score >= filter_threshold 时过滤（默认 1，与 DataFlow 一致）
+                if self.filter_threshold is not None and score >= self.filter_threshold:
                     return []
             else:
                 data['llm_score'] = 0
@@ -354,7 +419,7 @@ class AgenticRAGGroupAndLimit(agenticrag):
         self.input_key = input_key
         self.max_question = max_question
 
-    def forward_batch_input(self, data: List[dict]) -> List[dict]:
+    def forward_batch_input(self, data: List[dict], **kwargs) -> List[dict]:
         grouped_data = {}
 
         for item in data:

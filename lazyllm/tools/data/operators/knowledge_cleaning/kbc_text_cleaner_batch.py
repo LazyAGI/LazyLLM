@@ -15,16 +15,16 @@ else:
 
 
 class KBCLoadRAWChunkFile(kbc):
-    def __init__(self, **kwargs):
+    def __init__(self, input_key: str = 'chunk_path', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
+        self.input_key = input_key
 
     def forward(
         self,
         data: dict,
-        input_key: str = 'chunk_path',
         **kwargs
     ) -> dict:
-        chunk_path = data.get(input_key, '')
+        chunk_path = data.get(self.input_key, '')
         if not chunk_path or not os.path.exists(chunk_path):
             LOG.warning(f'Invalid chunk path: {chunk_path}')
             return {**data, '_chunks_data': [], '_chunk_path': chunk_path}
@@ -58,6 +58,7 @@ class KBCGenerateCleanedText(kbc):
         if llm is not None:
             # Note: DocRefinementPrompt may not have system prompt, use empty string
             system_prompt = getattr(self.prompts, 'build_system_prompt', lambda: '')()
+            # Use JsonFormatter: model must return valid JSON as instructed by DocRefinementPrompt
             self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()
         else:
@@ -117,17 +118,17 @@ def extract_cleaned_content(data: dict) -> dict:
         raw_chunk = result.get('raw_chunk', '')
         original_item = result.get('original_item', {})
 
-        # Handle different response types from JsonFormatter
+        # Handle different response types from JsonFormatter (dict / list / str)
         if isinstance(response, dict):
-            # JsonFormatter returned a dict, extract text field or convert to string
             text = response.get('text', '') or response.get('content', '') or str(response)
         elif isinstance(response, list):
-            # JsonFormatter returned a list, join or take first item
             text = response[0] if response else ''
             if isinstance(text, dict):
                 text = text.get('text', '') or text.get('content', '') or str(text)
+            else:
+                text = str(text) if text is not None else ''
         elif isinstance(response, str):
-            # JsonFormatter failed to parse, use as-is
+            # JsonFormatter failed to parse or returned raw string, use as-is
             text = response
         else:
             text = str(response)
@@ -189,21 +190,25 @@ def _get_save_output_path(chunk_path: str, output_dir: Optional[str]) -> str:
 
 
 class KBCSaveCleaned(kbc):
-    def __init__(self, output_dir: Optional[str] = None, **kwargs):
+    def __init__(self,
+                 output_key: str = 'cleaned_chunk_path',
+                 output_dir: Optional[str] = None,
+                 **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.output_dir = output_dir
+        self.output_key = output_key
 
-    def forward(self, data: dict, output_key: str = 'cleaned_chunk_path', **kwargs) -> dict:
+    def forward(self, data: dict, **kwargs) -> dict:
         cleaned_chunks = data.get('_cleaned_chunks', [])
         chunk_path = data.get('_chunk_path', '')
         result = data.copy()
 
         if not chunk_path:
-            return _clean_save_result(result, output_key)
+            return _clean_save_result(result, self.output_key)
 
         if not cleaned_chunks:
             LOG.warning(f'No cleaned chunks to save for {chunk_path}')
-            return _clean_save_result(result, output_key, chunk_path)
+            return _clean_save_result(result, self.output_key, chunk_path)
 
         try:
             json_items = _build_json_items(cleaned_chunks)
@@ -213,8 +218,8 @@ class KBCSaveCleaned(kbc):
                 json.dump(json_items, f, ensure_ascii=False, indent=4)
 
             LOG.info(f'Successfully saved cleaned chunks to {output_path}')
-            return _clean_save_result(result, output_key, output_path)
+            return _clean_save_result(result, self.output_key, output_path)
 
         except Exception as e:
             LOG.error(f'Error saving cleaned chunks: {e}')
-            return _clean_save_result(result, output_key)
+            return _clean_save_result(result, self.output_key)

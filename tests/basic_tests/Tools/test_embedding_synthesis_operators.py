@@ -187,7 +187,10 @@ class TestEmbeddingSynthesisOperators:
         # Mine semantic negatives
         op = embedding.EmbeddingMineSemanticNegatives(
             num_negatives=1,
-            embedding_serving=mock_embedding
+            embedding_serving=mock_embedding,
+            input_query_key='query',
+            input_pos_key='pos',
+            output_neg_key='neg'
         )
         result = op([data_with_semantic[0]])[0]
         assert 'neg' in result

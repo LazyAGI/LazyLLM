@@ -75,18 +75,18 @@ def _download_pdf(url, save_path):
 
 
 class FileOrURLNormalizer(kbc):
-    def __init__(self, intermediate_dir: str = 'intermediate', **kwargs):
+    def __init__(self, intermediate_dir: str = 'intermediate', input_key: str = 'source', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.intermediate_dir = intermediate_dir
+        self.input_key = input_key
         os.makedirs(self.intermediate_dir, exist_ok=True)
 
     def forward(
         self,
         data: dict,
-        input_key: str = 'source',
         **kwargs,
     ) -> dict:
-        src = data.get(input_key, '')
+        src = data.get(self.input_key, '')
         if not src:
             return {**data, '_type': 'invalid', '_error': 'Empty source'}
 

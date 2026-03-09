@@ -151,3 +151,27 @@
 ::: lazyllm.tools.data.pipelines.demo_pipelines
     members:
     exclude-members:
+
+### Agentic RAG Pipeline
+
+::: lazyllm.tools.data.pipelines.rag_pipelines
+    members:
+    exclude-members:
+
+### Knowledge Base Cleaning Pipeline
+
+::: lazyllm.tools.data.pipelines.kc_pipelines
+    members:
+    exclude-members:
+
+### Embedding Data Synthesis Pipeline
+
+::: lazyllm.tools.data.pipelines.embedding_pipelines
+    members:
+    exclude-members:
+
+### Reranker Data Synthesis Pipeline
+
+::: lazyllm.tools.data.pipelines.reranker_pipelines
+    members:
+    exclude-members:
