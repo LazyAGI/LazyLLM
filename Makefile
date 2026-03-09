@@ -17,8 +17,7 @@ lint-flake8:
 lint-flake8-only-diff:
 	@set -e
 	@if [ -n "${CHANGED_FILES}" ]; then \
-		EXISTING=$$(for f in $(CHANGED_FILES); do [ -f "$$f" ] && echo "$$f"; done); \
-		[ -n "$$EXISTING" ] && echo "$$EXISTING" | xargs flake8 || true; \
+		echo "$(CHANGED_FILES)" | xargs flake8; \
 		exit 0; \
 	fi
 
@@ -30,13 +29,12 @@ lint-flake8-only-diff:
 			git diff --name-status -- 'lazyllm/**.py' 'docs/**.py' 'scripts/**.py' 'tests/**.py' 'examples/**.py'; \
 		} | awk '$$1 ~ /^(A|M)$$/ {print $$2}' | sort -u \
 	);  \
-	EXISTING=$$(for f in $$FILES; do [ -f "$$f" ] && echo "$$f"; done); \
-	if [ -n "$$EXISTING" ]; then \
+	if [ -n "$$FILES" ]; then \
 		echo "➡️  Running flake8 on:"; \
-		echo "$$EXISTING"; \
-		echo "$$EXISTING" | xargs flake8; \
+		echo "$$FILES"; \
+		echo "$$FILES" | xargs flake8; \
 	else \
-		echo "✅ No Python file changes to lint (or changed files no longer exist)."; \
+		echo "✅ No Python file changes to lint."; \
 	fi
 
 lint-print:
