@@ -1,30 +1,30 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-'''GitCode (Huawei CodeArts) backend; API compatible with Gitee v5.'''
+'''GitLab backend using REST API v4.'''
 import subprocess
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 import requests
 
-from .base import LazyLLMGitBase, PrInfo, ReviewCommentInfo
-from .gitee import _head_base_ref, _parse_repo
+from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo
 
 
-class GitCode(LazyLLMGitBase):
-    '''GitCode backend: Huawei CodeArts, OpenAPI similar to Gitee v5.'''
+def _parse_repo(repo: str) -> str:
+    return repo.strip().strip('/')
+
+
+class GitLab(LazyLLMGitBase):
+    '''GitLab backend: REST API (gitlab.com/api/v4), push via local git.'''
 
     def __init__(self, token: str, repo: str, api_base: Optional[str] = None, **kwargs):
-        super().__init__(
-            token=token,
-            repo=repo,
-            api_base=api_base or 'https://api.gitcode.com/api/v5',
-            **kwargs,
-        )
-        self._owner, self._repo_name = _parse_repo(self._repo)
+        super().__init__(token=token, repo=repo, api_base=api_base or 'https://gitlab.com/api/v4', **kwargs)
+        self._project_path = _parse_repo(self._repo)
         self._session = requests.Session()
-        self._session.params = {'access_token': self._token}
+        self._session.headers.update({'PRIVATE-TOKEN': self._token})
 
     def _url(self, path: str) -> str:
-        return f'{self._api_base}/repos/{self._owner}/{self._repo_name}{path}'
+        proj = quote(self._project_path, safe='')
+        return f'{self._api_base}/projects/{proj}{path}'
 
     def _req(self, method: str, path: str, **kwargs) -> 'requests.Response':
         return self._session.request(method, self._url(path), **kwargs)
@@ -54,20 +54,20 @@ class GitCode(LazyLLMGitBase):
     def create_pull_request(self, source_branch: str, target_branch: str,
                             title: str, body: str = '', **kwargs) -> Dict[str, Any]:
         payload = {
+            'source_branch': source_branch,
+            'target_branch': target_branch,
             'title': title,
-            'head': source_branch,
-            'base': target_branch,
-            'body': body,
-            **{k: v for k, v in kwargs.items() if k in ('assignees', 'labels', 'prune_source_branch')},
+            'description': body,
+            **{k: v for k, v in kwargs.items() if k in ('assignee_ids', 'labels', 'remove_source_branch')},
         }
-        r = self._req('POST', '/pulls', json=payload)
+        r = self._req('POST', '/merge_requests', json=payload)
         if r.status_code not in (200, 201):
             return {'success': False, 'message': r.text or r.reason}
         data = r.json()
         return {
             'success': True,
-            'number': data.get('number', data.get('id')),
-            'html_url': data.get('html_url', data.get('url', '')),
+            'number': data['iid'],
+            'html_url': data.get('web_url', ''),
             'message': 'created',
         }
 
@@ -78,141 +78,142 @@ class GitCode(LazyLLMGitBase):
         if title is not None:
             payload['title'] = title
         if body is not None:
-            payload['body'] = body
+            payload['description'] = body
         if state is not None:
-            payload['state'] = 'closed' if state == 'closed' else 'open'
+            payload['state_event'] = 'close' if state == 'closed' else 'reopen'
         payload.update(kwargs)
         if not payload:
             return {'success': True, 'message': 'nothing to update'}
-        r = self._req('PATCH', f'/pulls/{number}', json=payload)
+        r = self._req('PUT', f'/merge_requests/{number}', json=payload)
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
         return {'success': True, 'message': 'updated'}
 
     def add_pr_labels(self, number: int, labels: List[str]) -> Dict[str, Any]:
-        r = self._req('PATCH', f'/pulls/{number}', json={'labels': labels})
+        r = self._req('PUT', f'/merge_requests/{number}', json={'labels': ','.join(labels)})
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
         return {'success': True, 'message': 'labels updated'}
 
     def get_pull_request(self, number: int) -> Dict[str, Any]:
-        r = self._req('GET', f'/pulls/{number}')
+        r = self._req('GET', f'/merge_requests/{number}')
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
         data = r.json()
         pr = PrInfo(
-            number=data.get('number', data.get('id')),
-            title=data.get('title', ''),
-            state=data.get('state', 'open'),
-            body=data.get('body', data.get('description', '')) or '',
-            source_branch=_head_base_ref(data, 'head'),
-            target_branch=_head_base_ref(data, 'base'),
-            html_url=data.get('html_url', data.get('url', '')),
+            number=data['iid'],
+            title=data['title'],
+            state=data.get('state', 'opened'),
+            body=data.get('description') or '',
+            source_branch=data.get('source_branch', ''),
+            target_branch=data.get('target_branch', ''),
+            html_url=data.get('web_url', ''),
             raw=data,
         )
         return {'success': True, 'pr': pr}
 
     def list_pull_requests(self, state: str = 'open', head: Optional[str] = None,
                            base: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        params = {'state': state}
-        if head is not None:
-            params['head'] = head
+        state_map = {'open': 'opened', 'closed': 'closed', 'all': 'all'}
+        params = {'state': state_map.get(state, state)}
         if base is not None:
-            params['base'] = base
-        params.update({k: v for k, v in kwargs.items() if k in ('page', 'per_page', 'sort', 'direction')})
-        r = self._req('GET', '/pulls', params=params)
+            params['target_branch'] = base
+        if head is not None:
+            params['source_branch'] = head
+        params.update({k: v for k, v in kwargs.items() if k in ('page', 'per_page', 'order_by', 'sort')})
+        r = self._req('GET', '/merge_requests', params=params)
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
         out = []
         for data in r.json():
             out.append(PrInfo(
-                number=data.get('number', data.get('id')),
-                title=data.get('title', ''),
-                state=data.get('state', 'open'),
-                body=data.get('body', data.get('description', '')) or '',
-                source_branch=_head_base_ref(data, 'head'),
-                target_branch=_head_base_ref(data, 'base'),
-                html_url=data.get('html_url', data.get('url', '')),
+                number=data['iid'],
+                title=data['title'],
+                state=data.get('state', 'opened'),
+                body=data.get('description') or '',
+                source_branch=data.get('source_branch', ''),
+                target_branch=data.get('target_branch', ''),
+                html_url=data.get('web_url', ''),
                 raw=data,
             ))
         return {'success': True, 'list': out}
 
     def get_pr_diff(self, number: int) -> Dict[str, Any]:
-        r = self._req('GET', f'/pulls/{number}')
+        r = self._req('GET', f'/merge_requests/{number}/changes')
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
         data = r.json()
-        diff_url = data.get('diff_url') or data.get('patch_url')
-        if diff_url:
-            rr = self._session.get(diff_url)
-            if rr.status_code == 200:
-                return {'success': True, 'diff': rr.text}
-        r2 = self._req('GET', f'/pulls/{number}/files')
-        if r2.status_code != 200:
-            return {'success': False, 'message': r2.text or 'no diff available'}
-        parts = [f.get('patch', '') for f in r2.json()]
-        return {'success': True, 'diff': '\n'.join(parts)}
+        diffs = [c.get('diff', '') for c in data.get('changes', []) if c.get('diff')]
+        return {'success': True, 'diff': '\n'.join(diffs)}
 
     def list_review_comments(self, number: int) -> Dict[str, Any]:
-        r = self._req('GET', f'/pulls/{number}/comments')
+        r = self._req('GET', f'/merge_requests/{number}/discussions')
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
         out = []
-        for c in r.json():
-            user = c.get('user', {})
-            out.append(ReviewCommentInfo(
-                id=c.get('id'),
-                body=c.get('body', ''),
-                path=c.get('path', ''),
-                line=c.get('line'),
-                side='RIGHT',
-                user=user.get('login', '') if isinstance(user, dict) else '',
-                raw=c,
-            ))
+        for d in r.json():
+            for note in d.get('notes', []):
+                if note.get('system'):
+                    continue
+                pos = note.get('position', {})
+                out.append(ReviewCommentInfo(
+                    id=note['id'],
+                    body=note.get('body', ''),
+                    path=pos.get('new_path') or pos.get('old_path', ''),
+                    line=pos.get('new_line') or pos.get('old_line'),
+                    side='RIGHT',
+                    user=note.get('author', {}).get('username', ''),
+                    raw=note,
+                ))
         return {'success': True, 'comments': out}
 
     def create_review_comment(self, number: int, body: str, path: str,
                               line: Optional[int] = None, side: str = 'RIGHT',
                               commit_id: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        payload = {'body': body, 'path': path}
-        if line is not None:
-            payload['line'] = line
-        if commit_id:
-            payload['commit_id'] = commit_id
-        payload.update(kwargs)
-        r = self._req('POST', f'/pulls/{number}/comments', json=payload)
+        position = kwargs.get('position')
+        if not position and path and line is not None and commit_id:
+            position = {
+                'new_path': path,
+                'new_line': line,
+                'position_type': 'text',
+                'base_sha': kwargs.get('base_sha'),
+                'head_sha': commit_id,
+                'start_sha': kwargs.get('start_sha', commit_id),
+            }
+        if not position:
+            r = self._req('POST', f'/merge_requests/{number}/notes', json={'body': body})
+        else:
+            r = self._req('POST', f'/merge_requests/{number}/discussions', json={'body': body, 'position': position})
         if r.status_code not in (200, 201):
             return {'success': False, 'message': r.text or r.reason}
         data = r.json()
-        return {'success': True, 'comment_id': data.get('id'), 'message': 'created'}
+        cid = data.get('id') or (data.get('notes', [{}])[0].get('id') if data.get('notes') else None)
+        return {'success': True, 'comment_id': cid, 'message': 'created'}
 
     def submit_review(self, number: int, event: str, body: str = '',
                       comment_ids: Optional[List[Any]] = None, **kwargs) -> Dict[str, Any]:
         if event.upper() == 'APPROVE':
             return self.approve_pull_request(number, **kwargs)
-        payload = {'body': body, 'event': event}
-        if comment_ids is not None:
-            payload['comments'] = comment_ids
-        payload.update(kwargs)
-        r = self._req('POST', f'/pulls/{number}/review', json=payload)
-        if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+        if body:
+            self._req('POST', f'/merge_requests/{number}/notes', json={'body': body})
         return {'success': True, 'message': 'submitted'}
 
     def approve_pull_request(self, number: int, **kwargs) -> Dict[str, Any]:
-        return self.submit_review(number, 'approve', **kwargs)
+        payload = {'sha': kwargs['sha']} if kwargs.get('sha') else {}
+        r = self._req('POST', f'/merge_requests/{number}/approve', json=payload)
+        if r.status_code not in (200, 201):
+            return {'success': False, 'message': r.text or r.reason}
+        return {'success': True, 'message': 'approved'}
 
     def merge_pull_request(self, number: int, merge_method: Optional[str] = None,
                            commit_title: Optional[str] = None,
                            commit_message: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         payload = {}
-        if commit_title is not None:
-            payload['merge_commit_message'] = commit_title
-        if commit_message is not None:
-            payload['merge_commit_message'] = (payload.get('merge_commit_message') or '') + '\n\n' + commit_message
-        payload.update({k: v for k, v in kwargs.items() if k in ('prune_source_branch', 'merge_method')})
-        r = self._req('PUT', f'/pulls/{number}/merge', json=payload)
+        if merge_method and merge_method.lower() == 'squash':
+            payload['squash'] = True
+        payload.update({k: v for k, v in kwargs.items() if k in ('merge_when_pipeline_succeeds', 'sha')})
+        r = self._req('PUT', f'/merge_requests/{number}/merge', json=payload)
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
-        data = r.json() if r.content else {}
-        return {'success': True, 'sha': data.get('sha'), 'message': 'merged'}
+        data = r.json()
+        return {'success': True, 'sha': data.get('merge_commit_sha'), 'message': 'merged'}

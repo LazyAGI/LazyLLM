@@ -5,10 +5,10 @@ Registered via lazyllm.common.registry; backends: GitHub, GitLab, Gitee, GitCode
 '''
 from .base import LazyLLMGitBase, PrInfo, ReviewCommentInfo
 
-from .github import GitHub
-from .gitlab import GitLab
-from .gitee import Gitee
-from .gitcode import GitCode
+from .supplier.github import GitHub
+from .supplier.gitlab import GitLab
+from .supplier.gitee import Gitee
+from .supplier.gitcode import GitCode
 
 __all__ = [
     'LazyLLMGitBase',

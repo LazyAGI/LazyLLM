@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from .base import LazyLLMGitBase, PrInfo, ReviewCommentInfo
+from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo
 
 
 def _parse_repo(repo: str) -> tuple:
