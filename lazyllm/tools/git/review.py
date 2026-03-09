@@ -1,8 +1,4 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-'''
-Git PR code review: parses diff into hunks, calls the model per hunk, and posts line-level
-review comments (issue + suggestion). Backend and repo normalization are delegated to Git.
-'''
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -38,7 +34,7 @@ def _parse_unified_diff(diff_text: str) -> List[Tuple[str, int, int, str]]:
     hunk_lines: List[str] = []
 
     def flush_hunk():
-        nonlocal hunk_lines, new_start, new_count, current_path
+        nonlocal hunk_lines
         if current_path and new_count > 0:
             content = '\n'.join(hunk_lines)
             if content.strip():

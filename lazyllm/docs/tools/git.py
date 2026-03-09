@@ -54,6 +54,23 @@ _add_git_example('PrInfo', '''\
 ... 'Fix bug'
 ''')
 
+_add_git_chinese('PrInfo.to_dict', '''\
+将 PR/MR 摘要转为字典，便于序列化或 JSON 输出。
+
+Returns:
+    dict: 包含 number, title, state, body, source_branch, target_branch, html_url, raw。
+''')
+_add_git_english('PrInfo.to_dict', '''\
+Convert PR/MR summary to a dict for serialization or JSON output.
+
+Returns:
+    dict: Keys: number, title, state, body, source_branch, target_branch, html_url, raw.
+''')
+_add_git_example('PrInfo.to_dict', '''\
+>>> pr = PrInfo(1, 'Fix bug', 'open', 'Description', 'feat', 'main', 'https://example.com/pull/1')
+>>> pr.to_dict()
+''')
+
 # ReviewCommentInfo
 _add_git_chinese('ReviewCommentInfo', '''\
 单条评审评论（可含行级）。属性：id, body, path, line, side, user, raw。
@@ -68,6 +85,23 @@ _add_git_example('ReviewCommentInfo', '''\
 ... 'Consider using constant'
 >>> c.path
 ... 'src/foo.py'
+''')
+
+_add_git_chinese('ReviewCommentInfo.to_dict', '''\
+将评审评论转为字典，便于序列化或 JSON 输出。
+
+Returns:
+    dict: 包含 id, body, path, line, side, user, raw。
+''')
+_add_git_english('ReviewCommentInfo.to_dict', '''\
+Convert review comment to a dict for serialization or JSON output.
+
+Returns:
+    dict: Keys: id, body, path, line, side, user, raw.
+''')
+_add_git_example('ReviewCommentInfo.to_dict', '''\
+>>> c = ReviewCommentInfo(101, 'Consider using constant', 'src/foo.py', 42)
+>>> c.to_dict()
 ''')
 
 # GitHub
