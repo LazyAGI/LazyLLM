@@ -4373,6 +4373,3906 @@ res = op(inputs)
 print(res[0]['structured_data']) # {'subject': 'Math', 'score': 95}
 ```
 """)
+# =========================
+# AgenticRAGGetIdentifier
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
+调用 LLM 从输入文本中抽取内容标识符（identifier）的算子。
+
+Args:
+    llm: 语言模型服务实例
+    input_key (str): 输入文本字段名，默认 'prompts'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
+An operator that extracts a content identifier from the input text using an LLM.
+
+
+Args:
+    llm: language model service instance
+    input_key (str): name of the input text field, default 'prompts'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGGetIdentifier(llm=my_llm, input_key='prompts')
+result = op({'prompts': 'What is the third movie in the Avatar series?'})
+print('identifier:', result['identifier'])
+# {'identifier': 'Avatar series'}
+```
+""")
+
+# =========================
+# AgenticRAGGetConclusion
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
+调用 LLM 进行结论提取和关系生成的算子。
+
+该算子根据输入文本构造提示词，并将模型的原始输出
+保存至 data['raw_conclusion']，供后续 JSON 解析与任务展开使用。
+若生成失败，则写入空字符串。
+
+Args:
+    llm: 语言模型服务实例
+    input_key (str): 输入文本字段名，默认 'prompts'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
+An operator that extracts conclusions and generates relationships using an LLM.
+
+It builds prompts from the input text and stores the raw model output
+in data['raw_conclusion'] for downstream parsing and task expansion.
+If generation fails, an empty string is assigned.
+
+Args:
+    llm: language model service instance
+    input_key (str): name of the input text field, default 'prompts'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGGetConclusion(llm=my_llm)
+result = op({'prompts': 'Some document content'})
+print(result['raw_conclusion'])
+```
+""")
+
+# =========================
+# AgenticRAGExpandConclusions
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
+解析 raw_conclusion 字段中的 JSON 结论列表，
+并将其展开为多条候选任务数据。
+
+仅保留包含 'conclusion' 和 'R' 字段的条目，
+为每个条目生成独立数据行，并写入 candidate_tasks_str。
+
+Args:
+    max_per_task (int): 每个样本最多展开的候选任务数量
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
+Parses the JSON conclusion list in raw_conclusion
+and expands it into multiple candidate task records.
+
+Only items containing 'conclusion' and 'R' are kept.
+Each valid item produces a new data row with candidate_tasks_str.
+
+Args:
+    max_per_task (int): maximum number of candidate tasks per sample
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGExpandConclusions(max_per_task=5)
+rows = op({
+    'raw_conclusion': '[{"conclusion":"A","R":"rel"}]',
+    'identifier': 'doc1'
+})
+print(rows)
+```
+""")
+
+# =========================
+# AgenticRAGGenerateQuestion
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
+根据主要内容标识符(ID), 关系(R), 答案(A) 生成问题（question）与标准答案（answer）的算子。
+
+Args:
+    llm: 语言模型服务实例
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
+Generates a question-answer pair from task identifier (ID), relationship (R), and answer (A).
+
+Args:
+    llm: language model service instance
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGGenerateQuestion(llm=my_llm)
+result = op({
+    'candidate_tasks_str': '{"conclusion":"Paris","R":"capital_of"}',
+    'identifier': 'France'
+})
+print(result['question'], result['answer'])
+```
+""")
+
+# =========================
+# AgenticRAGCleanQA
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
+对生成的问答对进行清洗与答案规范化。调用 LLM 生成 refined_answer，用于后续验证与评分。
+
+Args:
+    llm: 语言模型服务实例
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
+Cleans and refines a generated QA pair by calling the LLM to produce a refined_answer   .
+
+Args:
+    llm: language model service instance
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGCleanQA(llm=my_llm)
+result = op({'question': 'What is...', 'answer': 'Raw answer'})
+print(result['refined_answer'])
+```
+""")
+
+# =========================
+# AgenticRAGLLMVerify
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
+使用 LLM 对问答进行回答与召回评分验证。
+
+先让模型根据 question 生成 llm_answer，
+再对 refined_answer 与 llm_answer 进行评分。
+若评分 >= 1，则过滤该样本；否则保留。
+
+Args:
+    llm: 语言模型服务实例
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
+Verifies QA quality via LLM answering and recall scoring.
+
+The model first answers the question to produce llm_answer,
+then scores refined_answer against llm_answer.
+If score >= 1, the sample is filtered out; otherwise retained.
+
+Args:
+    llm: language model service instance
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGLLMVerify(llm=my_llm)
+result = op({'question': 'Q?', 'refined_answer': 'A'})
+print(result)
+```
+""")
+
+# =========================
+# AgenticRAGGoldenDocAnswer
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
+基于黄金文档生成答案并进行评分验证。
+
+使用 golden_doc 与 question 生成答案，
+再与 refined_answer 进行评分。
+若评分不足则过滤样本。
+
+Args:
+    llm: 语言模型服务实例
+    input_key (str): 黄金文档字段名
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
+Generates answers from a golden document and verifies via recall scoring.
+
+It produces an answer using golden_doc and question,
+then scores it against refined_answer.
+Samples with insufficient score are filtered out.
+
+Args:
+    llm: language model service instance
+    input_key (str): golden document field name
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGGoldenDocAnswer(llm=my_llm)
+result = op({
+    'prompts': 'Golden document text',
+    'question': 'Q?',
+    'refined_answer': 'Expected A'
+})
+print(result)
+```
+""")
+
+# =========================
+# AgenticRAGOptionalAnswers
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
+为标准答案生成多个可选答案。
+
+基于 refined_answer 调用 LLM，
+生成语义等价或近似表达的答案列表，
+写入 optional_answer 字段。
+
+Args:
+    llm: 语言模型服务实例
+
+
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
+Generates multiple optional answers for a refined answer.
+
+It calls the LLM to produce semantically equivalent or similar variants,
+stored in optional_answer.
+
+Args:
+    llm: language model service instance
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGOptionalAnswers(llm=my_llm)
+result = op({'refined_answer': 'Paris'})
+print(result['optional_answer'])
+```
+""")
+
+# =========================
+# AgenticRAGGroupAndLimit
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
+按指定字段分组并限制每组最大问答数量。
+
+对批量数据按 input_key 分组，
+每组最多保留 max_question 条，
+用于控制同源样本数量。
+
+Args:
+    input_key (str): 分组字段名
+    max_question (int): 每组最大问答数量
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
+Groups data by a specified key and limits the number of QA pairs per group.
+
+It groups batch input by input_key and retains up to max_question
+items per group to control sample distribution.
+
+Args:
+    input_key (str): grouping field name
+    max_question (int): maximum QA pairs per group
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGGroupAndLimit(input_key='prompts', max_question=2)
+result = op([
+    {'prompts': 'doc1', 'question': 'Q1'},
+    {'prompts': 'doc1', 'question': 'Q2'},
+    {'prompts': 'doc1', 'question': 'Q3'}
+])
+print(result)  # only 2 kept for doc1
+```
+""")
+
+# =========================
+# DepthQAGGetIdentifier
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGetIdentifier', """\
+调用 LLM 从输入文本中抽取内容标识符（identifier）的算子。
+
+如果数据中已存在 identifier 字段，则跳过处理。
+
+Args:
+    llm: 语言模型服务实例
+    input_key (str): 输入文本字段名，默认 'question'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGetIdentifier', """\
+An operator that extracts a content identifier from the input text using an LLM.
+
+If the identifier field already exists in the data, processing is skipped.
+
+Args:
+    llm: language model service instance
+    input_key (str): name of the input text field, default 'question'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGetIdentifier', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.DepthQAGGetIdentifier(llm=my_llm, input_key='question')
+result = op({'question': 'What is the capital of France?'})
+print('identifier:', result['identifier'])
+# {'identifier': 'capital of France'}
+```
+""")
+
+# =========================
+# DepthQAGBackwardTask
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGBackwardTask', """\
+根据现有标识符生成反向任务，产生新的标识符和关系。
+
+该算子用于从给定的 identifier 反向推理，生成新的 identifier 和对应的 relation，
+用于构建深度问答任务。
+
+Args:
+    llm: 语言模型服务实例
+    identifier_key (str): 原始标识符字段名，默认 'identifier'
+    new_identifier_key (str): 新生成的标识符字段名，默认 'new_identifier'
+    relation_key (str): 关系字段名，默认 'relation'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGBackwardTask', """\
+Generates a backward task from the existing identifier, producing a new identifier and relation.
+
+This operator infers backwards from the given identifier to generate a new identifier
+and corresponding relation for building depth QA tasks.
+
+Args:
+    llm: language model service instance
+    identifier_key (str): original identifier field name, default 'identifier'
+    new_identifier_key (str): new identifier field name, default 'new_identifier'
+    relation_key (str): relation field name, default 'relation'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGBackwardTask', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.DepthQAGBackwardTask(llm=my_llm)
+result = op({'identifier': 'machine learning'})
+print(result)
+# {'identifier': 'machine learning', 'new_identifier': '...', 'relation': '...'}
+```
+""")
+
+# =========================
+# DepthQAGCheckSuperset
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGCheckSuperset', """\
+检查新生成的查询是否为原始标识符的超集。
+
+验证 new_identifier 和 relation 组合后是否构成对原始 identifier 的有效超集查询，
+若验证通过则保留数据，否则返回空列表过滤掉该样本。
+
+Args:
+    llm: 语言模型服务实例
+    new_identifier_key (str): 新标识符字段名，默认 'new_identifier'
+    relation_key (str): 关系字段名，默认 'relation'
+    identifier_key (str): 原始标识符字段名，默认 'identifier'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGCheckSuperset', """\
+Checks whether the newly generated query is a superset of the original identifier.
+
+Verifies if the combination of new_identifier and relation constitutes a valid superset query
+of the original identifier. If validation passes, the data is retained; otherwise,
+an empty list is returned to filter out the sample.
+
+Args:
+    llm: language model service instance
+    new_identifier_key (str): new identifier field name, default 'new_identifier'
+    relation_key (str): relation field name, default 'relation'
+    identifier_key (str): original identifier field name, default 'identifier'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGCheckSuperset', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.DepthQAGCheckSuperset(llm=my_llm)
+result = op({
+    'identifier': 'Paris',
+    'new_identifier': 'France',
+    'relation': 'capital_of'
+})
+print(result)  # returns data if valid, empty list if invalid
+```
+""")
+
+# =========================
+# DepthQAGGenerateQuestion
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGenerateQuestion', """\
+根据新标识符、关系和原始标识符生成深度问题。
+
+使用 LLM 基于 new_identifier、relation 和 identifier 生成深度问答任务中的问题，
+存储在指定的 question_key 字段中。
+
+Args:
+    llm: 语言模型服务实例
+    new_identifier_key (str): 新标识符字段名，默认 'new_identifier'
+    relation_key (str): 关系字段名，默认 'relation'
+    identifier_key (str): 原始标识符字段名，默认 'identifier'
+    question_key (str): 生成问题存储的字段名，默认 'depth_question'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGenerateQuestion', """\
+Generates a depth question based on the new identifier, relation, and original identifier.
+
+Uses an LLM to generate a question for depth QA tasks based on new_identifier, relation,
+and identifier, storing the result in the specified question_key field.
+
+Args:
+    llm: language model service instance
+    new_identifier_key (str): new identifier field name, default 'new_identifier'
+    relation_key (str): relation field name, default 'relation'
+    identifier_key (str): original identifier field name, default 'identifier'
+    question_key (str): field name to store generated question, default 'depth_question'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGenerateQuestion', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.DepthQAGGenerateQuestion(llm=my_llm)
+result = op({
+    'identifier': 'Paris',
+    'new_identifier': 'France',
+    'relation': 'capital_of'
+})
+print(result['depth_question'])
+# 'What is the capital of France?'
+```
+""")
+
+# =========================
+# DepthQAGVerifyQuestion
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGVerifyQuestion', """\
+验证生成问题的质量，过滤过于简单的问题。
+
+先让 LLM 回答问题生成 llm_answer，然后与 refined_answer 进行召回评分。
+若评分 >= 1（表示问题太简单），则过滤该样本；否则保留数据。
+
+Args:
+    llm: 语言模型服务实例
+    question_key (str): 问题字段名，默认 'depth_question'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGVerifyQuestion', """\
+Verifies the quality of generated questions and filters out overly easy ones.
+
+First has the LLM answer the question to produce llm_answer, then calculates a recall score
+against refined_answer. If score >= 1 (indicating the question is too easy), the sample
+is filtered out; otherwise the data is retained.
+
+Args:
+    llm: language model service instance
+    question_key (str): question field name, default 'depth_question'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGVerifyQuestion', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.DepthQAGVerifyQuestion(llm=my_llm)
+result = op({
+    'depth_question': 'What is the capital of France?',
+    'refined_answer': 'Paris'
+})
+# Returns data if question is challenging, empty list if too easy
+print(result)
+```
+""")
+
+# =========================
+# WidthQAGMergePairs
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGMergePairs', """\
+将相邻的问答对合并生成广度问题的算子。
+
+该算子接收批量问答数据，通过 LLM 将相邻的两个问答对合并为一个更复杂的广度问题。
+需要至少2条数据才能进行合并操作。
+
+Args:
+    llm: 语言模型服务实例
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGMergePairs', """\
+An operator that merges adjacent QA pairs to generate width questions.
+
+This operator receives a batch of QA data and uses an LLM to merge adjacent pairs
+into more complex width questions. Requires at least 2 items to perform merging.
+
+Args:
+    llm: language model service instance
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGMergePairs', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.WidthQAGMergePairs(llm=my_llm)
+result = op([
+    {'question': 'What is Paris?', 'golden_answer': 'Capital of France'},
+    {'question': 'What is London?', 'golden_answer': 'Capital of UK'}
+])
+print(result[0]['question'])  # Merged complex question
+```
+""")
+
+# =========================
+# WidthQAGCheckDecomposition
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGCheckDecomposition', """\
+验证合并后的问题是否有效分解了原始问题的算子。
+
+该算子检查 LLM 生成的复杂问题是否正确地分解和包含了原始问题，
+如果验证通过则保留数据，否则返回空列表过滤掉该样本。
+
+Args:
+    llm: 语言模型服务实例
+    output_question_key (str): 输出生成问题的字段名，默认 'generated_width_task'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGCheckDecomposition', """\
+An operator that verifies whether the merged question effectively decomposes the original questions.
+
+This operator checks if the complex question generated by LLM correctly decomposes
+and includes the original questions. If validation passes, the data is retained;
+otherwise an empty list is returned to filter out the sample.
+
+Args:
+    llm: language model service instance
+    output_question_key (str): field name for the generated question, default 'generated_width_task'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGCheckDecomposition', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.WidthQAGCheckDecomposition(llm=my_llm)
+result = op({
+    'question': 'What are the capitals of France and UK?',
+    'original_question': ['What is Paris?', 'What is London?'],
+    'index': 0
+})
+print(result)  # Returns data if valid, empty list if invalid
+```
+""")
+
+# =========================
+# WidthQAGVerifyQuestion
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGVerifyQuestion', """\
+验证生成的问题能否被正确回答的算子。
+
+该算子使用 LLM 尝试回答生成的问题，并将答案存储在 llm_answer 字段中，
+供后续评分使用。
+
+Args:
+    llm: 语言模型服务实例
+    output_question_key (str): 问题字段名，默认 'generated_width_task'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGVerifyQuestion', """\
+An operator that verifies if the generated question can be properly answered.
+
+This operator uses an LLM to attempt answering the generated question and stores
+the answer in the llm_answer field for subsequent scoring.
+
+Args:
+    llm: language model service instance
+    output_question_key (str): question field name, default 'generated_width_task'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGVerifyQuestion', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.WidthQAGVerifyQuestion(llm=my_llm)
+result = op({
+    'generated_width_task': 'What are the capitals of France and UK?',
+    'index': 0
+})
+print(result['llm_answer'])  # LLM's answer to the question
+```
+""")
+
+# =========================
+# WidthQAGFilterByScore
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGFilterByScore', """\
+根据召回评分过滤广度问题的算子。
+
+该算子对比 golden_answer 和 llm_answer 计算召回评分，
+若评分 >= 1 则过滤该样本（表示问题太简单或 LLM 回答太好）；
+否则保留数据并清理临时字段。
+
+Args:
+    llm: 语言模型服务实例
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGFilterByScore', """\
+An operator that filters width questions based on recall score.
+
+This operator compares golden_answer with llm_answer to calculate a recall score.
+If score >= 1, the sample is filtered out (indicating the question is too easy
+or LLM answered too well); otherwise the data is retained and temporary fields are cleaned.
+
+Args:
+    llm: language model service instance
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGFilterByScore', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.WidthQAGFilterByScore(llm=my_llm)
+result = op({
+    'original_answer': ['Paris', 'London'],
+    'llm_answer': 'Paris is the capital of France and London is the capital of UK',
+    'state': 1
+})
+# Returns data if score < 1, empty list if score >= 1
+print(result)
+```
+""")
+
+# =========================
+# qaf1_normalize_texts
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_normalize_texts', """\
+规范化预测答案和参考答案文本的函数。
+
+对预测答案和参考答案进行标准化处理，包括：转换为小写、移除标点符号、
+移除冠词(a/an/the)、规范化空白字符。规范化后的结果存储在临时字段中，
+供后续 F1 分数计算使用。
+
+Args:
+    data (dict): 单条数据字典
+    prediction_key (str): 预测答案字段名，默认 'refined_answer'
+    ground_truth_key (str): 参考答案字段名，默认 'golden_doc_answer'
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_normalize_texts', """\
+A function that normalizes prediction and ground truth answer texts.
+
+Performs standardization on prediction and ground truth answers, including:
+converting to lowercase, removing punctuation, removing articles (a/an/the),
+and normalizing whitespace. Normalized results are stored in temporary fields
+for subsequent F1 score calculation.
+
+Args:
+    data (dict): single data dictionary
+    prediction_key (str): prediction answer field name, default 'refined_answer'
+    ground_truth_key (str): ground truth answer field name, default 'golden_doc_answer'
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_normalize_texts', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.qaf1_normalize_texts(prediction_key='refined_answer', ground_truth_key='golden_doc_answer')
+result = op({
+    'refined_answer': 'Paris is the capital.',
+    'golden_doc_answer': 'The capital is Paris!'
+})
+print(result['_normalized_prediction'])  # 'paris is capital'
+print(result['_normalized_ground_truths'])  # ['capital is paris']
+```
+""")
+
+# =========================
+# qaf1_calculate_score
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_calculate_score', """\
+计算问答对的 F1 分数的函数。
+
+基于规范化后的预测答案和参考答案计算 F1 分数（综合考虑精确率和召回率）。
+支持多个参考答案，取最高 F1 分数作为最终结果。计算完成后清理临时字段。
+
+Args:
+    data (dict): 单条数据字典
+    output_key (str): 输出 F1 分数的字段名，默认 'F1Score'
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_calculate_score', """\
+A function that calculates the F1 score for QA pairs.
+
+Calculates the F1 score (combining precision and recall) based on normalized
+prediction and ground truth answers. Supports multiple ground truth answers,
+taking the highest F1 score as the final result. Cleans up temporary fields after calculation.
+
+Args:
+    data (dict): single data dictionary
+    output_key (str): output field name for F1 score, default 'F1Score'
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_calculate_score', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.qaf1_calculate_score(output_key='F1Score')
+result = op({
+    '_normalized_prediction': 'paris is capital',
+    '_normalized_ground_truths': ['capital is paris', 'paris capital france']
+})
+print(result['F1Score'])  # F1 score value between 0.0 and 1.0
+```
+""")
+
+# cot_ops module docs
+add_chinese_doc('data.operators.cot_ops.CoTGenerator', """\
+使用大模型为问题生成带思维链（CoT）的推理过程，要求最终答案用 \\\\boxed{{ANSWER}} 包裹。输出写入指定字段。
+
+Args:
+    input_key (str): 输入问题字段名，默认 'query'
+    output_key (str): 输出 CoT 答案字段名，默认 'cot_answer'
+    model: 可选，TrainableModule 或兼容接口；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选，用户提示前缀；None 时使用默认
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.cot_ops.CoTGenerator', """\
+Use an LLM to generate chain-of-thought reasoning for a question, with final answer wrapped in \\\\boxed{{ANSWER}}. Writes result to the specified output key.
+
+Args:
+    input_key (str): key of the input question, default 'query'
+    output_key (str): key to write the CoT answer, default 'cot_answer'
+    model: optional TrainableModule or compatible; None uses default Qwen model
+    user_prompt (str|None): optional user prompt prefix; None uses default
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.cot_ops.CoTGenerator', """\
+```python
+from lazyllm.tools.data import genCot
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = genCot.CoTGenerator(input_key='query', output_key='cot_answer', model=llm)
+data = {'query': 'What is 2+2?'}
+res = op(data)  # each item gets 'cot_answer' with CoT and \\\\boxed{{4}}
+print(res)
+# {'query': 'What is 2+2?', 'cot_answer': '首先，我们需要理解加法的基本概念，即两个或多个数值的总和。在这个问题中，我们需要计算 2 和另一个 2 的和。\n\n第一步，我们识别出第一个数值是 2。\n\n第二步，我们识别出第二个数值也是 2。\n\n第三步，我们将这两个数值相加：2 + 2。\n\n第四步，我们进行计算：2 + 2 = 4。\n\n因此，最终答案是 4，使用规定的格式包裹答案。\n\n最终答案：\\boxed{4}'}
+```
+""")
+
+add_chinese_doc('data.operators.cot_ops.SelfConsistencyCoTGenerator', """\
+对同一问题采样多次 CoT，从 \\\\boxed{{}} 中提取答案并做多数投票，最终保留与多数答案一致的一条 CoT 输出。
+
+Args:
+    input_key (str): 输入问题字段名，默认 'query'
+    output_key (str): 输出 CoT 答案字段名，默认 'cot_answer'
+    num_samples (int): 采样次数，默认 5
+    model: 可选；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选用户提示
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.cot_ops.SelfConsistencyCoTGenerator', """\
+Sample multiple CoT answers for the same question, extract \\\\boxed{{}} answers, take majority vote, and output one CoT that matches the majority answer.
+
+Args:
+    input_key (str): key of the input question, default 'query'
+    output_key (str): key to write the CoT answer, default 'cot_answer'
+    num_samples (int): number of samples, default 5
+    model: optional; None uses default Qwen model
+    user_prompt (str|None): optional user prompt
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.cot_ops.SelfConsistencyCoTGenerator', """\
+```python
+from lazyllm.tools.data import genCot
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = genCot.SelfConsistencyCoTGenerator(
+    input_key='query',
+    output_key='cot_answer',
+    num_samples=3,
+    model=llm
+)
+
+data = {'query': 'What is 3*4?'}
+res = op(data)
+print(res)
+# {'query': 'What is 3*4?', 'candidates': ['12', '12', '12'], 'cot_answer': '首先，我们需要理解问题的核心，即计算3乘以4的结果。\n\n1. 确定操作：这是一个乘法问题，我们需要将两个数相乘。\n2. 识别数字：问题中给出的两个数字是3和4。\n3. 执行乘法：将3乘以4，计算过程如下：\n   - 3 * 4 = 12\n\n因此，3乘以4的结果是12。\n\n最终答案为：\\boxed{12}'}
+```
+""")
+
+add_chinese_doc('data.operators.cot_ops.answer_verify', """\
+比较参考答案与模型提取答案是否（数学意义下）相等。使用 math_verify 解析并验证，结果写入指定字段。以 forward 单条方式注册。
+
+Args:
+    data (dict): 单条数据字典
+    answer_key (str): 参考答案字段名，默认 'reference'
+    infer_key (str): 模型提取答案字段名，默认 'llm_extracted'
+    output_key (str): 是否相等写入的字段名，默认 'is_equal'
+""")
+
+add_english_doc('data.operators.cot_ops.answer_verify', """\
+Compare reference answer and model-extracted answer for mathematical equality. Uses math_verify to parse and verify; result written to the specified key. Registered as single-item forward.
+
+Args:
+    data (dict): single data dict
+    answer_key (str): key of reference answer, default 'reference'
+    infer_key (str): key of LLM-extracted answer, default 'llm_extracted'
+    output_key (str): key to write equality result, default 'is_equal'
+""")
+
+add_example('data.operators.cot_ops.answer_verify', """\
+```python
+from lazyllm.tools.data import genCot
+
+data = {'reference': '1/2', 'llm_extracted': '0.5'}
+op = genCot.answer_verify(answer_key='reference', infer_key='llm_extracted', output_key='is_equal')
+print(op(data))  # Add key/value: 'is_equal': True
+# {'reference': '1/2', 'llm_extracted': '0.5', 'is_equal': True}
+```
+""")
+
+# enQa_ops module docs
+add_chinese_doc('data.operators.enQa_ops.QueryRewriter', """\
+使用大模型将原问题重写为多个语义一致、表达不同的问法，输出列表写入指定字段。
+
+Args:
+    input_key (str): 输入问题字段名，默认 'query'
+    output_key (str): 重写问题列表写入的字段名，默认 'rewrite_querys'
+    rewrite_num (int): 生成的重写数量，默认 3
+    model: 可选；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选用户提示
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.enQa_ops.QueryRewriter', """\
+Use an LLM to rewrite the original question into multiple semantically equivalent formulations. Writes a list to the specified output key.
+
+Args:
+    input_key (str): key of the input question, default 'query'
+    output_key (str): key to write the list of rewrites, default 'rewrite_querys'
+    rewrite_num (int): number of rewrites to generate, default 3
+    model: optional; None uses default Qwen model
+    user_prompt (str|None): optional user prompt
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.enQa_ops.QueryRewriter', """\
+```python
+from lazyllm.tools.data import EnQA
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = EnQA.QueryRewriter(input_key='query', output_key='rewrite_querys', rewrite_num=2, model=llm)
+data = {'query': 'What is machine learning?'}
+res = op(data)  # data gets 'rewrite_querys': [str, str, ...]
+print(res)
+# [{'query': 'What is machine learning?', 'rewrite_querys': ['Could you explain what machine learning is?', 'What does the term machine learning refer to?']}]
+```
+""")
+
+add_chinese_doc('data.operators.enQa_ops.DiversityScorer', """\
+对问题列表进行多样性打分，输出与输入顺序一致的列表，每项含 rewritten_query 与 diversity_score（0 相似/1 差异明显）。
+
+Args:
+    input_key (str): 问题列表字段名，默认 'rewrite_querys'
+    output_key (str): 带多样性分数的列表写入的字段名，默认 'diversity_querys'
+    model: 可选；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选用户提示
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.enQa_ops.DiversityScorer', """\
+Score diversity of a list of questions; output list matches input order, each item has rewritten_query and diversity_score (0 similar / 1 diverse).
+
+Args:
+    input_key (str): key of the question list, default 'rewrite_querys'
+    output_key (str): key to write the scored list, default 'diversity_querys'
+    model: optional; None uses default Qwen model
+    user_prompt (str|None): optional user prompt
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.enQa_ops.DiversityScorer', """\
+```python
+from lazyllm.tools.data import EnQA
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = EnQA.DiversityScorer(input_key='rewrite_querys', output_key='diversity_querys', model=llm)
+data = {'rewrite_querys': ['今天是个好天气', '今天天气不错', 'It is a nice day!']}
+res = op(data)
+print(data)
+# {'rewrite_querys': ['今天是个好天气', '今天天气不错', 'It is a nice day!'], 'diversity_querys': [{'rewritten_query': '今天是个好天气', 'diversity_score': 1}, {'rewritten_query': '今天天气不错', 'diversity_score': 1}, {'rewritten_query': 'It is a nice day!', 'diversity_score': 1}]}
+```
+""")
+
+add_chinese_doc('data.operators.enQa_ops.post_processor', """\
+将指定字段（列表 of dict）展开为多行：每项 dict 与原始 data 合并为一行，原列表字段移除。返回多行时以 list 形式；无数据返回 None。以 forward 单条方式注册。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 要展开的列表字段名（列表中每项为 dict）
+""")
+
+add_english_doc('data.operators.enQa_ops.post_processor', """\
+Expand the specified key (list of dicts) into multiple rows: each dict merged with original data as one row, list key removed. Returns list of rows or None if no data. Registered as single-item forward.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the list of dicts to expand
+""")
+
+add_example('data.operators.enQa_ops.post_processor', """\
+```python
+from lazyllm.tools.data import EnQA
+
+data = {'rewrite_querys': ['今天是个好天气', '今天天气不错', 'It is a nice day!'], 'diversity_querys': [{'rewritten_query': '今天是个好天气', 'diversity_score': 1}, {'rewritten_query': '今天天气不错', 'diversity_score': 1}, {'rewritten_query': 'It is a nice day!', 'diversity_score': 1}]}
+op = EnQA.post_processor(input_key='diversity_querys')
+print(op(data))  
+# [{'rewrite_querys': ['今天是个好天气', '今天天气不错', 'It is a nice day!'], 'rewritten_query': '今天是个好天气', 'diversity_score': 1}, {'rewrite_querys': ['今天是个好天气', '今天天气不错', 'It is a nice day!'], 'rewritten_query': '今天天气不错', 'diversity_score': 1}, {'rewrite_querys': ['今天是个好天气', '今天天气不错', 'It is a nice day!'], 'rewritten_query': 'It is a nice day!', 'diversity_score': 1}]
+```
+""")
+
+add_chinese_doc('data.operators.enQa_ops.diversity_filter', """\
+按多样性分数过滤：若 data 中指定字段（分数）小于 min_score 则丢弃该条（返回 []），否则保留（返回 None 表示保留原 data）。以 forward 单条方式注册。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 分数所在字段名
+    min_score: 最小分数阈值
+""")
+
+add_english_doc('data.operators.enQa_ops.diversity_filter', """\
+Filter by diversity score: if the value at input_key is less than min_score, drop the item (return []); otherwise keep (return None to keep original data). Registered as single-item forward.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key holding the score
+    min_score: minimum score threshold
+""")
+
+add_example('data.operators.enQa_ops.diversity_filter', """\
+```python
+from lazyllm.tools.data import EnQA
+
+data = {'query': 'a and b', 'rewritten_query': 'b', 'diversity_score': 0}
+op = EnQA.diversity_filter(input_key='diversity_score', min_score=1)
+print(op(data))  # [None] (drop) 
+# []
+```
+""")
+
+# math_ops module docs
+add_chinese_doc('data.operators.math_ops.math_answer_extractor', """\
+从文本中提取 \\\\boxed{{}} 内的数学答案，写入指定输出字段。以 forward 单条方式注册。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 含答案文本的字段名，默认 'answer'
+    output_key (str): 提取结果写入的字段名，默认 'math_answer'
+""")
+
+add_english_doc('data.operators.math_ops.math_answer_extractor', """\
+Extract the math answer inside \\\\boxed{{}} from text and write to the specified output key. Registered as single-item forward.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text containing the answer, default 'answer'
+    output_key (str): key to write the extracted value, default 'math_answer'
+""")
+
+add_example('data.operators.math_ops.math_answer_extractor', """\
+```python
+from lazyllm.tools.data import MathQA
+
+data = {'answer': 'So the answer is \\\\boxed{{42}}.'}
+op = MathQA.math_answer_extractor(input_key='answer', output_key='math_answer')
+print(op(data))  # data['math_answer'] == '42'
+# [{'answer': 'So the answer is \\\\boxed{{42}}.', 'math_answer': '{42}'}]
+```
+""")
+
+add_chinese_doc('data.operators.math_ops.MathAnswerGenerator', """\
+使用大模型为数学问题生成推理与答案，要求最终结果用 \\\\boxed{{ANSWER}} 包裹。若已有 answer 且未设置 regenerate 则跳过。
+
+Args:
+    input_key (str): 问题字段名，默认 'question'
+    output_key (str): 答案写入的字段名，默认 'answer'
+    regenerate_key (str): 是否强制重新生成的标志字段，默认 'regenerate'
+    model: 可选；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选用户提示
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.math_ops.MathAnswerGenerator', """\
+Use an LLM to generate reasoning and answer for a math question, with final result in \\\\boxed{{ANSWER}}. Skips if answer already exists and regenerate is not set.
+
+Args:
+    input_key (str): key of the question, default 'question'
+    output_key (str): key to write the answer, default 'answer'
+    regenerate_key (str): key for force-regenerate flag, default 'regenerate'
+    model: optional; None uses default Qwen model
+    user_prompt (str|None): optional user prompt
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.math_ops.MathAnswerGenerator', """\
+```python
+from lazyllm.tools.data.operators.math_ops import MathAnswerGenerator
+
+from lazyllm.tools.data import MathQA
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = MathQA.MathAnswerGenerator(input_key='question', output_key='answer', model=llm)
+data = [{'question': 'Solve 10 * 10'}]
+res = op(data) 
+print(res)
+# [{'question': 'Solve 10 * 10', 'answer': '首先，我们需要计算 \\(10 \times 10\\)。这是一个简单的乘法运算，其中两个乘数都是10。\n\n步骤1：写下乘数10和另一个乘数10。\n步骤2：将两个10相乘。\n\n计算过程如下：\n\\[ 10 \times 10 = 100 \\]\n\n因此，最终结果是 \\(\\boxed{100}\\)。', 'regenerate': False}]
+```
+""")
+
+add_chinese_doc('data.operators.math_ops.DifficultyEvaluator', """\
+使用大模型判断数学问题难度，输出 Easy | Medium | Hard（小学/初中高中/大学及以上）。若已有 difficulty 则跳过。
+
+Args:
+    input_key (str): 问题字段名，默认 'question'
+    output_key (str): 难度写入的字段名，默认 'difficulty'
+    model: 可选；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选用户提示
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.math_ops.DifficultyEvaluator', """\
+Use an LLM to evaluate math question difficulty; output Easy | Medium | Hard. Skips if difficulty already present.
+
+Args:
+    input_key (str): key of the question, default 'question'
+    output_key (str): key to write difficulty, default 'difficulty'
+    model: optional; None uses default Qwen model
+    user_prompt (str|None): optional user prompt
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.math_ops.DifficultyEvaluator', """\
+```python
+from lazyllm.tools.data.operators.math_ops import DifficultyEvaluator
+
+from lazyllm.tools.data import MathQA
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = MathQA.DifficultyEvaluator(input_key='question', output_key='difficulty', model=llm)
+data = {'question': '1+1=?'}
+res = op(data)  # each item gets 'difficulty': 'Easy'|'Medium'|'Hard'
+print(res)
+# [{'question': '1+1=?', 'difficulty': 'Easy'}]
+```
+""")
+
+add_chinese_doc('data.operators.math_ops.DifficultyEvaluatorBatch', """\
+批处理：统计输入列表中指定字段（难度）的分布，返回包含各难度计数的单元素列表 [{{难度: 数量}}]。以 forward_batch_input 注册。
+
+Args:
+    data (list[dict]): 输入数据列表
+    input_key (str): 难度字段名，默认 'difficulty'
+""")
+
+add_english_doc('data.operators.math_ops.DifficultyEvaluatorBatch', """\
+Batch: aggregate counts of the specified key (e.g. difficulty) over the input list; returns a single-element list [{{key: count}}]. Registered as forward_batch_input.
+
+Args:
+    data (list[dict]): list of input dicts
+    input_key (str): key to aggregate, default 'difficulty'
+""")
+
+add_example('data.operators.math_ops.DifficultyEvaluatorBatch', """\
+```python
+from lazyllm.tools.data import MathQA
+
+op = MathQA.DifficultyEvaluatorBatch(input_key='difficulty')
+data = [{'difficulty': 'Easy'}, {'difficulty': 'Hard'}, {'difficulty': 'Easy'}]
+print(op(data))  
+# [{'Easy': 2, 'Hard': 1}]
+```
+""")
+
+add_chinese_doc('data.operators.math_ops.QualityEvaluator', """\
+使用大模型对问题-答案对做质量打分：0 表示需重新生成，1 表示合格。若已有 output_key 则跳过。
+
+Args:
+    question_key (str): 问题字段名，默认 'question'
+    answer_key (str): 答案字段名，默认 'answer'
+    output_key (str): 分数写入的字段名，默认 'score'
+    model: 可选；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选用户提示
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.math_ops.QualityEvaluator', """\
+Use an LLM to score question-answer quality: 0 = regenerate, 1 = acceptable. Skips if output_key already present.
+
+Args:
+    question_key (str): key of the question, default 'question'
+    answer_key (str): key of the answer, default 'answer'
+    output_key (str): key to write score, default 'score'
+    model: optional; None uses default Qwen model
+    user_prompt (str|None): optional user prompt
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.math_ops.QualityEvaluator', """\
+```python
+from lazyllm.tools.data import MathQA
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = MathQA.QualityEvaluator(question_key='question', answer_key='answer', output_key='score', model=llm)
+data = {'question': '今天天气如何', 'answer': '大家好~'}
+res = op(data) # 质量低的会被打 0 分
+print(res)
+# [{'question': '今天天气如何', 'answer': '大家好~', 'score': 0}]
+```
+""")
+
+add_chinese_doc('data.operators.math_ops.DuplicateAnswerDetector', """\
+检测答案是否存在重复/周期/长片段重复：周期重复、句子级重复、或合并问题+答案后的长子串重复则标记为 True。不调用模型。
+
+Args:
+    question_key (str): 问题字段名，默认 'question'
+    answer_key (str): 答案字段名，默认 'answer'
+    output_key (str): 是否重复写入的字段名，默认 'duplicate'
+    min_repeat_len (int): 判定长重复的最小子串长度，默认 15
+    repeat_threshold (int): 子串出现次数阈值，默认 2
+    periodic_min_repeat (int): 周期重复的最小周期重复次数，默认 3
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.math_ops.DuplicateAnswerDetector', """\
+Detect duplicate/periodic/long-repeat in answers: periodic repetition, sentence-level repeat, or long substring repeat in question+answer. Sets output True if detected. No model call.
+
+Args:
+    question_key (str): key of the question, default 'question'
+    answer_key (str): key of the answer, default 'answer'
+    output_key (str): key to write duplicate flag, default 'duplicate'
+    min_repeat_len (int): min substring length for long repeat, default 15
+    repeat_threshold (int): occurrence threshold for substring, default 2
+    periodic_min_repeat (int): min period repeats for periodic, default 3
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.math_ops.DuplicateAnswerDetector', """\
+```python
+from lazyllm.tools.data import MathQA
+
+op = MathQA.DuplicateAnswerDetector(question_key='question', answer_key='answer', output_key='duplicate')
+data = {'question': 'Q', 'answer': 'A' * 50}
+res = op(data)  # data['duplicate'] True
+print(res)
+# [{'question': 'Q', 'answer': 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', 'duplicate': True}]
+```
+""")
+
+add_chinese_doc('data.operators.math_ops.ReasoningAnswerTokenLengthFilter', """\
+按 token 或字符长度过滤答案：超过 max_answer_token_length 时清空该字段并返回修改后的 data；未超过时返回 None 保留原样；无内容时返回 []。支持 tokenizer 或字符计数。
+
+Args:
+    input_key (str): 答案字段名，默认 'answer'
+    max_answer_token_length (int): 最大允许长度，默认 300
+    tokenize (bool): 是否按 token 计数；True 且未提供 tokenizer 时使用默认 Qwen tokenizer
+    tokenizer: 可选
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.math_ops.ReasoningAnswerTokenLengthFilter', """\
+Filter by answer length (tokens or chars): if over max_answer_token_length, clear the field and return modified data; if within limit return None to keep; if empty return []. Supports tokenizer or char count.
+
+Args:
+    input_key (str): key of the answer, default 'answer'
+    max_answer_token_length (int): max allowed length, default 300
+    tokenize (bool): whether to count by tokens; uses default Qwen tokenizer if True and tokenizer not provided
+    tokenizer: optional
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.math_ops.ReasoningAnswerTokenLengthFilter', """\
+```python
+from lazyllm.tools.data import MathQA
+
+op = MathQA.ReasoningAnswerTokenLengthFilter(input_key='answer', max_answer_token_length=100, tokenize=False)
+data = [{'answer': 'short'}]
+print(op(data))  # less than the max_length, keep the original input
+# [{'answer': 'short'}]
+```
+""")
+
+add_chinese_doc('data.operators.math_ops.QuestionFusionGenerator', """\
+使用大模型将多条问题融合为一个新问题并生成推理与 \\\\boxed{{}} 答案。需要 list_key 下至少 2 个问题。
+
+Args:
+    input_key (str): 融合后问题字段名，默认 'question'
+    output_key (str): 推理结果/答案写入的字段名，默认 'answer'
+    list_key (str): 问题列表字段名，默认 'question_list'
+    model: 可选；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选用户提示
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.math_ops.QuestionFusionGenerator', """\
+Use an LLM to fuse multiple questions into one and generate reasoning with \\\\boxed{{}} answer. Requires at least 2 questions under list_key.
+
+Args:
+    input_key (str): key for fused question, default 'question'
+    output_key (str): key to write answer, default 'answer'
+    list_key (str): key of the question list, default 'question_list'
+    model: optional; None uses default Qwen model
+    user_prompt (str|None): optional user prompt
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.math_ops.QuestionFusionGenerator', """\
+```python
+from lazyllm.tools.data import MathQA
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = MathQA.QuestionFusionGenerator(input_key='new_question', list_key='question_list', output_key='new_answer', model=llm)
+data = {'question_list': [
+    {'question': '1加1等于几？', 'answer': '1+1 = 2'}, 
+    {'question': '2的平方等于几？', 'answer': '2*2 = 4'}]}
+res = op(data) 
+print(res)
+# [{'question_list': [{'question': '1加1等于几？', 'answer': '1+1 = 2'}, {'question': '2的平方等于几？', 'answer': '2*2 = 4'}], 
+# 'new_question': '如果1加1的结果与2的平方相比较，哪个更大？', 
+# 'new_answer': '首先，我们解决第一个问题：1加1等于几？计算得到 1+1 = 2。然后，解决第二个问题：2的平方等于几？计算得到 2*2 = 4。最后，我们比较这两个结果，2和4。显然，4大于2。所以，2的平方更大。'}]
+```
+""")
+
+# pdf_ops module docs
+add_chinese_doc('data.operators.pdf_ops.Pdf2Md', """\
+将 PDF 转为 Markdown 文档列表。通过 MineruPDFReader（需配置 reader_url）调用后端服务，支持缓存。
+
+Args:
+    input_key (str): PDF 路径字段名，默认 'pdf_path'
+    output_key (str): 转换得到的文档列表写入的字段名，默认 'docs'
+    reader_url: 必填，Mineru 阅读器服务 URL
+    backend (str): 后端类型，默认 'vlm-vllm-async-engine'
+    upload_mode (bool): 是否上传模式，默认 True
+    use_cache (bool): 是否使用缓存，默认 False
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.pdf_ops.Pdf2Md', """\
+Convert PDF to a list of Markdown documents. Uses MineruPDFReader (reader_url required). Supports cache.
+
+Args:
+    input_key (str): key of the PDF path, default 'pdf_path'
+    output_key (str): key to write the document list, default 'docs'
+    reader_url: required, Mineru reader service URL
+    backend (str): backend type, default 'vlm-vllm-async-engine'
+    upload_mode (bool): whether to use upload mode, default True
+    use_cache (bool): whether to use cache, default False
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.pdf_ops.Pdf2Md', """\
+```python
+from lazyllm.tools.data import Pdf2Qa
+from lazyllm.tools.data.operators.pdf_ops import Pdf2Md
+
+op = Pdf2Qa.Pdf2Md(input_key='pdf_path', output_key='docs', reader_url='http://...')
+data = [{'pdf_path': '/path/to/file.pdf'}]
+res = op(data)  # each item gets 'docs' (list of doc content)
+```"""
+)
+
+# text2qa_ops module docs
+add_chinese_doc('data.operators.text2qa_ops.TextToChunks', """\
+将输入文本按行切分为多个块（chunk），每条输入可展开为多条输出。支持按 token 数或字符数控制块大小，可选用 tokenizer 或按字符计数。
+
+Args:
+    input_key (str): 输入文本字段名，默认 'content'
+    output_key (str): 输出块内容写入的字段名，默认 'chunk'
+    chunk_size (int): 每块的最大长度（token 数或字符数），默认 10
+    tokenize (bool): 是否按 token 计数；为 True 且未提供 tokenizer 时使用默认 Qwen tokenizer
+    tokenizer: 可选，用于计数的 tokenizer；None 时若 tokenize=True 则自动加载默认
+    **kwargs: 其它基类参数（如 _concurrency_mode、_max_workers 等）
+""")
+
+add_english_doc('data.operators.text2qa_ops.TextToChunks', """\
+Split input text into chunks by lines, with size controlled by token or character count. One input item may expand into multiple output items. Supports optional tokenizer or character-based length.
+
+Args:
+    input_key (str): key of the input text field, default 'content'
+    output_key (str): key to write each chunk into, default 'chunk'
+    chunk_size (int): max length per chunk (tokens or chars), default 10
+    tokenize (bool): whether to count by tokens; if True and tokenizer not provided, uses default Qwen tokenizer
+    tokenizer: optional tokenizer for counting; if None and tokenize=True, loads default
+    **kwargs: other base-class args (e.g. _concurrency_mode, _max_workers)
+""")
+
+add_example('data.operators.text2qa_ops.TextToChunks', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+op = Text2qa.TextToChunks(input_key='content', output_key='chunk', chunk_size=10, tokenize=False)
+data = [{'content': 'line1\nline2\nline3\nline4'}]
+res = op(data)
+print(res)
+# [{'content': 'line1\nline2\nline3\nline4', 'chunk': 'line1\nline2'}, {'content': 'line1\nline2\nline3\nline4', 'chunk': 'line3\nline4'}]
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.empty_or_noise_filter', """\
+过滤空内容或纯噪声数据。若指定字段为空或仅包含非字母/非 CJK 字符则丢弃该条（返回空列表），否则保留原数据。以 forward 单条方式注册。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 要检查的字段名，默认 'chunk'
+""")
+
+add_english_doc('data.operators.text2qa_ops.empty_or_noise_filter', """\
+Filter out empty or noise-only items. If the specified field is empty or contains no word/CJK characters, the item is dropped (returns empty list); otherwise the item is kept. Registered as a single-item forward.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key to check, default 'chunk'
+""")
+
+add_example('data.operators.text2qa_ops.empty_or_noise_filter', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+op = Text2qa.empty_or_noise_filter(input_key='chunk')
+data = [{'chunk': 'hello'}, {'chunk': ''}, {'chunk': '\n'}]
+res = op(data)
+print(res)
+# [{'chunk': 'hello'}]
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.invalid_unicode_cleaner', """\
+清除指定文本字段中的无效 Unicode 码位（如 FDD0–FDEF、FFFE/FFFF 及若干 Supplementary Special Purpose 区段），原地修改并返回数据。以 forward 单条方式注册。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 要清洗的文本字段名，默认 'chunk'
+""")
+
+add_english_doc('data.operators.text2qa_ops.invalid_unicode_cleaner', """\
+Remove invalid Unicode code points (e.g. FDD0–FDEF, FFFE/FFFF and certain Supplementary Special Purpose ranges) from the specified text field in place. Registered as a single-item forward.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field to clean, default 'chunk'
+""")
+
+add_example('data.operators.text2qa_ops.invalid_unicode_cleaner', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+op = Text2qa.invalid_unicode_cleaner(input_key='chunk')
+data = {'chunk': 'valid text\uFFFE tail'}
+res = op(data)  # 剔除乱码\uFFFE
+print(res)
+[{'chunk': 'valid text tail'}]
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.ChunkToQA', """\
+基于大模型将每个文本块生成一个 QA 对（问题 + 答案）。使用 JsonFormatter 约束输出格式，可自定义 user_prompt 或使用默认「根据下面文本生成一个 QA 对」。
+
+Args:
+    input_key (str): 输入块字段名，默认 'chunk'
+    query_key (str): 生成的问题写入的字段名，默认 'query'
+    answer_key (str): 生成的答案写入的字段名，默认 'answer'
+    model: 可选，TrainableModule 或兼容接口；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选，用户提示前缀；None 时使用默认
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.text2qa_ops.ChunkToQA', """\
+Use an LLM to generate one QA pair (question + answer) per text chunk. Output format is constrained via JsonFormatter; user_prompt can be customized or left as default.
+
+Args:
+    input_key (str): key of the input chunk, default 'chunk'
+    query_key (str): key to write the generated question, default 'query'
+    answer_key (str): key to write the generated answer, default 'answer'
+    model: optional TrainableModule or compatible; None uses default Qwen model
+    user_prompt (str|None): optional user prompt prefix; None uses default
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.text2qa_ops.ChunkToQA', """\
+```python
+from lazyllm.tools.data import Text2qa
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = Text2qa.ChunkToQA(input_key='chunk', query_key='query', answer_key='answer', model=llm)
+data = [{'chunk': '今天是晴天！'}]
+res = op(data)
+print(res)
+# [{'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'}]
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.QAScorer', """\
+基于大模型对 QA 对进行打分：判断答案是否严格基于原文，输出 1（基于原文）或 0（否则）。使用 JsonFormatter 约束输出 score 字段。
+
+Args:
+    input_key (str): 原文块字段名，默认 'chunk'
+    output_key (str): 分数写入的字段名，默认 'score'
+    query_key (str): 问题字段名，默认 'query'
+    answer_key (str): 答案字段名，默认 'answer'
+    model: 可选，TrainableModule 或兼容接口；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选，用户提示；None 时使用默认规则（严格基于原文→1，否则→0）
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.text2qa_ops.QAScorer', """\
+Use an LLM to score QA pairs: whether the answer is strictly grounded in the source chunk. Outputs 1 (grounded) or 0 (otherwise). Output format constrained via JsonFormatter.
+
+Args:
+    input_key (str): key of the source chunk, default 'chunk'
+    output_key (str): key to write the score, default 'score'
+    query_key (str): key of the question, default 'query'
+    answer_key (str): key of the answer, default 'answer'
+    model: optional TrainableModule or compatible; None uses default Qwen model
+    user_prompt (str|None): optional user prompt; None uses default rules
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.text2qa_ops.QAScorer', """\
+```python
+from lazyllm.tools.data import Text2qa
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = Text2qa.QAScorer(input_key='chunk', output_key='score', query_key='query', answer_key='answer', model=llm)
+data = [
+{'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'},
+{'chunk': '1+1=2', 'query': '1+1=?', 'answer': '3'}
+]
+res = op(data)
+print(res)
+# [{'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！', 'score': 1}, {'chunk': '1+1=2', 'query': '1+1=?', 'answer': '3', 'score': 0}]
+```
+""")
+
+add_chinese_doc('data.operators.codegen_ops.CodeInstructionGenerator', """\
+代码生成流水线算子：指令标准化生成器。
+
+从原始对话消息（messages）中抽取用户指令，并将其重写为统一的“代码增强指令”，输出为一条英文描述 + 一个包含完整函数骨架的 Python 代码块。
+
+输出示例结构（默认 input_key='messages', output_key='generated_instruction'):
+
+- messages: 原始多轮对话（保持不变）
+- generated_instruction (str): 标准化后的英文指令 + Python 代码块
+
+Args:
+    model: LazyLLM 模型对象（必需），会被 share() 后复用。
+    prompt_template (str|None): 可选，自定义系统提示词（若提供则替换默认 sys_prompt）。
+    input_key (str): 输入对话字段名，默认 'messages'。
+    output_key (str): 输出标准化指令字段名，默认 'generated_instruction'。
+    **kwargs: 传递给基类算子的其它参数（如 _max_workers、_save_data 等）。
+""")
+
+add_english_doc('data.operators.codegen_ops.CodeInstructionGenerator', """\
+Code-gen pipeline operator: CodeInstructionGenerator.
+
+Extracts the user instruction from raw messages and rewrites it into a standardized English instruction plus a Python function skeleton code block.
+
+Typical output structure (default input_key='messages', output_key='generated_instruction'):
+
+- messages: original multi-turn messages (unchanged)
+- generated_instruction (str): standardized English instruction + Python code block
+
+Args:
+    model: a LazyLLM model object (required), shared via share().
+    prompt_template (str|None): optional custom system prompt (overrides default).
+    input_key (str): input conversation field name, default 'messages'.
+    output_key (str): output standardized instruction field name, default 'generated_instruction'.
+    **kwargs: extra args forwarded to the base operator (e.g. _max_workers, _save_data).
+""")
+
+add_example('data.operators.codegen_ops.CodeInstructionGenerator', r"""
+from lazyllm.tools.data.operators.codegen_ops import CodeInstructionGenerator
+
+op = CodeInstructionGenerator(model=model,
+                                         input_key='messages',
+                                         output_key='generated_instruction')
+item = {
+    'messages': [
+        {'role': 'user', 'content': '写一个 Python 函数，打印 hello'}
+    ]
+}
+res = op(item)
+print(res)
+
+# Output Example:
+# {
+#    'messages': [...],
+#    'generated_instruction': "Write a Python function that prints 'hello'.\\n"
+#                             "```python\\n"
+#                             "def solution():\\n"
+#                             "    print('hello')\\n"
+#                             "```"
+# }
+""")
+
+add_chinese_doc('data.operators.codegen_ops.ScriptSynthesizer', """\
+代码生成流水线算子：指令到代码生成器。
+
+给定自然语言代码指令（通常是上一阶段生成的 generated_instruction 或精简后的 instruction），生成对应的 Python 源代码文本，并尝试自动去掉 Markdown 代码块外壳，只保留代码本身。
+
+输出示例结构（默认 input_key='instruction', output_key='new_code'):
+
+- instruction: 自然语言代码指令
+- new_code (str): 生成的 Python 代码字符串
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    prompt_template (str|None): 可选，自定义系统提示词。
+    input_key (str): 输入指令字段名，默认 'instruction'。
+    output_key (str): 输出代码字段名，默认 'new_code'。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.codegen_ops.ScriptSynthesizer', """\
+Code-gen pipeline operator: ScriptSynthesizer.
+
+Given a natural language code instruction (often from the previous generated_instruction or a cleaned instruction field), generates the corresponding Python source code, stripping Markdown code fences when present.
+
+Typical output structure (default input_key='instruction', output_key='new_code'):
+
+- instruction: natural language code instruction
+- new_code (str): generated Python code string
+
+Args:
+    model: a LazyLLM model object (required).
+    prompt_template (str|None): optional custom system prompt.
+    input_key (str): input instruction field name, default 'instruction'.
+    output_key (str): output code field name, default 'new_code'.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.codegen_ops.ScriptSynthesizer', """\
+```python
+from lazyllm.tools.data.operators.codegen_ops import ScriptSynthesizer
+
+op = ScriptSynthesizer(model=model,
+                                    input_key='instruction',
+                                    output_key='new_code')
+item = {
+    'instruction': 'Write a Python function that prints "hello".'
+}
+res = op(item)
+print(res)
+# {
+#   'instruction': 'Write a Python function that prints "hello".',
+#   'new_code': "def solution():\\n    print('hello')"
+# }
+```
+""")
+
+add_chinese_doc('data.operators.codegen_ops.LogicIntegrityAuditor', """\
+代码生成流水线算子：代码质量评估器。
+
+对单条 (generated_instruction, generated_code) 样本进行自动代码评审，输出一个质量分数（0–10）与一段文字反馈，默认使用 JSON 格式进行解析。
+
+输出示例结构（默认 input_instruction_key='instruction', input_code_key='new_code'):
+
+- instruction: 标准化指令
+- new_code: 生成的代码
+- quality_score: 质量得分（int/float，取决于 JsonFormatter 解析）
+- feedback: 文字反馈
+
+Args:
+    model: LazyLLM 模型对象（必需），会被 JsonFormatter 包装为 JSON 输出。
+    prompt_template (str|None): 可选，自定义系统提示词。
+    input_instruction_key (str): 输入指令字段名，默认 'instruction'。
+    input_code_key (str): 输入代码字段名，默认 'new_code'。
+    output_score_key (str): 输出分数字段名，默认 'quality_score'。
+    output_feedback_key (str): 输出反馈字段名，默认 'feedback'。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.codegen_ops.LogicIntegrityAuditor', """\
+Code-gen pipeline operator: LogicIntegrityAuditor.
+
+Evaluates a single (generated_instruction, generated_code) sample, producing a quality score (0–10) and textual feedback, parsed from a JSON-formatted model response.
+
+Typical output structure (default input_instruction_key='instruction', input_code_key='new_code'):
+
+- instruction: standardized instruction
+- new_code: generated code
+- quality_score: numeric quality score (int/float depending on JsonFormatter parsing)
+- feedback: textual review feedback
+
+Args:
+    model: a LazyLLM model object (required), wrapped with JsonFormatter.
+    prompt_template (str|None): optional custom system prompt.
+    input_instruction_key (str): input instruction field name, default 'instruction'.
+    input_code_key (str): input code field name, default 'new_code'.
+    output_score_key (str): output score field name, default 'quality_score'.
+    output_feedback_key (str): output feedback field name, default 'feedback'.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.codegen_ops.LogicIntegrityAuditor', """\
+```python
+from lazyllm.tools.data.operators.codegen_ops import LogicIntegrityAuditor
+
+op = LogicIntegrityAuditor(model=model)
+item = {
+    'instruction': "Write a Python function that prints 'hello'.",
+    'new_code': "def solution():\\n    print('hello')"
+}
+res = op(item)
+print(res)
+# {
+#   'instruction': "Write a Python function that prints 'hello'.",
+#   'new_code': "def solution():\\n    print('hello')",
+#   'quality_score': 8,
+#   'feedback': 'Good code. The logic is clear and follows PEP8.'
+# }
+```
+""")
+
+add_chinese_doc('data.operators.codegen_ops.ThresholdSieve', """\
+代码生成流水线算子：代码质量分数过滤器。
+
+基于 LogicIntegrityAuditor 的打分结果，对样本进行区间过滤：
+
+- 若样本尚未包含 quality_score/feedback，会先自动调用内部 scorer 进行评估；
+- 若得分在 [min_score, max_score] 区间内，则为样本打上标签并保留；
+- 否则返回空列表 []，表示此样本在流水线中被过滤掉。
+
+输出示例结构（默认 output_key='quality_score_filter_label'）：
+
+- instruction: ...
+- new_code: ...
+- quality_score: 8
+- feedback: 'Good code. ...'
+- quality_score_filter_label: 1  （通过过滤为 1，未通过则样本被丢弃）
+
+Args:
+    model: LazyLLM 模型对象（必需），用于内部评估。
+    min_score (int): 通过过滤的最小分数（含），默认 7。
+    max_score (int): 通过过滤的最大分数（含），默认 10。
+    input_instruction_key (str): 输入指令字段名，默认 'instruction'。
+    input_code_key (str): 输入代码字段名，默认 'new_code'。
+    output_score_key (str): 分数字段名，默认 'quality_score'。
+    output_feedback_key (str): 反馈字段名，默认 'feedback'。
+    output_key (str): 过滤标签字段名，默认 'quality_score_filter_label'。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.codegen_ops.ThresholdSieve', """\
+Code-gen pipeline operator: ThresholdSieve.
+
+Filters samples based on code quality scores produced by LogicIntegrityAuditor:
+
+- If quality_score/feedback are missing, it first calls the internal scorer.
+- If the score is within [min_score, max_score], the sample is kept and labeled.
+- Otherwise, it returns an empty list [], effectively dropping the sample from the pipeline.
+
+Typical output structure (default output_key='quality_score_filter_label'):
+
+- instruction: ...
+- new_code: ...
+- quality_score: 8
+- feedback: 'Good code. ...'
+- quality_score_filter_label: 1  (1 for passed, 0 otherwise; non-passed samples are dropped)
+
+Args:
+    model: a LazyLLM model object (required), used by the internal scorer.
+    min_score (int): minimum score (inclusive) to pass the filter, default 7.
+    max_score (int): maximum score (inclusive) to pass the filter, default 10.
+    input_instruction_key (str): input instruction field, default 'instruction'.
+    input_code_key (str): input code field, default 'new_code'.
+    output_score_key (str): score field name, default 'quality_score'.
+    output_feedback_key (str): feedback field name, default 'feedback'.
+    output_key (str): filter label field name, default 'quality_score_filter_label'.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.codegen_ops.ThresholdSieve', """\
+```python
+from lazyllm.tools.data.operators.codegen_ops import ThresholdSieve
+
+op = ThresholdSieve(model=model, min_score=7, max_score=10)
+item = {
+    'instruction': "Write a Python function that prints 'hello'.",
+    'new_code': "def solution():\\n    print('hello')"
+}
+res = op(item)
+print(res)
+# {
+#   'instruction': '...',
+#   'new_code': '...',
+#   'quality_score': 8,
+#   'feedback': 'Good code. The logic is clear and follows PEP8.',
+#   'quality_score_filter_label': 1
+# }
+```
+""")
+
+# refine_op
+add_chinese_doc('data.operators.refine_op.remove_extra_spaces', """\
+将指定字段中的多余空白（多个空格、换行、制表符）归一化为单个空格。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+""")
+
+add_english_doc('data.operators.refine_op.remove_extra_spaces', """\
+Normalize whitespace by collapsing multiple spaces, newlines and tabs into single spaces.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+""")
+
+add_example('data.operators.refine_op.remove_extra_spaces', """\
+```python
+from lazyllm.tools.data import refine
+
+func = refine.remove_extra_spaces(input_key='content')
+inputs = [{'content': 'hello   world\\\\n\\\\n  foo\\\\tbar'}]
+res = func(inputs)
+print(res)
+# [{'content': 'hello world foo bar'}]
+```
+""")
+
+add_chinese_doc('data.operators.refine_op.remove_emoji', """\
+移除指定字段中的 emoji 字符。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+""")
+
+add_english_doc('data.operators.refine_op.remove_emoji', """\
+Remove emoji characters from the specified text field.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+""")
+
+add_example('data.operators.refine_op.remove_emoji', """\
+```python
+from lazyllm.tools.data import refine
+
+func = refine.remove_emoji(input_key='content')
+inputs = [{'content': 'Hello 😊 World 🌍!'}]
+res = func(inputs)
+print(res)
+# [{'content': 'Hello  World !'}]
+```
+""")
+
+add_chinese_doc('data.operators.refine_op.remove_html_url', """\
+移除指定字段中的 HTTP/HTTPS 链接和 HTML 标签。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+""")
+
+add_english_doc('data.operators.refine_op.remove_html_url', """\
+Remove HTTP/HTTPS URLs and HTML tags from the specified text field.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+""")
+
+add_example('data.operators.refine_op.remove_html_url', """\
+```python
+from lazyllm.tools.data import refine
+
+func = refine.remove_html_url(input_key='content')
+inputs = [{'content': 'Check https://example.com and <b>bold</b>'}]
+res = func(inputs)
+print(res)
+# [{'content': 'Check  and bold'}]
+```
+""")
+
+add_chinese_doc('data.operators.refine_op.remove_html_entity', """\
+移除指定字段中的 HTML 实体（如 &nbsp;、&lt;、&amp; 等）。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+""")
+
+add_english_doc('data.operators.refine_op.remove_html_entity', """\
+Remove HTML entities (e.g. &nbsp;, &lt;, &amp;) from the specified text field.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+""")
+
+add_example('data.operators.refine_op.remove_html_entity', """\
+```python
+from lazyllm.tools.data import refine
+
+func = refine.remove_html_entity(input_key='content')
+inputs = [{'content': 'Hello&nbsp;World &amp; &lt;tag&gt;'}]
+res = func(inputs)
+print(res)
+# [{'content': 'HelloWorld  tag'}]
+```
+""")
+
+# token_chunker
+add_chinese_doc('data.operators.token_chunker.TokenChunker', """\
+按 token 数量将长文本切分为多个块。先按段落分隔，再按句子细切，保证每块不超过 max_tokens，过短块可丢弃。
+
+Args:
+    input_key (str): 文本字段名，默认 'content'
+    model_path (str|None): tokenizer 模型路径，默认使用 Qwen2.5-0.5B-Instruct
+    max_tokens (int): 每块最大 token 数，默认 1024
+    min_tokens (int): 每块最小 token 数，低于此值的块可能被丢弃，默认 200
+    _concurrency_mode (str): 可选，并发模式
+    _max_workers (int|None): 可选，最大并发数
+""")
+
+add_english_doc('data.operators.token_chunker.TokenChunker', """\
+Split long text into chunks by token count. Splits by paragraph first, then by sentence.
+Ensures each chunk does not exceed max_tokens; chunks below min_tokens may be discarded.
+
+Args:
+    input_key (str): key of the text field, default 'content'
+    model_path (str|None): path to tokenizer model, default Qwen2.5-0.5B-Instruct
+    max_tokens (int): max tokens per chunk, default 1024
+    min_tokens (int): min tokens per chunk, smaller chunks may be discarded, default 200
+    _concurrency_mode (str): optional concurrency mode
+    _max_workers (int|None): optional max concurrency
+""")
+
+add_example('data.operators.token_chunker.TokenChunker', """\
+```python
+from lazyllm.tools.data import chunker
+
+func = chunker.TokenChunker(input_key='content', max_tokens=50, min_tokens=10)
+inputs = [{'content': '人工智能是计算机科学的一个分支。' * 20, 'meta_data': {'source': 'doc_1'}}]
+res = func(inputs)
+print(res)
+# [{'uid': '...', 'content': '...', 'meta_data': {'source': 'doc_1', 'index': 0, 'total': N, 'length': ...}}, ...]
+```
+""")
+
+# filter_op
+add_chinese_doc('data.operators.filter_op.TargetLanguageFilter', """\
+使用 FastText 进行语言识别，仅保留指定语言的文本。
+
+Args:
+    input_key (str): 文本字段名，默认 'content'
+    target_language (str|list): 目标语言代码，如 'zho_Hans'、'eng_Latn'
+    threshold (float): 置信度阈值，默认 0.6
+    model_path (str|None): FastText 模型路径
+    _concurrency_mode (str): 可选，并发模式
+""")
+
+add_english_doc('data.operators.filter_op.TargetLanguageFilter', """\
+Filter text by language using FastText. Keeps only texts in the specified language(s).
+
+Args:
+    input_key (str): key of the text field, default 'content'
+    target_language (str|list): target language code(s), e.g. 'zho_Hans', 'eng_Latn'
+    threshold (float): confidence threshold, default 0.6
+    model_path (str|None): path to FastText model
+    _concurrency_mode (str): optional concurrency mode
+""")
+
+add_example('data.operators.filter_op.TargetLanguageFilter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.TargetLanguageFilter(input_key='content', target_language='zho_Hans', threshold=0.3)
+inputs = [{'content': '这是一段中文文本。'}, {'content': 'This is English.'}]
+res = func(inputs)
+print(res)
+# [{'content': '这是一段中文文本。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.MinHashDeduplicator', """\
+使用 MinHash LSH 去除近似重复文本，批处理时保留首次出现的文本。
+
+Args:
+    input_key (str): 文本字段名，默认 'content'
+    threshold (float): 相似度阈值，默认 0.85
+    num_perm (int): MinHash 排列数，默认 128
+    use_n_gram (bool): 是否使用 n-gram，默认 True
+    ngram (int): n-gram 长度，默认 5
+""")
+
+add_english_doc('data.operators.filter_op.MinHashDeduplicator', """\
+Remove near-duplicate texts using MinHash LSH. For batch input, keeps first occurrence of each unique text.
+
+Args:
+    input_key (str): key of the text field, default 'content'
+    threshold (float): similarity threshold, default 0.85
+    num_perm (int): number of MinHash permutations, default 128
+    use_n_gram (bool): use n-gram, default True
+    ngram (int): n-gram size, default 5
+""")
+
+add_example('data.operators.filter_op.MinHashDeduplicator', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.MinHashDeduplicator(input_key='content', threshold=0.85)
+inputs = [{'uid': '0', 'content': '这是第一段不同的内容。'}, {'uid': '1', 'content': '这是第一段不同的内容。'}]
+res = func(inputs)
+print(res)
+# [{'uid': '0', 'content': '这是第一段不同的内容。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.WordBlocklistFilter', """\
+使用 AC 自动机多模式匹配过滤包含敏感词/违禁词超过阈值的文本。
+
+Args:
+    input_key (str): 文本字段名，默认 'content'
+    blocklist (list|None): 违禁词列表
+    blocklist_path (str|None): 违禁词文件路径
+    language (str): 语言，'zh' 或 'en'，默认 'zh'
+    threshold (int): 允许出现的违禁词最大数量，默认 1
+    _concurrency_mode (str): 可选，并发模式
+""")
+
+add_english_doc('data.operators.filter_op.WordBlocklistFilter', """\
+Filter text containing more than threshold blocked words using Aho-Corasick automaton.
+
+Args:
+    input_key (str): key of the text field, default 'content'
+    blocklist (list|None): list of blocked words
+    blocklist_path (str|None): path to blocklist file
+    language (str): language, 'zh' or 'en', default 'zh'
+    threshold (int): max allowed occurrences of blocked words, default 1
+    _concurrency_mode (str): optional concurrency mode
+""")
+
+add_example('data.operators.filter_op.WordBlocklistFilter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.WordBlocklistFilter(input_key='content', blocklist=['敏感', '违禁'], threshold=0)
+inputs = [{'content': '这是正常的文本内容。'}, {'content': '这里包含敏感词。'}]
+res = func(inputs)
+print(res)
+# [{'content': '这是正常的文本内容。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.SymbolRatioFilter', """\
+过滤指定符号（如 #、...、…）占比过高的文本。
+
+Args:
+    input_key (str): 文本字段名，默认 'content'
+    max_ratio (float): 符号与词数最大比例，默认 0.3
+    symbols (list|None): 要统计的符号列表，默认 ['#', '...', '…']
+    _concurrency_mode (str): 可选，并发模式
+""")
+
+add_english_doc('data.operators.filter_op.SymbolRatioFilter', """\
+Filter text with too high ratio of specified symbols (e.g. #, ..., …) to words.
+
+Args:
+    input_key (str): key of the text field, default 'content'
+    max_ratio (float): max ratio of symbols to words, default 0.3
+    symbols (list|None): symbols to count, default ['#', '...', '…']
+    _concurrency_mode (str): optional concurrency mode
+""")
+
+add_example('data.operators.filter_op.SymbolRatioFilter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.SymbolRatioFilter(input_key='content', max_ratio=0.3)
+inputs = [{'content': 'Normal text without symbols'}, {'content': '### ... … ###'}]
+res = func(inputs)
+print(res)
+# [{'content': 'Normal text without symbols'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.StopWordFilter', """\
+过滤停用词占比过高的文本（如几乎全为「的了呢」的无效内容）。
+
+Args:
+    input_key (str): 文本字段名，默认 'content'
+    max_ratio (float): 停用词最大占比，超过则过滤，默认 0.5
+    use_tokenizer (bool): 是否使用分词，默认 True
+    language (str): 语言，'zh' 或 'en'，默认 'zh'
+    _concurrency_mode (str): 可选，并发模式
+""")
+
+add_english_doc('data.operators.filter_op.StopWordFilter', """\
+Filter text with too high stopword ratio (e.g. invalid content mostly stopwords).
+
+Args:
+    input_key (str): key of the text field, default 'content'
+    max_ratio (float): max stopword ratio, filter if exceeded, default 0.5
+    use_tokenizer (bool): use tokenizer, default True
+    language (str): language, 'zh' or 'en', default 'zh'
+    _concurrency_mode (str): optional concurrency mode
+""")
+
+add_example('data.operators.filter_op.StopWordFilter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.StopWordFilter(input_key='content', max_ratio=0.5, language='zh')
+inputs = [{'content': '这是一段包含实际内容的正常文本。'}, {'content': '的了吗呢吧啊'}]
+res = func(inputs)
+print(res)
+# [{'content': '这是一段包含实际内容的正常文本。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.CapitalWordFilter', """\
+过滤全大写单词占比过高的文本。
+
+Args:
+    input_key (str): 文本字段名，默认 'content'
+    max_ratio (float): 全大写单词最大占比，默认 0.5
+    use_tokenizer (bool): 是否使用分词，默认 False
+    _concurrency_mode (str): 可选，并发模式
+""")
+
+add_english_doc('data.operators.filter_op.CapitalWordFilter', """\
+Filter text with too high ratio of all-caps words.
+
+Args:
+    input_key (str): key of the text field, default 'content'
+    max_ratio (float): max ratio of all-caps words, default 0.5
+    use_tokenizer (bool): use tokenizer, default False
+    _concurrency_mode (str): optional concurrency mode
+""")
+
+add_example('data.operators.filter_op.CapitalWordFilter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.CapitalWordFilter(input_key='content', max_ratio=0.5)
+inputs = [{'content': 'Normal text with Some Capitals'}, {'content': 'MOSTLY UPPERCASE'}]
+res = func(inputs)
+print(res)
+# [{'content': 'Normal text with Some Capitals'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.word_count_filter', """\
+按词/字符数量过滤：中文按字符数，英文按单词数，保留在 [min_words, max_words) 范围内的文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    min_words (int): 最小词数，默认 10
+    max_words (int): 最大词数，默认 10000
+    language (str): 语言，'zh' 或 'en'，默认 'zh'
+""")
+
+add_english_doc('data.operators.filter_op.word_count_filter', """\
+Filter by word/char count: Chinese by char count, English by word count. Keeps text in [min_words, max_words).
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    min_words (int): min count, default 10
+    max_words (int): max count, default 10000
+    language (str): language, 'zh' or 'en', default 'zh'
+""")
+
+add_example('data.operators.filter_op.word_count_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.word_count_filter(input_key='content', min_words=5, max_words=20, language='zh')
+inputs = [{'content': '短文本'}, {'content': '这是一段适中长度的中文文本内容。'}]
+res = func(inputs)
+print(res)
+# [{'content': '这是一段适中长度的中文文本内容。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.colon_end_filter', """\
+过滤以冒号结尾的文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+""")
+
+add_english_doc('data.operators.filter_op.colon_end_filter', """\
+Filter text ending with colon.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+""")
+
+add_example('data.operators.filter_op.colon_end_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.colon_end_filter(input_key='content')
+inputs = [{'content': '这是正常结尾。'}, {'content': '这是冒号结尾：'}]
+res = func(inputs)
+print(res)
+# [{'content': '这是正常结尾。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.sentence_count_filter', """\
+按句子数量过滤，保留在 [min_sentences, max_sentences] 范围内的文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    min_sentences (int): 最少句子数，默认 3
+    max_sentences (int): 最多句子数，默认 1000
+    language (str): 语言，'zh' 或 'en'，默认 'zh'
+""")
+
+add_english_doc('data.operators.filter_op.sentence_count_filter', """\
+Filter by sentence count. Keeps text with sentences in [min_sentences, max_sentences].
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    min_sentences (int): min sentence count, default 3
+    max_sentences (int): max sentence count, default 1000
+    language (str): language, 'zh' or 'en', default 'zh'
+""")
+
+add_example('data.operators.filter_op.sentence_count_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.sentence_count_filter(input_key='content', min_sentences=2, max_sentences=10, language='zh')
+inputs = [{'content': '单句。'}, {'content': '第一句。第二句。'}]
+res = func(inputs)
+print(res)
+# [{'content': '第一句。第二句。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.ellipsis_end_filter', """\
+过滤以省略号（...、…、……）结尾的行占比过高的文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    max_ratio (float): 以省略号结尾的行最大占比，默认 0.3
+""")
+
+add_english_doc('data.operators.filter_op.ellipsis_end_filter', """\
+Filter text with too many lines ending in ellipsis (...、…、……).
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    max_ratio (float): max ratio of lines ending with ellipsis, default 0.3
+""")
+
+add_example('data.operators.filter_op.ellipsis_end_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.ellipsis_end_filter(input_key='content', max_ratio=0.3)
+inputs = [{'content': '第一行。\\\\n第二行。\\\\n第三行。'}, {'content': '第一行...\\\\n第二行...'}]
+res = func(inputs)
+print(res)
+# [{'content': '第一行。\\\\n第二行。\\\\n第三行。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.null_content_filter', """\
+过滤空内容或仅空白字符的文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+""")
+
+add_english_doc('data.operators.filter_op.null_content_filter', """\
+Filter null or whitespace-only content.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+""")
+
+add_example('data.operators.filter_op.null_content_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.null_content_filter(input_key='content')
+inputs = [{'content': 'Valid content'}, {'content': ''}, {'content': '   '}]
+res = func(inputs)
+print(res)
+# [{'content': 'Valid content'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.word_length_filter', """\
+按单词平均长度过滤，保留在 [min_length, max_length) 范围内的文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    min_length (float): 单词平均最小长度，默认 3
+    max_length (float): 单词平均最大长度，默认 20
+""")
+
+add_english_doc('data.operators.filter_op.word_length_filter', """\
+Filter by average word length. Keeps text with mean word length in [min_length, max_length).
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    min_length (float): min avg word length, default 3
+    max_length (float): max avg word length, default 20
+""")
+
+add_example('data.operators.filter_op.word_length_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.word_length_filter(input_key='content', min_length=3, max_length=10)
+inputs = [{'content': 'I am ok'}, {'content': 'This is a normal sentence'}]
+res = func(inputs)
+print(res)
+# [{'content': 'This is a normal sentence'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.idcard_filter', """\
+过滤包含过多身份证/证件相关词汇的文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    threshold (int): 匹配到相关词的最大数量，超过则过滤，默认 3
+""")
+
+add_english_doc('data.operators.filter_op.idcard_filter', """\
+Filter text containing too many ID card / identity document related terms.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    threshold (int): max matches of related terms, filter if exceeded, default 3
+""")
+
+add_example('data.operators.filter_op.idcard_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.idcard_filter(input_key='content', threshold=1)
+inputs = [{'content': '这是正常文本'}, {'content': '请提供身份证号码和ID number'}]
+res = func(inputs)
+print(res)
+# [{'content': '这是正常文本'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.no_punc_filter', """\
+过滤标点之间段路过长的文本（如无标点超长串）。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    max_length_between_punct (int): 标点间最大长度，默认 112
+    language (str): 语言，'zh' 或 'en'，默认 'zh'
+""")
+
+add_english_doc('data.operators.filter_op.no_punc_filter', """\
+Filter text with too long segments between punctuation marks.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    max_length_between_punct (int): max length between punctuation, default 112
+    language (str): language, 'zh' or 'en', default 'zh'
+""")
+
+add_example('data.operators.filter_op.no_punc_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.no_punc_filter(input_key='content', max_length_between_punct=20, language='zh')
+inputs = [{'content': '这是。正常。文本。'}, {'content': '这是一段没有标点符号的超长文本' * 10}]
+res = func(inputs)
+print(res)
+# [{'content': '这是。正常。文本。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.special_char_filter', """\
+过滤包含特殊不可见字符的文本（零宽字符、替换字符等）。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+""")
+
+add_english_doc('data.operators.filter_op.special_char_filter', """\
+Filter text containing special invisible characters (zero-width, replacement char, etc.).
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+""")
+
+add_example('data.operators.filter_op.special_char_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.special_char_filter(input_key='content')
+inputs = [{'content': 'Normal text 正常文本'}, {'content': 'Text with \u200b zero width'}]
+res = func(inputs)
+print(res)
+# [{'content': 'Normal text 正常文本'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.watermark_filter', """\
+过滤包含版权/水印相关词汇的文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    watermarks (list|None): 自定义水印词列表，默认使用内置列表
+""")
+
+add_english_doc('data.operators.filter_op.watermark_filter', """\
+Filter text containing copyright/watermark related terms.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    watermarks (list|None): custom watermark terms, default uses built-in list
+""")
+
+add_example('data.operators.filter_op.watermark_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.watermark_filter(input_key='content')
+inputs = [{'content': 'Normal content'}, {'content': 'This document contains Copyright notice'}]
+res = func(inputs)
+print(res)
+# [{'content': 'Normal content'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.curly_bracket_filter', """\
+过滤花括号 {} 占比过高的文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    max_ratio (float): 花括号最大占比，默认 0.08
+""")
+
+add_english_doc('data.operators.filter_op.curly_bracket_filter', """\
+Filter text with too high ratio of curly brackets {}.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    max_ratio (float): max ratio of curly brackets, default 0.08
+""")
+
+add_example('data.operators.filter_op.curly_bracket_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.curly_bracket_filter(input_key='content', max_ratio=0.08)
+inputs = [{'content': 'Normal text'}, {'content': '{{{{{' * 10}]
+res = func(inputs)
+print(res)
+# [{'content': 'Normal text'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.lorem_ipsum_filter', """\
+过滤 Lorem ipsum、占位符等占位文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    max_ratio (float): 占位模式最大出现比例，默认 3e-8
+""")
+
+add_english_doc('data.operators.filter_op.lorem_ipsum_filter', """\
+Filter Lorem ipsum, placeholder text, etc.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    max_ratio (float): max ratio of placeholder patterns, default 3e-8
+""")
+
+add_example('data.operators.filter_op.lorem_ipsum_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.lorem_ipsum_filter(input_key='content')
+inputs = [{'content': 'This is real content'}, {'content': 'Lorem ipsum dolor sit amet'}]
+res = func(inputs)
+print(res)
+# [{'content': 'This is real content'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.unique_word_filter', """\
+过滤去重后词数占比过低的文本（重复词过多的无效内容）。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    min_ratio (float): 去重词数最小占比，默认 0.1
+    use_tokenizer (bool): 是否使用分词，默认 True
+    language (str): 语言，'zh' 或 'en'，默认 'zh'
+""")
+
+add_english_doc('data.operators.filter_op.unique_word_filter', """\
+Filter text with too low unique word ratio (excessive repetition).
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    min_ratio (float): min unique word ratio, default 0.1
+    use_tokenizer (bool): use tokenizer, default True
+    language (str): language, 'zh' or 'en', default 'zh'
+""")
+
+add_example('data.operators.filter_op.unique_word_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.unique_word_filter(input_key='content', min_ratio=0.4, language='zh')
+inputs = [{'content': '这是一段包含多个不同词汇的文本。'}, {'content': '重复重复重复'}]
+res = func(inputs)
+print(res)
+# [{'content': '这是一段包含多个不同词汇的文本。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.char_count_filter', """\
+按去除空白后的字符数过滤，保留在 [min_chars, max_chars] 范围内的文本。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    min_chars (int): 最小字符数，默认 100
+    max_chars (int): 最大字符数，默认 100000
+""")
+
+add_english_doc('data.operators.filter_op.char_count_filter', """\
+Filter by character count (excluding whitespace). Keeps text in [min_chars, max_chars].
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    min_chars (int): min chars, default 100
+    max_chars (int): max chars, default 100000
+""")
+
+add_example('data.operators.filter_op.char_count_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.char_count_filter(input_key='content', min_chars=10, max_chars=100)
+inputs = [{'content': '短'}, {'content': '这是一段中等长度的文本内容。'}]
+res = func(inputs)
+print(res)
+# [{'content': '这是一段中等长度的文本内容。'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.bullet_point_filter', """\
+过滤子弹点行占比过高的文本（如目录、纯列表）。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    max_ratio (float): 以子弹点开头的行最大占比，默认 0.9
+""")
+
+add_english_doc('data.operators.filter_op.bullet_point_filter', """\
+Filter text with too many bullet-point lines (e.g. TOC, pure lists).
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    max_ratio (float): max ratio of bullet lines, default 0.9
+""")
+
+add_example('data.operators.filter_op.bullet_point_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.bullet_point_filter(input_key='content', max_ratio=0.5)
+inputs = [{'content': 'Normal paragraph text'}, {'content': '- Item 1\\\\n- Item 2\\\\n- Item 3'}]
+res = func(inputs)
+print(res)
+# [{'content': 'Normal paragraph text'}]
+```
+""")
+
+add_chinese_doc('data.operators.filter_op.javascript_filter', """\
+过滤含大量 JavaScript 相关模式的文本（如代码、脚本片段）。短文本(<=3行)不检测，直接保留，避免误伤正常短句。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    min_non_script_lines (int): 最少非脚本行数，默认 3
+""")
+
+add_english_doc('data.operators.filter_op.javascript_filter', """\
+Filter text containing many JavaScript patterns (code, script fragments). Short text (<=3 lines) is passed through to avoid false positives on normal short sentences.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field, default 'content'
+    min_non_script_lines (int): min non-script lines, default 3
+""")
+
+add_example('data.operators.filter_op.javascript_filter', """\
+```python
+from lazyllm.tools.data import filter
+
+func = filter.javascript_filter(input_key='content', min_non_script_lines=2)
+inputs = [{'content': 'Short normal text'}, {'content': 'function() { return 1; }\nconst x = 1;\nvar y = 2;\nlet z = 3;'}]
+res = func(inputs)
+print(res)
+# [{'content': 'Short normal text'}]
+```
+""")
+
+add_chinese_doc('data.operators.preference_ops.IntentExtractor', """\
+偏好数据处理算子：意图提取器。
+
+从输入数据 dict 的指定字段中提取“核心意图”，并将结果写回到输出字段中，便于后续生成多候选回复与偏好对构造。
+
+注意：
+
+- 该算子内部使用模型 + JSON 格式化器，期望模型输出为 JSON dict；若无法解析为 dict，则输出为 None。
+- 默认并发模式为 thread。
+
+Args:
+    model: LazyLLM 模型对象（必需），会被 share() 后复用。
+    input_key (str): 输入文本字段名，默认 'content'。
+    output_key (str): 输出意图字段名，默认 'intent'。
+    **kwargs: 传递给基类算子的其它参数（如 _max_workers、_save_data 等）。
+""")
+
+add_english_doc('data.operators.preference_ops.IntentExtractor', """\
+Preference operator: intent extractor.
+
+Extracts the core intent from a specified field of the input data dict and writes it to an output field,
+so that downstream steps can generate multiple candidate responses and construct preference pairs.
+
+Notes:
+
+- Internally uses a model plus a JSON formatter; it expects the model output to be a JSON dict. If it cannot be parsed as dict, the output is None.
+- Default concurrency mode is thread.
+
+Args:
+    model: a LazyLLM model object (required), will be shared via share().
+    input_key (str): input text field name, default 'content'.
+    output_key (str): output intent field name, default 'intent'.
+    **kwargs: extra args passed to the base operator (e.g. _max_workers, _save_data).
+""")
+
+add_example('data.operators.preference_ops.IntentExtractor', """\
+```python
+from lazyllm.tools.data.operators.preference_ops import IntentExtractor
+
+# model 需要由你的项目环境提供，例如 lazyllm.xxx(...) 得到的模型对象
+op = IntentExtractor(model=model, input_key='content', output_key='intent')
+print(op({'content': 'I want to stay at a hotel in Beijing.'}))
+# [{
+#   'content': 'I want to stay at a hotel in Beijing.',
+#   'intent': {
+#     'intent': 'book_hotel',
+#     'entities': [{'entity': 'location', 'value': 'Beijing'}]
+#   }
+# }]
+```
+""")
+
+add_chinese_doc('data.operators.preference_ops.PreferenceResponseGenerator', """\
+偏好数据处理算子：多候选回复生成器。
+
+根据上一步得到的意图（或任意指令文本），生成 n 条候选回复列表写入到输出字段中。
+
+Args:
+    model: LazyLLM 模型对象（必需），会被 share() 后复用。
+    n (int): 生成候选回复条数，默认 3。
+    temperature (float): 采样温度，默认 1.0。
+    system_prompt (str|None): 可选系统提示词；提供则会对模型调用 .prompt(system_prompt)。
+    input_key (str): 输入字段名，默认 'intent'。
+    output_key (str): 输出字段名，默认 'responses'。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.preference_ops.PreferenceResponseGenerator', """\
+Preference operator: multi-response generator.
+
+Given the intent (or any instruction text), generates n candidate responses and writes them as a list to the output field.
+
+Args:
+    model: a LazyLLM model object (required), will be shared via share().
+    n (int): number of candidate responses to generate, default 3.
+    temperature (float): sampling temperature, default 1.0.
+    system_prompt (str|None): optional system prompt; if provided, applies .prompt(system_prompt) to the model.
+    input_key (str): input field name, default 'intent'.
+    output_key (str): output field name, default 'responses'.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.preference_ops.PreferenceResponseGenerator', """\
+```python
+from lazyllm.tools.data.operators.preference_ops import PreferenceResponseGenerator
+
+op = PreferenceResponseGenerator(model=model, n=3, temperature=0.8, input_key='intent', output_key='responses')
+print(op({'intent': 'book a hotel'}))
+# [{
+#   'intent': {'intent': 'book a hotel'},
+#   'responses': [
+#     "<think>Okay, the user wants to book a hotel. ...",
+#     "<think>Okay, the user wants to book a hotel. ..."
+#   ]
+# }]
+```
+""")
+
+add_chinese_doc('data.operators.preference_ops.ResponseEvaluator', """\
+偏好数据处理算子：候选回复评测器。
+
+对同一条指令下的多个候选回复逐一打分，输出每条回复的分数列表，便于后续构造 chosen/rejected。
+
+评分维度（总分 10 分）：
+
+- 有用性 (Helpfulness) 4 分
+- 真实性 (Truthfulness) 3 分
+- 流畅度 (Fluency) 3 分
+
+注意：
+
+- 该算子内部使用模型 + JSON 格式化器；每条回复都期望输出包含 total_score 的 dict。
+- 如果某条回复无法解析 total_score，会记录 warning，并为该条回复记 0 分。
+
+Args:
+    model: LazyLLM 模型对象（必需），会被 share() 后复用。
+    input_key (str): 指令/原始内容字段名，默认 'content'。
+    response_key (str): 候选回复列表字段名，默认 'responses'。
+    output_key (str): 输出评分列表字段名，默认 'evaluation'。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.preference_ops.ResponseEvaluator', """\
+Preference operator: response evaluator.
+
+Evaluates multiple candidate responses for the same instruction and outputs a score list, which can be used to build chosen/rejected pairs.
+
+Scoring dimensions (total 10):
+
+- Helpfulness: 4
+- Truthfulness: 3
+- Fluency: 3
+
+Notes:
+
+- Internally uses a model plus a JSON formatter; each evaluation is expected to return a dict with total_score.
+- If total_score cannot be extracted, a warning is logged and the score defaults to 0 for that response.
+
+Args:
+    model: a LazyLLM model object (required), will be shared via share().
+    input_key (str): instruction/raw content field name, default 'content'.
+    response_key (str): candidate response list field name, default 'responses'.
+    output_key (str): output score list field name, default 'evaluation'.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.preference_ops.ResponseEvaluator', """\
+```python
+from lazyllm.tools.data.operators.preference_ops import ResponseEvaluator
+
+op = ResponseEvaluator(model=model, input_key='intent', response_key='responses', output_key='evaluation')
+data = {
+    'intent': {'intent': 'book a hotel'},
+    'responses': [
+        'I can help you book a hotel in Beijing.',
+        'Here are some hotels for you.'
+    ],
+}
+print(op(data))
+# [{
+#   'intent': {'intent': 'book a hotel'},
+#   'responses': [
+#     'I can help you book a hotel in Beijing.',
+#     'Here are some hotels for you.'
+#   ],
+#   'evaluation': [10, 8]
+# }]
+```
+""")
+
+add_chinese_doc('data.operators.preference_ops.PreferencePairConstructor', """\
+偏好数据处理算子：偏好对构造器（chosen / rejected）。
+
+根据候选回复列表及其评分列表，构造一对 (chosen, rejected)，并输出为偏好数据格式：
+
+- instruction: 指令文本（默认取 intent 字段）
+- chosen: 更优的回复
+- rejected: 更差的回复
+
+支持两种策略：
+
+- max_min: 选择最高分作为 chosen、最低分作为 rejected（要求最高分 > 最低分）。
+- threshold: 从高到低寻找分差 >= threshold 的一对，满足则返回。
+
+注意：若输入为空、长度不一致、或无法构造有效 pair，则返回空列表 []（用于在流水线中过滤无效样本）。
+
+Args:
+    strategy (str): 'max_min' 或 'threshold'，默认 'max_min'。
+    threshold (float): strategy == 'threshold' 时使用的最小分差，默认 0.5。
+    instruction_key (str): 指令字段名，默认 'intent'。
+    response_key (str): 候选回复列表字段名，默认 'responses'。
+    score_key (str): 评分列表字段名，默认 'evaluation'。
+    output_chosen_key (str): 输出 chosen 字段名，默认 'chosen'。
+    output_rejected_key (str): 输出 rejected 字段名，默认 'rejected'。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.preference_ops.PreferencePairConstructor', """\
+Preference operator: preference pair constructor (chosen / rejected).
+
+Given a list of candidate responses and their score list, constructs a (chosen, rejected) pair and outputs a preference sample:
+
+- instruction: instruction text (by default read from the intent field)
+- chosen: better response
+- rejected: worse response
+
+Two strategies are supported:
+
+- max_min: choose the highest score as chosen and the lowest as rejected (requires highest > lowest).
+- threshold: find a pair with score difference >= threshold, from high to low.
+
+Note: if inputs are empty/mismatched, or no valid pair can be constructed, it returns an empty list [] (useful to filter invalid samples in pipelines).
+
+Args:
+    strategy (str): 'max_min' or 'threshold', default 'max_min'.
+    threshold (float): minimum score gap when strategy == 'threshold', default 0.5.
+    instruction_key (str): instruction field name, default 'intent'.
+    response_key (str): candidate response list field name, default 'responses'.
+    score_key (str): score list field name, default 'evaluation'.
+    output_chosen_key (str): chosen field name, default 'chosen'.
+    output_rejected_key (str): rejected field name, default 'rejected'.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.preference_ops.PreferencePairConstructor', """\
+```python
+from lazyllm.tools.data.operators.preference_ops import PreferencePairConstructor
+
+op = PreferencePairConstructor(strategy='max_min', instruction_key='intent',
+                              response_key='responses', score_key='evaluation')
+data = {
+    'intent': 'book a hotel',
+    'responses': ['good response', 'bad response'],
+    'evaluation': [10, 6],
+}
+print(op(data))
+# [{
+#   'instruction': 'book a hotel',
+#   'chosen': 'good response',
+#   'rejected': 'bad response'
+# }]
+```
+""")
+
+
+add_chinese_doc('data.operators.tool_use_ops.ChainedLogicAssembler', """\
+工具调用数据生成算子：顺序任务生成器。
+
+基于原子任务列表，生成“后继任务关系”与对应的组合任务列表，用于构造线性或有依赖关系的任务链。
+
+输出 JSON 典型结构：
+
+- items: 列表，每项为：
+  - task: 当前原子任务
+  - next_task: 紧随其后的任务
+  - composed_task: 由 task + next_task 组合而成的描述
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    input_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
+    output_key (str): 输出顺序任务列表字段名，默认 'sequential_tasks'。
+    system_prompt (str|None): 可选系统提示词。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.ChainedLogicAssembler', """\
+Tool-use data operator: sequential task generator.
+
+Given a list of atomic tasks, generates successor relationships and composed tasks to form linear or dependency-aware task chains.
+
+Typical JSON structure:
+
+- items: list of dicts:
+  - task: current atomic task
+  - next_task: its successor task
+  - composed_task: description combining task and next_task
+
+Args:
+    model: a LazyLLM model object (required).
+    input_key (str): input atomic task field name, default 'atomic_tasks'.
+    output_key (str): output sequential task list field name, default 'sequential_tasks'.
+    system_prompt (str|None): optional system prompt.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.ChainedLogicAssembler', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import ChainedLogicAssembler
+
+atomic_tasks = [
+    {'task': '获取出发地与目的地'},
+    {'task': '确认出行日期'},
+    {'task': '筛选符合条件的车次'},
+]
+op = ChainedLogicAssembler(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
+print(op({'atomic_tasks': atomic_tasks}))
+# {
+#   'atomic_tasks': [...],
+#   'sequential_tasks': [
+#     {'task': '获取出发地与目的地', 'next_task': '确认出行日期', 'composed_task': '先获取站点再确认日期'},
+#     {'task': '确认出行日期', 'next_task': '筛选符合条件的车次', 'composed_task': '在已知日期基础上筛选车次'},
+#     ...
+#   ]
+# }
+```
+""")
+
+add_chinese_doc('data.operators.tool_use_ops.TopologyArchitect', """\
+工具调用数据生成算子：并行/顺序/混合任务组合生成器。
+
+基于原子任务列表，自动生成三类任务组合：
+
+- parallel_tasks: 可以并行执行的任务组合
+- sequential_tasks: 具有明确先后依赖的任务组合
+- hybrid_tasks: 同时包含并行与顺序关系的混合任务组合
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    input_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
+    output_key (str): 输出任务组合字段名，默认 'para_seq_tasks'。
+    system_prompt (str|None): 可选系统提示词。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.TopologyArchitect', """\
+Tool-use data operator: parallel/sequential/hybrid task combination generator.
+
+Given atomic tasks, generates three kinds of task compositions:
+
+- parallel_tasks: tasks that can be executed in parallel
+- sequential_tasks: tasks with explicit ordering dependencies
+- hybrid_tasks: compositions mixing parallel and sequential relations
+
+Args:
+    model: a LazyLLM model object (required).
+    input_key (str): input atomic task field name, default 'atomic_tasks'.
+    output_key (str): output composition field name, default 'para_seq_tasks'.
+    system_prompt (str|None): optional system prompt.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.TopologyArchitect', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import TopologyArchitect
+
+atomic_tasks = [
+    {'task': '收集出行需求'},
+    {'task': '查询可选车次'},
+    {'task': '对比价格与时间'},
+    {'task': '完成下单支付'},
+]
+op = TopologyArchitect(model=model, input_key='atomic_tasks', output_key='para_seq_tasks')
+print(op({'atomic_tasks': atomic_tasks}))
+# {
+#   'atomic_tasks': [...],
+#   'para_seq_tasks': {
+#     'parallel_tasks': ['同时查询不同日期/车次方案', ...],
+#     'sequential_tasks': ['先确认日期再选车次', ...],
+#     'hybrid_tasks': ['并行对比多个方案后统一决策并下单', ...]
+#   }
+# }
+```
+""")
+
+add_chinese_doc('data.operators.tool_use_ops.ViabilitySieve', """\
+工具调用数据生成算子：组合任务可行性过滤器。
+
+对一组“组合任务”进行可运行性与完备性评审，筛选出被认为合理可行的组合任务列表。
+
+模型内部期望的中间 JSON 结构：
+
+- items: 列表，每项包含 composed_task、is_valid、reason 等字段。
+
+在算子输出中，仅保留 is_valid 为 true 且含有 composed_task 的项；如果模型未按预期输出，则尽量回退返回原 items 或原始 parsed 结果。
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    input_composition_key (str): 输入组合任务字段名，默认 'composition_tasks'。
+    input_atomic_key (str): 输入原子任务字段名（可选），默认 'atomic_tasks'。
+    output_key (str): 输出过滤后组合任务字段名，默认 'filtered_composition_tasks'。
+    system_prompt (str|None): 可选系统提示词。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.ViabilitySieve', """\
+Tool-use data operator: composition task feasibility filter.
+
+Evaluates a list of composed tasks for feasibility and completeness, and filters out invalid ones.
+
+Expected intermediate JSON from the model:
+
+- items: list of dicts with composed_task, is_valid, reason, etc.
+
+On output, only keeps composed_task values where is_valid is true. If the model output does not match the schema, it falls back to returning items or the raw parsed result.
+
+Args:
+    model: a LazyLLM model object (required).
+    input_composition_key (str): input composition task field name, default 'composition_tasks'.
+    input_atomic_key (str): input atomic task field name (optional), default 'atomic_tasks'.
+    output_key (str): output filtered composition task field name, default 'filtered_composition_tasks'.
+    system_prompt (str|None): optional system prompt.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.ViabilitySieve', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import ViabilitySieve
+
+composition_tasks = ['先获取出发地和目的地再筛选车次', '直接随机推荐一个车次']
+atomic_tasks = [
+    {'task': '获取出发地与目的地'}, {'task': '确认出行日期'}, {'task': '筛选符合条件的车次'}
+]
+op = ViabilitySieve(model=model,
+                           input_composition_key='composition_tasks',
+                           input_atomic_key='atomic_tasks',
+                           output_key='filtered_composition_tasks')
+print(op({'composition_tasks': composition_tasks, 'atomic_tasks': atomic_tasks}))
+# {
+#   'composition_tasks': [...],
+#   'atomic_tasks': [...],
+#   'filtered_composition_tasks': ['先获取出发地和目的地再筛选车次', ...]
+# }
+```
+""")
+
+add_chinese_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
+工具调用数据生成算子：函数规格生成器。
+
+根据组合任务及其子任务，生成一组适合用于工具调用（function calling）的函数规格列表。
+
+输出 JSON 典型结构：
+
+- functions: 列表，每项包含：
+  - name: 函数名称
+  - description: 函数用途描述
+  - args: 参数列表，每个参数包含 name/type/description
+  - returns: 返回值类型与描述
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    input_composition_key (str): 输入组合任务字段名，默认 'composition_task'。
+    input_atomic_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
+    output_key (str): 输出函数规格列表字段名，默认 'functions'。
+    system_prompt (str|None): 可选系统提示词。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
+Tool-use data operator: function specification generator.
+
+Given a composed task and its subtasks, generates a list of function specifications suitable for tool calling.
+
+Typical JSON structure:
+
+- functions: list of dicts:
+  - name: function name
+  - description: what the function does
+  - args: list of argument specs with name/type/description
+  - returns: return type and description
+
+Args:
+    model: a LazyLLM model object (required).
+    input_composition_key (str): input composition task field name, default 'composition_task'.
+    input_atomic_key (str): input atomic task field name, default 'atomic_tasks'.
+    output_key (str): output function spec list field name, default 'functions'.
+    system_prompt (str|None): optional system prompt.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.ProtocolSpecifier', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import ProtocolSpecifier
+
+composition_task = '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表'
+atomic_tasks = [
+    {'task': '获取出发地与目的地'},
+    {'task': '确认出行日期'},
+    {'task': '调用车次查询接口并过滤结果'},
+]
+op = ProtocolSpecifier(model=model,
+                       input_composition_key='composition_task',
+                       input_atomic_key='atomic_tasks',
+                       output_key='functions')
+print(op({'composition_task': composition_task, 'atomic_tasks': atomic_tasks}))
+# {
+#   'composition_task': '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表',
+#   'atomic_tasks': [...],
+#   'functions': [
+#     {
+#       'name': 'query_train_tickets',
+#       'description': '根据出发地、目的地与日期查询高铁车次',
+#       'args': [{'name': 'from_city', 'type': 'string', ...}, ...],
+#       'returns': {'type': 'TrainList', 'description': '符合条件的车次列表'}
+#     },
+#     ...
+#   ]
+# }
+```
+""")
+
+add_chinese_doc('data.operators.tool_use_ops.DialogueSimulator', """\
+工具调用数据生成算子：多轮对话生成器（含 Tool 调用）。
+
+根据组合任务与可用函数列表，生成带有 User / Assistant / Tool 三种角色的多轮对话 JSON，用于构造工具调用训练数据。
+
+输出 JSON 典型结构：
+
+- messages: 列表，每项为：
+  - role: 'user' | 'assistant' | 'tool'
+  - content: 文本内容
+  - name: 工具名（仅 role == 'tool' 时可选）
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    input_composition_key (str): 输入组合任务字段名，默认 'composition_task'。
+    input_functions_key (str): 输入函数列表字段名，默认 'functions'。
+    output_key (str): 输出多轮对话字段名，默认 'conversation'。
+    n_turns (int): 期望的轮次数量（提示给模型），默认 6。
+    system_prompt (str|None): 可选系统提示词。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.DialogueSimulator', """\
+Tool-use data operator: multi-turn conversation generator (with tools).
+
+Given a composed task and a list of available functions, generates a multi-turn conversation JSON involving User, Assistant and Tool roles, suitable for tool-calling training data.
+
+Typical JSON structure:
+
+- messages: list of dicts:
+  - role: 'user' | 'assistant' | 'tool'
+  - content: text content
+  - name: tool name (optional, when role == 'tool')
+
+Args:
+    model: a LazyLLM model object (required).
+    input_composition_key (str): input composition task field name, default 'composition_task'.
+    input_functions_key (str): input function list field name, default 'functions'.
+    output_key (str): output conversation field name, default 'conversation'.
+    n_turns (int): desired number of turns (as a hint to the model), default 6.
+    system_prompt (str|None): optional system prompt.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.DialogueSimulator', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import DialogueSimulator
+
+composition_task = '根据用户需求查询并推荐合适的高铁车次'
+functions = [
+    {
+        'name': 'query_train_tickets',
+        'description': '查询高铁车次',
+        'args': [...],
+        'returns': {...},
+    }
+]
+op = DialogueSimulator(model=model,
+                                    input_composition_key='composition_task',
+                                    input_functions_key='functions',
+                                    output_key='conversation',
+                                    n_turns=6)
+print(op({'composition_task': composition_task, 'functions': functions}))
+# {
+#   'composition_task': '根据用户需求查询并推荐合适的高铁车次',
+#   'functions': [...],
+#   'conversation': {
+#     'messages': [
+#       {'role': 'user', 'content': '我想订一张明天下午从北京到上海的高铁票'},
+#       {'role': 'assistant', 'content': '好的，我先为您确认出发时间与车次。'},
+#       {'role': 'tool', 'name': 'query_train_tickets', 'content': '{...工具返回...}'},
+#       ...
+#     ]
+#   }
+# }
+```
+""")
+
+add_chinese_doc('data.operators.tool_use_ops.ContextualBeacon', """\
+工具调用数据生成算子：场景抽取器。
+
+从一段对话文本中抽取可用于后续任务/工具调用数据生成的“场景信息”，并以结构化 JSON 形式写入输出字段。
+
+输出 JSON 典型结构：
+
+- scene: 一句话场景描述
+- domain: 领域/主题
+- user_profile: 用户角色/背景（可为空）
+- assistant_goal: 助手应完成的目标
+- constraints: 约束条件列表
+- key_entities: 关键实体列表
+
+Args:
+    model: LazyLLM 模型对象（必需），会被 share() 后复用并接 JSON 格式化器。
+    input_key (str): 输入对话内容字段名，默认 'content'。
+    output_key (str): 输出场景字段名，默认 'scenario'。
+    system_prompt (str|None): 可选，自定义系统提示词，不传则使用内置中文提示。
+    **kwargs: 传递给基类算子的其它参数（如 _max_workers、_save_data 等）。
+""")
+
+add_english_doc('data.operators.tool_use_ops.ContextualBeacon', """\
+Tool-use data operator: scenario extractor.
+
+Extracts high-level scenario information from a conversation text and writes a structured JSON object into the output field.
+
+Typical JSON structure:
+
+- scene: one-sentence scenario description
+- domain: domain/topic
+- user_profile: user role/profile (optional)
+- assistant_goal: goal the assistant should achieve
+- constraints: list of constraints
+- key_entities: list of key entities
+
+Args:
+    model: a LazyLLM model object (required), shared and wrapped with a JSON formatter.
+    input_key (str): input conversation field name, default 'content'.
+    output_key (str): output scenario field name, default 'scenario'.
+    system_prompt (str|None): optional custom system prompt, defaults to a built-in Chinese prompt.
+    **kwargs: extra args passed to the base operator (e.g. _max_workers, _save_data).
+""")
+
+add_example('data.operators.tool_use_ops.ContextualBeacon', r"""
+from lazyllm.tools.data.operators.tool_use_ops import ContextualBeacon
+
+op = ContextualBeacon(model=model, input_key='content', output_key='scenario')
+item = {
+    'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？'
+}
+print(op(item))
+
+# Output Example:
+# {
+#   'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？',
+#   'scenario': {
+#     'scene': '用户咨询高铁购票服务',
+#     'domain': '出行/购票',
+#     'user_profile': '普通出行乘客',
+#     'assistant_goal': '帮助用户完成车次与时间筛选并完成购票',
+#     'constraints': ['出发地为北京', '目的地为上海', '尽量下午出发'],
+#     'key_entities': ['北京', '上海', '高铁', '下午']
+#   }
+# }
+""")
+
+add_chinese_doc('data.operators.tool_use_ops.ScenarioDiverger', """\
+工具调用数据生成算子：场景扩展器。
+
+在已有基础场景的基础上，生成若干个语义相关但细节不同的替代场景列表，便于扩充数据多样性。
+
+输出 JSON 典型结构：
+
+- scenarios: 场景列表，每项为包含 scene/domain/assistant_goal/constraints/key_entities 等字段的字典。
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    input_key (str): 输入场景字段名，默认 'scenario'（可为 dict 或 str）。
+    output_key (str): 输出扩展场景列表字段名，默认 'expanded_scenarios'。
+    n (int): 希望生成的场景数量上限，默认 3。
+    system_prompt (str|None): 可选系统提示词。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.ScenarioDiverger', """\
+Tool-use data operator: scenario expander.
+
+Given a base scenario, generates multiple alternative scenarios that are semantically related but differ in details, to enrich data diversity.
+
+Typical JSON structure:
+
+- scenarios: list of scenario dicts, each with fields like scene/domain/assistant_goal/constraints/key_entities.
+
+Args:
+    model: a LazyLLM model object (required).
+    input_key (str): input scenario field name, default 'scenario' (dict or str).
+    output_key (str): output expanded scenario list field name, default 'expanded_scenarios'.
+    n (int): maximum number of scenarios to generate, default 3.
+    system_prompt (str|None): optional system prompt.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.ScenarioDiverger', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import ScenarioDiverger
+
+base = {
+    'scene': '用户咨询高铁购票服务',
+    'domain': '出行/购票',
+    'assistant_goal': '帮助用户完成车次筛选并购票',
+}
+op = ScenarioDiverger(model=model, input_key='scenario', output_key='expanded_scenarios', n=3)
+print(op({'scenario': base}))
+# {
+#   'scenario': {...},
+#   'expanded_scenarios': [
+#     {'scene': '用户预订跨城商务出差火车票', ...},
+#     {'scene': '用户为家人购买回乡火车票', ...},
+#     ...
+#   ]
+# }
+```
+""")
+
+add_chinese_doc('data.operators.tool_use_ops.DecompositionKernel', """\
+工具调用数据生成算子：原子任务生成器。
+
+基于单个场景，生成一组粒度较小、目标单一的“原子任务”列表，用于后续任务编排与工具设计。
+
+输出 JSON 典型结构：
+
+- tasks: 原子任务列表，每项包含：
+  - task: 任务描述
+  - input: 任务输入（可为空）
+  - output: 任务输出（可为空）
+  - constraints: 相关约束列表
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    input_key (str): 输入场景字段名，默认 'scenario'。
+    output_key (str): 输出原子任务列表字段名，默认 'atomic_tasks'。
+    n (int): 原子任务数量上限，默认 5。
+    system_prompt (str|None): 可选系统提示词。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.DecompositionKernel', """\
+Tool-use data operator: atomic task generator.
+
+Given a scenario, generates a list of fine-grained, single-goal atomic tasks, which can be used for later orchestration and tool design.
+
+Typical JSON structure:
+
+- tasks: list of atomic task dicts:
+  - task: task description
+  - input: task input (optional)
+  - output: task output (optional)
+  - constraints: list of constraints
+
+Args:
+    model: a LazyLLM model object (required).
+    input_key (str): input scenario field name, default 'scenario'.
+    output_key (str): output atomic task list field name, default 'atomic_tasks'.
+    n (int): maximum number of tasks, default 5.
+    system_prompt (str|None): optional system prompt.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.DecompositionKernel', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import DecompositionKernel
+
+scenario = {
+    'scene': '用户咨询高铁购票服务',
+    'assistant_goal': '帮助用户完成车次筛选并购票',
+}
+op = DecompositionKernel(model=model, input_key='scenario', output_key='atomic_tasks', n=4)
+print(op({'scenario': scenario}))
+# {
+#   'scenario': {...},
+#   'atomic_tasks': [
+#     {'task': '获取用户出发地和目的地', 'input': '', 'output': '出发地与目的地', 'constraints': [...]},
+#     {'task': '确认出行日期与大致时间', ...},
+#     ...
+#   ]
+# }
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLForge', """\
+Text2SQL 数据生成算子：SQL 生成器。
+
+基于数据库 Schema 与样例数据，为给定或全部数据库自动生成可执行的 SQL 语句集合，并标注大致复杂度类型。
+
+主要行为：
+
+- 对每个数据库生成 output_num 条 SQL。
+- 内置默认提示词（可自定义 prompt_template），控制难度标签（easy/medium/hard 等）。
+- 从模型返回中解析出 ```sql ... ``` 代码块中的 SQL 文本。
+
+Args:
+    model: LazyLLM 模型对象（必需），会被 share() 后复用。
+    database_manager: 提供数据库 Schema 与样例数据的管理器（必需），需实现：
+        - list_databases()
+        - get_create_statements_and_insert_statements(db_name)
+    output_num (int): 每个数据库生成的 SQL 数量，默认 300。
+    prompt_template: 可选，自定义 prompt 构造器对象，需实现 build_prompt(...)。
+    system_prompt (str|None): 可选系统提示词，不传则使用内置英文提示。
+    **kwargs: 传递给基类 Text2SQLOps/LazyLLMDataBase 的其它参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLForge', """\
+Text2SQL data operator: SQLForge.
+
+Generates executable SQL queries for one or multiple databases based on their schema and optional sample data, and labels each query with a rough complexity type.
+
+Behavior:
+
+- Generates output_num SQLs per database.
+- Uses a default English system prompt (or a custom prompt_template) to control complexity labels (easy/medium/hard, etc.).
+- Parses SQL text from model responses, preferring ```sql ... ``` code blocks.
+
+Args:
+    model: a LazyLLM model object (required), shared via share().
+    database_manager: database manager (required) implementing:
+        - list_databases()
+        - get_create_statements_and_insert_statements(db_name)
+    output_num (int): number of SQLs to generate per database, default 300.
+    prompt_template: optional custom prompt builder with build_prompt(...).
+    system_prompt (str|None): optional system prompt, defaults to a built-in English prompt.
+    **kwargs: extra args forwarded to the Text2SQLOps/LazyLLMDataBase base class.
+""")
+
+add_example('data.operators.text2sql_ops.SQLForge', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLForge
+
+# 假设 database_manager 已封装了你的 SQLite / Postgres 等数据库
+op = SQLForge(model=model, database_manager=database_manager, output_num=10)
+
+# 如果 data 中不指定 db_id，则为所有数据库各生成若干条 SQL
+res = op({})
+print(res[0])
+# {
+#   'db_id': 'database_1',
+#   'SQL': 'SELECT ...',
+#   'sql_complexity_type': 'easy'
+# }
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLRuntimeSieve', """\
+Text2SQL 数据过滤算子：SQL 可执行性过滤器。
+
+对每条数据中的 SQL 进行简单语法形态过滤（仅保留 SELECT / WITH 开头的查询），并调用 database_manager 进行 EXPLAIN 校验；只保留可在目标库上成功执行的 SQL。
+
+Args:
+    database_manager: 提供数据库连接与 explain 能力的管理器（必需），需实现：
+        - database_exists(db_id)
+        - batch_explain_queries(list[(db_id, sql)])
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLRuntimeSieve', """\
+Text2SQL data operator: SQLRuntimeSieve.
+
+Filters SQL queries by:
+
+1. Keeping only queries that look like SELECT/WITH queries.
+2. Calling database_manager to run EXPLAIN (or similar) and keeping only those that execute successfully.
+
+Args:
+    database_manager: database manager (required) implementing:
+        - database_exists(db_id)
+        - batch_explain_queries(list[(db_id, sql)])
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.text2sql_ops.SQLRuntimeSieve', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLRuntimeSieve
+
+op = SQLRuntimeSieve(database_manager=database_manager)
+item = {'db_id': 'db_1', 'SQL': 'SELECT * FROM users;'}
+res = op(item)
+print(res)  # 若 SQL 可在 db_1 上 explain 成功，则返回原始 dict；否则返回 None
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLIntentSynthesizer', """\
+Text2SQL 数据生成算子：自然语言问题生成器。
+
+基于给定 SQL + 数据库 Schema 以及列注释信息，生成与 SQL 语义对应的自然语言问题，并可附带“外部知识”提示，以支持 Text2SQL 训练。
+
+主要特性：
+
+- 支持多候选问题生成（input_query_num），并通过 embedding 去重/多样性选择。
+- 内置输出格式标记：[QUESTION-START]/[QUESTION-END] 与 [EXTERNAL-KNOWLEDGE-START]/[...-END]。
+
+Args:
+    model: LazyLLM 文本生成模型（必需）。
+    embedding_model: 可选向量模型，用于对候选问题做多样性选择；需支持：
+        - generate_embedding_from_input(texts) 或直接可调用(texts)。
+    database_manager: 提供 Schema 的管理器（必需），需实现：
+        - get_create_statements_and_insert_statements(db_id)
+    input_query_num (int): 每条 SQL 生成候选问题的数量，默认 5。
+    prompt_template: 可选，自定义 prompt 构造器。
+    system_prompt (str|None): 可选系统提示词，默认简要英文助手提示。
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLIntentSynthesizer', """\
+Text2SQL data operator: SQLIntentSynthesizer.
+
+Given a SQL query and database schema (with optional column descriptions), generates a natural language question aligned with the SQL semantics, plus optional external knowledge text.
+
+Key features:
+
+- Generates multiple candidate questions (input_query_num) and selects one using embeddings-based diversity.
+- Uses special markers in model output: [QUESTION-START]/[QUESTION-END] and [EXTERNAL-KNOWLEDGE-START]/[...-END].
+
+Args:
+    model: text generation model (required).
+    embedding_model: optional embedding model, supporting:
+        - generate_embedding_from_input(texts) or callable(texts).
+    database_manager: schema provider (required) implementing:
+        - get_create_statements_and_insert_statements(db_id)
+    input_query_num (int): number of question candidates per SQL, default 5.
+    prompt_template: optional custom prompt builder.
+    system_prompt (str|None): optional system prompt, default simple English helper.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.text2sql_ops.SQLIntentSynthesizer', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLIntentSynthesizer
+
+op = SQLIntentSynthesizer(model=model,
+                               embedding_model=embedding_model,
+                               database_manager=database_manager,
+                               input_query_num=5)
+item = {'db_id': 'db_1', 'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';'}
+res = op(item)
+print(res)
+# {
+#   'db_id': 'db_1',
+#   'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
+#   'question_type': 'default',
+#   'question': '有多少已支付的订单？',
+#   'evidence': '...可选的外部知识...'
+# }
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.TSQLSemanticAuditor', """\
+Text2SQL 数据过滤算子：问句-SQL 一致性过滤器。
+
+给定自然语言问题 + 证据（可选）+ SQL + 数据库 Schema，判断 SQL 是否能够正确回答该问题，保留“正确”的样本。
+
+内部逻辑：
+
+- 调用 database_manager 获取 db_id 对应的 DDL（create_statements）。
+- 通过模型生成判断（Yes/No），仅当返回中包含 'yes' 时保留该样本，否则丢弃（返回 None）。
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    database_manager: 提供 Schema 的管理器（必需），需实现：
+        - get_create_statements_and_insert_statements(db_id)
+    prompt_template: 可选，自定义 prompt 构造器。
+    system_prompt (str|None): 可选系统提示词，默认英文 Yes/No 判定说明。
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.TSQLSemanticAuditor', """\
+Text2SQL data operator: TSQLSemanticAuditor.
+
+Given a natural language question + optional evidence + SQL + database schema, determines whether the SQL correctly answers the question and filters samples accordingly.
+
+Behavior:
+
+- Fetches DDL for the given db_id via database_manager.
+- Asks the model to answer Yes/No; only keeps data when the response contains 'yes' (case-insensitive).
+
+Args:
+    model: a LazyLLM model object (required).
+    database_manager: schema provider (required) implementing:
+        - get_create_statements_and_insert_statements(db_id)
+    prompt_template: optional custom prompt builder.
+    system_prompt (str|None): optional system prompt, defaults to English Yes/No instructions.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.text2sql_ops.TSQLSemanticAuditor', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import TSQLSemanticAuditor
+
+op = TSQLSemanticAuditor(model=model, database_manager=database_manager)
+item = {
+    'db_id': 'db_1',
+    'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
+    'question': '有多少已支付的订单？',
+    'evidence': ''
+}
+res = op(item)
+print(res)
+# {
+#   'db_id': 'db_1',
+#   'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
+#   'question': '有多少已支付的订单？',
+#   'evidence': ''
+# }
+# 如果模型判断不匹配，则返回 None
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLContextAssembler', """\
+Text2SQL 数据生成算子：Prompt 构造器。
+
+根据数据库 Schema、自然语言问题与证据，构造下游 Text2SQL 模型的输入提示词（prompt）。
+
+行为：
+
+- 优先调用 database_manager.get_db_details(db_id) 获取 Schema 文本；若不存在则回退到 get_create_statements_and_insert_statements。
+- 支持自定义 prompt_template；否则使用简单英文模板。
+
+Args:
+    database_manager: 提供 Schema 的管理器（必需），需实现：
+        - get_db_details(db_id)（可选）
+        - get_create_statements_and_insert_statements(db_id)
+    prompt_template: 可选，自定义 prompt 构造器。
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLContextAssembler', """\
+Text2SQL data operator: SQLContextAssembler.
+
+Builds prompts for downstream Text2SQL models from database schema, natural language question, and evidence.
+
+Behavior:
+
+- Prefers database_manager.get_db_details(db_id); falls back to get_create_statements_and_insert_statements if not available.
+- Supports a custom prompt_template; otherwise uses a simple English template.
+
+Args:
+    database_manager: schema provider (required), implementing:
+        - get_db_details(db_id) (optional)
+        - get_create_statements_and_insert_statements(db_id)
+    prompt_template: optional custom prompt builder.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.text2sql_ops.SQLContextAssembler', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLContextAssembler
+
+op = SQLContextAssembler(database_manager=database_manager)
+item = {
+    'db_id': 'db_1',
+    'question': '有多少已支付的订单？',
+    'evidence': '订单表中 status 字段标记订单状态。'
+}
+res = op(item)
+print(res['prompt'])
+# Database Schema:
+# CREATE TABLE orders (id INT, status TEXT, ...);
+# ...
+#
+# Question: 有多少已支付的订单？
+# Evidence: 订单表中 status 字段标记订单状态。
+# Generate a SQL query for postgres.
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLReasoningTracer', """\
+Text2SQL 数据生成算子：CoT 轨迹生成器。
+
+针对给定 (问题, SQL, 数据库 Schema, 证据) 生成若干条“从问题到 SQL 的链式思考（Chain-of-Thought）”文本，用于训练/分析。
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    database_manager: 提供 Schema 的管理器（必需），需实现：
+        - get_create_statements_and_insert_statements(db_id)
+    prompt_template: 可选，自定义 prompt 构造器。
+    output_num (int): 每条样本生成的 CoT 轨迹数量，默认 3（>=1）。
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLReasoningTracer', """\
+Text2SQL data operator: SQLReasoningTracer.
+
+For each (question, SQL, schema, evidence) item, generates multiple chain-of-thought (CoT) reasoning traces from question to SQL.
+
+Args:
+    model: a LazyLLM model object (required).
+    database_manager: schema provider (required) implementing:
+        - get_create_statements_and_insert_statements(db_id)
+    prompt_template: optional custom prompt builder.
+    output_num (int): number of CoT trajectories per item, default 3 (>=1).
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.text2sql_ops.SQLReasoningTracer', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLReasoningTracer
+
+op = SQLReasoningTracer(model=model, database_manager=database_manager, output_num=3)
+item = {
+    'db_id': 'db_1',
+    'question': '有多少已支付的订单？',
+    'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
+    'evidence': ''
+}
+res = op(item)
+print(len(res['cot_responses']))
+print(res['cot_responses'][0][:200])  # 打印第一条 CoT 的前 200 个字符
+# 3
+# "Database Schema: ... Question: 有多少已支付的订单？ ... 推理步骤1：... 推理步骤2：... ```sql SELECT count(*) FROM orders WHERE status = 'paid';```"
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLConsensusUnifier', """\
+Text2SQL 数据处理算子：CoT 轨迹投票选择器。
+
+对一组 CoT 轨迹（cot_responses）进行 SQL 解析与执行，基于执行结果的一致性与正确性，从中选出“最佳” CoT 及对应 SQL。
+
+行为：
+
+- 从每条 CoT 中解析 SQL（使用与 SQLForge 相同的解析逻辑）。
+- 调用 database_manager.batch_execute_queries 执行 SQL，计算结果 signature 与 success。
+- 使用投票策略 _vote_select 选择最终 CoT，并将：
+  - output_cot_key（默认 'cot_reasoning'）设置为最佳 CoT 文本；
+  - 同时覆盖数据中的 'SQL' 字段为最佳 SQL。
+
+Args:
+    database_manager: 提供 SQL 执行能力的管理器（必需），需实现：
+        - batch_execute_queries(list[(db_id, sql)])
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLConsensusUnifier', """\
+Text2SQL data operator: SQLConsensusUnifier.
+
+Given multiple CoT traces (cot_responses), parses SQL from each, executes them, and selects the best CoT/SQL pair based on execution consistency and success.
+
+Behavior:
+
+- Parses SQL from each CoT using the same logic as SQLForge.
+- Calls database_manager.batch_execute_queries to get execution results and signatures.
+- Uses a voting strategy (_vote_select) to pick the best candidate, then:
+  - sets output_cot_key (default 'cot_reasoning') to the winning CoT,
+  - overwrites data['SQL'] with the winning SQL.
+
+Args:
+    database_manager: query execution provider (required) implementing:
+        - batch_execute_queries(list[(db_id, sql)])
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.text2sql_ops.SQLConsensusUnifier', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLConsensusUnifier
+
+op = SQLConsensusUnifier(database_manager=database_manager)
+item = {
+    'db_id': 'db_1',
+    'cot_responses': [
+        '...CoT + ```sql SELECT count(*) FROM orders WHERE status = \\'paid\\'```',
+        '...CoT + ```sql SELECT count(*) FROM orders```',
+    ]
+}
+res = op(item)
+print(res['cot_reasoning'][:200])
+print(res['SQL'])
+# "...首先识别需要统计已支付订单数量，其次在 orders 表中过滤 status = 'paid' ... ```sql SELECT count(*) FROM orders WHERE status = 'paid';```"
+# "SELECT count(*) FROM orders WHERE status = 'paid';"
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLSyntaxProfiler', """\
+Text2SQL 数据分类算子：SQL 组件难度分类器。
+
+使用 SQL 结构级别的难度评估器（EvalHardness/EvalHardnessLite），根据 SQL 中涉及的组件复杂度对其进行难度打标（easy/medium/hard/extra 等）。
+
+Args:
+    difficulty_thresholds (list[int]|None): 难度阈值列表，默认 [2, 4, 6]。
+    difficulty_labels (list[str]|None): 难度标签列表，默认 ['easy', 'medium', 'hard', 'extra']。
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLSyntaxProfiler', """\
+Text2SQL data operator: SQLSyntaxProfiler.
+
+Classifies SQL difficulty based on structural components using EvalHardness/EvalHardnessLite, assigning labels such as easy/medium/hard/extra.
+
+Args:
+    difficulty_thresholds (list[int]|None): thresholds list, default [2, 4, 6].
+    difficulty_labels (list[str]|None): label list, default ['easy', 'medium', 'hard', 'extra'].
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.text2sql_ops.SQLSyntaxProfiler', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLSyntaxProfiler
+
+op = SQLSyntaxProfiler()
+item = {'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';'}
+res = op(item)
+print(res)
+# {
+#   'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
+#   'sql_component_difficulty': 'easy'
+# }
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLEffortRanker', """\
+Text2SQL 数据分类算子：SQL 执行难度分类器。
+
+基于 SQLContextAssembler 生成的 prompt、多次采样生成 SQL 并与金标 SQL 在数据库上对比执行结果，从“可被模型正确生成的次数”角度对样本执行难度进行分类。
+
+主要流程：
+
+1. 使用输入的 prompt，重复调用模型生成 num_generations 条 SQL，并解析出 SQL 文本。
+2. 对每条 SQL 与金标 SQL 组成比较对 (db_id, predicted_sql, gold_sql)，调用 database_manager.batch_compare_queries。
+3. 根据匹配次数 cnt_true 与难度阈值 difficulty_thresholds，将样本分类为 easy/medium/hard/extra/gold error。
+
+Args:
+    model: LazyLLM 模型对象（必需）。
+    database_manager: 提供 batch_compare_queries 能力的管理器（必需）。
+    num_generations (int): 采样生成 SQL 的次数，默认 10；若小于最大阈值会被自动上调为某个 5 的倍数。
+    difficulty_thresholds (list[int]|None): 难度阈值列表，默认 [2, 5, 9]。
+    difficulty_labels (list[str]|None): 难度标签列表，默认 ['extra', 'hard', 'medium', 'easy']。
+    system_prompt (str|None): 可选系统提示词。
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLEffortRanker', """\
+Text2SQL data operator: SQLEffortRanker.
+
+Classifies SQL execution difficulty by repeatedly generating SQL from a prompt, comparing each prediction to the gold SQL on the database, and counting how many generations match.
+
+Workflow:
+
+1. Uses the input prompt to generate num_generations SQL candidates, parsing SQL text from each.
+2. Builds comparison tuples (db_id, predicted_sql, gold_sql) and calls database_manager.batch_compare_queries.
+3. Maps the number of correct generations (cnt_true) to a difficulty label using difficulty_thresholds and difficulty_labels.
+
+Args:
+    model: a LazyLLM model object (required).
+    database_manager: provider implementing batch_compare_queries (required).
+    num_generations (int): number of SQL generations per item, default 10; may be auto-increased to a multiple of 5.
+    difficulty_thresholds (list[int]|None): thresholds list, default [2, 5, 9].
+    difficulty_labels (list[str]|None): label list, default ['extra', 'hard', 'medium', 'easy'].
+    system_prompt (str|None): optional system prompt.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.text2sql_ops.SQLEffortRanker', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLEffortRanker
+
+op = SQLEffortRanker(model=model, database_manager=database_manager, num_generations=15)
+item = {
+    'db_id': 'db_1',
+    'prompt': 'Database Schema: ... Question: 有多少已支付的订单？',
+    'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';'
+}
+res = op(item)
+print(res)
+# {
+#   'db_id': 'db_1',
+#   'prompt': 'Database Schema: ... Question: 有多少已支付的订单？',
+#   'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
+#   'sql_execution_difficulty': 'medium'
+# }
+```
+""")
 
 # pipelines module docs
 add_chinese_doc( 'data.pipelines.demo_pipelines.build_demo_pipeline', """\

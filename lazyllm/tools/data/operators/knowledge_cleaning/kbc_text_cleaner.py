@@ -13,16 +13,18 @@ else:
 
 class KBCGenerateCleanedTextSingle(kbc):
 
-    def __init__(self, llm=None, lang: str = 'en', **kwargs):
+    def __init__(self,
+                 llm=None,
+                 lang: str = 'en',
+                 input_key: str = 'raw_chunk',
+                 **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-
-        # Initialize prompt template
+        self.input_key = input_key
         self.prompts = DocRefinementPrompt(lang=lang)
-
-        # Initialize LLM serve with system prompt and formatter
         if llm is not None:
             # Note: DocRefinementPrompt may not have system prompt, use empty string
             system_prompt = getattr(self.prompts, 'build_system_prompt', lambda: '')()
+            # Use JsonFormatter: model must return valid JSON as instructed by DocRefinementPrompt
             self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()
         else:
@@ -31,13 +33,12 @@ class KBCGenerateCleanedTextSingle(kbc):
     def forward(
         self,
         data: dict,
-        input_key: str = 'raw_chunk',
         **kwargs
     ) -> dict:
         if self._llm_serve is None:
             raise ValueError('LLM is not configured')
 
-        raw_content = data.get(input_key, '')
+        raw_content = data.get(self.input_key, '')
         if not raw_content:
             return {**data, '_cleaned_response': raw_content}
 
@@ -61,17 +62,17 @@ def extract_cleaned_content_single(
 ) -> dict:
     response = data.get('_cleaned_response', '')
 
-    # Handle different response types from JsonFormatter
+    # Handle different response types from JsonFormatter (dict / list / str)
     if isinstance(response, dict):
-        # JsonFormatter returned a dict, extract text field or convert to string
         text = response.get('text', '') or response.get('content', '') or str(response)
     elif isinstance(response, list):
-        # JsonFormatter returned a list, join or take first item
         text = response[0] if response else ''
         if isinstance(text, dict):
             text = text.get('text', '') or text.get('content', '') or str(text)
+        else:
+            text = str(text) if text is not None else ''
     elif isinstance(response, str):
-        # JsonFormatter failed to parse, use as-is
+        # JsonFormatter failed to parse or returned raw string, use as-is
         text = response
     else:
         text = str(response)

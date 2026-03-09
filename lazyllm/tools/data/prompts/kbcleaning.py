@@ -47,7 +47,10 @@ As a precise Knowledge Processing Specialist, you must follow these guidelines R
 - Classified: Label as 〖SEC∶classified〗
 - Illegal: Substitute with 〖ILLEGAL∶removed〗
 
-Response must be enclosed within <cleaned_start> and <cleaned_end>.
+You MUST return a valid JSON object of the form:
+{{"text": "<cleaned_start>...<cleaned_end>"}}
+where the value of "text" contains ONLY the refined content and
+starts with <cleaned_start> and ends with <cleaned_end>.
 '''
         else:
             self.prompt_header = f'''
@@ -83,7 +86,9 @@ Response must be enclosed within <cleaned_start> and <cleaned_end>.
 - 个人敏感信息需要脱敏处理
 - 机密内容替换为【涉密内容已加密】
 
-输出内容需以<cleaned_start>开始，<cleaned_end>结束。
+最终仅输出一个合法 JSON 对象：
+{{"text": "<cleaned_start>...<cleaned_end>"}}
+其中 text 字段必须以 <cleaned_start> 开始、以 <cleaned_end> 结束，不得包含其他无关内容。
 '''
 
         if self.lang == 'en':
@@ -96,8 +101,8 @@ Workflow Steps:
 5. [Result Generation] Produce refined text
 '''.strip()
             output_requirement = (
-                'Response should include ONLY refined text enclosed by '
-                '<cleaned_start> and <cleaned_end>.'
+                'Return ONLY one JSON object: {"text": "<cleaned_start>...<cleaned_end>"} '
+                'with no additional explanations or formatting.'
             )
         else:
             processing_steps = '''
@@ -108,7 +113,10 @@ Workflow Steps:
 4. [层级验证] 检查文档结构
 5. [结果生成] 输出处理后的文本
 '''.strip()
-            output_requirement = '响应内容应仅包含处理后的文本，以<cleaned_start>开始，<cleaned_end>结束，不得包含其他内容。'
+            output_requirement = (
+                '只输出一个 JSON 对象：{"text": "<cleaned_start>...<cleaned_end>"}，'
+                '不要输出任何额外说明或前后缀。'
+            )
 
         return f'''
 {self.prompt_header}
