@@ -1,5 +1,5 @@
 import re
-from lazyllm import LOG, TrainableModule
+from lazyllm import LOG, TrainableModule, config
 from lazyllm.tools.data import data_register
 from lazyllm.thirdparty import transformers
 import regex
@@ -8,8 +8,13 @@ from lazyllm.components.formatter import JsonFormatter
 import os
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
-DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
+DEFAULT_MODEL = 'qwen2.5-0.5b-instruct'
 DEFAULT_TOKENIZER = 'Qwen/Qwen2.5-0.5B'
+if config['model_path']:
+    token_path = os.path.join(config['model_path'], DEFAULT_MODEL)
+    if os.path.exists(token_path):
+        DEFAULT_TOKENIZER = token_path
+
 Text2qa = data_register.new_group('Text2qa')
 
 def boxed_res_extractor(text):

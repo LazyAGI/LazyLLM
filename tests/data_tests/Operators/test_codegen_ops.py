@@ -1,7 +1,7 @@
 import os
 import shutil
-import pytest  # noqa: F401
 import json
+import tempfile
 from lazyllm import config
 from lazyllm.tools.data.operators import codegen_ops
 
@@ -33,7 +33,7 @@ class MockModel:
 class TestCodeGenOps:
 
     def setup_method(self):
-        self.root_dir = './test_codegen_ops'
+        self.root_dir = tempfile.mkdtemp()
         self.keep_dir = config['data_process_path']
         os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
         config.refresh()

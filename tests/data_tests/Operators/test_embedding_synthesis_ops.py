@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import tempfile
 import numpy as np
 from lazyllm import config
 from lazyllm.tools.data import embedding
@@ -64,7 +65,7 @@ class MockEmbeddingServing:
 
 class TestEmbeddingSynthesisOperators:
     def setup_method(self):
-        self.root_dir = './test_data_op'
+        self.root_dir = tempfile.mkdtemp()
         self.keep_dir = config['data_process_path']
         os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
         config.refresh()
@@ -187,10 +188,7 @@ class TestEmbeddingSynthesisOperators:
         # Mine semantic negatives
         op = embedding.EmbeddingMineSemanticNegatives(
             num_negatives=1,
-            embedding_serving=mock_embedding,
-            input_query_key='query',
-            input_pos_key='pos',
-            output_neg_key='neg'
+            embedding_serving=mock_embedding
         )
         result = op([data_with_semantic[0]])[0]
         assert 'neg' in result

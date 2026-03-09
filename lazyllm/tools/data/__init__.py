@@ -16,6 +16,12 @@ from .operators import pdf_ops  # noqa: F401
 from .operators import enQa_ops  # noqa: F401
 from .operators import text2qa_ops  # noqa: F401
 from .operators import codegen_ops  # noqa: F401
+from .operators import llm_base_ops  # noqa: F401
+from .operators import llm_json_ops  # noqa: F401
+from .operators import agentic_rag  # noqa: F401
+from .operators import embedding_synthesis  # noqa: F401
+from .operators import knowledge_cleaning  # noqa: F401
+from .operators import reranker_synthesis  # noqa: F401
 
 def __getattr__(name):
     if name == 'pipelines':

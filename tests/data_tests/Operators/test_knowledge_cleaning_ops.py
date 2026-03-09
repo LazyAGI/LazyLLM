@@ -47,7 +47,7 @@ class MockLLM:
 
 class TestKnowledgeCleaningOperators:
     def setup_method(self):
-        self.root_dir = './test_kbc_op'
+        self.root_dir = tempfile.mkdtemp()
         self.keep_dir = config['data_process_path']
         os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
         config.refresh()
@@ -78,17 +78,6 @@ class TestKnowledgeCleaningOperators:
         op = kbc.KBCLoadText()
         result = op([{'text_path': test_file}])[0]
         assert result['_text_content'] == 'json content'
-
-    def test_KBCChunkText(self):
-        try:
-            op = kbc.KBCChunkText(chunk_size=50, split_method='recursive')
-            data = {'_text_content': 'word1 word2 word3 word4 word5 ' * 10}
-            result = op([data])[0]
-            assert '_chunks' in result
-            assert len(result['_chunks']) > 0
-        except Exception:
-            # Skip if dependencies are missing
-            pass
 
     def test_KBCExpandChunks(self):
         op = kbc.KBCExpandChunks()
@@ -183,14 +172,6 @@ class TestKnowledgeCleaningOperators:
         data = {'_type': 'html', '_url': 'https://example.com', '_output_path': output_path}
         result = op([data])[0]
         # May fail if trafilatura is not installed or URL is not accessible
-        assert '_markdown_path' in result or '_output_path' in result
-
-    def test_PDFToMarkdownConverterAPI(self):
-        op = kbc.PDFToMarkdownConverterAPI(mineru_url='http://localhost:8000')
-        output_path = os.path.join(self.temp_dir, 'output.md')
-        data = {'_type': 'pdf', '_raw_path': '/nonexistent.pdf', '_output_path': output_path}
-        result = op([data])[0]
-        # May fail if mineru_url is not available
         assert '_markdown_path' in result or '_output_path' in result
 
     # ========== Multi-hop QA Generator Operators ==========

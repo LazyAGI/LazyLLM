@@ -10,4 +10,4 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'mem0', 'memu', ['graphrag', 'api', 'config.load_config', 'config.enums', 'cli.index', 'cli.initialize'],
            'pyobvector', 'charset_normalizer', 'transformers', 'async_timeout', 'openpyxl', 'tiktoken', 'Stemmer',
            'sentencepiece', 'psycopg2', 'powermem', 'docx', 'json_repair', 'fasttext', 'datasketch', 'ahocorasick',
-           'math_verify']
+           'math_verify', 'trafilatura', 'chonkie']

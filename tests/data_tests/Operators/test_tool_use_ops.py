@@ -1,13 +1,14 @@
 import os
 import shutil
+import tempfile
+
 from lazyllm import config
 from lazyllm.tools.data.operators import tool_use_ops
-import pytest  # noqa: F401
 
 class TestToolUseOperators:
 
     def setup_method(self):
-        self.root_dir = './test_tool_use_op'
+        self.root_dir = tempfile.mkdtemp()
         self.keep_dir = config['data_process_path']
         os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
         config.refresh()
