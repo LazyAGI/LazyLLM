@@ -1,17 +1,21 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-'''
-Unified Git client: selects backend by config, source, or auto-detect (env, gh CLI, default github).
-Backend selection: if user set config['git_backend'] (see lazyllm.configs), use it; else if no backend
-configured, check GITHUB_TOKEN etc. env vars and choose by that; else check gh CLI auth; else default github.
-'''
 import os
+import re
 import subprocess
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional, Tuple
 
 import lazyllm
-from lazyllm.common.registry import LazyLLMRegisterMetaClass
+from lazyllm import config
 
 from .base import LazyLLMGitBase
+
+# Host -> backend name for inferring backend from repo URL.
+_HOST_TO_BACKEND: Dict[str, str] = {
+    'github.com': 'github',
+    'gitlab.com': 'gitlab',
+    'gitee.com': 'gitee',
+    'gitcode.com': 'gitcode',
+}
 
 # Env vars that indicate which backend to use when backend is not configured.
 _BACKEND_ENV_VARS: Dict[str, tuple] = {
@@ -50,17 +54,70 @@ def _resolve_token_for_backend(backend: str, token: Optional[str] = None) -> str
     )
 
 
-def _detect_backend_from_env() -> Optional[str]:
-    '''If any backend-specific env var is set, return that backend name.'''
-    for backend, keys in _BACKEND_ENV_VARS.items():
-        for key in keys:
-            if os.environ.get(key) and os.environ.get(key).strip():
-                return backend
+def _detect_backend_from_repo(repo: str) -> Optional[str]:
+    '''
+    Infer backend from repo URL if it looks like a full URL (https://host/..., git@host:...).
+    Returns None for plain owner/repo or unrecognized host.
+    '''
+    if not repo or not isinstance(repo, str):
+        return None
+    s = repo.strip().strip('/')
+    if s.startswith('git@'):
+        m = re.match(r'git@([^:]+):(.+)', s)
+        if m:
+            host = m.group(1).lower()
+            return _HOST_TO_BACKEND.get(host) or (
+                'github' if 'github' in host else
+                'gitlab' if 'gitlab' in host else
+                'gitee' if 'gitee' in host else
+                'gitcode' if 'gitcode' in host else None
+            )
+        return None
+    if s.startswith('https://') or s.startswith('http://'):
+        parts = s.replace('https://', '').replace('http://', '').split('/', 2)
+        if len(parts) >= 1:
+            host = parts[0].lower().split(':')[0]
+            return _HOST_TO_BACKEND.get(host)
     return None
 
 
-def _detect_backend_gh_cli() -> Optional[str]:
-    '''If gh is installed and authenticated, return "github".'''
+def _normalize_repo_to_path(repo: str) -> str:
+    '''
+    Normalize repo to owner/repo form for backend APIs. Strips .git; from full URL
+    (https://host/owner/repo or git@host:owner/repo) extracts the path part.
+    '''
+    if not repo or not isinstance(repo, str):
+        return ''
+    s = repo.strip().strip('/')
+    if s.endswith('.git'):
+        s = s[:-4].strip().strip('/')
+    if s.startswith('git@'):
+        m = re.match(r'git@[^:]+:(.+)', s)
+        if m:
+            return m.group(1).strip('/')
+        return s
+    if s.startswith('https://') or s.startswith('http://'):
+        parts = s.split('/', 3)
+        if len(parts) >= 4:
+            return parts[3].strip('/')
+        if len(parts) == 3:
+            return parts[2].strip('/') if parts[2] else s
+        return s
+    return s
+
+
+def _detect_backend_from_env() -> Tuple[Optional[str], Optional[str]]:
+    '''If any backend-specific env var is set, return (backend, token).'''
+    for backend, keys in _BACKEND_ENV_VARS.items():
+        for key in keys:
+            value = os.environ.get(key)
+            if value and (value := value.strip()):
+                return backend, value
+    return None, None
+
+
+def _detect_backend_gh_cli() -> Tuple[Optional[str], Optional[str]]:
+    '''If gh is installed and authenticated, return ("github", token).'''
     try:
         out = subprocess.run(
             ['gh', 'auth', 'token'],
@@ -69,87 +126,37 @@ def _detect_backend_gh_cli() -> Optional[str]:
             timeout=5,
         )
         if out.returncode == 0 and out.stdout and out.stdout.strip():
-            return 'github'
+            return 'github', out.stdout.strip()
     except (subprocess.TimeoutExpired, OSError):
         pass
-    return None
+    return None, None
 
 
-def _resolve_backend(backend: Optional[str], source: Optional[str]) -> str:
-    '''
-    Final backend: source overrides; else backend param; else config git_backend (lazyllm.configs);
-    else env (GITHUB_TOKEN etc.); else gh CLI; else github.
-    '''
-    if source is not None and str(source).strip():
-        return str(source).strip().lower()
-    if backend is not None and str(backend).strip():
-        return str(backend).strip().lower()
-    try:
-        cfg = getattr(lazyllm, 'config', None)
-        if cfg is not None:
-            v = cfg['git_backend']
-            if v is not None and str(v).strip():
-                return str(v).strip().lower()
-    except (KeyError, AttributeError, TypeError):
-        pass
-    detected = _detect_backend_from_env()
-    if detected is not None:
-        return detected
-    detected = _detect_backend_gh_cli()
-    if detected is not None:
-        return detected
-    return 'github'
-
+config.add('git_backend', str, None, 'GIT_BACKEND',
+           description='Default git backend: github, gitlab, gitee, gitcode. None for auto-detect.')
 
 class Git:
-    '''
-    Unified Git client. Use backend/source to choose platform; when not set, backend is
-    auto-detected from config, env (GITHUB_TOKEN, GITLAB_TOKEN, etc.), gh CLI, then default github.
-    '''
-
-    def __new__(
-        cls,
-        backend: Optional[str] = None,
-        source: Optional[str] = None,
-        token: Optional[str] = None,
-        repo: Optional[str] = None,
-        api_base: Optional[str] = None,
-        return_trace: bool = False,
-        **kwargs: Any,
-    ) -> LazyLLMGitBase:
-        '''
-        Return a Git backend instance (GitHub, GitLab, Gitee, or GitCode).
-
-        If source is provided, it is used as the backend and no auto-detect runs.
-        Otherwise backend is taken from argument, then config["git_backend"], then
-        env vars (GITHUB_TOKEN, GITLAB_TOKEN, GITEE_TOKEN, GITCODE_TOKEN), then
-        gh CLI if authenticated, then "github".
-
-        Args:
-            backend: Backend name (github, gitlab, gitee, gitcode). Overridden by source.
-            source: If set, use as backend and skip config/env/gh detection.
-            token: Access token; resolved from env or gh when None.
-            repo: Repository identifier (e.g. owner/repo).
-            api_base: Optional API base URL for the backend.
-            return_trace: Whether to return call trace.
-            **kwargs: Passed to the backend constructor.
-
-        Returns:
-            An instance of the chosen backend (GitHub, GitLab, Gitee, or GitCode).
-        '''
-        resolved = _resolve_backend(backend, source)
-        token = _resolve_token_for_backend(resolved, token)
-        try:
-            registry = LazyLLMRegisterMetaClass.all_clses['git']
-            BackendClass: Type[LazyLLMGitBase] = registry[resolved]
-        except (KeyError, AttributeError) as e:
-            raise ValueError(
-                f'Unknown git backend {resolved!r}. Valid: github, gitlab, gitee, gitcode.'
-            ) from e
-        return BackendClass(
-            token=token,
-            repo=repo or '',
-            api_base=api_base,
-            return_trace=return_trace,
-            **kwargs,
+    def __new__(cls, backend: Optional[str] = None, token: Optional[str] = None, repo: Optional[str] = None,
+                api_base: Optional[str] = None, return_trace: bool = False, **kwargs: Any) -> LazyLLMGitBase:
+        # 1. User passed backend -> use it
+        # 2. If user passed repo, try to infer backend from URL
+        if not backend and repo:
+            backend = _detect_backend_from_repo(repo)
+        # 3. Read config['git_backend']
+        if not backend:
+            backend = config['git_backend']
+        # 4. Not determined and no token -> env or gh CLI
+        if not backend and not token:
+            backend, token = _detect_backend_from_env()
+            if not backend:
+                backend, token = _detect_backend_gh_cli()
+        # 5. Default to github
+        if not backend:
+            backend = 'github'
+        # Resolve token (from arg, env, or gh) when backend is known
+        token = _resolve_token_for_backend(backend, token)
+        # Normalize repo to owner/repo for backend APIs (full URL -> path only)
+        repo_path = _normalize_repo_to_path(repo) if repo else ''
+        return getattr(lazyllm.git, backend)(
+            token=token, repo=repo_path, api_base=api_base, return_trace=return_trace, **kwargs
         )

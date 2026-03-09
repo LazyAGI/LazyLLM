@@ -27,7 +27,7 @@ def main():
 
     print('1. Creating Git backend (token from env or gh CLI)...')
     try:
-        backend = Git(source='github', repo=repo)
+        backend = Git(backend='github', repo=repo)
         print('   Backend ready.')
     except ValueError as e:
         print(f'   Failed: {e}')
@@ -66,7 +66,7 @@ def main():
         out = review(
             pr_number,
             repo=repo,
-            source='github',
+            backend='github',
             llm=llm,
             post_to_github=post_to_github,
         )

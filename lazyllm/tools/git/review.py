@@ -1,7 +1,7 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 '''
 Git PR code review: parses diff into hunks, calls the model per hunk, and posts line-level
-review comments (issue + suggestion). Uses Git backend (config/source); repo supports full URL.
+review comments (issue + suggestion). Backend and repo normalization are delegated to Git.
 '''
 import json
 import re
@@ -9,54 +9,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .base import LazyLLMGitBase
 from .client import Git
-
-
-# Host -> backend name for inferring source from repo URL.
-_HOST_TO_SOURCE = {
-    'github.com': 'github',
-    'gitlab.com': 'gitlab',
-    'gitee.com': 'gitee',
-    'gitcode.com': 'gitcode',
-}
-
-
-def _normalize_repo(repo: str) -> Tuple[str, Optional[str]]:
-    '''
-    Normalize repo to (owner/repo or project_path, inferred_source).
-    Strips .git; if repo is a full URL, extract path and infer source from host.
-    '''
-    s = repo.strip().strip('/')
-    inferred: Optional[str] = None
-    if s.startswith('https://') or s.startswith('http://') or s.startswith('git@'):
-        # URL: strip .git, extract host and path
-        if s.endswith('.git'):
-            s = s[:-4]
-        if s.startswith('git@'):
-            # git@github.com:owner/repo -> github, owner/repo
-            m = re.match(r'git@([^:]+):(.+)', s)
-            if m:
-                host = m.group(1).lower()
-                inferred = _HOST_TO_SOURCE.get(host) or (
-                    'github' if 'github' in host else
-                    'gitlab' if 'gitlab' in host else
-                    'gitee' if 'gitee' in host else
-                    'gitcode' if 'gitcode' in host else None
-                )
-                s = m.group(2).strip('/')
-        else:
-            # https://host/path
-            parts = s.split('/', 3)
-            if len(parts) >= 3:
-                host = parts[2].lower()
-                inferred = _HOST_TO_SOURCE.get(host.split(':')[0])
-                path = parts[3] if len(parts) > 3 else ''
-                s = path.strip('/') or s
-    else:
-        if s.endswith('.git'):
-            s = s[:-4].strip('/')
-    if not s:
-        return repo.strip().strip('/'), inferred
-    return s, inferred
 
 
 def _get_head_sha_from_pr(pr: Any) -> Optional[str]:
@@ -243,7 +195,7 @@ def review(
     pr_number: int,
     repo: str = 'LazyAGI/LazyLLM',
     token: Optional[str] = None,
-    source: Optional[str] = None,
+    backend: Optional[str] = None,
     llm: Optional[Any] = None,
     api_base: Optional[str] = None,
     post_to_github: bool = False,
@@ -252,15 +204,15 @@ def review(
 ) -> Union[str, Dict[str, Any]]:
     '''
     Review a PR/MR: parse diff, call the model per hunk, optionally post line-level review
-    comments. Backend follows Git config/source; repo can be owner/repo or full URL (e.g.
+    comments. Backend follows Git config/backend; repo can be owner/repo or full URL (e.g.
     https://github.com/owner/repo or .../repo.git).
 
     Args:
         pr_number: PR/MR number.
         repo: Repository: owner/repo, or full URL (https://.../owner/repo, .../repo.git);
-            .git is stripped; source is inferred from URL host when not passed.
+            .git is stripped; backend is inferred from URL host when not passed.
         token: Access token; optional, resolved from env or gh per backend.
-        source: If set, use this backend (github, gitlab, gitee, gitcode); else use config/env/gh.
+        backend: If set, use this backend (github, gitlab, gitee, gitcode); else use config/env/gh.
         llm: LLM for inference; if None uses lazyllm.OnlineChatModule().
         api_base: API base URL for the backend.
         post_to_github: If True, post each issue as a line-level comment on the platform.
@@ -270,16 +222,14 @@ def review(
     Returns:
         dict: summary, comments_posted count, and comments list.
     '''
-    repo_str, inferred_source = _normalize_repo(repo)
-    backend_name = source or inferred_source
-    backend = Git(
-        source=backend_name,
+    backend_inst = Git(
+        backend=backend,
         token=token,
-        repo=repo_str,
+        repo=repo,
         api_base=api_base,
     )
 
-    pr_res = backend.get_pull_request(pr_number)
+    pr_res = backend_inst.get_pull_request(pr_number)
     if not pr_res.get('success'):
         raise RuntimeError(f'Failed to get PR #{pr_number}: {pr_res.get("message", "unknown")}')
     pr = pr_res['pr']
@@ -287,7 +237,7 @@ def review(
     if not head_sha and post_to_github:
         raise RuntimeError('Cannot get PR head sha; cannot post line-level comments')
 
-    diff_res = backend.get_pr_diff(pr_number)
+    diff_res = backend_inst.get_pr_diff(pr_number)
     if not diff_res.get('success'):
         raise RuntimeError(f'Failed to get PR #{pr_number} diff: {diff_res.get("message", "unknown")}')
     diff_text = diff_res.get('diff', '')
@@ -303,7 +253,7 @@ def review(
     all_comments = _collect_hunk_comments(llm, hunks)
 
     if post_to_github and head_sha:
-        posted = _post_review_comments(backend, pr_number, head_sha, all_comments)
+        posted = _post_review_comments(backend_inst, pr_number, head_sha, all_comments)
         return {
             'summary': f'PR #{pr_number}: {len(all_comments)} review comment(s), {posted} line-level comment(s) posted.',
             'comments_posted': posted,
