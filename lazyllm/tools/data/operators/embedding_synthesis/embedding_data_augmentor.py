@@ -120,7 +120,7 @@ class EmbeddingAdjacentWordSwap(embedding):
                     new_row = data.copy()
                     new_row[self.input_key] = new_query
                     new_row['is_augmented'] = True
-                    new_row['augment_method'] = 'synonym_replace'
+                    new_row['augment_method'] = 'adjacent_word_swap'
                     augmented.append(new_row)
             else:
                 # Keep original if too short

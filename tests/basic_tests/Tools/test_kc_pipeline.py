@@ -1,8 +1,3 @@
-"""Tests for KC (Knowledge Cleaning) Pipeline.
-
-参考 test_rag_pipeline / test_data_pipeline：传入 data，用 mock_llm 覆盖需 LLM 的 pipeline，验证 res 输出。
-"""
-
 import json
 import os
 import shutil
@@ -22,7 +17,6 @@ from lazyllm.tools.data.pipelines.kc_pipelines import (
 
 
 class MockLLMServe:
-    """单次 share 的 LLM 服务 mock，供 KBC 等算子使用。"""
     def __init__(self, return_value=None):
         self._return_value = return_value or {"text": "cleaned content"}
 
@@ -40,7 +34,6 @@ class MockLLMServe:
 
 
 class MockLLM:
-    """KBC 算子用的 LLM mock：share() 返回一个 serve，具备 prompt/formatter/start/__call__。"""
     def __init__(self, return_value=None):
         self._serve = MockLLMServe(return_value=return_value)
 
@@ -49,7 +42,6 @@ class MockLLM:
 
 
 class TestKcPipeline:
-    """KC pipeline 测例：传入 data，验证 res。"""
 
     def setup_method(self):
         self.root_dir = './test_kc_pipeline'
@@ -64,19 +56,16 @@ class TestKcPipeline:
             shutil.rmtree(self.root_dir, ignore_errors=True)
 
     def test_build_convert_md_pipeline_requires_mineru_url(self):
-        """未传 mineru_url 时应抛出 ValueError。"""
         with pytest.raises(ValueError, match="mineru_url is required"):
             build_convert_md_pipeline()
 
     def test_convert_md_pipeline_with_data(self):
-        """convert_md：传入 data，用假 mineru_url 仅校验可执行；无真实服务时可能中途报错或返回空。"""
         ppl = build_convert_md_pipeline(mineru_url='http://127.0.0.1:99999')
         data = [{"source": "https://example.com/doc.pdf"}]
         res = ppl(data)
         assert isinstance(res, list)
 
     def test_qa_extract_pipeline_with_data(self):
-        """QA 抽取不需要 LLM，直接传 data 并校验输出。"""
         ppl = build_qa_extract_pipeline()
         data = [{
             "QA_pairs": {
@@ -93,7 +82,6 @@ class TestKcPipeline:
             assert "instruction" in item and "input" in item and "output" in item
 
     def test_single_kbc_pipeline_with_mock_llm_and_data(self):
-        """single_kbc 需要 LLM，用 mock_llm + data 跑通并校验 cleaned_chunk。"""
         mock_llm = MockLLM(return_value={"text": "cleaned text from mock"})
         ppl = build_single_kbc_pipeline(llm=mock_llm, input_key="raw_chunk", output_key="cleaned_chunk")
         data = [{"raw_chunk": "some raw chunk content here"}]
@@ -104,7 +92,6 @@ class TestKcPipeline:
         assert "cleaned text from mock" in res[0]["cleaned_chunk"] or res[0]["cleaned_chunk"] == "cleaned text from mock"
 
     def test_batch_chunk_generator_pipeline_with_data(self):
-        """batch_chunk：传入含 text_path 的 data（临时 txt 文件），校验输出；无 tokenizer 时可能返回 0 条。"""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             f.write("This is a sample document for chunking. " * 50)
             text_path = os.path.abspath(f.name)
@@ -127,7 +114,6 @@ class TestKcPipeline:
                 os.remove(text_path)
 
     def test_single_chunk_generator_pipeline_with_data(self):
-        """single_chunk：传入含 text_path 的 data（临时 txt），校验输出；无 tokenizer 时可能返回 0 条。"""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
             f.write("This is a sample document for single chunk expand. " * 30)
             text_path = os.path.abspath(f.name)
@@ -149,7 +135,6 @@ class TestKcPipeline:
                 os.remove(text_path)
 
     def test_batch_kbc_pipeline_with_mock_llm_and_data(self):
-        """batch_kbc 需要 LLM；用 mock_llm + 临时 raw chunk 文件 + data 跑通并校验输出。"""
         mock_llm = MockLLM(return_value={"text": "batch cleaned"})
         chunk_dir = os.path.join(os.path.abspath(self.root_dir), "raw_chunks")
         os.makedirs(chunk_dir, exist_ok=True)
@@ -173,12 +158,10 @@ class TestKcPipeline:
                 os.remove(chunk_path)
 
     def test_multihop_qa_pipeline_with_mock_llm_and_data(self):
-        """multihop_qa 需要 LLM；用 mock_llm + 含 cleaned_chunk 的临时 chunk 文件 + data 跑通并校验。"""
         mock_llm = MockLLM(return_value={"question": "Mock Q?", "answer": "Mock A."})
         chunk_dir = os.path.join(os.path.abspath(self.root_dir), "chunks")
         os.makedirs(chunk_dir, exist_ok=True)
         chunk_path = os.path.join(chunk_dir, "chunk.json")
-        # KBCExtractInfoPairs 需至少 3 句（按 . 分割），且每句 >10 字符
         long_content = (
             "First sentence for multihop QA context here. "
             "Second sentence with enough length for extraction. "
@@ -203,7 +186,6 @@ class TestKcPipeline:
                 os.remove(chunk_path)
 
     def test_single_kbc_pipeline_llm_none_drops_item(self):
-        """single_kbc 在 llm=None 时算子抛错被框架捕获，该条带 infer_error 被丢弃，返回 0 条。"""
         ppl = build_single_kbc_pipeline(llm=None)
         data = [{"raw_chunk": "x"}]
         res = ppl(data)

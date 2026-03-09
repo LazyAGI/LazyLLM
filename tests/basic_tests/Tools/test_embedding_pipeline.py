@@ -1,11 +1,5 @@
-"""Tests for Embedding Pipeline.
-
-参考 test_data_pipeline.py / demo_pipelines：build_*(config) 返回 ppl 或 callable，再传入 data 执行。
-"""
-
 import os
 import shutil
-import pytest
 from lazyllm import config
 from lazyllm.tools.data.pipelines.embedding_pipelines import (
     build_embedding_data_augmentation_pipeline,
@@ -16,7 +10,6 @@ from lazyllm.tools.data.pipelines.embedding_pipelines import (
 
 
 class TestEmbeddingPipeline:
-    """Tests for all embedding pipelines with actual data execution."""
 
     def setup_method(self):
         self.root_dir = './test_embedding_pipeline'
@@ -31,7 +24,6 @@ class TestEmbeddingPipeline:
             shutil.rmtree(self.root_dir, ignore_errors=True)
 
     def test_embedding_data_augmentation_pipeline_no_methods(self):
-        """augment_methods 为空时，仅返回 keep_original 部分。"""
         run = build_embedding_data_augmentation_pipeline(
             keep_original=True,
             augment_methods=[],
@@ -43,7 +35,6 @@ class TestEmbeddingPipeline:
         assert res == data
 
     def test_embedding_data_augmentation_pipeline_synonym_replace(self):
-        """synonym_replace 不依赖 LLM，可直接跑通。"""
         run = build_embedding_data_augmentation_pipeline(
             keep_original=True,
             augment_methods=['synonym_replace'],
@@ -55,7 +46,6 @@ class TestEmbeddingPipeline:
         assert len(res) >= 2
 
     def test_embedding_data_formatter_pipeline(self):
-        """flagembedding 格式，不依赖 LLM。"""
         run = build_embedding_data_formatter_pipeline(
             input_query_key='query',
             input_pos_key='pos',
@@ -73,7 +63,6 @@ class TestEmbeddingPipeline:
             assert 'query' in item and 'pos' in item and 'neg' in item
 
     def test_embedding_data_formatter_pipeline_triplet(self):
-        """output_format=triplet 时输出 query/positive/negative。"""
         run = build_embedding_data_formatter_pipeline(output_format='triplet')
         data = [{'query': 'q1', 'pos': ['p1'], 'neg': ['n1']}]
         res = run(data)
@@ -83,7 +72,6 @@ class TestEmbeddingPipeline:
             assert 'query' in item and 'positive' in item and 'negative' in item
 
     def test_embedding_hard_neg_pipeline_random(self):
-        """mining_strategy=random 不依赖 embedding 服务。"""
         run = build_embedding_hard_neg_pipeline(
             mining_strategy='random',
             num_negatives=2,
@@ -100,7 +88,6 @@ class TestEmbeddingPipeline:
             assert 'neg' in item and isinstance(item['neg'], list)
 
     def test_query_generation_pipeline(self):
-        """build_query_generation_pipeline 返回 ppl，ppl(data) 执行。"""
         ppl = build_query_generation_pipeline(
             input_key='passage',
             output_query_key='query',

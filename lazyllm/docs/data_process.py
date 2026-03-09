@@ -3796,339 +3796,6 @@ print(op({'scenario': scenario}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.ChainedLogicAssembler', """\
-工具调用数据生成算子：顺序任务生成器。
-
-基于原子任务列表，生成“后继任务关系”与对应的组合任务列表，用于构造线性或有依赖关系的任务链。
-
-输出 JSON 典型结构：
-
-- items: 列表，每项为：
-  - task: 当前原子任务
-  - next_task: 紧随其后的任务
-  - composed_task: 由 task + next_task 组合而成的描述
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
-    output_key (str): 输出顺序任务列表字段名，默认 'sequential_tasks'。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.ChainedLogicAssembler', """\
-Tool-use data operator: sequential task generator.
-
-Given a list of atomic tasks, generates successor relationships and composed tasks to form linear or dependency-aware task chains.
-
-Typical JSON structure:
-
-- items: list of dicts:
-  - task: current atomic task
-  - next_task: its successor task
-  - composed_task: description combining task and next_task
-
-Args:
-    model: a LazyLLM model object (required).
-    input_key (str): input atomic task field name, default 'atomic_tasks'.
-    output_key (str): output sequential task list field name, default 'sequential_tasks'.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.ChainedLogicAssembler', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import ChainedLogicAssembler
-
-atomic_tasks = [
-    {'task': '获取出发地与目的地'},
-    {'task': '确认出行日期'},
-    {'task': '筛选符合条件的车次'},
-]
-op = ChainedLogicAssembler(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
-print(op({'atomic_tasks': atomic_tasks}))
-# {
-#   'atomic_tasks': [...],
-#   'sequential_tasks': [
-#     {'task': '获取出发地与目的地', 'next_task': '确认出行日期', 'composed_task': '先获取站点再确认日期'},
-#     {'task': '确认出行日期', 'next_task': '筛选符合条件的车次', 'composed_task': '在已知日期基础上筛选车次'},
-#     ...
-#   ]
-# }
-```
-""")
-
-add_chinese_doc('data.operators.tool_use_ops.TopologyArchitect', """\
-工具调用数据生成算子：并行/顺序/混合任务组合生成器。
-
-基于原子任务列表，自动生成三类任务组合：
-
-- parallel_tasks: 可以并行执行的任务组合
-- sequential_tasks: 具有明确先后依赖的任务组合
-- hybrid_tasks: 同时包含并行与顺序关系的混合任务组合
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
-    output_key (str): 输出任务组合字段名，默认 'para_seq_tasks'。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.TopologyArchitect', """\
-Tool-use data operator: parallel/sequential/hybrid task combination generator.
-
-Given atomic tasks, generates three kinds of task compositions:
-
-- parallel_tasks: tasks that can be executed in parallel
-- sequential_tasks: tasks with explicit ordering dependencies
-- hybrid_tasks: compositions mixing parallel and sequential relations
-
-Args:
-    model: a LazyLLM model object (required).
-    input_key (str): input atomic task field name, default 'atomic_tasks'.
-    output_key (str): output composition field name, default 'para_seq_tasks'.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.TopologyArchitect', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import TopologyArchitect
-
-atomic_tasks = [
-    {'task': '收集出行需求'},
-    {'task': '查询可选车次'},
-    {'task': '对比价格与时间'},
-    {'task': '完成下单支付'},
-]
-op = TopologyArchitect(model=model, input_key='atomic_tasks', output_key='para_seq_tasks')
-print(op({'atomic_tasks': atomic_tasks}))
-# {
-#   'atomic_tasks': [...],
-#   'para_seq_tasks': {
-#     'parallel_tasks': ['同时查询不同日期/车次方案', ...],
-#     'sequential_tasks': ['先确认日期再选车次', ...],
-#     'hybrid_tasks': ['并行对比多个方案后统一决策并下单', ...]
-#   }
-# }
-```
-""")
-
-add_chinese_doc('data.operators.tool_use_ops.ViabilitySieve', """\
-工具调用数据生成算子：组合任务可行性过滤器。
-
-对一组“组合任务”进行可运行性与完备性评审，筛选出被认为合理可行的组合任务列表。
-
-模型内部期望的中间 JSON 结构：
-
-- items: 列表，每项包含 composed_task、is_valid、reason 等字段。
-
-在算子输出中，仅保留 is_valid 为 true 且含有 composed_task 的项；如果模型未按预期输出，则尽量回退返回原 items 或原始 parsed 结果。
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_composition_key (str): 输入组合任务字段名，默认 'composition_tasks'。
-    input_atomic_key (str): 输入原子任务字段名（可选），默认 'atomic_tasks'。
-    output_key (str): 输出过滤后组合任务字段名，默认 'filtered_composition_tasks'。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.ViabilitySieve', """\
-Tool-use data operator: composition task feasibility filter.
-
-Evaluates a list of composed tasks for feasibility and completeness, and filters out invalid ones.
-
-Expected intermediate JSON from the model:
-
-- items: list of dicts with composed_task, is_valid, reason, etc.
-
-On output, only keeps composed_task values where is_valid is true. If the model output does not match the schema, it falls back to returning items or the raw parsed result.
-
-Args:
-    model: a LazyLLM model object (required).
-    input_composition_key (str): input composition task field name, default 'composition_tasks'.
-    input_atomic_key (str): input atomic task field name (optional), default 'atomic_tasks'.
-    output_key (str): output filtered composition task field name, default 'filtered_composition_tasks'.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.ViabilitySieve', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import ViabilitySieve
-
-composition_tasks = ['先获取出发地和目的地再筛选车次', '直接随机推荐一个车次']
-atomic_tasks = [
-    {'task': '获取出发地与目的地'}, {'task': '确认出行日期'}, {'task': '筛选符合条件的车次'}
-]
-op = ViabilitySieve(model=model,
-                           input_composition_key='composition_tasks',
-                           input_atomic_key='atomic_tasks',
-                           output_key='filtered_composition_tasks')
-print(op({'composition_tasks': composition_tasks, 'atomic_tasks': atomic_tasks}))
-# {
-#   'composition_tasks': [...],
-#   'atomic_tasks': [...],
-#   'filtered_composition_tasks': ['先获取出发地和目的地再筛选车次', ...]
-# }
-```
-""")
-
-add_chinese_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
-工具调用数据生成算子：函数规格生成器。
-
-根据组合任务及其子任务，生成一组适合用于工具调用（function calling）的函数规格列表。
-
-输出 JSON 典型结构：
-
-- functions: 列表，每项包含：
-  - name: 函数名称
-  - description: 函数用途描述
-  - args: 参数列表，每个参数包含 name/type/description
-  - returns: 返回值类型与描述
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_composition_key (str): 输入组合任务字段名，默认 'composition_task'。
-    input_atomic_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
-    output_key (str): 输出函数规格列表字段名，默认 'functions'。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
-Tool-use data operator: function specification generator.
-
-Given a composed task and its subtasks, generates a list of function specifications suitable for tool calling.
-
-Typical JSON structure:
-
-- functions: list of dicts:
-  - name: function name
-  - description: what the function does
-  - args: list of argument specs with name/type/description
-  - returns: return type and description
-
-Args:
-    model: a LazyLLM model object (required).
-    input_composition_key (str): input composition task field name, default 'composition_task'.
-    input_atomic_key (str): input atomic task field name, default 'atomic_tasks'.
-    output_key (str): output function spec list field name, default 'functions'.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.ProtocolSpecifier', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import ProtocolSpecifier
-
-composition_task = '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表'
-atomic_tasks = [
-    {'task': '获取出发地与目的地'},
-    {'task': '确认出行日期'},
-    {'task': '调用车次查询接口并过滤结果'},
-]
-op = ProtocolSpecifier(model=model,
-                       input_composition_key='composition_task',
-                       input_atomic_key='atomic_tasks',
-                       output_key='functions')
-print(op({'composition_task': composition_task, 'atomic_tasks': atomic_tasks}))
-# {
-#   'composition_task': '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表',
-#   'atomic_tasks': [...],
-#   'functions': [
-#     {
-#       'name': 'query_train_tickets',
-#       'description': '根据出发地、目的地与日期查询高铁车次',
-#       'args': [{'name': 'from_city', 'type': 'string', ...}, ...],
-#       'returns': {'type': 'TrainList', 'description': '符合条件的车次列表'}
-#     },
-#     ...
-#   ]
-# }
-```
-""")
-
-add_chinese_doc('data.operators.tool_use_ops.DialogueSimulator', """\
-工具调用数据生成算子：多轮对话生成器（含 Tool 调用）。
-
-根据组合任务与可用函数列表，生成带有 User / Assistant / Tool 三种角色的多轮对话 JSON，用于构造工具调用训练数据。
-
-输出 JSON 典型结构：
-
-- messages: 列表，每项为：
-  - role: 'user' | 'assistant' | 'tool'
-  - content: 文本内容
-  - name: 工具名（仅 role == 'tool' 时可选）
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_composition_key (str): 输入组合任务字段名，默认 'composition_task'。
-    input_functions_key (str): 输入函数列表字段名，默认 'functions'。
-    output_key (str): 输出多轮对话字段名，默认 'conversation'。
-    n_turns (int): 期望的轮次数量（提示给模型），默认 6。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.DialogueSimulator', """\
-Tool-use data operator: multi-turn conversation generator (with tools).
-
-Given a composed task and a list of available functions, generates a multi-turn conversation JSON involving User, Assistant and Tool roles, suitable for tool-calling training data.
-
-Typical JSON structure:
-
-- messages: list of dicts:
-  - role: 'user' | 'assistant' | 'tool'
-  - content: text content
-  - name: tool name (optional, when role == 'tool')
-
-Args:
-    model: a LazyLLM model object (required).
-    input_composition_key (str): input composition task field name, default 'composition_task'.
-    input_functions_key (str): input function list field name, default 'functions'.
-    output_key (str): output conversation field name, default 'conversation'.
-    n_turns (int): desired number of turns (as a hint to the model), default 6.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.DialogueSimulator', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import DialogueSimulator
-
-composition_task = '根据用户需求查询并推荐合适的高铁车次'
-functions = [
-    {
-        'name': 'query_train_tickets',
-        'description': '查询高铁车次',
-        'args': [...],
-        'returns': {...},
-    }
-]
-op = DialogueSimulator(model=model,
-                                    input_composition_key='composition_task',
-                                    input_functions_key='functions',
-                                    output_key='conversation',
-                                    n_turns=6)
-print(op({'composition_task': composition_task, 'functions': functions}))
-# {
-#   'composition_task': '根据用户需求查询并推荐合适的高铁车次',
-#   'functions': [...],
-#   'conversation': {
-#     'messages': [
-#       {'role': 'user', 'content': '我想订一张明天下午从北京到上海的高铁票'},
-#       {'role': 'assistant', 'content': '好的，我先为您确认出发时间与车次。'},
-#       {'role': 'tool', 'name': 'query_train_tickets', 'content': '{...工具返回...}'},
-#       ...
-#     ]
-#   }
-# }
-```
-""")
-
 add_chinese_doc('data.operators.text2sql_ops.SQLForge', """\
 Text2SQL 数据生成算子：SQL 生成器。
 
@@ -4652,7 +4319,7 @@ print(res)  # demonstrates how operators are combined and applied
 # =============================================================================
 # EmbeddingQueryRewrite
 # =============================================================================
-add_chinese_doc('lazyllm.tools.data.embedding.EmbeddingQueryRewrite', """\
+add_chinese_doc('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingQueryRewrite', """\
 基于 LLM 的查询重写算子。通过语义改写生成多样化 query 变体，用于嵌入模型训练数据增强。
 
 Args:
@@ -4665,7 +4332,7 @@ Returns:
     List[dict]: 包含改写 query 的增强样本列表，每条含 is_augmented/augment_method 元数据
 """)
 
-add_english_doc('lazyllm.tools.data.embedding.EmbeddingQueryRewrite', """\
+add_english_doc('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingQueryRewrite', """\
 LLM-based query rewriting operator. Generates diverse query variants through semantic paraphrasing for embedding model training augmentation.
 
 Args:
@@ -4678,7 +4345,7 @@ Returns:
     List[dict]: list of augmented samples with rewritten queries, each containing is_augmented/augment_method metadata
 """)
 
-add_example('lazyllm.tools.data.embedding.EmbeddingQueryRewrite', """\
+add_example('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingQueryRewrite', """\
 ````python
 from lazyllm.tools.data import embedding
 import lazyllm
@@ -4705,7 +4372,7 @@ results = rewriter(input_data)
 # =============================================================================
 # EmbeddingAdjacentWordSwap
 # =============================================================================
-add_chinese_doc('lazyllm.tools.data.embedding.EmbeddingAdjacentWordSwap', """\
+add_chinese_doc('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingAdjacentWordSwap', """\
 基于规则的相邻词交换算子。通过随机交换 query 中相邻词语生成轻量级增强样本，适用于快速数据扩充。
 
 Args:
@@ -4720,7 +4387,7 @@ Note:
     - 采用 process 并发模式，适合 CPU 密集型规则计算
 """)
 
-add_english_doc('lazyllm.tools.data.embedding.EmbeddingAdjacentWordSwap', """\
+add_english_doc('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingAdjacentWordSwap', """\
 Rule-based adjacent word swap operator. Generates lightweight augmented samples by randomly swapping adjacent words in queries for rapid data expansion.
 
 Args:
@@ -4735,7 +4402,7 @@ Note:
     - Uses process concurrency mode, suitable for CPU-bound rule-based computation
 """)
 
-add_example('lazyllm.tools.data.embedding.EmbeddingAdjacentWordSwap', """\
+add_example('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingAdjacentWordSwap', """\
 ````python
 from lazyllm.tools.data import embedding
 
@@ -4746,8 +4413,8 @@ swapper = embedding.EmbeddingAdjacentWordSwap(num_augments=3)
 input_data = {'query': '如何 训练 嵌入 模型'}
 results = swapper(input_data)
 # results 可能包含：
-# [{'query': '训练 如何 嵌入 模型', 'is_augmented': True, 'augment_method': 'synonym_replace'},
-#  {'query': '如何 嵌入 训练 模型', 'is_augmented': True, 'augment_method': 'synonym_replace'}]
+# [{'query': '训练 如何 嵌入 模型', 'is_augmented': True, 'augment_method': 'adjacent_word_swap'},
+#  {'query': '如何 嵌入 训练 模型', 'is_augmented': True, 'augment_method': 'adjacent_word_swap'}]
 ````
 """)
 # =========================
@@ -7877,7 +7544,7 @@ results = ppl(inputs)
 # =============================================================================
 # atomic_rag_pipeline
 # =============================================================================
-add_chinese_doc('data.pipelines.rag_pipeline.atomic_rag_pipeline', """\
+add_chinese_doc('data.pipelines.rag_pipelines.atomic_rag_pipeline', """\
 构建原子级 RAG 数据生成 pipeline。整合标识符提取、结论展开、QA 生成、LLM 验证等 9 个算子，产出高质量训练样本。
 
 Args:
@@ -7888,7 +7555,7 @@ Args:
     llm_verify_filter_threshold (int, optional): LLM 验证阶段的过滤阈值，默认 1（仅保留 llm_score<1 的样本）；None 表示不过滤
 """)
 
-add_english_doc('data.pipelines.rag_pipeline.atomic_rag_pipeline', """\
+add_english_doc('data.pipelines.rag_pipelines.atomic_rag_pipeline', """\
 Build an atomic-level RAG data generation pipeline. Integrates 9 operators including identifier extraction, conclusion expansion, QA generation, and LLM verification for high-quality training samples.
 
 Args:
@@ -7899,16 +7566,16 @@ Args:
     llm_verify_filter_threshold (int, optional): filter threshold for LLM verification stage, default 1 (keep only samples with llm_score<1); None means no filtering
 """)
 
-add_example('data.pipelines.rag_pipeline.atomic_rag_pipeline', """\
+add_example('data.pipelines.rag_pipelines.atomic_rag_pipeline', """\
 ````python
-from lazyllm.tools.data import agenticrag
+from lazyllm.tools.data import atomic_rag_pipeline
 import lazyllm
 
 # 初始化 LLM
 llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
 
 # 构建原子级 RAG pipeline
-ppl = agenticrag.atomic_rag_pipeline(
+ppl = atomic_rag_pipeline(
     llm=llm,
     input_key='text',
     max_per_task=5,
@@ -7926,7 +7593,7 @@ results = ppl(inputs)
 # =============================================================================
 # depth_qa_single_round_pipeline
 # =============================================================================
-add_chinese_doc('data.pipelines.rag_pipeline.depth_qa_single_round_pipeline', """\
+add_chinese_doc('data.pipelines.rag_pipelines.depth_qa_single_round_pipeline', """\
 构建单轮深度 QA 生成 pipeline。通过反向推理、超集检查、问题生成与验证四步，从已有 identifier 衍生更深层次问题。
 
 Args:
@@ -7938,7 +7605,7 @@ Args:
     depth_verify_filter_threshold (int, optional): 问题验证阶段的过滤阈值，默认 1；None 表示不过滤
 """)
 
-add_english_doc('data.pipelines.rag_pipeline.depth_qa_single_round_pipeline', """\
+add_english_doc('data.pipelines.rag_pipelines.depth_qa_single_round_pipeline', """\
 Build a single-round deep QA generation pipeline. Derives deeper questions from existing identifiers through backward reasoning, superset checking, question generation, and verification.
 
 Args:
@@ -7950,16 +7617,16 @@ Args:
     depth_verify_filter_threshold (int, optional): filter threshold for question verification, default 1; None means no filtering
 """)
 
-add_example('data.pipelines.rag_pipeline.depth_qa_single_round_pipeline', """\
+add_example('data.pipelines.rag_pipelines.depth_qa_single_round_pipeline', """\
 ````python
-from lazyllm.tools.data import agenticrag
+from lazyllm.tools.data import depth_qa_single_round_pipeline
 import lazyllm
 
 # 初始化 LLM
 llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
 
 # 构建单轮深度 QA pipeline
-ppl = agenticrag.depth_qa_single_round_pipeline(
+ppl = depth_qa_single_round_pipeline(
     llm=llm,
     identifier_key='identifier',
     question_key='depth_question',
@@ -7977,7 +7644,7 @@ results = ppl(inputs)
 # =============================================================================
 # depth_qa_pipeline
 # =============================================================================
-add_chinese_doc('data.pipelines.rag_pipeline.depth_qa_pipeline', """\
+add_chinese_doc('data.pipelines.rag_pipelines.depth_qa_pipeline', """\
 构建多轮迭代深度 QA 生成 pipeline。支持 n_rounds 轮递归生成，每轮基于上一轮的新 identifier 继续挖掘更深层次问题。
 
 Args:
@@ -7988,7 +7655,7 @@ Args:
     depth_verify_filter_threshold (int, optional): 每轮验证阶段的过滤阈值，默认 1；None 表示不过滤
 """)
 
-add_english_doc('data.pipelines.rag_pipeline.depth_qa_pipeline', """\
+add_english_doc('data.pipelines.rag_pipelines.depth_qa_pipeline', """\
 Build a multi-round iterative deep QA generation pipeline. Supports n_rounds of recursive generation, where each round derives deeper questions based on new identifiers from the previous round.
 
 Args:
@@ -7999,16 +7666,16 @@ Args:
     depth_verify_filter_threshold (int, optional): filter threshold for verification at each round, default 1; None means no filtering
 """)
 
-add_example('data.pipelines.rag_pipeline.depth_qa_pipeline', """\
+add_example('data.pipelines.rag_pipelines.depth_qa_pipeline', """\
 ````python
-from lazyllm.tools.data import agenticrag
+from lazyllm.tools.data import depth_qa_pipeline
 import lazyllm
 
 # 初始化 LLM
 llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
 
 # 构建 2 轮深度 QA pipeline
-ppl_fn = agenticrag.depth_qa_pipeline(
+ppl_fn = depth_qa_pipeline(
     llm=llm,
     input_key='text',
     output_key='question',
@@ -8026,7 +7693,7 @@ results = ppl_fn(inputs)
 # =============================================================================
 # qa_evaluation_pipeline
 # =============================================================================
-add_chinese_doc('data.pipelines.rag_pipeline.qa_evaluation_pipeline', """\
+add_chinese_doc('data.pipelines.rag_pipelines.qa_evaluation_pipeline', """\
 构建 QA 任务 F1 分数评估 pipeline。通过文本标准化与精确匹配计算，自动化评估模型回答质量。
 
 Args:
@@ -8035,7 +7702,7 @@ Args:
     output_key (str): 输出 F1 分数字段的键名，默认 'F1Score'
 """)
 
-add_english_doc('data.pipelines.rag_pipeline.qa_evaluation_pipeline', """\
+add_english_doc('data.pipelines.rag_pipelines.qa_evaluation_pipeline', """\
 Build a QA task F1-score evaluation pipeline. Automates answer quality assessment through text normalization and exact-match calculation.
 
 Args:
@@ -8044,12 +7711,12 @@ Args:
     output_key (str): key for output F1 score field, default 'F1Score'
 """)
 
-add_example('data.pipelines.rag_pipeline.qa_evaluation_pipeline', """\
+add_example('data.pipelines.rag_pipelines.qa_evaluation_pipeline', """\
 ````python
-from lazyllm.tools.data import agenticrag
+from lazyllm.tools.data import qa_evaluation_pipeline
 
 # 构建 F1 评估 pipeline
-ppl = agenticrag.qa_evaluation_pipeline(
+ppl = qa_evaluation_pipeline(
     prediction_key='model_answer',
     ground_truth_key='reference_answer',
     output_key='f1'
@@ -8069,7 +7736,7 @@ results = ppl(inputs)
 # =============================================================================
 # width_qa_pipeline
 # =============================================================================
-add_chinese_doc('data.pipelines.rag_pipeline.width_qa_pipeline', """\
+add_chinese_doc('data.pipelines.rag_pipelines.width_qa_pipeline', """\
 构建广度 QA 生成 pipeline。通过合并相邻 QA 对、分解质量检查、问题验证与分数过滤，生成横向扩展的多样化问题。
 
 注意：WidthQAGMergePairs 为全量处理算子（forward_batch_input），需在 pipeline 外部预执行。
@@ -8084,7 +7751,7 @@ Args:
     width_filter_threshold (int, optional): 分数过滤阈值，默认 None（不过滤）；1 表示仅保留 score<1
 """)
 
-add_english_doc('data.pipelines.rag_pipeline.width_qa_pipeline', """\
+add_english_doc('data.pipelines.rag_pipelines.width_qa_pipeline', """\
 Build a width-wise QA generation pipeline. Generates horizontally diversified questions by merging adjacent QA pairs, checking decomposition quality, verifying questions, and filtering by score.
 
 Note: WidthQAGMergePairs is a full-batch operator (forward_batch_input) and must be executed outside the pipeline first.
@@ -8099,16 +7766,16 @@ Args:
     width_filter_threshold (int, optional): score filter threshold, default None (no filtering); 1 means keep only score<1
 """)
 
-add_example('data.pipelines.rag_pipeline.width_qa_pipeline', """\
+add_example('data.pipelines.rag_pipelines.width_qa_pipeline', """\
 ````python
-from lazyllm.tools.data import agenticrag
+from lazyllm.tools.data import width_qa_pipeline
 import lazyllm
 
 # 初始化 LLM
 llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
 
 # 构建广度 QA pipeline
-ppl_fn = agenticrag.width_qa_pipeline(
+ppl_fn = width_qa_pipeline(
     llm=llm,
     input_question_key='question',
     input_identifier_key='identifier',

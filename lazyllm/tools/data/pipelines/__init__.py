@@ -18,9 +18,8 @@ from .reranker_pipelines import (
     build_reranker_dataformatter_pipeline,
     build_convert_from_embed_pipeline,
     build_reranker_hard_neg_pipeline,
-    build_reranker_mine_random_negatives_pipeline,
 )
-from .rag_pipeline import (
+from .rag_pipelines import (
     atomic_rag_pipeline,
     depth_qa_single_round_pipeline,
     depth_qa_pipeline,
@@ -47,7 +46,6 @@ __all__ = [
     'build_reranker_dataformatter_pipeline',
     'build_convert_from_embed_pipeline',
     'build_reranker_hard_neg_pipeline',
-    'build_reranker_mine_random_negatives_pipeline',
     # rag
     'atomic_rag_pipeline',
     'depth_qa_single_round_pipeline',

@@ -38,7 +38,7 @@ def build_embedding_data_augmentation_pipeline(
                         num_augments=num_augments,
                         lang=lang,
                     )
-                elif method == "synonym_replace":
+                elif method == "adjacent_word_swap":
                     ppl.augment = embedding.EmbeddingAdjacentWordSwap(num_augments=num_augments)
                 else:
                     LOG.warning(f"Unknown augmentation method: {method}, skipping...")
