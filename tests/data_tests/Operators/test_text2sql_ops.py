@@ -194,9 +194,9 @@ class TestText2SQLOperators:
         # score 10 > 9 -> labels[-1] -> 'easy'
         assert res[0]['sql_execution_difficulty'] == 'easy'
 
-    def test_text2sql_to_sft_formatter_basic(self):
-        """测试 Text2SQLToSFTFormatter - basic 格式"""
-        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='basic')
+    def test_text2sql_to_sft_formatter_alpaca(self):
+        """测试 Text2SQLToSFTFormatter - alpaca 格式"""
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='alpaca')
         data = {
             'output': {
                 'prompt': 'Database Schema:\nCREATE TABLE users...',
@@ -207,25 +207,8 @@ class TestText2SQLOperators:
         }
         res = op([data])
         assert len(res) == 1
-        assert res[0]['instruction'] == 'Database Schema:\nCREATE TABLE users...'
-        assert res[0]['input'] == ''
-        assert res[0]['output'] == 'SELECT * FROM users'
-
-    def test_text2sql_to_sft_formatter_simple(self):
-        """测试 Text2SQLToSFTFormatter - simple 格式"""
-        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='simple')
-        data = {
-            'output': {
-                'prompt': 'Database Schema:\nCREATE TABLE users...',
-                'question': 'Show all users',
-                'SQL': 'SELECT * FROM users',
-                'cot_reasoning': 'Step 1: Identify table...'
-            }
-        }
-        res = op([data])
-        assert len(res) == 1
-        assert res[0]['instruction'] == 'Show all users'
-        assert res[0]['input'] == ''
+        assert res[0]['instruction'] == op.DEFAULT_INSTRUCTION
+        assert res[0]['input'] == 'Database Schema:\nCREATE TABLE users...'
         assert res[0]['output'] == 'SELECT * FROM users'
 
     def test_text2sql_to_sft_formatter_cot(self):

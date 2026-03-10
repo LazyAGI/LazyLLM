@@ -3,7 +3,8 @@ from lazyllm.tools.data import text2sql_ops
 
 
 def build_text2sql_full_pipeline(model, database_manager, embedding_model=None,
-                                 output_num=300, num_generations=10, input_query_num=5):
+                                 output_num=300, num_generations=10, input_query_num=5,
+                                 output_format='alpaca'):
     with pipeline() as ppl:
         ppl.sql_forge = text2sql_ops.SQLForge(
             model=model,
@@ -39,12 +40,8 @@ def build_text2sql_full_pipeline(model, database_manager, embedding_model=None,
             database_manager=database_manager,
             num_generations=num_generations
         )
-    return ppl
-
-
-def build_text2sql_sft_pipeline(format_type='cot'):
-    with pipeline() as ppl:
-        ppl.sql_sft_formatter = text2sql_ops.Text2SQLToSFTFormatter(
-            format_type=format_type
-        )
+        if output_format:
+            ppl.formatter = text2sql_ops.Text2SQLToSFTFormatter(
+                format_type=output_format
+            )
     return ppl

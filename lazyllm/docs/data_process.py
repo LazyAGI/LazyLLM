@@ -1967,7 +1967,7 @@ op = CodeInstructionGenerator(model=model,
                                          output_key='instruction')
 item = {
     'messages': [
-        {'role': 'user', 'content': '写一个 Python 函数，打印 hello'}
+        {'role': 'user', 'content': 'Write a Python function that prints hello'}
     ]
 }
 res = op(item)
@@ -3115,7 +3115,7 @@ add_example('data.operators.preference_ops.IntentExtractor', """\
 ```python
 from lazyllm.tools.data.operators.preference_ops import IntentExtractor
 
-# model 需要由你的项目环境提供，例如 lazyllm.xxx(...) 得到的模型对象
+# The model should be provided by your project environment, e.g., from lazyllm.xxx(...)
 op = IntentExtractor(model=model, input_key='content', output_key='intent')
 print(op({'content': 'I want to stay at a hotel in Beijing.'}))
 # [{
@@ -3366,17 +3366,17 @@ add_example('data.operators.tool_use_ops.ChainedLogicAssembler', """\
 from lazyllm.tools.data.operators.tool_use_ops import ChainedLogicAssembler
 
 atomic_tasks = [
-    {'task': '获取出发地与目的地'},
-    {'task': '确认出行日期'},
-    {'task': '筛选符合条件的车次'},
+    {'task': 'Get departure and destination'},
+    {'task': 'Confirm travel date'},
+    {'task': 'Filter available trains'},
 ]
 op = ChainedLogicAssembler(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
 print(op({'atomic_tasks': atomic_tasks}))
 # {
 #   'atomic_tasks': [...],
 #   'sequential_tasks': [
-#     {'task': '获取出发地与目的地', 'next_task': '确认出行日期', 'composed_task': '先获取站点再确认日期'},
-#     {'task': '确认出行日期', 'next_task': '筛选符合条件的车次', 'composed_task': '在已知日期基础上筛选车次'},
+#     {'task': 'Get departure and destination', 'next_task': 'Confirm travel date', 'composed_task': 'Get locations then confirm date'},
+#     {'task': 'Confirm travel date', 'next_task': 'Filter available trains', 'composed_task': 'Filter trains based on known date'},
 #     ...
 #   ]
 # }
@@ -3422,19 +3422,19 @@ add_example('data.operators.tool_use_ops.TopologyArchitect', """\
 from lazyllm.tools.data.operators.tool_use_ops import TopologyArchitect
 
 atomic_tasks = [
-    {'task': '收集出行需求'},
-    {'task': '查询可选车次'},
-    {'task': '对比价格与时间'},
-    {'task': '完成下单支付'},
+    {'task': 'Collect travel requirements'},
+    {'task': 'Query available trains'},
+    {'task': 'Compare price and time'},
+    {'task': 'Complete order payment'},
 ]
 op = TopologyArchitect(model=model, input_key='atomic_tasks', output_key='para_seq_tasks')
 print(op({'atomic_tasks': atomic_tasks}))
 # {
 #   'atomic_tasks': [...],
 #   'para_seq_tasks': {
-#     'parallel_tasks': ['同时查询不同日期/车次方案', ...],
-#     'sequential_tasks': ['先确认日期再选车次', ...],
-#     'hybrid_tasks': ['并行对比多个方案后统一决策并下单', ...]
+#     'parallel_tasks': ['Query different dates/trains simultaneously', ...],
+#     'sequential_tasks': ['Confirm date before selecting train', ...],
+#     'hybrid_tasks': ['Compare multiple options in parallel then decide and order', ...]
 #   }
 # }
 ```
@@ -3484,9 +3484,9 @@ add_example('data.operators.tool_use_ops.ViabilitySieve', """\
 ```python
 from lazyllm.tools.data.operators.tool_use_ops import ViabilitySieve
 
-composition_tasks = ['先获取出发地和目的地再筛选车次', '直接随机推荐一个车次']
+composition_tasks = ['Get departure/destination then filter trains', 'Randomly recommend a train']
 atomic_tasks = [
-    {'task': '获取出发地与目的地'}, {'task': '确认出行日期'}, {'task': '筛选符合条件的车次'}
+    {'task': 'Get departure and destination'}, {'task': 'Confirm travel date'}, {'task': 'Filter available trains'}
 ]
 op = ViabilitySieve(model=model,
                            input_composition_key='composition_tasks',
@@ -3496,7 +3496,7 @@ print(op({'composition_tasks': composition_tasks, 'atomic_tasks': atomic_tasks})
 # {
 #   'composition_tasks': [...],
 #   'atomic_tasks': [...],
-#   'filtered_composition_tasks': ['先获取出发地和目的地再筛选车次', ...]
+#   'filtered_composition_tasks': ['Get departure/destination then filter trains', ...]
 # }
 ```
 """)
@@ -3553,11 +3553,11 @@ add_example('data.operators.tool_use_ops.ProtocolSpecifier', """\
 ```python
 from lazyllm.tools.data.operators.tool_use_ops import ProtocolSpecifier
 
-composition_task = '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表'
+composition_task = 'Query available high-speed trains based on departure, destination and date, return candidate list'
 atomic_tasks = [
-    {'task': '获取出发地与目的地'},
-    {'task': '确认出行日期'},
-    {'task': '调用车次查询接口并过滤结果'},
+    {'task': 'Get departure and destination'},
+    {'task': 'Confirm travel date'},
+    {'task': 'Call train query API and filter results'},
 ]
 op = ProtocolSpecifier(model=model,
                        input_composition_key='composition_task',
@@ -3565,14 +3565,14 @@ op = ProtocolSpecifier(model=model,
                        output_key='functions')
 print(op({'composition_task': composition_task, 'atomic_tasks': atomic_tasks}))
 # {
-#   'composition_task': '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表',
+#   'composition_task': 'Query available high-speed trains based on departure, destination and date, return candidate list',
 #   'atomic_tasks': [...],
 #   'functions': [
 #     {
 #       'name': 'query_train_tickets',
-#       'description': '根据出发地、目的地与日期查询高铁车次',
+#       'description': 'Query high-speed trains based on departure, destination and date',
 #       'args': [{'name': 'from_city', 'type': 'string', ...}, ...],
-#       'returns': {'type': 'TrainList', 'description': '符合条件的车次列表'}
+#       'returns': {'type': 'TrainList', 'description': 'List of matching trains'}
 #     },
 #     ...
 #   ]
@@ -3632,11 +3632,11 @@ add_example('data.operators.tool_use_ops.DialogueSimulator', """\
 ```python
 from lazyllm.tools.data.operators.tool_use_ops import DialogueSimulator
 
-composition_task = '根据用户需求查询并推荐合适的高铁车次'
+composition_task = 'Query and recommend suitable high-speed trains based on user needs'
 functions = [
     {
         'name': 'query_train_tickets',
-        'description': '查询高铁车次',
+        'description': 'Query high-speed trains',
         'args': [...],
         'returns': {...},
     }
@@ -3648,13 +3648,13 @@ op = DialogueSimulator(model=model,
                                     n_turns=6)
 print(op({'composition_task': composition_task, 'functions': functions}))
 # {
-#   'composition_task': '根据用户需求查询并推荐合适的高铁车次',
+#   'composition_task': 'Query and recommend suitable high-speed trains based on user needs',
 #   'functions': [...],
 #   'conversation': {
 #     'messages': [
-#       {'role': 'user', 'content': '我想订一张明天下午从北京到上海的高铁票'},
-#       {'role': 'assistant', 'content': '好的，我先为您确认出发时间与车次。'},
-#       {'role': 'tool', 'name': 'query_train_tickets', 'content': '{...工具返回...}'},
+#       {'role': 'user', 'content': 'I want to book a high-speed train ticket from Beijing to Shanghai tomorrow afternoon'},
+#       {'role': 'assistant', 'content': 'Sure, let me confirm the departure time and available trains for you.'},
+#       {'role': 'tool', 'name': 'query_train_tickets', 'content': '{...tool response...}'},
 #       ...
 #     ]
 #   }
@@ -3711,20 +3711,20 @@ from lazyllm.tools.data.operators.tool_use_ops import ContextualBeacon
 
 op = ContextualBeacon(model=model, input_key='content', output_key='scenario')
 item = {
-    'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？'
+    'content': 'User: I want to book a high-speed train ticket from Beijing to Shanghai, preferably in the afternoon.\\nAssistant: Sure, what is the specific date?'
 }
 print(op(item))
 
 # Output Example:
 # {
-#   'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？',
+#   'content': 'User: I want to book a high-speed train ticket from Beijing to Shanghai, preferably in the afternoon.\\nAssistant: Sure, what is the specific date?',
 #   'scenario': {
-#     'scene': '用户咨询高铁购票服务',
-#     'domain': '出行/购票',
-#     'user_profile': '普通出行乘客',
-#     'assistant_goal': '帮助用户完成车次与时间筛选并完成购票',
-#     'constraints': ['出发地为北京', '目的地为上海', '尽量下午出发'],
-#     'key_entities': ['北京', '上海', '高铁', '下午']
+#     'scene': 'User inquires about high-speed train ticket booking service',
+#     'domain': 'Travel/Ticketing',
+#     'user_profile': 'Regular traveler',
+#     'assistant_goal': 'Help user filter trains by time and complete booking',
+#     'constraints': ['Departure from Beijing', 'Destination is Shanghai', 'Prefer afternoon departure'],
+#     'key_entities': ['Beijing', 'Shanghai', 'high-speed train', 'afternoon']
 #   }
 # }
 """)
@@ -3770,17 +3770,17 @@ add_example('data.operators.tool_use_ops.ScenarioDiverger', """\
 from lazyllm.tools.data.operators.tool_use_ops import ScenarioDiverger
 
 base = {
-    'scene': '用户咨询高铁购票服务',
-    'domain': '出行/购票',
-    'assistant_goal': '帮助用户完成车次筛选并购票',
+    'scene': 'User inquires about high-speed train ticket booking service',
+    'domain': 'Travel/Ticketing',
+    'assistant_goal': 'Help user filter trains and complete booking',
 }
 op = ScenarioDiverger(model=model, input_key='scenario', output_key='expanded_scenarios', n=3)
 print(op({'scenario': base}))
 # {
 #   'scenario': {...},
 #   'expanded_scenarios': [
-#     {'scene': '用户预订跨城商务出差火车票', ...},
-#     {'scene': '用户为家人购买回乡火车票', ...},
+#     {'scene': 'User books train ticket for cross-city business trip', ...},
+#     {'scene': 'User buys return ticket for family member', ...},
 #     ...
 #   ]
 # }
@@ -3836,19 +3836,83 @@ add_example('data.operators.tool_use_ops.DecompositionKernel', """\
 from lazyllm.tools.data.operators.tool_use_ops import DecompositionKernel
 
 scenario = {
-    'scene': '用户咨询高铁购票服务',
-    'assistant_goal': '帮助用户完成车次筛选并购票',
+    'scene': 'User inquires about high-speed train ticket booking service',
+    'assistant_goal': 'Help user filter trains and complete booking',
 }
 op = DecompositionKernel(model=model, input_key='scenario', output_key='atomic_tasks', n=4)
 print(op({'scenario': scenario}))
 # {
 #   'scenario': {...},
 #   'atomic_tasks': [
-#     {'task': '获取用户出发地和目的地', 'input': '', 'output': '出发地与目的地', 'constraints': [...]},
-#     {'task': '确认出行日期与大致时间', ...},
+#     {'task': 'Get user departure and destination', 'input': '', 'output': 'Departure and destination', 'constraints': [...]},
+#     {'task': 'Confirm travel date and approximate time', ...},
 #     ...
 #   ]
 # }
+```
+""")
+
+add_chinese_doc('data.operators.tool_use_ops.ToolUseToSFTFormatter', """\
+工具调用数据转换算子：将工具调用对话数据转换为 SFT 训练格式。
+
+支持两种输出格式：
+
+- alpaca: 转换为 Alpaca 格式（instruction/input/output）
+- chatml (默认): 转换为 ChatML 格式（含 system/user/assistant/tool 角色）
+
+当 format_type='chatml' 时，输出包含完整的对话历史，包括工具调用和工具返回结果。
+
+Args:
+    format_type (str): 输出格式类型，可选 'alpaca' 或 'chatml'，默认 'chatml'。
+    system_prompt (str|None): 可选系统提示词，默认使用内置中文提示。
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.ToolUseToSFTFormatter', """\
+Tool-use data conversion operator: converts tool-use conversation data to SFT training format.
+
+Supports two output formats:
+
+- alpaca: Converts to Alpaca format (instruction/input/output)
+- chatml (default): Converts to ChatML format (with system/user/assistant/tool roles)
+
+When format_type='chatml', output includes complete conversation history including tool calls and tool responses.
+
+Args:
+    format_type (str): output format type, options: 'alpaca' or 'chatml', default 'chatml'.
+    system_prompt (str|None): optional system prompt, defaults to built-in Chinese prompt.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.ToolUseToSFTFormatter', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import ToolUseToSFTFormatter
+
+# ChatML format (default)
+op = ToolUseToSFTFormatter(format_type='chatml')
+data = {
+    'content': 'Book a train ticket from Beijing to Shanghai',
+    'functions': [
+        {'name': 'query_trains', 'description': 'Query available trains'}
+    ],
+    'conversation': {
+        'messages': [
+            {'role': 'user', 'content': 'Book a train ticket from Beijing to Shanghai'},
+            {'role': 'assistant', 'content': 'I will help you query available trains'},
+            {'role': 'tool', 'name': 'query_trains', 'content': '{"trains": ["G1", "G3"]}'},
+            {'role': 'assistant', 'content': 'Found trains G1 and G3 for you'}
+        ]
+    }
+}
+res = op(data)
+print(res['messages'][0]['role'])  # 'system'
+print(res['messages'][1]['role'])  # 'user'
+
+# Alpaca format
+op_alpaca = ToolUseToSFTFormatter(format_type='alpaca')
+res_alpaca = op_alpaca(data)
+print(res_alpaca['instruction'])  # Contains system prompt and available tools
+print(res_alpaca['output'])       # Assistant responses
 ```
 """)
 
@@ -3900,10 +3964,10 @@ add_example('data.operators.text2sql_ops.SQLForge', """\
 ```python
 from lazyllm.tools.data.operators.text2sql_ops import SQLForge
 
-# 假设 database_manager 已封装了你的 SQLite / Postgres 等数据库
+# Assume database_manager wraps your SQLite / Postgres database
 op = SQLForge(model=model, database_manager=database_manager, output_num=10)
 
-# 如果 data 中不指定 db_id，则为所有数据库各生成若干条 SQL
+# If db_id is not specified in data, generates SQLs for all databases
 res = op({})
 print(res[0])
 # {
@@ -3948,7 +4012,7 @@ from lazyllm.tools.data.operators.text2sql_ops import SQLRuntimeSieve
 op = SQLRuntimeSieve(database_manager=database_manager)
 item = {'db_id': 'db_1', 'SQL': 'SELECT * FROM users;'}
 res = op(item)
-print(res)  # 若 SQL 可在 db_1 上 explain 成功，则返回原始 dict；否则返回 None
+print(res)  # Returns original dict if SQL can be explained on db_1; otherwise returns None
 ```
 """)
 
@@ -4011,8 +4075,8 @@ print(res)
 #   'db_id': 'db_1',
 #   'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
 #   'question_type': 'default',
-#   'question': '有多少已支付的订单？',
-#   'evidence': '...可选的外部知识...'
+#   'question': 'How many paid orders are there?',
+#   'evidence': '...optional external knowledge...'
 # }
 ```
 """)
@@ -4063,7 +4127,7 @@ op = TSQLSemanticAuditor(model=model, database_manager=database_manager)
 item = {
     'db_id': 'db_1',
     'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
-    'question': '有多少已支付的订单？',
+    'question': 'How many paid orders are there?',
     'evidence': ''
 }
 res = op(item)
@@ -4071,10 +4135,10 @@ print(res)
 # {
 #   'db_id': 'db_1',
 #   'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
-#   'question': '有多少已支付的订单？',
+#   'question': 'How many paid orders are there?',
 #   'evidence': ''
 # }
-# 如果模型判断不匹配，则返回 None
+# Returns None if the model judges a mismatch
 ```
 """)
 
@@ -4121,8 +4185,8 @@ from lazyllm.tools.data.operators.text2sql_ops import SQLContextAssembler
 op = SQLContextAssembler(database_manager=database_manager)
 item = {
     'db_id': 'db_1',
-    'question': '有多少已支付的订单？',
-    'evidence': '订单表中 status 字段标记订单状态。'
+    'question': 'How many paid orders are there?',
+    'evidence': 'The status field in the orders table marks the order status.'
 }
 res = op(item)
 print(res['prompt'])
@@ -4130,8 +4194,8 @@ print(res['prompt'])
 # CREATE TABLE orders (id INT, status TEXT, ...);
 # ...
 #
-# Question: 有多少已支付的订单？
-# Evidence: 订单表中 status 字段标记订单状态。
+# Question: How many paid orders are there?
+# Evidence: The status field in the orders table marks the order status.
 # Generate a SQL query for postgres.
 ```
 """)
@@ -4171,15 +4235,15 @@ from lazyllm.tools.data.operators.text2sql_ops import SQLReasoningTracer
 op = SQLReasoningTracer(model=model, database_manager=database_manager, output_num=3)
 item = {
     'db_id': 'db_1',
-    'question': '有多少已支付的订单？',
+    'question': 'How many paid orders are there?',
     'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
     'evidence': ''
 }
 res = op(item)
 print(len(res['cot_responses']))
-print(res['cot_responses'][0][:200])  # 打印第一条 CoT 的前 200 个字符
+print(res['cot_responses'][0][:200])  # Print first 200 chars of first CoT
 # 3
-# "Database Schema: ... Question: 有多少已支付的订单？ ... 推理步骤1：... 推理步骤2：... ```sql SELECT count(*) FROM orders WHERE status = 'paid';```"
+# "Database Schema: ... Question: How many paid orders are there? ... Step 1: ... Step 2: ... ```sql SELECT count(*) FROM orders WHERE status = 'paid';```"
 ```
 """)
 
@@ -4236,7 +4300,7 @@ item = {
 res = op(item)
 print(res['cot_reasoning'][:200])
 print(res['SQL'])
-# "...首先识别需要统计已支付订单数量，其次在 orders 表中过滤 status = 'paid' ... ```sql SELECT count(*) FROM orders WHERE status = 'paid';```"
+# "...First identify the need to count paid orders, then filter by status = 'paid' in orders table ... ```sql SELECT count(*) FROM orders WHERE status = 'paid';```"
 # "SELECT count(*) FROM orders WHERE status = 'paid';"
 ```
 """)
@@ -4327,16 +4391,81 @@ from lazyllm.tools.data.operators.text2sql_ops import SQLEffortRanker
 op = SQLEffortRanker(model=model, database_manager=database_manager, num_generations=15)
 item = {
     'db_id': 'db_1',
-    'prompt': 'Database Schema: ... Question: 有多少已支付的订单？',
+    'prompt': 'Database Schema: ... Question: How many paid orders are there?',
     'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';'
 }
 res = op(item)
 print(res)
 # {
 #   'db_id': 'db_1',
-#   'prompt': 'Database Schema: ... Question: 有多少已支付的订单？',
+#   'prompt': 'Database Schema: ... Question: How many paid orders are there?',
 #   'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
 #   'sql_execution_difficulty': 'medium'
+# }
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.Text2SQLToSFTFormatter', """\
+Text2SQL 数据转换算子：将 Text2SQL 数据转换为 SFT 训练格式。
+
+支持两种输出格式：
+
+- cot (默认): instruction=prompt, input='', output=<think>cot_reasoning</think>\\n\\nSQL
+- alpaca: instruction=固定提示, input=prompt, output=SQL
+
+当 format_type='cot' 且存在 cot_reasoning 时，输出会包含 <think> 标签包裹的推理过程。
+当 format_type='alpaca' 时，输出为标准 Alpaca 格式。
+
+Args:
+    format_type (str): 输出格式类型，可选 'cot', 'alpaca'，默认 'cot'。
+    instruction (str|None): Alpaca 格式下的 instruction 内容，默认使用内置 SQL expert 提示。
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.Text2SQLToSFTFormatter', """\
+Text2SQL data conversion operator: converts Text2SQL data to SFT training format.
+
+Supports two output formats:
+
+- cot (default): instruction=prompt, input='', output=<think>cot_reasoning</think>\\n\\nSQL
+- alpaca: instruction=fixed prompt, input=prompt, output=SQL
+
+When format_type='cot' and cot_reasoning exists, output will include reasoning wrapped in <think> tags.
+When format_type='alpaca', output follows standard Alpaca format.
+
+Args:
+    format_type (str): output format type, options: 'cot', 'alpaca', default 'cot'.
+    instruction (str|None): instruction content for alpaca format, defaults to built-in SQL expert prompt.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.text2sql_ops.Text2SQLToSFTFormatter', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import Text2SQLToSFTFormatter
+
+# CoT format (default)
+op = Text2SQLToSFTFormatter(format_type='cot')
+data = {
+    'prompt': 'Database Schema:\\nCREATE TABLE orders...',
+    'SQL': 'SELECT COUNT(*) FROM orders',
+    'cot_reasoning': 'Step 1: Count records'
+}
+res = op([data])
+print(res[0])
+# {
+#   'instruction': 'Database Schema:\\nCREATE TABLE orders...',
+#   'input': '',
+#   'output': '<think>\\nStep 1: Count records\\n</think>\\n\\nSELECT COUNT(*) FROM orders'
+# }
+
+# Alpaca format
+op_alpaca = Text2SQLToSFTFormatter(format_type='alpaca')
+res_alpaca = op_alpaca([data])
+print(res_alpaca[0])
+# {
+#   'instruction': 'I want you to act as a SQL expert...',
+#   'input': 'Database Schema:\\nCREATE TABLE orders...',
+#   'output': 'SELECT COUNT(*) FROM orders'
 # }
 ```
 """)

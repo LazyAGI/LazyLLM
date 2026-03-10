@@ -2,7 +2,7 @@ from lazyllm import pipeline
 from lazyllm.tools.data import tool_use_ops
 
 
-def build_tool_use_pipeline(model, input_key='content', n_turns=6):
+def build_tool_use_pipeline(model, input_key='content', n_turns=6, output_format=None):
     with pipeline() as ppl:
         ppl.contextual_beacon = tool_use_ops.ContextualBeacon(
             model=model,
@@ -48,10 +48,16 @@ def build_tool_use_pipeline(model, input_key='content', n_turns=6):
             output_key='conversation',
             n_turns=n_turns
         )
+        if output_format:
+            ppl.formatter = tool_use_ops.ToolUseToSFTFormatter(
+                input_key='conversation',
+                output_key='formatted',
+                format_type=output_format
+            )
     return ppl
 
 
-def build_simple_tool_use_pipeline(model, input_key='content', n_tasks=5, n_turns=6):
+def build_simple_tool_use_pipeline(model, input_key='content', n_tasks=5, n_turns=6, output_format=None):
     with pipeline() as ppl:
         ppl.contextual_beacon = tool_use_ops.ContextualBeacon(
             model=model,
@@ -77,4 +83,10 @@ def build_simple_tool_use_pipeline(model, input_key='content', n_tasks=5, n_turn
             output_key='conversation',
             n_turns=n_turns
         )
+        if output_format:
+            ppl.formatter = tool_use_ops.ToolUseToSFTFormatter(
+                input_key='conversation',
+                output_key='formatted',
+                format_type=output_format
+            )
     return ppl
