@@ -2,7 +2,7 @@
 import os
 import re
 import subprocess
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import lazyllm
 from lazyllm import config
@@ -137,7 +137,8 @@ config.add('git_backend', str, None, 'GIT_BACKEND',
 
 class Git:
     def __new__(cls, backend: Optional[str] = None, token: Optional[str] = None, repo: Optional[str] = None,
-                api_base: Optional[str] = None, return_trace: bool = False, **kwargs: Any) -> LazyLLMGitBase:
+                user: Optional[str] = None, api_base: Optional[str] = None, return_trace: bool = False,
+                ) -> LazyLLMGitBase:
         # 1. User passed backend -> use it
         # 2. If user passed repo, try to infer backend from URL
         if not backend and repo:
@@ -158,5 +159,5 @@ class Git:
         # Normalize repo to owner/repo for backend APIs (full URL -> path only)
         repo_path = _normalize_repo_to_path(repo) if repo else ''
         return getattr(lazyllm.git, backend)(
-            token=token, repo=repo_path, api_base=api_base, return_trace=return_trace, **kwargs
+            token=token, repo=repo_path, user=user, api_base=api_base, return_trace=return_trace
         )

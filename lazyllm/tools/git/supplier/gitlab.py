@@ -1,5 +1,4 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-'''GitLab backend using REST API v4.'''
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
@@ -8,34 +7,45 @@ import requests
 from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo, _sanitize_path
 
 
-def _parse_repo(repo: str) -> str:
-    return repo.strip().strip('/')
-
-
 class GitLab(LazyLLMGitBase):
-    '''GitLab backend: REST API (gitlab.com/api/v4), push via local git.'''
-
-    def __init__(self, token: str, repo: str, api_base: Optional[str] = None, **kwargs):
-        super().__init__(token=token, repo=repo, api_base=api_base or 'https://gitlab.com/api/v4', **kwargs)
-        self._project_path = _parse_repo(self._repo)
-        self._session = requests.Session()
+    def __init__(self, token: str, repo: Optional[str] = None, user: Optional[str] = None,
+                 api_base: Optional[str] = None, return_trace: bool = False):
+        super().__init__(
+            token=token,
+            repo=repo,
+            api_base=api_base or 'https://gitlab.com/api/v4',
+            user=user,
+            return_trace=return_trace,
+        )
+        self._project_path = (self._repo or '').strip().strip('/')
         self._session.headers.update({'PRIVATE-TOKEN': self._token})
+        self._current_user_id: Optional[int] = None
 
     def _url(self, path: str) -> str:
+        self._require_repo()
         proj = quote(self._project_path, safe='')
         return f'{self._api_base}/projects/{proj}{_sanitize_path(path)}'
+
+    def _get_current_user_id(self) -> int:
+        if self._current_user_id is not None:
+            return self._current_user_id
+        r = self._session.get(f'{self._api_base}/user')
+        if r.status_code != 200:
+            raise RuntimeError(f'Failed to get current user: {r.text or r.reason}')
+        data = r.json()
+        self._current_user_id = data.get('id')
+        return self._current_user_id
 
     def _req(self, method: str, path: str, **kwargs) -> 'requests.Response':
         return self._session.request(method, self._url(path), **kwargs)
 
     def create_pull_request(self, source_branch: str, target_branch: str,
-                            title: str, body: str = '', **kwargs) -> Dict[str, Any]:
+                            title: str, body: str = '') -> Dict[str, Any]:
         payload = {
             'source_branch': source_branch,
             'target_branch': target_branch,
             'title': title,
             'description': body,
-            **{k: v for k, v in kwargs.items() if k in ('assignee_ids', 'labels', 'remove_source_branch')},
         }
         r = self._req('POST', '/merge_requests', json=payload)
         if r.status_code not in (200, 201):
@@ -49,8 +59,7 @@ class GitLab(LazyLLMGitBase):
         }
 
     def update_pull_request(self, number: int, title: Optional[str] = None,
-                            body: Optional[str] = None, state: Optional[str] = None,
-                            **kwargs) -> Dict[str, Any]:
+                            body: Optional[str] = None, state: Optional[str] = None) -> Dict[str, Any]:
         payload = {}
         if title is not None:
             payload['title'] = title
@@ -58,7 +67,6 @@ class GitLab(LazyLLMGitBase):
             payload['description'] = body
         if state is not None:
             payload['state_event'] = 'close' if state == 'closed' else 'reopen'
-        payload.update(kwargs)
         if not payload:
             return {'success': True, 'message': 'nothing to update'}
         r = self._req('PUT', f'/merge_requests/{number}', json=payload)
@@ -90,14 +98,13 @@ class GitLab(LazyLLMGitBase):
         return {'success': True, 'pr': pr}
 
     def list_pull_requests(self, state: str = 'open', head: Optional[str] = None,
-                           base: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+                           base: Optional[str] = None) -> Dict[str, Any]:
         state_map = {'open': 'opened', 'closed': 'closed', 'all': 'all'}
         params = {'state': state_map.get(state, state)}
         if base is not None:
             params['target_branch'] = base
         if head is not None:
             params['source_branch'] = head
-        params.update({k: v for k, v in kwargs.items() if k in ('page', 'per_page', 'order_by', 'sort')})
         r = self._req('GET', '/merge_requests', params=params)
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
@@ -146,21 +153,24 @@ class GitLab(LazyLLMGitBase):
 
     def create_review_comment(self, number: int, body: str, path: str,
                               line: Optional[int] = None, side: str = 'RIGHT',
-                              commit_id: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        position = kwargs.get('position')
-        if not position and path and line is not None and commit_id:
-            position = {
+                              commit_id: Optional[str] = None,
+                              position: Optional[Dict[str, Any]] = None,
+                              base_sha: Optional[str] = None,
+                              start_sha: Optional[str] = None) -> Dict[str, Any]:
+        pos = position
+        if not pos and path and line is not None and commit_id:
+            pos = {
                 'new_path': path,
                 'new_line': line,
                 'position_type': 'text',
-                'base_sha': kwargs.get('base_sha'),
+                'base_sha': base_sha,
                 'head_sha': commit_id,
-                'start_sha': kwargs.get('start_sha', commit_id),
+                'start_sha': start_sha or commit_id,
             }
-        if not position:
+        if not pos:
             r = self._req('POST', f'/merge_requests/{number}/notes', json={'body': body})
         else:
-            r = self._req('POST', f'/merge_requests/{number}/discussions', json={'body': body, 'position': position})
+            r = self._req('POST', f'/merge_requests/{number}/discussions', json={'body': body, 'position': pos})
         if r.status_code not in (200, 201):
             return {'success': False, 'message': r.text or r.reason}
         data = r.json()
@@ -168,15 +178,15 @@ class GitLab(LazyLLMGitBase):
         return {'success': True, 'comment_id': cid, 'message': 'created'}
 
     def submit_review(self, number: int, event: str, body: str = '',
-                      comment_ids: Optional[List[Any]] = None, **kwargs) -> Dict[str, Any]:
+                      comment_ids: Optional[List[Any]] = None) -> Dict[str, Any]:
         if event.upper() == 'APPROVE':
-            return self.approve_pull_request(number, **kwargs)
+            return self.approve_pull_request(number)
         if body:
             self._req('POST', f'/merge_requests/{number}/notes', json={'body': body})
         return {'success': True, 'message': 'submitted'}
 
-    def approve_pull_request(self, number: int, **kwargs) -> Dict[str, Any]:
-        payload = {'sha': kwargs['sha']} if kwargs.get('sha') else {}
+    def approve_pull_request(self, number: int, sha: Optional[str] = None) -> Dict[str, Any]:
+        payload = {'sha': sha} if sha else {}
         r = self._req('POST', f'/merge_requests/{number}/approve', json=payload)
         if r.status_code not in (200, 201):
             return {'success': False, 'message': r.text or r.reason}
@@ -184,13 +194,94 @@ class GitLab(LazyLLMGitBase):
 
     def merge_pull_request(self, number: int, merge_method: Optional[str] = None,
                            commit_title: Optional[str] = None,
-                           commit_message: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+                           commit_message: Optional[str] = None,
+                           merge_when_pipeline_succeeds: bool = False,
+                           sha: Optional[str] = None) -> Dict[str, Any]:
         payload = {}
         if merge_method and merge_method.lower() == 'squash':
             payload['squash'] = True
-        payload.update({k: v for k, v in kwargs.items() if k in ('merge_when_pipeline_succeeds', 'sha')})
+        if merge_when_pipeline_succeeds:
+            payload['merge_when_pipeline_succeeds'] = True
+        if sha:
+            payload['sha'] = sha
         r = self._req('PUT', f'/merge_requests/{number}/merge', json=payload)
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
         data = r.json()
         return {'success': True, 'sha': data.get('merge_commit_sha'), 'message': 'merged'}
+
+    def list_repo_stargazers(self, page: int = 1, per_page: int = 20) -> Dict[str, Any]:
+        self._require_repo()
+        return {
+            'success': False,
+            'message': 'GitLab API does not provide an endpoint to list users who starred a project.',
+        }
+
+    def reply_to_review_comment(self, number: int, comment_id: Any, body: str,
+                                path: str, line: Optional[int] = None,
+                                commit_id: Optional[str] = None,
+                                discussion_id: Optional[Any] = None) -> Dict[str, Any]:
+        self._require_repo()
+        if discussion_id:
+            r = self._req('POST', f'/merge_requests/{number}/discussions/{discussion_id}/notes', json={'body': body})
+        else:
+            r = self._req('POST', f'/merge_requests/{number}/notes', json={'body': body})
+        if r.status_code not in (200, 201):
+            return {'success': False, 'message': r.text or r.reason}
+        data = r.json()
+        return {'success': True, 'comment_id': data.get('id'), 'message': 'replied'}
+
+    def resolve_review_comment(self, number: int, comment_id: Any,
+                               discussion_id: Optional[Any] = None) -> Dict[str, Any]:
+        self._require_repo()
+        if not discussion_id:
+            return {
+                'success': False,
+                'message': 'GitLab requires discussion_id (pass as keyword argument) to resolve a discussion.',
+            }
+        r = self._req('PUT', f'/merge_requests/{number}/discussions/{discussion_id}',
+                      json={'resolved': True})
+        if r.status_code != 200:
+            return {'success': False, 'message': r.text or r.reason}
+        return {'success': True, 'message': 'resolved'}
+
+    def get_user_info(self, username: Optional[str] = None) -> Dict[str, Any]:
+        if username:
+            r = self._session.get(f'{self._api_base}/users', params={'username': username})
+            if r.status_code != 200:
+                return {'success': False, 'message': r.text or r.reason}
+            data = r.json()
+            if not data:
+                return {'success': False, 'message': f'User not found: {username}'}
+            return {'success': True, 'user': data[0]}
+        if self._user:
+            r = self._session.get(f'{self._api_base}/users', params={'username': self._user})
+            if r.status_code != 200 or not r.json():
+                return {'success': False, 'message': r.text or r.reason or 'User not found'}
+            return {'success': True, 'user': r.json()[0]}
+        r = self._session.get(f'{self._api_base}/user')
+        if r.status_code != 200:
+            return {'success': False, 'message': r.text or r.reason}
+        return {'success': True, 'user': r.json()}
+
+    def list_user_starred_repos(self, username: Optional[str] = None,
+                                page: int = 1, per_page: int = 20) -> Dict[str, Any]:
+        if username:
+            ru = self._session.get(f'{self._api_base}/users', params={'username': username})
+            if ru.status_code != 200 or not ru.json():
+                return {'success': False, 'message': ru.text or ru.reason or 'User not found'}
+            user_id = ru.json()[0].get('id')
+            url = f'{self._api_base}/users/{user_id}/starred_projects'
+        else:
+            if self._user:
+                ru = self._session.get(f'{self._api_base}/users', params={'username': self._user})
+                if ru.status_code != 200 or not ru.json():
+                    return {'success': False, 'message': ru.text or ru.reason or 'User not found'}
+                user_id = ru.json()[0].get('id')
+            else:
+                user_id = self._get_current_user_id()
+            url = f'{self._api_base}/users/{user_id}/starred_projects'
+        r = self._session.get(url, params={'page': page, 'per_page': per_page})
+        if r.status_code != 200:
+            return {'success': False, 'message': r.text or r.reason}
+        return {'success': True, 'list': r.json()}

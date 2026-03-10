@@ -21,8 +21,9 @@ Agent 可通过 lazyllm.git.github / lazyllm.git.gitlab 等获取实例并调用
 
 Args:
     token (str): 平台 Access Token / Private Token。
-    repo (str): 仓库标识，格式一般为 "owner/repo" 或 "namespace/project"。
+    repo (str, optional): 仓库标识，格式一般为 "owner/repo" 或 "namespace/project"。
     api_base (str, optional): 自定义 API 根地址（如自建 GitLab）。
+    user (str, optional): 用户标识，部分接口默认使用该用户或 token 所属用户。
     return_trace (bool): 是否返回调用追踪信息。
 ''')
 
@@ -33,8 +34,9 @@ Agents get instances via lazyllm.git.github / lazyllm.git.gitlab etc.
 
 Args:
     token (str): Platform access token or private token.
-    repo (str): Repository identifier, e.g. "owner/repo" or "namespace/project".
+    repo (str, optional): Repository identifier, e.g. "owner/repo" or "namespace/project".
     api_base (str, optional): Custom API base URL (e.g. self-hosted GitLab).
+    user (str, optional): User identifier; some APIs default to this user or token owner.
     return_trace (bool): Whether to return call trace.
 ''')
 
@@ -115,6 +117,30 @@ _add_git_example('GitHub', '''\
 >>> from lazyllm.tools.git import GitHub
 >>> backend = GitHub(token='ghp_xxx', repo='owner/repo')
 >>> backend.get_pull_request(1)
+''')
+
+_add_git_chinese('GitHub.add_issue_comment', '''\
+在 PR 的对话区添加一条评论（GitHub 中 PR 即 issue，评论显示在 Conversation）。
+
+Args:
+    number (int): PR 编号。
+    body (str): 评论内容。
+
+Returns:
+    dict: 包含 success、message、url。
+''')
+_add_git_english('GitHub.add_issue_comment', '''\
+Add a comment to the PR conversation (on GitHub, PR is an issue; comment appears in Conversation).
+
+Args:
+    number (int): PR number.
+    body (str): Comment body.
+
+Returns:
+    dict: success, message, url.
+''')
+_add_git_example('GitHub.add_issue_comment', '''\
+>>> backend.add_issue_comment(1, 'Looks good to me')
 ''')
 
 # GitLab
@@ -265,7 +291,6 @@ Args:
     target_branch (str): 目标分支名。
     title (str): PR/MR 标题。
     body (str): PR/MR 正文描述，可选。
-    **kwargs: 各平台扩展参数。
 
 Returns:
     dict: 包含 success、number、html_url、message 等。
@@ -278,7 +303,6 @@ Args:
     target_branch (str): Target branch name.
     title (str): PR/MR title.
     body (str): PR/MR body, optional.
-    **kwargs: Platform-specific extra arguments.
 
 Returns:
     dict: success, number, html_url, message, etc.
@@ -295,7 +319,6 @@ Args:
     title (str, optional): 新标题。
     body (str, optional): 新正文。
     state (str, optional): 状态（如 open/closed）。
-    **kwargs: 各平台扩展参数。
 
 Returns:
     dict: 包含 success、message。
@@ -308,7 +331,6 @@ Args:
     title (str, optional): New title.
     body (str, optional): New body.
     state (str, optional): State (e.g. open/closed).
-    **kwargs: Platform-specific extra arguments.
 
 Returns:
     dict: success, message.
@@ -370,7 +392,6 @@ Args:
     state (str): 状态筛选，如 "open"、"closed"，默认 "open"。
     head (str, optional): 按源分支筛选。
     base (str, optional): 按目标分支筛选。
-    **kwargs: 各平台扩展参数。
 
 Returns:
     dict: 包含 success、list（PrInfo 或 dict 列表）、message。
@@ -382,7 +403,6 @@ Args:
     state (str): State filter, e.g. "open", "closed"; default "open".
     head (str, optional): Filter by source branch.
     base (str, optional): Filter by target branch.
-    **kwargs: Platform-specific extra arguments.
 
 Returns:
     dict: success, list (of PrInfo or dict), message.
@@ -445,7 +465,6 @@ Args:
     line (int, optional): 行号，用于行级评论。
     side (str): 左右侧，默认 "RIGHT"。
     commit_id (str, optional): 提交 ID，部分平台需要。
-    **kwargs: 各平台扩展参数。
 
 Returns:
     dict: 包含 success、comment_id、message。
@@ -460,7 +479,6 @@ Args:
     line (int, optional): Line number for line-level comment.
     side (str): Side (e.g. "RIGHT"), default "RIGHT".
     commit_id (str, optional): Commit ID, required on some platforms.
-    **kwargs: Platform-specific extra arguments.
 
 Returns:
     dict: success, comment_id, message.
@@ -477,7 +495,6 @@ Args:
     event (str): 事件类型，如 APPROVE、REQUEST_CHANGES、COMMENT。
     body (str): 评审总结正文，可选。
     comment_ids (list, optional): 要一并提交的评论 ID 列表。
-    **kwargs: 各平台扩展参数。
 
 Returns:
     dict: 包含 success、message。
@@ -490,7 +507,6 @@ Args:
     event (str): Event type, e.g. APPROVE, REQUEST_CHANGES, COMMENT.
     body (str): Review summary body, optional.
     comment_ids (list, optional): Comment IDs to submit with the review.
-    **kwargs: Platform-specific extra arguments.
 
 Returns:
     dict: success, message.
@@ -504,7 +520,6 @@ _add_git_chinese('LazyLLMGitBase.approve_pull_request', '''\
 
 Args:
     number (int): PR/MR 编号。
-    **kwargs: 各平台扩展参数。
 
 Returns:
     dict: 包含 success、message。
@@ -514,7 +529,6 @@ Approve a PR/MR.
 
 Args:
     number (int): PR/MR number.
-    **kwargs: Platform-specific extra arguments.
 
 Returns:
     dict: success, message.
@@ -531,7 +545,6 @@ Args:
     merge_method (str, optional): 合并方式（如 merge、squash、rebase），依平台而定。
     commit_title (str, optional): 合并提交标题。
     commit_message (str, optional): 合并提交说明。
-    **kwargs: 各平台扩展参数。
 
 Returns:
     dict: 包含 success、sha、message。
@@ -544,13 +557,190 @@ Args:
     merge_method (str, optional): Merge method (e.g. merge, squash, rebase), platform-dependent.
     commit_title (str, optional): Merge commit title.
     commit_message (str, optional): Merge commit message.
-    **kwargs: Platform-specific extra arguments.
 
 Returns:
     dict: success, sha, message.
 ''')
 _add_git_example('LazyLLMGitBase.merge_pull_request', '''\
 >>> backend.merge_pull_request(1, merge_method='squash')
+''')
+
+_add_git_chinese('LazyLLMGitBase.list_repo_stargazers', '''\
+列出给仓库加星的用户列表。
+
+Args:
+    page (int): 页码，默认 1。
+    per_page (int): 每页数量，默认 20。
+
+Returns:
+    dict: 包含 success、list、message。部分平台可能返回不支持。
+''')
+_add_git_english('LazyLLMGitBase.list_repo_stargazers', '''\
+List users who starred the repository.
+
+Args:
+    page (int): Page number, default 1.
+    per_page (int): Items per page, default 20.
+
+Returns:
+    dict: success, list, message. Some platforms may return not supported.
+''')
+_add_git_example('LazyLLMGitBase.list_repo_stargazers', '''\
+>>> backend.list_repo_stargazers(page=1, per_page=20)
+''')
+
+_add_git_chinese('LazyLLMGitBase.reply_to_review_comment', '''\
+回复某条评审评论。
+
+Args:
+    number (int): PR/MR 编号。
+    comment_id: 被回复的评论 ID。
+    body (str): 回复内容。
+    path (str): 文件路径。
+    line (int, optional): 行号。
+    commit_id (str, optional): 提交 ID。
+
+Returns:
+    dict: 包含 success、comment_id、message。
+''')
+_add_git_english('LazyLLMGitBase.reply_to_review_comment', '''\
+Reply to a review comment.
+
+Args:
+    number (int): PR/MR number.
+    comment_id: ID of the comment to reply to.
+    body (str): Reply body.
+    path (str): File path.
+    line (int, optional): Line number.
+    commit_id (str, optional): Commit ID.
+
+Returns:
+    dict: success, comment_id, message.
+''')
+_add_git_example('LazyLLMGitBase.reply_to_review_comment', '''\
+>>> backend.reply_to_review_comment(1, 101, 'Agreed', 'src/foo.py')
+''')
+
+_add_git_chinese('LazyLLMGitBase.resolve_review_comment', '''\
+将某条评审评论标记为已解决（若平台支持）。
+
+Args:
+    number (int): PR/MR 编号。
+    comment_id: 评论 ID。
+
+Returns:
+    dict: 包含 success、message。
+''')
+_add_git_english('LazyLLMGitBase.resolve_review_comment', '''\
+Mark a review comment as resolved (if supported by the platform).
+
+Args:
+    number (int): PR/MR number.
+    comment_id: Comment ID.
+
+Returns:
+    dict: success, message.
+''')
+_add_git_example('LazyLLMGitBase.resolve_review_comment', '''\
+>>> backend.resolve_review_comment(1, 101)
+''')
+
+_add_git_chinese('LazyLLMGitBase.get_user_info', '''\
+获取用户信息。
+
+Args:
+    username (str, optional): 用户名；不传则返回构造时 user 或 token 对应用户。
+
+Returns:
+    dict: 包含 success、user、message。
+''')
+_add_git_english('LazyLLMGitBase.get_user_info', '''\
+Get user profile.
+
+Args:
+    username (str, optional): Username; if None, returns instance user or token owner.
+
+Returns:
+    dict: success, user, message.
+''')
+_add_git_example('LazyLLMGitBase.get_user_info', '''\
+>>> backend.get_user_info('octocat')
+''')
+
+_add_git_chinese('LazyLLMGitBase.list_user_starred_repos', '''\
+列出用户加星过的仓库。
+
+Args:
+    username (str, optional): 用户名；不传则使用构造时 user 或 token 对应用户。
+    page (int): 页码，默认 1。
+    per_page (int): 每页数量，默认 20。
+
+Returns:
+    dict: 包含 success、list、message。
+''')
+_add_git_english('LazyLLMGitBase.list_user_starred_repos', '''\
+List repositories starred by a user.
+
+Args:
+    username (str, optional): Username; if None, uses instance user or token owner.
+    page (int): Page number, default 1.
+    per_page (int): Items per page, default 20.
+
+Returns:
+    dict: success, list, message.
+''')
+_add_git_example('LazyLLMGitBase.list_user_starred_repos', '''\
+>>> backend.list_user_starred_repos(username='octocat')
+''')
+
+_add_git_chinese('LazyLLMGitBase.stash_review_comment', '''\
+将一条评审评论暂存，之后可用 batch_commit_review_comments 批量提交。
+
+Args:
+    number (int): PR/MR 编号。
+    body (str): 评论内容。
+    path (str): 文件路径。
+    line (int, optional): 行号。
+
+Returns:
+    dict: 包含 success、message、stash_size。
+''')
+_add_git_english('LazyLLMGitBase.stash_review_comment', '''\
+Stash a review comment for later batch submit via batch_commit_review_comments.
+
+Args:
+    number (int): PR/MR number.
+    body (str): Comment body.
+    path (str): File path.
+    line (int, optional): Line number.
+
+Returns:
+    dict: success, message, stash_size.
+''')
+_add_git_example('LazyLLMGitBase.stash_review_comment', '''\
+>>> backend.stash_review_comment(1, 'Fix this', 'src/foo.py', line=10)
+''')
+
+_add_git_chinese('LazyLLMGitBase.batch_commit_review_comments', '''\
+将暂存的评审评论批量提交到 PR/MR。
+
+Args:
+    clear_stash (bool): 提交后是否清空暂存，默认 True。
+
+Returns:
+    dict: 包含 success、message、created。
+''')
+_add_git_english('LazyLLMGitBase.batch_commit_review_comments', '''\
+Submit all stashed review comments to the PR/MR.
+
+Args:
+    clear_stash (bool): Whether to clear stash after submit, default True.
+
+Returns:
+    dict: success, message, created.
+''')
+_add_git_example('LazyLLMGitBase.batch_commit_review_comments', '''\
+>>> backend.batch_commit_review_comments(clear_stash=True)
 ''')
 
 _add_git_chinese('LazyLLMGitBase.check_review_resolution', '''\

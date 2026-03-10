@@ -2,7 +2,9 @@
 import re
 import subprocess
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import requests
 
 from lazyllm.module import ModuleBase
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
@@ -76,13 +78,27 @@ class ReviewCommentInfo:
 
 
 class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
-    def __init__(self, token: str, repo: str, api_base: Optional[str] = None,
-                 return_trace: bool = False, **kwargs):
+    def __init__(self, token: str, repo: Optional[str] = None, api_base: Optional[str] = None,
+                 user: Optional[str] = None, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         self._token = token
-        self._repo = repo.strip().strip('/')
+        self._repo = (repo or '').strip().strip('/')
         self._api_base = (api_base or '').rstrip('/')
-        self._kwargs = kwargs
+        self._user = (user or '').strip() or None
+        self._session = requests.Session()
+
+    def _parse_owner_repo(self, repo: str) -> Tuple[str, str]:
+        parts = repo.split('/', 1)
+        if len(parts) != 2:
+            raise ValueError(f'repo must be \'owner/repo\', got: {repo!r}')
+        return parts[0], parts[1]
+
+    def _require_repo(self) -> None:
+        if not self._repo:
+            raise ValueError(
+                f'repo is not set; pass repo when constructing {self.__class__.__name__} '
+                'to use repo-related APIs.'
+            )
 
     def push_branch(self, local_branch: str, remote_branch: Optional[str] = None,
                     remote_name: str = 'origin', repo_path: Optional[str] = None) -> Dict[str, Any]:
@@ -109,13 +125,12 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
 
     @abstractmethod
     def create_pull_request(self, source_branch: str, target_branch: str,
-                            title: str, body: str = '', **kwargs) -> Dict[str, Any]:
+                            title: str, body: str = '') -> Dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod
     def update_pull_request(self, number: int, title: Optional[str] = None,
-                            body: Optional[str] = None, state: Optional[str] = None,
-                            **kwargs) -> Dict[str, Any]:
+                            body: Optional[str] = None, state: Optional[str] = None) -> Dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod
@@ -128,7 +143,7 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
 
     @abstractmethod
     def list_pull_requests(self, state: str = 'open', head: Optional[str] = None,
-                           base: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+                           base: Optional[str] = None) -> Dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod
@@ -142,22 +157,45 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
     @abstractmethod
     def create_review_comment(self, number: int, body: str, path: str,
                               line: Optional[int] = None, side: str = 'RIGHT',
-                              commit_id: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+                              commit_id: Optional[str] = None) -> Dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod
     def submit_review(self, number: int, event: str, body: str = '',
-                      comment_ids: Optional[List[Any]] = None, **kwargs) -> Dict[str, Any]:
+                      comment_ids: Optional[List[Any]] = None) -> Dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod
-    def approve_pull_request(self, number: int, **kwargs) -> Dict[str, Any]:
+    def approve_pull_request(self, number: int) -> Dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod
     def merge_pull_request(self, number: int, merge_method: Optional[str] = None,
                            commit_title: Optional[str] = None,
-                           commit_message: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+                           commit_message: Optional[str] = None) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_repo_stargazers(self, page: int = 1, per_page: int = 20) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def reply_to_review_comment(self, number: int, comment_id: Any, body: str,
+                                path: str, line: Optional[int] = None,
+                                commit_id: Optional[str] = None) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def resolve_review_comment(self, number: int, comment_id: Any) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_user_info(self, username: Optional[str] = None) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_user_starred_repos(self, username: Optional[str] = None,
+                                page: int = 1, per_page: int = 20) -> Dict[str, Any]:
         raise NotImplementedError
 
     def check_review_resolution(self, number: int, comment_ids: Optional[List[Any]] = None
@@ -181,3 +219,43 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
                 'override check_review_resolution for platform-specific logic.'
             ),
         }
+
+    def _stashed_comments(self) -> List[Dict[str, Any]]:
+        if not hasattr(self, '_comment_stash'):
+            self._comment_stash = []
+        return self._comment_stash
+
+    def stash_review_comment(self, number: int, body: str, path: str,
+                             line: Optional[int] = None) -> Dict[str, Any]:
+        self._require_repo()
+        self._stashed_comments().append({
+            'number': number,
+            'body': body,
+            'path': path,
+            'line': line,
+        })
+        return {'success': True, 'message': 'stashed', 'stash_size': len(self._stashed_comments())}
+
+    def batch_commit_review_comments(self, clear_stash: bool = True) -> Dict[str, Any]:
+        self._require_repo()
+        stash = self._stashed_comments()
+        if not stash:
+            return {'success': True, 'message': 'no stashed comments', 'created': 0}
+        created = 0
+        errors = []
+        for item in stash:
+            r = self.create_review_comment(
+                number=item['number'],
+                body=item['body'],
+                path=item['path'],
+                line=item.get('line'),
+            )
+            if r.get('success'):
+                created += 1
+            else:
+                errors.append(r.get('message', 'unknown'))
+        if clear_stash:
+            stash.clear()
+        if errors:
+            return {'success': False, 'message': '; '.join(errors), 'created': created}
+        return {'success': True, 'message': 'committed', 'created': created}
