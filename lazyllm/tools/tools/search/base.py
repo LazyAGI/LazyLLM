@@ -33,6 +33,7 @@ def _make_result(title: str, url: str, snippet: str = '', source: str = '', **ex
     return item
 
 
+# TODO: add tests after key is ready
 class SearchBase(ModuleBase):
 
     def __init__(self, source_name: str = '', **kwargs):
