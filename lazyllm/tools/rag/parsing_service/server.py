@@ -2,13 +2,12 @@ import json
 import threading
 import time
 import traceback
-import cloudpickle
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional, List
 
 from lazyllm import (
     LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app,
-    LazyLLMLaunchersBase as Launcher, once_wrapper
+    LazyLLMLaunchersBase as Launcher, load_obj, once_wrapper, dump_obj
 )
 from lazyllm.thirdparty import fastapi
 
@@ -159,7 +158,7 @@ class DocumentProcessor(ModuleBase):
                     'node_groups': node_groups,
                     'schema_extractor': schema_extractor,
                 }
-                info_pickle = cloudpickle.dumps(info_dict)
+                info_pickle = dump_obj(info_dict)
                 with self._db_manager.get_session() as session:
                     AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
                     existing_algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == name).first()
@@ -280,7 +279,7 @@ class DocumentProcessor(ModuleBase):
                 if algorithm is None:
                     raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
                 info_pickle_bytes = algorithm.get('info_pickle')
-                info = cloudpickle.loads(info_pickle_bytes)
+                info = load_obj(info_pickle_bytes)
                 store: _DocumentStore = info['store']  # type: ignore
                 node_groups = info['node_groups']
 

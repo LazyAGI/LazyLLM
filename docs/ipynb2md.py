@@ -28,6 +28,7 @@ def convert_ipynb_to_md(ipynb_path: str):
     ipynb_path = Path(ipynb_path)
     notebook_name = ipynb_path.stem
     output_dir = EN_OUTPUT_DIR if notebook_name.endswith('.en') else ZH_OUTPUT_DIR
+    notebook_name = notebook_name.replace('.en', '')
     md_path = output_dir / f'{notebook_name}.md'
     os.makedirs(md_path.parent, exist_ok=True)
 

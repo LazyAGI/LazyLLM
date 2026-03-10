@@ -121,7 +121,11 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def __new__(cls, *args, **kw):
         if url := kw.pop('url', None):
             name = kw.pop('name', None)
-            assert not args and not kw, 'Only `name` is supported with `url`'
+            if args or kw:
+                raise TypeError(
+                    f"When 'url' is provided, only 'name' is allowed. "
+                    f'Got args={args}, extra kwargs={kw}'
+                )
             return UrlDocument(url, name)
         else:
             return super().__new__(cls)
