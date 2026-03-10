@@ -1,7 +1,7 @@
 import re
 from typing import Any, Dict, List
 
-from lazyllm.thirdparty import httpx
+from lazyllm.thirdparty import httpx, xml
 
 from .base import SearchBase, _make_result
 
@@ -11,7 +11,7 @@ class ArxivSearch(SearchBase):
     def __init__(self, timeout: int = 15, source_name: str = 'arxiv'):
         super().__init__(source_name=source_name)
         self._timeout = timeout
-        self._url = 'http://export.arxiv.org/api/query'
+        self._url = 'https://export.arxiv.org/api/query'
 
     def get_content(self, item: Dict[str, Any]) -> str:
         url = item.get('url') or ''
@@ -29,11 +29,10 @@ class ArxivSearch(SearchBase):
             text = resp.text
         except Exception:
             return super().get_content(item)
-        import xml.etree.ElementTree as ET
         ns = {'atom': 'http://www.w3.org/2005/Atom'}
         try:
-            root = ET.fromstring(text)
-        except ET.ParseError:
+            root = xml.etree.ElementTree.fromstring(text)
+        except xml.etree.ElementTree.ParseError:
             return super().get_content(item)
         for entry in root.findall('atom:entry', ns):
             summary_el = entry.find('atom:summary', ns)
@@ -56,11 +55,10 @@ class ArxivSearch(SearchBase):
             text = resp.text
         except Exception:
             return []
-        import xml.etree.ElementTree as ET
         ns = {'atom': 'http://www.w3.org/2005/Atom'}
         try:
-            root = ET.fromstring(text)
-        except ET.ParseError:
+            root = xml.etree.ElementTree.fromstring(text)
+        except xml.etree.ElementTree.ParseError:
             return []
         out: List[dict] = []
         for entry in root.findall('atom:entry', ns):

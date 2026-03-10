@@ -76,9 +76,10 @@ class StackOverflowSearch(SearchBase):
         for it in items:
             link = it.get('link', '')
             title = it.get('title', '')
-            snippet = it.get('body', '')[:500] if it.get('body') else ''
-            if snippet and len(it.get('body', '')) > 500:
-                snippet = snippet + '...'
+            body = it.get('body', '')
+            snippet = body[:500]
+            if len(body) > 500:
+                snippet += '...'
             out.append(_make_result(
                 title=title,
                 url=link,

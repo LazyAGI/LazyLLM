@@ -32,7 +32,7 @@ class GoogleBooksSearch(SearchBase):
             link = it.get('volumeInfo', {}).get('infoLink') or it.get('selfLink', '')
             snippet = vol.get('description', '') or vol.get('subtitle', '')
             if snippet and len(snippet) > 500:
-                snippet = snippet[:500] + '...'
+                snippet = snippet[:497] + '...'
             authors = vol.get('authors', [])
             out.append(_make_result(
                 title=title,

@@ -51,7 +51,7 @@ class SearchBase(ModuleBase):
             return self.search(query, **kwargs)
         except Exception as err:
             import lazyllm
-            lazyllm.LOG.error('Search request failed: %s', err)
+            lazyllm.LOG.error('Search request failed: %s', type(err).__name__)
             return []
 
     def get_content(self, item: Dict[str, Any]) -> str:
