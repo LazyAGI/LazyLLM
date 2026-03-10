@@ -193,3 +193,99 @@ class TestText2SQLOperators:
         # thresholds [2, 5, 9], labels ['extra', 'hard', 'medium', 'easy']
         # score 10 > 9 -> labels[-1] -> 'easy'
         assert res[0]['sql_execution_difficulty'] == 'easy'
+
+    def test_text2sql_to_sft_formatter_basic(self):
+        """测试 Text2SQLToSFTFormatter - basic 格式"""
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='basic')
+        data = {
+            'output': {
+                'prompt': 'Database Schema:\nCREATE TABLE users...',
+                'question': 'Show all users',
+                'SQL': 'SELECT * FROM users',
+                'cot_reasoning': 'Step 1: Identify table...'
+            }
+        }
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['instruction'] == 'Database Schema:\nCREATE TABLE users...'
+        assert res[0]['input'] == ''
+        assert res[0]['output'] == 'SELECT * FROM users'
+
+    def test_text2sql_to_sft_formatter_simple(self):
+        """测试 Text2SQLToSFTFormatter - simple 格式"""
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='simple')
+        data = {
+            'output': {
+                'prompt': 'Database Schema:\nCREATE TABLE users...',
+                'question': 'Show all users',
+                'SQL': 'SELECT * FROM users',
+                'cot_reasoning': 'Step 1: Identify table...'
+            }
+        }
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['instruction'] == 'Show all users'
+        assert res[0]['input'] == ''
+        assert res[0]['output'] == 'SELECT * FROM users'
+
+    def test_text2sql_to_sft_formatter_cot(self):
+        """测试 Text2SQLToSFTFormatter - cot 格式（默认）"""
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
+        data = {
+            'output': {
+                'prompt': 'Database Schema:\nCREATE TABLE users...',
+                'question': 'Show all users',
+                'SQL': 'SELECT * FROM users',
+                'cot_reasoning': 'Step 1: Identify table\nStep 2: Select all'
+            }
+        }
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['instruction'] == 'Database Schema:\nCREATE TABLE users...'
+        assert res[0]['input'] == ''
+        # 输出应包含 cot_reasoning 和 SQL
+        assert 'Step 1: Identify table' in res[0]['output']
+        assert 'SELECT * FROM users' in res[0]['output']
+
+    def test_text2sql_to_sft_formatter_flat_structure(self):
+        """测试 Text2SQLToSFTFormatter - 扁平数据结构"""
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
+        # 测试扁平结构（没有嵌套 output）
+        data = {
+            'prompt': 'Database Schema:\nCREATE TABLE orders...',
+            'question': 'Count orders',
+            'SQL': 'SELECT COUNT(*) FROM orders',
+            'cot_reasoning': 'Step 1: Count records'
+        }
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['instruction'] == 'Database Schema:\nCREATE TABLE orders...'
+        assert res[0]['output'] == '<think>\nStep 1: Count records\n</think>\n\nSELECT COUNT(*) FROM orders'
+
+    def test_text2sql_to_sft_formatter_missing_sql(self):
+        """测试 Text2SQLToSFTFormatter - 缺少 SQL 字段应返回空列表"""
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
+        data = {
+            'output': {
+                'prompt': 'Some prompt',
+                'question': 'Some question'
+                # 缺少 SQL 字段
+            }
+        }
+        res = op([data])
+        assert len(res) == 0
+
+    def test_text2sql_to_sft_formatter_missing_cot(self):
+        """测试 Text2SQLToSFTFormatter - 缺少 CoT 时只输出 SQL"""
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
+        data = {
+            'output': {
+                'prompt': 'Database Schema:\nCREATE TABLE users...',
+                'question': 'Show all users',
+                'SQL': 'SELECT * FROM users'
+                # 缺少 cot_reasoning 字段
+            }
+        }
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['output'] == 'SELECT * FROM users'

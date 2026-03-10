@@ -40,3 +40,11 @@ def build_text2sql_full_pipeline(model, database_manager, embedding_model=None,
             num_generations=num_generations
         )
     return ppl
+
+
+def build_text2sql_sft_pipeline(format_type='cot'):
+    with pipeline() as ppl:
+        ppl.sql_sft_formatter = text2sql_ops.Text2SQLToSFTFormatter(
+            format_type=format_type
+        )
+    return ppl

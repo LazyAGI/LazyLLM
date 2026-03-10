@@ -912,3 +912,63 @@ class SQLEffortRanker(Text2SQLOps):
             data[output_difficulty_key] = 'gold error'
 
         return data
+
+
+class Text2SQLToSFTFormatter(Text2SQLOps):
+    FORMAT_BASIC = 'basic'
+    FORMAT_SIMPLE = 'simple'
+    FORMAT_COT = 'cot'
+
+    def __init__(self, format_type=FORMAT_COT, **kwargs):
+        super().__init__(**kwargs)
+        self.format_type = format_type
+
+    def _extract_data(self, data):
+        if 'output' in data:
+            output_data = data['output']
+            prompt = output_data.get('prompt', '')
+            question = output_data.get('question', '')
+            sql = output_data.get('SQL', '')
+            cot_reasoning = output_data.get('cot_reasoning', '')
+        else:
+            prompt = data.get('prompt', '')
+            question = data.get('question', '')
+            sql = data.get('SQL', '')
+            cot_reasoning = data.get('cot_reasoning', '')
+        return prompt, question, sql, cot_reasoning
+
+    def forward(self, data, **kwargs):
+        assert isinstance(data, dict)
+
+        prompt, question, sql, cot_reasoning = self._extract_data(data)
+
+        if not sql:
+            LOG.warning('Missing SQL field, skipping this item')
+            return []
+
+        if self.format_type == self.FORMAT_BASIC:
+            messages = prompt
+            output_text = sql
+        elif self.format_type == self.FORMAT_SIMPLE:
+            messages = question if question else prompt
+            output_text = sql
+        elif self.format_type == self.FORMAT_COT:
+            messages = prompt
+            if cot_reasoning:
+                output_text = f'<think>\n{cot_reasoning}\n</think>\n\n{sql}'
+            else:
+                output_text = sql
+        else:
+            LOG.warning(f'Unknown format_type: {self.format_type}, using cot format')
+            messages = prompt
+            output_text = sql
+
+        if not messages:
+            LOG.warning('Empty messages content, skipping this item')
+            return []
+
+        return {
+            'instruction': messages,
+            'input': '',
+            'output': output_text
+        }
