@@ -87,9 +87,13 @@ class SqlManager(DBManager):
         except pydantic.ValidationError as e:
             raise ValueError(f'Validate tables_info_dict failed: {str(e)}')
 
-    def _sql_type_for(self, py_type: str):
+    def _sql_type_for(self, py_type: str, *, is_primary_key: bool = False):
         t = py_type.lower()
         if self._db_type in ('mysql', 'tidb', 'mysql+pymysql'):
+            # MySQL/TiDB do not allow TEXT/BLOB columns to be used as primary keys
+            # without a prefix length. Use VARCHAR for identifier-like key columns.
+            if is_primary_key and t in ('string', 'text'):
+                return sqlalchemy.String(255)
             if t == 'list':
                 return sqlalchemy.JSON
             if t == 'uuid':
@@ -106,8 +110,8 @@ class SqlManager(DBManager):
                 column_name = column_info.name
                 is_primary = column_info.is_primary_key
                 default_value = column_info.default
-                # Use text for unsupported column type
-                real_type = self.PYTYPE_TO_SQL_MAP.get(column_type, sqlalchemy.Text)
+                # Keep cross-db compatibility while handling MySQL/TiDB PK restrictions.
+                real_type = self._sql_type_for(column_type, is_primary_key=is_primary)
                 # Handle default value
                 if default_value is not None:
                     attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable,
