@@ -883,6 +883,13 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
         batch_size = getattr(fn, 'batch_size', None)
         return isinstance(batch_size, Integral) and batch_size > 1
 
+    def _check_empty_embedding_item(vec, embed_key: str, idx: int) -> None:
+        if vec is None:
+            raise ValueError(f'[LazyLLM - parallel_do_embedding][{embed_key}] invalid embedding at index {idx}: None')
+        if isinstance(vec, (list, dict)) and len(vec) == 0:
+            raise ValueError(f'[LazyLLM - parallel_do_embedding][{embed_key}] '
+                             f'invalid embedding at index {idx}: empty {type(vec).__name__}')
+
     def _process_key(k: str, knodes: List[DocNode]):
         try:
             fn = embed[k]
@@ -892,7 +899,8 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
                 if len(vecs) != len(texts):
                     raise ValueError(f'[LazyLLM - parallel_do_embedding][{k}] batch size mismatch: '
                                      f'[text_num:{len(texts)}] vs [vec_num:{len(vecs)}]')
-                for n, v in zip(knodes, vecs):
+                for idx, (n, v) in enumerate(zip(knodes, vecs)):
+                    _check_empty_embedding_item(v, k, idx)
                     n.set_embedding(k, v)
                 return
 

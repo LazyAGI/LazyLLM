@@ -9,7 +9,7 @@ from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 from lazyllm.common.bind import _MetaBind
 
-from .doc_manager import DocManager
+from .doc_service import DocServer
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files, SchemaExtractor
@@ -43,7 +43,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
                      display_name: Optional[str] = '', description: Optional[str] = 'algorithm description',
-                     schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
+                     schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
+                     doc_server_port: Optional[int] = None):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -69,7 +70,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 store=store_conf, processor=processor, algo_name=name, display_name=display_name,
                 description=description, schema_extractor=schema_extractor)})
 
-            if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
+            if manager:
+                self._manager = DocServer(launcher=self._launcher, storage_dir=dataset_path, port=doc_server_port)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
             if server: self._kbs = ServerModule(self._kbs, port=(None if isinstance(server, bool) else int(server)))
             self._global_metadata_desc = doc_fields
@@ -99,7 +101,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 if isinstance(embed, ModuleBase): self._submodules.append(embed)
             return m
 
-        def add_kb_group(self, name, doc_fields: Optional[Dict[str, DocField]] = None, store_conf: Optional[Dict] = None,
+        def add_kb_group(self, name, doc_fields: Optional[Dict[str, DocField]] = None,
+                         store_conf: Optional[Dict] = None,
                          embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                          schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
             embed = self._get_embeds(embed) if embed else self._embed
@@ -138,7 +141,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
                  store_conf: Optional[Dict] = None, display_name: Optional[str] = '',
                  description: Optional[str] = 'algorithm description',
-                 schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
+                 schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
+                 doc_server_port: Optional[int] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -179,7 +183,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
                                               doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
                                               display_name=display_name, description=description,
-                                              schema_extractor=schema_extractor)
+                                              schema_extractor=schema_extractor,
+                                              doc_server_port=doc_server_port)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
         self._graph_document: weakref.ref = None

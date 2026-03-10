@@ -72,6 +72,7 @@ class TaskType(str, Enum):
     DOC_DELETE = 'DOC_DELETE'
     DOC_UPDATE_META = 'DOC_UPDATE_META'
     DOC_REPARSE = 'DOC_REPARSE'
+    DOC_TRANSFER = 'DOC_TRANSFER'
 
 
 def _get_task_type_weight(task_type: str) -> int:
@@ -81,6 +82,7 @@ def _get_task_type_weight(task_type: str) -> int:
         TaskType.DOC_UPDATE_META.value: 30,
         TaskType.DOC_ADD.value: 100,
         TaskType.DOC_REPARSE.value: 100,
+        TaskType.DOC_TRANSFER.value: 100,
     }
     return weight_map.get(task_type, 100)
 

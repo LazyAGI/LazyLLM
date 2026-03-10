@@ -278,6 +278,12 @@ class DocumentProcessorWorker(ModuleBase):
         LOG.info('[DocumentProcessorWorker] Worker started')
         return result
 
+    def wait(self):
+        impl = self._worker_impl
+        if isinstance(impl, ServerModule):
+            return impl.wait()
+        LOG.warning('[DocumentProcessorWorker] wait() is no-op in local mode')
+
     def stop(self):
         LOG.info('[DocumentProcessorWorker] Stopping worker...')
         self._dispatch('shutdown')

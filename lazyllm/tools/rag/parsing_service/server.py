@@ -496,6 +496,12 @@ class DocumentProcessor(ModuleBase):
                 raise
         return result
 
+    def wait(self):
+        impl = self._impl
+        if isinstance(impl, ServerModule):
+            return impl.wait()
+        LOG.warning('[DocumentProcessor] wait() is no-op in UrlModule mode')
+
     def _dispatch(self, method: str, *args, **kwargs):
         try:
             impl = self._impl
