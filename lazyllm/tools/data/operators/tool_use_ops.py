@@ -265,6 +265,9 @@ class ProtocolSpecifier(ToolUseOps):
         assert isinstance(data, dict)
         task = data.get(self.task_key, None)
         subtasks = data.get(self.subtask_key, None)
+        # If task is a list, take the first element
+        if isinstance(task, list) and len(task) > 0:
+            task = task[0]
         if task is None or task == '':
             data[self.output_key] = []
             return data
@@ -320,6 +323,9 @@ class DialogueSimulator(ToolUseOps):
         assert isinstance(data, dict)
         task = data.get(self.task_key, None)
         functions = data.get(self.functions_key, None)
+        # If task is a list, take the first element
+        if isinstance(task, list) and len(task) > 0:
+            task = task[0]
         if task is None or task == '':
             data[self.output_key] = []
             return data
@@ -334,3 +340,137 @@ class DialogueSimulator(ToolUseOps):
         parsed = self.model(instruction)
         data[self.output_key] = parsed if parsed is not None else []
         return data
+
+
+class ToolUseToSFTFormatter(ToolUseOps):
+    FORMAT_ALPACA = 'alpaca'
+    FORMAT_CHATML = 'chatml'
+
+    def __init__(self, format_type=FORMAT_CHATML, system_prompt=None, **kwargs):
+        super().__init__(**kwargs)
+        self.format_type = format_type
+        self.system_prompt = system_prompt or '你是一个助手，可以使用工具来帮助用户。'
+
+    def _format_functions(self, functions):
+        if not functions:
+            return '[]'
+        return json.dumps(functions, ensure_ascii=False, indent=2)
+
+    def _convert_to_alpaca(self, data):
+        content = data.get('content', '')
+        functions = data.get('functions', [])
+        conversation = data.get('conversation', {})
+        messages = conversation.get('messages', [])
+
+        tools_text = self._format_functions(functions)
+
+        instruction = f'{self.system_prompt}\n\n可用工具：\n{tools_text}\n\n用户问题：{content}'
+
+        output_parts = []
+        final_response = ''
+
+        for msg in messages:
+            if msg.get('role') == 'assistant':
+                msg_content = msg.get('content', '')
+                if '调用' in msg_content or '函数' in msg_content or '工具' in msg_content:
+                    for func in functions:
+                        func_name = func.get('name', '')
+                        if func_name and func_name in msg_content:
+                            output_parts.append(f'<tool>{func_name}</tool>')
+                elif msg_content and not output_parts:
+                    final_response = msg_content
+                elif msg_content:
+                    final_response = msg_content
+
+        if output_parts:
+            output = '\n'.join(output_parts)
+            if final_response:
+                output += f'\n\n{final_response}'
+        else:
+            output = final_response or messages[-1].get('content', '') if messages else ''
+
+        return {
+            'instruction': instruction,
+            'input': '',
+            'output': output
+        }
+
+    def _convert_to_chatml(self, data):
+        content = data.get('content', '')
+        functions = data.get('functions', [])
+        conversation = data.get('conversation', {})
+        messages = conversation.get('messages', [])
+
+        output_messages = []
+
+        tools_text = self._format_functions(functions)
+        system_content = f'{self.system_prompt}\n\n可用工具：\n{tools_text}'
+        output_messages.append({
+            'role': 'system',
+            'content': system_content
+        })
+
+        output_messages.append({
+            'role': 'user',
+            'content': content
+        })
+
+        tool_call_id = 0
+        for msg in messages:
+            role = msg.get('role')
+            msg_content = msg.get('content', '')
+
+            if role == 'assistant':
+                is_tool_call = False
+                tool_calls = []
+
+                for func in functions:
+                    func_name = func.get('name', '')
+                    if func_name and func_name in msg_content:
+                        is_tool_call = True
+                        tool_calls.append({
+                            'id': f'call_{tool_call_id}',
+                            'type': 'function',
+                            'function': {
+                                'name': func_name,
+                                'arguments': '{}'
+                            }
+                        })
+                        tool_call_id += 1
+
+                if is_tool_call and tool_calls:
+                    output_messages.append({
+                        'role': 'assistant',
+                        'content': None,
+                        'tool_calls': tool_calls
+                    })
+                else:
+                    output_messages.append({
+                        'role': 'assistant',
+                        'content': msg_content
+                    })
+
+            elif role == 'tool':
+                output_messages.append({
+                    'role': 'tool',
+                    'tool_call_id': f'call_{tool_call_id - 1}',
+                    'content': msg_content
+                })
+
+        return {'messages': output_messages}
+
+    def forward(self, data, **kwargs):
+        if isinstance(data, list):
+            return [self.forward(item, **kwargs) for item in data]
+
+        assert isinstance(data, dict)
+
+        if 'conversation' not in data or 'functions' not in data:
+            return []
+
+        if self.format_type == self.FORMAT_ALPACA:
+            return self._convert_to_alpaca(data)
+        elif self.format_type == self.FORMAT_CHATML:
+            return self._convert_to_chatml(data)
+        else:
+            return self._convert_to_alpaca(data)
