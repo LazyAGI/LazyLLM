@@ -1,4 +1,5 @@
-from typing import List
+import re
+from typing import Any, Dict, List
 
 from lazyllm.thirdparty import httpx
 
@@ -11,6 +12,34 @@ class ArxivSearch(SearchBase):
         super().__init__(source_name=source_name)
         self._timeout = timeout
         self._url = 'http://export.arxiv.org/api/query'
+
+    def get_content(self, item: Dict[str, Any]) -> str:
+        url = item.get('url') or ''
+        m = re.search(r'/abs/([\d.]+(?:v\d+)?)', url) if url else None
+        if not m:
+            return super().get_content(item)
+        arxiv_id = m.group(1)
+        try:
+            resp = httpx.get(
+                self._url,
+                params={'id_list': arxiv_id},
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            text = resp.text
+        except Exception:
+            return super().get_content(item)
+        import xml.etree.ElementTree as ET
+        ns = {'atom': 'http://www.w3.org/2005/Atom'}
+        try:
+            root = ET.fromstring(text)
+        except ET.ParseError:
+            return super().get_content(item)
+        for entry in root.findall('atom:entry', ns):
+            summary_el = entry.find('atom:summary', ns)
+            if summary_el is not None and summary_el.text:
+                return summary_el.text.strip().replace('\n', ' ')
+        return super().get_content(item)
 
     def search(self, query: str, max_results: int = 10,
                sort_by: str = 'relevance') -> List[dict]:

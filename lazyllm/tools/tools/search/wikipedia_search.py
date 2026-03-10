@@ -1,5 +1,5 @@
 import re
-from typing import List
+from typing import Any, Dict, List
 from urllib.parse import quote
 
 from lazyllm.thirdparty import httpx
@@ -15,6 +15,29 @@ class WikipediaSearch(SearchBase):
         self._base_url = base_url.rstrip('/')
         self._api_url = f'{self._base_url}/w/api.php'
         self._timeout = timeout
+
+    def get_content(self, item: Dict[str, Any]) -> str:
+        extra = item.get('extra') or {}
+        pageid = extra.get('pageid')
+        if pageid is None:
+            return super().get_content(item)
+        params = {
+            'action': 'query',
+            'pageids': pageid,
+            'prop': 'extracts',
+            'explaintext': 1,
+            'exintro': 0,
+            'format': 'json',
+        }
+        try:
+            resp = httpx.get(self._api_url, params=params, timeout=self._timeout)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception:
+            return super().get_content(item)
+        pages = data.get('query', {}).get('pages') or {}
+        page = pages.get(str(pageid)) or {}
+        return (page.get('extract') or '').strip() or super().get_content(item)
 
     def search(self, query: str, limit: int = 10) -> List[dict]:
         params = {

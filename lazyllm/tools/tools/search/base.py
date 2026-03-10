@@ -1,6 +1,9 @@
+import re
+from html import unescape
 from typing import List, Dict, Any
 
 from lazyllm.module import ModuleBase
+from lazyllm.thirdparty import httpx
 
 
 _TITLE_KEY = 'title'
@@ -8,6 +11,14 @@ _URL_KEY = 'url'
 _SNIPPET_KEY = 'snippet'
 _SOURCE_KEY = 'source'
 _EXTRA_KEY = 'extra'
+
+
+def _html_to_text(html: str) -> str:
+    html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<[^>]+>', ' ', html)
+    html = html.replace('&nbsp;', ' ').replace('\n', ' ')
+    return unescape(re.sub(r'\s+', ' ', html).strip())
 
 
 def _make_result(title: str, url: str, snippet: str = '', source: str = '', **extra: Any) -> Dict[str, Any]:
@@ -42,3 +53,18 @@ class SearchBase(ModuleBase):
             import lazyllm
             lazyllm.LOG.error('Search request failed: %s', err)
             return []
+
+    def get_content(self, item: Dict[str, Any]) -> str:
+        url = item.get('url') or item.get('link') or ''
+        if not url:
+            return ''
+        timeout = getattr(self, '_timeout', 15)
+        try:
+            resp = httpx.get(url, timeout=timeout, follow_redirects=True)
+            resp.raise_for_status()
+            return _html_to_text(resp.text)
+        except Exception:
+            return ''
+
+    def get_contents(self, items: List[Dict[str, Any]]) -> List[str]:
+        return [self.get_content(it) for it in items]

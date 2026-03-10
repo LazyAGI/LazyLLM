@@ -30,14 +30,18 @@ add_chinese_doc('SearchBase.search', '''
 执行搜索并返回统一格式结果。子类必须重写此方法，参数由各子类自行定义。
 
 Returns:
-    List[Dict[str, Any]]: 每项至少包含 title, url, snippet, source；可选 extra。
+    List[Dict[str, Any]]: 每条结果至少包含 title (str), url (str), snippet (str), source (str)；
+    可选 extra (dict) 存放各引擎扩展字段（如 authors、pageid、score）。snippet 仅为摘要预览，
+    不包含完整正文；需正文可调用 get_content(item) 或 get_contents(items)。
 ''')
 
 add_english_doc('SearchBase.search', '''
 Run search and return unified results. Subclasses must override this method; parameters are defined by each subclass.
 
 Returns:
-    List[Dict[str, Any]]: Each item has at least title, url, snippet, source; optional extra.
+    List[Dict[str, Any]]: Each item has at least title (str), url (str), snippet (str), source (str);
+    optional extra (dict) for engine-specific fields (e.g. authors, pageid, score). snippet is only a
+    preview; for full body use get_content(item) or get_contents(items).
 ''')
 
 add_chinese_doc('SearchBase.forward', '''
@@ -46,6 +50,65 @@ add_chinese_doc('SearchBase.forward', '''
 
 add_english_doc('SearchBase.forward', '''
 Calls search(query, **kwargs) and returns the result. Arguments are passed through to the subclass search method.
+''')
+
+add_chinese_doc('SearchBase.get_content', '''
+根据单条搜索结果（search/forward 返回的 item）获取正文文本。
+
+默认行为：请求 item 的 url，将响应 HTML 转为纯文本返回。子类可重写以使用 API 获取正文（如 Wikipedia 词条全文、arXiv 摘要、Stack Overflow 问答正文等）。
+
+Args:
+    item (Dict[str, Any]): 至少包含 url 的搜索结果项（_make_result 格式）。
+
+Returns:
+    str: 正文文本；失败或无 url 时返回空字符串。
+''')
+
+add_english_doc('SearchBase.get_content', '''
+Fetch full body text for a single search result item (as returned by search/forward).
+
+Default: GET the item url and convert response HTML to plain text. Subclasses may override to use APIs (e.g. Wikipedia full page, arXiv abstract, Stack Overflow Q&A body).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url (_make_result format).
+
+Returns:
+    str: Body text; empty string on failure or when url is missing.
+''')
+
+add_chinese_doc('SearchBase.get_contents', '''
+根据多条搜索结果批量获取正文文本。
+
+Args:
+    items (List[Dict[str, Any]]): 搜索结果列表（_make_result 格式）。
+
+Returns:
+    List[str]: 与 items 一一对应的正文文本列表。
+''')
+
+add_english_doc('SearchBase.get_contents', '''
+Fetch full body text for multiple search result items.
+
+Args:
+    items (List[Dict[str, Any]]): List of search result items (_make_result format).
+
+Returns:
+    List[str]: List of body texts, one per item.
+''')
+
+add_example('SearchBase.get_content', '''
+from lazyllm.tools.tools import ArxivSearch
+engine = ArxivSearch()
+results = engine.forward('transformer')
+if results:
+    text = engine.get_content(results[0])
+''')
+
+add_example('SearchBase.get_contents', '''
+from lazyllm.tools.tools import WikipediaSearch
+wiki = WikipediaSearch()
+items = wiki.search('machine learning')
+texts = wiki.get_contents(items[:3])
 ''')
 
 add_chinese_doc('GoogleSearch', '''
@@ -114,7 +177,15 @@ Returns:
 add_example('GoogleSearch.search', '''
 from lazyllm.tools.tools import GoogleSearch
 google = GoogleSearch('<api_key>', '<search_engine_id>')
-res = google.search('商汤科技', date_restrict='m1')
+res = google.search('machine learning', date_restrict='m1')
+''')
+
+add_chinese_doc('GoogleSearch.get_content', '''
+使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+''')
+
+add_english_doc('GoogleSearch.get_content', '''
+Fetches the item url and returns HTML as plain text (base default).
 ''')
 
 add_chinese_doc('TencentSearch', '''
@@ -171,6 +242,14 @@ searcher = TencentSearch(secret_id='<id>', secret_key='<key>')
 res = searcher.search('calculus')
 ''')
 
+add_chinese_doc('TencentSearch.get_content', '''
+使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+''')
+
+add_english_doc('TencentSearch.get_content', '''
+Fetches the item url and returns HTML as plain text (base default).
+''')
+
 add_chinese_doc('BingSearch', '''
 Azure Bing Web Search API v7 封装。需要订阅密钥。
 
@@ -199,6 +278,14 @@ add_example('BingSearch', '''
 from lazyllm.tools.tools import BingSearch
 bing = BingSearch(subscription_key='<your_key>')
 res = bing('python tutorial', count=5)
+''')
+
+add_chinese_doc('BingSearch.get_content', '''
+使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+''')
+
+add_english_doc('BingSearch.get_content', '''
+Fetches the item url and returns HTML as plain text (base default).
 ''')
 
 add_chinese_doc('BingSearch.search', '''
@@ -250,7 +337,15 @@ How to get API key:
 add_example('BochaSearch', '''
 from lazyllm.tools.tools import BochaSearch
 bocha = BochaSearch(api_key='<your_key>')
-res = bocha('机器学习', count=5)
+res = bocha('machine learning', count=5)
+''')
+
+add_chinese_doc('BochaSearch.get_content', '''
+使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+''')
+
+add_english_doc('BochaSearch.get_content', '''
+Fetches the item url and returns HTML as plain text (base default).
 ''')
 
 add_chinese_doc('BochaSearch.search', '''
@@ -319,6 +414,14 @@ Returns:
     List[Dict[str, Any]]: 统一格式结果，extra 中可含 score、answer_count、is_answered 等。
 ''')
 
+add_chinese_doc('StackOverflowSearch.get_content', '''
+通过 Stack Exchange API 获取问题正文及采纳答案正文（需 item 的 url 含 question id）；返回纯文本，失败时回退为请求 url 页面。
+''')
+
+add_english_doc('StackOverflowSearch.get_content', '''
+Fetches question body and accepted answer body via Stack Exchange API (requires question id in item url); returns plain text, falls back to fetching url on failure.
+''')
+
 add_english_doc('StackOverflowSearch.search', '''
 Search Stack Exchange questions.
 
@@ -382,6 +485,14 @@ Returns:
     List[Dict[str, Any]]: Results in unified format; extra may include authors, year, citationCount.
 ''')
 
+add_chinese_doc('SemanticScholarSearch.get_content', '''
+优先用 extra.paperId 调 API 获取论文摘要；无 paperId 时返回 item.snippet，再失败则请求 url 页面。
+''')
+
+add_english_doc('SemanticScholarSearch.get_content', '''
+Uses extra.paperId to fetch abstract via API when available; otherwise returns item.snippet, then falls back to fetching url.
+''')
+
 add_chinese_doc('GoogleBooksSearch', '''
 Google Books API 书籍检索。API key 可选，带 key 配额更高。
 
@@ -407,6 +518,14 @@ add_example('GoogleBooksSearch', '''
 from lazyllm.tools.tools import GoogleBooksSearch
 books = GoogleBooksSearch()
 res = books('deep learning', max_results=5)
+''')
+
+add_chinese_doc('GoogleBooksSearch.get_content', '''
+使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+''')
+
+add_english_doc('GoogleBooksSearch.get_content', '''
+Fetches the item url and returns HTML as plain text (base default).
 ''')
 
 add_chinese_doc('GoogleBooksSearch.search', '''
@@ -477,6 +596,14 @@ Returns:
     List[Dict[str, Any]]: Results in unified format; extra may include authors, published.
 ''')
 
+add_chinese_doc('ArxivSearch.get_content', '''
+从 item.url 解析 arXiv id，调用 export API 获取完整摘要文本；失败时回退为请求 url 页面。
+''')
+
+add_english_doc('ArxivSearch.get_content', '''
+Parses arXiv id from item.url, fetches full abstract via export API; falls back to fetching url on failure.
+''')
+
 add_chinese_doc('WikipediaSearch', '''
 Wikipedia 全文搜索，基于 MediaWiki API。无需 API key，直接使用。
 
@@ -529,6 +656,14 @@ Returns:
 
 add_example('WikipediaSearch.search', '''
 from lazyllm.tools.tools import WikipediaSearch
-wiki = WikipediaSearch(base_url='https://zh.wikipedia.org')
-res = wiki.search('机器学习', limit=5)
+wiki = WikipediaSearch(base_url='https://en.wikipedia.org')
+res = wiki.search('machine learning', limit=5)
+''')
+
+add_chinese_doc('WikipediaSearch.get_content', '''
+当 item.extra 含 pageid 时，使用 MediaWiki API 获取词条全文（纯文本）；否则回退为请求 url 页面。
+''')
+
+add_english_doc('WikipediaSearch.get_content', '''
+When item.extra has pageid, fetches full page text via MediaWiki API; otherwise falls back to fetching url.
 ''')

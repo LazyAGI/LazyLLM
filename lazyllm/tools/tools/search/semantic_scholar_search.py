@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from lazyllm.thirdparty import httpx
 
@@ -13,6 +13,31 @@ class SemanticScholarSearch(SearchBase):
         self._api_key = api_key
         self._timeout = timeout
         self._base = 'https://api.semanticscholar.org/graph/v1'
+
+    def get_content(self, item: Dict[str, Any]) -> str:
+        extra = item.get('extra') or {}
+        paper_id = extra.get('paperId')
+        if not paper_id:
+            snippet = item.get('snippet', '')
+            if snippet:
+                return snippet
+            return super().get_content(item)
+        url = f'{self._base}/paper/{paper_id}'
+        headers = {}
+        if self._api_key:
+            headers['x-api-key'] = self._api_key
+        try:
+            resp = httpx.get(
+                url,
+                params={'fields': 'abstract'},
+                headers=headers or None,
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception:
+            return (item.get('snippet') or '') or super().get_content(item)
+        return (data.get('abstract') or '').strip() or (item.get('snippet') or '')
 
     def search(self, query: str, limit: int = 10,
                fields: Optional[str] = None) -> List[dict]:
@@ -40,9 +65,11 @@ class SemanticScholarSearch(SearchBase):
             authors = it.get('authors')
             if authors:
                 author_names = [a.get('name', '') for a in authors if isinstance(a, dict)]
-                extra = {'authors': author_names, 'year': it.get('year'), 'citationCount': it.get('citationCount')}
+                extra = {'authors': author_names, 'year': it.get('year'), 'citationCount': it.get('citationCount'),
+                         'paperId': it.get('paperId')}
             else:
-                extra = {'year': it.get('year'), 'citationCount': it.get('citationCount')}
+                extra = {'year': it.get('year'), 'citationCount': it.get('citationCount'),
+                         'paperId': it.get('paperId')}
             out.append(_make_result(
                 title=title,
                 url=url,
