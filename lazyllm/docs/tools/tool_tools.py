@@ -51,63 +51,6 @@ weather = Weather()
 res = weather('海淀')
 """)
 
-add_tools_chinese_doc("GoogleSearch", """
-通过 Google 搜索指定的关键词。
-
-Args:
-    custom_search_api_key (str): 用户申请的 Google API key。
-    search_engine_id (str): 用户创建的用于检索的搜索引擎 id。
-    timeout (int): 搜索请求的超时时间，单位是秒，默认是 10。
-    proxies (Dict[str, str], optional): 请求时所用的代理服务。格式参考 `https://www.python-httpx.org/advanced/proxies`。
-""")
-
-add_tools_english_doc("GoogleSearch", """
-Search for specified keywords through Google.
-
-Args:
-    custom_search_api_key (str): The Google API key applied by the user.
-    search_engine_id (str): The ID of the search engine created by the user for retrieval.
-    timeout (int): The timeout for the search request, in seconds, default is 10.
-    proxies (Dict[str, str], optional): The proxy services used during the request. Format reference `https://www.python-httpx.org/advanced/proxies`.
-""")
-
-add_tools_example("GoogleSearch", """
-from lazyllm.tools.tools import GoogleSearch
-
-key = '<your_google_search_api_key>'
-cx = '<your_search_engine_id>'
-
-google = GoogleSearch(custom_search_api_key=key, search_engine_id=cx)
-""")
-
-add_tools_chinese_doc("GoogleSearch.forward", """
-执行搜索请求。
-
-Args:
-    query (str): 要检索的关键词。
-    date_restrict (str): 要检索内容的时效性。默认检索一个月内的网页（`m1`）。参数格式可以参考 `https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list?hl=zh-cn`。
-    search_engine_id (str, optional): 用于检索的搜索引擎 id。如果该值为空，则使用构造函数中传入的值。
-""")
-
-add_tools_english_doc("GoogleSearch.forward", """
-Execute search request.
-
-Args:
-    query (str): Keywords to retrieve.
-    date_restrict (str): Timeliness of the content to retrieve. Defaults to web pages within one month (m1). Refer to `https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list?hl=zh-cn` for parameter format.
-    search_engine_id (str, optional): Search engine ID for retrieval. If this value is empty, the value passed in the constructor is used.
-""")
-
-add_tools_example("GoogleSearch.forward", """
-from lazyllm.tools.tools import GoogleSearch
-
-key = '<your_google_search_api_key>'
-cx = '<your_search_engine_id>'
-
-google = GoogleSearch(key, cx)
-res = google(query='商汤科技', date_restrict='m1')
-""")
-
 add_tools_chinese_doc('Calculator', '''
 简单计算器模块，继承自ModuleBase。
 
@@ -148,62 +91,6 @@ from lazyllm.tools.tools import Calculator
 calc = Calculator()
 result1 = calc.forward("2 + 3 * 4")
 print(f"2 + 3 * 4 = {result1}")
-''')
-
-add_tools_chinese_doc('TencentSearch', '''
-腾讯搜索接口封装类，用于调用腾讯云的内容搜索服务。
-
-提供对腾讯云搜索API的封装，支持关键词搜索和结果处理。
-
-Args:
-    secret_id (str): 腾讯云API密钥ID，用于身份认证
-    secret_key (str): 腾讯云API密钥，用于身份认证
-''')
-
-add_tools_english_doc('TencentSearch', '''
-Tencent search interface wrapper class for calling Tencent Cloud content search services.
-
-Provides encapsulation of Tencent Cloud search API, supporting keyword search and result processing.
-
-Args:
-    secret_id (str): Tencent Cloud API key ID for authentication
-    secret_key (str): Tencent Cloud API key for authentication
-
-''')
-
-add_tools_example('TencentSearch', '''
-from lazyllm.tools.tools import TencentSearch
-secret_id = '<your_secret_id>'
-secret_key = '<your_secret_key>'
-searcher = TencentSearch(secret_id, secret_key)
-''')
-
-add_tools_chinese_doc('TencentSearch.forward', '''
-搜索用户输入的查询。
-
-Args:
-    query (str): 用户待查询的内容。
-
-**Returns:**\n
-- package: 包含搜索结果的对象，如果发生错误则返回空package
-''')
-
-add_tools_english_doc('TencentSearch.forward', '''
-Searches for the query entered by the user.
-
-Args:
-    query (str): The content that the user wants to query.
-
-**Returns:**\n
-- package: Object containing search results, returns empty package if error occurs
-''')
-
-add_tools_example('TencentSearch.forward', '''
-from lazyllm.tools.tools import TencentSearch
-secret_id = '<your_secret_id>'
-secret_key = '<your_secret_key>'
-searcher = TencentSearch(secret_id, secret_key)
-res = searcher('calculus')
 ''')
 
 add_tools_chinese_doc('JsonExtractor', '''
