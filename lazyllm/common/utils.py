@@ -3,6 +3,7 @@ from os.path import expanduser, expandvars, isfile, join, normpath
 from typing import Union, Dict, Callable, Any, Optional
 import re
 import os
+import sys
 from contextlib import contextmanager
 import cloudpickle
 import ast
@@ -161,11 +162,37 @@ def str2bool(v: str) -> bool:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 def dump_obj(f):
+    def _collect_test_modules(obj):
+        modules = []
+        seen = set()
+        candidates = [obj]
+        if hasattr(obj, '__dict__'):
+            candidates.extend(obj.__dict__.values())
+        for candidate in candidates:
+            module_name = getattr(candidate, '__module__', None)
+            if not module_name:
+                continue
+            if not (module_name.startswith('test_') or module_name.startswith('tmp.tests.')):
+                continue
+            module = sys.modules.get(module_name)
+            if module is None or module_name in seen:
+                continue
+            seen.add(module_name)
+            modules.append(module)
+        return modules
+
     @contextmanager
     def env_helper():
         os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'ON'
-        yield
-        os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'OFF'
+        modules = _collect_test_modules(f)
+        for module in modules:
+            cloudpickle.register_pickle_by_value(module)
+        try:
+            yield
+        finally:
+            for module in modules:
+                cloudpickle.unregister_pickle_by_value(module)
+            os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'OFF'
 
     with env_helper():
         return None if f is None else base64.b64encode(cloudpickle.dumps(f)).decode('utf-8')

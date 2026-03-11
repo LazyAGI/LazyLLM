@@ -1,20 +1,25 @@
 import json
+import random
 import threading
 import time
 import traceback
 import cloudpickle
-from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
+from uuid import NAMESPACE_URL, uuid5
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from lazyllm import (
     LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app,
     LazyLLMLaunchersBase as Launcher, once_wrapper
 )
+import requests
 from lazyllm.thirdparty import fastapi
 
 from .base import (
     ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
-    TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest, _calculate_task_score
+    TaskStatus, TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest,
+    _calculate_task_score
 )
 from .worker import DocumentProcessorWorker as Worker
 from .queue import _SQLBasedQueue as Queue
@@ -26,19 +31,26 @@ from ..utils import BaseResponse, ensure_call_endpoint, _get_default_db_config, 
 from ..doc_to_db import SchemaExtractor
 from ...sql import SqlManager
 
+CALLBACK_RETRY_MIN_INTERVAL = 5.0
+CALLBACK_RETRY_MAX_INTERVAL = 300.0
+CALLBACK_RETRY_MAX_ATTEMPTS = 5
+
 
 class DocumentProcessor(ModuleBase):
 
     class _Impl():
         def __init__(self, db_config: Optional[Dict[str, Any]] = None, num_workers: int = 1,
-                     post_func: Optional[Callable] = None, path_prefix: Optional[str] = None):
+                     post_func: Optional[Callable] = None, path_prefix: Optional[str] = None,
+                     callback_url: Optional[str] = None):
             self._db_config = db_config
             self._num_workers = num_workers
             self._post_func = post_func
+            self._callback_url = self._normalize_callback_url(callback_url)
             if not self._check_post_func():
                 raise ValueError('Invalid post function!')
             self._shutdown = False
             self._path_prefix = path_prefix
+            self._callback_retry_attempts: Dict[int, int] = {}
 
             self._db_manager = None
             self._waiting_task_queue = None
@@ -62,6 +74,8 @@ class DocumentProcessor(ModuleBase):
                 table_name=FINISHED_TASK_QUEUE_TABLE_INFO['name'],
                 columns=FINISHED_TASK_QUEUE_TABLE_INFO['columns'],
                 db_config=self._db_config,
+                order_by='finished_at',
+                order_desc=False,
             )
 
             self._post_func_thread = threading.Thread(target=self.process_finished_task, daemon=True)
@@ -88,20 +102,178 @@ class DocumentProcessor(ModuleBase):
             '''process finished task in background thread'''
             while True:
                 try:
-                    finished_task = self._finished_task_queue.dequeue()
+                    finished_task = self._finished_task_queue.peek()
                     if finished_task:
-                        self._callback(
-                            task_id=finished_task.get('task_id'),
-                            task_status=finished_task.get('task_status'),
-                            error_code=finished_task.get('error_code'),
-                            error_msg=finished_task.get('error_msg')
-                        )
+                        if not self._is_callback_due(finished_task):
+                            time.sleep(0.5)
+                            continue
+                        try:
+                            self._callback(finished_task)
+                        except Exception as exc:
+                            self._schedule_callback_retry(finished_task, exc)
+                            time.sleep(0.1)
+                            continue
+                        self._finished_task_queue.clear(filter_by={'id': finished_task['id']})
+                        self._callback_retry_attempts.pop(finished_task['id'], None)
                         time.sleep(0.1)
                     else:
                         time.sleep(1)
                 except Exception as e:
                     LOG.error(f'[DocumentProcessor] Failed to process finished task: {e}, {traceback.format_exc()}')
                     time.sleep(10)
+
+        @staticmethod
+        def _normalize_callback_url(callback_url: Optional[str]) -> Optional[str]:
+            if not callback_url:
+                return None
+            return callback_url.rstrip('/')
+
+        def set_callback_url(self, callback_url: Optional[str]):
+            self._callback_url = self._normalize_callback_url(callback_url)
+
+        @staticmethod
+        def _normalize_queue_datetime(value: Any) -> Optional[datetime]:
+            if value is None or isinstance(value, datetime):
+                return value
+            if isinstance(value, str):
+                try:
+                    return datetime.fromisoformat(value)
+                except ValueError:
+                    return None
+            return None
+
+        def _is_callback_due(self, finished_task: Dict[str, Any]) -> bool:
+            finished_at = self._normalize_queue_datetime(finished_task.get('finished_at'))
+            return finished_at is None or finished_at <= datetime.now()
+
+        @staticmethod
+        def _load_task_context(finished_task: Dict[str, Any]) -> Dict[str, Any]:
+            task_context_json = finished_task.get('task_context_json')
+            if not task_context_json:
+                raise ValueError('task_context_json is missing in finished task queue')
+            try:
+                task_context = json.loads(task_context_json)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f'invalid task_context_json: {exc}') from exc
+            if not isinstance(task_context, dict):
+                raise ValueError('task_context_json must decode to dict')
+            return task_context
+
+        def _drop_callback_task(self, finished_task: Dict[str, Any], exc: Exception, attempt: int, reason: str):
+            LOG.error('[DocumentProcessor] Callback delivery dropped queue item.'
+                      f' queue_id={finished_task.get("id")}'
+                      f' task_id={finished_task.get("task_id")}'
+                      f' task_status={finished_task.get("task_status")}'
+                      f' reason={reason}'
+                      f' attempts={attempt}'
+                      f' callback_url={finished_task.get("callback_url")}'
+                      f' task_context_json={finished_task.get("task_context_json")}'
+                      f' error={type(exc).__name__}: {exc}')
+            self._finished_task_queue.clear(filter_by={'id': finished_task['id']})
+            self._callback_retry_attempts.pop(finished_task['id'], None)
+
+        @staticmethod
+        def _parse_retry_after_seconds(value: Optional[str]) -> Optional[float]:
+            if not value:
+                return None
+            try:
+                return max(float(value), 0.0)
+            except (TypeError, ValueError):
+                pass
+            try:
+                retry_at = parsedate_to_datetime(value)
+            except (TypeError, ValueError, IndexError, OverflowError):
+                return None
+            if retry_at.tzinfo is not None:
+                delay = (retry_at - datetime.now(retry_at.tzinfo)).total_seconds()
+            else:
+                delay = (retry_at - datetime.now()).total_seconds()
+            return max(delay, 0.0)
+
+        def _should_retry_callback_error(self, exc: Exception) -> Tuple[bool, Optional[float], str]:
+            if isinstance(exc, ValueError):
+                return False, None, 'invalid_callback_payload'
+            if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+                return True, None, 'transient_network_error'
+            if isinstance(exc, requests.HTTPError):
+                response = exc.response
+                if response is None:
+                    return True, None, 'http_error_without_response'
+                status_code = response.status_code
+                if status_code in (408, 425):
+                    return True, None, f'http_{status_code}'
+                if status_code == 429:
+                    return True, self._parse_retry_after_seconds(response.headers.get('Retry-After')), 'http_429'
+                if status_code >= 500:
+                    return True, None, f'http_{status_code}'
+                if 400 <= status_code < 500:
+                    return False, None, f'http_{status_code}'
+            return True, None, type(exc).__name__
+
+        def _schedule_callback_retry(self, finished_task: Dict[str, Any], exc: Exception) -> bool:
+            queue_id = finished_task['id']
+            attempt = self._callback_retry_attempts.get(queue_id, 0) + 1
+            self._callback_retry_attempts[queue_id] = attempt
+            should_retry, retry_after_seconds, reason = self._should_retry_callback_error(exc)
+            if not should_retry:
+                self._drop_callback_task(finished_task, exc, attempt, reason)
+                return False
+            if attempt >= CALLBACK_RETRY_MAX_ATTEMPTS:
+                self._drop_callback_task(finished_task, exc, attempt, 'retry_exhausted')
+                return False
+            delay = CALLBACK_RETRY_MIN_INTERVAL * (2 ** (attempt - 1))
+            delay *= random.uniform(0.8, 1.2)
+            if retry_after_seconds is not None:
+                delay = max(delay, retry_after_seconds)
+            delay = min(delay, CALLBACK_RETRY_MAX_INTERVAL)
+            retry_at = datetime.now() + timedelta(seconds=delay)
+            self._finished_task_queue.update(filter_by={'id': queue_id}, finished_at=retry_at)
+            LOG.warning(f'[DocumentProcessor] Callback delivery failed for queue_id={queue_id},'
+                        f' task_id={finished_task.get("task_id")}, retry in {delay:.1f}s'
+                        f' (attempt={attempt}/{CALLBACK_RETRY_MAX_ATTEMPTS})'
+                        f' reason={reason}'
+                        f' error={type(exc).__name__}: {exc}')
+            return True
+
+        def _resolve_callback_url(self, payload: Dict[str, Any]) -> Optional[str]:
+            return self._normalize_callback_url(
+                payload.get('callback_url') or payload.get('feedback_url') or self._callback_url
+            )
+
+        def _default_post_func(self, finished_task: Dict[str, Any]):
+            task_id = finished_task.get('task_id')
+            task_status = finished_task.get('task_status')
+            error_code = finished_task.get('error_code')
+            error_msg = finished_task.get('error_msg')
+            callback_url = self._normalize_callback_url(finished_task.get('callback_url'))
+            if not callback_url:
+                raise ValueError(f'callback_url is missing for task {task_id}')
+            task_context = self._load_task_context(finished_task)
+
+            base_payload = {'task_type': task_context.get('task_type'),
+                            'kb_id': task_context.get('kb_id'),
+                            'algo_id': task_context.get('algo_id')}
+            items = task_context.get('items') or [{}]
+            for index, item in enumerate(items):
+                callback_payload = {
+                    'callback_id': str(uuid5(NAMESPACE_URL, f'{task_id}:{task_status}:{index}')),
+                    'task_id': task_id,
+                    'task_status': task_status,
+                    'payload': {k: v for k, v in {**base_payload, **item}.items() if v is not None},
+                }
+                for field in ('task_type', 'kb_id', 'algo_id'):
+                    if base_payload.get(field) is not None:
+                        callback_payload[field] = base_payload[field]
+                if item.get('doc_id') is not None:
+                    callback_payload['doc_id'] = item['doc_id']
+                if error_code is not None:
+                    callback_payload['error_code'] = error_code
+                if error_msg is not None:
+                    callback_payload['error_msg'] = error_msg
+
+                response = requests.post(callback_url, json=callback_payload, timeout=8)
+                response.raise_for_status()
+            return True
 
         def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader,
                                node_groups: Dict[str, Dict], schema_extractor: Optional[SchemaExtractor] = None,
@@ -291,6 +463,10 @@ class DocumentProcessor(ModuleBase):
                 task_type = TaskType.DOC_REPARSE.value
             else:
                 raise fastapi.HTTPException(status_code=400, detail='no input files or reparse group specified')
+            payload = request.model_dump()
+            resolved_callback_url = self._resolve_callback_url(payload)
+            if resolved_callback_url:
+                payload['callback_url'] = resolved_callback_url
             payload_json = json.dumps(payload, ensure_ascii=False)
 
             try:
@@ -332,6 +508,9 @@ class DocumentProcessor(ModuleBase):
             algorithm = self._get_algo(algo_id)
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
+            resolved_callback_url = self._resolve_callback_url(payload)
+            if resolved_callback_url:
+                payload['callback_url'] = resolved_callback_url
             payload_json = json.dumps(payload, ensure_ascii=False)
             try:
                 task_type = TaskType.DOC_UPDATE_META.value
@@ -374,6 +553,9 @@ class DocumentProcessor(ModuleBase):
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
 
+            resolved_callback_url = self._resolve_callback_url(payload)
+            if resolved_callback_url:
+                payload['callback_url'] = resolved_callback_url
             payload_json = json.dumps(payload, ensure_ascii=False)
             try:
                 task_type = TaskType.DOC_DELETE.value
@@ -434,8 +616,12 @@ class DocumentProcessor(ModuleBase):
         def _check_post_func(self) -> bool:
             '''assert post function is callable and params include task_id, task_status, error_code, error_msg'''
             if not self._post_func:
-                LOG.warning('[DocumentProcessor] No post function configured,'
-                            ' task status callback will not be performed!')
+                if self._callback_url:
+                    LOG.info('[DocumentProcessor] No custom post function configured,'
+                             ' using built-in HTTP callback')
+                else:
+                    LOG.warning('[DocumentProcessor] No custom post function configured, built-in HTTP callback'
+                                ' will only run when callback_url or feedback_url is provided in task request')
                 return True
             if not callable(self._post_func):
                 LOG.error('[DocumentProcessor] Post function is not callable')
@@ -450,18 +636,30 @@ class DocumentProcessor(ModuleBase):
                 return False
             return True
 
-        def _callback(self, task_id: str, task_status: str = None, error_code: str = None, error_msg: str = None):
+        def _callback(self, finished_task: Dict[str, Any]):
             '''callback to service'''
-            message = f'Task {task_id} finished with status: {task_status}.'
+            task_id = finished_task.get('task_id')
+            task_status = finished_task.get('task_status')
+            error_code = finished_task.get('error_code')
+            error_msg = finished_task.get('error_msg')
+            message = f'Task {task_id} callback status: {task_status}.'
             if error_msg:
                 message += f' Error code: {error_code}, error_msg: {error_msg}.'
             LOG.info(f'[DocumentProcessor] {message}')
 
-            if self._post_func:
-                try:
+            try:
+                if self._post_func:
                     self._post_func(task_id, task_status, error_code, error_msg)
-                except Exception as e:
-                    LOG.error(f'[DocumentProcessor] Failed to call post function: {e}, {traceback.format_exc()}')
+                else:
+                    self._default_post_func(finished_task)
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to call post function: {e}, {traceback.format_exc()}')
+                if self._post_func:
+                    try:
+                        self._default_post_func(finished_task)
+                    except Exception:
+                        raise e
+                else:
                     raise e
 
         def __call__(self, func_name: str, *args, **kwargs):
@@ -470,14 +668,15 @@ class DocumentProcessor(ModuleBase):
     def __init__(self, port: int = None, url: str = None, num_workers: int = 1,
                  db_config: Optional[Dict[str, Any]] = None,
                  launcher: Optional[Launcher] = None, post_func: Optional[Callable] = None,
-                 path_prefix: Optional[str] = None):
+                 path_prefix: Optional[str] = None, callback_url: Optional[str] = None):
         super().__init__()
         self._raw_impl = None  # save the reference of the original Impl object
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         if not url:
             # create the Impl object (lazy loading, no threads created)
             self._raw_impl = DocumentProcessor._Impl(num_workers=num_workers, db_config=self._db_config,
-                                                     post_func=post_func, path_prefix=path_prefix)
+                                                     post_func=post_func, path_prefix=path_prefix,
+                                                     callback_url=callback_url)
             self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher)
         else:
             self._impl = UrlModule(url=ensure_call_endpoint(url))
@@ -501,6 +700,11 @@ class DocumentProcessor(ModuleBase):
         if isinstance(impl, ServerModule):
             return impl.wait()
         LOG.warning('[DocumentProcessor] wait() is no-op in UrlModule mode')
+
+    def set_callback_url(self, callback_url: Optional[str]):
+        if isinstance(self._impl, UrlModule):
+            raise RuntimeError('set_callback_url is only supported in local server mode')
+        return self._dispatch('set_callback_url', callback_url)
 
     def _dispatch(self, method: str, *args, **kwargs):
         try:

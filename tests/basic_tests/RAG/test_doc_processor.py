@@ -9,7 +9,7 @@ from lazyllm.tools.rag.parsing_service import DocumentProcessor
 from lazyllm.tools.rag.parsing_service.base import TaskStatus
 from lazyllm import Document, Retriever
 
-STATIC_STATUS = [TaskStatus.FINISHED.value, TaskStatus.FAILED.value, TaskStatus.CANCELED.value]
+STATIC_STATUS = [TaskStatus.SUCCESS.value, TaskStatus.FAILED.value, TaskStatus.CANCELED.value]
 
 records = []
 def post_func_sample(task_id: str, task_status: str, error_code: str = None, error_msg: str = None):

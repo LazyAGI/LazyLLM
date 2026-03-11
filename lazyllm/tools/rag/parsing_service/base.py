@@ -29,6 +29,7 @@ class AddDocRequest(BaseModel):
     kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
+    callback_url: Optional[str] = None
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
     db_info: Optional[DBInfo] = None
     feedback_url: Optional[str] = None
@@ -40,8 +41,10 @@ class UpdateMetaRequest(BaseModel):
     kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
+    callback_url: Optional[str] = None
     # NOTE: (db_info) is deprecated, will be removed in the future
     db_info: Optional[DBInfo] = None
+    feedback_url: Optional[str] = None
 
 
 class DeleteDocRequest(BaseModel):
@@ -50,8 +53,10 @@ class DeleteDocRequest(BaseModel):
     kb_id: Optional[str] = None
     doc_ids: List[str]
     priority: Optional[int] = 0
+    callback_url: Optional[str] = None
     # NOTE: (db_info) is deprecated, will be removed in the future
     db_info: Optional[DBInfo] = None
+    feedback_url: Optional[str] = None
 
 
 class CancelTaskRequest(BaseModel):
@@ -61,9 +66,8 @@ class CancelTaskRequest(BaseModel):
 class TaskStatus(str, Enum):
     WAITING = 'WAITING'
     WORKING = 'WORKING'
-    CANCEL_REQUESTED = 'CANCEL_REQUESTED'
     CANCELED = 'CANCELED'
-    FINISHED = 'FINISHED'
+    SUCCESS = 'SUCCESS'
     FAILED = 'FAILED'
 
 
@@ -127,9 +131,13 @@ FINISHED_TASK_QUEUE_TABLE_INFO = {
         {'name': 'task_type', 'data_type': 'string', 'nullable': False,
          'comment': 'Task type: DOC_ADD, DOC_DELETE, DOC_UPDATE_META, DOC_REPARSE'},
         {'name': 'task_status', 'data_type': 'string', 'nullable': False,
-         'comment': 'Task status: WAITING, WORKING, CANCEL_REQUESTED, CANCELED, FINISHED, FAILED'},
+         'comment': 'Task status: WAITING, WORKING, CANCELED, SUCCESS, FAILED'},
         {'name': 'finished_at', 'data_type': 'datetime', 'nullable': False,
          'comment': 'Finish time (set when processing completes)', 'default': datetime.now},
+        {'name': 'callback_url', 'data_type': 'string', 'nullable': True,
+         'comment': 'Callback target url for built-in HTTP callback'},
+        {'name': 'task_context_json', 'data_type': 'string', 'nullable': True,
+         'comment': 'Serialized callback context used to build callback payload'},
         {'name': 'error_code', 'data_type': 'string', 'nullable': True, 'default': '200',
          'comment': 'Error code (varchar64)'},
         {'name': 'error_msg', 'data_type': 'string', 'nullable': True, 'default': 'success',

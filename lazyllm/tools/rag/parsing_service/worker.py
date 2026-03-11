@@ -170,8 +170,35 @@ class DocumentProcessorWorker(ModuleBase):
                           f'error: {e}')
                 raise e
 
+        @staticmethod
+        def _resolve_callback_url(payload: dict):
+            return payload.get('callback_url') or payload.get('feedback_url')
+
+        @staticmethod
+        def _build_task_context(task_type: str, payload: dict) -> dict:
+            items = []
+            if task_type in (TaskType.DOC_ADD.value, TaskType.DOC_REPARSE.value, TaskType.DOC_UPDATE_META.value):
+                file_infos = payload.get('file_infos') or []
+                items = [{
+                    'doc_id': file_info.get('doc_id'),
+                    'file_path': file_info.get('file_path'),
+                    'metadata': file_info.get('metadata'),
+                    'reparse_group': file_info.get('reparse_group'),
+                } for file_info in file_infos]
+            elif task_type == TaskType.DOC_DELETE.value:
+                items = [{'doc_id': doc_id} for doc_id in (payload.get('doc_ids') or [])]
+            if not items:
+                items = [{}]
+            return {
+                'task_type': task_type,
+                'kb_id': payload.get('kb_id'),
+                'algo_id': payload.get('algo_id'),
+                'items': items,
+            }
+
         def _enqueue_finished_task(self, task_id: str, task_type: str, task_status: TaskStatus,
-                                   error_code: str = None, error_msg: str = None):
+                                   error_code: str = None, error_msg: str = None,
+                                   callback_url: str = None, task_context_json: str = None):
             try:
                 self._lazy_init()
                 self._finished_task_queue.enqueue(
@@ -179,11 +206,15 @@ class DocumentProcessorWorker(ModuleBase):
                     task_type=task_type,
                     task_status=task_status.value,
                     finished_at=datetime.now(),
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
                     error_code=error_code if error_code else '200',
                     error_msg=error_msg if error_msg else 'success'
                 )
-                if task_status == TaskStatus.FINISHED:
-                    LOG.info(f'[DocumentProcessorWorker._Impl] Task {task_id} finished successfully')
+                if task_status == TaskStatus.WORKING:
+                    LOG.info(f'[DocumentProcessorWorker._Impl] Task {task_id} started')
+                elif task_status == TaskStatus.SUCCESS:
+                    LOG.info(f'[DocumentProcessorWorker._Impl] Task {task_id} completed successfully')
                 else:
                     LOG.error(f'[DocumentProcessorWorker._Impl] Task {task_id} completed with status {task_status}:'
                               f' {error_msg}')
@@ -207,9 +238,18 @@ class DocumentProcessorWorker(ModuleBase):
                     if not algo_id:
                         raise ValueError(f'[DocumentProcessorWorker._Impl] task_id {task_id} is missing algo_id in '
                                          f'payload: {payload}')
+                    callback_url = self._resolve_callback_url(payload)
+                    task_context_json = json.dumps(self._build_task_context(task_type, payload), ensure_ascii=False)
 
                     LOG.info(f'[DocumentProcessorWorker._Impl] Start processing task {task_id}, type: {task_type},'
                              f' algo_id: {algo_id}')
+                    self._enqueue_finished_task(
+                        task_id=task_id,
+                        task_type=task_type,
+                        task_status=TaskStatus.WORKING,
+                        callback_url=callback_url,
+                        task_context_json=task_context_json,
+                    )
 
                     processor = self._get_or_create_processor(algo_id)
                     if task_type == TaskType.DOC_ADD.value:
@@ -223,14 +263,30 @@ class DocumentProcessorWorker(ModuleBase):
                     else:
                         raise ValueError(f'[DocumentProcessorWorker._Impl] Unknown task type: {task_type}')
 
-                    self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FINISHED,
-                                                error_code='200', error_msg='success')
+                    self._enqueue_finished_task(
+                        task_id=task_id,
+                        task_type=task_type,
+                        task_status=TaskStatus.SUCCESS,
+                        error_code='200',
+                        error_msg='success',
+                        callback_url=callback_url,
+                        task_context_json=task_context_json,
+                    )
                 except Exception as e:
                     LOG.error(f'[DocumentProcessorWorker._Impl] Failed to run task {task_id}: {e},'
                               f' {traceback.format_exc()}')
                     if task_id and task_type:
-                        self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FAILED,
-                                                    error_code=type(e).__name__, error_msg=str(e))
+                        callback_url = locals().get('callback_url')
+                        task_context_json = locals().get('task_context_json')
+                        self._enqueue_finished_task(
+                            task_id=task_id,
+                            task_type=task_type,
+                            task_status=TaskStatus.FAILED,
+                            error_code=type(e).__name__,
+                            error_msg=str(e),
+                            callback_url=callback_url,
+                            task_context_json=task_context_json,
+                        )
                     time.sleep(WORKER_ERROR_RETRY_INTERVAL)
                     continue
 

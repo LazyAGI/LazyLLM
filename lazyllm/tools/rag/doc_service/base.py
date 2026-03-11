@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from ..parsing_service.base import TaskType
 
 
@@ -84,6 +84,12 @@ class AddFileItem(BaseModel):
     doc_id: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+    @model_validator(mode='after')
+    def validate_file_path(self):
+        if not self.file_path or not self.file_path.strip():
+            raise ValueError('file_path is required')
+        return self
+
 
 class AddRequest(BaseModel):
     items: List[AddFileItem]
@@ -91,6 +97,12 @@ class AddRequest(BaseModel):
     algo_id: str = '__default__'
     source_type: SourceType = SourceType.EXTERNAL
     idempotency_key: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_items(self):
+        if not self.items:
+            raise ValueError('items is required')
+        return self
 
 
 class UploadRequest(BaseModel):
@@ -100,6 +112,12 @@ class UploadRequest(BaseModel):
     source_type: SourceType = SourceType.API
     idempotency_key: Optional[str] = None
 
+    @model_validator(mode='after')
+    def validate_items(self):
+        if not self.items:
+            raise ValueError('items is required')
+        return self
+
 
 class ReparseRequest(BaseModel):
     doc_ids: List[str]
@@ -107,12 +125,24 @@ class ReparseRequest(BaseModel):
     algo_id: str = '__default__'
     idempotency_key: Optional[str] = None
 
+    @model_validator(mode='after')
+    def validate_doc_ids(self):
+        if not self.doc_ids:
+            raise ValueError('doc_ids is required')
+        return self
+
 
 class DeleteRequest(BaseModel):
     doc_ids: List[str]
     kb_id: str = '__default__'
     algo_id: str = '__default__'
     idempotency_key: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_doc_ids(self):
+        if not self.doc_ids:
+            raise ValueError('doc_ids is required')
+        return self
 
 
 class TransferItem(BaseModel):
@@ -128,6 +158,12 @@ class TransferRequest(BaseModel):
     items: List[TransferItem]
     idempotency_key: Optional[str] = None
 
+    @model_validator(mode='after')
+    def validate_items(self):
+        if not self.items:
+            raise ValueError('items is required')
+        return self
+
 
 class MetadataPatchItem(BaseModel):
     doc_id: str
@@ -139,6 +175,41 @@ class MetadataPatchRequest(BaseModel):
     kb_id: str = '__default__'
     algo_id: str = '__default__'
     idempotency_key: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_items(self):
+        if not self.items:
+            raise ValueError('items is required')
+        return self
+
+
+class KbCreateRequest(BaseModel):
+    kb_id: str
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    owner_id: Optional[str] = None
+    meta: Optional[Dict[str, Any]] = None
+    algo_id: str = '__default__'
+    idempotency_key: Optional[str] = None
+
+
+class KbUpdateRequest(BaseModel):
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    owner_id: Optional[str] = None
+    meta: Optional[Dict[str, Any]] = None
+    algo_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
+class KbBatchQueryRequest(BaseModel):
+    kb_ids: List[str]
+
+    @model_validator(mode='after')
+    def validate_kb_ids(self):
+        if not self.kb_ids:
+            raise ValueError('kb_ids is required')
+        return self
 
 
 IDEMPOTENCY_RECORDS_TABLE_INFO = {
@@ -170,6 +241,31 @@ CALLBACK_RECORDS_TABLE_INFO = {
         {'name': 'task_id', 'data_type': 'string', 'nullable': False, 'comment': 'Task ID'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
          'comment': 'Created time'},
+    ],
+}
+
+
+DOC_SERVICE_TASKS_TABLE_INFO = {
+    'name': 'lazyllm_doc_service_tasks',
+    'comment': 'Doc service task state table',
+    'columns': [
+        {'name': 'id', 'data_type': 'integer', 'nullable': False, 'is_primary_key': True,
+         'comment': 'Auto increment ID'},
+        {'name': 'task_id', 'data_type': 'string', 'nullable': False, 'comment': 'Task ID'},
+        {'name': 'task_type', 'data_type': 'string', 'nullable': False, 'comment': 'Task type'},
+        {'name': 'doc_id', 'data_type': 'string', 'nullable': False, 'comment': 'Document ID'},
+        {'name': 'kb_id', 'data_type': 'string', 'nullable': False, 'comment': 'Knowledge base ID'},
+        {'name': 'algo_id', 'data_type': 'string', 'nullable': False, 'comment': 'Algorithm ID'},
+        {'name': 'status', 'data_type': 'string', 'nullable': False, 'comment': 'Current task status'},
+        {'name': 'message', 'data_type': 'text', 'nullable': True, 'comment': 'Task payload in JSON string'},
+        {'name': 'error_code', 'data_type': 'string', 'nullable': True, 'comment': 'Error code'},
+        {'name': 'error_msg', 'data_type': 'text', 'nullable': True, 'comment': 'Error message'},
+        {'name': 'created_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
+         'comment': 'Created time'},
+        {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
+         'comment': 'Updated time'},
+        {'name': 'started_at', 'data_type': 'datetime', 'nullable': True, 'comment': 'Started time'},
+        {'name': 'finished_at', 'data_type': 'datetime', 'nullable': True, 'comment': 'Finished time'},
     ],
 }
 

@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Any
 
 from lazyllm import LOG
+import sqlalchemy
 from ...sql import SqlManager
 from ..utils import _orm_to_dict
 
@@ -29,10 +30,41 @@ class _SQLBasedQueue:
                     ]
                 }
             )
+            self._ensure_columns_exist()
             LOG.info(f'[SQLBasedQueue] Queue {self._table_name} initialized successfully')
         except Exception as e:
             LOG.error(f'[SQLBasedQueue] Failed to initialize queue {self._table_name}: {e}')
             raise
+
+    def _ensure_columns_exist(self):
+        inspector = sqlalchemy.inspect(self._sql_manager.engine)
+        existing_columns = {column['name'] for column in inspector.get_columns(self._table_name)}
+        missing_columns = [column for column in self._columns if column['name'] not in existing_columns]
+        if not missing_columns:
+            return
+
+        for column in missing_columns:
+            sql_type = self._sql_manager._sql_type_for(column['data_type'])
+            if isinstance(sql_type, type):
+                sql_type = sql_type()
+            type_sql = sql_type.compile(dialect=self._sql_manager.engine.dialect)
+            nullable_sql = '' if column.get('nullable', True) else ' NOT NULL'
+            default_sql = ''
+            default_value = column.get('default')
+            if default_value is not None and not callable(default_value):
+                if isinstance(default_value, str):
+                    escaped_default = default_value.replace("'", "''")
+                    default_sql = f" DEFAULT '{escaped_default}'"
+                elif isinstance(default_value, bool):
+                    default_sql = f' DEFAULT {int(default_value)}'
+                else:
+                    default_sql = f' DEFAULT {default_value}'
+            statement = sqlalchemy.text(
+                f'ALTER TABLE "{self._table_name}" ADD COLUMN "{column["name"]}" {type_sql}{nullable_sql}{default_sql}'
+            )
+            with self._sql_manager.engine.begin() as connection:
+                connection.execute(statement)
+            LOG.info(f'[SQLBasedQueue] Added missing column {column["name"]} to {self._table_name}')
 
     def _build_query(self, session, filter_by: Dict[str, Any] = None):
         TableCls = self._sql_manager.get_table_orm_class(self._table_name)
@@ -141,4 +173,22 @@ class _SQLBasedQueue:
 
         except Exception as e:
             LOG.error(f'[SQLBasedQueue] Failed to clear {self._table_name}: {e}')
+            raise
+
+    def update(self, filter_by: Dict[str, Any], **kwargs) -> Optional[Dict[str, Any]]:
+        try:
+            with self._sql_manager.get_session() as session:
+                query = self._build_query(session, filter_by)
+                record = query.with_for_update().first()
+                if not record:
+                    return None
+
+                for key, value in kwargs.items():
+                    setattr(record, key, value)
+                session.flush()
+                result = _orm_to_dict(record)
+                LOG.debug(f'[SQLBasedQueue] Updated record in {self._table_name}')
+                return result
+        except Exception as e:
+            LOG.error(f'[SQLBasedQueue] Failed to update {self._table_name}: {e}')
             raise

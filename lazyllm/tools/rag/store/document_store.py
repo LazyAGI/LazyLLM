@@ -1,4 +1,6 @@
+import hashlib
 import os
+import re
 import traceback
 import lazyllm
 from collections import defaultdict
@@ -20,6 +22,9 @@ from ..similarity import registered_similarities
 
 
 class _DocumentStore(object):
+    _COLLECTION_NAME_PATTERN = re.compile(r'[^a-z0-9_]+')
+    _COLLECTION_NAME_MAX_LEN = 255
+
     def __init__(self, algo_name: str, store: Union[Dict, LazyLLMStoreBase],
                  group_embed_keys: Optional[Dict[str, Set[str]]] = None, embed: Optional[Dict[str, Callable]] = None,
                  embed_dims: Optional[Dict[str, int]] = None, embed_datatypes: Optional[Dict[str, DataType]] = None,
@@ -439,4 +444,16 @@ class _DocumentStore(object):
         return node.with_sim_score(score) if score else node
 
     def _gen_collection_name(self, group: str) -> str:
-        return f'col_{self._algo_name}_{group}'.lower()
+        raw_name = f'col_{self._algo_name}_{group}'.lower()
+        normalized = self._COLLECTION_NAME_PATTERN.sub('_', raw_name).strip('_')
+        if not normalized:
+            normalized = 'col'
+        if normalized[0].isdigit():
+            normalized = f'col_{normalized}'
+        if normalized == raw_name and len(normalized) <= self._COLLECTION_NAME_MAX_LEN:
+            return normalized
+
+        digest = hashlib.sha1(raw_name.encode()).hexdigest()[:12]
+        max_prefix_len = self._COLLECTION_NAME_MAX_LEN - len(digest) - 1
+        prefix = normalized[:max_prefix_len].rstrip('_') or 'col'
+        return f'{prefix}_{digest}'

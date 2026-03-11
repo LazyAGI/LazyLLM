@@ -10,12 +10,15 @@ from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, UrlModule,
 from lazyllm.thirdparty import fastapi
 
 from ..utils import BaseResponse, _get_default_db_config, ensure_call_endpoint
-from .base import AddRequest, DeleteRequest, DocServiceError, MetadataPatchRequest, ReparseRequest
-from .base import SourceType, TaskCallbackRequest
+from .base import (
+    AddRequest, DeleteRequest, DocServiceError, KbBatchQueryRequest, KbCreateRequest, KbUpdateRequest,
+    MetadataPatchRequest, ReparseRequest,
+)
+from .base import CallbackEventType, DocStatus, SourceType, TaskCallbackRequest
 from .base import TransferRequest
 from .base import UploadRequest, AddFileItem
 from .doc_manager import DocManager
-from .parsing_server import ParsingTaskServer
+from ..parsing_service.base import TaskStatus, TaskType
 
 
 class DocServer(ModuleBase):
@@ -41,26 +44,16 @@ class DocServer(ModuleBase):
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
             os.makedirs(self._storage_dir, exist_ok=True)
-            if self._parser_url:
-                self._manager = DocManager(
-                    db_config=self._db_config,
-                    parser_url=self._parser_url,
-                    callback_url=self._callback_url,
-                )
-            else:
-                parser_db = self._parser_db_config or _get_default_db_config('doc_service_parser')
-                self._parser = ParsingTaskServer(db_config=parser_db, poll_interval=self._parser_poll_interval)
-                self._parser.start()
-                self._manager = DocManager(
-                    db_config=self._db_config,
-                    parser_server=self._parser,
-                    callback_url=self._callback_url,
-                )
+            if not self._parser_url:
+                raise ValueError('parser_url is required; doc_service no longer starts a mock parsing server')
+            self._manager = DocManager(
+                db_config=self._db_config,
+                parser_url=self._parser_url,
+                callback_url=self._callback_url,
+            )
 
         def stop(self):
-            self._lazy_init()
-            if self._parser:
-                self._parser.stop()
+            return None
 
         def set_runtime_callback_url(self, callback_url: str):
             self._lazy_init()
@@ -115,6 +108,13 @@ class DocServer(ModuleBase):
                 'items': items,
             }
 
+        @staticmethod
+        def _build_update_kb_payload(kb_id: str, request: KbUpdateRequest):
+            payload = request.model_dump(mode='json', exclude_unset=True)
+            payload['kb_id'] = kb_id
+            payload['explicit_fields'] = sorted(request.model_fields_set)
+            return payload
+
         def _gen_unique_upload_path(self, filename: str, reserved_paths: Optional[set] = None):
             safe_name = os.path.basename(filename) or 'upload.bin'
             file_path = os.path.join(self._storage_dir, safe_name)
@@ -136,6 +136,65 @@ class DocServer(ModuleBase):
                 '/v1/docs/upload', request.idempotency_key, idem_payload,
                 lambda: {'items': self._manager.upload(request)}
             ))
+
+        @staticmethod
+        def _normalize_task_callback(callback: Any) -> TaskCallbackRequest:
+            if isinstance(callback, TaskCallbackRequest):
+                return callback
+            if not isinstance(callback, dict):
+                raise DocServiceError('E_INVALID_PARAM', 'invalid callback payload')
+
+            payload = dict(callback.get('payload') or {})
+            for field in ('task_type', 'doc_id', 'kb_id', 'algo_id'):
+                if callback.get(field) is not None and field not in payload:
+                    payload[field] = callback[field]
+
+            event_type = callback.get('event_type')
+            status = callback.get('status')
+            task_status = callback.get('task_status')
+
+            try:
+                if status is not None:
+                    normalized_status = DocStatus(status)
+                    normalized_event_type = CallbackEventType(event_type) if event_type else (
+                        CallbackEventType.START
+                        if normalized_status in (DocStatus.WAITING, DocStatus.WORKING) else CallbackEventType.FINISH
+                    )
+                elif task_status is not None:
+                    normalized_status = DocStatus(task_status)
+                    normalized_event_type = CallbackEventType(event_type) if event_type else (
+                        CallbackEventType.START
+                        if normalized_status in (DocStatus.WAITING, DocStatus.WORKING)
+                        else CallbackEventType.FINISH
+                    )
+                else:
+                    raise DocServiceError('E_INVALID_PARAM', 'status or task_status is required')
+            except ValueError as exc:
+                raise DocServiceError('E_INVALID_PARAM', str(exc)) from exc
+
+            callback_data = {
+                'callback_id': callback.get('callback_id'),
+                'task_id': callback.get('task_id'),
+                'event_type': normalized_event_type,
+                'status': normalized_status,
+                'error_code': callback.get('error_code'),
+                'error_msg': callback.get('error_msg'),
+                'payload': payload,
+            }
+            return TaskCallbackRequest.model_validate({k: v for k, v in callback_data.items() if v is not None})
+
+        @staticmethod
+        def _format_task_view(task: Optional[Dict[str, Any]]):
+            if not isinstance(task, dict):
+                return task
+            return dict(task)
+
+        def _format_task_response_data(self, data: Any):
+            if isinstance(data, dict) and isinstance(data.get('items'), list):
+                payload = dict(data)
+                payload['items'] = [self._format_task_view(item) for item in data['items']]
+                return payload
+            return self._format_task_view(data)
 
         def upload_request(self, request: UploadRequest):
             self._lazy_init()
@@ -274,13 +333,23 @@ class DocServer(ModuleBase):
         def list_tasks(self, status: Optional[List[str]] = None, page: int = 1, page_size: int = 20):
             self._lazy_init()
             resp = self._manager.list_tasks(status, page, page_size)
-            return self._response(data=resp.data, code=resp.code, msg=resp.msg, status_code=resp.code)
+            return self._response(
+                data=self._format_task_response_data(resp.data),
+                code=resp.code,
+                msg=resp.msg,
+                status_code=resp.code,
+            )
 
         @app.get('/v1/tasks/{task_id}')
         def get_task(self, task_id: str):
             self._lazy_init()
             resp = self._manager.get_task(task_id)
-            return self._response(data=resp.data, code=resp.code, msg=resp.msg, status_code=resp.code)
+            return self._response(
+                data=self._format_task_response_data(resp.data),
+                code=resp.code,
+                msg=resp.msg,
+                status_code=resp.code,
+            )
 
         def cancel_task_by_id(self, task_id: str):
             self._lazy_init()
@@ -308,10 +377,15 @@ class DocServer(ModuleBase):
                 '/v1/tasks/cancel', idempotency_key, payload, _cancel
             ))
 
-        @app.post('/v1/internal/callbacks/tasks')
-        def task_callback(self, callback: TaskCallbackRequest):
+        def task_callback(self, callback: Any):
             self._lazy_init()
-            return self._run(lambda: self._manager.on_task_callback(callback))
+            return self._run(lambda: self._manager.on_task_callback(self._normalize_task_callback(callback)))
+
+        @app.post('/v1/internal/callbacks/tasks')
+        async def task_callback_http(self, request: 'fastapi.Request'):
+            self._lazy_init()
+            payload = await request.json()
+            return self.task_callback(payload)
 
         @app.get('/v1/algo/list')
         def list_algo(self):
@@ -371,17 +445,45 @@ class DocServer(ModuleBase):
                 return self._response(data={'biz_code': 'E_INVALID_PARAM'}, code=400,
                                       msg='task_id is required', status_code=400)
             resp = self._manager.get_task(task_id)
-            return self._response(data=resp.data, code=resp.code, msg=resp.msg, status_code=resp.code)
+            return self._response(
+                data=self._format_task_response_data(resp.data),
+                code=resp.code,
+                msg=resp.msg,
+                status_code=resp.code,
+            )
 
         def get_task_info_impl(self, task_id: str):
             self._lazy_init()
             resp = self._manager.get_task(task_id)
-            return self._response(data=resp.data, code=resp.code, msg=resp.msg, status_code=resp.code)
+            return self._response(
+                data=self._format_task_response_data(resp.data),
+                code=resp.code,
+                msg=resp.msg,
+                status_code=resp.code,
+            )
 
         @app.get('/v1/kbs')
-        def list_kbs(self):
+        def list_kbs(
+            self,
+            page: int = 1,
+            page_size: int = 20,
+            keyword: Optional[str] = None,
+            status: Optional[List[str]] = None,
+            owner_id: Optional[str] = None,
+        ):
             self._lazy_init()
-            return self._run(lambda: self._manager.list_kbs())
+            return self._run(lambda: self._manager.list_kbs(
+                page=page,
+                page_size=page_size,
+                keyword=keyword,
+                status=status,
+                owner_id=owner_id,
+            ))
+
+        @app.get('/v1/kbs/{kb_id}')
+        def get_kb(self, kb_id: str):
+            self._lazy_init()
+            return self._run(lambda: self._manager.get_kb(kb_id))
 
         def create_kb_by_id(self, kb_id: str, display_name: Optional[str] = None, description: Optional[str] = None,
                             owner_id: Optional[str] = None, meta: Optional[Dict[str, Any]] = None,
@@ -397,20 +499,45 @@ class DocServer(ModuleBase):
             ))
 
         @app.post('/v1/kbs')
-        async def create_kb(self, request: 'fastapi.Request'):
-            payload = await request.json()
-            idempotency_key = payload.get('idempotency_key')
+        def create_kb(self, request: KbCreateRequest):
+            self._lazy_init()
+            payload = request.model_dump(mode='json')
             return self._run(lambda: self._manager.run_idempotent(
-                '/v1/kbs', idempotency_key, payload,
+                '/v1/kbs', request.idempotency_key, payload,
                 lambda: self._manager.create_kb(
-                    payload.get('kb_id'),
-                    display_name=payload.get('display_name'),
-                    description=payload.get('description'),
-                    owner_id=payload.get('owner_id'),
-                    meta=payload.get('meta'),
-                    algo_id=payload.get('algo_id', '__default__'),
+                    request.kb_id,
+                    display_name=request.display_name,
+                    description=request.description,
+                    owner_id=request.owner_id,
+                    meta=request.meta,
+                    algo_id=request.algo_id,
                 )
             ))
+
+        def update_kb_by_id(self, kb_id: str, request: KbUpdateRequest):
+            self._lazy_init()
+            payload = self._build_update_kb_payload(kb_id, request)
+            return self._run(lambda: self._manager.run_idempotent(
+                f'/v1/kbs/{kb_id}:patch', request.idempotency_key, payload,
+                lambda: self._manager.update_kb(
+                    kb_id,
+                    display_name=request.display_name,
+                    description=request.description,
+                    owner_id=request.owner_id,
+                    meta=request.meta,
+                    algo_id=request.algo_id,
+                    explicit_fields=set(request.model_fields_set),
+                )
+            ))
+
+        @app.post('/v1/kbs/{kb_id}/update')
+        def update_kb(self, kb_id: str, request: KbUpdateRequest):
+            return self.update_kb_by_id(kb_id, request)
+
+        @app.post('/v1/kbs/batch')
+        def batch_get_kbs(self, request: KbBatchQueryRequest):
+            self._lazy_init()
+            return self._run(lambda: self._manager.batch_get_kbs(request.kb_ids))
 
         @app.delete('/v1/kbs/{kb_id}')
         def delete_kb(self, kb_id: str, idempotency_key: Optional[str] = None):
@@ -465,6 +592,8 @@ class DocServer(ModuleBase):
         if url:
             self._impl = UrlModule(url=ensure_call_endpoint(url))
         else:
+            if not parser_url:
+                raise ValueError('parser_url is required; doc_service no longer embeds a mock parsing server')
             self._raw_impl = DocServer._Impl(
                 storage_dir=self._storage_dir,
                 db_config=self._db_config,
@@ -553,8 +682,11 @@ class DocServer(ModuleBase):
     def cancel_task(self, task_id: str):
         return self._dispatch('cancel_task_by_id', task_id)
 
-    def list_kbs(self):
-        return self._dispatch('list_kbs')
+    def list_kbs(self, **kwargs):
+        return self._dispatch('list_kbs', **kwargs)
+
+    def get_kb(self, kb_id: str):
+        return self._dispatch('get_kb', kb_id)
 
     def list_chunks(self, page: int = 1, page_size: int = 20):
         return self._dispatch('list_chunks', page, page_size)
@@ -569,6 +701,12 @@ class DocServer(ModuleBase):
                   owner_id: Optional[str] = None, meta: Optional[Dict[str, Any]] = None,
                   algo_id: str = '__default__'):
         return self._dispatch('create_kb_by_id', kb_id, display_name, description, owner_id, meta, algo_id)
+
+    def update_kb(self, kb_id: str, request: KbUpdateRequest):
+        return self._dispatch('update_kb_by_id', kb_id, request)
+
+    def batch_get_kbs(self, kb_ids: List[str]):
+        return self._dispatch('batch_get_kbs', KbBatchQueryRequest(kb_ids=kb_ids))
 
     def delete_kb(self, kb_id: str):
         return self._dispatch('delete_kb', kb_id)
