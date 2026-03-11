@@ -34,15 +34,44 @@ pybind11_add_module(${INTERFACE_TARGET_NAME} ${LAZYLLM_BINDING_SOURCES})
 target_link_libraries(${INTERFACE_TARGET_NAME} PRIVATE lazyllm_core lazyllm_adaptor)
 target_compile_options(${INTERFACE_TARGET_NAME} PRIVATE -Werror -Wshadow)
 
-# Ensure lazyllm_cpp can find third-party shared libraries under lazyllm/cpp_lib.
-set(_lazyllm_cpp_rpath "$ORIGIN/cpp_lib")
-if (APPLE)
-    set(_lazyllm_cpp_rpath "@loader_path/cpp_lib")
-endif()
-set_target_properties(${INTERFACE_TARGET_NAME} PROPERTIES
-    BUILD_RPATH "${_lazyllm_cpp_rpath}"
-    INSTALL_RPATH "${_lazyllm_cpp_rpath}"
-)
+# Runtime loader configuration per platform.
+set(_lazyllm_cpp_rpath "")
+set(LAZYLLM_TEST_RUNTIME_ENV "" CACHE INTERNAL "Runtime env for LazyLLM C++ tests" FORCE)
+if (WIN32)
+    # Windows has no ELF rpath; loader resolution is driven by PATH and DLL search order.
+    # Keep test runtime env empty by default.
+elseif (APPLE)
+    # Ensure lazyllm_cpp can find third-party dylibs under lazyllm/cpp_lib.
+    list(APPEND _lazyllm_cpp_rpath "@loader_path/cpp_lib")
+else ()
+    # Ensure lazyllm_cpp can find third-party shared libraries under lazyllm/cpp_lib.
+    list(APPEND _lazyllm_cpp_rpath "$ORIGIN/cpp_lib")
+    # Use DT_RPATH (instead of DT_RUNPATH) so the extension's own runtime
+    # search path can take precedence over host interpreter bundled libs.
+    target_link_options(${INTERFACE_TARGET_NAME} PRIVATE -Wl,--disable-new-dtags)
+
+    # Resolve libstdc++ from the active C++ compiler and include it in rpath.
+    execute_process(
+        COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.so.6
+        OUTPUT_VARIABLE LIBSTDCPP_PATH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if (LIBSTDCPP_PATH AND NOT LIBSTDCPP_PATH STREQUAL "libstdc++.so.6")
+        get_filename_component(LIBSTDCPP_DIR "${LIBSTDCPP_PATH}" DIRECTORY)
+        if (LIBSTDCPP_DIR)
+            list(APPEND _lazyllm_cpp_rpath "${LIBSTDCPP_DIR}")
+            set(LAZYLLM_TEST_RUNTIME_ENV "LD_LIBRARY_PATH=${LIBSTDCPP_DIR}:$ENV{LD_LIBRARY_PATH}"
+                CACHE INTERNAL "Runtime env for LazyLLM C++ tests" FORCE)
+        endif ()
+    endif ()
+endif ()
+
+if (_lazyllm_cpp_rpath)
+    set_target_properties(${INTERFACE_TARGET_NAME} PROPERTIES
+        BUILD_RPATH "${_lazyllm_cpp_rpath}"
+        INSTALL_RPATH "${_lazyllm_cpp_rpath}"
+    )
+endif ()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     # SHOW_SYMBOL
