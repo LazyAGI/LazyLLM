@@ -62,6 +62,7 @@ class Segment(BaseModel):
     parent: Optional[str] = None    # uid of parent node
     answer: Optional[str] = ''
     image_keys: Optional[List[str]] = Field(default_factory=list)
+    copy_source: Optional[Dict[str, str]] = Field(default_factory=dict)
 
 
 class StoreCapability(IntFlag):
