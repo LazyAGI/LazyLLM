@@ -33,6 +33,9 @@ class DBInfo(BaseModel):
     options_str: Optional[str] = None
 
 
+EmptyDBInfo = Annotated[DBInfo | None, BeforeValidator(lambda v: None if v == {} else v)]
+
+
 class AddDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     algo_id: Optional[str] = '__default__'
@@ -40,7 +43,7 @@ class AddDocRequest(BaseModel):
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
-    db_info: Optional[DBInfo] = None
+    db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None
 
 
@@ -51,7 +54,7 @@ class UpdateMetaRequest(BaseModel):
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
     # NOTE: (db_info) is deprecated, will be removed in the future
-    db_info: Optional[DBInfo] = None
+    db_info: EmptyDBInfo = None
 
 
 class DeleteDocRequest(BaseModel):
@@ -61,7 +64,7 @@ class DeleteDocRequest(BaseModel):
     doc_ids: List[str]
     priority: Optional[int] = 0
     # NOTE: (db_info) is deprecated, will be removed in the future
-    db_info: Optional[DBInfo] = None
+    db_info: EmptyDBInfo = None
 
 
 class CancelTaskRequest(BaseModel):

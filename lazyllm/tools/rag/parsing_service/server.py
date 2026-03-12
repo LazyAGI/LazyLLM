@@ -275,25 +275,35 @@ class DocumentProcessor(ModuleBase):
             if self._shutdown:
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
             try:
-                algorithm = self._get_algo(algo_id)
-                if algorithm is None:
-                    raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
-                info_pickle_bytes = algorithm.get('info_pickle')
-                info = load_obj(info_pickle_bytes)
-                store: _DocumentStore = info['store']  # type: ignore
-                node_groups = info['node_groups']
-
-                data = []
-                for group_name in store.activated_groups():
-                    if group_name in node_groups:
-                        group_info = {'name': group_name, 'type': node_groups[group_name].get('group_type'),
-                                      'display_name': node_groups[group_name].get('display_name')}
-                        data.append(group_info)
+                data = self._get_algo_group_info_data(algo_id)
                 LOG.info(f'[DocumentProcessor] Get group info for {algo_id} success with {data}')
                 return BaseResponse(code=200, msg='success', data=data)
+            except fastapi.HTTPException:
+                raise
             except Exception as e:
                 LOG.error(f'[DocumentProcessor] Failed to get group info: {e}, {traceback.format_exc()}')
                 raise fastapi.HTTPException(status_code=500, detail=f'Failed to get group info: {str(e)}')
+
+        @app.get('/group/info')
+        def get_group_info(self, algo_id: str) -> None:
+            return self.get_algo_group_info(algo_id)
+
+        def _get_algo_group_info_data(self, algo_id: str) -> List[Dict[str, Any]]:
+            algorithm = self._get_algo(algo_id)
+            if algorithm is None:
+                raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
+            info_pickle_bytes = algorithm.get('info_pickle')
+            info = load_obj(info_pickle_bytes)
+            store: _DocumentStore = info['store']  # type: ignore
+            node_groups = info['node_groups']
+
+            data = []
+            for group_name in store.activated_groups():
+                if group_name in node_groups:
+                    group_info = {'name': group_name, 'type': node_groups[group_name].get('group_type'),
+                                  'display_name': node_groups[group_name].get('display_name')}
+                    data.append(group_info)
+            return data
 
         @app.post('/doc/add')
         def add_doc(self, request: AddDocRequest):  # noqa: C901
