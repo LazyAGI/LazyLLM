@@ -128,7 +128,6 @@ class DiversityScorer(EnQA):
         res = self.model(prompt)
 
         scores = res.get('diversity_scores', [])
-
         new_list = []
         for i, q in enumerate(querys):
             score = scores[i] if i < len(scores) else 0

@@ -1,5 +1,5 @@
 from ..base_data import data_register
-from lazyllm import TrainableModule, LOG
+from lazyllm import TrainableModule
 from lazyllm.components.formatter import JsonFormatter
 from collections import Counter
 from lazyllm.tools.data.operators.utils import boxed_res_extractor
@@ -136,9 +136,12 @@ class SelfConsistencyCoTGenerator(GenCot):
 def answer_verify(data, answer_key='reference', infer_key='llm_extracted', output_key='is_equal'):
     real_answer = data.get(answer_key, None)
     llm_answer = data.get(infer_key, None)
-
     if real_answer is None or llm_answer is None:
         data[output_key] = False
+        return data
+
+    if real_answer == llm_answer:
+        data[output_key] = True
         return data
 
     try:
@@ -146,8 +149,14 @@ def answer_verify(data, answer_key='reference', infer_key='llm_extracted', outpu
         parsed_llm = math_verify.parse(str(llm_answer))
         data[output_key] = math_verify.verify(parsed_real, parsed_llm)
 
-    except Exception as e:
-        LOG.error(f'Error verifying answers: {e}')
+    except Exception:
         data[output_key] = False
 
     return data
+
+@data_register('data.genCot', rewrite_func='forward')
+def wrong_filter(data, input_key='is_equal'):
+    if data[input_key]:
+        return None
+    else:
+        return []

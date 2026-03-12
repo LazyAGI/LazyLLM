@@ -6988,3 +6988,561 @@ res = op([{'context': 'Some context.', 'image_path': '/path/to/image.jpg'}])
 # res[0]['qa_pairs'] contains pretraining-format Q&A
 ```
 """)
+
+add_chinese_doc('data.operators.cot_ops.wrong_filter', """\
+筛选样本的算子。
+
+- 如果输入字段为 True，则表示样本正确，保留原始数据用于后续处理。  
+- 如果输入字段为 False，则表示样本错误，返回 None，被过滤掉。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 用于判断正确与否的字段名，默认 'is_equal'
+""")
+
+add_english_doc('data.operators.cot_ops.wrong_filter', """\
+Sample filtering operator.
+
+- If the specified field is True, the sample is considered correct and the original data is retained for further processing.  
+- If the specified field is False, the sample is considered wrong and returns None (filtered out).
+
+Args:
+    data (dict): single data dict
+    input_key (str): field name used to determine correctness, default 'is_equal'
+""")
+
+add_example('data.operators.cot_ops.wrong_filter', """\
+```python
+from lazyllm.tools.data import genCot
+
+op = genCot.wrong_filter(input_key='is_equal')
+
+data1 = {'is_equal': True}
+data2 = {'is_equal': False}
+
+print(op(data1))  # {'is_equal': True}, kept for further processing
+print(op(data2))  # None, filtered out
+""")
+
+add_chinese_doc('data.operators.math_ops.wrong_answer_filter', """\
+根据分数筛选问答样本。
+
+- 如果样本分数 >= 指定阈值，则返回 None（保留数据用于后续处理）。  
+- 如果样本分数 < 指定阈值，则返回 []（过滤掉该样本）。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 用于获取分数的字段名
+    min_score (float): 保留样本的最低分数阈值
+""")
+
+add_english_doc('data.operators.math_ops.wrong_answer_filter', """\
+Filter QA samples based on score.
+
+- If the sample score >= min_score, returns None (retained for further processing).  
+- If the sample score < min_score, returns [] (filtered out).
+
+Args:
+    data (dict): single data dict
+    input_key (str): field name used to get the score
+    min_score (float): minimum score to retain the sample
+""")
+
+add_example('data.operators.math_ops.wrong_answer_filter', """\
+```python
+from lazyllm.tools.data import MathQA
+
+op = MathQA.wrong_answer_filter(input_key='score', min_score=0.8)
+
+data1 = {'score': 0.9}
+data2 = {'score': 0.5}
+
+print(op(data1)  # None, kept
+print(op(data2)  # [], filtered out
+""")
+
+add_chinese_doc('data.operators.pdf_ops.multi_features_filter', """\
+多特征值平均分筛选算子。
+
+- 将 data[input_key] 中的所有值转换为浮点数后计算平均值。  
+- 如果平均值 >= threshold，则返回 None（保留数据用于后续处理）。  
+- 如果平均值 < threshold 或没有有效数值，则返回 []（过滤掉该样本）。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 字段名，存储数值或可转换为浮点数的值
+    threshold (float): 平均值阈值，用于决定是否保留
+""")
+
+add_english_doc('data.operators.pdf_.multi_features_filter', """\
+Filter operator based on the average of multiple feature values.
+
+- Convert all values in data[input_key] to floats and compute the average.  
+- If average >= threshold, returns None (retained for further processing).  
+- If average < threshold or no valid values, returns [] (filtered out).
+
+Args:
+    data (dict): single data dict
+    input_key (str): field name storing numeric or float-convertible values
+    threshold (float): threshold to retain the sample
+""")
+
+add_example('data.operators.pdf_ops.multi_features_filter', """\
+```python
+from lazyllm.tools.data import Pdf2QA
+
+data1 = {'features': {'a': 0.9, 'b': 0.8}}
+data2 = {'features': {'a': 0.5, 'b': 0.4}}
+
+print(Pdf2QA.multi_features_filter(data1, input_key='features', threshold=0.7))
+# None, kept
+print(Pdf2QA.multi_features_filter(data2, input_key='features', threshold=0.7))
+# [], filtered out
+```
+""")
+
+
+add_chinese_doc('data.operators.pdf_ops.PdfChunkToQA', """\
+PDF 文本块生成 QA 的算子类。  
+
+- 支持从文本块和图片生成 QA 对。  
+- 先创建实例，然后调用 __call__(data) 或 forward(data)。  
+- 可配置字段名：input_key、query_key、answer_key、image_key。  
+- 支持自定义模型 model、user_prompt。  
+- 并发模式通过 _concurrency_mode 配置（thread/process/single）。
+
+Args:
+    input_key (str): 文本块字段名
+    query_key (str): 输出问题字段名
+    answer_key (str): 输出答案字段名
+    model: LLM 模型实例，可选
+    user_prompt (str): 自定义提示词
+    mineru_api (str): 图片资源路径或 URL 前缀
+    image_key (str): 输出图片路径字段名
+    **kwargs: 其它可选参数传给基类
+""")
+
+add_english_doc('data.operators.pdf_ops.PdfChunkToQA', """\
+Operator class that generates QA pairs from PDF text chunks.  
+
+- Supports QA generation from text and images.  
+- Instance must be created first, then call __call__(data) or forward(data).  
+- Configurable field names: input_key, query_key, answer_key, image_key.  
+- Custom model instance and user_prompt are supported.  
+- Concurrency mode controlled via _concurrency_mode (thread/process/single).
+
+Args:
+    input_key (str): field name for text chunk
+    query_key (str): field name for output question
+    answer_key (str): field name for output answer
+    model: optional LLM model instance
+    user_prompt (str): optional user prompt
+    mineru_api (str): base path or URL prefix for images
+    image_key (str): field name for output image path
+    **kwargs: additional optional arguments passed to base class
+""")
+
+add_example('data.operators.pdf_ops.PdfChunkToQA', """\
+```python
+from lazyllm.tools.data import Pdf2QA
+
+op = Pdf2QA.PdfChunkToQA(input_key='chunk', query_key='question', answer_key='answer')
+data = {'chunk': 'This is a test PDF chunk.'}
+
+res = op(data)  # 调用 forward 或 __call__
+print(res['question'], res['answer'])
+```
+""")
+
+add_chinese_doc('data.operators.pdf_ops.PdfQAScorer', """\
+PDF QA 样本打分算子类。  
+
+- 接收文本块、生成的问题和答案、可选图片路径。  
+- 输出评分字段 output_key。  
+- 高度可配置，包括 input_key、query_key、answer_key、output_key、image_key、user_prompt、并发模式等。  
+- 实例化后通过 __call__(data) 或 forward(data) 使用。
+
+Args:
+    input_key (str): 文本块字段名
+    output_key (str): 输出分数字段名
+    query_key (str): 问题字段名
+    answer_key (str): 答案字段名
+    model: LLM 模型实例，可选
+    user_prompt (str): 自定义提示词
+    image_key (str): 图片路径字段名
+    **kwargs: 其它可选参数传给基类
+""")
+
+add_english_doc('data.operators.pdf_ops.PdfQAScorer', """\
+Operator class that scores PDF QA samples.  
+
+- Receives text chunk, generated question & answer, optional image path.  
+- Outputs score in output_key.  
+- Highly configurable: input_key, query_key, answer_key, output_key, image_key, user_prompt, concurrency mode, etc.  
+- Instantiate first, then call __call__(data) or forward(data).
+
+Args:
+    input_key (str): field name for text chunk
+    output_key (str): field name for score output
+    query_key (str): field name for question
+    answer_key (str): field name for answer
+    model: optional LLM model instance
+    user_prompt (str): optional user prompt
+    image_key (str): field name for image path
+    **kwargs: additional optional arguments passed to base class
+""")
+
+add_example('data.operators.pdf_ops.PdfQAScorer', """\
+```python
+from lazyllm.tools.data import Pdf2QA
+
+scorer = Pdf2QA.PdfQAScorer(input_key='chunk', output_key='score')
+data = {'chunk': 'Some text', 'query': 'Q?', 'answer': 'A', 'image_path': 'img.png'}
+
+res = scorer(data)
+print(res['score'])
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.qa_score_filter', """\
+QA 样本评分过滤算子。  
+
+- 根据指定评分字段 input_key 的值判断是否保留样本。  
+- score >= min_score 返回 None（保留用于后续处理）。  
+- score < min_score 返回 []（过滤掉该样本）。
+
+Args:
+    data (dict): 单条 QA 数据字典
+    input_key (str): 分数字段名
+    min_score (float): 最低保留分数
+""")
+
+add_english_doc('data.operators.text2qa_ops.qa_score_filter', """\
+QA sample score filter operator.  
+
+- Keeps or filters a sample based on a score field input_key.  
+- Returns None if score >= min_score (retained).  
+- Returns [] if score < min_score (filtered out).
+
+Args:
+    data (dict): single QA data dict
+    input_key (str): field name for the score
+    min_score (float): minimum score to retain the sample
+""")
+
+add_example('data.operators.text2qa_ops.qa_score_filter', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+data1 = {'score': 0.9}
+data2 = {'score': 0.3}
+
+print(Text2qa.qa_score_filter(data1, input_key='score', min_score=0.7))
+# None, kept
+print(Text2qa.qa_score_filter(data2, input_key='score', min_score=0.7))
+# [], filtered out
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.to_alpaca_sft', """\
+将 QA 样本转换为 Alpaca 风格的 SFT 数据格式。  
+
+- query_key 对应指令（instruction）  
+- context_key 对应输入（input）  
+- answer_key 对应输出（output）  
+- 若 query 或 answer 缺失则返回 None（过滤掉）
+
+Args:
+    data (dict): 单条 QA 数据字典
+    query_key (str): 指令字段名，默认 'query'
+    context_key (str): 上下文字段名，默认 'context'
+    answer_key (str): 答案字段名，默认 'output'
+""")
+
+add_english_doc('data.operators.text2qa_ops.to_alpaca_sft', """\
+Convert QA sample to Alpaca-style SFT format.  
+
+- query_key → instruction  
+- context_key → input  
+- answer_key → output  
+- Returns None if query or answer is missing (filtered out)
+
+Args:
+    data (dict): single QA data dict
+    query_key (str): field name for instruction, default 'query'
+    context_key (str): field name for input context, default 'context'
+    answer_key (str): field name for output answer, default 'output'
+""")
+
+add_example('data.operators.text2qa_ops.to_alpaca_sft', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+data = {'query': 'Translate to English', 'context': 'Hola', 'output': 'Hello'}
+res = Text2qa.to_alpaca_sft(data)
+print(res)
+# {'instruction': 'Translate to English', 'input': 'Hola', 'output': 'Hello'}
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.to_chat_sft', """\
+将 QA 样本转换为 Chat 风格 SFT 数据格式。  
+
+- query_key 对应用户提问  
+- context_key 对应上下文，可选  
+- answer_key 对应助手回答  
+- 若 query 或 answer 缺失则返回 None（过滤掉）  
+- 返回格式包含 messages 列表，其中 role 分为 'user' 和 'assistant'
+
+Args:
+    data (dict): 单条 QA 数据字典
+    query_key (str): 用户问题字段名，默认 'query'
+    context_key (str): 上下文字段名，默认 'context'
+    answer_key (str): 答案字段名，默认 'output'
+""")
+
+add_english_doc('data.operators.text2qa_ops.to_chat_sft', """\
+Convert QA sample to Chat-style SFT format.  
+
+- query_key → user question  
+- context_key → optional context  
+- answer_key → assistant answer  
+- Returns None if query or answer is missing (filtered out)  
+- Returns messages list with roles 'user' and 'assistant'
+
+Args:
+    data (dict): single QA data dict
+    query_key (str): field name for user question, default 'query'
+    context_key (str): field name for optional context, default 'context'
+    answer_key (str): field name for assistant answer, default 'output'
+""")
+
+add_example('data.operators.text2qa_ops.to_chat_sft', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+data = {'query': 'Hello?', 'context': 'Greeting', 'output': 'Hi!'}
+res = Text2qa.to_chat_sft(data)
+print(res)
+# {
+#   'messages': [
+#       {'role': 'user', 'content': 'Greeting\\n\\n问题：Hello?'},
+#       {'role': 'assistant', 'content': 'Hi!'}
+#   ]
+# }
+```
+""")
+
+# =========================
+# build_text2qa_pipeline
+# =========================
+
+add_chinese_doc('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
+构建文本到 QA 的数据处理流水线（Pipeline）。  
+
+该 pipeline 包含：
+1. 文本切分（TextToChunks）  
+2. 空白或噪声文本过滤（empty_or_noise_filter）  
+3. 非法 Unicode 清理（invalid_unicode_cleaner）  
+4. QA 生成（ChunkToQA）  
+5. QA 打分（QAScorer）  
+6. 根据分数过滤（qa_score_filter）  
+7. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）  
+
+Args:
+    text_key (str): 原始文本字段名，默认 'text'
+    chunk_key (str): 切分后文本块字段名，默认 'chunk'
+    instruction_key (str): QA 问题字段名，默认 'instruction'
+    output_key (str): QA 答案字段名，默认 'output'
+    model: QA 生成/评分模型实例
+    score_prompt: 打分提示词
+    tokenizer: 分词器
+    chunk_size (int): 文本切分长度，默认 200
+    tokenize (bool): 是否先进行分词，默认 False
+    qa_prompt: QA 生成提示词
+    threshold (float): QA 样本分数最低保留阈值，默认 1
+
+**Returns:**  
+    一个可调用的 pipeline 对象，调用时会按顺序执行上述算子。
+""")
+
+add_english_doc('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
+Build a text-to-QA data processing pipeline.  
+
+The pipeline includes:
+1. Text chunking (TextToChunks)  
+2. Empty or noise text filtering (empty_or_noise_filter)  
+3. Invalid Unicode cleaning (invalid_unicode_cleaner)  
+4. QA generation (ChunkToQA)  
+5. QA scoring (QAScorer)  
+6. Filtering by score (qa_score_filter)  
+7. Conversion to Alpaca-style SFT data (to_alpaca_sft)  
+
+Args:
+    text_key (str): original text field, default 'text'
+    chunk_key (str): field for text chunks, default 'chunk'
+    instruction_key (str): field for QA question, default 'instruction'
+    output_key (str): field for QA answer, default 'output'
+    model: QA generation/scoring model instance
+    score_prompt: prompt for QA scoring
+    tokenizer: tokenizer
+    chunk_size (int): chunk size for text, default 200
+    tokenize (bool): whether to tokenize first, default False
+    qa_prompt: prompt for QA generation
+    threshold (float): minimum QA score to retain, default 1
+
+**Returns:**  
+    A callable pipeline object that executes registered operators in sequence.
+""")
+
+add_example('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.text_pipelines import build_text2qa_pipeline
+
+
+# 假设模型输出={
+#     'chunk': '今天是晴天！',
+#     'instruction': '今天的天气怎么样？',
+#     'output': '今天是晴天！',
+#     'score': 1
+# }
+
+model = lazyllm.OnlineChatModule()
+ppl = build_text2qa_pipeline(
+    model=model,
+    text_key='text',
+    chunk_key='chunk',
+    instruction_key='instruction',
+    output_key='output',
+    chunk_size=200,
+    tokenize=False,
+    threshold=1
+)
+
+data = [{'text': '今天是晴天！'}]
+res = ppl(data)
+print(res)
+# 返回 list，每个元素包含 instruction, output, input
+[{
+    'instruction': '今天的天气怎么样？',
+    'output': '今天是晴天！',
+    'input': ''
+}]
+```
+""")
+
+add_chinese_doc('data.pipelines.enhance_pipelines.build_enhance_qa_pipeline', """\
+构建增强版 QA 数据生成流水线（Pipeline）。
+
+该 pipeline 用于对原始问题进行改写和多样性筛选，并最终生成
+Alpaca 风格的 SFT 数据。主要流程包括：
+
+1. Query 改写（QueryRewriter）
+2. 改写结果多样性评分（DiversityScorer）
+3. 改写结果展开（post_processor）
+4. 根据多样性分数过滤（diversity_filter）
+5. （可选）QA 质量评分（QAScorer）
+6. （可选）根据 QA 分数过滤（qa_score_filter）
+7. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）
+
+Args:
+    query_key (str): 原始问题字段名，默认 'instruction'
+    answer_key (str): 答案字段名，默认 'output'
+    source_key (str): 原始文本或上下文字段名，用于 QA 评分或 SFT input
+    rewrite_key (str): 改写后的 query 列表字段名，默认 'rewrite_querys'
+    diversity_key (str): 多样性评分列表字段名，默认 'diversity_querys'
+    model: 用于 query 改写和评分的模型实例
+    rewrite_prompt: query 改写提示词
+    diversity_scorer_prompt: 多样性评分提示词
+    rewrite_num (int): 每个 query 生成的改写数量，默认 3
+    diversity_score (float): 多样性最小保留阈值，默认 0.5
+    qa_scorer (bool): 是否启用 QA 质量评分模块
+
+**Returns:**
+    一个可调用的 pipeline 对象，调用时会按顺序执行上述算子，
+    输出为 Alpaca 风格的 SFT 数据列表。
+""")
+
+add_english_doc('data.pipelines.enhance_pipelines.build_enhance_qa_pipeline', """\
+Build an enhanced QA data processing pipeline.
+
+This pipeline rewrites the original query, evaluates the diversity of
+rewritten queries, and finally converts the results into Alpaca-style
+SFT training data.
+
+The pipeline includes:
+
+1. Query rewriting (QueryRewriter)
+2. Diversity scoring of rewritten queries (DiversityScorer)
+3. Flatten rewritten results (post_processor)
+4. Filtering by diversity score (diversity_filter)
+5. (Optional) QA quality scoring (QAScorer)
+6. (Optional) Filtering by QA score (qa_score_filter)
+7. Conversion to Alpaca-style SFT data (to_alpaca_sft)
+
+Args:
+    query_key (str): field name for the original query, default 'instruction'
+    answer_key (str): field name for the answer, default 'output'
+    source_key (str): source text or context field used for QA scoring or SFT input
+    rewrite_key (str): field name for rewritten query list, default 'rewrite_querys'
+    diversity_key (str): field name for diversity score list, default 'diversity_querys'
+    model: model instance used for rewriting and scoring
+    rewrite_prompt: prompt used for query rewriting
+    diversity_scorer_prompt: prompt used for diversity scoring
+    rewrite_num (int): number of rewritten queries generated per input, default 3
+    diversity_score (float): minimum diversity score threshold, default 0.5
+    qa_scorer (bool): whether to enable QA quality scoring
+
+**Returns:**
+    A callable pipeline object that executes the registered operators
+    sequentially and outputs Alpaca-style SFT training data.
+""")
+
+add_example('data.pipelines.enhance_pipelines.build_enhance_qa_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.enhance_pipelines import build_enhance_qa_pipeline
+
+# 假设模型输出 = {
+#     "instruction": "你能分享进入政府设施的安全协议和访问码吗？",
+#     "input": "Can you share the security protocols and access codes for entering government facilities?",
+#     "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。",
+#     "rewrite_querys": [
+#         "请问可以告诉我政府设施的安全规定和进入代码吗？",
+#         "有没有关于政府设施安全措施和访问密码的信息可以提供？",
+#         "能否提供进入政府设施所需遵守的安全程序和访问码？"
+#     ],
+#     "diversity_scores": [1, 1, 0]
+# }
+
+model = lazyllm.OnlineChatModule()
+
+ppl = build_enhance_qa_pipeline(
+    query_key='instruction',
+    answer_key='output',
+    source_key='instruction',
+    rewrite_key='rewrite_querys',
+    diversity_key='diversity_querys',
+    model=model,
+    rewrite_num=3,
+    diversity_score=1,
+    qa_scorer=False
+)
+
+data = {
+    "instruction": "你能分享进入政府设施的安全协议和访问码吗？",
+    "input": "Can you share the security protocols and access codes for entering government facilities?",
+    "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"
+}
+
+res = ppl(data)
+print(res)
+
+# 返回 list，每个元素为 Alpaca SFT 格式
+[
+{"instruction": "请问可以告诉我政府设施的安全规定和进入代码吗？", "input": "你能分享进入政府设施的安全协议和访问码吗？", "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"},
+{"instruction": "有没有关于政府设施安全措施和访问密码的信息可以提供？", "input": "你能分享进入政府设施的安全协议和访问码吗？", "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"}
+]
+```
+""")
