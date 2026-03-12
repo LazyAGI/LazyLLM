@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <set>
+#include <any>
 
 namespace lazyllm {
 
@@ -79,6 +80,8 @@ inline std::string GenerateUUID() {
     }
     return out;
 }
+
+std::string any_to_string(const std::any& value);
 
 inline bool is_adjacent(const std::string_view& left, const std::string_view& right) {
     return left.data() + left.size() == right.data();

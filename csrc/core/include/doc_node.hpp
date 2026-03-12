@@ -113,13 +113,14 @@ public:
 
         std::vector<std::string> kv_strings;
         for (const std::string& key : valid_keys)
-            kv_strings.emplace_back(key + ":" + std::any_cast<std::string>(_metadata.at(key)));
+            kv_strings.emplace_back(key + ": " + any_to_string(_metadata.at(key)));
 
         return JoinLines(kv_strings);
     }
     std::string get_text(MetadataMode mode = MetadataMode::NONE) const {
         if (mode == MetadataMode::NONE) return std::string(_text_view);
         const auto& metadata_string = get_metadata_string(mode);
+        if (metadata_string.empty()) return std::string(_text_view);
         return metadata_string + "\n\n" + std::string(_text_view);
     }
     void set_root_text(const std::string& text) {
