@@ -396,6 +396,8 @@ class DocumentProcessor(ModuleBase):
                     'algo_id': algo_dict.get('id'),
                     'display_name': algo_dict.get('display_name'),
                     'description': algo_dict.get('description'),
+                    'created_at': algo_dict.get('created_at'),
+                    'updated_at': algo_dict.get('updated_at'),
                 })
             if not data:
                 LOG.warning('[DocumentProcessor] No algorithm registered')

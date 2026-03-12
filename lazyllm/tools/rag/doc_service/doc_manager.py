@@ -1369,8 +1369,11 @@ class DocManager:
     def health(self):
         return {
             'status': 'ok',
-            'version': 'v1-mock',
-            'deps': {'sql': True},
+            'version': 'v1',
+            'deps': {
+                'sql': True,
+                'parser': bool(getattr(self._parser_client, '_parser_url', None)),
+            },
         }
 
     def list_kbs(
@@ -1387,6 +1390,7 @@ class DocManager:
             Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
             Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
             query = session.query(Kb, Rel).outerjoin(Rel, Rel.kb_id == Kb.kb_id)
+            query = query.filter(Kb.kb_id != '__default__')
             if keyword:
                 like_expr = f'%{keyword}%'
                 query = query.filter(
@@ -1448,25 +1452,11 @@ class DocManager:
                   algo_id: str = '__default__'):
         if not kb_id:
             raise DocServiceError('E_INVALID_PARAM', 'kb_id is required')
+        if self._get_kb(kb_id) is not None:
+            raise DocServiceError('E_STATE_CONFLICT', f'kb already exists: {kb_id}', {'kb_id': kb_id})
         self._ensure_algorithm_exists(algo_id)
-        binding = self._get_kb_algorithm(kb_id)
-        if binding is not None and binding['algo_id'] != algo_id:
-            raise DocServiceError(
-                'E_STATE_CONFLICT', f'kb {kb_id} is already bound to algorithm {binding["algo_id"]}',
-                {'kb_id': kb_id, 'bound_algo_id': binding['algo_id'], 'requested_algo_id': algo_id}
-            )
-        update_fields = set()
-        if display_name is not None:
-            update_fields.add('display_name')
-        if description is not None:
-            update_fields.add('description')
-        if owner_id is not None:
-            update_fields.add('owner_id')
-        if meta is not None:
-            update_fields.add('meta')
         self._ensure_kb(
             kb_id, display_name=display_name, description=description, owner_id=owner_id, meta=meta,
-            update_fields=update_fields,
         )
         self._ensure_kb_algorithm(kb_id, algo_id)
         return self.get_kb(kb_id)
