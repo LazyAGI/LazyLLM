@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, BeforeValidator
+from pydantic import BaseModel, Field, BeforeValidator, model_validator
 from typing import Dict, List, Optional, Any, Annotated
 from enum import Enum
 from uuid import uuid4
@@ -65,6 +65,14 @@ class DeleteDocRequest(BaseModel):
     priority: Optional[int] = 0
     # NOTE: (db_info) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def _compat_dataset_id(cls, data):
+        if isinstance(data, dict) and not data.get('kb_id') and data.get('dataset_id'):
+            data = dict(data)
+            data['kb_id'] = data['dataset_id']
+        return data
 
 
 class CancelTaskRequest(BaseModel):
