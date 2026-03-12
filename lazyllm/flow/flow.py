@@ -418,8 +418,7 @@ class Parallel(LazyLLMFlowsBase):
         lazyllm.globals._init_sid(sid)
         if global_data: lazyllm.globals._update(global_data)
         lazyllm.locals._init_sid()
-        lazyllm.locals._update(local_data)
-        lazyllm.locals['bind_args'] = lazyllm.locals['bind_args'].copy()
+        lazyllm.locals._update({k: v.copy() for k, v in local_data.items()})
         _barr.impl = barrier
         r = func(*args, **kw)
         lazyllm.locals.clear()
@@ -505,7 +504,7 @@ class Parallel(LazyLLMFlowsBase):
 
             with executor(max_workers=self._concurrent) as e:
                 futures = [e.submit(partial(self._worker, self.invoke, barrier, lazyllm.globals._sid,
-                                            lazyllm.locals._data, it, inp, **kw))
+                                    lazyllm.locals._data, it, inp, **kw))
                            for it, inp in zip(items, inputs)]
                 if (not_done := concurrent.futures.wait(futures).not_done):
                     error_msgs = []
