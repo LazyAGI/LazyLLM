@@ -1,6 +1,8 @@
 from typing import List, Tuple
 from .base import _TextSplitterBase, _Split, _UNSET
+from lazyllm.cpp import cpp_class
 
+@cpp_class
 class SentenceSplitter(_TextSplitterBase):
     def __init__(self, chunk_size: int = _UNSET, chunk_overlap: int = _UNSET, num_workers: int = _UNSET):
         super().__init__(chunk_size=chunk_size, overlap=chunk_overlap, num_workers=num_workers)

@@ -3,6 +3,7 @@ from enum import Enum, auto
 from collections import defaultdict
 from lazyllm.thirdparty import PIL
 from lazyllm import JsonFormatter, config, reset_on_pickle, Mode, LOG
+from lazyllm.cpp import cpp_class
 from lazyllm.components.utils.file_operate import _image_to_base64
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import uuid
@@ -22,6 +23,7 @@ class MetadataMode(str, Enum):
     NONE = auto()
 
 
+@cpp_class
 @reset_on_pickle(('_lock', threading.Lock))
 class DocNode:
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
