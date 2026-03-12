@@ -34,6 +34,7 @@ def _get_log_format(fmt: str):
         return ('<green>{time:YYYY-MM-DD HH:mm:ss}</> {extra[name]} <level>{level}</> '
                 '({name}:{line}, {process}{extra[jobid]}): <cyan>{message}</>')
     elif fmt == 'short': return '<green>{time:YYYY-MM-DD HH:mm:ss}</> <level>{level}</>: <cyan>{message}</>'
+    elif fmt == 'shortest': return '{time:mm:ss} [{level}]: {message}'
     else: return fmt
 
 
