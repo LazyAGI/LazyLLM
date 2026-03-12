@@ -1,4 +1,4 @@
-# 环境依赖（本地参考）
+# 环境依赖
 
 本文档为 skill 本地摘要，完整安装与系统差异见项目根目录下 `docs/zh/Home/environment.md` 或 `docs/en/Home/environment.md`。
 

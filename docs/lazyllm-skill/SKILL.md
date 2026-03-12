@@ -266,4 +266,4 @@ print(agent('用户问题'))
 - Agent 与工具: [references/agent.md](references/agent.md)、[assets/agent/](assets/agent/)  
 - 脚本示例: [scripts/README.md](scripts/README.md)  
 
-完整在线文档（需联网）可在项目或官方站点查阅。
+完整在线文档（需联网）可在项目或官方站点查阅，网站地址：https://docs.lazyllm.ai/zh-cn/latest/

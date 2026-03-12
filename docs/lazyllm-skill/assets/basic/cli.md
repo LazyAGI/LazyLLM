@@ -1,4 +1,4 @@
-# CLI 使用（本地参考）
+# CLI 使用
 
 LazyLLM 命令行用于依赖安装、模型部署与运行服务。完整参数见项目 `docs/zh/API Reference/cli.md` 或 `docs/en/API Reference/cli.md`。
 

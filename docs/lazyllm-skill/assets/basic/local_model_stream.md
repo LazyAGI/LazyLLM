@@ -1,4 +1,4 @@
-# 本地模型与流式输出（本地参考）
+# 本地模型与流式输出
 
 本文档为 skill 本地摘要，完整内容见项目 `docs/zh/Best Practice/LocalModel.md` 或 `docs/en/Best Practice/LocalModel.md`。
 

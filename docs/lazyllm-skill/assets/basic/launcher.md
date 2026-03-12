@@ -1,4 +1,4 @@
-# Launcher（本地参考）
+# Launcher
 
 分布式或集群任务通过 `lazyllm.launchers` 指定启动方式。完整 API 见项目 `docs/zh/API Reference/launcher.md` 或 `docs/en/API Reference/launcher.md`。
 
