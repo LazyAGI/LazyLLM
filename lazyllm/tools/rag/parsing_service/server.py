@@ -1,4 +1,5 @@
 import json
+import inspect
 import threading
 import time
 import traceback
@@ -132,6 +133,7 @@ class DocumentProcessor(ModuleBase):
                     if finished_task:
                         self._callback(
                             task_id=finished_task.get('task_id'),
+                            task_type=finished_task.get('task_type'),
                             task_status=finished_task.get('task_status'),
                             error_code=finished_task.get('error_code'),
                             error_msg=finished_task.get('error_msg')
@@ -496,26 +498,64 @@ class DocumentProcessor(ModuleBase):
             if not callable(self._post_func):
                 LOG.error('[DocumentProcessor] Post function is not callable')
                 return False
-            if not all(
-                param in self._post_func.__code__.co_varnames for param in [
-                    'task_id', 'task_status', 'error_code', 'error_msg'
-                ]
+            try:
+                sig = inspect.signature(self._post_func)
+            except (TypeError, ValueError):
+                LOG.error('[DocumentProcessor] Failed to inspect post function signature')
+                return False
+            params = sig.parameters
+            has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+            if not has_var_keyword and not all(
+                param in params for param in ['task_id', 'task_status', 'error_code', 'error_msg']
             ):
                 LOG.error('[DocumentProcessor] Post function params do not include'
                           ' task_id, task_status, error_code, error_msg')
                 return False
             return True
 
-        def _callback(self, task_id: str, task_status: str = None, error_code: str = None, error_msg: str = None):
+        def _callback(self, task_id: str, task_type: str = None,
+                      task_status: str = None, error_code: str = None, error_msg: str = None):
             '''callback to service'''
-            message = f'Task {task_id} finished with status: {task_status}.'
-            if error_msg:
-                message += f' Error code: {error_code}, error_msg: {error_msg}.'
-            LOG.info(f'[DocumentProcessor] {message}')
+            parts = [f'task_id={task_id}']
+            if task_type:
+                parts.append(f'task_type={task_type}')
+            if task_status:
+                parts.append(f'status={task_status}')
+            has_error = (
+                task_status not in (TaskStatus.FINISHED.value, None)
+                or error_code not in (None, '', '200')
+                or error_msg not in (None, '', 'success')
+            )
+            if has_error:
+                if error_code not in (None, ''):
+                    parts.append(f'error_code={error_code}')
+                if error_msg not in (None, ''):
+                    parts.append(f'error_msg={error_msg}')
+            message = '[DocumentProcessor] Task callback: ' + ', '.join(parts)
+            if task_status == TaskStatus.FAILED.value:
+                LOG.error(message)
+            elif task_status in (TaskStatus.CANCELED.value, TaskStatus.CANCEL_REQUESTED.value):
+                LOG.warning(message)
+            else:
+                LOG.info(message)
 
             if self._post_func:
                 try:
-                    self._post_func(task_id, task_status, error_code, error_msg)
+                    params = inspect.signature(self._post_func).parameters
+                    accepts_task_type = (
+                        'task_type' in params
+                        or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+                    )
+                    if accepts_task_type:
+                        self._post_func(
+                            task_id=task_id,
+                            task_type=task_type,
+                            task_status=task_status,
+                            error_code=error_code,
+                            error_msg=error_msg,
+                        )
+                    else:
+                        self._post_func(task_id, task_status, error_code, error_msg)
                 except Exception as e:
                     LOG.error(f'[DocumentProcessor] Failed to call post function: {e}, {traceback.format_exc()}')
                     raise e

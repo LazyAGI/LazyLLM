@@ -295,10 +295,12 @@ class DocNode:
         node._copy_source = {'uid': self.uid, RAG_KB_ID: self.global_metadata.get(RAG_KB_ID),
                              RAG_DOC_ID: self.global_metadata.get(RAG_DOC_ID)}
         node._uid = str(uuid.uuid4())
+        node._metadata = dict(self._metadata or {})
+        node._global_metadata = dict(self._global_metadata or {})
         if metadata:
-            node.metadata.update(metadata)
+            node._metadata.update(metadata)
         if global_metadata:
-            node.global_metadata.update(global_metadata)
+            node._global_metadata.update(global_metadata)
         return node
 
     def with_score(self, score):

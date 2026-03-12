@@ -317,6 +317,29 @@ class DocumentProcessorWorker(ModuleBase):
                 if not isinstance(doc_ids, list) or not doc_ids:
                     raise ValueError('doc_ids is required for task_type DOC_DELETE')
 
+        def _summarize_task_payload(self, task_type: str, payload: dict) -> str:
+            summary = {
+                'task_type': task_type,
+                'algo_id': payload.get('algo_id'),
+                'kb_id': payload.get('kb_id'),
+            }
+            if task_type == TaskType.DOC_DELETE.value:
+                summary['doc_ids'] = payload.get('doc_ids', [])
+            else:
+                file_infos = []
+                for file_info in payload.get('file_infos', []):
+                    transfer_params = file_info.get('transfer_params') or {}
+                    file_infos.append({
+                        'doc_id': file_info.get('doc_id'),
+                        'file_path': file_info.get('file_path'),
+                        'reparse_group': file_info.get('reparse_group'),
+                        'target_doc_id': transfer_params.get('target_doc_id'),
+                        'target_kb_id': transfer_params.get('target_kb_id'),
+                        'transfer_mode': transfer_params.get('mode'),
+                    })
+                summary['file_infos'] = file_infos
+            return json.dumps(summary, ensure_ascii=False)
+
         def _enqueue_task_from_payload(self, task: dict):
             try:
                 task_type = task.get('task_type')
@@ -377,8 +400,8 @@ class DocumentProcessorWorker(ModuleBase):
                 if not algo_id:
                     raise ValueError(f'{self._log_prefix(task_id)} task_id is missing algo_id in payload: {payload}')
 
-                LOG.info(f'{self._log_prefix(task_id)} Start processing task, type: {task_type}, '
-                         f'algo_id: {algo_id}')
+                LOG.info(f'{self._log_prefix(task_id)} Start processing task: '
+                         f'{self._summarize_task_payload(task_type, payload)}')
 
                 processor = self._get_or_create_processor(algo_id)
                 if task_type == TaskType.DOC_ADD.value:
@@ -501,6 +524,8 @@ class DocumentProcessorWorker(ModuleBase):
                                           f'{traceback.format_exc()}')
                         time.sleep(WORKER_ERROR_RETRY_INTERVAL)
                         continue
+                    LOG.info(f'{self._log_prefix(task_data["task_id"])} [Worker] Claimed queued task: '
+                             f'{self._summarize_task_payload(task_data["task_type"], payload)}')
                     self._run_task(task_data['task_id'], task_data['task_type'], payload, from_queue=True)
                     continue
 
@@ -517,6 +542,8 @@ class DocumentProcessorWorker(ModuleBase):
                                 LOG.warning(f'{self._log_prefix()} [Poller] Skip invalid task payload: {e}. '
                                             f'payload={task}')
                                 continue
+                            LOG.info(f'{self._log_prefix(task_id)} [Poller] Received direct task: '
+                                     f'{self._summarize_task_payload(task_type, payload)}')
                             self._run_task(task_id, task_type, payload, from_queue=False)
                     except Exception as e:
                         LOG.error(f'{self._log_prefix()} [Poller] fetch failed: {e}')
