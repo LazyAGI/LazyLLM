@@ -25,6 +25,7 @@ package_name_map = {
     'docx': 'python-docx',
     'bs4': 'beautifulsoup4',
     'Stemmer': 'pystemmer',
+    'ahocorasick': 'pyahocorasick',
     'psycopg2': 'psycopg2-binary',
     'yaml': 'pyyaml',
 }

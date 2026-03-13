@@ -2,15 +2,26 @@ import lazyllm
 from lazyllm.tools.rag.transform import (
     SentenceSplitter, CharacterSplitter, RecursiveSplitter, MarkdownSplitter,
     CodeSplitter, JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter,
-    GeneralCodeSplitter, JSONLSplitter
+    GeneralCodeSplitter, JSONLSplitter, LayoutNodeParser, GroupNodeParser,
+    ContentFiltParser, TreeBuilderParser, TreeFixerParser, Rule, RuleSet
 )
 from lazyllm.tools.rag.transform.markdown import _MdSplit
-from lazyllm.tools.rag.transform.base import _TextSplitterBase, _Split, _TokenTextSplitter
-from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tools.rag.transform.layout import NO_GROUPING
+from lazyllm.tools.rag.transform.base import NodeTransform, _TextSplitterBase, _Split, _TokenTextSplitter
+from lazyllm.tools.rag.doc_node import DocNode, RichDocNode
+from lazyllm.tools.rag.global_metadata import RAG_DOC_ID
 import pytest
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.document import Document
 from lazyllm.tools.rag.retriever import Retriever
+from lazyllm.tools.rag.store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from lazyllm.tools.rag.store.document_store import _DocumentStore
+from lazyllm.tools.rag.parsing_service import _Processor
+from lazyllm.tools.rag.utils import gen_docid
+from lazyllm.tools.rag.global_metadata import RAG_KB_ID
+from lazyllm.tools.rag import TransformArgs
+import os
+import tempfile
 
 @pytest.fixture
 def doc_node():
@@ -1167,9 +1178,9 @@ class TestTextSplitterBase:
 
     def test_transform_returns_chunks(self, doc_node):
         splitter = _TextSplitterBase(chunk_size=20, overlap=10)
-        chunks = splitter.transform(doc_node)
+        chunks = splitter([doc_node])
         assert isinstance(chunks, list)
-        assert all(isinstance(c, str) for c in chunks)
+        assert all(isinstance(c, DocNode) for c in chunks)
 
     def test_batch_forward_single(self, doc_node):
         splitter = _TextSplitterBase(chunk_size=20, overlap=10)
@@ -1281,9 +1292,9 @@ class TestTokenTextSplitter:
 
     def test_token_splitter_transform_with_docnode(self, doc_node):
         token_splitter = _TokenTextSplitter(chunk_size=10, overlap=3)
-        chunks = token_splitter.transform(doc_node)
+        chunks = token_splitter([doc_node])
         assert isinstance(chunks, list)
-        assert all(isinstance(c, str) for c in chunks)
+        assert all(isinstance(c, DocNode) for c in chunks)
 
     def test_token_text_splitter_with_tiktoken(self):
         splitter = _TokenTextSplitter(chunk_size=10, overlap=5)
@@ -1451,3 +1462,347 @@ class TestDIYDocumentSplit:
         retriever = Retriever(document, group_name='character_test', similarity='bm25', topk=3)
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
+
+
+class TestContentFiltParser:
+    def setup_method(self):
+        self.filter_parser = ContentFiltParser()
+
+    def test_filter_empty_nodes(self):
+        nodes = [
+            DocNode(text='Hello'),
+            DocNode(text=''),
+            DocNode(text='   '),
+            DocNode(text='World'),
+            DocNode(text='\n\n'),
+        ]
+        result = self.filter_parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) == 2
+        assert result[0].text == 'Hello'
+        assert result[1].text == 'World'
+
+    def test_filter_with_custom_rules(self):
+        rule = RuleSet([Rule.build(
+            'short_filter',
+            rule=lambda n: len(n.text) >= 5,
+            apply=lambda n, r: n,
+        )])
+        filter_parser = ContentFiltParser(rules=rule)
+        nodes = [
+            DocNode(text='Hello'),
+            DocNode(text='World'),
+            DocNode(text='Hi'),
+        ]
+        result = filter_parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) == 2
+
+    def test_single_node(self):
+        node = DocNode(text='Test')
+        result = self.filter_parser.forward(node)
+        assert len(result) == 1
+        assert result[0].text == 'Test'
+
+
+class TestGroupNodeParser:
+    def setup_method(self):
+        self.parser = GroupNodeParser()
+
+    def test_group_by_level(self):
+        nodes = [
+            DocNode(text='Title', metadata={'text_level': 1}),
+            DocNode(text='Content 1', metadata={'text_level': 0}),
+            DocNode(text='Content 2', metadata={'text_level': 0}),
+            DocNode(text='Subtitle', metadata={'text_level': 2}),
+            DocNode(text='Content 3', metadata={'text_level': 0}),
+        ]
+        result = self.parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) > 0
+
+    def test_empty_list(self):
+        result = self.parser.forward(RichDocNode(nodes=[]))
+        assert result == []
+
+    def test_single_node(self):
+        nodes = [DocNode(text='Only one', metadata={'text_level': 0})]
+        result = self.parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) >= 1
+
+    def test_merge_title(self):
+        parser = GroupNodeParser(merge_title=True)
+        nodes = [
+            DocNode(text='Title', metadata={'text_level': 1}),
+            DocNode(text='Content', metadata={'text_level': 0}),
+        ]
+        result = parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) >= 1
+
+
+class TestLayoutNodeParser:
+    def setup_method(self):
+        self.parser = LayoutNodeParser()
+
+    def test_default_group_by_filename(self):
+        nodes = [
+            DocNode(text='Page 1', metadata={'file_name': 'doc1.pdf', 'index': 2}),
+            DocNode(text='Page 2', metadata={'file_name': 'doc1.pdf', 'index': 1}),
+            DocNode(text='Page 3', metadata={'file_name': 'doc2.pdf', 'index': 1}),
+        ]
+        result = self.parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) == 3
+        assert result[0].metadata['index'] == 0
+        assert result[1].metadata['index'] == 1
+
+    def test_no_grouping(self):
+        parser = LayoutNodeParser(group_by=NO_GROUPING)
+        nodes = [
+            DocNode(text='A', metadata={'index': 3}),
+            DocNode(text='B', metadata={'index': 1}),
+            DocNode(text='C', metadata={'index': 2}),
+        ]
+        result = parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) == 3
+        assert result[0].text == 'B'
+        assert result[1].text == 'C'
+        assert result[2].text == 'A'
+
+    def test_custom_group_by(self):
+        parser = LayoutNodeParser(group_by=lambda n: n.metadata.get('category', ''))
+        nodes = [
+            DocNode(text='A', metadata={'category': 'cat1', 'index': 1}),
+            DocNode(text='B', metadata={'category': 'cat2', 'index': 1}),
+            DocNode(text='C', metadata={'category': 'cat1', 'index': 0}),
+        ]
+        result = parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) == 3
+
+    def test_custom_sort_by(self):
+        parser = LayoutNodeParser(sort_by=lambda n: n.metadata.get('page_num', 0))
+        nodes = [
+            DocNode(text='Page 3', metadata={'file_name': 'doc.pdf', 'page_num': 3}),
+            DocNode(text='Page 1', metadata={'file_name': 'doc.pdf', 'page_num': 1}),
+            DocNode(text='Page 2', metadata={'file_name': 'doc.pdf', 'page_num': 2}),
+        ]
+        result = parser.forward(RichDocNode(nodes=nodes))
+        assert result[0].text == 'Page 1'
+        assert result[1].text == 'Page 2'
+        assert result[2].text == 'Page 3'
+
+
+class TestTreeBuilderParser:
+    def setup_method(self):
+        self.parser = TreeBuilderParser()
+
+    def test_build_simple_tree(self):
+        nodes = [
+            DocNode(text='1. Title', metadata={'text_level': 1}),
+            DocNode(text='1.1 Subtitle', metadata={'text_level': 2}),
+            DocNode(text='1.2 Subtitle', metadata={'text_level': 2}),
+            DocNode(text='2. Title', metadata={'text_level': 1}),
+        ]
+        result = self.parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) >= 1
+
+    def test_flat_nodes(self):
+        nodes = [
+            DocNode(text='Content without level'),
+            DocNode(text='Another content'),
+        ]
+        result = self.parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) == 2
+
+    def test_empty_list(self):
+        result = self.parser.forward(RichDocNode(nodes=[]))
+        assert result == []
+
+    def test_custom_get_level(self):
+        parser = TreeBuilderParser(get_level=lambda n: n.metadata.get('level', 0))
+        nodes = [
+            DocNode(text='Level 1', metadata={'level': 1}),
+            DocNode(text='Level 2', metadata={'level': 2}),
+        ]
+        result = parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) >= 1
+
+
+class TestTreeFixerParser:
+    def setup_method(self):
+        self.parser = TreeFixerParser()
+
+    def test_fix_digit_numbering(self):
+        nodes = [
+            DocNode(text='1. First', metadata={'text_level': 1}),
+            DocNode(text='2. Second', metadata={'text_level': 1}),
+            DocNode(text='3. Third', metadata={'text_level': 1}),
+        ]
+        result = self.parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) >= 1
+
+    def test_fix_chinese_numbering(self):
+        nodes = [
+            DocNode(text='一、第一条', metadata={'text_level': 1}),
+            DocNode(text='二、第二条', metadata={'text_level': 1}),
+            DocNode(text='三、第三条', metadata={'text_level': 1}),
+        ]
+        result = self.parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) >= 1
+
+    def test_fix_multilevel(self):
+        nodes = [
+            DocNode(text='1. First', metadata={'text_level': 1}),
+            DocNode(text='1.1 Sub first', metadata={'text_level': 2}),
+            DocNode(text='1.2 Sub second', metadata={'text_level': 2}),
+            DocNode(text='2. Second', metadata={'text_level': 1}),
+        ]
+        result = self.parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) >= 1
+
+    def test_empty_list(self):
+        result = self.parser.forward(RichDocNode(nodes=[]))
+        assert result == []
+
+    def test_skip_level_under(self):
+        parser = TreeFixerParser(skip_level_under=2)
+        nodes = [
+            DocNode(text='Level 1', metadata={'text_level': 1}),
+            DocNode(text='Level 2', metadata={'text_level': 2}),
+        ]
+        result = parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) >= 1
+
+    def test_with_children(self):
+        nodes = [
+            DocNode(text='1. Title', metadata={'text_level': 1, 'children': [
+                DocNode(text='Child 1', metadata={'text_level': 2}),
+                DocNode(text='Child 2', metadata={'text_level': 2}),
+            ]}),
+        ]
+        result = self.parser.forward(RichDocNode(nodes=nodes))
+        assert len(result) >= 1
+
+
+class TestBatchForwardRefPath:
+    class _CollectRefTransform(NodeTransform):
+        __support_rich__ = True
+
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+
+        def forward(self, node, **kwargs):
+            nodes = node.nodes if isinstance(node, RichDocNode) else [node]
+            self.calls.append([n.text for n in nodes])
+            return [DocNode(text=f'out-{n.text}') for n in nodes]
+
+    def test_batch_forward_uses_ref_path_per_parent(self):
+        transform = self._CollectRefTransform()
+        doc_a = DocNode(text='doc-a', global_metadata={RAG_DOC_ID: 'doc-a'})
+        doc_b = DocNode(text='doc-b', global_metadata={RAG_DOC_ID: 'doc-b'})
+        doc_a.children['section'] = [DocNode(text='a1'), DocNode(text='a2')]
+        doc_b.children['section'] = [DocNode(text='b1'), DocNode(text='b2')]
+
+        outputs = transform.batch_forward(
+            [doc_a, doc_b], node_group='layout_test', ref_path=['section']
+        )
+        assert len(transform.calls) == 2
+        assert transform.calls[0] == ['a1', 'a2']
+        assert transform.calls[1] == ['b1', 'b2']
+        assert [n.text for n in doc_a.children['layout_test']] == ['out-a1', 'out-a2']
+        assert [n.text for n in doc_b.children['layout_test']] == ['out-b1', 'out-b2']
+        assert len(outputs) == 4
+
+    def test_batch_forward_rich_doc_node_no_ref_path(self):
+        transform = self._CollectRefTransform()
+        n1, n2, n3 = DocNode(text='p1'), DocNode(text='p2'), DocNode(text='p3')
+        rich = RichDocNode(nodes=[n1, n2, n3])
+        outputs = transform.batch_forward([rich], node_group='chunk')
+        assert len(transform.calls) == 1
+        assert transform.calls[0] == ['p1', 'p2', 'p3']
+        assert len(rich.children['chunk']) == 3
+        assert [n.text for n in rich.children['chunk']] == ['out-p1', 'out-p2', 'out-p3']
+        assert len(outputs) == 3
+
+    def test_batch_forward_rich_doc_node_with_ref_path(self):
+        transform = self._CollectRefTransform()
+        a1, a2 = DocNode(text='a1'), DocNode(text='a2')
+        rich = RichDocNode(nodes=[DocNode(text='dummy')])
+        rich.children['section'] = [a1, a2]
+        outputs = transform.batch_forward([rich], node_group='out', ref_path=['section'])
+        assert len(transform.calls) == 1
+        assert transform.calls[0] == ['a1', 'a2']
+        assert [n.text for n in rich.children['out']] == ['out-a1', 'out-a2']
+        assert len(outputs) == 2
+
+    def test_parsing_service_ref_path_maintained_in_add_doc(self):
+        recorded_groups_per_call = []
+        recorded_doc_ids_per_call = []
+
+        class SectionTransform(NodeTransform):
+            def forward(self, node, **kwargs):
+                nodes = node.nodes if isinstance(node, RichDocNode) else [node]
+                out = []
+                for n in nodes:
+                    out.append(DocNode(text=f'{n.text}-s1'))
+                    out.append(DocNode(text=f'{n.text}-s2'))
+                return out
+
+        class RefConsumerTransform(NodeTransform):
+            __support_rich__ = True
+
+            def forward(self, node, **kwargs):
+                nodes = node.nodes if isinstance(node, RichDocNode) else [node]
+                recorded_groups_per_call.append([getattr(n, '_group', None) or getattr(n, 'group', None) for n in nodes])
+                recorded_doc_ids_per_call.append([n.global_metadata.get(RAG_DOC_ID) for n in nodes])
+                return [DocNode(text=f'ref-{n.text}') for n in nodes]
+
+        store = _DocumentStore(algo_name='test_ref_path', store={'type': 'map'}, embed={})
+        store.impl.need_embedding = False
+        store.activate_group(LAZY_ROOT_NAME)
+        store.activate_group('section')
+        store.activate_group('group_with_ref')
+
+        node_groups = {
+            LAZY_ROOT_NAME: {'parent': '', 'transform': None, 'ref': None},
+            'section': {
+                'parent': LAZY_ROOT_NAME,
+                'transform': TransformArgs(f=SectionTransform),
+                'ref': None,
+            },
+            'group_with_ref': {
+                'parent': LAZY_ROOT_NAME,
+                'ref': 'section',
+                'transform': TransformArgs(f=RefConsumerTransform),
+            },
+        }
+
+        with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as f1, \
+             tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as f2:
+            p1, p2 = f1.name, f2.name
+        try:
+            id1, id2 = gen_docid(p1), gen_docid(p2)
+            root1 = DocNode(text='d1', group=LAZY_ROOT_NAME,
+                            global_metadata={RAG_DOC_ID: id1, RAG_KB_ID: 'default'})
+            root2 = DocNode(text='d2', group=LAZY_ROOT_NAME,
+                            global_metadata={RAG_DOC_ID: id2, RAG_KB_ID: 'default'})
+            reader = MagicMock()
+            reader.load_data.return_value = {
+                LAZY_ROOT_NAME: [root1, root2],
+                LAZY_IMAGE_GROUP: [],
+            }
+
+            processor = _Processor(
+                algo_id='test_ref_path',
+                store=store,
+                reader=reader,
+                node_groups=node_groups,
+            )
+            processor.add_doc(input_files=[p1, p2], ids=[id1, id2], metadatas=[{}, {}])
+
+            assert len(recorded_groups_per_call) == 2
+            assert recorded_groups_per_call[0] == ['section', 'section']
+            assert recorded_groups_per_call[1] == ['section', 'section']
+            assert recorded_doc_ids_per_call[0] == [id1, id1]
+            assert recorded_doc_ids_per_call[1] == [id2, id2]
+        finally:
+            for p in (p1, p2):
+                if os.path.exists(p):
+                    os.unlink(p)
