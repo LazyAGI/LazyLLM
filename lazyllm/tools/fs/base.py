@@ -1,14 +1,17 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-import io
 import threading
 import time
 from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests
-from fsspec.spec import AbstractFileSystem, AbstractBufferedFile
 
+import lazyllm
+from lazyllm import thirdparty
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
+
+AbstractFileSystem = thirdparty.fsspec.spec.AbstractFileSystem
+AbstractBufferedFile = thirdparty.fsspec.spec.AbstractBufferedFile
 
 
 class CloudFSBufferedFile(AbstractBufferedFile):
@@ -89,16 +92,19 @@ class CloudFSWatchMixin:
         try:
             entries = self.ls(path, detail=True)  # type: ignore[attr-defined]
             return {e['name']: e.get('mtime') or e.get('last_modified') for e in entries}
-        except Exception:
+        except Exception as e:
+            lazyllm.LOG.debug(f"Failed to create snapshot for path '{path}': {e}")
             return {}
 
     def _polling_loop(self) -> None:
+        _min_interval = 1
         while self._watch_running:
             with self._watch_lock:
                 watchers = list(self._watchers)
             for watcher in watchers:
                 self._check_watcher(watcher)
-            time.sleep(min(w['interval'] for w in watchers) if watchers else 30)
+            interval = max(_min_interval, min(w['interval'] for w in watchers)) if watchers else 30
+            time.sleep(interval)
 
     def _check_watcher(self, watcher: Dict[str, Any]) -> None:
         path = watcher['path']
@@ -136,6 +142,9 @@ class LazyLLMFSBase(CloudFSWatchMixin, AbstractFileSystem, metaclass=_CloudFSMet
         self._session.headers.update({'User-Agent': 'lazyllm-fs/1.0'})
         self._setup_auth()
 
+    def close(self) -> None:
+        self._session.close()
+
     @abstractmethod
     def _setup_auth(self) -> None:
         pass
@@ -170,8 +179,11 @@ class LazyLLMFSBase(CloudFSWatchMixin, AbstractFileSystem, metaclass=_CloudFSMet
 
     def rm(self, path: str, recursive: bool = False, maxdepth: Optional[int] = None) -> None:
         if self.isdir(path) and recursive:  # type: ignore[attr-defined]
+            path_rstrip = path.rstrip(self.sep)
             for entry in self.ls(path, detail=True):
-                self.rm(entry['name'], recursive=True)
+                child_name = entry['name']
+                full_path = f'{path_rstrip}{self.sep}{child_name}' if path_rstrip else child_name
+                self.rm(full_path, recursive=True)
             self.rmdir(path)
         else:
             self.rm_file(path)
@@ -192,23 +204,26 @@ class LazyLLMFSBase(CloudFSWatchMixin, AbstractFileSystem, metaclass=_CloudFSMet
         resp.raise_for_status()
         return resp
 
+    def _json_or_empty(self, resp: requests.Response) -> Any:
+        if not resp.content:
+            return {}
+        return resp.json()
+
     def _get(self, url: str, **kwargs) -> Any:
-        return self._request('GET', url, **kwargs).json()
+        return self._json_or_empty(self._request('GET', url, **kwargs))
 
     def _post(self, url: str, **kwargs) -> Any:
-        return self._request('POST', url, **kwargs).json()
+        return self._json_or_empty(self._request('POST', url, **kwargs))
 
     def _put(self, url: str, **kwargs) -> Any:
-        return self._request('PUT', url, **kwargs).json()
+        return self._json_or_empty(self._request('PUT', url, **kwargs))
 
     def _patch(self, url: str, **kwargs) -> Any:
-        return self._request('PATCH', url, **kwargs).json()
+        return self._json_or_empty(self._request('PATCH', url, **kwargs))
 
     def _delete(self, url: str, **kwargs) -> Any:
         resp = self._request('DELETE', url, **kwargs)
-        if resp.content:
-            return resp.json()
-        return {}
+        return self._json_or_empty(resp)
 
     @staticmethod
     def _entry(name: str, size: int = 0, ftype: str = 'file',

@@ -1,5 +1,8 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+import lazyllm
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
@@ -22,6 +25,8 @@ class OneDriveFS(LazyLLMFSBase):
         self._tenant_id = tenant_id
         if not token and client_id and client_secret:
             token = self._acquire_app_token(client_id, client_secret, tenant_id)
+            if not token or not str(token).strip():
+                raise ValueError('Failed to acquire OneDrive token')
         super().__init__(token=token or '', base_url=base_url or _GRAPH_BASE, **storage_options)
 
     def _setup_auth(self) -> None:
@@ -176,10 +181,9 @@ class OneDriveFS(LazyLLMFSBase):
         ts = item.get('lastModifiedDateTime')
         if ts:
             try:
-                from datetime import datetime
                 mtime = datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                lazyllm.LOG.debug(f"Failed to parse timestamp '{ts}': {e}")
         return LazyLLMFSBase._entry(
             name=item.get('id', ''),
             size=int(item.get('size', 0) or 0),

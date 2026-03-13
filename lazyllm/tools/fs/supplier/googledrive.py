@@ -1,6 +1,9 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import json
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
+
+import lazyllm
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
@@ -190,7 +193,8 @@ class GoogleDriveFS(LazyLLMFSBase):
             )
             resp.raise_for_status()
             return resp.json().get('access_token', '')
-        except Exception:
+        except Exception as e:
+            lazyllm.LOG.debug(f'Failed to fetch service account token: {e}')
             return ''
 
     @staticmethod
@@ -201,10 +205,9 @@ class GoogleDriveFS(LazyLLMFSBase):
         ts = item.get('modifiedTime')
         if ts:
             try:
-                from datetime import datetime
                 mtime = datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                lazyllm.LOG.debug(f"Failed to parse timestamp '{ts}': {e}")
         return LazyLLMFSBase._entry(
             name=item.get('id', ''),
             size=int(item.get('size', 0) or 0),

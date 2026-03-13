@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import lazyllm
 from lazyllm import config
@@ -39,6 +39,32 @@ def _resolve_token(platform: str, token: Optional[str]) -> Optional[str]:
     return None
 
 
+_S3_SECRET_KEYS = ('AWS_SECRET_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_SECRET')
+
+
+def _resolve_s3_kwargs(token: Optional[str], **kwargs: Any) -> dict:
+    out = dict(kwargs)
+    if 'access_key' not in out and 'secret_key' not in out:
+        access_key = token or ''
+        secret_key = ''
+        for key in _S3_SECRET_KEYS:
+            val = os.environ.get(key)
+            if val and val.strip():
+                secret_key = val.strip()
+                break
+        if not access_key:
+            for key in _PLATFORM_ENV_VARS['s3']:
+                val = os.environ.get(key)
+                if val and val.strip():
+                    access_key = val.strip()
+                    break
+        if access_key:
+            out['access_key'] = access_key
+        if secret_key:
+            out['secret_key'] = secret_key
+    return out
+
+
 config.add('cloudfs_platform', str, None, 'CLOUDFS_PLATFORM',
            description='Default cloud filesystem platform: feishu, confluence, notion, '
                        'googledrive, onedrive, yuque, ones, s3. None for auto-detect.')
@@ -61,4 +87,7 @@ class CloudFS:
             )
         platform = platform.lower()
         resolved = _resolve_token(platform, token)
+        if platform == 's3':
+            kwargs = _resolve_s3_kwargs(resolved, **kwargs)
+            return getattr(lazyllm.fs, platform)(token=resolved or '', **kwargs)
         return getattr(lazyllm.fs, platform)(token=resolved, **kwargs)

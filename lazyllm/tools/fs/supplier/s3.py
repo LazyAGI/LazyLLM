@@ -5,6 +5,11 @@ from lazyllm import thirdparty
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
+try:
+    from botocore.exceptions import ClientError
+except ImportError:
+    ClientError = Exception  # type: ignore[misc, assignment]
+
 
 class S3FS(LazyLLMFSBase):
 
@@ -58,9 +63,11 @@ class S3FS(LazyLLMFSBase):
         if not key:
             try:
                 self._s3_client.head_bucket(Bucket=bucket)
-                return self._entry(bucket, ftype='directory')
-            except Exception:
-                raise FileNotFoundError(path)
+                return self._entry(f'/{bucket}', ftype='directory')
+            except ClientError as e:
+                if e.response.get('Error', {}).get('Code') in ('404', 'NoSuchBucket'):
+                    raise FileNotFoundError(path) from e
+                raise
         try:
             resp = self._s3_client.head_object(Bucket=bucket, Key=key)
             mtime = resp['LastModified'].timestamp() if resp.get('LastModified') else None
@@ -70,8 +77,10 @@ class S3FS(LazyLLMFSBase):
                 etag=resp.get('ETag', '').strip('"'),
                 content_type=resp.get('ContentType', ''),
             )
-        except Exception:
-            return self._entry(path, ftype='directory')
+        except ClientError as e:
+            if e.response.get('Error', {}).get('Code') in ('404', 'NoSuchKey'):
+                return self._entry(path, ftype='directory')
+            raise
 
     def _open(self, path: str, mode: str = 'rb',
               block_size: Optional[int] = None,
@@ -153,12 +162,12 @@ class S3FS(LazyLLMFSBase):
         if detail:
             return [
                 self._entry(
-                    name=b['Name'], ftype='directory',
+                    name=f'/{b["Name"]}', ftype='directory',
                     mtime=b['CreationDate'].timestamp() if b.get('CreationDate') else None,
                 )
                 for b in buckets
             ]
-        return [b['Name'] for b in buckets]
+        return [f'/{b["Name"]}' for b in buckets]
 
     def _list_objects(self, bucket: str, prefix: str, detail: bool) -> List:
         kwargs: Dict[str, Any] = {'Bucket': bucket, 'Delimiter': '/'}
@@ -168,21 +177,24 @@ class S3FS(LazyLLMFSBase):
         while True:
             resp = self._s3_client.list_objects_v2(**kwargs)
             for cp in resp.get('CommonPrefixes', []):
-                name = cp['Prefix'].rstrip('/')
+                raw = cp['Prefix'].rstrip('/')
+                name = f'/{bucket}/{raw}'
                 if detail:
                     results.append(self._entry(name=name, ftype='directory'))
                 else:
                     results.append(name)
             for obj in resp.get('Contents', []):
+                key = obj['Key']
+                name = f'/{bucket}/{key}'
                 mtime = obj['LastModified'].timestamp() if obj.get('LastModified') else None
                 if detail:
                     results.append(self._entry(
-                        name=obj['Key'], size=obj.get('Size', 0),
+                        name=name, size=obj.get('Size', 0),
                         ftype='file', mtime=mtime,
                         etag=obj.get('ETag', '').strip('"'),
                     ))
                 else:
-                    results.append(obj['Key'])
+                    results.append(name)
             if resp.get('IsTruncated'):
                 kwargs['ContinuationToken'] = resp['NextContinuationToken']
             else:

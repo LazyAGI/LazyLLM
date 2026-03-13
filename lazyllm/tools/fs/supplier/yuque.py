@@ -1,5 +1,8 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+import lazyllm
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
@@ -152,10 +155,9 @@ class YuqueFS(LazyLLMFSBase):
         ts = repo.get('updated_at')
         if ts:
             try:
-                from datetime import datetime
                 mtime = datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                lazyllm.LOG.debug(f"Failed to parse timestamp '{ts}': {e}")
         return LazyLLMFSBase._entry(
             name=name, ftype='directory', mtime=mtime,
             title=repo.get('name', ''), namespace=repo.get('namespace', ''),
@@ -167,10 +169,9 @@ class YuqueFS(LazyLLMFSBase):
         ts = doc.get('updated_at')
         if ts:
             try:
-                from datetime import datetime
                 mtime = datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                lazyllm.LOG.debug(f"Failed to parse timestamp '{ts}': {e}")
         return LazyLLMFSBase._entry(
             name=str(doc.get('id', doc.get('slug', ''))),
             ftype='file', mtime=mtime, size=doc.get('word_count', 0),

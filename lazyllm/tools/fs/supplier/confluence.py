@@ -1,6 +1,10 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import base64
+import time
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+import lazyllm
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
@@ -133,16 +137,20 @@ class ConfluenceFS(LazyLLMFSBase):
                 'version': {'number': version},
                 'title': existing.get('title', title),
                 'type': 'page',
-                'body': {'storage': {'value': data.decode('utf-8', errors='replace'),
-                                      'representation': 'storage'}},
+                'body': {'storage': {
+                    'value': data.decode('utf-8', errors='replace'),
+                    'representation': 'storage',
+                }},
             })
         except Exception:
             payload: Dict[str, Any] = {
                 'type': 'page',
                 'title': title,
                 'space': {'key': space_key},
-                'body': {'storage': {'value': data.decode('utf-8', errors='replace'),
-                                      'representation': 'storage'}},
+                'body': {'storage': {
+                    'value': data.decode('utf-8', errors='replace'),
+                    'representation': 'storage',
+                }},
             }
             if len(parts) >= 3:
                 payload['ancestors'] = [{'id': parts[-2]}]
@@ -154,7 +162,7 @@ class ConfluenceFS(LazyLLMFSBase):
     def _register_webhook(self, webhook_url: str, events: List[str], path: str) -> Dict[str, Any]:
         url = f'{self._rest}/webhooks'
         payload = {
-            'name': f'lazyllm-fs-{int(__import__("time").time())}',
+            'name': f'lazyllm-fs-{int(time.time())}',
             'url': webhook_url,
             'events': events or ['page_created', 'page_updated', 'page_deleted'],
             'active': True,
@@ -166,8 +174,10 @@ class ConfluenceFS(LazyLLMFSBase):
         data = self._get(url, params={'limit': 200})
         results = data.get('results', [])
         if detail:
-            return [self._entry(r.get('key', ''), ftype='directory', title=r.get('name', ''))
-                    for r in results]
+            return [
+                self._entry(r.get('key', ''), ftype='directory', title=r.get('name', ''))
+                for r in results
+            ]
         return [r.get('key', '') for r in results]
 
     def _list_space_pages(self, space_key: str, detail: bool) -> List:
@@ -193,11 +203,10 @@ class ConfluenceFS(LazyLLMFSBase):
         mtime = None
         if mtime_str:
             try:
-                from datetime import datetime
                 mtime = datetime.fromisoformat(
                     mtime_str.replace('Z', '+00:00')).timestamp()
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                lazyllm.LOG.debug(f"Failed to parse timestamp '{mtime_str}': {e}")
         return LazyLLMFSBase._entry(
             name=page.get('id', ''), ftype='file', mtime=mtime,
             title=page.get('title', ''),

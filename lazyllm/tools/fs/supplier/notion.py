@@ -1,5 +1,8 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+import lazyllm
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
@@ -87,6 +90,7 @@ class NotionFS(LazyLLMFSBase):
         return encoded[start:end]
 
     def _upload_data(self, path: str, data: bytes) -> None:
+        '''Upload text to a Notion page. Notion API limits rich_text to 2000 chars per block.'''
         parts = self._parse_path(path)
         if not parts:
             raise ValueError('path must include a page_id')
@@ -149,10 +153,9 @@ class NotionFS(LazyLLMFSBase):
         ts = page.get('last_edited_time')
         if ts:
             try:
-                from datetime import datetime
                 mtime = datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                lazyllm.LOG.debug(f"Failed to parse timestamp '{ts}': {e}")
         return LazyLLMFSBase._entry(name=pid, ftype='file', mtime=mtime, title=title)
 
     @staticmethod
