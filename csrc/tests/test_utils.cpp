@@ -74,3 +74,21 @@ TEST(utils, rag_metadata_keys_constants_are_exposed) {
     EXPECT_EQ(lazyllm::RAGMetadataKeys::DOC_PATH, "lazyllm_doc_path");
     EXPECT_EQ(lazyllm::RAGMetadataKeys::DOC_ID, "docid");
 }
+
+TEST(utils, any_to_string_formats_scalar_metadata_values) {
+    EXPECT_EQ(lazyllm::any_to_string(lazyllm::MetadataVType(std::string("alpha"))), "alpha");
+    EXPECT_EQ(lazyllm::any_to_string(lazyllm::MetadataVType(7)), "7");
+    EXPECT_EQ(lazyllm::any_to_string(lazyllm::MetadataVType(3.5)), "3.5");
+}
+
+TEST(utils, any_to_string_formats_vector_metadata_values_with_brackets) {
+    EXPECT_EQ(
+        lazyllm::any_to_string(lazyllm::MetadataVType(std::vector<std::string>{"a", "b"})),
+        "[a,b]");
+    EXPECT_EQ(
+        lazyllm::any_to_string(lazyllm::MetadataVType(std::vector<int>{1, 2, 3})),
+        "[1,2,3]");
+    EXPECT_EQ(
+        lazyllm::any_to_string(lazyllm::MetadataVType(std::vector<double>{1.5, 2.0})),
+        "[1.5,2]");
+}

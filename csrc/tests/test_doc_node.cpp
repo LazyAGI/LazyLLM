@@ -51,13 +51,13 @@ TEST(doc_node, metadata) {
         {"alpha", std::string("A")},
         {"beta", std::string("B")},
     };
-    EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::ALL), "alpha:A\nbeta:B");
+    EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::ALL), "alpha: A\nbeta: B");
 
     node.set_excluded_embed_metadata_keys({"beta"});
-    EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::EMBED), "alpha:A");
+    EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::EMBED), "alpha: A");
 
     node.set_excluded_llm_metadata_keys({"alpha"});
-    EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::LLM), "beta:B");
+    EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::LLM), "beta: B");
 
     EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::NONE), "");
 
@@ -81,7 +81,7 @@ TEST(doc_node, text) {
     lazyllm::DocNode node("body");
     node._metadata = lazyllm::DocNode::Metadata{{"alpha", std::string("A")}};
     EXPECT_EQ(node.get_text(lazyllm::MetadataMode::NONE), "body");
-    EXPECT_EQ(node.get_text(lazyllm::MetadataMode::EMBED), "alpha:A\n\nbody");
+    EXPECT_EQ(node.get_text(lazyllm::MetadataMode::EMBED), "alpha: A\n\nbody");
 }
 
 TEST(doc_node, relationships) {
@@ -147,7 +147,7 @@ TEST(doc_node, py_do_embedding_writes_embedding_vector) {
 
     ASSERT_TRUE(node._embedding_vecs.find("len_embedding") != node._embedding_vecs.end());
     ASSERT_EQ(node._embedding_vecs["len_embedding"].size(), 1u);
-    EXPECT_EQ(node._embedding_vecs["len_embedding"][0], 6.0); // "\n\ntext"
+    EXPECT_EQ(node._embedding_vecs["len_embedding"][0], 4.0); // "text"
 }
 
 TEST(doc_node, equality_uses_uid) {

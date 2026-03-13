@@ -29,6 +29,7 @@ public:
     std::vector<PDocNode> batch_forward(std::vector<PDocNode>& nodes, const std::string& node_group_name);
 
     int worker_num() const { return _worker_num; }
+    void set_worker_num(int worker_num) { _worker_num = worker_num; }
 
 private:
     std::vector<PDocNode> forward(PDocNode node, const std::string& node_group_name);

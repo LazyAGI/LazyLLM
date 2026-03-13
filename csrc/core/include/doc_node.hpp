@@ -9,8 +9,8 @@
 #include <vector>
 #include <variant>
 #include <optional>
-#include <any>
 #include <memory>
+#include <any>
 
 #include "utils.hpp"
 #include "adaptor_base.hpp"
@@ -24,7 +24,8 @@ using PDocNode = std::shared_ptr<DocNode>;
 
 class DocNode {
 public:
-    using Metadata = std::unordered_map<std::string, std::any>;
+    using MetadataVType = lazyllm::MetadataVType;
+    using Metadata = std::unordered_map<std::string, MetadataVType>;
     using Children = std::unordered_map<std::string, std::vector<PDocNode>>;
     using EmbeddingFun = std::function<std::vector<double>(const std::string&, const std::string&)>;
     using EmbeddingVecs = std::unordered_map<std::string, std::vector<double>>;
@@ -95,6 +96,7 @@ public:
     }
     void set_store(const std::shared_ptr<AdaptorBase>& p_store) { _p_store = p_store; }
     const std::string& get_uid() const { return _uid; }
+    void set_uid(const std::string& uid) { _uid = uid; }
     const std::string_view& get_text_view() const { return _text_view; }
     void set_text_view(const std::string_view& text_view) {
         _text_view = text_view;
@@ -141,6 +143,12 @@ public:
         _children = std::any_cast<Children>(_p_store->call("get_node_children", {{"node", this}}));
         return _children;
     }
+    Children& get_children_ref() {
+        if (_children.empty() && _p_store != nullptr) {
+            _children = std::any_cast<Children>(_p_store->call("get_node_children", {{"node", this}}));
+        }
+        return _children;
+    }
     void set_children(const Children& children) { _children = children; }
     void set_children_group(
         const std::string& group_name,
@@ -162,7 +170,8 @@ public:
         _excluded_llm_metadata_keys = keys;
     }
     std::string get_doc_path() const {
-        return std::any_cast<std::string>(get_root_node()->_p_global_metadata->at(std::string(RAGMetadataKeys::DOC_PATH)));
+        const auto& value = get_root_node()->_p_global_metadata->at(std::string(RAGMetadataKeys::DOC_PATH));
+        return std::get<std::string>(value);
     }
     void set_doc_path(const std::string& path) {
         get_root_node()->_p_global_metadata->operator[](std::string(RAGMetadataKeys::DOC_PATH)) = path;

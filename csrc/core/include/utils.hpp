@@ -7,9 +7,17 @@
 #include <algorithm>
 #include <iomanip>
 #include <set>
+#include <variant>
 #include <any>
 
 namespace lazyllm {
+
+using MetadataVType = std::variant<
+    std::string, std::vector<std::string>,
+    int, std::vector<int>,
+    double, std::vector<double>,
+    std::any
+>;
 
 struct RAGMetadataKeys {
     inline static constexpr std::string_view KB_ID = "kb_id";
@@ -81,7 +89,7 @@ inline std::string GenerateUUID() {
     return out;
 }
 
-std::string any_to_string(const std::any& value);
+std::string any_to_string(const MetadataVType& value);
 
 inline bool is_adjacent(const std::string_view& left, const std::string_view& right) {
     return left.data() + left.size() == right.data();

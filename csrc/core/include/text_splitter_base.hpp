@@ -42,6 +42,7 @@ public:
     }
 
     std::vector<PDocNode> transform(PDocNode node) const override {
+        if (node == nullptr) return {};
         auto chunks = split_text(node->get_text_view(), get_node_metadata_size(*node));
         std::vector<PDocNode> nodes;
         nodes.reserve(chunks.size());
@@ -64,6 +65,8 @@ public:
     }
 
     void set_tokenizer(std::shared_ptr<Tokenizer> tokenizer) { _tokenizer = std::move(tokenizer); }
+    int chunk_size() const { return _chunk_size; }
+    int overlap() const { return _overlap; }
 
     virtual void set_split_functions(
         const std::vector<SplitFn>&,

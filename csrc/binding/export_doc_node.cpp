@@ -2,15 +2,44 @@
 #include <chrono>
 #include <cstdint>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "lazyllm.hpp"
 #include "document_store.hpp"
 #include "doc_node.hpp"
 #include "binding_utils.hpp"
+#include <pybind11/stl_bind.h>
+
+PYBIND11_MAKE_OPAQUE(lazyllm::DocNode::Metadata);
+PYBIND11_MAKE_OPAQUE(lazyllm::DocNode::Children);
 
 namespace {
 
 namespace pyu = lazyllm::pybind_utils;
+
+const std::unordered_map<std::string, const char*> kDocNodeAttrAliases = {
+    {"uid", "_uid"},
+    {"group", "_group"},
+    {"content", "_content"},
+    {"parent", "_parent"},
+    {"children", "_children"},
+    {"global_metadata", "_global_metadata"},
+    {"metadata", "_metadata"},
+    {"excluded_embed_metadata_keys", "_excluded_embed_metadata_keys"},
+    {"excluded_llm_metadata_keys", "_excluded_llm_metadata_keys"},
+};
+
+const std::unordered_set<std::string> kDocNodeReadonlyAliases = {
+    "uid",
+    "group",
+};
+
+const char* ResolveDocNodeAlias(const std::string& attr_name) {
+    const auto it = kDocNodeAttrAliases.find(attr_name);
+    if (it == kDocNodeAttrAliases.end()) return nullptr;
+    return it->second;
+}
 
 bool IsJsonDocNode(const py::object& self) {
     try {
@@ -28,7 +57,7 @@ lazyllm::DocNode::Metadata MetadataFromPy(const py::object& obj) {
     out.reserve(d.size());
     for (auto item : d) {
         const std::string key = py::cast<std::string>(item.first);
-        out.emplace(key, pyu::PyToAny(item.second));
+        out.emplace(key, pyu::PyToMetadataValue(item.second));
     }
     return out;
 }
@@ -36,9 +65,64 @@ lazyllm::DocNode::Metadata MetadataFromPy(const py::object& obj) {
 py::dict MetadataToPy(const lazyllm::DocNode::Metadata& meta) {
     py::dict d;
     for (const auto& [key, value] : meta) {
-        d[py::str(key)] = pyu::AnyToPy(value);
+        d[py::str(key)] = pyu::MetadataValueToPy(value);
     }
     return d;
+}
+
+lazyllm::DocNode::Metadata& EnsureRootGlobalMetadata(lazyllm::DocNode& node) {
+    auto* root = const_cast<lazyllm::DocNode*>(node.get_root_node());
+    if (!root->_p_global_metadata) {
+        root->_p_global_metadata = std::make_shared<lazyllm::DocNode::Metadata>();
+    }
+    return *(root->_p_global_metadata);
+}
+
+const lazyllm::DocNode::Metadata& GetRootGlobalMetadata(const lazyllm::DocNode& node) {
+    static const lazyllm::DocNode::Metadata empty;
+    auto* root = node.get_root_node();
+    if (!root || !root->_p_global_metadata) return empty;
+    return *(root->_p_global_metadata);
+}
+
+lazyllm::DocNode::Children ChildrenFromPy(const py::object& obj) {
+    lazyllm::DocNode::Children out;
+    if (obj.is_none()) return out;
+    py::dict d = py::dict(obj);
+    out.reserve(d.size());
+    for (auto item : d) {
+        const std::string group = py::cast<std::string>(item.first);
+        py::object nodes_obj = py::reinterpret_borrow<py::object>(item.second);
+        std::vector<lazyllm::PDocNode> nodes;
+        for (auto child_obj : nodes_obj) {
+            py::object child = py::reinterpret_borrow<py::object>(child_obj);
+            if (child.is_none()) continue;
+            nodes.emplace_back(child.cast<lazyllm::PDocNode>());
+        }
+        out.emplace(group, std::move(nodes));
+    }
+    return out;
+}
+
+py::dict ChildrenToPy(const lazyllm::DocNode::Children& children) {
+    py::dict d;
+    for (const auto& [group, nodes] : children) {
+        py::list py_nodes;
+        for (const auto& n : nodes) py_nodes.append(n);
+        d[py::str(group)] = std::move(py_nodes);
+    }
+    return d;
+}
+
+std::vector<lazyllm::PDocNode> NodeVectorFromPy(const py::object& obj) {
+    std::vector<lazyllm::PDocNode> out;
+    if (obj.is_none()) return out;
+    for (auto item : obj) {
+        py::object node = py::reinterpret_borrow<py::object>(item);
+        if (node.is_none()) continue;
+        out.emplace_back(node.cast<lazyllm::PDocNode>());
+    }
+    return out;
 }
 
 using NodeGroups = std::unordered_map<std::string, std::unordered_map<std::string, std::any>>;
@@ -110,9 +194,9 @@ lazyllm::DocNode init(
         }
         store_adaptor = lazyllm::DocumentStore::from_store(store, node_groups_map);
 
-        auto kb_id = std::any_cast<std::string>(global_metadata_map.at(
+        auto kb_id = std::get<std::string>(global_metadata_map.at(
             std::string(lazyllm::RAGMetadataKeys::KB_ID)));
-        auto doc_id = std::any_cast<std::string>(global_metadata_map.at(
+        auto doc_id = std::get<std::string>(global_metadata_map.at(
             std::string(lazyllm::RAGMetadataKeys::DOC_ID)));
 
         if (py::isinstance<py::str>(parent)) {
@@ -182,6 +266,162 @@ void exportDocNode(py::module& m) {
         .value("LLM", lazyllm::MetadataMode::LLM)
         .value("NONE", lazyllm::MetadataMode::NONE);
 
+    auto metadata_map = py::bind_map<lazyllm::DocNode::Metadata>(m, "DocNodeMetadataMap");
+    metadata_map
+        .def("get",
+            [](lazyllm::DocNode::Metadata& self, const std::string& key, py::object default_value) {
+                auto it = self.find(key);
+                if (it == self.end()) return default_value;
+                return pyu::MetadataValueToPy(it->second);
+            },
+            py::arg("key"),
+            py::arg("default") = py::none())
+        .def("pop",
+            [](lazyllm::DocNode::Metadata& self, const std::string& key) {
+                auto it = self.find(key);
+                if (it == self.end()) throw py::key_error(py::str(key));
+                py::object value = pyu::MetadataValueToPy(it->second);
+                self.erase(it);
+                return value;
+            },
+            py::arg("key"))
+        .def("pop",
+            [](lazyllm::DocNode::Metadata& self, const std::string& key, py::object default_value) {
+                auto it = self.find(key);
+                if (it == self.end()) return default_value;
+                py::object value = pyu::MetadataValueToPy(it->second);
+                self.erase(it);
+                return value;
+            },
+            py::arg("key"),
+            py::arg("default"))
+        .def("setdefault",
+            [](lazyllm::DocNode::Metadata& self, const std::string& key, py::object default_value) {
+                auto it = self.find(key);
+                if (it != self.end()) return pyu::MetadataValueToPy(it->second);
+                auto [inserted, ok] = self.emplace(key, pyu::PyToMetadataValue(default_value));
+                (void)ok;
+                return pyu::MetadataValueToPy(inserted->second);
+            },
+            py::arg("key"),
+            py::arg("default") = py::none())
+        .def("copy",
+            [](const lazyllm::DocNode::Metadata& self) {
+                return MetadataToPy(self);
+            })
+        .def("__copy__",
+            [](const lazyllm::DocNode::Metadata& self) {
+                return MetadataToPy(self);
+            })
+        .def("__deepcopy__",
+            [](const lazyllm::DocNode::Metadata& self, const py::dict& memo) {
+                py::object copy = py::module_::import("copy");
+                return copy.attr("deepcopy")(MetadataToPy(self), memo);
+            },
+            py::arg("memo"))
+        .def("update",
+            [](lazyllm::DocNode::Metadata& self, py::object other, py::kwargs kwargs) {
+                if (!other.is_none()) {
+                    py::dict d = py::dict(other);
+                    for (auto item : d) {
+                        const std::string key = py::cast<std::string>(item.first);
+                        self[key] = pyu::PyToMetadataValue(item.second);
+                    }
+                }
+                for (auto item : kwargs) {
+                    const std::string key = py::cast<std::string>(item.first);
+                    self[key] = pyu::PyToMetadataValue(item.second);
+                }
+            },
+            py::arg("other") = py::none())
+        .def("__eq__",
+            [](const lazyllm::DocNode::Metadata& self, py::object other) {
+                py::dict lhs = MetadataToPy(self);
+                if (py::isinstance<py::dict>(other) || py::hasattr(other, "items"))
+                    return py::bool_(lhs.equal(py::dict(other)));
+                return py::bool_(false);
+            },
+            py::is_operator());
+
+    auto children_map = py::bind_map<lazyllm::DocNode::Children>(m, "DocNodeChildrenMap");
+    children_map
+        .def("get",
+            [](lazyllm::DocNode::Children& self, const std::string& key, py::object default_value) -> py::object {
+                auto it = self.find(key);
+                if (it == self.end()) return default_value;
+                return py::cast(it->second);
+            },
+            py::arg("key"),
+            py::arg("default") = py::none())
+        .def("pop",
+            [](lazyllm::DocNode::Children& self, const std::string& key) {
+                auto it = self.find(key);
+                if (it == self.end()) throw py::key_error(py::str(key));
+                py::list value = py::cast(it->second);
+                self.erase(it);
+                return value;
+            },
+            py::arg("key"))
+        .def("pop",
+            [](lazyllm::DocNode::Children& self, const std::string& key, py::object default_value) -> py::object {
+                auto it = self.find(key);
+                if (it == self.end()) return default_value;
+                py::list value = py::cast(it->second);
+                self.erase(it);
+                return value;
+            },
+            py::arg("key"),
+            py::arg("default"))
+        .def("setdefault",
+            [](lazyllm::DocNode::Children& self, const std::string& key, py::object default_value) {
+                auto it = self.find(key);
+                if (it != self.end()) return py::cast(it->second);
+                auto [inserted, ok] = self.emplace(key, NodeVectorFromPy(default_value));
+                (void)ok;
+                return py::cast(inserted->second);
+            },
+            py::arg("key"),
+            py::arg("default") = py::list())
+        .def("copy",
+            [](const lazyllm::DocNode::Children& self) {
+                return ChildrenToPy(self);
+            })
+        .def("__copy__",
+            [](const lazyllm::DocNode::Children& self) {
+                return ChildrenToPy(self);
+            })
+        .def("__deepcopy__",
+            [](const lazyllm::DocNode::Children& self, const py::dict& memo) {
+                py::object copy = py::module_::import("copy");
+                return copy.attr("deepcopy")(ChildrenToPy(self), memo);
+            },
+            py::arg("memo"))
+        .def("update",
+            [](lazyllm::DocNode::Children& self, py::object other, py::kwargs kwargs) {
+                if (!other.is_none()) {
+                    py::dict d = py::dict(other);
+                    for (auto item : d) {
+                        const std::string key = py::cast<std::string>(item.first);
+                        py::object value = py::reinterpret_borrow<py::object>(item.second);
+                        self[key] = NodeVectorFromPy(value);
+                    }
+                }
+                for (auto item : kwargs) {
+                    const std::string key = py::cast<std::string>(item.first);
+                    py::object value = py::reinterpret_borrow<py::object>(item.second);
+                    self[key] = NodeVectorFromPy(value);
+                }
+            },
+            py::arg("other") = py::none())
+        .def("__eq__",
+            [](const lazyllm::DocNode::Children& self, py::object other) {
+                py::dict lhs = ChildrenToPy(self);
+                if (py::isinstance<py::dict>(other) || py::hasattr(other, "items"))
+                    return py::bool_(lhs.equal(py::dict(other)));
+                return py::bool_(false);
+            },
+            py::is_operator());
+
     py::class_<lazyllm::DocNode, std::shared_ptr<lazyllm::DocNode>>(m, "DocNode", py::dynamic_attr())
         .def(py::init(&init),
             py::arg("uid") = py::none(),
@@ -195,21 +435,13 @@ void exportDocNode(py::module& m) {
             py::arg("global_metadata") = py::none(),
             py::arg("text") = py::none()
         )
-        .def_property_readonly("uid", &lazyllm::DocNode::get_uid)
-        .def_property_readonly("group", [](const lazyllm::DocNode& node) { return node._group_name; })
-        .def_property("content",
-            [](const lazyllm::DocNode& node) {
-                return std::string(node.get_text(lazyllm::MetadataMode::NONE));
-            },
-            [](lazyllm::DocNode& node, const py::object& content) {
-                const auto normalized = NormalizeContent(content);
-                if (!normalized) return;
-                if (const auto* content_str = std::get_if<std::string>(&*normalized)) {
-                    node.set_root_text(std::move(*content_str));
-                    return;
-                }
-                node.set_root_texts(std::get<std::vector<std::string>>(*normalized));
-            }
+        .def_property("_uid",
+            [](const lazyllm::DocNode& node) { return node.get_uid(); },
+            [](lazyllm::DocNode& node, const std::string& value) { node.set_uid(value); }
+        )
+        .def_property("_group",
+            [](const lazyllm::DocNode& node) { return node._group_name; },
+            [](lazyllm::DocNode& node, const std::string& value) { node._group_name = value; }
         )
         .def_property("_content",
             py::cpp_function([](const py::object& self) {
@@ -235,9 +467,11 @@ void exportDocNode(py::module& m) {
         )
         .def_property("number",
             [](const lazyllm::DocNode& node) {
-                const auto it = node._metadata.find("lazyllm_store_num");
+                auto it = node._metadata.find("lazyllm_store_num");
                 if (it == node._metadata.end()) return 0;
-                return std::any_cast<int>(it->second);
+                if (auto* value = std::get_if<int>(&it->second)) return *value;
+                if (auto* value = std::get_if<double>(&it->second)) return static_cast<int>(*value);
+                return 0;
             },
             [](lazyllm::DocNode& node, int value) {
                 node._metadata[std::string("lazyllm_store_num")] = value;
@@ -253,14 +487,10 @@ void exportDocNode(py::module& m) {
                 node._embedding_vecs = v;
             }
         )
-        .def_property("parent",
+        .def_property("_parent",
             [](const lazyllm::DocNode& node) { return node.get_parent_node(); },
             [](lazyllm::DocNode& node, const py::object& parent) {
-                if (parent.is_none()) {
-                    node.set_parent_node(nullptr);
-                    return;
-                }
-                if (py::isinstance<py::str>(parent)) {
+                if (parent.is_none() || py::isinstance<py::str>(parent)) {
                     node.set_parent_node(nullptr);
                     return;
                 }
@@ -268,10 +498,13 @@ void exportDocNode(py::module& m) {
             },
             py::return_value_policy::reference
         )
-        .def_property("children",
-            [](const lazyllm::DocNode& node) { return node.get_children(); },
-            [](lazyllm::DocNode& node, const lazyllm::DocNode::Children& children) {
-                node.set_children(children);
+        .def_property("_children",
+            py::cpp_function([](lazyllm::DocNode& node) -> lazyllm::DocNode::Children& {
+                node.get_children();
+                return node.get_children_ref();
+            }, py::return_value_policy::reference_internal),
+            [](lazyllm::DocNode& node, const py::object& children) {
+                node.set_children(ChildrenFromPy(children));
             }
         )
         .def_property_readonly("root_node",
@@ -281,18 +514,23 @@ void exportDocNode(py::module& m) {
         .def_property_readonly("is_root_node",
             [](const lazyllm::DocNode& node) { return node.get_parent_node() == nullptr; }
         )
-        .def_property("global_metadata",
-            [](const lazyllm::DocNode& node) { return MetadataToPy(*(node.get_root_node()->_p_global_metadata)); },
+        .def_property("_global_metadata",
+            py::cpp_function([](lazyllm::DocNode& node) -> lazyllm::DocNode::Metadata& {
+                return EnsureRootGlobalMetadata(node);
+            }, py::return_value_policy::reference_internal),
             [](lazyllm::DocNode& node, const py::object& meta) {
-                node._p_global_metadata = std::make_shared<lazyllm::DocNode::Metadata>(
-                    MetadataFromPy(meta));
+                EnsureRootGlobalMetadata(node) = MetadataFromPy(meta);
             }
         )
-        .def_property("metadata",
-            [](const lazyllm::DocNode& node) { return MetadataToPy(node._metadata); },
-            [](lazyllm::DocNode& node, const py::object& meta) { node._metadata = MetadataFromPy(meta); }
+        .def_property("_metadata",
+            py::cpp_function([](lazyllm::DocNode& node) -> lazyllm::DocNode::Metadata& {
+                return node._metadata;
+            }, py::return_value_policy::reference_internal),
+            [](lazyllm::DocNode& node, const py::object& meta) {
+                node._metadata = MetadataFromPy(meta);
+            }
         )
-        .def_property("excluded_embed_metadata_keys",
+        .def_property("_excluded_embed_metadata_keys",
             [](const lazyllm::DocNode& node) {
                 const auto keys = node.get_excluded_embed_metadata_keys();
                 return std::vector<std::string>(keys.begin(), keys.end());
@@ -305,7 +543,7 @@ void exportDocNode(py::module& m) {
                 node.set_excluded_embed_metadata_keys(keys);
             }
         )
-        .def_property("excluded_llm_metadata_keys",
+        .def_property("_excluded_llm_metadata_keys",
             [](const lazyllm::DocNode& node) {
                 const auto keys = node.get_excluded_llm_metadata_keys();
                 return std::vector<std::string>(keys.begin(), keys.end());
@@ -318,6 +556,21 @@ void exportDocNode(py::module& m) {
                 node.set_excluded_llm_metadata_keys(keys);
             }
         )
+        .def("__getattr__", [](py::object self, const std::string& attr_name) -> py::object {
+            if (const char* alias = ResolveDocNodeAlias(attr_name)) {
+                return py::getattr(self, py::str(alias));
+            }
+            throw py::attribute_error("DocNode has no attribute '" + attr_name + "'");
+        })
+        .def("__setattr__", [](py::object self, const std::string& attr_name, const py::object& value) {
+            if (kDocNodeReadonlyAliases.find(attr_name) != kDocNodeReadonlyAliases.end()) {
+                throw py::attribute_error("property '" + attr_name + "' of 'DocNode' object has no setter");
+            }
+            const char* alias = ResolveDocNodeAlias(attr_name);
+            const char* target = alias ? alias : attr_name.c_str();
+            py::object object_setattr = py::module_::import("builtins").attr("object").attr("__setattr__");
+            object_setattr(self, py::str(target), value);
+        })
         .def_property("docpath",
             [](const lazyllm::DocNode& node) { return node.get_doc_path(); },
             [](lazyllm::DocNode& node, const std::string& path) { node.set_doc_path(path); }
@@ -367,7 +620,7 @@ void exportDocNode(py::module& m) {
             st["_group"] = node._group_name;
             st["_embedding"] = node._embedding_vecs;
             st["_metadata"] = MetadataToPy(node._metadata);
-            st["_global_metadata"] = MetadataToPy(*(node._p_global_metadata));
+            st["_global_metadata"] = MetadataToPy(GetRootGlobalMetadata(node));
             st["_excluded_embed_metadata_keys"] = node.get_excluded_embed_metadata_keys();
             st["_excluded_llm_metadata_keys"] = node.get_excluded_llm_metadata_keys();
             st["_store"] = py::none();
@@ -409,15 +662,19 @@ void exportDocNode(py::module& m) {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
             }
         })
-        .def("get_content", [](const lazyllm::DocNode& node) { return node.get_text(lazyllm::MetadataMode::LLM); })
-        .def("get_metadata_str", [](const lazyllm::DocNode& node, const py::object& mode) {
+        .def("get_content", [](py::object self) {
+            return self.cast<lazyllm::DocNode&>().get_text(lazyllm::MetadataMode::LLM);
+        })
+        .def("get_metadata_str", [](py::object self, const py::object& mode) {
+            auto& node = self.cast<lazyllm::DocNode&>();
             if (mode.is_none()) return node.get_metadata_string(lazyllm::MetadataMode::ALL);
             return node.get_metadata_string(pyu::ParseMetadataMode(mode));
         }, py::arg("mode") = py::none())
-        .def("get_text", [](const lazyllm::DocNode& node, const py::object& metadata_mode) {
-            return node.get_text(pyu::ParseMetadataMode(metadata_mode));
+        .def("get_text", [](py::object self, const py::object& metadata_mode) {
+            return self.cast<lazyllm::DocNode&>().get_text(pyu::ParseMetadataMode(metadata_mode));
         }, py::arg("metadata_mode") = py::none())
-        .def("to_dict", [](const lazyllm::DocNode& node) {
+        .def("to_dict", [](py::object self) {
+            auto& node = self.cast<lazyllm::DocNode&>();
             py::dict d;
             d["content"] = node.get_text(lazyllm::MetadataMode::NONE);
             d["embedding"] = node._embedding_vecs;
