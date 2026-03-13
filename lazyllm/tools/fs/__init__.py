@@ -1,6 +1,7 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-from .base import LazyLLMFSBase, CloudFSWatchMixin, CloudFSBufferedFile
+from .base import LazyLLMFSBase, CloudFSBufferedFile
 from .client import CloudFS
+from .watchdog import CloudFsWatchdog
 from .supplier.feishu import FeishuFS
 from .supplier.confluence import ConfluenceFS
 from .supplier.notion import NotionFS
@@ -12,9 +13,9 @@ from .supplier.s3 import S3FS
 
 __all__ = [
     'LazyLLMFSBase',
-    'CloudFSWatchMixin',
     'CloudFSBufferedFile',
     'CloudFS',
+    'CloudFsWatchdog',
     'FeishuFS',
     'ConfluenceFS',
     'NotionFS',

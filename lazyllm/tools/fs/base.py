@@ -1,12 +1,9 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-import threading
-import time
 from abc import abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-import lazyllm
 from lazyllm import thirdparty
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
 
@@ -31,110 +28,14 @@ class CloudFSBufferedFile(AbstractBufferedFile):
         return True
 
 
-class CloudFSWatchMixin:
-
-    def __init__(self) -> None:
-        self._watchers: List[Dict[str, Any]] = []
-        self._watch_lock = threading.Lock()
-        self._watch_thread: Optional[threading.Thread] = None
-        self._watch_running = False
-
-    def _platform_supports_webhook(self) -> bool:
-        return False
-
-    def _register_webhook(self, webhook_url: str, events: List[str], path: str) -> Dict[str, Any]:
-        raise NotImplementedError(f'{self.__class__.__name__} does not support webhooks')
-
-    def watch(self, path: str, callback: Callable[[str, str, Dict], None],
-              polling_interval: int = 30) -> str:
-        watcher_id = f'watcher-{id(callback)}-{int(time.time())}'
-        entry: Dict[str, Any] = {
-            'id': watcher_id,
-            'path': path,
-            'callback': callback,
-            'interval': polling_interval,
-            'last_snapshot': self._snapshot(path),
-            'type': 'polling',
-        }
-        with self._watch_lock:
-            self._watchers.append(entry)
-            if not self._watch_running:
-                self._watch_running = True
-                self._watch_thread = threading.Thread(
-                    target=self._polling_loop, daemon=True)
-                self._watch_thread.start()
-        return watcher_id
-
-    def register_webhook(self, path: str, webhook_url: str,
-                         events: Optional[List[str]] = None,
-                         callback: Optional[Callable] = None) -> Dict[str, Any]:
-        events = events or ['*']
-        if self._platform_supports_webhook():
-            info = self._register_webhook(webhook_url, events, path)
-            if callback:
-                self.watch(path, callback)
-            return info
-        if callback:
-            watcher_id = self.watch(path, callback)
-            return {'mode': 'polling', 'watcher_id': watcher_id}
-        return {'mode': 'none'}
-
-    def unwatch(self, watcher_id: str) -> bool:
-        with self._watch_lock:
-            before = len(self._watchers)
-            self._watchers = [w for w in self._watchers if w['id'] != watcher_id]
-            removed = len(self._watchers) < before
-            if not self._watchers:
-                self._watch_running = False
-        return removed
-
-    def _snapshot(self, path: str) -> Dict[str, Any]:
-        try:
-            entries = self.ls(path, detail=True)  # type: ignore[attr-defined]
-            return {e['name']: e.get('mtime') or e.get('last_modified') for e in entries}
-        except Exception as e:
-            lazyllm.LOG.debug(f"Failed to create snapshot for path '{path}': {e}")
-            return {}
-
-    def _polling_loop(self) -> None:
-        _min_interval = 1
-        while self._watch_running:
-            with self._watch_lock:
-                watchers = list(self._watchers)
-            for watcher in watchers:
-                self._check_watcher(watcher)
-            interval = max(_min_interval, min(w['interval'] for w in watchers)) if watchers else 30
-            time.sleep(interval)
-
-    def _check_watcher(self, watcher: Dict[str, Any]) -> None:
-        path = watcher['path']
-        callback = watcher['callback']
-        old = watcher['last_snapshot']
-        try:
-            new = self._snapshot(path)
-        except Exception:
-            return
-        old_keys = set(old.keys())
-        new_keys = set(new.keys())
-        for name in new_keys - old_keys:
-            callback('created', name, {'path': name})
-        for name in old_keys - new_keys:
-            callback('deleted', name, {'path': name})
-        for name in old_keys & new_keys:
-            if old[name] != new[name]:
-                callback('modified', name, {'path': name})
-        watcher['last_snapshot'] = new
-
-
 _CloudFSMeta = type('_CloudFSMeta', (LazyLLMRegisterMetaABCClass, type(AbstractFileSystem)), {})
 
 
-class LazyLLMFSBase(CloudFSWatchMixin, AbstractFileSystem, metaclass=_CloudFSMeta):
+class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     protocol: str = 'cloudfs'
 
     def __init__(self, token: str, base_url: Optional[str] = None, **storage_options):
-        CloudFSWatchMixin.__init__(self)
         AbstractFileSystem.__init__(self, **storage_options)
         self._token = token
         self._base_url = (base_url or '').rstrip('/')

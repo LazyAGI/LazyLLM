@@ -5,7 +5,7 @@ if TYPE_CHECKING:
     from .rag import (Document, GraphDocument, UrlGraphDocument, Reranker, Retriever, TempDocRetriever,
                     GraphRetriever, SentenceSplitter, LLMParser)
     from .webpages import WebModule
-    from .fs import (LazyLLMFSBase, CloudFSWatchMixin, CloudFSBufferedFile, CloudFS,
+    from .fs import (LazyLLMFSBase, CloudFSBufferedFile, CloudFS, CloudFsWatchdog,
                      FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS)
     from .agent import (
         ToolManager,
@@ -133,9 +133,9 @@ _SUBMOD_MAP = {
     ],
     'fs': [
         'LazyLLMFSBase',
-        'CloudFSWatchMixin',
         'CloudFSBufferedFile',
         'CloudFS',
+        'CloudFsWatchdog',
         'FeishuFS',
         'ConfluenceFS',
         'NotionFS',

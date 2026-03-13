@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 # flake8: noqa E501
-"""FS module docs: LazyLLMFSBase, CloudFSWatchMixin, CloudFSBufferedFile, CloudFS, FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS."""
+"""FS module docs: LazyLLMFSBase, CloudFSBufferedFile, CloudFS, CloudFsWatchdog, FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS."""
 import importlib
 import functools
 
@@ -16,8 +16,8 @@ _add_fs_example = functools.partial(
 # LazyLLMFSBase
 _add_fs_chinese('LazyLLMFSBase', '''\
 云文件系统统一基类，继承 fsspec.AbstractFileSystem，借助 registry 注册各平台实现。
-子类需实现：_setup_auth、ls、info、_open、_download_range、_upload_data 等；可选实现 rm_file、mkdir、watch/webhook。
-支持 watch 轮询与部分平台的 webhook 通知。
+子类需实现：_setup_auth、ls、info、_open、_download_range、_upload_data 等；可选实现 rm_file、mkdir。
+目录监听逻辑由 CloudFsWatchdog 提供，FS 子类仅需提供必要的 webhook 能力（若有）。
 
 Args:
     token (str): 认证 token，具体含义由子类决定（如 Bearer token、access_key 等）。
@@ -26,8 +26,8 @@ Args:
 ''')
 _add_fs_english('LazyLLMFSBase', '''\
 Unified cloud filesystem base; extends fsspec.AbstractFileSystem; implementations registered via registry.
-Subclasses implement _setup_auth, ls, info, _open, _download_range, _upload_data; optionally rm_file, mkdir, watch/webhook.
-Supports watch polling and webhook notifications on some platforms.
+Subclasses implement _setup_auth, ls, info, _open, _download_range, _upload_data; optionally rm_file, mkdir.
+Directory watching is handled by CloudFsWatchdog; FS subclasses only expose webhook capabilities when supported.
 
 Args:
     token (str): Auth token; meaning defined by subclass (e.g. Bearer token, access_key).
@@ -276,15 +276,22 @@ Args:
     data (bytes): Full content to upload.
 ''')
 
-# CloudFSWatchMixin
-_add_fs_chinese('CloudFSWatchMixin', '''\
-为云文件系统提供目录监控能力：watch（轮询）、register_webhook（若平台支持）、unwatch。
+_add_fs_chinese('CloudFsWatchdog', '''\
+云文件系统监听辅助类。基于 LazyLLMFSBase 提供的 ls(detail=True) 做目录快照与差异比较，
+并在变更时触发用户注册的回调；若底层 FS 支持 webhook，则可通过 register_webhook 结合平台回调使用。
+
+FS 子类只负责各云平台 API 差异与 webhook 实际注册逻辑；CloudFsWatchdog 仅负责通用的轮询线程与事件分发。
 ''')
-_add_fs_english('CloudFSWatchMixin', '''\
-Provides directory watch for cloud FS: watch (polling), register_webhook (if supported), unwatch.
+_add_fs_english('CloudFsWatchdog', '''\
+Helper for watching cloud filesystems. It polls LazyLLMFSBase.ls(detail=True) to compute snapshots,
+diffs changes, and dispatches events to user handlers; when the underlying FS supports webhooks,
+it can delegate registration via register_webhook.
+
+FS subclasses handle platform-specific APIs and webhook registration; CloudFsWatchdog only manages
+generic polling thread and event dispatch.
 ''')
 
-_add_fs_chinese('CloudFSWatchMixin.watch', '''\
+_add_fs_chinese('CloudFsWatchdog.watch', '''\
 对 path 进行轮询监控，变更时调用 callback。返回 watcher_id 便于后续 unwatch。
 
 Args:
@@ -295,7 +302,7 @@ Args:
 Returns:
     str: watcher_id。
 ''')
-_add_fs_english('CloudFSWatchMixin.watch', '''\
+_add_fs_english('CloudFsWatchdog.watch', '''\
 Poll path for changes and invoke callback. Returns watcher_id for unwatch.
 
 Args:
@@ -307,8 +314,27 @@ Returns:
     str: watcher_id.
 ''')
 
-_add_fs_chinese('CloudFSWatchMixin.register_webhook', '''\
-若平台支持则注册 webhook；否则退化为 watch 轮询或返回 mode 'none'。
+_add_fs_chinese('CloudFsWatchdog.on', '''\
+注册对特定事件集合的处理函数，相当于 watch 的语法糖。
+
+Args:
+    path (str): 监控路径。
+    events (list[str]): 事件类型列表，例如 ['created', 'deleted']。
+    handler (Callable[[str, str, dict], None]): 处理函数。
+    polling_interval (int): 轮询间隔秒数。
+''')
+_add_fs_english('CloudFsWatchdog.on', '''\
+Register handler for a set of events; sugar on top of watch.
+
+Args:
+    path (str): Path to watch.
+    events (list[str]): Events such as ['created', 'deleted'].
+    handler (Callable[[str, str, dict], None]): Handler.
+    polling_interval (int): Polling interval in seconds.
+''')
+
+_add_fs_chinese('CloudFsWatchdog.register_webhook', '''\
+若底层 FS 支持 webhook，则调用其 register_webhook；否则回退到轮询模式或返回 mode 'none'。
 
 Args:
     path (str): 监控路径。
@@ -319,8 +345,8 @@ Args:
 Returns:
     dict: 含 mode（webhook/polling/none）及平台返回信息或 watcher_id。
 ''')
-_add_fs_english('CloudFSWatchMixin.register_webhook', '''\
-Register webhook if platform supports; else fallback to watch polling or mode 'none'.
+_add_fs_english('CloudFsWatchdog.register_webhook', '''\
+Call underlying FS.register_webhook if supported; otherwise fall back to polling or mode 'none'.
 
 Args:
     path (str): Path to watch.
@@ -330,25 +356,6 @@ Args:
 
 Returns:
     dict: mode (webhook/polling/none) and platform info or watcher_id.
-''')
-
-_add_fs_chinese('CloudFSWatchMixin.unwatch', '''\
-取消指定 watcher。
-
-Args:
-    watcher_id (str): watch 返回的 id。
-
-Returns:
-    bool: 是否成功移除。
-''')
-_add_fs_english('CloudFSWatchMixin.unwatch', '''\
-Remove a watcher by id.
-
-Args:
-    watcher_id (str): Id returned by watch.
-
-Returns:
-    bool: True if removed.
 ''')
 
 # CloudFSBufferedFile
