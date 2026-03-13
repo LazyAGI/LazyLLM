@@ -544,6 +544,12 @@ class DocManager:
             kb_row.updated_at = now_ts()
             session.add(kb_row)
 
+    def _list_kb_doc_ids(self, kb_id: str) -> List[str]:
+        with self._db_manager.get_session() as session:
+            Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
+            rows = session.query(Rel.doc_id).filter(Rel.kb_id == kb_id).all()
+            return [row[0] for row in rows]
+
     def _has_kb_document(self, kb_id: str, doc_id: str):
         with self._db_manager.get_session() as session:
             Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
@@ -635,14 +641,106 @@ class DocManager:
             )
             return _orm_to_dict(row) if row else None
 
+    def _delete_parse_snapshots(self, doc_id: str, kb_id: str):
+        with self._db_manager.get_session() as session:
+            State = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
+            session.query(State).filter(State.doc_id == doc_id, State.kb_id == kb_id).delete()
+
+    def _delete_doc_if_orphaned(self, doc_id: str) -> bool:
+        if self._doc_relation_count(doc_id) > 0:
+            return False
+        with self._db_manager.get_session() as session:
+            Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
+            row = session.query(Doc).filter(Doc.doc_id == doc_id).first()
+            if row is None:
+                return False
+            session.delete(row)
+        return True
+
+    def _purge_deleted_kb_doc_data(self, kb_id: str, doc_id: str, remove_relation: bool = False):
+        if remove_relation:
+            self._remove_kb_document(kb_id, doc_id)
+        self._delete_parse_snapshots(doc_id, kb_id)
+        if not self._delete_doc_if_orphaned(doc_id):
+            self._sync_doc_upload_status(doc_id)
+
+    def _mark_task_cleanup_policy(self, task_id: str, cleanup_policy: str):
+        task = self._get_task_record(task_id)
+        if task is None:
+            return
+        message = task.get('message') or {}
+        if message.get('cleanup_policy') == cleanup_policy:
+            return
+        message['cleanup_policy'] = cleanup_policy
+        self._update_task_record(task_id, message=_to_json(message))
+
+    def _finalize_kb_deletion_if_empty(self, kb_id: str) -> bool:
+        with self._db_manager.get_session() as session:
+            Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
+            if session.query(Rel).filter(Rel.kb_id == kb_id).count() > 0:
+                return False
+            Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
+            AlgoRel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
+            kb_row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
+            if kb_row is not None:
+                session.delete(kb_row)
+            session.query(AlgoRel).filter(AlgoRel.kb_id == kb_id).delete()
+        return True
+
+    def _prepare_kb_delete_items(self, kb_id: str) -> Dict[str, Any]:
+        kb = self._get_kb(kb_id)
+        if kb is None:
+            raise DocServiceError('E_NOT_FOUND', f'kb not found: {kb_id}', {'kb_id': kb_id})
+        binding = self._get_kb_algorithm(kb_id)
+        default_algo_id = binding['algo_id'] if binding is not None else '__default__'
+        items = []
+        for doc_id in self._list_kb_doc_ids(kb_id):
+            snapshot = self._get_parse_snapshot(doc_id, kb_id, default_algo_id) or self._get_latest_parse_snapshot(doc_id, kb_id)
+            if snapshot is None or snapshot.get('status') == DocStatus.DELETED.value:
+                items.append({'action': 'purge_local', 'doc_id': doc_id})
+                continue
+            status = snapshot.get('status')
+            task_type = snapshot.get('task_type')
+            if status in (DocStatus.WAITING.value, DocStatus.WORKING.value):
+                if task_type == TaskType.DOC_DELETE.value and snapshot.get('current_task_id'):
+                    items.append({
+                        'action': 'reuse_delete_task',
+                        'doc_id': doc_id,
+                        'task_id': snapshot['current_task_id'],
+                    })
+                    continue
+                raise DocServiceError(
+                    'E_STATE_CONFLICT',
+                    f'cannot delete kb while doc {doc_id} task is {status}',
+                    {'kb_id': kb_id, 'doc_id': doc_id, 'status': status, 'task_type': task_type},
+                )
+            items.append({
+                'action': 'enqueue_delete',
+                'doc_id': doc_id,
+                'algo_id': snapshot.get('algo_id') or default_algo_id,
+            })
+        return {'kb': kb, 'items': items}
+
     def _assert_action_allowed(self, doc_id: str, kb_id: str, algo_id: str, action: str):
         snapshot = self._get_parse_snapshot(doc_id, kb_id, algo_id)
-        if snapshot is None:
+        status = snapshot.get('status') if snapshot is not None else None
+        if status is None and action in ('add', 'upload'):
+            doc = self._get_doc(doc_id)
+            status = doc.get('upload_status') if doc else None
+
+        if action in ('add', 'upload'):
+            if status in (
+                DocStatus.WAITING.value,
+                DocStatus.WORKING.value,
+                DocStatus.DELETING.value,
+                DocStatus.SUCCESS.value,
+            ):
+                raise DocServiceError('E_STATE_CONFLICT', f'cannot {action} while state is {status}')
             return
-        status = snapshot.get('status')
-        if status == DocStatus.WORKING.value and action in ('upload', 'reparse', 'delete', 'transfer', 'metadata'):
+
+        if status == DocStatus.WORKING.value and action in ('reparse', 'delete', 'transfer', 'metadata'):
             raise DocServiceError('E_STATE_CONFLICT', f'cannot {action} while state is WORKING')
-        if status == DocStatus.DELETING.value and action in ('upload', 'reparse', 'delete', 'transfer', 'metadata'):
+        if status == DocStatus.DELETING.value and action in ('reparse', 'delete', 'transfer', 'metadata'):
             raise DocServiceError('E_STATE_CONFLICT', f'cannot {action} while state is DELETING')
 
     def _upsert_parse_snapshot(
@@ -740,10 +838,14 @@ class DocManager:
         try:
             return method(*args, **kwargs)
         except TypeError as exc:
-            if 'callback_url' not in kwargs or 'callback_url' not in str(exc):
-                raise
             compat_kwargs = dict(kwargs)
-            compat_kwargs.pop('callback_url', None)
+            removed = False
+            for field in ('callback_url',):
+                if field in compat_kwargs and field in str(exc):
+                    compat_kwargs.pop(field, None)
+                    removed = True
+            if not removed:
+                raise
             return method(*args, **compat_kwargs)
 
     def _create_parser_task(self, task_id: str, doc_id: str, kb_id: str, algo_id: str, task_type: TaskType,
@@ -784,7 +886,7 @@ class DocManager:
         self, doc_id: str, kb_id: str, algo_id: str, task_type: TaskType,
         idempotency_key: Optional[str] = None, priority: int = 0,
         file_path: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
-        reparse_group: Optional[str] = None,
+        reparse_group: Optional[str] = None, cleanup_policy: Optional[str] = None,
     ):
         task_id = str(uuid4())
         task_message = {
@@ -795,6 +897,8 @@ class DocManager:
             'metadata': metadata,
             'reparse_group': reparse_group,
         }
+        if cleanup_policy:
+            task_message['cleanup_policy'] = cleanup_policy
         task_status = DocStatus.DELETING if task_type == TaskType.DOC_DELETE else DocStatus.WAITING
         self._create_task_record(task_id, task_type, doc_id, kb_id, algo_id, task_status, message=task_message)
         parse_status = DocStatus.DELETING if task_type == TaskType.DOC_DELETE else DocStatus.WAITING
@@ -886,6 +990,59 @@ class DocManager:
                 self._assert_action_allowed(item['doc_id'], request.kb_id, request.algo_id, 'upload')
         return prepared_items
 
+    def _prepare_reparse_items(self, request: ReparseRequest) -> List[Dict[str, Any]]:
+        prepared_items = []
+        for doc_id in request.doc_ids:
+            doc = self._get_doc(doc_id)
+            if doc is None or not self._has_kb_document(request.kb_id, doc_id):
+                raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}')
+            self._assert_action_allowed(doc_id, request.kb_id, request.algo_id, 'reparse')
+            prepared_items.append({
+                'doc_id': doc_id,
+                'file_path': doc.get('path'),
+                'metadata': _from_json(doc.get('meta')),
+            })
+        return prepared_items
+
+    def _prepare_delete_items(self, request: DeleteRequest) -> List[Dict[str, Any]]:
+        prepared_items = []
+        for doc_id in request.doc_ids:
+            doc = self._get_doc(doc_id)
+            snapshot = self._get_parse_snapshot(doc_id, request.kb_id, request.algo_id) or self._get_latest_parse_snapshot(doc_id, request.kb_id)
+            if doc is None or not self._has_kb_document(request.kb_id, doc_id):
+                if snapshot is not None and snapshot.get('status') in (DocStatus.DELETING.value, DocStatus.DELETED.value):
+                    prepared_items.append({
+                        'doc_id': doc_id,
+                        'action': 'noop',
+                        'status': snapshot['status'],
+                        'task_id': snapshot.get('current_task_id'),
+                    })
+                    continue
+                raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}')
+            if snapshot is not None and snapshot.get('status') in (DocStatus.DELETING.value, DocStatus.DELETED.value):
+                prepared_items.append({
+                    'doc_id': doc_id,
+                    'action': 'noop',
+                    'status': snapshot['status'],
+                    'task_id': snapshot.get('current_task_id'),
+                })
+                continue
+            self._assert_action_allowed(doc_id, request.kb_id, request.algo_id, 'delete')
+            prepared_items.append({'doc_id': doc_id, 'action': 'execute'})
+        return prepared_items
+
+    def _prepare_metadata_patch_items(self, request: MetadataPatchRequest) -> List[Dict[str, Any]]:
+        prepared_items = []
+        for item in request.items:
+            doc = self._get_doc(item.doc_id)
+            if doc is None or not self._has_kb_document(request.kb_id, item.doc_id):
+                raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {item.doc_id}')
+            self._assert_action_allowed(item.doc_id, request.kb_id, request.algo_id, 'metadata')
+            merged = _from_json(doc.get('meta'))
+            merged.update(item.patch)
+            prepared_items.append({'doc_id': item.doc_id, 'metadata': merged, 'file_path': doc.get('path')})
+        return prepared_items
+
     def upload(self, request: UploadRequest) -> List[Dict[str, Any]]:
         self._validate_kb_algorithm(request.kb_id, request.algo_id)
         prepared_items = self._prepare_upload_items(request)
@@ -945,17 +1102,14 @@ class DocManager:
     def reparse(self, request: ReparseRequest) -> List[str]:
         self._validate_kb_algorithm(request.kb_id, request.algo_id)
         self._validate_unique_doc_ids(request.doc_ids, field_name='doc_id')
+        prepared_items = self._prepare_reparse_items(request)
         task_ids = []
-        for doc_id in request.doc_ids:
-            doc = self._get_doc(doc_id)
-            if doc is None or not self._has_kb_document(request.kb_id, doc_id):
-                raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}')
-            self._assert_action_allowed(doc_id, request.kb_id, request.algo_id, 'reparse')
+        for item in prepared_items:
             task_id, _ = self._enqueue_task(
-                doc_id, request.kb_id, request.algo_id, TaskType.DOC_REPARSE,
+                item['doc_id'], request.kb_id, request.algo_id, TaskType.DOC_REPARSE,
                 idempotency_key=request.idempotency_key,
-                file_path=doc.get('path'),
-                metadata=_from_json(doc.get('meta')),
+                file_path=item['file_path'],
+                metadata=item['metadata'],
                 reparse_group='all',
             )
             task_ids.append(task_id)
@@ -964,12 +1118,41 @@ class DocManager:
     def delete(self, request: DeleteRequest) -> List[Dict[str, Any]]:
         self._validate_kb_algorithm(request.kb_id, request.algo_id)
         self._validate_unique_doc_ids(request.doc_ids, field_name='doc_id')
+        prepared_items = self._prepare_delete_items(request)
         items: List[Dict[str, Any]] = []
-        for doc_id in request.doc_ids:
-            doc = self._get_doc(doc_id)
-            if doc is None or not self._has_kb_document(request.kb_id, doc_id):
-                raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}')
-            self._assert_action_allowed(doc_id, request.kb_id, request.algo_id, 'delete')
+        for item in prepared_items:
+            doc_id = item['doc_id']
+            if item.get('action') == 'noop':
+                items.append({
+                    'doc_id': doc_id,
+                    'accepted': True,
+                    'task_id': item.get('task_id'),
+                    'status': item['status'],
+                    'error_code': None,
+                })
+                continue
+            snapshot = self._get_parse_snapshot(doc_id, request.kb_id, request.algo_id)
+            if (
+                snapshot is not None
+                and snapshot.get('status') == DocStatus.WAITING.value
+                and snapshot.get('task_type') == TaskType.DOC_ADD.value
+                and snapshot.get('current_task_id')
+            ):
+                cancel_resp = self.cancel_task(snapshot['current_task_id'])
+                if cancel_resp.code != 200:
+                    raise DocServiceError(
+                        'E_STATE_CONFLICT',
+                        cancel_resp.msg,
+                        cancel_resp.data if isinstance(cancel_resp.data, dict) else {'task_id': snapshot['current_task_id']},
+                    )
+                items.append({
+                    'doc_id': doc_id,
+                    'accepted': True,
+                    'task_id': snapshot['current_task_id'],
+                    'status': DocStatus.CANCELED.value,
+                    'error_code': None,
+                })
+                continue
             with self._db_manager.get_session() as session:
                 Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
                 row = session.query(Doc).filter(Doc.doc_id == doc_id).first()
@@ -1030,27 +1213,22 @@ class DocManager:
         updated = []
         failed = []
         self._validate_unique_doc_ids([item.doc_id for item in request.items], field_name='doc_id')
-        for item in request.items:
-            doc = self._get_doc(item.doc_id)
-            if doc is None or not self._has_kb_document(request.kb_id, item.doc_id):
-                raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {item.doc_id}')
-            self._assert_action_allowed(item.doc_id, request.kb_id, request.algo_id, 'metadata')
-            merged = _from_json(doc.get('meta'))
-            merged.update(item.patch)
+        prepared_items = self._prepare_metadata_patch_items(request)
+        for item in prepared_items:
             with self._db_manager.get_session() as session:
                 Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
-                row = session.query(Doc).filter(Doc.doc_id == item.doc_id).first()
-                row.meta = _to_json(merged)
+                row = session.query(Doc).filter(Doc.doc_id == item['doc_id']).first()
+                row.meta = _to_json(item['metadata'])
                 row.updated_at = now_ts()
                 session.add(row)
 
             task_id, _ = self._enqueue_task(
-                item.doc_id, request.kb_id, request.algo_id, TaskType.DOC_UPDATE_META,
+                item['doc_id'], request.kb_id, request.algo_id, TaskType.DOC_UPDATE_META,
                 idempotency_key=request.idempotency_key,
-                file_path=doc.get('path'),
-                metadata=merged,
+                file_path=item['file_path'],
+                metadata=item['metadata'],
             )
-            updated.append({'doc_id': item.doc_id, 'task_id': task_id})
+            updated.append({'doc_id': item['doc_id'], 'task_id': task_id})
         return {
             'updated_count': len(updated),
             'doc_ids': [u['doc_id'] for u in updated],
@@ -1114,6 +1292,8 @@ class DocManager:
         snapshot = self._get_parse_snapshot(doc_id, kb_id, algo_id)
         if snapshot and snapshot.get('current_task_id') and snapshot['current_task_id'] != callback.task_id:
             return {'ack': True, 'deduped': False, 'ignored_reason': 'stale_task_callback'}
+        if task_data.get('status') == DocStatus.CANCELED.value and callback.status != DocStatus.CANCELED:
+            return {'ack': True, 'deduped': False, 'ignored_reason': 'canceled_task_callback'}
 
         if callback.event_type == CallbackEventType.START:
             self._update_task_record(
@@ -1153,6 +1333,8 @@ class DocManager:
         failed_stage = None
         if final_status == DocStatus.FAILED:
             failed_stage = 'DELETE' if task_type == TaskType.DOC_DELETE else 'PARSE'
+        task_message = task_data.get('message') or {}
+        cleanup_policy = task_message.get('cleanup_policy')
 
         self._update_task_record(
             callback.task_id,
@@ -1181,6 +1363,9 @@ class DocManager:
         if task_type == TaskType.DOC_DELETE and final_status == DocStatus.DELETED:
             self._remove_kb_document(kb_id, doc_id)
         self._apply_doc_upload_status(doc_id, task_type, final_status)
+        if task_type == TaskType.DOC_DELETE and final_status == DocStatus.DELETED and cleanup_policy == 'purge':
+            self._purge_deleted_kb_doc_data(kb_id, doc_id)
+            self._finalize_kb_deletion_if_empty(kb_id)
 
         return {'ack': True, 'deduped': False, 'ignored_reason': None}
 
@@ -1492,30 +1677,34 @@ class DocManager:
     def delete_kb(self, kb_id: str):
         if not kb_id:
             raise DocServiceError('E_INVALID_PARAM', 'kb_id is required')
-        with self._db_manager.get_session() as session:
-            Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
-            Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
-            Snap = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
-            kb_row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
-            if kb_row is None:
-                raise DocServiceError('E_NOT_FOUND', f'kb not found: {kb_id}', {'kb_id': kb_id})
-            states = (
-                session.query(Snap)
-                .join(Rel, sqlalchemy.and_(Snap.doc_id == Rel.doc_id, Snap.kb_id == Rel.kb_id))
-                .filter(Rel.kb_id == kb_id, ~Snap.status.in_([DocStatus.DELETED.value, DocStatus.CANCELED.value]))
-                .all()
-            )
+        prepared = self._prepare_kb_delete_items(kb_id)
         task_ids = []
-        for row in states:
-            task_id, _ = self._enqueue_task(row.doc_id, row.kb_id, row.algo_id, TaskType.DOC_DELETE)
-            task_ids.append(task_id)
+        for item in prepared['items']:
+            if item['action'] == 'purge_local':
+                self._purge_deleted_kb_doc_data(kb_id, item['doc_id'], remove_relation=True)
+                continue
+            if item['action'] == 'reuse_delete_task':
+                self._mark_task_cleanup_policy(item['task_id'], 'purge')
+                task_ids.append(item['task_id'])
+                continue
+            if item['action'] == 'enqueue_delete':
+                task_id, _ = self._enqueue_task(
+                    item['doc_id'], kb_id, item['algo_id'], TaskType.DOC_DELETE, cleanup_policy='purge'
+                )
+                task_ids.append(task_id)
+                continue
+            raise RuntimeError(f'unsupported kb delete action: {item["action"]}')
         new_status = KBStatus.DELETING.value if task_ids else KBStatus.DELETED.value
-        with self._db_manager.get_session() as session:
-            Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
-            kb_row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
-            kb_row.status = new_status
-            kb_row.updated_at = now_ts()
-            session.add(kb_row)
+        if task_ids:
+            with self._db_manager.get_session() as session:
+                Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
+                kb_row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
+                if kb_row is not None:
+                    kb_row.status = new_status
+                    kb_row.updated_at = now_ts()
+                    session.add(kb_row)
+        else:
+            self._finalize_kb_deletion_if_empty(kb_id)
         return {'kb_id': kb_id, 'status': new_status, 'task_ids': task_ids}
 
     def delete_kbs(self, kb_ids: List[str]):

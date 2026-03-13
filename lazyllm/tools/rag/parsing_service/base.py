@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Dict, List, Optional, Any
 from enum import Enum
 from uuid import uuid4
@@ -34,6 +34,14 @@ class AddDocRequest(BaseModel):
     db_info: Optional[DBInfo] = None
     feedback_url: Optional[str] = None
 
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_deprecated_fields(cls, data):
+        if isinstance(data, dict) and not data.get('db_info'):
+            data = dict(data)
+            data['db_info'] = None
+        return data
+
 
 class UpdateMetaRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
@@ -46,6 +54,14 @@ class UpdateMetaRequest(BaseModel):
     db_info: Optional[DBInfo] = None
     feedback_url: Optional[str] = None
 
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_deprecated_fields(cls, data):
+        if isinstance(data, dict) and not data.get('db_info'):
+            data = dict(data)
+            data['db_info'] = None
+        return data
+
 
 class DeleteDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
@@ -57,6 +73,18 @@ class DeleteDocRequest(BaseModel):
     # NOTE: (db_info) is deprecated, will be removed in the future
     db_info: Optional[DBInfo] = None
     feedback_url: Optional[str] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_legacy_fields(cls, data):
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        if not data.get('kb_id') and data.get('dataset_id'):
+            data['kb_id'] = data['dataset_id']
+        if not data.get('db_info'):
+            data['db_info'] = None
+        return data
 
 
 class CancelTaskRequest(BaseModel):

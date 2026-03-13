@@ -409,25 +409,54 @@ class DocumentProcessor(ModuleBase):
             if self._shutdown:
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
             try:
-                algorithm = self._get_algo(algo_id)
-                if algorithm is None:
-                    raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
-                info_pickle_bytes = algorithm.get('info_pickle')
-                info = cloudpickle.loads(info_pickle_bytes)
-                store: _DocumentStore = info['store']  # type: ignore
-                node_groups = info['node_groups']
-
-                data = []
-                for group_name in store.activated_groups():
-                    if group_name in node_groups:
-                        group_info = {'name': group_name, 'type': node_groups[group_name].get('group_type'),
-                                      'display_name': node_groups[group_name].get('display_name')}
-                        data.append(group_info)
+                data = self._get_algo_group_info_data(algo_id)
                 LOG.info(f'[DocumentProcessor] Get group info for {algo_id} success with {data}')
                 return BaseResponse(code=200, msg='success', data=data)
+            except fastapi.HTTPException:
+                raise
             except Exception as e:
                 LOG.error(f'[DocumentProcessor] Failed to get group info: {e}, {traceback.format_exc()}')
                 raise fastapi.HTTPException(status_code=500, detail=f'Failed to get group info: {str(e)}')
+
+        def get_group_info(self, algo_id: str) -> None:
+            return self.get_algo_group_info(algo_id)
+
+        def _get_algo_group_info_data(self, algo_id: str):
+            algorithm = self._get_algo(algo_id)
+            if algorithm is None:
+                raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
+            info_pickle_bytes = algorithm.get('info_pickle')
+            info = cloudpickle.loads(info_pickle_bytes)
+            store: _DocumentStore = info['store']  # type: ignore
+            node_groups = info['node_groups']
+
+            data = []
+            for group_name in store.activated_groups():
+                if group_name in node_groups:
+                    group_info = {'name': group_name, 'type': node_groups[group_name].get('group_type'),
+                                  'display_name': node_groups[group_name].get('display_name')}
+                    data.append(group_info)
+            return data
+
+        @staticmethod
+        def _resolve_add_task_type(file_infos) -> str:
+            has_reparse = False
+            has_new_file = False
+            for file_info in file_infos:
+                if file_info.reparse_group is not None:
+                    has_reparse = True
+                else:
+                    has_new_file = True
+            if has_new_file and has_reparse:
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail='new_file_ids and reparse_file_ids cannot be specified at the same time'
+                )
+            if has_reparse:
+                return TaskType.DOC_REPARSE.value
+            if has_new_file:
+                return TaskType.DOC_ADD.value
+            raise fastapi.HTTPException(status_code=400, detail='no input files or reparse group specified')
 
         @app.post('/doc/add')
         def add_doc(self, request: AddDocRequest):
@@ -445,26 +474,10 @@ class DocumentProcessor(ModuleBase):
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
             # NOTE: No idempotency key check, should be handled by the caller!
-            new_file_ids = []
-            reparse_file_ids = []
             for file_info in file_infos:
                 if self._path_prefix:
                     file_info.file_path = create_file_path(path=file_info.file_path, prefix=self._path_prefix)
-                if file_info.reparse_group is not None:
-                    reparse_file_ids.append(file_info.doc_id)
-                else:
-                    new_file_ids.append(file_info.doc_id)
-            if new_file_ids and reparse_file_ids:
-                raise fastapi.HTTPException(
-                    status_code=400,
-                    detail='new_file_ids and reparse_file_ids cannot be specified at the same time'
-                )
-            if new_file_ids:
-                task_type = TaskType.DOC_ADD.value
-            elif reparse_file_ids:
-                task_type = TaskType.DOC_REPARSE.value
-            else:
-                raise fastapi.HTTPException(status_code=400, detail='no input files or reparse group specified')
+            task_type = self._resolve_add_task_type(file_infos)
             payload = request.model_dump()
             resolved_callback_url = self._resolve_callback_url(payload)
             if resolved_callback_url:
@@ -638,9 +651,12 @@ class DocumentProcessor(ModuleBase):
                 return False
             return True
 
-        def _callback(self, finished_task: Dict[str, Any]):
+        def _callback(self, finished_task: Optional[Dict[str, Any]] = None, **legacy_kwargs):
             '''callback to service'''
+            if finished_task is None:
+                finished_task = legacy_kwargs
             task_id = finished_task.get('task_id')
+            task_type = finished_task.get('task_type')
             task_status = finished_task.get('task_status')
             error_code = finished_task.get('error_code')
             error_msg = finished_task.get('error_msg')
@@ -651,7 +667,10 @@ class DocumentProcessor(ModuleBase):
 
             try:
                 if self._post_func:
-                    self._post_func(task_id, task_status, error_code, error_msg)
+                    if 'task_type' in self._post_func.__code__.co_varnames:
+                        self._post_func(task_id, task_status, error_code, error_msg, task_type=task_type)
+                    else:
+                        self._post_func(task_id, task_status, error_code, error_msg)
                 else:
                     self._default_post_func(finished_task)
             except Exception as e:

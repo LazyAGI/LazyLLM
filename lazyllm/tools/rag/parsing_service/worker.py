@@ -9,6 +9,7 @@ from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapp
 from ..utils import BaseResponse, _get_default_db_config
 from .base import (
     FINISHED_TASK_QUEUE_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO,
+    AddDocRequest, UpdateMetaRequest, DeleteDocRequest,
     TaskStatus, TaskType, ALGORITHM_TABLE_INFO
 )
 from .impl import _Processor
@@ -196,6 +197,40 @@ class DocumentProcessorWorker(ModuleBase):
                 'items': items,
             }
 
+        @staticmethod
+        def _infer_task_type(task_type: str, payload: dict) -> str:
+            if task_type == TaskType.DOC_DELETE.value:
+                return task_type
+            if task_type == TaskType.DOC_UPDATE_META.value:
+                return task_type
+
+            file_infos = payload.get('file_infos') or []
+            has_reparse = any(file_info.get('reparse_group') is not None for file_info in file_infos)
+            if has_reparse:
+                return TaskType.DOC_REPARSE.value
+            return task_type
+
+        def _parse_task_payload(self, task_data: dict):
+            task_id = task_data.get('task_id')
+            task_type = task_data.get('task_type')
+            if not task_id:
+                raise ValueError('task_id is required')
+            if not task_type:
+                raise ValueError('task_type is required')
+
+            if task_type == TaskType.DOC_DELETE.value:
+                payload = DeleteDocRequest.model_validate(task_data).model_dump(mode='json')
+            elif task_type == TaskType.DOC_UPDATE_META.value:
+                payload = UpdateMetaRequest.model_validate(task_data).model_dump(mode='json')
+            else:
+                payload = AddDocRequest.model_validate(task_data).model_dump(mode='json')
+
+            task_type = self._infer_task_type(task_type, payload)
+            return task_id, task_type, payload
+
+        def _summarize_task_payload(self, task_type: str, payload: dict) -> str:
+            return json.dumps(self._build_task_context(task_type, payload), ensure_ascii=False, sort_keys=True)
+
         def _enqueue_finished_task(self, task_id: str, task_type: str, task_status: TaskStatus,
                                    error_code: str = None, error_msg: str = None,
                                    callback_url: str = None, task_context_json: str = None):
@@ -231,18 +266,22 @@ class DocumentProcessorWorker(ModuleBase):
                         time.sleep(0.1)
                         continue
 
-                    task_id = task_data['task_id']
-                    task_type = task_data['task_type']
-                    payload = json.loads(task_data.get('message'))
+                    raw_payload = json.loads(task_data.get('message'))
+                    task_id, task_type, payload = self._parse_task_payload({
+                        'task_id': task_data.get('task_id'),
+                        'task_type': task_data.get('task_type'),
+                        **raw_payload,
+                    })
                     algo_id = payload.get('algo_id')
                     if not algo_id:
                         raise ValueError(f'[DocumentProcessorWorker._Impl] task_id {task_id} is missing algo_id in '
                                          f'payload: {payload}')
                     callback_url = self._resolve_callback_url(payload)
                     task_context_json = json.dumps(self._build_task_context(task_type, payload), ensure_ascii=False)
+                    task_summary = self._summarize_task_payload(task_type, payload)
 
                     LOG.info(f'[DocumentProcessorWorker._Impl] Start processing task {task_id}, type: {task_type},'
-                             f' algo_id: {algo_id}')
+                             f' algo_id: {algo_id}, payload={task_summary}')
                     self._enqueue_finished_task(
                         task_id=task_id,
                         task_type=task_type,
