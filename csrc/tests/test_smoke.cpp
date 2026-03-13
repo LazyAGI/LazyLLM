@@ -2,6 +2,6 @@
 
 #include "lazyllm.hpp"
 
-TEST(LazyLLM, Smoke) {
+TEST(lazyllm, smoke) {
     EXPECT_GT(PYBIND11_VERSION_MAJOR, 0);
 }

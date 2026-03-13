@@ -16,11 +16,13 @@ import os
 import threading
 from lazyllm.thirdparty import tiktoken
 from lazyllm import config, ModuleBase
+from lazyllm.cpp import cpp_class
 from pathlib import Path
 import inspect
 from lazyllm.thirdparty import nltk
 from lazyllm.thirdparty import transformers
 
+@cpp_class
 class MetadataMode(str, Enum):
     ALL = 'ALL'
     EMBED = 'EMBED'
@@ -61,6 +63,7 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
     return result
 
 
+@cpp_class
 class NodeTransform(ModuleBase):
     __support_rich__ = False
 
@@ -206,6 +209,7 @@ _tiktoken_env_lock = threading.Lock()
 
 _UNSET = object()
 
+@cpp_class
 class _TextSplitterBase(NodeTransform):
     _default_params = {}
     _default_params_lock = threading.RLock()
@@ -537,6 +541,108 @@ class _TokenTextSplitter(_TextSplitterBase):
 
     def _merge(self, splits: List[_Split], chunk_size: int) -> List[str]:
         return [split.text for split in splits]
+
+
+@dataclass(frozen=True)
+class Rule:
+    name: str
+    match: Callable[[Any], Any]
+    apply: Callable[..., Any]
+    priority: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __call__(self, data: Any) -> Optional[Any]:
+        match_result = self.match(data)
+        if not match_result:
+            return None
+        try:
+            sig = inspect.signature(self.apply)
+            params = [
+                p for p in sig.parameters.values()
+                if p.kind in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD
+                )
+            ]
+            if len(params) >= 3:
+                return self.apply(data, match_result, self)
+        except (ValueError, TypeError):
+            pass
+        return self.apply(data, self)
+
+    @staticmethod
+    def build(name: str, rule: Union[str, Callable[[Any], bool]],
+              apply: Callable[[Any, 'Rule'], Any], priority: int = 0) -> 'Rule':
+        if isinstance(rule, str):
+            compiled = re.compile(rule)
+            return Rule(
+                name=name,
+                match=lambda text: compiled.search(text),
+                apply=lambda text, match_result, r: apply(match_result, text),
+                priority=priority,
+            )
+        if callable(rule):
+            return Rule(
+                name=name,
+                match=lambda data: True if rule(data) else None,
+                apply=lambda data, _match_result, r: apply(data, r),
+                priority=priority,
+            )
+        raise TypeError('rule must be a pattern string or a predicate callable')
+
+@dataclass
+class _Context:
+    total: int
+    current_idx: int = 0
+    prev_node: Optional[Any] = None
+    prev_result: Optional[Any] = None
+    user_data: Dict[str, Any] = field(default_factory=dict)
+
+class RuleSet:
+    def __init__(self, rules: Optional[List[Rule]] = None):
+        self._rules: List[Rule] = []
+        if rules:
+            self.extend(rules)
+
+    def add(self, *rules: Rule) -> 'RuleSet':
+        self._rules.extend(rules)
+        self._sort()
+        return self
+
+    def extend(self, rules: List[Rule]) -> 'RuleSet':
+        self._rules.extend(rules)
+        self._sort()
+        return self
+
+    def _sort(self):
+        self._rules.sort(key=lambda r: r.priority, reverse=True)
+
+    def first(self, data: Any) -> Optional[tuple[Rule, Any]]:
+        for rule in self._rules:
+            result = rule(data)
+            if result is not None:
+                return (rule, result)
+        return None
+
+    def all(self, data: Any) -> List[tuple[Rule, Any]]:
+        results = []
+        for rule in self._rules:
+            result = rule(data)
+            if result is not None:
+                results.append((rule, result))
+        return results
+
+    def filter(self, predicate: Callable[[Rule], bool]) -> 'RuleSet':
+        return RuleSet([r for r in self._rules if predicate(r)])
+
+    def __iter__(self) -> Iterator[Rule]:
+        return iter(self._rules)
+
+    def __len__(self) -> int:
+        return len(self._rules)
+
+    def __bool__(self) -> bool:
+        return bool(self._rules)
 
 
 @dataclass(frozen=True)
