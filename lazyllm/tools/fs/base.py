@@ -94,6 +94,29 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
             data = fh.read()
         self._upload_data(rpath, data)
 
+    def get_file(self, rpath: str, lpath: str, **kwargs) -> None:
+        with self.open(rpath, 'rb') as fh:
+            data = fh.read()
+        with open(lpath, 'wb') as fh:
+            fh.write(data)
+
+    def _platform_supports_webhook(self) -> bool:
+        return False
+
+    def supports_webhook(self) -> bool:
+        return self._platform_supports_webhook()
+
+    def register_webhook(
+        self, path: str, webhook_url: str,
+        events: Optional[List[str]] = None, **kwargs
+    ) -> Dict[str, Any]:
+        if not self.supports_webhook():
+            return {'mode': 'none'}
+        reg = getattr(self, '_register_webhook', None)
+        if not callable(reg):
+            return {'mode': 'none'}
+        return reg(webhook_url, events or ['*'], path)
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         raise NotImplementedError(f'{self.__class__.__name__}._download_range is not implemented')
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional
@@ -10,15 +8,6 @@ from .base import LazyLLMFSBase
 
 
 class CloudFsWatchdog:
-    '''Watch helper for cloud filesystems.
-
-    It polls the underlying LazyLLMFSBase with ls(detail=True) or uses
-    platform-specific webhooks (if implemented by the filesystem) and
-    dispatches change events to user-provided handlers.
-
-    FS subclasses remain responsible for platform differences; this
-    class only handles generic snapshot/diff and callback management.
-    '''
 
     def __init__(self, fs: LazyLLMFSBase) -> None:
         self._fs = fs
@@ -35,7 +24,6 @@ class CloudFsWatchdog:
         callback: Callable[[str, str, Dict[str, Any]], None],
         polling_interval: int = 30,
     ) -> str:
-        '''Start polling watch on path and invoke callback on changes.'''
         watcher_id = f'watcher-{id(callback)}-{int(time.time())}'
         entry: Dict[str, Any] = {
             'id': watcher_id,
@@ -55,7 +43,6 @@ class CloudFsWatchdog:
         return watcher_id
 
     def unwatch(self, watcher_id: str) -> bool:
-        '''Cancel a polling watcher.'''
         with self._watch_lock:
             before = len(self._watchers)
             self._watchers = [w for w in self._watchers if w['id'] != watcher_id]
@@ -65,7 +52,6 @@ class CloudFsWatchdog:
         return removed
 
     def stop(self) -> None:
-        '''Request polling thread to stop after current sleep cycle.'''
         with self._watch_lock:
             self._running = False
 
@@ -78,7 +64,6 @@ class CloudFsWatchdog:
         handler: Callable[[str, str, Dict[str, Any]], None],
         polling_interval: int = 30,
     ) -> str:
-        '''Register handler for specific events on path.'''
         event_set = set(events or ['created', 'deleted', 'modified'])
 
         def _wrapper(event: str, name: str, info: Dict[str, Any]) -> None:
@@ -114,15 +99,7 @@ class CloudFsWatchdog:
     # ---------- webhook helpers ----------
 
     def supports_webhook(self) -> bool:
-        '''Return True if underlying fs advertises webhook support.'''
-        fn = getattr(self._fs, 'supports_webhook', None)
-        if callable(fn):
-            return bool(fn())
-        # backward compatibility for older subclasses
-        legacy = getattr(self._fs, '_platform_supports_webhook', None)
-        if callable(legacy):
-            return bool(legacy())
-        return False
+        return self._fs.supports_webhook()
 
     def register_webhook(
         self,
@@ -131,16 +108,9 @@ class CloudFsWatchdog:
         events: Optional[List[str]] = None,
         callback: Optional[Callable[[str, str, Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
-        '''Register a webhook if supported, otherwise fall back to polling.'''
         events = events or ['*']
-        if self.supports_webhook():
-            register = getattr(self._fs, 'register_webhook', None)
-            if not callable(register):
-                raise NotImplementedError(
-                    f'{self._fs.__class__.__name__} supports webhook but '
-                    'does not implement register_webhook'
-                )
-            info = register(webhook_url=webhook_url, events=events, path=path)
+        if self._fs.supports_webhook():
+            info = self._fs.register_webhook(path=path, webhook_url=webhook_url, events=events)
             if callback:
                 self.watch(path, callback)
             info.setdefault('mode', 'webhook')
@@ -201,4 +171,3 @@ class CloudFsWatchdog:
             if old[name] != new[name]:
                 callback('modified', name, {'path': name})
         watcher['last_snapshot'] = new
-

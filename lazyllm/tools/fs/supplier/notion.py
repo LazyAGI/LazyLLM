@@ -90,7 +90,6 @@ class NotionFS(LazyLLMFSBase):
         return encoded[start:end]
 
     def _upload_data(self, path: str, data: bytes) -> None:
-        '''Upload text to a Notion page. Notion API limits rich_text to 2000 chars per block.'''
         parts = self._parse_path(path)
         if not parts:
             raise ValueError('path must include a page_id')
