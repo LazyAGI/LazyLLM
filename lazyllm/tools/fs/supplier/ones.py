@@ -9,19 +9,34 @@ _CLOUD_BASE = 'https://ones.ai/project/api/project'
 
 class OnesFS(LazyLLMFSBase):
 
-    def __init__(self, token: str, user_id: Optional[str] = None,
-                 base_url: Optional[str] = None, **storage_options):
+    def __init__(
+        self,
+        token: str,
+        user_id: Optional[str] = None,
+        base_url: Optional[str] = None,
+        asynchronous: bool = False,
+        use_listings_cache: bool = False,
+        skip_instance_cache: bool = False,
+        loop: Optional[Any] = None,
+    ):
         if ':' in token and not user_id:
             uid, tok = token.split(':', 1)
             self._user_id = uid
             token = tok
         else:
             self._user_id = user_id or ''
-        super().__init__(token=token, base_url=base_url or _CLOUD_BASE, **storage_options)
+        super().__init__(
+            token=token,
+            base_url=base_url or _CLOUD_BASE,
+            asynchronous=asynchronous,
+            use_listings_cache=use_listings_cache,
+            skip_instance_cache=skip_instance_cache,
+            loop=loop,
+        )
 
     def _setup_auth(self) -> None:
         headers: Dict[str, str] = {
-            'Ones-Auth-Token': self._token,
+            'Ones-Auth-Token': self._secret_key,
             'Content-Type': 'application/json',
         }
         if self._user_id:

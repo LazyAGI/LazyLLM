@@ -1,7 +1,8 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import json
+import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 import lazyllm
 
@@ -11,28 +12,54 @@ from ..base import LazyLLMFSBase, CloudFSBufferedFile
 _API_BASE = 'https://www.googleapis.com/drive/v3'
 _UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3'
 _SCOPES = ['https://www.googleapis.com/auth/drive']
+_SA_TOKEN_BUFFER = 300  # refresh 5 min before expiry
 
 
 class GoogleDriveFS(LazyLLMFSBase):
 
-    def __init__(self, token: Optional[str] = None,
-                 credentials: Optional[Union[str, dict]] = None,
-                 base_url: Optional[str] = None, **storage_options):
-        self._credentials = credentials
-        self._service_account_info: Optional[Dict] = None
+    def __init__(
+        self,
+        credentials: Optional[Union[str, dict]] = None,
+        base_url: Optional[str] = None,
+        asynchronous: bool = False,
+        use_listings_cache: bool = False,
+        skip_instance_cache: bool = False,
+        loop: Optional[Any] = None,
+    ):
+        secret_payload: Optional[Dict] = None
         if credentials:
             if isinstance(credentials, str):
                 with open(credentials) as fh:
-                    self._service_account_info = json.load(fh)
+                    secret_payload = json.load(fh)
             else:
-                self._service_account_info = credentials
-            sa_token = self._fetch_sa_token()
-            token = token or sa_token
-        super().__init__(token=token or '', base_url=base_url or _API_BASE, **storage_options)
+                secret_payload = credentials
+        super().__init__(
+            token=secret_payload or {},
+            base_url=base_url or _API_BASE,
+            asynchronous=asynchronous,
+            use_listings_cache=use_listings_cache,
+            skip_instance_cache=skip_instance_cache,
+            loop=loop,
+        )
+
+    @property
+    def _service_account_info(self) -> Optional[Dict]:
+        if isinstance(self._secret_key, dict):
+            return self._secret_key
+        return None
 
     def _setup_auth(self) -> None:
-        if self._token:
-            self._session.headers.update({'Authorization': f'Bearer {self._token}'})
+        # Short-lived access tokens are injected into headers by _ensure_token.
+        return None
+
+    def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
+        if not self._service_account_info:
+            return '', None
+        token = self._fetch_sa_token()
+        if not token:
+            return '', None
+        expires_at = time.time() + 3600 - _SA_TOKEN_BUFFER
+        return token, expires_at
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         parts = self._parse_path(path)

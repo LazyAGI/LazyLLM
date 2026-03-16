@@ -1,6 +1,7 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
 
@@ -8,32 +9,54 @@ from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
 
 _GRAPH_BASE = 'https://graph.microsoft.com/v1.0'
+_TOKEN_REFRESH_BUFFER = 300  # refresh 5 min before expiry
 
 
 class OneDriveFS(LazyLLMFSBase):
 
-    def __init__(self, token: Optional[str] = None,
-                 client_id: Optional[str] = None,
-                 client_secret: Optional[str] = None,
-                 tenant_id: str = 'common',
-                 base_url: Optional[str] = None,
-                 **storage_options):
+    def __init__(
+        self,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+        tenant_id: str = 'common',
+        base_url: Optional[str] = None,
+        asynchronous: bool = False,
+        use_listings_cache: bool = False,
+        skip_instance_cache: bool = False,
+        loop: Optional[Any] = None,
+    ):
         self._client_id = client_id
         self._client_secret = client_secret
-        self._tenant_id = tenant_id
-        if not token and client_id and client_secret:
-            token = self._acquire_app_token(client_id, client_secret, tenant_id)
-            if not token or not str(token).strip():
-                raise ValueError('Failed to acquire OneDrive token')
-        super().__init__(token=token or '', base_url=base_url or _GRAPH_BASE, **storage_options)
+        self._tenant_id = tenant_id or 'common'
+        super().__init__(
+            token={
+                'client_id': client_id or '',
+                'client_secret': client_secret or '',
+                'tenant_id': self._tenant_id,
+            },
+            base_url=base_url or _GRAPH_BASE,
+            asynchronous=asynchronous,
+            use_listings_cache=use_listings_cache,
+            skip_instance_cache=skip_instance_cache,
+            loop=loop,
+        )
 
     def _setup_auth(self) -> None:
-        if self._token:
-            self._session.headers.update({
-                'Authorization': f'Bearer {self._token}',
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-            })
+        self._session.headers.update({
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        })
+
+    def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
+        if not self._client_id or not self._client_secret:
+            return '', None
+        token, expires_at = self._acquire_app_token_with_expiry(
+            self._client_id, self._client_secret, self._tenant_id,
+        )
+        return token, expires_at
+
+    def _apply_access_token(self, token: str) -> None:
+        self._session.headers.update({'Authorization': f'Bearer {token}'})
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         url = self._make_children_url(path)
@@ -152,6 +175,16 @@ class OneDriveFS(LazyLLMFSBase):
 
     @staticmethod
     def _acquire_app_token(client_id: str, client_secret: str, tenant_id: str) -> str:
+        token, _ = OneDriveFS._acquire_app_token_with_expiry(
+            client_id, client_secret, tenant_id,
+        )
+        return token or ''
+
+    @staticmethod
+    def _acquire_app_token_with_expiry(
+        client_id: str, client_secret: str, tenant_id: str,
+    ) -> tuple:
+        '''Return (access_token, expires_at_timestamp).'''
         try:
             import msal
             app = msal.ConfidentialClientApplication(
@@ -160,8 +193,12 @@ class OneDriveFS(LazyLLMFSBase):
                 client_credential=client_secret,
             )
             result = app.acquire_token_for_client(
-                scopes=['https://graph.microsoft.com/.default'])
-            return result.get('access_token', '')
+                scopes=['https://graph.microsoft.com/.default'],
+            )
+            token = result.get('access_token', '')
+            expires_in = result.get('expires_in', 3600)
+            expires_at = time.time() + expires_in - _TOKEN_REFRESH_BUFFER
+            return token, expires_at
         except ImportError:
             import requests as req
             url = f'https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token'
@@ -173,7 +210,11 @@ class OneDriveFS(LazyLLMFSBase):
             }
             resp = req.post(url, data=data)
             resp.raise_for_status()
-            return resp.json().get('access_token', '')
+            j = resp.json()
+            token = j.get('access_token', '')
+            expires_in = int(j.get('expires_in', 3600))
+            expires_at = time.time() + expires_in - _TOKEN_REFRESH_BUFFER
+            return token, expires_at
 
     @staticmethod
     def _item_to_entry(item: Dict[str, Any]) -> Dict[str, Any]:

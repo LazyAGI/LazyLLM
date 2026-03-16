@@ -2,7 +2,7 @@
 from .base import LazyLLMFSBase, CloudFSBufferedFile
 from .client import CloudFS
 from .watchdog import CloudFsWatchdog
-from .supplier.feishu import FeishuFS
+from .supplier.feishu import FeishuFS, FeishuWikiFS
 from .supplier.confluence import ConfluenceFS
 from .supplier.notion import NotionFS
 from .supplier.googledrive import GoogleDriveFS
@@ -18,6 +18,7 @@ __all__ = [
     'CloudFS',
     'CloudFsWatchdog',
     'FeishuFS',
+    'FeishuWikiFS',
     'ConfluenceFS',
     'NotionFS',
     'GoogleDriveFS',

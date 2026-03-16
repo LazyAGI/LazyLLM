@@ -18,7 +18,7 @@ class NotionFS(LazyLLMFSBase):
 
     def _setup_auth(self) -> None:
         self._session.headers.update({
-            'Authorization': f'Bearer {self._token}',
+            'Authorization': f'Bearer {self._secret_key}',
             'Notion-Version': _NOTION_VERSION,
             'Content-Type': 'application/json',
         })

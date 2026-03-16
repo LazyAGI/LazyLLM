@@ -8,10 +8,25 @@ from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
 class ObsidianFS(LazyLLMFSBase):
 
-    def __init__(self, token: str = '', base_url: Optional[str] = None, **storage_options):
+    def __init__(
+        self,
+        token: str = '',
+        base_url: Optional[str] = None,
+        asynchronous: bool = False,
+        use_listings_cache: bool = False,
+        skip_instance_cache: bool = False,
+        loop: Optional[Any] = None,
+    ):
         vault = (token or '').strip() or '.'
         self._vault_root = os.path.abspath(os.path.expanduser(vault))
-        super().__init__(token=vault, base_url=base_url, **storage_options)
+        super().__init__(
+            token=vault,
+            base_url=base_url,
+            asynchronous=asynchronous,
+            use_listings_cache=use_listings_cache,
+            skip_instance_cache=skip_instance_cache,
+            loop=loop,
+        )
 
     def _setup_auth(self) -> None:
         if not os.path.isdir(self._vault_root):

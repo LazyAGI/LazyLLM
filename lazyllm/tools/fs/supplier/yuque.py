@@ -17,7 +17,7 @@ class YuqueFS(LazyLLMFSBase):
 
     def _setup_auth(self) -> None:
         self._session.headers.update({
-            'X-Auth-Token': self._token,
+            'X-Auth-Token': self._secret_key,
             'Content-Type': 'application/json',
             'User-Agent': 'lazyllm-fs (https://github.com/LazyAGI/lazyllm)',
         })

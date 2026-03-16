@@ -3,6 +3,7 @@ from abc import abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+import time
 
 from lazyllm import thirdparty
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
@@ -35,9 +36,26 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     protocol: str = 'cloudfs'
 
-    def __init__(self, token: str, base_url: Optional[str] = None, **storage_options):
-        AbstractFileSystem.__init__(self, **storage_options)
-        self._token = token
+    def __init__(
+        self,
+        token: Any,
+        base_url: Optional[str] = None,
+        asynchronous: bool = False,
+        use_listings_cache: bool = False,
+        skip_instance_cache: bool = False,
+        loop: Optional[Any] = None,
+    ):
+        AbstractFileSystem.__init__(
+            self,
+            asynchronous=asynchronous,
+            use_listings_cache=use_listings_cache,
+            skip_instance_cache=skip_instance_cache,
+            loop=loop,
+        )
+        # Long-lived credential (string or dict), semantics decided by subclasses.
+        self._secret_key: Any = token
+        # Expiration timestamp for short-lived access token; None means non-expiring.
+        self._token_expire_at: Optional[float] = None
         self._base_url = (base_url or '').rstrip('/')
         self._session = requests.Session()
         self._session.headers.update({'User-Agent': 'lazyllm-fs/1.0'})
@@ -110,16 +128,16 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
     def supports_webhook(self) -> bool:
         return self._platform_supports_webhook()
 
+    def _register_webhook(self, webhook_url: str, events: List[str], path: str) -> Dict[str, Any]:
+        return {'mode': 'none'}
+
     def register_webhook(
         self, path: str, webhook_url: str,
         events: Optional[List[str]] = None, **kwargs
     ) -> Dict[str, Any]:
         if not self.supports_webhook():
             return {'mode': 'none'}
-        reg = getattr(self, '_register_webhook', None)
-        if not callable(reg):
-            return {'mode': 'none'}
-        return reg(webhook_url, events or ['*'], path)
+        return self._register_webhook(webhook_url, events or ['*'], path)
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         raise NotImplementedError(f'{self.__class__.__name__}._download_range is not implemented')
@@ -127,7 +145,21 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
     def _upload_data(self, path: str, data: bytes) -> None:
         raise NotImplementedError(f'{self.__class__.__name__}._upload_data is not implemented')
 
+    def _ensure_token(self) -> None:
+        if not self._token_expire_at or time.time() < self._token_expire_at: return
+        token, expires_at = self._acquire_access_token()
+        if not token: return
+        self._apply_access_token(token)
+        self._token_expire_at = expires_at
+
+    def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
+        return '', None
+
+    def _apply_access_token(self, token: str) -> None:
+        self._session.headers.update({'Authorization': f'Bearer {token}'})
+
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+        self._ensure_token()
         resp = self._session.request(method, url, **kwargs)
         resp.raise_for_status()
         return resp

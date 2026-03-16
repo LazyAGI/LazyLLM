@@ -32,7 +32,7 @@ class ConfluenceFS(LazyLLMFSBase):
     def _setup_auth(self) -> None:
         if self._cloud and self._email:
             cred = base64.b64encode(
-                f'{self._email}:{self._token}'.encode()
+                f'{self._email}:{self._secret_key}'.encode()
             ).decode()
             self._session.headers.update({
                 'Authorization': f'Basic {cred}',
@@ -41,7 +41,7 @@ class ConfluenceFS(LazyLLMFSBase):
             })
         else:
             self._session.headers.update({
-                'Authorization': f'Bearer {self._token}',
+                'Authorization': f'Bearer {self._secret_key}',
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
             })
