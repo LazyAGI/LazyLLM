@@ -391,7 +391,7 @@ class DocumentProcessorWorker(ModuleBase):
             self._validate_task_payload(task_type, payload)
             return task_id, task_type, payload
 
-        def _run_task(self, task_id: str, task_type: str, payload: dict, from_queue: bool):
+        def _run_task(self, task_id: str, task_type: str, payload: dict, from_queue: bool):  # noqa: C901
             try:
                 self._in_progress_task = {'task_id': task_id, 'task_type': task_type}
                 if from_queue:
