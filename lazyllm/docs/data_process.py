@@ -1294,6 +1294,36 @@ print(op(data))  # Add key/value: 'is_equal': True
 ```
 """)
 
+add_chinese_doc('data.operators.cot_ops.hash_answer_extractor', """\
+从答案字符串中提取 '#' 之后的内容作为最终答案。若答案中不包含 '#'，则返回空字符串。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 原始答案字段名，默认 'answer'
+    output_key (str): 提取后的答案字段名，默认 'extracted_answer'
+""")
+
+add_english_doc('data.operators.cot_ops.hash_answer_extractor', """\
+Extract the substring after '#' from an answer string as the final answer.
+If '#' is not present, an empty string is returned.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the original answer, default 'answer'
+    output_key (str): key to write the extracted answer, default 'extracted_answer'
+""")
+
+add_example('data.operators.cot_ops.hash_answer_extractor', """\
+```python
+from lazyllm.tools.data import genCot
+
+data = {'answer': 'The result is #42'}
+op = genCot.hash_answer_extractor(input_key='answer', output_key='extracted_answer')
+print(op(data))
+# {'answer': 'The result is #42', 'extracted_answer': '42'}
+```
+""")
+
 # enQa_ops module docs
 add_chinese_doc('data.operators.enQa_ops.QueryRewriter', """\
 使用大模型将原问题重写为多个语义一致、表达不同的问法，输出列表写入指定字段。
@@ -7288,9 +7318,9 @@ data = {'query': 'Hello?', 'context': 'Greeting', 'output': 'Hi!'}
 res = Text2qa.to_chat_sft(data)
 print(res)
 # {
-#   'messages': [
-#       {'role': 'user', 'content': 'Greeting\\n\\n问题：Hello?'},
-#       {'role': 'assistant', 'content': 'Hi!'}
+#   "messages": [
+#       {"role": "user", "content": "Greeting：Hello?"},
+#       {"role": "assistant", "content": "Hi!"}
 #   ]
 # }
 ```
@@ -7632,11 +7662,11 @@ data = [
 ]
 
 print(ppl(data))
-            
+
 # 输出结果
 [{
     "instruction": "To make pizza, together with other ingredients, Kimber needs 10 cups of water, 16 cups of flour, and 1/2 times as many teaspoons of salt as the number of cups of flour. Calculate the combined total number of cups of water, flour, and teaspoons of salt that she needs to make the pizza.",
-    "output": "Step 1: Calculate the amount of salt needed.\nKimber needs 1/2 times as many teaspoons of salt as the number of cups of flour. She needs 16 cups of flour.\n\nSalt needed = 1/2 * 16 cups of flour\nSalt needed = 8 teaspoons of salt\n\nStep 2: Calculate the combined total.\nNow, we need to add the cups of water, cups of flour, and teaspoons of salt together.\n\nTotal = 10 cups of water + 16 cups of flour + 8 teaspoons of salt\nTotal = 34\n\nTherefore, the combined total number of cups of water, flour, and teaspoons of salt that she needs to make the pizza is \\boxed{34}."
+    "output": "Step 1: Calculate the amount of salt needed.\nKimber needs 1/2 times as many teaspoons of salt as the number of cups of flour. She needs 16 cups of flour.\n\nSalt needed = 1/2 * 16 cups of flour\nSalt needed = 8 teaspoons of salt\n\nStep 2: Calculate the combined total.\nNow, we need to add the cups of water, cups of flour, and teaspoons of salt together.\n\nTotal = 10 cups of water + 16 cups of flour + 8 teaspoons of salt\nTotal = 34\n\nTherefore, the combined total number of cups of water, flour, and teaspoons of salt that she needs to make the pizza is \\\\boxed{34}."
     "input": 34
 }]
 ```
