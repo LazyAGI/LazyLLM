@@ -11,9 +11,9 @@ MathQA = data_register.new_group('mathQA')
 
 
 @data_register('data.mathQA', rewrite_func='forward')
-def math_answer_extractor(data, input_key='answer', output_key='math_answer'):
+def boxed_answer_extractor(data, input_key='answer', output_key='math_answer'):
     assert isinstance(data, dict)
-    answer = data[input_key]
+    answer = data.get(input_key)
     math_answer = boxed_res_extractor(answer)
     data[output_key] = math_answer
     return data
@@ -425,10 +425,3 @@ class QuestionFusionGenerator(MathQA):
         data[self.output_key] = res.get(self.output_key)
 
         return data
-
-@data_register('data.MathQA', rewrite_func='forward')
-def wrong_answer_filter(data, input_key, min_score):
-    score = data.get(input_key, 0)
-    if score >= min_score:
-        return None
-    return []

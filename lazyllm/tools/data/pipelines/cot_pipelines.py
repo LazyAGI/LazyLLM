@@ -1,5 +1,5 @@
 from lazyllm import pipeline
-from lazyllm.tools.data import genCot, mathQA
+from lazyllm.tools.data import genCot, mathQA, Text2qa
 
 
 def build_cot_pipeline(
@@ -13,6 +13,8 @@ def build_cot_pipeline(
         num_samples=5,
         user_prompt=None,
         enable_verify=True,
+        boxed_answer=True,
+        hash_answer=False
 ):
     with pipeline() as ppl:
         if use_self_consistency:
@@ -22,6 +24,8 @@ def build_cot_pipeline(
                 num_samples=num_samples,
                 model=model,
                 user_prompt=user_prompt,
+                boxed_answer=boxed_answer,
+                hash_answer=hash_answer
             )
         else:
             ppl.generator = genCot.CoTGenerator(
@@ -31,10 +35,16 @@ def build_cot_pipeline(
                 user_prompt=user_prompt,
             )
 
-        ppl.extractor = mathQA.math_answer_extractor(
-            input_key=cot_key,
-            output_key=extracted_key,
-        )
+        if boxed_answer:
+            ppl.extractor = mathQA.boxed_answer_extractor(
+                input_key=cot_key,
+                output_key=extracted_key,
+            )
+        elif hash_answer:
+            ppl.extractor = genCot.hash_answer_extractor(
+                input_key=cot_key,
+                output_key=extracted_key,
+            )
 
         if enable_verify:
             ppl.verify = genCot.answer_verify(
@@ -43,5 +53,11 @@ def build_cot_pipeline(
                 output_key=verify_key,
             )
             ppl.filter_wrong_answer = genCot.wrong_filter(input_key=verify_key)
+
+        ppl.to_sft = Text2qa.to_alpaca_sft(
+            query_key=input_key,
+            context_key=reference_key,
+            answer_key=cot_key
+        )
 
     return ppl

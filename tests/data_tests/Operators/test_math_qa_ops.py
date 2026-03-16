@@ -39,8 +39,8 @@ class TestMathQAOperators:
         if os.path.exists(self.root_dir):
             shutil.rmtree(self.root_dir)
 
-    def test_math_answer_extractor(self):
-        op = MathQA.math_answer_extractor(
+    def test_boxed_answer_extractor(self):
+        op = MathQA.boxed_answer_extractor(
             input_key='answer',
             output_key='math_answer'
         )

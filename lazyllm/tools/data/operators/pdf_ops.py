@@ -48,13 +48,13 @@ class Pdf2Md(Pdf2Qa):
 
 @data_register('data.Pdf2QA', rewrite_func='forward')
 def multi_features_filter(data, input_key, threshold):
-    items = data[input_key]
+    items = data.get(input_key, {})
     values = []
     for x in items.values():
         try:
             values.append(float(x))
         except Exception:
-            pass
+            LOG.warning(f"Could not convert value to float in multi_features_filter for item: {x}")
     if not values:
         return []
     avg = sum(values) / len(values)
@@ -100,6 +100,7 @@ class PdfChunkToQA(Pdf2Qa):
         return re.findall(pattern, text or '')
 
     def forward(self, data: dict):
+        # todo: check the path from mineru server.
         assert self.input_key in data
         chunk = data.get(self.input_key, '')
         if not chunk:
@@ -130,7 +131,7 @@ class PdfChunkToQA(Pdf2Qa):
             out = self.model(encode_query_with_filepaths(query, local_paths))
             data[self.query_key] = out.get(self.query_key, '')
             data[self.answer_key] = out.get(self.answer_key, '')
-            data[self.image_key] = local_paths[0]
+            data[self.image_key] = local_paths
             return data
         user_prompt = self.user_prompt or '根据下面文本生成一个 QA 对：\n'
         inp = f'{user_prompt}\n{chunk}'
@@ -179,7 +180,7 @@ class PdfQAScorer(Pdf2Qa):
         query = data.get(self.query_key, '')
         answer = data.get(self.answer_key, '')
         img_path = data.get(self.image_key, '')
-        if not (chunk and query and answer and img_path):
+        if not (chunk and query and answer):
             data[self.output_key] = 0
             return data
         qa_payload = f'问题{query}; 答案{answer}'

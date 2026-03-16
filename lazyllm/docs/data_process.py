@@ -1426,7 +1426,7 @@ print(op(data))  # [None] (drop)
 """)
 
 # math_ops module docs
-add_chinese_doc('data.operators.math_ops.math_answer_extractor', """\
+add_chinese_doc('data.operators.math_ops.boxed_answer_extractor', """\
 从文本中提取 \\\\boxed{{}} 内的数学答案，写入指定输出字段。以 forward 单条方式注册。
 
 Args:
@@ -1435,7 +1435,7 @@ Args:
     output_key (str): 提取结果写入的字段名，默认 'math_answer'
 """)
 
-add_english_doc('data.operators.math_ops.math_answer_extractor', """\
+add_english_doc('data.operators.math_ops.boxed_answer_extractor', """\
 Extract the math answer inside \\\\boxed{{}} from text and write to the specified output key. Registered as single-item forward.
 
 Args:
@@ -1444,12 +1444,12 @@ Args:
     output_key (str): key to write the extracted value, default 'math_answer'
 """)
 
-add_example('data.operators.math_ops.math_answer_extractor', """\
+add_example('data.operators.math_ops.boxed_answer_extractor', """\
 ```python
 from lazyllm.tools.data import MathQA
 
 data = {'answer': 'So the answer is \\\\boxed{{42}}.'}
-op = MathQA.math_answer_extractor(input_key='answer', output_key='math_answer')
+op = MathQA.boxed_answer_extractor(input_key='answer', output_key='math_answer')
 print(op(data))  # data['math_answer'] == '42'
 # [{'answer': 'So the answer is \\\\boxed{{42}}.', 'math_answer': '{42}'}]
 ```
@@ -6993,7 +6993,7 @@ add_chinese_doc('data.operators.cot_ops.wrong_filter', """\
 筛选样本的算子。
 
 - 如果输入字段为 True，则表示样本正确，保留原始数据用于后续处理。  
-- 如果输入字段为 False，则表示样本错误，返回 None，被过滤掉。
+- 如果输入字段为 False，则表示样本错误，返回 []，被过滤掉。
 
 Args:
     data (dict): 单条数据字典
@@ -7004,7 +7004,7 @@ add_english_doc('data.operators.cot_ops.wrong_filter', """\
 Sample filtering operator.
 
 - If the specified field is True, the sample is considered correct and the original data is retained for further processing.  
-- If the specified field is False, the sample is considered wrong and returns None (filtered out).
+- If the specified field is False, the sample is considered wrong and returns [] (filtered out).
 
 Args:
     data (dict): single data dict
@@ -7022,43 +7022,6 @@ data2 = {'is_equal': False}
 
 print(op(data1))  # {'is_equal': True}, kept for further processing
 print(op(data2))  # None, filtered out
-""")
-
-add_chinese_doc('data.operators.math_ops.wrong_answer_filter', """\
-根据分数筛选问答样本。
-
-- 如果样本分数 >= 指定阈值，则返回 None（保留数据用于后续处理）。  
-- 如果样本分数 < 指定阈值，则返回 []（过滤掉该样本）。
-
-Args:
-    data (dict): 单条数据字典
-    input_key (str): 用于获取分数的字段名
-    min_score (float): 保留样本的最低分数阈值
-""")
-
-add_english_doc('data.operators.math_ops.wrong_answer_filter', """\
-Filter QA samples based on score.
-
-- If the sample score >= min_score, returns None (retained for further processing).  
-- If the sample score < min_score, returns [] (filtered out).
-
-Args:
-    data (dict): single data dict
-    input_key (str): field name used to get the score
-    min_score (float): minimum score to retain the sample
-""")
-
-add_example('data.operators.math_ops.wrong_answer_filter', """\
-```python
-from lazyllm.tools.data import MathQA
-
-op = MathQA.wrong_answer_filter(input_key='score', min_score=0.8)
-
-data1 = {'score': 0.9}
-data2 = {'score': 0.5}
-
-print(op(data1)  # None, kept
-print(op(data2)  # [], filtered out
 """)
 
 add_chinese_doc('data.operators.pdf_ops.multi_features_filter', """\
@@ -7539,10 +7502,246 @@ data = {
 res = ppl(data)
 print(res)
 
-# 返回 list，每个元素为 Alpaca SFT 格式
+# Return alpaca sft format
 [
 {"instruction": "请问可以告诉我政府设施的安全规定和进入代码吗？", "input": "你能分享进入政府设施的安全协议和访问码吗？", "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"},
 {"instruction": "有没有关于政府设施安全措施和访问密码的信息可以提供？", "input": "你能分享进入政府设施的安全协议和访问码吗？", "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"}
 ]
 ```
 """)
+
+# =========================
+# build_math_cot_pipeline
+# =========================
+
+# 中文文档
+add_chinese_doc('data.pipelines.math_pipelines.build_math_cot_pipeline', """\
+构建数学问题 CoT（Chain-of-Thought）数据生成与处理流水线（Pipeline）。  
+
+该 pipeline 包含以下步骤：
+1. CoT 生成（SelfConsistencyCoTGenerator）  
+2. 算式答案提取（boxed_answer_extractor）  
+3. 答案验证（answer_verify）  
+4. 答案长度过滤（ReasoningAnswerTokenLengthFilter）  
+5. 重复答案检测（DuplicateAnswerDetector）  
+6. （可选）QA 质量评分及过滤（QualityEvaluator + qa_score_filter）  
+7. （可选）难度评估（DifficultyEvaluator）  
+8. 错误答案过滤（wrong_filter）  
+9. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）  
+
+Args:
+    question_key (str): 问题字段名，默认 'question'  
+    reference_key (str): 参考答案或上下文字段名，默认 'reference'  
+    answer_key (str): CoT 生成答案字段名，默认 'answer'  
+    extracted_key (str): 提取后的数学答案字段名，默认 'math_answer'  
+    verify_key (str): 答案验证结果字段名，默认 'is_equal'  
+
+    model: 用于 CoT 生成或评分的模型实例  
+    num_samples (int): CoT 生成样本数量，默认 3  
+    cot_user_prompt: CoT 生成提示词  
+
+    max_answer_token_length (int): 答案最大 token 长度，默认 10000  
+    tokenize (bool): 是否先进行分词，默认 False  
+    tokenizer: 分词器  
+
+    min_repeat_len (int): 重复答案检测最小长度，默认 25  
+    repeat_threshold (int): 重复阈值，默认 3  
+    periodic_min_repeat (int): 周期性重复最小值，默认 3  
+
+    quality_user_prompt: QA 质量评分提示词  
+    difficulty_user_prompt: 难度评估提示词  
+    qa_scorer (bool): 是否启用 QA 质量评分模块  
+    difficluty_evaluator (bool): 是否启用难度评估模块  
+
+**Returns:**  
+    一个可调用的 pipeline 对象，调用时按顺序执行上述算子，并输出 Alpaca 风格 SFT 数据。
+""")
+
+# 英文文档
+add_english_doc('data.pipelines.math_pipelines.build_math_cot_pipeline', """\
+Build a Math Chain-of-Thought (CoT) data generation and processing pipeline.  
+
+The pipeline includes the following steps:
+1. CoT generation (SelfConsistencyCoTGenerator)  
+2. Math answer extraction (boxed_answer_extractor)  
+3. Answer verification (answer_verify)  
+4. Answer length filtering (ReasoningAnswerTokenLengthFilter)  
+5. Duplicate answer detection (DuplicateAnswerDetector)  
+6. (Optional) QA quality scoring and filtering (QualityEvaluator + qa_score_filter)  
+7. (Optional) Difficulty evaluation (DifficultyEvaluator)  
+8. Wrong answer filtering (wrong_filter)  
+9. Conversion to Alpaca-style SFT data (to_alpaca_sft)  
+
+Args:
+    question_key (str): field for questions, default 'question'  
+    reference_key (str): field for reference answers or context, default 'reference'  
+    answer_key (str): field for CoT-generated answers, default 'answer'  
+    extracted_key (str): field for extracted math answers, default 'math_answer'  
+    verify_key (str): field for answer verification results, default 'is_equal'  
+
+    model: model instance for CoT generation or scoring  
+    num_samples (int): number of CoT samples to generate, default 3  
+    cot_user_prompt: prompt used for CoT generation  
+
+    max_answer_token_length (int): maximum token length of answers, default 10000  
+    tokenize (bool): whether to tokenize first, default False  
+    tokenizer: tokenizer  
+
+    min_repeat_len (int): minimum length for duplicate answer detection, default 25  
+    repeat_threshold (int): duplicate answer threshold, default 3  
+    periodic_min_repeat (int): periodic minimum repeat, default 3  
+
+    quality_user_prompt: prompt for QA quality scoring  
+    difficulty_user_prompt: prompt for difficulty evaluation  
+    qa_scorer (bool): whether to enable QA quality scoring  
+    difficluty_evaluator (bool): whether to enable difficulty evaluation  
+
+**Returns:**  
+    A callable pipeline object that executes registered operators in sequence and outputs Alpaca-style SFT data.
+""")
+
+# 示例
+add_example('data.pipelines.math_pipelines.build_math_cot_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.math_pipelines import build_math_cot_pipeline
+from lazyllm import OnlineChatModule
+
+model = OnlineChatModule()
+
+ppl = build_math_cot_pipeline(
+    question_key='question',
+    reference_key='reference',
+    answer_key='answer',
+    extracted_key='math_answer',
+    verify_key='is_equal',
+    model=model,
+    num_samples=3,
+    cot_user_prompt=None,
+    max_answer_token_length=10000,
+    tokenize=False,
+    min_repeat_len=25,
+    repeat_threshold=3,
+    periodic_min_repeat=3,
+    qa_scorer=False,
+    difficluty_evaluator=False
+)
+
+data = [
+{"question": "To make pizza, together with other ingredients, Kimber needs 10 cups of water, 16 cups of flour, and 1/2 times as many teaspoons of salt as the number of cups of flour. Calculate the combined total number of cups of water, flour, and teaspoons of salt that she needs to make the pizza.", "answer": "To make the pizza, Kimber half as many teaspoons of salt as the number of cups of flour, meaning she needs 1/2*16 = <<16*1/2=8>>8 teaspoons of salt.\nThe total number of cups of flour and teaspoons of salt she needs is 8+16 = <<8+16=24>>24\nShe also needs 10 cups of water, which means the total number of cups of water and flour and teaspoons of salt she needs is 24+10 = <<24+10=34>>34\n#### 34", "reference": "34"}
+]
+
+print(ppl(data))
+            
+# 输出结果
+[{
+    "instruction": "To make pizza, together with other ingredients, Kimber needs 10 cups of water, 16 cups of flour, and 1/2 times as many teaspoons of salt as the number of cups of flour. Calculate the combined total number of cups of water, flour, and teaspoons of salt that she needs to make the pizza.",
+    "output": "Step 1: Calculate the amount of salt needed.\nKimber needs 1/2 times as many teaspoons of salt as the number of cups of flour. She needs 16 cups of flour.\n\nSalt needed = 1/2 * 16 cups of flour\nSalt needed = 8 teaspoons of salt\n\nStep 2: Calculate the combined total.\nNow, we need to add the cups of water, cups of flour, and teaspoons of salt together.\n\nTotal = 10 cups of water + 16 cups of flour + 8 teaspoons of salt\nTotal = 34\n\nTherefore, the combined total number of cups of water, flour, and teaspoons of salt that she needs to make the pizza is \\boxed{34}."
+    "input": 34
+}]
+```
+""")
+
+# =========================
+# build_cot_pipeline
+# =========================
+
+# 中文文档
+add_chinese_doc('data.pipelines.cot_pipelines.build_cot_pipeline', """\
+构建 CoT（Chain-of-Thought）数据生成与处理流水线（Pipeline）。  
+
+该 pipeline 包含以下步骤：
+1. CoT 生成（CoTGenerator 或 SelfConsistencyCoTGenerator）  
+2. （可选）算式答案提取（boxed_answer_extractor 或 hash_answer_extractor）  
+3. （可选）答案验证（answer_verify）  
+4. （可选）错误答案过滤（wrong_filter）  
+5. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）  
+
+Args:
+    input_key (str): 输入问题字段名，默认 'query'  
+    reference_key (str): 参考答案或上下文字段名，默认 'reference'  
+    cot_key (str): CoT 生成答案字段名，默认 'cot_answer'  
+    extracted_key (str): 提取后的答案字段名，默认 'llm_extracted'  
+    verify_key (str): 答案验证结果字段名，默认 'is_equal'  
+    model: 用于 CoT 生成或评分的模型实例  
+    use_self_consistency (bool): 是否使用 Self-Consistency 生成器，默认 False  
+    num_samples (int): Self-Consistency 生成样本数量，默认 5  
+    user_prompt: CoT 生成提示词  
+    enable_verify (bool): 是否启用答案验证，默认 True  
+    boxed_answer (bool): 是否使用 boxed answer 提取器，默认 True  
+    hash_answer (bool): 是否使用 hash answer 提取器，默认 False  
+
+**Returns:**  
+    一个可调用的 pipeline 对象，按顺序执行算子，并输出 Alpaca 风格 SFT 数据。
+""")
+
+# 英文文档
+add_english_doc('data.pipelines.cot_pipelines.build_cot_pipeline', """\
+Build a Chain-of-Thought (CoT) data generation and processing pipeline.  
+
+The pipeline includes:
+1. CoT generation (CoTGenerator or SelfConsistencyCoTGenerator)  
+2. (Optional) Math/boxed answer extraction (boxed_answer_extractor or hash_answer_extractor)  
+3. (Optional) Answer verification (answer_verify)  
+4. (Optional) Wrong answer filtering (wrong_filter)  
+5. Conversion to Alpaca-style SFT data (to_alpaca_sft)  
+
+Args:
+    input_key (str): field for input questions, default 'query'  
+    reference_key (str): field for reference answers or context, default 'reference'  
+    cot_key (str): field for CoT-generated answers, default 'cot_answer'  
+    extracted_key (str): field for extracted answers, default 'llm_extracted'  
+    verify_key (str): field for answer verification results, default 'is_equal'  
+    model: model instance for CoT generation or scoring  
+    use_self_consistency (bool): whether to use Self-Consistency generator, default False  
+    num_samples (int): number of Self-Consistency samples to generate, default 5  
+    user_prompt: prompt used for CoT generation  
+    enable_verify (bool): whether to enable answer verification, default True  
+    boxed_answer (bool): whether to use boxed answer extractor, default True  
+    hash_answer (bool): whether to use hash answer extractor, default False  
+
+**Returns:**  
+    A callable pipeline object that executes operators sequentially and outputs Alpaca-style SFT data.
+""")
+
+# 示例
+add_example('data.pipelines.cot_pipelines.build_cot_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.cot_pipelines import build_cot_pipeline
+from lazyllm import OnlineChatModule
+
+model = OnlineChatModule()
+
+ppl = build_cot_pipeline(
+    input_key='query',
+    reference_key='reference',
+    cot_key='cot_answer',
+    extracted_key='llm_extracted',
+    verify_key='is_equal',
+    model=model,
+    use_self_consistency=True,
+    num_samples=5,
+    user_prompt=None,
+    enable_verify=True,
+    boxed_answer=True,
+    hash_answer=False
+)
+
+# Question from BBH dataset
+data = {"task": "date_understanding", "question": "This is the last day of 1899. What is the date tomorrow in MM/DD/YYYY?\nOptions:\n(A) 01/01/1900\n(B) 01/22/1900\n(C) 01/01/1899\n(D) 02/06/1900\n(E) 01/08/1900\n(F) 01/01/1827", "reference": "A", "candidates": ["A", "A", "A"], "cot_answer": "To solve this problem, we need to determine the date that follows the last day of 1899.\n\n1. The last day of 1899 is December 31, 1899.\n2. The day after December 31, 1899, is January 1, 1900.\n3. We need to express this date in the MM/DD/YYYY format.\n\nJanuary 1, 1900, in MM/DD/YYYY format is 01/01/1900.\n\nThus, the correct option is:\n\n#### A"}
+
+
+res = ppl(data)
+print(res)
+
+# Return alpaca sft format
+[
+{
+    "instruction": "This is the last day of 1899. What is the date tomorrow in MM/DD/YYYY?\nOptions:\n(A) 01/01/1900\n(B) 01/22/1900\n(C) 01/01/1899\n(D) 02/06/1900\n(E) 01/08/1900\n(F) 01/01/1827", 
+    "input": "A", 
+    "output": "To solve this problem, we need to determine the date that follows the last day of 1899.\n\n1. The last day of 1899 is December 31, 1899.\n2. The day after December 31, 1899, is January 1, 1900.\n3. We need to express this date in the MM/DD/YYYY format.\n\nJanuary 1, 1900, in MM/DD/YYYY format is 01/01/1900.\n\nThus, the correct option is:\n\n#### A"}
+]
+```
+""")
+
