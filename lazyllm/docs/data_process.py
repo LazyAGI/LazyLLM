@@ -4427,7 +4427,7 @@ Args:
     min_tokens (int): 单个 chunk 的最小 token 数，默认 200
 
 **Returns:**\n
-    一个 pipeline 对象，输入为形如 [{'content': '...'}] 的列表，输出为经过清洗与切分后的样本列表。
+- 一个 pipeline 对象，输入为形如 [{'content': '...'}] 的列表，输出为经过清洗与切分后的样本列表。
 """)
 
 add_english_doc('data.pipelines.pt_text_ppl.build_text_pt_pipeline', """\
@@ -4449,7 +4449,7 @@ Args:
     min_tokens (int): minimum tokens per chunk, default 200
 
 **Returns:**\n
-    A pipeline object that takes a list like [{'content': '...'}] and returns cleaned and chunked samples.
+- A pipeline object that takes a list like [{'content': '...'}] and returns cleaned and chunked samples.
 """)
 
 add_example('data.pipelines.pt_text_ppl.build_text_pt_pipeline', """\
@@ -4481,7 +4481,7 @@ Args:
     num_qa (int): 每个样本生成的问答对数量，默认 5
 
 **Returns:**\n
-    一个 pipeline 对象，输入为 [{'context': '...'}] 或含 image_key 的样本，输出为带 'qa_pairs' 字段的样本列表。
+- 一个 pipeline 对象，输入为 [{'context': '...'}] 或含 image_key 的样本，输出为带 'qa_pairs' 字段的样本列表。
 """)
 
 add_english_doc('data.pipelines.pt_text_ppl.build_phi4_pt_pipeline', """\
@@ -4495,7 +4495,7 @@ Args:
     num_qa (int): number of QA pairs to generate per sample, default 5
 
 **Returns:**\n
-    A pipeline object that takes [{'context': '...'}] (optionally with images) and returns samples with 'qa_pairs'.
+- A pipeline object that takes [{'context': '...'}] (optionally with images) and returns samples with 'qa_pairs'.
 """)
 
 add_example('data.pipelines.pt_text_ppl.build_phi4_pt_pipeline', """\
@@ -4533,7 +4533,7 @@ Args:
     use_dedup (bool): 是否启用图片去重，默认 True
 
 **Returns:**\n
-    一个 pipeline 对象，输入为同时包含 context/text/image_path 的多模态样本列表，输出为带 'qa_pairs' 的多模态预训练样本。
+- 一个 pipeline 对象，输入为同时包含 context/text/image_path 的多模态样本列表，输出为带 'qa_pairs' 的多模态预训练样本。
 """)
 
 add_english_doc('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
@@ -4553,7 +4553,7 @@ Args:
     use_dedup (bool): whether to enable image deduplication, default True
 
 **Returns:**\n
-    A pipeline object that takes multimodal samples (context/text/image_path) and returns samples enriched with 'qa_pairs'.
+- A pipeline object that takes multimodal samples (context/text/image_path) and returns samples enriched with 'qa_pairs'.
 """)
 
 add_example('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
