@@ -290,11 +290,13 @@ class DocNode:
     def to_dict(self) -> Dict:
         return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)
 
-    def copy(self, global_metadata: dict = None, metadata: dict = None) -> 'DocNode':
+    def copy(self, global_metadata: dict = None, metadata: dict = None,
+             preserve_uid: bool = False) -> 'DocNode':
         node = copy.copy(self)
         node._copy_source = {'uid': self.uid, RAG_KB_ID: self.global_metadata.get(RAG_KB_ID),
                              RAG_DOC_ID: self.global_metadata.get(RAG_DOC_ID)}
-        node._uid = str(uuid.uuid4())
+        if not preserve_uid:
+            node._uid = str(uuid.uuid4())
         node._metadata = dict(self._metadata or {})
         node._global_metadata = dict(self._global_metadata or {})
         if metadata:
@@ -304,12 +306,12 @@ class DocNode:
         return node
 
     def with_score(self, score):
-        node = self.copy()
+        node = self.copy(preserve_uid=True)
         node.relevance_score = score
         return node
 
     def with_sim_score(self, score):
-        node = self.copy()
+        node = self.copy(preserve_uid=True)
         node.similarity_score = score
         return node
 
