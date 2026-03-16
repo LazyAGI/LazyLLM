@@ -43,6 +43,13 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         self._session.headers.update({'User-Agent': 'lazyllm-fs/1.0'})
         self._setup_auth()
 
+    @staticmethod
+    def __lazyllm_after_registry_hook__(cls, group_name: str, name: str, isleaf: bool):
+        if isleaf:
+            if not name.lower().endswith('fs'):
+                raise ValueError(f'Class name {name} must follow the schema of <SupplierType>FS, like <GoogleDriveFS>')
+            cls.protocol = name[:-3].lower()
+
     def close(self) -> None:
         self._session.close()
 
@@ -80,11 +87,8 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     def rm(self, path: str, recursive: bool = False, maxdepth: Optional[int] = None) -> None:
         if self.isdir(path) and recursive:  # type: ignore[attr-defined]
-            path_rstrip = path.rstrip(self.sep)
             for entry in self.ls(path, detail=True):
-                child_name = entry['name']
-                full_path = f'{path_rstrip}{self.sep}{child_name}' if path_rstrip else child_name
-                self.rm(full_path, recursive=True)
+                self.rm(entry['name'], recursive=True)
             self.rmdir(path)
         else:
             self.rm_file(path)

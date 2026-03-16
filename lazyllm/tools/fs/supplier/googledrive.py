@@ -15,8 +15,6 @@ _SCOPES = ['https://www.googleapis.com/auth/drive']
 
 class GoogleDriveFS(LazyLLMFSBase):
 
-    protocol = 'googledrive'
-
     def __init__(self, token: Optional[str] = None,
                  credentials: Optional[Union[str, dict]] = None,
                  base_url: Optional[str] = None, **storage_options):
@@ -118,6 +116,9 @@ class GoogleDriveFS(LazyLLMFSBase):
         file_id = parts[-1]
         url = f'{self._base_url}/files/{file_id}'
         self._delete(url, params={'supportsAllDrives': 'true'})
+
+    def rmdir(self, path: str) -> None:
+        self.rm_file(path)
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)

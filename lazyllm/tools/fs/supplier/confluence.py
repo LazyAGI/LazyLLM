@@ -13,9 +13,6 @@ _CLOUD_BASE = 'https://api.atlassian.com/ex/confluence'
 
 
 class ConfluenceFS(LazyLLMFSBase):
-
-    protocol = 'confluence'
-
     def __init__(self, token: str, base_url: Optional[str] = None,
                  email: Optional[str] = None, cloud: bool = True,
                  cloud_id: Optional[str] = None, **storage_options):
@@ -57,10 +54,11 @@ class ConfluenceFS(LazyLLMFSBase):
         parts = self._parse_path(path)
         if not parts:
             return self._list_spaces(detail)
+        space_key = parts[0]
         if len(parts) == 1:
-            return self._list_space_pages(parts[0], detail)
+            return self._list_space_pages(space_key, detail)
         page_id = parts[-1]
-        return self._list_child_pages(page_id, detail)
+        return self._list_child_pages(page_id, detail, space_key=space_key)
 
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
         parts = self._parse_path(path)
@@ -112,6 +110,15 @@ class ConfluenceFS(LazyLLMFSBase):
             raise FileNotFoundError(path)
         page_id = parts[-1]
         self._delete(f'{self._rest}/content/{page_id}')
+
+    def rmdir(self, path: str) -> None:
+        parts = self._parse_path(path)
+        if not parts:
+            return
+        if len(parts) == 1:
+            self._delete(f'{self._rest}/space/{parts[0]}')
+        else:
+            self._delete(f'{self._rest}/content/{parts[-1]}')
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)
@@ -185,16 +192,25 @@ class ConfluenceFS(LazyLLMFSBase):
         data = self._get(url, params={'limit': 200, 'expand': 'version'})
         pages = data.get('page', {}).get('results', []) or []
         if detail:
-            return [self._page_to_entry(p) for p in pages]
-        return [p.get('id', '') for p in pages]
+            entries = [self._page_to_entry(p) for p in pages]
+            for e in entries:
+                e['name'] = f'{space_key}/{e["name"]}'
+            return entries
+        return [f'{space_key}/{p.get("id", "")}' for p in pages]
 
-    def _list_child_pages(self, page_id: str, detail: bool) -> List:
+    def _list_child_pages(self, page_id: str, detail: bool, space_key: str = '') -> List:
         url = f'{self._rest}/content/{page_id}/child/page'
         data = self._get(url, params={'limit': 200, 'expand': 'version'})
         pages = data.get('results', [])
         if detail:
-            return [self._page_to_entry(p) for p in pages]
-        return [p.get('id', '') for p in pages]
+            entries = [self._page_to_entry(p) for p in pages]
+            for e in entries:
+                e['name'] = f'{space_key}/{e["name"]}' if space_key else e['name']
+            return entries
+        return [
+            f'{space_key}/{p.get("id", "")}' if space_key else p.get('id', '')
+            for p in pages
+        ]
 
     @staticmethod
     def _page_to_entry(page: Dict[str, Any]) -> Dict[str, Any]:

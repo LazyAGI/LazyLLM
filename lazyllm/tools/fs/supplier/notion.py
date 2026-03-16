@@ -13,8 +13,6 @@ _NOTION_VERSION = '2022-06-28'
 
 class NotionFS(LazyLLMFSBase):
 
-    protocol = 'notion'
-
     def __init__(self, token: str, base_url: Optional[str] = None, **storage_options):
         super().__init__(token=token, base_url=base_url or _API_BASE, **storage_options)
 
@@ -29,14 +27,14 @@ class NotionFS(LazyLLMFSBase):
         parts = self._parse_path(path)
         if not parts:
             return self._search_all(detail)
-        block_id = parts[0]
+        block_id = parts[-1]
         return self._list_children(block_id, detail)
 
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
         parts = self._parse_path(path)
         if not parts:
             return self._entry('/', ftype='directory')
-        block_id = parts[0]
+        block_id = parts[-1]
         try:
             url = f'{self._base_url}/pages/{block_id}'
             data = self._get(url)
@@ -81,6 +79,16 @@ class NotionFS(LazyLLMFSBase):
             raise FileNotFoundError(path)
         page_id = parts[-1]
         self._patch(f'{self._base_url}/pages/{page_id}', json={'archived': True})
+
+    def rmdir(self, path: str) -> None:
+        parts = self._parse_path(path)
+        if not parts:
+            return
+        block_id = parts[-1]
+        try:
+            self._patch(f'{self._base_url}/databases/{block_id}', json={'archived': True})
+        except Exception:
+            self._patch(f'{self._base_url}/pages/{block_id}', json={'archived': True})
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)

@@ -6,6 +6,7 @@ from .googledrive import GoogleDriveFS
 from .onedrive import OneDriveFS
 from .yuque import YuqueFS
 from .ones import OnesFS
+from .obsidian import ObsidianFS
 
 __all__ = [
     'FeishuFS',
@@ -15,4 +16,5 @@ __all__ = [
     'OneDriveFS',
     'YuqueFS',
     'OnesFS',
+    'ObsidianFS',
 ]

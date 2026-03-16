@@ -9,8 +9,6 @@ _CLOUD_BASE = 'https://ones.ai/project/api/project'
 
 class OnesFS(LazyLLMFSBase):
 
-    protocol = 'ones'
-
     def __init__(self, token: str, user_id: Optional[str] = None,
                  base_url: Optional[str] = None, **storage_options):
         if ':' in token and not user_id:
@@ -90,6 +88,19 @@ class OnesFS(LazyLLMFSBase):
         url = f'{self._base_url}/team/{team_uuid}/wiki/spaces/{space_uuid}/pages/{page_uuid}'
         self._delete(url)
 
+    def rmdir(self, path: str) -> None:
+        parts = self._parse_path(path)
+        if len(parts) < 2:
+            return
+        team_uuid, space_uuid = parts[0], parts[1]
+        if len(parts) == 2:
+            self._delete(f'{self._base_url}/team/{team_uuid}/wiki/spaces/{space_uuid}')
+        else:
+            page_uuid = parts[2]
+            self._delete(
+                f'{self._base_url}/team/{team_uuid}/wiki/spaces/{space_uuid}/pages/{page_uuid}'
+            )
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)
         if len(parts) < 3:
@@ -126,8 +137,11 @@ class OnesFS(LazyLLMFSBase):
         data = self._get(url)
         spaces = data.get('spaces', data.get('data', []))
         if detail:
-            return [self._space_to_entry(s) for s in spaces]
-        return [s.get('uuid', '') for s in spaces]
+            entries = [self._space_to_entry(s) for s in spaces]
+            for e in entries:
+                e['name'] = f'{team_uuid}/{e["name"]}'
+            return entries
+        return [f'{team_uuid}/{s.get("uuid", "")}' for s in spaces]
 
     def _list_pages(self, team_uuid: str, space_uuid: str,
                     parent_uuid: Optional[str], detail: bool) -> List:
@@ -138,8 +152,11 @@ class OnesFS(LazyLLMFSBase):
         data = self._get(url, params=params)
         pages = data.get('pages', data.get('data', []))
         if detail:
-            return [self._page_to_entry(p) for p in pages]
-        return [p.get('uuid', '') for p in pages]
+            entries = [self._page_to_entry(p) for p in pages]
+            for e in entries:
+                e['name'] = f'{team_uuid}/{space_uuid}/{e["name"]}'
+            return entries
+        return [f'{team_uuid}/{space_uuid}/{p.get("uuid", "")}' for p in pages]
 
     @staticmethod
     def _space_to_entry(space: Dict[str, Any]) -> Dict[str, Any]:
@@ -158,6 +175,6 @@ class OnesFS(LazyLLMFSBase):
             except (TypeError, ValueError):
                 pass
         return LazyLLMFSBase._entry(
-            name=page.get('uuid', ''), ftype='file',
+            name=page.get('uuid', ''), ftype='directory',
             mtime=mtime, title=page.get('title', ''),
         )

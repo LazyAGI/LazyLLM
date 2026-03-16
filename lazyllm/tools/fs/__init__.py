@@ -10,6 +10,7 @@ from .supplier.onedrive import OneDriveFS
 from .supplier.yuque import YuqueFS
 from .supplier.ones import OnesFS
 from .supplier.s3 import S3FS
+from .supplier.obsidian import ObsidianFS
 
 __all__ = [
     'LazyLLMFSBase',
@@ -24,4 +25,5 @@ __all__ = [
     'YuqueFS',
     'OnesFS',
     'S3FS',
+    'ObsidianFS',
 ]

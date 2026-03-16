@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 # flake8: noqa E501
-"""FS module docs: LazyLLMFSBase, CloudFSBufferedFile, CloudFS, CloudFsWatchdog, FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS."""
+"""FS module docs: LazyLLMFSBase, CloudFSBufferedFile, CloudFS, CloudFsWatchdog, FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS, ObsidianFS."""
 import importlib
 import functools
 
@@ -217,6 +217,13 @@ Args:
     rpath (str): Remote file path.
     lpath (str): Local path to save.
     **kwargs: Passed through.
+''')
+
+_add_fs_chinese('LazyLLMFSBase.close', '''\
+关闭 FS 占用的资源（如 HTTP session）。基类实现为关闭 _session；子类若持有其他资源可覆盖并在最后调用 super().close()。调用 close 后不应再使用该 FS 实例。
+''')
+_add_fs_english('LazyLLMFSBase.close', '''\
+Release resources held by the FS (e.g. HTTP session). Base implementation closes _session; subclasses may override and call super().close() after releasing their own resources. The FS instance should not be used after close().
 ''')
 
 _add_fs_chinese('LazyLLMFSBase.supports_webhook', '''\
@@ -869,4 +876,45 @@ _add_fs_example('S3FS', '''\
 >>> fs.ls('/my-bucket/path/')
 >>> with fs.open('/my-bucket/file.txt', 'rb') as f:
 ...     data = f.read()
+''')
+
+# ObsidianFS
+_add_fs_chinese('ObsidianFS', '''\
+本地 Obsidian 仓库（Vault）文件系统：将本机磁盘上的 Obsidian 笔记目录映射为 FS 接口，支持 ls、info、读写、mkdir、rm、递归删除等。路径为相对 Vault 根目录的逻辑路径（如 Daily/note.md）。不依赖网络；token 填 Vault 根目录的绝对或相对路径。
+
+Args:
+    token (str): Vault 根目录路径；可为绝对路径或相对路径（相对当前工作目录），默认 '.' 表示当前目录。
+    base_url (str, optional): 未使用，保留兼容。
+    **storage_options: 透传给基类。
+
+认证与配置: 无需 API 认证；构造时传入 token 作为 Vault 路径即可。若路径不是已存在的目录，_setup_auth 会抛出 FileNotFoundError。
+环境变量（CloudFS 选用 obsidian 时）: OBSIDIAN_VAULT_PATH、OBSIDIAN_VAULT；非空值作为 token（Vault 路径）使用。
+
+使用说明:
+    1. 确保 Vault 路径存在且为目录（可在 Obsidian 中打开该仓库，复制其路径）。
+    2. 通过 CloudFS(platform='obsidian', token='/path/to/vault') 或设置 OBSIDIAN_VAULT_PATH 后 CloudFS(platform='obsidian') 使用。
+''')
+_add_fs_english('ObsidianFS', '''\
+Local Obsidian vault filesystem: maps an Obsidian vault directory on disk to the FS interface; supports ls, info, read/write, mkdir, rm, and recursive delete. Paths are logical paths relative to the vault root (e.g. Daily/note.md). No network; token is the vault root path (absolute or relative).
+
+Args:
+    token (str): Vault root directory path; absolute or relative to cwd; default '.' for current directory.
+    base_url (str, optional): Unused; kept for compatibility.
+    **storage_options: Passed to base class.
+
+Auth and config: No API auth; pass token as vault path. If the path is not an existing directory, _setup_auth raises FileNotFoundError.
+Env vars (when CloudFS uses obsidian): OBSIDIAN_VAULT_PATH, OBSIDIAN_VAULT; non-empty value used as token (vault path).
+
+Usage:
+    1. Ensure the vault path exists and is a directory (e.g. copy path from Obsidian).
+    2. Use CloudFS(platform='obsidian', token='/path/to/vault') or set OBSIDIAN_VAULT_PATH and call CloudFS(platform='obsidian').
+''')
+_add_fs_example('ObsidianFS', '''\
+>>> from lazyllm.tools.fs import ObsidianFS
+>>> fs = ObsidianFS(token='/home/user/my-vault')
+>>> fs.ls('/')
+>>> fs.ls('Daily')
+>>> with fs.open('Daily/note.md', 'rb') as f:
+...     content = f.read()
+>>> fs.get_file('Daily/note.md', '/tmp/note.md')
 ''')

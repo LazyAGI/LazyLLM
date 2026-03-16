@@ -12,8 +12,6 @@ _API_BASE = 'https://www.yuque.com/api/v2'
 
 class YuqueFS(LazyLLMFSBase):
 
-    protocol = 'yuque'
-
     def __init__(self, token: str, base_url: Optional[str] = None, **storage_options):
         super().__init__(token=token, base_url=base_url or _API_BASE, **storage_options)
 
@@ -83,6 +81,13 @@ class YuqueFS(LazyLLMFSBase):
         login, repo_slug, doc_id = parts[0], parts[1], parts[2]
         self._delete(f'{self._base_url}/repos/{login}/{repo_slug}/docs/{doc_id}')
 
+    def rmdir(self, path: str) -> None:
+        parts = self._parse_path(path)
+        if len(parts) < 2:
+            return
+        login, repo_slug = parts[0], parts[1]
+        self._delete(f'{self._base_url}/repos/{login}/{repo_slug}')
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)
         if len(parts) < 3:
@@ -143,8 +148,11 @@ class YuqueFS(LazyLLMFSBase):
         data = self._get(url)
         docs = data.get('data', [])
         if detail:
-            return [self._doc_to_entry(d) for d in docs]
-        return [d.get('slug', d.get('id', '')) for d in docs]
+            entries = [self._doc_to_entry(d) for d in docs]
+            for e in entries:
+                e['name'] = f'{login}/{repo_slug}/{e["name"]}'
+            return entries
+        return [f'{login}/{repo_slug}/{d.get("slug", d.get("id", ""))}' for d in docs]
 
     @staticmethod
     def _repo_to_entry(repo: Dict[str, Any]) -> Dict[str, Any]:

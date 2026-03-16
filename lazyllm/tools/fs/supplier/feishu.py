@@ -9,8 +9,6 @@ _API_BASE = 'https://open.feishu.cn/open-apis'
 
 class FeishuFS(LazyLLMFSBase):
 
-    protocol = 'feishu'
-
     def __init__(self, token: str, base_url: Optional[str] = None,
                  app_id: Optional[str] = None, app_secret: Optional[str] = None,
                  **storage_options):
@@ -92,6 +90,13 @@ class FeishuFS(LazyLLMFSBase):
             raise FileNotFoundError(f'Cannot determine file token from path: {path!r}')
         url = f'{self._base_url}/drive/v1/files/{token}'
         self._delete(url, params={'type': 'file'})
+
+    def rmdir(self, path: str) -> None:
+        token = self._token_from_path(path)
+        if not token:
+            return
+        url = f'{self._base_url}/drive/v1/files/{token}'
+        self._delete(url, params={'type': 'folder'})
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         token = self._token_from_path(path)

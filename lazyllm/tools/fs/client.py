@@ -17,6 +17,7 @@ _PLATFORM_ENV_VARS = {
     'yuque': ('YUQUE_TOKEN',),
     'ones': ('ONES_TOKEN',),
     's3': ('AWS_ACCESS_KEY_ID', 'S3_ACCESS_KEY', 'S3_TOKEN'),
+    'obsidian': ('OBSIDIAN_VAULT_PATH', 'OBSIDIAN_VAULT'),
 }
 
 
@@ -67,7 +68,7 @@ def _resolve_s3_kwargs(token: Optional[str], **kwargs: Any) -> dict:
 
 config.add('cloudfs_platform', str, None, 'CLOUDFS_PLATFORM',
            description='Default cloud filesystem platform: feishu, confluence, notion, '
-                       'googledrive, onedrive, yuque, ones, s3. None for auto-detect.')
+                       'googledrive, onedrive, yuque, ones, s3, obsidian. None for auto-detect.')
 
 
 class CloudFS:

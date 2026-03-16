@@ -12,8 +12,6 @@ _GRAPH_BASE = 'https://graph.microsoft.com/v1.0'
 
 class OneDriveFS(LazyLLMFSBase):
 
-    protocol = 'onedrive'
-
     def __init__(self, token: Optional[str] = None,
                  client_id: Optional[str] = None,
                  client_secret: Optional[str] = None,
@@ -88,6 +86,9 @@ class OneDriveFS(LazyLLMFSBase):
         if not url:
             raise FileNotFoundError(path)
         self._delete(url)
+
+    def rmdir(self, path: str) -> None:
+        self.rm_file(path)
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         url = self._make_item_url(path)
