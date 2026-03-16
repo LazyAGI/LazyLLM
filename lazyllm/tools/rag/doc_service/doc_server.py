@@ -604,6 +604,48 @@ class DocServer(ModuleBase):
             )
             self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher)
 
+    @staticmethod
+    def _register_openapi_routes(openapi_app: 'fastapi.FastAPI', impl: 'DocServer._Impl'):
+        def _find_services(cls):
+            if '__relay_services__' not in dir(cls):
+                return
+            if '__relay_services__' in cls.__dict__:
+                for (method, path), (name, kw) in cls.__relay_services__.items():
+                    if getattr(impl.__class__, name) is getattr(cls, name):
+                        route_method = getattr(openapi_app, 'get' if method == 'list' else method)
+                        route_method(path, **kw)(getattr(impl, name))
+            for base in cls.__bases__:
+                _find_services(base)
+
+        app.update()
+        _find_services(impl.__class__)
+
+    @classmethod
+    def build_openapi_app(cls, title: str = 'LazyLLM DocService API', version: str = '1.0.0'):
+        openapi_app = fastapi.FastAPI(
+            title=title,
+            version=version,
+            description='OpenAPI schema generated from current DocServer routes.',
+        )
+        impl = cls._Impl(
+            storage_dir=os.path.join(os.getcwd(), '.doc_service_openapi'),
+            parser_url='http://127.0.0.1:9966',
+        )
+        cls._register_openapi_routes(openapi_app, impl)
+        return openapi_app
+
+    @classmethod
+    def build_openapi_schema(cls, title: str = 'LazyLLM DocService API', version: str = '1.0.0'):
+        return cls.build_openapi_app(title=title, version=version).openapi()
+
+    @classmethod
+    def export_openapi(cls, output_path: str, title: str = 'LazyLLM DocService API', version: str = '1.0.0'):
+        schema = cls.build_openapi_schema(title=title, version=version)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as fh:
+            json.dump(schema, fh, ensure_ascii=False, indent=2, sort_keys=True)
+        return output_path
+
     def start(self):
         result = super().start()
         if self._raw_impl and isinstance(self._impl, ServerModule):
