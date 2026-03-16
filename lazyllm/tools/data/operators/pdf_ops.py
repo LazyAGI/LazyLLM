@@ -54,7 +54,7 @@ def multi_features_filter(data, input_key, threshold):
         try:
             values.append(float(x))
         except Exception:
-            LOG.warning(f"Could not convert value to float in multi_features_filter for item: {x}")
+            LOG.warning(f'Could not convert value to float in multi_features_filter for item: {x}')
     if not values:
         return []
     avg = sum(values) / len(values)
