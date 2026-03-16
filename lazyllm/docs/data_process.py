@@ -4373,38 +4373,6 @@ res = op(inputs)
 print(res[0]['structured_data']) # {'subject': 'Math', 'score': 95}
 ```
 """)
-# =========================
-# AgenticRAGGetIdentifier
-# =========================
-
-add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
-调用 LLM 从输入文本中抽取内容标识符（identifier）的算子。
-
-Args:
-    llm: 语言模型服务实例
-    input_key (str): 输入文本字段名，默认 'prompts'
-    **kwargs (dict): 其它可选的参数。
-""")
-
-add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
-An operator that extracts a content identifier from the input text using an LLM.
-
-
-Args:
-    llm: language model service instance
-    input_key (str): name of the input text field, default 'prompts'
-    **kwargs (dict): additional user-provided arguments.
-""")
-
-add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
-```python
-from lazyllm.tools.data import agenticrag
-op = agenticrag.AgenticRAGGetIdentifier(llm=my_llm, input_key='prompts')
-result = op({'prompts': 'What is the third movie in the Avatar series?'})
-print('identifier:', result['identifier'])
-# {'identifier': 'Avatar series'}
-```
-""")
 
 # =========================
 # AgenticRAGGetConclusion
