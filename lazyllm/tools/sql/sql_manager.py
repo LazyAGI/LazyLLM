@@ -160,29 +160,71 @@ class SqlManager(DBManager):
         return kwargs
 
     @staticmethod
+    def _default_engine_kwargs() -> dict:
+        return {
+            'pool_size': 10,
+            'max_overflow': 20,
+            'pool_pre_ping': True,
+            'pool_recycle': 3600,
+        }
+
+    @staticmethod
     def _get_operational_error_code(error: OperationalError):
         args = getattr(getattr(error, 'orig', None), 'args', ())
         return args[0] if args else None
 
+    @staticmethod
+    def _get_operational_error_pgcode(error: OperationalError):
+        orig = getattr(error, 'orig', None)
+        return getattr(orig, 'pgcode', None) or getattr(orig, 'sqlstate', None)
+
+    def _is_database_not_found_error(self, error: OperationalError) -> bool:
+        if self._db_type in ('mysql', 'mysql+pymysql', 'tidb'):
+            return self._get_operational_error_code(error) == 1049
+        if self._db_type == 'postgresql':
+            if self._get_operational_error_pgcode(error) == '3D000':
+                return True
+            error_msg = str(getattr(error, 'orig', error)).lower()
+            return 'does not exist' in error_msg and 'database' in error_msg
+        return False
+
     def _ensure_database_exists(self, conn_url: str):
-        if self._db_type not in ('mysql', 'mysql+pymysql', 'tidb'):
+        if self._db_type not in ('mysql', 'mysql+pymysql', 'tidb', 'postgresql'):
             return
-        probe_engine = sqlalchemy.create_engine(conn_url, **self._mysql_engine_kwargs())
+        engine_kwargs = self._mysql_engine_kwargs() if self._db_type in ('mysql', 'mysql+pymysql', 'tidb') \
+            else self._default_engine_kwargs()
+        probe_engine = sqlalchemy.create_engine(conn_url, **engine_kwargs)
         try:
             with probe_engine.connect():
                 return
         except OperationalError as e:
-            if self._get_operational_error_code(e) != 1049:
+            if not self._is_database_not_found_error(e):
                 raise
         finally:
             probe_engine.dispose()
 
-        admin_engine = sqlalchemy.create_engine(self._gen_conn_url(''), **self._mysql_engine_kwargs())
+        if self._db_type == 'postgresql':
+            admin_engine = sqlalchemy.create_engine(
+                self._gen_conn_url('postgres'),
+                isolation_level='AUTOCOMMIT',
+                **self._default_engine_kwargs()
+            )
+        else:
+            admin_engine = sqlalchemy.create_engine(self._gen_conn_url(''), **self._mysql_engine_kwargs())
         try:
-            escaped_db_name = self._db_name.replace('`', '``')
             with admin_engine.connect() as conn:
-                conn.execute(sqlalchemy.text(f'CREATE DATABASE IF NOT EXISTS `{escaped_db_name}`'))
-                conn.commit()
+                if self._db_type == 'postgresql':
+                    exists = conn.execute(
+                        sqlalchemy.text('SELECT 1 FROM pg_database WHERE datname = :db_name'),
+                        {'db_name': self._db_name}
+                    ).scalar()
+                    if not exists:
+                        escaped_db_name = self._db_name.replace('"', '""')
+                        conn.execute(sqlalchemy.text(f'CREATE DATABASE "{escaped_db_name}"'))
+                else:
+                    escaped_db_name = self._db_name.replace('`', '``')
+                    conn.execute(sqlalchemy.text(f'CREATE DATABASE IF NOT EXISTS `{escaped_db_name}`'))
+                    conn.commit()
         finally:
             admin_engine.dispose()
 
@@ -205,14 +247,11 @@ class SqlManager(DBManager):
             elif self._db_type in ('mysql', 'mysql+pymysql', 'tidb'):
                 self._ensure_database_exists(conn_url)
                 self._engine = sqlalchemy.create_engine(conn_url, **self._mysql_engine_kwargs())
+            elif self._db_type == 'postgresql':
+                self._ensure_database_exists(conn_url)
+                self._engine = sqlalchemy.create_engine(conn_url, **self._default_engine_kwargs())
             else:
-                self._engine = sqlalchemy.create_engine(
-                    conn_url,
-                    pool_size=10,
-                    max_overflow=20,
-                    pool_pre_ping=True,
-                    pool_recycle=3600
-                )
+                self._engine = sqlalchemy.create_engine(conn_url, **self._default_engine_kwargs())
         return self._engine
 
     @property
