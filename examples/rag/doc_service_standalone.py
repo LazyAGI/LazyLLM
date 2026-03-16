@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import tempfile
 import threading
 import time
 from typing import Any, Dict
@@ -27,6 +26,8 @@ from lazyllm.tools.rag.doc_service import DocServer
 from lazyllm.tools.rag.parsing_service import DocumentProcessor
 
 REAL_ALGO_ID = 'real-standalone-algo'
+FIXED_DB_ROOT = './tmp/db'
+DEFAULT_OPENAPI_PATH = os.path.join(FIXED_DB_ROOT, 'doc_service.openapi.json')
 
 
 def _make_db_config(db_name: str) -> Dict[str, Any]:
@@ -38,6 +39,20 @@ def _make_db_config(db_name: str) -> Dict[str, Any]:
         'port': None,
         'db_name': db_name,
     }
+
+
+def _prepare_runtime_paths() -> Dict[str, str]:
+    os.makedirs(FIXED_DB_ROOT, exist_ok=True)
+    paths = {
+        'root_dir': FIXED_DB_ROOT,
+        'storage_dir': os.path.join(FIXED_DB_ROOT, 'uploads'),
+        'store_dir': os.path.join(FIXED_DB_ROOT, 'store'),
+        'parser_db': os.path.join(FIXED_DB_ROOT, 'parser.sqlite'),
+        'doc_db': os.path.join(FIXED_DB_ROOT, 'doc_service.sqlite'),
+    }
+    os.makedirs(paths['storage_dir'], exist_ok=True)
+    os.makedirs(paths['store_dir'], exist_ok=True)
+    return paths
 
 
 def _wait_until(predicate, timeout: float = 20.0, interval: float = 0.1):
@@ -88,22 +103,18 @@ def _build_store_conf(root_dir: str) -> Dict[str, Any]:
 
 
 def _start_full_stack(args):
-    tmp_dir = tempfile.mkdtemp(prefix='lazyllm_doc_service_standalone_')
-    storage_dir = os.path.join(tmp_dir, 'uploads')
-    os.makedirs(storage_dir, exist_ok=True)
-    parser_db = os.path.join(tmp_dir, 'parser.db')
-    doc_db = os.path.join(tmp_dir, 'doc_service.db')
+    paths = _prepare_runtime_paths()
 
     parser = DocumentProcessor(
         port=args.parser_port,
-        db_config=_make_db_config(parser_db),
+        db_config=_make_db_config(paths['parser_db']),
         num_workers=args.num_workers,
     )
     parser.start()
     parser_base_url = parser._impl._url.rsplit('/', 1)[0]
     _wait_http_ok(f'{parser_base_url}/health')
 
-    store_conf = _build_store_conf(tmp_dir)
+    store_conf = _build_store_conf(paths['store_dir'])
     document = Document(
         dataset_path=None,
         name=args.algo_id,
@@ -131,8 +142,8 @@ def _start_full_stack(args):
     )
 
     server = DocServer(
-        storage_dir=storage_dir,
-        db_config=_make_db_config(doc_db),
+        storage_dir=paths['storage_dir'],
+        db_config=_make_db_config(paths['doc_db']),
         parser_url=parser_base_url,
         port=args.port,
     )
@@ -145,10 +156,11 @@ def _start_full_stack(args):
     print(f'Parser URL: {parser_base_url}', flush=True)
     print(f'Parser Docs: {parser_base_url}/docs', flush=True)
     print(f'Algorithm ID: {args.algo_id}', flush=True)
-    print(f'Storage Dir: {storage_dir}', flush=True)
-    print(f'Doc DB: {doc_db}', flush=True)
-    print(f'Parser DB: {parser_db}', flush=True)
-    print(f'Tmp Dir: {tmp_dir}', flush=True)
+    print(f'Storage Dir: {paths["storage_dir"]}', flush=True)
+    print(f'Store Dir: {paths["store_dir"]}', flush=True)
+    print(f'Doc DB: {paths["doc_db"]}', flush=True)
+    print(f'Parser DB: {paths["parser_db"]}', flush=True)
+    print(f'DB Root: {paths["root_dir"]}', flush=True)
 
     try:
         if args.wait:
@@ -164,13 +176,10 @@ def _start_full_stack(args):
 
 
 def _start_doc_server_only(args):
-    tmp_dir = tempfile.mkdtemp(prefix='lazyllm_doc_service_standalone_')
-    storage_dir = os.path.join(tmp_dir, 'uploads')
-    os.makedirs(storage_dir, exist_ok=True)
-    doc_db = os.path.join(tmp_dir, 'doc_service.db')
+    paths = _prepare_runtime_paths()
     server = DocServer(
-        storage_dir=storage_dir,
-        db_config=_make_db_config(doc_db),
+        storage_dir=paths['storage_dir'],
+        db_config=_make_db_config(paths['doc_db']),
         parser_url=args.parser_url,
         port=args.port,
     )
@@ -179,8 +188,9 @@ def _start_doc_server_only(args):
     print(f'DocService URL: {base_url}', flush=True)
     print(f'DocService Docs: {base_url}/docs', flush=True)
     print(f'Parser URL: {args.parser_url}', flush=True)
-    print(f'Storage Dir: {storage_dir}', flush=True)
-    print(f'Doc DB: {doc_db}', flush=True)
+    print(f'Storage Dir: {paths["storage_dir"]}', flush=True)
+    print(f'Doc DB: {paths["doc_db"]}', flush=True)
+    print(f'DB Root: {paths["root_dir"]}', flush=True)
 
     try:
         if args.wait:
@@ -199,7 +209,18 @@ def main():
     parser.add_argument('--algo-id', type=str, default=REAL_ALGO_ID, help='Algorithm id to register in full stack mode.')
     parser.add_argument('--num-workers', type=int, default=1, help='DocumentProcessor worker count.')
     parser.add_argument('--wait', action='store_true', help='Keep server alive for manual API inspection.')
+    parser.add_argument(
+        '--export-openapi',
+        type=str,
+        default=None,
+        help=f'Export current DocService OpenAPI JSON before startup. Default path example: {DEFAULT_OPENAPI_PATH}',
+    )
     args = parser.parse_args()
+
+    if args.export_openapi:
+        output_path = DocServer.export_openapi(args.export_openapi)
+        print(f'OpenAPI exported: {output_path}', flush=True)
+        return
 
     if args.parser_url:
         _start_doc_server_only(args)
