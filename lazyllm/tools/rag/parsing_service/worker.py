@@ -126,6 +126,8 @@ class DocumentProcessorWorker(ModuleBase):
                 return
             task_id = self._in_progress_task.get('task_id')
             task_type = self._in_progress_task.get('task_type')
+            callback_url = self._in_progress_task.get('callback_url')
+            task_context_json = self._in_progress_task.get('task_context_json')
             if task_id and task_type:
                 self._enqueue_finished_task(
                     task_id=task_id,
@@ -133,6 +135,8 @@ class DocumentProcessorWorker(ModuleBase):
                     task_status=TaskStatus.FAILED,
                     error_code='PRESTOP',
                     error_msg=reason,
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
                 )
                 deleted = self._waiting_task_queue.delete(
                     filter_by={'task_id': task_id, 'worker_id': self._worker_id}
@@ -297,6 +301,42 @@ class DocumentProcessorWorker(ModuleBase):
                 LOG.error(f'{self._log_prefix(task_id)} Execute update meta task failed: {e}')
                 raise e
 
+        @staticmethod
+        def _resolve_callback_url(payload: dict):
+            return payload.get('callback_url') or payload.get('feedback_url')
+
+        @staticmethod
+        def _build_task_context(task_type: str, payload: dict) -> dict:
+            items = []
+            if task_type in (TaskType.DOC_ADD.value, TaskType.DOC_REPARSE.value, TaskType.DOC_UPDATE_META.value):
+                file_infos = payload.get('file_infos') or []
+                items = [{
+                    'doc_id': file_info.get('doc_id'),
+                    'file_path': file_info.get('file_path'),
+                    'metadata': file_info.get('metadata'),
+                    'reparse_group': file_info.get('reparse_group'),
+                } for file_info in file_infos]
+            elif task_type == TaskType.DOC_DELETE.value:
+                items = [{'doc_id': doc_id} for doc_id in (payload.get('doc_ids') or [])]
+            elif task_type == TaskType.DOC_TRANSFER.value:
+                file_infos = payload.get('file_infos') or []
+                items = [{
+                    'doc_id': file_info.get('doc_id'),
+                    'file_path': file_info.get('file_path'),
+                    'metadata': file_info.get('metadata'),
+                    'target_doc_id': (file_info.get('transfer_params') or {}).get('target_doc_id'),
+                    'target_kb_id': (file_info.get('transfer_params') or {}).get('target_kb_id'),
+                    'transfer_mode': (file_info.get('transfer_params') or {}).get('mode'),
+                } for file_info in file_infos]
+            if not items:
+                items = [{}]
+            return {
+                'task_type': task_type,
+                'kb_id': payload.get('kb_id'),
+                'algo_id': payload.get('algo_id'),
+                'items': items,
+            }
+
         def _resolve_task_type(self, request: AddDocRequest) -> str:
             return _resolve_add_doc_task_type(request)
 
@@ -380,20 +420,27 @@ class DocumentProcessorWorker(ModuleBase):
         def _parse_task_payload(self, task: dict):
             task_type = task.get('task_type')
             if task_type == TaskType.DOC_DELETE.value:
-                task_info = DeleteDocRequest(**task)
+                task_info = DeleteDocRequest.model_validate(task)
             elif task_type == TaskType.DOC_UPDATE_META.value:
-                task_info = UpdateMetaRequest(**task)
+                task_info = UpdateMetaRequest.model_validate(task)
             else:
-                task_info = AddDocRequest(**task)
+                task_info = AddDocRequest.model_validate(task)
                 task_type = task_type or self._resolve_task_type(task_info)
             task_id = task_info.task_id
-            payload = task_info.model_dump()
+            payload = task_info.model_dump(mode='json')
             self._validate_task_payload(task_type, payload)
             return task_id, task_type, payload
 
         def _run_task(self, task_id: str, task_type: str, payload: dict, from_queue: bool):  # noqa: C901
+            callback_url = self._resolve_callback_url(payload)
+            task_context_json = json.dumps(self._build_task_context(task_type, payload), ensure_ascii=False)
             try:
-                self._in_progress_task = {'task_id': task_id, 'task_type': task_type}
+                self._in_progress_task = {
+                    'task_id': task_id,
+                    'task_type': task_type,
+                    'callback_url': callback_url,
+                    'task_context_json': task_context_json,
+                }
                 if from_queue:
                     self._start_lease_renewal(task_id)
                 algo_id = payload.get('algo_id')
@@ -402,6 +449,13 @@ class DocumentProcessorWorker(ModuleBase):
 
                 LOG.info(f'{self._log_prefix(task_id)} Start processing task: '
                          f'{self._summarize_task_payload(task_type, payload)}')
+                self._enqueue_finished_task(
+                    task_id=task_id,
+                    task_type=task_type,
+                    task_status=TaskStatus.WORKING,
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
+                )
 
                 processor = self._get_or_create_processor(algo_id)
                 if task_type == TaskType.DOC_ADD.value:
@@ -417,8 +471,15 @@ class DocumentProcessorWorker(ModuleBase):
                 else:
                     raise ValueError(f'{self._log_prefix(task_id)} Unknown task type: {task_type}')
 
-                self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FINISHED,
-                                            error_code='200', error_msg='success')
+                self._enqueue_finished_task(
+                    task_id=task_id,
+                    task_type=task_type,
+                    task_status=TaskStatus.SUCCESS,
+                    error_code='200',
+                    error_msg='success',
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
+                )
                 if from_queue:
                     deleted = self._waiting_task_queue.delete(
                         filter_by={'task_id': task_id, 'worker_id': self._worker_id}
@@ -428,8 +489,15 @@ class DocumentProcessorWorker(ModuleBase):
             except Exception as e:
                 LOG.error(f'{self._log_prefix(task_id)} Failed to run task: {e}, {traceback.format_exc()}')
                 if task_id and task_type:
-                    self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FAILED,
-                                                error_code=type(e).__name__, error_msg=str(e))
+                    self._enqueue_finished_task(
+                        task_id=task_id,
+                        task_type=task_type,
+                        task_status=TaskStatus.FAILED,
+                        error_code=type(e).__name__,
+                        error_msg=str(e),
+                        callback_url=callback_url,
+                        task_context_json=task_context_json,
+                    )
                     if from_queue:
                         deleted = self._waiting_task_queue.delete(
                             filter_by={'task_id': task_id, 'worker_id': self._worker_id}
@@ -470,66 +538,6 @@ class DocumentProcessorWorker(ModuleBase):
                 exclude_task_types=exclude_types,
             )
 
-        @staticmethod
-        def _resolve_callback_url(payload: dict):
-            return payload.get('callback_url') or payload.get('feedback_url')
-
-        @staticmethod
-        def _build_task_context(task_type: str, payload: dict) -> dict:
-            items = []
-            if task_type in (TaskType.DOC_ADD.value, TaskType.DOC_REPARSE.value, TaskType.DOC_UPDATE_META.value):
-                file_infos = payload.get('file_infos') or []
-                items = [{
-                    'doc_id': file_info.get('doc_id'),
-                    'file_path': file_info.get('file_path'),
-                    'metadata': file_info.get('metadata'),
-                    'reparse_group': file_info.get('reparse_group'),
-                } for file_info in file_infos]
-            elif task_type == TaskType.DOC_DELETE.value:
-                items = [{'doc_id': doc_id} for doc_id in (payload.get('doc_ids') or [])]
-            if not items:
-                items = [{}]
-            return {
-                'task_type': task_type,
-                'kb_id': payload.get('kb_id'),
-                'algo_id': payload.get('algo_id'),
-                'items': items,
-            }
-
-        @staticmethod
-        def _infer_task_type(task_type: str, payload: dict) -> str:
-            if task_type == TaskType.DOC_DELETE.value:
-                return task_type
-            if task_type == TaskType.DOC_UPDATE_META.value:
-                return task_type
-
-            file_infos = payload.get('file_infos') or []
-            has_reparse = any(file_info.get('reparse_group') is not None for file_info in file_infos)
-            if has_reparse:
-                return TaskType.DOC_REPARSE.value
-            return task_type
-
-        def _parse_task_payload(self, task_data: dict):
-            task_id = task_data.get('task_id')
-            task_type = task_data.get('task_type')
-            if not task_id:
-                raise ValueError('task_id is required')
-            if not task_type:
-                raise ValueError('task_type is required')
-
-            if task_type == TaskType.DOC_DELETE.value:
-                payload = DeleteDocRequest.model_validate(task_data).model_dump(mode='json')
-            elif task_type == TaskType.DOC_UPDATE_META.value:
-                payload = UpdateMetaRequest.model_validate(task_data).model_dump(mode='json')
-            else:
-                payload = AddDocRequest.model_validate(task_data).model_dump(mode='json')
-
-            task_type = self._infer_task_type(task_type, payload)
-            return task_id, task_type, payload
-
-        def _summarize_task_payload(self, task_type: str, payload: dict) -> str:
-            return json.dumps(self._build_task_context(task_type, payload), ensure_ascii=False, sort_keys=True)
-
         def _enqueue_finished_task(self, task_id: str, task_type: str, task_status: TaskStatus,
                                    error_code: str = None, error_msg: str = None,
                                    callback_url: str = None, task_context_json: str = None):
@@ -548,7 +556,7 @@ class DocumentProcessorWorker(ModuleBase):
                 if task_status == TaskStatus.WORKING:
                     LOG.info(f'{self._log_prefix(task_id)} Task started')
                 elif task_status == TaskStatus.SUCCESS:
-                    LOG.info(f'{self._log_prefix(task_id)} Task {task_id} completed successfully')
+                    LOG.info(f'{self._log_prefix(task_id)} Task completed successfully')
                 else:
                     LOG.error(f'{self._log_prefix(task_id)} Task completed with status {task_status}: {error_msg}')
             except Exception as e:
@@ -557,76 +565,24 @@ class DocumentProcessorWorker(ModuleBase):
         def _worker_impl(self):  # noqa: C901
             while not self._shutdown:
                 try:
-                    task_data = self._waiting_task_queue.dequeue()
-                    if not task_data:
-                        time.sleep(0.1)
-                        continue
-
-                    raw_payload = json.loads(task_data.get('message'))
-                    task_id, task_type, payload = self._parse_task_payload({
-                        'task_id': task_data.get('task_id'),
-                        'task_type': task_data.get('task_type'),
-                        **raw_payload,
-                    })
-                    algo_id = payload.get('algo_id')
-                    if not algo_id:
-                        raise ValueError(f'[DocumentProcessorWorker._Impl] task_id {task_id} is missing algo_id in '
-                                         f'payload: {payload}')
-                    callback_url = self._resolve_callback_url(payload)
-                    task_context_json = json.dumps(self._build_task_context(task_type, payload), ensure_ascii=False)
-                    task_summary = self._summarize_task_payload(task_type, payload)
-
-                    LOG.info(f'[DocumentProcessorWorker._Impl] Start processing task {task_id}, type: {task_type},'
-                             f' algo_id: {algo_id}, payload={task_summary}')
-                    self._enqueue_finished_task(
-                        task_id=task_id,
-                        task_type=task_type,
-                        task_status=TaskStatus.WORKING,
-                        callback_url=callback_url,
-                        task_context_json=task_context_json,
-                    )
-
-                    processor = self._get_or_create_processor(algo_id)
-                    if task_type == TaskType.DOC_ADD.value:
-                        self._exec_add_task(processor, task_id, payload)
-                    elif task_type == TaskType.DOC_REPARSE.value:
-                        self._exec_reparse_task(processor, task_id, payload)
-                    elif task_type == TaskType.DOC_DELETE.value:
-                        self._exec_delete_task(processor, task_id, payload)
-                    elif task_type == TaskType.DOC_UPDATE_META.value:
-                        self._exec_update_meta_task(processor, task_id, payload)
-                    else:
-                        raise ValueError(f'[DocumentProcessorWorker._Impl] Unknown task type: {task_type}')
-
-                    self._enqueue_finished_task(
-                        task_id=task_id,
-                        task_type=task_type,
-                        task_status=TaskStatus.SUCCESS,
-                        error_code='200',
-                        error_msg='success',
-                        callback_url=callback_url,
-                        task_context_json=task_context_json,
-                    )
+                    task_data = self._poll_task()
                 except Exception as e:
-                    LOG.error(f'[DocumentProcessorWorker._Impl] Failed to run task {task_id}: {e},'
-                              f' {traceback.format_exc()}')
-                    if task_id and task_type:
-                        callback_url = locals().get('callback_url')
-                        task_context_json = locals().get('task_context_json')
-                        self._enqueue_finished_task(
-                            task_id=task_id,
-                            task_type=task_type,
-                            task_status=TaskStatus.FAILED,
-                            error_code=type(e).__name__,
-                            error_msg=str(e),
-                            callback_url=callback_url,
-                            task_context_json=task_context_json,
-                        )
+                    LOG.error(f'{self._log_prefix()} [Worker] poll_task failed: {e}, {traceback.format_exc()}')
                     time.sleep(WORKER_ERROR_RETRY_INTERVAL)
                     continue
                 if task_data:
+                    payload = None
+                    callback_url = None
+                    task_context_json = None
                     try:
                         payload = json.loads(task_data.get('message'))
+                        callback_url = self._resolve_callback_url(payload) if isinstance(payload, dict) else None
+                        if isinstance(payload, dict):
+                            task_context_json = json.dumps(
+                                self._build_task_context(task_data['task_type'], payload),
+                                ensure_ascii=False,
+                            )
+                        self._validate_task_payload(task_data['task_type'], payload)
                     except Exception as e:
                         task_id = task_data.get('task_id')
                         task_type = task_data.get('task_type')
@@ -640,6 +596,8 @@ class DocumentProcessorWorker(ModuleBase):
                                     task_status=TaskStatus.FAILED,
                                     error_code=type(e).__name__,
                                     error_msg=str(e),
+                                    callback_url=callback_url,
+                                    task_context_json=task_context_json,
                                 )
                                 deleted = self._waiting_task_queue.delete(
                                     filter_by={'task_id': task_id, 'worker_id': self._worker_id}
