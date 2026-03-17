@@ -4518,14 +4518,12 @@ res = ppl(data)
 """)
 
 add_chinese_doc('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
-构建多模态（图文）预训练数据合成流水线：先对图片做完整性与分辨率检查、可选去重，再用 VLM 做图文相关性过滤，最后通过 ContextQualFilter + Phi4QAGenerator 生成多模态 Q&A。
+构建多模态（图文）预训练数据清洗流水线：对图片做完整性检查、分辨率过滤与 resize、可选去重；若提供 vlm 则做图文相关性过滤。
 
 Args:
-    context_key (str): 文本上下文字段名，默认 'context'
     image_key (str): 图片路径字段名，默认 'image_path'
     text_key (str): 用于图文相关性判定的文本字段名，默认 'text'
-    vlm: 视觉语言大模型实例，用于相关性判定与 QA 生成
-    num_qa (int): 每个样本生成的问答对数量，默认 5
+    vlm: 视觉语言大模型实例，用于图文相关性过滤；为 None 时不进行相关性过滤
     min_width (int): 图片最小宽度过滤阈值，默认 256
     min_height (int): 图片最小高度过滤阈值，默认 256
     max_side (int): 图片最长边 resize 上限，默认 1024
@@ -4533,19 +4531,17 @@ Args:
     use_dedup (bool): 是否启用图片去重，默认 True
 
 **Returns:**\n
-- 一个 pipeline 对象，输入为同时包含 context/text/image_path 的多模态样本列表，输出为带 'qa_pairs' 的多模态预训练样本。
+- 一个 pipeline 对象，输入为含 image_path（及可选 text）的多模态样本列表，输出为经清洗与过滤后的样本列表。
 """)
 
 add_english_doc('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
-Build a multimodal (image-text) pretraining data synthesis pipeline: it performs image integrity and resolution checks, \
-optional deduplication, text-image relevance filtering with a VLM, and finally uses ContextQualFilter + Phi4QAGenerator to generate multimodal Q&A.
+Build a multimodal (image-text) pretraining data cleaning pipeline: image integrity check, resolution filter and resize, \
+optional deduplication; optionally text-image relevance filtering when vlm is provided.
 
 Args:
-    context_key (str): field name for textual context, default 'context'
     image_key (str): field name for image paths, default 'image_path'
     text_key (str): field name for text used in relevance filtering, default 'text'
-    vlm: vision-language model instance used for relevance and QA generation
-    num_qa (int): number of QA pairs to generate per sample, default 5
+    vlm: vision-language model instance for text-image relevance filtering; None to skip
     min_width (int): minimum image width, default 256
     min_height (int): minimum image height, default 256
     max_side (int): maximum image side for resizing, default 1024
@@ -4553,21 +4549,17 @@ Args:
     use_dedup (bool): whether to enable image deduplication, default True
 
 **Returns:**\n
-- A pipeline object that takes multimodal samples (context/text/image_path) and returns samples enriched with 'qa_pairs'.
+- A pipeline object that takes multimodal samples (image_path and optional text) and returns cleaned/filtered samples.
 """)
 
 add_example('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
 ```python
-import lazyllm
 from lazyllm.tools.data.pipelines.pt_img_ppl import build_mm_pt_pipeline
 
-vlm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
 ppl = build_mm_pt_pipeline(
-    context_key='context',
     image_key='image_path',
     text_key='text',
-    vlm=vlm,
-    num_qa=3,
+    vlm=None,
     min_width=1,
     min_height=1,
     max_side=1024,
@@ -4575,13 +4567,9 @@ ppl = build_mm_pt_pipeline(
     use_dedup=True,
 )
 
-data = [{
-    'context': 'This is a multimodal context describing the image.',
-    'text': 'A caption or short description of the image.',
-    'image_path': '/path/to/image.jpg',
-}]
+data = [{'text': 'A caption for the image.', 'image_path': '/path/to/image.jpg'}]
 res = ppl(data)
-# res[0]['qa_pairs'] contains multimodal QA pairs
+# res 为经完整性、分辨率与可选去重后的样本列表
 ```
 """)
 

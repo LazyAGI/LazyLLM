@@ -112,21 +112,10 @@ class TestPretrainPipelines:
         if not os.path.exists(ji):
             return
 
-        mock_response = {
-            'relevance': 1.0,
-            'score': 1,
-            'qa_pairs': [
-                {'query': 'What is in the image?', 'answer': 'A test image.'},
-            ],
-        }
-        vlm = MockModel(mock_response)
-
         ppl = build_mm_pt_pipeline(
-            context_key='context',
             image_key='image_path',
             text_key='text',
-            vlm=vlm,
-            num_qa=1,
+            vlm=None,
             min_width=1,
             min_height=1,
             max_side=4096,
@@ -134,15 +123,10 @@ class TestPretrainPipelines:
             use_dedup=False,
         )
 
-        data = [{
-            'context': 'Good context for multimodal QA generation.',
-            'text': 'A descriptive caption for the image.',
-            'image_path': ji,
-        }]
+        data = [{'text': 'A descriptive caption for the image.', 'image_path': ji}]
 
         res = ppl(data)
 
         assert isinstance(res, list)
         assert len(res) == 1
-        assert 'qa_pairs' in res[0]
-        assert isinstance(res[0]['qa_pairs'], list)
+        assert 'image_path' in res[0]

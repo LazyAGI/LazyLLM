@@ -1,13 +1,11 @@
 from lazyllm import pipeline
-from lazyllm.tools.data import pt, pt_mm
+from lazyllm.tools.data import pt_mm
 
 
 def build_mm_pt_pipeline(
-        context_key='context',
         image_key='image_path',
         text_key='text',
         vlm=None,
-        num_qa=5,
         min_width=256,
         min_height=256,
         max_side=1024,
@@ -38,19 +36,6 @@ def build_mm_pt_pipeline(
                 image_key=image_key,
                 text_key=text_key,
                 threshold=relevance_threshold
-            )
-
-            ppl.context_qual_filter = pt.ContextQualFilter(
-                llm=vlm,
-                context_key=context_key,
-                image_key=image_key
-            )
-
-            ppl.phi4_qa_generator = pt.Phi4QAGenerator(
-                llm=vlm,
-                context_key=context_key,
-                image_key=image_key,
-                num_qa=num_qa
             )
 
     return ppl
