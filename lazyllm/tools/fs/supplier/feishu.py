@@ -619,6 +619,69 @@ class FeishuWikiFS(FeishuFSBase):
         node = data.get('data', {}).get('node') or data.get('data', {})
         return node or {}
 
+    def get_document_id(self, path: str) -> str:
+        self._require_space_id()
+        node_token = self._resolve_path_to_token(path)
+        if not node_token:
+            raise FileNotFoundError(f'Path not found: {path}')
+        node = self._get_node(node_token)
+        obj_type = node.get('obj_type')
+        obj_token = node.get('obj_token') or ''
+        if obj_type not in ('doc', 'docx'):
+            raise ValueError(
+                f'Path is not a doc/docx node (obj_type={obj_type}), cannot get document_id'
+            )
+        return obj_token
+
+    def _get_doc_blocks_raw(self, document_id: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}/children'
+        params: Dict[str, Any] = {'page_size': 500}
+        if with_descendants:
+            params['with_descendants'] = 'true'
+        results: List[Dict[str, Any]] = []
+        page_token: Optional[str] = None
+        while True:
+            if page_token:
+                params['page_token'] = page_token
+            data = self._get(url, params=params)
+            items = data.get('data', {}).get('items') or []
+            results.extend(items)
+            page_token = data.get('data', {}).get('page_token')
+            if not page_token:
+                break
+        return results
+
+    def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
+        document_id = self.get_document_id(path)
+        blocks = self._get_doc_blocks_raw(document_id, with_descendants=with_descendants)
+        out: List[Dict[str, Any]] = []
+        for b in blocks:
+            entry: Dict[str, Any] = {
+                'block_id': b.get('block_id', ''),
+                'block_type': b.get('block_type'),
+                'parent_id': b.get('parent_id', ''),
+            }
+            if 'text' in b and isinstance(b['text'], dict):
+                plain = (b['text'].get('elements') or [])
+                texts = [
+                    e.get('text_run', {}).get('content', '')
+                    for e in plain if isinstance(e, dict)
+                ]
+                entry['plain_text'] = ''.join(texts)
+            out.append(entry)
+        return out
+
+    def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
+        document_id = self.get_document_id(path)
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{block_id}'
+        payload = {
+            'text': {
+                'elements': [{'text_run': {'content': new_text}}],
+                'style': {},
+            },
+        }
+        self._patch(url, json=payload)
+
     @staticmethod
     def _node_to_entry(node: Dict[str, Any], default_name: Optional[str] = None) -> Dict[str, Any]:
         obj_type = node.get('obj_type')

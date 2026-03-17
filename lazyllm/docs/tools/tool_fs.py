@@ -12,6 +12,9 @@ _add_fs_english = functools.partial(
     utils.add_english_doc, module=importlib.import_module('lazyllm.tools.fs'))
 _add_fs_example = functools.partial(
     utils.add_example, module=importlib.import_module('lazyllm.tools.fs'))
+_feishu_module = importlib.import_module('lazyllm.tools.fs.supplier.feishu')
+_add_feishu_chinese = functools.partial(utils.add_chinese_doc, module=_feishu_module)
+_add_feishu_english = functools.partial(utils.add_english_doc, module=_feishu_module)
 
 # LazyLLMFSBase
 _add_fs_chinese('LazyLLMFSBase', '''\
@@ -583,6 +586,68 @@ Buffered file implementation based on fsspec.AbstractBufferedFile for range down
 ''')
 
 
+# FeishuFSBase (lazyllm.tools.fs.supplier.feishu)
+_add_feishu_chinese('FeishuFSBase', '''\
+飞书文件系统基类，供 FeishuFS、FeishuWikiFS 继承。使用飞书开放平台 API，支持应用凭证与用户 OAuth refresh_token。
+
+Args:
+    base_url (str, optional): 飞书开放平台 API 根地址，默认官方地址。
+    app_id (str, optional): 企业自建应用 App ID；未传时从 config feishu_app_id 读取。
+    app_secret (str, optional): 企业自建应用 App Secret；未传时从 config feishu_app_secret 读取。
+    space_id (str, optional): 知识库空间 ID，子类 FeishuWikiFS 使用。
+    user_refresh_token (str, optional): 用户 OAuth refresh_token；'auto' 表示启动时触发浏览器授权。
+    oauth_port (int): OAuth 回调本地端口，默认 9981。
+    oauth_scope (str): OAuth scope 字符串，默认含 offline_access 与常用 drive/wiki 权限。
+    asynchronous (bool): 是否异步模式，默认 False。
+    use_listings_cache (bool): 是否缓存目录列表，默认 False。
+    skip_instance_cache (bool): 是否跳过实例缓存，默认 False。
+    loop (Any, optional): 异步事件循环。
+''')
+_add_feishu_english('FeishuFSBase', '''\
+Base class for Feishu filesystem implementations (FeishuFS, FeishuWikiFS). Uses Feishu Open Platform API; supports app credentials and user OAuth refresh_token.
+
+Args:
+    base_url (str, optional): Feishu Open Platform API base URL; default official endpoint.
+    app_id (str, optional): Enterprise app App ID; read from config feishu_app_id when not passed.
+    app_secret (str, optional): Enterprise app App Secret; read from config feishu_app_secret when not passed.
+    space_id (str, optional): Wiki space ID, used by FeishuWikiFS.
+    user_refresh_token (str, optional): User OAuth refresh_token; 'auto' triggers browser auth on init.
+    oauth_port (int): Local port for OAuth callback, default 9981.
+    oauth_scope (str): OAuth scope string; default includes offline_access and common drive/wiki scopes.
+    asynchronous (bool): Whether async mode, default False.
+    use_listings_cache (bool): Whether to cache directory listings, default False.
+    skip_instance_cache (bool): Whether to skip instance cache, default False.
+    loop (Any, optional): Async event loop.
+''')
+_add_feishu_chinese('FeishuFSBase.get_user_refresh_token', '''\
+返回当前保存的用户 OAuth refresh_token（刷新后可能已更新为最新值）。供调用方在 OAuth 或刷新后持久化，下次构造时传入以跳过授权。
+
+Returns:
+    str: 当前 refresh_token，未设置或未授权时为空字符串。
+''')
+_add_feishu_english('FeishuFSBase.get_user_refresh_token', '''\
+Return the current user OAuth refresh_token (may have been updated after refresh). For caller to persist after OAuth or refresh and pass to constructor on next run to skip auth.
+
+Returns:
+    str: Current refresh_token, or empty string if not set or not yet authorized.
+''')
+_add_feishu_chinese('FeishuWikiFile', '''\
+飞书知识库节点对应的缓冲文件实现。打开时通过 FeishuWikiFS 拉取节点内容并缓存在内存，支持区间读。
+
+Args:
+    fs (FeishuWikiFS): 所属的飞书知识库文件系统实例。
+    path (str): Wiki 节点路径。
+    **kwargs: 透传给 CloudFSBufferedFile（如 mode、block_size 等）。
+''')
+_add_feishu_english('FeishuWikiFile', '''\
+Buffered file for a Feishu wiki node. On open, fetches node content via FeishuWikiFS and caches in memory; supports range read.
+
+Args:
+    fs (FeishuWikiFS): The Feishu wiki filesystem instance.
+    path (str): Wiki node path.
+    **kwargs: Passed to CloudFSBufferedFile (e.g. mode, block_size).
+''')
+
 # FeishuFS
 _add_fs_chinese('FeishuFS', '''\
 飞书云盘文件系统：使用飞书开放平台 Drive API，支持 ls、读写、mkdir、rm。目录监听需配合 CloudFsWatchdog；部分能力支持 webhook。
@@ -727,7 +792,7 @@ _add_fs_example('FeishuFS', '''\
 
 # FeishuWikiFS
 _add_fs_chinese('FeishuWikiFS', '''\
-飞书知识库文件系统：使用飞书开放平台 Wiki API，将指定知识库（space）映射为只读文件系统。目录对应 Wiki 目录/节点，文件对应文档或附件；当前实现支持 ls、info、只读 open，暂不支持写入与删除。
+飞书知识库文件系统：使用飞书开放平台 Wiki API，将指定知识库（space）映射为文件系统。目录对应 Wiki 目录/节点，文件对应文档或附件。支持 ls、info、open（读/写）、mkdir、rm_file、put_file；并支持文档块级文本编辑：get_document_id、get_doc_blocks、update_doc_block_text。
 
 使用方式:
     构造参数:
@@ -738,23 +803,76 @@ _add_fs_chinese('FeishuWikiFS', '''\
 
     1. 与 FeishuFS 共享同一套鉴权方式：推荐 app_id + app_secret，由 FS 自动获取 tenant_access_token。
     2. 必须传入 space_id（知识空间 ID），例如 'wikcnKQ1k3pcuo5uSK4t8VN6kVf'。
-    3. 根路径 '/' 对应知识库根节点；'/<node_token>' 对应该节点的子节点列表；open('/<node_token>') 会根据节点类型自动拉取文档内容或附件二进制数据。
+    3. 根路径 '/' 对应知识库根节点；路径为 Wiki 节点路径；open 会根据节点类型拉取文档纯文本或附件二进制；put_file 会新建 docx 并写入纯文本。
 
-当前限制:
-    - 仅实现只读能力：ls、info、open；mkdir、rm_file、rmdir、写入暂未实现。
-    - 对于文档内容，优先调用 docx 原文接口，不通则回退旧版 doc 原文接口；返回为二进制内容，由上层按需解码。
+保持原格式（表格、标题等）:
+    - 通过 open/raw_content 下载到的是纯文本，put_file 会新建文档并只追加段落，因此「下载-修改-上传」会丢失表格等格式。
+    - 若要保留原格式，请使用块级编辑：先 get_doc_blocks(path) 获取文档块列表（含 block_id、block_type、plain_text），再对需要修改的文本块调用 update_doc_block_text(path, block_id, new_text)。仅修改目标文本块，表格等其它块不会被改动。
 ''')
 _add_fs_english('FeishuWikiFS', '''\
-Feishu Wiki FS: Feishu Open Platform Wiki API based filesystem that maps a given wiki space into a read-only filesystem view. Directories are wiki folders/nodes; files are documents or attachments. The current implementation supports ls, info and read-only open; write/delete are not implemented yet.
+Feishu Wiki FS: Feishu Open Platform Wiki API; maps a wiki space into a filesystem. Directories are wiki folders/nodes; files are documents or attachments. Supports ls, info, open (r/w), mkdir, rm_file, put_file, and block-level text edit: get_document_id, get_doc_blocks, update_doc_block_text.
 
 Usage:
-    1. Shares the same auth model as FeishuFS: prefer app_id + app_secret so the FS can obtain and refresh tenant_access_token automatically; token may also be passed directly.
-    2. A space_id (wiki space ID) is required, for example 'wikcnKQ1k3pcuo5uSK4t8VN6kVf'.
-    3. '/' is the wiki root; '/<node_token>' lists children of that node; open('/<node_token>') will fetch either document content or file binary depending on the node type.
+    1. Shares the same auth model as FeishuFS; space_id (wiki space ID) is required.
+    2. '/' is the wiki root; paths are wiki node paths; open returns document plain text or file binary; put_file creates a new docx and appends plain text.
 
-Current limitations:
-    - Read-only: only ls, info and open are implemented; mkdir, rm_file, rmdir and write are not yet supported.
-    - For document content, the FS first tries the docx raw-content API and falls back to the legacy doc raw-content API; the raw bytes are returned to callers.
+Preserving format (tables, headings, etc.):
+    - open/raw_content returns plain text only; put_file creates a new doc and appends paragraphs, so download-modify-upload loses tables and other structure.
+    - To preserve format, use block-level edit: get_doc_blocks(path) to list blocks (block_id, block_type, plain_text), then update_doc_block_text(path, block_id, new_text) for the blocks you need to change; other blocks (e.g. tables) are left unchanged.
+''')
+_add_fs_chinese('FeishuWikiFS.get_document_id', '''\
+返回 Wiki 文档节点对应的飞书 docx document_id（即 obj_token）。path 必须指向 doc 或 docx 类型节点，否则抛出 ValueError。
+
+Args:
+    path (str): Wiki 内文档路径（如 '/一级/文档标题'）。
+
+Returns:
+    str: 文档的 document_id，用于飞书 docx API。
+''')
+_add_fs_english('FeishuWikiFS.get_document_id', '''\
+Return the Feishu docx document_id (obj_token) for the wiki document at path. path must be a doc or docx node, otherwise ValueError is raised.
+
+Args:
+    path (str): Wiki path to the document (e.g. '/level1/doc title').
+
+Returns:
+    str: The document_id for Feishu docx API.
+''')
+_add_fs_chinese('FeishuWikiFS.get_doc_blocks', '''\
+获取文档的块列表（block 树扁平列表）。用于在编辑时定位要修改的块并保留表格等非文本块。
+
+Args:
+    path (str): Wiki 内文档路径。
+    with_descendants (bool): 是否包含所有子孙块，默认 True。
+
+Returns:
+    list: 每项为 dict，含 block_id、block_type、parent_id；若为文本类块则含 plain_text。
+''')
+_add_fs_english('FeishuWikiFS.get_doc_blocks', '''\
+Get the document block list (flattened block tree). Use to locate blocks to edit while leaving tables and other non-text blocks unchanged.
+
+Args:
+    path (str): Wiki path to the document.
+    with_descendants (bool): Whether to include all descendant blocks; default True.
+
+Returns:
+    list: Each item is a dict with block_id, block_type, parent_id; text blocks also have plain_text.
+''')
+_add_fs_chinese('FeishuWikiFS.update_doc_block_text', '''\
+更新文档中指定块的文本内容。仅适用于支持文本的块（如 Text、Heading、Bullet 等）；表格等块不支持，调用会由飞书 API 报错。
+
+Args:
+    path (str): Wiki 内文档路径。
+    block_id (str): 要更新的块 ID（来自 get_doc_blocks 返回的 block_id）。
+    new_text (str): 新的纯文本内容。
+''')
+_add_fs_english('FeishuWikiFS.update_doc_block_text', '''\
+Update the text content of a specific block in the document. Only applies to text-capable blocks (e.g. Text, Heading, Bullet); table blocks are not supported and the Feishu API will return an error.
+
+Args:
+    path (str): Wiki path to the document.
+    block_id (str): Block ID to update (from get_doc_blocks).
+    new_text (str): New plain text content.
 ''')
 
 # ConfluenceFS
