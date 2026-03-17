@@ -73,7 +73,7 @@ class ThreadSafeDict(dict):
             return super(__class__, self).__setitem__(key, value)
 
     def __delitem__(self, key):
-        with self._lock.read_lock():
+        with self._lock.write_lock():
             return super(__class__, self).__delitem__(key)
 
     def __contains__(self, key):
@@ -269,6 +269,9 @@ globals = Globals()
 class Locals(MemoryGlobals):
     __global_attrs__ = ThreadSafeDict(bind_args={}, _lazyllm_agent={})
 
+    def _init_sid(self, sid: Optional[str] = None):
+        return super()._init_sid(sid or f'local_{uuid.uuid4().hex}')
+
     def __call__(self):
         return inspect.currentframe().f_back.f_locals
 
@@ -284,14 +287,14 @@ locals = Locals()
 def init_session(sid: Optional[str] = None):
     sid = globals._init_sid(sid)
     locals._init_sid(sid)
-    LOG.info(f'Session {sid} inited!')
+    LOG.debug(f'Session {sid} inited!')
     return sid
 
 def teardown_session():
     sid = globals._sid
     globals.clear()
     locals.clear()
-    LOG.info(f'Session {sid} teardown!')
+    LOG.debug(f'Session {sid} teardown!')
 
 @contextmanager
 def new_session(sid: Optional[str] = None):

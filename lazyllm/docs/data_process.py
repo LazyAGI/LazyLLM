@@ -4406,6 +4406,173 @@ print(res)  # demonstrates how operators are combined and applied
 ```
 """)
 
+# text & pretrain pipelines docs
+
+add_chinese_doc('data.pipelines.pt_text_ppl.build_text_pt_pipeline', """\
+构建纯文本预训练语料清洗流水线：包含 filter/refine 算子。通过 language='zh' 或 'en' 设置语言类型。
+
+包含的 filter：null_content、char_count、word_count、sentence_count、special_char、
+watermark、idcard、javascript、lorem_ipsum、colon_end、ellipsis_end、no_punc、curly_bracket、
+bullet_point、SymbolRatioFilter、StopWordFilter、unique_word、WordBlocklistFilter、MinHashDeduplicator。
+包含的 refine：remove_html_url、remove_html_entity、remove_emoji、remove_extra_spaces。
+
+Args:
+    content_key (str): 原始文本字段名，默认 'content'
+    language (str): 语言类型，'zh' 或 'en'，影响 word_count、sentence_count、no_punc、StopWordFilter、unique_word、WordBlocklistFilter
+    min_chars (int): 最小字符数阈值（去空格后），默认 100
+    max_chars (int): 最大字符数阈值，默认 100000
+    min_words (int): 最小词数阈值，默认 10
+    max_words (int): 最大词数阈值，默认 10000
+    max_tokens (int): 单个 chunk 的最大 token 数，默认 1024
+    min_tokens (int): 单个 chunk 的最小 token 数，默认 200
+
+**Returns:**\n
+- 一个 pipeline 对象，输入为形如 [{'content': '...'}] 的列表，输出为经过清洗与切分后的样本列表。
+""")
+
+add_english_doc('data.pipelines.pt_text_ppl.build_text_pt_pipeline', """\
+Build a pure-text pretraining corpus cleaning pipeline with all filter/refine operators. Set language='zh' or 'en' for language-dependent ops.
+
+Filters: null_content, char_count, word_count, sentence_count, special_char, watermark, idcard,
+javascript, lorem_ipsum, colon_end, ellipsis_end, no_punc, curly_bracket, bullet_point, SymbolRatioFilter,
+StopWordFilter, unique_word, WordBlocklistFilter, MinHashDeduplicator.
+Refines: remove_html_url, remove_html_entity, remove_emoji, remove_extra_spaces.
+
+Args:
+    content_key (str): field name for raw text, default 'content'
+    language (str): language type 'zh' or 'en', affects word_count, sentence_count, no_punc, StopWordFilter, unique_word, WordBlocklistFilter
+    min_chars (int): minimum characters (after stripping spaces), default 100
+    max_chars (int): maximum characters, default 100000
+    min_words (int): minimum word count, default 10
+    max_words (int): maximum word count, default 10000
+    max_tokens (int): maximum tokens per chunk, default 1024
+    min_tokens (int): minimum tokens per chunk, default 200
+
+**Returns:**\n
+- A pipeline object that takes a list like [{'content': '...'}] and returns cleaned and chunked samples.
+""")
+
+add_example('data.pipelines.pt_text_ppl.build_text_pt_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.pt_text_ppl import build_text_pt_pipeline
+
+ppl = build_text_pt_pipeline(
+    content_key='content',
+    language='zh',
+    min_chars=50,
+    max_chars=200000,
+    max_tokens=512,
+    min_tokens=50,
+)
+
+data = [{'content': '这里是一段用于预训练的原始文本，需要做清洗与切分。'}]
+res = ppl(data)
+# res 是清洗 + chunk 之后的样本列表
+```
+""")
+
+add_chinese_doc('data.pipelines.pt_text_ppl.build_phi4_pt_pipeline', """\
+构建基于 Phi-4 风格的预训练 QA 合成流水线：对 context 先通过 ContextQualFilter 过滤（是否适合生成 QA），然后使用 Phi4QAGenerator 直接生成多轮 Q&A。
+
+Args:
+    context_key (str): 上下文字段名，默认 'context'
+    image_key (str): 可选图片路径字段名，默认 None（只文本）；如提供则做图文多模态 QA 合成
+    llm: 支持多模态或纯文本的 LLM 实例
+    num_qa (int): 每个样本生成的问答对数量，默认 5
+
+**Returns:**\n
+- 一个 pipeline 对象，输入为 [{'context': '...'}] 或含 image_key 的样本，输出为带 'qa_pairs' 字段的样本列表。
+""")
+
+add_english_doc('data.pipelines.pt_text_ppl.build_phi4_pt_pipeline', """\
+Build a Phi-4 style pretraining QA synthesis pipeline: it first filters contexts with ContextQualFilter, \
+then directly generates multi-turn Q&A pairs via Phi4QAGenerator.
+
+Args:
+    context_key (str): field name for context, default 'context'
+    image_key (str): optional field name for image paths, default None (text-only); when provided, multimodal QA is generated
+    llm: LLM instance (vision- or text-language model)
+    num_qa (int): number of QA pairs to generate per sample, default 5
+
+**Returns:**\n
+- A pipeline object that takes [{'context': '...'}] (optionally with images) and returns samples with 'qa_pairs'.
+""")
+
+add_example('data.pipelines.pt_text_ppl.build_phi4_pt_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.pt_text_ppl import build_phi4_pt_pipeline
+
+llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
+ppl = build_phi4_pt_pipeline(
+    context_key='context',
+    image_key=None,
+    llm=llm,
+    num_qa=3,
+)
+
+data = [{'context': 'This is a knowledge paragraph used to generate phi-4 style Q&A.'}]
+res = ppl(data)
+# res[0]['qa_pairs'] contains generated QA pairs
+```
+""")
+
+add_chinese_doc('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
+构建多模态（图文）预训练数据清洗流水线：对图片做完整性检查、分辨率过滤与 resize、可选去重；若提供 vlm 则做图文相关性过滤。
+
+Args:
+    image_key (str): 图片路径字段名，默认 'image_path'
+    text_key (str): 用于图文相关性判定的文本字段名，默认 'text'
+    vlm: 视觉语言大模型实例，用于图文相关性过滤；为 None 时不进行相关性过滤
+    min_width (int): 图片最小宽度过滤阈值，默认 256
+    min_height (int): 图片最小高度过滤阈值，默认 256
+    max_side (int): 图片最长边 resize 上限，默认 1024
+    relevance_threshold (float): 图文相关性过滤阈值，默认 0.6
+    use_dedup (bool): 是否启用图片去重，默认 True
+
+**Returns:**\n
+- 一个 pipeline 对象，输入为含 image_path（及可选 text）的多模态样本列表，输出为经清洗与过滤后的样本列表。
+""")
+
+add_english_doc('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
+Build a multimodal (image-text) pretraining data cleaning pipeline: image integrity check, resolution filter and resize, \
+optional deduplication; optionally text-image relevance filtering when vlm is provided.
+
+Args:
+    image_key (str): field name for image paths, default 'image_path'
+    text_key (str): field name for text used in relevance filtering, default 'text'
+    vlm: vision-language model instance for text-image relevance filtering; None to skip
+    min_width (int): minimum image width, default 256
+    min_height (int): minimum image height, default 256
+    max_side (int): maximum image side for resizing, default 1024
+    relevance_threshold (float): text-image relevance threshold, default 0.6
+    use_dedup (bool): whether to enable image deduplication, default True
+
+**Returns:**\n
+- A pipeline object that takes multimodal samples (image_path and optional text) and returns cleaned/filtered samples.
+""")
+
+add_example('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.pt_img_ppl import build_mm_pt_pipeline
+
+ppl = build_mm_pt_pipeline(
+    image_key='image_path',
+    text_key='text',
+    vlm=None,
+    min_width=1,
+    min_height=1,
+    max_side=1024,
+    relevance_threshold=0.5,
+    use_dedup=True,
+)
+
+data = [{'text': 'A caption for the image.', 'image_path': '/path/to/image.jpg'}]
+res = ppl(data)
+# res 为经完整性、分辨率与可选去重后的样本列表
+```
+""")
+
 # =========================
 # Embedding Data Formatter
 # =========================
