@@ -31,10 +31,10 @@ public:
         std::optional<unsigned> overlap = std::nullopt,
         std::optional<unsigned> worker_num = std::nullopt,
         const std::string& encoding_name = "gpt2")
-        : NodeTransform(_default_params.get_param_value<unsigned>("worker_num", worker_num, 0)),
-          _chunk_size(_default_params.get_param_value<unsigned>("chunk_size", chunk_size, 1024)),
+        : _chunk_size(_default_params.get_param_value<unsigned>("chunk_size", chunk_size, 1024)),
           _overlap(_default_params.get_param_value<unsigned>("overlap", overlap, 200))
     {
+        (void)worker_num;
         if (_overlap >= _chunk_size) throw std::runtime_error("'overlap' should be less than 'chunk_size'.");
         if (_chunk_size == 0) throw std::runtime_error("'chunk_size' should > 0");
 

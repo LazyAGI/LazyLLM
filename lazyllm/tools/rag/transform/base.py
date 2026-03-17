@@ -63,7 +63,15 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
     return result
 
 
-@cpp_class
+@cpp_class(funcs_to_override=[
+    '__init__',
+    '_get_ref_nodes',
+    'batch_forward',
+    'transform',
+    'process',
+    '_default_match_handler',
+    '_default_miss_handler',
+])
 class NodeTransform(ModuleBase):
     __support_rich__ = False
 
