@@ -15,46 +15,16 @@
 #include <vector>
 
 #include "doc_node.hpp"
-#include "map_params.hpp"
-#include "node_transform.hpp"
 #include "tokenizer.hpp"
 
 namespace lazyllm {
 
-class TextSplitterBase : public NodeTransform {
+class TextSplitterBase {
 public:
-    using SplitFn = std::function<std::vector<std::string>(const std::string&)>;
-    static MapParams _default_params;
-
-    explicit TextSplitterBase(
-        std::optional<unsigned> chunk_size = std::nullopt,
-        std::optional<unsigned> overlap = std::nullopt,
-        std::optional<unsigned> worker_num = std::nullopt,
-        const std::string& encoding_name = "gpt2")
-        : _chunk_size(_default_params.get_param_value<unsigned>("chunk_size", chunk_size, 1024)),
-          _overlap(_default_params.get_param_value<unsigned>("overlap", overlap, 200))
-    {
-        (void)worker_num;
-        if (_overlap >= _chunk_size) throw std::runtime_error("'overlap' should be less than 'chunk_size'.");
-        if (_chunk_size == 0) throw std::runtime_error("'chunk_size' should > 0");
-
-        _tokenizer = std::make_shared<TiktokenTokenizer>(encoding_name);
-    }
-
-    std::vector<PDocNode> transform(PDocNode node) const override {
-        if (node == nullptr) return {};
-        auto chunks = split_text(node->get_text_view(), get_node_metadata_size(*node));
-        std::vector<PDocNode> nodes;
-        nodes.reserve(chunks.size());
-        for (auto& chunk : chunks)
-            nodes.push_back(std::make_shared<DocNode>(std::move(chunk)));
-        return nodes;
-    }
-
-    std::vector<std::string> split_text(const std::string_view& view, int metadata_size) const;
-    static std::vector<std::string_view> split_text_while_keeping_separator(
-        const std::string_view& text,
-        const std::string_view& separator);
+    TextSplitterBase(int chunk_size, int overlap, const std::string& encoding_name = "gpt2") :
+        _chunk_size(chunk_size),
+        _overlap(overlap),
+        _tokenizer(std::make_shared<TiktokenTokenizer>(encoding_name)) {}
 
     TextSplitterBase& from_tiktoken_encoder(
         const std::string& encoding_name = "gpt2",
@@ -64,15 +34,10 @@ public:
         return *this;
     }
 
-    void set_tokenizer(std::shared_ptr<Tokenizer> tokenizer) { _tokenizer = std::move(tokenizer); }
-    int chunk_size() const { return _chunk_size; }
-    int overlap() const { return _overlap; }
-
-    virtual void set_split_functions(
-        const std::vector<SplitFn>&,
-        const std::optional<std::vector<SplitFn>>& = std::nullopt) {}
-    virtual void add_split_function(const SplitFn&, const std::optional<size_t>& = std::nullopt) {}
-    virtual void clear_split_functions() {}
+    std::vector<std::string> split_text(const std::string_view& view, int metadata_size) const;
+    static std::vector<std::string_view> split_text_while_keeping_separator(
+        const std::string_view& text,
+        const std::string_view& separator);
 
 protected:
     virtual std::vector<ChunkView> split_recursive(const std::string_view& view, const int chunk_size) const;
@@ -93,9 +58,9 @@ private:
     }
 
 protected:
-    int _chunk_size;
-    int _overlap;
-    std::shared_ptr<Tokenizer> _tokenizer;
+    std::shared_ptr<Tokenizer> _tokenizer = nullptr;
+    int _overlap = 0;
+    int _chunk_size = 0;
 };
 
 } // namespace lazyllm

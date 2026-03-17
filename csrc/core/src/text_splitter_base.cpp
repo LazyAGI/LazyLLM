@@ -3,8 +3,6 @@
 
 namespace lazyllm {
 
-MapParams TextSplitterBase::_default_params{};
-
 /*
  * split_text
  * ----------
@@ -69,7 +67,8 @@ std::vector<ChunkView> TextSplitterBase::split_recursive(
     return splits;
 }
 
-std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_functions(const std::string_view& text) const
+std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_functions(
+    const std::string_view& text) const
 {
     auto views = split_text_while_keeping_separator(text, "\n\n\n");
     if (views.size() > 1) return {views, true};
@@ -127,7 +126,9 @@ std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separat
  *  @todo Replace eager string materialization once tokenizer encode/decode supports
  *  end-to-end zero-copy string_view operations.
  */
-std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<ChunkView>& splits, int chunk_size) const {
+std::vector<std::string> TextSplitterBase::merge_chunks(
+    const std::vector<ChunkView>& splits, int chunk_size) const
+{
     if (splits.empty()) return {};
 
     std::vector<Chunk> merged_splits;
