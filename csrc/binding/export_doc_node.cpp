@@ -9,6 +9,7 @@
 #include "document_store.hpp"
 #include "doc_node.hpp"
 #include "binding_utils.hpp"
+#include "map_binding_helper.hpp"
 #include <pybind11/stl_bind.h>
 
 PYBIND11_MAKE_OPAQUE(lazyllm::DocNode::Metadata);
@@ -267,160 +268,23 @@ void exportDocNode(py::module& m) {
         .value("NONE", lazyllm::MetadataMode::NONE);
 
     auto metadata_map = py::bind_map<lazyllm::DocNode::Metadata>(m, "DocNodeMetadataMap");
-    metadata_map
-        .def("get",
-            [](lazyllm::DocNode::Metadata& self, const std::string& key, py::object default_value) {
-                auto it = self.find(key);
-                if (it == self.end()) return default_value;
-                return pyu::MetadataValueToPy(it->second);
-            },
-            py::arg("key"),
-            py::arg("default") = py::none())
-        .def("pop",
-            [](lazyllm::DocNode::Metadata& self, const std::string& key) {
-                auto it = self.find(key);
-                if (it == self.end()) throw py::key_error(py::str(key));
-                py::object value = pyu::MetadataValueToPy(it->second);
-                self.erase(it);
-                return value;
-            },
-            py::arg("key"))
-        .def("pop",
-            [](lazyllm::DocNode::Metadata& self, const std::string& key, py::object default_value) {
-                auto it = self.find(key);
-                if (it == self.end()) return default_value;
-                py::object value = pyu::MetadataValueToPy(it->second);
-                self.erase(it);
-                return value;
-            },
-            py::arg("key"),
-            py::arg("default"))
-        .def("setdefault",
-            [](lazyllm::DocNode::Metadata& self, const std::string& key, py::object default_value) {
-                auto it = self.find(key);
-                if (it != self.end()) return pyu::MetadataValueToPy(it->second);
-                auto [inserted, ok] = self.emplace(key, pyu::PyToMetadataValue(default_value));
-                (void)ok;
-                return pyu::MetadataValueToPy(inserted->second);
-            },
-            py::arg("key"),
-            py::arg("default") = py::none())
-        .def("copy",
-            [](const lazyllm::DocNode::Metadata& self) {
-                return MetadataToPy(self);
-            })
-        .def("__copy__",
-            [](const lazyllm::DocNode::Metadata& self) {
-                return MetadataToPy(self);
-            })
-        .def("__deepcopy__",
-            [](const lazyllm::DocNode::Metadata& self, const py::dict& memo) {
-                py::object copy = py::module_::import("copy");
-                return copy.attr("deepcopy")(MetadataToPy(self), memo);
-            },
-            py::arg("memo"))
-        .def("update",
-            [](lazyllm::DocNode::Metadata& self, py::object other, py::kwargs kwargs) {
-                if (!other.is_none()) {
-                    py::dict d = py::dict(other);
-                    for (auto item : d) {
-                        const std::string key = py::cast<std::string>(item.first);
-                        self[key] = pyu::PyToMetadataValue(item.second);
-                    }
-                }
-                for (auto item : kwargs) {
-                    const std::string key = py::cast<std::string>(item.first);
-                    self[key] = pyu::PyToMetadataValue(item.second);
-                }
-            },
-            py::arg("other") = py::none())
-        .def("__eq__",
-            [](const lazyllm::DocNode::Metadata& self, py::object other) {
-                py::dict lhs = MetadataToPy(self);
-                if (py::isinstance<py::dict>(other) || py::hasattr(other, "items"))
-                    return py::bool_(lhs.equal(py::dict(other)));
-                return py::bool_(false);
-            },
-            py::is_operator());
+    pyu::RegisterMapAsMutableMapping(metadata_map);
+    pyu::BindDictLikeMethods<lazyllm::DocNode::Metadata>(
+        metadata_map,
+        [](const lazyllm::DocNode::MetadataVType& value) { return pyu::MetadataValueToPy(value); },
+        [](py::object value) { return pyu::PyToMetadataValue(value); },
+        [](const lazyllm::DocNode::Metadata& self) { return MetadataToPy(self); }
+    );
 
     auto children_map = py::bind_map<lazyllm::DocNode::Children>(m, "DocNodeChildrenMap");
-    children_map
-        .def("get",
-            [](lazyllm::DocNode::Children& self, const std::string& key, py::object default_value) -> py::object {
-                auto it = self.find(key);
-                if (it == self.end()) return default_value;
-                return py::cast(it->second);
-            },
-            py::arg("key"),
-            py::arg("default") = py::none())
-        .def("pop",
-            [](lazyllm::DocNode::Children& self, const std::string& key) {
-                auto it = self.find(key);
-                if (it == self.end()) throw py::key_error(py::str(key));
-                py::list value = py::cast(it->second);
-                self.erase(it);
-                return value;
-            },
-            py::arg("key"))
-        .def("pop",
-            [](lazyllm::DocNode::Children& self, const std::string& key, py::object default_value) -> py::object {
-                auto it = self.find(key);
-                if (it == self.end()) return default_value;
-                py::list value = py::cast(it->second);
-                self.erase(it);
-                return value;
-            },
-            py::arg("key"),
-            py::arg("default"))
-        .def("setdefault",
-            [](lazyllm::DocNode::Children& self, const std::string& key, py::object default_value) {
-                auto it = self.find(key);
-                if (it != self.end()) return py::cast(it->second);
-                auto [inserted, ok] = self.emplace(key, NodeVectorFromPy(default_value));
-                (void)ok;
-                return py::cast(inserted->second);
-            },
-            py::arg("key"),
-            py::arg("default") = py::list())
-        .def("copy",
-            [](const lazyllm::DocNode::Children& self) {
-                return ChildrenToPy(self);
-            })
-        .def("__copy__",
-            [](const lazyllm::DocNode::Children& self) {
-                return ChildrenToPy(self);
-            })
-        .def("__deepcopy__",
-            [](const lazyllm::DocNode::Children& self, const py::dict& memo) {
-                py::object copy = py::module_::import("copy");
-                return copy.attr("deepcopy")(ChildrenToPy(self), memo);
-            },
-            py::arg("memo"))
-        .def("update",
-            [](lazyllm::DocNode::Children& self, py::object other, py::kwargs kwargs) {
-                if (!other.is_none()) {
-                    py::dict d = py::dict(other);
-                    for (auto item : d) {
-                        const std::string key = py::cast<std::string>(item.first);
-                        py::object value = py::reinterpret_borrow<py::object>(item.second);
-                        self[key] = NodeVectorFromPy(value);
-                    }
-                }
-                for (auto item : kwargs) {
-                    const std::string key = py::cast<std::string>(item.first);
-                    py::object value = py::reinterpret_borrow<py::object>(item.second);
-                    self[key] = NodeVectorFromPy(value);
-                }
-            },
-            py::arg("other") = py::none())
-        .def("__eq__",
-            [](const lazyllm::DocNode::Children& self, py::object other) {
-                py::dict lhs = ChildrenToPy(self);
-                if (py::isinstance<py::dict>(other) || py::hasattr(other, "items"))
-                    return py::bool_(lhs.equal(py::dict(other)));
-                return py::bool_(false);
-            },
-            py::is_operator());
+    pyu::RegisterMapAsMutableMapping(children_map);
+    pyu::BindDictLikeMethods<lazyllm::DocNode::Children>(
+        children_map,
+        [](const std::vector<lazyllm::PDocNode>& value) -> py::object { return py::cast(value); },
+        [](py::object value) { return NodeVectorFromPy(value); },
+        [](const lazyllm::DocNode::Children& self) { return ChildrenToPy(self); },
+        py::list()
+    );
 
     py::class_<lazyllm::DocNode, std::shared_ptr<lazyllm::DocNode>>(m, "DocNode", py::dynamic_attr())
         .def(py::init(&init),
