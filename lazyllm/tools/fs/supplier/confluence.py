@@ -5,17 +5,24 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import lazyllm
+from lazyllm import config
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
+config.add('confluence_token', str, None, 'CONFLUENCE_TOKEN', description='Confluence API token.')
+config.add('confluence_email', str, None, 'CONFLUENCE_EMAIL', description='Confluence cloud login email for Basic auth.')
+config.add('confluence_cloud_id', str, None, 'CONFLUENCE_CLOUD_ID', description='Confluence cloud instance ID.')
 
 _CLOUD_BASE = 'https://api.atlassian.com/ex/confluence'
 
 
 class ConfluenceFS(LazyLLMFSBase):
-    def __init__(self, token: str, base_url: Optional[str] = None,
+    def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  email: Optional[str] = None, cloud: bool = True,
                  cloud_id: Optional[str] = None, **storage_options):
+        token = token or config['confluence_token'] or ''
+        email = email or config['confluence_email']
+        cloud_id = cloud_id or config['confluence_cloud_id']
         self._email = email
         self._cloud = cloud
         self._cloud_id = cloud_id

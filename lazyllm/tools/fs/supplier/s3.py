@@ -1,9 +1,15 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from lazyllm import thirdparty
+from lazyllm import config, thirdparty
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
+
+config.add('s3_access_key', str, None, 'AWS_ACCESS_KEY_ID', description='S3 access key (boto3 official).')
+config.add('s3_secret_key', str, None, 'AWS_SECRET_ACCESS_KEY', description='S3 secret key (boto3 official).')
+config.add('s3_endpoint_url', str, None, 'CLOUDFS_S3_ENDPOINT_URL', description='S3-compatible endpoint URL (optional).')
+config.add('s3_region_name', str, None, 'AWS_DEFAULT_REGION', description='S3 region (boto3 official).')
 
 try:
     from botocore.exceptions import ClientError
@@ -19,10 +25,15 @@ class S3FS(LazyLLMFSBase):
                  endpoint_url: Optional[str] = None,
                  region_name: Optional[str] = None,
                  **storage_options):
-        self._access_key = access_key or token
-        self._secret_key = secret_key or ''
-        self._endpoint_url = endpoint_url
-        self._region_name = region_name
+        _ak = config['s3_access_key'] or os.environ.get('AWS_ACCESS_KEY_ID')
+        access_key = access_key or token or _ak or ''
+        secret_key = secret_key or config['s3_secret_key'] or os.environ.get('AWS_SECRET_ACCESS_KEY') or ''
+        endpoint_url = endpoint_url or config['s3_endpoint_url'] or ''
+        region_name = region_name or config['s3_region_name'] or os.environ.get('AWS_DEFAULT_REGION') or ''
+        self._access_key = access_key
+        self._secret_key = secret_key
+        self._endpoint_url = endpoint_url or None
+        self._region_name = region_name or None
         self._s3_client = None
         super().__init__(token=token or access_key or '', base_url=base_url, **storage_options)
 

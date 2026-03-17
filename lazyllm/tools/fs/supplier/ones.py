@@ -1,8 +1,11 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 from typing import Any, Dict, List, Optional
 
+from lazyllm import config
+
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
+config.add('ones_token', str, None, 'ONES_TOKEN', description='Ones API token.')
 
 _CLOUD_BASE = 'https://ones.ai/project/api/project'
 
@@ -11,7 +14,7 @@ class OnesFS(LazyLLMFSBase):
 
     def __init__(
         self,
-        token: str,
+        token: Optional[str] = None,
         user_id: Optional[str] = None,
         base_url: Optional[str] = None,
         asynchronous: bool = False,
@@ -19,6 +22,7 @@ class OnesFS(LazyLLMFSBase):
         skip_instance_cache: bool = False,
         loop: Optional[Any] = None,
     ):
+        token = token or config['ones_token'] or ''
         if ':' in token and not user_id:
             uid, tok = token.split(':', 1)
             self._user_id = uid

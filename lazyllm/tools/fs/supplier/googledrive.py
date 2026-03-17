@@ -1,13 +1,17 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import json
+import os
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union, Tuple
 
 import lazyllm
+from lazyllm import config
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
+config.add('googledrive_credentials', str, None, 'GOOGLE_APPLICATION_CREDENTIALS',
+           description='Path to Google service account JSON (ADC).')
 
 _API_BASE = 'https://www.googleapis.com/drive/v3'
 _UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3'
@@ -26,6 +30,8 @@ class GoogleDriveFS(LazyLLMFSBase):
         skip_instance_cache: bool = False,
         loop: Optional[Any] = None,
     ):
+        credentials = (credentials or config['googledrive_credentials']
+                       or os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'))
         secret_payload: Optional[Dict] = None
         if credentials:
             if isinstance(credentials, str):

@@ -3,7 +3,11 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from lazyllm import config
+
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
+
+config.add('obsidian_vault_path', str, None, 'OBSIDIAN_VAULT_PATH', description='Obsidian vault directory path.')
 
 
 class ObsidianFS(LazyLLMFSBase):
@@ -17,6 +21,7 @@ class ObsidianFS(LazyLLMFSBase):
         skip_instance_cache: bool = False,
         loop: Optional[Any] = None,
     ):
+        token = token or config['obsidian_vault_path'] or ''
         vault = (token or '').strip() or '.'
         self._vault_root = os.path.abspath(os.path.expanduser(vault))
         super().__init__(

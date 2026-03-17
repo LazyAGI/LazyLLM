@@ -1,11 +1,14 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import lazyllm
+from lazyllm import config
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
+config.add('notion_token', str, None, 'NOTION_TOKEN', description='Notion API token (notion-client official env).')
 
 _API_BASE = 'https://api.notion.com/v1'
 _NOTION_VERSION = '2022-06-28'
@@ -13,7 +16,9 @@ _NOTION_VERSION = '2022-06-28'
 
 class NotionFS(LazyLLMFSBase):
 
-    def __init__(self, token: str, base_url: Optional[str] = None, **storage_options):
+    def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None, **storage_options):
+        token = (token or config['notion_token'] or os.environ.get('NOTION_TOKEN')
+                 or os.environ.get('NOTION_API_KEY') or '')
         super().__init__(token=token, base_url=base_url or _API_BASE, **storage_options)
 
     def _setup_auth(self) -> None:

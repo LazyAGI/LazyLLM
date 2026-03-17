@@ -4,7 +4,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from lazyllm import config
+
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
+
+config.add('feishu_app_id', str, None, 'FEISHU_APP_ID', description='Feishu App ID for tenant_access_token.')
+config.add('feishu_app_secret', str, None, 'FEISHU_APP_SECRET', description='Feishu App Secret for tenant_access_token.')
 
 
 _API_BASE = 'https://open.feishu.cn/open-apis'
@@ -41,48 +46,24 @@ def _feishu_acquire_access_token(
 
 class FeishuFS(LazyLLMFSBase):
 
-    def __new__(
-        cls,
-        base_url: Optional[str] = None,
-        app_id: Optional[str] = None,
-        app_secret: Optional[str] = None,
-        space_id: Optional[str] = None,
-        asynchronous: bool = False,
-        use_listings_cache: bool = False,
-        skip_instance_cache: bool = False,
-        loop: Optional[Any] = None,
-    ):
+    def __new__(cls, base_url: Optional[str] = None, app_id: Optional[str] = None, app_secret: Optional[str] = None,
+                space_id: Optional[str] = None, asynchronous: bool = False, use_listings_cache: bool = False,
+                skip_instance_cache: bool = False, loop: Optional[Any] = None) -> LazyLLMFSBase:
+        if not app_id or not app_secret:
+            app_id = app_id or config['feishu_app_id']
+            app_secret = app_secret or config['feishu_app_secret']
+            assert app_id and app_secret, 'feishu_app_id and feishu_app_secret are required'
         if space_id is not None and str(space_id).strip():
-            return FeishuWikiFS(
-                base_url=base_url,
-                app_id=app_id,
-                app_secret=app_secret,
-                space_id=str(space_id).strip(),
-                asynchronous=asynchronous,
-                use_listings_cache=use_listings_cache,
-                skip_instance_cache=skip_instance_cache,
-                loop=loop,
-            )
+            return FeishuWikiFS(base_url=base_url, app_id=app_id, app_secret=app_secret, space_id=space_id,
+                                asynchronous=asynchronous, use_listings_cache=use_listings_cache,
+                                skip_instance_cache=skip_instance_cache, loop=loop)
         return super().__new__(cls)
 
-    def __init__(
-        self,
-        base_url: Optional[str] = None,
-        app_id: Optional[str] = None,
-        app_secret: Optional[str] = None,
-        space_id: Optional[str] = None,
-        asynchronous: bool = False,
-        use_listings_cache: bool = False,
-        skip_instance_cache: bool = False,
-        loop: Optional[Any] = None,
-    ):
-        del space_id
-        token_payload: Dict[str, Any] = {
-            'app_id': app_id or '',
-            'app_secret': app_secret or '',
-        }
+    def __init__(self, base_url: Optional[str] = None, app_id: Optional[str] = None, app_secret: Optional[str] = None,
+                 asynchronous: bool = False, use_listings_cache: bool = False, skip_instance_cache: bool = False,
+                 loop: Optional[Any] = None):
         super().__init__(
-            token=token_payload,
+            token={'app_id': app_id, 'app_secret': app_secret},
             base_url=base_url or _API_BASE,
             asynchronous=asynchronous,
             use_listings_cache=use_listings_cache,
@@ -262,27 +243,16 @@ class FeishuFS(LazyLLMFSBase):
 
 
 class FeishuWikiFS(LazyLLMFSBase):
+    __lazyllm_registry_disable__ = True
 
-    def __init__(
-        self,
-        base_url: Optional[str] = None,
-        app_id: Optional[str] = None,
-        app_secret: Optional[str] = None,
-        space_id: Optional[str] = None,
-        asynchronous: bool = False,
-        use_listings_cache: bool = False,
-        skip_instance_cache: bool = False,
-        loop: Optional[Any] = None,
-    ):
-        token_payload: Dict[str, Any] = {
-            'app_id': app_id or '',
-            'app_secret': app_secret or '',
-        }
+    def __init__(self, base_url: Optional[str] = None, app_id: Optional[str] = None, app_secret: Optional[str] = None,
+                 space_id: Optional[str] = None, asynchronous: bool = False, use_listings_cache: bool = False,
+                 skip_instance_cache: bool = False, loop: Optional[Any] = None):
         self._space_id = (space_id or '').strip()
         if not self._space_id:
             raise ValueError('space_id is required for FeishuWikiFS')
         super().__init__(
-            token=token_payload,
+            token={'app_id': app_id, 'app_secret': app_secret},
             base_url=base_url or _API_BASE,
             asynchronous=asynchronous,
             use_listings_cache=use_listings_cache,

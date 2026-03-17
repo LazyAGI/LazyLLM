@@ -1,18 +1,22 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import lazyllm
+from lazyllm import config
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
+config.add('yuque_token', str, None, 'YUQUE_TOKEN', description='Yuque API token (yuque-sdk official env).')
 
 _API_BASE = 'https://www.yuque.com/api/v2'
 
 
 class YuqueFS(LazyLLMFSBase):
 
-    def __init__(self, token: str, base_url: Optional[str] = None, **storage_options):
+    def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None, **storage_options):
+        token = token or config['yuque_token'] or os.environ.get('YUQUE_TOKEN') or ''
         super().__init__(token=token, base_url=base_url or _API_BASE, **storage_options)
 
     def _setup_auth(self) -> None:

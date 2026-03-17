@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 import time
+import threading
 
 from lazyllm import thirdparty
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
@@ -36,30 +37,18 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     protocol: str = 'cloudfs'
 
-    def __init__(
-        self,
-        token: Any,
-        base_url: Optional[str] = None,
-        asynchronous: bool = False,
-        use_listings_cache: bool = False,
-        skip_instance_cache: bool = False,
-        loop: Optional[Any] = None,
-    ):
-        AbstractFileSystem.__init__(
-            self,
-            asynchronous=asynchronous,
-            use_listings_cache=use_listings_cache,
-            skip_instance_cache=skip_instance_cache,
-            loop=loop,
-        )
+    def __init__(self, token: Any, base_url: Optional[str] = None, asynchronous: bool = False,
+                 use_listings_cache: bool = False, skip_instance_cache: bool = False, loop: Optional[Any] = None):
+        super().__init__(asynchronous=asynchronous, use_listings_cache=use_listings_cache,
+                         skip_instance_cache=skip_instance_cache, loop=loop)
         # Long-lived credential (string or dict), semantics decided by subclasses.
         self._secret_key: Any = token
         # Expiration timestamp for short-lived access token; None means non-expiring.
         self._token_expire_at: Optional[float] = None
         self._base_url = (base_url or '').rstrip('/')
         self._session = requests.Session()
-        self._session.headers.update({'User-Agent': 'lazyllm-fs/1.0'})
         self._setup_auth()
+        self._lock = threading.Lock()
 
     @staticmethod
     def __lazyllm_after_registry_hook__(cls, group_name: str, name: str, isleaf: bool):
@@ -84,11 +73,8 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         pass
 
     @abstractmethod
-    def _open(self, path: str, mode: str = 'rb',
-              block_size: Optional[int] = None,
-              autocommit: bool = True,
-              cache_options: Optional[Dict] = None,
-              **kwargs) -> CloudFSBufferedFile:
+    def _open(self, path: str, mode: str = 'rb', block_size: Optional[int] = None, autocommit: bool = True,
+              cache_options: Optional[Dict] = None, **kwargs) -> CloudFSBufferedFile:
         pass
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
@@ -103,7 +89,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
     def rm_file(self, path: str) -> None:
         raise NotImplementedError(f'{self.__class__.__name__}.rm_file is not implemented')
 
-    def rm(self, path: str, recursive: bool = False, maxdepth: Optional[int] = None) -> None:
+    def rm(self, path: str, recursive: bool = False) -> None:
         if self.isdir(path) and recursive:  # type: ignore[attr-defined]
             for entry in self.ls(path, detail=True):
                 self.rm(entry['name'], recursive=True)
@@ -131,10 +117,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
     def _register_webhook(self, webhook_url: str, events: List[str], path: str) -> Dict[str, Any]:
         return {'mode': 'none'}
 
-    def register_webhook(
-        self, path: str, webhook_url: str,
-        events: Optional[List[str]] = None, **kwargs
-    ) -> Dict[str, Any]:
+    def register_webhook(self, path: str, webhook_url: str, events: Optional[List[str]] = None) -> Dict[str, Any]:
         if not self.supports_webhook():
             return {'mode': 'none'}
         return self._register_webhook(webhook_url, events or ['*'], path)
@@ -147,10 +130,12 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     def _ensure_token(self) -> None:
         if not self._token_expire_at or time.time() < self._token_expire_at: return
-        token, expires_at = self._acquire_access_token()
-        if not token: return
-        self._apply_access_token(token)
-        self._token_expire_at = expires_at
+        with self._lock:
+            if time.time() < self._token_expire_at: return
+            token, expires_at = self._acquire_access_token()
+            if not token: raise ValueError('Failed to acquire access token')
+            self._apply_access_token(token)
+            self._token_expire_at = expires_at
 
     def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
         return '', None
@@ -182,8 +167,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         return self._json_or_empty(self._request('PATCH', url, **kwargs))
 
     def _delete(self, url: str, **kwargs) -> Any:
-        resp = self._request('DELETE', url, **kwargs)
-        return self._json_or_empty(resp)
+        return self._json_or_empty(self._request('DELETE', url, **kwargs))
 
     @staticmethod
     def _entry(name: str, size: int = 0, ftype: str = 'file',

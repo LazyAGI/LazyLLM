@@ -1,12 +1,19 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import os
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
+from lazyllm import config
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
+config.add('onedrive_client_id', str, None, 'AZURE_CLIENT_ID',
+           description='OneDrive/Microsoft Graph client ID.')
+config.add('onedrive_client_secret', str, None, 'AZURE_CLIENT_SECRET',
+           description='OneDrive/Microsoft Graph client secret.')
+config.add('onedrive_tenant_id', str, None, 'AZURE_TENANT_ID', description='OneDrive/Microsoft Graph tenant ID.')
 
 _GRAPH_BASE = 'https://graph.microsoft.com/v1.0'
 _TOKEN_REFRESH_BUFFER = 300  # refresh 5 min before expiry
@@ -25,13 +32,16 @@ class OneDriveFS(LazyLLMFSBase):
         skip_instance_cache: bool = False,
         loop: Optional[Any] = None,
     ):
+        client_id = client_id or config['onedrive_client_id'] or os.environ.get('AZURE_CLIENT_ID')
+        client_secret = client_secret or config['onedrive_client_secret'] or os.environ.get('AZURE_CLIENT_SECRET')
+        tenant_id = tenant_id or config['onedrive_tenant_id'] or os.environ.get('AZURE_TENANT_ID') or 'common'
         self._client_id = client_id
         self._client_secret = client_secret
         self._tenant_id = tenant_id or 'common'
         super().__init__(
             token={
-                'client_id': client_id or '',
-                'client_secret': client_secret or '',
+                'client_id': self._client_id or '',
+                'client_secret': self._client_secret or '',
                 'tenant_id': self._tenant_id,
             },
             base_url=base_url or _GRAPH_BASE,
