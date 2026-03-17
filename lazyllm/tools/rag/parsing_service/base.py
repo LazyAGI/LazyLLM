@@ -1,15 +1,25 @@
-from pydantic import BaseModel, Field, model_validator
-from typing import Dict, List, Optional, Any
+from pydantic import BaseModel, Field, BeforeValidator, model_validator, model_validator
+from typing import Dict, List, Optional, Any, Annotated
 from enum import Enum
 from uuid import uuid4
 from datetime import datetime
 
+class TransferParams(BaseModel):
+    mode: Optional[str] = 'cp'  # cp or mv
+    target_algo_id: str
+    target_doc_id: str
+    target_kb_id: str
+
+
+EmptyTransfer = Annotated[TransferParams | None, BeforeValidator(lambda v: None if v == {} else v)]
 
 class FileInfo(BaseModel):
     file_path: Optional[str] = None
     doc_id: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = {}
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     reparse_group: Optional[str] = None
+    transformed_file_path: Optional[str] = None
+    transfer_params: EmptyTransfer = None
 
 
 class DBInfo(BaseModel):
@@ -23,6 +33,9 @@ class DBInfo(BaseModel):
     options_str: Optional[str] = None
 
 
+EmptyDBInfo = Annotated[DBInfo | None, BeforeValidator(lambda v: None if v == {} else v)]
+
+
 class AddDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     algo_id: Optional[str] = '__default__'
@@ -31,7 +44,7 @@ class AddDocRequest(BaseModel):
     priority: Optional[int] = 0
     callback_url: Optional[str] = None
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
-    db_info: Optional[DBInfo] = None
+    db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None
 
     @model_validator(mode='before')
@@ -51,7 +64,7 @@ class UpdateMetaRequest(BaseModel):
     priority: Optional[int] = 0
     callback_url: Optional[str] = None
     # NOTE: (db_info) is deprecated, will be removed in the future
-    db_info: Optional[DBInfo] = None
+    db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None
 
     @model_validator(mode='before')
@@ -71,7 +84,7 @@ class DeleteDocRequest(BaseModel):
     priority: Optional[int] = 0
     callback_url: Optional[str] = None
     # NOTE: (db_info) is deprecated, will be removed in the future
-    db_info: Optional[DBInfo] = None
+    db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None
 
     @model_validator(mode='before')
@@ -125,6 +138,44 @@ def _calculate_task_score(task_type: str, user_priority: int) -> int:
     return type_weight * 10 - user_priority * 15
 
 
+def _resolve_add_doc_task_type(request: AddDocRequest) -> str:  # noqa: C901
+    new_file_ids = []
+    reparse_file_ids = []
+    transfer_mode = None
+    target_algo_id = None
+    target_kb_id = None
+
+    for file_info in request.file_infos:
+        if file_info.reparse_group is not None:
+            reparse_file_ids.append(file_info.doc_id)
+        else:
+            new_file_ids.append(file_info.doc_id)
+            if file_info.transfer_params:
+                if target_algo_id is not None and target_algo_id != file_info.transfer_params.target_algo_id:
+                    raise ValueError('transfer_params.target_algo_id must be the same for all files')
+                if target_kb_id is not None and target_kb_id != file_info.transfer_params.target_kb_id:
+                    raise ValueError('transfer_params.target_kb_id must be the same for all files')
+                if transfer_mode is not None and transfer_mode != file_info.transfer_params.mode:
+                    raise ValueError('transfer_params.mode must be the same for all files')
+                if file_info.transfer_params.target_algo_id != request.algo_id:
+                    raise ValueError('transfer_params.target_algo_id must be the same for all files')
+                target_algo_id = file_info.transfer_params.target_algo_id
+                target_kb_id = file_info.transfer_params.target_kb_id
+                transfer_mode = file_info.transfer_params.mode
+                if transfer_mode not in ['cp', 'mv']:
+                    raise ValueError('transfer_params.mode must be one of [cp, mv]')
+
+    if new_file_ids and reparse_file_ids:
+        raise ValueError('new_file_ids and reparse_file_ids cannot be specified at the same time')
+    if transfer_mode:
+        return TaskType.DOC_TRANSFER.value
+    if new_file_ids:
+        return TaskType.DOC_ADD.value
+    if reparse_file_ids:
+        return TaskType.DOC_REPARSE.value
+    raise ValueError('no input files or reparse group specified')
+
+
 # Waiting task queue table
 WAITING_TASK_QUEUE_TABLE_INFO = {
     'name': 'lazyllm_waiting_task_queue',
@@ -142,8 +193,16 @@ WAITING_TASK_QUEUE_TABLE_INFO = {
          'comment': 'Calculated task score (for sorting, lower score is higher priority)'},
         {'name': 'message', 'data_type': 'string', 'nullable': False,
          'comment': 'Task message (json string, serialized from request body)'},
+        {'name': 'status', 'data_type': 'string', 'nullable': False, 'default': TaskStatus.WAITING.value,
+         'comment': 'Task status: WAITING, WORKING'},
+        {'name': 'worker_id', 'data_type': 'string', 'nullable': True,
+         'comment': 'Worker ID holding the lease'},
+        {'name': 'lease_expires_at', 'data_type': 'datetime', 'nullable': True,
+         'comment': 'Lease expiration time for in-progress task'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,
-         'comment': 'Creation time (auto-generated)', 'default': datetime.now()},
+         'comment': 'Creation time (auto-generated)', 'default': datetime.now},
+        {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False,
+         'comment': 'Last update time (auto-generated)', 'default': datetime.now},
     ]
 }
 
