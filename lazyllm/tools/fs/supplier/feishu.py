@@ -1,4 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -15,6 +16,8 @@ config.add('feishu_app_id', str, None, 'FEISHU_APP_ID', description='Feishu App 
 config.add('feishu_app_secret', str, None, 'FEISHU_APP_SECRET', description='Feishu App Secret for tenant_access_token.')
 
 
+_TOKENS_FILE = os.path.join(config['home'], '.lazyllm/tokens.txt')
+
 _API_BASE = 'https://open.feishu.cn/open-apis'
 _TOKEN_URL = 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal'
 _USER_TOKEN_URL = 'https://open.feishu.cn/open-apis/authen/v2/oauth/token'
@@ -29,6 +32,39 @@ _DEFAULT_OAUTH_SCOPE = (
     'drive:drive drive:drive:readonly drive:drive.metadata:readonly '
     'wiki:wiki wiki:wiki:readonly wiki:node:retrieve'
 )
+
+
+def _load_persisted_token(key: str) -> str:
+    try:
+        with open(_TOKENS_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                k, sep, v = line.strip().partition(': ')
+                if sep and k.strip() == key:
+                    return v.strip()
+    except FileNotFoundError:
+        pass
+    return ''
+
+
+def _save_persisted_token(key: str, value: str) -> None:
+    os.makedirs(os.path.dirname(_TOKENS_FILE), exist_ok=True)
+    lines: List[str] = []
+    found = False
+    try:
+        with open(_TOKENS_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                k, sep, _ = line.strip().partition(': ')
+                if sep and k.strip() == key:
+                    lines.append(f'{key}: {value}\n')
+                    found = True
+                else:
+                    lines.append(line if line.endswith('\n') else line + '\n')
+    except FileNotFoundError:
+        pass
+    if not found:
+        lines.append(f'{key}: {value}\n')
+    with open(_TOKENS_FILE, 'w', encoding='utf-8') as f:
+        f.writelines(lines)
 
 
 def _feishu_acquire_access_token(
@@ -183,6 +219,7 @@ class FeishuFSBase(LazyLLMFSBase):
             app_id, app_secret = config['feishu_app_id'] or app_id, config['feishu_app_secret']
         assert app_id and app_secret, 'feishu_app_id and feishu_app_secret are required'
         # _secret_key stores app credentials; _user_refresh_token / _oauth_port managed separately
+        self._oauth_auto: bool = (user_refresh_token == 'auto')
         self._user_refresh_token: str = user_refresh_token or ''
         self._oauth_port: int = oauth_port
         self._oauth_scope: str = oauth_scope
@@ -207,16 +244,34 @@ class FeishuFSBase(LazyLLMFSBase):
             'Content-Type': 'application/json; charset=utf-8',
         })
 
+    def _do_oauth(self, token_key: str) -> Tuple[str, Optional[float]]:
+        code, redirect_uri = _feishu_oauth_get_code(self._app_id, self._oauth_port, self._oauth_scope)
+        token, expires_at, self._user_refresh_token = _feishu_exchange_code(
+            self._session, self._app_id, self._app_secret, code, redirect_uri)
+        _save_persisted_token(token_key, self._user_refresh_token)
+        return token, expires_at
+
     def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
+        token_key = f'feishu:{self._app_id}'
         if self._user_refresh_token == 'auto':
-            code, redirect_uri = _feishu_oauth_get_code(self._app_id, self._oauth_port, self._oauth_scope)
-            token, expires_at, self._user_refresh_token = _feishu_exchange_code(
-                self._session, self._app_id, self._app_secret, code, redirect_uri)
-            return token, expires_at
+            persisted = _load_persisted_token(token_key)
+            if persisted:
+                self._user_refresh_token = persisted
+            else:
+                return self._do_oauth(token_key)
         if self._user_refresh_token:
-            token, expires_at, self._user_refresh_token = _feishu_refresh_user_token(
-                self._session, self._app_id, self._app_secret, self._user_refresh_token)
-            return token, expires_at
+            try:
+                token, expires_at, self._user_refresh_token = _feishu_refresh_user_token(
+                    self._session, self._app_id, self._app_secret, self._user_refresh_token)
+                _save_persisted_token(token_key, self._user_refresh_token)
+                return token, expires_at
+            except Exception:
+                if not self._oauth_auto:
+                    raise
+                LOG.warning(f'Feishu refresh_token for {self._app_id} is invalid, re-authenticating via OAuth.')
+                self._user_refresh_token = ''
+                _save_persisted_token(token_key, '')
+                return self._do_oauth(token_key)
         return _feishu_acquire_access_token(self._session, self._app_id, self._app_secret)
 
     def _apply_access_token(self, token: str) -> None:
@@ -225,12 +280,22 @@ class FeishuFSBase(LazyLLMFSBase):
     def get_user_refresh_token(self) -> str:
         return self._user_refresh_token
 
-    @staticmethod
-    def _token_from_path(path: str) -> str:
-        stripped = path.lstrip('/')
-        if not stripped:
-            return ''
-        return stripped.split('/')[-1]
+    def _upload_file_to_drive(self, name: str, data: bytes, folder_token: str = '') -> str:
+        resp_data = self._post(f'{self._base_url}/drive/v1/files/upload_prepare', json={
+            'file_name': name, 'parent_type': 'explorer',
+            'parent_node': folder_token or 'root', 'size': len(data),
+        })
+        upload_id = resp_data.get('data', {}).get('upload_id', '')
+        block_size = resp_data.get('data', {}).get('block_size', len(data))
+        num_blocks = resp_data.get('data', {}).get('block_num', 1)
+        for i in range(num_blocks):
+            chunk = data[i * block_size: (i + 1) * block_size]
+            self._request('POST', f'{self._base_url}/drive/v1/files/upload_part', data={
+                'upload_id': upload_id, 'seq': str(i), 'size': str(len(chunk)), 'file': chunk,
+            })
+        result = self._post(f'{self._base_url}/drive/v1/files/upload_finish',
+                            json={'upload_id': upload_id, 'block_num': num_blocks})
+        return result.get('data', {}).get('file_token', '')
 
 
 class FeishuFS(FeishuFSBase):
@@ -248,148 +313,118 @@ class FeishuFS(FeishuFSBase):
                                 skip_instance_cache=skip_instance_cache, loop=loop)
         return super().__new__(cls)
 
-    def ls(self, path: str = '/', detail: bool = True, **kwargs) -> List:
-        folder_token = self._token_from_path(path)
+    def _list_files_raw(self, folder_token: str = '') -> List[Dict[str, Any]]:
         url = f'{self._base_url}/drive/v1/files'
         # Root listing does not support pagination; do not send page_size (API returns 400).
         params: Dict[str, Any] = {}
         if folder_token:
             params['folder_token'] = folder_token
             params['page_size'] = 200
-
-        results = []
-        page_token = None
+        results: List[Dict[str, Any]] = []
+        page_token: Optional[str] = None
         while True:
             if page_token:
                 params['page_token'] = page_token
             data = self._get(url, params=params)
-            items = data.get('data', {}).get('files', []) or []
-            for item in items:
-                entry = self._item_to_entry(item)
-                results.append(entry if detail else entry['name'])
+            results.extend(data.get('data', {}).get('files', []) or [])
             if not folder_token:
                 break  # Root: no pagination
             if not (page_token := data.get('data', {}).get('next_page_token')):
                 break
         return results
 
+    def _resolve_path_to_token(self, path: str) -> str:
+        parts = [p for p in path.strip('/').split('/') if p]
+        if not parts:
+            return ''
+        current_token = ''
+        for i, part in enumerate(parts):
+            items = self._list_files_raw(current_token)
+            match = next((it for it in items if it.get('name') == part), None)
+            if match is None:
+                raise FileNotFoundError(f"'{part}' not found under '/{'/'.join(parts[:i])}'")
+            current_token = match.get('token') or ''
+        return current_token
+
+    def ls(self, path: str = '/', detail: bool = True, **kwargs) -> List:
+        folder_token = self._resolve_path_to_token(path)
+        items = self._list_files_raw(folder_token)
+        entries = [self._item_to_entry(item) for item in items]
+        return entries if detail else [e['name'] for e in entries]
+
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
-        token = self._token_from_path(path)
+        token = self._resolve_path_to_token(path)
         if not token:
             return self._entry('/', ftype='directory')
+        name = path.rstrip('/').split('/')[-1]
         url = f'{self._base_url}/drive/v1/files/{token}/statistics'
         try:
             data = self._get(url)
             stat = data.get('data', {}).get('stats', {})
-            return self._entry(
-                name=path, size=0, ftype='file',
-                mtime=stat.get('edit_time'), extra_info=stat,
-            )
+            return self._entry(name=name, size=0, ftype='file', mtime=stat.get('edit_time'), extra_info=stat)
         except Exception:
-            return self._entry(name=path, ftype='directory')
+            return self._entry(name=name, ftype='directory')
 
-    def _open(self, path: str, mode: str = 'rb',
-              block_size: Optional[int] = None,
-              autocommit: bool = True,
-              cache_options: Optional[Dict] = None,
+    def _open(self, path: str, mode: str = 'rb', block_size: Optional[int] = None,
+              autocommit: bool = True, cache_options: Optional[Dict] = None,
               **kwargs) -> CloudFSBufferedFile:
-        return CloudFSBufferedFile(
-            self, path, mode=mode,
-            block_size=block_size or self.blocksize,
-            autocommit=autocommit, cache_options=cache_options,
-        )
+        return CloudFSBufferedFile(self, path, mode=mode, block_size=block_size or self.blocksize,
+                                   autocommit=autocommit, cache_options=cache_options)
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
-        parts = self._parse_path(path)
-        if len(parts) >= 2:
-            parent_token, name = parts[-2], parts[-1]
-        else:
-            parent_token = ''
-            name = parts[0] if parts else 'New Folder'
-        url = f'{self._base_url}/drive/v1/files/create_folder'
+        parts = [p for p in path.strip('/').split('/') if p]
+        if not parts:
+            return
+        name = parts[-1]
+        parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
         payload: Dict[str, Any] = {'name': name}
         if parent_token:
             payload['folder_token'] = parent_token
-        self._post(url, json=payload)
+        self._post(f'{self._base_url}/drive/v1/files/create_folder', json=payload)
 
     def rm_file(self, path: str) -> None:
-        token = self._token_from_path(path)
+        token = self._resolve_path_to_token(path)
         if not token:
-            raise FileNotFoundError(f'Cannot determine file token from path: {path!r}')
-        url = f'{self._base_url}/drive/v1/files/{token}'
-        self._delete(url, params={'type': 'file'})
+            raise FileNotFoundError(f'Cannot resolve path: {path!r}')
+        self._delete(f'{self._base_url}/drive/v1/files/{token}', params={'type': 'file'})
 
     def rmdir(self, path: str) -> None:
-        token = self._token_from_path(path)
+        token = self._resolve_path_to_token(path)
         if not token:
             return
-        url = f'{self._base_url}/drive/v1/files/{token}'
-        self._delete(url, params={'type': 'folder'})
+        self._delete(f'{self._base_url}/drive/v1/files/{token}', params={'type': 'folder'})
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
-        token = self._token_from_path(path)
-        url = f'{self._base_url}/drive/v1/files/{token}/download'
-        headers = {'Range': f'bytes={start}-{end - 1}'}
-        resp = self._request('GET', url, headers=headers)
+        token = self._resolve_path_to_token(path)
+        resp = self._request('GET', f'{self._base_url}/drive/v1/files/{token}/download',
+                             headers={'Range': f'bytes={start}-{end - 1}'})
         return resp.content
 
     def _upload_data(self, path: str, data: bytes) -> None:
-        parent, name = self._split_parent_name(path)
-        prepare_url = f'{self._base_url}/drive/v1/files/upload_prepare'
-        prepare_payload = {
-            'file_name': name,
-            'parent_type': 'explorer',
-            'parent_node': parent or 'root',
-            'size': len(data),
-        }
-        resp_data = self._post(prepare_url, json=prepare_payload)
-        upload_id = resp_data.get('data', {}).get('upload_id', '')
-        block_size = resp_data.get('data', {}).get('block_size', len(data))
-        num_blocks = resp_data.get('data', {}).get('block_num', 1)
-
-        part_url = f'{self._base_url}/drive/v1/files/upload_part'
-        for i in range(num_blocks):
-            chunk = data[i * block_size: (i + 1) * block_size]
-            self._request('POST', part_url, data={
-                'upload_id': upload_id,
-                'seq': str(i),
-                'size': str(len(chunk)),
-                'file': chunk,
-            })
-
-        finish_url = f'{self._base_url}/drive/v1/files/upload_finish'
-        self._post(finish_url, json={'upload_id': upload_id, 'block_num': num_blocks})
+        parts = [p for p in path.strip('/').split('/') if p]
+        name = parts[-1] if parts else 'untitled'
+        parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
+        self._upload_file_to_drive(name, data, folder_token=parent_token)
 
     def _platform_supports_webhook(self) -> bool:
         return True
 
     def _register_webhook(self, webhook_url: str, events: List[str], path: str) -> Dict[str, Any]:
-        token = self._token_from_path(path)
-        url = f'{self._base_url}/event/v1/bot/customize/event_callback'
-        payload: Dict[str, Any] = {
-            'event_type': events or ['drive.file.edit_v1'],
-            'callback_url': webhook_url,
-        }
+        token = self._resolve_path_to_token(path) if path and path != '/' else ''
+        payload: Dict[str, Any] = {'event_type': events or ['drive.file.edit_v1'], 'callback_url': webhook_url}
         if token:
             payload['file_token'] = token
-        return self._post(url, json=payload)
-
-    @staticmethod
-    def _split_parent_name(path: str) -> tuple:
-        parts = path.strip('/').split('/')
-        if len(parts) >= 2:
-            return parts[-2], parts[-1]
-        return '', parts[-1] if parts else ''
+        return self._post(f'{self._base_url}/event/v1/bot/customize/event_callback', json=payload)
 
     @staticmethod
     def _item_to_entry(item: Dict[str, Any]) -> Dict[str, Any]:
         ftype = 'directory' if item.get('type') == 'folder' else 'file'
-        name = item.get('token') or item.get('name', '')
+        name = item.get('name', '')
         mtime = item.get('modified_time') or item.get('edit_time')
         return LazyLLMFSBase._entry(
             name=name, size=item.get('size', 0), ftype=ftype,
             mtime=float(mtime) if mtime else None,
-            title=item.get('name', name),
+            title=name, token=item.get('token') or '',
         )
 
 
@@ -400,63 +435,80 @@ class FeishuWikiFS(FeishuFSBase):
         if not self._space_id:
             raise ValueError('space_id is required for FeishuWikiFS')
 
-    def ls(self, path: str, detail: bool = True, **kwargs) -> List:
-        self._require_space_id()
-        node_token = self._token_from_path(path)
+    def _list_nodes_raw(self, parent_token: str = '') -> List[Dict[str, Any]]:
         url = f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes'
-        params: Dict[str, Any] = {'page_size': 50}  # Wiki API max is 50
-        if node_token:
-            params['parent_node_token'] = node_token
-
-        results: List[Any] = []
+        params: Dict[str, Any] = {'page_size': 50}
+        if parent_token:
+            params['parent_node_token'] = parent_token
+        results: List[Dict[str, Any]] = []
         page_token: Optional[str] = None
         while True:
             if page_token:
                 params['page_token'] = page_token
             data = self._get(url, params=params)
-            items = (
-                data.get('data', {}).get('items')
-                or data.get('data', {}).get('nodes')
-                or []
-            )
-            for item in items:
-                entry = self._node_to_entry(item)
-                results.append(entry if detail else entry['name'])
+            results.extend(data.get('data', {}).get('items') or data.get('data', {}).get('nodes') or [])
             if not (page_token := data.get('data', {}).get('page_token') or data.get('data', {}).get('next_page_token')):
                 break
         return results
 
+    def _resolve_path_to_token(self, path: str) -> str:
+        parts = [p for p in path.strip('/').split('/') if p]
+        if not parts:
+            return ''
+        current_token = ''
+        for i, part in enumerate(parts):
+            nodes = self._list_nodes_raw(current_token)
+            match = next((n for n in nodes if (n.get('title') or '') == part), None)
+            if match is None:
+                raise FileNotFoundError(f"'{part}' not found under '/{'/'.join(parts[:i])}'")
+            current_token = match.get('node_token') or ''
+        return current_token
+
+    def ls(self, path: str = '/', detail: bool = True, **kwargs) -> List:
+        self._require_space_id()
+        node_token = self._resolve_path_to_token(path)
+        items = self._list_nodes_raw(node_token)
+        entries = [self._node_to_entry(item) for item in items]
+        return entries if detail else [e['name'] for e in entries]
+
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
-        token = self._token_from_path(path)
+        token = self._resolve_path_to_token(path)
         if not token:
             return self._entry('/', ftype='directory')
         node = self._get_node(token)
-        return self._node_to_entry(node, default_name=path)
+        name = path.rstrip('/').split('/')[-1] if path != '/' else '/'
+        return self._node_to_entry(node, default_name=name)
 
-    def _open(self, path: str, mode: str = 'rb',
-              block_size: Optional[int] = None,
-              autocommit: bool = True,
-              cache_options: Optional[Dict] = None,
+    def _open(self, path: str, mode: str = 'rb', block_size: Optional[int] = None,
+              autocommit: bool = True, cache_options: Optional[Dict] = None,
               **kwargs) -> CloudFSBufferedFile:
         if 'b' not in mode:
             raise ValueError('FeishuWikiFS only supports binary mode')
-        return CloudFSBufferedFile(
-            self, path, mode=mode,
-            block_size=block_size or self.blocksize,
-            autocommit=autocommit, cache_options=cache_options,
-        )
+        return CloudFSBufferedFile(self, path, mode=mode, block_size=block_size or self.blocksize,
+                                   autocommit=autocommit, cache_options=cache_options)
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
-        raise NotImplementedError('FeishuWikiFS does not support mkdir yet')
+        parts = [p for p in path.strip('/').split('/') if p]
+        if not parts:
+            return
+        parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
+        url = f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes'
+        payload: Dict[str, Any] = {'obj_type': 'docx', 'node_type': 'origin'}
+        if parent_token:
+            payload['parent_node_token'] = parent_token
+        self._post(url, json=payload)
 
     def rm_file(self, path: str) -> None:
-        raise NotImplementedError('FeishuWikiFS does not support rm_file yet')
+        token = self._resolve_path_to_token(path)
+        if not token:
+            raise FileNotFoundError(path)
+        self._delete(f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes/{token}')
 
     def rmdir(self, path: str) -> None:
-        raise NotImplementedError('FeishuWikiFS does not support rmdir yet')
+        self.rm_file(path)
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
-        token = self._token_from_path(path)
+        token = self._resolve_path_to_token(path)
         if not token:
             raise FileNotFoundError(path)
         node = self._get_node(token)
@@ -473,7 +525,14 @@ class FeishuWikiFS(FeishuFSBase):
         return data[start:end]
 
     def _upload_data(self, path: str, data: bytes) -> None:
-        raise NotImplementedError('FeishuWikiFS does not support write yet')
+        parts = [p for p in path.strip('/').split('/') if p]
+        name = parts[-1] if parts else 'untitled'
+        parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
+        file_token = self._upload_file_to_drive(name, data)
+        payload: Dict[str, Any] = {'obj_type': 'file', 'obj_token': file_token, 'node_type': 'origin'}
+        if parent_token:
+            payload['parent_node_token'] = parent_token
+        self._post(f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes', json=payload)
 
     def _download_doc_raw(self, doc_token: str, obj_type: str = 'docx') -> bytes:
         if obj_type == 'docx':
@@ -494,16 +553,12 @@ class FeishuWikiFS(FeishuFSBase):
         return content.encode('utf-8') if isinstance(content, str) else b''
 
     def _download_file_raw(self, file_token: str) -> bytes:
-        url = f'{self._base_url}/drive/v1/files/{file_token}/download'
-        resp = self._request('GET', url)
+        resp = self._request('GET', f'{self._base_url}/drive/v1/files/{file_token}/download')
         return resp.content
 
     def _get_node(self, token: str) -> Dict[str, Any]:
-        url = f'{self._base_url}/wiki/v2/spaces/get_node'
-        data = self._get(url, params={'token': token})
-        node = data.get('data', {}).get('node')
-        if not node:
-            node = data.get('data', {})
+        data = self._get(f'{self._base_url}/wiki/v2/spaces/get_node', params={'token': token})
+        node = data.get('data', {}).get('node') or data.get('data', {})
         return node or {}
 
     @staticmethod
@@ -512,8 +567,8 @@ class FeishuWikiFS(FeishuFSBase):
         # has_child: true means the node has sub-pages and must be navigable as a directory,
         # even if its obj_type is 'docx' (wiki allows documents to also be folder nodes).
         is_dir = obj_type in {'folder', 'wiki', 'space'} or bool(node.get('has_child'))
-        name = node.get('node_token') or node.get('token') or default_name or ''
-        title = node.get('title') or node.get('obj_name') or name
+        title = node.get('title') or node.get('obj_name') or default_name or ''
+        node_token = node.get('node_token') or node.get('token') or ''
         size = int(node.get('size', 0) or 0)
         mtime = None
         ts = node.get('update_time') or node.get('edit_time') or node.get('modified_time')
@@ -523,11 +578,7 @@ class FeishuWikiFS(FeishuFSBase):
             except (TypeError, ValueError):
                 mtime = None
         return LazyLLMFSBase._entry(
-            name=name,
-            size=size,
-            ftype='directory' if is_dir else 'file',
-            mtime=mtime,
-            title=title,
-            obj_type=obj_type,
-            obj_token=node.get('obj_token'),
+            name=title, size=size, ftype='directory' if is_dir else 'file',
+            mtime=mtime, title=title, obj_type=obj_type,
+            obj_token=node.get('obj_token'), node_token=node_token,
         )
