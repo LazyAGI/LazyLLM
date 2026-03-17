@@ -589,36 +589,137 @@ _add_fs_chinese('FeishuFS', '''\
 
 构造参数:
     base_url (str, optional): 飞书开放平台根地址，默认使用官方地址即可。
-    app_id (str, optional): 企业自建应用的 App ID，用于换取 tenant_access_token。
+    app_id (str, optional): 企业自建应用的 App ID，用于换取 tenant_access_token 或刷新 user_access_token。
     app_secret (str, optional): 企业自建应用的 App Secret。
     space_id (str, optional): 若传入则会返回 FeishuWikiFS 实例，将指定知识库作为只读 FS。
+    user_refresh_token (str, optional): OAuth2 refresh_token，用于以用户身份访问「我的空间」个人文件。
+        - 传入真实 refresh_token：直接用于换取 user_access_token，每次刷新后内存中的 token 同步滚动。
+        - 传入 'auto'：自动触发 OAuth2 授权流程——在本地启动临时回调服务，将授权链接通过
+          lazyllm.LOG.success 输出到终端，用户在浏览器中点击并完成授权后，自动交换得到 refresh_token。
+        飞书 refresh_token 有效期约 7 天，每次使用后立即作废并换发新值；只要在有效期内使用即可持续续期
+        （最长 365 天后需重新 OAuth 授权）。token 的持久化由调用方负责，LazyLLM 不做本地存储。
+        若不设置则使用 tenant_access_token（仅能访问已授权给应用的共享文件）。
+    oauth_port (int, optional): 'auto' 流程中本地回调服务的监听端口，默认 9981。
+        使用前需在飞书应用「安全设置」→「重定向 URL」中添加 http://localhost:{oauth_port}/callback。
+    oauth_scope (str, optional): 'auto' 流程中请求的 OAuth2 scope，多个用空格分隔。
+        默认值已包含 offline_access 及常用云盘权限，通常无需修改。
 
-认证与配置: 推荐使用持久化的 App ID + App Secret，由本 FS 自动获取并刷新 tenant_access_token；不再建议直接传入临时 token。
-配置与环境变量: config 项 feishu_app_id、feishu_app_secret（环境变量 FEISHU_APP_ID、FEISHU_APP_SECRET）；未传时在 FeishuFS 内从 config 读取。
+认证与配置:
+    - 应用场景（共享文件/企业共享云盘）: 传入 app_id + app_secret，FS 自动获取 tenant_access_token。
+    - 用户场景（「我的空间」个人文件）: 额外传入 user_refresh_token，FS 自动换取并续期 user_access_token。
+配置与环境变量: feishu_app_id / FEISHU_APP_ID、feishu_app_secret / FEISHU_APP_SECRET；未传时从 config 读取。
+    user_refresh_token 不支持环境变量，须通过构造函数显式传入。
+
+⚠️  权限配置说明（user_refresh_token 模式的关键前提）:
+    飞书区分「应用权限」（tenant_access_token 使用）和「用户权限」（user_access_token 使用），两者相互独立，
+    必须分别配置。user_refresh_token 模式仅使用「用户权限」，即使同名的应用权限已开通也不生效。
+
+    必须开通的「用户权限」（在开发者后台「权限管理」中，授权类型须包含「用户授权」）:
+        个人云盘（drive:drive）:
+        - offline_access              【必须】用于获取 refresh_token，没有此权限将无法拿到 refresh_token
+        - drive:drive                 【推荐】读写个人云盘文件
+        - drive:drive:readonly        【可选】只读个人云盘（与 drive:drive 二选一即可）
+        - drive:drive.metadata:readonly  【可选】读取文件元数据
+
+        知识库（wiki/wikis）:
+        - wiki:wiki:readonly          【必须】列出知识库节点（ls）
+        - docx:document:readonly      【必须】读取知识库内的 docx 文档内容（open）
+        - wiki:wiki                   【可选】读写知识库（如只需只读可不开）
+
+    注意: 在「权限管理」中，每条权限的「授权类型」列必须包含「用户授权」选项才对 OAuth 生效；
+    若只有「应用授权」，则 user_access_token 无法获得该权限，OAuth 授权页面中也不会展示该权限。
 
 如何配置:
     1. 打开飞书开放平台 https://open.feishu.cn，使用管理员账号登录。
     2. 进入「开发者后台」→「创建企业自建应用」，填写名称与描述并创建。
-    3. 在应用详情「凭证与基础信息」中获取 App ID、App Secret；配置 FEISHU_APP_ID / FEISHU_APP_SECRET 或构造时传入 app_id、app_secret 即可，无需手动获取 token。
-    4. 在「权限管理」中为应用开通「云文档」相关权限（如 drive:drive、drive:drive.readonly 等），并发布版本/生效。
-    5. 若使用临时 token: 调用开放平台「获取 tenant_access_token」接口传入 app_id、app_secret 得到 access_token，作为 token 传入；或通过 OAuth 获取 user_access_token。
+    3. 在应用详情「凭证与基础信息」中获取 App ID、App Secret，通过构造函数传入。
+    4. 进入「权限管理」，搜索并开启以下权限，确认每条权限的授权类型包含「用户授权」:
+         offline_access、drive:drive（或 drive:drive:readonly）、drive:drive.metadata:readonly
+         wiki:wiki:readonly、docx:document:readonly
+       完成后点击「版本管理与发布」→「创建并发布版本」使权限生效。
+    5. 在「安全设置」→「重定向 URL」中添加 http://localhost:9981/callback（或对应 oauth_port）。
+    6. 传入 user_refresh_token='auto' 即可触发授权流程；授权完成后可通过 get_user_refresh_token() 取出
+       最新 token 由调用方持久化，下次直接传入该 token 跳过 OAuth 流程。
 ''')
 _add_fs_english('FeishuFS', '''\
 Feishu (Lark) drive FS: uses Feishu Open Platform Drive API; supports ls, read/write, mkdir, rm. Use CloudFsWatchdog for watching; webhook supported where applicable.
 
-Auth and config: Prefer persistent App ID + App Secret; this FS will obtain and refresh tenant_access_token automatically; passing temporary tokens directly is no longer recommended.
-Config and env: config keys feishu_app_id, feishu_app_secret (env FEISHU_APP_ID, FEISHU_APP_SECRET); resolved inside FeishuFS when not passed.
+Parameters:
+    base_url (str, optional): Feishu Open Platform base URL; defaults to the official endpoint.
+    app_id (str, optional): App ID of the enterprise custom app, used to obtain tenant_access_token or refresh user_access_token.
+    app_secret (str, optional): App Secret of the enterprise custom app.
+    space_id (str, optional): When provided, returns a FeishuWikiFS instance targeting the given wiki space.
+    user_refresh_token (str, optional): OAuth2 refresh_token for accessing the user's personal drive ("My Space").
+        - Pass a real refresh_token: used directly to obtain user_access_token; rolls forward in memory after each use.
+        - Pass 'auto': triggers the OAuth2 flow automatically — a local callback server is started, the authorization
+          URL is printed via lazyllm.LOG.success, and the token is obtained once the user completes browser auth.
+        Feishu refresh_tokens are valid for ~7 days and invalidated immediately on use; as long as the token is used
+        within that window it renews indefinitely (up to 365 days before re-authorization is needed).
+        Token persistence is the caller's responsibility; LazyLLM does not store it locally.
+        Without this, tenant_access_token is used, which only accesses files shared with the app.
+    oauth_port (int, optional): Local port for the OAuth2 callback server used in the 'auto' flow. Default: 9981.
+        http://localhost:{oauth_port}/callback must be pre-registered in the Feishu app Security Settings → Redirect URL.
+    oauth_scope (str, optional): OAuth2 scope string (space-separated) for the 'auto' flow.
+        The default already includes offline_access and common drive scopes; override only when necessary.
+
+Auth and config:
+    - App scenario (shared/enterprise files): pass app_id + app_secret; FS obtains tenant_access_token automatically.
+    - User scenario (personal "My Space" files): also pass user_refresh_token; FS exchanges and renews
+      user_access_token automatically.
+Config and env: feishu_app_id / FEISHU_APP_ID, feishu_app_secret / FEISHU_APP_SECRET; resolved from config when not passed.
+    user_refresh_token does not support env var and must be passed explicitly to the constructor.
+
+⚠️  Permission configuration (critical prerequisite for user_refresh_token mode):
+    Feishu distinguishes between "application permissions" (used by tenant_access_token) and
+    "user permissions" (used by user_access_token). They are configured independently.
+    user_refresh_token mode uses ONLY user permissions; application permissions for the same scope
+    have no effect on user_access_token.
+
+    Required USER permissions (in Developer Console → Permission Management,
+    the "Authorization Type" column must include "User Authorization"):
+        Personal Drive (drive:drive):
+        - offline_access              [REQUIRED] needed to obtain a refresh_token; without this no
+                                      refresh_token is returned and user_refresh_token flow will not work
+        - drive:drive                 [recommended] read/write personal drive files
+        - drive:drive:readonly        [optional] read-only personal drive (either this or drive:drive)
+        - drive:drive.metadata:readonly  [optional] read file metadata
+
+        Wiki / Knowledge Base (FeishuWikiFS):
+        - wiki:wiki:readonly          [REQUIRED] list wiki nodes (ls)
+        - docx:document:readonly      [REQUIRED] read docx document content (open)
+        - wiki:wiki                   [optional] read/write wiki (omit if read-only is sufficient)
+
+    Note: for each permission in Permission Management, the "Authorization Type" field must include
+    the "User Authorization" option for it to take effect in OAuth. Permissions that only show
+    "Application Authorization" will not appear in the OAuth consent screen and will not be granted
+    to user_access_token, even if they are enabled as application permissions.
 
 How to configure:
-    1. Go to https://open.feishu.cn (or https://open.larksuite.com), log in with an admin account.
-    2. In Developer Console, create an enterprise app and get App ID and App Secret; set FEISHU_APP_ID / FEISHU_APP_SECRET or pass app_id, app_secret to the constructor (no need to fetch token manually).
-    3. In Permissions, enable Drive-related scopes (e.g. drive:drive, drive:drive.readonly), then publish the app.
-    4. If using a temporary token: call the tenant_access_token API with app_id and app_secret, or obtain user_access_token via OAuth, and pass it as token.
+    1. Go to https://open.feishu.cn, log in with an admin account.
+    2. In Developer Console, create an enterprise custom app; get App ID and App Secret; pass them to the constructor.
+    3. In Permission Management, search for and enable the following permissions, verifying that each one's
+       Authorization Type includes "User Authorization":
+         offline_access, drive:drive (or drive:drive:readonly), drive:drive.metadata:readonly,
+         wiki:wiki:readonly, docx:document:readonly
+       Then go to Version Management → Create and Publish Version to make the permissions take effect.
+    4. In Security Settings → Redirect URL, add http://localhost:9981/callback (or the chosen oauth_port).
+    5. Pass user_refresh_token='auto' to trigger the OAuth flow on construction; the authorization URL is printed to
+       the terminal and the user completes auth in a browser. Afterwards call get_user_refresh_token() to retrieve
+       the token for persistence; pass it directly on subsequent runs to skip the OAuth step.
 ''')
 _add_fs_example('FeishuFS', '''\
 >>> from lazyllm.tools.fs import FeishuFS
+>>> # tenant_access_token: access files shared with the app
 >>> fs = FeishuFS(app_id='cli_xxx', app_secret='xxx')
 >>> fs.ls('/')
+>>> # user_access_token via auto OAuth flow (browser auth, one-time setup)
+>>> fs_auto = FeishuFS(app_id='cli_xxx', app_secret='xxx', user_refresh_token='auto')
+>>> # lazyllm.LOG.success prints the auth URL; user opens it and completes auth
+>>> fs_auto.ls('/')
+>>> refresh_token = fs_auto.get_user_refresh_token()  # persist for next run
+>>> # subsequent runs: pass the saved token directly to skip OAuth
+>>> fs_user = FeishuFS(app_id='cli_xxx', app_secret='xxx', user_refresh_token=refresh_token)
+>>> fs_user.ls('/')
 >>> # use FeishuWikiFS implicitly by passing space_id (wiki space id)
 >>> wiki_fs = FeishuFS(app_id='cli_xxx', app_secret='xxx', space_id='wikcnKQ1k3pcuo5uSK4t8VN6kVf')
 >>> wiki_fs.ls('/')

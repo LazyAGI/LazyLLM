@@ -49,6 +49,8 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         self._session = requests.Session()
         self._setup_auth()
         self._lock = threading.Lock()
+        if self.__class__._acquire_access_token is not __class__._acquire_access_token:
+            self._ensure_token_initialized()
 
     @staticmethod
     def __lazyllm_after_registry_hook__(cls, group_name: str, name: str, isleaf: bool):
@@ -128,14 +130,17 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
     def _upload_data(self, path: str, data: bytes) -> None:
         raise NotImplementedError(f'{self.__class__.__name__}._upload_data is not implemented')
 
+    def _ensure_token_initialized(self) -> None:
+        token, expires_at = self._acquire_access_token()
+        if not token: raise ValueError('Failed to acquire access token')
+        self._apply_access_token(token)
+        self._token_expire_at = expires_at
+
     def _ensure_token(self) -> None:
         if not self._token_expire_at or time.time() < self._token_expire_at: return
         with self._lock:
             if time.time() < self._token_expire_at: return
-            token, expires_at = self._acquire_access_token()
-            if not token: raise ValueError('Failed to acquire access token')
-            self._apply_access_token(token)
-            self._token_expire_at = expires_at
+            self._ensure_token_initialized()
 
     def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
         return '', None
@@ -146,7 +151,15 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
         self._ensure_token()
         resp = self._session.request(method, url, **kwargs)
-        resp.raise_for_status()
+        if not resp.ok:
+            try:
+                body = resp.json()
+            except Exception:
+                body = resp.text
+            raise requests.HTTPError(
+                f'{resp.status_code} {resp.reason} for url: {resp.url} — response: {body}',
+                response=resp,
+            )
         return resp
 
     def _json_or_empty(self, resp: requests.Response) -> Any:
