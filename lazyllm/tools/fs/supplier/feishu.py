@@ -30,7 +30,7 @@ _OAUTH_TIMEOUT = 300         # seconds to wait for user to complete browser auth
 _DEFAULT_OAUTH_SCOPE = (
     'offline_access '
     'drive:drive drive:drive:readonly drive:drive.metadata:readonly '
-    'wiki:wiki wiki:wiki:readonly wiki:node:retrieve'
+    'wiki:wiki wiki:wiki:readonly wiki:node:retrieve docx:document'
 )
 
 
@@ -55,13 +55,14 @@ def _save_persisted_token(key: str, value: str) -> None:
             for line in f:
                 k, sep, _ = line.strip().partition(': ')
                 if sep and k.strip() == key:
-                    lines.append(f'{key}: {value}\n')
-                    found = True
+                    if value:  # empty value → delete the entry (don't write the line)
+                        found = True
+                        lines.append(f'{key}: {value}\n')
                 else:
                     lines.append(line if line.endswith('\n') else line + '\n')
     except FileNotFoundError:
         pass
-    if not found:
+    if not found and value:
         lines.append(f'{key}: {value}\n')
     with open(_TOKENS_FILE, 'w', encoding='utf-8') as f:
         f.writelines(lines)
@@ -280,19 +281,30 @@ class FeishuFSBase(LazyLLMFSBase):
     def get_user_refresh_token(self) -> str:
         return self._user_refresh_token
 
+    def _drive_root_folder_token(self) -> str:
+        if not getattr(self, '_cached_drive_root_token', ''):
+            data = self._get(f'{self._base_url}/drive/explorer/v2/root_folder/meta')
+            self._cached_drive_root_token: str = data.get('data', {}).get('token', '')
+        return self._cached_drive_root_token
+
     def _upload_file_to_drive(self, name: str, data: bytes, folder_token: str = '') -> str:
         resp_data = self._post(f'{self._base_url}/drive/v1/files/upload_prepare', json={
             'file_name': name, 'parent_type': 'explorer',
-            'parent_node': folder_token or 'root', 'size': len(data),
+            'parent_node': folder_token or self._drive_root_folder_token(), 'size': len(data),
         })
         upload_id = resp_data.get('data', {}).get('upload_id', '')
         block_size = resp_data.get('data', {}).get('block_size', len(data))
         num_blocks = resp_data.get('data', {}).get('block_num', 1)
         for i in range(num_blocks):
             chunk = data[i * block_size: (i + 1) * block_size]
-            self._request('POST', f'{self._base_url}/drive/v1/files/upload_part', data={
-                'upload_id': upload_id, 'seq': str(i), 'size': str(len(chunk)), 'file': chunk,
-            })
+            self._request('POST', f'{self._base_url}/drive/v1/files/upload_part',
+                          files={
+                              'upload_id': (None, upload_id),
+                              'seq': (None, str(i)),
+                              'size': (None, str(len(chunk))),
+                              'file': (name, chunk, 'application/octet-stream'),
+                          },
+                          headers={'Content-Type': None})
         result = self._post(f'{self._base_url}/drive/v1/files/upload_finish',
                             json={'upload_id': upload_id, 'block_num': num_blocks})
         return result.get('data', {}).get('file_token', '')
@@ -428,8 +440,41 @@ class FeishuFS(FeishuFSBase):
         )
 
 
+class FeishuWikiFile(CloudFSBufferedFile):
+
+    def __init__(self, fs: 'FeishuWikiFS', path: str, **kwargs) -> None:
+        content = fs._fetch_wiki_content(path)
+        self._wiki_content: bytes = content
+        super().__init__(fs, path, size=len(content), **kwargs)
+
+    def _fetch_range(self, start: int, end: int) -> bytes:
+        return self._wiki_content[start:end]
+
+
 class FeishuWikiFS(FeishuFSBase):
     __lazyllm_registry_disable__ = True
+
+    def _create_docx_node(self, title: str, parent_token: str = '') -> str:
+        url = f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes'
+        payload: Dict[str, Any] = {'obj_type': 'docx', 'node_type': 'origin', 'title': title}
+        if parent_token:
+            payload['parent_node_token'] = parent_token
+        data = self._post(url, json=payload)
+        node = data.get('data', {}).get('node') or {}
+        return node.get('obj_token') or ''
+
+    def _append_docx_text(self, document_id: str, text: str) -> None:
+        if not text:
+            return
+        max_chunk = 8000
+        chunks = [text[i:i + max_chunk] for i in range(0, len(text), max_chunk)]
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}/children'
+        for i in range(0, len(chunks), 50):
+            children = [{
+                'block_type': 2,
+                'text': {'elements': [{'text_run': {'content': chunk}}], 'style': {}},
+            } for chunk in chunks[i:i + 50]]
+            self._post(url, json={'index': 0, 'children': children})
 
     def _require_space_id(self) -> None:
         if not self._space_id:
@@ -479,11 +524,34 @@ class FeishuWikiFS(FeishuFSBase):
         name = path.rstrip('/').split('/')[-1] if path != '/' else '/'
         return self._node_to_entry(node, default_name=name)
 
+    def _fetch_wiki_content(self, path: str) -> bytes:
+        token = self._resolve_path_to_token(path)
+        if not token:
+            return b''
+        node = self._get_node(token)
+        obj_type = node.get('obj_type')
+        obj_token = node.get('obj_token') or ''
+        if not obj_type or not obj_token:
+            return b''
+        if obj_type in {'doc', 'docx'}:
+            return self._download_doc_raw(obj_token, obj_type=obj_type)
+        if obj_type == 'file':
+            return self._download_file_raw(obj_token)
+        return b''
+
+    def cat_file(self, path: str, start: Optional[int] = None, end: Optional[int] = None,
+                 **kwargs) -> bytes:
+        data = self._fetch_wiki_content(path)
+        return data[start:end] if (start is not None or end is not None) else data
+
     def _open(self, path: str, mode: str = 'rb', block_size: Optional[int] = None,
               autocommit: bool = True, cache_options: Optional[Dict] = None,
               **kwargs) -> CloudFSBufferedFile:
         if 'b' not in mode:
             raise ValueError('FeishuWikiFS only supports binary mode')
+        if 'r' in mode:
+            return FeishuWikiFile(self, path, mode=mode, block_size=block_size or self.blocksize,
+                                  autocommit=autocommit, cache_options=cache_options)
         return CloudFSBufferedFile(self, path, mode=mode, block_size=block_size or self.blocksize,
                                    autocommit=autocommit, cache_options=cache_options)
 
@@ -491,9 +559,10 @@ class FeishuWikiFS(FeishuFSBase):
         parts = [p for p in path.strip('/').split('/') if p]
         if not parts:
             return
+        title = parts[-1]
         parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
         url = f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes'
-        payload: Dict[str, Any] = {'obj_type': 'docx', 'node_type': 'origin'}
+        payload: Dict[str, Any] = {'title': title, 'obj_type': 'docx', 'node_type': 'origin'}
         if parent_token:
             payload['parent_node_token'] = parent_token
         self._post(url, json=payload)
@@ -508,31 +577,20 @@ class FeishuWikiFS(FeishuFSBase):
         self.rm_file(path)
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
-        token = self._resolve_path_to_token(path)
-        if not token:
-            raise FileNotFoundError(path)
-        node = self._get_node(token)
-        obj_type = node.get('obj_type')
-        obj_token = node.get('obj_token') or ''
-        if not obj_type or not obj_token:
-            return b''
-        if obj_type in {'doc', 'docx'}:
-            data = self._download_doc_raw(obj_token, obj_type=obj_type)
-        elif obj_type == 'file':
-            data = self._download_file_raw(obj_token)
-        else:
-            data = b''
-        return data[start:end]
+        return self._fetch_wiki_content(path)[start:end]
 
     def _upload_data(self, path: str, data: bytes) -> None:
         parts = [p for p in path.strip('/').split('/') if p]
         name = parts[-1] if parts else 'untitled'
         parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
-        file_token = self._upload_file_to_drive(name, data)
-        payload: Dict[str, Any] = {'obj_type': 'file', 'obj_token': file_token, 'node_type': 'origin'}
-        if parent_token:
-            payload['parent_node_token'] = parent_token
-        self._post(f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes', json=payload)
+        doc_id = self._create_docx_node(name, parent_token=parent_token)
+        if not doc_id:
+            raise RuntimeError('Feishu wiki create docx node failed: empty obj_token')
+        try:
+            text = data.decode('utf-8')
+        except UnicodeDecodeError as e:
+            raise ValueError('FeishuWikiFS.put_file only supports utf-8 text content for now') from e
+        self._append_docx_text(doc_id, text)
 
     def _download_doc_raw(self, doc_token: str, obj_type: str = 'docx') -> bytes:
         if obj_type == 'docx':
