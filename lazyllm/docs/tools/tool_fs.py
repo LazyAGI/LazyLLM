@@ -656,7 +656,8 @@ _add_fs_chinese('FeishuFS', '''\
     base_url (str, optional): 飞书开放平台根地址，默认使用官方地址即可。
     app_id (str, optional): 企业自建应用的 App ID，用于换取 tenant_access_token 或刷新 user_access_token。
     app_secret (str, optional): 企业自建应用的 App Secret。
-    space_id (str, optional): 若传入则会返回 FeishuWikiFS 实例，将指定知识库作为只读 FS。
+    space_id (str, optional): 若传入则会返回 FeishuWikiFS 实例，将指定知识库作为 FS。
+    云盘上传：put_file 时若远程路径以 .md 结尾或传入 content_type='markdown'，会在目标目录创建 docx 并按 Markdown 解析写入（标题、列表、代码块等）；否则按二进制上传原文件。
     user_refresh_token (str, optional): OAuth2 refresh_token，用于以用户身份访问「我的空间」个人文件。
         - 传入真实 refresh_token：直接用于换取 user_access_token，每次刷新后内存中的 token 同步滚动。
         - 传入 'auto'：自动触发 OAuth2 授权流程——在本地启动临时回调服务，将授权链接通过
@@ -714,6 +715,7 @@ Parameters:
     app_id (str, optional): App ID of the enterprise custom app, used to obtain tenant_access_token or refresh user_access_token.
     app_secret (str, optional): App Secret of the enterprise custom app.
     space_id (str, optional): When provided, returns a FeishuWikiFS instance targeting the given wiki space.
+    Drive upload: when the remote path ends with .md or put_file(..., content_type='markdown'), a docx is created in the target folder and content is parsed as Markdown; otherwise the file is uploaded as binary.
     user_refresh_token (str, optional): OAuth2 refresh_token for accessing the user's personal drive ("My Space").
         - Pass a real refresh_token: used directly to obtain user_access_token; rolls forward in memory after each use.
         - Pass 'auto': triggers the OAuth2 flow automatically — a local callback server is started, the authorization
@@ -803,7 +805,7 @@ _add_fs_chinese('FeishuWikiFS', '''\
 
     1. 与 FeishuFS 共享同一套鉴权方式：推荐 app_id + app_secret，由 FS 自动获取 tenant_access_token。
     2. 必须传入 space_id（知识空间 ID），例如 'wikcnKQ1k3pcuo5uSK4t8VN6kVf'。
-    3. 根路径 '/' 对应知识库根节点；路径为 Wiki 节点路径；open 会根据节点类型拉取文档纯文本或附件二进制；put_file 会新建 docx 并写入纯文本。
+    3. 根路径 '/' 对应知识库根节点；路径为 Wiki 节点路径；open 会根据节点类型拉取文档纯文本或附件二进制；put_file 会新建 docx 并写入内容。当远程路径以 .md 结尾或 put_file(..., content_type='markdown') 时，会按 Markdown 解析并保持标题、列表、代码块、引用等格式；否则按纯文本追加段落。
 
 保持原格式（表格、标题等）:
     - 通过 open/raw_content 下载到的是纯文本，put_file 会新建文档并只追加段落，因此「下载-修改-上传」会丢失表格等格式。
@@ -814,7 +816,7 @@ Feishu Wiki FS: Feishu Open Platform Wiki API; maps a wiki space into a filesyst
 
 Usage:
     1. Shares the same auth model as FeishuFS; space_id (wiki space ID) is required.
-    2. '/' is the wiki root; paths are wiki node paths; open returns document plain text or file binary; put_file creates a new docx and appends plain text.
+    2. '/' is the wiki root; paths are wiki node paths; open returns document plain text or file binary; put_file creates a new docx. When the remote path ends with .md or put_file(..., content_type='markdown'), content is parsed as Markdown and rendered as headings, lists, code blocks, quotes, etc.; otherwise appended as plain text paragraphs.
 
 Preserving format (tables, headings, etc.):
     - open/raw_content returns plain text only; put_file creates a new doc and appends paragraphs, so download-modify-upload loses tables and other structure.

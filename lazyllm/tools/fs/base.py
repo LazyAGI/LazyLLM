@@ -102,7 +102,9 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
     def put_file(self, lpath: str, rpath: str, **kwargs) -> None:
         with open(lpath, 'rb') as fh:
             data = fh.read()
-        self._upload_data(rpath, data)
+        if kwargs.get('content_type') is None and lpath.lower().endswith('.md'):
+            kwargs = {**kwargs, 'content_type': 'markdown'}
+        self._upload_data(rpath, data, **kwargs)
 
     def get_file(self, rpath: str, lpath: str, **kwargs) -> None:
         with self.open(rpath, 'rb') as fh:

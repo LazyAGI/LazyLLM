@@ -1,5 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import os
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -7,6 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
+
+import mistune
 
 from lazyllm import LOG, config
 
@@ -309,6 +312,305 @@ class FeishuFSBase(LazyLLMFSBase):
                             json={'upload_id': upload_id, 'block_num': num_blocks})
         return result.get('data', {}).get('file_token', '')
 
+    @staticmethod
+    def _text_from_ast_node(node: Dict[str, Any]) -> str:
+        if node.get('raw') is not None:
+            return str(node['raw'])
+        children = node.get('children') or []
+        return ''.join(FeishuFSBase._text_from_ast_node(c) for c in children)
+
+    @staticmethod
+    def _elements_from_inline_children(children: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        elements: List[Dict[str, Any]] = []
+        for c in children:
+            if not isinstance(c, dict):
+                continue
+            ct = c.get('type')
+            if ct == 'text':
+                raw = (c.get('raw') or '')
+                if raw:
+                    elements.append({'text_run': {'content': raw}})
+            elif ct == 'link':
+                url = (c.get('attrs') or {}).get('url') or ''
+                content = FeishuFSBase._text_from_ast_node(c)
+                if content or url:
+                    el: Dict[str, Any] = {'text_run': {'content': content or url}}
+                    if url:
+                        el['link'] = {'url': url}
+                    elements.append(el)
+            elif ct == 'softbreak':
+                elements.append({'text_run': {'content': '\n'}})
+            elif ct == 'linebreak':
+                elements.append({'text_run': {'content': '\n'}})
+            else:
+                raw = FeishuFSBase._text_from_ast_node(c)
+                if raw:
+                    elements.append({'text_run': {'content': raw}})
+        return elements
+
+    _DOCX_BLOCK_TYPE_KEY: Dict[int, str] = {
+        2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
+        7: 'heading5', 8: 'heading6', 9: 'heading7', 10: 'heading8', 11: 'heading9',
+        12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote',
+    }
+
+    @staticmethod
+    def _docx_block_with_content(block_type: int, content: str) -> Dict[str, Any]:
+        key = FeishuFSBase._DOCX_BLOCK_TYPE_KEY.get(block_type, 'text')
+        return {'block_type': block_type, key: {'elements': [{'text_run': {'content': content}}]}}
+
+    @staticmethod
+    def _docx_block_with_elements(block_type: int, elements: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not elements:
+            return None
+        key = FeishuFSBase._DOCX_BLOCK_TYPE_KEY.get(block_type, 'text')
+        return {'block_type': block_type, key: {'elements': elements}}
+
+    @staticmethod
+    def _table_ast_to_markdown(node: Dict[str, Any]) -> str:
+        def cell_text(cell_node: Dict[str, Any]) -> str:
+            return FeishuFSBase._text_from_ast_node(cell_node).strip().replace('|', '\\|')
+        rows: List[str] = []
+        for part in (node.get('children') or []):
+            if not isinstance(part, dict):
+                continue
+            if part.get('type') == 'table_head':
+                cells = [cell_text(c) for c in (part.get('children') or [])
+                         if isinstance(c, dict) and c.get('type') == 'table_cell']
+                if cells:
+                    rows.append('| ' + ' | '.join(cells) + ' |')
+                    rows.append('| ' + ' | '.join(['---'] * len(cells)) + ' |')
+            elif part.get('type') == 'table_body':
+                for row_node in (part.get('children') or []):
+                    if isinstance(row_node, dict) and row_node.get('type') == 'table_row':
+                        cells = [cell_text(c) for c in (row_node.get('children') or [])
+                                 if isinstance(c, dict) and c.get('type') == 'table_cell']
+                        if cells:
+                            rows.append('| ' + ' | '.join(cells) + ' |')
+        return '\n'.join(rows) if rows else ''
+
+    @staticmethod
+    def _table_ast_to_cells(node: Dict[str, Any]) -> Optional[Tuple[int, int, List[List[str]]]]:
+        def cell_text(cell_node: Dict[str, Any]) -> str:
+            return FeishuFSBase._text_from_ast_node(cell_node).strip()
+        grid: List[List[str]] = []
+        for part in (node.get('children') or []):
+            if not isinstance(part, dict):
+                continue
+            if part.get('type') == 'table_head':
+                cells = [cell_text(c) for c in (part.get('children') or [])
+                         if isinstance(c, dict) and c.get('type') == 'table_cell']
+                if cells:
+                    grid.append(cells)
+            elif part.get('type') == 'table_body':
+                for row_node in (part.get('children') or []):
+                    if isinstance(row_node, dict) and row_node.get('type') == 'table_row':
+                        cells = [cell_text(c) for c in (row_node.get('children') or [])
+                                 if isinstance(c, dict) and c.get('type') == 'table_cell']
+                        if cells:
+                            grid.append(cells)
+        if not grid:
+            return None
+        row_size, col_size = len(grid), max(len(r) for r in grid)
+        return (row_size, col_size, grid)
+
+    @staticmethod
+    def _inline_children_to_block(block_type: int, node: Dict[str, Any]) -> List[Dict[str, Any]]:
+        elements = FeishuFSBase._elements_from_inline_children(node.get('children') or [])
+        blk = FeishuFSBase._docx_block_with_elements(block_type, elements)
+        return [blk] if blk else []
+
+    @staticmethod
+    def _parse_details_summary(raw: str) -> Optional[Tuple[str, str]]:
+        raw = raw.strip()
+        if not raw.lower().startswith('<details'):
+            return None
+        m = re.search(r'<summary[^>]*>(.*?)</summary>', raw, re.DOTALL | re.IGNORECASE)
+        if not m:
+            return None
+        summary_html = m.group(1).strip()
+        summary_text = re.sub(r'<[^>]+>', '', summary_html).strip()
+        rest = raw[m.end():]
+        m2 = re.search(r'^(.*?)</details>', rest, re.DOTALL | re.IGNORECASE)
+        body = m2.group(1).strip() if m2 else rest.strip()
+        return (summary_text or 'Details', body)
+
+    @staticmethod
+    def _ast_table_to_block(node: Dict[str, Any]) -> List[Dict[str, Any]]:
+        cells_data = FeishuFSBase._table_ast_to_cells(node)
+        if not cells_data:
+            return []
+        row_size, col_size, grid = cells_data
+        return [{
+            'block_type': 31,
+            'table': {'property': {'row_size': row_size, 'column_size': col_size}},
+            '_table_cells': grid,
+        }]
+
+    @staticmethod
+    def _ast_block_html_to_blocks(node: Dict[str, Any]) -> List[Dict[str, Any]]:
+        raw = (node.get('raw') or '').rstrip()
+        if not raw:
+            return []
+        if re.match(r'^\s*</(?:details|summary|div|p)>\s*$', raw, re.IGNORECASE):
+            return []
+        parsed = FeishuFSBase._parse_details_summary(raw)
+        if parsed:
+            summary_text, body_content = parsed
+            out: List[Dict[str, Any]] = []
+            title_blk = FeishuFSBase._docx_block_with_content(2, summary_text)
+            if title_blk:
+                out.append(title_blk)
+            if body_content:
+                out.extend(FeishuFSBase._markdown_to_docx_blocks(body_content))
+            return out
+        return [{'block_type': 14, 'code': {'elements': [{'text_run': {'content': raw}}]}}]
+
+    @staticmethod
+    def _ast_list_to_blocks(node: Dict[str, Any]) -> List[Dict[str, Any]]:
+        ordered = (node.get('attrs') or {}).get('ordered', False)
+        btype = 13 if ordered else 12
+        out: List[Dict[str, Any]] = []
+        for item in (node.get('children') or []):
+            if isinstance(item, dict) and item.get('type') == 'list_item':
+                blk = FeishuFSBase._docx_block_with_elements(
+                    btype, FeishuFSBase._elements_from_inline_children(item.get('children') or []))
+                if blk:
+                    out.append(blk)
+        return out
+
+    @staticmethod
+    def _ast_node_to_docx_block(node: Dict[str, Any]) -> List[Dict[str, Any]]:
+        t = node.get('type')
+        if t == 'blank_line':
+            return []
+        if t == 'heading':
+            level = max(1, min(9, int((node.get('attrs') or {}).get('level', 1))))
+            return FeishuFSBase._inline_children_to_block(2 + level, node)
+        if t == 'paragraph':
+            return FeishuFSBase._inline_children_to_block(2, node)
+        if t == 'block_code':
+            content = (node.get('raw') or '').rstrip()
+            return [{'block_type': 14, 'code': {'elements': [{'text_run': {'content': content}}]}}]
+        if t == 'block_quote':
+            return FeishuFSBase._inline_children_to_block(15, node)
+        if t == 'list':
+            return FeishuFSBase._ast_list_to_blocks(node)
+        if t == 'table':
+            return FeishuFSBase._ast_table_to_block(node)
+        if t == 'block_html':
+            return FeishuFSBase._ast_block_html_to_blocks(node)
+        blk = FeishuFSBase._docx_block_with_elements(
+            2, FeishuFSBase._elements_from_inline_children(node.get('children') or []))
+        if blk:
+            return [blk]
+        content = FeishuFSBase._text_from_ast_node(node).strip()
+        return [FeishuFSBase._docx_block_with_content(2, content)] if content else []
+
+    @staticmethod
+    def _normalize_md_tables(md_text: str) -> str:
+        lines = md_text.splitlines(keepends=True)
+        result = []
+        for line in lines:
+            stripped = line.rstrip('\n\r')
+            if stripped.lstrip().startswith('|') and not stripped.rstrip().endswith('|'):
+                stripped = stripped.rstrip() + ' |'
+                line = stripped + ('\n' if line.endswith('\n') else '')
+            result.append(line)
+        return ''.join(result)
+
+    @staticmethod
+    def _markdown_to_docx_blocks(md_text: str) -> List[Dict[str, Any]]:
+        md = mistune.create_markdown(renderer='ast', plugins=['table'])
+        ast = md(FeishuFSBase._normalize_md_tables(md_text))
+        if not ast:
+            return []
+        blocks: List[Dict[str, Any]] = []
+        for node in ast:
+            if not isinstance(node, dict):
+                continue
+            blocks.extend(FeishuFSBase._ast_node_to_docx_block(node))
+        return blocks
+
+    def _append_docx_blocks(self, document_id: str, blocks: List[Dict[str, Any]]) -> None:
+        if not blocks:
+            return
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}/children'
+        batch_size = 50
+        index = 0
+        chunk: List[Dict[str, Any]] = []
+        for blk in blocks:
+            if blk.get('_table_cells') is not None:
+                if chunk:
+                    self._post(url, json={'index': index, 'children': chunk})
+                    index += len(chunk)
+                    chunk = []
+                payload = {k: v for k, v in blk.items() if k != '_table_cells'}
+                resp = self._request('POST', url, json={'index': index, 'children': [payload]})
+                created_list = (resp.json().get('data') or {}).get('children') or []
+                table_info = created_list[0] if created_list and isinstance(created_list[0], dict) else {}
+                table_block_id = table_info.get('block_id')
+                cell_ids: List[str] = (table_info.get('table') or {}).get('cells') or []
+                if table_block_id:
+                    self._fill_table_cells(document_id, table_block_id, blk['_table_cells'], cell_ids)
+                index += 1
+            else:
+                chunk.append(blk)
+                if len(chunk) >= batch_size:
+                    self._post(url, json={'index': index, 'children': chunk})
+                    index += len(chunk)
+                    chunk = []
+        if chunk:
+            self._post(url, json={'index': index, 'children': chunk})
+
+    def _get_table_cells(self, document_id: str, table_block_id: str) -> List[Dict[str, Any]]:
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{table_block_id}/children'
+        items: List[Dict[str, Any]] = []
+        page_token: Optional[str] = None
+        while True:
+            params: Dict[str, Any] = {'page_size': 500, 'with_descendants': 'true'}
+            if page_token:
+                params['page_token'] = page_token
+            data = (self._get(url, params=params) or {}).get('data') or {}
+            items.extend(data.get('items') or [])
+            page_token = data.get('page_token')
+            if not page_token:
+                break
+        cell_blocks = [x for x in items if x.get('block_type') == 32]
+        if not cell_blocks:
+            for row_block in (x for x in items if x.get('block_id')):
+                rid = row_block['block_id']
+                row_data = (self._get(
+                    f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{rid}/children',
+                    params={'page_size': 100}) or {}).get('data') or {}
+                cell_blocks.extend(x for x in (row_data.get('items') or []) if x.get('block_type') == 32)
+        return cell_blocks
+
+    def _write_cell_text(self, document_id: str, cell_block_id: str, text: str) -> None:
+        cell_children_url = (
+            f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{cell_block_id}/children')
+        cd = (self._get(cell_children_url, params={'page_size': 10}) or {}).get('data') or {}
+        text_blocks = [x for x in (cd.get('items') or []) if x.get('block_type') == 2]
+        if text_blocks:
+            self._patch(
+                f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{text_blocks[0]["block_id"]}',
+                json={'update_text_elements': {'elements': [{'text_run': {'content': text}}]}})
+        else:
+            self._post(cell_children_url, json={
+                'index': 0,
+                'children': [{'block_type': 2, 'text': {'elements': [{'text_run': {'content': text}}]}}],
+            })
+
+    def _fill_table_cells(self, document_id: str, table_block_id: str,
+                          grid: List[List[str]], cell_ids: Optional[List[str]] = None) -> None:
+        flat_cells = [c for row in grid for c in row]
+        if not cell_ids:
+            cell_blocks = self._get_table_cells(document_id, table_block_id)
+            cell_ids = [b['block_id'] for b in cell_blocks if b.get('block_id')]
+        for cell_id, text in zip(cell_ids[:len(flat_cells)], flat_cells):
+            if cell_id and text:
+                self._write_cell_text(document_id, cell_id, text)
+
 
 class FeishuFS(FeishuFSBase):
 
@@ -412,11 +714,35 @@ class FeishuFS(FeishuFSBase):
                              headers={'Range': f'bytes={start}-{end - 1}'})
         return resp.content
 
-    def _upload_data(self, path: str, data: bytes) -> None:
+    def _upload_data(self, path: str, data: bytes, **kwargs) -> None:
         parts = [p for p in path.strip('/').split('/') if p]
         name = parts[-1] if parts else 'untitled'
         parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
-        self._upload_file_to_drive(name, data, folder_token=parent_token)
+        content_type = kwargs.get('content_type')
+        if content_type is None:
+            content_type = 'markdown' if (name.endswith('.md')) else 'text'
+        if content_type in ('markdown', 'md'):
+            try:
+                text = data.decode('utf-8')
+            except UnicodeDecodeError:
+                self._upload_file_to_drive(name, data, folder_token=parent_token)
+                return
+            doc_title = name[:-3] if name.endswith('.md') else name
+            folder_token = parent_token or self._drive_root_folder_token()
+            create_resp = self._post(
+                f'{self._base_url}/docx/v1/documents',
+                params={'folder_token': folder_token},
+                json={'title': doc_title},
+            )
+            doc_id = ((create_resp.get('data') or {}).get('document') or {}).get('document_id') or ''
+            if not doc_id:
+                LOG.warning('Feishu drive docx create returned no document_id, falling back to file upload')
+                self._upload_file_to_drive(name, data, folder_token=parent_token)
+                return
+            blocks = self._markdown_to_docx_blocks(text)
+            self._append_docx_blocks(doc_id, blocks)
+        else:
+            self._upload_file_to_drive(name, data, folder_token=parent_token)
 
     def _platform_supports_webhook(self) -> bool:
         return True
@@ -579,7 +905,7 @@ class FeishuWikiFS(FeishuFSBase):
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         return self._fetch_wiki_content(path)[start:end]
 
-    def _upload_data(self, path: str, data: bytes) -> None:
+    def _upload_data(self, path: str, data: bytes, **kwargs) -> None:
         parts = [p for p in path.strip('/').split('/') if p]
         name = parts[-1] if parts else 'untitled'
         parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
@@ -590,7 +916,14 @@ class FeishuWikiFS(FeishuFSBase):
             text = data.decode('utf-8')
         except UnicodeDecodeError as e:
             raise ValueError('FeishuWikiFS.put_file only supports utf-8 text content for now') from e
-        self._append_docx_text(doc_id, text)
+        content_type = kwargs.get('content_type')
+        if content_type is None:
+            content_type = 'markdown' if (path.rstrip('/').split('/')[-1].endswith('.md')) else 'text'
+        if content_type in ('markdown', 'md'):
+            blocks = self._markdown_to_docx_blocks(text)
+            self._append_docx_blocks(doc_id, blocks)
+        else:
+            self._append_docx_text(doc_id, text)
 
     def _download_doc_raw(self, doc_token: str, obj_type: str = 'docx') -> bytes:
         if obj_type == 'docx':

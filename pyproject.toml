@@ -39,6 +39,7 @@ dependencies = [
     "pyjwt >=2.8.0",
     "psutil >=6.0.0,<7.0.0",
     "deepdiff >=8.6.1",
+    "mistune >=3.0.0",
 ]
 
 [project.scripts]
