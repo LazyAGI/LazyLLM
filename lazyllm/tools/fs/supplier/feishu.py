@@ -9,9 +9,9 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
 
-import mistune
 
 from lazyllm import LOG, config
+from lazyllm.thirdparty import mistune
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
