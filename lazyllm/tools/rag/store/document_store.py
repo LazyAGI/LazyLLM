@@ -218,11 +218,13 @@ class _DocumentStore(object):
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                   group: Optional[str] = None, kb_id: Optional[str] = None,
                   limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
-                  numbers: Optional[Set] = None, **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
+                  numbers: Optional[Set] = None, sort_by_number: bool = False,
+                  **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
         try:
             result = self.get_segments(uids=uids, doc_ids=doc_ids, group=group,
                                        kb_id=kb_id, numbers=numbers, limit=limit,
-                                       offset=offset, return_total=return_total, **kwargs)
+                                       offset=offset, return_total=return_total,
+                                       sort_by_number=sort_by_number, **kwargs)
             if return_total:
                 segments, total = result
                 return [self._deserialize_node(segment) for segment in segments], total
@@ -234,7 +236,8 @@ class _DocumentStore(object):
     def get_segments(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                      group: Optional[str] = None, kb_id: Optional[str] = None,
                      limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
-                     numbers: Optional[Set] = None, **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
+                     numbers: Optional[Set] = None, sort_by_number: bool = False,
+                     **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
         # get a set of segments by uids
         # get the segments of the whole file -- doc ids only
         # get the segments of a certain group for one file -- doc ids and group (kb_id is optional)
@@ -251,6 +254,8 @@ class _DocumentStore(object):
                     LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
                     continue
                 segments.extend(self.impl.get(self._gen_collection_name(group), criteria, **kwargs))
+            if sort_by_number:
+                segments = self._sort_segments_by_number(segments)
             total = len(segments)
             segments = self._slice_segments(segments, limit, offset)
             return (segments, total) if return_total else segments
@@ -287,6 +292,10 @@ class _DocumentStore(object):
             end = None if limit is None else offset + limit
             return segments[offset:end]
         return segments
+
+    @staticmethod
+    def _sort_segments_by_number(segments: List[dict]) -> List[dict]:
+        return sorted(segments, key=lambda segment: (segment.get('number', 0), segment.get('uid', '')))
 
     def _resolve_groups(self, group: Optional[str]) -> List[str]:
         if not group:

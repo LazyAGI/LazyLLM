@@ -33,7 +33,6 @@ from .base import (
     ReparseRequest,
     SourceType,
     TaskCallbackRequest,
-    TaskCreateRequest,
     TaskType,
     TransferRequest,
     UploadRequest,
@@ -45,7 +44,7 @@ from ..parsing_service.base import (
     CancelTaskRequest as ParsingCancelTaskRequest,
     DeleteDocRequest as ParsingDeleteDocRequest,
     FileInfo as ParsingFileInfo,
-    TaskStatus,
+    TransferParams as ParsingTransferParams,
     UpdateMetaRequest as ParsingUpdateMetaRequest,
 )
 
@@ -128,7 +127,7 @@ class _ParserClient:
 
     def add_doc(self, task_id: str, algo_id: str, kb_id: str, doc_id: str, file_path: str,
                 metadata: Optional[Dict[str, Any]] = None, reparse_group: Optional[str] = None,
-                callback_url: Optional[str] = None):
+                callback_url: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None):
         req = ParsingAddDocRequest(
             task_id=task_id,
             algo_id=algo_id,
@@ -140,6 +139,10 @@ class _ParserClient:
                 doc_id=doc_id,
                 metadata=metadata or {},
                 reparse_group=reparse_group,
+                transfer_params=(
+                    ParsingTransferParams.model_validate(transfer_params)
+                    if transfer_params is not None else None
+                ),
             )],
         )
         data = self._post('/doc/add', req.model_dump(mode='json'))
@@ -192,6 +195,17 @@ class _ParserClient:
             if '404' in str(exc):
                 return BaseResponse(code=404, msg='algo not found', data=None)
             raise
+
+    def list_doc_chunks(self, algo_id: str, kb_id: str, doc_id: str, group: str, offset: int, page_size: int):
+        data = self._get('/doc/chunks', params={
+            'algo_id': algo_id,
+            'kb_id': kb_id,
+            'doc_id': doc_id,
+            'group': group,
+            'offset': offset,
+            'page_size': page_size,
+        })
+        return BaseResponse.model_validate(data)
 
 
 class DocManager:
@@ -487,6 +501,14 @@ class DocManager:
                 session.rollback()
                 return False
 
+    def _forget_callback_record(self, callback_id: str, task_id: str):
+        with self._db_manager.get_session() as session:
+            Record = self._db_manager.get_table_orm_class(CALLBACK_RECORDS_TABLE_INFO['name'])
+            session.query(Record).filter(
+                Record.callback_id == callback_id,
+                Record.task_id == task_id,
+            ).delete()
+
     def _create_task_record(self, task_id: str, task_type: TaskType, doc_id: str, kb_id: str, algo_id: str,
                             status: DocStatus, message: Optional[Dict[str, Any]] = None):
         now = now_ts()
@@ -695,7 +717,10 @@ class DocManager:
         default_algo_id = binding['algo_id'] if binding is not None else '__default__'
         items = []
         for doc_id in self._list_kb_doc_ids(kb_id):
-            snapshot = self._get_parse_snapshot(doc_id, kb_id, default_algo_id) or self._get_latest_parse_snapshot(doc_id, kb_id)
+            snapshot = (
+                self._get_parse_snapshot(doc_id, kb_id, default_algo_id)
+                or self._get_latest_parse_snapshot(doc_id, kb_id)
+            )
             if snapshot is None or snapshot.get('status') == DocStatus.DELETED.value:
                 items.append({'action': 'purge_local', 'doc_id': doc_id})
                 continue
@@ -850,13 +875,15 @@ class DocManager:
 
     def _create_parser_task(self, task_id: str, doc_id: str, kb_id: str, algo_id: str, task_type: TaskType,
                             file_path: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
-                            reparse_group: Optional[str] = None):
+                            reparse_group: Optional[str] = None, parser_kb_id: Optional[str] = None,
+                            transfer_params: Optional[Dict[str, Any]] = None):
         if task_type in (TaskType.DOC_ADD, TaskType.DOC_TRANSFER):
             if not file_path:
                 raise RuntimeError(f'file_path is required for task_type {task_type.value}')
             task_resp = self._call_parser_client(
                 self._parser_client.add_doc,
-                task_id, algo_id, kb_id, doc_id, file_path, metadata, callback_url=self._callback_url,
+                task_id, algo_id, parser_kb_id or kb_id, doc_id, file_path, metadata,
+                callback_url=self._callback_url, transfer_params=transfer_params,
             )
         elif task_type == TaskType.DOC_REPARSE:
             if not file_path:
@@ -887,6 +914,8 @@ class DocManager:
         idempotency_key: Optional[str] = None, priority: int = 0,
         file_path: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
         reparse_group: Optional[str] = None, cleanup_policy: Optional[str] = None,
+        parser_kb_id: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None,
+        extra_message: Optional[Dict[str, Any]] = None,
     ):
         task_id = str(uuid4())
         task_message = {
@@ -897,8 +926,12 @@ class DocManager:
             'metadata': metadata,
             'reparse_group': reparse_group,
         }
+        if extra_message:
+            task_message.update(extra_message)
         if cleanup_policy:
             task_message['cleanup_policy'] = cleanup_policy
+        if transfer_params:
+            task_message['transfer_params'] = transfer_params
         task_status = DocStatus.DELETING if task_type == TaskType.DOC_DELETE else DocStatus.WAITING
         self._create_task_record(task_id, task_type, doc_id, kb_id, algo_id, task_status, message=task_message)
         parse_status = DocStatus.DELETING if task_type == TaskType.DOC_DELETE else DocStatus.WAITING
@@ -922,6 +955,7 @@ class DocManager:
             self._create_parser_task(
                 task_id, doc_id, kb_id, algo_id, task_type,
                 file_path=file_path, metadata=metadata, reparse_group=reparse_group,
+                parser_kb_id=parser_kb_id, transfer_params=transfer_params,
             )
         except Exception as exc:
             finished_at = now_ts()
@@ -1008,9 +1042,15 @@ class DocManager:
         prepared_items = []
         for doc_id in request.doc_ids:
             doc = self._get_doc(doc_id)
-            snapshot = self._get_parse_snapshot(doc_id, request.kb_id, request.algo_id) or self._get_latest_parse_snapshot(doc_id, request.kb_id)
+            snapshot = (
+                self._get_parse_snapshot(doc_id, request.kb_id, request.algo_id)
+                or self._get_latest_parse_snapshot(doc_id, request.kb_id)
+            )
             if doc is None or not self._has_kb_document(request.kb_id, doc_id):
-                if snapshot is not None and snapshot.get('status') in (DocStatus.DELETING.value, DocStatus.DELETED.value):
+                if snapshot is not None and snapshot.get('status') in (
+                    DocStatus.DELETING.value,
+                    DocStatus.DELETED.value,
+                ):
                     prepared_items.append({
                         'doc_id': doc_id,
                         'action': 'noop',
@@ -1041,6 +1081,87 @@ class DocManager:
             merged = _from_json(doc.get('meta'))
             merged.update(item.patch)
             prepared_items.append({'doc_id': item.doc_id, 'metadata': merged, 'file_path': doc.get('path')})
+        return prepared_items
+
+    def _prepare_transfer_items(self, request: TransferRequest) -> List[Dict[str, Any]]:
+        prepared_items = []
+        seen_pairs = set()
+        seen_targets = set()
+        for item in request.items:
+            if item.mode not in ('move', 'copy'):
+                raise DocServiceError(
+                    'E_INVALID_PARAM', f'invalid transfer mode: {item.mode}', {'mode': item.mode}
+                )
+            item_key = (item.doc_id, item.source_kb_id, item.target_kb_id)
+            if item_key in seen_pairs:
+                raise DocServiceError(
+                    'E_INVALID_PARAM',
+                    'duplicate transfer item detected',
+                    {'doc_id': item.doc_id, 'source_kb_id': item.source_kb_id, 'target_kb_id': item.target_kb_id},
+                )
+            seen_pairs.add(item_key)
+            target_key = (item.doc_id, item.target_kb_id, item.target_algo_id)
+            if target_key in seen_targets:
+                raise DocServiceError(
+                    'E_INVALID_PARAM',
+                    'duplicate transfer target detected',
+                    {
+                        'doc_id': item.doc_id,
+                        'target_kb_id': item.target_kb_id,
+                        'target_algo_id': item.target_algo_id,
+                    },
+                )
+            seen_targets.add(target_key)
+            if item.source_algo_id != item.target_algo_id:
+                raise DocServiceError(
+                    'E_INVALID_PARAM',
+                    'transfer across different algorithms is not supported',
+                    {
+                        'doc_id': item.doc_id,
+                        'source_algo_id': item.source_algo_id,
+                        'target_algo_id': item.target_algo_id,
+                    },
+                )
+            doc = self._get_doc(item.doc_id)
+            if doc is None or not self._has_kb_document(item.source_kb_id, item.doc_id):
+                raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {item.doc_id}')
+            self._validate_kb_algorithm(item.source_kb_id, item.source_algo_id)
+            self._validate_kb_algorithm(item.target_kb_id, item.target_algo_id)
+            self._assert_action_allowed(item.doc_id, item.source_kb_id, item.source_algo_id, 'transfer')
+            if self._has_kb_document(item.target_kb_id, item.doc_id):
+                raise DocServiceError(
+                    'E_STATE_CONFLICT',
+                    f'doc already exists in target kb: {item.doc_id}',
+                    {'doc_id': item.doc_id, 'target_kb_id': item.target_kb_id},
+                )
+            source_snapshot = self._get_parse_snapshot(item.doc_id, item.source_kb_id, item.source_algo_id)
+            if source_snapshot is None or source_snapshot.get('status') != DocStatus.SUCCESS.value:
+                raise DocServiceError(
+                    'E_STATE_CONFLICT',
+                    f'doc transfer requires source parse status SUCCESS: {item.doc_id}',
+                    {
+                        'doc_id': item.doc_id,
+                        'source_kb_id': item.source_kb_id,
+                        'source_algo_id': item.source_algo_id,
+                        'status': source_snapshot.get('status') if source_snapshot else None,
+                    },
+                )
+            prepared_items.append({
+                'doc_id': item.doc_id,
+                'source_kb_id': item.source_kb_id,
+                'source_algo_id': item.source_algo_id,
+                'target_kb_id': item.target_kb_id,
+                'target_algo_id': item.target_algo_id,
+                'mode': item.mode,
+                'file_path': doc.get('path'),
+                'metadata': _from_json(doc.get('meta')),
+                'transfer_params': {
+                    'mode': 'mv' if item.mode == 'move' else 'cp',
+                    'target_algo_id': item.target_algo_id,
+                    'target_doc_id': item.doc_id,
+                    'target_kb_id': item.target_kb_id,
+                },
+            })
         return prepared_items
 
     def upload(self, request: UploadRequest) -> List[Dict[str, Any]]:
@@ -1143,7 +1264,11 @@ class DocManager:
                     raise DocServiceError(
                         'E_STATE_CONFLICT',
                         cancel_resp.msg,
-                        cancel_resp.data if isinstance(cancel_resp.data, dict) else {'task_id': snapshot['current_task_id']},
+                        (
+                            cancel_resp.data
+                            if isinstance(cancel_resp.data, dict)
+                            else {'task_id': snapshot['current_task_id']}
+                        ),
                     )
                 items.append({
                     'doc_id': doc_id,
@@ -1175,36 +1300,50 @@ class DocManager:
         return items
 
     def transfer(self, request: TransferRequest) -> List[Dict[str, Any]]:
+        prepared_items = self._prepare_transfer_items(request)
         items: List[Dict[str, Any]] = []
-        for item in request.items:
-            if item.mode not in ('move', 'copy'):
-                raise DocServiceError(
-                    'E_INVALID_PARAM', f'invalid transfer mode: {item.mode}', {'mode': item.mode}
+        for item in prepared_items:
+            task_id = None
+            try:
+                self._ensure_kb_document(item['target_kb_id'], item['doc_id'])
+                task_id, snapshot = self._enqueue_task(
+                    item['doc_id'], item['target_kb_id'], item['target_algo_id'], TaskType.DOC_TRANSFER,
+                    idempotency_key=request.idempotency_key,
+                    file_path=item['file_path'],
+                    metadata=item['metadata'],
+                    parser_kb_id=item['source_kb_id'],
+                    transfer_params=item['transfer_params'],
+                    extra_message={
+                        'source_kb_id': item['source_kb_id'],
+                        'source_algo_id': item['source_algo_id'],
+                        'target_kb_id': item['target_kb_id'],
+                        'target_algo_id': item['target_algo_id'],
+                        'mode': item['mode'],
+                    },
                 )
-            doc = self._get_doc(item.doc_id)
-            if doc is None or not self._has_kb_document(item.source_kb_id, item.doc_id):
-                raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {item.doc_id}')
-            self._validate_kb_algorithm(item.source_kb_id, item.source_algo_id)
-            self._validate_kb_algorithm(item.target_kb_id, item.target_algo_id)
-            self._assert_action_allowed(item.doc_id, item.source_kb_id, item.source_algo_id, 'transfer')
-            self._ensure_kb_document(item.target_kb_id, item.doc_id)
-            if item.mode == 'move':
-                self._remove_kb_document(item.source_kb_id, item.doc_id)
-            task_id, snapshot = self._enqueue_task(
-                item.doc_id, item.target_kb_id, item.target_algo_id, TaskType.DOC_TRANSFER,
-                idempotency_key=request.idempotency_key,
-                file_path=doc.get('path'),
-                metadata=_from_json(doc.get('meta')),
-            )
+                error_code = None
+                error_msg = None
+                accepted = True
+            except Exception as exc:
+                snapshot = self._get_parse_snapshot(item['doc_id'], item['target_kb_id'], item['target_algo_id']) or {}
+                task_id = task_id or snapshot.get('current_task_id')
+                error_code = snapshot.get('last_error_code')
+                if not error_code:
+                    error_code = exc.biz_code if isinstance(exc, DocServiceError) else type(exc).__name__
+                error_msg = snapshot.get('last_error_msg') or (exc.msg if isinstance(exc, DocServiceError) else str(exc))
+                accepted = False
             items.append({
-                'doc_id': item.doc_id,
+                'doc_id': item['doc_id'],
                 'task_id': task_id,
-                'source_kb_id': item.source_kb_id,
-                'target_kb_id': item.target_kb_id,
-                'source_algo_id': item.source_algo_id,
-                'target_algo_id': item.target_algo_id,
-                'mode': item.mode,
-                'status': snapshot['status'],
+                'source_kb_id': item['source_kb_id'],
+                'target_kb_id': item['target_kb_id'],
+                'source_algo_id': item['source_algo_id'],
+                'target_algo_id': item['target_algo_id'],
+                'mode': item['mode'],
+                'status': snapshot.get('status', DocStatus.FAILED.value),
+                'accepted': accepted,
+                'error_code': error_code,
+                'error_msg': error_msg,
             })
         return items
 
@@ -1279,95 +1418,110 @@ class DocManager:
             }
         return None
 
-    def on_task_callback(self, callback: TaskCallbackRequest):
+    def on_task_callback(self, callback: TaskCallbackRequest):  # noqa: C901
         if not self._record_callback(callback.callback_id, callback.task_id):
             return {'ack': True, 'deduped': True, 'ignored_reason': None}
-        task_data = self._resolve_callback_task(callback)
-        if task_data is None:
-            return {'ack': True, 'ignored_reason': 'task_not_found'}
-        doc_id = task_data['doc_id']
-        kb_id = task_data['kb_id']
-        algo_id = task_data['algo_id']
-        task_type = TaskType(task_data['task_type'])
-        snapshot = self._get_parse_snapshot(doc_id, kb_id, algo_id)
-        if snapshot and snapshot.get('current_task_id') and snapshot['current_task_id'] != callback.task_id:
-            return {'ack': True, 'deduped': False, 'ignored_reason': 'stale_task_callback'}
-        if task_data.get('status') == DocStatus.CANCELED.value and callback.status != DocStatus.CANCELED:
-            return {'ack': True, 'deduped': False, 'ignored_reason': 'canceled_task_callback'}
+        try:
+            task_data = self._resolve_callback_task(callback)
+            if task_data is None:
+                return {'ack': True, 'ignored_reason': 'task_not_found'}
+            doc_id = task_data['doc_id']
+            kb_id = task_data['kb_id']
+            algo_id = task_data['algo_id']
+            task_type = TaskType(task_data['task_type'])
+            snapshot = self._get_parse_snapshot(doc_id, kb_id, algo_id)
+            if snapshot and snapshot.get('current_task_id') and snapshot['current_task_id'] != callback.task_id:
+                return {'ack': True, 'deduped': False, 'ignored_reason': 'stale_task_callback'}
+            if task_data.get('status') == DocStatus.CANCELED.value and callback.status != DocStatus.CANCELED:
+                return {'ack': True, 'deduped': False, 'ignored_reason': 'canceled_task_callback'}
 
-        if callback.event_type == CallbackEventType.START:
-            self._update_task_record(
-                callback.task_id,
-                status=DocStatus.WORKING.value,
-                started_at=now_ts(),
-                finished_at=None,
-                error_code=None,
-                error_msg=None,
-            )
-            start_status = DocStatus.DELETING if task_type == TaskType.DOC_DELETE else DocStatus.WORKING
-            self._upsert_parse_snapshot(
-                doc_id=doc_id,
-                kb_id=kb_id,
-                algo_id=algo_id,
-                status=start_status,
-                **self._build_snapshot_update(
-                    snapshot,
-                    task_type=task_type,
-                    current_task_id=callback.task_id,
+            if callback.event_type == CallbackEventType.START:
+                self._update_task_record(
+                    callback.task_id,
+                    status=DocStatus.WORKING.value,
                     started_at=now_ts(),
                     finished_at=None,
                     error_code=None,
                     error_msg=None,
-                    failed_stage=None,
-                ),
-            )
-            if task_type == TaskType.DOC_ADD:
-                self._apply_doc_upload_status(doc_id, task_type, DocStatus.WORKING)
-            elif task_type == TaskType.DOC_DELETE:
-                self._apply_doc_upload_status(doc_id, task_type, DocStatus.DELETING)
-            return {'ack': True, 'deduped': False, 'ignored_reason': None}
+                )
+                start_status = DocStatus.DELETING if task_type == TaskType.DOC_DELETE else DocStatus.WORKING
+                self._upsert_parse_snapshot(
+                    doc_id=doc_id,
+                    kb_id=kb_id,
+                    algo_id=algo_id,
+                    status=start_status,
+                    **self._build_snapshot_update(
+                        snapshot,
+                        task_type=task_type,
+                        current_task_id=callback.task_id,
+                        started_at=now_ts(),
+                        finished_at=None,
+                        error_code=None,
+                        error_msg=None,
+                        failed_stage=None,
+                    ),
+                )
+                if task_type == TaskType.DOC_ADD:
+                    self._apply_doc_upload_status(doc_id, task_type, DocStatus.WORKING)
+                elif task_type == TaskType.DOC_DELETE:
+                    self._apply_doc_upload_status(doc_id, task_type, DocStatus.DELETING)
+                return {'ack': True, 'deduped': False, 'ignored_reason': None}
 
-        final_status = callback.status
-        if task_type == TaskType.DOC_DELETE and final_status == DocStatus.SUCCESS:
-            final_status = DocStatus.DELETED
-        failed_stage = None
-        if final_status == DocStatus.FAILED:
-            failed_stage = 'DELETE' if task_type == TaskType.DOC_DELETE else 'PARSE'
-        task_message = task_data.get('message') or {}
-        cleanup_policy = task_message.get('cleanup_policy')
+            final_status = callback.status
+            if task_type == TaskType.DOC_DELETE and final_status == DocStatus.SUCCESS:
+                final_status = DocStatus.DELETED
+            failed_stage = None
+            if final_status == DocStatus.FAILED:
+                failed_stage = 'DELETE' if task_type == TaskType.DOC_DELETE else 'PARSE'
+            task_message = task_data.get('message') or {}
+            cleanup_policy = task_message.get('cleanup_policy')
 
-        self._update_task_record(
-            callback.task_id,
-            status=final_status.value,
-            error_code=callback.error_code,
-            error_msg=callback.error_msg,
-            finished_at=now_ts(),
-        )
+            if (
+                task_type == TaskType.DOC_TRANSFER
+                and final_status == DocStatus.SUCCESS
+                and task_message.get('mode') == 'move'
+            ):
+                source_kb_id = task_message.get('source_kb_id')
+                if source_kb_id and source_kb_id != kb_id:
+                    self._remove_kb_document(source_kb_id, doc_id)
+                    self._delete_parse_snapshots(doc_id, source_kb_id)
+                    self._sync_doc_upload_status(doc_id)
 
-        self._upsert_parse_snapshot(
-            doc_id=doc_id,
-            kb_id=kb_id,
-            algo_id=algo_id,
-            status=final_status,
-            **self._build_snapshot_update(
-                snapshot,
-                task_type=task_type,
-                current_task_id=callback.task_id,
+            self._update_task_record(
+                callback.task_id,
+                status=final_status.value,
                 error_code=callback.error_code,
                 error_msg=callback.error_msg,
-                failed_stage=failed_stage,
                 finished_at=now_ts(),
-            ),
-        )
+            )
 
-        if task_type == TaskType.DOC_DELETE and final_status == DocStatus.DELETED:
-            self._remove_kb_document(kb_id, doc_id)
-        self._apply_doc_upload_status(doc_id, task_type, final_status)
-        if task_type == TaskType.DOC_DELETE and final_status == DocStatus.DELETED and cleanup_policy == 'purge':
-            self._purge_deleted_kb_doc_data(kb_id, doc_id)
-            self._finalize_kb_deletion_if_empty(kb_id)
+            self._upsert_parse_snapshot(
+                doc_id=doc_id,
+                kb_id=kb_id,
+                algo_id=algo_id,
+                status=final_status,
+                **self._build_snapshot_update(
+                    snapshot,
+                    task_type=task_type,
+                    current_task_id=callback.task_id,
+                    error_code=callback.error_code,
+                    error_msg=callback.error_msg,
+                    failed_stage=failed_stage,
+                    finished_at=now_ts(),
+                ),
+            )
 
-        return {'ack': True, 'deduped': False, 'ignored_reason': None}
+            if task_type == TaskType.DOC_DELETE and final_status == DocStatus.DELETED:
+                self._remove_kb_document(kb_id, doc_id)
+            self._apply_doc_upload_status(doc_id, task_type, final_status)
+            if task_type == TaskType.DOC_DELETE and final_status == DocStatus.DELETED and cleanup_policy == 'purge':
+                self._purge_deleted_kb_doc_data(kb_id, doc_id)
+                self._finalize_kb_deletion_if_empty(kb_id)
+
+            return {'ack': True, 'deduped': False, 'ignored_reason': None}
+        except Exception:
+            self._forget_callback_record(callback.callback_id, callback.task_id)
+            raise
 
     def list_docs(
         self,
@@ -1548,8 +1702,57 @@ class DocManager:
                 return data
         raise DocServiceError('E_NOT_FOUND', f'algo not found: {algo_id}')
 
-    def list_chunks(self, page: int = 1, page_size: int = 20):
-        return {'items': [], 'total': 0, 'page': page, 'page_size': page_size}
+    def list_chunks(
+        self,
+        kb_id: str,
+        doc_id: str,
+        group: str,
+        algo_id: str = '__default__',
+        page: int = 1,
+        page_size: int = 20,
+        offset: Optional[int] = None,
+    ):
+        if not kb_id:
+            raise DocServiceError('E_INVALID_PARAM', 'kb_id is required', {'kb_id': kb_id})
+        if not doc_id:
+            raise DocServiceError('E_INVALID_PARAM', 'doc_id is required', {'doc_id': doc_id})
+        if not group:
+            raise DocServiceError('E_INVALID_PARAM', 'group is required', {'group': group})
+        self._validate_kb_algorithm(kb_id, algo_id)
+        doc = self._get_doc(doc_id)
+        if doc is None or not self._has_kb_document(kb_id, doc_id):
+            raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}', {'kb_id': kb_id, 'doc_id': doc_id})
+        groups = self.get_algo_groups(algo_id)
+        if not any(item.get('name') == group for item in groups):
+            raise DocServiceError(
+                'E_INVALID_PARAM',
+                f'invalid group: {group}',
+                {'algo_id': algo_id, 'group': group},
+            )
+        page = max(page, 1)
+        page_size = max(page_size, 1)
+        offset = (page - 1) * page_size if offset is None else max(offset, 0)
+        resp = self._parser_client.list_doc_chunks(
+            algo_id=algo_id,
+            kb_id=kb_id,
+            doc_id=doc_id,
+            group=group,
+            offset=offset,
+            page_size=page_size,
+        )
+        if resp.code == 404:
+            raise DocServiceError('E_NOT_FOUND', resp.msg, {'kb_id': kb_id, 'doc_id': doc_id, 'group': group})
+        if resp.code == 400:
+            raise DocServiceError('E_INVALID_PARAM', resp.msg, {'kb_id': kb_id, 'doc_id': doc_id, 'group': group})
+        if resp.code != 200:
+            raise fastapi.HTTPException(status_code=502, detail=resp.msg)
+        data = dict(resp.data or {})
+        data['page'] = page
+        data['page_size'] = page_size
+        data['offset'] = offset
+        data.setdefault('items', [])
+        data.setdefault('total', 0)
+        return data
 
     def health(self):
         return {
@@ -1579,7 +1782,11 @@ class DocManager:
             if keyword:
                 like_expr = f'%{keyword}%'
                 query = query.filter(
-                    sqlalchemy.or_(Kb.kb_id.like(like_expr), Kb.display_name.like(like_expr), Kb.description.like(like_expr))
+                    sqlalchemy.or_(
+                        Kb.kb_id.like(like_expr),
+                        Kb.display_name.like(like_expr),
+                        Kb.description.like(like_expr),
+                    )
                 )
             if status:
                 query = query.filter(Kb.status.in_(status))

@@ -18,9 +18,8 @@ from lazyllm.thirdparty import fastapi
 
 from .base import (
     ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
-    TaskStatus, TaskStatus, TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest,
-   
-    _calculate_task_score, _resolve_add_doc_task_type
+    TaskStatus, TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest,
+    _calculate_task_score
 )
 from .worker import DocumentProcessorWorker as Worker
 from .queue import _SQLBasedQueue as Queue
@@ -478,6 +477,87 @@ class DocumentProcessor(ModuleBase):
                                   'display_name': node_groups[group_name].get('display_name')}
                     data.append(group_info)
             return data
+
+        @staticmethod
+        def _format_chunk_item(segment: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                'uid': segment.get('uid'),
+                'doc_id': segment.get('doc_id'),
+                'kb_id': segment.get('kb_id'),
+                'group': segment.get('group'),
+                'number': segment.get('number', 0),
+                'content': segment.get('content'),
+                'type': segment.get('type'),
+                'parent': segment.get('parent'),
+                'metadata': segment.get('meta', {}),
+                'global_metadata': segment.get('global_meta', {}),
+                'answer': segment.get('answer', ''),
+                'image_keys': segment.get('image_keys', []),
+            }
+
+        def _list_doc_chunks_data(
+            self,
+            algo_id: str,
+            kb_id: str,
+            doc_id: str,
+            group: str,
+            offset: int = 0,
+            limit: int = 20,
+        ) -> Dict[str, Any]:
+            algorithm = self._get_algo(algo_id)
+            if algorithm is None:
+                raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
+            info = load_obj(algorithm.get('info_pickle'))
+            store: _DocumentStore = info['store']  # type: ignore
+            node_groups = info.get('node_groups', {})
+            if group not in node_groups or not store.is_group_active(group):
+                raise fastapi.HTTPException(status_code=400, detail=f'Invalid group {group}')
+            offset = max(offset, 0)
+            limit = max(limit, 1)
+            segments, total = store.get_segments(
+                doc_ids={doc_id},
+                kb_id=kb_id,
+                group=group,
+                offset=offset,
+                limit=limit,
+                return_total=True,
+                sort_by_number=True,
+            )
+            return {
+                'items': [self._format_chunk_item(segment) for segment in segments],
+                'total': total,
+                'offset': offset,
+                'page_size': limit,
+            }
+
+        @app.get('/doc/chunks')
+        def list_doc_chunks(
+            self,
+            algo_id: str = '__default__',
+            kb_id: Optional[str] = None,
+            doc_id: Optional[str] = None,
+            group: Optional[str] = None,
+            offset: int = 0,
+            page_size: int = 20,
+        ):
+            self._lazy_init()
+            if self._shutdown:
+                raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
+            if not kb_id:
+                raise fastapi.HTTPException(status_code=400, detail='kb_id is required')
+            if not doc_id:
+                raise fastapi.HTTPException(status_code=400, detail='doc_id is required')
+            if not group:
+                raise fastapi.HTTPException(status_code=400, detail='group is required')
+            data = self._list_doc_chunks_data(
+                algo_id=algo_id,
+                kb_id=kb_id,
+                doc_id=doc_id,
+                group=group,
+                offset=offset,
+                limit=page_size,
+            )
+            return BaseResponse(code=200, msg='success', data=data)
 
         @staticmethod
         def _resolve_add_task_type(file_infos) -> str:

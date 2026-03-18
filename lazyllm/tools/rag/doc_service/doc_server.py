@@ -18,7 +18,6 @@ from .base import CallbackEventType, DocStatus, SourceType, TaskCallbackRequest
 from .base import TransferRequest
 from .base import UploadRequest, AddFileItem
 from .doc_manager import DocManager
-from ..parsing_service.base import TaskStatus, TaskType
 
 
 class DocServer(ModuleBase):
@@ -128,7 +127,8 @@ class DocServer(ModuleBase):
                 candidate = os.path.join(self._storage_dir, f'{prefix}-{idx}{suffix}')
                 if candidate not in reserved_paths and not os.path.exists(candidate):
                     return candidate
-            return os.path.join(self._storage_dir, f'{prefix}-{hashlib.sha256(safe_name.encode()).hexdigest()[:8]}{suffix}')
+            digest = hashlib.sha256(safe_name.encode()).hexdigest()[:8]
+            return os.path.join(self._storage_dir, f'{prefix}-{digest}{suffix}')
 
         def _run_upload(self, request: UploadRequest, payload: Optional[Dict[str, Any]] = None):
             idem_payload = payload or self._build_upload_payload(request)
@@ -421,9 +421,26 @@ class DocServer(ModuleBase):
             return self._run(lambda: self._manager.get_algorithm_info(algo_id))
 
         @app.get('/v1/chunks')
-        def list_chunks(self, page: int = 1, page_size: int = 20):
+        def list_chunks(
+            self,
+            kb_id: str,
+            doc_id: str,
+            group: str,
+            algo_id: str = '__default__',
+            page: int = 1,
+            page_size: int = 20,
+            offset: Optional[int] = None,
+        ):
             self._lazy_init()
-            return self._run(lambda: self._manager.list_chunks(page=page, page_size=page_size))
+            return self._run(lambda: self._manager.list_chunks(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                group=group,
+                algo_id=algo_id,
+                page=page,
+                page_size=page_size,
+                offset=offset,
+            ))
 
         @app.post('/v1/tasks/batch')
         async def get_tasks_batch(self, request: 'fastapi.Request'):
@@ -730,8 +747,8 @@ class DocServer(ModuleBase):
     def get_kb(self, kb_id: str):
         return self._dispatch('get_kb', kb_id)
 
-    def list_chunks(self, page: int = 1, page_size: int = 20):
-        return self._dispatch('list_chunks', page, page_size)
+    def list_chunks(self, **kwargs):
+        return self._dispatch('list_chunks', **kwargs)
 
     def list_algorithms(self):
         return self._dispatch('list_algorithms_impl')

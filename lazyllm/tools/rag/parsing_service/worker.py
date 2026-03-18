@@ -26,7 +26,7 @@ class DocumentProcessorWorker(ModuleBase):
     class _Impl():
         def __init__(self, db_config: dict = None, task_poller=None, lease_duration: float = 300.0,
                      lease_renew_interval: float = 60.0, high_priority_task_types: list[str] = None,
-                     high_priority_only: bool = False, poll_mode: str = 'direct'):
+                     high_priority_only: bool = False, poll_mode: str = 'thread'):
             self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
             self._shutdown = False
             self._processors: dict[str, _Processor] = {}  # algo_id -> _Processor
@@ -254,6 +254,7 @@ class DocumentProcessorWorker(ModuleBase):
 
         def _exec_transfer_task(self, processor: _Processor, task_id: str, payload: dict):
             try:
+                self._validate_transfer_payload(payload)
                 file_infos = payload.get('file_infos')
                 kb_id = payload.get('kb_id', None)
                 input_files = []
@@ -340,6 +341,47 @@ class DocumentProcessorWorker(ModuleBase):
         def _resolve_task_type(self, request: AddDocRequest) -> str:
             return _resolve_add_doc_task_type(request)
 
+        @staticmethod
+        def _validate_transfer_payload(payload: dict):  # noqa: C901
+            file_infos = payload.get('file_infos')
+            if not isinstance(file_infos, list) or not file_infos:
+                raise ValueError('file_infos is required for task_type DOC_TRANSFER')
+            transfer_mode = None
+            target_kb_id = None
+            target_algo_id = None
+            target_doc_ids = set()
+            request_algo_id = payload.get('algo_id')
+            for idx, file_info in enumerate(file_infos):
+                transfer_params = file_info.get('transfer_params')
+                if not isinstance(transfer_params, dict) or not transfer_params:
+                    raise ValueError(f'transfer_params is required for task_type DOC_TRANSFER at index {idx}')
+                current_mode = transfer_params.get('mode')
+                current_target_kb_id = transfer_params.get('target_kb_id')
+                current_target_algo_id = transfer_params.get('target_algo_id')
+                current_target_doc_id = transfer_params.get('target_doc_id')
+                if current_mode not in ('cp', 'mv'):
+                    raise ValueError('transfer_params.mode must be one of [cp, mv]')
+                if not current_target_kb_id:
+                    raise ValueError('transfer_params.target_kb_id is required for task_type DOC_TRANSFER')
+                if not current_target_algo_id:
+                    raise ValueError('transfer_params.target_algo_id is required for task_type DOC_TRANSFER')
+                if not current_target_doc_id:
+                    raise ValueError('transfer_params.target_doc_id is required for task_type DOC_TRANSFER')
+                if transfer_mode is not None and transfer_mode != current_mode:
+                    raise ValueError('transfer_params.mode must be the same for all files')
+                if target_kb_id is not None and target_kb_id != current_target_kb_id:
+                    raise ValueError('transfer_params.target_kb_id must be the same for all files')
+                if target_algo_id is not None and target_algo_id != current_target_algo_id:
+                    raise ValueError('transfer_params.target_algo_id must be the same for all files')
+                if request_algo_id is not None and current_target_algo_id != request_algo_id:
+                    raise ValueError('transfer_params.target_algo_id must match request.algo_id')
+                if current_target_doc_id in target_doc_ids:
+                    raise ValueError('transfer_params.target_doc_id must be unique for all files')
+                transfer_mode = current_mode
+                target_kb_id = current_target_kb_id
+                target_algo_id = current_target_algo_id
+                target_doc_ids.add(current_target_doc_id)
+
         def _validate_task_payload(self, task_type: str, payload: dict):
             if not isinstance(payload, dict):
                 raise ValueError('payload must be a dict')
@@ -356,6 +398,8 @@ class DocumentProcessorWorker(ModuleBase):
                 doc_ids = payload.get('doc_ids')
                 if not isinstance(doc_ids, list) or not doc_ids:
                     raise ValueError('doc_ids is required for task_type DOC_DELETE')
+            if task_type == TaskType.DOC_TRANSFER.value:
+                self._validate_transfer_payload(payload)
 
         def _summarize_task_payload(self, task_type: str, payload: dict) -> str:
             summary = {
@@ -672,7 +716,7 @@ class DocumentProcessorWorker(ModuleBase):
     def __init__(self, db_config: dict = None, num_workers: int = 1, port: int = None,
                  task_poller=None, lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
                  high_priority_task_types: list[str] = None, high_priority_only: bool = False,
-                 poll_mode: str = 'direct'):
+                 poll_mode: str = 'thread'):
         super().__init__()
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         self._num_workers = num_workers
