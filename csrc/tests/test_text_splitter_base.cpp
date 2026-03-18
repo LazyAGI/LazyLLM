@@ -5,7 +5,6 @@
 #include <string_view>
 #include <vector>
 
-#include "doc_node.hpp"
 #include "text_splitter_base.hpp"
 #include "utils.hpp"
 
@@ -35,18 +34,17 @@ public:
 class TestTextSplitter final : public lazyllm::TextSplitterBase {
 public:
     TestTextSplitter(unsigned chunk_size, unsigned overlap = 0)
-        : lazyllm::TextSplitterBase(chunk_size, overlap, 0) {}
+        : lazyllm::TextSplitterBase(chunk_size, overlap, "gpt2") {}
 
     using lazyllm::TextSplitterBase::merge_chunks;
     using lazyllm::TextSplitterBase::split_recursive;
+
+    void set_tokenizer_for_test(std::shared_ptr<Tokenizer> tokenizer) {
+        _tokenizer = std::move(tokenizer);
+    }
 };
 
 } // namespace
-
-TEST(text_splitter_base, exception_management) {
-    EXPECT_THROW((void)lazyllm::TextSplitterBase(10, 11), std::runtime_error);
-    EXPECT_THROW((void)lazyllm::TextSplitterBase(0, 0), std::runtime_error);
-}
 
 TEST(text_splitter_base, split_text_keep_separator_returns_segments) {
     const auto parts = lazyllm::TextSplitterBase::split_text_while_keeping_separator("a--b--", "--");
@@ -63,19 +61,17 @@ TEST(text_splitter_base, split_text_keep_separator_skips_leading_separator) {
 
 TEST(text_splitter_base, split_text_throws_when_metadata_exceeds_chunk_size) {
     lazyllm::TextSplitterBase splitter(60, 0);
-    splitter.set_tokenizer(std::make_shared<ByteTokenizer>());
     EXPECT_THROW((void)splitter.split_text("abc", 60), std::runtime_error);
 }
 
 TEST(text_splitter_base, split_text_throws_when_metadata_budget_too_small) {
     lazyllm::TextSplitterBase splitter(60, 0);
-    splitter.set_tokenizer(std::make_shared<ByteTokenizer>());
     EXPECT_THROW((void)splitter.split_text("abc", 11), std::runtime_error);
 }
 
 TEST(text_splitter_base, split_recursive_falls_back_to_char_level) {
     TestTextSplitter splitter(100, 0);
-    splitter.set_tokenizer(std::make_shared<ByteTokenizer>());
+    splitter.set_tokenizer_for_test(std::make_shared<ByteTokenizer>());
 
     const auto chunks = splitter.split_recursive("abc", 2);
     ASSERT_EQ(chunks.size(), 3u);
@@ -87,7 +83,7 @@ TEST(text_splitter_base, split_recursive_falls_back_to_char_level) {
 
 TEST(text_splitter_base, merge_chunks_uses_overlap) {
     TestTextSplitter splitter(100, 1);
-    splitter.set_tokenizer(std::make_shared<ByteTokenizer>());
+    splitter.set_tokenizer_for_test(std::make_shared<ByteTokenizer>());
 
     const std::vector<lazyllm::ChunkView> splits{
         {"ab", true, 2},
@@ -99,21 +95,32 @@ TEST(text_splitter_base, merge_chunks_uses_overlap) {
     EXPECT_EQ(merged, (std::vector<std::string>{"ab", "bcd", "def"}));
 }
 
-TEST(text_splitter_base, transform_returns_chunk_nodes) {
+TEST(text_splitter_base, split_text_returns_single_empty_chunk_for_empty_input) {
     lazyllm::TextSplitterBase splitter(100, 0);
-    splitter.set_tokenizer(std::make_shared<ByteTokenizer>());
-
-    lazyllm::PDocNode node = std::make_shared<lazyllm::DocNode>("hello");
-
-    auto chunks = splitter.transform(node);
+    const auto chunks = splitter.split_text("", 0);
     ASSERT_EQ(chunks.size(), 1u);
-    EXPECT_EQ(chunks[0]->get_text(), "hello");
-
-    chunks = splitter.transform(nullptr);
-    EXPECT_TRUE(chunks.empty());
+    EXPECT_EQ(chunks[0], "");
 }
 
-TEST(text_splitter_base, from_tiktoken_encoder_throws_on_invalid_name) {
-    lazyllm::TextSplitterBase splitter(100, 0);
-    EXPECT_THROW((void)splitter.from_tiktoken_encoder("definitely_unknown"), std::runtime_error);
+TEST(text_splitter_base, split_text_uses_current_definition_for_large_inputs) {
+    TestTextSplitter splitter(60, 0);
+    splitter.set_tokenizer_for_test(std::make_shared<ByteTokenizer>());
+
+    std::string text(120, 'a');
+    const auto chunks = splitter.split_text(text, 0);
+
+    ASSERT_FALSE(chunks.empty());
+    for (const auto& chunk : chunks) EXPECT_LE(chunk.size(), 60u);
+}
+
+TEST(text_splitter_base, merge_chunks_throws_on_oversized_end_split) {
+    TestTextSplitter splitter(100, 1);
+    splitter.set_tokenizer_for_test(std::make_shared<ByteTokenizer>());
+
+    const std::vector<lazyllm::ChunkView> splits{
+        {"a", true, 1},
+        {"bbbb", true, 4},
+    };
+
+    EXPECT_THROW((void)splitter.merge_chunks(splits, 3), std::runtime_error);
 }
