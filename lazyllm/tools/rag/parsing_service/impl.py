@@ -91,6 +91,21 @@ class _Processor:
     def reader(self) -> DirectoryReader:
         return self._reader
 
+    @staticmethod
+    def _prepare_doc_inputs(input_files: List[str], ids: Optional[List[str]] = None,
+                            metadatas: Optional[List[Dict[str, Any]]] = None,
+                            kb_id: Optional[str] = None) -> tuple[List[str], List[Dict[str, Any]], str]:
+        ids = ids or [gen_docid(path) for path in input_files]
+        normalized_metadatas = metadatas or [{} for _ in input_files]
+        for i, (doc_id, path) in enumerate(zip(ids, input_files)):
+            metadata = normalized_metadatas[i] or {}
+            metadata.setdefault(RAG_DOC_ID, doc_id)
+            metadata.setdefault(RAG_DOC_PATH, path)
+            metadata.setdefault(RAG_KB_ID, kb_id or DEFAULT_KB_ID)
+            normalized_metadatas[i] = metadata
+        resolved_kb_id = normalized_metadatas[0].get(RAG_KB_ID, DEFAULT_KB_ID) if kb_id is None else kb_id
+        return ids, normalized_metadatas, resolved_kb_id
+
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,  # noqa: C901
                 metadatas: Optional[List[Dict[str, Any]]] = None, kb_id: Optional[str] = None,
                 transfer_mode: Optional[str] = None, target_kb_id: Optional[str] = None,
@@ -99,11 +114,7 @@ class _Processor:
         try:
             if not input_files: return
             add_start = time.time()
-            if not ids: ids = [gen_docid(path) for path in input_files]
-            temp_metas = [{RAG_DOC_ID: doc_id, RAG_DOC_PATH: path, RAG_KB_ID: kb_id or DEFAULT_KB_ID}
-                          for doc_id, path in zip(ids, input_files)]
-            metadatas = [{**temp, **(metadata)} for metadata, temp in zip(metadatas or repeat({}), temp_metas)]
-            kb_id = metadatas[0].get(RAG_KB_ID, DEFAULT_KB_ID) if kb_id is None else kb_id
+            ids, metadatas, kb_id = self._prepare_doc_inputs(input_files, ids, metadatas, kb_id)
 
             load_start = time.time()
             if transfer_mode is None:
@@ -275,7 +286,7 @@ class _Processor:
                       kb_id: str = None, **kwargs):
         if not metadatas:
             raise ValueError('metadatas is required for reparse')
-        kb_id = metadatas[0].get(RAG_KB_ID, None) if kb_id is None else kb_id
+        doc_ids, metadatas, kb_id = self._prepare_doc_inputs(doc_paths, doc_ids, metadatas, kb_id)
         if group_name == 'all':
             preloaded_root_nodes = self._reader.load_data(doc_paths, metadatas, split_nodes_by_type=True)
             self._store.remove_nodes(doc_ids=doc_ids, kb_id=kb_id)

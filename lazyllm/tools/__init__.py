@@ -5,6 +5,9 @@ if TYPE_CHECKING:
     from .rag import (Document, GraphDocument, UrlGraphDocument, Reranker, Retriever, TempDocRetriever,
                     GraphRetriever, SentenceSplitter, LLMParser)
     from .webpages import WebModule
+    from .fs import (LazyLLMFSBase, CloudFSBufferedFile, CloudFS, CloudFsWatchdog,
+                     FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS,
+                     ObsidianFS)
     from .agent import (
         ToolManager,
         FunctionCall,
@@ -128,6 +131,21 @@ _SUBMOD_MAP = {
         'Gitee',
         'GitCode',
         'review',
+    ],
+    'fs': [
+        'LazyLLMFSBase',
+        'CloudFSBufferedFile',
+        'CloudFS',
+        'CloudFsWatchdog',
+        'FeishuFS',
+        'ConfluenceFS',
+        'NotionFS',
+        'GoogleDriveFS',
+        'OneDriveFS',
+        'YuqueFS',
+        'OnesFS',
+        'S3FS',
+        'ObsidianFS',
     ],
 }
 _SUBMOD_MAP_REVERSE = {v: k for k, vs in _SUBMOD_MAP.items() for v in vs}
