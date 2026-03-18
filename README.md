@@ -253,7 +253,7 @@ Modules are the top-level components in LazyLLM, equipped with four key capabili
 | :---: | :---: | :---: | :---: | :---: | :---: |
 | ActionModule | Can wrap functions, modules, flows, etc., into a Module | Supports training/fine-tuning of its Submodules through ActionModule | Supports deployment of its Submodules through ActionModule | ✅ | ✅ |
 | UrlModule | Wraps any URL into a Module to access external services | ❌ | ❌ | ✅ | ✅ |
-| ServerModule | Wraps any function, flow, or Module into an API service | ❌ | ✅ | ✅ | ✅
+| ServerModule | Wraps any function, flow, or Module into an API service | ❌ | ✅ | ✅ | ✅ |
 | TrainableModule | Trainable Module, all supported models are TrainableModules | ✅ | ✅ | ✅ | ✅ |
 | WebModule | Launches a multi-round dialogue interface service | ❌ | ✅ | ❌ | ✅ |
 | OnlineChatModule | Integrates online model fine-tuning and inference services | ✅ | ✅ | ✅ | ✅ |

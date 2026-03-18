@@ -3,6 +3,7 @@ import functools
 import lazyllm
 import re
 import sys
+import warnings
 from typing import Union, List
 from .bind import _MetaBind
 from ..configs import config
@@ -84,11 +85,6 @@ class LazyDict(dict):
             return False
 
 
-group_template = '''\
-class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
-    pass
-'''
-
 config.add('use_builtin', bool, False, 'USE_BUILTIN',
            description='Whether to use registry modules in python builtin.')
 
@@ -132,14 +128,10 @@ def _get_base_cls_from_registry(cls_str, *, registry=LazyLLMRegisterMetaClass.al
         return registry.base
     group, cls_str = cls_str.split('.', 1) if '.' in cls_str else (cls_str, '')
     if not (registry is LazyLLMRegisterMetaClass.all_clses or group in registry):
-        exec(group_template.format(name=group.capitalize(), base=registry.base._lazy_llm_group))
+        base_cls = LazyLLMRegisterMetaClass.all_clses[registry.base._lazy_llm_group.lower()].base
+        type(f'LazyLLM{group.capitalize()}Base', (base_cls,), {})
     return _get_base_cls_from_registry(cls_str, registry=registry[group])
 
-
-reg_template = '''\
-class {name}(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
-    pass
-'''
 
 def bind_to_instance(func):
     @functools.wraps(func)
@@ -148,11 +140,13 @@ def bind_to_instance(func):
     return wrapper
 
 class Register(object):
-    def __init__(self, base, fnames, template: str = reg_template, default_group: Optional[str] = None,
+    def __init__(self, base, fnames, template: Optional[str] = None, default_group: Optional[str] = None,
                  allowed_parameter: Optional[Union[str, List[str]]] = None):
+        if template is not None:
+            warnings.warn('The "template" parameter of Register is deprecated and ignored.',
+                          DeprecationWarning, stacklevel=2)
         self.basecls = base
         self.fnames = [fnames] if isinstance(fnames, str) else fnames
-        self.template = template
         self._default_group = default_group
         if isinstance(allowed_parameter, str):
             self._allowed_parameter = {allowed_parameter}
@@ -187,9 +181,8 @@ class Register(object):
                 func = wrapper_func
             else:
                 func_name = func.__name__
-            exec(self.template.format(
-                name=func_name + cls.split('.')[-1].capitalize(), base=cls))
-            # 'func' cannot be recognized by exec, so we use 'setattr' instead
+            base_cls = LazyLLMRegisterMetaClass.all_clses[cls.lower()].base
+            type(func_name + cls.split('.')[-1].capitalize(), (base_cls,), {})
             f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
 
             # Support multiprocessing: Register the class in the module where the function is defined
