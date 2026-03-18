@@ -263,7 +263,19 @@ class OpenSearchStore(LazyLLMStoreBase):
                 vals = [vals]
             return {'query': {'ids': {'values': vals}}}
 
+        exact_match_fields = {'doc_id', 'kb_id', 'group', 'parent'}
+
         def _add_clause(key, val):
+            if key in exact_match_fields:
+                clauses = []
+                if isinstance(val, list):
+                    clauses.append({'terms': {key: val}})
+                    clauses.append({'terms': {f'{key}.keyword': val}})
+                else:
+                    clauses.append({'term': {key: val}})
+                    clauses.append({'term': {f'{key}.keyword': val}})
+                must_clauses.append({'bool': {'should': clauses, 'minimum_should_match': 1}})
+                return
             if isinstance(val, list):
                 must_clauses.append({'terms': {key: val}})
             else:
