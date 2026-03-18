@@ -16,13 +16,12 @@ import os
 import threading
 from lazyllm.thirdparty import tiktoken
 from lazyllm import config, ModuleBase
-from lazyllm.cpp import cpp_class
+from lazyllm.cpp import cpp_proxy
 from pathlib import Path
 import inspect
 from lazyllm.thirdparty import nltk
 from lazyllm.thirdparty import transformers
 
-@cpp_class
 class MetadataMode(str, Enum):
     ALL = 'ALL'
     EMBED = 'EMBED'
@@ -63,15 +62,6 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
     return result
 
 
-@cpp_class(funcs_to_override=[
-    '__init__',
-    '_get_ref_nodes',
-    'batch_forward',
-    'transform',
-    'process',
-    '_default_match_handler',
-    '_default_miss_handler',
-])
 class NodeTransform(ModuleBase):
     __support_rich__ = False
 
@@ -217,7 +207,14 @@ _tiktoken_env_lock = threading.Lock()
 
 _UNSET = object()
 
-@cpp_class
+@cpp_proxy(funcs_to_override=[
+    'split_text',
+    '_split',
+    '_merge',
+], attrs_to_proxy=['_chunk_size', '_overlap'], cpp_method_aliases={
+    '_split': 'split_recursive',
+    '_merge': 'merge_chunks',
+})
 class _TextSplitterBase(NodeTransform):
     _default_params = {}
     _default_params_lock = threading.RLock()

@@ -1,6 +1,7 @@
 import importlib
 import os
-from typing import List, Optional, TypeVar, cast
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, cast
 
 _LAZYLLM_CPP_MODULE = None
 _LAZYLLM_CPP_ENABLED = None
@@ -35,6 +36,75 @@ def _validate_funcs_to_override(funcs_to_override: Optional[List[str]]) -> List[
     return funcs_to_override
 
 
+def _validate_attrs_to_proxy(attrs_to_proxy: Optional[List[str]]) -> List[str]:
+    if attrs_to_proxy is None:
+        return []
+    if not isinstance(attrs_to_proxy, list):
+        raise TypeError(
+            f'@cpp_proxy attrs_to_proxy must be list[str], got: {type(attrs_to_proxy).__name__}'
+        )
+    invalid = [name for name in attrs_to_proxy if not isinstance(name, str)]
+    if invalid:
+        raise TypeError('@cpp_proxy attrs_to_proxy must be list[str].')
+    return attrs_to_proxy
+
+
+def _validate_method_aliases(method_aliases: Optional[Dict[str, str]]) -> Dict[str, str]:
+    if method_aliases is None:
+        return {}
+    if not isinstance(method_aliases, dict):
+        raise TypeError(
+            f'@cpp_proxy cpp_method_aliases must be dict[str, str], got: {type(method_aliases).__name__}'
+        )
+    for py_name, cpp_name in method_aliases.items():
+        if not isinstance(py_name, str) or not isinstance(cpp_name, str):
+            raise TypeError('@cpp_proxy cpp_method_aliases must be dict[str, str].')
+    return method_aliases
+
+
+def _resolve_impl_cls(cpp_module: Any, runtime_cls: type, default_impl_name: str):
+    default_impl_cls = getattr(cpp_module, default_impl_name)
+    impl_name = getattr(runtime_cls, '__cpp_proxy_impl_name__', f'{runtime_cls.__name__}CPPImpl')
+    return getattr(cpp_module, impl_name, default_impl_cls)
+
+
+def _create_impl(
+    cpp_module: Any,
+    runtime_cls: type,
+    default_impl_name: str,
+    init_state: Dict[str, Any],
+    init_args: Tuple[Any, ...],
+    init_kwargs: Dict[str, Any],
+):
+    impl_cls = _resolve_impl_cls(cpp_module, runtime_cls, default_impl_name)
+
+    ctor_kwargs: Dict[str, Any] = {}
+    if '_chunk_size' in init_state:
+        ctor_kwargs['chunk_size'] = init_state['_chunk_size']
+    if '_overlap' in init_state:
+        ctor_kwargs['overlap'] = init_state['_overlap']
+
+    attempts: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = []
+    if ctor_kwargs:
+        attempts.append(((), dict(ctor_kwargs)))
+        if 'overlap' in ctor_kwargs:
+            sentence_kwargs = dict(ctor_kwargs)
+            sentence_kwargs['chunk_overlap'] = sentence_kwargs.pop('overlap')
+            attempts.append(((), sentence_kwargs))
+    attempts.append((init_args, dict(init_kwargs)))
+
+    last_error: Optional[Exception] = None
+    for args, kwargs in attempts:
+        try:
+            return impl_cls(*args, **kwargs)
+        except TypeError as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f'Failed to initialize C++ proxy impl for {runtime_cls.__name__}')
+
+
 def cpp_class(py_class: Optional[_C] = None, *, funcs_to_override: Optional[List[str]] = None):
     override_names = _validate_funcs_to_override(funcs_to_override)
 
@@ -57,6 +127,107 @@ def cpp_class(py_class: Optional[_C] = None, *, funcs_to_override: Optional[List
             method = cls.__dict__.get(name, getattr(cls, name))
             setattr(cpp_export, name, method)
         return cast(_C, cpp_export)
+
+    if py_class is None:
+        return _decorate
+    return _decorate(py_class)
+
+
+def cpp_proxy(
+    py_class: Optional[_C] = None,
+    *,
+    funcs_to_override: Optional[List[str]] = None,
+    attrs_to_proxy: Optional[List[str]] = None,
+    cpp_method_aliases: Optional[Dict[str, str]] = None,
+):
+    proxy_names = _validate_funcs_to_override(funcs_to_override)
+    proxy_attrs = set(_validate_attrs_to_proxy(attrs_to_proxy))
+    method_aliases = _validate_method_aliases(cpp_method_aliases)
+
+    def _decorate(cls: _C) -> _C:
+        if not isinstance(cls, type):
+            raise TypeError(f'@cpp_proxy can only decorate classes, got: {type(cls).__name__}')
+
+        if not _is_enabled():
+            return cls
+
+        cpp_module = _load_cpp_module()
+        default_impl_name = f'{cls.__name__}CPPImpl'
+        if not hasattr(cpp_module, default_impl_name):
+            raise AttributeError(f'@cpp_proxy cannot find C++ impl: {default_impl_name}')
+
+        setattr(cls, '__cpp_proxy_impl_name__', default_impl_name)
+
+        original_init = getattr(cls, '__init__')
+        original_getattribute = cls.__getattribute__
+        original_setattr = cls.__setattr__
+        impl_holder = '_cpp_impl'
+
+        @wraps(original_init)
+        def _proxied_init(self, *args, **kwargs):
+            original_init(self, *args, **kwargs)
+            existing = object.__getattribute__(self, '__dict__').get(impl_holder)
+            if existing is not None:
+                return
+            state = dict(object.__getattribute__(self, '__dict__'))
+            impl = _create_impl(cpp_module, type(self), default_impl_name, state, args, kwargs)
+            object.__setattr__(self, impl_holder, impl)
+            for attr_name in proxy_attrs:
+                object.__getattribute__(self, '__dict__').pop(attr_name, None)
+
+        cls.__init__ = _proxied_init
+
+        def _get_impl(self):
+            return object.__getattribute__(self, '__dict__').get(impl_holder)
+
+        def _make_method_proxy(name: str, original: Callable[..., Any]):
+            target_name = method_aliases.get(name, name)
+
+            @wraps(original)
+            def _proxy(self, *args, **kwargs):
+                impl = _get_impl(self)
+                if impl is None:
+                    return original(self, *args, **kwargs)
+                if name == 'split_text':
+                    runtime_cls = type(self)
+                    # If a subclass customizes split/merge hooks, keep Python split_text
+                    # so polymorphic behavior still follows the Python override.
+                    if runtime_cls is not cls and (
+                        '_split' in runtime_cls.__dict__ or '_merge' in runtime_cls.__dict__
+                    ):
+                        return original(self, *args, **kwargs)
+                result = getattr(impl, target_name)(*args, **kwargs)
+                return self if result is impl else result
+            return _proxy
+
+        for name in proxy_names:
+            if not hasattr(cls, name):
+                raise AttributeError(
+                    f'@cpp_proxy funcs_to_override contains unknown method: {cls.__name__}.{name}'
+                )
+            original = getattr(cls, name)
+            setattr(cls, name, _make_method_proxy(name, original))
+
+        if proxy_attrs:
+            def _proxied_getattribute(self, name):
+                if name in proxy_attrs:
+                    impl = object.__getattribute__(self, '__dict__').get(impl_holder)
+                    if impl is not None:
+                        return getattr(impl, name)
+                return original_getattribute(self, name)
+
+            def _proxied_setattr(self, name, value):
+                if name in proxy_attrs:
+                    impl = object.__getattribute__(self, '__dict__').get(impl_holder)
+                    if impl is not None:
+                        setattr(impl, name, value)
+                        return
+                original_setattr(self, name, value)
+
+            cls.__getattribute__ = _proxied_getattribute
+            cls.__setattr__ = _proxied_setattr
+
+        return cls
 
     if py_class is None:
         return _decorate

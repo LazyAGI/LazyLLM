@@ -27,7 +27,7 @@ namespace lazyllm {
  *   std::vector<std::string_view> and remove eager string materialization.
  */
 std::vector<std::string> TextSplitterBase::split_text(const std::string_view& view, int metadata_size) const {
-    if (view.empty()) return {};
+    if (view.empty()) return {""};
     int effective_chunk_size = _chunk_size - metadata_size;
     if (effective_chunk_size <= 0) {
         throw std::runtime_error(
