@@ -537,11 +537,22 @@ class DocImpl:
         return set_id
 
     def _get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                   group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
-                   ) -> List[DocNode]:
+                   group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None,
+                   limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
+                   sort_by_number: bool = False) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
         self._lazy_init()
-        return self._store.get_nodes(uids=uids, doc_ids=doc_ids, group=group,
-                                     kb_id=kb_id, numbers=numbers, display=True)
+        return self._store.get_nodes(
+            uids=uids,
+            doc_ids=doc_ids,
+            group=group,
+            kb_id=kb_id,
+            numbers=numbers,
+            limit=limit,
+            offset=offset,
+            return_total=return_total,
+            sort_by_number=sort_by_number,
+            display=True,
+        )
 
     def _get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
                           merge: bool = False) -> Union[List[DocNode], DocNode]:

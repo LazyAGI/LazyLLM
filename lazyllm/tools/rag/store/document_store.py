@@ -248,6 +248,20 @@ class _DocumentStore(object):
             limit, offset = self._normalize_pagination(limit, offset)
             criteria = self._build_get_criteria(uids, doc_ids, kb_id, numbers, kwargs.get('parent'))
             groups = self._resolve_groups(group)
+            if self._can_use_native_segment_pagination(groups, sort_by_number):
+                result = self.impl.get(
+                    self._gen_collection_name(groups[0]),
+                    criteria,
+                    limit=limit,
+                    offset=offset,
+                    return_total=return_total,
+                    sort_by_number=sort_by_number,
+                    **kwargs,
+                )
+                if return_total:
+                    segments, total = result if isinstance(result, tuple) else (result, len(result))
+                    return segments, total
+                return result[0] if isinstance(result, tuple) else result
             segments = []
             for group in groups:
                 if not self.is_group_active(group):
@@ -301,6 +315,12 @@ class _DocumentStore(object):
         if not group:
             return sorted(self._activated_groups)
         return [group]
+
+    def _can_use_native_segment_pagination(self, groups: List[str], sort_by_number: bool) -> bool:
+        if len(groups) != 1 or not sort_by_number:
+            return False
+        store = getattr(self.impl, 'segment_store', self.impl)
+        return store.__class__.__name__ in {'MapStore', 'OpenSearchStore', 'ElasticSearchStore'}
 
     def _build_get_criteria(self, uids: Optional[List[str]], doc_ids: Optional[Set],
                             kb_id: Optional[str], numbers: Optional[Set] = None,

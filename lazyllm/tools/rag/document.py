@@ -1,5 +1,5 @@
 import os
-from typing import Callable, Optional, Dict, Union, List, Type, Set
+from typing import Callable, Optional, Dict, Union, List, Type, Set, Tuple
 from functools import cached_property
 from pydantic import BaseModel
 import lazyllm
@@ -401,9 +401,12 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         return self._forward('_register_schema_set', schema_set, kb_id, force_refresh)
 
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
-                  ) -> List[DocNode]:
-        return self._forward('_get_nodes', uids, doc_ids, group, kb_id, numbers)
+                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None,
+                  limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
+                  sort_by_number: bool = False) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
+        return self._forward(
+            '_get_nodes', uids, doc_ids, group, kb_id, numbers, limit, offset, return_total, sort_by_number,
+        )
 
     def get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
                          merge: bool = False) -> Union[List[DocNode], DocNode]:
@@ -434,9 +437,12 @@ class UrlDocument(ModuleBase):
         return self._forward('retrieve', *args, **kw)
 
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
-                  ) -> List[DocNode]:
-        return self._forward('_get_nodes', uids, doc_ids, group, kb_id, numbers)
+                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None,
+                  limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
+                  sort_by_number: bool = False) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
+        return self._forward(
+            '_get_nodes', uids, doc_ids, group, kb_id, numbers, limit, offset, return_total, sort_by_number,
+        )
 
     def get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
                          merge: bool = False) -> Union[List[DocNode], DocNode]:

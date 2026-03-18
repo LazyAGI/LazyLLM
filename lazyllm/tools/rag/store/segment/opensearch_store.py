@@ -156,13 +156,17 @@ class OpenSearchStore(LazyLLMStoreBase):
             return False
 
     @override
-    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
+    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:  # noqa: C901
         try:
             if not self._client.indices.exists(index=collection_name):
                 LOG.warning(f'[OpenSearchStore - get] Index {collection_name} does not exist')
                 return []
             results: List[dict] = []
             criteria = dict(criteria) if criteria else {}
+            limit = kwargs.get('limit')
+            offset = max(kwargs.get('offset', 0) or 0, 0)
+            return_total = kwargs.get('return_total', False)
+            sort_by_number = kwargs.get('sort_by_number', False)
             if criteria and self._primary_key in criteria:
                 vals = criteria.pop(self._primary_key)
                 if not isinstance(vals, list):
@@ -172,6 +176,28 @@ class OpenSearchStore(LazyLLMStoreBase):
                 for doc in resp['docs']:
                     if doc.get('found', False):
                         results.append(self._transform_segment(doc))
+                if sort_by_number:
+                    results = sorted(results, key=lambda item: (item.get('number', 0), item.get('uid', '')))
+                total = len(results)
+                if offset > 0 or limit is not None:
+                    end = None if limit is None else offset + limit
+                    results = results[offset:end]
+                return (results, total) if return_total else results
+            elif sort_by_number and (limit is not None or offset > 0 or return_total):
+                body = self._construct_criteria(criteria) or {'query': {'match_all': {}}}
+                body['sort'] = [{'number': {'order': 'asc'}}, {'_id': {'order': 'asc'}}]
+                if offset > 0:
+                    body['from'] = offset
+                if limit is not None:
+                    body['size'] = limit
+                elif offset > 0:
+                    body['size'] = 10000
+                if return_total:
+                    body['track_total_hits'] = True
+                resp = self._client.search(index=collection_name, body=body)
+                results = [self._transform_segment(hit) for hit in resp['hits']['hits']]
+                total = resp['hits']['total']['value'] if return_total else len(results)
+                return (results, total) if return_total else results
             else:
                 spec = importlib.util.find_spec('opensearchpy.helpers')
                 helpers = importlib.util.module_from_spec(spec)
