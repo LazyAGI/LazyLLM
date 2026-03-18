@@ -13,9 +13,8 @@ namespace lazyllm {
 class SentenceSplitter : public TextSplitterBase {
 public:
     explicit SentenceSplitter(
-        std::optional<unsigned> chunk_size,
-        std::optional<unsigned> chunk_overlap,
-        std::optional<unsigned> worker_num,
+        unsigned chunk_size,
+        unsigned chunk_overlap,
         const std::string& encoding_name = "gpt2")
         : TextSplitterBase(chunk_size, chunk_overlap, encoding_name) {}
 

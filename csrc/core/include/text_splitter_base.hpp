@@ -26,14 +26,6 @@ public:
         _overlap(overlap),
         _tokenizer(std::make_shared<TiktokenTokenizer>(encoding_name)) {}
 
-    TextSplitterBase& from_tiktoken_encoder(
-        const std::string& encoding_name = "gpt2",
-        const std::optional<std::string>& model_name = std::nullopt)
-    {
-        _tokenizer = std::make_shared<TiktokenTokenizer>(model_name.value_or(encoding_name));
-        return *this;
-    }
-
     std::vector<std::string> split_text(const std::string_view& view, int metadata_size) const;
     static std::vector<std::string_view> split_text_while_keeping_separator(
         const std::string_view& text,
