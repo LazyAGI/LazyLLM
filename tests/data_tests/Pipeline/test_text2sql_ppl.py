@@ -3,7 +3,10 @@ import shutil
 import tempfile
 
 from lazyllm import config
-from lazyllm.tools.data.pipelines.text2sql_pipelines import build_text2sql_full_pipeline
+from lazyllm.tools.data.pipelines.text2sql_pipelines import (
+    text2sql_synthetic_ppl,
+    text2sql_enhanced_ppl,
+)
 
 
 class MockDatabaseManager:
@@ -99,12 +102,13 @@ class TestText2SQLPipeline:
 
         mock_model = self.MockModel(return_val=MockModelCallable(responses))
 
-        ppl = build_text2sql_full_pipeline(
+        ppl = text2sql_synthetic_ppl(
             model=mock_model,
             database_manager=self.db_manager,
             output_num=1,
             num_generations=3,
             input_query_num=5,
+            output_format=None,
         )
         data = [{'db_id': 'test_db'}]
         res = ppl(data)
@@ -125,28 +129,98 @@ class TestText2SQLPipeline:
         effort_response = '```sql\nSELECT id FROM users\n```'
 
         responses = [
-            sql_forge_response,  # SQLForge (1)
+            sql_forge_response,
             intent_response, intent_response, intent_response, intent_response,
-            intent_response,  # SQLIntentSynthesizer (5)
-            auditor_response,  # TSQLSemanticAuditor (1)
-            reasoning_response, reasoning_response, reasoning_response,  # SQLReasoningTracer (3)
+            intent_response,
+            auditor_response,
+            reasoning_response, reasoning_response, reasoning_response,
             effort_response, effort_response, effort_response, effort_response, effort_response,
-            effort_response, effort_response, effort_response, effort_response, effort_response,  # SQLEffortRanker (10)
+            effort_response, effort_response, effort_response, effort_response, effort_response,
         ]
 
         mock_model = self.MockModel(return_val=MockModelCallable(responses))
 
         # Embedding model is optional, pass None
-        ppl = build_text2sql_full_pipeline(
+        ppl = text2sql_synthetic_ppl(
             model=mock_model,
             database_manager=self.db_manager,
             embedding_model=None,
             output_num=1,
             num_generations=2,
             input_query_num=5,
+            output_format=None,
         )
         data = [{'db_id': 'test_db'}]
         res = ppl(data)
 
         assert len(res) == 1
         assert 'SQL' in res[0]
+
+    def test_text2sql_enhanced_pipeline(self):
+        # SQLQuestionGenerator generates multiple questions from a single LLM response
+        # The response should contain output_num questions
+        question_response = ('[QUESTION-START] Show all users [QUESTION-END]\n'
+                             '[EXTERNAL-KNOWLEDGE-START] none [EXTERNAL-KNOWLEDGE-END]\n'
+                             '[QUESTION-START] List user names [QUESTION-END]\n'
+                             '[EXTERNAL-KNOWLEDGE-START] none [EXTERNAL-KNOWLEDGE-END]')
+        sql_generator_response = '```sql\nSELECT * FROM users\n```'
+        reasoning_response = 'Step 1: Identify the table. Step 2: Select all columns.'
+        effort_response = '```sql\nSELECT * FROM users\n```'
+
+        # With output_num=2, SQLQuestionGenerator makes 1 call and extracts 2 questions
+        # SQLGenerator is called 2 times (once per question)
+        # SQLReasoningTracer is called 2 times (once per valid SQL)
+        # SQLEffortRanker is called 2 * num_generations = 20 times
+        responses = [
+            question_response,  # SQLQuestionGenerator: 1 call -> 2 questions
+            sql_generator_response, sql_generator_response,  # SQLGenerator: 2 calls
+            reasoning_response, reasoning_response,  # SQLReasoningTracer: 2 calls
+        ] + [effort_response] * 20  # SQLEffortRanker: 20 calls
+
+        mock_model = self.MockModel(return_val=MockModelCallable(responses))
+
+        ppl = text2sql_enhanced_ppl(
+            model=mock_model,
+            database_manager=self.db_manager,
+            output_num=2,
+            num_generations=10,
+            output_format=None,
+        )
+        data = [{'db_id': 'test_db'}]
+        res = ppl(data)
+
+        assert len(res) == 2
+        assert 'SQL' in res[0]
+        assert 'question' in res[0]
+        assert 'cot_reasoning' in res[0]
+        assert 'sql_component_difficulty' in res[0]
+        assert 'sql_execution_difficulty' in res[0]
+
+    def test_text2sql_enhanced_pipeline_with_format(self):
+        question_response = '[QUESTION-START] Get user ids [QUESTION-END]'
+        sql_generator_response = '```sql\nSELECT id FROM users\n```'
+        reasoning_response = 'Step 1: Identify users table. Step 2: Select id column.'
+        effort_response = '```sql\nSELECT id FROM users\n```'
+
+        responses = [
+            question_response,
+            sql_generator_response,
+            reasoning_response,
+        ] + [effort_response] * 10
+
+        mock_model = self.MockModel(return_val=MockModelCallable(responses))
+
+        ppl = text2sql_enhanced_ppl(
+            model=mock_model,
+            database_manager=self.db_manager,
+            embedding_model=None,
+            output_num=1,
+            num_generations=10,
+            output_format='alpaca',
+        )
+        data = [{'db_id': 'test_db'}]
+        res = ppl(data)
+
+        assert len(res) == 1
+        assert 'instruction' in res[0]
+        assert 'output' in res[0]

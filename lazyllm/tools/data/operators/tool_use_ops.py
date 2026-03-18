@@ -10,16 +10,17 @@ class ContextualBeacon(ToolUseOps):
         self.input_key = input_key
         self.output_key = output_key
         sys_prompt = system_prompt or (
-            '你是一个对话场景分析助手。你的任务是从对话内容中提取可用于数据生成的场景信息。\n'
-            '只输出 JSON，不要输出任何额外文本。\n'
-            'JSON 结构：\n'
+            'You are a dialogue scenario analysis assistant. Your task is to extract scenario information '
+            'from conversation content for data generation.\n'
+            'Output only JSON, no extra text.\n'
+            'JSON structure:\n'
             '{\n'
-            '  "scene": "一句话场景描述",\n'
-            '  "domain": "领域/主题",\n'
-            '  "user_profile": "用户角色/背景（可为空）",\n'
-            '  "assistant_goal": "助手应完成的目标",\n'
-            '  "constraints": ["约束1","约束2"],\n'
-            '  "key_entities": ["关键实体1","关键实体2"]\n'
+            '  "scene": "One-sentence scenario description",\n'
+            '  "domain": "Domain/topic",\n'
+            '  "user_profile": "User role/background (optional)",\n'
+            '  "assistant_goal": "Goal the assistant should achieve",\n'
+            '  "constraints": ["constraint1","constraint2"],\n'
+            '  "key_entities": ["entity1","entity2"]\n'
             '}\n'
         )
         self.model = model.share().prompt(sys_prompt).formatter(JsonFormatter())
@@ -30,7 +31,7 @@ class ContextualBeacon(ToolUseOps):
         if not content:
             data[self.output_key] = None
             return data
-        instruction = f'对话内容如下：\n{content}\n\n请提取场景信息并输出 JSON。'
+        instruction = f'Conversation content:\n{content}\n\nExtract scenario information and output JSON.'
         parsed = self.model(instruction)
         data[self.output_key] = parsed if parsed is not None else ''
         return data
@@ -45,9 +46,10 @@ class ScenarioDiverger(ToolUseOps):
         self.output_key = output_key
         self.n = n
         sys_prompt = system_prompt or (
-            '你是一个场景扩展助手。你的任务是基于给定的原始场景，生成多个可替代的新场景，语义相关但细节不同。\n'
-            '只输出 JSON，不要输出任何额外文本。\n'
-            'JSON 结构：\n'
+            'You are a scenario expansion assistant. Your task is to generate multiple alternative scenarios '
+            'based on the given base scenario, semantically related but with different details.\n'
+            'Output only JSON, no extra text.\n'
+            'JSON structure:\n'
             '{\n'
             '  "scenarios": [\n'
             '    {"scene": "...", "domain": "...", "assistant_goal": "...", "constraints": ["..."], '
@@ -64,7 +66,7 @@ class ScenarioDiverger(ToolUseOps):
             data[self.output_key] = []
             return data
         base_text = json.dumps(base, ensure_ascii=False) if not isinstance(base, str) else base
-        instruction = f'原始场景：\n{base_text}\n\n请生成 {self.n} 个替代场景并输出 JSON。'
+        instruction = f'Base scenario:\n{base_text}\n\nGenerate {self.n} alternative scenarios and output JSON.'
         parsed = self.model(instruction)
         scenarios = parsed.get('scenarios') if isinstance(parsed, dict) else None
         data[self.output_key] = scenarios if isinstance(scenarios, list) else (parsed if parsed else [])
@@ -80,12 +82,14 @@ class DecompositionKernel(ToolUseOps):
         self.output_key = output_key
         self.n = n
         sys_prompt = system_prompt or (
-            '你是一个任务分解助手。你的任务是根据给定场景，生成一组可执行的原子任务（粒度小、单目标）。\n'
-            '只输出 JSON，不要输出任何额外文本。\n'
-            'JSON 结构：\n'
+            'You are a task decomposition assistant. Your task is to generate a set of executable atomic tasks '
+            '(fine-grained, single-goal) based on the given scenario.\n'
+            'Output only JSON, no extra text.\n'
+            'JSON structure:\n'
             '{\n'
             '  "tasks": [\n'
-            '    {"task": "任务描述", "input": "输入（可为空）", "output": "输出（可为空）", "constraints": ["..."]}\n'
+            '    {"task": "Task description", "input": "Input (optional)", "output": "Output (optional)", '
+            '"constraints": ["..."]}\n'
             '  ]\n'
             '}\n'
         )
@@ -98,7 +102,7 @@ class DecompositionKernel(ToolUseOps):
             data[self.output_key] = []
             return data
         scenario_text = json.dumps(scenario, ensure_ascii=False) if not isinstance(scenario, str) else scenario
-        instruction = f'场景：\n{scenario_text}\n\n请生成不超过 {self.n} 个原子任务并输出 JSON。'
+        instruction = f'Scenario:\n{scenario_text}\n\nGenerate up to {self.n} atomic tasks and output JSON.'
         parsed = self.model(instruction)
         tasks = parsed.get('tasks') if isinstance(parsed, dict) else None
         data[self.output_key] = tasks if isinstance(tasks, list) else (parsed if parsed else [])
@@ -113,11 +117,11 @@ class ChainedLogicAssembler(ToolUseOps):
         self.input_key = input_key
         self.output_key = output_key
         sys_prompt = system_prompt or (
-            '你是一个任务编排助手。你的任务是根据原子任务集合，生成：\n'
-            '1) 每个任务的后继任务（next_task）\n'
-            '2) 由两者组合形成的组合任务（composed_task）\n'
-            '只输出 JSON，不要输出任何额外文本。\n'
-            'JSON 结构：\n'
+            'You are a task orchestration assistant. Your task is to generate based on a set of atomic tasks:\n'
+            '1) The successor task for each task (next_task)\n'
+            '2) A composed task formed by combining the two (composed_task)\n'
+            'Output only JSON, no extra text.\n'
+            'JSON structure:\n'
             '{\n'
             '  "items": [\n'
             '    {"task": "...", "next_task": "...", "composed_task": "..."}\n'
@@ -133,7 +137,7 @@ class ChainedLogicAssembler(ToolUseOps):
             data[self.output_key] = []
             return data
         tasks_text = json.dumps(tasks, ensure_ascii=False) if not isinstance(tasks, str) else tasks
-        instruction = f'原子任务列表：\n{tasks_text}\n\n请生成后继与组合任务并输出 JSON。'
+        instruction = f'Atomic task list:\n{tasks_text}\n\nGenerate successor and composed tasks and output JSON.'
         parsed = self.model(instruction)
         items = parsed.get('items') if isinstance(parsed, dict) else None
         data[self.output_key] = items if isinstance(items, list) else (parsed if parsed else [])
@@ -148,12 +152,13 @@ class TopologyArchitect(ToolUseOps):
         self.input_key = input_key
         self.output_key = output_key
         sys_prompt = system_prompt or (
-            '你是一个任务组合生成助手。你的任务是基于原子任务生成三类任务：\n'
-            '1) 并行任务（parallel_tasks）：可以同时进行的任务组合\n'
-            '2) 后继任务（sequential_tasks）：有明确先后依赖的任务组合\n'
-            '3) 组合任务（hybrid_tasks）：包含并行与先后依赖的混合组合\n'
-            '只输出 JSON，不要输出任何额外文本。\n'
-            'JSON 结构：\n'
+            'You are a task composition generation assistant. Your task is to generate three types of tasks '
+            'based on atomic tasks:\n'
+            '1) parallel_tasks: Task combinations that can be executed simultaneously\n'
+            '2) sequential_tasks: Task combinations with clear sequential dependencies\n'
+            '3) hybrid_tasks: Mixed combinations containing both parallel and sequential dependencies\n'
+            'Output only JSON, no extra text.\n'
+            'JSON structure:\n'
             '{\n'
             '  "parallel_tasks": ["..."],\n'
             '  "sequential_tasks": ["..."],\n'
@@ -169,7 +174,7 @@ class TopologyArchitect(ToolUseOps):
             data[self.output_key] = {'parallel_tasks': [], 'sequential_tasks': [], 'hybrid_tasks': []}
             return data
         tasks_text = json.dumps(tasks, ensure_ascii=False) if not isinstance(tasks, str) else tasks
-        instruction = f'原子任务列表：\n{tasks_text}\n\n请生成三类任务并输出 JSON。'
+        instruction = f'Atomic task list:\n{tasks_text}\n\nGenerate three types of tasks and output JSON.'
         parsed = self.model(instruction)
         default_val = {'parallel_tasks': [], 'sequential_tasks': [], 'hybrid_tasks': []}
         data[self.output_key] = parsed if parsed is not None else default_val
@@ -191,11 +196,12 @@ class ViabilitySieve(ToolUseOps):
         self.subtask_key = input_atomic_key
         self.output_key = output_key
         sys_prompt = system_prompt or (
-            '你是一个任务可运行性评审助手。你需要判断组合任务是否具备可行性与完备性：\n'
-            '- 可行性：子任务是否能支撑组合任务目标\n'
-            '- 完备性：是否缺少关键步骤或前置条件\n'
-            '只输出 JSON，不要输出任何额外文本。\n'
-            'JSON 结构：\n'
+            'You are a task feasibility review assistant. You need to evaluate whether composed tasks '
+            'are feasible and complete:\n'
+            '- Feasibility: Can subtasks support the composed task goal?\n'
+            '- Completeness: Are critical steps or prerequisites missing?\n'
+            'Output only JSON, no extra text.\n'
+            'JSON structure:\n'
             '{\n'
             '  "items": [\n'
             '    {"composed_task": "...", "is_valid": true, "reason": "..."}\n'
@@ -216,9 +222,9 @@ class ViabilitySieve(ToolUseOps):
         subtasks_text = (json.dumps(subtasks, ensure_ascii=False) if subtasks is not None
                          and not isinstance(subtasks, str) else (subtasks or ''))
         instruction = (
-            f'组合任务：\n{composition_text}\n\n'
-            f'子任务（可选）：\n{subtasks_text}\n\n'
-            '请逐条判断并输出 JSON。'
+            f'Composed tasks:\n{composition_text}\n\n'
+            f'Subtasks (optional):\n{subtasks_text}\n\n'
+            'Evaluate each and output JSON.'
         )
         parsed = self.model(instruction)
         items = parsed.get('items') if isinstance(parsed, dict) else None
@@ -248,9 +254,10 @@ class ProtocolSpecifier(ToolUseOps):
         self.subtask_key = input_atomic_key
         self.output_key = output_key
         sys_prompt = system_prompt or (
-            '你是一个函数设计助手。给定组合任务及其子任务，请生成一组函数规格，便于后续工具调用。\n'
-            '只输出 JSON，不要输出任何额外文本。\n'
-            'JSON 结构：\n'
+            'You are a function design assistant. Given a composed task and its subtasks, '
+            'generate a set of function specifications for tool calling.\n'
+            'Output only JSON, no extra text.\n'
+            'JSON structure:\n'
             '{\n'
             '  "functions": [\n'
             '    {"name": "function_name", "description": "...", '
@@ -275,9 +282,9 @@ class ProtocolSpecifier(ToolUseOps):
         subtasks_text = (json.dumps(subtasks, ensure_ascii=False) if subtasks is not None
                          and not isinstance(subtasks, str) else (subtasks or ''))
         instruction = (
-            f'组合任务：\n{task_text}\n\n'
-            f'子任务（可选）：\n{subtasks_text}\n\n'
-            '请生成函数列表并输出 JSON。'
+            f'Composed task:\n{task_text}\n\n'
+            f'Subtasks (optional):\n{subtasks_text}\n\n'
+            'Generate function list and output JSON.'
         )
         parsed = self.model(instruction)
         funcs = parsed.get('functions') if isinstance(parsed, dict) else None
@@ -302,13 +309,14 @@ class DialogueSimulator(ToolUseOps):
         self.output_key = output_key
         self.n_turns = n_turns
         sys_prompt = system_prompt or (
-            '你是一个多轮对话数据生成助手。你需要根据组合任务与可用函数，模拟一段多轮对话。\n'
-            '对话由 User/Assistant/Tool 三种角色组成：\n'
-            '- User 提出需求与补充信息\n'
-            '- Assistant 规划并在适当时机调用 Tool\n'
-            '- Tool 返回函数执行结果\n'
-            '只输出 JSON，不要输出任何额外文本。\n'
-            'JSON 结构：\n'
+            'You are a multi-turn dialogue data generation assistant. You need to simulate a multi-turn '
+            'dialogue based on the composed task and available functions.\n'
+            'The dialogue consists of three roles: User/Assistant/Tool:\n'
+            '- User: Proposes requirements and supplementary information (in English)\n'
+            '- Assistant: Plans and calls Tool when appropriate (responds in English)\n'
+            '- Tool: Returns function execution results\n'
+            'Output only JSON, no extra text.\n'
+            'JSON structure:\n'
             '{\n'
             '  "messages": [\n'
             '    {"role":"user","content":"..."},\n'
@@ -333,9 +341,9 @@ class DialogueSimulator(ToolUseOps):
         functions_text = (json.dumps(functions, ensure_ascii=False) if functions is not None
                           and not isinstance(functions, str) else (functions or ''))
         instruction = (
-            f'组合任务：\n{task_text}\n\n'
-            f'函数列表：\n{functions_text}\n\n'
-            f'请生成约 {self.n_turns} 轮对话的 messages 并输出 JSON。'
+            f'Composed task:\n{task_text}\n\n'
+            f'Function list:\n{functions_text}\n\n'
+            f'Generate approximately {self.n_turns} turns of dialogue messages and output JSON.'
         )
         parsed = self.model(instruction)
         data[self.output_key] = parsed if parsed is not None else []
@@ -349,7 +357,7 @@ class ToolUseToSFTFormatter(ToolUseOps):
     def __init__(self, format_type=FORMAT_CHATML, system_prompt=None, **kwargs):
         super().__init__(**kwargs)
         self.format_type = format_type
-        self.system_prompt = system_prompt or '你是一个助手，可以使用工具来帮助用户。'
+        self.system_prompt = system_prompt or 'You are a helpful assistant that can use tools to help users.'
 
     def _format_functions(self, functions):
         if not functions:
@@ -362,36 +370,25 @@ class ToolUseToSFTFormatter(ToolUseOps):
         conversation = data.get('conversation', {})
         messages = conversation.get('messages', [])
 
+        # Standard Alpaca format:
+        # - instruction: system prompt with tools
+        # - input: user question
+        # - output: assistant's final response
         tools_text = self._format_functions(functions)
+        instruction = f'{self.system_prompt}\n\nAvailable tools:\n{tools_text}'
 
-        instruction = f'{self.system_prompt}\n\n可用工具：\n{tools_text}\n\n用户问题：{content}'
-
-        output_parts = []
-        final_response = ''
-
-        for msg in messages:
+        # Find the last assistant message as the output
+        output = ''
+        for msg in reversed(messages):
             if msg.get('role') == 'assistant':
                 msg_content = msg.get('content', '')
-                if '调用' in msg_content or '函数' in msg_content or '工具' in msg_content:
-                    for func in functions:
-                        func_name = func.get('name', '')
-                        if func_name and func_name in msg_content:
-                            output_parts.append(f'<tool>{func_name}</tool>')
-                elif msg_content and not output_parts:
-                    final_response = msg_content
-                elif msg_content:
-                    final_response = msg_content
-
-        if output_parts:
-            output = '\n'.join(output_parts)
-            if final_response:
-                output += f'\n\n{final_response}'
-        else:
-            output = final_response or messages[-1].get('content', '') if messages else ''
+                if msg_content:
+                    output = msg_content
+                    break
 
         return {
             'instruction': instruction,
-            'input': '',
+            'input': content,
             'output': output
         }
 
@@ -404,7 +401,7 @@ class ToolUseToSFTFormatter(ToolUseOps):
         output_messages = []
 
         tools_text = self._format_functions(functions)
-        system_content = f'{self.system_prompt}\n\n可用工具：\n{tools_text}'
+        system_content = f'{self.system_prompt}\n\nAvailable tools:\n{tools_text}'
         output_messages.append({
             'role': 'system',
             'content': system_content

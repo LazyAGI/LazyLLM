@@ -3978,6 +3978,148 @@ print(res[0])
 ```
 """)
 
+add_chinese_doc('data.operators.text2sql_ops.SQLGenerator', """\
+Text2SQL 数据生成算子：基于问题生成 SQL。
+
+根据给定的自然语言问题 (question) 和数据库 Schema，生成对应的 SQL 查询语句。
+
+主要行为：
+
+- 接收包含 question 和 db_id 的输入数据
+- 基于数据库 Schema 构建 prompt
+- 调用模型生成 SQL，并从响应中解析出 ```sql ... ``` 代码块
+- 支持使用预构建的 prompt（通过 input_prompt_key）
+
+Args:
+    model: LazyLLM 模型对象（必需），会被 share() 后复用
+    database_manager: 提供数据库 Schema 的管理器（必需），需实现：
+        - get_create_statements_and_insert_statements(db_name)
+    output_num (int): 每个问题生成的 SQL 数量，默认 1
+    prompt_template: 可选，自定义 prompt 构造器对象，需实现 build_prompt(...)
+    system_prompt (str|None): 可选系统提示词，不传则使用内置英文提示
+    target_complexity (str): 目标复杂度 ('easy', 'medium', 'hard')，默认 'hard'
+    **kwargs: 传递给基类 Text2SQLOps/LazyLLMDataBase 的其它参数
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLGenerator', """\
+Text2SQL data operator: Generate SQL based on questions.
+
+Generates SQL queries corresponding to the given natural language question and database schema.
+
+Behavior:
+
+- Receives input data containing question and db_id
+- Builds prompt based on database schema
+- Calls model to generate SQL and parses ```sql ... ``` code blocks from response
+- Supports using pre-built prompt (via input_prompt_key)
+
+Args:
+    model: LazyLLM model object (required), shared via share()
+    database_manager: schema provider (required) implementing:
+        - get_create_statements_and_insert_statements(db_name)
+    output_num (int): number of SQLs to generate per question, default 1
+    prompt_template: optional custom prompt builder with build_prompt(...)
+    system_prompt (str|None): optional system prompt, defaults to built-in English prompt
+    target_complexity (str): target complexity ('easy', 'medium', 'hard'), default 'hard'
+    **kwargs: extra args forwarded to the base class
+""")
+
+add_example('data.operators.text2sql_ops.SQLGenerator', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLGenerator
+
+op = SQLGenerator(model=model, database_manager=database_manager, output_num=1)
+
+# Input with question and db_id
+item = {'db_id': 'test_db', 'question': 'Find all users older than 18'}
+res = op(item)
+print(res[0])
+# {
+#   'db_id': 'test_db',
+#   'question': 'Find all users older than 18',
+#   'SQL': 'SELECT * FROM users WHERE age > 18;',
+#   'sql_complexity_type': 'hard'
+# }
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLQuestionGenerator', """\
+Text2SQL 数据生成算子：基于 Schema 生成自然语言问题。
+
+根据数据库 Schema 自动生成复杂的自然语言问题，用于 Text2SQL 训练数据的构建。
+
+主要行为：
+
+- 分析数据库 Schema 理解表关系
+- 根据 target_complexity 生成不同复杂度的问题
+- 支持生成多个问题，每个问题附带外部知识提示
+- 使用特殊标记 [QUESTION-START]/[QUESTION-END] 解析问题
+
+复杂度等级：
+- easy: 单表 SELECT 查询
+- medium: 涉及 JOIN、GROUP BY 或简单子查询
+- hard: 多 JOIN、子查询、窗口函数、CTE 等高级特性
+
+Args:
+    model: LazyLLM 模型对象（必需）
+    database_manager: 提供数据库 Schema 的管理器（必需），需实现：
+        - get_create_statements_and_insert_statements(db_name)
+    output_num (int): 每个数据库生成的问题数量，默认 5
+    target_complexity (str): 目标复杂度 ('easy', 'medium', 'hard')，默认 'hard'
+    system_prompt (str|None): 可选系统提示词
+    **kwargs: 传递给基类 Text2SQLOps/LazyLLMDataBase 的其它参数
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLQuestionGenerator', """\
+Text2SQL data operator: Generate natural language questions based on Schema.
+
+Automatically generates complex natural language questions from database schema for Text2SQL training data construction.
+
+Behavior:
+
+- Analyzes database schema to understand table relationships
+- Generates questions of varying complexity based on target_complexity
+- Supports generating multiple questions, each with external knowledge hints
+- Uses special markers [QUESTION-START]/[QUESTION-END] to parse questions
+
+Complexity levels:
+- easy: single table SELECT queries
+- medium: involving JOINs, GROUP BY, or simple subqueries
+- hard: multiple JOINs, subqueries, window functions, CTEs, etc.
+
+Args:
+    model: LazyLLM model object (required)
+    database_manager: schema provider (required) implementing:
+        - get_create_statements_and_insert_statements(db_name)
+    output_num (int): number of questions to generate per database, default 5
+    target_complexity (str): target complexity ('easy', 'medium', 'hard'), default 'hard'
+    system_prompt (str|None): optional system prompt
+    **kwargs: extra args forwarded to the base class
+""")
+
+add_example('data.operators.text2sql_ops.SQLQuestionGenerator', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLQuestionGenerator
+
+op = SQLQuestionGenerator(
+    model=model,
+    database_manager=database_manager,
+    output_num=3,
+    target_complexity='hard'
+)
+
+# Generate questions for a database
+item = {'db_id': 'test_db'}
+res = op(item)
+print(res[0])
+# {
+#   'db_id': 'test_db',
+#   'question': 'What is the total sales for each product category?',
+#   'external_knowledge': 'Tables: products(category), sales(product_id, amount)'
+# }
+```
+""")
+
 add_chinese_doc('data.operators.text2sql_ops.SQLRuntimeSieve', """\
 Text2SQL 数据过滤算子：SQL 可执行性过滤器。
 
@@ -4720,7 +4862,7 @@ print(res[0])  # {'chosen': '...', 'rejected': '...', 'instruction': '...'}
 """)
 
 # text2sql_pipelines
-add_chinese_doc('data.pipelines.text2sql_pipelines.build_text2sql_full_pipeline', """\
+add_chinese_doc('data.pipelines.text2sql_pipelines.text2sql_synthetic_ppl', """\
 构建 Text2SQL 完整数据处理流水线，用于生成 SQL 查询训练数据。
 
 该流水线包含以下步骤：
@@ -4746,7 +4888,7 @@ Args:
     一个可调用的 pipeline 对象，用于生成高质量的 Text2SQL 训练数据。
 """)
 
-add_english_doc('data.pipelines.text2sql_pipelines.build_text2sql_full_pipeline', """\
+add_english_doc('data.pipelines.text2sql_pipelines.text2sql_synthetic_ppl', """\
 Build a full Text2SQL data processing pipeline for generating SQL query training data.
 
 The pipeline includes the following steps:
@@ -4772,11 +4914,11 @@ Args:
     A callable pipeline object for generating high-quality Text2SQL training data.
 """)
 
-add_example('data.pipelines.text2sql_pipelines.build_text2sql_full_pipeline', """\
+add_example('data.pipelines.text2sql_pipelines.text2sql_synthetic_ppl', """\
 ```python
-from lazyllm.tools.data.pipelines.text2sql_pipelines import build_text2sql_full_pipeline
+from lazyllm.tools.data.pipelines.text2sql_pipelines import text2sql_synthetic_ppl
 
-ppl = build_text2sql_full_pipeline(
+ppl = text2sql_synthetic_ppl(
     model=your_model,
     database_manager=db_manager,
     output_num=100
@@ -4784,6 +4926,76 @@ ppl = build_text2sql_full_pipeline(
 data = [{'query': 'Find all users older than 18'}]
 res = ppl(data)
 print(res)  # List of generated SQL training samples
+```
+""")
+
+add_chinese_doc('data.pipelines.text2sql_pipelines.text2sql_enhanced_ppl', """\
+构建 Text2SQL 问题优先数据处理流水线，先根据 schema 生成复杂问题，再根据问题生成 SQL。
+
+该流水线流程：
+1. SQLQuestionGenerator: 根据 schema 直接生成复杂自然语言问题
+2. SQLContextAssembler: 组装 schema + question 成完整 prompt
+3. SQLGenerator: 根据 question 生成高质量 SQL
+4. SQLRuntimeSieve: 过滤无效 SQL
+5. SQLReasoningTracer: 生成推理过程 (CoT)
+6. SQLConsensusUnifier: 选择最佳 SQL
+7. SQLSyntaxProfiler: 语法分析
+8. SQLEffortRanker: 难度排序
+9. Text2SQLToSFTFormatter: 格式转换
+
+Args:
+    model: LLM 模型对象
+    database_manager: 数据库管理器对象
+    embedding_model: 嵌入模型对象，可选
+    output_num (int): 输出数量，默认 3
+    num_generations (int): 生成次数，默认 10
+    output_format (str): 输出格式，默认 'alpaca'
+    target_complexity (str): 目标复杂度，默认 'hard'
+
+**Returns:**
+    一个可调用的 pipeline 对象，用于生成高质量的 Text2SQL 训练数据。
+""")
+
+add_english_doc('data.pipelines.text2sql_pipelines.text2sql_enhanced_ppl', """\
+Build a Text2SQL question-first data processing pipeline, generating complex questions from schema first, then generating SQL based on the questions.
+
+Pipeline flow:
+1. SQLQuestionGenerator: Generate complex natural language questions directly from schema
+2. SQLContextAssembler: Assemble schema + question into complete prompt
+3. SQLGenerator: Generate high-quality SQL based on the question
+4. SQLRuntimeSieve: Filter invalid SQL
+5. SQLReasoningTracer: Generate reasoning process (CoT)
+6. SQLConsensusUnifier: Select best SQL
+7. SQLSyntaxProfiler: Syntax analysis
+8. SQLEffortRanker: Difficulty ranking
+9. Text2SQLToSFTFormatter: Format conversion
+
+Args:
+    model: LLM model object
+    database_manager: Database manager object
+    embedding_model: Embedding model object, optional
+    output_num (int): Output number, default 3
+    num_generations (int): Number of generations, default 10
+    output_format (str): Output format, default 'alpaca'
+    target_complexity (str): Target complexity, default 'hard'
+
+**Returns:**
+    A callable pipeline object for generating high-quality Text2SQL training data.
+""")
+
+add_example('data.pipelines.text2sql_pipelines.text2sql_enhanced_ppl', """\
+```python
+from lazyllm.tools.data.pipelines.text2sql_pipelines import text2sql_enhanced_ppl
+
+ppl = text2sql_enhanced_ppl(
+    model=your_model,
+    database_manager=db_manager,
+    output_num=3
+)
+data = [{'db_id': 'test_db'}]
+res = ppl(data)
+print(res[0]['question'])  # Generated question
+print(res[0]['SQL'])       # Generated SQL
 ```
 """)
 

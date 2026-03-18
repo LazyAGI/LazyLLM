@@ -4,7 +4,6 @@ import re
 import math
 from collections import defaultdict
 from lazyllm.thirdparty import pandas as pd
-from tqdm import tqdm
 from lazyllm import LOG
 from .sql_evalhardness import EvalHardness, EvalHardnessLite, Schema
 
@@ -27,23 +26,56 @@ def _stringify_statements(statements, max_lines=None):
     return '\n'.join(lines)
 
 
-def _default_build_prompt(create_statements, insert_statements, db_engine):
-    complexity = random.choice(['easy', 'medium', 'hard'])
+def _default_build_prompt(create_statements, insert_statements, db_engine,
+                          question=None, target_complexity='hard'):
+    """
+    构建 SQL 生成 prompt
 
+    Args:
+        create_statements: CREATE TABLE 语句列表
+        insert_statements: INSERT 语句列表
+        db_engine: 数据库引擎类型
+        question: 用户问题（可选），如果提供则基于问题生成 SQL
+        target_complexity: 目标复杂度 ('easy', 'medium', 'hard')
+    """
     schema_text = _stringify_statements(create_statements, max_lines=400)
     sample_text = _stringify_statements(insert_statements, max_lines=200)
 
-    instruction = (
-        f'You are a Text2SQL data generation assistant.\n'
-        f'Database engine: {db_engine}\n\n'
-        f'DDL:\n{schema_text}\n\n'
-        f'Sample data (optional):\n{sample_text}\n\n'
-        f'Task: Generate ONE {complexity} SQL query that is executable for this database.\n'
-        f'Requirements:\n'
-        f'- Return ONLY one SQL query inside a Markdown code block: ```sql ... ```.\n'
-        f'- Do NOT include explanations.\n'
-    )
-    return instruction, complexity
+    complexity_instructions = {
+        'easy': 'Generate a simple SQL query with single table SELECT',
+        'medium': 'Generate a SQL query that may involve JOINs, GROUP BY, or simple subqueries',
+        'hard': ('Generate a COMPLEX SQL query that should include: multiple JOINs, subqueries, '
+                 'aggregations (COUNT/SUM/AVG), GROUP BY with HAVING, or nested queries')
+    }
+
+    complexity_desc = complexity_instructions.get(target_complexity, complexity_instructions['hard'])
+
+    if question:
+        instruction = (
+            f'You are an expert SQL generator. Database engine: {db_engine}\n\n'
+            f'Database Schema:\n{schema_text}\n\n'
+            f'Task: {complexity_desc}\n'
+            f'User Question: {question}\n\n'
+            f'Requirements:\n'
+            f'1. The SQL MUST answer the user question accurately\n'
+            f'2. Use appropriate tables and columns from the schema\n'
+            f'3. Include complex operations like JOINs, aggregations, or subqueries where appropriate\n'
+            f'4. Return ONLY the SQL query inside a Markdown code block: ```sql ... ```\n'
+            f'5. Do NOT include explanations\n'
+        )
+    else:
+        instruction = (
+            f'You are a Text2SQL data generation assistant.\n'
+            f'Database engine: {db_engine}\n\n'
+            f'DDL:\n{schema_text}\n\n'
+            f'Sample data (optional):\n{sample_text}\n\n'
+            f'Task: {complexity_desc}\n'
+            f'Requirements:\n'
+            f'- Return ONLY one SQL query inside a Markdown code block: ```sql ... ```.\n'
+            f'- Do NOT include explanations.\n'
+        )
+
+    return instruction, target_complexity
 
 
 def _parse_sql_response(response):
@@ -134,29 +166,33 @@ def _vote_select(candidates, tie_breaker='shortest_sql'):
 
 class SQLForge(Text2SQLOps):
     def __init__(self, model=None, database_manager=None, output_num=300,
-                 prompt_template=None, system_prompt=None, **kwargs):
+                 prompt_template=None, system_prompt=None, target_complexity='hard', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.database_manager = database_manager
         self.output_num = output_num
         self.prompt_template = prompt_template
+        self.target_complexity = target_complexity
         sys_prompt = system_prompt or (
             'You are a SQL generator for Text2SQL tasks.\n'
             'Return ONLY one SQL query inside a Markdown code block: ```sql ... ```.\n'
         )
         self.model = model.share().prompt(sys_prompt) if model else None
 
-    def _build_prompt(self, create_statements, insert_statements, db_engine):
+    def _build_prompt(self, create_statements, insert_statements, db_engine, question=None):
         template = self.prompt_template
         if template is not None and hasattr(template, 'build_prompt'):
             built = template.build_prompt(
                 insert_statements=insert_statements,
                 create_statements=create_statements,
                 db_engine=db_engine,
+                question=question,
+                target_complexity=self.target_complexity,
             )
             if isinstance(built, tuple) and len(built) >= 2:
                 return str(built[0]), str(built[1])
             return str(built), 'unknown'
-        return _default_build_prompt(create_statements, insert_statements, db_engine)
+        return _default_build_prompt(create_statements, insert_statements, db_engine,
+                                     question=question, target_complexity=self.target_complexity)
 
     def _validate_manager(self):
         if self.model is None:
@@ -169,22 +205,26 @@ class SQLForge(Text2SQLOps):
             raise ValueError('database_manager.get_create_statements_and_insert_statements is required')
 
     def forward(self, data, output_sql_key='SQL', output_db_id_key='db_id',
-                output_complexity_type_key='sql_complexity_type', **kwargs):
+                output_complexity_type_key='sql_complexity_type', input_question_key='question', **kwargs):
         assert isinstance(data, dict)
         self._validate_manager()
 
         db_engine = getattr(self.database_manager, 'db_type', 'unknown')
         db_id_in_data = data.get(output_db_id_key)
+        question_in_data = data.get(input_question_key)
+
         if db_id_in_data:
             db_names = [db_id_in_data]
+            questions = [question_in_data] if question_in_data else [None]
         else:
             db_names = self.database_manager.list_databases() or []
+            questions = [None] * len(db_names)
 
         if not db_names:
             LOG.warning('No databases found in database_manager.list_databases()')
             return []
 
-        prompts, db_ids, complexity_types = self._collect_prompts(db_names, db_engine)
+        prompts, db_ids, complexity_types = self._collect_prompts(db_names, db_engine, questions)
 
         responses = []
         for p in prompts:
@@ -203,22 +243,235 @@ class SQLForge(Text2SQLOps):
             for db_id, resp, complexity in zip(db_ids, responses, complexity_types)
         ]
 
-    def _collect_prompts(self, db_names, db_engine):
+    def _collect_prompts(self, db_names, db_engine, questions=None):
         prompts = []
         db_ids = []
         complexity_types = []
 
+        if questions is None:
+            questions = [None] * len(db_names)
+
         LOG.info(f'Generating {self.output_num} SQLs for each database')
-        for db_name in tqdm(db_names, desc='Processing Databases'):
+        for db_name, question in zip(db_names, questions):
             create_statements, insert_statements = self.database_manager.get_create_statements_and_insert_statements(
                 db_name
             )
             for _ in range(int(self.output_num)):
-                prompt, complexity = self._build_prompt(create_statements, insert_statements, db_engine=db_engine)
+                prompt, complexity = self._build_prompt(
+                    create_statements, insert_statements, db_engine=db_engine, question=question
+                )
                 prompts.append(prompt)
                 db_ids.append(db_name)
                 complexity_types.append(complexity)
         return prompts, db_ids, complexity_types
+
+
+class SQLGenerator(Text2SQLOps):
+    def __init__(self, model=None, database_manager=None, output_num=1,
+                 prompt_template=None, system_prompt=None, target_complexity='hard', **kwargs):
+        super().__init__(_concurrency_mode='thread', **kwargs)
+        self.database_manager = database_manager
+        self.output_num = output_num
+        self.prompt_template = prompt_template
+        self.target_complexity = target_complexity
+        sys_prompt = system_prompt or (
+            'You are a SQL generator for Text2SQL tasks.\n'
+            'Return ONLY one SQL query inside a Markdown code block: ```sql ... ```.\n'
+        )
+        self.model = model.share().prompt(sys_prompt) if model else None
+
+    def _build_prompt(self, create_statements, insert_statements, db_engine, question=None):
+        template = self.prompt_template
+        if template is not None and hasattr(template, 'build_prompt'):
+            built = template.build_prompt(
+                insert_statements=insert_statements,
+                create_statements=create_statements,
+                db_engine=db_engine,
+                question=question,
+                target_complexity=self.target_complexity,
+            )
+            if isinstance(built, tuple) and len(built) >= 2:
+                return str(built[0]), str(built[1])
+            return str(built), 'unknown'
+        return _default_build_prompt(create_statements, insert_statements, db_engine,
+                                     question=question, target_complexity=self.target_complexity)
+
+    def _validate_manager(self):
+        if self.model is None:
+            raise ValueError('model is required')
+        if self.database_manager is None:
+            raise ValueError('database_manager is required')
+        if not hasattr(self.database_manager, 'get_create_statements_and_insert_statements'):
+            raise ValueError('database_manager.get_create_statements_and_insert_statements is required')
+
+    def forward(self, data, output_sql_key='SQL', output_db_id_key='db_id',
+                output_complexity_type_key='sql_complexity_type', input_question_key='question',
+                input_prompt_key='prompt', **kwargs):
+        assert isinstance(data, dict)
+        self._validate_manager()
+
+        db_engine = getattr(self.database_manager, 'db_type', 'unknown')
+        db_id_in_data = data.get(output_db_id_key)
+        question_in_data = data.get(input_question_key)
+        existing_prompt = data.get(input_prompt_key)
+
+        if not db_id_in_data:
+            LOG.warning('Missing db_id in input data')
+            return []
+
+        try:
+            create_statements, insert_statements = self.database_manager.get_create_statements_and_insert_statements(
+                db_id_in_data
+            )
+        except Exception as e:
+            LOG.error(f'Failed to get schema for {db_id_in_data}: {e}')
+            return []
+
+        results = []
+        for i in range(int(self.output_num)):
+            if existing_prompt and i == 0:
+                prompt = existing_prompt
+                complexity = self.target_complexity
+            else:
+                prompt, complexity = self._build_prompt(
+                    create_statements, insert_statements, db_engine=db_engine,
+                    question=question_in_data
+                )
+
+            try:
+                response = self.model(prompt)
+                sql = _parse_sql_response(response)
+            except Exception as e:
+                LOG.error(f'Failed to generate SQL: {e}')
+                sql = ''
+
+            result = data.copy()
+            result[output_sql_key] = sql
+            result[output_db_id_key] = db_id_in_data
+            result[output_complexity_type_key] = complexity
+
+            if not existing_prompt or prompt != existing_prompt:
+                result[input_prompt_key] = prompt
+
+            results.append(result)
+
+        return results
+
+
+class SQLQuestionGenerator(Text2SQLOps):
+    def __init__(self, model=None, database_manager=None, output_num=5,
+                 target_complexity='hard', system_prompt=None, **kwargs):
+        super().__init__(_concurrency_mode='thread', **kwargs)
+        self.model = model.share().prompt(system_prompt) if model else None
+        self.database_manager = database_manager
+        self.output_num = int(output_num)
+        self.target_complexity = target_complexity
+
+    def _validate_manager(self):
+        if self.model is None:
+            raise ValueError('model is required')
+        if self.database_manager is None:
+            raise ValueError('database_manager is required')
+
+    def _build_question_prompt(self, create_statements, db_engine):
+        schema_text = _stringify_statements(create_statements, max_lines=400)
+
+        complexity_guidelines = {
+            'easy': 'Generate simple questions that can be answered with a single table SELECT query.',
+            'medium': 'Generate moderately complex questions that may involve JOINs, GROUP BY, or simple subqueries.',
+            'hard': ('Generate COMPLEX and CHALLENGING questions that require advanced SQL features such as:\n'
+                     '- Multiple JOINs across several tables\n'
+                     '- Subqueries (correlated or non-correlated)\n'
+                     '- Aggregation functions (COUNT, SUM, AVG, MIN, MAX) with GROUP BY and HAVING\n'
+                     '- Window functions (ROW_NUMBER, RANK, DENSE_RANK, LEAD, LAG)\n'
+                     '- Common Table Expressions (CTE) with WITH clause\n'
+                     '- Recursive queries for hierarchical data\n'
+                     '- CASE expressions for conditional logic\n'
+                     '- Complex filtering with multiple conditions\n'
+                     '- Set operations (UNION, INTERSECT, EXCEPT)')
+        }
+
+        guideline = complexity_guidelines.get(self.target_complexity, complexity_guidelines['hard'])
+
+        prompt = (
+            f'You are an expert database analyst. Given the database schema below, '
+            f'generate {self.output_num} complex natural language questions that would require '
+            f'SQL queries to answer.\n\n'
+            f'Database Engine: {db_engine}\n\n'
+            f'Schema:\n{schema_text}\n\n'
+            f'Complexity Guidelines:\n{guideline}\n\n'
+            f'Instructions:\n'
+            f'1. Analyze the schema carefully to understand table relationships\n'
+            f'2. Generate questions that require complex SQL to answer\n'
+            f'3. Each question should be clear, specific, and answerable from the schema\n'
+            f'4. Include business context in the questions\n'
+            f'5. Return each question in the format: [QUESTION-START]<natural language question>[QUESTION-END]\n'
+            f'6. Also include external knowledge hint: [EXTERNAL-KNOWLEDGE-START]<relevant schema hint>'
+            f'[EXTERNAL-KNOWLEDGE-END]\n\n'
+            f'Generate {self.output_num} questions:'
+        )
+        return prompt
+
+    def _parse_questions(self, response):
+        if not isinstance(response, str):
+            return []
+
+        question_pattern = re.compile(r'\[QUESTION-START\](.*?)\[QUESTION-END\]', re.DOTALL)
+        knowledge_pattern = re.compile(r'\[EXTERNAL-KNOWLEDGE-START\](.*?)\[EXTERNAL-KNOWLEDGE-END\]', re.DOTALL)
+
+        questions = question_pattern.findall(response)
+        knowledges = knowledge_pattern.findall(response)
+
+        results = []
+        for i, q in enumerate(questions):
+            q = q.strip()
+            if q:
+                k = knowledges[i].strip() if i < len(knowledges) else ''
+                results.append({
+                    'question': q,
+                    'external_knowledge': k
+                })
+        return results
+
+    def forward(self, data, output_db_id_key='db_id', output_question_key='question',
+                output_evidence_key='evidence', **kwargs):
+        assert isinstance(data, dict)
+        self._validate_manager()
+
+        db_engine = getattr(self.database_manager, 'db_type', 'unknown')
+        db_id = data.get(output_db_id_key)
+
+        if not db_id:
+            LOG.warning('Missing db_id in input data')
+            return []
+
+        try:
+            create_statements, _ = self.database_manager.get_create_statements_and_insert_statements(db_id)
+            if not create_statements:
+                LOG.warning(f'No schema found for database {db_id}')
+                return []
+
+            prompt = self._build_question_prompt(create_statements, db_engine)
+
+            response = self.model(prompt)
+            questions = self._parse_questions(response)
+
+            if not questions:
+                LOG.warning(f'Failed to generate questions for {db_id}')
+                return []
+
+            results = []
+            for q_info in questions[:self.output_num]:
+                result = data.copy()
+                result[output_question_key] = q_info['question']
+                result[output_evidence_key] = q_info['external_knowledge']
+                results.append(result)
+
+            return results
+
+        except Exception as e:
+            LOG.error(f'Error generating questions for {db_id}: {e}')
+            return []
 
 
 class SQLRuntimeSieve(Text2SQLOps):
@@ -564,30 +817,40 @@ class SQLContextAssembler(Text2SQLOps):
         )
 
     def forward(self, data, input_intent_key='question', input_db_id_key='db_id',
-                input_evidence_key='evidence', output_prompt_key='prompt', **kwargs):
+                input_evidence_key='evidence', output_prompt_key='prompt',
+                input_schema_key='schema', **kwargs):
         assert isinstance(data, dict)
-        if self.database_manager is None:
-            raise ValueError('database_manager is required')
 
-        db_engine = getattr(self.database_manager, 'db_type', 'unknown')
         db_id = data.get(input_db_id_key)
         intent = data.get(input_intent_key)
         evidence = data.get(input_evidence_key, '')
 
-        if not db_id or not intent:
-            LOG.warning(f'Missing db_id or intent for item: {data}')
+        if not intent:
+            LOG.warning(f'Missing intent for item: {data}')
             data[output_prompt_key] = ''
             return data
 
-        db_id = str(db_id).replace('\n', '').replace('\r', '').strip()
+        db_details = data.get(input_schema_key, '')
+
+        if not db_details and self.database_manager is not None:
+            try:
+                if db_id:
+                    db_id = str(db_id).replace('\n', '').replace('\r', '').strip()
+                    if hasattr(self.database_manager, 'get_db_details'):
+                        db_details = self.database_manager.get_db_details(db_id)
+                    else:
+                        create_statements, _ = self.database_manager.get_create_statements_and_insert_statements(db_id)
+                        db_details = '\n\n'.join([str(s) for s in create_statements])
+            except Exception as e:
+                LOG.warning(f'Failed to get schema from database_manager for db_id={db_id}: {e}')
+
+        if not db_details:
+            LOG.warning(f'No schema available for db_id={db_id}, using empty schema')
+            db_details = ''
+
+        db_engine = getattr(self.database_manager, 'db_type', 'sqlite') if self.database_manager else 'sqlite'
 
         try:
-            if hasattr(self.database_manager, 'get_db_details'):
-                db_details = self.database_manager.get_db_details(db_id)
-            else:
-                create_statements, _ = self.database_manager.get_create_statements_and_insert_statements(db_id)
-                db_details = '\n\n'.join([str(s) for s in create_statements])
-
             prompt = self._build_prompt(
                 db_details=db_details,
                 intent=intent,
@@ -959,7 +1222,6 @@ class Text2SQLToSFTFormatter(Text2SQLOps):
                 'output': sql
             }
         else:
-            # FORMAT_COT (default)
             if cot_reasoning:
                 output_text = f'<think>\n{cot_reasoning}\n</think>\n\n{sql}'
             else:
