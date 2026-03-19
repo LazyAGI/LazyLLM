@@ -555,4 +555,21 @@ void exportDocNode(py::module& m) {
             out._similarity_score = score;
             return out;
         });
+
+    py::object cls_obj = m.attr("DocNode");
+    py::object orig_init = cls_obj.attr("__init__");
+    cls_obj.attr("__init__") = py::cpp_function(
+        [orig_init](py::object self, py::args args, py::kwargs kwargs) {
+            py::tuple init_args(args.size() + 1);
+            init_args[0] = self;
+            for (size_t idx = 0; idx < args.size(); ++idx) init_args[idx + 1] = args[idx];
+
+            PyObject* ret = PyObject_Call(orig_init.ptr(), init_args.ptr(), kwargs.ptr());
+            if (ret == nullptr) throw py::error_already_set();
+            Py_DECREF(ret);
+
+            self.attr("_lock") = py::module_::import("threading").attr("Lock")();
+        },
+        py::is_method(cls_obj)
+    );
 }

@@ -116,7 +116,17 @@ class NodeTransform(ModuleBase):
                     else:
                         splits = self.forward(node, **kwargs)
                 for s in splits:
-                    s.parent = node
+                    try:
+                        s.parent = node
+                    except Exception:
+                        parent_uid = getattr(node, 'uid', None)
+                        if not isinstance(parent_uid, str):
+                            parent_uid = getattr(node, '_uid', None)
+                        if isinstance(parent_uid, str):
+                            try:
+                                s.parent = parent_uid
+                            except Exception:
+                                pass
                     s._group = node_group
                 node.children[node_group] = splits
                 return splits
@@ -209,12 +219,8 @@ _UNSET = object()
 
 @cpp_proxy(funcs_to_override=[
     'split_text',
-    '_split',
     '_merge',
-], attrs_to_proxy=['_chunk_size', '_overlap'], cpp_method_aliases={
-    '_split': 'split_recursive',
-    '_merge': 'merge_chunks',
-})
+], cpp_method_aliases={'_merge': 'merge_chunks'})
 class _TextSplitterBase(NodeTransform):
     _default_params = {}
     _default_params_lock = threading.RLock()

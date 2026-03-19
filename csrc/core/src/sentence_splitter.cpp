@@ -53,7 +53,18 @@ std::vector<std::string> SentenceSplitter::merge_chunks(const std::vector<ChunkV
         // Now window contains only overlap.
     }
 
-    return out;
+    // Keep Python behavior: remove leading/trailing whitespace and drop empty chunks.
+    std::vector<std::string> normalized;
+    normalized.reserve(out.size());
+    for (auto& chunk : out) {
+        size_t begin = 0;
+        while (begin < chunk.size() && std::isspace(static_cast<unsigned char>(chunk[begin]))) ++begin;
+        size_t end = chunk.size();
+        while (end > begin && std::isspace(static_cast<unsigned char>(chunk[end - 1]))) --end;
+        if (end > begin) normalized.emplace_back(chunk.substr(begin, end - begin));
+    }
+
+    return normalized;
 }
 
 } // namespace lazyllm

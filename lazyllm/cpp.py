@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, cast
 _LAZYLLM_CPP_MODULE = None
 _LAZYLLM_CPP_ENABLED = None
 _C = TypeVar('_C', bound=type)
+_CLASS_ATTR_MISSING = object()
 
 
 def _is_enabled() -> bool:
@@ -62,6 +63,27 @@ def _validate_method_aliases(method_aliases: Optional[Dict[str, str]]) -> Dict[s
     return method_aliases
 
 
+def _lookup_class_attr(runtime_cls: type, name: str):
+    for base in runtime_cls.__mro__:
+        if name in base.__dict__:
+            return base.__dict__[name]
+    return _CLASS_ATTR_MISSING
+
+
+def _is_data_attr_on_impl(impl: Any, name: str) -> bool:
+    try:
+        value = getattr(impl, name)
+    except (AttributeError, RuntimeError):
+        return False
+    return not callable(value)
+
+
+def _method_overridden(runtime_cls: type, base_cls: type, method_name: str) -> bool:
+    runtime_method = getattr(runtime_cls, method_name, None)
+    base_method = getattr(base_cls, method_name, None)
+    return runtime_method is not base_method
+
+
 def _resolve_impl_cls(cpp_module: Any, runtime_cls: type, default_impl_name: str):
     default_impl_cls = getattr(cpp_module, default_impl_name)
     impl_name = getattr(runtime_cls, '__cpp_proxy_impl_name__', f'{runtime_cls.__name__}CPPImpl')
@@ -78,27 +100,28 @@ def _create_impl(
 ):
     impl_cls = _resolve_impl_cls(cpp_module, runtime_cls, default_impl_name)
 
-    ctor_kwargs: Dict[str, Any] = {}
-    if '_chunk_size' in init_state:
-        ctor_kwargs['chunk_size'] = init_state['_chunk_size']
-    if '_overlap' in init_state:
-        ctor_kwargs['overlap'] = init_state['_overlap']
-
     attempts: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = []
-    if ctor_kwargs:
-        attempts.append(((), dict(ctor_kwargs)))
-        if 'overlap' in ctor_kwargs:
-            sentence_kwargs = dict(ctor_kwargs)
-            sentence_kwargs['chunk_overlap'] = sentence_kwargs.pop('overlap')
-            attempts.append(((), sentence_kwargs))
     attempts.append((init_args, dict(init_kwargs)))
+    attempts.append(((), {}))
 
     last_error: Optional[Exception] = None
+    impl = None
     for args, kwargs in attempts:
         try:
-            return impl_cls(*args, **kwargs)
+            impl = impl_cls(*args, **kwargs)
+            break
         except TypeError as exc:
             last_error = exc
+
+    if impl is not None:
+        for name, value in init_state.items():
+            if not hasattr(impl, name):
+                continue
+            try:
+                setattr(impl, name, value)
+            except (AttributeError, TypeError):
+                continue
+        return impl
 
     if last_error is not None:
         raise last_error
@@ -172,8 +195,12 @@ def cpp_proxy(
             state = dict(object.__getattribute__(self, '__dict__'))
             impl = _create_impl(cpp_module, type(self), default_impl_name, state, args, kwargs)
             object.__setattr__(self, impl_holder, impl)
-            for attr_name in proxy_attrs:
-                object.__getattribute__(self, '__dict__').pop(attr_name, None)
+            shadow_state = object.__getattribute__(self, '__dict__')
+            for attr_name in list(shadow_state.keys()):
+                if attr_name == impl_holder:
+                    continue
+                if hasattr(impl, attr_name):
+                    shadow_state.pop(attr_name, None)
 
         cls.__init__ = _proxied_init
 
@@ -188,15 +215,26 @@ def cpp_proxy(
                 impl = _get_impl(self)
                 if impl is None:
                     return original(self, *args, **kwargs)
-                if name == 'split_text':
+                if name in {'split_text', '_merge'}:
                     runtime_cls = type(self)
-                    # If a subclass customizes split/merge hooks, keep Python split_text
-                    # so polymorphic behavior still follows the Python override.
-                    if runtime_cls is not cls and (
-                        '_split' in runtime_cls.__dict__ or '_merge' in runtime_cls.__dict__
+                    # If a subclass customizes split/merge hooks, keep Python behavior
+                    # so polymorphism still follows Python overrides.
+                    if (
+                        _method_overridden(runtime_cls, cls, '_split')
+                        or _method_overridden(runtime_cls, cls, '_merge')
                     ):
                         return original(self, *args, **kwargs)
-                result = getattr(impl, target_name)(*args, **kwargs)
+                try:
+                    result = getattr(impl, target_name)(*args, **kwargs)
+                except RuntimeError as exc:
+                    if name == 'split_text':
+                        msg = str(exc)
+                        if 'close to chunk size' in msg:
+                            # Keep Python warning behavior for tiny effective chunk sizes.
+                            return original(self, *args, **kwargs)
+                        if 'longer than chunk size' in msg:
+                            raise ValueError(msg) from exc
+                    raise
                 return self if result is impl else result
             return _proxy
 
@@ -208,24 +246,32 @@ def cpp_proxy(
             original = getattr(cls, name)
             setattr(cls, name, _make_method_proxy(name, original))
 
-        if proxy_attrs:
-            def _proxied_getattribute(self, name):
-                if name in proxy_attrs:
-                    impl = object.__getattribute__(self, '__dict__').get(impl_holder)
-                    if impl is not None:
-                        return getattr(impl, name)
+        def _proxied_getattribute(self, name):
+            if name == impl_holder:
                 return original_getattribute(self, name)
+            impl = object.__getattribute__(self, '__dict__').get(impl_holder)
+            if impl is not None:
+                cls_attr = _lookup_class_attr(type(self), name)
+                if name in proxy_attrs or cls_attr is _CLASS_ATTR_MISSING:
+                    if _is_data_attr_on_impl(impl, name):
+                        return getattr(impl, name)
+            return original_getattribute(self, name)
 
-            def _proxied_setattr(self, name, value):
-                if name in proxy_attrs:
-                    impl = object.__getattribute__(self, '__dict__').get(impl_holder)
-                    if impl is not None:
-                        setattr(impl, name, value)
-                        return
+        def _proxied_setattr(self, name, value):
+            if name == impl_holder:
                 original_setattr(self, name, value)
+                return
+            impl = object.__getattribute__(self, '__dict__').get(impl_holder)
+            if impl is not None:
+                cls_attr = _lookup_class_attr(type(self), name)
+                if (name in proxy_attrs or cls_attr is _CLASS_ATTR_MISSING) and hasattr(impl, name):
+                    setattr(impl, name, value)
+                    object.__getattribute__(self, '__dict__').pop(name, None)
+                    return
+            original_setattr(self, name, value)
 
-            cls.__getattribute__ = _proxied_getattribute
-            cls.__setattr__ = _proxied_setattr
+        cls.__getattribute__ = _proxied_getattribute
+        cls.__setattr__ = _proxied_setattr
 
         return cls
 
