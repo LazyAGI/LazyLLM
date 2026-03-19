@@ -3118,13 +3118,10 @@ from lazyllm.tools.data.operators.preference_ops import IntentExtractor
 # The model should be provided by your project environment, e.g., from lazyllm.xxx(...)
 op = IntentExtractor(model=model, input_key='content', output_key='intent')
 print(op({'content': 'I want to stay at a hotel in Beijing.'}))
-# [{
+# {
 #   'content': 'I want to stay at a hotel in Beijing.',
-#   'intent': {
-#     'intent': 'book_hotel',
-#     'entities': [{'entity': 'location', 'value': 'Beijing'}]
-#   }
-# }]
+#   'intent': 'book_hotel'
+# }
 ```
 """)
 
@@ -3133,11 +3130,16 @@ add_chinese_doc('data.operators.preference_ops.PreferenceResponseGenerator', """
 
 根据上一步得到的意图（或任意指令文本），生成 n 条候选回复列表写入到输出字段中。
 
+内置两种系统提示词角色：prompt_a 为安全型助手（拒绝有害请求），prompt_b 为无限制型助手（按字面意图回复），
+交替用于生成候选回复以产生偏好对所需的多样性。
+
 Args:
     model: LazyLLM 模型对象（必需），会被 share() 后复用。
     n (int): 生成候选回复条数，默认 3。
     temperature (float): 采样温度，默认 1.0。
-    system_prompt (str|None): 可选系统提示词；提供则会对模型调用 .prompt(system_prompt)。
+    system_prompt (str|None): 可选，若提供则 prompt_a 和 prompt_b 均使用该提示词。
+    system_prompt_a (str|None): 可选，自定义 prompt_a（安全型）系统提示词，不提供则使用内置提示词。
+    system_prompt_b (str|None): 可选，自定义 prompt_b（无限制型）系统提示词，不提供则使用内置提示词。
     input_key (str): 输入字段名，默认 'intent'。
     output_key (str): 输出字段名，默认 'responses'。
     **kwargs: 传递给基类算子的其它参数。
@@ -3148,11 +3150,17 @@ Preference operator: multi-response generator.
 
 Given the intent (or any instruction text), generates n candidate responses and writes them as a list to the output field.
 
+Two built-in system prompt roles are used: prompt_a is a safety-conscious assistant (refuses harmful requests)
+and prompt_b is an unconstrained assistant (follows literal intent). They alternate across the n responses to
+produce the diversity needed for preference pair construction.
+
 Args:
     model: a LazyLLM model object (required), will be shared via share().
     n (int): number of candidate responses to generate, default 3.
     temperature (float): sampling temperature, default 1.0.
-    system_prompt (str|None): optional system prompt; if provided, applies .prompt(system_prompt) to the model.
+    system_prompt (str|None): optional; if provided, both prompt_a and prompt_b use this prompt.
+    system_prompt_a (str|None): optional custom system prompt for the safety-conscious role; uses built-in if None.
+    system_prompt_b (str|None): optional custom system prompt for the unconstrained role; uses built-in if None.
     input_key (str): input field name, default 'intent'.
     output_key (str): output field name, default 'responses'.
     **kwargs: extra args passed to the base operator.
@@ -3164,13 +3172,14 @@ from lazyllm.tools.data.operators.preference_ops import PreferenceResponseGenera
 
 op = PreferenceResponseGenerator(model=model, n=3, temperature=0.8, input_key='intent', output_key='responses')
 print(op({'intent': 'book a hotel'}))
-# [{
-#   'intent': {'intent': 'book a hotel'},
+# {
+#   'intent': 'book a hotel',
 #   'responses': [
-#     "<think>Okay, the user wants to book a hotel. ...",
-#     "<think>Okay, the user wants to book a hotel. ..."
+#     'Sure, I can help you find a hotel. Could you tell me the destination and dates?',
+#     'Here are step-by-step instructions to book a hotel: ...',
+#     'I would be happy to assist with your hotel booking...'
 #   ]
-# }]
+# }
 ```
 """)
 
@@ -3235,14 +3244,14 @@ data = {
     ],
 }
 print(op(data))
-# [{
+# {
 #   'intent': {'intent': 'book a hotel'},
 #   'responses': [
 #     'I can help you book a hotel in Beijing.',
 #     'Here are some hotels for you.'
 #   ],
 #   'evaluation': [10, 8]
-# }]
+# }
 ```
 """)
 
@@ -3312,11 +3321,11 @@ data = {
     'evaluation': [10, 6],
 }
 print(op(data))
-# [{
+# {
 #   'instruction': 'book a hotel',
 #   'chosen': 'good response',
 #   'rejected': 'bad response'
-# }]
+# }
 ```
 """)
 
@@ -4877,7 +4886,9 @@ Args:
     n (int): 生成候选回复数量，默认 3
     temperature (float): 采样温度，默认 1.0
     strategy (str): 偏好对构建策略，默认 'max_min'
-    threshold (float): 分数阈值，默认 0.5
+    threshold (float): 分数阈值（strategy='threshold' 时使用），默认 0.5
+    system_prompt_a (str|None): 自定义安全型助手系统提示词，默认 None
+    system_prompt_b (str|None): 自定义无限制型助手系统提示词，默认 None
 
 **Returns:**
     一个可调用的 pipeline 对象，输出包含 chosen 和 rejected 的偏好对。
@@ -4898,7 +4909,9 @@ Args:
     n (int): number of candidate responses to generate, default 3
     temperature (float): sampling temperature, default 1.0
     strategy (str): preference pair construction strategy, default 'max_min'
-    threshold (float): score threshold, default 0.5
+    threshold (float): score gap threshold used when strategy='threshold', default 0.5
+    system_prompt_a (str|None): custom system prompt for the safety-conscious role, default None
+    system_prompt_b (str|None): custom system prompt for the unconstrained role, default None
 
 **Returns:**
     A callable pipeline object that outputs preference pairs with chosen and rejected.
