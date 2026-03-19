@@ -4,6 +4,13 @@ import json
 
 ToolUseOps = data_register.new_group('tool_use_ops')
 
+
+def _to_str(x, default=''):
+    if x is None:
+        return default
+    return x if isinstance(x, str) else json.dumps(x, ensure_ascii=False)
+
+
 class ContextualBeacon(ToolUseOps):
     def __init__(self, model=None, input_key='content', output_key='scenario', system_prompt=None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
@@ -61,11 +68,11 @@ class ScenarioDiverger(ToolUseOps):
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
-        base = data.get(self.input_key, None)
-        if base is None or base == '':
+        base = data.get(self.input_key)
+        if not base and base != 0:
             data[self.output_key] = []
             return data
-        base_text = json.dumps(base, ensure_ascii=False) if not isinstance(base, str) else base
+        base_text = _to_str(base)
         instruction = f'Base scenario:\n{base_text}\n\nGenerate {self.n} alternative scenarios and output JSON.'
         parsed = self.model(instruction)
         scenarios = parsed.get('scenarios') if isinstance(parsed, dict) else None
@@ -97,11 +104,11 @@ class DecompositionKernel(ToolUseOps):
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
-        scenario = data.get(self.input_key, None)
-        if scenario is None or scenario == '':
+        scenario = data.get(self.input_key)
+        if not scenario and scenario != 0:
             data[self.output_key] = []
             return data
-        scenario_text = json.dumps(scenario, ensure_ascii=False) if not isinstance(scenario, str) else scenario
+        scenario_text = _to_str(scenario)
         instruction = f'Scenario:\n{scenario_text}\n\nGenerate up to {self.n} atomic tasks and output JSON.'
         parsed = self.model(instruction)
         tasks = parsed.get('tasks') if isinstance(parsed, dict) else None
@@ -132,11 +139,11 @@ class ChainedLogicAssembler(ToolUseOps):
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
-        tasks = data.get(self.input_key, None)
+        tasks = data.get(self.input_key)
         if not tasks:
             data[self.output_key] = []
             return data
-        tasks_text = json.dumps(tasks, ensure_ascii=False) if not isinstance(tasks, str) else tasks
+        tasks_text = _to_str(tasks)
         instruction = f'Atomic task list:\n{tasks_text}\n\nGenerate successor and composed tasks and output JSON.'
         parsed = self.model(instruction)
         items = parsed.get('items') if isinstance(parsed, dict) else None
@@ -169,11 +176,11 @@ class TopologyArchitect(ToolUseOps):
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
-        tasks = data.get(self.input_key, None)
+        tasks = data.get(self.input_key)
         if not tasks:
             data[self.output_key] = {'parallel_tasks': [], 'sequential_tasks': [], 'hybrid_tasks': []}
             return data
-        tasks_text = json.dumps(tasks, ensure_ascii=False) if not isinstance(tasks, str) else tasks
+        tasks_text = _to_str(tasks)
         instruction = f'Atomic task list:\n{tasks_text}\n\nGenerate three types of tasks and output JSON.'
         parsed = self.model(instruction)
         default_val = {'parallel_tasks': [], 'sequential_tasks': [], 'hybrid_tasks': []}
@@ -212,15 +219,13 @@ class ViabilitySieve(ToolUseOps):
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
-        composition_tasks = data.get(self.composition_key, None)
-        subtasks = data.get(self.subtask_key, None)
+        composition_tasks = data.get(self.composition_key)
+        subtasks = data.get(self.subtask_key)
         if not composition_tasks:
             data[self.output_key] = []
             return data
-        composition_text = (json.dumps(composition_tasks, ensure_ascii=False)
-                            if not isinstance(composition_tasks, str) else composition_tasks)
-        subtasks_text = (json.dumps(subtasks, ensure_ascii=False) if subtasks is not None
-                         and not isinstance(subtasks, str) else (subtasks or ''))
+        composition_text = _to_str(composition_tasks)
+        subtasks_text = _to_str(subtasks)
         instruction = (
             f'Composed tasks:\n{composition_text}\n\n'
             f'Subtasks (optional):\n{subtasks_text}\n\n'
@@ -228,14 +233,12 @@ class ViabilitySieve(ToolUseOps):
         )
         parsed = self.model(instruction)
         items = parsed.get('items') if isinstance(parsed, dict) else None
-        valid = []
-        if isinstance(items, list):
-            for it in items:
-                if isinstance(it, dict) and it.get('is_valid') is True and it.get('composed_task'):
-                    valid.append(it.get('composed_task'))
-        data[self.output_key] = valid if valid else (
-            items if isinstance(items, list) else (parsed if parsed else [])
-        )
+        valid = [
+            it['composed_task']
+            for it in (items or [])
+            if isinstance(it, dict) and it.get('is_valid') is True and it.get('composed_task')
+        ]
+        data[self.output_key] = valid
         return data
 
 
@@ -270,17 +273,15 @@ class ProtocolSpecifier(ToolUseOps):
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
-        task = data.get(self.task_key, None)
-        subtasks = data.get(self.subtask_key, None)
-        # If task is a list, take the first element
-        if isinstance(task, list) and len(task) > 0:
-            task = task[0]
-        if task is None or task == '':
+        task = data.get(self.task_key)
+        subtasks = data.get(self.subtask_key)
+        if isinstance(task, list):
+            task = task[0] if task else None
+        if not task and task != 0:
             data[self.output_key] = []
             return data
-        task_text = json.dumps(task, ensure_ascii=False) if not isinstance(task, str) else task
-        subtasks_text = (json.dumps(subtasks, ensure_ascii=False) if subtasks is not None
-                         and not isinstance(subtasks, str) else (subtasks or ''))
+        task_text = _to_str(task)
+        subtasks_text = _to_str(subtasks)
         instruction = (
             f'Composed task:\n{task_text}\n\n'
             f'Subtasks (optional):\n{subtasks_text}\n\n'
@@ -329,17 +330,15 @@ class DialogueSimulator(ToolUseOps):
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
-        task = data.get(self.task_key, None)
-        functions = data.get(self.functions_key, None)
-        # If task is a list, take the first element
-        if isinstance(task, list) and len(task) > 0:
-            task = task[0]
-        if task is None or task == '':
+        task = data.get(self.task_key)
+        functions = data.get(self.functions_key)
+        if isinstance(task, list):
+            task = task[0] if task else None
+        if not task and task != 0:
             data[self.output_key] = []
             return data
-        task_text = json.dumps(task, ensure_ascii=False) if not isinstance(task, str) else task
-        functions_text = (json.dumps(functions, ensure_ascii=False) if functions is not None
-                          and not isinstance(functions, str) else (functions or ''))
+        task_text = _to_str(task)
+        functions_text = _to_str(functions)
         instruction = (
             f'Composed task:\n{task_text}\n\n'
             f'Function list:\n{functions_text}\n\n'
@@ -355,6 +354,8 @@ class ToolUseToSFTFormatter(ToolUseOps):
     FORMAT_CHATML = 'chatml'
 
     def __init__(self, format_type=FORMAT_CHATML, system_prompt=None, **kwargs):
+        if format_type not in (self.FORMAT_ALPACA, self.FORMAT_CHATML):
+            raise ValueError(f'Unknown format_type: {format_type!r}')
         super().__init__(**kwargs)
         self.format_type = format_type
         self.system_prompt = system_prompt or 'You are a helpful assistant that can use tools to help users.'
@@ -364,20 +365,17 @@ class ToolUseToSFTFormatter(ToolUseOps):
             return '[]'
         return json.dumps(functions, ensure_ascii=False, indent=2)
 
-    def _convert_to_alpaca(self, data):
+    def _unpack_data(self, data):
         content = data.get('content', '')
         functions = data.get('functions', [])
-        conversation = data.get('conversation', {})
-        messages = conversation.get('messages', [])
+        messages = data.get('conversation', {}).get('messages', [])
+        return content, functions, messages
 
-        # Standard Alpaca format:
-        # - instruction: system prompt with tools
-        # - input: user question
-        # - output: assistant's final response
+    def _convert_to_alpaca(self, data):
+        content, functions, messages = self._unpack_data(data)
         tools_text = self._format_functions(functions)
         instruction = f'{self.system_prompt}\n\nAvailable tools:\n{tools_text}'
 
-        # Find the last assistant message as the output
         output = ''
         for msg in reversed(messages):
             if msg.get('role') == 'assistant':
@@ -393,59 +391,34 @@ class ToolUseToSFTFormatter(ToolUseOps):
         }
 
     def _convert_to_chatml(self, data):
-        content = data.get('content', '')
-        functions = data.get('functions', [])
-        conversation = data.get('conversation', {})
-        messages = conversation.get('messages', [])
-
-        output_messages = []
-
+        content, functions, messages = self._unpack_data(data)
         tools_text = self._format_functions(functions)
         system_content = f'{self.system_prompt}\n\nAvailable tools:\n{tools_text}'
-        output_messages.append({
-            'role': 'system',
-            'content': system_content
-        })
+        output_messages = [
+            {'role': 'system', 'content': system_content},
+            {'role': 'user', 'content': content},
+        ]
 
-        output_messages.append({
-            'role': 'user',
-            'content': content
-        })
-
+        func_names = {func.get('name', '') for func in functions if func.get('name')}
         tool_call_id = 0
         for msg in messages:
             role = msg.get('role')
             msg_content = msg.get('content', '')
 
             if role == 'assistant':
-                is_tool_call = False
-                tool_calls = []
-
-                for func in functions:
-                    func_name = func.get('name', '')
-                    if func_name and func_name in msg_content:
-                        is_tool_call = True
-                        tool_calls.append({
-                            'id': f'call_{tool_call_id}',
-                            'type': 'function',
-                            'function': {
-                                'name': func_name,
-                                'arguments': '{}'
-                            }
-                        })
-                        tool_call_id += 1
-
-                if is_tool_call and tool_calls:
-                    output_messages.append({
-                        'role': 'assistant',
-                        'content': None,
-                        'tool_calls': tool_calls
-                    })
+                tool_calls = [
+                    {
+                        'id': f'call_{tool_call_id + i}',
+                        'type': 'function',
+                        'function': {'name': name, 'arguments': '{}'}
+                    }
+                    for i, name in enumerate(name for name in func_names if name in msg_content)
+                ]
+                if tool_calls:
+                    tool_call_id += len(tool_calls)
+                    output_messages.append({'role': 'assistant', 'content': None, 'tool_calls': tool_calls})
                 else:
-                    output_messages.append({
-                        'role': 'assistant',
-                        'content': msg_content
-                    })
+                    output_messages.append({'role': 'assistant', 'content': msg_content})
 
             elif role == 'tool':
                 output_messages.append({
@@ -458,7 +431,7 @@ class ToolUseToSFTFormatter(ToolUseOps):
 
     def forward(self, data, **kwargs):
         if isinstance(data, list):
-            return [self.forward(item, **kwargs) for item in data]
+            return [r for item in data for r in [self.forward(item, **kwargs)] if r]
 
         assert isinstance(data, dict)
 
@@ -467,7 +440,85 @@ class ToolUseToSFTFormatter(ToolUseOps):
 
         if self.format_type == self.FORMAT_ALPACA:
             return self._convert_to_alpaca(data)
-        elif self.format_type == self.FORMAT_CHATML:
-            return self._convert_to_chatml(data)
+        return self._convert_to_chatml(data)
+
+
+class ToolUseQualityFilter(ToolUseOps):
+    def __init__(
+        self,
+        model=None,
+        min_completeness_score=4,
+        min_feasibility_score=4,
+        system_prompt=None,
+        **kwargs,
+    ):
+        super().__init__(_concurrency_mode='thread', **kwargs)
+        self.min_completeness_score = min_completeness_score
+        self.min_feasibility_score = min_feasibility_score
+        sys_prompt = system_prompt or (
+            'You are a data quality evaluation expert. Evaluate the quality of the assistant response '
+            'based on the instruction and input.\n'
+            'Scoring criteria (1-5 scale):\n'
+            '- Completeness: Does the response fully address the task? Are all necessary steps covered?\n'
+            '- Feasibility: Can the task be realistically accomplished? Is the response practical?\n'
+            'Output only JSON, no extra text.\n'
+            'JSON structure:\n'
+            '{"completeness": 4, "feasibility": 3}'
+        )
+        self.model = model.share().prompt(sys_prompt).formatter(JsonFormatter())
+
+    def _extract_eval_fields(self, data):
+        formatted = data.get('formatted', {})
+        if isinstance(formatted, dict) and formatted:
+            instruction = formatted.get('instruction', '')
+            input_data = formatted.get('input', '')
+            output = formatted.get('output', '')
+            if not output and 'messages' in formatted:
+                messages = formatted['messages']
+                # skip system message (index 0) to find the user instruction
+                user_msg = next((m for m in messages if m.get('role') == 'user'), None)
+                instruction = user_msg.get('content', '') if user_msg else ''
+                input_data = data.get('content', '')
+                output = ''
+                for msg in reversed(messages):
+                    if msg.get('role') == 'assistant':
+                        content = msg.get('content', '')
+                        tool_calls = msg.get('tool_calls', [])
+                        output = content if content else json.dumps(tool_calls, ensure_ascii=False)
+                        break
         else:
-            return self._convert_to_alpaca(data)
+            instruction = data.get('instruction', '')
+            input_data = data.get('input', '')
+            output = data.get('output', '')
+        return instruction, input_data, output
+
+    def forward(self, data, **kwargs):
+        if isinstance(data, list):
+            return [item for item in data if self.forward(item, **kwargs)]
+
+        assert isinstance(data, dict)
+
+        instruction, input_data, output = self._extract_eval_fields(data)
+        if not output:
+            return []
+
+        eval_input = (
+            f'Instruction:\n{instruction}\n\n'
+            f'Input:\n{input_data}\n\n'
+            f'Output:\n{output}\n\n'
+            'Evaluate completeness and feasibility (1-5), output JSON.'
+        )
+
+        parsed = self.model(eval_input)
+        if not isinstance(parsed, dict):
+            return []
+
+        try:
+            completeness = float(parsed.get('completeness', 0))
+            feasibility = float(parsed.get('feasibility', 0))
+        except (TypeError, ValueError):
+            return []
+
+        if completeness >= self.min_completeness_score and feasibility >= self.min_feasibility_score:
+            return data
+        return []

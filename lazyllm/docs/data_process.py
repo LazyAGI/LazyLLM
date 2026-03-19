@@ -3916,6 +3916,60 @@ print(res_alpaca['output'])       # Assistant responses
 ```
 """)
 
+add_chinese_doc('data.operators.tool_use_ops.ToolUseQualityFilter', """\
+工具调用数据生成算子：质量过滤器。
+
+对工具调用训练数据进行质量评估，根据完整性（completeness）与可行性（feasibility）两项评分过滤不达标的样本。
+
+评分维度（1-5 分制）：
+
+- completeness: 回复是否完整覆盖了任务需求，是否包含所有必要步骤
+- feasibility: 任务是否现实可行，回复是否具有实际可操作性
+
+Args:
+    model: LazyLLM 模型对象（必需），用于质量评分。
+    min_completeness_score (float): 完整性最低分，默认 4。
+    min_feasibility_score (float): 可行性最低分，默认 4。
+    system_prompt (str|None): 可选系统提示词。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.ToolUseQualityFilter', """\
+Tool-use data operator: quality filter.
+
+Evaluates tool-calling training samples on completeness and feasibility, and filters out those
+that fall below the minimum thresholds.
+
+Scoring dimensions (1-5 scale):
+
+- completeness: Does the response fully cover the task? Are all necessary steps included?
+- feasibility: Is the task realistically achievable? Is the response practically actionable?
+
+Args:
+    model: a LazyLLM model object (required), used for quality scoring.
+    min_completeness_score (float): minimum completeness score threshold, default 4.
+    min_feasibility_score (float): minimum feasibility score threshold, default 4.
+    system_prompt (str|None): optional system prompt.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.ToolUseQualityFilter', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import ToolUseQualityFilter
+
+op = ToolUseQualityFilter(model=judge_model, min_completeness_score=3, min_feasibility_score=3)
+data = {
+    'formatted': {
+        'instruction': 'You are a helpful assistant.',
+        'input': 'Book a train ticket from Beijing to Shanghai',
+        'output': 'I will help you query available trains and complete the booking.'
+    }
+}
+result = op(data)
+# Returns data if scores >= thresholds, else returns []
+```
+""")
+
 add_chinese_doc('data.operators.text2sql_ops.SQLForge', """\
 Text2SQL 数据生成算子：SQL 生成器。
 
@@ -5012,11 +5066,16 @@ add_chinese_doc('data.pipelines.tool_use_pipelines.build_tool_use_pipeline', """
 6. ViabilitySieve: 过滤不可行组合
 7. ProtocolSpecifier: 指定函数协议
 8. DialogueSimulator: 模拟对话交互
+9. ToolUseToSFTFormatter（可选）: 格式化为 SFT 训练格式
+10. ToolUseQualityFilter（可选）: 质量过滤
 
 Args:
     model: LLM 模型对象
     input_key (str): 输入字段名，默认 'content'
     n_turns (int): 对话轮数，默认 6
+    output_format (str|None): 输出格式，可选 'alpaca' 或 'chatml'，为 None 时不进行格式转换，默认 None
+    quality_filter (bool): 是否启用质量过滤，默认 True
+    judge_model: 用于质量评估的模型，为 None 时使用 model，默认 None
 
 **Returns:**
     一个可调用的 pipeline 对象，输出包含对话和工具调用信息的训练数据。
@@ -5034,11 +5093,16 @@ The pipeline includes the following steps:
 6. ViabilitySieve: Filter infeasible combinations
 7. ProtocolSpecifier: Specify function protocols
 8. DialogueSimulator: Simulate dialogue interactions
+9. ToolUseToSFTFormatter (optional): Format to SFT training format
+10. ToolUseQualityFilter (optional): Quality filtering
 
 Args:
     model: LLM model object
     input_key (str): input field name, default 'content'
     n_turns (int): number of dialogue turns, default 6
+    output_format (str|None): output format, 'alpaca' or 'chatml', None means no formatting, default None
+    quality_filter (bool): whether to enable quality filtering, default True
+    judge_model: model used for quality evaluation, uses model if None, default None
 
 **Returns:**
     A callable pipeline object that outputs training data with dialogue and tool calls.
@@ -5058,11 +5122,17 @@ print(res[0])  # Contains 'conversation' with tool calls
 add_chinese_doc('data.pipelines.tool_use_pipelines.build_simple_tool_use_pipeline', """\
 构建简化版工具使用流水线，包含场景生成、任务分解和对话模拟。
 
+相比 build_tool_use_pipeline，该流水线省略了 ScenarioDiverger、ChainedLogicAssembler、TopologyArchitect
+和 ViabilitySieve，直接从场景生成原子任务后驱动对话模拟，适合快速构造少量工具调用训练数据。
+
 Args:
     model: LLM 模型对象
     input_key (str): 输入字段名，默认 'content'
-    n_tasks (int): 任务数量，默认 5
+    n_tasks (int): 原子任务数量上限，默认 5
     n_turns (int): 对话轮数，默认 6
+    output_format (str|None): 输出格式，可选 'alpaca' 或 'chatml'，为 None 时不进行格式转换，默认 None
+    quality_filter (bool): 是否启用质量过滤，默认 True
+    judge_model: 用于质量评估的模型，为 None 时使用 model，默认 None
 
 **Returns:**
     一个可调用的 pipeline 对象。
@@ -5071,14 +5141,32 @@ Args:
 add_english_doc('data.pipelines.tool_use_pipelines.build_simple_tool_use_pipeline', """\
 Build a simple tool-use pipeline with scenario generation, task decomposition and dialogue simulation.
 
+Compared to build_tool_use_pipeline, this pipeline omits ScenarioDiverger, ChainedLogicAssembler,
+TopologyArchitect and ViabilitySieve, going directly from scenario to atomic tasks and dialogue
+simulation. Suitable for quickly generating small amounts of tool-calling training data.
+
 Args:
     model: LLM model object
     input_key (str): input field name, default 'content'
-    n_tasks (int): number of tasks, default 5
+    n_tasks (int): maximum number of atomic tasks, default 5
     n_turns (int): number of dialogue turns, default 6
+    output_format (str|None): output format, 'alpaca' or 'chatml', None means no formatting, default None
+    quality_filter (bool): whether to enable quality filtering, default True
+    judge_model: model used for quality evaluation, uses model if None, default None
 
 **Returns:**
     A callable pipeline object.
+""")
+
+add_example('data.pipelines.tool_use_pipelines.build_simple_tool_use_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.tool_use_pipelines import build_simple_tool_use_pipeline
+
+ppl = build_simple_tool_use_pipeline(model=your_model, input_key='content', n_tasks=3, n_turns=4)
+data = [{'content': 'Help me book a restaurant near the office.'}]
+res = ppl(data)
+print(res[0])  # Contains 'conversation' with tool calls
+```
 """)
 
 # =========================

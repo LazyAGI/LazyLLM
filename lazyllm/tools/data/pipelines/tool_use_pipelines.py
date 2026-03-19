@@ -2,7 +2,8 @@ from lazyllm import pipeline
 from lazyllm.tools.data import tool_use_ops
 
 
-def build_tool_use_pipeline(model, input_key='content', n_turns=6, output_format=None):
+def build_tool_use_pipeline(model, input_key='content', n_turns=6, output_format=None, quality_filter=True,
+                            judge_model=None):
     with pipeline() as ppl:
         ppl.contextual_beacon = tool_use_ops.ContextualBeacon(
             model=model,
@@ -54,10 +55,17 @@ def build_tool_use_pipeline(model, input_key='content', n_turns=6, output_format
                 output_key='formatted',
                 format_type=output_format
             )
+        if quality_filter:
+            ppl.quality_filter = tool_use_ops.ToolUseQualityFilter(
+                model=judge_model if judge_model else model,
+                min_completeness_score=3,
+                min_feasibility_score=3
+            )
     return ppl
 
 
-def build_simple_tool_use_pipeline(model, input_key='content', n_tasks=5, n_turns=6, output_format=None):
+def build_simple_tool_use_pipeline(model, input_key='content', n_tasks=5, n_turns=6, output_format=None,
+                                   quality_filter=True, judge_model=None):
     with pipeline() as ppl:
         ppl.contextual_beacon = tool_use_ops.ContextualBeacon(
             model=model,
@@ -88,5 +96,11 @@ def build_simple_tool_use_pipeline(model, input_key='content', n_tasks=5, n_turn
                 input_key='conversation',
                 output_key='formatted',
                 format_type=output_format
+            )
+        if quality_filter:
+            ppl.quality_filter = tool_use_ops.ToolUseQualityFilter(
+                model=judge_model if judge_model else model,
+                min_completeness_score=3,
+                min_feasibility_score=3
             )
     return ppl

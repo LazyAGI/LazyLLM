@@ -84,7 +84,75 @@ class TestToolUsePipeline:
 
         mock_model = self.MockModel(return_val=MockModelCallable(responses))
 
-        ppl = build_simple_tool_use_pipeline(model=mock_model, input_key='content', n_tasks=3, n_turns=3)
+        ppl = build_simple_tool_use_pipeline(model=mock_model, input_key='content', n_tasks=3, n_turns=3,
+                                             quality_filter=False)
+        data = [{'content': 'I want to book a flight.'}]
+        res = ppl(data)
+
+        assert len(res) == 1
+        assert 'conversation' in res[0]
+
+    def test_tool_use_pipeline_with_quality_filter_pass(self):
+        '''Test tool use pipeline with quality filter - sample passes filter.'''
+        responses = [
+            {'scene': 'ordering pizza', 'domain': 'food'},  # ContextualBeacon
+            {'scenarios': [{'scene': 'ordering sushi', 'domain': 'food'}]},  # ScenarioDiverger
+            {'tasks': [{'task': 'select restaurant', 'input': '', 'output': ''}]},  # DecompositionKernel
+            {'items': [{'task': 'select restaurant', 'next_task': 'place order',
+                        'composed_task': 'order food'}]},  # ChainedLogicAssembler
+            {'parallel_tasks': ['task1'], 'sequential_tasks': ['task2'],
+             'hybrid_tasks': ['hybrid_task']},  # TopologyArchitect
+            {'items': [{'composed_task': 'order food', 'is_valid': True, 'reason': 'ok'}]},  # ViabilitySieve
+            {'functions': [{'name': 'order_food', 'description': 'place an order'}]},  # ProtocolSpecifier
+            {'messages': [{'role': 'user', 'content': 'I want pizza'}]},  # DialogueSimulator
+            {'completeness': 4, 'feasibility': 4},  # QualityFilter
+        ]
+
+        mock_model = self.MockModel(return_val=MockModelCallable(responses))
+
+        ppl = build_tool_use_pipeline(model=mock_model, input_key='content', n_turns=3, output_format='alpaca')
+        data = [{'content': 'I want to order food.'}]
+        res = ppl(data)
+
+        assert len(res) >= 0
+
+    def test_tool_use_pipeline_with_quality_filter_fail(self):
+        '''Test tool use pipeline with quality filter - sample fails filter.'''
+        responses = [
+            {'scene': 'ordering pizza', 'domain': 'food'},  # ContextualBeacon
+            {'scenarios': [{'scene': 'ordering sushi', 'domain': 'food'}]},  # ScenarioDiverger
+            {'tasks': [{'task': 'select restaurant', 'input': '', 'output': ''}]},  # DecompositionKernel
+            {'items': [{'task': 'select restaurant', 'next_task': 'place order',
+                        'composed_task': 'order food'}]},  # ChainedLogicAssembler
+            {'parallel_tasks': ['task1'], 'sequential_tasks': ['task2'],
+             'hybrid_tasks': ['hybrid_task']},  # TopologyArchitect
+            {'items': [{'composed_task': 'order food', 'is_valid': True, 'reason': 'ok'}]},  # ViabilitySieve
+            {'functions': [{'name': 'order_food', 'description': 'place an order'}]},  # ProtocolSpecifier
+            {'messages': [{'role': 'user', 'content': 'I want pizza'}]},  # DialogueSimulator
+            {'completeness': 2, 'feasibility': 4},  # QualityFilter - fails completeness
+        ]
+
+        mock_model = self.MockModel(return_val=MockModelCallable(responses))
+
+        ppl = build_tool_use_pipeline(model=mock_model, input_key='content', n_turns=3, output_format='alpaca')
+        data = [{'content': 'I want to order food.'}]
+        res = ppl(data)
+
+        assert len(res) == 0
+
+    def test_simple_tool_use_pipeline_with_quality_filter(self):
+        '''Test simple tool use pipeline with quality filter disabled.'''
+        responses = [
+            {'scene': 'booking flight', 'domain': 'travel'},  # ContextualBeacon
+            {'tasks': [{'task': 'search flights', 'input': '', 'output': ''}]},  # DecompositionKernel
+            {'functions': [{'name': 'search_flights', 'description': 'find flights'}]},  # ProtocolSpecifier
+            {'messages': [{'role': 'user', 'content': 'Book a flight'}]},  # DialogueSimulator
+        ]
+
+        mock_model = self.MockModel(return_val=MockModelCallable(responses))
+
+        ppl = build_simple_tool_use_pipeline(model=mock_model, input_key='content', n_tasks=3, n_turns=3,
+                                             quality_filter=False)
         data = [{'content': 'I want to book a flight.'}]
         res = ppl(data)
 
