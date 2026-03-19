@@ -200,3 +200,23 @@ class TestPretrainOperators:
         op_reject = pt.ContextQualFilter(vlm_reject, _concurrency_mode='single')
         res_reject = op_reject(inputs)
         assert len(res_reject) == 0
+
+    def test_text2json(self):
+        expected_response = {
+            'triples': [
+                {'subject': 'Alice', 'predicate': 'works at', 'object': 'Company X'},
+            ],
+        }
+        llm = MockModel(expected_response)
+        op = pt.Text2Json(llm, input_key='text', output_key='parsed', _concurrency_mode='single')
+        inputs = [{'text': 'Alice works at Company X.'}]
+        res = op(inputs)
+        assert len(res) == 1
+        assert res[0]['parsed'] == expected_response
+        assert res[0]['parsed']['triples'][0]['subject'] == 'Alice'
+
+        empty_llm = MockModel({})
+        op_empty = pt.Text2Json(empty_llm, _concurrency_mode='single')
+        res_empty = op_empty([{'text': 'Some text.'}])
+        assert len(res_empty) == 1
+        assert res_empty[0]['parsed'] == {}
