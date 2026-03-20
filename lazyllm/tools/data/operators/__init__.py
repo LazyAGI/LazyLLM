@@ -78,3 +78,13 @@ from .reranker_synthesis import (  # noqa: F401
     RerankerAdjustNegatives,
     RerankerBuildFormat,
 )
+
+# Import domain_pretrain operators to register them
+from .domain_pretrain_ops import (  # noqa: F401
+    DomainKeywordFilter,
+    DomainRelevanceScorer,
+    NGramRepetitionFilter,
+    sensitive_info_cleaner,
+    text_normalizer,
+    DocumentLanguageFilter,
+)

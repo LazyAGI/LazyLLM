@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Optional
 from lazyllm import pipeline
 from lazyllm import LOG
 from lazyllm.tools.data import agenticrag
@@ -18,11 +18,14 @@ def atomic_rag_pipeline(llm, input_key='text', max_per_task=10, max_question=10,
     return ppl
 
 
-def depth_qa_single_round_pipeline(llm, identifier_key='identifier',
-                                    new_identifier_key='new_identifier',
-                                    relation_key='relation',
-                                    question_key='depth_question',
-                                    depth_verify_filter_threshold=1):
+def depth_qa_single_round_pipeline(
+    llm,
+    identifier_key='identifier',
+    new_identifier_key='new_identifier',
+    relation_key='relation',
+    question_key='depth_question',
+    depth_verify_filter_threshold=1,
+):
     with pipeline() as ppl:
         ppl.backward = agenticrag.DepthQAGBackwardTask(
             llm=llm,
@@ -52,8 +55,13 @@ def depth_qa_single_round_pipeline(llm, identifier_key='identifier',
     return ppl
 
 
-def depth_qa_pipeline(llm, input_key='text', output_key='question', n_rounds=1,
-                     depth_verify_filter_threshold=1):
+def depth_qa_pipeline(
+    llm,
+    input_key='text',
+    output_key='question',
+    n_rounds=1,
+    depth_verify_filter_threshold=1,
+):
     def pipeline_fn(data_list):
         # Step 1: Get initial identifiers
         with pipeline() as ppl_identifier:
@@ -125,13 +133,15 @@ def qa_evaluation_pipeline(prediction_key='re_answer', ground_truth_key='golden_
     return ppl
 
 
-def width_qa_pipeline(llm=None,
-            input_question_key: str = 'question',
-            input_identifier_key: str = 'identifier',
-            input_answer_key: str = 'answer',
-            output_question_key: str = 'generated_width_task',
-            check_require_state_one: bool = False,
-            width_filter_threshold: Optional[int] = None):
+def width_qa_pipeline(
+    llm=None,
+    input_question_key: str = 'question',
+    input_identifier_key: str = 'identifier',
+    input_answer_key: str = 'answer',
+    output_question_key: str = 'generated_width_task',
+    check_require_state_one: bool = False,
+    width_filter_threshold: Optional[int] = None,
+):
     def pipeline_fn(data: List[dict]):
         # Step 1: Prepare input batch with key mapping
         LOG.info('Preparing input batch...')
