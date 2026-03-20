@@ -3,6 +3,7 @@ from enum import Enum, auto
 from collections import defaultdict
 from lazyllm.thirdparty import PIL
 from lazyllm import JsonFormatter, config, reset_on_pickle, Mode, LOG
+from lazyllm.cpp import cpp_class
 from lazyllm.components.utils.file_operate import _image_to_base64
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import uuid
@@ -22,6 +23,7 @@ class MetadataMode(str, Enum):
     NONE = auto()
 
 
+@cpp_class
 @reset_on_pickle(('_lock', threading.Lock))
 class DocNode:
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
@@ -51,7 +53,7 @@ class DocNode:
         self._store = store
         self._node_groups: Dict[str, Dict] = node_groups or {}
         self._lock = threading.Lock()
-        self._embedding_state = set()
+        self.embedding_state = set()
         self.relevance_score = None
         self.similarity_score = None
         self._content_hash: Optional[str] = None
@@ -257,7 +259,7 @@ class DocNode:
         while True:
             with self._lock:
                 if not self.has_missing_embedding(embed_key):
-                    self._embedding_state.discard(embed_key)
+                    self.embedding_state.discard(embed_key)
                     break
             time.sleep(1)
 
@@ -430,10 +432,10 @@ class RichDocNode(DocNode):
         def _serialize_node(node: DocNode) -> str:
             formatted_node = {
                 'content': node.text,
-                'metadata': node.metadata,
-                'global_metadata': node.global_metadata,
-                'excluded_embed_metadata_keys': node.excluded_embed_metadata_keys,
-                'excluded_llm_metadata_keys': node.excluded_llm_metadata_keys,
+                'metadata': dict(node.metadata),
+                'global_metadata': dict(node.global_metadata),
+                'excluded_embed_metadata_keys': list(node.excluded_embed_metadata_keys),
+                'excluded_llm_metadata_keys': list(node.excluded_llm_metadata_keys),
             }
             return json.dumps(formatted_node, ensure_ascii=False)
 

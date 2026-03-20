@@ -1,8 +1,6 @@
-include(FetchContent)
-
 FetchContent_Declare(
     googletest
-    URL https://codeload.github.com/google/googletest/zip/refs/tags/release-1.12.1
+    URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
 ) # Fix gtest version to maintain C++11 compatibility.
 
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
@@ -29,5 +27,15 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
         pybind11::headers
         Python3::Python
     )
-    gtest_discover_tests(${test_name})
+    gtest_add_tests(
+        TARGET ${test_name}
+        TEST_LIST discovered_tests
+    )
+
+    # Attach runtime env per discovered case so each test gets the same loader path.
+    if (LAZYLLM_TEST_RUNTIME_ENV AND discovered_tests)
+        set_tests_properties(${discovered_tests} PROPERTIES
+            ENVIRONMENT "${LAZYLLM_TEST_RUNTIME_ENV}"
+        )
+    endif ()
 endforeach ()

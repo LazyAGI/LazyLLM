@@ -6,4 +6,4 @@ cmake -S csrc -B build \
   -DCMAKE_BUILD_TYPE=Debug \
   -DBUILD_TESTS=ON
 cmake --build build
-ctest --test-dir build
+ctest --test-dir build --rerun-failed --output-on-failure
