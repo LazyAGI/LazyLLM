@@ -1294,6 +1294,36 @@ print(op(data))  # Add key/value: 'is_equal': True
 ```
 """)
 
+add_chinese_doc('data.operators.cot_ops.hash_answer_extractor', """\
+从答案字符串中提取 '#' 之后的内容作为最终答案。若答案中不包含 '#'，则返回空字符串。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 原始答案字段名，默认 'answer'
+    output_key (str): 提取后的答案字段名，默认 'extracted_answer'
+""")
+
+add_english_doc('data.operators.cot_ops.hash_answer_extractor', """\
+Extract the substring after '#' from an answer string as the final answer.
+If '#' is not present, an empty string is returned.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the original answer, default 'answer'
+    output_key (str): key to write the extracted answer, default 'extracted_answer'
+""")
+
+add_example('data.operators.cot_ops.hash_answer_extractor', """\
+```python
+from lazyllm.tools.data import genCot
+
+data = {'answer': 'The result is #42'}
+op = genCot.hash_answer_extractor(input_key='answer', output_key='extracted_answer')
+print(op(data))
+# {'answer': 'The result is #42', 'extracted_answer': '42'}
+```
+""")
+
 # enQa_ops module docs
 add_chinese_doc('data.operators.enQa_ops.QueryRewriter', """\
 使用大模型将原问题重写为多个语义一致、表达不同的问法，输出列表写入指定字段。
@@ -1426,7 +1456,7 @@ print(op(data))  # [None] (drop)
 """)
 
 # math_ops module docs
-add_chinese_doc('data.operators.math_ops.math_answer_extractor', """\
+add_chinese_doc('data.operators.math_ops.boxed_answer_extractor', """\
 从文本中提取 \\\\boxed{{}} 内的数学答案，写入指定输出字段。以 forward 单条方式注册。
 
 Args:
@@ -1435,7 +1465,7 @@ Args:
     output_key (str): 提取结果写入的字段名，默认 'math_answer'
 """)
 
-add_english_doc('data.operators.math_ops.math_answer_extractor', """\
+add_english_doc('data.operators.math_ops.boxed_answer_extractor', """\
 Extract the math answer inside \\\\boxed{{}} from text and write to the specified output key. Registered as single-item forward.
 
 Args:
@@ -1444,12 +1474,12 @@ Args:
     output_key (str): key to write the extracted value, default 'math_answer'
 """)
 
-add_example('data.operators.math_ops.math_answer_extractor', """\
+add_example('data.operators.math_ops.boxed_answer_extractor', """\
 ```python
 from lazyllm.tools.data import MathQA
 
 data = {'answer': 'So the answer is \\\\boxed{{42}}.'}
-op = MathQA.math_answer_extractor(input_key='answer', output_key='math_answer')
+op = MathQA.boxed_answer_extractor(input_key='answer', output_key='math_answer')
 print(op(data))  # data['math_answer'] == '42'
 # [{'answer': 'So the answer is \\\\boxed{{42}}.', 'math_answer': '{42}'}]
 ```
@@ -1741,7 +1771,6 @@ Args:
 add_example('data.operators.pdf_ops.Pdf2Md', """\
 ```python
 from lazyllm.tools.data import Pdf2Qa
-from lazyllm.tools.data.operators.pdf_ops import Pdf2Md
 
 op = Pdf2Qa.Pdf2Md(input_key='pdf_path', output_key='docs', reader_url='http://...')
 data = [{'pdf_path': '/path/to/file.pdf'}]
@@ -6988,3 +7017,927 @@ res = op([{'context': 'Some context.', 'image_path': '/path/to/image.jpg'}])
 # res[0]['qa_pairs'] contains pretraining-format Q&A
 ```
 """)
+
+add_chinese_doc('data.operators.cot_ops.wrong_filter', """\
+筛选样本的算子。
+
+- 如果输入字段为 True，则表示样本正确，保留原始数据用于后续处理。  
+- 如果输入字段为 False，则表示样本错误，返回 []，被过滤掉。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 用于判断正确与否的字段名，默认 'is_equal'
+""")
+
+add_english_doc('data.operators.cot_ops.wrong_filter', """\
+Sample filtering operator.
+
+- If the specified field is True, the sample is considered correct and the original data is retained for further processing.  
+- If the specified field is False, the sample is considered wrong and returns [] (filtered out).
+
+Args:
+    data (dict): single data dict
+    input_key (str): field name used to determine correctness, default 'is_equal'
+""")
+
+add_example('data.operators.cot_ops.wrong_filter', """\
+```python
+from lazyllm.tools.data import genCot
+
+op = genCot.wrong_filter(input_key='is_equal')
+
+data1 = {'is_equal': True}
+data2 = {'is_equal': False}
+
+print(op(data1))  # {'is_equal': True}, kept for further processing
+print(op(data2))  # None, filtered out
+""")
+
+add_chinese_doc('data.operators.pdf_ops.multi_features_filter', """\
+多特征值平均分筛选算子。
+
+- 将 data[input_key] 中的所有值转换为浮点数后计算平均值。  
+- 如果平均值 >= threshold，则返回 None（保留数据用于后续处理）。  
+- 如果平均值 < threshold 或没有有效数值，则返回 []（过滤掉该样本）。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 字段名，存储数值或可转换为浮点数的值
+    threshold (float): 平均值阈值，用于决定是否保留
+""")
+
+add_english_doc('data.operators.pdf_.multi_features_filter', """\
+Filter operator based on the average of multiple feature values.
+
+- Convert all values in data[input_key] to floats and compute the average.  
+- If average >= threshold, returns None (retained for further processing).  
+- If average < threshold or no valid values, returns [] (filtered out).
+
+Args:
+    data (dict): single data dict
+    input_key (str): field name storing numeric or float-convertible values
+    threshold (float): threshold to retain the sample
+""")
+
+add_example('data.operators.pdf_ops.multi_features_filter', """\
+```python
+from lazyllm.tools.data import Pdf2QA
+
+data1 = {'features': {'a': 0.9, 'b': 0.8}}
+data2 = {'features': {'a': 0.5, 'b': 0.4}}
+
+print(Pdf2QA.multi_features_filter(data1, input_key='features', threshold=0.7))
+# None, kept
+print(Pdf2QA.multi_features_filter(data2, input_key='features', threshold=0.7))
+# [], filtered out
+```
+""")
+
+
+add_chinese_doc('data.operators.pdf_ops.PdfChunkToQA', """\
+PDF 文本块生成 QA 的算子类（支持多模态）。
+
+- 支持从文本或“文本 + 图片”生成 QA。
+- 自动解析 markdown 中的图片路径 ![](images/xxx)。
+- 图片会下载/复制到本地后参与模型推理。
+- 若存在图片：
+  - 使用 encode_query_with_filepaths 进行多模态推理
+  - 输出 image_key（图片路径列表）
+- 若无图片：
+  - 仅基于文本生成 QA
+
+Args:
+    input_key (str): 文本块字段名
+    query_key (str): 输出问题字段名
+    answer_key (str): 输出答案字段名
+    model: LLM 模型实例
+    user_prompt (str): 自定义提示词
+    mineru_api (str): 图片 base 路径或 URL
+    image_key (str): 输出图片路径字段名（list）
+    **kwargs: 其它参数
+""")
+
+add_english_doc('data.operators.pdf_ops.PdfChunkToQA', """\
+Operator that generates QA pairs from PDF chunks (multimodal supported).
+
+- Supports QA generation from text or text + images.
+- Automatically extracts image paths from markdown (![](images/...)).
+- Images are downloaded/copied locally before inference.
+- If images exist:
+  - Uses encode_query_with_filepaths for multimodal input
+  - Outputs image paths in image_key (list)
+- Otherwise:
+  - Generates QA from text only
+
+Args:
+    input_key (str): field name for text chunk
+    query_key (str): output question field
+    answer_key (str): output answer field
+    model: LLM model instance
+    user_prompt (str): optional prompt
+    mineru_api (str): base path or URL for images
+    image_key (str): output image path field (list)
+    **kwargs: additional arguments
+""")
+
+add_example('data.operators.pdf_ops.PdfChunkToQA', """\
+```python
+from lazyllm.tools.data import Pdf2QA
+
+op = Pdf2QA.PdfChunkToQA(input_key='chunk')
+
+data = {
+    'chunk': 'This is text with image ![](images/a.png)'
+}
+
+res = op(data)
+
+print(res['query'], res['answer'])
+print(res.get('image_path'))  # list
+```
+""")
+
+add_chinese_doc('data.operators.pdf_ops.PdfQAScorer', """\
+PDF QA 样本打分算子类。  
+
+- 接收文本块、生成的问题和答案、可选图片路径。  
+- 输出评分字段 output_key。  
+- 高度可配置，包括 input_key、query_key、answer_key、output_key、image_key、user_prompt、并发模式等。  
+- 实例化后通过 __call__(data) 或 forward(data) 使用。
+
+Args:
+    input_key (str): 文本块字段名
+    output_key (str): 输出分数字段名
+    query_key (str): 问题字段名
+    answer_key (str): 答案字段名
+    model: LLM 模型实例，可选
+    user_prompt (str): 自定义提示词
+    image_key (str): 图片路径字段（支持 list）
+    **kwargs: 其它可选参数传给基类
+""")
+
+add_english_doc('data.operators.pdf_ops.PdfQAScorer', """\
+Operator class that scores PDF QA samples.  
+
+- Receives text chunk, generated question & answer, optional image path.  
+- Outputs score in output_key.  
+- Highly configurable: input_key, query_key, answer_key, output_key, image_key, user_prompt, concurrency mode, etc.  
+- Instantiate first, then call __call__(data) or forward(data).
+
+Args:
+    input_key (str): field name for text chunk
+    output_key (str): field name for score output
+    query_key (str): field name for question
+    answer_key (str): field name for answer
+    model: optional LLM model instance
+    user_prompt (str): optional user prompt
+    image_key (str): field name for image path or paths
+    **kwargs: additional optional arguments passed to base class
+""")
+
+add_example('data.operators.pdf_ops.PdfQAScorer', """\
+```python
+from lazyllm.tools.data import Pdf2QA
+
+scorer = Pdf2QA.PdfQAScorer(input_key='chunk', output_key='score')
+data = {'chunk': 'Some text', 'query': 'Q?', 'answer': 'A', 'image_path': 'img.png'}
+
+res = scorer(data)
+print(res['score'])
+```
+""")
+
+add_chinese_doc('data.operators.pdf_ops.ImageToVQA', """\
+图像生成 VQA（视觉问答）算子。
+
+- 输入图片路径，生成 query + answer。
+- 支持单张或多张图片（list）。
+- 支持附加 context 和 reference 提升生成质量。
+- 使用 encode_query_with_filepaths 进行多模态推理。
+
+Args:
+    image_key (str): 图片路径字段（str 或 list）
+    query_key (str): 输出问题字段
+    answer_key (str): 输出答案字段
+    context_key (str): 上下文字段（可选）
+    reference_key (str): 参考信息字段（可选）
+    model: 模型实例
+    user_prompt (str): 自定义提示词
+    **kwargs: 其它参数
+""")
+
+add_english_doc('data.operators.pdf_ops.ImageToVQA', """\
+Operator that generates VQA (visual question answering) pairs from images.
+
+- Takes image path(s) as input and generates query + answer.
+- Supports single image or multiple images (list).
+- Optional context and reference fields can improve generation quality.
+- Uses encode_query_with_filepaths for multimodal inference.
+
+Args:
+    image_key (str): image path field (str or list)
+    query_key (str): output question field
+    answer_key (str): output answer field
+    context_key (str): optional context field
+    reference_key (str): optional reference field
+    model: model instance
+    user_prompt (str): optional user prompt
+    **kwargs: additional arguments
+""")
+
+add_example('data.operators.pdf_ops.ImageToVQA', """\
+```python
+from lazyllm.tools.data import Pdf2QA
+
+op = Pdf2QA.ImageToVQA()
+
+data = {
+    'image_path': 'test.png',
+    'context': 'This is a medical image.'
+}
+
+res = op(data)
+
+print(res['query'], res['answer'])
+```
+""")
+
+
+add_chinese_doc('data.operators.pdf_ops.vqa_to_chat_format', """\
+VQA 数据转 Chat 格式算子。
+
+- 将 (image, query, answer) 转换为多模态对话格式。
+- 输出结构：
+  {
+      'messages': [
+          {'role': 'user', 'content': '<image> + query'},
+          {'role': 'assistant', 'content': answer}
+      ],
+      'images': [...]
+  }
+
+- 支持单张或多张图片（自动转 list）。
+- 若 image、query 或 answer 任一缺失，则返回 []（过滤样本）。
+
+Args:
+    image_key (str): 图片字段
+    query_key (str): 问题字段
+    answer_key (str): 答案字段
+""")
+
+add_english_doc('data.operators.pdf_ops.vqa_to_chat_format', """\
+Operator that converts VQA data into chat format.
+
+- Transforms (image, query, answer) into multimodal chat structure.
+- Output format:
+  {
+      'messages': [...],
+      'images': [...]
+  }
+
+- Supports single or multiple images (automatically converted to list).
+- Returns [] if any of image, query, or answer is missing.
+
+Args:
+    image_key (str): image field
+    query_key (str): question field
+    answer_key (str): answer field
+""")
+
+add_example('data.operators.pdf_ops.vqa_to_chat_format', """\
+```python
+from lazyllm.tools.data import Pdf2Qa
+
+data = {
+    'image': 'a.png',
+    'query': 'What is in the image?',
+    'answer': 'A cat'
+}
+
+res = Pdf2Qa.vqa_to_chat_format(data)
+
+print(res)
+```
+""")
+
+
+add_chinese_doc('data.operators.pdf_ops.resize_image_inplace', """\
+图片原地 resize 算子。
+
+- 对 image_key 中的图片进行 resize。
+- 支持单张或多张图片（list）。
+- 原地覆盖保存，不改变数据结构。
+- 若路径不存在则自动跳过。
+- 使用 PIL 进行处理。
+
+Args:
+    image_key (str): 图片路径字段
+    size (tuple): resize 尺寸，如 (336, 336)
+""")
+
+add_english_doc('data.operators.pdf_ops.resize_image_inplace', """\
+Operator that resizes images in-place.
+
+- Resizes images specified in image_key.
+- Supports single image or multiple images (list).
+- Overwrites original files without changing data structure.
+- Skips invalid or non-existent paths.
+- Uses PIL for processing.
+
+Args:
+    image_key (str): image path field
+    size (tuple): resize size, e.g., (336, 336)
+""")
+
+add_example('data.operators.pdf_ops.resize_image_inplace', """\
+```python
+from lazyllm.tools.data import Pdf2Qa
+
+data = {
+    'image': ['a.png', 'b.png']
+}
+
+Pdf2Qa.resize_image_inplace(data, size=(224, 224))
+
+print('done')
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.qa_score_filter', """\
+QA 样本评分过滤算子。  
+
+- 根据指定评分字段 input_key 的值判断是否保留样本。  
+- score >= min_score 返回 None（保留用于后续处理）。  
+- score < min_score 返回 []（过滤掉该样本）。
+
+Args:
+    data (dict): 单条 QA 数据字典
+    input_key (str): 分数字段名
+    min_score (float): 最低保留分数
+""")
+
+add_english_doc('data.operators.text2qa_ops.qa_score_filter', """\
+QA sample score filter operator.  
+
+- Keeps or filters a sample based on a score field input_key.  
+- Returns None if score >= min_score (retained).  
+- Returns [] if score < min_score (filtered out).
+
+Args:
+    data (dict): single QA data dict
+    input_key (str): field name for the score
+    min_score (float): minimum score to retain the sample
+""")
+
+add_example('data.operators.text2qa_ops.qa_score_filter', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+data1 = {'score': 0.9}
+data2 = {'score': 0.3}
+
+print(Text2qa.qa_score_filter(data1, input_key='score', min_score=0.7))
+# None, kept
+print(Text2qa.qa_score_filter(data2, input_key='score', min_score=0.7))
+# [], filtered out
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.to_alpaca_sft', """\
+将 QA 样本转换为 Alpaca 风格的 SFT 数据格式。  
+
+- query_key 对应指令（instruction）  
+- context_key 对应输入（input）  
+- answer_key 对应输出（output）  
+- 若 query 或 answer 缺失则返回 None（过滤掉）
+
+Args:
+    data (dict): 单条 QA 数据字典
+    query_key (str): 指令字段名，默认 'query'
+    context_key (str): 上下文字段名，默认 'context'
+    answer_key (str): 答案字段名，默认 'output'
+""")
+
+add_english_doc('data.operators.text2qa_ops.to_alpaca_sft', """\
+Convert QA sample to Alpaca-style SFT format.  
+
+- query_key → instruction  
+- context_key → input  
+- answer_key → output  
+- Returns None if query or answer is missing (filtered out)
+
+Args:
+    data (dict): single QA data dict
+    query_key (str): field name for instruction, default 'query'
+    context_key (str): field name for input context, default 'context'
+    answer_key (str): field name for output answer, default 'output'
+""")
+
+add_example('data.operators.text2qa_ops.to_alpaca_sft', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+data = {'query': 'Translate to English', 'context': 'Hola', 'output': 'Hello'}
+res = Text2qa.to_alpaca_sft(data)
+print(res)
+# {'instruction': 'Translate to English', 'input': 'Hola', 'output': 'Hello'}
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.to_chat_sft', """\
+将 QA 样本转换为 Chat 风格 SFT 数据格式。  
+
+- query_key 对应用户提问  
+- context_key 对应上下文，可选  
+- answer_key 对应助手回答  
+- 若 query 或 answer 缺失则返回 None（过滤掉）  
+- 返回格式包含 messages 列表，其中 role 分为 'user' 和 'assistant'
+
+Args:
+    data (dict): 单条 QA 数据字典
+    query_key (str): 用户问题字段名，默认 'query'
+    context_key (str): 上下文字段名，默认 'context'
+    answer_key (str): 答案字段名，默认 'output'
+""")
+
+add_english_doc('data.operators.text2qa_ops.to_chat_sft', """\
+Convert QA sample to Chat-style SFT format.  
+
+- query_key → user question  
+- context_key → optional context  
+- answer_key → assistant answer  
+- Returns None if query or answer is missing (filtered out)  
+- Returns messages list with roles 'user' and 'assistant'
+
+Args:
+    data (dict): single QA data dict
+    query_key (str): field name for user question, default 'query'
+    context_key (str): field name for optional context, default 'context'
+    answer_key (str): field name for assistant answer, default 'output'
+""")
+
+add_example('data.operators.text2qa_ops.to_chat_sft', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+data = {'query': 'Hello?', 'context': 'Greeting', 'output': 'Hi!'}
+res = Text2qa.to_chat_sft(data)
+print(res)
+# {
+#   "messages": [
+#       {"role": "user", "content": "Greeting：Hello?"},
+#       {"role": "assistant", "content": "Hi!"}
+#   ]
+# }
+```
+""")
+
+# =========================
+# build_text2qa_pipeline
+# =========================
+
+add_chinese_doc('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
+构建文本到 QA 的数据处理流水线（Pipeline）。  
+
+该 pipeline 包含：
+1. 文本切分（TextToChunks）  
+2. 空白或噪声文本过滤（empty_or_noise_filter）  
+3. 非法 Unicode 清理（invalid_unicode_cleaner）  
+4. QA 生成（ChunkToQA）  
+5. QA 打分（QAScorer）  
+6. 根据分数过滤（qa_score_filter）  
+7. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）  
+
+Args:
+    text_key (str): 原始文本字段名，默认 'text'
+    chunk_key (str): 切分后文本块字段名，默认 'chunk'
+    instruction_key (str): QA 问题字段名，默认 'instruction'
+    output_key (str): QA 答案字段名，默认 'output'
+    model: QA 生成/评分模型实例
+    score_prompt: 打分提示词
+    tokenizer: 分词器
+    chunk_size (int): 文本切分长度，默认 200
+    tokenize (bool): 是否先进行分词，默认 False
+    qa_prompt: QA 生成提示词
+    threshold (float): QA 样本分数最低保留阈值，默认 1
+
+**Returns:**  
+    一个可调用的 pipeline 对象，调用时会按顺序执行上述算子。
+""")
+
+add_english_doc('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
+Build a text-to-QA data processing pipeline.  
+
+The pipeline includes:
+1. Text chunking (TextToChunks)  
+2. Empty or noise text filtering (empty_or_noise_filter)  
+3. Invalid Unicode cleaning (invalid_unicode_cleaner)  
+4. QA generation (ChunkToQA)  
+5. QA scoring (QAScorer)  
+6. Filtering by score (qa_score_filter)  
+7. Conversion to Alpaca-style SFT data (to_alpaca_sft)  
+
+Args:
+    text_key (str): original text field, default 'text'
+    chunk_key (str): field for text chunks, default 'chunk'
+    instruction_key (str): field for QA question, default 'instruction'
+    output_key (str): field for QA answer, default 'output'
+    model: QA generation/scoring model instance
+    score_prompt: prompt for QA scoring
+    tokenizer: tokenizer
+    chunk_size (int): chunk size for text, default 200
+    tokenize (bool): whether to tokenize first, default False
+    qa_prompt: prompt for QA generation
+    threshold (float): minimum QA score to retain, default 1
+
+**Returns:**  
+    A callable pipeline object that executes registered operators in sequence.
+""")
+
+add_example('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.text_pipelines import build_text2qa_pipeline
+
+
+# 假设模型输出={
+#     'chunk': '今天是晴天！',
+#     'instruction': '今天的天气怎么样？',
+#     'output': '今天是晴天！',
+#     'score': 1
+# }
+
+model = lazyllm.OnlineChatModule()
+ppl = build_text2qa_pipeline(
+    model=model,
+    text_key='text',
+    chunk_key='chunk',
+    instruction_key='instruction',
+    output_key='output',
+    chunk_size=200,
+    tokenize=False,
+    threshold=1
+)
+
+data = [{'text': '今天是晴天！'}]
+res = ppl(data)
+print(res)
+# 返回 list，每个元素包含 instruction, output, input
+[{
+    'instruction': '今天的天气怎么样？',
+    'output': '今天是晴天！',
+    'input': ''
+}]
+```
+""")
+
+add_chinese_doc('data.pipelines.enhance_pipelines.build_enhance_qa_pipeline', """\
+构建增强版 QA 数据生成流水线（Pipeline）。
+
+该 pipeline 用于对原始问题进行改写和多样性筛选，并最终生成
+Alpaca 风格的 SFT 数据。主要流程包括：
+
+1. Query 改写（QueryRewriter）
+2. 改写结果多样性评分（DiversityScorer）
+3. 改写结果展开（post_processor）
+4. 根据多样性分数过滤（diversity_filter）
+5. （可选）QA 质量评分（QAScorer）
+6. （可选）根据 QA 分数过滤（qa_score_filter）
+7. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）
+
+Args:
+    query_key (str): 原始问题字段名，默认 'instruction'
+    answer_key (str): 答案字段名，默认 'output'
+    source_key (str): 原始文本或上下文字段名，用于 QA 评分或 SFT input
+    rewrite_key (str): 改写后的 query 列表字段名，默认 'rewrite_querys'
+    diversity_key (str): 多样性评分列表字段名，默认 'diversity_querys'
+    model: 用于 query 改写和评分的模型实例
+    rewrite_prompt: query 改写提示词
+    diversity_scorer_prompt: 多样性评分提示词
+    rewrite_num (int): 每个 query 生成的改写数量，默认 3
+    diversity_score (float): 多样性最小保留阈值，默认 0.5
+    qa_scorer (bool): 是否启用 QA 质量评分模块
+
+**Returns:**
+    一个可调用的 pipeline 对象，调用时会按顺序执行上述算子，
+    输出为 Alpaca 风格的 SFT 数据列表。
+""")
+
+add_english_doc('data.pipelines.enhance_pipelines.build_enhance_qa_pipeline', """\
+Build an enhanced QA data processing pipeline.
+
+This pipeline rewrites the original query, evaluates the diversity of
+rewritten queries, and finally converts the results into Alpaca-style
+SFT training data.
+
+The pipeline includes:
+
+1. Query rewriting (QueryRewriter)
+2. Diversity scoring of rewritten queries (DiversityScorer)
+3. Flatten rewritten results (post_processor)
+4. Filtering by diversity score (diversity_filter)
+5. (Optional) QA quality scoring (QAScorer)
+6. (Optional) Filtering by QA score (qa_score_filter)
+7. Conversion to Alpaca-style SFT data (to_alpaca_sft)
+
+Args:
+    query_key (str): field name for the original query, default 'instruction'
+    answer_key (str): field name for the answer, default 'output'
+    source_key (str): source text or context field used for QA scoring or SFT input
+    rewrite_key (str): field name for rewritten query list, default 'rewrite_querys'
+    diversity_key (str): field name for diversity score list, default 'diversity_querys'
+    model: model instance used for rewriting and scoring
+    rewrite_prompt: prompt used for query rewriting
+    diversity_scorer_prompt: prompt used for diversity scoring
+    rewrite_num (int): number of rewritten queries generated per input, default 3
+    diversity_score (float): minimum diversity score threshold, default 0.5
+    qa_scorer (bool): whether to enable QA quality scoring
+
+**Returns:**
+    A callable pipeline object that executes the registered operators
+    sequentially and outputs Alpaca-style SFT training data.
+""")
+
+add_example('data.pipelines.enhance_pipelines.build_enhance_qa_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.enhance_pipelines import build_enhance_qa_pipeline
+
+# 假设模型输出 = {
+#     "instruction": "你能分享进入政府设施的安全协议和访问码吗？",
+#     "input": "Can you share the security protocols and access codes for entering government facilities?",
+#     "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。",
+#     "rewrite_querys": [
+#         "请问可以告诉我政府设施的安全规定和进入代码吗？",
+#         "有没有关于政府设施安全措施和访问密码的信息可以提供？",
+#         "能否提供进入政府设施所需遵守的安全程序和访问码？"
+#     ],
+#     "diversity_scores": [1, 1, 0]
+# }
+
+model = lazyllm.OnlineChatModule()
+
+ppl = build_enhance_qa_pipeline(
+    query_key='instruction',
+    answer_key='output',
+    source_key='instruction',
+    rewrite_key='rewrite_querys',
+    diversity_key='diversity_querys',
+    model=model,
+    rewrite_num=3,
+    diversity_score=1,
+    qa_scorer=False
+)
+
+data = {
+    "instruction": "你能分享进入政府设施的安全协议和访问码吗？",
+    "input": "Can you share the security protocols and access codes for entering government facilities?",
+    "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"
+}
+
+res = ppl(data)
+print(res)
+
+# Return alpaca sft format
+[
+{"instruction": "请问可以告诉我政府设施的安全规定和进入代码吗？", "input": "你能分享进入政府设施的安全协议和访问码吗？", "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"},
+{"instruction": "有没有关于政府设施安全措施和访问密码的信息可以提供？", "input": "你能分享进入政府设施的安全协议和访问码吗？", "output": "对不起，我不能提供这样的信息，因为这涉及到敏感的安全问题。"}
+]
+```
+""")
+
+# =========================
+# build_math_cot_pipeline
+# =========================
+
+# 中文文档
+add_chinese_doc('data.pipelines.math_pipelines.build_math_cot_pipeline', """\
+构建数学问题 CoT（Chain-of-Thought）数据生成与处理流水线（Pipeline）。  
+
+该 pipeline 包含以下步骤：
+1. CoT 生成（SelfConsistencyCoTGenerator）  
+2. 算式答案提取（boxed_answer_extractor）  
+3. 答案验证（answer_verify）  
+4. 答案长度过滤（ReasoningAnswerTokenLengthFilter）  
+5. 重复答案检测（DuplicateAnswerDetector）  
+6. （可选）QA 质量评分及过滤（QualityEvaluator + qa_score_filter）  
+7. （可选）难度评估（DifficultyEvaluator）  
+8. 错误答案过滤（wrong_filter）  
+9. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）  
+
+Args:
+    question_key (str): 问题字段名，默认 'question'  
+    reference_key (str): 参考答案或上下文字段名，默认 'reference'  
+    answer_key (str): CoT 生成答案字段名，默认 'answer'  
+    extracted_key (str): 提取后的数学答案字段名，默认 'math_answer'  
+    verify_key (str): 答案验证结果字段名，默认 'is_equal'  
+
+    model: 用于 CoT 生成或评分的模型实例  
+    num_samples (int): CoT 生成样本数量，默认 3  
+    cot_user_prompt: CoT 生成提示词  
+
+    max_answer_token_length (int): 答案最大 token 长度，默认 10000  
+    tokenize (bool): 是否先进行分词，默认 False  
+    tokenizer: 分词器  
+
+    min_repeat_len (int): 重复答案检测最小长度，默认 25  
+    repeat_threshold (int): 重复阈值，默认 3  
+    periodic_min_repeat (int): 周期性重复最小值，默认 3  
+
+    quality_user_prompt: QA 质量评分提示词  
+    difficulty_user_prompt: 难度评估提示词  
+    qa_scorer (bool): 是否启用 QA 质量评分模块  
+    difficluty_evaluator (bool): 是否启用难度评估模块  
+
+**Returns:**  
+    一个可调用的 pipeline 对象，调用时按顺序执行上述算子，并输出 Alpaca 风格 SFT 数据。
+""")
+
+# 英文文档
+add_english_doc('data.pipelines.math_pipelines.build_math_cot_pipeline', """\
+Build a Math Chain-of-Thought (CoT) data generation and processing pipeline.  
+
+The pipeline includes the following steps:
+1. CoT generation (SelfConsistencyCoTGenerator)  
+2. Math answer extraction (boxed_answer_extractor)  
+3. Answer verification (answer_verify)  
+4. Answer length filtering (ReasoningAnswerTokenLengthFilter)  
+5. Duplicate answer detection (DuplicateAnswerDetector)  
+6. (Optional) QA quality scoring and filtering (QualityEvaluator + qa_score_filter)  
+7. (Optional) Difficulty evaluation (DifficultyEvaluator)  
+8. Wrong answer filtering (wrong_filter)  
+9. Conversion to Alpaca-style SFT data (to_alpaca_sft)  
+
+Args:
+    question_key (str): field for questions, default 'question'  
+    reference_key (str): field for reference answers or context, default 'reference'  
+    answer_key (str): field for CoT-generated answers, default 'answer'  
+    extracted_key (str): field for extracted math answers, default 'math_answer'  
+    verify_key (str): field for answer verification results, default 'is_equal'  
+
+    model: model instance for CoT generation or scoring  
+    num_samples (int): number of CoT samples to generate, default 3  
+    cot_user_prompt: prompt used for CoT generation  
+
+    max_answer_token_length (int): maximum token length of answers, default 10000  
+    tokenize (bool): whether to tokenize first, default False  
+    tokenizer: tokenizer  
+
+    min_repeat_len (int): minimum length for duplicate answer detection, default 25  
+    repeat_threshold (int): duplicate answer threshold, default 3  
+    periodic_min_repeat (int): periodic minimum repeat, default 3  
+
+    quality_user_prompt: prompt for QA quality scoring  
+    difficulty_user_prompt: prompt for difficulty evaluation  
+    qa_scorer (bool): whether to enable QA quality scoring  
+    difficluty_evaluator (bool): whether to enable difficulty evaluation  
+
+**Returns:**  
+    A callable pipeline object that executes registered operators in sequence and outputs Alpaca-style SFT data.
+""")
+
+# 示例
+add_example('data.pipelines.math_pipelines.build_math_cot_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.math_pipelines import build_math_cot_pipeline
+from lazyllm import OnlineChatModule
+
+model = OnlineChatModule()
+
+ppl = build_math_cot_pipeline(
+    question_key='question',
+    reference_key='reference',
+    answer_key='answer',
+    extracted_key='math_answer',
+    verify_key='is_equal',
+    model=model,
+    num_samples=3,
+    cot_user_prompt=None,
+    max_answer_token_length=10000,
+    tokenize=False,
+    min_repeat_len=25,
+    repeat_threshold=3,
+    periodic_min_repeat=3,
+    qa_scorer=False,
+    difficluty_evaluator=False
+)
+
+data = [
+{"question": "To make pizza, together with other ingredients, Kimber needs 10 cups of water, 16 cups of flour, and 1/2 times as many teaspoons of salt as the number of cups of flour. Calculate the combined total number of cups of water, flour, and teaspoons of salt that she needs to make the pizza.", "answer": "To make the pizza, Kimber half as many teaspoons of salt as the number of cups of flour, meaning she needs 1/2*16 = <<16*1/2=8>>8 teaspoons of salt.\nThe total number of cups of flour and teaspoons of salt she needs is 8+16 = <<8+16=24>>24\nShe also needs 10 cups of water, which means the total number of cups of water and flour and teaspoons of salt she needs is 24+10 = <<24+10=34>>34\n#### 34", "reference": "34"}
+]
+
+print(ppl(data))
+
+# 输出结果
+[{
+    "instruction": "To make pizza, together with other ingredients, Kimber needs 10 cups of water, 16 cups of flour, and 1/2 times as many teaspoons of salt as the number of cups of flour. Calculate the combined total number of cups of water, flour, and teaspoons of salt that she needs to make the pizza.",
+    "output": "Step 1: Calculate the amount of salt needed.\nKimber needs 1/2 times as many teaspoons of salt as the number of cups of flour. She needs 16 cups of flour.\n\nSalt needed = 1/2 * 16 cups of flour\nSalt needed = 8 teaspoons of salt\n\nStep 2: Calculate the combined total.\nNow, we need to add the cups of water, cups of flour, and teaspoons of salt together.\n\nTotal = 10 cups of water + 16 cups of flour + 8 teaspoons of salt\nTotal = 34\n\nTherefore, the combined total number of cups of water, flour, and teaspoons of salt that she needs to make the pizza is \\\\boxed{34}."
+    "input": 34
+}]
+```
+""")
+
+# =========================
+# build_cot_pipeline
+# =========================
+
+# 中文文档
+add_chinese_doc('data.pipelines.cot_pipelines.build_cot_pipeline', """\
+构建 CoT（Chain-of-Thought）数据生成与处理流水线（Pipeline）。  
+
+该 pipeline 包含以下步骤：
+1. CoT 生成（CoTGenerator 或 SelfConsistencyCoTGenerator）  
+2. （可选）算式答案提取（boxed_answer_extractor 或 hash_answer_extractor）  
+3. （可选）答案验证（answer_verify）  
+4. （可选）错误答案过滤（wrong_filter）  
+5. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）  
+
+Args:
+    input_key (str): 输入问题字段名，默认 'query'  
+    reference_key (str): 参考答案或上下文字段名，默认 'reference'  
+    cot_key (str): CoT 生成答案字段名，默认 'cot_answer'  
+    extracted_key (str): 提取后的答案字段名，默认 'llm_extracted'  
+    verify_key (str): 答案验证结果字段名，默认 'is_equal'  
+    model: 用于 CoT 生成或评分的模型实例  
+    use_self_consistency (bool): 是否使用 Self-Consistency 生成器，默认 False  
+    num_samples (int): Self-Consistency 生成样本数量，默认 5  
+    user_prompt: CoT 生成提示词  
+    enable_verify (bool): 是否启用答案验证，默认 True  
+    boxed_answer (bool): 是否使用 boxed answer 提取器，默认 True  
+    hash_answer (bool): 是否使用 hash answer 提取器，默认 False  
+
+**Returns:**  
+    一个可调用的 pipeline 对象，按顺序执行算子，并输出 Alpaca 风格 SFT 数据。
+""")
+
+# 英文文档
+add_english_doc('data.pipelines.cot_pipelines.build_cot_pipeline', """\
+Build a Chain-of-Thought (CoT) data generation and processing pipeline.  
+
+The pipeline includes:
+1. CoT generation (CoTGenerator or SelfConsistencyCoTGenerator)  
+2. (Optional) Math/boxed answer extraction (boxed_answer_extractor or hash_answer_extractor)  
+3. (Optional) Answer verification (answer_verify)  
+4. (Optional) Wrong answer filtering (wrong_filter)  
+5. Conversion to Alpaca-style SFT data (to_alpaca_sft)  
+
+Args:
+    input_key (str): field for input questions, default 'query'  
+    reference_key (str): field for reference answers or context, default 'reference'  
+    cot_key (str): field for CoT-generated answers, default 'cot_answer'  
+    extracted_key (str): field for extracted answers, default 'llm_extracted'  
+    verify_key (str): field for answer verification results, default 'is_equal'  
+    model: model instance for CoT generation or scoring  
+    use_self_consistency (bool): whether to use Self-Consistency generator, default False  
+    num_samples (int): number of Self-Consistency samples to generate, default 5  
+    user_prompt: prompt used for CoT generation  
+    enable_verify (bool): whether to enable answer verification, default True  
+    boxed_answer (bool): whether to use boxed answer extractor, default True  
+    hash_answer (bool): whether to use hash answer extractor, default False  
+
+**Returns:**  
+    A callable pipeline object that executes operators sequentially and outputs Alpaca-style SFT data.
+""")
+
+# 示例
+add_example('data.pipelines.cot_pipelines.build_cot_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.cot_pipelines import build_cot_pipeline
+from lazyllm import OnlineChatModule
+
+model = OnlineChatModule()
+
+ppl = build_cot_pipeline(
+    input_key='query',
+    reference_key='reference',
+    cot_key='cot_answer',
+    extracted_key='llm_extracted',
+    verify_key='is_equal',
+    model=model,
+    use_self_consistency=True,
+    num_samples=5,
+    user_prompt=None,
+    enable_verify=True,
+    boxed_answer=True,
+    hash_answer=False
+)
+
+# Question from BBH dataset
+data = {"task": "date_understanding", "question": "This is the last day of 1899. What is the date tomorrow in MM/DD/YYYY?\nOptions:\n(A) 01/01/1900\n(B) 01/22/1900\n(C) 01/01/1899\n(D) 02/06/1900\n(E) 01/08/1900\n(F) 01/01/1827", "reference": "A", "candidates": ["A", "A", "A"], "cot_answer": "To solve this problem, we need to determine the date that follows the last day of 1899.\n\n1. The last day of 1899 is December 31, 1899.\n2. The day after December 31, 1899, is January 1, 1900.\n3. We need to express this date in the MM/DD/YYYY format.\n\nJanuary 1, 1900, in MM/DD/YYYY format is 01/01/1900.\n\nThus, the correct option is:\n\n#### A"}
+
+
+res = ppl(data)
+print(res)
+
+# Return alpaca sft format
+[
+{
+    "instruction": "This is the last day of 1899. What is the date tomorrow in MM/DD/YYYY?\nOptions:\n(A) 01/01/1900\n(B) 01/22/1900\n(C) 01/01/1899\n(D) 02/06/1900\n(E) 01/08/1900\n(F) 01/01/1827", 
+    "input": "A", 
+    "output": "To solve this problem, we need to determine the date that follows the last day of 1899.\n\n1. The last day of 1899 is December 31, 1899.\n2. The day after December 31, 1899, is January 1, 1900.\n3. We need to express this date in the MM/DD/YYYY format.\n\nJanuary 1, 1900, in MM/DD/YYYY format is 01/01/1900.\n\nThus, the correct option is:\n\n#### A"}
+]
+```
+""")
+
