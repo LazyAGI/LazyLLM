@@ -2,8 +2,7 @@ import os
 import shutil
 import tempfile
 from lazyllm import config
-from lazyllm.tools.data.pipelines.math_pipelines import build_math_cot_pipeline
-
+from lazyllm.tools.data.pipelines.img_pipelines import build_img2qa_pipeline
 
 class MockModel:
     def __init__(self, mock_response):
@@ -25,7 +24,7 @@ class MockModel:
         return self
 
 
-class TestTextMathQAPipeline:
+class TestImgQAPipeline:
 
     def setup_method(self):
         self.root_dir = tempfile.mkdtemp()
@@ -41,30 +40,32 @@ class TestTextMathQAPipeline:
 
     def test_cot_pipeline(self):
 
-        excepted_output = 'cot xxxx \\boxed{0.5}'
+        excepted_output = {
+            'query': 'Is the mass hyperintense or hypointense?',
+            'answer': 'Reasoning: Upon vxxxxxxxx',
+            'score': 1
+        }
 
         model = MockModel(excepted_output)
 
-        ppl = build_math_cot_pipeline(
-            question_key='question',
-            reference_key='reference',
-            answer_key='answer',
-            extracted_key='math_answer',
-            verify_key='is_equal',
+        ppl = build_img2qa_pipeline(
             model=model,
-            num_samples=3
+            filter_threshold=1,
+            image_key='image',
+            context_key='context',
+            img_resize=True,
+            to_chat=True
         )
 
-        data = {
-            'question': 'answer for 1 divided by 2?',
-            'answer': 'to solve 1/2 we xxxxx is 0.5',
-            'reference': '0.5'
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        test_img = os.path.join(current_dir, 'vlm_example', 'test_img.png')
+        data = {'image': test_img,
+                'context': 'is the mass hyperintense or hypointense?',
+                'reference': 'hyperintense'
         }
 
         res = ppl(data)
-        print(res)
         assert isinstance(res, list)
         assert len(res) == 1
-        assert res[0]['output'] == 'cot xxxx \\boxed{0.5}'
-        assert res[0]['instruction'] == 'answer for 1 divided by 2?'
-        assert res[0]['input'] == '0.5'
+        assert 'messages' in res[0]
+        assert 'images' in res[0]

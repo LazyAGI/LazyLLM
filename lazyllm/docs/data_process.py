@@ -7096,54 +7096,65 @@ print(Pdf2QA.multi_features_filter(data2, input_key='features', threshold=0.7))
 
 
 add_chinese_doc('data.operators.pdf_ops.PdfChunkToQA', """\
-PDF 文本块生成 QA 的算子类。  
+PDF 文本块生成 QA 的算子类（支持多模态）。
 
-- 支持从文本块和图片生成 QA 对。  
-- 先创建实例，然后调用 __call__(data) 或 forward(data)。  
-- 可配置字段名：input_key、query_key、answer_key、image_key。  
-- 支持自定义模型 model、user_prompt。  
-- 并发模式通过 _concurrency_mode 配置（thread/process/single）。
+- 支持从文本或“文本 + 图片”生成 QA。
+- 自动解析 markdown 中的图片路径 ![](images/xxx)。
+- 图片会下载/复制到本地后参与模型推理。
+- 若存在图片：
+  - 使用 encode_query_with_filepaths 进行多模态推理
+  - 输出 image_key（图片路径列表）
+- 若无图片：
+  - 仅基于文本生成 QA
 
 Args:
     input_key (str): 文本块字段名
     query_key (str): 输出问题字段名
     answer_key (str): 输出答案字段名
-    model: LLM 模型实例，可选
+    model: LLM 模型实例
     user_prompt (str): 自定义提示词
-    mineru_api (str): 图片资源路径或 URL 前缀
-    image_key (str): 输出图片路径字段名
-    **kwargs: 其它可选参数传给基类
+    mineru_api (str): 图片 base 路径或 URL
+    image_key (str): 输出图片路径字段名（list）
+    **kwargs: 其它参数
 """)
 
 add_english_doc('data.operators.pdf_ops.PdfChunkToQA', """\
-Operator class that generates QA pairs from PDF text chunks.  
+Operator that generates QA pairs from PDF chunks (multimodal supported).
 
-- Supports QA generation from text and images.  
-- Instance must be created first, then call __call__(data) or forward(data).  
-- Configurable field names: input_key, query_key, answer_key, image_key.  
-- Custom model instance and user_prompt are supported.  
-- Concurrency mode controlled via _concurrency_mode (thread/process/single).
+- Supports QA generation from text or text + images.
+- Automatically extracts image paths from markdown (![](images/...)).
+- Images are downloaded/copied locally before inference.
+- If images exist:
+  - Uses encode_query_with_filepaths for multimodal input
+  - Outputs image paths in image_key (list)
+- Otherwise:
+  - Generates QA from text only
 
 Args:
     input_key (str): field name for text chunk
-    query_key (str): field name for output question
-    answer_key (str): field name for output answer
-    model: optional LLM model instance
-    user_prompt (str): optional user prompt
-    mineru_api (str): base path or URL prefix for images
-    image_key (str): field name for output image path
-    **kwargs: additional optional arguments passed to base class
+    query_key (str): output question field
+    answer_key (str): output answer field
+    model: LLM model instance
+    user_prompt (str): optional prompt
+    mineru_api (str): base path or URL for images
+    image_key (str): output image path field (list)
+    **kwargs: additional arguments
 """)
 
 add_example('data.operators.pdf_ops.PdfChunkToQA', """\
 ```python
 from lazyllm.tools.data import Pdf2QA
 
-op = Pdf2QA.PdfChunkToQA(input_key='chunk', query_key='question', answer_key='answer')
-data = {'chunk': 'This is a test PDF chunk.'}
+op = Pdf2QA.PdfChunkToQA(input_key='chunk')
 
-res = op(data)  # 调用 forward 或 __call__
-print(res['question'], res['answer'])
+data = {
+    'chunk': 'This is text with image ![](images/a.png)'
+}
+
+res = op(data)
+
+print(res['query'], res['answer'])
+print(res.get('image_path'))  # list
 ```
 """)
 
@@ -7162,7 +7173,7 @@ Args:
     answer_key (str): 答案字段名
     model: LLM 模型实例，可选
     user_prompt (str): 自定义提示词
-    image_key (str): 图片路径字段名
+    image_key (str): 图片路径字段（支持 list）
     **kwargs: 其它可选参数传给基类
 """)
 
@@ -7181,7 +7192,7 @@ Args:
     answer_key (str): field name for answer
     model: optional LLM model instance
     user_prompt (str): optional user prompt
-    image_key (str): field name for image path
+    image_key (str): field name for image path or paths
     **kwargs: additional optional arguments passed to base class
 """)
 
@@ -7194,6 +7205,162 @@ data = {'chunk': 'Some text', 'query': 'Q?', 'answer': 'A', 'image_path': 'img.p
 
 res = scorer(data)
 print(res['score'])
+```
+""")
+
+add_chinese_doc('data.operators.pdf_ops.ImageToVQA', """\
+图像生成 VQA（视觉问答）算子。
+
+- 输入图片路径，生成 query + answer。
+- 支持单张或多张图片（list）。
+- 支持附加 context 和 reference 提升生成质量。
+- 使用 encode_query_with_filepaths 进行多模态推理。
+
+Args:
+    image_key (str): 图片路径字段（str 或 list）
+    query_key (str): 输出问题字段
+    answer_key (str): 输出答案字段
+    context_key (str): 上下文字段（可选）
+    reference_key (str): 参考信息字段（可选）
+    model: 模型实例
+    user_prompt (str): 自定义提示词
+    **kwargs: 其它参数
+""")
+
+add_english_doc('data.operators.pdf_ops.ImageToVQA', """\
+Operator that generates VQA (visual question answering) pairs from images.
+
+- Takes image path(s) as input and generates query + answer.
+- Supports single image or multiple images (list).
+- Optional context and reference fields can improve generation quality.
+- Uses encode_query_with_filepaths for multimodal inference.
+
+Args:
+    image_key (str): image path field (str or list)
+    query_key (str): output question field
+    answer_key (str): output answer field
+    context_key (str): optional context field
+    reference_key (str): optional reference field
+    model: model instance
+    user_prompt (str): optional user prompt
+    **kwargs: additional arguments
+""")
+
+add_example('data.operators.pdf_ops.ImageToVQA', """\
+```python
+from lazyllm.tools.data import Pdf2QA
+
+op = Pdf2QA.ImageToVQA()
+
+data = {
+    'image_path': 'test.png',
+    'context': 'This is a medical image.'
+}
+
+res = op(data)
+
+print(res['query'], res['answer'])
+```
+""")
+
+
+add_chinese_doc('data.operators.pdf_ops.vqa_to_chat_format', """\
+VQA 数据转 Chat 格式算子。
+
+- 将 (image, query, answer) 转换为多模态对话格式。
+- 输出结构：
+  {
+      'messages': [
+          {'role': 'user', 'content': '<image> + query'},
+          {'role': 'assistant', 'content': answer}
+      ],
+      'images': [...]
+  }
+
+- 支持单张或多张图片（自动转 list）。
+- 若 image、query 或 answer 任一缺失，则返回 []（过滤样本）。
+
+Args:
+    image_key (str): 图片字段
+    query_key (str): 问题字段
+    answer_key (str): 答案字段
+""")
+
+add_english_doc('data.operators.pdf_ops.vqa_to_chat_format', """\
+Operator that converts VQA data into chat format.
+
+- Transforms (image, query, answer) into multimodal chat structure.
+- Output format:
+  {
+      'messages': [...],
+      'images': [...]
+  }
+
+- Supports single or multiple images (automatically converted to list).
+- Returns [] if any of image, query, or answer is missing.
+
+Args:
+    image_key (str): image field
+    query_key (str): question field
+    answer_key (str): answer field
+""")
+
+add_example('data.operators.pdf_ops.vqa_to_chat_format', """\
+```python
+from lazyllm.tools.data.operators.pdf_ops import vqa_to_chat_format
+
+data = {
+    'image': 'a.png',
+    'query': 'What is in the image?',
+    'answer': 'A cat'
+}
+
+res = vqa_to_chat_format(data)
+
+print(res)
+```
+""")
+
+
+add_chinese_doc('data.operators.pdf_ops.resize_image_inplace', """\
+图片原地 resize 算子。
+
+- 对 image_key 中的图片进行 resize。
+- 支持单张或多张图片（list）。
+- 原地覆盖保存，不改变数据结构。
+- 若路径不存在则自动跳过。
+- 使用 PIL 进行处理。
+
+Args:
+    image_key (str): 图片路径字段
+    size (tuple): resize 尺寸，如 (336, 336)
+""")
+
+add_english_doc('data.operators.pdf_ops.resize_image_inplace', """\
+Operator that resizes images in-place.
+
+- Resizes images specified in image_key.
+- Supports single image or multiple images (list).
+- Overwrites original files without changing data structure.
+- Skips invalid or non-existent paths.
+- Uses PIL for processing.
+
+Args:
+    image_key (str): image path field
+    size (tuple): resize size, e.g., (336, 336)
+""")
+
+add_example('data.operators.pdf_ops.resize_image_inplace', """\
+```python
+from lazyllm.tools.data.operators.pdf_ops import resize_image_inplace
+
+data = {
+    'image': ['a.png', 'b.png']
+}
+
+resize_image_inplace(data, size=(224, 224))
+
+print('done')
 ```
 """)
 

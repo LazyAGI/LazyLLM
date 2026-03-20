@@ -25,7 +25,7 @@ class MockModel:
         return self
 
 
-class TestTextEnhanceQAPipeline:
+class TestCoTQAPipeline:
 
     def setup_method(self):
         self.root_dir = tempfile.mkdtemp()
