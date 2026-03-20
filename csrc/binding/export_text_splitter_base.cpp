@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <pybind11/pybind11.h>
+#include <pybind11/gil.h>
 #include <pybind11/stl.h>
 #include <pybind11/pytypes.h>
 
@@ -31,9 +32,14 @@ public:
 
 
     py::list split_recursive_impl(const std::string& text, int chunk_size) const {
+        std::vector<lazyllm::ChunkView> splits;
+        {
+            py::gil_scoped_release release;
+            splits = lazyllm::TextSplitterBase::split_recursive(text, chunk_size);
+        }
+
         py::object split_cls = py::module_::import("lazyllm.tools.rag.transform.base").attr("_Split");
         py::list out;
-        const auto splits = lazyllm::TextSplitterBase::split_recursive(text, chunk_size);
         for (const auto& split : splits) {
             out.append(split_cls(
                 py::arg("text") = std::string(split.view),
@@ -69,7 +75,12 @@ public:
             views.push_back(lazyllm::ChunkView{split.text, split.is_sentence, split.token_size});
         }
 
-        return lazyllm::TextSplitterBase::merge_chunks(views, chunk_size);
+        std::vector<std::string> chunks;
+        {
+            py::gil_scoped_release release;
+            chunks = lazyllm::TextSplitterBase::merge_chunks(views, chunk_size);
+        }
+        return chunks;
     }
 };
 
@@ -84,7 +95,8 @@ void exportTextSpliterBase(py::module& m) {
         )
         .def_property("_chunk_size", &TextSplitterBaseCPPImpl::chunk_size, &TextSplitterBaseCPPImpl::set_chunk_size)
         .def_property("_overlap", &TextSplitterBaseCPPImpl::overlap, &TextSplitterBaseCPPImpl::set_overlap)
-        .def("split_text", &TextSplitterBaseCPPImpl::split_text, py::arg("text"), py::arg("metadata_size"))
+        .def("split_text", &TextSplitterBaseCPPImpl::split_text, py::arg("text"), py::arg("metadata_size"),
+            py::call_guard<py::gil_scoped_release>())
         .def("split_recursive", &TextSplitterBaseCPPImpl::split_recursive_impl, py::arg("text"), py::arg("chunk_size"))
         .def("merge_chunks", &TextSplitterBaseCPPImpl::merge_chunks_impl, py::arg("splits"), py::arg("chunk_size"));
 }
