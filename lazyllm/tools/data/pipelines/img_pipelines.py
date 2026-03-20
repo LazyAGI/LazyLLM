@@ -1,52 +1,58 @@
-from typing import Optional
 from lazyllm import pipeline
-from lazyllm.tools.data import enQA, Pdf2QA, PT_MM
+from lazyllm.tools.data import Pdf2QA, Text2qa
 
 
 def build_img2qa_pipeline(
     model,
-    gen_image_key: str = 'image_path',
-    gen_context_key: str = 'context',
-    gen_num_qa: int = 5,
-    gen_prompt: Optional[str] = None,
-    gen_concurrency_mode: str = 'thread',
-
-    scorer_image_key: str = 'image_path',
-    scorer_query_key: str = 'query',
-    scorer_answer_key: str = 'answer',
-    scorer_prompt: Optional[str] = None,
-    scorer_concurrency_mode: str = 'thread',
-
-    post_input_key: str = 'qa_pairs',
-    filter_input_key: str = 'quality_score',
-    filter_threshold: float = 0.9,
+    gen_prompt=None,
+    score_prompt=None,
+    image_key='image',
+    context_key='objects',
+    query_key='query',
+    answer_key='answer',
+    score_key='score',
+    reference_key='reference',
+    filter_threshold=1,
+    img_resize=False,
+    size=(336, 336),
+    to_chat=False
 ):
     with pipeline() as ppl:
-        ppl.generator = PT_MM.VQAGenerator(
-            vlm=model,
-            image_key=gen_image_key,
-            context_key=gen_context_key,
-            num_qa=gen_num_qa,
-            prompt=gen_prompt,
-            _concurrency_mode=gen_concurrency_mode,
+        if img_resize:
+            ppl.resize = Pdf2QA.resize_image_inplace(
+                image_key=image_key,
+                size=size
+            )
+
+        ppl.generator = Pdf2QA.ImageToVQA(
+            image_key=image_key,
+            context_key=context_key,
+            query_key=query_key,
+            answer_key=answer_key,
+            model=model,
+            reference_key=reference_key,
+            user_prompt=gen_prompt,
         )
 
-        ppl.post_process = enQA.post_processor(
-            input_key=post_input_key
+        ppl.vqascorer = Pdf2QA.PdfQAScorer(
+            input_key=context_key,
+            output_key=score_key,
+            query_key=query_key,
+            answer_key=answer_key,
+            image_key=image_key,
+            model=model,
+            user_prompt=score_prompt,
         )
 
-        ppl.vqascorer = PT_MM.VQAScorer(
-            vlm=model,
-            image_key=scorer_image_key,
-            query_key=scorer_query_key,
-            answer_key=scorer_answer_key,
-            prompt=scorer_prompt,
-            _concurrency_mode=scorer_concurrency_mode,
+        ppl.quality_filter = Text2qa.qa_score_filter(
+            input_key=score_key,
+            min_score=filter_threshold,
         )
 
-        ppl.quality_filter = Pdf2QA.multi_features_filter(
-            input_key=filter_input_key,
-            threshold=filter_threshold,
-        )
-
+        if to_chat:
+            ppl.sft_formatter = Pdf2QA.vqa_to_chat_format(
+                image_key=image_key,
+                query_key=query_key,
+                answer_key=answer_key
+            )
     return ppl

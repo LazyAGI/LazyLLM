@@ -367,9 +367,7 @@ class ReasoningAnswerTokenLengthFilter(MathQA):
         if token_len <= self.max_answer_token_length:
             return None
 
-        # clear eligible answer
-        data[self.input_key] = ''
-        return data
+        return []
 
 class QuestionFusionGenerator(MathQA):
     def __init__(self,
