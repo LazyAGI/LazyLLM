@@ -1771,7 +1771,6 @@ Args:
 add_example('data.operators.pdf_ops.Pdf2Md', """\
 ```python
 from lazyllm.tools.data import Pdf2Qa
-from lazyllm.tools.data.operators.pdf_ops import Pdf2Md
 
 op = Pdf2Qa.Pdf2Md(input_key='pdf_path', output_key='docs', reader_url='http://...')
 data = [{'pdf_path': '/path/to/file.pdf'}]
@@ -7307,7 +7306,7 @@ Args:
 
 add_example('data.operators.pdf_ops.vqa_to_chat_format', """\
 ```python
-from lazyllm.tools.data.operators.pdf_ops import vqa_to_chat_format
+from lazyllm.tools.data import Pdf2Qa
 
 data = {
     'image': 'a.png',
@@ -7315,7 +7314,7 @@ data = {
     'answer': 'A cat'
 }
 
-res = vqa_to_chat_format(data)
+res = Pdf2Qa.vqa_to_chat_format(data)
 
 print(res)
 ```
@@ -7352,13 +7351,13 @@ Args:
 
 add_example('data.operators.pdf_ops.resize_image_inplace', """\
 ```python
-from lazyllm.tools.data.operators.pdf_ops import resize_image_inplace
+from lazyllm.tools.data import Pdf2Qa
 
 data = {
     'image': ['a.png', 'b.png']
 }
 
-resize_image_inplace(data, size=(224, 224))
+Pdf2Qa.resize_image_inplace(data, size=(224, 224))
 
 print('done')
 ```
