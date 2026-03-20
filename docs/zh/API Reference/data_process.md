@@ -74,21 +74,10 @@
 
 ### Agentic rag
 
-::: lazyllm.tools.data.operators.agentic_rag.agenticrag_atomic_task_generator
+::: lazyllm.tools.data.operators.agentic_rag
     members:
     exclude-members:
 
-::: lazyllm.tools.data.operators.agentic_rag.agenticrag_depth_qa_generator
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.agentic_rag.agenticrag_width_qa_generator
-    members:
-    exclude-members:
 
 ### 纯文本生成QA对算子
 
@@ -104,31 +93,7 @@
 
 ### 知识库清洗
 
-::: lazyllm.tools.data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.kbc_chunk_generator_batch
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.kbc_chunk_generator
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.kbc_text_cleaner_batch
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.kbc_text_cleaner
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.qa_extract
+::: lazyllm.tools.data.operators.knowledge_cleaning
     members:
     exclude-members:
 

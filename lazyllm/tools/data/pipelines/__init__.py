@@ -25,6 +25,8 @@ from .rag_pipelines import (
     depth_qa_pipeline,
     qa_evaluation_pipeline,
 )
+from . import domain_finetune_pipelines
+from . import domain_pretrain_pipelines
 
 __all__ = [
     # demo
