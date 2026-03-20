@@ -2182,6 +2182,990 @@ print(res)
 ```
 """)
 
+
+
+# =========================
+# domain_finetune_ops
+# =========================
+
+add_chinese_doc('data.operators.domain_finetune_ops.rename_key', """\
+将 input_key 重命名或复制为 output_key。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 源字段名，默认 'content'
+    output_key (str): 目标字段名，默认 'cleaned_content'
+    remove_input (bool): 若为 True 则删除原 input_key，否则保留
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.rename_key', """\
+Rename or copy input_key to output_key.
+
+Args:
+    data (dict): single data dict
+    input_key (str): source field name, default 'content'
+    output_key (str): target field name, default 'cleaned_content'
+    remove_input (bool): if True, remove original input_key; otherwise keep it
+""")
+
+add_example('data.operators.domain_finetune_ops.rename_key', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.rename_key(input_key='content', output_key='cleaned_content', remove_input=True)
+res = op([{'content': 'hello world'}])
+print(res)
+# [{'cleaned_content': 'hello world'}]
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.prepare_load_path', """\
+为 KBC 源数据转换准备统一加载路径。
+
+在 FileOrURLNormalizer + HTML/PDF 转换之后，将 _markdown_path 或 _raw_path 写入 _path_to_load，
+供 KBCLoadText 使用。
+
+Args:
+    data (dict): 单条数据字典，需含 _type 及 _raw_path/_markdown_path
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.prepare_load_path', """\
+Prepare unified load path for KBC source data conversion.
+
+After FileOrURLNormalizer + HTML/PDF conversion, writes _markdown_path or _raw_path
+to _path_to_load for KBCLoadText to use.
+
+Args:
+    data (dict): single data dict with _type and _raw_path/_markdown_path
+""")
+
+add_example('data.operators.domain_finetune_ops.prepare_load_path', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.prepare_load_path()
+data = [{'_type': 'pdf', '_markdown_path': '/path/to/doc.md'}]
+res = op(data)
+print(res[0]['_path_to_load'])
+# /path/to/doc.md
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.normalize_text', """\
+规范化文本：清理首尾空白，可选将全角标点转为半角。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    fix_chinese_punct (bool): 是否将全角标点转为半角，默认 False
+    strip_whitespace (bool): 是否清理首尾空白，默认 True
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.normalize_text', """\
+Normalize text: strip whitespace, optionally convert full-width punctuation to half-width.
+
+Args:
+    data (dict): single data dict
+    input_key (str): text field name, default 'content'
+    fix_chinese_punct (bool): whether to convert full-width to half-width punctuation, default False
+    strip_whitespace (bool): whether to strip leading/trailing whitespace, default True
+""")
+
+add_example('data.operators.domain_finetune_ops.normalize_text', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.normalize_text(input_key='content', fix_chinese_punct=True)
+res = op([{'content': '  hello，world。  '}])
+print(res)
+# [{'content': 'hello,world.'}]
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.extract_content_text', """\
+从结构化 content dict 或字符串提取纯文本，供过滤器使用。
+
+当 content 为 dict 时，拼接 instruction/input/output 或 messages；
+当 content 为 str 时，直接使用。结果写入 output_key。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 输入字段名，默认 'content'
+    output_key (str): 输出字段名，默认 '_filter_text'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.extract_content_text', """\
+Extract plain text from structured content dict or string for use by filters.
+
+When content is dict: concatenates instruction/input/output or messages.
+When content is str: uses directly. Writes result to output_key.
+
+Args:
+    data (dict): single data dict
+    input_key (str): input field name, default 'content'
+    output_key (str): output field name, default '_filter_text'
+""")
+
+add_example('data.operators.domain_finetune_ops.extract_content_text', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.extract_content_text(input_key='content', output_key='_filter_text')
+data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'C'}}]
+res = op(data)
+print(res[0]['_filter_text'])
+# 'A B C'
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.merge_context_and_question', """\
+将独立的 context 和 question 字段合并为单一 question 字段，便于后续归一化统一处理。
+
+通用适配「原文片段 + 问题 + 答案」类垂直领域数据集（财报/法律/技术文档等）。
+
+合并逻辑：若存在非空 context，则 target = f"{context_label}: {context}\\n\\n{question_label}: {question}"；否则 target = question。
+
+Args:
+    question_key (str): 原始问题字段名，默认 'question'
+    context_key (str): 上下文字段名，默认 'context'
+    target_key (str): 写回的目标字段名，默认覆盖 'question'
+    context_label (str): 上下文前缀标签
+    question_label (str): 问题前缀标签
+    drop_context (bool): 是否在合并后删除原 context 字段
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.merge_context_and_question', """\
+Merge separate context and question fields into a single question field for downstream normalization.
+
+Adapts to vertical-domain datasets (financial reports, legal, technical docs) with "passage + question + answer" format.
+
+Merge logic: if context exists, target = f"{context_label}: {context}\\n\\n{question_label}: {question}"; else target = question.
+
+Args:
+    question_key (str): original question field name, default 'question'
+    context_key (str): context field name, default 'context'
+    target_key (str): target field name, default 'question'
+    context_label (str): prefix label for context
+    question_label (str): prefix label for question
+    drop_context (bool): whether to remove original context after merge
+""")
+
+add_example('data.operators.domain_finetune_ops.merge_context_and_question', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.merge_context_and_question(
+    question_key='question', context_key='context',
+    context_label='Context', question_label='Question'
+)
+data = [{'context': '财报摘要...', 'question': '营收是多少？', 'answer': '100万'}]
+res = op(data)
+print(res[0]['question'])
+# 'Context: 财报摘要...\\n\\nQuestion: 营收是多少？'
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.DatasetFormatNormalizer', """\
+将常见垂类数据集格式统一转换为内部结构化格式。
+
+支持的输入格式：Alpaca、QA pairs、Simple IO、ShareGPT、OpenAI、Plain text、Custom（通过 field_mapping 指定字段映射）。
+
+输出：单轮为 {instruction, input, output}；多轮为 {messages: [{role, content}, ...]}（含 system 消息）
+同时将拼接文本写入 text_key（供清洗/过滤使用）。
+
+Args:
+    output_key (str): 输出字段名，默认 'content'
+    text_key (str): 拼接文本写入字段名，默认 '_filter_text'
+    instruction (str|None): 默认 instruction 文本
+    field_mapping (dict|None): 自定义字段映射，先于自动检测执行
+    keep_system (bool): 是否保留 system 消息
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.DatasetFormatNormalizer', """\
+Normalize common vertical-domain dataset formats into internal structured format.
+
+Supports: Alpaca, QA pairs, Simple IO, ShareGPT, OpenAI, Plain text, Custom (via field_mapping).
+
+Output: single-turn as {instruction, input, output}; multi-turn as {messages: [{role, content}, ...]} (with system message).
+Also writes concatenated text to text_key for cleaning/filtering.
+
+Args:
+    output_key (str): output field name, default 'content'
+    text_key (str): concatenated text field name, default '_filter_text'
+    instruction (str|None): default instruction text
+    field_mapping (dict|None): custom field mapping, applied before auto-detection
+    keep_system (bool): whether to keep system message
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_finetune_ops.DatasetFormatNormalizer', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.DatasetFormatNormalizer(output_key='content')
+data = [{'question': 'What is AI?', 'answer': 'AI is...'}]
+res = op(data)
+print(res[0]['content'])
+# {'instruction': '...', 'input': 'What is AI?', 'output': 'AI is...'}
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.HashDeduplicator', """\
+基于 MD5 哈希的精确去重。
+
+对批量输入进行去重，保留首次出现的样本。哈希基于 input_key 字段的内容计算。
+
+Args:
+    input_key (str): 用于计算哈希的字段名，默认 'content'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.HashDeduplicator', """\
+Exact deduplication based on MD5 hash.
+
+Deduplicates batch input, keeping first occurrence of each sample. Hash is computed from input_key field content.
+
+Args:
+    input_key (str): field name for hash computation, default 'content'
+""")
+
+add_example('data.operators.domain_finetune_ops.HashDeduplicator', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.HashDeduplicator(input_key='content')
+data = [{'content': 'hello'}, {'content': 'hello'}, {'content': 'world'}]
+res = op(data)
+print(res)
+# [{'content': 'hello'}, {'content': 'world'}]
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.ConversationListExpander', """\
+将交替列表格式的多轮对话拆分展开为独立 QA 样本。
+
+适用于数据集字段为 list[str] 且奇偶交替表示问/答的格式，如：
+["问：头疼怎么办", "答：建议就医", "问：需要拍片吗", "答：视情况而定"]
+展开后每条记录变为多条 {input: "头疼怎么办", output: "建议就医"} 样本。
+
+Args:
+    list_key (str): 存放交替对话列表的字段名，默认 'data'
+    question_prefix (str): 问题前缀，匹配后去除
+    answer_prefix (str): 回答前缀，匹配后去除
+    min_question_chars (int): 问题去除前缀后最少字符数
+    min_answer_chars (int): 回答去除前缀后最少字符数
+    output_input_key (str): 输出样本中问题的字段名，默认 'input'
+    output_output_key (str): 输出样本中回答的字段名，默认 'output'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.ConversationListExpander', """\
+Expand alternating list-form multi-turn conversations into independent QA samples.
+
+For datasets where list[str] alternates question/answer, e.g.:
+["Q: headache?", "A: see doctor", "Q: need X-ray?", "A: depends"]
+Each record expands to multiple {input: "headache?", output: "see doctor"} samples.
+
+Args:
+    list_key (str): field name for alternating list, default 'data'
+    question_prefix (str): prefix to strip from questions
+    answer_prefix (str): prefix to strip from answers
+    min_question_chars (int): minimum chars for question after stripping
+    min_answer_chars (int): minimum chars for answer after stripping
+    output_input_key (str): output field for question, default 'input'
+    output_output_key (str): output field for answer, default 'output'
+""")
+
+add_example('data.operators.domain_finetune_ops.ConversationListExpander', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.ConversationListExpander(
+    list_key='data', question_prefix='问：', answer_prefix='答：',
+    min_question_chars=8, min_answer_chars=50
+)
+data = [{'data': ['问：头疼怎么办', '答：建议就医，注意休息']}]
+res = op(data)
+print(res)
+# [{'input': '头疼怎么办', 'output': '建议就医，注意休息'}]
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.DomainFormatAlpaca', """\
+将单条数据格式化为 Alpaca 格式（instruction / input / output）。
+
+支持输入：字符串 content（作为 output）、dict content（含 instruction/input/output）、多轮 messages（取最后一个 user/assistant 对）。
+
+Args:
+    input_key (str): 输入字段名，默认 'content'
+    output_key (str): 输出字段名，默认 'formatted_text'
+    instruction (str|None): 默认 instruction 文本
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.DomainFormatAlpaca', """\
+Format single data item into Alpaca format (instruction / input / output).
+
+Supports: string content (as output), dict content (instruction/input/output), multi-turn messages (last user/assistant pair).
+
+Args:
+    input_key (str): input field name, default 'content'
+    output_key (str): output field name, default 'formatted_text'
+    instruction (str|None): default instruction text
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_finetune_ops.DomainFormatAlpaca', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.DomainFormatAlpaca(input_key='content', output_key='formatted_text')
+data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'C'}}]
+res = op(data)
+print(res[0]['formatted_text'])
+# {'instruction': 'A', 'input': 'B', 'output': 'C'}
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.DomainFormatShareGPT', """\
+将单条数据格式化为 ShareGPT 格式（messages: system/user/assistant）。
+
+支持输入：字符串 content、dict content（含 instruction/input/output）、已有 messages 列表（多轮对话，保留完整轮次）。
+
+Args:
+    input_key (str): 输入字段名，默认 'content'
+    output_key (str): 输出字段名，默认 'formatted_text'
+    instruction (str|None): 默认 instruction 文本
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.DomainFormatShareGPT', """\
+Format single data item into ShareGPT format (messages: system/user/assistant).
+
+Supports: string content, dict content (instruction/input/output), existing messages list (multi-turn, full turns preserved).
+
+Args:
+    input_key (str): input field name, default 'content'
+    output_key (str): output field name, default 'formatted_text'
+    instruction (str|None): default instruction text
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_finetune_ops.DomainFormatShareGPT', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.DomainFormatShareGPT(input_key='content', output_key='formatted_text')
+data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'C'}}]
+res = op(data)
+print(res[0]['formatted_text'])
+# {'messages': [{'role': 'system', 'content': 'A'}, {'role': 'user', 'content': 'B'}, {'role': 'assistant', 'content': 'C'}]}
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.DomainFormatRaw', """\
+保持原始内容，仅添加 system 指令。
+
+Args:
+    input_key (str): 输入字段名，默认 'content'
+    output_key (str): 输出字段名，默认 'formatted_text'
+    instruction (str|None): 默认 instruction 文本
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.DomainFormatRaw', """\
+Keep original content, only add system instruction.
+
+Args:
+    input_key (str): input field name, default 'content'
+    output_key (str): output field name, default 'formatted_text'
+    instruction (str|None): default instruction text
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_finetune_ops.DomainFormatRaw', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.DomainFormatRaw(input_key='content', output_key='formatted_text')
+data = [{'content': 'Plain text content'}]
+res = op(data)
+print(res[0]['formatted_text'])
+# {'system': '...', 'content': 'Plain text content'}
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.DomainFormatChatML', """\
+将单条数据格式化为 ChatML 文本格式（适用于 Qwen、MiniCPM 等支持 ChatML 的模型）。
+
+输出示例：{"text": "<|im_start|>system\\n...<|im_end|>\\n<|im_start|>user\\n...<|im_end|>\\n<|im_start|>assistant\\n...<|im_end|>"}
+
+支持输入：字符串 content、dict content（含 instruction/input/output）、已有 messages 列表（多轮对话）。
+
+Args:
+    input_key (str): 输入字段名，默认 'content'
+    output_key (str): 输出字段名，默认 'formatted_text'
+    instruction (str|None): 默认 instruction 文本
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.DomainFormatChatML', """\
+Format single data item into ChatML text format (for Qwen, MiniCPM etc.).
+
+Output example: {"text": "<|im_start|>system\\n...<|im_end|>\\n<|im_start|>user\\n...<|im_end|>\\n<|im_start|>assistant\\n...<|im_end|>"}
+
+Supports: string content, dict content (instruction/input/output), existing messages list (multi-turn).
+
+Args:
+    input_key (str): input field name, default 'content'
+    output_key (str): output field name, default 'formatted_text'
+    instruction (str|None): default instruction text
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_finetune_ops.DomainFormatChatML', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.DomainFormatChatML(input_key='content', output_key='formatted_text')
+data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'C'}}]
+res = op(data)
+print(res[0]['formatted_text']['text'][:50])
+# '<|im_start|>system\\nA<|im_end|>\\n<|im_start|>user\\nB<|im_end|>...'
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.TrainValTestSplitter', """\
+将样本列表按比例划分为 train / validation / test。
+
+Args:
+    train_ratio (float): 训练集比例，默认 0.8
+    validation_ratio (float): 验证集比例，默认 0.1
+    test_ratio (float): 测试集比例，默认 0.1
+    seed (int): 随机种子，默认 42
+    stratify_key (str|None): 可选分层字段名
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.TrainValTestSplitter', """\
+Split sample list into train / validation / test by ratio.
+
+Args:
+    train_ratio (float): training set ratio, default 0.8
+    validation_ratio (float): validation set ratio, default 0.1
+    test_ratio (float): test set ratio, default 0.1
+    seed (int): random seed, default 42
+    stratify_key (str|None): optional stratification field name
+""")
+
+add_example('data.operators.domain_finetune_ops.TrainValTestSplitter', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.TrainValTestSplitter(train_ratio=0.8, validation_ratio=0.1, test_ratio=0.1, seed=42)
+data = [{'content': f'sample_{i}'} for i in range(100)]
+res = op(data)
+print(len(res['train']), len(res['validation']), len(res['test']))
+# 80 10 10
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.LLMDataExtractor', """\
+使用 LLM 从原始领域文本中提取结构化训练数据。
+
+将原始文本（如文章、报告、文档）转换为用于微调的问答对或指令-输出对，
+实现从无结构或弱结构垂直领域数据到训练样本的自动转换。
+
+支持两种提取格式："qa"（问答对）和 "instruction"（指令-输出对）。
+提取结果写入 output_key（列表），需配合 SampleExpander 展开为独立样本。
+
+Args:
+    input_key (str): 输入文本的 key，默认 'content'
+    output_key (str): 写入提取结果的 key，默认 '_extracted_samples'
+    llm: LLM 服务（可调用对象）
+    num_samples (int): 每段文本期望提取的样本数量
+    extract_format (str): "qa"（问答对）或 "instruction"（指令-输出对）
+    lang (str): 语言，"zh" 或 "en"
+    max_input_chars (int): 截断输入文本的最大字符数
+    instruction (str): 默认 instruction 文本
+    _concurrency_mode (str): 并发模式，默认 'thread'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.LLMDataExtractor', """\
+Extract structured training data from raw domain text using LLM.
+
+Converts raw text (articles, reports, docs) into QA pairs or instruction-output pairs for fine-tuning.
+
+Supports formats: "qa" (QA pairs) and "instruction" (instruction-output pairs).
+Results written to output_key (list); use SampleExpander to expand into independent samples.
+
+Args:
+    input_key (str): input text key, default 'content'
+    output_key (str): output field for extracted samples, default '_extracted_samples'
+    llm: LLM service (callable)
+    num_samples (int): expected samples per text
+    extract_format (str): "qa" or "instruction"
+    lang (str): language, "zh" or "en"
+    max_input_chars (int): max chars to truncate input
+    instruction (str): default instruction text
+    _concurrency_mode (str): concurrency mode, default 'thread'
+""")
+
+add_example('data.operators.domain_finetune_ops.LLMDataExtractor', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.LLMDataExtractor(llm=my_llm, input_key='content', num_samples=3, extract_format='qa')
+data = [{'content': '人工智能是计算机科学的一个分支。它研究如何让机器模拟人类智能。'}]
+res = op(data)
+print(res[0]['_extracted_samples'])
+# [{'instruction': '...', 'input': '...', 'output': '...'}, ...]
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.LLMFieldMapper', """\
+使用 LLM 将未知结构的字段映射到标准微调格式。
+
+当数据的字段名称不符合任何已知格式时，调用 LLM 分析各字段语义，自动将其映射为 {instruction, input, output} 格式，
+作为规则化解析的兜底机制。仅当 output_key 在 data 中尚未设置时才激活。
+
+Args:
+    output_key (str): 标准格式写入的 key，默认 'content'
+    text_key (str): 拼接文本写入的 key，默认 '_filter_text'
+    llm: LLM 服务
+    lang (str): 语言，"zh" 或 "en"
+    exclude_keys (list|None): 不传入 LLM 的内部 key 列表
+    max_data_chars (int): 序列化数据传入 LLM 的最大字符数
+    _concurrency_mode (str): 并发模式，默认 'thread'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.LLMFieldMapper', """\
+Map unknown-structure fields to standard fine-tuning format using LLM.
+
+When field names do not match known formats, uses LLM to analyze semantics and map to {instruction, input, output}.
+Fallback for rule-based parsing. Only activates when output_key is not yet set in data.
+
+Args:
+    output_key (str): output field for standard format, default 'content'
+    text_key (str): concatenated text field, default '_filter_text'
+    llm: LLM service
+    lang (str): language, "zh" or "en"
+    exclude_keys (list|None): internal keys to exclude from LLM
+    max_data_chars (int): max chars to serialize for LLM
+    _concurrency_mode (str): concurrency mode, default 'thread'
+""")
+
+add_example('data.operators.domain_finetune_ops.LLMFieldMapper', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.LLMFieldMapper(llm=my_llm, output_key='content')
+data = [{'question': 'What is AI?', 'answer': 'AI is...'}]
+res = op(data)
+print(res[0]['content'])
+# {'instruction': '...', 'input': 'What is AI?', 'output': 'AI is...'}
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.OutputContentFilter', """\
+过滤 output/assistant 内容过短的样本，确保训练数据答案具有足够信息量。
+
+支持 dict content（含 output 字段或 messages 中的 assistant 消息）和纯字符串 content。
+返回 None 时该样本被丢弃。
+
+Args:
+    input_key (str): content 字段 key，默认 'content'
+    min_output_chars (int): output 文本最少字符数，默认 80
+    output_field (str): dict content 中对应输出的字段名，默认 "output"
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.OutputContentFilter', """\
+Filter samples with too short output/assistant content.
+
+Supports dict content (output field or assistant messages) and plain string content.
+Returns None to discard the sample.
+
+Args:
+    input_key (str): content field key, default 'content'
+    min_output_chars (int): minimum output chars, default 80
+    output_field (str): output field name in dict content, default "output"
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_finetune_ops.OutputContentFilter', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.OutputContentFilter(input_key='content', min_output_chars=80)
+data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'short'}}]
+res = op(data)
+print(res)
+# [None]  # 样本被丢弃
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.InputOutputRatioFilter', """\
+过滤 output 长度与 input 长度之比过低的样本，去除问题长、回答极短的低质量数据。
+
+比例 = len(output.strip()) / len(input.strip())，当 input 为空时跳过检查。
+例：min_ratio=0.3 表示 output 字符数至少为 input 字符数的 30%。
+
+Args:
+    input_key (str): content 字段 key，默认 'content'
+    min_ratio (float): output/input 字符数比例下限，默认 0.3
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.InputOutputRatioFilter', """\
+Filter samples with too low output/input length ratio.
+
+Ratio = len(output.strip()) / len(input.strip())；skips when input is empty.
+E.g. min_ratio=0.3 means output must be at least 30% of input length.
+
+Args:
+    input_key (str): content field key, default 'content'
+    min_ratio (float): minimum output/input ratio, default 0.3
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_finetune_ops.InputOutputRatioFilter', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.InputOutputRatioFilter(input_key='content', min_ratio=0.3)
+data = [{'content': {'input': 'A' * 100, 'output': 'short'}}]
+res = op(data)
+print(res)
+# [None]  # 比例过低，样本被丢弃
+```
+""")
+
+add_chinese_doc('data.operators.domain_finetune_ops.SampleExpander', """\
+将批量数据中的 LLM 提取样本列表展开为独立的训练样本。
+
+配合 LLMDataExtractor 使用：LLMDataExtractor 为每条原始数据生成包含多个样本的列表（存于 samples_key），
+SampleExpander 将这些列表展开，每个提取样本生成一条独立记录。
+若某条数据没有提取到任何样本，由 drop_empty_extraction 决定是否丢弃原始记录。
+
+Args:
+    samples_key (str): LLMDataExtractor 写入提取结果的 key，默认 '_extracted_samples'
+    output_key (str): 展开后每条样本写入的目标 key，默认 'content'
+    keep_original_keys (list|None): 需要从原始记录保留到展开样本中的 key 列表
+    drop_empty_extraction (bool): 为 True 时丢弃未能提取到任何样本的原始记录，默认 False
+""")
+
+add_english_doc('data.operators.domain_finetune_ops.SampleExpander', """\
+Expand LLM-extracted sample lists in batch data into independent training samples.
+
+Works with LLMDataExtractor: LLMDataExtractor produces a list per record (stored in samples_key),
+SampleExpander expands these into separate records. drop_empty_extraction controls whether to discard records with no samples.
+
+Args:
+    samples_key (str): key for extracted samples, default '_extracted_samples'
+    output_key (str): target key for each expanded sample, default 'content'
+    keep_original_keys (list|None): keys to retain from original record
+    drop_empty_extraction (bool): discard records with no samples when True, default False
+""")
+
+add_example('data.operators.domain_finetune_ops.SampleExpander', """\
+```python
+from lazyllm.tools.data import domain_finetune
+
+op = domain_finetune.SampleExpander(samples_key='_extracted_samples', output_key='content')
+data = [
+    {'_extracted_samples': [{'instruction': 'A', 'input': 'B', 'output': 'C'}, {'instruction': 'D', 'input': 'E', 'output': 'F'}], 'meta': 1},
+    {'_extracted_samples': [], 'meta': 2}
+]
+res = op(data)
+print(len(res))
+# 3  # 两条展开样本（来自第一条记录）+ 一条空记录（第二条记录，drop_empty_extraction=False 时保留）
+```
+""")
+
+# =========================
+# domain_pretrain_ops
+# =========================
+
+add_chinese_doc('data.operators.domain_pretrain_ops.PretrainFieldNormalizer', """\
+将不同领域数据集的杂乱字段名统一归一化到指定的 content_key。
+
+支持：field_mapping 显式重命名、concat_fields 多字段拼接、fallback_fields 自动检测。
+处理顺序：1) field_mapping 2) concat_fields 3) fallback_fields。
+
+Args:
+    content_key (str): 统一后的目标字段名，默认 'content'
+    field_mapping (dict|None): 显式字段重命名 {src_key: dst_key}
+    concat_fields (list|None): 需拼接的多个字段名列表
+    concat_separator (str): 拼接分隔符，默认 '\\n\\n'
+    fallback_fields (list|None): 自动检测时的候选字段搜索顺序
+    drop_original (bool): 归一化后是否删除原始字段
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_pretrain_ops.PretrainFieldNormalizer', """\
+Normalize heterogeneous field names from different domain datasets to a unified content_key.
+
+Supports: field_mapping explicit rename, concat_fields multi-field concatenation, fallback_fields auto-detection.
+Order: 1) field_mapping 2) concat_fields 3) fallback_fields.
+
+Args:
+    content_key (str): target field name, default 'content'
+    field_mapping (dict|None): explicit field rename {src_key: dst_key}
+    concat_fields (list|None): list of fields to concatenate
+    concat_separator (str): separator for concatenation, default '\\n\\n'
+    fallback_fields (list|None): candidate field search order for auto-detection
+    drop_original (bool): whether to drop original fields after normalization
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_pretrain_ops.PretrainFieldNormalizer', """\
+```python
+from lazyllm.tools.data import domain_pretrain
+
+op = domain_pretrain.PretrainFieldNormalizer(content_key='content', field_mapping={'text': 'content'})
+data = [{'text': 'hello world'}]
+res = op(data)
+print(res[0]['content'])
+# 'hello world'
+```
+""")
+
+add_chinese_doc('data.operators.domain_pretrain_ops.DomainKeywordFilter', """\
+基于 Aho-Corasick 自动机的高效领域关键词过滤器。
+
+支持两种模式：any（包含任意关键词即保留）、density（关键词命中密度超过阈值才保留）。
+
+Args:
+    input_key (str): 输入文本字段名，默认 'content'
+    keywords (list|None): 关键词列表
+    mode (str): 'any' 或 'density'，默认 'any'
+    min_keyword_hits (int): any 模式下的最少命中数，默认 1
+    min_keyword_density (float): density 模式下的最小密度阈值，默认 0.001
+    case_sensitive (bool): 是否区分大小写，默认 False
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_pretrain_ops.DomainKeywordFilter', """\
+Efficient domain keyword filter based on Aho-Corasick automaton.
+
+Supports two modes: any (keep if any keyword present), density (keep if keyword density exceeds threshold).
+
+Args:
+    input_key (str): input text field name, default 'content'
+    keywords (list|None): list of keywords
+    mode (str): 'any' or 'density', default 'any'
+    min_keyword_hits (int): minimum hits for any mode, default 1
+    min_keyword_density (float): minimum density threshold for density mode, default 0.001
+    case_sensitive (bool): case sensitive, default False
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_pretrain_ops.DomainKeywordFilter', """\
+```python
+from lazyllm.tools.data import domain_pretrain
+
+op = domain_pretrain.DomainKeywordFilter(keywords=['医学', '诊断'], mode='any', input_key='content')
+data = [{'content': '这是一篇医学诊断相关的文章'}]
+res = op(data)
+print(res[0]['_keyword_hits'])
+# 2
+```
+""")
+
+add_chinese_doc('data.operators.domain_pretrain_ops.DomainRelevanceScorer', """\
+基于 TF-IDF 思想的领域相关性评分器。
+
+通过计算领域关键词在文本中的 TF-IDF 加权得分，评估文本与目标领域的相关程度。
+得分低于阈值的文本被过滤。
+
+Args:
+    input_key (str): 输入文本字段名，默认 'content'
+    keywords (list|None): 领域关键词列表
+    keyword_weights (dict|None): 关键词权重 {keyword: weight}
+    min_score (float): 最低得分阈值，默认 0.1
+    language (str): 语言，'zh' 或 'en'，默认 'zh'
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_pretrain_ops.DomainRelevanceScorer', """\
+Domain relevance scorer based on TF-IDF concept.
+
+Computes TF-IDF weighted score of domain keywords in text; filters low-relevance samples.
+
+Args:
+    input_key (str): input text field name, default 'content'
+    keywords (list|None): domain keyword list
+    keyword_weights (dict|None): keyword weights {keyword: weight}
+    min_score (float): minimum score threshold, default 0.1
+    language (str): language, 'zh' or 'en', default 'zh'
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_pretrain_ops.DomainRelevanceScorer', """\
+```python
+from lazyllm.tools.data import domain_pretrain
+
+op = domain_pretrain.DomainRelevanceScorer(keywords=['医学', '诊断'], min_score=0.1, input_key='content')
+data = [{'content': '医学诊断是临床医学的重要内容'}]
+res = op(data)
+print(res[0]['_domain_relevance_score'])
+# 0.xxx
+```
+""")
+
+add_chinese_doc('data.operators.domain_pretrain_ops.NGramRepetitionFilter', """\
+N-gram 重复度过滤器，过滤包含过多重复片段的低质量文本。
+
+网络爬取的数据中常见大量重复模式（如广告、模板文本），通过检测 n-gram 重复率来识别并过滤。
+
+Args:
+    input_key (str): 输入文本字段名，默认 'content'
+    n (int): n-gram 长度，默认 10
+    max_repetition_ratio (float): 最大重复率阈值，超过则过滤，默认 0.3
+    language (str): 语言，'zh' 或 'en'，默认 'zh'
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_pretrain_ops.NGramRepetitionFilter', """\
+N-gram repetition filter: filters low-quality text with excessive repeated patterns.
+
+Common in crawled data (ads, templates).
+
+Args:
+    input_key (str): input text field name, default 'content'
+    n (int): n-gram size, default 10
+    max_repetition_ratio (float): max repetition ratio threshold, default 0.3
+    language (str): language, 'zh' or 'en', default 'zh'
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_pretrain_ops.NGramRepetitionFilter', """\
+```python
+from lazyllm.tools.data import domain_pretrain
+
+op = domain_pretrain.NGramRepetitionFilter(n=5, max_repetition_ratio=0.3, input_key='content')
+data = [{'content': '正常文本内容，没有重复模式'}]
+res = op(data)
+print(res[0]['_ngram_repetition_ratio'])
+# 0.0 或较低值
+```
+""")
+
+add_chinese_doc('data.operators.domain_pretrain_ops.sensitive_info_cleaner', """\
+清洗文本中的敏感信息（手机号、邮箱、IP 地址、银行卡号）。
+
+采用替换而非过滤策略，保留文本但遮蔽敏感字段。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    remove_phone (bool): 是否移除手机号，默认 True
+    remove_email (bool): 是否移除邮箱，默认 True
+    remove_ip (bool): 是否移除 IP 地址，默认 True
+    remove_bank_card (bool): 是否移除银行卡号，默认 True
+    replacement (str): 替换字符串，默认 '[REDACTED]'
+""")
+
+add_english_doc('data.operators.domain_pretrain_ops.sensitive_info_cleaner', """\
+Clean sensitive information (phone, email, IP, bank card) from text.
+
+Uses replacement instead of removal; masks sensitive fields while preserving text.
+
+Args:
+    data (dict): single data dict
+    input_key (str): text field name, default 'content'
+    remove_phone (bool): remove phone numbers, default True
+    remove_email (bool): remove emails, default True
+    remove_ip (bool): remove IP addresses, default True
+    remove_bank_card (bool): remove bank card numbers, default True
+    replacement (str): replacement string, default '[REDACTED]'
+""")
+
+add_example('data.operators.domain_pretrain_ops.sensitive_info_cleaner', """\
+```python
+from lazyllm.tools.data import domain_pretrain
+
+op = domain_pretrain.sensitive_info_cleaner(input_key='content')
+data = [{'content': '联系方式：13812345678，邮箱：test@example.com'}]
+res = op(data)
+print(res[0]['content'])
+# '联系方式：[REDACTED]，邮箱：[REDACTED]'
+```
+""")
+
+add_chinese_doc('data.operators.domain_pretrain_ops.text_normalizer', """\
+Unicode 规范化 + 空白字符统一 + 编码修复。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 文本字段名，默认 'content'
+    unicode_form (str): Unicode 规范化形式，默认 'NFKC'
+    fix_encoding (bool): 是否修复编码错误，默认 True
+    normalize_whitespace (bool): 是否归一化空白字符，默认 True
+    strip (bool): 是否去除首尾空白，默认 True
+""")
+
+add_english_doc('data.operators.domain_pretrain_ops.text_normalizer', """\
+Unicode normalization + whitespace unification + encoding fix.
+
+Args:
+    data (dict): single data dict
+    input_key (str): text field name, default 'content'
+    unicode_form (str): Unicode normalization form, default 'NFKC'
+    fix_encoding (bool): fix encoding errors, default True
+    normalize_whitespace (bool): normalize whitespace, default True
+    strip (bool): strip leading/trailing whitespace, default True
+""")
+
+add_example('data.operators.domain_pretrain_ops.text_normalizer', """\
+```python
+from lazyllm.tools.data import domain_pretrain
+
+op = domain_pretrain.text_normalizer(input_key='content')
+data = [{'content': '  hello\\t\\tworld\\n\\n\\nfoo  '}]
+res = op(data)
+print(res[0]['content'])
+# 'hello world\\n\\nfoo'
+```
+""")
+
+add_chinese_doc('data.operators.domain_pretrain_ops.DocumentLanguageFilter', """\
+基于字符统计的快速语言检测过滤器。
+
+通过 CJK 字符占比和 ASCII 字符占比快速判断文本的主要语言，
+过滤与目标语言不匹配的文档。比 fasttext 模型更轻量。
+
+Args:
+    input_key (str): 输入文本字段名，默认 'content'
+    target_language (str): 目标语言，'zh' 或 'en'，默认 'zh'
+    min_target_ratio (float): 目标语言字符占比下限，默认 0.3
+    _concurrency_mode (str): 并发模式，默认 'process'
+""")
+
+add_english_doc('data.operators.domain_pretrain_ops.DocumentLanguageFilter', """\
+Fast language detection filter based on character statistics.
+
+Uses CJK/ASCII ratio to determine primary language; filters non-matching documents.
+Lighter than fasttext model.
+
+Args:
+    input_key (str): input text field name, default 'content'
+    target_language (str): target language, 'zh' or 'en', default 'zh'
+    min_target_ratio (float): minimum target language character ratio, default 0.3
+    _concurrency_mode (str): concurrency mode, default 'process'
+""")
+
+add_example('data.operators.domain_pretrain_ops.DocumentLanguageFilter', """\
+```python
+from lazyllm.tools.data import domain_pretrain
+
+op = domain_pretrain.DocumentLanguageFilter(target_language='zh', min_target_ratio=0.3, input_key='content')
+data = [{'content': '这是一段中文文本。'}, {'content': 'This is English text.'}]
+res = op(data)
+print(len(res))
+# 1  # 仅保留中文
+```
+""")
+
 # refine_op
 add_chinese_doc('data.operators.refine_op.remove_extra_spaces', """\
 将指定字段中的多余空白（多个空格、换行、制表符）归一化为单个空格。
@@ -3650,7 +4634,8 @@ Args:
     **kwargs: extra args passed to the base operator (e.g. _max_workers, _save_data).
 """)
 
-add_example('data.operators.tool_use_ops.ContextualBeacon', r"""
+add_example('data.operators.tool_use_ops.ContextualBeacon', """
+```python
 from lazyllm.tools.data.operators.tool_use_ops import ContextualBeacon
 
 op = ContextualBeacon(model=model, input_key='content', output_key='scenario')
@@ -3671,6 +4656,7 @@ print(op(item))
 #     'key_entities': ['北京', '上海', '高铁', '下午']
 #   }
 # }
+```
 """)
 
 add_chinese_doc('data.operators.tool_use_ops.ScenarioDiverger', """\
@@ -4374,6 +5360,7 @@ print(res[0]['structured_data']) # {'subject': 'Math', 'score': 95}
 ```
 """)
 
+
 # pipelines module docs
 add_chinese_doc( 'data.pipelines.demo_pipelines.build_demo_pipeline', """\
 构建演示用数据处理流水线（Pipeline），包含若干示例算子并展示如何在 pipeline 上组合使用这些算子。
@@ -4403,6 +5390,1502 @@ ppl = build_demo_pipeline(input_key='text')
 data = [{'text': 'lazyLLM'}]
 res = ppl(data)
 print(res)  # demonstrates how operators are combined and applied
+```
+""")
+
+# =========================
+# domain_finetune_pipelines
+# =========================
+
+add_chinese_doc('data.pipelines.domain_finetune_pipelines.build_text_cleaning_pipeline', """\
+构建文本清洗流水线：规则清洗（表情/HTML/URL/空格）+ 可选 LLM 深度清洗。
+
+Args:
+    input_key (str): 输入文本字段名，默认 'content'
+    output_key (str): 输出字段名，默认 'cleaned_content'
+    remove_emoji (bool): 是否移除 emoji，默认 True
+    remove_html_url (bool): 是否移除 HTML 和 URL，默认 True
+    remove_html_entity (bool): 是否移除 HTML 实体，默认 True
+    remove_extra_spaces (bool): 是否归一化空白，默认 True
+    enable_llm_cleaning (bool): 是否启用 LLM 深度清洗，默认 False
+    llm: LLM 服务（enable_llm_cleaning 为 True 时必需）
+    lang (str): 语言，'zh' 或 'en'，默认 'zh'
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_finetune_pipelines.build_text_cleaning_pipeline', """\
+Build text cleaning pipeline: rule-based (emoji/HTML/URL/whitespace) + optional LLM deep cleaning.
+
+Args:
+    input_key (str): input text field name, default 'content'
+    output_key (str): output field name, default 'cleaned_content'
+    remove_emoji (bool): whether to remove emoji, default True
+    remove_html_url (bool): whether to remove HTML and URLs, default True
+    remove_html_entity (bool): whether to remove HTML entities, default True
+    remove_extra_spaces (bool): whether to normalize whitespace, default True
+    enable_llm_cleaning (bool): whether to enable LLM deep cleaning, default False
+    llm: LLM service (required when enable_llm_cleaning is True)
+    lang (str): language, 'zh' or 'en', default 'zh'
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_finetune_pipelines.build_text_cleaning_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_finetune_pipelines import build_text_cleaning_pipeline
+
+ppl = build_text_cleaning_pipeline(input_key='content', output_key='cleaned_content')
+data = [{'content': 'Hello 😊 <b>world</b> https://example.com'}]
+res = ppl(data)
+print(res[0]['cleaned_content'])
+# 'Hello world'
+```
+""")
+
+add_chinese_doc('data.pipelines.domain_finetune_pipelines.build_source_to_content_pipeline', """\
+构建从 URL/文件路径到 content 的流水线：识别类型 → HTML/PDF 转 Markdown → 加载为 content。
+
+Args:
+    source_key (str): 源路径字段名，默认 'source'
+    output_key (str): 输出 content 字段名，默认 'content'
+    mineru_url (str): MinerU API 地址（PDF 转换用），默认 ''
+    mineru_backend (str): MinerU 后端，默认 'vlm-vllm-async-engine'
+    intermediate_dir (str): 中间文件目录，默认 'intermediate'
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_finetune_pipelines.build_source_to_content_pipeline', """\
+Build pipeline from URL/file path to content: detect type → HTML/PDF to Markdown → load as content.
+
+Args:
+    source_key (str): source path field name, default 'source'
+    output_key (str): output content field name, default 'content'
+    mineru_url (str): MinerU API URL for PDF conversion, default ''
+    mineru_backend (str): MinerU backend, default 'vlm-vllm-async-engine'
+    intermediate_dir (str): intermediate files directory, default 'intermediate'
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_finetune_pipelines.build_source_to_content_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_finetune_pipelines import build_source_to_content_pipeline
+
+ppl = build_source_to_content_pipeline(source_key='source', output_key='content')
+data = [{'source': '/path/to/document.pdf'}]
+# res = ppl(data)  # 需要配置 MinerU 服务
+```
+""")
+
+add_chinese_doc('data.pipelines.domain_finetune_pipelines.build_quality_filter_pipeline', """\
+按 filters_config 串联质量过滤流水线。
+
+支持的过滤器类型：word_count、char_count、sentence_count、target_language、stop_word、
+unique_word、null_content、output_min_length、output_input_ratio。
+
+Args:
+    input_key (str): 输入字段名，默认 'content'
+    filters_config (list|None): 过滤器配置列表，每项含 type 及对应参数；默认 [word_count, char_count, null_content]
+    language (str): 语言，默认 'zh'
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_finetune_pipelines.build_quality_filter_pipeline', """\
+Build quality filter pipeline by chaining filters according to filters_config.
+
+Supported filter types: word_count, char_count, sentence_count, target_language, stop_word,
+unique_word, null_content, output_min_length, output_input_ratio.
+
+Args:
+    input_key (str): input field name, default 'content'
+    filters_config (list|None): list of filter configs, each with type and params; default [word_count, char_count, null_content]
+    language (str): language, default 'zh'
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_finetune_pipelines.build_quality_filter_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_finetune_pipelines import build_quality_filter_pipeline
+
+ppl = build_quality_filter_pipeline(
+    input_key='content',
+    filters_config=[
+        {'type': 'word_count', 'min_words': 10, 'max_words': 10000},
+        {'type': 'null_content'},
+    ]
+)
+data = [{'content': 'Valid content with enough words.'}, {'content': ''}]
+res = ppl(data)
+print(len(res))
+# 1  # 空内容被过滤
+```
+""")
+
+add_chinese_doc('data.pipelines.domain_finetune_pipelines.build_llm_extraction_pipeline', """\
+从原始文本用 LLM 提取 QA/指令对并展开为多条训练样本。
+
+Args:
+    input_key (str): 输入文本字段名，默认 'content'
+    output_key (str): 输出字段名，默认 'content'
+    llm: LLM 服务（必需）
+    num_samples (int): 每段文本期望提取的样本数，默认 3
+    extract_format (str): 提取格式，'qa' 或 'instruction'，默认 'qa'
+    lang (str): 语言，默认 'zh'
+    max_input_chars (int): 输入截断最大字符数，默认 3000
+    keep_original_keys (list|None): 展开时保留的原始字段
+    instruction (str|None): 领域指令（与训练时保持一致）
+    drop_empty_extraction (bool): 是否丢弃无法提取到样本的记录，默认 False
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_finetune_pipelines.build_llm_extraction_pipeline', """\
+Extract QA/instruction pairs from raw text using LLM and expand into multiple training samples.
+
+Args:
+    input_key (str): input text field name, default 'content'
+    output_key (str): output field name, default 'content'
+    llm: LLM service (required)
+    num_samples (int): expected samples per text, default 3
+    extract_format (str): extraction format, 'qa' or 'instruction', default 'qa'
+    lang (str): language, default 'zh'
+    max_input_chars (int): max chars to truncate input, default 3000
+    keep_original_keys (list|None): keys to retain when expanding
+    instruction (str|None): domain instruction (consistent with training)
+    drop_empty_extraction (bool): discard records with no extracted samples, default False
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_finetune_pipelines.build_llm_extraction_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_finetune_pipelines import build_llm_extraction_pipeline
+
+ppl = build_llm_extraction_pipeline(llm=my_llm, num_samples=3, extract_format='qa')
+data = [{'content': '人工智能是计算机科学的一个分支。'}]
+res = ppl(data)
+print(len(res))
+# 多条展开后的 QA 样本
+```
+""")
+
+add_chinese_doc('data.pipelines.domain_finetune_pipelines.build_domain_formatting_pipeline', """\
+构建领域数据格式化流水线，支持 alpaca/sharegpt/chatml/raw 四种输出格式。
+
+Args:
+    domain (str): 领域预设，默认 'general'
+    input_key (str): 输入字段名，默认 'content'
+    output_key (str): 输出字段名，默认 'formatted_text'
+    instruction (str|None): 格式化用 instruction，默认从 DOMAIN_INSTRUCTION_EN 获取
+    output_format (str): 输出格式，'alpaca'/'sharegpt'/'chatml'/'raw'，默认 'alpaca'
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_finetune_pipelines.build_domain_formatting_pipeline', """\
+Build domain data formatting pipeline, supports alpaca/sharegpt/chatml/raw output formats.
+
+Args:
+    domain (str): domain preset, default 'general'
+    input_key (str): input field name, default 'content'
+    output_key (str): output field name, default 'formatted_text'
+    instruction (str|None): instruction for formatting, default from DOMAIN_INSTRUCTION_EN
+    output_format (str): output format, 'alpaca'/'sharegpt'/'chatml'/'raw', default 'alpaca'
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_finetune_pipelines.build_domain_formatting_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_finetune_pipelines import build_domain_formatting_pipeline
+
+ppl = build_domain_formatting_pipeline(output_format='alpaca', input_key='content')
+data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'C'}}]
+res = ppl(data)
+print(res[0]['formatted_text'])
+# {'instruction': 'A', 'input': 'B', 'output': 'C'}
+```
+""")
+
+add_chinese_doc('data.pipelines.domain_finetune_pipelines.build_data_augmentation_pipeline', """\
+构建数据增强流水线，支持 query_rewrite、synonym_replace 等方法。
+
+Args:
+    input_key (str): 输入字段名，默认 'content'
+    augment_methods (list|None): 增强方法列表，默认 ['query_rewrite']
+    llm: LLM 服务（query_rewrite 需要）
+    num_augments (int): 每条样本增强数量，默认 2
+    lang (str): 语言，默认 'zh'
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_finetune_pipelines.build_data_augmentation_pipeline', """\
+Build data augmentation pipeline, supports query_rewrite, synonym_replace, etc.
+
+Args:
+    input_key (str): input field name, default 'content'
+    augment_methods (list|None): list of augmentation methods, default ['query_rewrite']
+    llm: LLM service (required for query_rewrite)
+    num_augments (int): number of augmentations per sample, default 2
+    lang (str): language, default 'zh'
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_finetune_pipelines.build_data_augmentation_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_finetune_pipelines import build_data_augmentation_pipeline
+
+ppl = build_data_augmentation_pipeline(llm=my_llm, augment_methods=['query_rewrite'])
+data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'C'}}]
+res = ppl(data)
+# 返回增强后的多条样本
+```
+""")
+
+add_chinese_doc('data.pipelines.domain_finetune_pipelines.build_domain_finetune_pipeline', """\
+构建完整垂类微调 Pipeline，由 enabled 控制启用功能，options 提供可选配置。
+
+enabled 可选键（DOMAIN_FINETUNE_FEATURES）：normalization、adaptive_normalization、
+conversation_expand、llm_extraction、deduplication、augmentation、llm_cleaning、output_quality_filter。
+
+options 支持：llm、dedup_method、augment_methods、field_mapping、llm_extract_format、llm_num_samples、
+llm_max_input_chars、llm_keep_original_keys、llm_drop_empty_extraction、min_output_chars、
+min_output_input_ratio、merge_context_question、merge_context_question_params、expand_list_key、
+expand_q_prefix、expand_a_prefix、expand_min_q_chars、expand_min_a_chars 等。
+
+Args:
+    domain (str): 领域预设，默认 'general'
+    input_key (str): 输入字段名，默认 'content'
+    output_key (str): 输出字段名，默认 'formatted_text'
+    enabled (dict|None): 功能开关
+    options (dict|None): 可选配置
+    filters_config (list|None): 质量过滤配置
+    normalization_instruction (str|None): 归一化用 instruction
+    instruction (str|None): 格式化用 instruction
+    output_format (str): 输出格式，默认 'alpaca'
+    language (str): 语言，默认 'zh'
+    cleaned_key (str): 清洗后字段名，默认 'cleaned_content'
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_finetune_pipelines.build_domain_finetune_pipeline', """\
+Build complete vertical-domain fine-tuning pipeline, controlled by enabled flags and options.
+
+enabled keys (DOMAIN_FINETUNE_FEATURES): normalization, adaptive_normalization,
+conversation_expand, llm_extraction, deduplication, augmentation, llm_cleaning, output_quality_filter.
+
+options supports: llm, dedup_method, augment_methods, field_mapping, llm_extract_format, llm_num_samples,
+llm_max_input_chars, llm_keep_original_keys, llm_drop_empty_extraction, min_output_chars,
+min_output_input_ratio, merge_context_question, merge_context_question_params, expand_list_key,
+expand_q_prefix, expand_a_prefix, expand_min_q_chars, expand_min_a_chars, etc.
+
+Args:
+    domain (str): domain preset, default 'general'
+    input_key (str): input field name, default 'content'
+    output_key (str): output field name, default 'formatted_text'
+    enabled (dict|None): feature flags
+    options (dict|None): optional config
+    filters_config (list|None): quality filter config
+    normalization_instruction (str|None): instruction for normalization
+    instruction (str|None): instruction for formatting
+    output_format (str): output format, default 'alpaca'
+    language (str): language, default 'zh'
+    cleaned_key (str): cleaned content field name, default 'cleaned_content'
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_finetune_pipelines.build_domain_finetune_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_finetune_pipelines import build_domain_finetune_pipeline
+
+ppl = build_domain_finetune_pipeline(
+    enabled={'normalization': True, 'deduplication': True, 'output_quality_filter': True},
+    options={'min_output_chars': 80, 'min_output_input_ratio': 0.3},
+    output_format='alpaca'
+)
+data = [{'question': 'What is AI?', 'answer': 'AI is artificial intelligence.'}]
+res = ppl(data)
+print(res[0]['formatted_text'])
+# {'instruction': '...', 'input': 'What is AI?', 'output': 'AI is artificial intelligence.'}
+```
+""")
+
+add_chinese_doc('data.pipelines.domain_finetune_pipelines.build_train_test_split_pipeline', """\
+构建按比例划分 train/validation/test 的流水线。
+
+Args:
+    train_ratio (float): 训练集比例，默认 0.8
+    validation_ratio (float): 验证集比例，默认 0.1
+    test_ratio (float): 测试集比例，默认 0.1
+    seed (int): 随机种子，默认 42
+    stratify_key (str|None): 分层字段名（可选）
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_finetune_pipelines.build_train_test_split_pipeline', """\
+Build pipeline to split data into train/validation/test by ratio.
+
+Args:
+    train_ratio (float): training set ratio, default 0.8
+    validation_ratio (float): validation set ratio, default 0.1
+    test_ratio (float): test set ratio, default 0.1
+    seed (int): random seed, default 42
+    stratify_key (str|None): stratification field name (optional)
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_finetune_pipelines.build_train_test_split_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_finetune_pipelines import build_train_test_split_pipeline
+
+ppl = build_train_test_split_pipeline(train_ratio=0.8, validation_ratio=0.1, test_ratio=0.1)
+data = [{'content': f'sample_{i}'} for i in range(100)]
+res = ppl(data)
+print(res.keys())
+# dict_keys(['train', 'validation', 'test'])
+```
+""")
+
+# =========================
+# domain_pretrain_pipelines
+# =========================
+
+add_chinese_doc('data.pipelines.domain_pretrain_pipelines.build_text_pt_pipeline', """\
+构建通用文本预训练 Pipeline：先基础清洗，再质量过滤与去重，最后分块。
+
+包含：null_content、HTML/URL/实体、emoji、空白清洗；char/word/sentence 计数过滤；
+special_char、watermark、idcard、javascript、lorem_ipsum 等过滤；MinHash 去重；TokenChunker 分块。
+
+Args:
+    content_key (str): 文本字段名，默认 'content'
+    language (str): 语言，'zh' 或 'en'，默认 'zh'
+    min_chars (int): 最少字符数，默认 100
+    max_chars (int): 最大字符数，默认 100000
+    min_words (int): 最少词数，默认 10
+    max_words (int): 最大词数，默认 10000
+    max_tokens (int): 每块最大 token 数，默认 1024
+    min_tokens (int): 每块最小 token 数，默认 200
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_pretrain_pipelines.build_text_pt_pipeline', """\
+Build generic text pretraining pipeline: basic cleaning, quality filtering, deduplication, then chunking.
+
+Includes: null_content, HTML/URL/entity, emoji, whitespace cleaning; char/word/sentence count filters;
+special_char, watermark, idcard, javascript, lorem_ipsum filters; MinHash dedup; TokenChunker.
+
+Args:
+    content_key (str): text field name, default 'content'
+    language (str): language, 'zh' or 'en', default 'zh'
+    min_chars (int): minimum chars, default 100
+    max_chars (int): maximum chars, default 100000
+    min_words (int): minimum words, default 10
+    max_words (int): maximum words, default 10000
+    max_tokens (int): max tokens per chunk, default 1024
+    min_tokens (int): min tokens per chunk, default 200
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_pretrain_pipelines.build_text_pt_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_pretrain_pipelines import build_text_pt_pipeline
+
+ppl = build_text_pt_pipeline(content_key='content', language='zh')
+data = [{'content': '这是一段足够长的预训练文本内容。' * 20}]
+res = ppl(data)
+print(len(res))
+# 分块后的样本列表
+```
+""")
+
+add_chinese_doc('data.pipelines.domain_pretrain_pipelines.build_domain_pretrain_pipeline', """\
+构建垂直领域预训练增强 Pipeline，与 build_text_pt_pipeline 互补使用。
+
+聚焦垂直领域增强：字段归一化、敏感信息清洗、语言检测、领域关键词过滤、
+领域相关性评分、N-gram 重复过滤。enabled 控制启用功能，options 提供配置。
+
+enabled 可选键（DOMAIN_PRETRAIN_FEATURES）：field_normalization、text_normalization、
+sensitive_info_cleaning、language_filter、domain_keyword_filter、domain_relevance_scorer、ngram_repetition_filter。
+
+options 支持：field_mapping、concat_fields、keyword_mode、min_keyword_hits、min_keyword_density、
+keyword_weights、min_relevance_score、ngram_n、max_repetition_ratio、min_language_ratio 等。
+
+Args:
+    domain (str): 领域名称，用于获取预设关键词，默认 'general'
+    content_key (str): 文本字段名，默认 'content'
+    language (str): 语言，'zh' 或 'en'，默认 'zh'
+    enabled (dict|None): 功能开关
+    options (dict|None): 各阶段配置参数
+    domain_keywords (list|None): 自定义领域关键词列表
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_pretrain_pipelines.build_domain_pretrain_pipeline', """\
+Build vertical domain pretraining enhancement pipeline, complementary to build_text_pt_pipeline.
+
+Focuses on domain enhancement: field normalization, sensitive info cleaning, language filter,
+domain keyword filter, domain relevance scoring, n-gram repetition filter. Controlled by enabled and options.
+
+enabled keys (DOMAIN_PRETRAIN_FEATURES): field_normalization, text_normalization,
+sensitive_info_cleaning, language_filter, domain_keyword_filter, domain_relevance_scorer, ngram_repetition_filter.
+
+options supports: field_mapping, concat_fields, keyword_mode, min_keyword_hits, min_keyword_density,
+keyword_weights, min_relevance_score, ngram_n, max_repetition_ratio, min_language_ratio, etc.
+
+Args:
+    domain (str): domain name for preset keywords, default 'general'
+    content_key (str): text field name, default 'content'
+    language (str): language, 'zh' or 'en', default 'zh'
+    enabled (dict|None): feature flags
+    options (dict|None): stage config params
+    domain_keywords (list|None): custom domain keyword list
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_pretrain_pipelines.build_domain_pretrain_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_pretrain_pipelines import build_domain_pretrain_pipeline
+
+ppl = build_domain_pretrain_pipeline(
+    domain='medical',
+    enabled={'field_normalization': True, 'sensitive_info_cleaning': True, 'ngram_repetition_filter': True},
+    domain_keywords=['医学', '诊断', '治疗']
+)
+data = [{'text': '医学诊断是临床医学的重要内容'}]
+res = ppl(data)
+print(res[0]['content'])
+# 归一化、敏感信息清洗、N-gram 过滤后的文本
+```
+""")
+
+add_chinese_doc('data.pipelines.domain_pretrain_pipelines.build_text_pt_plus_domain_pretrain_pipeline', """\
+组合 Pipeline：先领域增强（归一化/敏感/筛选等），再通用文本预训练（清洗/过滤/去重/分块）。
+
+推荐顺序：1) 字段归一化 2) 领域增强 3) 通用 PT。
+
+Args:
+    domain (str): 领域名称，默认 'general'
+    content_key (str): 文本字段名，默认 'content'
+    language (str): 语言，默认 'zh'
+    enabled (dict|None): 领域增强功能开关
+    options (dict|None): 配置（含 min_chars、max_chars、min_words、max_words、max_tokens、min_tokens 等）
+    domain_keywords (list|None): 自定义领域关键词
+
+Returns:
+    pipeline: 可调用的流水线对象
+""")
+
+add_english_doc('data.pipelines.domain_pretrain_pipelines.build_text_pt_plus_domain_pretrain_pipeline', """\
+Combined pipeline: domain enhancement first, then generic text pretraining.
+
+Order: 1) field normalization 2) domain enhancement 3) generic PT (clean/filter/dedup/chunk).
+
+Args:
+    domain (str): domain name, default 'general'
+    content_key (str): text field name, default 'content'
+    language (str): language, default 'zh'
+    enabled (dict|None): domain enhancement feature flags
+    options (dict|None): config (min_chars, max_chars, min_words, max_words, max_tokens, min_tokens, etc.)
+    domain_keywords (list|None): custom domain keywords
+
+Returns:
+    pipeline: callable pipeline object
+""")
+
+add_example('data.pipelines.domain_pretrain_pipelines.build_text_pt_plus_domain_pretrain_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.domain_pretrain_pipelines import build_text_pt_plus_domain_pretrain_pipeline
+
+ppl = build_text_pt_plus_domain_pretrain_pipeline(
+    domain='medical',
+    enabled={'field_normalization': True, 'sensitive_info_cleaning': True},
+    options={'min_chars': 50, 'max_tokens': 512}
+)
+data = [{'text': '医学诊断相关内容'}]
+res = ppl(data)
+print(len(res))
+# 领域增强 + 通用 PT 后的分块样本
+```
+""")
+
+# =========================
+# Embedding Pipelines
+# =========================
+
+
+add_chinese_doc('data.pipelines.embedding_pipelines.build_embedding_data_augmentation_pipeline', """\
+构建 Embedding 训练用的查询增强流水线。
+
+先将样本中的查询字段映射为内部使用的 ``query``，再按 ``augment_methods`` 依次调用对应算子（``query_rewrite`` 需 ``llm``）。
+``keep_original`` 为 True 时，输出在增强结果前包含原始样本。未知方法会记录警告并跳过。
+
+Args:
+    input_query_key (str): 输入中查询字段名，默认 ``query``
+    output_query_key (str): 输出写回的查询字段名，默认 ``query``
+    keep_original (bool): 是否保留原始样本，默认 True
+    llm: LLM（``query_rewrite`` 必需）
+    augment_methods (list|None): 增强方法列表，如 ``query_rewrite``、``adjacent_word_swap``；默认 []
+    num_augments (int): 每条样本生成增强数量，默认 2
+    lang (str): 语言，默认 ``en``
+
+Returns:
+    Callable: 接受 ``List[dict]``、返回合并后样本列表的函数
+""")
+
+add_english_doc('data.pipelines.embedding_pipelines.build_embedding_data_augmentation_pipeline', """\
+Build a query augmentation pipeline for embedding training.
+
+Maps the query field to internal ``query``, then runs operators per ``augment_methods`` (``query_rewrite`` requires ``llm``).
+When ``keep_original`` is True, original items are prepended to augmented outputs. Unknown methods are logged and skipped.
+
+Args:
+    input_query_key (str): query field name in input, default ``query``
+    output_query_key (str): field name to write query back to, default ``query``
+    keep_original (bool): whether to keep originals, default True
+    llm: LLM (required for ``query_rewrite``)
+    augment_methods (list|None): e.g. ``query_rewrite``, ``adjacent_word_swap``; default []
+    num_augments (int): augmentations per sample, default 2
+    lang (str): language, default ``en``
+
+Returns:
+    Callable: function taking ``List[dict]`` and returning merged sample list
+""")
+
+add_example('data.pipelines.embedding_pipelines.build_embedding_data_augmentation_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.embedding_pipelines import build_embedding_data_augmentation_pipeline
+
+run_aug = build_embedding_data_augmentation_pipeline(
+    augment_methods=['query_rewrite', 'adjacent_word_swap'],
+    llm=my_llm,
+    num_augments=2,
+    lang='zh',
+)
+data = [{'query': '什么是 RAG？', 'pos': ['RAG 综述段落']}]
+res = run_aug(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.embedding_pipelines.build_embedding_data_formatter_pipeline', """\
+将 ``List[dict]`` 规范为 query/pos/neg 后，格式化为指定框架训练格式，并可写入 JSONL。
+
+仅保留同时含有效 ``query`` 与 ``pos`` 的样本；``output_format`` 为 ``flagembedding``、``sentence_transformers`` 或 ``triplet``。
+
+Args:
+    input_query_key (str): 查询字段名，默认 ``query``
+    input_pos_key (str): 正例字段名，默认 ``pos``
+    input_neg_key (str): 负例字段名，默认 ``neg``
+    output_format (str): ``flagembedding`` | ``sentence_transformers`` | ``triplet``
+    instruction (str|None): 仅 ``flagembedding`` 时传入格式化算子的指令
+    output_file (str|None): 若指定则写入 JSONL（每行一条 JSON）
+
+Returns:
+    Callable: 接受样本列表，返回格式化后的列表
+""")
+
+add_english_doc('data.pipelines.embedding_pipelines.build_embedding_data_formatter_pipeline', """\
+Normalize ``List[dict]`` to query/pos/neg, format for a chosen training stack, optionally write JSONL.
+
+Keeps items with non-empty ``query`` and ``pos``. ``output_format`` is one of ``flagembedding``, ``sentence_transformers``, ``triplet``.
+
+Args:
+    input_query_key (str): query field name, default ``query``
+    input_pos_key (str): positive field name, default ``pos``
+    input_neg_key (str): negative field name, default ``neg``
+    output_format (str): ``flagembedding`` | ``sentence_transformers`` | ``triplet``
+    instruction (str|None): instruction for FlagEmbedding formatter only
+    output_file (str|None): if set, append one JSON object per line
+
+Returns:
+    Callable: function from sample list to formatted list
+""")
+
+add_example('data.pipelines.embedding_pipelines.build_embedding_data_formatter_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.embedding_pipelines import build_embedding_data_formatter_pipeline
+
+run_fmt = build_embedding_data_formatter_pipeline(
+    output_format='flagembedding',
+    instruction='Represent this sentence for searching relevant passages:',
+    output_file='train_flagembedding.jsonl',
+)
+data = [{'query': 'q', 'pos': ['p1'], 'neg': ['n1']}]
+res = run_fmt(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.embedding_pipelines.build_embedding_hard_neg_pipeline', """\
+构建难负例挖掘流水线：先 ``build_embedding_corpus`` 汇总语料，再按策略初始化（BM25 / 语义向量）并挖掘负例，最后清理内部临时字段。
+
+``mining_strategy``：``random``（随机）、``bm25``（需 ``EmbeddingInitBM25``）、``semantic``（需 ``embedding_serving`` 与 ``EmbeddingInitSemantic``）。
+
+Args:
+    input_query_key (str): 查询字段，默认 ``query``
+    input_pos_key (str): 正例字段，默认 ``pos``
+    output_neg_key (str): 写入负例的字段，默认 ``neg``
+    corpus_key (str): 语料在样本中的键名，默认 ``passage``
+    corpus (list|None): 外部语料列表；为 None 时从正例构建
+    mining_strategy (str): ``random`` | ``bm25`` | ``semantic``
+    num_negatives (int): 负例数量，默认 7
+    embedding_serving: ``semantic`` 策略下用于算向量的可调用对象
+    language (str): BM25 分词/语言，默认 ``zh``
+    seed (int): 随机策略种子，默认 42
+
+Returns:
+    Callable: 接受 ``List[dict]``，返回带负例且已去除内部键的列表
+""")
+
+add_english_doc('data.pipelines.embedding_pipelines.build_embedding_hard_neg_pipeline', """\
+Hard-negative mining pipeline: build corpus, optionally init BM25 or semantic embeddings, mine negatives, strip internal keys.
+
+``mining_strategy``: ``random``, ``bm25`` (uses ``EmbeddingInitBM25``), ``semantic`` (needs ``embedding_serving`` and ``EmbeddingInitSemantic``).
+
+Args:
+    input_query_key (str): query field, default ``query``
+    input_pos_key (str): positive field, default ``pos``
+    output_neg_key (str): negatives field, default ``neg``
+    corpus_key (str): corpus key in items, default ``passage``
+    corpus (list|None): external corpus; if None, built from positives
+    mining_strategy (str): ``random`` | ``bm25`` | ``semantic``
+    num_negatives (int): number of negatives, default 7
+    embedding_serving: callable for ``semantic`` strategy
+    language (str): BM25 language, default ``zh``
+    seed (int): RNG seed for random strategy, default 42
+
+Returns:
+    Callable: list in, list with negatives and internal keys removed
+""")
+
+add_example('data.pipelines.embedding_pipelines.build_embedding_hard_neg_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.embedding_pipelines import build_embedding_hard_neg_pipeline
+
+run_mine = build_embedding_hard_neg_pipeline(
+    mining_strategy='bm25',
+    num_negatives=5,
+    language='zh',
+)
+data = [{'query': 'q', 'pos': ['正例段落']}]
+res = run_mine(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.embedding_pipelines.build_query_generation_pipeline', """\
+由段落（默认字段 ``passage``）用 LLM 生成多条查询，再解析为结构化样本的流水线。
+
+等价于 ``EmbeddingGenerateQueries`` 串联 ``EmbeddingParseQueries``；返回的是可直接 ``__call__`` 的 ``pipeline`` 对象（非外层 ``run`` 闭包）。
+
+Args:
+    input_key (str): 段落字段名，默认 ``passage``
+    output_query_key (str): 解析后查询字段名，默认 ``query``
+    num_queries (int): 每段生成查询数，默认 3
+    lang (str): 语言，默认 ``zh``
+    query_types (list|None): 传给生成算子的查询类型列表
+    llm: LLM 实例
+
+Returns:
+    pipeline: LazyLLM pipeline，输入 ``List[dict]`` 输出处理后的列表
+""")
+
+add_english_doc('data.pipelines.embedding_pipelines.build_query_generation_pipeline', """\
+Pipeline: LLM generates multiple queries from a passage field (default ``passage``), then parses into structured items.
+
+Chains ``EmbeddingGenerateQueries`` and ``EmbeddingParseQueries``. Returns a ``pipeline`` object callable with a list of dicts (not a ``run`` wrapper).
+
+Args:
+    input_key (str): passage field name, default ``passage``
+    output_query_key (str): parsed query field name, default ``query``
+    num_queries (int): queries per passage, default 3
+    lang (str): language, default ``zh``
+    query_types (list|None): query types for the generator
+    llm: LLM instance
+
+Returns:
+    pipeline: LazyLLM pipeline, list in / list out
+""")
+
+add_example('data.pipelines.embedding_pipelines.build_query_generation_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.embedding_pipelines import build_query_generation_pipeline
+
+ppl = build_query_generation_pipeline(
+    llm=my_llm,
+    input_key='passage',
+    output_query_key='query',
+    num_queries=3,
+    lang='zh',
+)
+data = [{'passage': 'Embedding 模型用于语义检索。'}]
+res = ppl(data)
+```
+""")
+
+# =========================
+# KBC / Knowledge-Chunk Pipelines (kc_pipelines)
+# =========================
+
+add_chinese_doc('data.pipelines.kc_pipelines.build_convert_md_pipeline', """\
+将文件或 URL 规范为本地路径后，按类型转为 Markdown：HTML 走本地转换，PDF 走 MinerU API。
+
+``mineru_url`` 必填；PDF 步骤使用 ``PDFToMarkdownConverterAPI``（``mineru_backend``、``upload_mode`` 与其一致）。
+
+Args:
+    input_key (str): 源字段（文件路径或 URL），默认 ``source``
+    output_key (str): 输出 Markdown 路径字段，默认 ``text_path``
+    intermediate_dir (str): 中间文件目录，默认 ``intermediate``
+    mineru_url (str): MinerU 服务地址（必填）
+    mineru_backend (str): MinerU 后端，默认 ``vlm-vllm-async-engine``
+    upload_mode (bool): PDF 是否上传模式，默认 True
+
+Returns:
+    pipeline: 可作用于 ``List[dict]`` 的流水线
+""")
+
+add_english_doc('data.pipelines.kc_pipelines.build_convert_md_pipeline', """\
+Normalize file/URL to local paths, then convert to Markdown (HTML locally, PDF via MinerU API).
+
+``mineru_url`` is required. PDF step uses ``PDFToMarkdownConverterAPI`` with the same ``mineru_backend`` and ``upload_mode``.
+
+Args:
+    input_key (str): source field (path or URL), default ``source``
+    output_key (str): output markdown path field, default ``text_path``
+    intermediate_dir (str): intermediate directory, default ``intermediate``
+    mineru_url (str): MinerU API base URL (required)
+    mineru_backend (str): MinerU backend, default ``vlm-vllm-async-engine``
+    upload_mode (bool): PDF upload mode, default True
+
+Returns:
+    pipeline: pipeline over ``List[dict]``
+""")
+
+add_example('data.pipelines.kc_pipelines.build_convert_md_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.kc_pipelines import build_convert_md_pipeline
+
+ppl = build_convert_md_pipeline(
+    mineru_url='http://127.0.0.1:8000',
+    input_key='source',
+    output_key='text_path',
+)
+data = [{'source': 'https://example.com/doc.html'}]
+res = ppl(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.kc_pipelines.build_batch_chunk_generator_pipeline', """\
+批量分块流水线：读文本路径 → 按 token/字符等策略切块 → 将分块写入文件并在样本中写入 ``output_key``。
+
+适用于「一文多文件」的批处理场景；``KBCSaveChunks`` 负责落盘与路径回写。
+
+Args:
+    input_key (str): 文本文件路径字段，默认 ``text_path``
+    output_key (str): 输出分块文件路径字段，默认 ``chunk_path``
+    output_dir (str|None): 分块保存目录
+    chunk_size (int): 块大小，默认 512
+    chunk_overlap (int): 重叠，默认 50
+    split_method (str): 切分方式，默认 ``token``
+    tokenizer_name (str): tokenizer 名称，默认 ``bert-base-uncased``
+
+Returns:
+    pipeline: 可作用于样本列表的流水线
+""")
+
+add_english_doc('data.pipelines.kc_pipelines.build_batch_chunk_generator_pipeline', """\
+Batch chunking: load text path → chunk (token/char, etc.) → save chunk files and set ``output_key``.
+
+For many chunks per document on disk; ``KBCSaveChunks`` writes files and updates records.
+
+Args:
+    input_key (str): text file path field, default ``text_path``
+    output_key (str): chunk file path field, default ``chunk_path``
+    output_dir (str|None): directory for chunk files
+    chunk_size (int): chunk size, default 512
+    chunk_overlap (int): overlap, default 50
+    split_method (str): split method, default ``token``
+    tokenizer_name (str): tokenizer name, default ``bert-base-uncased``
+
+Returns:
+    pipeline: pipeline over a list of dicts
+""")
+
+add_example('data.pipelines.kc_pipelines.build_batch_chunk_generator_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.kc_pipelines import build_batch_chunk_generator_pipeline
+
+ppl = build_batch_chunk_generator_pipeline(
+    input_key='text_path',
+    output_key='chunk_path',
+    chunk_size=512,
+    chunk_overlap=50,
+)
+data = [{'text_path': '/path/to/article.txt'}]
+res = ppl(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.kc_pipelines.build_single_chunk_generator_pipeline', """\
+单条展开分块流水线：读文本 → 切块 → 用 ``KBCExpandChunks`` 将多块展开为多条样本（不写聚合分块文件）。
+
+与 ``build_batch_chunk_generator_pipeline`` 的差别在于最后一步为内存展开，而非 ``KBCSaveChunks``。
+
+Args:
+    input_key (str): 文本路径字段，默认 ``text_path``
+    output_key (str): 每条样本中的分块内容字段，默认 ``chunk_path``
+    output_dir (str|None): 与批量分块接口参数对齐；本流水线未传入下游算子，当前无实际作用
+    chunk_size (int): 块大小，默认 512
+    chunk_overlap (int): 重叠，默认 50
+    split_method (str): 切分方式，默认 ``token``
+    tokenizer_name (str): tokenizer 名称，默认 ``bert-base-uncased``
+
+Returns:
+    pipeline: 可作用于样本列表的流水线
+""")
+
+add_english_doc('data.pipelines.kc_pipelines.build_single_chunk_generator_pipeline', """\
+Expand chunking: load text → chunk → ``KBCExpandChunks`` expands to multiple items (no batched chunk file save).
+
+Differs from ``build_batch_chunk_generator_pipeline`` by ending with in-memory expansion instead of ``KBCSaveChunks``.
+
+Args:
+    input_key (str): text path field, default ``text_path``
+    output_key (str): chunk text field per row, default ``chunk_path``
+    output_dir (str|None): API parity with batch pipeline; not passed to operators here (no effect)
+    chunk_size (int): chunk size, default 512
+    chunk_overlap (int): overlap, default 50
+    split_method (str): split method, default ``token``
+    tokenizer_name (str): tokenizer name, default ``bert-base-uncased``
+
+Returns:
+    pipeline: pipeline over a list of dicts
+""")
+
+add_example('data.pipelines.kc_pipelines.build_single_chunk_generator_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.kc_pipelines import build_single_chunk_generator_pipeline
+
+ppl = build_single_chunk_generator_pipeline(chunk_size=256, chunk_overlap=32)
+data = [{'text_path': '/path/to/doc.txt'}]
+res = ppl(data)
+# 一条输入可展开为多条带 chunk 的样本
+```
+""")
+
+add_chinese_doc('data.pipelines.kc_pipelines.build_multihop_qa_pipeline', """\
+多跳 QA 生成流水线：加载分块文件 → 文本预处理 → 抽取信息对 → LLM 生成多跳问答 → 解析 QA → 可选落盘增强结果。
+
+依赖 ``llm`` 用于 ``KBCGenerateMultiHopQA``；``ext_field`` 为预处理扩展字段名。
+
+Args:
+    input_key (str): 分块文件路径字段，默认 ``chunk_path``
+    output_key (str): 增强结果路径字段，默认 ``enhanced_chunk_path``
+    ext_field (str): 预处理扩展字段，默认 ``cleaned_chunk``
+    llm: LLM 实例
+    lang (str): 语言，默认 ``en``
+    output_dir (str|None): 保存增强输出的目录
+
+Returns:
+    pipeline: 可作用于样本列表的流水线
+""")
+
+add_english_doc('data.pipelines.kc_pipelines.build_multihop_qa_pipeline', """\
+Multihop QA: load chunk file → preprocess → extract info pairs → LLM multihop QA → parse → optional save.
+
+Requires ``llm`` for ``KBCGenerateMultiHopQA``. ``ext_field`` names the preprocess extension field.
+
+Args:
+    input_key (str): chunk file path field, default ``chunk_path``
+    output_key (str): enhanced output path field, default ``enhanced_chunk_path``
+    ext_field (str): preprocess extension field, default ``cleaned_chunk``
+    llm: LLM instance
+    lang (str): language, default ``en``
+    output_dir (str|None): directory for enhanced outputs
+
+Returns:
+    pipeline: pipeline over a list of dicts
+""")
+
+add_example('data.pipelines.kc_pipelines.build_multihop_qa_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.kc_pipelines import build_multihop_qa_pipeline
+
+ppl = build_multihop_qa_pipeline(llm=my_llm, lang='zh', output_dir='./enhanced')
+data = [{'chunk_path': '/path/to/chunks.jsonl'}]
+res = ppl(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.kc_pipelines.build_batch_kbc_pipeline', """\
+批量「分块清洗」流水线：读原始分块文件 → LLM 生成清洗文本 → 抽取清洗内容 → 保存清洗结果路径。
+
+适用于文件级原始 chunk；需 ``llm`` 传给 ``KBCGenerateCleanedText``。
+
+Args:
+    input_key (str): 原始分块文件路径，默认 ``chunk_path``
+    output_key (str): 清洗后文件路径字段，默认 ``cleaned_chunk_path``
+    llm: LLM 实例
+    lang (str): 语言，默认 ``en``
+    output_dir (str|None): 清洗结果保存目录
+
+Returns:
+    pipeline: 可作用于样本列表的流水线
+""")
+
+add_english_doc('data.pipelines.kc_pipelines.build_batch_kbc_pipeline', """\
+Batch chunk cleaning: load raw chunk file → LLM cleaned text → extract → save cleaned paths.
+
+File-level raw chunks; requires ``llm`` for ``KBCGenerateCleanedText``.
+
+Args:
+    input_key (str): raw chunk file path, default ``chunk_path``
+    output_key (str): cleaned file path field, default ``cleaned_chunk_path``
+    llm: LLM instance
+    lang (str): language, default ``en``
+    output_dir (str|None): output directory for cleaned files
+
+Returns:
+    pipeline: pipeline over a list of dicts
+""")
+
+add_example('data.pipelines.kc_pipelines.build_batch_kbc_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.kc_pipelines import build_batch_kbc_pipeline
+
+ppl = build_batch_kbc_pipeline(llm=my_llm, lang='en', output_dir='./cleaned')
+data = [{'chunk_path': '/path/to/raw_chunks.jsonl'}]
+res = ppl(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.kc_pipelines.build_single_kbc_pipeline', """\
+单条分块清洗流水线：对样本内字段（默认 ``raw_chunk``）直接调用 LLM 清洗，再抽取到 ``output_key``。
+
+无读文件/写文件步骤，适合已在内存中的 chunk 文本。
+
+Args:
+    input_key (str): 待清洗文本字段，默认 ``raw_chunk``
+    output_key (str): 清洗结果字段，默认 ``cleaned_chunk``
+    llm: LLM 实例
+    lang (str): 语言，默认 ``en``
+
+Returns:
+    pipeline: 可作用于样本列表的流水线
+""")
+
+add_english_doc('data.pipelines.kc_pipelines.build_single_kbc_pipeline', """\
+Single-item chunk cleaning: LLM-clean field (default ``raw_chunk``), extract to ``output_key``.
+
+No file load/save; for in-memory chunk text.
+
+Args:
+    input_key (str): raw chunk field, default ``raw_chunk``
+    output_key (str): cleaned field, default ``cleaned_chunk``
+    llm: LLM instance
+    lang (str): language, default ``en``
+
+Returns:
+    pipeline: pipeline over a list of dicts
+""")
+
+add_example('data.pipelines.kc_pipelines.build_single_kbc_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.kc_pipelines import build_single_kbc_pipeline
+
+ppl = build_single_kbc_pipeline(llm=my_llm, input_key='raw_chunk', output_key='cleaned_chunk')
+data = [{'raw_chunk': '  noisy text...  '}]
+res = ppl(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.kc_pipelines.build_qa_extract_pipeline', """\
+从样本中的 QA 列表字段加载并展开为指令微调格式（默认 Alpaca 风格键名）。
+
+``KBCLoadQAData`` + ``KBCExtractQAPairs``：``input_instruction`` 作为默认 instruction 模板。
+
+Args:
+    output_instruction_key (str): instruction 字段名，默认 ``instruction``
+    output_question_key (str): 问题字段名，默认 ``input``
+    output_answer_key (str): 答案字段名，默认 ``output``
+    input_qa_key (str): 输入中 QA 列表字段，默认 ``QA_pairs``
+    input_instruction (str): 抽取时使用的 instruction 文案
+
+Returns:
+    pipeline: 可作用于样本列表的流水线
+""")
+
+add_english_doc('data.pipelines.kc_pipelines.build_qa_extract_pipeline', """\
+Load QA list from each item and format for instruction tuning (default Alpaca-like keys).
+
+``KBCLoadQAData`` then ``KBCExtractQAPairs``; ``input_instruction`` is the default instruction text.
+
+Args:
+    output_instruction_key (str): instruction field, default ``instruction``
+    output_question_key (str): question field, default ``input``
+    output_answer_key (str): answer field, default ``output``
+    input_qa_key (str): QA list field in input, default ``QA_pairs``
+    input_instruction (str): instruction string used when extracting
+
+Returns:
+    pipeline: pipeline over a list of dicts
+""")
+
+add_example('data.pipelines.kc_pipelines.build_qa_extract_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.kc_pipelines import build_qa_extract_pipeline
+
+ppl = build_qa_extract_pipeline(
+    input_qa_key='QA_pairs',
+    input_instruction='请根据上下文回答问题。',
+)
+data = [{'QA_pairs': [{'question': 'Q1', 'answer': 'A1'}]}]
+res = ppl(data)
+```
+""")
+
+# =========================
+# RAG / AgenticRAG Pipelines (rag_pipelines)
+# =========================
+
+add_chinese_doc('data.pipelines.rag_pipelines.atomic_rag_pipeline', """\
+构建 Agentic RAG 数据合成流水线：标识与结论抽取 → 结论展开 → 问题生成 → QA 清洗 → LLM 校验 → 金标答案与可选答案 → 分组与数量上限。
+
+各步对应 ``AgenticRAG*`` 算子，全程依赖 ``llm``。
+
+Args:
+    llm: LLM 实例
+    input_key (str): 文档/段落文本字段，默认 ``text``
+    max_per_task (int): ``AgenticRAGExpandConclusions`` 每任务展开上限，默认 10
+    max_question (int): ``AgenticRAGGroupAndLimit`` 每组最大问题数，默认 10
+    llm_verify_filter_threshold (int): ``AgenticRAGLLMVerify`` 过滤阈值，默认 1
+
+Returns:
+    pipeline: 可作用于 ``List[dict]`` 的流水线
+""")
+
+add_english_doc('data.pipelines.rag_pipelines.atomic_rag_pipeline', """\
+Agentic RAG synthesis pipeline: identifier & conclusion → expand conclusions → generate questions → clean QA → LLM verify → golden & optional answers → group and cap count.
+
+Each step maps to ``AgenticRAG*`` operators; requires ``llm`` throughout.
+
+Args:
+    llm: LLM instance
+    input_key (str): document/passage field, default ``text``
+    max_per_task (int): max expansions per task in ``AgenticRAGExpandConclusions``, default 10
+    max_question (int): max questions per group in ``AgenticRAGGroupAndLimit``, default 10
+    llm_verify_filter_threshold (int): filter threshold for ``AgenticRAGLLMVerify``, default 1
+
+Returns:
+    pipeline: pipeline over ``List[dict]``
+""")
+
+add_example('data.pipelines.rag_pipelines.atomic_rag_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.rag_pipelines import atomic_rag_pipeline
+
+ppl = atomic_rag_pipeline(llm=my_llm, input_key='text', max_question=8)
+data = [{'text': '某领域说明段落...'}]
+res = ppl(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.rag_pipelines.depth_qa_single_round_pipeline', """\
+单轮深度追问流水线：反向构造任务 → 检查新标识与关系是否覆盖原标识 → 生成深度问题 → 校验问题。
+
+用于已在样本中具备标识/关系字段、只需执行一轮 ``DepthQAG*`` 流程的场景。
+
+Args:
+    llm: LLM 实例
+    identifier_key (str): 原标识字段，默认 ``identifier``
+    new_identifier_key (str): 新标识字段，默认 ``new_identifier``
+    relation_key (str): 关系字段，默认 ``relation``
+    question_key (str): 生成的问题字段，默认 ``depth_question``
+    depth_verify_filter_threshold (int): ``DepthQAGVerifyQuestion`` 过滤阈值，默认 1
+
+Returns:
+    pipeline: 可作用于 ``List[dict]`` 的流水线
+""")
+
+add_english_doc('data.pipelines.rag_pipelines.depth_qa_single_round_pipeline', """\
+Single-round depth-QA: backward task → superset check on identifiers/relations → generate depth question → verify.
+
+Use when items already have identifier/relation fields and only one ``DepthQAG*`` round is needed.
+
+Args:
+    llm: LLM instance
+    identifier_key (str): original identifier field, default ``identifier``
+    new_identifier_key (str): new identifier field, default ``new_identifier``
+    relation_key (str): relation field, default ``relation``
+    question_key (str): generated question field, default ``depth_question``
+    depth_verify_filter_threshold (int): threshold for ``DepthQAGVerifyQuestion``, default 1
+
+Returns:
+    pipeline: pipeline over ``List[dict]``
+""")
+
+add_example('data.pipelines.rag_pipelines.depth_qa_single_round_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.rag_pipelines import depth_qa_single_round_pipeline
+
+ppl = depth_qa_single_round_pipeline(llm=my_llm, question_key='depth_question')
+data = [{'identifier': '...', 'text': '...'}]
+res = ppl(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.rag_pipelines.depth_qa_pipeline', """\
+多轮深度追问工厂函数：先对整批跑 ``DepthQAGGetIdentifier``，再循环 ``n_rounds`` 轮，每轮内联构建 ``DepthQAGBackwardTask`` → ``DepthQAGCheckSuperset`` → ``DepthQAGGenerateQuestion`` → ``DepthQAGVerifyQuestion``。
+
+轮次递增时字段名为 ``new_identifier_{k}``、``relation_{k}``、``{output_key}_{k}``（首轮标识键为 ``identifier``）。某轮结果为空则提前结束。
+
+Args:
+    llm: LLM 实例
+    input_key (str): 用于抽取初始标识的文本字段，默认 ``text``
+    output_key (str): 各轮问题字段名前缀，默认 ``question``（实际键为 ``{output_key}_{round}``）
+    n_rounds (int): 深度轮数，默认 1
+    depth_verify_filter_threshold (int): 每轮校验过滤阈值，默认 1
+
+Returns:
+    Callable: 接受 ``List[dict]`` 并返回处理后的列表（非 ``pipeline()`` 上下文对象）
+""")
+
+add_english_doc('data.pipelines.rag_pipelines.depth_qa_pipeline', """\
+Multi-round depth QA factory: run ``DepthQAGGetIdentifier`` on the batch, then for each of ``n_rounds`` rounds build and run backward → check superset → generate → verify.
+
+Per-round keys use ``new_identifier_{k}``, ``relation_{k}``, ``{output_key}_{k}`` (round 1 reads ``identifier``). Stops early if a round yields an empty list.
+
+Args:
+    llm: LLM instance
+    input_key (str): text field for initial identifiers, default ``text``
+    output_key (str): prefix for per-round question fields, default ``question`` (actual keys ``{output_key}_{round}``)
+    n_rounds (int): number of depth rounds, default 1
+    depth_verify_filter_threshold (int): verify threshold each round, default 1
+
+Returns:
+    Callable: function from ``List[dict]`` to list (not a ``pipeline()`` context manager)
+""")
+
+add_example('data.pipelines.rag_pipelines.depth_qa_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.rag_pipelines import depth_qa_pipeline
+
+run_depth = depth_qa_pipeline(llm=my_llm, input_key='text', output_key='question', n_rounds=2)
+data = [{'text': '长文档片段...'}]
+res = run_depth(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.rag_pipelines.qa_evaluation_pipeline', """\
+QA 评测流水线：对预测与参考答案做文本归一化后计算 F1（由 ``qaf1_normalize_texts`` 与 ``qaf1_calculate_score`` 组成）。
+
+Args:
+    prediction_key (str): 模型预测答案字段，默认 ``re_answer``
+    ground_truth_key (str): 标准答案字段，默认 ``golden_answer``
+    output_key (str): 写入 F1 分数字段名，默认 ``F1Score``
+
+Returns:
+    pipeline: 可作用于 ``List[dict]`` 的流水线
+""")
+
+add_english_doc('data.pipelines.rag_pipelines.qa_evaluation_pipeline', """\
+QA evaluation: normalize predicted and reference text, then compute F1 via ``qaf1_normalize_texts`` and ``qaf1_calculate_score``.
+
+Args:
+    prediction_key (str): prediction field, default ``re_answer``
+    ground_truth_key (str): ground-truth field, default ``golden_answer``
+    output_key (str): score field name, default ``F1Score``
+
+Returns:
+    pipeline: pipeline over ``List[dict]``
+""")
+
+add_example('data.pipelines.rag_pipelines.qa_evaluation_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.rag_pipelines import qa_evaluation_pipeline
+
+ppl = qa_evaluation_pipeline(prediction_key='re_answer', ground_truth_key='golden_answer')
+data = [{'re_answer': 'a b', 'golden_answer': 'a b c'}]
+res = ppl(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.rag_pipelines.width_qa_pipeline', """\
+宽度 QA 工厂函数：先将每条样本映射为合并算子所需字段，**至少 2 条** 样本时由 ``WidthQAGMergePairs`` 做整批相邻合并；再对合并结果跑校验流水线（分解检查 → 问题校验 → 按分过滤）。
+
+``width_filter_threshold`` 传给 ``WidthQAGFilterByScore``；若合并或后续结果为空则返回空列表并打日志。
+
+Args:
+    llm: LLM 实例（合并与后续步骤均可能使用）
+    input_question_key (str): 输入问题字段，默认 ``question``
+    input_identifier_key (str): 输入标识/内容字段，默认 ``identifier``
+    input_answer_key (str): 输入金标答案字段，默认 ``answer``
+    output_question_key (str): 生成的新问题字段，默认 ``generated_width_task``
+    check_require_state_one (bool): 是否要求分解检查状态为 1，默认 False
+    width_filter_threshold (int|None): 分数过滤阈值，默认 None（由算子默认行为决定）
+
+Returns:
+    Callable: 接受 ``List[dict]`` 并返回结果列表
+""")
+
+add_english_doc('data.pipelines.rag_pipelines.width_qa_pipeline', """\
+Width-QA factory: map items for ``WidthQAGMergePairs``; with **at least 2** items, full-batch merge adjacent QA pairs; then pipeline check decomposition → verify question → filter by score.
+
+``width_filter_threshold`` is passed to ``WidthQAGFilterByScore``. Returns empty list if merge or downstream yields nothing (with logs).
+
+Args:
+    llm: LLM (used in merge and following steps as implemented)
+    input_question_key (str): question field, default ``question``
+    input_identifier_key (str): identifier/content field, default ``identifier``
+    input_answer_key (str): golden answer field, default ``answer``
+    output_question_key (str): generated merged/broad question field, default ``generated_width_task``
+    check_require_state_one (bool): require decomposition check state 1, default False
+    width_filter_threshold (int|None): score filter threshold, default None
+
+Returns:
+    Callable: function from ``List[dict]`` to result list
+""")
+
+add_example('data.pipelines.rag_pipelines.width_qa_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.rag_pipelines import width_qa_pipeline
+
+run_width = width_qa_pipeline(llm=my_llm, width_filter_threshold=1)
+data = [
+    {'question': 'Q1', 'identifier': 'ctx1', 'answer': 'A1'},
+    {'question': 'Q2', 'identifier': 'ctx2', 'answer': 'A2'},
+]
+res = run_width(data)
+```
+""")
+
+# =========================
+# Reranker Pipelines (reranker_pipelines)
+# =========================
+
+
+add_chinese_doc('data.pipelines.reranker_pipelines.build_reranker_dataformatter_pipeline', """\
+重排序训练数据格式化流水线：先 ``validate_reranker_data`` 校验 query/pos/neg 字段，再按 ``output_format`` 选择格式化算子。
+
+``flagreranker`` 使用 ``RerankerFormatFlagReranker`` 并传入 ``train_group_size``；``cross_encoder``、``pairwise`` 分别对应 ``RerankerFormatCrossEncoder``、``RerankerFormatPairwise``。
+
+Args:
+    input_query_key (str): 查询字段，默认 ``query``
+    input_pos_key (str): 正例字段，默认 ``pos``
+    input_neg_key (str): 负例字段，默认 ``neg``
+    output_format (str): ``flagreranker`` | ``cross_encoder`` | ``pairwise``
+    train_group_size (int): 仅 ``flagreranker`` 生效，默认 8
+
+Returns:
+    pipeline: 可作用于 ``List[dict]`` 的流水线
+""")
+
+add_english_doc('data.pipelines.reranker_pipelines.build_reranker_dataformatter_pipeline', """\
+Reranker training format pipeline: ``validate_reranker_data`` on query/pos/neg, then format per ``output_format``.
+
+``flagreranker`` uses ``RerankerFormatFlagReranker`` with ``train_group_size``; ``cross_encoder`` and ``pairwise`` map to their respective format classes.
+
+Args:
+    input_query_key (str): query field, default ``query``
+    input_pos_key (str): positive field, default ``pos``
+    input_neg_key (str): negative field, default ``neg``
+    output_format (str): ``flagreranker`` | ``cross_encoder`` | ``pairwise``
+    train_group_size (int): only for ``flagreranker``, default 8
+
+Returns:
+    pipeline: pipeline over ``List[dict]``
+""")
+
+add_example('data.pipelines.reranker_pipelines.build_reranker_dataformatter_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.reranker_pipelines import build_reranker_dataformatter_pipeline
+
+ppl = build_reranker_dataformatter_pipeline(
+    output_format='flagreranker',
+    train_group_size=8,
+)
+data = [{'query': 'q', 'pos': ['p1'], 'neg': ['n1', 'n2']}]
+res = ppl(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.reranker_pipelines.build_convert_from_embed_pipeline', """\
+将 Embedding 监督数据转为重排序训练格式的流水线：``validate_reranker_embedding_data`` → ``RerankerAdjustNegatives`` 调整负例数量 → ``RerankerBuildFormat`` 组装最终结构。
+
+用于已有 query/pos/neg（与 Embedding 侧约定一致）且需对齐重排序样本形态的场景。
+
+Args:
+    input_query_key (str): 查询字段，默认 ``query``
+    input_pos_key (str): 正例字段，默认 ``pos``
+    input_neg_key (str): 负例字段，默认 ``neg``
+    adjust_neg_count (int): 目标负例条数，默认 7
+    seed (int): 负例抽样随机种子，默认 42
+
+Returns:
+    pipeline: 可作用于 ``List[dict]`` 的流水线
+""")
+
+add_english_doc('data.pipelines.reranker_pipelines.build_convert_from_embed_pipeline', """\
+Embedding-style supervised data → reranker format: ``validate_reranker_embedding_data`` → ``RerankerAdjustNegatives`` → ``RerankerBuildFormat``.
+
+For records that already match embedding-side query/pos/neg conventions and need reranker-ready layout.
+
+Args:
+    input_query_key (str): query field, default ``query``
+    input_pos_key (str): positive field, default ``pos``
+    input_neg_key (str): negative field, default ``neg``
+    adjust_neg_count (int): target negative count, default 7
+    seed (int): RNG seed for negative sampling, default 42
+
+Returns:
+    pipeline: pipeline over ``List[dict]``
+""")
+
+add_example('data.pipelines.reranker_pipelines.build_convert_from_embed_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.reranker_pipelines import build_convert_from_embed_pipeline
+
+ppl = build_convert_from_embed_pipeline(adjust_neg_count=7, seed=42)
+data = [{'query': 'q', 'pos': ['doc+'], 'neg': ['d1', 'd2', 'd3']}]
+res = ppl(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.reranker_pipelines.build_reranker_hard_neg_pipeline', """\
+重排序难负例挖掘工厂函数：``build_reranker_corpus`` 构建语料 → 按策略初始化（``bm25`` / ``semantic`` / ``mixed`` 会跑对应 ``RerankerInit*``；``random`` 无初始化）→ 内联挖掘流水线 → 清理内部临时键。
+
+``mining_strategy``：``random``、``bm25``、``semantic``、``mixed``（混合挖掘用 ``RerankerMineMixedNegatives``，``bm25_ratio`` 控制 BM25 占比）。``semantic`` 与 ``mixed`` 需提供 ``embedding_serving``。
+
+Args:
+    input_query_key (str): 查询字段，默认 ``query``
+    input_pos_key (str): 正例字段，默认 ``pos``
+    output_neg_key (str): 写入负例的字段，默认 ``neg``
+    corpus_key (str): 语料在样本中的键，默认 ``passage``
+    corpus (list|None): 外部语料；为 None 时由正例构建
+    mining_strategy (str): ``random`` | ``bm25`` | ``semantic`` | ``mixed``
+    num_negatives (int): 负例数量，默认 7
+    embedding_serving: ``semantic`` / ``mixed`` 下用于向量相关步骤
+    bm25_ratio (float): ``mixed`` 策略下 BM25 侧占比，默认 0.5
+    seed (int): 随机策略种子，默认 42
+    corpus_dir (str|None): 传给 ``build_reranker_corpus`` 的语料目录
+
+Returns:
+    Callable: 接受 ``List[dict]``，返回去除 ``_corpus``、``_bm25*``、``_semantic_*``、``_embedding_serving`` 等内部键后的列表
+""")
+
+add_english_doc('data.pipelines.reranker_pipelines.build_reranker_hard_neg_pipeline', """\
+Reranker hard-negative factory: ``build_reranker_corpus`` → optional init (``bm25`` / ``semantic`` / ``mixed`` use ``RerankerInit*``; ``random`` skips) → mining sub-pipeline → strip internal keys.
+
+``mining_strategy``: ``random``, ``bm25``, ``semantic``, ``mixed`` (``RerankerMineMixedNegatives`` with ``bm25_ratio``). ``semantic`` and ``mixed`` need ``embedding_serving``.
+
+Args:
+    input_query_key (str): query field, default ``query``
+    input_pos_key (str): positive field, default ``pos``
+    output_neg_key (str): negatives field, default ``neg``
+    corpus_key (str): corpus key in items, default ``passage``
+    corpus (list|None): external corpus; if None, from positives
+    mining_strategy (str): ``random`` | ``bm25`` | ``semantic`` | ``mixed``
+    num_negatives (int): negative count, default 7
+    embedding_serving: required for ``semantic`` / ``mixed`` embedding steps
+    bm25_ratio (float): BM25 fraction in ``mixed``, default 0.5
+    seed (int): RNG seed for random mining, default 42
+    corpus_dir (str|None): corpus dir for ``build_reranker_corpus``
+
+Returns:
+    Callable: list in, list out with ``_corpus``, ``_bm25*``, ``_semantic_*``, ``_embedding_serving``, etc. removed
+""")
+
+add_example('data.pipelines.reranker_pipelines.build_reranker_hard_neg_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.reranker_pipelines import build_reranker_hard_neg_pipeline
+
+run_mine = build_reranker_hard_neg_pipeline(
+    mining_strategy='bm25',
+    num_negatives=5,
+)
+data = [{'query': 'q', 'pos': ['相关段落']}]
+res = run_mine(data)
+```
+""")
+
+add_chinese_doc('data.pipelines.reranker_pipelines.build_reranker_qa_generate_pipeline', """\
+由段落（默认 ``passage``）生成多条查询并解析到 ``output_query_key`` 的重排序侧流水线：``RerankerGenerateQueries`` 串联 ``RerankerParseQueries``。
+
+与 ``embedding_pipelines.build_query_generation_pipeline`` 类似，但使用 reranker 模块内算子与 ``llm_serving`` / ``difficulty_levels`` 等参数。
+
+Args:
+    input_key (str): 段落字段，默认 ``passage``
+    output_query_key (str): 解析后的查询字段，默认 ``query``
+    llm_serving: LLM 调用接口，传给生成算子
+    num_queries (int): 每段生成查询数，默认 3
+    lang (str): 语言，默认 ``zh``
+    difficulty_levels (list|None): 难度等级列表，传给 ``RerankerGenerateQueries``
+
+Returns:
+    pipeline: 可作用于 ``List[dict]`` 的流水线
+""")
+
+add_english_doc('data.pipelines.reranker_pipelines.build_reranker_qa_generate_pipeline', """\
+Generate multiple queries from a passage (default ``passage``) and parse to ``output_query_key``: ``RerankerGenerateQueries`` then ``RerankerParseQueries``.
+
+Similar role to ``build_query_generation_pipeline`` in embedding pipelines, but uses reranker operators and ``llm_serving`` / ``difficulty_levels``.
+
+Args:
+    input_key (str): passage field, default ``passage``
+    output_query_key (str): parsed query field, default ``query``
+    llm_serving: LLM callable passed to the generator
+    num_queries (int): queries per passage, default 3
+    lang (str): language, default ``zh``
+    difficulty_levels (list|None): difficulty levels for ``RerankerGenerateQueries``
+
+Returns:
+    pipeline: pipeline over ``List[dict]``
+""")
+
+add_example('data.pipelines.reranker_pipelines.build_reranker_qa_generate_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.reranker_pipelines import build_reranker_qa_generate_pipeline
+
+ppl = build_reranker_qa_generate_pipeline(
+    llm_serving=my_llm,
+    input_key='passage',
+    output_query_key='query',
+    num_queries=3,
+    lang='zh',
+)
+data = [{'passage': '重排序训练用的段落文本。'}]
+res = ppl(data)
 ```
 """)
 

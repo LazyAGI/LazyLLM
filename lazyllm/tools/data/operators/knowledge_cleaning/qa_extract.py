@@ -58,19 +58,22 @@ class KBCExtractQAPairs(kbc):
     def __init__(
         self,
         qa_key: str = 'QA_pairs',
+        output_instruction_key: str = 'instruction',
+        output_question_key: str = 'input',
+        output_answer_key: str = 'output',
         instruction: str = 'Please answer the following question based on the provided information.',
         **kwargs
     ):
         super().__init__(_concurrency_mode='process', **kwargs)
         self.qa_key = qa_key
         self.instruction = instruction
+        self.output_instruction_key = output_instruction_key
+        self.output_question_key = output_question_key
+        self.output_answer_key = output_answer_key
 
     def forward(
         self,
         data: dict,
-        output_instruction_key: str = 'instruction',
-        output_question_key: str = 'input',
-        output_answer_key: str = 'output',
         **kwargs
     ) -> List[dict]:
         qa_data = data.get('_qa_data')
@@ -94,9 +97,9 @@ class KBCExtractQAPairs(kbc):
                 continue
 
             item = {
-                output_instruction_key: self.instruction,
-                output_question_key: question,
-                output_answer_key: answer
+                self.output_instruction_key: self.instruction,
+                self.output_question_key: question,
+                self.output_answer_key: answer
             }
             results.append(item)
 

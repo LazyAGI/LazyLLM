@@ -24,6 +24,7 @@ class RerankerGenerateQueries(reranker):
         llm_serving=None,
         lang: str = 'zh',
         num_queries: int = 3,
+        input_key: str = 'passage',
         difficulty_levels: Optional[List[str]] = None,
         **kwargs
     ):
@@ -31,7 +32,7 @@ class RerankerGenerateQueries(reranker):
         self.num_queries = num_queries
         self.difficulty_levels = difficulty_levels or ['easy', 'medium', 'hard']
         self.prompt_template = RerankerQueryGeneratorPrompt(lang=lang)
-
+        self.input_key = input_key
         # Initialize LLM serve with system prompt and formatter
         if llm_serving is not None:
             system_prompt = self.prompt_template.build_system_prompt()
@@ -43,13 +44,12 @@ class RerankerGenerateQueries(reranker):
     def forward(
         self,
         data: dict,
-        input_key: str = 'passage',
         **kwargs
     ) -> dict:
         if self._llm_serve is None:
             raise ValueError('LLM serving is not configured')
 
-        passage = data.get(input_key, '')
+        passage = data.get(self.input_key, '')
         if not passage:
             return {**data, '_query_response': ''}
 

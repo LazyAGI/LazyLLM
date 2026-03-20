@@ -27,7 +27,7 @@ class DepthQAGGetIdentifier(agenticrag):
 
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
-            self._llm_serve = llm.share().prompt(system_prompt)
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()
         else:
             self._llm_serve = None
@@ -45,7 +45,14 @@ class DepthQAGGetIdentifier(agenticrag):
 
         try:
             result = self._llm_serve(user_prompt)
-            data['identifier'] = result
+            if isinstance(result, list) and len(result) > 0:
+                result = result[0]
+            if isinstance(result, dict) and 'content_identifier' in result:
+                data['identifier'] = str(result['content_identifier'])
+            elif isinstance(result, str):
+                data['identifier'] = result
+            else:
+                data['identifier'] = str(result) if result else ''
         except Exception as e:
             LOG.warning(f'Failed to get identifier: {e}')
             data['identifier'] = ''
@@ -137,7 +144,8 @@ class DepthQAGCheckSuperset(agenticrag):
     def _is_valid_superset(self, result) -> bool:
         try:
             if isinstance(result, dict):
-                return result.get('new_query') == 'valid'
+                new_query = result.get('new_query')
+                return str(new_query).lower() == 'valid' if new_query is not None else False
         except Exception as e:
             LOG.warning(f'[Error]: Failed to check superset: {e}')
         return False
@@ -194,9 +202,11 @@ class DepthQAGGenerateQuestion(agenticrag):
 
 class DepthQAGVerifyQuestion(agenticrag):
 
-    def __init__(self, llm=None, question_key: str = 'depth_question', **kwargs):
+    def __init__(self, llm=None, question_key: str = 'depth_question',
+                 filter_threshold: Optional[int] = 1, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.question_key = question_key
+        self.filter_threshold = filter_threshold
         self.answer_template = RAGDepthSolverPrompt()
         self.score_template = RAGDepthConsistencyScoringPrompt()
 
@@ -235,13 +245,17 @@ class DepthQAGVerifyQuestion(agenticrag):
         try:
             score_result = self._llm_score_serve(score_prompt)
             if isinstance(score_result, dict):
-                score = score_result.get('answer_score', 0)
+                raw_score = score_result.get('answer_score', 0)
+                try:
+                    score = int(raw_score) if raw_score is not None else 0
+                except (TypeError, ValueError):
+                    score = 0
             else:
                 score = 0
             data['llm_score'] = score
 
-            # Filter out easy questions (score >= 1)
-            if score >= 1:
+            # filter_threshold=None 表示不过滤；否则 score >= filter_threshold 时过滤
+            if self.filter_threshold is not None and score >= self.filter_threshold:
                 data.pop('llm_answer', None)
                 data.pop('llm_score', None)
                 return []
