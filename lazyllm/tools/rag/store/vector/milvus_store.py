@@ -17,6 +17,16 @@ from ..store_base import LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREF
 from ...data_type import DataType
 from ...global_metadata import GlobalMetadataDesc
 
+
+def _is_empty_embedding_value(v) -> bool:
+    if v is None:
+        return True
+    if isinstance(v, (list, tuple)):
+        return len(v) == 0
+    if isinstance(v, dict):
+        return not v
+    return False
+
 MILVUS_UPSERT_BATCH_SIZE = 500
 MILVUS_PAGINATION_OFFSET = 1000
 MILVUS_INDEX_MAX_RETRY = 3
@@ -141,10 +151,31 @@ class MilvusStore(LazyLLMStoreBase):
         finally:
             self._client_pool.release(c)
 
+    def _row_has_valid_embedding(self, d: dict) -> bool:
+        '''True if row has every required embed key with a non-empty value (Milvus requires all columns same length).'''
+        emb = d.get('embedding')
+        if not emb or not isinstance(emb, dict):
+            return False
+        for k in self._embed_datatypes:
+            if _is_empty_embedding_value(emb.get(k)):
+                return False
+        return True
+
     @override
-    def upsert(self, collection_name: str, data: List[dict]) -> bool:
+    def upsert(self, collection_name: str, data: List[dict]) -> bool:  # noqa: C901
         try:
             if not data: return True
+            # Only upsert rows that have valid embedding for every key. _serialize_data omits missing/empty
+            # embedding fields, which would make pymilvus build columns with different lengths (e.g. uid 230 vs
+            # embedding___default__ 229) and raise num_rows mismatch.
+            valid_data = [d for d in data if self._row_has_valid_embedding(d)]
+            dropped = len(data) - len(valid_data)
+            if dropped:
+                LOG.warning(f'[Milvus Store - upsert] Dropping {dropped} rows with missing/empty embedding for '
+                            f'collection {collection_name}.')
+            data = valid_data
+            if not data:
+                return True
             data_embeddings = data[0].get('embedding', {})
             if not data_embeddings: return True
             with self._client_context() as client:

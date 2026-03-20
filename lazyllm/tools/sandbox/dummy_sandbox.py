@@ -14,7 +14,7 @@ from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, _SandboxResul
 class DummySandbox(LazyLLMSandboxBase):
     SUPPORTED_LANGUAGES: List[str] = ['python']
 
-    def __init__(self, timeout: int = 30, return_trace: bool = True, project_dir: Optional[str] = None,
+    def __init__(self, timeout: int = 30, return_trace: bool = False, project_dir: Optional[str] = None,
                  return_sandbox_result: bool = False):
         super().__init__(return_trace=return_trace, project_dir=project_dir,
                          return_sandbox_result=return_sandbox_result)
@@ -96,10 +96,7 @@ class DummySandbox(LazyLLMSandboxBase):
             script_path = os.path.join(temp_dir, '_script.py')
             with open(script_path, 'w', encoding='utf-8') as f:
                 f.write(code)
-            env = os.environ.copy()
-            env['HOME'] = temp_dir
-            env['PYTHONPATH'] = temp_dir
-            proc_result = self._run_in_subprocess(script_path, cwd=temp_dir, env=env)
+            proc_result = self._run_in_subprocess(script_path, cwd=temp_dir)
             return _SandboxResult(
                 success=(proc_result['returncode'] == 0),
                 stdout=proc_result['stdout'],

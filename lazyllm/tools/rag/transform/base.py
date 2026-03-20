@@ -139,6 +139,14 @@ class NodeTransform(ModuleBase):
             return sum([impl(node) for node in documents], [])
 
     def forward(self, nodes: DocNode, **kwargs) -> List[DocNode]:
+        if type(self).transform is not NodeTransform.transform:
+            if not getattr(self, '_legacy_transform_compat_warned', False):
+                LOG.warning(
+                    f'[{type(self).__name__}] `transform()` is deprecated. '
+                    'Please implement `forward()` instead.'
+                )
+                self._legacy_transform_compat_warned = True
+            return self._normalize_splits(self.transform(nodes, **kwargs))
         raise NotImplementedError(
             'Subclasses must implement forward() to process a single DocNode or RichDocNode'
         )
@@ -146,6 +154,13 @@ class NodeTransform(ModuleBase):
     @deprecated('forward')
     def transform(self, node: DocNode, **kwargs) -> List[Union[str, DocNode]]:
         return self.forward(node, **kwargs)
+
+    def _normalize_splits(self, splits: Any) -> List[DocNode]:
+        if splits is None:
+            return []
+        if not isinstance(splits, (list, tuple)):
+            splits = [splits]
+        return [s if isinstance(s, DocNode) else DocNode(text=str(s)) for s in splits if s]
 
     def process(self, nodes: List[Any], on_match: Optional[Callable] = None,
                 on_miss: Optional[Callable] = None) -> List[Any]:

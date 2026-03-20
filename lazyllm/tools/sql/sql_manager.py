@@ -87,9 +87,13 @@ class SqlManager(DBManager):
         except pydantic.ValidationError as e:
             raise ValueError(f'Validate tables_info_dict failed: {str(e)}')
 
-    def _sql_type_for(self, py_type: str):
+    def _sql_type_for(self, py_type: str, *, is_primary_key: bool = False):
         t = py_type.lower()
         if self._db_type in ('mysql', 'tidb', 'mysql+pymysql'):
+            # MySQL/TiDB do not allow TEXT/BLOB columns to be used as primary keys
+            # without a prefix length. Use VARCHAR for identifier-like key columns.
+            if is_primary_key and t in ('string', 'text'):
+                return sqlalchemy.String(255)
             if t == 'list':
                 return sqlalchemy.JSON
             if t == 'uuid':
@@ -106,8 +110,8 @@ class SqlManager(DBManager):
                 column_name = column_info.name
                 is_primary = column_info.is_primary_key
                 default_value = column_info.default
-                # Use text for unsupported column type
-                real_type = self.PYTYPE_TO_SQL_MAP.get(column_type, sqlalchemy.Text)
+                # Keep cross-db compatibility while handling MySQL/TiDB PK restrictions.
+                real_type = self._sql_type_for(column_type, is_primary_key=is_primary)
                 # Handle default value
                 if default_value is not None:
                     attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable,
@@ -130,16 +134,57 @@ class SqlManager(DBManager):
                 desc_dict[table_info.name] = table_comment
         return desc_dict
 
-    def _gen_conn_url(self) -> str:
+    def _gen_conn_url(self, db_name: str = None) -> str:
+        db_name = self._db_name if db_name is None else db_name
         if self._db_type == 'sqlite':
-            conn_url = f'sqlite:///{self._db_name}{("?" + self._options_str) if self._options_str else ""}'
+            conn_url = f'sqlite:///{db_name}{("?" + self._options_str) if self._options_str else ""}'
         else:
             driver = self.DB_DRIVER_MAP.get(self._db_type if self._db_type != 'tidb' else 'mysql', '')
             password = quote_plus(self._password)
             prefix = 'mysql' if self._db_type == 'tidb' else self._db_type
+            db_path = f'/{db_name}' if db_name else '/'
             conn_url = (f'{prefix}{("+" + driver) if driver else ""}://{self._user}:{password}@{self._host}'
-                        f':{self._port}/{self._db_name}{("?" + self._options_str) if self._options_str else ""}')
+                        f':{self._port}{db_path}{("?" + self._options_str) if self._options_str else ""}')
         return conn_url
+
+    def _mysql_engine_kwargs(self) -> dict:
+        kwargs = {
+            'pool_size': 10,
+            'max_overflow': 20,
+            'pool_pre_ping': True,
+        }
+        if self._db_type == 'tidb':
+            kwargs.update({'pool_recycle': 300, 'connect_args': {}, 'echo': False})
+        else:
+            kwargs.update({'pool_recycle': 3600})
+        return kwargs
+
+    @staticmethod
+    def _get_operational_error_code(error: OperationalError):
+        args = getattr(getattr(error, 'orig', None), 'args', ())
+        return args[0] if args else None
+
+    def _ensure_database_exists(self, conn_url: str):
+        if self._db_type not in ('mysql', 'mysql+pymysql', 'tidb'):
+            return
+        probe_engine = sqlalchemy.create_engine(conn_url, **self._mysql_engine_kwargs())
+        try:
+            with probe_engine.connect():
+                return
+        except OperationalError as e:
+            if self._get_operational_error_code(e) != 1049:
+                raise
+        finally:
+            probe_engine.dispose()
+
+        admin_engine = sqlalchemy.create_engine(self._gen_conn_url(''), **self._mysql_engine_kwargs())
+        try:
+            escaped_db_name = self._db_name.replace('`', '``')
+            with admin_engine.connect() as conn:
+                conn.execute(sqlalchemy.text(f'CREATE DATABASE IF NOT EXISTS `{escaped_db_name}`'))
+                conn.commit()
+        finally:
+            admin_engine.dispose()
 
     @property
     def engine(self):
@@ -157,16 +202,9 @@ class SqlManager(DBManager):
                     conn.execute(sqlalchemy.text('PRAGMA synchronous=NORMAL'))
                     conn.execute(sqlalchemy.text('PRAGMA busy_timeout=30000'))
                     conn.commit()
-            elif self._db_type == 'tidb':
-                self._engine = sqlalchemy.create_engine(
-                    conn_url,
-                    pool_size=10,
-                    max_overflow=20,
-                    pool_pre_ping=True,
-                    pool_recycle=300,
-                    connect_args={},
-                    echo=False,
-                )
+            elif self._db_type in ('mysql', 'mysql+pymysql', 'tidb'):
+                self._ensure_database_exists(conn_url)
+                self._engine = sqlalchemy.create_engine(conn_url, **self._mysql_engine_kwargs())
             else:
                 self._engine = sqlalchemy.create_engine(
                     conn_url,
