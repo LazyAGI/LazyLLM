@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ..base import OnlineChatModuleBase, LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
+from ..base import (OnlineChatModuleBase, LazyLLMOnlineText2ImageModuleBase,
+                    LazyLLMOnlineTTSModuleBase, LazyLLMOnlineEmbedModuleBase)
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
@@ -13,7 +14,7 @@ from ..fileHandler import FileHandlerBase
 
 class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
-    def __init__(self, base_url: str = 'https://api.minimaxi.com/v1/', model: str = 'MiniMax-M2',
+    def __init__(self, base_url: str = 'https://api.minimax.io/v1/', model: str = 'MiniMax-M2.7',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         super().__init__(api_key=api_key or lazyllm.config['minimax_api_key'], base_url=base_url, model_name=model,
                          stream=stream, return_trace=return_trace, **kwargs)
@@ -70,7 +71,7 @@ class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
     MODEL_NAME = 'image-01'
 
     def __init__(self, api_key: str = None, model: str = None,
-                 url: str = 'https://api.minimaxi.com/v1/', return_trace: bool = False, **kwargs):
+                 url: str = 'https://api.minimax.io/v1/', return_trace: bool = False, **kwargs):
         super().__init__(api_key=api_key or lazyllm.config['minimax_api_key'],
                          model_name=model or MinimaxText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
@@ -139,11 +140,41 @@ class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
         return response
 
 
+class MinimaxEmbed(LazyLLMOnlineEmbedModuleBase):
+    def __init__(self, embed_url: str = 'https://api.minimax.io/v1/embeddings',
+                 embed_model_name: str = 'embo-01',
+                 api_key: str = None, batch_size: int = 16, **kw):
+        super().__init__(embed_url, api_key or lazyllm.config['minimax_api_key'],
+                         embed_model_name, batch_size=batch_size, **kw)
+
+    def _encapsulated_data(self, input, **kwargs):
+        texts = [input] if isinstance(input, str) else input
+        text_batch = [texts[i:i + self._batch_size] for i in range(0, len(texts), self._batch_size)]
+        if len(text_batch) == 1:
+            return {
+                'model': self._embed_model_name,
+                'texts': text_batch[0],
+                'type': kwargs.get('type', 'db'),
+            }
+        return [
+            {'model': self._embed_model_name, 'texts': batch, 'type': kwargs.get('type', 'db')}
+            for batch in text_batch
+        ]
+
+    def _parse_response(self, response, input=None):
+        vectors = response.get('vectors', [])
+        if not vectors:
+            raise Exception('no embedding vectors received from MiniMax API')
+        if isinstance(input, str):
+            return vectors[0]
+        return vectors
+
+
 class MinimaxTTS(LazyLLMOnlineTTSModuleBase):
-    MODEL_NAME = 'speech-2.6-hd'
+    MODEL_NAME = 'speech-2.8-hd'
 
     def __init__(self, api_key: str = None, model_name: str = None,
-                 base_url: str = 'https://api.minimaxi.com/v1/',
+                 base_url: str = 'https://api.minimax.io/v1/',
                  return_trace: bool = False, **kwargs):
         if kwargs.pop('stream', False):
             raise ValueError('MinimaxTTS does not support streaming output, please set stream to False')
