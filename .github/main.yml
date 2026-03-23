@@ -748,7 +748,7 @@ jobs:
           export LAZYLLM_K8S_CONFIG_PATH="/mnt/nfs_share/k8s_config.yaml"
           export LAZYLLM_HOME="${{ env.K8S_CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
-          source /mnt/nfs_share/env.sh 
+          source /mnt/nfs_share/env.sh
           pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/k8s_tests
 
   cpp_ext_test:
