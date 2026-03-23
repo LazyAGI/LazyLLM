@@ -4,6 +4,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include "adaptor_base.hpp"
@@ -131,7 +132,7 @@ TEST(doc_node, embedding_keys_undone_throws_on_empty_input) {
     lazyllm::DocNode node;
     EXPECT_THROW(node.embedding_keys_undone({}), std::runtime_error);
 
-    node.set_embedding_vec("done", {1.0, 2.0});
+    node.set_embedding_vec("done", std::vector<double>{1.0, 2.0});
     const auto missing = node.embedding_keys_undone({"done", "todo"});
     EXPECT_EQ(missing, (std::set<std::string>{"todo"}));
 }
@@ -146,8 +147,11 @@ TEST(doc_node, py_do_embedding_writes_embedding_vector) {
     });
 
     ASSERT_TRUE(node._embedding_vecs.find("len_embedding") != node._embedding_vecs.end());
-    ASSERT_EQ(node._embedding_vecs["len_embedding"].size(), 1u);
-    EXPECT_EQ(node._embedding_vecs["len_embedding"][0], 4.0); // "text"
+    const auto& embedding = node._embedding_vecs.at("len_embedding");
+    ASSERT_TRUE(std::holds_alternative<std::vector<double>>(embedding));
+    const auto& dense = std::get<std::vector<double>>(embedding);
+    ASSERT_EQ(dense.size(), 1u);
+    EXPECT_EQ(dense[0], 4.0); // "text"
 }
 
 TEST(doc_node, equality_uses_uid) {

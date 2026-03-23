@@ -752,27 +752,99 @@ jobs:
           pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/k8s_tests
 
   cpp_ext_test:
-    name: C++ Extension Test (${{ matrix.os }})
+    name: C++ Build + Python Regression (${{ matrix.os }})
     needs: [ clone ]
-    if:  always()
+    if: always() && needs.clone.result == 'success'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONNOUSERSITE: "1"
+      PYTHONPATH: ${{ github.workspace }}
+      LAZYLLM_ENABLE_CPP_OVERRIDE: "1"
+      LAZYLLM_EXPECTED_LOG_MODULES: "all"
+      LAZYLLM_DEFAULT_LAUNCHER: "empty"
+      LAZYLLM_OPENAI_API_KEY: ${{ secrets.LAZYLLM_OPENAI_API_KEY }}
+      LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
+      LAZYLLM_AIPING_API_KEY: ${{ secrets.LAZYLLM_AIPING_API_KEY }}
+      LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
+      LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
+      LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
+      LAZYLLM_QWEN_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_MODEL_NAME }}
+      LAZYLLM_QWEN_TEXT2IMAGE_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_TEXT2IMAGE_MODEL_NAME }}
+      LAZYLLM_SENSENOVA_API_KEY: ${{ secrets.LAZYLLM_SENSENOVA_API_KEY }}
+      LAZYLLM_SENSENOVA_SECRET_KEY: ${{ secrets.LAZYLLM_SENSENOVA_SECRET_KEY }}
+      LAZYLLM_DOUBAO_API_KEY: ${{ secrets.LAZYLLM_DOUBAO_API_KEY }}
+      LAZYLLM_DOUBAO_MODEL_NAME: ${{ secrets.LAZYLLM_DOUBAO_MODEL_NAME }}
+      LAZYLLM_SILICONFLOW_API_KEY: ${{ secrets.LAZYLLM_SILICONFLOW_API_KEY }}
+      LAZYLLM_SILICONFLOW_MODEL_NAME: ${{ secrets.LAZYLLM_SILICONFLOW_MODEL_NAME }}
+      LAZYLLM_MINIMAX_API_KEY: ${{ secrets.LAZYLLM_MINIMAX_API_KEY }}
+      LAZYLLM_MINIMAX_MODEL_NAME: ${{ secrets.LAZYLLM_MINIMAX_MODEL_NAME }}
+      LAZYLLM_PPOP_API_KEY: ${{ secrets.LAZYLLM_PPOP_API_KEY }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-            submodules: false
+          submodules: false
 
-      - name: Set up python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Setup
+        uses: ./.github/actions/setup
 
-      - name: Test
+      - name: Install test requirements
+        run: |
+          pip install -r tests/requirements.txt
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            pip install -r tests/requirements_linux.txt
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            pip install -r tests/requirements_mac.txt
+          fi
+
+      - name: Download test dataset
+        run: |
+          set -euo pipefail
+          DATA_DIR="$GITHUB_WORKSPACE/.ci_data"
+          rm -rf "$DATA_DIR"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --depth 1 https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git "$DATA_DIR"
+          echo "LAZYLLM_DATA_PATH=$DATA_DIR" >> "$GITHUB_ENV"
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN || github.token }}
+
+      - name: Build and run C++ tests
         run: |
           pip install pybind11
           bash csrc/scripts/build_test.sh
+
+      - name: Install C++ extension artifacts into workspace
+        run: |
+          cmake --install build --prefix . --component lazyllm_cpp
+          ls -al lazyllm | rg "lazyllm_cpp|cpp_lib" || true
+
+      - name: Run basic tests
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            MARKER="not skip_on_linux"
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            MARKER="not skip_on_mac"
+          else
+            MARKER="not skip_on_win"
+          fi
+          pytest -v --order-scope=class -m "$MARKER" tests/basic_tests
+
+      - name: Run advanced tests
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            MARKER="not skip_on_linux"
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            MARKER="not skip_on_mac"
+          else
+            MARKER="not skip_on_win"
+          fi
+          pytest -v --order-scope=class -m "$MARKER" tests/advanced_tests
