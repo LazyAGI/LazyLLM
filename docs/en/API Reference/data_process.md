@@ -167,3 +167,15 @@
 ::: lazyllm.tools.data.pipelines.demo_pipelines
     members:
     exclude-members:
+
+### PT Text Pipelines
+
+::: lazyllm.tools.data.pipelines.pt_text_ppl
+    members:
+    exclude-members:
+
+### PT Image Pipelines
+
+::: lazyllm.tools.data.pipelines.pt_img_ppl
+    members:
+    exclude-members:
