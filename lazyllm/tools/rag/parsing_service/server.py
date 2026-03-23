@@ -878,6 +878,11 @@ class DocumentProcessor(ModuleBase):
             raise RuntimeError('set_callback_url is only supported in local server mode')
         return self._dispatch('set_callback_url', callback_url)
 
+    @property
+    def url(self):
+        impl = self._impl
+        return impl._url if isinstance(impl, ServerModule) else impl.url
+
     def _dispatch(self, method: str, *args, **kwargs):
         try:
             impl = self._impl

@@ -738,6 +738,9 @@ class DocServer(ModuleBase):
     def get_task(self, task_id: str):
         return self._dispatch('get_task', task_id)
 
+    def set_runtime_callback_url(self, callback_url: str):
+        return self._dispatch('set_runtime_callback_url', callback_url)
+
     def cancel_task(self, task_id: str):
         return self._dispatch('cancel_task_by_id', task_id)
 
