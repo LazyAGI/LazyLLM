@@ -156,7 +156,7 @@ def cpp_class(py_class: Optional[_C] = None, *, funcs_to_override: Optional[List
     return _decorate(py_class)
 
 
-def cpp_proxy(
+def cpp_proxy(  # noqa: C901
     py_class: Optional[_C] = None,
     *,
     funcs_to_override: Optional[List[str]] = None,
@@ -179,9 +179,9 @@ def cpp_proxy(
         if not hasattr(cpp_module, default_impl_name):
             raise AttributeError(f'@cpp_proxy cannot find C++ impl: {default_impl_name}')
 
-        setattr(cls, '__cpp_proxy_impl_name__', default_impl_name)
+        cls.__cpp_proxy_impl_name__ = default_impl_name
 
-        original_init = getattr(cls, '__init__')
+        original_init = cls.__init__
         original_getattribute = cls.__getattribute__
         original_setattr = cls.__setattr__
         impl_holder = '_cpp_impl'

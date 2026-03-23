@@ -106,7 +106,7 @@ def test_cpp_class_overrides_selected_methods_when_enabled(monkeypatch):
 
     replaced = cpp.cpp_class(funcs_to_override=['keep'])(Dummy)
     assert replaced is CppDummy
-    assert getattr(replaced, 'keep') is Dummy.keep
+    assert replaced.keep is Dummy.keep
     assert not hasattr(replaced, 'drop')
 
 
