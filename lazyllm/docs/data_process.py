@@ -4406,6 +4406,44 @@ print(res)  # demonstrates how operators are combined and applied
 ```
 """)
 
+add_chinese_doc('data.pipelines.pt_data_ppl.build_structured_data_pipeline', """\
+构建结构化数据构造 Pipeline：从文本中抽取 JSON 结构化数据（默认或自定义 prompt）。
+
+Args:
+    llm: 语言模型实例
+    input_key (str): 输入文本字段名，默认 'text'
+    output_key (str): 输出 JSON 写入的字段名，默认 'parsed'
+    prompt (str): 可选，自定义 prompt；不传则使用 Text2Json 内置默认 prompt
+
+**Returns:**\n
+- 可调用的 pipeline，对 list[dict] 执行后每条数据会多出 output_key 对应的 JSON 结果。
+""")
+
+add_english_doc('data.pipelines.pt_data_ppl.build_structured_data_pipeline', """\
+Build a structured-data construction pipeline: extract JSON from text (default or custom prompt).
+
+Args:
+    llm: language model instance
+    input_key (str): key for input text, default 'text'
+    output_key (str): key to write extracted JSON, default 'parsed'
+    prompt (str): optional custom prompt; uses Text2Json default if not provided
+
+**Returns:**\n
+- A callable pipeline; after running on list[dict], each item will have output_key with the JSON result.
+""")
+
+add_example('data.pipelines.pt_data_ppl.build_structured_data_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_structured_data_pipeline
+
+llm = lazyllm.OnlineChatModule(source='openai', model='gpt-4')
+ppl = build_structured_data_pipeline(llm, input_key='text', output_key='parsed')
+data = [{'text': 'Alice works at Company X.'}]
+res = ppl(data)
+# res[0]['parsed'] is the extracted JSON
+```
+""")
+
 # =========================
 # Embedding Data Formatter
 # =========================
@@ -6986,5 +7024,38 @@ vlm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
 op = pt.Phi4QAGenerator(vlm, num_qa=2)
 res = op([{'context': 'Some context.', 'image_path': '/path/to/image.jpg'}])
 # res[0]['qa_pairs'] contains pretraining-format Q&A
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.Text2Json', """\
+从文本中抽取结构化 JSON 数据的算子。调用大模型，根据 prompt 将输入文本转为 JSON；
+内置默认 prompt 为三元组示例，也可传入自定义 prompt 抽取任意结构的 JSON。
+
+Args:
+    llm: 语言模型实例
+    input_key (str): 输入文本在 data 中的字段名，默认 'text'
+    output_key (str): 抽取结果写入 data 的字段名，默认 'parsed'
+    prompt (str): 可选，自定义提示词；不传则使用内置 DEFAULT_PROMPT
+""")
+
+add_english_doc('data.operators.pt_op.Text2Json', """\
+Operator that extracts structured JSON from text via LLM. Uses a prompt to convert input text to JSON;
+built-in default prompt illustrates triples format; custom prompt can be used for any JSON structure.
+
+Args:
+    llm: language model instance
+    input_key (str): key in data for input text, default 'text'
+    output_key (str): key in data for extracted result, default 'parsed'
+    prompt (str): optional custom prompt; uses DEFAULT_PROMPT if not provided
+""")
+
+add_example('data.operators.pt_op.Text2Json', """\
+```python
+from lazyllm.tools.data import pt
+
+llm = lazyllm.OnlineChatModule(source='openai', model='gpt-4')
+op = pt.Text2Json(llm, input_key='text', output_key='parsed')
+res = op([{'text': 'Alice works at Company X. Bob is a friend of Alice.'}])
+# res[0]['parsed'] contains LLM output JSON, e.g. {"triples": [...]}
 ```
 """)

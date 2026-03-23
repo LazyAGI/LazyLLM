@@ -449,6 +449,7 @@ class ContextQualFilter(PT):
             LOG.warning(f'Context qualification evaluation failed: {e}')
             return []
 
+
 class Phi4QAGenerator(PT):
     DEFAULT_PROMPT = (
         'Convert the given context (text and/or images) into pretraining-format multi-turn Q&A dialogue data. '
@@ -503,4 +504,42 @@ class Phi4QAGenerator(PT):
             return data
         except Exception as e:
             LOG.warning(f'Phi4 Q&A generation failed: {e}')
+            return []
+
+
+class Text2Json(PT):
+    DEFAULT_PROMPT = (
+        'Extract structured data from the given text. Output JSON only, no other content.\n'
+        'Example format:\n'
+        '{\n'
+        '  "triples": [{"subject": "", "predicate": "", "object": ""}]\n'
+        '}\n'
+        'You may use other keys and structures as needed. Output valid JSON only.'
+    )
+
+    def __init__(self, llm, input_key='text', output_key='parsed',
+                 prompt: Optional[str] = None,
+                 _concurrency_mode='thread', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
+        if llm is None:
+            raise ValueError('Text2Json requires llm.')
+        self.input_key = input_key
+        self.output_key = output_key
+        self.prompt = prompt or self.DEFAULT_PROMPT
+        self._extractor = llm.share().prompt(self.prompt).formatter(JsonFormatter())
+
+    def forward(self, data, **kwargs):
+        assert isinstance(data, dict)
+        text = data.get(self.input_key, '')
+        if not text or not str(text).strip():
+            return []
+        try:
+            query = f'Text:\n{text}\n\nOutput structured data in JSON format.'
+            out = self._extractor(query)
+            if not isinstance(out, dict):
+                return []
+            data[self.output_key] = out
+            return data
+        except Exception as e:
+            LOG.warning(f'Text2Json extraction failed: {e}')
             return []
