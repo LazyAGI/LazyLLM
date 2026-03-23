@@ -6,7 +6,7 @@ import requests
 import uuid
 import pickle
 import codecs
-from typing import Callable, Dict, List, Union, Optional, Tuple
+from typing import Callable, Dict, List, Union, Optional, Tuple, TypedDict
 import copy
 from dataclasses import dataclass
 
@@ -52,12 +52,20 @@ def _parse_interleaved_input(input_list: List) -> Tuple[str, List[str]]:
     return ''.join(text_parts), image_paths
 
 
+class StaticParams(TypedDict, total=False):
+    temperature: float
+    top_p: float
+    top_k: int
+    max_tokens: int
+    frequency_penalty: float  # Note some online api use 'repetition_penalty'
+
 class LLMBase(object):
-    def __init__(self, stream: Union[bool, Dict[str, str]] = False,
-                 init_prompt: bool = True, type: Optional[Union[str, LLMType]] = None):
+    def __init__(self, stream: Union[bool, Dict[str, str]] = False, init_prompt: bool = True,
+                 type: Optional[Union[str, LLMType]] = None, static_params: Optional[StaticParams] = None):
         self._stream = stream
         self._type = LLMType(type) if type else LLMType.LLM
         if init_prompt: self.prompt()
+        self._static_params = static_params or {}
         __class__.formatter(self)
 
     def _get_files(self, input, lazyllm_files):
@@ -100,13 +108,15 @@ class LLMBase(object):
         return self
 
     def share(self, prompt: Optional[Union[str, dict, PrompterBase]] = None, format: Optional[FormatterBase] = None,
-              stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None):
+              stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None,
+              copy_static_params: bool = False):
         new = copy.copy(self)
         new._hooks = set()
         new._set_mid()
         if prompt is not None: new.prompt(prompt, history=history)
         if format is not None: new.formatter(format)
         if stream is not None: new.stream = stream
+        if copy_static_params: new._static_params = copy.deepcopy(self._static_params)
         return new
 
     @property
@@ -120,6 +130,16 @@ class LLMBase(object):
     @stream.setter
     def stream(self, v: Union[bool, Dict[str, str]]):
         self._stream = v
+
+    @property
+    def static_params(self) -> StaticParams:
+        return self._static_params
+
+    @static_params.setter
+    def static_params(self, value: StaticParams):
+        if not isinstance(value, dict):
+            raise TypeError('static_params must be a dict (TypedDict)')
+        self._static_params = value
 
     def __or__(self, other):
         if not isinstance(other, FormatterBase):

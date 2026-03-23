@@ -1,7 +1,7 @@
 import threading
 import contextvars
 import copy
-from typing import Any, Tuple, Optional, List, Dict
+from typing import Any, Tuple, Optional, List, Dict, Union
 import uuid
 import inspect
 import builtins
@@ -11,6 +11,7 @@ from .redis_client import redis_client
 from .deprecated import deprecated
 from contextlib import contextmanager
 import asyncio
+from ..configs import config
 from .utils import obj2str, str2obj
 from abc import abstractmethod
 
@@ -126,7 +127,8 @@ class ThreadSafeDict(dict):
 
 
 class Globals(metaclass=SingletonABCMeta):
-    __global_attrs__ = ThreadSafeDict(user_id=None, chat_history={}, global_parameters={}, lazyllm_files={}, usage={})
+    __global_attrs__ = ThreadSafeDict(user_id=None, chat_history={}, global_parameters={},
+                                      lazyllm_files={}, usage={}, config={})
 
     def __new__(cls, *args, **kw):
         if cls is not Globals: return super().__new__(cls)
@@ -202,6 +204,10 @@ class Globals(metaclass=SingletonABCMeta):
 
     def __reduce__(self):
         return __class__, ()
+
+    @property
+    def config(self):
+        return global_config
 
 class MemoryGlobals(Globals):
     def __init__(self):
@@ -281,6 +287,10 @@ class Locals(MemoryGlobals):
         except KeyError: pass  # avoid `During handling of the above exception` for better bug-reporting experience
         return globals[__key]
 
+    @property
+    def config(self):
+        raise NotImplementedError('Locals does not support config, please use globals.config instead.')
+
 locals = Locals()
 
 
@@ -334,3 +344,24 @@ def encode_request(input):
 def decode_request(input, default=None):
     if input is None: return default
     return str2obj(input)
+
+
+class _GlobalConfig(object):
+    def __init__(self):
+        self._supported_configs = set()
+
+    def __getitem__(self, __key: str):
+        assert __key in self._supported_configs, f'Config {__key} is not supported'
+        return globals['config'].get(__key) or config[__key]
+
+    def __setitem__(self, __key: str, __value: Any):
+        assert __key in self._supported_configs, f'Config {__key} is not supported'
+        globals['config'][__key] = __value
+
+    def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
+            *, options: Optional[List] = None, description: Optional[str] = None):
+        config.add(name, type, default, env, options=options, description=description)
+        self._supported_configs.add(name)
+
+
+global_config = _GlobalConfig()

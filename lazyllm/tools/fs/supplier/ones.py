@@ -120,6 +120,25 @@ class OnesFS(LazyLLMFSBase):
                 f'{self._base_url}/team/{team_uuid}/wiki/spaces/{space_uuid}/pages/{page_uuid}'
             )
 
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        raise NotImplementedError('OnesFS: ONES official API does not support copy')
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        parts1, parts2 = self._parse_path(path1), self._parse_path(path2)
+        if len(parts1) < 3:
+            raise ValueError(f'Source path must be /<team_uuid>/<space_uuid>/<page_uuid>: {path1!r}')
+        if len(parts2) < 2:
+            raise ValueError(f'Destination path must be /<team_uuid>/<space_uuid>[/<parent_uuid>]: {path2!r}')
+        team_uuid, space_uuid, page_uuid = parts1[0], parts1[1], parts1[2]
+        dst_space_uuid, dst_parent_uuid = parts2[1], (parts2[2] if len(parts2) >= 3 else '')
+        detail = self._get(f'{self._base_url}/team/{team_uuid}/wiki/spaces/{space_uuid}/pages/{page_uuid}')
+        version = detail.get('page', detail).get('version', 0)
+        payload: Dict[str, Any] = {'space_uuid': dst_space_uuid, 'version': version}
+        if dst_parent_uuid:
+            payload['parent_uuid'] = dst_parent_uuid
+        self._post(f'{self._base_url}/team/{team_uuid}/wiki/spaces/{space_uuid}/pages/{page_uuid}/update',
+                   json=payload)
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)
         if len(parts) < 3:

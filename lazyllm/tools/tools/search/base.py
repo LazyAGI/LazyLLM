@@ -35,6 +35,7 @@ def _make_result(title: str, url: str, snippet: str = '', source: str = '', **ex
 
 # TODO: add tests after key is ready
 class SearchBase(ModuleBase):
+    __public_apis__ = ['search', 'get_content', 'get_contents']
 
     def __init__(self, source_name: str = '', **kwargs):
         super().__init__(**kwargs)

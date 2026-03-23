@@ -128,6 +128,55 @@ class S3FS(LazyLLMFSBase):
             raise ValueError(f'invalid S3 path: {path!r}')
         self._s3_client.delete_object(Bucket=bucket, Key=key)
 
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        src_bucket, src_key = self._parse_s3_path(path1)
+        dst_bucket, dst_key = self._parse_s3_path(path2)
+        if not src_bucket or not dst_bucket:
+            raise ValueError(f'S3 path must include a bucket: {path1!r}, {path2!r}')
+        if src_key and not src_key.endswith('/'):
+            if not dst_key:
+                raise ValueError(f'Invalid S3 destination path: {path2!r}')
+            self._s3_client.copy_object(CopySource={'Bucket': src_bucket, 'Key': src_key},
+                                        Bucket=dst_bucket, Key=dst_key)
+            return
+        if not recursive:
+            raise ValueError(f'Cannot copy directory {path1} without recursive=True')
+        src_prefix = src_key.rstrip('/') + '/' if src_key else ''
+        dst_prefix = dst_key.rstrip('/') + '/' if dst_key else ''
+        paginator = self._s3_client.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=src_bucket, Prefix=src_prefix):
+            for obj in page.get('Contents', []):
+                rel = obj['Key'][len(src_prefix):]
+                self._s3_client.copy_object(CopySource={'Bucket': src_bucket, 'Key': obj['Key']},
+                                            Bucket=dst_bucket, Key=dst_prefix + rel)
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        src_bucket, src_key = self._parse_s3_path(path1)
+        dst_bucket, dst_key = self._parse_s3_path(path2)
+        if not src_bucket or not dst_bucket:
+            raise ValueError(f'S3 path must include a bucket: {path1!r}, {path2!r}')
+        if src_key and not src_key.endswith('/'):
+            if not dst_key:
+                raise ValueError(f'Invalid S3 destination path: {path2!r}')
+            self._s3_client.copy_object(CopySource={'Bucket': src_bucket, 'Key': src_key},
+                                        Bucket=dst_bucket, Key=dst_key)
+            self._s3_client.delete_object(Bucket=src_bucket, Key=src_key)
+            return
+        if not recursive:
+            raise ValueError(f'Cannot move directory {path1} without recursive=True')
+        src_prefix = src_key.rstrip('/') + '/' if src_key else ''
+        dst_prefix = dst_key.rstrip('/') + '/' if dst_key else ''
+        paginator = self._s3_client.get_paginator('list_objects_v2')
+        to_delete: List[str] = []
+        for page in paginator.paginate(Bucket=src_bucket, Prefix=src_prefix):
+            for obj in page.get('Contents', []):
+                rel = obj['Key'][len(src_prefix):]
+                self._s3_client.copy_object(CopySource={'Bucket': src_bucket, 'Key': obj['Key']},
+                                            Bucket=dst_bucket, Key=dst_prefix + rel)
+                to_delete.append(obj['Key'])
+        for key in to_delete:
+            self._s3_client.delete_object(Bucket=src_bucket, Key=key)
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         bucket, key = self._parse_s3_path(path)
         if not bucket or not key:

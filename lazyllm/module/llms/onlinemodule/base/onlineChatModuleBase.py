@@ -1,31 +1,20 @@
-import copy
 from itertools import groupby
 import json
 import os
 import requests
 import re
 import random
-from typing import Tuple, List, Dict, Union, Any, Optional, TypedDict
+from typing import Tuple, List, Dict, Union, Any, Optional
 from urllib.parse import urljoin
 import time
 from operator import itemgetter as itemget
 
 import lazyllm
 from lazyllm import globals, pipeline
-from lazyllm.components.prompter import PrompterBase
-from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ....servermodule import LLMBase
+from ....servermodule import LLMBase, StaticParams
 from .utils import LazyLLMOnlineBase
-
-class StaticParams(TypedDict, total=False):
-    temperature: float
-    top_p: float
-    top_k: int
-    max_tokens: int
-    frequency_penalty: float  # Note some online api use 'repetition_penalty'
-
 
 class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     TRAINABLE_MODEL_LIST = []
@@ -40,36 +29,18 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             if type is None: type = 'VLM'
             else: assert type == 'VLM', f'model_name {model_name} is a VLM model, but type is {type}'
         super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
-        LLMBase.__init__(self, stream=stream, type=type)
+        LLMBase.__init__(self, stream=stream, type=type, static_params=static_params)
         self.__base_url = base_url
         self._model_name = model_name
         self.trainable_models = self.TRAINABLE_MODEL_LIST
         self._is_trained = False
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
-        self._static_params = static_params or {}
-
-    @property
-    def static_params(self) -> StaticParams:
-        return self._static_params
-
-    @static_params.setter
-    def static_params(self, value: StaticParams):
-        if not isinstance(value, dict):
-            raise TypeError('static_params must be a dict (TypedDict)')
-        self._static_params = value
 
     def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
         super().prompt('' if prompt is None else prompt, history=history)
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
-
-    def share(self, prompt: Optional[Union[str, dict, PrompterBase]] = None, format: Optional[FormatterBase] = None,
-              stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None,
-              copy_static_params: bool = False):
-        new = super().share(prompt, format, stream, history)
-        if copy_static_params: new._static_params = copy.deepcopy(self._static_params)
-        return new
 
     def _get_system_prompt(self):
         raise NotImplementedError('_get_system_prompt is not implemented.')

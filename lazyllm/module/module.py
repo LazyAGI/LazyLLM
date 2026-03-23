@@ -281,14 +281,16 @@ class ModuleBase(metaclass=_MetaBind):
                     f'{k} cannot accept Option'
         return object.__new__(cls)
 
-    def __init__(self, *, return_trace=False):
+    def __init__(self, *, return_trace=False, id: Optional[str] = None, name: Optional[str] = None,
+                 group_id: Optional[str] = None):
         self._submodules = []
         self._evalset = None
         self._return_trace = return_trace
         self.mode_list = ('train', 'server', 'eval')
-        self._set_mid()
+        self._set_mid(id)
+        self._group_id = group_id
         self._used_by_moduleid = None
-        self._module_name = None
+        self._module_name = name
         self._options = []
         self.eval_result = None
         self._use_cache: Union[bool, str] = False
