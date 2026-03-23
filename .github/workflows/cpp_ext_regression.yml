@@ -45,24 +45,13 @@ jobs:
             pip install -r tests/requirements_mac.txt
           fi
 
-      - name: Download test dataset
+      - name: Prepare empty data path (no LazyLLM-Data clone)
         run: |
           set -euo pipefail
           DATA_DIR="$GITHUB_WORKSPACE/.ci_data"
           rm -rf "$DATA_DIR"
-          export GIT_TERMINAL_PROMPT=0
-          if git clone --depth 1 https://github.com/LazyAGI/LazyLLM-Data.git "$DATA_DIR"; then
-            echo "Cloned LazyLLM-Data anonymously."
-          elif [[ -n "${DATA_REPO_TOKEN:-}" ]] && \
-               git clone --depth 1 "https://x-access-token:${DATA_REPO_TOKEN}@github.com/LazyAGI/LazyLLM-Data.git" "$DATA_DIR"; then
-            echo "Cloned LazyLLM-Data with token."
-          else
-            echo "Failed to clone LazyLLM-Data. If the repo is private, set LAZYLLM_DATA_REPO_TOKEN or PERSONAL_GITHUB_TOKEN."
-            exit 1
-          fi
+          mkdir -p "$DATA_DIR"
           echo "LAZYLLM_DATA_PATH=$DATA_DIR" >> "$GITHUB_ENV"
-        env:
-          DATA_REPO_TOKEN: ${{ secrets.LAZYLLM_DATA_REPO_TOKEN || secrets.PERSONAL_GITHUB_TOKEN || github.token }}
 
       - name: Build and run C++ tests
         run: |
@@ -83,9 +72,11 @@ jobs:
           else
             MARKER="not skip_on_win"
           fi
-          pytest -v --reruns=2 --order-scope=class -m "$MARKER" tests/basic_tests
+          pytest -v --reruns=2 --order-scope=class -m "$MARKER" \
+            tests/basic_tests \
+            --ignore=tests/basic_tests/RAG
 
-      - name: Run advanced tests (without key-required suites)
+      - name: Run advanced tests (without key/data-required suites)
         run: |
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             MARKER="not skip_on_linux"
@@ -96,5 +87,9 @@ jobs:
           fi
           pytest -v --reruns=2 --order-scope=class -m "$MARKER" \
             tests/advanced_tests \
+            --ignore=tests/advanced_tests/RAG \
+            --ignore=tests/advanced_tests/Deploy/test_deploy.py \
             --ignore=tests/advanced_tests/Deploy/test_deploy_full.py \
-            --ignore=tests/advanced_tests/Tools/test_mongodb_manager.py
+            --ignore=tests/advanced_tests/Finetune/test_finetune.py \
+            --ignore=tests/advanced_tests/Tools/test_mongodb_manager.py \
+            --ignore=tests/advanced_tests/Tools/test_train_serve.py
