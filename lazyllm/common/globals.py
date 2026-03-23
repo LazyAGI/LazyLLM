@@ -128,7 +128,7 @@ class ThreadSafeDict(dict):
 
 class Globals(metaclass=SingletonABCMeta):
     __global_attrs__ = ThreadSafeDict(user_id=None, chat_history={}, global_parameters={},
-                                      lazyllm_files={}, usage={}, config={})
+                                      lazyllm_files={}, usage={}, config={}, call_stack=[])
 
     def __new__(cls, *args, **kw):
         if cls is not Globals: return super().__new__(cls)
@@ -208,6 +208,25 @@ class Globals(metaclass=SingletonABCMeta):
     @property
     def config(self):
         return global_config
+
+    def push_stack(self, module_id):
+        self['call_stack'] = self['call_stack'] + [module_id]
+
+    def pop_stack(self):
+        r = self['call_stack'][-1]
+        self['call_stack'] = self['call_stack'][:-1]
+        return r
+
+    def current_stack(self):
+        return self['call_stack'][-1] if self['call_stack'] else None
+
+    @contextmanager
+    def stack_enter(self, module_id):
+        self.push_stack(module_id)
+        try:
+            yield
+        finally:
+            self.pop_stack()
 
 class MemoryGlobals(Globals):
     def __init__(self):
@@ -352,7 +371,14 @@ class _GlobalConfig(object):
 
     def __getitem__(self, __key: str):
         assert __key in self._supported_configs, f'Config {__key} is not supported'
-        return globals['config'].get(__key) or config[__key]
+        if (cfg := globals['config']).get(__key):
+            if isinstance(cfg, dict):
+                for k in globals.current_stack():
+                    if k in cfg:
+                        return cfg[k]
+            else:
+                return config
+        return config[__key]
 
     def __setitem__(self, __key: str, __value: Any):
         assert __key in self._supported_configs, f'Config {__key} is not supported'
@@ -365,3 +391,39 @@ class _GlobalConfig(object):
 
 
 global_config = _GlobalConfig()
+
+
+# used as mixin, so we do not define this class with pydantic.
+class SessionConfigableBase(object):
+    def __init__(self, id: Optional[str] = None, name: Optional[str] = None, group_id: Optional[str] = None):
+        self._config_id = id or str(uuid.uuid4().hex)
+        self._name = name
+        self._group_id = group_id
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, name: str):
+        self._name = name
+
+    def set_name(self, name: str):
+        self.name = name
+        return self
+
+    @property
+    def group_id(self):
+        return self._group_id
+
+    @group_id.setter
+    def group_id(self, group_id: str):
+        self._group_id = group_id
+
+    def set_group_id(self, group_id: str):
+        self.group_id = group_id
+        return self
+
+    @property
+    def identities(self):
+        return [self._config_id, self._name, self._group_id]

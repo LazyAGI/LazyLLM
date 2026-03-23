@@ -100,7 +100,7 @@ class WebModule(ModuleBase):
         self.pool = lazyllm.ThreadPoolExecutor(max_workers=50)
         self.title = title
         self.port = port or range(20500, 20799)
-        components = sum([[([k._module_id, k._module_name] + list(v)) for v in vs]
+        components = sum([[([k._module_id, k.name] + list(v)) for v in vs]
                          for k, vs in components.items()], [])
         self.ckeys = [[c[0], c[2]] for c in components]
         if isinstance(m, (OnlineChatModule, TrainableModule)) and not history:
@@ -646,7 +646,7 @@ class WebModule(ModuleBase):
         return 'running' if self.url else 'waiting' if self.url is None else 'Cancelled'
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'Web', name=self._module_name, subs=[repr(self.m)])
+        return lazyllm.make_repr('Module', 'Web', name=self.name, subs=[repr(self.m)])
 
     def _find_can_use_network_port(self):
         for port in self.port:

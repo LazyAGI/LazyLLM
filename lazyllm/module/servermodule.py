@@ -239,7 +239,7 @@ class UrlModule(ModuleBase, LLMBase, _UrlHelper):
         return super(__class__, self).__call__(*args, **kw)
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'Url', name=self._module_name, url=self._url,
+        return lazyllm.make_repr('Module', 'Url', name=self.name, url=self._url,
                                  stream=self._stream, return_trace=self._return_trace)
 
 
@@ -349,5 +349,5 @@ class ServerModule(UrlModule):
                 return self._formatter(temp_output)
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
+        return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self.name,
                                  stream=self._stream, return_trace=self._return_trace)

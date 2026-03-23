@@ -308,7 +308,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         return output
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'OnlineChat', name=self._module_name, url=self._base_url,
+        return lazyllm.make_repr('Module', 'OnlineChat', name=self.name, url=self._base_url,
                                  stream=bool(self._stream), return_trace=self._return_trace)
 
 OnlineChatModuleBase = LazyLLMOnlineChatModuleBase
