@@ -26,9 +26,12 @@ class DocNode {
 public:
     using MetadataVType = lazyllm::MetadataVType;
     using Metadata = std::unordered_map<std::string, MetadataVType>;
+    using CopySource = std::unordered_map<std::string, std::string>;
     using Children = std::unordered_map<std::string, std::vector<PDocNode>>;
     using EmbeddingFun = std::function<std::vector<double>(const std::string&, const std::string&)>;
-    using EmbeddingVecs = std::unordered_map<std::string, std::vector<double>>;
+    using SparseEmbedding = std::unordered_map<int, double>;
+    using EmbeddingValue = std::variant<std::vector<double>, SparseEmbedding>;
+    using EmbeddingVecs = std::unordered_map<std::string, EmbeddingValue>;
 
     Metadata _metadata;
     std::shared_ptr<Metadata> _p_global_metadata;
@@ -37,18 +40,21 @@ public:
     double _relevance_score = .0;
     double _similarity_score = .0;
     std::string _group_name;
+    CopySource _copy_source = {};
 
 private:
     std::string_view _text_view;
     std::shared_ptr<std::string> _p_root_text = nullptr;
     std::vector<std::string> _root_texts = {};
     std::string _uid;
+    std::string _parent_uid;
     mutable size_t _text_hash = 0;
 
     std::set<std::string> _excluded_embed_metadata_keys;
     std::set<std::string> _excluded_llm_metadata_keys;
 
     const DocNode* _p_parent_node = nullptr;
+    std::shared_ptr<const DocNode> _sp_parent_node = nullptr;
     mutable Children _children;
     std::shared_ptr<const AdaptorBase> _p_store = nullptr;
 
@@ -63,6 +69,7 @@ public:
     ) :
         _group_name(group_name),
         _uid(uid.empty() ? GenerateUUID() : uid),
+        _parent_uid(p_parent_node ? p_parent_node->get_uid() : ""),
         _p_parent_node(p_parent_node),
         _metadata(metadata),
         _p_global_metadata(global_metadata)
@@ -126,17 +133,38 @@ public:
         return metadata_string + "\n\n" + std::string(_text_view);
     }
     void set_root_text(const std::string& text) {
+        _root_texts.clear();
         _p_root_text = std::make_shared<std::string>(text);
         set_text_view(*_p_root_text);
     }
     void set_root_text(std::string&& text) {
+        _root_texts.clear();
         _p_root_text = std::make_shared<std::string>(std::move(text));
         set_text_view(*_p_root_text);
     }
-    void set_root_texts(const std::vector<std::string>& texts) { set_root_text(JoinLines(texts)); }
+    void set_root_texts(const std::vector<std::string>& texts) {
+        _root_texts = texts;
+        _p_root_text = std::make_shared<std::string>(JoinLines(texts));
+        set_text_view(*_p_root_text);
+    }
+    const std::vector<std::string>& get_root_texts() const { return _root_texts; }
     size_t get_text_hash() const { return _text_hash; }
     const DocNode* get_parent_node() const { return _p_parent_node; }
-    void set_parent_node(const DocNode* p_parent_node) { _p_parent_node = p_parent_node; }
+    void set_parent_node(const DocNode* p_parent_node) {
+        _sp_parent_node.reset();
+        _p_parent_node = p_parent_node;
+        _parent_uid = p_parent_node ? p_parent_node->get_uid() : "";
+    }
+    void set_parent_node(const std::shared_ptr<const DocNode>& p_parent_node) {
+        _sp_parent_node = p_parent_node;
+        _p_parent_node = p_parent_node.get();
+        _parent_uid = p_parent_node ? p_parent_node->get_uid() : "";
+    }
+    void set_parent_uid(const std::string& parent_uid) {
+        _sp_parent_node.reset();
+        _p_parent_node = nullptr;
+        _parent_uid = parent_uid;
+    }
     Children get_children() const {
         if (!_children.empty()) return _children;
         if (_p_store == nullptr) return Children();
@@ -170,11 +198,16 @@ public:
         _excluded_llm_metadata_keys = keys;
     }
     std::string get_doc_path() const {
-        const auto& value = get_root_node()->_p_global_metadata->at(std::string(RAGMetadataKeys::DOC_PATH));
-        return std::get<std::string>(value);
+        if (!_p_global_metadata) return "";
+        const auto key = std::string(RAGMetadataKeys::DOC_PATH);
+        const auto it = _p_global_metadata->find(key);
+        if (it == _p_global_metadata->end()) return "";
+        if (const auto* path = std::get_if<std::string>(&it->second)) return *path;
+        return "";
     }
     void set_doc_path(const std::string& path) {
-        get_root_node()->_p_global_metadata->operator[](std::string(RAGMetadataKeys::DOC_PATH)) = path;
+        if (!_p_global_metadata) _p_global_metadata = std::make_shared<Metadata>();
+        _p_global_metadata->operator[](std::string(RAGMetadataKeys::DOC_PATH)) = path;
     }
     auto get_children_uid() const {
         auto children = get_children();
@@ -188,8 +221,8 @@ public:
     }
     std::string get_parent_uid() const {
         auto parent = get_parent_node();
-        if (parent == nullptr) return "";
-        return parent->get_uid();
+        if (parent != nullptr) return parent->get_uid();
+        return _parent_uid;
     }
     std::set<std::string> embedding_keys_undone(const std::set<std::string>& keys_done) const {
         if (keys_done.empty()) throw std::runtime_error("The ebmed_keys to be checked must be passed in.");;
@@ -206,6 +239,9 @@ public:
             _embedding_vecs[key] = func(get_text(MetadataMode::EMBED));
     }
     void set_embedding_vec(const std::string& key, const std::vector<double>& embedding_vec) {
+        _embedding_vecs[key] = embedding_vec;
+    }
+    void set_embedding_vec(const std::string& key, const SparseEmbedding& embedding_vec) {
         _embedding_vecs[key] = embedding_vec;
     }
 
