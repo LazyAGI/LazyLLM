@@ -75,4 +75,4 @@ jobs:
           else
             MARKER="not skip_on_win"
           fi
-          pytest -v --reruns=2 --order-scope=class -m "$MARKER" tests/basic_tests
+          pytest -v --order-scope=class -m "$MARKER" tests/basic_tests
