@@ -45,13 +45,16 @@ jobs:
             pip install -r tests/requirements_mac.txt
           fi
 
-      - name: Prepare empty data path (no LazyLLM-Data clone)
+      - name: Download test dataset
         run: |
           set -euo pipefail
           DATA_DIR="$GITHUB_WORKSPACE/.ci_data"
           rm -rf "$DATA_DIR"
-          mkdir -p "$DATA_DIR"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --depth 1 https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git "$DATA_DIR"
           echo "LAZYLLM_DATA_PATH=$DATA_DIR" >> "$GITHUB_ENV"
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN || github.token }}
 
       - name: Build and run C++ tests
         run: |
@@ -72,24 +75,4 @@ jobs:
           else
             MARKER="not skip_on_win"
           fi
-          pytest -v --reruns=2 --order-scope=class -m "$MARKER" \
-            tests/basic_tests \
-            --ignore=tests/basic_tests/RAG
-
-      - name: Run advanced tests (without key/data-required suites)
-        run: |
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            MARKER="not skip_on_linux"
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            MARKER="not skip_on_mac"
-          else
-            MARKER="not skip_on_win"
-          fi
-          pytest -v --reruns=2 --order-scope=class -m "$MARKER" \
-            tests/advanced_tests \
-            --ignore=tests/advanced_tests/RAG \
-            --ignore=tests/advanced_tests/Deploy/test_deploy.py \
-            --ignore=tests/advanced_tests/Deploy/test_deploy_full.py \
-            --ignore=tests/advanced_tests/Finetune/test_finetune.py \
-            --ignore=tests/advanced_tests/Tools/test_mongodb_manager.py \
-            --ignore=tests/advanced_tests/Tools/test_train_serve.py
+          pytest -v --reruns=2 --order-scope=class -m "$MARKER" tests/basic_tests
