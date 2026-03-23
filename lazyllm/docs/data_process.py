@@ -4434,6 +4434,7 @@ Args:
 
 add_example('data.pipelines.pt_data_ppl.build_structured_data_pipeline', """\
 ```python
+import lazyllm
 from lazyllm.tools.data.pipelines.pt_data_ppl import build_structured_data_pipeline
 
 llm = lazyllm.OnlineChatModule(source='openai', model='gpt-4')
@@ -7051,6 +7052,7 @@ Args:
 
 add_example('data.operators.pt_op.Text2Json', """\
 ```python
+import lazyllm
 from lazyllm.tools.data import pt
 
 llm = lazyllm.OnlineChatModule(source='openai', model='gpt-4')

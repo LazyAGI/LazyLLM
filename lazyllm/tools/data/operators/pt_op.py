@@ -534,7 +534,7 @@ class Text2Json(PT):
         if not text or not str(text).strip():
             return []
         try:
-            query = f'Text:\n{text}\n\nOutput structured data in JSON format.'
+            query = f'Text:\n{text}'
             out = self._extractor(query)
             if not isinstance(out, dict):
                 return []
