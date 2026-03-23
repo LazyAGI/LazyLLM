@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+import pytest
 
 from lazyllm import config
 from lazyllm.tools.data.pipelines.pt_text_ppl import (
@@ -110,7 +111,7 @@ class TestPretrainPipelines:
     def test_mm_pt_pipeline(self):
         ji = self._test_image_file('ji.jpg')
         if not os.path.exists(ji):
-            return
+            pytest.skip(f'Test image not found, skipping test: {ji}')
 
         ppl = build_mm_pt_pipeline(
             image_key='image_path',

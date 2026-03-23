@@ -66,13 +66,13 @@ def build_phi4_pt_pipeline(
         num_qa=5):
     with pipeline() as ppl:
         ppl.context_qual_filter = pt.ContextQualFilter(
-            llm=llm,
+            llm=llm.share(),
             context_key=context_key,
             image_key=image_key
         )
 
         ppl.phi4_qa_generator = pt.Phi4QAGenerator(
-            llm=llm,
+            llm=llm.share(),
             context_key=context_key,
             image_key=image_key,
             num_qa=num_qa

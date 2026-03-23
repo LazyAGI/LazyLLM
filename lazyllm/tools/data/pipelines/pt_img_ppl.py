@@ -32,7 +32,7 @@ def build_mm_pt_pipeline(
 
         if vlm is not None:
             ppl.text_relevance_filter = pt_mm.TextRelevanceFilter(
-                vlm=vlm,
+                vlm=vlm.share(),
                 image_key=image_key,
                 text_key=text_key,
                 threshold=relevance_threshold
