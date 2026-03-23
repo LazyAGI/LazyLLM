@@ -244,7 +244,7 @@ class _NamespaceConfig(object):
         return self._config._prefix
 
 
-config = _NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
+config = (_NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
                                 description='The default mode for LazyLLM.'
         ).add('repr_ml', bool, False, 'REPR_USE_ML', description='Whether to use Markup Language for repr.'
         ).add('repr_show_child', bool, False, 'REPR_SHOW_CHILD',
@@ -263,7 +263,22 @@ config = _NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Dis
               description='Whether to skip check keywords for deployment.'
         ).add('allow_internal_network', bool, False, 'ALLOW_INTERNAL_NETWORK',
               description='Whether to allow loading images from internal network addresses. '
-                          'Set to False for security in production environments.')
+                          'Set to False for security in production environments.'
+        ).add('trace_enabled', bool, True, 'TRACE_ENABLED',
+              description='Whether LazyLLM tracing is enabled by default.'
+        ).add('trace_backend', str, 'langfuse', 'TRACE_BACKEND',
+              description='The tracing backend used by LazyLLM.'
+        ).add('trace_content_enabled', bool, True, 'TRACE_CONTENT_ENABLED',
+              description='Whether tracing records basic input and output payloads by default.'
+        ).add('trace_service_name', str, 'lazyllm', 'TRACE_SERVICE_NAME',
+              description='The OpenTelemetry service name used by LazyLLM tracing.'
+        ).add('trace_langfuse_host', str, None, 'TRACE_LANGFUSE_HOST',
+              description='Langfuse host/base URL for tracing export.'
+        ).add('trace_langfuse_public_key', str, None, 'TRACE_LANGFUSE_PUBLIC_KEY',
+              description='Langfuse public key used by LazyLLM tracing.'
+        ).add('trace_langfuse_secret_key', str, None, 'TRACE_LANGFUSE_SECRET_KEY',
+              description='Langfuse secret key used by LazyLLM tracing.'
+        ))
 
 def refresh_config(key):
     if key in Config:

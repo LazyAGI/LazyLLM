@@ -126,7 +126,14 @@ class ThreadSafeDict(dict):
 
 
 class Globals(metaclass=SingletonABCMeta):
-    __global_attrs__ = ThreadSafeDict(user_id=None, chat_history={}, global_parameters={}, lazyllm_files={}, usage={})
+    __global_attrs__ = ThreadSafeDict(
+        user_id=None,
+        chat_history={},
+        global_parameters={},
+        lazyllm_files={},
+        usage={},
+        trace={},
+    )
 
     def __new__(cls, *args, **kw):
         if cls is not Globals: return super().__new__(cls)

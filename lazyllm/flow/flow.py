@@ -20,7 +20,7 @@ from typing import Union, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
-from ..hook import LazyLLMHook
+from ..hook import LazyLLMHook, LazyTracingHook, run_pre_hooks
 from itertools import repeat
 
 
@@ -151,6 +151,8 @@ class FlowBase(metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
+            if hasattr(value, '_module_id') and hasattr(value, 'name') and not value.name:
+                value.name = name
             if len(_get_flow_stack()) > 1 and not self._auto_registered:
                 super(__class__, self).__setattr__('_auto_registered', True)
                 locals = self._curr_frame.f_locals.copy()
@@ -216,35 +218,39 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
-        self._hooks = set()
+        self._builtin_hooks = [LazyTracingHook]
+        self._hooks = []
 
     def __call__(self, *args, **kw):
         hook_objs = []
-        for hook_type in self._hooks:
-            if isinstance(hook_type, LazyLLMHook):
-                hook_objs.append(hook_type)
-            else:
-                hook_objs.append(hook_type(self))
-            hook_objs[-1].pre_hook(*args, **kw)
-        output = self._run(args[0] if len(args) == 1 else package(args), **kw)
-        if self.post_action is not None: self.invoke(self.post_action, output)
-        if self._sync: self.wait()
-        r = self._post_process(output)
-        for hook_obj in hook_objs[::-1]:
-            hook_obj.post_hook(r)
-        for hook_obj in hook_objs:
-            hook_obj.report()
-        return r
+        run_pre_hooks(self, self._builtin_hooks, hook_objs, *args, raise_on_error=True, **kw)
+        run_pre_hooks(self, self._hooks, hook_objs, *args, raise_on_error=False, **kw)
+
+        try:
+            output = self._run(args[0] if len(args) == 1 else package(args), **kw)
+            if self.post_action is not None: self.invoke(self.post_action, output)
+            if self._sync: self.wait()
+            r = self._post_process(output)
+            for hook_obj in hook_objs[::-1]:
+                hook_obj.post_hook(r)
+            return r
+        except Exception as e:
+            for hook_obj in hook_objs[::-1]:
+                hook_obj.on_error(e)
+            raise
+        finally:
+            for hook_obj in hook_objs:
+                hook_obj.report()
 
     def register_hook(self, hook_type: LazyLLMHook):
-        self._hooks.add(hook_type)
+        self._hooks.append(hook_type)
 
     def unregister_hook(self, hook_type: LazyLLMHook):
         if hook_type in self._hooks:
             self._hooks.remove(hook_type)
 
     def clear_hooks(self):
-        self._hooks = set()
+        self._hooks = []
 
     def _post_process(self, output):
         return output
