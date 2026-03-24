@@ -1,5 +1,6 @@
 import os
 import re
+import random
 import hashlib
 from typing import Set, Optional
 from ..base_data import data_register
@@ -504,3 +505,89 @@ class Phi4QAGenerator(PT):
         except Exception as e:
             LOG.warning(f'Phi4 Q&A generation failed: {e}')
             return []
+
+
+class ContextExpansion(PT):
+    DEFAULT_PROMPT = (
+        'Expand the given context into a longer, more detailed document.\n'
+        'Requirements:\n'
+        '1. Keep the original meaning and factual content unchanged\n'
+        '2. Ensure the answer to the given question remains correct in the expanded text\n'
+        '3. Do NOT explicitly highlight or mark the answer\n'
+        '4. Add relevant background information, details, and narrative flow\n'
+        '5. Make the text more natural and coherent\n'
+        'Output the expanded context only, without any prefix or label.'
+    )
+
+    def __init__(self, llm, context_key='context', question_key='question', answer_key='answer',
+                 expanded_key='expanded_context', prompt: Optional[str] = None,
+                 _concurrency_mode='thread', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
+        if llm is None:
+            raise ValueError('ContextExpansion requires llm.')
+        self.context_key = context_key
+        self.question_key = question_key
+        self.answer_key = answer_key
+        self.expanded_key = expanded_key
+        self._expander = llm.share().prompt(prompt or self.DEFAULT_PROMPT)
+
+    def forward(self, data, **kwargs):
+        assert isinstance(data, dict)
+        context = data.get(self.context_key, '')
+        question = data.get(self.question_key, '')
+        answer = data.get(self.answer_key, '')
+        if not context or not question or not answer:
+            return []
+        try:
+            query = (
+                f'Context:\n{context}\n\n'
+                f'Question:\n{question}\n\n'
+                f'Answer:\n{answer}'
+            )
+            expanded = self._expander(query)
+            if not expanded or not isinstance(expanded, str):
+                return []
+            data[self.expanded_key] = expanded.strip()
+            return data
+        except Exception as e:
+            LOG.warning(f'Context expansion failed: {e}')
+            return []
+
+
+class ContextReconstruction(PT):
+    def __init__(self, context_key='expanded_context', question_key='question',
+                 answer_key='answer', num_distractors=3, passage_sep='\n\n',
+                 seed=None, **kwargs):
+        super().__init__(**kwargs)
+        self.context_key = context_key
+        self.question_key = question_key
+        self.answer_key = answer_key
+        self.num_distractors = num_distractors
+        self.passage_sep = passage_sep
+        self.seed = seed
+
+    def forward_batch_input(self, data, **kwargs):
+        assert isinstance(data, list)
+        rng = random.Random(self.seed)
+        results = []
+        for i, item in enumerate(data):
+            assert isinstance(item, dict)
+            positive_ctx = item.get(self.context_key, '')
+            question = item.get(self.question_key, '')
+            answer = item.get(self.answer_key, '')
+            if not positive_ctx or not question or not answer:
+                continue
+            other_ctxs = [
+                d.get(self.context_key, '') for j, d in enumerate(data)
+                if j != i and d.get(self.context_key, '')
+            ]
+            k = min(self.num_distractors, len(other_ctxs))
+            distractors = rng.sample(other_ctxs, k) if k > 0 else []
+            passages = [positive_ctx] + distractors
+            rng.shuffle(passages)
+            results.append({
+                'long_context': self.passage_sep.join(passages),
+                self.question_key: question,
+                self.answer_key: answer,
+            })
+        return results
