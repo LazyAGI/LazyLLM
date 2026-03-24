@@ -24,10 +24,9 @@ _dashscope_urls_initialized = False
 
 def _ensure_dashscope_urls_initialized() -> None:
     global _dashscope_urls_initialized
-    if _dashscope_urls_initialized:
-        return
-    dashscope.base_http_api_url = _dashscope_http_api_url
-    dashscope.base_websocket_api_url = _dashscope_websocket_api_url
+    if _dashscope_urls_initialized: return
+    dashscope.base_http_api_url = _DASHSCOPE_DEFAULT_HTTP_URL
+    dashscope.base_websocket_api_url = _DASHSCOPE_DEFAULT_WEBSOCKET_URL
     _dashscope_urls_initialized = True
 
 
