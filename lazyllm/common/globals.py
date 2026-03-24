@@ -371,13 +371,14 @@ class _GlobalConfig(object):
 
     def __getitem__(self, __key: str):
         assert __key in self._supported_configs, f'Config {__key} is not supported'
-        if (cfg := globals['config']).get(__key):
+        if (cfg := globals['config'].get(__key)):
             if isinstance(cfg, dict):
-                for k in globals.current_stack():
+                assert (stack := globals.current_stack()), 'Current stack is empty'
+                for k in stack + ['default']:
                     if k in cfg:
                         return cfg[k]
             else:
-                return config
+                return cfg
         return config[__key]
 
     def __setitem__(self, __key: str, __value: Any):

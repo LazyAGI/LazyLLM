@@ -1,5 +1,5 @@
 from ....module import ModuleBase
-from lazyllm import config, LazyLLMRegisterMetaClass
+from lazyllm import config, LazyLLMRegisterMetaClass, globals
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Optional, Union, List
 import random
@@ -28,9 +28,9 @@ def select_source_with_default_key(available_models, explicit_source: Optional[s
                    f'You can set one of those environment: {excepted}')
 
 
-def check_and_add_config(key, description):
+def check_and_add_config(key, description, cfg=config):
     if key.lower() not in config.get_all_configs():
-        config.add(key, str, '', f'{key.upper()}', description=description)
+        cfg.add(key, str, '', f'{key.upper()}', description=description)
 
 
 class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
@@ -70,13 +70,13 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         allowed = set(list(LLMType))
         config_type_dict = {
-            LLMType.CHAT: ('_model_name', 'The default model name for '),
-            LLMType.EMBED: ('_model_name', 'The default embed model name for '),
-            LLMType.RERANK: ('_model_name', 'The default rerank model name for '),
-            LLMType.MULTIMODAL_EMBED: ('_multimodal_embed_model_name', 'The default multimodal embed model name for '),
-            LLMType.STT: ('_stt_model_name', 'The default stt model name for '),
-            LLMType.TTS: ('_tts_model_name', 'The default tts model name for '),
-            LLMType.TEXT2IMAGE: ('_text2image_model_name', 'The default text2image model name for '),
+            LLMType.CHAT: ('', 'The default model name for '),
+            LLMType.EMBED: ('', 'The default embed model name for '),
+            LLMType.RERANK: ('', 'The default rerank model name for '),
+            LLMType.MULTIMODAL_EMBED: ('_multimodal_embed', 'The default multimodal embed model name for '),
+            LLMType.STT: ('_stt', 'The default stt model name for '),
+            LLMType.TTS: ('_tts', 'The default tts model name for '),
+            LLMType.TEXT2IMAGE: ('_text2image', 'The default text2image model name for '),
         }
 
         check_and_add_config(key='default_source', description='The default model source for online modules.')
@@ -94,9 +94,9 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             cls._model_series = supplier = name[:-len(subgroup)].lower()
 
             check_and_add_config(key=f'{supplier}_api_key',
-                                 description=f'The API key for {supplier}')
+                                 description=f'The API key for {supplier}', cfg=globals.config)
 
             if subgroup in config_type_dict:
                 key_suffix, description = config_type_dict[subgroup]
-                check_and_add_config(key=f'{supplier}{key_suffix}',
-                                     description=f'{description}{supplier}')
+                check_and_add_config(key=f'{supplier}{key_suffix}_model_name',
+                                     description=f'{description}{supplier}', cfg=globals.config)

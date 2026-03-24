@@ -13,7 +13,7 @@ from ..fileHandler import FileHandlerBase
 from ..base.utils import check_and_add_config
 
 
-check_and_add_config(key='sensenova_secret_key', description='The secret key for SenseNova.')
+check_and_add_config(key='sensenova_secret_key', description='The secret key for SenseNova.', cfg=lazyllm.globals.config)
 
 
 class _SenseNovaBase(object):
@@ -61,7 +61,7 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     VLM_MODEL_PREFIX = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
                         'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
 
-    def __init__(self, base_url: str = 'https://api.sensenova.cn/compatible-mode/v1/', model: str = 'SenseChat-5',
+    def __init__(self, base_url: str = 'https://api.sensenova.cn/compatible-mode/v1/', model: str = 'SenseNova-V6-5-Pro',
                  api_key: str = None, secret_key: str = None, stream: bool = True,
                  return_trace: bool = False, **kwargs):
         if secret_key and isinstance(api_key, (tuple, list)):
