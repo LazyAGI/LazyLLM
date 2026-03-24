@@ -116,7 +116,7 @@ Generate a report of the hook execution.
 This is an abstract method and must be implemented in subclasses.
 ''')
 
-add_chinese_doc('LazyTracingHook.__init__', '''\
+add_chinese_doc('LazyTracingHook', '''\
 为 flow 或 module 创建 tracing hook。
 
 该 hook 会在执行生命周期中创建、更新并结束对应的 tracing span。
@@ -125,7 +125,7 @@ Args:
     obj: 要进行 tracing 的 flow 或 module 对象。
 ''')
 
-add_english_doc('LazyTracingHook.__init__', '''\
+add_english_doc('LazyTracingHook', '''\
 Create a tracing hook for a flow or module object.
 
 This hook is responsible for creating, updating, and finishing the corresponding tracing span
