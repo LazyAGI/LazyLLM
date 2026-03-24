@@ -378,6 +378,7 @@ class QwenSTT(LazyLLMOnlineSTTModuleBase):
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference', **kwargs):
+        _ensure_dashscope_urls_initialized()
         if base_url and base_url != _DASHSCOPE_DEFAULT_HTTP_URL:
             LOG.warning('QwenSTT ignores `base_url`; use `set_dashscope_urls` instead.')
         if base_websocket_url and base_websocket_url != _DASHSCOPE_DEFAULT_WEBSOCKET_URL:
@@ -392,7 +393,6 @@ class QwenSTT(LazyLLMOnlineSTTModuleBase):
         )
 
     def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
-        _ensure_dashscope_urls_initialized()
         assert any(file.startswith('http') for file in files), 'QwenSTT only supports http file urls'
         if url and url != self._base_url:
             raise Exception('Qwen STT forward() does not support overriding the `url` parameter, please remove it.')
@@ -424,6 +424,7 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
                  **kwargs):
+        _ensure_dashscope_urls_initialized()
         if base_url and base_url != _DASHSCOPE_DEFAULT_HTTP_URL:
             LOG.warning('QwenText2Image ignores `base_url`; use `set_dashscope_urls` instead.')
         if base_websocket_url and base_websocket_url != _DASHSCOPE_DEFAULT_WEBSOCKET_URL:
@@ -432,7 +433,6 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
                          return_trace=return_trace, base_url=base_url, **kwargs)
 
     def _call_sync_text2image(self, call_params):
-        _ensure_dashscope_urls_initialized()
         task_response = dashscope.MultiModalConversation.call(**call_params)
         if task_response.status_code != HTTPStatus.OK:
             raise RuntimeError(
@@ -442,7 +442,6 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
         return task_response
 
     def _call_async_text2image(self, call_params):
-        _ensure_dashscope_urls_initialized()
         task_response = dashscope.ImageSynthesis.async_call(**call_params)
         if task_response.status_code != HTTPStatus.OK:
             raise RuntimeError(
@@ -611,6 +610,7 @@ class QwenTTS(LazyLLMOnlineTTSModuleBase):
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
                  **kwargs):
+        _ensure_dashscope_urls_initialized()
         if base_url and base_url != _DASHSCOPE_DEFAULT_HTTP_URL:
             LOG.warning('QwenTTS ignores `base_url`; use `set_dashscope_urls` instead.')
         if base_websocket_url and base_websocket_url != _DASHSCOPE_DEFAULT_WEBSOCKET_URL:
