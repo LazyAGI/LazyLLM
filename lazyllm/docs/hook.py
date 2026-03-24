@@ -85,6 +85,25 @@ Args:
     output: The return value of the monitored function.
 ''')
 
+add_chinese_doc('LazyLLMHook.on_error', '''\
+异常处理钩子，在被监控函数执行抛出异常时调用。
+
+默认实现为空操作，子类可以按需覆盖，用于记录错误状态、补充诊断信息或执行清理逻辑。
+
+Args:
+    exc: 被监控函数抛出的异常对象。
+''')
+
+add_english_doc('LazyLLMHook.on_error', '''\
+Error-handling hook, called when the monitored function raises an exception.
+
+The default implementation is a no-op. Subclasses can override it to record error status,
+attach diagnostic information, or perform cleanup.
+
+Args:
+    exc: The exception raised by the monitored function.
+''')
+
 add_chinese_doc('LazyLLMHook.report', '''\
 生成钩子的执行报告。
 
@@ -95,4 +114,42 @@ add_english_doc('LazyLLMHook.report', '''\
 Generate a report of the hook execution.
 
 This is an abstract method and must be implemented in subclasses.
+''')
+
+add_chinese_doc('LazyTracingHook.__init__', '''\
+为 flow 或 module 创建 tracing hook。
+
+该 hook 会在执行生命周期中创建、更新并结束对应的 tracing span。
+
+Args:
+    obj: 要进行 tracing 的 flow 或 module 对象。
+''')
+
+add_english_doc('LazyTracingHook.__init__', '''\
+Create a tracing hook for a flow or module object.
+
+This hook is responsible for creating, updating, and finishing the corresponding tracing span
+during the execution lifecycle.
+
+Args:
+    obj: The flow or module object to be traced.
+''')
+
+add_chinese_doc('LazyTracingHook.on_error', '''\
+在 tracing span 上记录异常状态。
+
+当被包裹的 flow 或 module 执行失败时，该方法会把异常信息写入当前 span。
+
+Args:
+    exc: 执行过程中抛出的异常对象。
+''')
+
+add_english_doc('LazyTracingHook.on_error', '''\
+Record the error state on the active tracing span.
+
+When the wrapped flow or module execution fails, this method writes the exception information
+to the current span.
+
+Args:
+    exc: The exception raised during execution.
 ''')
