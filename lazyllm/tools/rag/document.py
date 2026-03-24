@@ -23,6 +23,8 @@ import copy
 import functools
 import weakref
 
+_LOCAL_PYTHONPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
 
 class CallableDict(dict):
     def __call__(self, cls, *args, **kw):
@@ -81,7 +83,15 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 description=description, schema_extractor=schema_extractor)})
 
             if manager:
-                self._manager = DocServer(launcher=self._launcher, storage_dir=dataset_path, port=doc_server_port)
+                self._doc_processor = DocumentProcessor(launcher=self._launcher, pythonpath=_LOCAL_PYTHONPATH)
+                self._doc_processor.start()
+                self._manager = DocServer(
+                    launcher=self._launcher,
+                    storage_dir=dataset_path,
+                    port=doc_server_port,
+                    parser_url=self._doc_processor.url,
+                    pythonpath=_LOCAL_PYTHONPATH,
+                )
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
             if server: self._kbs = ServerModule(self._kbs, port=(None if isinstance(server, bool) else int(server)))
             self._global_metadata_desc = doc_fields

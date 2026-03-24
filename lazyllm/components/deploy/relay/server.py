@@ -1,15 +1,9 @@
-from lazyllm.common.utils import str2obj
-import uvicorn
 import argparse
 import os
 import sys
 import inspect
 import traceback
 from types import GeneratorType
-import lazyllm
-from lazyllm import kwargs, package, load_obj
-from lazyllm import FastapiApp, globals
-from lazyllm.common import _trim_traceback, _register_trim_module
 import time
 import pickle
 import codecs
@@ -18,9 +12,35 @@ import functools
 from functools import partial
 from typing import Callable
 
-from fastapi import FastAPI, Request
-from fastapi.responses import Response, StreamingResponse
-import requests
+
+def _inject_pythonpath(argv):
+    pythonpath = None
+    for index, arg in enumerate(argv):
+        if arg == '--pythonpath' and index + 1 < len(argv):
+            pythonpath = argv[index + 1]
+            break
+        if arg.startswith('--pythonpath='):
+            pythonpath = arg.split('=', 1)[1]
+            break
+    if pythonpath:
+        pythonpath = os.path.abspath(pythonpath)
+        if pythonpath in sys.path:
+            sys.path.remove(pythonpath)
+        sys.path.insert(0, pythonpath)
+
+
+_inject_pythonpath(sys.argv[1:])
+
+from lazyllm.common.utils import str2obj  # noqa: E402
+import uvicorn  # noqa: E402
+import lazyllm  # noqa: E402
+from lazyllm import kwargs, package, load_obj  # noqa: E402
+from lazyllm import FastapiApp, globals  # noqa: E402
+from lazyllm.common import _trim_traceback, _register_trim_module  # noqa: E402
+
+from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.responses import Response, StreamingResponse  # noqa: E402
+import requests  # noqa: E402
 
 # TODO(sunxiaoye): delete in the future
 lazyllm_module_dir = os.path.abspath(__file__)
@@ -43,7 +63,10 @@ parser.add_argument('--defined_pos', type=str, default=None, help='user defined 
 args = parser.parse_args()
 
 if args.pythonpath:
-    sys.path.append(args.pythonpath)
+    pythonpath = os.path.abspath(args.pythonpath)
+    if pythonpath in sys.path:
+        sys.path.remove(pythonpath)
+    sys.path.insert(0, pythonpath)
 
 func = load_obj(args.function)
 if args.before_function:

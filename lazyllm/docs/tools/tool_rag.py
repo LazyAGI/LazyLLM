@@ -5,6 +5,18 @@ from .. import utils
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools'))
 add_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools'))
 add_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools'))
+add_doc_service_chinese_doc = functools.partial(
+    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.rag.doc_service')
+)
+add_doc_service_english_doc = functools.partial(
+    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.rag.doc_service')
+)
+add_doc_service_base_chinese_doc = functools.partial(
+    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.rag.doc_service.base')
+)
+add_doc_service_base_english_doc = functools.partial(
+    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.rag.doc_service.base')
+)
 
 add_english_doc('Document', '''\
 Initialize a document management module with optional embedding, storage, and user interface.
@@ -14,17 +26,19 @@ The ``Document`` module provides a unified interface for managing document datas
 Args:
     dataset_path (Optional[str]): Path to the dataset directory. If not found, the system will attempt to locate it in ``lazyllm.config["data_path"]``.
     embed (Optional[Union[Callable, Dict[str, Callable]]]): Embedding function or mapping of embedding functions. When a dictionary is provided, keys are embedding names and values are embedding models.
-    manager (Union[bool, str], optional): Whether to enable the document manager. If ``True``, launches a manager service. If ``'ui'``, also enables the document management web UI. Defaults to ``False``.
+    create_ui (bool, optional): Deprecated alias of ``manager`` kept for compatibility.
+    manager (Union[bool, str], optional): Whether to enable the document manager. If ``True``, launches ``DocServer`` together with a local parsing service. If ``'ui'``, also enables the document management web UI.
     server (Union[bool, int], optional): Whether to run a server interface for knowledge bases. ``True`` enables a default server, an integer specifies a custom port, and ``False`` disables it. Defaults to ``False``.
     name (Optional[str]): Name identifier for this document collection. Defaults to the system default name.
     launcher (Optional[Launcher]): Launcher instance for managing server processes. Defaults to a remote asynchronous launcher.
-    store_conf (Optional[Dict]): Storage configuration. Defaults to in-memory MapStore.
-    doc_fields (Optional[Dict[str, DocField]]): Metadata field configuration for storing and retrieving document attributes.
-    cloud (bool): Whether the dataset is stored in the cloud. Defaults to ``False``.
     doc_files (Optional[List[str]]): Temporary document files. When used, ``dataset_path`` must be ``None``. Only MapStore is supported in this mode.
-    processor (Optional[DocumentProcessor]): Document processing service.
+    doc_fields (Optional[Dict[str, DocField]]): Metadata field configuration for storing and retrieving document attributes.
+    store_conf (Optional[Dict]): Storage configuration. Defaults to in-memory MapStore.
     display_name (Optional[str]): Human-readable display name for this document module. Defaults to the collection name.
     description (Optional[str]): Description of the document collection. Defaults to ``"algorithm description"``.
+    schema_extractor (Optional[Union[LLMBase, SchemaExtractor]]): Optional schema extractor used for metadata schema analysis and registration.
+    doc_server_port (Optional[int]): Explicit local port for ``DocServer`` when ``manager`` is enabled.
+    enable_path_monitoring (Optional[bool]): Whether to watch the local dataset path for file additions and removals. Defaults to enabled for local documents without manager mode.
 ''')
 
 add_chinese_doc('Document', '''\
@@ -35,17 +49,153 @@ add_chinese_doc('Document', '''\
 Args:
     dataset_path (Optional[str]): 数据集目录路径。如果路径不存在，系统会尝试在 ``lazyllm.config["data_path"]`` 中查找。
     embed (Optional[Union[Callable, Dict[str, Callable]]]): 文档向量化函数或函数字典。若为字典，键为 embedding 名称，值为对应的模型。
-    manager (Union[bool, str], optional): 是否启用文档管理服务。``True`` 表示启动管理服务；``'ui'`` 表示同时启动 Web 管理界面；默认 ``False``。
+    create_ui (bool, optional): ``manager`` 的兼容别名，已废弃。
+    manager (Union[bool, str], optional): 是否启用文档管理服务。``True`` 表示启动 ``DocServer`` 及其本地 parsing service；``'ui'`` 表示同时启动 Web 管理界面。
     server (Union[bool, int], optional): 是否为知识库运行服务接口。``True`` 表示启动默认服务；整型数值表示自定义端口；``False`` 表示关闭。默认为 ``False``。
     name (Optional[str]): 文档集合的名称标识符。默认为系统默认名称。
     launcher (Optional[Launcher]): 启动器实例，用于管理服务进程。默认使用远程异步启动器。
-    store_conf (Optional[Dict]): 存储配置。默认使用内存中的 MapStore。
-    doc_fields (Optional[Dict[str, DocField]]): 元数据字段配置，用于存储和检索文档属性。
-    cloud (bool): 是否为云端数据集。默认为 ``False``。
     doc_files (Optional[List[str]]): 临时文档文件列表。当使用此参数时，``dataset_path`` 必须为 ``None``，且仅支持 MapStore。
-    processor (Optional[DocumentProcessor]): 文档处理服务。
+    doc_fields (Optional[Dict[str, DocField]]): 元数据字段配置，用于存储和检索文档属性。
+    store_conf (Optional[Dict]): 存储配置。默认使用内存中的 MapStore。
     display_name (Optional[str]): 文档模块的可读显示名称。默认为集合名称。
     description (Optional[str]): 文档集合的描述。默认为 ``"algorithm description"``。
+    schema_extractor (Optional[Union[LLMBase, SchemaExtractor]]): 可选 schema extractor，用于元数据 schema 分析与注册。
+    doc_server_port (Optional[int]): ``manager`` 启用时 ``DocServer`` 使用的本地端口。
+    enable_path_monitoring (Optional[bool]): 是否监控本地数据目录的文件新增和删除。对非 manager 的本地文档默认开启。
+''')
+
+add_doc_service_english_doc('DocServer', '''\
+Primary entry point of the refactored document service.
+
+``DocServer`` manages document upload/add/reparse/delete flows, task tracking, knowledge-base management,
+chunk inspection, and cross-kb transfer. It is the recommended replacement for the legacy ``DocManager`` /
+``DocListManager`` APIs.
+
+Args:
+    port (Optional[int]): Local service port when starting an in-process server.
+    url (Optional[str]): Existing doc_service URL. When provided, the instance works as a remote client.
+    parser_url (Optional[str]): Parsing service URL used by the local doc_service instance.
+    db_config (Optional[Dict[str, Any]]): Metadata database configuration for doc_service.
+    parser_db_config (Optional[Dict[str, Any]]): Parsing task database configuration for the parsing service.
+    parser_poll_interval (float): Poll interval used by local parser coordination.
+    storage_dir (Optional[str]): Local storage directory for uploaded files.
+    callback_url (Optional[str]): Callback URL used to receive parsing task updates.
+    launcher: Launcher used to start local services.
+''')
+
+add_doc_service_chinese_doc('DocServer', '''\
+重构后文档服务的主入口。
+
+``DocServer`` 负责文档上传/添加/重解析/删除、任务跟踪、知识库管理、chunk 查看，以及跨知识库文档转移。
+它是 legacy ``DocManager`` / ``DocListManager`` API 的推荐替代方案。
+
+Args:
+    port (Optional[int]): 本地启动服务时使用的端口。
+    url (Optional[str]): 已存在的 doc_service 地址；提供后当前实例作为远程客户端使用。
+    parser_url (Optional[str]): 本地 doc_service 使用的 parsing service 地址。
+    db_config (Optional[Dict[str, Any]]): doc_service 元数据数据库配置。
+    parser_db_config (Optional[Dict[str, Any]]): parsing service 任务数据库配置。
+    parser_poll_interval (float): 本地解析协调使用的轮询间隔。
+    storage_dir (Optional[str]): 上传文件保存目录。
+    callback_url (Optional[str]): 接收解析任务回调的地址。
+    launcher: 本地服务启动器。
+''')
+
+add_doc_service_english_doc('DocServer.list_chunks', '''\
+List parsed chunks for a document through the ``/v1/chunks`` endpoint.
+
+Args:
+    kb_id (str): Knowledge-base ID.
+    doc_id (str): Source document ID.
+    group (str): Node group name to inspect.
+    algo_id (str): Algorithm ID.
+    page (int): 1-based page number.
+    page_size (int): Number of chunks per page.
+    offset (Optional[int]): Explicit offset. When omitted, the service derives it from ``page`` and ``page_size``.
+
+Returns:
+    Paginated chunk data including ``items`` and ``total``.
+''')
+
+add_doc_service_chinese_doc('DocServer.list_chunks', '''\
+通过 ``/v1/chunks`` 接口分页查看文档的解析 chunk。
+
+Args:
+    kb_id (str): 知识库 ID。
+    doc_id (str): 文档 ID。
+    group (str): 要查看的节点组名。
+    algo_id (str): 算法 ID。
+    page (int): 从 1 开始的页码。
+    page_size (int): 每页 chunk 数量。
+    offset (Optional[int]): 显式偏移量；未传时服务端会根据 ``page`` 和 ``page_size`` 推导。
+
+Returns:
+    包含 ``items`` 与 ``total`` 的分页结果。
+''')
+
+add_doc_service_english_doc('DocServer.transfer', '''\
+Transfer parsed documents between knowledge bases under the same algorithm.
+
+The request body is a ``TransferRequest``. Each transfer item must provide a unique ``target_doc_id`` in the target
+knowledge base. Transfer across different algorithms is not supported. Optional ``target_filename`` and
+``target_file_path`` can override the destination file name/path recorded for the transferred document.
+''')
+
+add_doc_service_chinese_doc('DocServer.transfer', '''\
+在同一算法下的不同知识库之间转移已解析文档。
+
+请求体为 ``TransferRequest``。每个转移项都必须在目标知识库中提供唯一的 ``target_doc_id``。
+当前不支持跨算法 transfer。可选字段 ``target_filename`` 与 ``target_file_path`` 用于覆盖目标文档记录的文件名或文件路径。
+''')
+
+add_doc_service_base_english_doc('TransferItem', '''\
+Single item in a document transfer request.
+
+Args:
+    doc_id (str): Source document ID.
+    target_doc_id (str): Required destination document ID. Must be unique in the target knowledge base.
+    source_kb_id (str): Source knowledge-base ID.
+    source_algo_id (str): Source algorithm ID.
+    target_kb_id (str): Destination knowledge-base ID.
+    target_algo_id (str): Destination algorithm ID.
+    target_metadata (Optional[Dict[str, Any]]): Metadata patch applied on top of the source document metadata for the transferred target document.
+    target_filename (Optional[str]): Target file name override.
+    target_file_path (Optional[str]): Target file path override. If set together with ``target_filename``, both must
+        point to the same basename.
+    mode (str): Transfer mode. Supports ``copy`` and ``move``.
+''')
+
+add_doc_service_base_chinese_doc('TransferItem', '''\
+文档转移请求中的单个条目。
+
+Args:
+    doc_id (str): 源文档 ID。
+    target_doc_id (str): 必填的目标文档 ID，在目标知识库中必须唯一。
+    source_kb_id (str): 源知识库 ID。
+    source_algo_id (str): 源算法 ID。
+    target_kb_id (str): 目标知识库 ID。
+    target_algo_id (str): 目标算法 ID。
+    target_metadata (Optional[Dict[str, Any]]): 基于源文档 metadata 做继承后，再覆盖写入目标文档的 metadata patch。
+    target_filename (Optional[str]): 目标文件名覆盖值。
+    target_file_path (Optional[str]): 目标文件路径覆盖值；若与 ``target_filename`` 同时传入，二者 basename
+        必须一致。
+    mode (str): 转移模式，支持 ``copy`` 与 ``move``。
+''')
+
+add_doc_service_base_english_doc('TransferRequest', '''\
+Batch transfer request for ``DocServer.transfer``.
+
+Args:
+    items (List[TransferItem]): Transfer items to execute.
+    idempotency_key (Optional[str]): Optional idempotency key for safe retries.
+''')
+
+add_doc_service_base_chinese_doc('TransferRequest', '''\
+``DocServer.transfer`` 使用的批量转移请求。
+
+Args:
+    items (List[TransferItem]): 要执行的转移条目列表。
+    idempotency_key (Optional[str]): 可选幂等键，用于安全重试。
 ''')
 
 add_example('Document', '''\

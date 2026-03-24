@@ -5,8 +5,6 @@ from graphlib import CycleError, TopologicalSorter
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
-from itertools import repeat
-
 from lazyllm import LOG
 
 from ..data_loaders import DirectoryReader

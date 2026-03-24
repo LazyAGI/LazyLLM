@@ -6,11 +6,13 @@ from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
+import lazyllm.tools.rag.document as document_module
 from lazyllm.tools.rag.utils import gen_docid
 from lazyllm.launcher import cleanup
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import unittest
 import os
+import shutil
 import time
 import tempfile
 
@@ -154,11 +156,30 @@ class TestDocument(unittest.TestCase):
     def tearDownClass(cls):
         cleanup()
 
+    def setUp(self):
+        self._temp_dirs = []
+
+    def tearDown(self):
+        for temp_dir in self._temp_dirs:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _build_dataset(self, text: str = None) -> str:
+        temp_dir = tempfile.mkdtemp(prefix='lazyllm_document_')
+        self._temp_dirs.append(temp_dir)
+        file_path = os.path.join(temp_dir, 'rag.txt')
+        with open(file_path, 'w', encoding='utf-8') as file:
+            file.write(text or '\n'.join(
+                f'第{i}段：何为天道？人法地，地法天，天法道，道法自然。什么是道？道可道，非常道。'
+                for i in range(1, 241)
+            ))
+        return temp_dir
+
     def test_register_global_and_local(self):
         Document.create_node_group('Chunk1', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
         Document.create_node_group('Chunk2', transform=TransformArgs(
             f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
-        doc1, doc2 = Document('rag_master'), Document('rag_master')
+        dataset_path = self._build_dataset()
+        doc1, doc2 = Document(dataset_path), Document(dataset_path)
         doc2.create_node_group('Chunk2', transform=dict(
             f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=10)))
         doc2.create_node_group('Chunk3', trans_node=True,
@@ -186,8 +207,9 @@ class TestDocument(unittest.TestCase):
         assert isinstance(r[0], DocNode)
 
     def test_create_document(self):
-        Document('rag_master')
-        Document('rag_master/')
+        dataset_path = self._build_dataset()
+        Document(dataset_path)
+        Document(dataset_path + os.sep)
 
     def test_register_with_pattern(self):
         Document.create_node_group('AdaptiveChunk1', transform=[
@@ -197,7 +219,7 @@ class TestDocument(unittest.TestCase):
             dict(f=SentenceSplitter, pattern=(lambda x: x.endswith('.txt')),
                  kwargs=dict(chunk_size=512, chunk_overlap=50)),
             TransformArgs(f=SentenceSplitter, pattern=None, kwargs=dict(chunk_size=256, chunk_overlap=25))]))
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         doc._impl._lazy_init()
         retriever = Retriever(doc, 'AdaptiveChunk1', similarity='bm25', topk=2)
         retriever('什么是道')
@@ -205,7 +227,7 @@ class TestDocument(unittest.TestCase):
         retriever('什么是道')
 
     def test_create_node_group_with_ref(self):
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         # Create parent node group
         doc.create_node_group('parent_chunk', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
         # Create ref node group under parent
@@ -230,7 +252,7 @@ class TestDocument(unittest.TestCase):
         assert 'doc_test_ref' in ref_nodes[0].text
 
     def test_create_node_group_with_invalid_ref(self):
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         # Create two independent node groups
         doc.create_node_group('group_a', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
         doc.create_node_group('group_b', transform=SentenceSplitter, chunk_size=256, chunk_overlap=25)
@@ -251,7 +273,7 @@ class TestDocument(unittest.TestCase):
         # root --- CoarseChunk <           /- chunk21
         #      \                \- chunk2 <
         #       \- FineChunk               \- chunk22
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         doc.create_node_group('chunk1', parent=Document.CoarseChunk,
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
         doc.create_node_group('chunk11', parent='chunk1',
@@ -276,22 +298,48 @@ class TestDocument(unittest.TestCase):
             _test_impl(group, target)
 
     def test_doc_web_module(self):
-        import time
-        import requests
-        doc = Document('rag_master', manager='ui')
-        doc.create_kb_group(name='test_group')
-        doc2 = Document('rag_master', manager=doc.manager, name='test_group2')
-        doc.start()
-        time.sleep(4)
-        url = doc._manager._docweb.url
-        response = requests.get(url)
-        assert response.status_code == 200
-        assert doc2._curr_group == 'test_group2'
-        assert doc2.manager == doc.manager
-        doc.stop()
+        dataset_path = self._build_dataset()
+        doc = Document(dataset_path, manager='ui')
+        try:
+            doc.create_kb_group(name='test_group')
+            doc2 = Document(dataset_path, manager=doc.manager, name='test_group2')
+            assert hasattr(doc._manager, '_docweb')
+            assert doc2._curr_group == 'test_group2'
+            assert doc2.manager == doc.manager
+        finally:
+            doc.stop()
+
+    def test_doc_web_module_uses_workspace_pythonpath(self):
+        dataset_path = self._build_dataset()
+        calls = {}
+
+        class FakeDocumentProcessor:
+            def __init__(self, *args, **kwargs):
+                calls['processor_pythonpath'] = kwargs.get('pythonpath')
+                self.url = 'http://127.0.0.1:19001/generate'
+
+            def start(self):
+                calls['processor_started'] = True
+
+        class FakeDocServer:
+            def __init__(self, *args, **kwargs):
+                calls['doc_server_pythonpath'] = kwargs.get('pythonpath')
+                calls['parser_url'] = kwargs.get('parser_url')
+                self._url = 'http://127.0.0.1:19002/generate'
+
+        with patch('lazyllm.tools.rag.document.DocumentProcessor', FakeDocumentProcessor), \
+                patch('lazyllm.tools.rag.document.DocServer', FakeDocServer):
+            doc = Document(dataset_path, manager='ui')
+            try:
+                assert calls['processor_started'] is True
+                assert calls['processor_pythonpath'] == document_module._LOCAL_PYTHONPATH
+                assert calls['doc_server_pythonpath'] == document_module._LOCAL_PYTHONPATH
+                assert calls['parser_url'] == 'http://127.0.0.1:19001/generate'
+            finally:
+                doc.stop()
 
     def test_get_nodes(self):
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         doc.create_node_group('chunk1', parent=Document.CoarseChunk,
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
         doc.activate_groups(groups=['chunk1'])
@@ -301,7 +349,7 @@ class TestDocument(unittest.TestCase):
             assert n.number == 2
 
     def test_get_window_nodes(self):
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         doc.create_node_group('chunk1', parent=Document.CoarseChunk,
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
         doc.activate_groups(groups=['chunk1'])

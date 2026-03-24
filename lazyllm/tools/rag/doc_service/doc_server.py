@@ -599,6 +599,7 @@ class DocServer(ModuleBase):
         parser_poll_interval: float = 0.05,
         storage_dir: Optional[str] = None,
         callback_url: Optional[str] = None,
+        pythonpath: Optional[str] = None,
         launcher=None,
     ):
         super().__init__()
@@ -619,7 +620,7 @@ class DocServer(ModuleBase):
                 parser_url=parser_url,
                 callback_url=callback_url,
             )
-            self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher)
+            self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher, pythonpath=pythonpath)
 
     @staticmethod
     def _register_openapi_routes(openapi_app: 'fastapi.FastAPI', impl: 'DocServer._Impl'):

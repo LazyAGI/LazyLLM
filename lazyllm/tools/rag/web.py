@@ -240,10 +240,11 @@ class DocWebModule(ModuleBase):
         self.demo.block_thread()
 
     def stop(self):
-        if self.demo:
-            self.demo.close()
+        demo = self.__dict__.get('demo')
+        if demo:
+            demo.close()
             del self.demo
-            self.demo, self.url = None, ''
+        self.url = ''
 
     def _find_can_use_network_port(self):
         for port in self.port:
