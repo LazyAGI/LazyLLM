@@ -1,9 +1,8 @@
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestMinimaxChatDefaults:
-    """Unit tests for MinimaxChat default configuration."""
+    '''Unit tests for MinimaxChat default configuration.'''
 
     def test_default_base_url(self):
         import inspect
@@ -19,7 +18,7 @@ class TestMinimaxChatDefaults:
 
 
 class TestMinimaxText2ImageDefaults:
-    """Unit tests for MinimaxText2Image default configuration."""
+    '''Unit tests for MinimaxText2Image default configuration.'''
 
     def test_default_url(self):
         from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxText2Image
@@ -33,7 +32,7 @@ class TestMinimaxText2ImageDefaults:
 
 
 class TestMinimaxTTSDefaults:
-    """Unit tests for MinimaxTTS default configuration."""
+    '''Unit tests for MinimaxTTS default configuration.'''
 
     def test_default_base_url(self):
         from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxTTS
@@ -47,7 +46,7 @@ class TestMinimaxTTSDefaults:
 
 
 class TestMinimaxEmbedDefaults:
-    """Unit tests for MinimaxEmbed default configuration."""
+    '''Unit tests for MinimaxEmbed default configuration.'''
 
     def test_default_embed_url(self):
         from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxEmbed
@@ -63,7 +62,7 @@ class TestMinimaxEmbedDefaults:
 
 
 class TestMinimaxEmbedDataFormat:
-    """Unit tests for MinimaxEmbed custom data encapsulation and parsing."""
+    '''Unit tests for MinimaxEmbed custom data encapsulation and parsing.'''
 
     def _make_embed(self):
         from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxEmbed
@@ -122,12 +121,12 @@ class TestMinimaxEmbedDataFormat:
 
 
 class TestMinimaxModelMapping:
-    """Unit tests for MiniMax model type classification."""
+    '''Unit tests for MiniMax model type classification.'''
 
     def test_minimax_llm_models(self):
         from lazyllm.module.llms.onlinemodule.map_model_type import get_model_type
         for model in ['minimax-m2.7', 'minimax-m2.7-highspeed', 'minimax-m2.5',
-                       'minimax-m2.5-highspeed', 'minimax-m2.1', 'minimax-m2', 'minimax-m1']:
+                      'minimax-m2.5-highspeed', 'minimax-m2.1', 'minimax-m2', 'minimax-m1']:
             assert get_model_type(model) == 'llm', f'{model} should be classified as llm'
 
     def test_minimax_image_model(self):

@@ -3017,8 +3017,8 @@ Minimax 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
 提供基于 Minimax 平台的大语言模型对话能力。
 
 Args:
-    base_url (str, optional): API 基础地址，默认为 "https://api.minimaxi.com/v1/"
-    model (str, optional): 使用的模型名称，默认为 "MiniMax-M2"
+    base_url (str, optional): API 基础地址，默认为 "https://api.minimax.io/v1/"
+    model (str, optional): 使用的模型名称，默认为 "MiniMax-M2.7"
     api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['minimax_api_key'] 中读取
     stream (bool, optional): 是否启用流式输出，默认为 True；启用时会自动设置请求参数
     return_trace (bool, optional): 是否返回追踪信息，默认为 False
@@ -3031,8 +3031,8 @@ Minimax module, inheriting from OnlineChatModuleBase and FileHandlerBase.
 Provides large language model chat capabilities based on the Minimax platform.
 
 Args:
-    base_url (str, optional): Base API URL, defaults to "https://api.minimaxi.com/v1/"
-    model (str, optional): Model name to use, defaults to "MiniMax-M2"
+    base_url (str, optional): Base API URL, defaults to "https://api.minimax.io/v1/"
+    model (str, optional): Model name to use, defaults to "MiniMax-M2.7"
     api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
     stream (bool, optional): Whether to enable streaming output, defaults to True; automatically configures request parameters when enabled
     return_trace (bool, optional): Whether to return trace information, defaults to False
@@ -3040,55 +3040,83 @@ Args:
 """)
 
 add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxText2Image', """\
-Minimax 文生图模块，继承自 OnlineMultiModalBase。
+Minimax 文生图模块，继承自 LazyLLMOnlineText2ImageModuleBase。
 
 提供基于 Minimax 平台的文本生成图像功能，支持根据文本描述生成图像。
 
 Args:
     api_key (str, optional): API 密钥，默认为配置项 lazyllm.config['minimax_api_key']
-    model_name (str, optional): 模型名称，默认为 "image-01"
-    base_url (str, optional): API 基础地址，默认为 "https://api.minimaxi.com/v1/"
+    model (str, optional): 模型名称，默认为 "image-01"
+    url (str, optional): API 基础地址，默认为 "https://api.minimax.io/v1/"
     return_trace (bool, optional): 是否返回追踪信息，默认为 False
     **kwargs: 其他传递给父类的可选参数
 """)
 
 add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxText2Image', """\
-Minimax text-to-image module, inheriting from OnlineMultiModalBase.
+Minimax text-to-image module, inheriting from LazyLLMOnlineText2ImageModuleBase.
 
 Provides text-to-image generation functionality based on Minimax, supports generating images from text descriptions.
 
 Args:
     api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
-    model_name (str, optional): Model name, defaults to "image-01"
-    base_url (str, optional): Base API URL, defaults to "https://api.minimaxi.com/v1/"
+    model (str, optional): Model name, defaults to "image-01"
+    url (str, optional): Base API URL, defaults to "https://api.minimax.io/v1/"
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Additional optional parameters passed to the parent classes
 """)
 
 add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxTTS', """\
-Minimax 文本转语音模块，继承自 OnlineMultiModalBase。
+Minimax 文本转语音模块，继承自 LazyLLMOnlineTTSModuleBase。
 
 提供基于 Minimax 平台的文本转语音(TTS)功能，支持将文本转换为音频文件。
 
 Args:
     api_key (str, optional): API 密钥，默认为配置项 lazyllm.config['minimax_api_key']
-    model_name (str, optional): 模型名称，默认为 "speech-2.6-hd"
-    base_url (str, optional): API 基础地址，默认为 "https://api.minimaxi.com/v1/"
+    model_name (str, optional): 模型名称，默认为 "speech-2.8-hd"
+    base_url (str, optional): API 基础地址，默认为 "https://api.minimax.io/v1/"
     return_trace (bool, optional): 是否返回追踪信息，默认为 False
     **kwargs: 其他传递给父类的可选参数
 """)
 
 add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxTTS', """\
-Minimax text-to-speech module, inheriting from OnlineMultiModalBase.
+Minimax text-to-speech module, inheriting from LazyLLMOnlineTTSModuleBase.
 
 Provides text-to-speech (TTS) functionality based on Minimax, supports converting text to audio files.
 
 Args:
     api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
-    model_name (str, optional): Model name, defaults to "speech-2.6-hd"
-    base_url (str, optional): Base API URL, defaults to "https://api.minimaxi.com/v1/"
+    model_name (str, optional): Model name, defaults to "speech-2.8-hd"
+    base_url (str, optional): Base API URL, defaults to "https://api.minimax.io/v1/"
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Additional optional parameters passed to the parent classes
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxEmbed', """\
+Minimax 在线文本嵌入模块，继承自 LazyLLMOnlineEmbedModuleBase。
+
+提供基于 Minimax 平台的文本嵌入功能，使用 embo-01 模型将文本转换为向量表示。
+支持单条和批量文本嵌入，使用 Minimax 原生嵌入 API（非 OpenAI 兼容格式）。
+
+Args:
+    embed_url (str, optional): 嵌入 API 地址，默认为 "https://api.minimax.io/v1/embeddings"
+    embed_model_name (str, optional): 嵌入模型名称，默认为 "embo-01"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['minimax_api_key'] 中读取
+    batch_size (int, optional): 批量处理大小，默认为 16
+    **kw: 其他传递给父类的可选参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxEmbed', """\
+Minimax online text embedding module, inheriting from LazyLLMOnlineEmbedModuleBase.
+
+Provides text embedding functionality based on the Minimax platform, using the embo-01 model to convert text into vector representations.
+Supports single and batch text embedding, using the Minimax native embedding API (non-OpenAI compatible format).
+
+Args:
+    embed_url (str, optional): Embedding API URL, defaults to "https://api.minimax.io/v1/embeddings"
+    embed_model_name (str, optional): Embedding model name, defaults to "embo-01"
+    api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
+    batch_size (int, optional): Batch processing size, defaults to 16
+    **kw: Additional optional parameters passed to the parent classes
 """)
 
 add_chinese_doc('llms.onlinemodule.supplier.aiping.AipingChat', '''\
