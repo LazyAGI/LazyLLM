@@ -21,7 +21,7 @@ class LazyLLMHook(ABC):
         pass
 
     def on_error(self, exc):
-        pass
+        return None
 
     def report(self):  # This is not an abstract method, but it is required to be implemented in subclasses.
         raise NotImplementedError

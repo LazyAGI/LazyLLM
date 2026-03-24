@@ -245,7 +245,7 @@ class _NamespaceConfig(object):
 
 
 config = (_NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
-                                description='The default mode for LazyLLM.'
+                                 description='The default mode for LazyLLM.'
         ).add('repr_ml', bool, False, 'REPR_USE_ML', description='Whether to use Markup Language for repr.'
         ).add('repr_show_child', bool, False, 'REPR_SHOW_CHILD',
               description='Whether to show child modules in repr.'
