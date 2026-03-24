@@ -7,13 +7,14 @@ from pydantic import BaseModel, Field
 from starlette.responses import RedirectResponse
 
 import lazyllm
-from lazyllm import LOG, FastapiApp as app
+from lazyllm import LOG, FastapiApp as app, deprecated
 from lazyllm.thirdparty import fastapi
 from .utils import DocListManager, BaseResponse, gen_docid
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 import uuid
 
 
+@deprecated('lazyllm.tools.rag.doc_service.DocServer')
 class DocManager(lazyllm.ModuleBase):
     def __init__(self, dlm: DocListManager) -> None:
         super().__init__()

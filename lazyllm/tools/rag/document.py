@@ -16,7 +16,7 @@ from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_f
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .store.store_base import DEFAULT_KB_ID
 from .index_base import IndexBase
-from .utils import DocListManager, ensure_call_endpoint
+from .utils import ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
 import copy
@@ -37,6 +37,8 @@ class _MetaDocument(_MetaBind):
 
 class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     class _Manager(ModuleBase):
+        DEFAULT_GROUP_NAME = '__default__'
+
         def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: Union[bool, int] = False, name: Optional[str] = None,
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
@@ -44,7 +46,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
                      display_name: Optional[str] = '', description: Optional[str] = 'algorithm description',
                      schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
-                     doc_server_port: Optional[int] = None):
+                     doc_server_port: Optional[int] = None,
+                     enable_path_monitoring: Optional[bool] = None):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -60,13 +63,20 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._embed = self._get_embeds(embed)
             self._processor = processor
             self._schema_extractor = self._register_submodules(schema_extractor)
-            name = name or DocListManager.DEFAULT_GROUP_NAME
+            self._store_conf = store_conf
+            self._display_name = display_name
+            self._description = description
+            name = name or self.DEFAULT_GROUP_NAME
             if not display_name: display_name = name
-
-            self._dlm = None if (self._cloud or self._doc_files is not None) else DocListManager(
-                dataset_path, name, enable_path_monitoring=False if manager else True)
+            if enable_path_monitoring is None:
+                enable_path_monitoring = False if manager else True
+            self._enable_path_monitoring = enable_path_monitoring
             self._kbs = CallableDict({name: DocImpl(
-                embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
+                embed=self._embed,
+                dataset_path=dataset_path,
+                enable_path_monitoring=enable_path_monitoring,
+                doc_files=doc_files,
+                global_metadata_desc=doc_fields,
                 store=store_conf, processor=processor, algo_name=name, display_name=display_name,
                 description=description, schema_extractor=schema_extractor)})
 
@@ -107,10 +117,20 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                          schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
             embed = self._get_embeds(embed) if embed else self._embed
             schema_extractor = self._register_submodules(schema_extractor) or self._schema_extractor
-            impl = DocImpl(dlm=self._dlm, embed=embed, kb_group_name=name, global_metadata_desc=doc_fields,
-                           store=store_conf, schema_extractor=schema_extractor)
+            impl = DocImpl(
+                dataset_path=self._dataset_path,
+                embed=embed,
+                kb_group_name=name,
+                enable_path_monitoring=self._enable_path_monitoring,
+                global_metadata_desc=doc_fields,
+                store=store_conf or self._store_conf,
+                processor=self._processor,
+                algo_name=name,
+                display_name=name,
+                description=self._description,
+                schema_extractor=schema_extractor,
+            )
             (self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs)[name] = impl
-            self._dlm.add_kb_group(name=name)
 
         def get_doc_by_kb_group(self, name):
             return self._kbs._impl._m[name] if isinstance(self._kbs, ServerModule) else self._kbs[name]
@@ -142,7 +162,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  store_conf: Optional[Dict] = None, display_name: Optional[str] = '',
                  description: Optional[str] = 'algorithm description',
                  schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
-                 doc_server_port: Optional[int] = None):
+                 doc_server_port: Optional[int] = None, enable_path_monitoring: Optional[bool] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -156,7 +176,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             assert store_conf is None or store_conf['type'] == 'map', (
                 'Only map store is supported for Document with temp-files')
 
-        name = name or DocListManager.DEFAULT_GROUP_NAME
+        name = name or Document._Manager.DEFAULT_GROUP_NAME
 
         if isinstance(manager, Document._Manager):
             assert not server, 'Server infomation is already set to by manager'
@@ -184,7 +204,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                                               doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
                                               display_name=display_name, description=description,
                                               schema_extractor=schema_extractor,
-                                              doc_server_port=doc_server_port)
+                                              doc_server_port=doc_server_port,
+                                              enable_path_monitoring=enable_path_monitoring)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
         self._graph_document: weakref.ref = None
@@ -424,7 +445,7 @@ class UrlDocument(ModuleBase):
         super().__init__()
         self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
         self._manager = lazyllm.UrlModule(url=ensure_call_endpoint(url))
-        self._curr_group = name or DocListManager.DEFAULT_GROUP_NAME
+        self._curr_group = name or Document._Manager.DEFAULT_GROUP_NAME
 
     def _forward(self, func_name: str, *args, **kwargs):
         args = (self._curr_group, func_name, *args)

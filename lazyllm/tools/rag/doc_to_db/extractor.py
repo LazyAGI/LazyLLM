@@ -18,7 +18,7 @@ from lazyllm.module import LLMBase, ModuleBase
 from ...sql.sql_manager import DBStatus, SqlManager
 from ..doc_node import DocNode
 from ..global_metadata import RAG_DOC_ID, RAG_KB_ID
-from ..utils import DocListManager, _orm_to_dict
+from ..utils import _orm_to_dict
 from ..store.store_base import DEFAULT_KB_ID
 from .model import (
     TABLE_SCHEMA_SET_INFO, Table_ALGO_KB_SCHEMA, ExtractionMode,
@@ -293,7 +293,7 @@ class SchemaExtractor(ModuleBase):
                 return True
         return schema_set_id in self._schema_registry
 
-    def register_schema_set_to_kb(self, algo_id: Optional[str] = DocListManager.DEFAULT_GROUP_NAME,
+    def register_schema_set_to_kb(self, algo_id: Optional[str] = DEFAULT_KB_ID,
                                   kb_id: Optional[str] = DEFAULT_KB_ID, schema_set_id: Optional[str] = None,
                                   schema_set: Type[BaseModel] = None, force_refresh: bool = False) -> str:
         '''
@@ -555,7 +555,7 @@ class SchemaExtractor(ModuleBase):
         return kb_id, doc_id, _orm_to_dict(bound)
 
     def extract_and_store(self, data: Union[str, List[DocNode]],  # noqa: C901
-                          algo_id: str = DocListManager.DEFAULT_GROUP_NAME,
+                          algo_id: str = DEFAULT_KB_ID,
                           schema_set_id: str = None, schema_set: Type[BaseModel] = None) -> ExtractResult:
         '''Persist extracted fields for a document'''
         self._lazy_init()
@@ -725,7 +725,7 @@ class SchemaExtractor(ModuleBase):
         return results
 
     def forward(self, data: Union[str, List[DocNode]],
-                algo_id: str = DocListManager.DEFAULT_GROUP_NAME) -> ExtractResult:
+                algo_id: str = DEFAULT_KB_ID) -> ExtractResult:
         # NOTE: data should be from single file source (kb_id, doc_id should be the same)
         self._lazy_init()
         res = self.extract_and_store(data=data, algo_id=algo_id)

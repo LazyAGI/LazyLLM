@@ -1419,7 +1419,7 @@ add_chinese_doc('rag.doc_to_db.SchemaExtractor.register_schema_set_to_kb', '''
 将算法/知识库绑定到指定 schema 集合；若提供 schema_set 会先注册；可选 force_refresh 覆盖已有绑定并清理旧数据。
 
 Args:
-    algo_id (str, optional): 算法/Document 名称，默认 DocListManager.DEFAULT_GROUP_NAME。
+    algo_id (str, optional): 算法/Document 名称，默认 `__default__`。
     kb_id (str, optional): 知识库 ID，默认 DEFAULT_KB_ID。
     schema_set_id (str, optional): 已有 schema 集合 ID。
     schema_set (Type[BaseModel], optional): 新 schema，传入则会注册后绑定。
@@ -1433,7 +1433,7 @@ add_english_doc('rag.doc_to_db.SchemaExtractor.register_schema_set_to_kb', '''
 Bind an algo/kb pair to a schema set; optionally register a provided schema_set first; with force_refresh you can override an existing binding and purge old records.
 
 Args:
-    algo_id (str, optional): Algorithm/Document name, defaults to DocListManager.DEFAULT_GROUP_NAME.
+    algo_id (str, optional): Algorithm/Document name, defaults to `__default__`.
     kb_id (str, optional): Knowledge base id, defaults to DEFAULT_KB_ID.
     schema_set_id (str, optional): Existing schema set id to bind.
     schema_set (Type[BaseModel], optional): Schema to register and bind if no id is provided.
@@ -1470,7 +1470,7 @@ add_chinese_doc('rag.doc_to_db.SchemaExtractor.extract_and_store', '''
 
 Args:
     data (Union[str, List[DocNode]]): 文本或 DocNode 列表（需同一文档）。
-    algo_id (str, optional): 算法/Document 名称，默认 DocListManager.DEFAULT_GROUP_NAME。
+    algo_id (str, optional): 算法/Document 名称，默认 `__default__`。
     schema_set_id (str, optional): 指定使用的 schema 集合 ID。
     schema_set (Type[BaseModel], optional): 动态注册并使用的 schema。
 
@@ -1483,7 +1483,7 @@ Extract content according to the bound schema and persist it; will register the 
 
 Args:
     data (Union[str, List[DocNode]]): Text or list of DocNodes from a single document.
-    algo_id (str, optional): Algorithm/Document name, defaults to DocListManager.DEFAULT_GROUP_NAME.
+    algo_id (str, optional): Algorithm/Document name, defaults to `__default__`.
     schema_set_id (str, optional): Schema set id to use.
     schema_set (Type[BaseModel], optional): Schema to register and use if no id is provided.
 
@@ -5591,10 +5591,10 @@ Args:
 # rag/doc_manager.py
 
 add_chinese_doc('rag.DocManager', """
-DocManager类管理文档列表及相关操作，并通过API提供文档上传、删除、分组等功能。
+已废弃。请改用 `lazyllm.tools.rag.doc_service.DocServer`。
 
 Args:
-    dlm (DocListManager): 文档列表管理器，用于处理具体的文档操作。
+    dlm (DocListManager): 旧文档列表管理器。
 
 """)
 
@@ -5756,10 +5756,10 @@ Args:
 """)
 
 add_english_doc('rag.DocManager', """
-The `DocManager` class manages document lists and related operations, providing APIs for uploading, deleting, and grouping documents.
+Deprecated. Use `lazyllm.tools.rag.doc_service.DocServer` instead.
 
 Args:
-    dlm (DocListManager): Document list manager responsible for handling document-related operations.
+    dlm (DocListManager): Legacy document list manager.
 """)
 
 add_english_doc('rag.DocManager.document', """
@@ -6021,7 +6021,7 @@ Args:
 
 # rag/utils.py
 add_chinese_doc('rag.utils.DocListManager', """\
-抽象基类，用于管理文档列表和监控文档目录变化。
+已废弃。请改用 `Document(dataset_path=..., enable_path_monitoring=...)` 或 `DocServer`。
 
 Args:
     path:要监控的文档目录路径。
@@ -6197,7 +6197,7 @@ Args:
 
 说明:
     - 方法首先通过辅助函数 `_add_doc_records` 创建文档记录。
-    - 文件添加后，会自动关联到默认的知识库组 (`DocListManager.DEFAULT_GROUP_NAME`)。
+    - 文件添加后，会自动关联到默认的知识库组（`__default__`）。
     - 批量处理确保在添加大量文件时具有良好的可扩展性。
 ''')
 
@@ -6315,7 +6315,7 @@ Args:
 ''')
 
 add_english_doc('rag.utils.DocListManager', """\
-Abstract base class for managing document lists and monitoring changes in a document directory.
+Deprecated. Use `Document(dataset_path=..., enable_path_monitoring=...)` or `DocServer`.
 
 Args:
     path: Path of the document directory to monitor.
@@ -6469,7 +6469,7 @@ Args:
           If `details=True`, returns a list of detailed rows with additional metadata.
 Notes:
     - The method first creates document records using the `_add_doc_records` helper function.
-    - After the files are added, they are automatically linked to the default KB group (`DocListManager.DEFAULT_GROUP_NAME`).
+    - After the files are added, they are automatically linked to the default KB group (`__default__`).
     - Batch processing ensures scalability when adding a large number of files.
 ''')
 
@@ -6488,7 +6488,7 @@ Args:
 
 Notes:
 - The method first creates document records using the helper function _add_doc_records.
-- After the files are added, they are automatically linked to the default knowledge base group (DocListManager.DEFAULT_GROUP_NAME).
+- After the files are added, they are automatically linked to the default knowledge base group (`__default__`).
 - Batch processing ensures good scalability when adding a large number of files.
 
 
@@ -6608,15 +6608,14 @@ Notes:
 
 add_example('rag.utils.DocListManager', '''
 >>> import lazyllm
->>> from lazyllm.rag.utils import DocListManager
->>> manager = DocListManager(path='your_file_path/', name="test_manager", enable_path_monitoring=False)
+>>> # Deprecated. Use Document(dataset_path='your_file_path', enable_path_monitoring=True)
 >>> added_docs = manager.add_files([test_file_list])
 >>> manager.enable_path_monitoring(True)
 >>> deleted = manager.delete_files([delete_file_list])
 ''')
 
 add_chinese_doc('rag.utils.SqliteDocListManager', '''\
-基于 SQLite 的文档管理器，用于本地文件的持久化存储、状态管理与元信息追踪。
+已废弃。请改用 `Document(dataset_path=...)` 或新的 `doc_service` 数据库。
 
 该类继承自 DocListManager，利用 SQLite 数据库存储文档记录。适用于管理具有唯一标识符的本地文档资源，并提供便捷的插入、查询、更新与状态过滤接口，支持可选的路径监控功能。
 
@@ -6627,7 +6626,7 @@ Args:
 ''')
 
 add_english_doc('rag.utils.SqliteDocListManager', '''\
-SQLite-based document manager for persistent local file storage, status tracking, and metadata management.
+Deprecated. Use `Document(dataset_path=...)` or the new `doc_service` database instead.
 
 This class inherits from DocListManager and uses a SQLite backend to store document records. It is suitable for managing locally identified documents with support for inserting, querying, updating, and filtering based on status. Optional file path monitoring is also supported.
 
@@ -6638,8 +6637,7 @@ Args:
 ''')
 
 add_example('rag.utils.SqliteDocListManager', '''\
->>> from lazyllm.tools.rag.utils import SqliteDocListManager
->>> manager = SqliteDocListManager(path="./data", name="docs.sqlite")
+>>> # Deprecated. Use Document(dataset_path=...) or DocServer instead.
 >>> manager.insert({"uid": "doc_001", "name": "example.txt", "status": "ready"})
 >>> print(manager.get("doc_001"))
 >>> files = manager.list_files(limit=5, details=True)

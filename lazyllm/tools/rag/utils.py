@@ -24,7 +24,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 import lazyllm
-from lazyllm import config
+from lazyllm import config, deprecated
 from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
 from lazyllm.thirdparty import tarfile
@@ -102,6 +102,7 @@ class DocPathParsingResult(BaseModel):
     msg: str
     is_new: bool = False
 
+@deprecated('Document(dataset_path=..., enable_path_monitoring=...)')
 class DocListManager(ABC):
     DEFAULT_GROUP_NAME = '__default__'
     __pool__ = dict()

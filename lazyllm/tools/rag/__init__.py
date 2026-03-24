@@ -17,7 +17,6 @@ from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader,
                       MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
                       MineruPDFReader)
 from .dataReader import SimpleDirectoryReader, FileReader
-from .doc_manager import DocManager, DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
 from .data_type import DataType
 from .index_base import IndexBase
@@ -62,8 +61,6 @@ __all__ = [
     'VideoAudioReader',
     'SimpleDirectoryReader',
     'MineruPDFReader',
-    'DocManager',
-    'DocListManager',
     'DocField',
     'DataType',
     'IndexBase',

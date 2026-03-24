@@ -147,10 +147,14 @@ class DeleteRequest(BaseModel):
 
 class TransferItem(BaseModel):
     doc_id: str
+    target_doc_id: str
     source_kb_id: str = '__default__'
     source_algo_id: str = '__default__'
     target_kb_id: str
     target_algo_id: str
+    target_metadata: Optional[Dict[str, Any]] = None
+    target_filename: Optional[str] = None
+    target_file_path: Optional[str] = None
     mode: str = 'copy'
 
 

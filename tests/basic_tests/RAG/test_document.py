@@ -6,18 +6,11 @@ from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
-from lazyllm.tools.rag.doc_manager import DocManager
-from lazyllm.tools.rag.utils import DocListManager, gen_docid
+from lazyllm.tools.rag.utils import gen_docid
 from lazyllm.launcher import cleanup
-from lazyllm import config
 from unittest.mock import MagicMock
 import unittest
-import httpx
 import os
-import shutil
-import io
-import re
-import json
 import time
 import tempfile
 
@@ -40,6 +33,14 @@ class TestDocImpl(unittest.TestCase):
     def tearDown(self):
         self.tmp_file_a.close()
         self.tmp_file_b.close()
+
+    def _build_root_nodes(self, input_files):
+        root_nodes = []
+        for path in input_files:
+            node = DocNode(group=LAZY_ROOT_NAME, text=os.path.basename(path))
+            node._global_metadata = {RAG_DOC_ID: gen_docid(path), RAG_DOC_PATH: path}
+            root_nodes.append(node)
+        return {LAZY_ROOT_NAME: root_nodes, LAZY_IMAGE_GROUP: []}
 
     def test_create_node_group_default(self):
         self.doc_impl._create_builtin_node_group('MyChunk', transform=lambda x: ','.split(x))
@@ -85,8 +86,68 @@ class TestDocImpl(unittest.TestCase):
         new_doc = DocNode(text='new dummy text', group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_ID: gen_docid(self.tmp_file_b.name), RAG_DOC_PATH: self.tmp_file_b.name}
         self.mock_directory_reader.load_data.return_value = {LAZY_ROOT_NAME: [new_doc], LAZY_IMAGE_GROUP: []}
-        self.doc_impl._processor._add_doc([self.tmp_file_b.name])
+        self.doc_impl._processor.add_doc([self.tmp_file_b.name])
         assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 2
+
+    def test_dataset_path_sync_without_doc_list_manager(self):
+        self.mock_embed.return_value = [0.1, 0.2, 0.3]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = os.path.join(temp_dir, 'test.txt')
+            with open(file_path, 'w') as file:
+                file.write('local dataset path')
+
+            doc_impl = DocImpl(embed=self.mock_embed, dataset_path=temp_dir, enable_path_monitoring=False)
+            doc_impl._reader = MagicMock()
+            doc_impl._reader.load_data.side_effect = (
+                lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
+            )
+            doc_impl._lazy_init()
+
+            nodes = doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
+            assert len(nodes) == 1
+            assert nodes[0].global_metadata[RAG_DOC_ID] == gen_docid(file_path)
+            assert nodes[0].global_metadata[RAG_DOC_PATH] == file_path
+            assert not hasattr(doc_impl, '_dlm')
+
+    def test_dataset_path_monitor_adds_and_removes_files(self):
+        self.mock_embed.return_value = [0.1, 0.2, 0.3]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_a = os.path.join(temp_dir, 'a.txt')
+            with open(file_a, 'w') as file:
+                file.write('a')
+
+            doc_impl = DocImpl(embed=self.mock_embed, dataset_path=temp_dir, enable_path_monitoring=True)
+            doc_impl._reader = MagicMock()
+            doc_impl._reader.load_data.side_effect = (
+                lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
+            )
+            doc_impl._local_monitor_interval = 0.1
+            doc_impl._lazy_init()
+
+            def wait_for_doc_ids(expected_ids):
+                deadline = time.time() + 3
+                while time.time() < deadline:
+                    nodes = doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
+                    current_ids = {node.global_metadata[RAG_DOC_ID] for node in nodes}
+                    if current_ids == expected_ids:
+                        return
+                    time.sleep(0.1)
+                raise AssertionError(f'Expected doc ids {expected_ids}, got {current_ids}')
+
+            try:
+                wait_for_doc_ids({gen_docid(file_a)})
+
+                file_b = os.path.join(temp_dir, 'b.txt')
+                with open(file_b, 'w') as file:
+                    file.write('b')
+                wait_for_doc_ids({gen_docid(file_a), gen_docid(file_b)})
+
+                os.remove(file_a)
+                wait_for_doc_ids({gen_docid(file_b)})
+            finally:
+                doc_impl._local_monitor_continue = False
+                if doc_impl._local_monitor_thread:
+                    doc_impl._local_monitor_thread.join(timeout=1)
 
 class TestDocument(unittest.TestCase):
     @classmethod
@@ -267,114 +328,3 @@ class TestDocument(unittest.TestCase):
         assert len(window) == 5
         assert window == sorted(window, key=lambda n: n.number)
         assert all(n.number in [1, 2, 3, 4, 5] for n in window)
-
-class TmpDir:
-    def __init__(self):
-        self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_document_ut'))
-        self.rag_dir = os.path.join(self.root_dir, 'rag_master')
-        os.makedirs(self.rag_dir, exist_ok=True)
-
-    def __del__(self):
-        shutil.rmtree(self.root_dir)
-
-class TestDocumentServer(unittest.TestCase):
-    def setUp(self):
-        self.dir = TmpDir()
-        self.dlm = DocListManager(path=self.dir.rag_dir, name=None, enable_path_monitoring=False)
-
-        self.doc_impl = DocImpl(embed=MagicMock(), dlm=self.dlm)
-        self.doc_impl._lazy_init()
-
-        doc_manager = DocManager(self.dlm)
-        self.server = lazyllm.ServerModule(doc_manager)
-
-        self.server.start()
-
-        url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
-        self.doc_server_addr = re.findall(url_pattern, self.server._url)[0]
-        self.time_sleep = 30
-
-    def test_delete_files_in_store(self):
-        files = [('files', ('test1.txt', io.BytesIO(b'John\'s house is in Beijing'), 'text/palin')),
-                 ('files', ('test2.txt', io.BytesIO(b'John\'s house is in Shanghai'), 'text/plain'))]
-        metadatas = [{'comment': 'comment1'}, {'signature': 'signature2'}]
-        params = dict(override='true', metadatas=json.dumps(metadatas))
-
-        url = f'{self.doc_server_addr}/upload_files'
-        response = httpx.post(url, params=params, files=files, timeout=10)
-        assert response.status_code == 200 and response.json().get('code') == 200, response.json()
-        ids = response.json().get('data')[0]
-        lazyllm.LOG.info(f'debug!!! ids -> {ids}')
-        assert len(ids) == 2
-
-        time.sleep(self.time_sleep)  # waiting for worker thread to update newly uploaded files
-
-        # make sure that ids are written into the store
-        nodes = self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
-        doc_ids = []
-        doc_file_paths = []
-        doc_metadatas = []
-        test1_docid = None
-        test2_docid = None
-        for node in nodes:
-            doc_ids.append(node.global_metadata[RAG_DOC_ID])
-            doc_file_paths.append(node.global_metadata.get(RAG_DOC_PATH, ''))
-            doc_metadatas.append(node.global_metadata)
-            if 'test1' in node.global_metadata.get(RAG_DOC_PATH, ''):
-                test1_docid = node.global_metadata[RAG_DOC_ID]
-            elif 'test2' in node.global_metadata.get(RAG_DOC_PATH, ''):
-                test2_docid = node.global_metadata[RAG_DOC_ID]
-        lazyllm.LOG.info(f'debug!!! doc_ids -> {doc_ids}\n')
-        lazyllm.LOG.info(f'debug!!! doc_file_paths -> {doc_file_paths}\n')
-        lazyllm.LOG.info(f'debug!!! doc_metadatas -> {doc_metadatas}\n')
-        assert test1_docid and test2_docid
-        assert set(doc_ids) == set(ids)
-
-        url = f'{self.doc_server_addr}/delete_files'
-        response = httpx.post(url, json=dict(file_ids=[test1_docid]))
-        assert response.status_code == 200 and response.json().get('code') == 200
-
-        time.sleep(self.time_sleep)  # waiting for worker thread to delete files
-
-        nodes = self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
-        assert len(nodes) == 1
-        assert nodes[0].global_metadata[RAG_DOC_ID] == test2_docid
-        cur_meta_dict = nodes[0].global_metadata
-
-        url = f'{self.doc_server_addr}/add_metadata'
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={'title': 'title2'}))
-        assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(self.time_sleep)
-        lazyllm.LOG.info(f'debug!!! cur_meta_dict -> {cur_meta_dict}\n')
-        assert cur_meta_dict['title'] == 'title2'
-
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={'title': 'TITLE2'}))
-        assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(self.time_sleep)
-        lazyllm.LOG.info(f'debug!!! cur_meta_dict -> {cur_meta_dict}\n')
-        assert cur_meta_dict['title'] == ['title2', 'TITLE2']
-
-        url = f'{self.doc_server_addr}/delete_metadata_item'
-
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={'title': 'TITLE2'}))
-        assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(self.time_sleep)
-        assert cur_meta_dict['title'] == ['title2']
-
-        url = f'{self.doc_server_addr}/reset_metadata'
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid],
-                                             new_meta={'author': 'author2', 'signature': 'signature_new'}))
-        assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(self.time_sleep)
-        assert cur_meta_dict['signature'] == 'signature_new' and cur_meta_dict['author'] == 'author2'
-
-        url = f'{self.doc_server_addr}/query_metadata'
-        response = httpx.post(url, json=dict(doc_id=test2_docid))
-
-        # make sure that only one file is left
-        response = httpx.get(f'{self.doc_server_addr}/list_files')
-        assert response.status_code == 200 and len(response.json().get('data')) == 1
-
-    def tearDown(self):
-        # Must clean up the server as all uploaded files will be deleted as they are in tmp dir
-        self.dlm.release()
