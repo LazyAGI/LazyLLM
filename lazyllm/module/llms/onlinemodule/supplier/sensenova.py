@@ -7,10 +7,11 @@ from urllib.parse import urljoin
 import uuid
 
 import lazyllm
+from lazyllm import globals
 from lazyllm.thirdparty import jwt
 from ..base import OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase
 from ..fileHandler import FileHandlerBase
-from ..base.utils import check_and_add_config
+from ..base.utils import check_and_add_config, LAZY_API_KEY_TOKENS
 
 
 check_and_add_config(key='sensenova_secret_key', description='The secret key for SenseNova.', cfg=lazyllm.globals.config)
@@ -20,8 +21,8 @@ class _SenseNovaBase(object):
 
     def _get_api_key(self, api_key: str, secret_key: str):
         if not api_key and not secret_key:
-            api_key = lazyllm.config['sensenova_api_key']
-            secret_key = lazyllm.config['sensenova_secret_key']
+            api_key = globals.config[f'{self.series}_api_key']
+            secret_key = globals.config['sensenova_secret_key']
 
         if secret_key and secret_key.startswith('sk-'):
             if not api_key:
@@ -37,7 +38,7 @@ class _SenseNovaBase(object):
         if ':' in api_key:
             api_key, secret_key = api_key.split(':', 1)
         elif not secret_key:
-            secret_key = lazyllm.config['sensenova_secret_key']
+            secret_key = globals.config['sensenova_secret_key']
 
         assert secret_key, 'secret_key should be provided with sensecore api_key'
         return SenseNovaChat.encode_jwt_token(api_key, secret_key)
@@ -61,12 +62,16 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     VLM_MODEL_PREFIX = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
                         'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
 
+    def _materialize_lazy_api_key(self) -> str:
+        return self._get_api_key(None, None)
+
     def __init__(self, base_url: str = 'https://api.sensenova.cn/compatible-mode/v1/', model: str = 'SenseNova-V6-5-Pro',
                  api_key: str = None, secret_key: str = None, stream: bool = True,
                  return_trace: bool = False, **kwargs):
         if secret_key and isinstance(api_key, (tuple, list)):
             raise KeyError('multi-key is not support when secret_key is provided, please use single-key mode!')
-        api_key = self._get_api_key(api_key, secret_key)
+        if api_key not in LAZY_API_KEY_TOKENS:
+            api_key = self._get_api_key(api_key, secret_key)
         super().__init__(api_key=api_key, base_url=base_url, model_name=model,
                          stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
@@ -222,6 +227,9 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
 
 class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
 
+    def _materialize_lazy_api_key(self) -> str:
+        return self._get_api_key(None, None)
+
     def __init__(self,
                  embed_url: str = 'https://api.sensenova.cn/v1/llm/embeddings',
                  embed_model_name: str = 'nova-embedding-stable',
@@ -229,7 +237,8 @@ class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
                  secret_key: str = None,
                  batch_size: int = 16,
                  **kw):
-        api_key = self._get_api_key(api_key, secret_key)
+        if api_key not in LAZY_API_KEY_TOKENS:
+            api_key = self._get_api_key(api_key, secret_key)
         super().__init__(embed_url, api_key, embed_model_name, batch_size=batch_size, **kw)
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:

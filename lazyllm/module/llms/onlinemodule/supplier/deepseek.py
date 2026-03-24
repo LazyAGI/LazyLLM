@@ -1,13 +1,12 @@
 from urllib.parse import urljoin
 import requests
-import lazyllm
 from ..base import OnlineChatModuleBase
 
 
 class DeepSeekChat(OnlineChatModuleBase):
     def __init__(self, base_url: str = 'https://api.deepseek.com', model: str = 'deepseek-chat',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        super().__init__(api_key=api_key or lazyllm.config['deepseek_api_key'],
+        super().__init__(api_key=api_key or self._default_api_key(),
                          base_url=base_url, model_name=model, stream=stream, return_trace=return_trace, **kwargs)
 
     def _get_system_prompt(self):

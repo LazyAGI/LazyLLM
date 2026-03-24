@@ -4,7 +4,6 @@ import uuid
 import requests
 from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
-import lazyllm
 from ..base import (
     OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase
 )
@@ -19,7 +18,7 @@ class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://api.openai.com/v1/', model: str = 'gpt-3.5-turbo',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, skip_auth: bool = False, **kw):
-        super().__init__(api_key=api_key or lazyllm.config['openai_api_key'],
+        super().__init__(api_key=api_key or self._default_api_key(),
                          base_url=base_url, model_name=model, stream=stream, return_trace=return_trace,
                          skip_auth=skip_auth, **kw)
         FileHandlerBase.__init__(self)
@@ -200,7 +199,7 @@ class OpenAIEmbed(LazyLLMOnlineEmbedModuleBase):
 
     def __init__(self, embed_url: str = 'https://api.openai.com/v1/', embed_model_name: str = 'text-embedding-ada-002',
                  api_key: str = None, batch_size: int = 16, **kw):
-        super().__init__(embed_url, api_key or lazyllm.config['openai_api_key'],
+        super().__init__(embed_url, api_key or self._default_api_key(),
                          embed_model_name, batch_size=batch_size, **kw)
 
     def _set_embed_url(self):
@@ -212,7 +211,7 @@ class OpenAIRerank(LazyLLMOnlineRerankModuleBase):
 
     def __init__(self, embed_url: str = 'https://api.openai.com/v1/', embed_model_name: str = 'rerank-multilingual-v3.0',
                  api_key: str = None, **kw):
-        super().__init__(embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name, **kw)
+        super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name, **kw)
 
     def _set_embed_url(self):
         self._embed_url = urljoin(self._embed_url, 'rerank')

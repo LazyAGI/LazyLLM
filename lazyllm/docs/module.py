@@ -1629,30 +1629,6 @@ add_example('llms.onlinemodule.supplier.ppio.PPIOChat', '''\
 >>> print(response)
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoMultiModal', '''\
-豆包多模态模块，继承自 OnlineMultiModalBase，封装了调用豆包多模态服务的能力。  
-可通过指定 API Key、模型名称和服务基础 URL，远程调用豆包接口进行多模态数据处理和特征提取。
-
-Args:
-    api_key (Optional[str]): 访问豆包服务的 API Key，若未提供则从 lazyllm 配置中读取。
-    model_name (Optional[str]): 使用的豆包多模态模型名称。
-    base_url (str): 豆包服务的基础 URL，默认指向北京区域的服务地址。
-    return_trace (bool): 是否返回调试追踪信息，默认为 False。
-    **kwargs: 其他传递给 OnlineMultiModalBase 的参数。
-''')
-
-add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoMultiModal', '''\
-Doubao MultiModal module, inheriting from OnlineMultiModalBase, encapsulates the functionality to call Doubao's multimodal service.  
-By specifying the API key, model name, and base service URL, it allows remote interaction with Doubao's API for multimodal data processing and feature extraction.
-
-Args:
-    api_key (Optional[str]): API key for accessing Doubao service. If not provided, it is read from lazyllm config.
-    model_name (Optional[str]): Name of the Doubao multimodal model to use.
-    base_url (str): Base URL of the Doubao service, defaulting to the Beijing region endpoint.
-    return_trace (bool): Whether to return debug trace information, default is False.
-    **kwargs: Additional parameters passed to OnlineMultiModalBase.
-''')
-
 add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIEmbed', '''\
 OpenAI 在线嵌入模块。
 该类封装了对 OpenAI 嵌入 API 的调用，默认使用模型 `text-embedding-ada-002`，用于将文本编码为向量表示。
@@ -1680,7 +1656,7 @@ Args:
     model (str): 模型名称。默认为 ``None``，将依次从 ``lazyllm.config['qwen_stt_model_name']`` 或 ``QwenSTT.MODEL_NAME`` 获取。
     api_key (str): 千问 API 的密钥。默认为 ``None``。
     return_trace (bool): 是否返回推理的中间 trace 信息。默认为 ``False``。
-    **kwargs: 传递给父类 ``QwenMultiModal`` 的额外参数。
+    **kwargs: 传递给父类 ``LazyLLMOnlineSTTModuleBase`` 的额外参数。
 ''')
 
 add_english_doc('llms.onlinemodule.supplier.qwen.QwenSTT', '''\
@@ -1690,7 +1666,7 @@ Args:
     model (str): Model name. Defaults to ``None``, in which case it will use ``lazyllm.config['qwen_stt_model_name']`` or ``QwenSTT.MODEL_NAME``.
     api_key (str): API key for Qwen service. Defaults to ``None``.
     return_trace (bool): Whether to return intermediate trace information during inference. Defaults to ``False``.
-    **kwargs: Additional parameters passed to the parent class ``QwenMultiModal``.
+    **kwargs: Additional parameters passed to the parent class ``LazyLLMOnlineSTTModuleBase``.
 ''')
 
 add_chinese_doc('OnlineEmbeddingModule', '''\
@@ -2050,25 +2026,25 @@ Args:
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenText2Image', '''\
-Qwen文本生成图像模块和图像编辑模块，继承自 QwenMultiModal，封装了调用 Qwen Wanx2.1-t2i-turbo 模型生成图像的能力和调用Qwen-image-edit-plus模型进行图像编辑的能力。  
+Qwen文本生成图像模块和图像编辑模块，继承自 LazyLLMOnlineText2ImageModuleBase，封装了调用 Qwen Wanx2.1-t2i-turbo 模型生成图像的能力和调用Qwen-image-edit-plus模型进行图像编辑的能力。  
 支持根据文本提示生成指定数量和分辨率的图像，支持图像编辑，并可设置负面提示、随机种子及扩展提示功能，通过 DashScope API 远程调用服务。
 
 Args:
     model (Optional[str]): 使用的 Qwen 模型名称，默认从配置 'qwen_text2image_model_name' 获取，若未设置则使用 "wanx2.1-t2i-turbo"。
     api_key (Optional[str]): 调用 DashScope 服务的 API Key。
     return_trace (bool): 是否返回调试追踪信息，默认为 False。
-    **kwargs: 其他传递给 QwenMultiModal 的参数。
+    **kwargs: 其他传递给 LazyLLMOnlineText2ImageModuleBase 的参数。
 ''')
 
 add_english_doc('llms.onlinemodule.supplier.qwen.QwenText2Image', '''\
-Qwen Text-to-Image module and Image-Edit module, inheriting from QwenMultiModal, encapsulates the functionality to generate images using the Qwen Wanx2.1-t2i-turbo model.  
+Qwen Text-to-Image module and Image-Edit module, inheriting from LazyLLMOnlineText2ImageModuleBase, encapsulates the functionality to generate images using the Qwen Wanx2.1-t2i-turbo model.  
 It supports generating a specified number of images with given resolution based on a text prompt, and allows setting negative prompts, random seeds, and prompt extension. The service is called remotely via DashScope API.
 
 Args:
     model (Optional[str]): Name of the Qwen model to use, default is taken from config 'qwen_text2image_model_name', or "wanx2.1-t2i-turbo" if not set.
     api_key (Optional[str]): API key for accessing DashScope service.
     return_trace (bool): Whether to return debug trace information, default is False.
-    **kwargs: Additional parameters passed to QwenMultiModal.
+    **kwargs: Additional parameters passed to LazyLLMOnlineText2ImageModuleBase.
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.kimi.KimiChat', '''\
@@ -2283,50 +2259,8 @@ Main Features:
     - Returns index and relevance score for each document
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenMultiModal', '''\
-通义千问的多模态基础模块，继承自OnlineMultiModalBase，用于处理多模态任务。
-
-Args:
-    api_key (str): API密钥，如果未提供则从lazyllm.config['qwen_api_key']读取。
-    model_name (str): 模型名称。
-    base_url (str): HTTP API的基础URL，默认为'https://dashscope.aliyuncs.com/api/v1'。
-    base_websocket_url (str): WebSocket API的基础URL，默认为'wss://dashscope.aliyuncs.com/api-ws/v1/inference'。
-    return_trace (bool): 是否返回调用追踪信息，默认为False。
-    **kwargs: 其他传递给基类的参数。
-
-功能特点：
-    1. 支持HTTP和WebSocket两种API调用方式
-    2. 使用DashScope客户端进行API调用
-    3. 提供统一的多模态接口
-    4. 可自定义基础URL和API密钥
-
-注意：
-    该类作为通义千问多模态功能的基础类，通常作为其他具体多模态实现（如语音转文本、文本生成图像等）的父类。
-''')
-
-add_english_doc('llms.onlinemodule.supplier.qwen.QwenMultiModal', '''\
-Qwen's multimodal base module, inheriting from OnlineMultiModalBase, for handling multimodal tasks.
-
-Args:
-    api_key (str): API key, if not provided will read from lazyllm.config['qwen_api_key'].
-    model_name (str): Model name.
-    base_url (str): Base URL for HTTP API, defaults to 'https://dashscope.aliyuncs.com/api/v1'.
-    base_websocket_url (str): Base URL for WebSocket API, defaults to 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'.
-    return_trace (bool): Whether to return call trace information, defaults to False.
-    **kwargs: Additional parameters passed to the base class.
-
-Features:
-    1. Supports both HTTP and WebSocket API calls
-    2. Uses DashScope client for API calls
-    3. Provides unified multimodal interface
-    4. Customizable base URLs and API key
-
-Note:
-    This class serves as the base class for Qwen's multimodal functionality, typically used as the parent class for other specific multimodal implementations (such as speech-to-text, text-to-image, etc.).
-''')
-
 add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenTTS', '''\
-通义千问的文本转语音模块，继承自QwenMultiModal，提供多种语音合成模型支持。
+通义千问的文本转语音模块，继承自 LazyLLMOnlineTTSModuleBase，提供多种语音合成模型支持。
 
 Args:
     model (str): 模型名称，默认为"qwen-tts"。可选模型包括：
@@ -2353,7 +2287,8 @@ Args:
 ''')
 
 add_english_doc('llms.onlinemodule.supplier.qwen.QwenTTS', '''\
-Qwen's text-to-speech module, inheriting from QwenMultiModal, providing support for multiple speech synthesis models.
+Qwen's text-to-speech module, inheriting from LazyLLMOnlineTTSModuleBase, providing support for multiple speech
+synthesis models.
 
 Args:
     model (str): Model name, defaults to "qwen-tts". Available models include:
@@ -2551,8 +2486,8 @@ Args:
 add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoText2Image', '''\
 字节跳动豆包文生图模块，支持纯文本生成图像和图像编辑模型。
 
-基于字节跳动豆包多模态模型的文生图、图像编辑功能，继承自DoubaoMultiModal，
-提供高质量的文本到图像生成能力。
+基于字节跳动豆包多模态模型的文生图、图像编辑功能，继承自 LazyLLMOnlineText2ImageModuleBase，
+通过火山引擎 Ark SDK 调用豆包接口，提供高质量的文本到图像生成能力。
 
 Args:
     api_key (str, optional): 豆包API密钥，默认为None。
@@ -2564,8 +2499,8 @@ Args:
 add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoText2Image', '''\
 ByteDance Doubao Text-to-Image module supporting text to image generation and image editing.
 
-Based on ByteDance Doubao multimodal model's text-to-image functionality, 
-inherits from DoubaoMultiModal, providing high-quality text to image generation capability.
+Based on ByteDance Doubao multimodal model's text-to-image functionality, inherits from
+LazyLLMOnlineText2ImageModuleBase and calls Doubao via the Volcengine Ark SDK for high-quality generation.
 
 Args:
     api_key (str, optional): Doubao API key, defaults to None.
@@ -2683,6 +2618,40 @@ Configure relevant parameters for deployment tasks, such as capacity specificati
 Args:
     **kw: Deployment parameter key-value pairs.
 """)
+
+add_chinese_doc('llms.onlinemodule.supplier.qwen.set_dashscope_urls', """\
+设置 DashScope SDK 的全局 HTTP 与 WebSocket 基础 URL。
+
+说明：
+    该函数用于统一切换 DashScope 的访问入口（例如北京区与新加坡区）。
+    Qwen STT/Text2Image/TTS 不支持在构造函数或 forward 中临时覆盖 URL。
+
+Args:
+    base_url (str, optional): DashScope HTTP 基础 URL。
+    base_websocket_url (str, optional): DashScope WebSocket 基础 URL。
+""")
+
+add_english_doc('llms.onlinemodule.supplier.qwen.set_dashscope_urls', """\
+Set global HTTP and WebSocket base URLs for the DashScope SDK.
+
+Note:
+    This function is used to switch DashScope endpoints globally (for example,
+    between Beijing and Singapore regions). Qwen STT/Text2Image/TTS do not
+    support overriding URLs in constructor or forward calls.
+
+Args:
+    base_url (str, optional): DashScope HTTP base URL.
+    base_websocket_url (str, optional): DashScope WebSocket base URL.
+""")
+
+add_example('llms.onlinemodule.supplier.qwen.set_dashscope_urls', '''\
+>>> from lazyllm.module.llms.onlinemodule.supplier.qwen import set_dashscope_urls
+>>> # Example: switch to Singapore endpoint
+>>> set_dashscope_urls(
+...     base_url='https://dashscope-intl.aliyuncs.com/api/v1',
+...     base_websocket_url='wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference',
+... )
+''')
 
 add_chinese_doc('llms.onlinemodule.supplier.glm.GLMSTT', """\
 GLM语音识别模块，继承自GLMMultiModal。

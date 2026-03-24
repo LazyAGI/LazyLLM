@@ -24,7 +24,7 @@ class PPIOChat(OnlineChatModuleBase):
                  model: str = 'deepseek/deepseek-v3.2',
                  api_key: str = None, stream: bool = True,
                  return_trace: bool = False, skip_auth: bool = False, **kw):
-        super().__init__(api_key=api_key or lazyllm.config['ppio_api_key'], base_url=base_url,
+        super().__init__(api_key=api_key or self._default_api_key(), base_url=base_url,
                          model_name=model, stream=stream, return_trace=return_trace, skip_auth=skip_auth, **kw)
 
     # Return PPIO system prompt.

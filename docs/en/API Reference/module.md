@@ -81,10 +81,6 @@
     members:
     exclude-members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultiModal
-    members:
-    exclude-members:
-
 ::: lazyllm.module.OnlineEmbeddingModule
     members:
     exclude-members:

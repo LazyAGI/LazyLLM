@@ -5,6 +5,9 @@ from typing import Optional, Union, List
 import random
 
 
+LAZY_API_KEY_TOKENS = frozenset(('auto', 'dynamic'))
+
+
 config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE',
            description='Whether to cache the online module result. Use for unit test.')
 
@@ -40,18 +43,32 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                  skip_auth: Optional[bool] = False, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         if not skip_auth and not api_key: raise ValueError('api_key is required')
+        self._dynamic_auth = (not skip_auth) and isinstance(api_key, str) and api_key in LAZY_API_KEY_TOKENS
         self.__api_keys = '' if skip_auth else api_key
-        self.__headers = [self._get_header(key) for key in (api_key if isinstance(api_key, list) else [api_key])]
-        if config['cache_online_module']:
-            self.use_cache()
+        self.__headers = ([self._get_header('')] if skip_auth else None if self._dynamic_auth else
+                          [self._get_header(key) for key in (api_key if isinstance(api_key, list) else [api_key])])
+        if config['cache_online_module']: self.use_cache()
+
+    @classmethod
+    def _default_api_key(cls) -> str:
+        if cls._model_series is None:
+            raise ValueError(f'{cls.__name__} has no _model_series; cannot resolve default api_key.')
+        return globals.config[f'{cls._model_series}_api_key']
 
     @property
     def series(self):
         return self.__class__._model_series
 
+    def _materialize_lazy_api_key(self) -> str:
+        return self._default_api_key()
+
     @property
     def _api_key(self):
-        return random.choice(self.__api_keys) if isinstance(self.__api_keys, list) else self.__api_keys
+        if self._dynamic_auth:
+            return self._materialize_lazy_api_key()
+        if isinstance(self.__api_keys, list):
+            return random.choice(self.__api_keys)
+        return self.__api_keys
 
     @staticmethod
     def _get_header(api_key: str) -> dict:
@@ -63,6 +80,8 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
     @property
     def _header(self):
+        if self._dynamic_auth:
+            return self._get_header(self._api_key)
         return random.choice(self.__headers)
 
     @staticmethod
