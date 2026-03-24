@@ -270,14 +270,6 @@ config = (_NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Di
               description='The tracing backend used by LazyLLM.'
         ).add('trace_content_enabled', bool, True, 'TRACE_CONTENT_ENABLED',
               description='Whether tracing records basic input and output payloads by default.'
-        ).add('trace_service_name', str, 'lazyllm', 'TRACE_SERVICE_NAME',
-              description='The OpenTelemetry service name used by LazyLLM tracing.'
-        ).add('trace_langfuse_host', str, None, 'TRACE_LANGFUSE_HOST',
-              description='Langfuse host/base URL for tracing export.'
-        ).add('trace_langfuse_public_key', str, None, 'TRACE_LANGFUSE_PUBLIC_KEY',
-              description='Langfuse public key used by LazyLLM tracing.'
-        ).add('trace_langfuse_secret_key', str, None, 'TRACE_LANGFUSE_SECRET_KEY',
-              description='Langfuse secret key used by LazyLLM tracing.'
         ))
 
 def refresh_config(key):

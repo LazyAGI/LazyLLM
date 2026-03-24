@@ -10,9 +10,11 @@ from lazyllm.common import LOG, globals
 from lazyllm.configs import config
 
 
+_TRACE_BACKEND = 'langfuse'
+_TRACE_SERVICE_NAME = 'lazyllm'
 _LANGFUSE_TRACE_NAME = 'langfuse.trace.name'
-_LANGFUSE_TRACE_USER_ID = 'langfuse.trace.user_id'
-_LANGFUSE_TRACE_SESSION_ID = 'langfuse.trace.session_id'
+_LANGFUSE_TRACE_USER_ID = 'user.id'
+_LANGFUSE_TRACE_SESSION_ID = 'session.id'
 _LANGFUSE_TRACE_TAGS = 'langfuse.trace.tags'
 _LANGFUSE_TRACE_INPUT = 'langfuse.trace.input'
 _LANGFUSE_TRACE_OUTPUT = 'langfuse.trace.output'
@@ -47,9 +49,9 @@ def _normalize_tags(tags: Any) -> list[str]:
 
 
 def _normalize_trace_context(trace: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    data = dict(_TRACE_CONTEXT_DEFAULTS)
-    if isinstance(trace, dict):
-        data.update({k: v for k, v in trace.items() if k in data})
+    data = dict(trace) if isinstance(trace, dict) else {}
+    for key, default in _TRACE_CONTEXT_DEFAULTS.items():
+        data.setdefault(key, default)
     data['request_tags'] = _normalize_tags(data.get('request_tags'))
     return data
 
@@ -95,12 +97,9 @@ class _TracingRuntime:
     def __init__(self):
         self._lock = threading.RLock()
         self._initialized = False
-        self._disabled_reason = None
         self._warned = False
         self._provider = None
         self._tracer = None
-        self._processor = None
-        self._exporter = None
         self._trace_api = None
         self._status = None
 
@@ -113,15 +112,14 @@ class _TracingRuntime:
             self._warned = True
 
     def _raise_setup_error(self, message: str):
-        self._disabled_reason = message
         self._warn_once(message)
         raise TracingSetupError(message)
 
     def _langfuse_config(self) -> Dict[str, Optional[str]]:
         return {
-            'host': config['trace_langfuse_host'] or os.getenv('LANGFUSE_HOST') or os.getenv('LANGFUSE_BASE_URL'),
-            'public_key': config['trace_langfuse_public_key'] or os.getenv('LANGFUSE_PUBLIC_KEY'),
-            'secret_key': config['trace_langfuse_secret_key'] or os.getenv('LANGFUSE_SECRET_KEY'),
+            'host': os.getenv('LANGFUSE_HOST') or os.getenv('LANGFUSE_BASE_URL'),
+            'public_key': os.getenv('LANGFUSE_PUBLIC_KEY'),
+            'secret_key': os.getenv('LANGFUSE_SECRET_KEY'),
         }
 
     def _build_langfuse_exporter(self):
@@ -162,23 +160,21 @@ class _TracingRuntime:
                     f'Details: {exc}'
                 )
 
-            if config['trace_backend'] != 'langfuse':
+            if config['trace_backend'] != _TRACE_BACKEND:
                 self._raise_setup_error(f'Unsupported trace backend: {config["trace_backend"]}')
 
             try:
                 exporter = self._build_langfuse_exporter()
             except Exception as exc:
-                self._raise_setup_error(f'LazyLLM tracing initialization failed: {exc}')
+                self._raise_setup_error(f'LazyLLM {_TRACE_BACKEND} tracing initialization failed: {exc}')
 
-            resource = Resource.create({'service.name': config['trace_service_name']})
+            resource = Resource.create({'service.name': _TRACE_SERVICE_NAME})
             provider = TracerProvider(resource=resource)
             processor = BatchSpanProcessor(exporter)
             provider.add_span_processor(processor)
             trace_api.set_tracer_provider(provider)
 
             self._provider = provider
-            self._processor = processor
-            self._exporter = exporter
             self._tracer = trace_api.get_tracer('lazyllm.tracing')
             self._trace_api = trace_api
             self._status = (Status, StatusCode)
@@ -188,8 +184,6 @@ class _TracingRuntime:
     def _trace_enabled(self, trace_ctx: Dict[str, Any]) -> bool:
         if trace_ctx.get('enabled') is not None:
             return bool(trace_ctx['enabled']) and trace_ctx.get('sampled') is not False
-        if trace_ctx.get('enabled') is False:
-            return False
         if trace_ctx.get('sampled') is False:
             return False
         return bool(config['trace_enabled'])
@@ -198,7 +192,7 @@ class _TracingRuntime:
     def _target_name(target: Any, span_kind: str) -> str:
         if span_kind == 'module':
             return getattr(target, 'name', None) or getattr(target, '_module_name', None) or target.__class__.__name__
-        return getattr(target, '__class__', type(target)).__name__
+        return target.__class__.__name__
 
     @staticmethod
     def _target_id(target: Any, span_kind: str) -> Optional[str]:
@@ -211,6 +205,7 @@ class _TracingRuntime:
         *,
         span_kind: str,
         span_name: str,
+        is_root_span: bool,
         trace_ctx: Dict[str, Any],
         target: Any,
         capture_payload: bool,
@@ -224,11 +219,11 @@ class _TracingRuntime:
             'lazyllm.entity.id': self._target_id(target, span_kind) or '',
             'lazyllm.status': 'ok',
         }
-        if trace_ctx.get('session_id'):
+        if is_root_span and trace_ctx.get('session_id'):
             attrs[_LANGFUSE_TRACE_SESSION_ID] = trace_ctx['session_id']
-        if trace_ctx.get('user_id'):
+        if is_root_span and trace_ctx.get('user_id'):
             attrs[_LANGFUSE_TRACE_USER_ID] = trace_ctx['user_id']
-        if trace_ctx.get('request_tags'):
+        if is_root_span and trace_ctx.get('request_tags'):
             attrs[_LANGFUSE_TRACE_TAGS] = json.dumps(trace_ctx['request_tags'], ensure_ascii=False)
         if trace_ctx.get('trace_id'):
             attrs['lazyllm.request.trace_id'] = str(trace_ctx['trace_id'])
@@ -261,6 +256,7 @@ class _TracingRuntime:
         attributes = self._base_attributes(
             span_kind=span_kind,
             span_name=span_name,
+            is_root_span=is_root_span,
             trace_ctx=trace_ctx,
             target=target,
             capture_payload=capture_payload,
@@ -273,12 +269,13 @@ class _TracingRuntime:
         span_context = span.get_span_context()
         trace_ctx['trace_id'] = f'{span_context.trace_id:032x}'
         set_trace_context(trace_ctx)
-        span.set_attribute(_LANGFUSE_TRACE_NAME, span_name)
-        if is_root_span and capture_payload:
-            span.set_attribute(_LANGFUSE_TRACE_INPUT, _stringify_payload({
-                'args': args,
-                'kwargs': kwargs,
-            }))
+        if is_root_span:
+            span.set_attribute(_LANGFUSE_TRACE_NAME, span_name)
+            if capture_payload:
+                span.set_attribute(_LANGFUSE_TRACE_INPUT, _stringify_payload({
+                    'args': args,
+                    'kwargs': kwargs,
+                }))
         return TraceSpanHandle(span=span, span_cm=span_cm, is_root_span=is_root_span)
 
     def set_output(self, handle: Optional[TraceSpanHandle], output: Any):
