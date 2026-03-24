@@ -19,14 +19,26 @@ from lazyllm import LOG
 
 _DASHSCOPE_DEFAULT_HTTP_URL = 'https://dashscope.aliyuncs.com/api/v1'
 _DASHSCOPE_DEFAULT_WEBSOCKET_URL = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'
-dashscope.base_http_api_url = _DASHSCOPE_DEFAULT_HTTP_URL
-dashscope.base_websocket_api_url = _DASHSCOPE_DEFAULT_WEBSOCKET_URL
+_dashscope_urls_initialized = False
+
+
+def _ensure_dashscope_urls_initialized() -> None:
+    global _dashscope_urls_initialized
+    if _dashscope_urls_initialized:
+        return
+    dashscope.base_http_api_url = _dashscope_http_api_url
+    dashscope.base_websocket_api_url = _dashscope_websocket_api_url
+    _dashscope_urls_initialized = True
 
 
 def set_dashscope_urls(base_url: str = _DASHSCOPE_DEFAULT_HTTP_URL,
                        base_websocket_url: str = _DASHSCOPE_DEFAULT_WEBSOCKET_URL):
-    dashscope.base_http_api_url = base_url
-    dashscope.base_websocket_api_url = base_websocket_url
+    global _dashscope_http_api_url, _dashscope_websocket_api_url
+    _dashscope_http_api_url = base_url
+    _dashscope_websocket_api_url = base_websocket_url
+    if _dashscope_urls_initialized:
+        dashscope.base_http_api_url = _dashscope_http_api_url
+        dashscope.base_websocket_api_url = _dashscope_websocket_api_url
 
 
 class QwenChat(OnlineChatModuleBase, FileHandlerBase):
@@ -381,6 +393,7 @@ class QwenSTT(LazyLLMOnlineSTTModuleBase):
         )
 
     def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
+        _ensure_dashscope_urls_initialized()
         assert any(file.startswith('http') for file in files), 'QwenSTT only supports http file urls'
         if url and url != self._base_url:
             raise Exception('Qwen STT forward() does not support overriding the `url` parameter, please remove it.')
@@ -420,6 +433,7 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
                          return_trace=return_trace, base_url=base_url, **kwargs)
 
     def _call_sync_text2image(self, call_params):
+        _ensure_dashscope_urls_initialized()
         task_response = dashscope.MultiModalConversation.call(**call_params)
         if task_response.status_code != HTTPStatus.OK:
             raise RuntimeError(
@@ -429,6 +443,7 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
         return task_response
 
     def _call_async_text2image(self, call_params):
+        _ensure_dashscope_urls_initialized()
         task_response = dashscope.ImageSynthesis.async_call(**call_params)
         if task_response.status_code != HTTPStatus.OK:
             raise RuntimeError(
@@ -536,6 +551,7 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
 
 def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
                        api_key: str = None, **kwargs):
+    _ensure_dashscope_urls_initialized()
     call_params = {
         'model': model_name,
         'text': input,
@@ -552,6 +568,7 @@ def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: flo
 
 def synthesize(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
                api_key: str = None, **kwargs):
+    _ensure_dashscope_urls_initialized()
     model_name = model_name + '-' + voice
     if api_key:
         kwargs['api_key'] = api_key
@@ -565,6 +582,7 @@ def synthesize(input: str, model_name: str, voice: str, speech_rate: float, volu
 
 def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
                   api_key: str = None, **kwargs):
+    _ensure_dashscope_urls_initialized()
     headers = {}
     if api_key:
         headers = {'Authorization': f'Bearer {api_key}'}
