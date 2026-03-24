@@ -85,6 +85,10 @@
     members:
     exclude-members:
 
+::: lazyllm.module.OnlineMultiModalModule
+    members:
+    exclude-members:
+
 ::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIEmbed
     members:
     exclude-members:
@@ -140,7 +144,7 @@
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMMultiModal
+::: lazyllm.module.OnlineMultiModalModule
     options:
       members:
 

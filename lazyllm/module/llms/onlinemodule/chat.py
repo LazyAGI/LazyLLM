@@ -9,7 +9,7 @@ from lazyllm.module import ModuleBase
 from .map_model_type import get_model_type
 from .base import OnlineChatModuleBase
 from .base.utils import select_source_with_default_key
-import threading
+from .dynamic_router import DynamicSourceRouterMixin
 
 
 class _ChatModuleMeta(_MetaBind):
@@ -23,7 +23,10 @@ class _ChatModuleMeta(_MetaBind):
 globals.config.add('dynamic_llm_source', str, None, 'DYNAMIC_LLM_SOURCE',
                    description='The LLM source to use defined in session scope.')
 
-class OnlineChatModule(ModuleBase, LLMBase, metaclass=_ChatModuleMeta):
+
+class OnlineChatModule(ModuleBase, LLMBase, DynamicSourceRouterMixin, metaclass=_ChatModuleMeta):
+    _dynamic_source_config = 'dynamic_llm_source'
+    _dynamic_source_error = 'No source is configured for dynamic LLM source.'
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:
@@ -40,16 +43,15 @@ class OnlineChatModule(ModuleBase, LLMBase, metaclass=_ChatModuleMeta):
                 api_key: str = None, static_params: Optional[StaticParams] = None, id: Optional[str] = None,
                 name: Optional[str] = None, group_id: Optional[str] = None, dynamic_auth: bool = False, **kwargs):
         if model in lazyllm.online.chat and source is None: source, model = model, source
-        if dynamic_auth:
-            assert source == 'dynamic', 'source should be dynamic for dynamic auth.'
-            assert not skip_auth, 'skip_auth should be False for dynamic LLM source.'
-        if source == 'dynamic' or (lazyllm.config['dynamic_llm_source'] and not source):
+        if cls._should_use_dynamic(source, dynamic_auth, skip_auth):
             return super().__new__(cls)
 
         if source is None and api_key is not None:
             raise ValueError('No source is given but an api_key is provided.')
         source, default_key = select_source_with_default_key(lazyllm.online.chat, source, LLMType.CHAT)
-        api_key = api_key or default_key
+        api_key = api_key if api_key is not None else default_key
+        if skip_auth and not base_url:
+            raise KeyError('base_url must be set for local serving.')
 
         if type is None and model:
             type = get_model_type(model)
@@ -60,11 +62,6 @@ class OnlineChatModule(ModuleBase, LLMBase, metaclass=_ChatModuleMeta):
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace, api_key=api_key,
                                                           skip_auth=skip_auth, type=type.upper() if type else None,
                                                           **kwargs)
-        if skip_auth:
-            source = source or 'openai'
-            if not base_url:
-                raise KeyError('base_url must be set for local serving.')
-
         return getattr(lazyllm.online.chat, source)(**params)
 
     def __init__(self, model: str = None, source: str = None, base_url: str = None, stream: bool = True,
@@ -73,28 +70,15 @@ class OnlineChatModule(ModuleBase, LLMBase, metaclass=_ChatModuleMeta):
                  name: Optional[str] = None, group_id: Optional[str] = None, dynamic_auth: bool = False, **kwargs):
         assert model is None, 'model should be given in forward method or global config.'
         assert base_url is None, 'base_url should be given in forward method or global config.'
-        assert api_key is None or api_key in ('auto', 'dynamic'), 'api_key should be given in forward or globals.config.'
-
         ModuleBase.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
         LLMBase.__init__(self, stream=stream, type=type, static_params=static_params)
         self._kwargs = kwargs
         self._skip_auth = skip_auth
-        self._api_key = 'dynamic' if (dynamic_auth or api_key == 'auto') else api_key
         self._type = type  # overwrite type to avoid convert None to 'llm'
-        self._suppliers: Dict[str, LLMBase] = {}
-        self._lock = threading.Lock()
+        self._init_dynamic_auth(api_key, dynamic_auth)
 
-    def _get_supplier(self):
-        if (source := globals.config['dynamic_llm_source']) is None:
-            raise KeyError('No source is configured for dynamic LLM source.')
-        if source not in self._suppliers:
-            with self._lock:
-                if source not in self._suppliers:
-                    self._suppliers[source] = getattr(lazyllm.online.chat, source)(
-                        stream=self._stream, type=self._type, static_params=self._static_params,
-                        skip_auth=self._skip_auth, api_key=self._api_key,
-                        return_trace=self._return_trace, **self._kwargs)
-        return self._suppliers[source]
-
-    def forward(self, *args, **kwargs):
-        return self._get_supplier().forward(*args, **kwargs)
+    def _build_supplier(self, source: str):
+        return getattr(lazyllm.online.chat, source)(
+            stream=self._stream, type=self._type, static_params=self._static_params,
+            skip_auth=self._skip_auth, api_key=self._api_key,
+            return_trace=self._return_trace, **self._kwargs)

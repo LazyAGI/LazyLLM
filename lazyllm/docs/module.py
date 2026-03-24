@@ -1528,7 +1528,9 @@ Args:
     source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``ppio`` / ``deepseek(暂时不支持访问)``
     base_url (str): 指定要访问的平台的基础链接，默认是官方链接
     system_prompt (str): 指定请求的system prompt，默认是官方给的system prompt
+    api_key (str): 可显式传入 API Key；当设置为 ``auto`` 或 ``dynamic`` 时，将在运行时从配置读取，支持动态切换 key
     stream (bool): 是否流式请求和输出，默认为流式
+    dynamic_auth (bool): 是否启用动态鉴权；为 True 时等价于 ``api_key='dynamic'``
     return_trace (bool): 是否将结果记录在trace中，默认为False
 ''')
 
@@ -1540,7 +1542,9 @@ Args:
     source (str): Specify the type of module to create. Options include  ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``ppio`` / ``deepseek (not yet supported)`` .
     base_url (str): Specify the base link of the platform to be accessed. The default is the official link.
     system_prompt (str): Specify the requested system prompt. The default is the official system prompt.
+    api_key (str): You can pass an explicit API key. If set to ``auto`` or ``dynamic``, the key is resolved from config at runtime, enabling dynamic key switching.
     stream (bool): Whether to request and output in streaming mode, default is streaming.
+    dynamic_auth (bool): Whether to enable dynamic auth. When True, it is equivalent to ``api_key='dynamic'``.
     return_trace (bool): Whether to record the results in trace, default is False.      
 ''')
 
@@ -1676,6 +1680,8 @@ Args:
     source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``qwen`` / ``doubao``
     embed_url (str): 指定要访问的平台的基础链接，默认是官方链接
     embed_mode_name (str): 指定要访问的模型 (注意使用豆包时需用 Model ID 或 Endpoint ID，获取方式详见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。使用模型前，要先在豆包平台开通对应服务。)，默认为 ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)`` 
+    api_key (str): 可显式传入 API Key；当设置为 ``auto`` 或 ``dynamic`` 时，将在运行时从配置读取，支持动态切换 key
+    dynamic_auth (bool): 是否启用动态鉴权；为 True 时等价于 ``api_key='dynamic'``
 ''')
 
 add_english_doc('OnlineEmbeddingModule', '''\
@@ -1685,6 +1691,8 @@ Args:
     source (str): Specify the type of module to create. Options are  ``openai`` /  ``sensenova`` /  ``glm`` /  ``qwen`` / ``doubao``.
     embed_url (str): Specify the base link of the platform to be accessed. The default is the official link.
     embed_mode_name (str): Specify the model to access (Note that you need to use Model ID or Endpoint ID when using Doubao. For details on how to obtain it, see [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). Before using the model, you must first activate the corresponding service on the Doubao platform.), default is ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)``
+    api_key (str): You can pass an explicit API key. If set to ``auto`` or ``dynamic``, the key is resolved from config at runtime, enabling dynamic key switching.
+    dynamic_auth (bool): Whether to enable dynamic auth. When True, it is equivalent to ``api_key='dynamic'``.
 ''')
 
 add_example('OnlineEmbeddingModule', '''\
@@ -1693,6 +1701,39 @@ add_example('OnlineEmbeddingModule', '''\
 >>> emb = m("hello world")
 >>> print(f"emb: {emb}")
 emb: [0.0010528564, 0.0063285828, 0.0049476624, -0.012008667, ..., -0.009124756, 0.0032043457, -0.051696777]
+''')
+
+add_chinese_doc('OnlineMultiModalModule', '''\
+用来管理创建在线多模态服务模块，目前支持 ``stt`` / ``tts`` / ``text2image`` / ``image_editing`` 类型。
+
+Args:
+    model (str): 指定要访问的模型名称。
+    source (str): 指定要创建的模块类型，如 ``qwen`` / ``glm`` / ``minimax`` / ``siliconflow`` / ``doubao`` 等。
+    type (str): 多模态任务类型，可选 ``stt`` / ``tts`` / ``text2image`` / ``image_editing``。
+    base_url (str): 指定要访问的平台基础链接，默认使用各平台官方链接。
+    api_key (str): 可显式传入 API Key；当设置为 ``auto`` 或 ``dynamic`` 时，将在运行时从配置读取，支持动态切换 key。
+    dynamic_auth (bool): 是否启用动态鉴权；为 True 时等价于 ``api_key='dynamic'``。
+    return_trace (bool): 是否将结果记录在 trace 中，默认为 False。
+''')
+
+add_english_doc('OnlineMultiModalModule', '''\
+Used to manage and create online multimodal service modules. Supported task types are ``stt`` / ``tts`` / ``text2image`` / ``image_editing``.
+
+Args:
+    model (str): Model name to use.
+    source (str): Supplier to use, such as ``qwen`` / ``glm`` / ``minimax`` / ``siliconflow`` / ``doubao``.
+    type (str): Multimodal task type, one of ``stt`` / ``tts`` / ``text2image`` / ``image_editing``.
+    base_url (str): Base URL of the platform. Defaults to each supplier's official endpoint.
+    api_key (str): You can pass an explicit API key. If set to ``auto`` or ``dynamic``, the key is resolved from config at runtime, enabling dynamic key switching.
+    dynamic_auth (bool): Whether to enable dynamic auth. When True, it is equivalent to ``api_key='dynamic'``.
+    return_trace (bool): Whether to record the result in trace. Defaults to False.
+''')
+
+add_example('OnlineMultiModalModule', '''\
+>>> import lazyllm
+>>> stt = lazyllm.OnlineMultiModalModule(source='qwen', type='stt', api_key='dynamic')
+>>> tts = lazyllm.OnlineMultiModalModule(source='qwen', type='tts', dynamic_auth=True)
+>>> img = lazyllm.OnlineMultiModalModule(source='qwen', type='text2image')
 ''')
 
 add_chinese_doc('OnlineChatModuleBase', '''\
@@ -2179,48 +2220,6 @@ Main Features:
     - Performs relevance reranking for input query and document list
     - Supports custom ranking parameters
     - Returns relevance scores for each document
-''')
-
-add_chinese_doc('llms.onlinemodule.supplier.glm.GLMMultiModal', '''\
-智谱AI的多模态基础模块，继承自OnlineMultiModalBase，用于处理多模态任务。
-
-Args:
-    model_name (str): 模型名称。
-    api_key (str): API密钥，如果未提供则从lazyllm.config['glm_api_key']读取。
-    base_url (str): API的基础URL，默认为'https://open.bigmodel.cn/api/paas/v4'。
-    return_trace (bool): 是否返回调用追踪信息，默认为False。
-    **kwargs: 其他传递给基类的参数。
-
-功能特点：
-
-    1. 支持多模态输入处理
-    2. 使用ZhipuAI客户端进行API调用
-    3. 提供统一的多模态接口
-    4. 可自定义基础URL和API密钥
-
-注意：
-    该类作为GLM多模态功能的基础类，通常作为其他具体多模态实现（如语音转文本、文本生成图像等）的父类。
-''')
-
-add_english_doc('llms.onlinemodule.supplier.glm.GLMMultiModal', '''\
-Zhipu AI's multimodal base module, inheriting from OnlineMultiModalBase, for handling multimodal tasks.
-
-Args:
-    model_name (str): Model name.
-    api_key (str): API key, if not provided will be read from lazyllm.config['glm_api_key'].
-    base_url (str): Base URL for API, defaults to 'https://open.bigmodel.cn/api/paas/v4'.
-    return_trace (bool): Whether to return call trace information, defaults to False.
-    **kwargs: Additional arguments passed to the base class.
-
-Features:
-
-    1. Supports multimodal input processing
-    2. Uses ZhipuAI client for API calls
-    3. Provides unified multimodal interface
-    4. Customizable base URL and API key
-
-Note:
-    This class serves as the base class for GLM multimodal functionality, typically used as the parent class for specific multimodal implementations (such as speech-to-text, text-to-image, etc.).
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenRerank', '''\
