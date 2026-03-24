@@ -6,6 +6,7 @@ LAZY_DYNAMIC_API_KEY_TOKENS = frozenset(('auto', 'dynamic'))
 
 
 class DynamicSourceRouterMixin(object):
+    '''Dynamic source router mixin.'''
     _dynamic_source_config: str = ''
     _dynamic_source_error: str = 'No source is configured for dynamic source.'
 
