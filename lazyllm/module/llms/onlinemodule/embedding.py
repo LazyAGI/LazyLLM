@@ -18,6 +18,38 @@ class __EmbedModuleMeta(type):
 class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
 
     @staticmethod
+    def _resolve_model_name(args, source, embed_url, embed_model_name, **kwargs):
+        model_alias = kwargs.pop('model', kwargs.pop('model_name', None))
+        if embed_model_name and model_alias and embed_model_name != model_alias:
+            raise ValueError('Conflicting values were provided for embed_model_name and model.')
+        embed_model_name = embed_model_name or model_alias
+
+        is_legacy_source_call = (
+            bool(args)
+            and args[0] in lazyllm.online.embed
+            and embed_model_name is None
+            and (source is None or source == args[0])
+        )
+        if is_legacy_source_call:
+            if source is None:
+                source = args[0]
+            if len(args) > 1 and embed_url is None:
+                embed_url = args[1]
+            if len(args) > 2 and embed_model_name is None:
+                embed_model_name = args[2]
+        else:
+            if len(args) > 0:
+                if embed_model_name is not None and embed_model_name != args[0]:
+                    raise ValueError('Conflicting values were provided for embed_model_name and model.')
+                embed_model_name = embed_model_name or args[0]
+            if len(args) > 1 and source is None:
+                source = args[1]
+            if len(args) > 2 and embed_url is None:
+                embed_url = args[2]
+
+        return source, embed_url, embed_model_name, kwargs
+
+    @staticmethod
     def _encapsulate_parameters(embed_url: str,
                                 embed_model_name: str,
                                 **kwargs) -> Dict[str, Any]:
@@ -30,10 +62,16 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         return params
 
     def __new__(self,
+                *args,
                 source: str = None,
                 embed_url: str = None,
                 embed_model_name: str = None,
                 **kwargs):
+        if len(args) > 3:
+            raise TypeError('OnlineEmbeddingModule accepts at most three positional arguments.')
+        source, embed_url, embed_model_name, kwargs = OnlineEmbeddingModule._resolve_model_name(
+            args, source, embed_url, embed_model_name, **kwargs
+        )
         params = OnlineEmbeddingModule._encapsulate_parameters(embed_url, embed_model_name, **kwargs)
 
         if source is None and 'api_key' in kwargs and kwargs['api_key']:
