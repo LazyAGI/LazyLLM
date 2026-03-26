@@ -1,4 +1,3 @@
-import pytest
 
 
 class TestMinimaxChatDefaults:
@@ -43,81 +42,6 @@ class TestMinimaxTTSDefaults:
     def test_default_model_name(self):
         from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxTTS
         assert MinimaxTTS.MODEL_NAME == 'speech-2.8-hd'
-
-
-class TestMinimaxEmbedDefaults:
-    '''Unit tests for MinimaxEmbed default configuration.'''
-
-    def test_default_embed_url(self):
-        from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxEmbed
-        import inspect
-        sig = inspect.signature(MinimaxEmbed.__init__)
-        assert sig.parameters['embed_url'].default == 'https://api.minimax.io/v1/embeddings'
-
-    def test_default_model_name(self):
-        from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxEmbed
-        import inspect
-        sig = inspect.signature(MinimaxEmbed.__init__)
-        assert sig.parameters['embed_model_name'].default == 'embo-01'
-
-
-class TestMinimaxEmbedDataFormat:
-    '''Unit tests for MinimaxEmbed custom data encapsulation and parsing.'''
-
-    def _make_embed(self):
-        from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxEmbed
-        embed = object.__new__(MinimaxEmbed)
-        embed._embed_model_name = 'embo-01'
-        embed._batch_size = 16
-        return embed
-
-    def test_encapsulated_data_single_string(self):
-        embed = self._make_embed()
-        data = embed._encapsulated_data('hello world')
-        assert isinstance(data, dict)
-        assert data['model'] == 'embo-01'
-        assert data['texts'] == ['hello world']
-        assert data['type'] == 'db'
-
-    def test_encapsulated_data_query_type(self):
-        embed = self._make_embed()
-        data = embed._encapsulated_data('search query', type='query')
-        assert data['type'] == 'query'
-
-    def test_encapsulated_data_list(self):
-        embed = self._make_embed()
-        data = embed._encapsulated_data(['text1', 'text2'])
-        assert isinstance(data, dict)
-        assert data['texts'] == ['text1', 'text2']
-
-    def test_encapsulated_data_large_batch(self):
-        embed = self._make_embed()
-        embed._batch_size = 2
-        texts = ['a', 'b', 'c', 'd', 'e']
-        data = embed._encapsulated_data(texts)
-        assert isinstance(data, list)
-        assert len(data) == 3
-        assert data[0]['texts'] == ['a', 'b']
-        assert data[1]['texts'] == ['c', 'd']
-        assert data[2]['texts'] == ['e']
-
-    def test_parse_response_single(self):
-        embed = self._make_embed()
-        response = {'vectors': [[0.1, 0.2, 0.3]], 'total_tokens': 5}
-        result = embed._parse_response(response, input='hello')
-        assert result == [0.1, 0.2, 0.3]
-
-    def test_parse_response_list(self):
-        embed = self._make_embed()
-        response = {'vectors': [[0.1, 0.2], [0.3, 0.4]], 'total_tokens': 10}
-        result = embed._parse_response(response, input=['a', 'b'])
-        assert result == [[0.1, 0.2], [0.3, 0.4]]
-
-    def test_parse_response_empty_raises(self):
-        embed = self._make_embed()
-        response = {'vectors': [], 'total_tokens': 0}
-        with pytest.raises(Exception, match='no embedding vectors received'):
-            embed._parse_response(response, input='hello')
 
 
 class TestMinimaxModelMapping:

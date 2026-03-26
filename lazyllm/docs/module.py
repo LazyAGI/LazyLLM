@@ -3091,34 +3091,6 @@ Args:
     **kwargs: Additional optional parameters passed to the parent classes
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxEmbed', """\
-Minimax 在线文本嵌入模块，继承自 LazyLLMOnlineEmbedModuleBase。
-
-提供基于 Minimax 平台的文本嵌入功能，使用 embo-01 模型将文本转换为向量表示。
-支持单条和批量文本嵌入，使用 Minimax 原生嵌入 API（非 OpenAI 兼容格式）。
-
-Args:
-    embed_url (str, optional): 嵌入 API 地址，默认为 "https://api.minimax.io/v1/embeddings"
-    embed_model_name (str, optional): 嵌入模型名称，默认为 "embo-01"
-    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['minimax_api_key'] 中读取
-    batch_size (int, optional): 批量处理大小，默认为 16
-    **kw: 其他传递给父类的可选参数
-""")
-
-add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxEmbed', """\
-Minimax online text embedding module, inheriting from LazyLLMOnlineEmbedModuleBase.
-
-Provides text embedding functionality based on the Minimax platform, using the embo-01 model to convert text into vector representations.
-Supports single and batch text embedding, using the Minimax native embedding API (non-OpenAI compatible format).
-
-Args:
-    embed_url (str, optional): Embedding API URL, defaults to "https://api.minimax.io/v1/embeddings"
-    embed_model_name (str, optional): Embedding model name, defaults to "embo-01"
-    api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
-    batch_size (int, optional): Batch processing size, defaults to 16
-    **kw: Additional optional parameters passed to the parent classes
-""")
-
 add_chinese_doc('llms.onlinemodule.supplier.aiping.AipingChat', '''\
 AipingChat 是 AIPing 的在线聊天模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
 

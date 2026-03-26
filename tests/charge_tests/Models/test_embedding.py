@@ -62,11 +62,6 @@ class TestEmbedding:
     def test_sensenova_embedding(self):
         self.common_embedding(source='sensenova')
 
-    @pytest.mark.ignore_cache_on_change(get_path('minimax'))
-    @pytest.mark.xfail
-    def test_minimax_embedding(self):
-        self.common_embedding(source='minimax')
-
     @pytest.mark.ignore_cache_on_change(get_path('doubao'))
     @pytest.mark.xfail
     def test_doubao_multimodal_embedding(self):

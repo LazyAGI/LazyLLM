@@ -31,7 +31,6 @@ test_models = {
     ],
     'embed': [
         'text-embedding-v3',
-        'embo-01',
     ],
     'sd': [
         'cogview-4',

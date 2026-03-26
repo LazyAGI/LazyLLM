@@ -449,7 +449,6 @@ MODEL_MAPPING = {
     'speech-2.8-hd': 'tts',
     'speech-2.8-turbo': 'tts',
     'speech-2.6-hd': 'tts',
-    'embo-01': 'embed',
 
     # ===== DeepSeek =====
     'deepseek-chat': 'llm',
