@@ -9,7 +9,11 @@ test_models = {
         'sensechat-128k',
         'glm-4-5-airx',
         'qwen3-coder-plus-2025-09-23',
-        'deepseek-v3-1-terminus'
+        'deepseek-v3-1-terminus',
+        'MiniMax-M2.7',
+        'MiniMax-M2.7-highspeed',
+        'MiniMax-M2.5',
+        'MiniMax-M2.5-highspeed',
     ],
     'vlm': [
         'moonshot-v1-128k-vision-preview',
@@ -21,13 +25,16 @@ test_models = {
         'qwen3-asr-flash-realtime-2025-10-27'
     ],
     'tts': [
-        'qwen3-tts-flash-realtime-2025-09-18'
+        'qwen3-tts-flash-realtime-2025-09-18',
+        'speech-2.8-hd',
+        'speech-2.8-turbo',
     ],
     'embed': [
-        'text-embedding-v3'
+        'text-embedding-v3',
     ],
     'sd': [
         'cogview-4',
+        'image-01',
         'wanx2.1-t2i-plus',
         'animate-anyone-template-gen2',
         'doubao-seedance-1-0-pro-fast-251015'

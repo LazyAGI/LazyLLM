@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ..base import OnlineChatModuleBase, LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
+from ..base import (OnlineChatModuleBase, LazyLLMOnlineText2ImageModuleBase,
+                    LazyLLMOnlineTTSModuleBase)
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
@@ -13,7 +14,7 @@ from ..fileHandler import FileHandlerBase
 
 class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
-    def __init__(self, base_url: str = 'https://api.minimaxi.com/v1/', model: str = 'MiniMax-M2',
+    def __init__(self, base_url: str = 'https://api.minimax.io/v1/', model: str = 'MiniMax-M2.7',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         super().__init__(api_key=api_key or lazyllm.config['minimax_api_key'], base_url=base_url, model_name=model,
                          stream=stream, return_trace=return_trace, **kwargs)
@@ -70,7 +71,7 @@ class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
     MODEL_NAME = 'image-01'
 
     def __init__(self, api_key: str = None, model: str = None,
-                 url: str = 'https://api.minimaxi.com/v1/', return_trace: bool = False, **kwargs):
+                 url: str = 'https://api.minimax.io/v1/', return_trace: bool = False, **kwargs):
         super().__init__(api_key=api_key or lazyllm.config['minimax_api_key'],
                          model_name=model or MinimaxText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
@@ -140,10 +141,10 @@ class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
 
 
 class MinimaxTTS(LazyLLMOnlineTTSModuleBase):
-    MODEL_NAME = 'speech-2.6-hd'
+    MODEL_NAME = 'speech-2.8-hd'
 
     def __init__(self, api_key: str = None, model_name: str = None,
-                 base_url: str = 'https://api.minimaxi.com/v1/',
+                 base_url: str = 'https://api.minimax.io/v1/',
                  return_trace: bool = False, **kwargs):
         if kwargs.pop('stream', False):
             raise ValueError('MinimaxTTS does not support streaming output, please set stream to False')
