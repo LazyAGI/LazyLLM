@@ -1742,39 +1742,80 @@ print(res)
 """)
 
 # pdf_ops module docs
-add_chinese_doc('data.operators.pdf_ops.Pdf2Md', """\
-将 PDF 转为 Markdown 文档列表。通过 MineruPDFReader（需配置 reader_url）调用后端服务，支持缓存。
+add_chinese_doc('data.operators.pdf_ops.PdfProcessor', """\
+将 PDF 转换为带图像信息的文本块列表。基于 MineruPDFReader（需配置 reader_url）调用后端服务，
+并支持自动分块、图片提取与下载。
+
+主要功能：
+1. 将 PDF 解析为 Markdown 文本
+2. 按 max_chunk_chars 自动合并为文本块（chunk）
+3. 自动提取 Markdown 中的图片路径
+4. 下载图片并 resize（支持 letterbox）
+5. 输出文本 + 对应图片路径列表
 
 Args:
     input_key (str): PDF 路径字段名，默认 'pdf_path'
-    output_key (str): 转换得到的文档列表写入的字段名，默认 'docs'
-    reader_url: 必填，Mineru 阅读器服务 URL
-    backend (str): 后端类型，默认 'vlm-vllm-async-engine'
-    upload_mode (bool): 是否上传模式，默认 True
+    output_key (str): 文本块输出字段名，默认 'chunk'
+    reader_url (str): 必填，Mineru 阅读器服务 URL
     use_cache (bool): 是否使用缓存，默认 False
+    image_output_folder (str): 图片保存目录，默认 './pdf_images'
+    image_key (str): 图片路径字段名，默认 'image_path'
+    image_size (tuple | int): 图片尺寸
+        - tuple: 直接 resize
+        - int: 按最长边等比缩放 + letterbox 填充
+    max_chunk_chars (int): 每个文本块最大字符数，默认 1500
     **kwargs: 其它基类参数
 """)
 
-add_english_doc('data.operators.pdf_ops.Pdf2Md', """\
-Convert PDF to a list of Markdown documents. Uses MineruPDFReader (reader_url required). Supports cache.
+add_english_doc('data.operators.pdf_ops.PdfProcessor', """\
+Convert PDF into text chunks with associated images. Uses MineruPDFReader (reader_url required)
+and supports chunk merging, image extraction, and downloading.
+
+Key features:
+1. Parse PDF into Markdown text
+2. Merge into chunks based on max_chunk_chars
+3. Extract image paths from Markdown
+4. Download and resize images (supports letterbox)
+5. Output text + corresponding image paths
 
 Args:
     input_key (str): key of the PDF path, default 'pdf_path'
-    output_key (str): key to write the document list, default 'docs'
-    reader_url: required, Mineru reader service URL
-    backend (str): backend type, default 'vlm-vllm-async-engine'
-    upload_mode (bool): whether to use upload mode, default True
+    output_key (str): key for text chunks, default 'chunk'
+    reader_url (str): required, Mineru reader service URL
     use_cache (bool): whether to use cache, default False
+    image_output_folder (str): folder to save images, default './pdf_images'
+    image_key (str): key for image paths, default 'image_path'
+    image_size (tuple | int): image size
+        - tuple: direct resize
+        - int: resize with aspect ratio + letterbox padding
+    max_chunk_chars (int): max characters per chunk, default 1500
     **kwargs: other base-class args
 """)
 
-add_example('data.operators.pdf_ops.Pdf2Md', """\
+add_example('data.operators.pdf_ops.PdfProcessor', """\
 ```python
 from lazyllm.tools.data import Pdf2Qa
 
-op = Pdf2Qa.Pdf2Md(input_key='pdf_path', output_key='docs', reader_url='http://...')
+op = Pdf2Qa.PdfProcessor(
+    input_key='pdf_path',
+    output_key='chunk',
+    reader_url='http://...',
+    image_output_folder='./pdf_images',
+    image_size=336,
+)
+
 data = [{'pdf_path': '/path/to/file.pdf'}]
-res = op(data)  # each item gets 'docs' (list of doc content)
+
+res = op(data)
+
+# 输出格式：
+# [
+#   {
+#       "chunk": "文本内容...",
+#       "image_path": ["./pdf_images/xxx.png", ...]
+#   },
+#   ...
+# ]
 ```"""
 )
 

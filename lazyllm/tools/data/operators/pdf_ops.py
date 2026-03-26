@@ -5,47 +5,147 @@ from lazyllm.components.formatter import JsonFormatter
 from lazyllm.components.formatter import encode_query_with_filepaths
 import os
 import re
+import io
 from lazyllm.thirdparty import PIL
+import requests
 
 DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
 
 Pdf2Qa = data_register.new_group('pdf2Qa')
 
 
-class Pdf2Md(Pdf2Qa):
+class PdfProcessor(Pdf2Qa):
     def __init__(
         self,
         input_key='pdf_path',
-        output_key='docs',
+        output_key='chunk',
         reader_url=None,
-        upload_mode=True,
         use_cache=False,
+        image_output_folder='./pdf_images',
+        image_key='image_path',
+        image_size=(336, 336),
+        max_chunk_chars=1500,
         **kwargs,
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
         if not reader_url:
-            raise ValueError('You must pass in a reader_url.')
+            raise ValueError('You must pass in a mineru url.')
         self.input_key = input_key
         self.output_key = output_key
         self.use_cache = use_cache
         self.reader = MineruPDFReader(
             url=reader_url,
-            upload_mode=upload_mode,
+            upload_mode=True,
         )
 
-    def forward(self, data):
+        self.base_url = reader_url.rstrip('/')
+        self.pattern = re.compile(r'!\[.*?\]\((.*?)\)')
+        self.downloaded = set()
+        self.image_key = image_key
+        self.image_output_folder = image_output_folder
+        self.image_size = image_size
+        self.max_chunk_chars = max_chunk_chars
+
+    def _merge_chunks(self, docs):
+        merged = []
+        buffer = ''
+
+        for node in docs:
+            text = node.text.strip()
+            if not text:
+                continue
+
+            if len(buffer) + len(text) <= self.max_chunk_chars:
+                buffer += '\n' + text if buffer else text
+            else:
+                if buffer:
+                    merged.append(buffer)
+                buffer = text
+
+        if buffer:
+            merged.append(buffer)
+        return merged
+
+    def _download_image(self, path):
+        os.makedirs(self.image_output_folder, exist_ok=True)
+
+        def letterbox_resize(img, size=336):
+            w, h = img.size
+
+            scale = size / max(w, h)
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+
+            img = img.resize((new_w, new_h), PIL.Image.BILINEAR)
+            new_img = PIL.Image.new('RGB', (size, size), (0, 0, 0))
+            paste_x = (size - new_w) // 2
+            paste_y = (size - new_h) // 2
+
+            new_img.paste(img, (paste_x, paste_y))
+
+            return new_img
+
+        filename = os.path.basename(path)
+        save_path = os.path.join(self.image_output_folder, filename)
+
+        if filename in self.downloaded:
+            return save_path
+
+        url = f'{self.base_url}/{path}'
+
+        try:
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                img = PIL.Image.open(io.BytesIO(r.content)).convert('RGB')
+                if isinstance(self.image_size, tuple):
+                    img = img.resize(self.image_size)
+                else:
+                    img = letterbox_resize(img, self.image_size)
+                img.save(save_path)
+
+                self.downloaded.add(filename)
+        except Exception as e:
+            LOG.warning(f'Download failed: {url}, error: {e}')
+
+        return save_path
+
+    def _extract_images(self, text):
+        return self.pattern.findall(text.strip())
+
+    def forward(self, data, **kwargs):
         pdf_path = data.get(self.input_key)
         if not pdf_path:
-            return None
-        try:
-            docs = self.reader(file=pdf_path, use_cache=self.use_cache)
-            node = docs[0]
-            content = getattr(node, 'content', None)
-            return [{'content': c} for c in content]
-        except Exception as e:
-            LOG.warning(f'PDF read failed: {e}')
-            return data
+            return []
 
+        docs = self.reader._load_data(pdf_path, use_cache=self.use_cache)
+        results = []
+        merged_text = self._merge_chunks(docs)
+
+        for text in merged_text:
+
+            if 'images/' not in text:
+                results.append(
+                    {self.output_key: text, self.image_key: ''}
+                )
+                continue
+
+            current_imgs = [
+                p for p in self._extract_images(text)
+                if p.startswith('images/')
+            ]
+
+            image_names = []
+
+            for path in current_imgs:
+                filename = self._download_image(path)
+                image_names.append(filename)
+
+            results.append({
+                self.output_key: text,
+                self.image_key: list(set(image_names)),
+            })
+
+        return results
 
 @data_register('data.Pdf2QA', rewrite_func='forward')
 def multi_features_filter(data, input_key, threshold):
@@ -62,86 +162,6 @@ def multi_features_filter(data, input_key, threshold):
     if avg < threshold:
         return []
     return None
-
-
-class PdfChunkToQA(Pdf2Qa):
-    def __init__(
-        self,
-        input_key='chunk',
-        query_key='query',
-        answer_key='answer',
-        model=None,
-        user_prompt=None,
-        mineru_api=None,
-        image_key='image_path',
-        **kwargs,
-    ):
-        super().__init__(_concurrency_mode='thread', **kwargs)
-        self.input_key = input_key
-        self.query_key = query_key
-        self.answer_key = answer_key
-        self.user_prompt = user_prompt
-        self.mineru_api = mineru_api or ''
-        self.image_key = image_key
-        output_structure = f'''
-输出格式要求：
-{{
-    '{self.query_key}': '生成的问题',
-    '{self.answer_key}': '答案'
-}}
-'''
-        if model is None:
-            self.model = TrainableModule(DEFAULT_MODEL)
-        else:
-            self.model = model.share()
-        self.model.prompt(output_structure).formatter(JsonFormatter()).start()
-
-    def _extract_images(self, text):
-        pattern = r'!\[.*?\]\((images/[^)]+)\)'
-        return re.findall(pattern, text or '')
-
-    def forward(self, data: dict):
-        # todo: check the path from mineru server.
-        # and resize the image before saving into disk
-        assert self.input_key in data
-        chunk = data.get(self.input_key, '')
-        if not chunk:
-            data[self.query_key] = ''
-            data[self.answer_key] = ''
-            return data
-        image_rel_paths = self._extract_images(chunk)
-        if image_rel_paths:
-            base_dir = os.path.join('lazyllm', 'tools', 'data', 'operators', 'imgs')
-            os.makedirs(base_dir, exist_ok=True)
-            local_paths = []
-            for rel_path in image_rel_paths:
-                filename = os.path.basename(rel_path)
-                local_path = os.path.join(base_dir, filename)
-                local_paths.append(local_path)
-                src_path = os.path.join(self.mineru_api, rel_path) if self.mineru_api else rel_path
-                if src_path.startswith('http'):
-                    import requests
-                    r = requests.get(src_path)
-                    with open(local_path, 'wb') as f:
-                        f.write(r.content)
-                else:
-                    import shutil
-                    shutil.copy(src_path, local_path)
-            context = re.sub(r'!\[.*?\]\(images/[^)]+\)', '', chunk)
-            query = context if context else 'Generate one QA pair based on the image.'
-            # save the img from mineru server to local
-            out = self.model(encode_query_with_filepaths(query, local_paths))
-            data[self.query_key] = out.get(self.query_key, '')
-            data[self.answer_key] = out.get(self.answer_key, '')
-            data[self.image_key] = local_paths
-            return data
-        user_prompt = self.user_prompt or '根据下面文本生成一个 QA 对：\n'
-        inp = f'{user_prompt}\n{chunk}'
-        qa = self.model(inp)
-        data[self.query_key] = qa.get(self.query_key, '')
-        data[self.answer_key] = qa.get(self.answer_key, '')
-        return data
-
 
 class PdfQAScorer(Pdf2Qa):
     def __init__(
@@ -186,7 +206,7 @@ class PdfQAScorer(Pdf2Qa):
             data[self.output_key] = 0
             return data
         if isinstance(img_path, str):
-            img_path = [img_path]
+            img_path = [img_path] if img_path else []
         qa_payload = f'问题{query}; 答案{answer}'
         user_prompt = self.user_prompt or '''
 请根据下面内容和图片(可以没有图片)对 QA 打分：
@@ -224,9 +244,10 @@ class ImageToVQA(Pdf2Qa):
         self.reference_key = reference_key
 
         output_structure = f'''
+输出格式要求：
 {{
-    '{self.query_key}': 'query',
-    '{self.answer_key}': 'answer'
+    '{self.query_key}': '问题',
+    '{self.answer_key}': '答案'
 }}
 '''
 
@@ -235,7 +256,7 @@ class ImageToVQA(Pdf2Qa):
         else:
             self.model = model.share()
 
-        self.model.prompt(output_structure)\
+        self.model.prompt(dict(system=output_structure, drop_builtin_system=True))\
             .formatter(JsonFormatter())\
             .start()
 
@@ -244,14 +265,12 @@ class ImageToVQA(Pdf2Qa):
 
         image_paths = data.get(self.image_key, [])
         if isinstance(image_paths, str):
-            image_paths = [image_paths]
+            image_paths = [image_paths] if image_paths else []
 
-        if not image_paths:
-            data[self.query_key] = ''
-            data[self.answer_key] = ''
-            return data
-
-        query = self.user_prompt or '生成一个基于图像的问答对, 如果给出了问题或答案那么给答案输出完整的推理过程。'
+        default_query = '''
+生成一个基于图像的中文问答对, 如果给出了问题或答案那么给答案输出完整的推理过程。如果输入的是纯文本，那么基于这个文本生成QA对。输出要具体，不能出现文中、作者、第几章这种模糊的问题。
+'''
+        query = self.user_prompt or default_query
 
         context = data.get(self.context_key, '')
         reference = data.get(self.reference_key, '')
@@ -260,6 +279,7 @@ class ImageToVQA(Pdf2Qa):
             query += f'\nContext：{context}'
         if reference:
             query += f'\nReference：{reference}'
+
         res = self.model(
             encode_query_with_filepaths(query, image_paths)
         )
@@ -280,25 +300,39 @@ def vqa_to_chat_format(
     query = data.get(query_key, '')
     answer = data.get(answer_key, '')
 
-    if not (image_path and query and answer):
+    if not (query and answer):
         return []
 
     if isinstance(image_path, str):
-        image_path = [image_path]
+        image_path = [image_path] if image_path else []
 
-    chat_item = {
-        'messages': [
-            {
-                'role': 'user',
-                'content': f'<image>{query}'
-            },
-            {
-                'role': 'assistant',
-                'content': answer
-            }
-        ],
-        'images': image_path
-    }
+    if image_path:
+        chat_item = {
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': f'<image>{query}'
+                },
+                {
+                    'role': 'assistant',
+                    'content': answer
+                }
+            ],
+            'images': image_path
+        }
+    else:
+        chat_item = {
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': query
+                },
+                {
+                    'role': 'assistant',
+                    'content': answer
+                }
+            ]
+        }
 
     return chat_item
 
@@ -314,7 +348,7 @@ def resize_image_inplace(
         return None
 
     if isinstance(image_paths, str):
-        image_paths = [image_paths]
+        image_paths = [image_paths] if image_paths else []
 
     for img_path in image_paths:
         if not img_path or not os.path.exists(img_path):
