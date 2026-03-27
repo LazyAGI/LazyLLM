@@ -7,6 +7,18 @@ class DocRefinementPrompt(PromptABC):
         self.lang = lang
         self.strict_mode = strict_mode
 
+    def build_system_prompt(self) -> str:
+        if self.lang == 'en':
+            return (
+                'You always respond with exactly one JSON object and nothing else. '
+                'The object must have exactly one key "text" (string). The string must wrap '
+                'the refined body between the literal markers <cleaned_start> and <cleaned_end>.'
+            )
+        return (
+            '你只输出一个 JSON 对象，不得包含其它说明文字。该对象有且仅有键 "text"（字符串类型），'
+            '且字符串正文必须夹在 <cleaned_start> 与 <cleaned_end> 之间。'
+        )
+
     def build_prompt(self, raw_content: str) -> str:
         if self.lang == 'en':
             self.prompt_header = f'''

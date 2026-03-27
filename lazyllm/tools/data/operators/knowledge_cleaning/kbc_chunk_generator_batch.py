@@ -106,7 +106,7 @@ class KBCChunkText(kbc):
                 self._tokenizer = transformers.AutoTokenizer.from_pretrained(self.tokenizer_name)
                 self._chunker = self._initialize_chunker()
             except ImportError as e:
-                LOG.error(f'Missing dependencies: {e}')
+                LOG.error(f'Missing dependencies "transformers": {e}')
                 raise
 
     def _count_tokens(self, text: str) -> int:

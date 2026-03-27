@@ -2361,7 +2361,7 @@ op = domain_finetune.merge_context_and_question(
 data = [{'context': '财报摘要...', 'question': '营收是多少？', 'answer': '100万'}]
 res = op(data)
 print(res[0]['question'])
-# 'Context: 财报摘要...\\n\\nQuestion: 营收是多少？'
+# 'Context: 财报摘要...Question: 营收是多少？'
 ```
 """)
 

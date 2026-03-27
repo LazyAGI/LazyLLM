@@ -1,8 +1,44 @@
+from typing import Any
+
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.components.formatter import JsonFormatter
 from ...base_data import data_register
 from ...prompts.kbcleaning import DocRefinementPrompt
+
+
+def _text_from_json_formatter_response(response: Any) -> str:
+    """Extract the ``text`` field from JsonFormatter output.
+
+    Contract (see DocRefinementPrompt): a single JSON object ``{\"text\": \"...\"}``.
+    JsonFormatter may return a dict, a list when multiple JSON objects appear in the
+    reply, or an empty string when parsing fails.
+    """
+    if isinstance(response, dict):
+        if 'text' not in response:
+            LOG.warning(
+                'Cleaned LLM JSON must contain key "text"; got keys: %s',
+                list(response.keys()),
+            )
+            return ''
+        val = response['text']
+        return val if isinstance(val, str) else str(val)
+
+    if isinstance(response, list):
+        if not response:
+            LOG.warning('Cleaned LLM JSON list is empty; expected one object with "text".')
+            return ''
+        if len(response) > 1:
+            LOG.warning(
+                'Cleaned LLM reply contained %d JSON objects; only the first is used.',
+                len(response),
+            )
+        return _text_from_json_formatter_response(response[0])
+
+    if isinstance(response, str):
+        return response
+
+    return str(response)
 
 # Get or create kbc (knowledge base cleaning) group
 if 'data' in LazyLLMRegisterMetaClass.all_clses and 'kbc' in LazyLLMRegisterMetaClass.all_clses['data']:
@@ -22,8 +58,7 @@ class KBCGenerateCleanedTextSingle(kbc):
         self.input_key = input_key
         self.prompts = DocRefinementPrompt(lang=lang)
         if llm is not None:
-            # Note: DocRefinementPrompt may not have system prompt, use empty string
-            system_prompt = getattr(self.prompts, 'build_system_prompt', lambda: '')()
+            system_prompt = self.prompts.build_system_prompt()
             # Use JsonFormatter: model must return valid JSON as instructed by DocRefinementPrompt
             self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()
@@ -61,21 +96,7 @@ def extract_cleaned_content_single(
     output_key: str = 'cleaned_chunk',
 ) -> dict:
     response = data.get('_cleaned_response', '')
-
-    # Handle different response types from JsonFormatter (dict / list / str)
-    if isinstance(response, dict):
-        text = response.get('text', '') or response.get('content', '') or str(response)
-    elif isinstance(response, list):
-        text = response[0] if response else ''
-        if isinstance(text, dict):
-            text = text.get('text', '') or text.get('content', '') or str(text)
-        else:
-            text = str(text) if text is not None else ''
-    elif isinstance(response, str):
-        # JsonFormatter failed to parse or returned raw string, use as-is
-        text = response
-    else:
-        text = str(response)
+    text = _text_from_json_formatter_response(response)
 
     # Extract content between tags
     if '<cleaned_start>' in text and '<cleaned_end>' in text:

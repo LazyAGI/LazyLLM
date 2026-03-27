@@ -6,6 +6,7 @@ from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.components.formatter import JsonFormatter
 from ...base_data import data_register
 from ...prompts.kbcleaning import DocRefinementPrompt
+from .kbc_text_cleaner import _text_from_json_formatter_response
 
 # Get or create kbc (knowledge base cleaning) group
 if 'data' in LazyLLMRegisterMetaClass.all_clses and 'kbc' in LazyLLMRegisterMetaClass.all_clses['data']:
@@ -56,8 +57,7 @@ class KBCGenerateCleanedText(kbc):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.prompts = DocRefinementPrompt(lang=lang)
         if llm is not None:
-            # Note: DocRefinementPrompt may not have system prompt, use empty string
-            system_prompt = getattr(self.prompts, 'build_system_prompt', lambda: '')()
+            system_prompt = self.prompts.build_system_prompt()
             # Use JsonFormatter: model must return valid JSON as instructed by DocRefinementPrompt
             self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()
@@ -118,20 +118,7 @@ def extract_cleaned_content(data: dict) -> dict:
         raw_chunk = result.get('raw_chunk', '')
         original_item = result.get('original_item', {})
 
-        # Handle different response types from JsonFormatter (dict / list / str)
-        if isinstance(response, dict):
-            text = response.get('text', '') or response.get('content', '') or str(response)
-        elif isinstance(response, list):
-            text = response[0] if response else ''
-            if isinstance(text, dict):
-                text = text.get('text', '') or text.get('content', '') or str(text)
-            else:
-                text = str(text) if text is not None else ''
-        elif isinstance(response, str):
-            # JsonFormatter failed to parse or returned raw string, use as-is
-            text = response
-        else:
-            text = str(response)
+        text = _text_from_json_formatter_response(response)
 
         # Extract content between tags
         if '<cleaned_start>' in text and '<cleaned_end>' in text:

@@ -67,13 +67,22 @@ class RAGFactsConclusionPrompt(PromptABC):
   - **Structured**: Use semicolons to separate multi-metrics
   - **Operational**: Directly usable for database queries or calculations
 
-  ## IV. Output Specifications
-  Return JSON array with "conclusion" and "R" fields for each item.
+  ## IV. Output Specifications (STRICT — follow exactly)
+  - The model response MUST be one JSON **array** at the top level:
+    `[{"conclusion": "<string>", "R": "<string>"}, ...]`
+  - Every item MUST include both `"conclusion"` and `"R"` (string values).
+  - Even a single atomic conclusion MUST be expressed as a **one-element array**,
+    not as a single JSON object. Example: `[{"conclusion":"...","R":"..."}]`.
+  - Do NOT wrap the array in an outer object (no `{"conclusions": [...]}` unless
+    the caller explicitly asks for that legacy shape).
+  - Do NOT output markdown fences, comments, or any text before or after the array.
         '''
 
     def build_prompt(self, input) -> str:
         return f'''
     The document content to be processed is as follows: {input}
+
+    Respond with ONLY a JSON array as specified in the system message.
     '''
 
 
@@ -227,7 +236,8 @@ class RAGDepthQueryIdPrompt(PromptABC):
     - Specific technical terms
     - Unique identifiers in the question
 
-  Return JSON format with key "content_identifier"
+  Return a single JSON object with exactly one key "content_identifier". The value must be one plain \
+string (the subject phrase), not an array, object, or nested structure.
 '''
 
     def build_prompt(self, input) -> str:

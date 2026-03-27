@@ -1,5 +1,7 @@
 import json
-from typing import List, Optional
+from typing import Any, List, Optional
+
+import json5
 
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
@@ -34,36 +36,112 @@ def _extract_json_content(item: str) -> str:
     )
 
 
-def _extract_json_array_from_text(text: str):  # noqa: C901
-    if not text or not isinstance(text, str):
-        return None
-    text = _extract_json_content(text)
-    # 先尝试整体解析
+def _loads_json_lenient(raw: str) -> Optional[Any]:
+    """Try strict JSON, then JSON5 (trailing commas, etc.)."""
     try:
-        parsed = json.loads(text)
-        if isinstance(parsed, list):
-            return parsed
-        if isinstance(parsed, dict) and 'conclusion' in parsed and 'R' in parsed:
-            return [parsed]
-        return None
+        return json.loads(raw)
     except json.JSONDecodeError:
-        pass
-    # 查找第一个 '[' 与匹配的 ']'，再解析
-    start = text.find('[')
-    if start < 0:
-        return None
+        try:
+            return json5.loads(raw)
+        except (ValueError, TypeError):
+            return None
+
+
+def _normalize_to_conclusion_list(parsed: Any) -> Optional[List[Any]]:
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict) and 'conclusion' in parsed and 'R' in parsed:
+        return [parsed]
+    return None
+
+
+def _find_matching_array_end(text: str, start: int) -> Optional[int]:
+    """start is index of '['; returns index of matching ']' or None."""
     depth = 0
     for i in range(start, len(text)):
-        if text[i] == '[':
+        ch = text[i]
+        if ch == '[':
             depth += 1
-        elif text[i] == ']':
+        elif ch == ']':
             depth -= 1
             if depth == 0:
-                try:
-                    return json.loads(text[start:i + 1])
-                except json.JSONDecodeError:
-                    return None
+                return i
     return None
+
+
+def _parse_embedded_json_array(cleaned: str) -> Optional[List[Any]]:
+    """Extract first top-level [...] slice and parse as array only."""
+    start = cleaned.find('[')
+    if start < 0:
+        return None
+    end = _find_matching_array_end(cleaned, start)
+    if end is None:
+        return None
+    segment = cleaned[start:end + 1]
+    parsed = _loads_json_lenient(segment)
+    if isinstance(parsed, list):
+        return parsed
+    return None
+
+
+def _extract_json_array_from_text(text: str) -> Optional[List[Any]]:
+    if not text or not isinstance(text, str):
+        return None
+    cleaned = _extract_json_content(text)
+    parsed = _loads_json_lenient(cleaned)
+    if parsed is not None:
+        return _normalize_to_conclusion_list(parsed)
+    return _parse_embedded_json_array(cleaned)
+
+
+def _dict_with_conclusions_list(obj: dict) -> Optional[List[Any]]:
+    """Legacy: accept {\"conclusions\": [ ... ]}."""
+    cons = obj.get('conclusions')
+    return cons if isinstance(cons, list) else None
+
+
+def _parse_raw_conclusion_to_list(raw: Any, max_per_task: int) -> List[Any]:
+    """Normalize raw_conclusion to a list (canonical: top-level JSON array from the LLM).
+
+    Preferred: a list of dicts each containing 'conclusion' and 'R'. Legacy shapes
+    (single dict, 'conclusions' wrapper, or string with embedded array) are still
+    accepted; see RAGFactsConclusionPrompt for the strict output contract.
+    """
+    cap = max_per_task
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return raw[:cap]
+    if isinstance(raw, dict):
+        if 'conclusion' in raw and 'R' in raw:
+            return [raw][:cap]
+        wrapped = _dict_with_conclusions_list(raw)
+        if wrapped is not None:
+            return wrapped[:cap]
+        return []
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return []
+        cleaned = _extract_json_content(s)
+        parsed = _loads_json_lenient(cleaned)
+        if isinstance(parsed, list):
+            return parsed[:cap]
+        if isinstance(parsed, dict):
+            if 'conclusion' in parsed and 'R' in parsed:
+                return [parsed][:cap]
+            wrapped = _dict_with_conclusions_list(parsed)
+            if wrapped is not None:
+                return wrapped[:cap]
+        fallback = _extract_json_array_from_text(s)
+        if fallback is not None:
+            return fallback[:cap]
+        LOG.warning(
+            'Failed to parse raw_conclusion: expected a JSON array of objects with '
+            '"conclusion" and "R" (see RAGFactsConclusionPrompt).'
+        )
+        return []
+    return []
 
 
 class AgenticRAGGetIdentifier(agenticrag):
@@ -136,47 +214,11 @@ class AgenticRAGExpandConclusions(agenticrag):
         super().__init__(**kwargs)
         self.max_per_task = max_per_task
 
-    def forward(self, data: dict) -> List[dict]:  # noqa: C901
+    def forward(self, data: dict) -> List[dict]:
         raw_conclusion = data.get('raw_conclusion', '')
         identifier = data.get('identifier', '')
 
-        if raw_conclusion is None or (isinstance(raw_conclusion, str) and not raw_conclusion.strip()):
-            return []
-
-        parsed = None
-        # 1) 已是 list（GetConclusion 使用 JsonFormatter 时）
-        if isinstance(raw_conclusion, list):
-            parsed = raw_conclusion[:self.max_per_task]
-        # 2) 已是 dict：单条结论或包装结构
-        elif isinstance(raw_conclusion, dict):
-            if 'conclusion' in raw_conclusion and 'R' in raw_conclusion:
-                parsed = [raw_conclusion]
-            else:
-                # 常见包装键
-                for key in ('conclusions', 'items', 'data', 'result'):
-                    if key in raw_conclusion and isinstance(raw_conclusion[key], list):
-                        parsed = raw_conclusion[key][:self.max_per_task]
-                        break
-                if parsed is None:
-                    parsed = []
-        # 3) 字符串：先整体解析，失败则从文本中抽取 JSON 数组
-        elif isinstance(raw_conclusion, str) and raw_conclusion.strip():
-            try:
-                parsed = json.loads(_extract_json_content(raw_conclusion))
-                if isinstance(parsed, list):
-                    parsed = parsed[:self.max_per_task]
-                elif isinstance(parsed, dict) and 'conclusion' in parsed and 'R' in parsed:
-                    parsed = [parsed]
-                else:
-                    parsed = []
-            except json.JSONDecodeError:
-                parsed = _extract_json_array_from_text(raw_conclusion)
-                if parsed is not None:
-                    parsed = parsed[:self.max_per_task]
-                else:
-                    LOG.warning('Failed to parse conclusion JSON: no valid array found in raw_conclusion')
-                    return []
-
+        parsed = _parse_raw_conclusion_to_list(raw_conclusion, self.max_per_task)
         if not parsed:
             return []
 

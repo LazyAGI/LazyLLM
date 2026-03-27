@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 from lazyllm import LOG
 from lazyllm.components.formatter import JsonFormatter
 from ...base_data import data_register
@@ -17,6 +17,83 @@ if 'agenticrag' in LazyLLMRegisterMetaClass.all_clses['data']:
     agenticrag = LazyLLMRegisterMetaClass.all_clses['data']['agenticrag'].base
 else:
     agenticrag = data_register.new_group('agenticrag')
+
+
+def _unwrap_first_list(result: Any) -> Any:
+    if isinstance(result, list):
+        if len(result) == 0:
+            return None
+        return result[0]
+    return result
+
+
+def _normalize_content_identifier_value(val: Any) -> str:
+    """Coerce the content_identifier field to a single string; invalid nesting yields ''."""
+    if val is None:
+        return ''
+    if isinstance(val, str):
+        return val.strip()
+    if isinstance(val, (int, float, bool)):
+        return str(val)
+    if isinstance(val, list):
+        parts: list[str] = []
+        for x in val:
+            if isinstance(x, str) and x.strip():
+                parts.append(x.strip())
+            elif isinstance(x, (int, float, bool)):
+                parts.append(str(x))
+        if not parts:
+            LOG.warning(
+                'DepthQAGGetIdentifier: content_identifier list contained no string/scalar items; '
+                'expected a single string per prompt.'
+            )
+            return ''
+        if len(parts) > 1:
+            LOG.warning(
+                'DepthQAGGetIdentifier: content_identifier was a list of multiple items; '
+                'using the first string only.'
+            )
+        return parts[0]
+    if isinstance(val, dict):
+        LOG.warning(
+            'DepthQAGGetIdentifier: content_identifier must be a plain string, not an object; ignoring.'
+        )
+        return ''
+    LOG.warning(
+        'DepthQAGGetIdentifier: unsupported type for content_identifier: %s',
+        type(val).__name__,
+    )
+    return ''
+
+
+def _parse_depth_identifier_llm_result(result: Any) -> str:
+    """Parse JsonFormatter output into a single identifier string with predictable fallbacks."""
+    result = _unwrap_first_list(result)
+    if result is None:
+        return ''
+
+    if isinstance(result, dict):
+        if 'content_identifier' not in result:
+            LOG.warning(
+                'DepthQAGGetIdentifier: JSON missing "content_identifier"; '
+                'expected {{"content_identifier": "<string>"}}. Keys: %s',
+                list(result.keys()),
+            )
+            return ''
+        return _normalize_content_identifier_value(result['content_identifier'])
+
+    if isinstance(result, str):
+        return result.strip()
+
+    if isinstance(result, (int, float, bool)):
+        return str(result)
+
+    LOG.warning(
+        'DepthQAGGetIdentifier: unexpected LLM result type after unwrap: %s',
+        type(result).__name__,
+    )
+    return ''
+
 
 class DepthQAGGetIdentifier(agenticrag):
 
@@ -45,14 +122,7 @@ class DepthQAGGetIdentifier(agenticrag):
 
         try:
             result = self._llm_serve(user_prompt)
-            if isinstance(result, list) and len(result) > 0:
-                result = result[0]
-            if isinstance(result, dict) and 'content_identifier' in result:
-                data['identifier'] = str(result['content_identifier'])
-            elif isinstance(result, str):
-                data['identifier'] = result
-            else:
-                data['identifier'] = str(result) if result else ''
+            data['identifier'] = _parse_depth_identifier_llm_result(result)
         except Exception as e:
             LOG.warning(f'Failed to get identifier: {e}')
             data['identifier'] = ''
@@ -145,7 +215,15 @@ class DepthQAGCheckSuperset(agenticrag):
         try:
             if isinstance(result, dict):
                 new_query = result.get('new_query')
-                return str(new_query).lower() == 'valid' if new_query is not None else False
+                if new_query is None:
+                    return False
+                if not isinstance(new_query, str):
+                    LOG.warning(
+                        'DepthQAGCheckSuperset: new_query must be a string (e.g. "valid"), got %s',
+                        type(new_query).__name__,
+                    )
+                    return False
+                return new_query.lower() == 'valid'
         except Exception as e:
             LOG.warning(f'[Error]: Failed to check superset: {e}')
         return False
