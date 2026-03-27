@@ -4,6 +4,7 @@ from lazyllm.tools.data import pt
 
 def build_long_context_pipeline(llm, context_key='context', question_key='question',
                                 answer_key='answer', expanded_key='expanded_context',
+                                long_context_key='long_context',
                                 expansion_prompt=None, num_distractors=3,
                                 passage_sep='\n\n', seed=None,
                                 expansion_concurrency_mode='thread',
@@ -22,6 +23,7 @@ def build_long_context_pipeline(llm, context_key='context', question_key='questi
             context_key=expanded_key,
             question_key=question_key,
             answer_key=answer_key,
+            long_context_key=long_context_key,
             num_distractors=num_distractors,
             passage_sep=passage_sep,
             seed=seed,

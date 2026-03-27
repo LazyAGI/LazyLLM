@@ -4415,6 +4415,7 @@ Args:
     question_key (str): 问题字段名，默认 'question'
     answer_key (str): 答案字段名，默认 'answer'
     expanded_key (str): 扩写结果字段名，默认 'expanded_context'
+    long_context_key (str): 长上下文字段名，默认 'long_context'
     expansion_prompt (str|None): 扩写阶段自定义提示词，默认 None
     num_distractors (int): 每条样本采样的干扰段数量，默认 3
     passage_sep (str): 长上下文段落拼接分隔符，默认 '\\n\\n'
@@ -4423,7 +4424,7 @@ Args:
     reconstruction_concurrency_mode (str): 重组算子并发模式，默认 'thread'
 
 **Returns:**\n
-- 一个可调用的 pipeline 对象，输出字段为 long_context、question、answer。
+- 一个可调用的 pipeline 对象，输出字段包含 context、long_context_key、question、answer。
 """)
 
 add_english_doc('data.pipelines.pt_data_ppl.build_long_context_pipeline', """\
@@ -4436,6 +4437,7 @@ Args:
     question_key (str): key for question, default 'question'
     answer_key (str): key for answer, default 'answer'
     expanded_key (str): key for expanded context output, default 'expanded_context'
+    long_context_key (str): key for long context output, default 'long_context'
     expansion_prompt (str|None): optional custom prompt for expansion stage, default None
     num_distractors (int): number of distractor passages per sample, default 3
     passage_sep (str): separator for concatenating passages, default '\\n\\n'
@@ -4444,7 +4446,7 @@ Args:
     reconstruction_concurrency_mode (str): concurrency mode for reconstruction operator, default 'thread'
 
 **Returns:**\n
-- A callable pipeline object that outputs long_context, question, and answer.
+- A callable pipeline object that outputs context, long_context_key, question, and answer.
 """)
 
 add_example('data.pipelines.pt_data_ppl.build_long_context_pipeline', """\
@@ -4457,6 +4459,7 @@ ppl = build_long_context_pipeline(
     question_key='question',
     answer_key='answer',
     expanded_key='expanded_context',
+    long_context_key='long_context',
     expansion_prompt=None,
     num_distractors=3,
     passage_sep='\n\n',
@@ -4466,7 +4469,7 @@ ppl = build_long_context_pipeline(
 )
 data = [{'context': 'short context', 'question': 'Q?', 'answer': 'A'}]
 res = ppl(data)
-print(res[0]['long_context'])
+print(res[0]['context'], res[0]['long_context'])
 ```
 """)
 
@@ -7095,6 +7098,7 @@ Args:
     context_key (str): 扩写后上下文字段名，默认 'expanded_context'
     question_key (str): 问题字段名，默认 'question'
     answer_key (str): 答案字段名，默认 'answer'
+    long_context_key (str): 长上下文输出字段名，默认 'long_context'
     num_distractors (int): 干扰段数量，默认 3
     passage_sep (str): 段落拼接分隔符，默认 '\\n\\n'
     seed (int|None): 随机种子，默认 None
@@ -7108,6 +7112,7 @@ Args:
     context_key (str): key for expanded context, default 'expanded_context'
     question_key (str): key for question, default 'question'
     answer_key (str): key for answer, default 'answer'
+    long_context_key (str): key for long context output, default 'long_context'
     num_distractors (int): number of distractor passages, default 3
     passage_sep (str): separator used to concatenate passages, default '\\n\\n'
     seed (int|None): random seed, default None
@@ -7117,12 +7122,12 @@ add_example('data.operators.pt_op.ContextReconstruction', """\
 ```python
 from lazyllm.tools.data import pt
 
-op = pt.ContextReconstruction(num_distractors=2, seed=42)
+op = pt.ContextReconstruction(num_distractors=2, long_context_key='lc', seed=42)
 data = [
     {'expanded_context': 'ctx_1', 'question': 'Q1', 'answer': 'A1'},
     {'expanded_context': 'ctx_2', 'question': 'Q2', 'answer': 'A2'},
 ]
 res = op(data)
-print(res[0]['long_context'])
+print(res[0]['context'], res[0]['lc'])
 ```
 """)

@@ -556,12 +556,13 @@ class ContextExpansion(PT):
 
 class ContextReconstruction(PT):
     def __init__(self, context_key='expanded_context', question_key='question',
-                 answer_key='answer', num_distractors=3, passage_sep='\n\n',
-                 seed=None, **kwargs):
+                 answer_key='answer', long_context_key='long_context',
+                 num_distractors=3, passage_sep='\n\n', seed=None, **kwargs):
         super().__init__(**kwargs)
         self.context_key = context_key
         self.question_key = question_key
         self.answer_key = answer_key
+        self.long_context_key = long_context_key
         self.num_distractors = num_distractors
         self.passage_sep = passage_sep
         self.seed = seed
@@ -586,7 +587,8 @@ class ContextReconstruction(PT):
             passages = [positive_ctx] + distractors
             rng.shuffle(passages)
             results.append({
-                'long_context': self.passage_sep.join(passages),
+                'context': positive_ctx,
+                self.long_context_key: self.passage_sep.join(passages),
                 self.question_key: question,
                 self.answer_key: answer,
             })

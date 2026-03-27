@@ -237,12 +237,19 @@ class TestPretrainOperators:
         res = op(batch)
         assert len(res) == 4
         for i, item in enumerate(res):
+            assert item['context'] == f'ctx_{i}'
             assert 'long_context' in item
             assert item['question'] == f'Q{i}'
             assert item['answer'] == f'A{i}'
             passages = item['long_context'].split('\n\n')
             assert len(passages) == 3
             assert f'ctx_{i}' in item['long_context']
+
+        custom_key_op = pt.ContextReconstruction(long_context_key='lc', num_distractors=2, seed=42)
+        custom_key_res = custom_key_op(batch)
+        assert len(custom_key_res) == 4
+        assert 'lc' in custom_key_res[0]
+        assert 'long_context' not in custom_key_res[0]
 
         small_batch = [
             {'expanded_context': 'ctx_A', 'question': 'QA', 'answer': 'AA'},

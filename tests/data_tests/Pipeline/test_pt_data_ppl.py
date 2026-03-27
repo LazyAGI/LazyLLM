@@ -45,6 +45,7 @@ class TestLongContextPtPipeline:
             question_key='q',
             answer_key='a',
             expanded_key='expanded_ctx',
+            long_context_key='long_ctx',
             expansion_prompt=custom_prompt,
             num_distractors=2,
             passage_sep=' || ',
@@ -61,6 +62,7 @@ class TestLongContextPtPipeline:
         assert mock_llm.last_prompt == custom_prompt
         assert {item['q'] for item in res} == {'Q0', 'Q1', 'Q2', 'Q3'}
         for item in res:
-            assert set(item.keys()) == {'long_context', 'q', 'a'}
-            passages = item['long_context'].split(' || ')
+            assert set(item.keys()) == {'context', 'long_ctx', 'q', 'a'}
+            assert item['context'] == 'Expanded payload.'
+            passages = item['long_ctx'].split(' || ')
             assert len(passages) == 3
