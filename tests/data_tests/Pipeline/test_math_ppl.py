@@ -39,7 +39,7 @@ class TestTextMathQAPipeline:
         if os.path.exists(self.root_dir):
             shutil.rmtree(self.root_dir)
 
-    def test_cot_pipeline(self):
+    def test_math_cot_pipeline(self):
 
         excepted_output = 'cot xxxx \\boxed{0.5}'
 

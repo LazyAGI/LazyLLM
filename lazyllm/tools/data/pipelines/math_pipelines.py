@@ -24,7 +24,7 @@ def build_math_cot_pipeline(
     quality_user_prompt=None,
     difficulty_user_prompt=None,
     qa_scorer=False,
-    difficluty_evaluator=False
+    difficulty_evaluator=False
 ):
     with pipeline() as ppl:
         ppl.cot_generator = genCot.SelfConsistencyCoTGenerator(
@@ -75,14 +75,14 @@ def build_math_cot_pipeline(
                 min_score=1
             )
 
-        if difficluty_evaluator:
+        if difficulty_evaluator:
             ppl.difficulty = mathQA.DifficultyEvaluator(
                 input_key=question_key,
                 user_prompt=difficulty_user_prompt,
                 model=model
             )
 
-        ppl.wrong_fiilter = genCot.wrong_filter(input_key=verify_key)
+        ppl.wrong_filter = genCot.wrong_filter(input_key=verify_key)
         ppl.to_sft = Text2qa.to_alpaca_sft(
             query_key=question_key,
             context_key=reference_key,

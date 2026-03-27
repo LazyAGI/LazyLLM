@@ -25,6 +25,7 @@ class PdfProcessor(Pdf2Qa):
         image_key='image_path',
         image_size=(336, 336),
         max_chunk_chars=1500,
+        upload_mode=True,
         **kwargs,
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
@@ -35,7 +36,7 @@ class PdfProcessor(Pdf2Qa):
         self.use_cache = use_cache
         self.reader = MineruPDFReader(
             url=reader_url,
-            upload_mode=True,
+            upload_mode=upload_mode,
         )
 
         self.base_url = reader_url.rstrip('/')

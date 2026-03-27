@@ -7788,7 +7788,7 @@ Args:
     quality_user_prompt: QA 质量评分提示词  
     difficulty_user_prompt: 难度评估提示词  
     qa_scorer (bool): 是否启用 QA 质量评分模块  
-    difficluty_evaluator (bool): 是否启用难度评估模块  
+    difficulty_evaluator (bool): 是否启用难度评估模块  
 
 **Returns:**  
     一个可调用的 pipeline 对象，调用时按顺序执行上述算子，并输出 Alpaca 风格 SFT 数据。
@@ -7831,7 +7831,7 @@ Args:
     quality_user_prompt: prompt for QA quality scoring  
     difficulty_user_prompt: prompt for difficulty evaluation  
     qa_scorer (bool): whether to enable QA quality scoring  
-    difficluty_evaluator (bool): whether to enable difficulty evaluation  
+    difficulty_evaluator (bool): whether to enable difficulty evaluation  
 
 **Returns:**  
     A callable pipeline object that executes registered operators in sequence and outputs Alpaca-style SFT data.
@@ -7861,7 +7861,7 @@ ppl = build_math_cot_pipeline(
     repeat_threshold=3,
     periodic_min_repeat=3,
     qa_scorer=False,
-    difficluty_evaluator=False
+    difficulty_evaluator=False
 )
 
 data = [

@@ -38,7 +38,7 @@ class TestImgQAPipeline:
         if os.path.exists(self.root_dir):
             shutil.rmtree(self.root_dir)
 
-    def test_cot_pipeline(self):
+    def test_img2qa_pipeline(self):
 
         excepted_output = {
             'query': 'Is the mass hyperintense or hypointense?',
