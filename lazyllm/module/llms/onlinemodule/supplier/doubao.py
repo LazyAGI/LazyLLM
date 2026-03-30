@@ -1,5 +1,5 @@
 import lazyllm
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
     OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase,
@@ -16,8 +16,9 @@ class DoubaoChat(OnlineChatModuleBase):
     MODEL_NAME = 'doubao-1-5-pro-32k-250115'
     VLM_MODEL_PREFIX = ['doubao-seed-1-6-vision', 'doubao-1-5-ui-tars']
 
-    def __init__(self, model: str = None, base_url: str = 'https://ark.cn-beijing.volces.com/api/v3/',
+    def __init__(self, model: Optional[str] = None, base_url: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
+        base_url = base_url or 'https://ark.cn-beijing.volces.com/api/v3/'
         super().__init__(api_key=api_key or self._default_api_key(), base_url=base_url,
                          model_name=model or lazyllm.config['doubao_model_name'] or DoubaoChat.MODEL_NAME,
                          stream=stream, return_trace=return_trace, **kwargs)
@@ -43,20 +44,23 @@ class DoubaoChat(OnlineChatModuleBase):
 
 class DoubaoEmbed(LazyLLMOnlineEmbedModuleBase):
     def __init__(self,
-                 embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings',
-                 embed_model_name: str = 'doubao-embedding-text-240715',
+                 embed_url: Optional[str] = None,
+                 embed_model_name: Optional[str] = None,
                  api_key: str = None,
                  batch_size: int = 16,
                  **kw):
+        embed_url = embed_url or 'https://ark.cn-beijing.volces.com/api/v3/embeddings'
+        embed_model_name = embed_model_name or 'doubao-embedding-text-240715'
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name,
                          batch_size=batch_size, **kw)
 
 
 class DoubaoMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
     def __init__(self,
-                 embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal',
+                 embed_url: Optional[str] = None,
                  embed_model_name: str = None,
                  api_key: str = None):
+        embed_url = embed_url or 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal'
         embed_model_name = (embed_model_name or lazyllm.config['doubao_multimodal_embed_model_name']
                             or 'doubao-embedding-vision-241215')
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name)
@@ -91,8 +95,9 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase):
     MODEL_NAME = 'doubao-seedream-3-0-t2i-250415'
     IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-3-0-t2i-250415'
 
-    def __init__(self, api_key: str = None, model: str = None, url='https://ark.cn-beijing.volces.com/api/v3',
+    def __init__(self, api_key: str = None, model: Optional[str] = None, url: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
+        url = url or 'https://ark.cn-beijing.volces.com/api/v3'
         resolved_model = model or lazyllm.config['doubao_text2image_model_name'] or DoubaoText2Image.MODEL_NAME
         super().__init__(model=resolved_model, api_key=api_key or self._default_api_key(),
                          return_trace=return_trace, url=url, **kwargs)

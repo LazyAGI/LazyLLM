@@ -13,8 +13,10 @@ from ..fileHandler import FileHandlerBase
 
 class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
-    def __init__(self, base_url: str = 'https://api.minimaxi.com/v1/', model: str = 'MiniMax-M2',
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
+        base_url = base_url or 'https://api.minimaxi.com/v1/'
+        model = model or 'MiniMax-M2'
         super().__init__(api_key=api_key or self._default_api_key(), base_url=base_url, model_name=model,
                          stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
@@ -70,7 +72,8 @@ class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
     MODEL_NAME = 'image-01'
 
     def __init__(self, api_key: str = None, model: str = None,
-                 url: str = 'https://api.minimaxi.com/v1/', return_trace: bool = False, **kwargs):
+                 url: Optional[str] = None, return_trace: bool = False, **kwargs):
+        url = url or 'https://api.minimaxi.com/v1/'
         super().__init__(api_key=api_key or self._default_api_key(),
                          model_name=model or MinimaxText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
@@ -143,10 +146,11 @@ class MinimaxTTS(LazyLLMOnlineTTSModuleBase):
     MODEL_NAME = 'speech-2.6-hd'
 
     def __init__(self, api_key: str = None, model_name: str = None,
-                 base_url: str = 'https://api.minimaxi.com/v1/',
+                 base_url: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
         if kwargs.pop('stream', False):
             raise ValueError('MinimaxTTS does not support streaming output, please set stream to False')
+        base_url = base_url or 'https://api.minimaxi.com/v1/'
         super().__init__(api_key=api_key or self._default_api_key(),
                          model_name=model_name or MinimaxTTS.MODEL_NAME,
                          return_trace=return_trace, base_url=base_url, **kwargs)

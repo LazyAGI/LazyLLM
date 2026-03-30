@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
@@ -22,8 +22,9 @@ class GLMChat(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['glm-4.5v', 'glm-4.1v', 'glm-4v']
     MODEL_NAME = 'glm-4'
 
-    def __init__(self, base_url: str = 'https://open.bigmodel.cn/api/paas/v4/', model: str = None,
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: str = True, return_trace: bool = False, **kwargs):
+        base_url = base_url or 'https://open.bigmodel.cn/api/paas/v4/'
         super().__init__(api_key=api_key or self._default_api_key(),
                          model_name=model or lazyllm.config['glm_model_name'] or GLMChat.MODEL_NAME,
                          base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
@@ -213,20 +214,24 @@ class GLMChat(OnlineChatModuleBase, FileHandlerBase):
 
 class GLMEmbed(LazyLLMOnlineEmbedModuleBase):
     def __init__(self,
-                 embed_url: str = 'https://open.bigmodel.cn/api/paas/v4/embeddings',
-                 embed_model_name: str = 'embedding-2',
+                 embed_url: Optional[str] = None,
+                 embed_model_name: Optional[str] = None,
                  api_key: str = None,
                  batch_size: int = 16,
                  **kw):
+        embed_url = embed_url or 'https://open.bigmodel.cn/api/paas/v4/embeddings'
+        embed_model_name = embed_model_name or 'embedding-2'
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name,
                          batch_size=batch_size, **kw)
 
 
 class GLMRerank(LazyLLMOnlineRerankModuleBase):
     def __init__(self,
-                 embed_url: str = 'https://open.bigmodel.cn/api/paas/v4/rerank',
+                 embed_url: Optional[str] = None,
                  embed_model_name: str = 'rerank',
                  api_key: str = None, **kw):
+        embed_url = embed_url or 'https://open.bigmodel.cn/api/paas/v4/rerank'
+        embed_model_name = embed_model_name or 'rerank'
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name, **kw)
 
     @property
@@ -258,8 +263,9 @@ class GLMSTT(LazyLLMOnlineSTTModuleBase):
     MODEL_NAME = 'glm-asr'
 
     def __init__(self, model_name: str = None, api_key: str = None,
-                 base_url: str = 'https://open.bigmodel.cn/api/paas/v4',
+                 base_url: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
+        base_url = base_url or 'https://open.bigmodel.cn/api/paas/v4'
         super().__init__(model_name=model_name or GLMSTT.MODEL_NAME,
                          api_key=api_key or self._default_api_key(), return_trace=return_trace,
                          base_url=base_url, **kwargs)
@@ -279,7 +285,8 @@ class GLMText2Image(LazyLLMOnlineText2ImageModuleBase):
     MODEL_NAME = 'cogview-4-250304'
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False,
-                 base_url: str = 'https://open.bigmodel.cn/api/paas/v4', **kwargs):
+                 base_url: Optional[str] = None, **kwargs):
+        base_url = base_url or 'https://open.bigmodel.cn/api/paas/v4'
         super().__init__(model_name=model_name or GLMText2Image.MODEL_NAME, api_key=api_key or self._default_api_key(),
                          return_trace=return_trace, base_url=base_url, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:

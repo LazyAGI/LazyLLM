@@ -1,11 +1,14 @@
 from urllib.parse import urljoin
 import requests
+from typing import Optional
 from ..base import OnlineChatModuleBase
 
 
 class DeepSeekChat(OnlineChatModuleBase):
-    def __init__(self, base_url: str = 'https://api.deepseek.com', model: str = 'deepseek-chat',
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
+        base_url = base_url or 'https://api.deepseek.com'
+        model = model or 'deepseek-chat'
         super().__init__(api_key=api_key or self._default_api_key(),
                          base_url=base_url, model_name=model, stream=stream, return_trace=return_trace, **kwargs)
 

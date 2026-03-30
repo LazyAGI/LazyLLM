@@ -1,12 +1,14 @@
-from typing import Any, ContextManager, Dict, List, Optional, Union
+from typing import Any, ContextManager, List, Optional, Union
 
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
+from lazyllm.common.bind import _MetaBind
+from lazyllm.module import ModuleBase
 from .base import OnlineEmbeddingModuleBase
 from .base.utils import select_source_with_default_key
 from .supplier.doubao import DoubaoEmbed, DoubaoMultimodalEmbed
 from .map_model_type import get_model_type
-from .dynamic_router import DynamicSourceRouterMixin, dynamic_model_config_context
+from .dynamic_router import _DynamicSourceRouterMixin, dynamic_model_config_context
 
 
 def dynamic_embed_config(
@@ -20,7 +22,7 @@ def dynamic_embed_config(
     return dynamic_model_config_context('embed', modules, source=source, model=model, url=url, skip_auth=skip_auth)
 
 
-class __EmbedModuleMeta(type):
+class __EmbedModuleMeta(_MetaBind):
 
     def __instancecheck__(self, __instance: Any) -> bool:
         if isinstance(__instance, OnlineEmbeddingModuleBase):
@@ -28,19 +30,9 @@ class __EmbedModuleMeta(type):
         return super().__instancecheck__(__instance)
 
 
-class OnlineEmbeddingModule(DynamicSourceRouterMixin, metaclass=__EmbedModuleMeta):
+class OnlineEmbeddingModule(ModuleBase, _DynamicSourceRouterMixin, metaclass=__EmbedModuleMeta):
     _dynamic_module_slot = 'embed'
     _dynamic_source_error = 'No source is configured for dynamic embedding source.'
-
-    @staticmethod
-    def _encapsulate_parameters(embed_url: str, embed_model_name: str, **kwargs) -> Dict[str, Any]:
-        params = {}
-        if embed_url is not None:
-            params['embed_url'] = embed_url
-        if embed_model_name is not None:
-            params['embed_model_name'] = embed_model_name
-        params.update(kwargs)
-        return params
 
     @staticmethod
     def _resolve_type_name(type_name: Optional[str], embed_model_name: Optional[str]) -> str:
@@ -62,7 +54,9 @@ class OnlineEmbeddingModule(DynamicSourceRouterMixin, metaclass=__EmbedModuleMet
         raise ValueError('Unknown type of online embedding module.')
 
     def __new__(cls, source: str = None, embed_url: str = None, embed_model_name: str = None,
-                api_key: str = None, dynamic_auth: bool = False, skip_auth: bool = False, **kwargs):
+                return_trace: bool = False, api_key: str = None, dynamic_auth: bool = False,
+                skip_auth: bool = False, id: Optional[str] = None, name: Optional[str] = None,
+                group_id: Optional[str] = None, type: Optional[str] = None, batch_size: int = 32, **kwargs):
         if cls._should_use_dynamic(source, dynamic_auth, skip_auth):
             return super().__new__(cls)
         if source is None and api_key is not None:
@@ -77,23 +71,28 @@ class OnlineEmbeddingModule(DynamicSourceRouterMixin, metaclass=__EmbedModuleMet
         api_key = api_key if api_key is not None else default_key
         if skip_auth and not embed_url:
             raise KeyError('embed_url must be set for local serving.')
-        params = OnlineEmbeddingModule._encapsulate_parameters(
-            embed_url, embed_model_name, api_key=api_key, skip_auth=skip_auth, **kwargs
-        )
+        params = {'embed_url': embed_url, 'embed_model_name': embed_model_name, 'return_trace': return_trace,
+                  'batch_size': batch_size, 'api_key': api_key, 'skip_auth': skip_auth, **kwargs}
         return OnlineEmbeddingModule._create_supplier(source, type_name, embed_model_name, params)
 
     def __init__(self, source: str = None, embed_url: str = None, embed_model_name: str = None,
-                 api_key: str = None, dynamic_auth: bool = False, skip_auth: bool = False, **kwargs):
+                 return_trace: bool = False, api_key: str = None, dynamic_auth: bool = False,
+                 skip_auth: bool = False, id: Optional[str] = None, name: Optional[str] = None,
+                 group_id: Optional[str] = None, type: Optional[str] = None, batch_size: int = 32, **kwargs):
+        ModuleBase.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
         self._embed_url = embed_url
         self._embed_model_name = embed_model_name
-        self._type_name = OnlineEmbeddingModule._resolve_type_name(
-            kwargs.pop('type', None), embed_model_name)
+        self._type = type
         self._skip_auth = skip_auth
         self._kwargs = kwargs
+        self._batch_size = batch_size
         self._init_dynamic_auth(api_key, dynamic_auth)
 
     def _build_supplier(self, source: str, skip_auth: bool):
-        params = OnlineEmbeddingModule._encapsulate_parameters(
-            None, None, api_key=self._api_key, skip_auth=skip_auth, **self._kwargs
-        )
-        return OnlineEmbeddingModule._create_supplier(source, self._type_name, None, params)
+        params = {'embed_url': self._embed_url, 'embed_model_name': self._embed_model_name,
+                  'return_trace': self._return_trace, 'batch_size': self._batch_size,
+                  'type': self._type, 'api_key': self._api_key, 'skip_auth': skip_auth, **self._kwargs}
+        return OnlineEmbeddingModule._create_supplier(source, self._type, self._embed_model_name, params)
+
+    def forward(self, *args, **kwargs):
+        return _DynamicSourceRouterMixin.forward(self, *args, **kwargs)

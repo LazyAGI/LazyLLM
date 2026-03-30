@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 from ..base import (
     OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase
@@ -16,8 +16,10 @@ class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
                             'davinci-002', 'gpt-4-0613']
     NO_PROXY = False
 
-    def __init__(self, base_url: str = 'https://api.openai.com/v1/', model: str = 'gpt-3.5-turbo',
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, skip_auth: bool = False, **kw):
+        base_url = base_url or 'https://api.openai.com/v1/'
+        model = model or 'gpt-3.5-turbo'
         super().__init__(api_key=api_key or self._default_api_key(),
                          base_url=base_url, model_name=model, stream=stream, return_trace=return_trace,
                          skip_auth=skip_auth, **kw)
@@ -197,8 +199,10 @@ class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
 class OpenAIEmbed(LazyLLMOnlineEmbedModuleBase):
     NO_PROXY = True
 
-    def __init__(self, embed_url: str = 'https://api.openai.com/v1/', embed_model_name: str = 'text-embedding-ada-002',
+    def __init__(self, embed_url: Optional[str] = None, embed_model_name: Optional[str] = None,
                  api_key: str = None, batch_size: int = 16, **kw):
+        embed_url = embed_url or 'https://api.openai.com/v1/'
+        embed_model_name = embed_model_name or 'text-embedding-ada-002'
         super().__init__(embed_url, api_key or self._default_api_key(),
                          embed_model_name, batch_size=batch_size, **kw)
 
@@ -209,8 +213,10 @@ class OpenAIEmbed(LazyLLMOnlineEmbedModuleBase):
 class OpenAIRerank(LazyLLMOnlineRerankModuleBase):
     NO_PROXY = True
 
-    def __init__(self, embed_url: str = 'https://api.openai.com/v1/', embed_model_name: str = 'rerank-multilingual-v3.0',
+    def __init__(self, embed_url: Optional[str] = None, embed_model_name: Optional[str] = None,
                  api_key: str = None, **kw):
+        embed_url = embed_url or 'https://api.openai.com/v1/'
+        embed_model_name = embed_model_name or 'rerank-multilingual-v3.0'
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name, **kw)
 
     def _set_embed_url(self):

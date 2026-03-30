@@ -2,7 +2,7 @@ import json
 import time
 import os
 import requests
-from typing import Tuple, Dict, List, Union
+from typing import Tuple, Dict, List, Union, Optional
 from urllib.parse import urljoin
 import uuid
 
@@ -65,9 +65,11 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     def _materialize_lazy_api_key(self) -> str:
         return self._get_api_key(None, None)
 
-    def __init__(self, base_url: str = 'https://api.sensenova.cn/compatible-mode/v1/', model: str = 'SenseNova-V6-5-Pro',
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, secret_key: str = None, stream: bool = True,
                  return_trace: bool = False, **kwargs):
+        base_url = base_url or 'https://api.sensenova.cn/compatible-mode/v1/'
+        model = model or 'SenseNova-V6-5-Pro'
         if secret_key and isinstance(api_key, (tuple, list)):
             raise KeyError('multi-key is not support when secret_key is provided, please use single-key mode!')
         if api_key not in LAZY_API_KEY_TOKENS:
@@ -231,12 +233,14 @@ class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
         return self._get_api_key(None, None)
 
     def __init__(self,
-                 embed_url: str = 'https://api.sensenova.cn/v1/llm/embeddings',
-                 embed_model_name: str = 'nova-embedding-stable',
+                 embed_url: Optional[str] = None,
+                 embed_model_name: Optional[str] = None,
                  api_key: str = None,
                  secret_key: str = None,
                  batch_size: int = 16,
                  **kw):
+        embed_url = embed_url or 'https://api.sensenova.cn/v1/llm/embeddings'
+        embed_model_name = embed_model_name or 'nova-embedding-stable'
         if api_key not in LAZY_API_KEY_TOKENS:
             api_key = self._get_api_key(api_key, secret_key)
         super().__init__(embed_url, api_key, embed_model_name, batch_size=batch_size, **kw)

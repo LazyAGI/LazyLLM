@@ -2,7 +2,7 @@ import json
 import os
 import re
 import requests
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
@@ -50,8 +50,9 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['qwen-vl-plus', 'qwen-vl-max', 'qvq-max', 'qvq-plus']
     MODEL_NAME = 'qwen-plus'
 
-    def __init__(self, base_url: str = 'https://dashscope.aliyuncs.com/', model: str = None,
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
+        base_url = base_url or 'https://dashscope.aliyuncs.com/'
         super().__init__(api_key=api_key or self._default_api_key(),
                          model_name=model or lazyllm.config['qwen_model_name'] or QwenChat.MODEL_NAME,
                          base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
@@ -297,12 +298,14 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
 class QwenEmbed(LazyLLMOnlineEmbedModuleBase):
 
     def __init__(self,
-                 embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
-                                   'embeddings/text-embedding/text-embedding'),
-                 embed_model_name: str = 'text-embedding-v1',
+                 embed_url: Optional[str] = None,
+                 embed_model_name: Optional[str] = None,
                  api_key: str = None,
                  batch_size: int = 16,
                  **kw):
+        embed_url = (embed_url or 'https://dashscope.aliyuncs.com/api/v1/services/'
+                                  'embeddings/text-embedding/text-embedding')
+        embed_model_name = embed_model_name or 'text-embedding-v1'
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name,
                          batch_size=batch_size, **kw)
 
@@ -341,10 +344,12 @@ class QwenEmbed(LazyLLMOnlineEmbedModuleBase):
 class QwenRerank(LazyLLMOnlineRerankModuleBase):
 
     def __init__(self,
-                 embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
-                                   'rerank/text-rerank/text-rerank'),
-                 embed_model_name: str = 'gte-rerank-v2',
+                 embed_url: Optional[str] = None,
+                 embed_model_name: Optional[str] = None,
                  api_key: str = None, **kw):
+        embed_url = (embed_url or 'https://dashscope.aliyuncs.com/api/v1/services/'
+                                  'rerank/text-rerank/text-rerank')
+        embed_model_name = embed_model_name or 'gte-rerank-v2'
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name, **kw)
 
     @property
@@ -376,9 +381,11 @@ class QwenSTT(LazyLLMOnlineSTTModuleBase):
     MODEL_NAME = 'paraformer-v2'
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
-                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
-                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference', **kwargs):
+                 base_url: Optional[str] = None,
+                 base_websocket_url: Optional[str] = None, **kwargs):
         _ensure_dashscope_urls_initialized()
+        base_url = base_url or _DASHSCOPE_DEFAULT_HTTP_URL
+        base_websocket_url = base_websocket_url or _DASHSCOPE_DEFAULT_WEBSOCKET_URL
         if base_url and base_url != _DASHSCOPE_DEFAULT_HTTP_URL:
             LOG.warning('QwenSTT ignores `base_url`; use `set_dashscope_urls` instead.')
         if base_websocket_url and base_websocket_url != _DASHSCOPE_DEFAULT_WEBSOCKET_URL:
@@ -421,10 +428,12 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
     IMAGE_EDITING_MODEL_NAME = 'qwen-image-edit-plus'
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
-                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
-                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+                 base_url: Optional[str] = None,
+                 base_websocket_url: Optional[str] = None,
                  **kwargs):
         _ensure_dashscope_urls_initialized()
+        base_url = base_url or _DASHSCOPE_DEFAULT_HTTP_URL
+        base_websocket_url = base_websocket_url or _DASHSCOPE_DEFAULT_WEBSOCKET_URL
         if base_url and base_url != _DASHSCOPE_DEFAULT_HTTP_URL:
             LOG.warning('QwenText2Image ignores `base_url`; use `set_dashscope_urls` instead.')
         if base_websocket_url and base_websocket_url != _DASHSCOPE_DEFAULT_WEBSOCKET_URL:
@@ -607,10 +616,12 @@ class QwenTTS(LazyLLMOnlineTTSModuleBase):
     }
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
-                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
-                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+                 base_url: Optional[str] = None,
+                 base_websocket_url: Optional[str] = None,
                  **kwargs):
         _ensure_dashscope_urls_initialized()
+        base_url = base_url or _DASHSCOPE_DEFAULT_HTTP_URL
+        base_websocket_url = base_websocket_url or _DASHSCOPE_DEFAULT_WEBSOCKET_URL
         if base_url and base_url != _DASHSCOPE_DEFAULT_HTTP_URL:
             LOG.warning('QwenTTS ignores `base_url`; use `set_dashscope_urls` instead.')
         if base_websocket_url and base_websocket_url != _DASHSCOPE_DEFAULT_WEBSOCKET_URL:
