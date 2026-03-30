@@ -335,3 +335,77 @@ def to_chat_sft(
             }
         ]
     }
+
+'''
+Adapted from the implementation in Tianyi Lab's Cherry_LLM project:
+https://github.com/tianyi-lab/Cherry_LLM/blob/main/cherry_seletion/data_by_IFD_vic.py
+'''
+class IFDScorer(Text2qa):
+    def __init__(self,
+                 model,
+                 tokenizer,
+                 input_key='chunk',
+                 output_key='IFD_score',
+                 query_key='query',
+                 answer_key='answer',
+                 max_length=512,
+                 **kwargs):
+        super().__init__(_concurrency_mode='thread', **kwargs)
+        self.input_key = input_key
+        self.output_key = output_key
+        self.query_key = query_key
+        self.answer_key = answer_key
+        self.model = model
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def _get_token_loss(self, context: str, answer: str):
+        from torch.nn import CrossEntropyLoss
+        import torch
+
+        text = context + answer
+        input_ids = self.tokenizer.encode(text, return_tensors='pt', truncation=True, max_length=self.max_length)
+        target_ids = input_ids.clone()
+
+        with torch.no_grad():
+            outputs = self.model(input_ids, labels=target_ids)
+            logits = outputs.logits
+            vocab_size = logits.shape[-1]
+            loss_fct = CrossEntropyLoss(reduction='none')
+            token_loss = loss_fct(logits.view(-1, vocab_size), target_ids.view(-1))
+        return token_loss.cpu().numpy()
+
+    def _calc_loss_part(self, context: str, answer: str):
+        import numpy as np
+        full_text = context + answer
+        input_ids = self.tokenizer.encode(full_text, return_tensors='pt', truncation=True, max_length=self.max_length)
+        start_idx = len(self.tokenizer.encode(context)) if context else 0
+        end_idx = input_ids.shape[1]
+
+        token_loss_full = self._get_token_loss(context, answer)
+        token_loss_answer = token_loss_full[start_idx:end_idx]
+        if len(token_loss_answer) == 0:
+            return None
+        return float(np.mean(token_loss_answer))
+
+    def forward(self, data: dict):
+        instruction = data.get(self.query_key, '')
+        answer = data.get(self.answer_key, '')
+
+        if not (instruction and answer):
+            return []
+
+        # DAS: answer without instruction
+        das = self._calc_loss_part('', answer)
+        # CAS: answer with instruction
+        cas = self._calc_loss_part(instruction, answer)
+
+        if das is None or cas is None or das == 0:
+            ifd_score = None
+        else:
+            ifd_score = cas / das
+
+        data[self.output_key] = ifd_score
+        data['CAS'] = cas
+        data['DAS'] = das
+        return data

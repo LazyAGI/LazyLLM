@@ -1993,6 +1993,71 @@ print(res)
 ```
 """)
 
+add_chinese_doc('data.operators.text2qa_ops.IFDScorer', """\
+计算 Instruction Following Difficulty (IFD)：衡量模型在有无指令 context 下生成答案的难度比。  
+IFD = CAS / DAS，其中 CAS 为给 instruction/context 后生成答案的平均 token loss，DAS 为不提供 instruction/context 时生成答案的平均 token loss。
+
+Args:
+    model: LLM 模型（如 AutoModelForCausalLM），用于计算 token loss
+    tokenizer: 对应模型的 tokenizer
+    input_key (str): 原文块字段名或上下文字段名，默认 'chunk'
+    output_key (str): IFD 分数写入字段名，默认 'IFD_score'
+    query_key (str): 问题或指令字段名，默认 'query'
+    answer_key (str): 答案字段名，默认 'answer'
+    max_length (int): 最大输入 token 数，默认 512
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.text2qa_ops.IFDScorer', """\
+Compute Instruction Following Difficulty (IFD): measures how much more difficult it is for a model to generate an answer with an instruction/context versus without.  
+IFD = CAS / DAS, where CAS is the mean token loss when the answer is generated with the instruction/context, and DAS is the mean token loss when generated directly.
+
+Args:
+    model: LLM model (e.g., AutoModelForCausalLM) used for computing token loss
+    tokenizer: corresponding tokenizer for the model
+    input_key (str): key of the source chunk or context, default 'chunk'
+    output_key (str): key to write the IFD score, default 'IFD_score'
+    query_key (str): key of the instruction or question, default 'query'
+    answer_key (str): key of the answer, default 'answer'
+    max_length (int): maximum number of tokens for input, default 512
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.text2qa_ops.IFDScorer', """\
+```python
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from lazyllm.tools.data.operators.text2qa_ops import IFDScorer
+
+# ===== 加载模型和 tokenizer =====
+model_name = "/mnt/lustre/share_data/lazyllm/models/qwen2.5-0.5b-instruct"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name)
+model.eval()
+
+# ===== 创建 IFDScorer 实例 =====
+scorer = IFDScorer(model=model, tokenizer=tokenizer, max_length=128)
+
+# ===== 构造测试数据 =====
+test_samples = [
+    {"query": "请解释量子叠加原理", "answer": "量子叠加原理表示量子系统可以同时处于多个状态，直到被测量时才确定具体状态。"},
+    {"query": "解释牛顿第一定律", "answer": "牛顿第一定律，也称惯性定律，表明物体在没有外力作用时保持匀速直线运动或静止状态。"}
+]
+
+# ===== 批量计算 IFD =====
+for i, sample in enumerate(test_samples, 1):
+    result = scorer.forward(sample)
+    print(f"Sample {i} result:\n", result, "\n")
+
+# 输出示例：
+# Sample 1 result:
+# {'query': '请解释量子叠加原理', 'answer': '量子叠加原理表示量子系统可以同时处于多个状态，直到被测量时才确定具体状态。',
+#  'IFD_score': 1.02, 'CAS': 9.45, 'DAS': 9.27}
+# Sample 2 result:
+# {'query': '解释牛顿第一定律', 'answer': '牛顿第一定律，也称惯性定律，表明物体在没有外力作用时保持匀速直线运动或静止状态。',
+#  'IFD_score': 1.08, 'CAS': 13.29, 'DAS': 12.31}
+```
+""")
+
 add_chinese_doc('data.operators.codegen_ops.CodeInstructionGenerator', """\
 代码生成流水线算子：指令标准化生成器。
 
