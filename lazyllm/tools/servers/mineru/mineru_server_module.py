@@ -853,10 +853,11 @@ class MineruServerBase:
 
         try:
             results = {f: {} for f in files}
+            cache_enabled = bool(self.cache_manager and self.cache_manager.is_enabled)
 
             # honor use_cache for parsed outputs
             files_to_process = files
-            if use_cache and self.cache_manager.is_enabled:
+            if use_cache and cache_enabled:
                 results, files_to_process = await self.cache_manager.check_parse_cache(
                     files, results, effective_backend, return_md, return_content_list,
                     table_enable, formula_enable, lang=lang, parse_method=parse_method
@@ -872,7 +873,7 @@ class MineruServerBase:
                         status_code=200,
                         content={'result': results_list, 'unique_id': unique_id}
                     )
-            elif use_cache and not self.cache_manager.is_enabled:
+            elif use_cache and not cache_enabled:
                 LOG.warning(f'[{req_id}] CACHE_DIR not set; use_cache ignored.')
 
             # 1) Convert to PDFs with caching support
@@ -965,7 +966,7 @@ class MineruServerBase:
                         results[src_path]['md_content'] = md_content
                     if return_content_list and content_list:
                         results[src_path]['content_list'] = content_list
-                    if self.cache_manager.is_enabled:
+                    if cache_enabled:
                         await self.cache_manager.save_parse_result(
                             hash_id, results[src_path], mode=effective_backend,
                             table_enable=table_enable, formula_enable=formula_enable,
