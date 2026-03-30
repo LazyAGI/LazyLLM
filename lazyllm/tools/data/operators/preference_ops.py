@@ -9,7 +9,11 @@ class IntentExtractor(PreferenceOps):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
-        sys_prompt = '你是一个意图提取助手，请从用户文本中提取核心意图，并以 JSON 格式返回。请直接回答，不要输出<think>标签或思维链内容。'
+        sys_prompt = (
+            'You are an intent extraction assistant. Please extract the core intent from user text '
+            'and return it in JSON format. Provide only the answer without any <thinking> tags '
+            'or chain-of-thought content.'
+        )
         self.model = model.share().prompt(sys_prompt).formatter(JsonFormatter())
 
     def forward(self, data, **kwargs):
@@ -19,7 +23,10 @@ class IntentExtractor(PreferenceOps):
         return data
 
     def extract(self, raw_text):
-        instruction = f'提炼以下用户文本的核心意图，只返回一个最主要的意图，以简单的键值对形式返回，不要返回数组: \n{raw_text}'
+        instruction = (
+            f'Extract the core intent from the following user text. '
+            f'Return only a single primary intent in a simple key-value format (not an array): \n{raw_text}'
+        )
         res = self.model(instruction)
         if isinstance(res, list) and len(res) > 0:
             res = res[0]
@@ -82,15 +89,17 @@ class ResponseEvaluator(PreferenceOps):
         self.response_key = response_key
         self.output_key = output_key
         sys_prompt = (
-            '你是一个专业的回复评测判官。请针对用户提供的指令和回复，从以下三个维度进行打分，总分为 10 分：\n'
-            '1. 有用性 (Helpfulness): 满分 4 分。回复是否解决了用户的问题。\n'
-            '2. 真实性 (Truthfulness): 满分 3 分。回复内容是否准确、无误导。\n'
-            '3. 流畅度 (Fluency): 满分 3 分。回复是否自然、逻辑清晰。\n'
-            '请先给出详细的理由 (Rationale)，然后以 JSON 格式输出各项得分及总分。\n'
-            '请直接回答，不要输出<think>标签或思维链内容。\n'
-            '输出示例：\n'
+            'You are a professional response evaluator. Please score the user\'s instruction and response '
+            'based on the following three dimensions, with a total score of 10:\n'
+            '1. Helpfulness: 4 points max. Does the response solve the user\'s problem?\n'
+            '2. Truthfulness: 3 points max. Is the response accurate and non-misleading?\n'
+            '3. Fluency: 3 points max. Is the response natural and logically clear?\n'
+            'Please provide detailed reasoning (Rationale) first, then output each score '
+            'and the total score in JSON format.\n'
+            'Provide only the answer without any <thinking> tags or chain-of-thought content.\n'
+            'Output example:\n'
             '{\n'
-            '  "rationale": "回复简洁且准确...",\n'
+            '  "rationale": "The response is concise and accurate...",\n'
             '  "scores": {"helpfulness": 4, "truthfulness": 3, "fluency": 3},\n'
             '  "total_score": 10\n'
             '}'
@@ -107,9 +116,9 @@ class ResponseEvaluator(PreferenceOps):
         scores = []
         for resp in responses:
             prompt = (
-                f'指令: {instruction}\n\n'
-                f'回复: {resp}\n\n'
-                '请对上述回复进行打分。'
+                f'Instruction: {instruction}\n\n'
+                f'Response: {resp}\n\n'
+                'Please score the response above.'
             )
             res = self.model(prompt)
             if isinstance(res, dict):
