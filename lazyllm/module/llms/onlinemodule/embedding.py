@@ -1,8 +1,8 @@
 from typing import Any, Dict, Optional
 
 import lazyllm
-from lazyllm.components.utils.downloader.model_downloader import LLMType
 from lazyllm import globals
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .base import OnlineEmbeddingModuleBase
 from .base.utils import select_source_with_default_key
 from .supplier.doubao import DoubaoEmbed, DoubaoMultimodalEmbed
@@ -18,12 +18,9 @@ class __EmbedModuleMeta(type):
         return super().__instancecheck__(__instance)
 
 
-globals.config.add('dynamic_embedding_source', str, None, 'DYNAMIC_EMBEDDING_SOURCE',
-                   description='The embedding source to use defined in session scope.')
-
-
 class OnlineEmbeddingModule(DynamicSourceRouterMixin, metaclass=__EmbedModuleMeta):
-    _dynamic_source_config = 'dynamic_embedding_source'
+    _dynamic_bool_key = 'dynamic_embed_config'
+    _dynamic_module_slot = 'embed'
     _dynamic_source_error = 'No source is configured for dynamic embedding source.'
 
     @staticmethod
@@ -80,14 +77,18 @@ class OnlineEmbeddingModule(DynamicSourceRouterMixin, metaclass=__EmbedModuleMet
                  api_key: str = None, dynamic_auth: bool = False, skip_auth: bool = False, **kwargs):
         self._embed_url = embed_url
         self._embed_model_name = embed_model_name
-        self._type_name = OnlineEmbeddingModule._resolve_type_name(kwargs.pop('type', None), embed_model_name)
+        self._type_name = OnlineEmbeddingModule._resolve_type_name(
+            kwargs.pop('type', None), embed_model_name)
         self._skip_auth = skip_auth
         self._kwargs = kwargs
         self._init_dynamic_auth(api_key, dynamic_auth)
 
-    def _build_supplier(self, source: str):
+    def _build_supplier(self, source: str, skip_auth: bool):
         params = OnlineEmbeddingModule._encapsulate_parameters(
-            self._embed_url, self._embed_model_name, api_key=self._api_key,
-            skip_auth=self._skip_auth, **self._kwargs
+            None, None, api_key=self._api_key, skip_auth=skip_auth, **self._kwargs
         )
-        return OnlineEmbeddingModule._create_supplier(source, self._type_name, self._embed_model_name, params)
+        return OnlineEmbeddingModule._create_supplier(source, self._type_name, None, params)
+
+
+globals.config.add('dynamic_embed_config', bool, False, 'DYNAMIC_EMBED_CONFIG',
+                   description='Enable dynamic routing for OnlineEmbeddingModule.')

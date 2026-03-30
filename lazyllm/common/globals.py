@@ -366,13 +366,18 @@ def decode_request(input, default=None):
 
 
 class _GlobalConfig(object):
+
+    class ConfigsDict(dict):
+        '''A dict that is keyed by id. Used for dynamic configs.'''
+        pass
+
     def __init__(self):
         self._supported_configs = set()
 
     def __getitem__(self, __key: str):
         assert __key in self._supported_configs, f'Config {__key} is not supported'
         if (cfg := globals['config'].get(__key)):
-            if isinstance(cfg, dict):
+            if isinstance(cfg, _GlobalConfig.ConfigsDict):
                 assert (stack := globals.current_stack()), 'Current stack is empty'
                 for k in stack + ['default']:
                     if k in cfg:

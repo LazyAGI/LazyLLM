@@ -1,6 +1,6 @@
 import lazyllm
-from lazyllm.components.utils.downloader.model_downloader import LLMType
 from lazyllm import globals
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Any, Dict, Optional
 from lazyllm.common.bind import _MetaBind
 
@@ -20,12 +20,9 @@ class _ChatModuleMeta(_MetaBind):
         return super().__instancecheck__(__instance)
 
 
-globals.config.add('dynamic_llm_source', str, None, 'DYNAMIC_LLM_SOURCE',
-                   description='The LLM source to use defined in session scope.')
-
-
 class OnlineChatModule(ModuleBase, LLMBase, DynamicSourceRouterMixin, metaclass=_ChatModuleMeta):
-    _dynamic_source_config = 'dynamic_llm_source'
+    _dynamic_bool_key = 'dynamic_chat_config'
+    _dynamic_module_slot = 'chat'
     _dynamic_source_error = 'No source is configured for dynamic LLM source.'
 
     @staticmethod
@@ -70,15 +67,28 @@ class OnlineChatModule(ModuleBase, LLMBase, DynamicSourceRouterMixin, metaclass=
                  name: Optional[str] = None, group_id: Optional[str] = None, dynamic_auth: bool = False, **kwargs):
         assert model is None, 'model should be given in forward method or global config.'
         assert base_url is None, 'base_url should be given in forward method or global config.'
+        if type in ['embed', 'rerank', 'cross_modal_embed']:
+            raise AssertionError(f'\'{type}\' should use OnlineEmbeddingModule')
+        elif type in ['stt', 'tts', 'sd']:
+            raise AssertionError(f'\'{type}\' should use OnlineMultiModalModule')
+
+        normalized_type = type.upper() if type else None
         ModuleBase.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
-        LLMBase.__init__(self, stream=stream, type=type, static_params=static_params)
+        LLMBase.__init__(self, stream=stream, type=normalized_type, static_params=static_params)
         self._kwargs = kwargs
         self._skip_auth = skip_auth
-        self._type = type  # overwrite type to avoid convert None to 'llm'
+        self._type = normalized_type  # overwrite type to avoid convert None to 'llm'
         self._init_dynamic_auth(api_key, dynamic_auth)
 
-    def _build_supplier(self, source: str):
-        return getattr(lazyllm.online.chat, source)(
-            stream=self._stream, type=self._type, static_params=self._static_params,
-            skip_auth=self._skip_auth, api_key=self._api_key,
-            return_trace=self._return_trace, **self._kwargs)
+    def _build_supplier(self, source: str, skip_auth: bool):
+        params = {
+            'stream': self._stream, 'type': self._type, 'static_params': self._static_params,
+            'skip_auth': skip_auth, 'api_key': self._api_key,
+            'return_trace': self._return_trace,
+            **self._kwargs,
+        }
+        return getattr(lazyllm.online.chat, source)(**params)
+
+
+globals.config.add('dynamic_chat_config', bool, False, 'DYNAMIC_CHAT_CONFIG',
+                   description='Enable dynamic routing for OnlineChatModule.')
