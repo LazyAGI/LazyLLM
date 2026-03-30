@@ -15,7 +15,7 @@ def build_img2qa_pipeline(
     filter_threshold=1,
     img_resize=False,
     size=(336, 336),
-    to_chat=False
+    to_chat=True
 ):
     with pipeline() as ppl:
         if img_resize:
@@ -53,6 +53,12 @@ def build_img2qa_pipeline(
             ppl.sft_formatter = Pdf2QA.vqa_to_chat_format(
                 image_key=image_key,
                 query_key=query_key,
+                answer_key=answer_key
+            )
+        else:
+            ppl.sft_formatter = Text2qa.to_alpaca_sft(
+                query_key=query_key,
+                context_key=context_key,
                 answer_key=answer_key
             )
     return ppl
