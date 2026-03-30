@@ -719,7 +719,7 @@ class SQLIntentSynthesizer(Text2SQLOps):
         best = self._select_best_question(candidates, 0, embeddings)
 
         if best is not None:
-            data['question'] = best.get('question', '')
+            data[output_intent_key] = best.get('question', '')
             data[output_evidence_key] = best.get('external_knowledge', '')
 
         return data
