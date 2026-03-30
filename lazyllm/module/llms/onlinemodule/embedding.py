@@ -3,7 +3,6 @@ from typing import Any, ContextManager, List, Optional, Union
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from lazyllm.common.bind import _MetaBind
-from lazyllm.module import ModuleBase
 from .base import OnlineEmbeddingModuleBase
 from .base.utils import select_source_with_default_key
 from .supplier.doubao import DoubaoEmbed, DoubaoMultimodalEmbed
@@ -30,7 +29,7 @@ class __EmbedModuleMeta(_MetaBind):
         return super().__instancecheck__(__instance)
 
 
-class OnlineEmbeddingModule(ModuleBase, _DynamicSourceRouterMixin, metaclass=__EmbedModuleMeta):
+class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMeta):
     _dynamic_module_slot = 'embed'
     _dynamic_source_error = 'No source is configured for dynamic embedding source.'
 
@@ -79,7 +78,7 @@ class OnlineEmbeddingModule(ModuleBase, _DynamicSourceRouterMixin, metaclass=__E
                  return_trace: bool = False, api_key: str = None, dynamic_auth: bool = False,
                  skip_auth: bool = False, id: Optional[str] = None, name: Optional[str] = None,
                  group_id: Optional[str] = None, type: Optional[str] = None, batch_size: int = 32, **kwargs):
-        ModuleBase.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
+        _DynamicSourceRouterMixin.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
         self._embed_url = embed_url
         self._embed_model_name = embed_model_name
         self._type = type
@@ -93,6 +92,3 @@ class OnlineEmbeddingModule(ModuleBase, _DynamicSourceRouterMixin, metaclass=__E
                   'return_trace': self._return_trace, 'batch_size': self._batch_size,
                   'type': self._type, 'api_key': self._api_key, 'skip_auth': skip_auth, **self._kwargs}
         return OnlineEmbeddingModule._create_supplier(source, self._type, self._embed_model_name, params)
-
-    def forward(self, *args, **kwargs):
-        return _DynamicSourceRouterMixin.forward(self, *args, **kwargs)

@@ -4,7 +4,6 @@ from typing import Any, ContextManager, List, Optional, Union
 from lazyllm.common.bind import _MetaBind
 
 from ...servermodule import LLMBase, StaticParams
-from lazyllm.module import ModuleBase
 from .base import OnlineChatModuleBase
 from .base.utils import select_source_with_default_key
 from .dynamic_router import _DynamicSourceRouterMixin, dynamic_model_config_context
@@ -29,7 +28,7 @@ class _ChatModuleMeta(_MetaBind):
         return super().__instancecheck__(__instance)
 
 
-class OnlineChatModule(ModuleBase, LLMBase, _DynamicSourceRouterMixin, metaclass=_ChatModuleMeta):
+class OnlineChatModule(_DynamicSourceRouterMixin, LLMBase, metaclass=_ChatModuleMeta):
     _dynamic_module_slot = 'chat'
     _dynamic_source_error = 'No source is configured for dynamic LLM source.'
 
@@ -48,7 +47,7 @@ class OnlineChatModule(ModuleBase, LLMBase, _DynamicSourceRouterMixin, metaclass
         if skip_auth and not base_url:
             raise KeyError('base_url must be set for local serving.')
 
-        type = cls._resolve_type_name(type, model, options=[LLMType.CHAT, LLMType.VLM])
+        type = cls._resolve_type_name(type, model, options=[LLMType.LLM, LLMType.CHAT, LLMType.VLM])
         return getattr(lazyllm.online.chat, source)(
             base_url=base_url, model=model, stream=stream, return_trace=return_trace,
             api_key=api_key, skip_auth=skip_auth, type=type, **kwargs)
@@ -57,10 +56,12 @@ class OnlineChatModule(ModuleBase, LLMBase, _DynamicSourceRouterMixin, metaclass
                  return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None,
                  api_key: str = None, static_params: Optional[StaticParams] = None, id: Optional[str] = None,
                  name: Optional[str] = None, group_id: Optional[str] = None, dynamic_auth: bool = False, **kwargs):
-        normalized_type = self._resolve_type_name(type, model, options=[LLMType.CHAT, LLMType.VLM])
-        ModuleBase.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
+        normalized_type = self._resolve_type_name(type, model, options=[LLMType.LLM, LLMType.CHAT, LLMType.VLM])
+        _DynamicSourceRouterMixin.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
         LLMBase.__init__(self, stream=stream, type=normalized_type, static_params=static_params)
         self._kwargs = kwargs
+        self._base_url = base_url
+        self._model_name = model
         self._skip_auth = skip_auth
         self._init_dynamic_auth(api_key, dynamic_auth)
 
@@ -70,6 +71,3 @@ class OnlineChatModule(ModuleBase, LLMBase, _DynamicSourceRouterMixin, metaclass
             'static_params': self._static_params, 'skip_auth': skip_auth, 'api_key': self._api_key,
             'return_trace': self._return_trace, **self._kwargs}
         return getattr(lazyllm.online.chat, source)(**params)
-
-    def forward(self, *args, **kwargs):
-        return _DynamicSourceRouterMixin.forward(self, *args, **kwargs)

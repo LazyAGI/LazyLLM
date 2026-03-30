@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 from lazyllm import globals
 from lazyllm.common.globals import _GlobalConfig
 from lazyllm.components.utils.downloader.model_downloader import LLMType
+from lazyllm.module import ModuleBase
 from .map_model_type import get_model_type
 
 LAZY_DYNAMIC_API_KEY_TOKENS = frozenset(('auto', 'dynamic'))
@@ -15,7 +16,7 @@ globals.config.add('dynamic_model_configs', dict, None, 'DYNAMIC_MODEL_CONFIGS',
                    'for {module_id: {chat:..., embed:..., multimodal:...}}.')
 
 
-class _DynamicSourceRouterMixin(object):
+class _DynamicSourceRouterMixin(ModuleBase):
     '''Dynamic source router mixin.'''
     _dynamic_module_slot: str = ''
     _dynamic_source_error: str = 'No source is configured for dynamic source.'

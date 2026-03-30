@@ -2,7 +2,6 @@ import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Any, ContextManager, List, Optional, Union
 from lazyllm.common.bind import _MetaBind
-from lazyllm.module import ModuleBase
 from .base import OnlineMultiModalBase
 from .base.utils import select_source_with_default_key
 from .map_model_type import get_model_type
@@ -28,7 +27,7 @@ class _OnlineMultiModalMeta(_MetaBind):
         return super().__instancecheck__(__instance)
 
 
-class OnlineMultiModalModule(ModuleBase, _DynamicSourceRouterMixin, metaclass=_OnlineMultiModalMeta):
+class OnlineMultiModalModule(_DynamicSourceRouterMixin, metaclass=_OnlineMultiModalMeta):
     _dynamic_module_slot = 'multimodal'
     _dynamic_source_error = 'No source is configured for dynamic multimodal source.'
     TYPE_GROUP_MAP = {
@@ -95,7 +94,7 @@ class OnlineMultiModalModule(ModuleBase, _DynamicSourceRouterMixin, metaclass=_O
                  return_trace: bool = False, api_key: str = None, dynamic_auth: bool = False,
                  skip_auth: bool = False, id: Optional[str] = None, name: Optional[str] = None,
                  group_id: Optional[str] = None, **kwargs):
-        ModuleBase.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
+        _DynamicSourceRouterMixin.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
         self._model_name = model
         self._base_url = base_url
         self._skip_auth = skip_auth
@@ -108,6 +107,3 @@ class OnlineMultiModalModule(ModuleBase, _DynamicSourceRouterMixin, metaclass=_O
                   'type': self._type, 'api_key': self._api_key, 'skip_auth': skip_auth, **self._kwargs}
         register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(self._type).lower()
         return getattr(lazyllm.online[register_type], source)(**params)
-
-    def forward(self, *args, **kwargs):
-        return _DynamicSourceRouterMixin.forward(self, *args, **kwargs)
