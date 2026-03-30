@@ -5,11 +5,20 @@ import shutil
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from uuid import uuid4
 
 import pytest
 import requests
 
 from lazyllm.tools.rag.doc_service import DocServer
+from lazyllm.tools.rag.doc_service.base import (
+    AddFileItem, CallbackEventType, DeleteRequest, DocServiceError, DocStatus, KbUpdateRequest, ReparseRequest,
+    SourceType, TaskCallbackRequest, UploadRequest,
+)
+from lazyllm.tools.rag.doc_service.doc_manager import DocManager, _ParserClient
+from lazyllm.tools.rag.parsing_service.base import TaskType
+from lazyllm.tools.rag.utils import BaseResponse
 
 
 @pytest.mark.skip_on_win
@@ -160,7 +169,6 @@ class TestDocServiceMock:
                 'items': [
                     {
                         'doc_id': doc_add,
-                        'target_doc_id': 'copied-seed-doc-1',
                         'source_kb_id': 'kb_a',
                         'source_algo_id': '__default__',
                         'target_kb_id': 'kb_b',
@@ -350,6 +358,36 @@ class TestDocServiceMock:
         assert conflict.status_code == 409
         assert conflict.json()['data']['biz_code'] == 'E_IDEMPOTENCY_CONFLICT'
 
+    def test_add_same_path_with_different_doc_id_returns_conflict(self):
+        create_kb = requests.post(f'{self.base_url}/v1/kbs', json={'kb_id': 'kb_path_conflict'}, timeout=5)
+        assert create_kb.status_code == 200
+
+        first = requests.post(
+            f'{self.base_url}/v1/docs/add',
+            json={
+                'kb_id': 'kb_path_conflict',
+                'algo_id': '__default__',
+                'items': [{'file_path': self._seed_path, 'doc_id': 'path-doc-1'}],
+            },
+            timeout=8,
+        )
+        assert first.status_code == 200
+
+        conflict = requests.post(
+            f'{self.base_url}/v1/docs/add',
+            json={
+                'kb_id': 'kb_path_conflict',
+                'algo_id': '__default__',
+                'items': [{'file_path': self._seed_path, 'doc_id': 'path-doc-2'}],
+            },
+            timeout=8,
+        )
+        assert conflict.status_code == 409
+        body = conflict.json()
+        assert body['data']['biz_code'] == 'E_STATE_CONFLICT'
+        assert body['data']['path'] == self._seed_path
+        assert body['data']['doc_id'] == 'path-doc-1'
+
     def test_upload_same_filename_does_not_override_existing_file(self):
         create_kb = requests.post(f'{self.base_url}/v1/kbs', json={'kb_id': 'kb_same_name'}, timeout=5)
         assert create_kb.status_code == 200
@@ -514,7 +552,6 @@ class TestDocServiceMock:
             json={
                 'items': [{
                     'doc_id': doc_id,
-                    'target_doc_id': 'invalid-transfer-doc',
                     'source_kb_id': 'kb_bind',
                     'source_algo_id': '__default__',
                     'target_kb_id': 'kb_bind',
@@ -653,3 +690,307 @@ class TestDocServiceMock:
         assert len(batch_data['items']) == 1
         assert batch_data['items'][0]['kb_id'] == 'kb_page_1'
         assert batch_data['missing_kb_ids'] == ['kb_missing']
+
+
+class TestDocServiceMockLocal:
+    @classmethod
+    def setup_class(cls):
+        cls._tmp_dir = tempfile.mkdtemp(prefix='lazyllm_doc_service_local_')
+        cls._seed_path = os.path.join(cls._tmp_dir, 'seed.txt')
+        with open(cls._seed_path, 'w', encoding='utf-8') as f:
+            f.write('local seed content')
+        cls._db_config = {
+            'db_type': 'sqlite',
+            'user': None,
+            'password': None,
+            'host': None,
+            'port': None,
+            'db_name': os.path.join(cls._tmp_dir, 'doc_service_local.db'),
+        }
+        cls.manager = DocManager(db_config=cls._db_config, parser_url='http://parser.test')
+        cls._pending_task_status = {}
+
+        def _queue_task(task_id: str, final_status: DocStatus):
+            cls._pending_task_status[task_id] = final_status
+
+        cls.manager._parser_client.add_doc = lambda task_id, algo_id, kb_id, doc_id, file_path, metadata=None, reparse_group=None: (
+            _queue_task(task_id, DocStatus.SUCCESS) or
+            BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
+        )
+        cls.manager._parser_client.update_meta = lambda task_id, algo_id, kb_id, doc_id, metadata=None, file_path=None: (
+            _queue_task(task_id, DocStatus.SUCCESS) or
+            BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
+        )
+        cls.manager._parser_client.delete_doc = lambda task_id, algo_id, kb_id, doc_id: (
+            _queue_task(task_id, DocStatus.SUCCESS) or
+            BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
+        )
+        cls.manager._parser_client.cancel_task = lambda task_id: BaseResponse(
+            code=200, msg='success', data={'task_id': task_id, 'cancel_status': True}
+        )
+        cls.manager._parser_client.list_algorithms = lambda: BaseResponse(
+            code=200, msg='success', data=[{'algo_id': '__default__', 'display_name': 'Default', 'description': 'desc'}]
+        )
+        cls.manager._parser_client.get_algorithm_groups = lambda algo_id: BaseResponse(
+            code=200,
+            msg='success',
+            data=[{'name': 'line', 'type': 'chunk', 'display_name': 'Line'}] if algo_id == '__default__' else None,
+        )
+
+    @classmethod
+    def teardown_class(cls):
+        shutil.rmtree(cls._tmp_dir, ignore_errors=True)
+
+    def _wait_task(self, task_id, target_statuses, timeout=8):
+        deadline = time.time() + timeout
+        last = None
+        while time.time() < deadline:
+            resp = self.manager.get_task(task_id)
+            assert resp.code == 200
+            last = resp.data
+            if last['status'] in target_statuses:
+                return last
+            pending_status = self._pending_task_status.pop(task_id, None)
+            if pending_status is not None:
+                self.manager.on_task_callback(TaskCallbackRequest(
+                    task_id=task_id,
+                    event_type=CallbackEventType.FINISH,
+                    status=pending_status,
+                ))
+            time.sleep(0.05)
+        raise AssertionError(f'task {task_id} not finished in time, last={last}')
+
+    def _make_file(self, name: str, content: str):
+        file_path = os.path.join(self._tmp_dir, name)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return file_path
+
+    def test_manager_atomic_idempotency(self):
+        started = []
+
+        def handler():
+            started.append(time.time())
+            time.sleep(0.2)
+            return {'task_id': str(uuid4())}
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            future = pool.submit(self.manager.run_idempotent, '/local/atomic', 'same-key', {'k': 1}, handler)
+            time.sleep(0.05)
+            with pytest.raises(DocServiceError) as exc:
+                self.manager.run_idempotent('/local/atomic', 'same-key', {'k': 1}, handler)
+            result = future.result(timeout=2)
+
+        assert exc.value.biz_code == 'E_IDEMPOTENCY_IN_PROGRESS'
+        replay = self.manager.run_idempotent('/local/atomic', 'same-key', {'k': 1}, handler)
+        assert len(started) == 1
+        assert replay == result
+
+    def test_manager_kb_algo_binding(self):
+        self.manager.create_kb('kb_local_bind', algo_id='__default__')
+        file_path = self._make_file('local_bind.txt', 'local bind content')
+        with pytest.raises(DocServiceError) as exc:
+            self.manager.upload(UploadRequest(
+                kb_id='kb_local_bind',
+                algo_id='wrong_algo',
+                items=[AddFileItem(file_path=file_path, doc_id='local-bind-doc')],
+            ))
+        assert exc.value.biz_code == 'E_INVALID_PARAM'
+
+    def test_manager_stale_callback_and_state_conflict(self):
+        self.manager.create_kb('kb_local_stale', algo_id='__default__')
+        file_path = self._make_file('local_stale.txt', 'local stale content')
+        uploaded = self.manager.upload(UploadRequest(
+            kb_id='kb_local_stale',
+            algo_id='__default__',
+            items=[AddFileItem(file_path=file_path, doc_id='local-stale-doc')],
+        ))
+        self._wait_task(uploaded[0]['task_id'], {'SUCCESS'})
+        first_task_id = self.manager.reparse(ReparseRequest(
+            kb_id='kb_local_stale', algo_id='__default__', doc_ids=['local-stale-doc'],
+        ))[0]
+        second_task_id = self.manager.reparse(ReparseRequest(
+            kb_id='kb_local_stale', algo_id='__default__', doc_ids=['local-stale-doc'],
+        ))[0]
+        stale_resp = self.manager.on_task_callback(TaskCallbackRequest(
+            callback_id='local-stale-callback',
+            task_id=first_task_id,
+            event_type=CallbackEventType.FINISH,
+            status=DocStatus.SUCCESS,
+        ))
+        assert stale_resp['ignored_reason'] == 'stale_task_callback'
+        self.manager.delete(DeleteRequest(kb_id='kb_local_stale', algo_id='__default__', doc_ids=['local-stale-doc']))
+        with pytest.raises(DocServiceError) as exc:
+            self.manager.reparse(ReparseRequest(
+                kb_id='kb_local_stale', algo_id='__default__', doc_ids=['local-stale-doc'],
+            ))
+        assert exc.value.biz_code == 'E_STATE_CONFLICT'
+        assert second_task_id != first_task_id
+
+    def test_manager_missing_endpoint_surrogates(self):
+        self.manager.create_kb('kb_local_info', algo_id='__default__')
+        file_path = self._make_file('local_info.txt', 'local info content')
+        uploaded = self.manager.upload(UploadRequest(
+            kb_id='kb_local_info',
+            algo_id='__default__',
+            items=[AddFileItem(file_path=file_path, doc_id='local-info-doc')],
+        ))
+        algorithms = self.manager.list_algorithms_compat()
+        assert len(algorithms['items']) >= 1
+        algo_info = self.manager.get_algorithm_info('__default__')
+        assert algo_info['algo_id'] == '__default__'
+        chunks = self.manager.list_chunks()
+        assert chunks['items'] == []
+        tasks_batch = self.manager.get_tasks_batch([uploaded[0]['task_id']])
+        assert len(tasks_batch['items']) == 1
+
+    def test_delete_kbs_empty_list_rejected(self):
+        with pytest.raises(DocServiceError) as exc:
+            self.manager.delete_kbs([])
+        assert exc.value.biz_code == 'E_INVALID_PARAM'
+
+    def test_manager_rejects_unknown_kb_algorithm(self):
+        with pytest.raises(DocServiceError) as exc:
+            self.manager.create_kb('kb_local_unknown_algo', algo_id='missing_algo')
+        assert exc.value.biz_code == 'E_INVALID_PARAM'
+
+    def test_manager_update_kb_can_clear_nullable_fields(self):
+        self.manager.create_kb(
+            'kb_local_clearable',
+            display_name='Clearable',
+            description='to be cleared',
+            owner_id='owner-x',
+            meta={'tag': 'x'},
+            algo_id='__default__',
+        )
+        updated = self.manager.update_kb(
+            'kb_local_clearable',
+            display_name=None,
+            description=None,
+            owner_id=None,
+            meta=None,
+            explicit_fields={'display_name', 'description', 'owner_id', 'meta'},
+        )
+        assert updated['display_name'] is None
+        assert updated['description'] is None
+        assert updated['owner_id'] is None
+        assert updated['meta'] == {}
+
+    def test_kb_update_idempotency_payload_distinguishes_omitted_and_null(self):
+        keep_req = KbUpdateRequest(display_name='Renamed', idempotency_key='kb-update-idem')
+        clear_req = KbUpdateRequest(display_name='Renamed', owner_id=None, idempotency_key='kb-update-idem')
+
+        keep_payload = DocServer._Impl._build_update_kb_payload('kb_local_idem', keep_req)
+        clear_payload = DocServer._Impl._build_update_kb_payload('kb_local_idem', clear_req)
+
+        assert keep_payload != clear_payload
+
+        self.manager.run_idempotent(
+            '/v1/kbs/kb_local_idem:patch',
+            'kb-update-idem',
+            keep_payload,
+            lambda: {'kb_id': 'kb_local_idem', 'owner_id': 'kept'},
+        )
+        with pytest.raises(DocServiceError) as exc:
+            self.manager.run_idempotent(
+                '/v1/kbs/kb_local_idem:patch',
+                'kb-update-idem',
+                clear_payload,
+                lambda: {'kb_id': 'kb_local_idem', 'owner_id': None},
+            )
+        assert exc.value.biz_code == 'E_IDEMPOTENCY_CONFLICT'
+
+    def test_manager_callback_payload_fallback_and_delete_transition(self):
+        self.manager.create_kb('kb_local_callback', algo_id='__default__')
+        file_path = self._make_file('local_callback.txt', 'local callback content')
+        self.manager._upsert_doc(
+            doc_id='local-callback-doc',
+            filename='local_callback.txt',
+            path=file_path,
+            metadata={'case': 'callback'},
+            source_type=SourceType.EXTERNAL,
+        )
+        self.manager._ensure_kb_document('kb_local_callback', 'local-callback-doc')
+        queued_at = self.manager._upsert_parse_snapshot(
+            doc_id='local-callback-doc',
+            kb_id='kb_local_callback',
+            algo_id='__default__',
+            status=DocStatus.DELETING,
+            task_type=TaskType.DOC_DELETE,
+            current_task_id='local-delete-task',
+            queued_at=datetime.now(),
+        )['queued_at']
+
+        start_resp = self.manager.on_task_callback(TaskCallbackRequest(
+            callback_id='local-delete-start',
+            task_id='local-delete-task',
+            event_type=CallbackEventType.START,
+            status=DocStatus.WORKING,
+            payload={
+                'task_type': TaskType.DOC_DELETE.value,
+                'doc_id': 'local-callback-doc',
+                'kb_id': 'kb_local_callback',
+                'algo_id': '__default__',
+            },
+        ))
+        assert start_resp['ack'] is True
+        start_snapshot = self.manager._get_parse_snapshot('local-callback-doc', 'kb_local_callback', '__default__')
+        assert start_snapshot['status'] == DocStatus.DELETING.value
+        assert start_snapshot['queued_at'] == queued_at
+
+        finish_resp = self.manager.on_task_callback(TaskCallbackRequest(
+            callback_id='local-delete-finish',
+            task_id='local-delete-task',
+            event_type=CallbackEventType.FINISH,
+            status=DocStatus.SUCCESS,
+            payload={
+                'task_type': TaskType.DOC_DELETE.value,
+                'doc_id': 'local-callback-doc',
+                'kb_id': 'kb_local_callback',
+                'algo_id': '__default__',
+            },
+        ))
+        assert finish_resp['ack'] is True
+
+        finish_snapshot = self.manager._get_parse_snapshot('local-callback-doc', 'kb_local_callback', '__default__')
+        assert finish_snapshot['status'] == DocStatus.DELETED.value
+        assert self.manager._has_kb_document('kb_local_callback', 'local-callback-doc') is False
+        assert self.manager._get_doc('local-callback-doc')['upload_status'] == DocStatus.DELETED.value
+
+    def test_parser_client_algo_endpoint_fallback(self):
+        client = _ParserClient(parser_url='http://parser.test')
+        calls = []
+
+        def fake_get(path, params=None):
+            del params
+            calls.append(path)
+            if path == '/v1/algo/list':
+                raise RuntimeError('parser http error: 404 missing route')
+            if path == '/algo/list':
+                return {
+                    'code': 200,
+                    'msg': 'success',
+                    'data': [{'algo_id': '__default__', 'display_name': 'Default', 'description': 'desc'}],
+                }
+            if path == '/v1/algo/__default__/groups':
+                raise RuntimeError('parser http error: 404 missing route')
+            if path == '/algo/__default__/group/info':
+                return {
+                    'code': 200,
+                    'msg': 'success',
+                    'data': [{'name': 'line', 'type': 'chunk', 'display_name': 'Line'}],
+                }
+            raise AssertionError(path)
+
+        client._get = fake_get
+        algo_resp = client.list_algorithms()
+        group_resp = client.get_algorithm_groups('__default__')
+
+        assert algo_resp.code == 200
+        assert group_resp.code == 200
+        assert calls == [
+            '/v1/algo/list',
+            '/algo/list',
+            '/v1/algo/__default__/groups',
+            '/algo/__default__/group/info',
+        ]
