@@ -216,7 +216,6 @@ class CodeFeedbackFormatter(CodeGenOps):
         instruction_key='instruction',
         input_code_key='input_code',
         feedback_key='feedback',
-        output_key='formatted_data',
         **kwargs
     ):
         # Disable data saving for formatter to avoid loading previous state
@@ -224,7 +223,6 @@ class CodeFeedbackFormatter(CodeGenOps):
         self.instruction_key = instruction_key
         self.input_code_key = input_code_key
         self.feedback_key = feedback_key
-        self.output_key = output_key
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict), f'Input must be a dict, got {type(data)}'
@@ -235,9 +233,6 @@ class CodeFeedbackFormatter(CodeGenOps):
             raise ValueError(f'Missing required key: {self.input_code_key}')
         if self.feedback_key not in data:
             raise ValueError(f'Missing required key: {self.feedback_key}')
-
-        if self.output_key in data:
-            raise ValueError(f'The following key already exists and would be overwritten: {self.output_key}')
 
         raw_instruction = data.get(self.instruction_key, '')
         instruction = _extract_human_instruction(raw_instruction)

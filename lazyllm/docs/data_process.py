@@ -2190,7 +2190,6 @@ Args:
     instruction_key (str): 指令字段名，默认 'instruction'。
     input_code_key (str): 代码字段名，默认 'input_code'。
     feedback_key (str): 反馈字段名，默认 'feedback'。
-    output_key (str): 输出字段名，默认 'formatted_data'。
 """)
 
 add_english_doc('data.operators.codegen_ops.CodeFeedbackFormatter', """\
@@ -2202,7 +2201,6 @@ Args:
     instruction_key (str): instruction field name, default 'instruction'.
     input_code_key (str): code field name, default 'input_code'.
     feedback_key (str): feedback field name, default 'feedback'.
-    output_key (str): output field name, default 'formatted_data'.
 """)
 
 add_example('data.operators.codegen_ops.CodeFeedbackFormatter', """\
@@ -2212,8 +2210,7 @@ from lazyllm.tools.data.operators.codegen_ops import CodeFeedbackFormatter
 op = CodeFeedbackFormatter(
     instruction_key='instruction',
     input_code_key='new_code',
-    feedback_key='feedback',
-    output_key='formatted_data'
+    feedback_key='feedback'
 )
 item = {
     'instruction': 'Write a function to add two numbers.',

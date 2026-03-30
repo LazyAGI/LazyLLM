@@ -34,8 +34,7 @@ def build_codegen_pipeline(model, input_key='messages', min_score=7, max_score=1
         ppl.code_feedback_formatter = codegen_ops.CodeFeedbackFormatter(
             instruction_key='messages',
             input_code_key='new_code',
-            feedback_key='feedback',
-            output_key='formatted_data'
+            feedback_key='feedback'
         )
 
     return ppl
