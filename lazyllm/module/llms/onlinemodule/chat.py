@@ -1,7 +1,6 @@
 import lazyllm
-from lazyllm import globals
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from typing import Any, Dict, Optional
+from typing import Any, ContextManager, Dict, List, Optional, Union
 from lazyllm.common.bind import _MetaBind
 
 from ...servermodule import LLMBase, StaticParams
@@ -9,7 +8,18 @@ from lazyllm.module import ModuleBase
 from .map_model_type import get_model_type
 from .base import OnlineChatModuleBase
 from .base.utils import select_source_with_default_key
-from .dynamic_router import DynamicSourceRouterMixin
+from .dynamic_router import DynamicSourceRouterMixin, dynamic_model_config_context
+
+
+def dynamic_chat_config(
+    modules: Optional[Union[Any, List[Any]]] = None,
+    *,
+    source: Optional[str] = None,
+    model: Optional[str] = None,
+    url: Optional[str] = None,
+    skip_auth: Optional[bool] = None,
+) -> ContextManager[None]:
+    return dynamic_model_config_context('chat', modules, source=source, model=model, url=url, skip_auth=skip_auth)
 
 
 class _ChatModuleMeta(_MetaBind):
@@ -21,7 +31,6 @@ class _ChatModuleMeta(_MetaBind):
 
 
 class OnlineChatModule(ModuleBase, LLMBase, DynamicSourceRouterMixin, metaclass=_ChatModuleMeta):
-    _dynamic_bool_key = 'dynamic_chat_config'
     _dynamic_module_slot = 'chat'
     _dynamic_source_error = 'No source is configured for dynamic LLM source.'
 
@@ -88,7 +97,3 @@ class OnlineChatModule(ModuleBase, LLMBase, DynamicSourceRouterMixin, metaclass=
             **self._kwargs,
         }
         return getattr(lazyllm.online.chat, source)(**params)
-
-
-globals.config.add('dynamic_chat_config', bool, False, 'DYNAMIC_CHAT_CONFIG',
-                   description='Enable dynamic routing for OnlineChatModule.')

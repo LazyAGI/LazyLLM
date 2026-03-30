@@ -1,13 +1,23 @@
-from typing import Any, Dict, Optional
+from typing import Any, ContextManager, Dict, List, Optional, Union
 
 import lazyllm
-from lazyllm import globals
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .base import OnlineEmbeddingModuleBase
 from .base.utils import select_source_with_default_key
 from .supplier.doubao import DoubaoEmbed, DoubaoMultimodalEmbed
 from .map_model_type import get_model_type
-from .dynamic_router import DynamicSourceRouterMixin
+from .dynamic_router import DynamicSourceRouterMixin, dynamic_model_config_context
+
+
+def dynamic_embed_config(
+    modules: Optional[Union[Any, List[Any]]] = None,
+    *,
+    source: Optional[str] = None,
+    model: Optional[str] = None,
+    url: Optional[str] = None,
+    skip_auth: Optional[bool] = None,
+) -> ContextManager[None]:
+    return dynamic_model_config_context('embed', modules, source=source, model=model, url=url, skip_auth=skip_auth)
 
 
 class __EmbedModuleMeta(type):
@@ -19,7 +29,6 @@ class __EmbedModuleMeta(type):
 
 
 class OnlineEmbeddingModule(DynamicSourceRouterMixin, metaclass=__EmbedModuleMeta):
-    _dynamic_bool_key = 'dynamic_embed_config'
     _dynamic_module_slot = 'embed'
     _dynamic_source_error = 'No source is configured for dynamic embedding source.'
 
@@ -88,7 +97,3 @@ class OnlineEmbeddingModule(DynamicSourceRouterMixin, metaclass=__EmbedModuleMet
             None, None, api_key=self._api_key, skip_auth=skip_auth, **self._kwargs
         )
         return OnlineEmbeddingModule._create_supplier(source, self._type_name, None, params)
-
-
-globals.config.add('dynamic_embed_config', bool, False, 'DYNAMIC_EMBED_CONFIG',
-                   description='Enable dynamic routing for OnlineEmbeddingModule.')

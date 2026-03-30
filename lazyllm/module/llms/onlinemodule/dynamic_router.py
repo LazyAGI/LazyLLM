@@ -1,6 +1,9 @@
 import threading
-from typing import Any, Dict
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Optional, Union
+
 from lazyllm import globals
+from lazyllm.common.globals import _GlobalConfig
 
 LAZY_DYNAMIC_API_KEY_TOKENS = frozenset(('auto', 'dynamic'))
 
@@ -12,32 +15,23 @@ globals.config.add('dynamic_model_configs', dict, None, 'DYNAMIC_MODEL_CONFIGS',
 
 class DynamicSourceRouterMixin(object):
     '''Dynamic source router mixin.'''
-    _dynamic_bool_key: str = ''
     _dynamic_module_slot: str = ''
     _dynamic_source_error: str = 'No source is configured for dynamic source.'
 
     @classmethod
     def _get_dynamic_bucket(cls) -> Dict[str, Any]:
-        if not globals.config[cls._dynamic_bool_key]:
-            return {}
         raw = globals.config['dynamic_model_configs']
-        if raw is None or not isinstance(raw, dict):
-            return {}
+        if raw is None or not isinstance(raw, dict): return {}
         inner = raw.get(cls._dynamic_module_slot)
-        if not isinstance(inner, dict):
-            return {}
+        if not isinstance(inner, dict): return {}
         return inner
 
     @classmethod
-    def _dynamic_enabled(cls) -> bool:
-        return cls._get_dynamic_bucket().get('source') is not None
-
-    @classmethod
-    def _should_use_dynamic(cls, source: str, dynamic_auth: bool, skip_auth: bool = False) -> bool:
+    def _should_use_dynamic(cls, source: Optional[str], dynamic_auth: bool, skip_auth: bool = False) -> bool:
         if dynamic_auth:
             assert source == 'dynamic', 'source should be dynamic for dynamic auth.'
             assert not skip_auth, 'skip_auth should be False for dynamic source.'
-        return source == 'dynamic' or bool(not source and cls._dynamic_enabled())
+        return source == 'dynamic'
 
     def _init_dynamic_auth(self, api_key: str, dynamic_auth: bool):
         assert api_key is None or api_key in LAZY_DYNAMIC_API_KEY_TOKENS, \
@@ -77,3 +71,44 @@ class DynamicSourceRouterMixin(object):
     def forward(self, *args, **kwargs):
         merged = self._merge_dynamic_forward_kwargs(kwargs)
         return self._get_supplier().forward(*args, **merged)
+
+
+ConfigsDict = _GlobalConfig.ConfigsDict
+
+
+def _normaliz_module(m: Any) -> str:
+    if isinstance(m, str): return m
+    from lazyllm.module import ModuleBase
+    assert isinstance(m, ModuleBase), 'module should be a string or a Module instance'
+    return m._module_id
+
+
+@contextmanager
+def dynamic_model_config_context(
+    slot: str,
+    modules: Optional[Union[Any, List[Any]]] = 'default',
+    *,
+    source: Optional[str] = None,
+    model: Optional[str] = None,
+    url: Optional[str] = None,
+    skip_auth: Optional[bool] = None,
+) -> Iterator[None]:
+    modules = modules or 'default'
+    modules = list(modules) if isinstance(modules, (list, tuple)) else [modules]
+    norm = [_normaliz_module(m) for m in modules]
+    bucket = {k: v for k, v in {'source': source, 'model': model, 'url': url, 'skip_auth': skip_auth}.items()
+              if v is not None}
+    cfg: Any = globals['config'].get('dynamic_model_configs')
+    if cfg is None:
+        globals['config']['dynamic_model_configs'] = cfg = ConfigsDict()
+    elif not isinstance(cfg, ConfigsDict):
+        globals['config']['dynamic_model_configs'] = cfg = ConfigsDict(default=dict(cfg))
+    snapshots = {k: (cfg[k] or {}).get(slot, {}) for k in norm if k in cfg}
+    try:
+        for key in norm:
+            assert isinstance(cfg.setdefault(key, {}), dict), 'config for module should be a dict'
+            cfg[key][slot] = bucket
+        yield
+    finally:
+        for k in snapshots:
+            cfg[k][slot] = snapshots[k]

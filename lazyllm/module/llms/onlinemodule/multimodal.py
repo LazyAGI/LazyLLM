@@ -1,11 +1,22 @@
 import lazyllm
-from lazyllm import globals
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from typing import Any, Optional
+from typing import Any, ContextManager, List, Optional, Union
 from .base import OnlineMultiModalBase
 from .base.utils import select_source_with_default_key
 from .map_model_type import get_model_type
-from .dynamic_router import DynamicSourceRouterMixin
+from .dynamic_router import DynamicSourceRouterMixin, dynamic_model_config_context
+
+
+def dynamic_multimodal_config(
+    modules: Optional[Union[Any, List[Any]]] = None,
+    *,
+    source: Optional[str] = None,
+    model: Optional[str] = None,
+    url: Optional[str] = None,
+    skip_auth: Optional[bool] = None,
+) -> ContextManager[None]:
+    return dynamic_model_config_context('multimodal', modules, source=source, model=model, url=url,
+                                        skip_auth=skip_auth)
 
 
 class _OnlineMultiModalMeta(type):
@@ -16,7 +27,6 @@ class _OnlineMultiModalMeta(type):
 
 
 class OnlineMultiModalModule(DynamicSourceRouterMixin, metaclass=_OnlineMultiModalMeta):
-    _dynamic_bool_key = 'dynamic_multimodal_config'
     _dynamic_module_slot = 'multimodal'
     _dynamic_source_error = 'No source is configured for dynamic multimodal source.'
     TYPE_GROUP_MAP = {
@@ -82,7 +92,7 @@ class OnlineMultiModalModule(DynamicSourceRouterMixin, metaclass=_OnlineMultiMod
                  return_trace: bool = False, api_key: str = None, dynamic_auth: bool = False,
                  skip_auth: bool = False, **kwargs):
         resolved_type = type if type is not None else kwargs.pop('function', None)
-        if OnlineMultiModalModule._dynamic_enabled():
+        if OnlineMultiModalModule._should_use_dynamic(source, dynamic_auth, skip_auth):
             self._model = None
             self._base_url = None
         else:
@@ -99,7 +109,3 @@ class OnlineMultiModalModule(DynamicSourceRouterMixin, metaclass=_OnlineMultiMod
         params.update({'api_key': self._api_key, 'skip_auth': skip_auth})
         register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(self._type).lower()
         return getattr(lazyllm.online[register_type], source)(**params)
-
-
-globals.config.add('dynamic_multimodal_config', bool, False, 'DYNAMIC_MULTIMODAL_CONFIG',
-                   description='Enable dynamic routing for OnlineMultiModalModule.')
