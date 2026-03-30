@@ -1,4 +1,5 @@
 import lazyllm
+import cloudpickle
 from lazyllm.tools.rag.doc_impl import DocImpl
 from lazyllm.tools.rag.store.store_base import LAZY_IMAGE_GROUP
 from lazyllm.tools.rag.transform import SentenceSplitter
@@ -150,6 +151,14 @@ class TestDocImpl(unittest.TestCase):
                 doc_impl._local_monitor_continue = False
                 if doc_impl._local_monitor_thread:
                     doc_impl._local_monitor_thread.join(timeout=1)
+
+    def test_doc_impl_can_be_pickled_before_lazy_init(self):
+        doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
+        serialized = cloudpickle.dumps(doc_impl)
+        restored = cloudpickle.loads(serialized)
+
+        assert restored._local_monitor_lock is not None
+        assert restored._local_monitor_thread is None
 
 class TestDocument(unittest.TestCase):
     @classmethod

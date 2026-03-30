@@ -4,7 +4,7 @@ import time
 from enum import Enum
 from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
-from lazyllm import LOG, once_wrapper
+from lazyllm import LOG, once_wrapper, reset_on_pickle
 from lazyllm.module import LLMBase
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
@@ -63,6 +63,7 @@ class BuiltinGroups(object):
                      lambda x: x._content, LAZY_IMAGE_GROUP, True)
 
 
+@reset_on_pickle(('_local_monitor_lock', threading.Lock))
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
