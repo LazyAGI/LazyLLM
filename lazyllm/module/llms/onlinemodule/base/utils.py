@@ -51,9 +51,9 @@ def resolve_online_params(
     if source_registry is not None and model is not None:
         _in = (lambda x: x in source_registry) if hasattr(source_registry, '__contains__') else source_registry
         if _in(model):
-            if source is not None and _in(source):
-                raise ValueError(f'`{model!r}` and `{source!r}` are both recognised source names; '
-                                 f'provide exactly one via `source=`.')
+            if source is not None and (_in(source) or source == 'dynamic'):
+                raise ValueError(f'`{model!r}` is a recognised source name; '
+                                 f'do not also provide `source={source!r}`.')
             source, model = model, source
     return model, source, url, remaining
 
