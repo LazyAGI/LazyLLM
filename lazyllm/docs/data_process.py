@@ -4612,10 +4612,10 @@ Text2SQL 数据转换算子：将 Text2SQL 数据转换为 SFT 训练格式。
 
 支持两种输出格式：
 
-- cot (默认): instruction=prompt, input='', output=<think>cot_reasoning</think>\\n\\nSQL
+- cot (默认): instruction=prompt, input='', output=`<think>cot_reasoning</think>`\\n\\nSQL
 - alpaca: instruction=固定提示, input=prompt, output=SQL
 
-当 format_type='cot' 且存在 cot_reasoning 时，输出会包含 <think> 标签包裹的推理过程。
+当 format_type='cot' 且存在 cot_reasoning 时，输出会包含 `<think>` 标签包裹的推理过程。
 当 format_type='alpaca' 时，输出为标准 Alpaca 格式。
 
 Args:
@@ -4629,10 +4629,10 @@ Text2SQL data conversion operator: converts Text2SQL data to SFT training format
 
 Supports two output formats:
 
-- cot (default): instruction=prompt, input='', output=<think>cot_reasoning</think>\\n\\nSQL
+- cot (default): instruction=prompt, input='', output=`<think>cot_reasoning</think>`\\n\\nSQL
 - alpaca: instruction=fixed prompt, input=prompt, output=SQL
 
-When format_type='cot' and cot_reasoning exists, output will include reasoning wrapped in <think> tags.
+When format_type='cot' and cot_reasoning exists, output will include reasoning wrapped in `<think>` tags.
 When format_type='alpaca', output follows standard Alpaca format.
 
 Args:
@@ -4657,7 +4657,7 @@ print(res[0])
 # {
 #   'instruction': 'Database Schema:\\nCREATE TABLE orders...',
 #   'input': '',
-#   'output': '<think>\\nStep 1: Count records\\n</think>\\n\\nSELECT COUNT(*) FROM orders'
+#   'output': `<think>\\nStep 1: Count records\\n</think>\\n\\nSELECT COUNT(*) FROM orders`
 # }
 
 # Alpaca format
