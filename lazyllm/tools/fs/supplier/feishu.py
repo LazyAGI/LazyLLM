@@ -708,6 +708,38 @@ class FeishuFS(FeishuFSBase):
             return
         self._delete(f'{self._base_url}/drive/v1/files/{token}', params={'type': 'folder'})
 
+    def _get_item_raw(self, path: str) -> Dict[str, Any]:
+        parts = [p for p in path.strip('/').split('/') if p]
+        if not parts:
+            return {'type': 'folder', 'token': '', 'name': ''}
+        name = parts[-1]
+        parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
+        match = next((it for it in self._list_files_raw(parent_token) if it.get('name') == name), None)
+        if match is None:
+            raise FileNotFoundError(path)
+        return match
+
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        src = self._get_item_raw(path1)
+        if src.get('type') == 'folder':
+            raise NotImplementedError('FeishuFS: the official Drive API does not support folder copy')
+        src_token = src.get('token', '')
+        parts2 = [p for p in path2.strip('/').split('/') if p]
+        new_name = parts2[-1] if parts2 else src.get('name', 'copy')
+        parent_path2 = '/' + '/'.join(parts2[:-1]) if len(parts2) > 1 else '/'
+        folder_token = self._resolve_path_to_token(parent_path2)
+        self._post(f'{self._base_url}/drive/v1/files/{src_token}/copy',
+                   json={'name': new_name, 'type': src.get('type', 'file'), 'folder_token': folder_token})
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        src = self._get_item_raw(path1)
+        src_token = src.get('token', '')
+        parts2 = [p for p in path2.strip('/').split('/') if p]
+        parent_path2 = '/' + '/'.join(parts2[:-1]) if len(parts2) > 1 else '/'
+        folder_token = self._resolve_path_to_token(parent_path2)
+        self._post(f'{self._base_url}/drive/v1/files/{src_token}/move',
+                   json={'type': src.get('type', 'file'), 'folder_token': folder_token})
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         token = self._resolve_path_to_token(path)
         resp = self._request('GET', f'{self._base_url}/drive/v1/files/{token}/download',
@@ -849,6 +881,33 @@ class FeishuWikiFS(FeishuFSBase):
         node = self._get_node(token)
         name = path.rstrip('/').split('/')[-1] if path != '/' else '/'
         return self._node_to_entry(node, default_name=name)
+
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        src_token = self._resolve_path_to_token(path1)
+        if not src_token:
+            raise FileNotFoundError(path1)
+        parts2 = [p for p in path2.strip('/').split('/') if p]
+        title = parts2[-1] if parts2 else ''
+        parent_path2 = '/' + '/'.join(parts2[:-1]) if len(parts2) > 1 else '/'
+        parent_token = self._resolve_path_to_token(parent_path2)
+        payload: Dict[str, Any] = {}
+        if parent_token:
+            payload['target_parent_token'] = parent_token
+        if title:
+            payload['title'] = title
+        self._post(f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes/{src_token}/copy', json=payload)
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        src_token = self._resolve_path_to_token(path1)
+        if not src_token:
+            raise FileNotFoundError(path1)
+        parts2 = [p for p in path2.strip('/').split('/') if p]
+        parent_path2 = '/' + '/'.join(parts2[:-1]) if len(parts2) > 1 else '/'
+        parent_token = self._resolve_path_to_token(parent_path2)
+        payload: Dict[str, Any] = {}
+        if parent_token:
+            payload['target_parent_token'] = parent_token
+        self._post(f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes/{src_token}/move', json=payload)
 
     def _fetch_wiki_content(self, path: str) -> bytes:
         token = self._resolve_path_to_token(path)

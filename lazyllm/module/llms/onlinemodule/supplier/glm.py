@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
@@ -22,9 +22,10 @@ class GLMChat(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['glm-4.5v', 'glm-4.1v', 'glm-4v']
     MODEL_NAME = 'glm-4'
 
-    def __init__(self, base_url: str = 'https://open.bigmodel.cn/api/paas/v4/', model: str = None,
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: str = True, return_trace: bool = False, **kwargs):
-        super().__init__(api_key=api_key or lazyllm.config['glm_api_key'],
+        base_url = base_url or 'https://open.bigmodel.cn/api/paas/v4/'
+        super().__init__(api_key=api_key or self._default_api_key(),
                          model_name=model or lazyllm.config['glm_model_name'] or GLMChat.MODEL_NAME,
                          base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
@@ -213,21 +214,25 @@ class GLMChat(OnlineChatModuleBase, FileHandlerBase):
 
 class GLMEmbed(LazyLLMOnlineEmbedModuleBase):
     def __init__(self,
-                 embed_url: str = 'https://open.bigmodel.cn/api/paas/v4/embeddings',
-                 embed_model_name: str = 'embedding-2',
+                 embed_url: Optional[str] = None,
+                 embed_model_name: Optional[str] = None,
                  api_key: str = None,
                  batch_size: int = 16,
                  **kw):
-        super().__init__(embed_url, api_key or lazyllm.config['glm_api_key'], embed_model_name,
+        embed_url = embed_url or 'https://open.bigmodel.cn/api/paas/v4/embeddings'
+        embed_model_name = embed_model_name or 'embedding-2'
+        super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name,
                          batch_size=batch_size, **kw)
 
 
 class GLMRerank(LazyLLMOnlineRerankModuleBase):
     def __init__(self,
-                 embed_url: str = 'https://open.bigmodel.cn/api/paas/v4/rerank',
+                 embed_url: Optional[str] = None,
                  embed_model_name: str = 'rerank',
                  api_key: str = None, **kw):
-        super().__init__(embed_url, api_key or lazyllm.config['glm_api_key'], embed_model_name, **kw)
+        embed_url = embed_url or 'https://open.bigmodel.cn/api/paas/v4/rerank'
+        embed_model_name = embed_model_name or 'rerank'
+        super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name, **kw)
 
     @property
     def type(self):
@@ -250,28 +255,25 @@ class GLMRerank(LazyLLMOnlineRerankModuleBase):
         return [(result['index'], result['relevance_score']) for result in response['results']]
 
 
-class GLMMultiModal():
-    def __init__(self, api_key: str = None, base_url: str = 'https://open.bigmodel.cn/api/paas/v4'):
-        api_key = api_key or lazyllm.config['glm_api_key']
-        self._client = zhipuai.ZhipuAI(api_key=api_key, base_url=base_url)
+def _zhipu_client(base_url: str, api_key: str) -> 'zhipuai.ZhipuAI':
+    return zhipuai.ZhipuAI(api_key=api_key, base_url=base_url)
 
 
-class GLMSTT(LazyLLMOnlineSTTModuleBase, GLMMultiModal):
+class GLMSTT(LazyLLMOnlineSTTModuleBase):
     MODEL_NAME = 'glm-asr'
 
     def __init__(self, model_name: str = None, api_key: str = None,
-                 base_url: str = 'https://open.bigmodel.cn/api/paas/v4',
+                 base_url: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
-        super().__init__(model_name=model_name or GLMSTT.MODEL_NAME, api_key=api_key, return_trace=return_trace,
+        base_url = base_url or 'https://open.bigmodel.cn/api/paas/v4'
+        super().__init__(model_name=model_name or GLMSTT.MODEL_NAME,
+                         api_key=api_key or self._default_api_key(), return_trace=return_trace,
                          base_url=base_url, **kwargs)
-        GLMMultiModal.__init__(self, api_key=api_key, base_url=base_url)
 
     def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
         assert len(files) == 1, 'GLMSTT only supports one file'
         assert os.path.exists(files[0]), f'File {files[0]} not found'
-        client = self._client
-        if url and url != getattr(self, '_base_url', None):
-            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=url)
+        client = _zhipu_client(base_url=url or self._base_url, api_key=self._api_key)
         transcriptResponse = client.audio.transcriptions.create(
             model=model,
             file=open(files[0], 'rb'),
@@ -279,14 +281,14 @@ class GLMSTT(LazyLLMOnlineSTTModuleBase, GLMMultiModal):
         return transcriptResponse.text
 
 
-class GLMText2Image(LazyLLMOnlineText2ImageModuleBase, GLMMultiModal):
+class GLMText2Image(LazyLLMOnlineText2ImageModuleBase):
     MODEL_NAME = 'cogview-4-250304'
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False,
-                 base_url: str = 'https://open.bigmodel.cn/api/paas/v4', **kwargs):
-        super().__init__(model_name=model_name or GLMText2Image.MODEL_NAME, api_key=api_key,
+                 base_url: Optional[str] = None, **kwargs):
+        base_url = base_url or 'https://open.bigmodel.cn/api/paas/v4'
+        super().__init__(model_name=model_name or GLMText2Image.MODEL_NAME, api_key=api_key or self._default_api_key(),
                          return_trace=return_trace, base_url=base_url, **kwargs)
-        GLMMultiModal.__init__(self, api_key=api_key, base_url=base_url)
         if self._type == LLMType.IMAGE_EDITING:
             raise ValueError('GLM series models do not support image editing now.')
 
@@ -294,9 +296,7 @@ class GLMText2Image(LazyLLMOnlineText2ImageModuleBase, GLMMultiModal):
                  url: str = None, model: str = None, **kwargs):
         runtime_url = url or self._base_url
         runtime_model = model or self._model_name
-        client = self._client
-        if runtime_url and runtime_url != getattr(self, '_base_url', None):
-            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=runtime_url)
+        client = _zhipu_client(base_url=runtime_url, api_key=self._api_key)
         call_params = {
             'model': runtime_model,
             'prompt': input,
