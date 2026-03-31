@@ -4798,6 +4798,7 @@ add_chinese_doc('data.pipelines.codegen_pipelines.build_codegen_pipeline', """\
 构建代码生成数据处理流水线，用于生成高质量的代码训练数据。
 
 该流水线包含以下步骤：
+
 1. CodeInstructionGenerator: 标准化代码指令
 2. ScriptSynthesizer: 根据指令生成代码
 3. LogicIntegrityAuditor: 评估代码质量
@@ -4818,6 +4819,7 @@ add_english_doc('data.pipelines.codegen_pipelines.build_codegen_pipeline', """\
 Build a code generation data processing pipeline for high-quality code training data.
 
 The pipeline includes the following steps:
+
 1. CodeInstructionGenerator: Standardize code instructions
 2. ScriptSynthesizer: Generate code from instructions
 3. LogicIntegrityAuditor: Evaluate code quality
@@ -4872,6 +4874,7 @@ add_chinese_doc('data.pipelines.preference_pipelines.build_preference_pipeline',
 构建偏好数据处理流水线，用于构建偏好训练数据（chosen/rejected）。
 
 该流水线包含以下步骤：
+
 1. IntentExtractor: 提取用户意图
 2. PreferenceResponseGenerator: 生成多个候选回复
 3. ResponseEvaluator: 评估回复质量
@@ -4895,6 +4898,7 @@ add_english_doc('data.pipelines.preference_pipelines.build_preference_pipeline',
 Build a preference data processing pipeline for constructing preference training data (chosen/rejected).
 
 The pipeline includes the following steps:
+
 1. IntentExtractor: Extract user intent
 2. PreferenceResponseGenerator: Generate multiple candidate responses
 3. ResponseEvaluator: Evaluate response quality
@@ -4930,6 +4934,7 @@ add_chinese_doc('data.pipelines.text2sql_pipelines.text2sql_synthetic_ppl', """\
 构建 Text2SQL 完整数据处理流水线，用于生成 SQL 查询训练数据。
 
 该流水线包含以下步骤：
+
 1. SQLForge: 生成候选 SQL 查询
 2. SQLRuntimeSieve: 运行时过滤无效 SQL
 3. SQLIntentSynthesizer: 合成自然语言意图
@@ -4956,6 +4961,7 @@ add_english_doc('data.pipelines.text2sql_pipelines.text2sql_synthetic_ppl', """\
 Build a full Text2SQL data processing pipeline for generating SQL query training data.
 
 The pipeline includes the following steps:
+
 1. SQLForge: Generate candidate SQL queries
 2. SQLRuntimeSieve: Filter invalid SQL at runtime
 3. SQLIntentSynthesizer: Synthesize natural language intents
@@ -4997,6 +5003,7 @@ add_chinese_doc('data.pipelines.text2sql_pipelines.text2sql_enhanced_ppl', """\
 构建 Text2SQL 问题优先数据处理流水线，先根据 schema 生成复杂问题，再根据问题生成 SQL。
 
 该流水线流程：
+
 1. SQLQuestionGenerator: 根据 schema 直接生成复杂自然语言问题
 2. SQLContextAssembler: 组装 schema + question 成完整 prompt
 3. SQLGenerator: 根据 question 生成高质量 SQL
@@ -5024,6 +5031,7 @@ add_english_doc('data.pipelines.text2sql_pipelines.text2sql_enhanced_ppl', """\
 Build a Text2SQL question-first data processing pipeline, generating complex questions from schema first, then generating SQL based on the questions.
 
 Pipeline flow:
+
 1. SQLQuestionGenerator: Generate complex natural language questions directly from schema
 2. SQLContextAssembler: Assemble schema + question into complete prompt
 3. SQLGenerator: Generate high-quality SQL based on the question
@@ -5068,6 +5076,7 @@ add_chinese_doc('data.pipelines.tool_use_pipelines.build_tool_use_pipeline', """
 构建工具使用数据处理流水线，用于生成工具调用训练数据。
 
 该流水线包含以下步骤：
+
 1. ContextualBeacon: 生成场景上下文
 2. ScenarioDiverger: 扩展多样化场景
 3. DecompositionKernel: 分解原子任务
@@ -5095,6 +5104,7 @@ add_english_doc('data.pipelines.tool_use_pipelines.build_tool_use_pipeline', """
 Build a tool-use data processing pipeline for generating tool calling training data.
 
 The pipeline includes the following steps:
+
 1. ContextualBeacon: Generate scenario context
 2. ScenarioDiverger: Expand diverse scenarios
 3. DecompositionKernel: Decompose atomic tasks

@@ -28,7 +28,7 @@ def _stringify_statements(statements, max_lines=None):
 
 def _default_build_prompt(create_statements, insert_statements, db_engine,
                           question=None, target_complexity='hard'):
-    """
+    '''
     构建 SQL 生成 prompt
 
     Args:
@@ -37,7 +37,7 @@ def _default_build_prompt(create_statements, insert_statements, db_engine,
         db_engine: 数据库引擎类型
         question: 用户问题（可选），如果提供则基于问题生成 SQL
         target_complexity: 目标复杂度 ('easy', 'medium', 'hard')
-    """
+    '''
     schema_text = _stringify_statements(create_statements, max_lines=400)
     sample_text = _stringify_statements(insert_statements, max_lines=200)
 
@@ -1182,8 +1182,8 @@ class Text2SQLToSFTFormatter(Text2SQLOps):
     FORMAT_ALPACA = 'alpaca'
 
     DEFAULT_INSTRUCTION = (
-        "I want you to act as a SQL expert. "
-        "Based on the database schema provided, generate a SQL query to answer the question."
+        'I want you to act as a SQL expert. '
+        'Based on the database schema provided, generate a SQL query to answer the question.'
     )
 
     def __init__(self, format_type=FORMAT_COT, instruction=None, **kwargs):

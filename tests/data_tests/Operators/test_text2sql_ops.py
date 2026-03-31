@@ -217,7 +217,7 @@ class TestText2SQLOperators:
         assert res[0]['sql_execution_difficulty'] == 'easy'
 
     def test_text2sql_to_sft_formatter_alpaca(self):
-        """测试 Text2SQLToSFTFormatter - alpaca 格式"""
+        '''测试 Text2SQLToSFTFormatter - alpaca 格式'''
         op = text2sql_ops.Text2SQLToSFTFormatter(format_type='alpaca')
         data = {
             'output': {
@@ -234,7 +234,7 @@ class TestText2SQLOperators:
         assert res[0]['output'] == 'SELECT * FROM users'
 
     def test_text2sql_to_sft_formatter_cot(self):
-        """测试 Text2SQLToSFTFormatter - cot 格式（默认）"""
+        '''测试 Text2SQLToSFTFormatter - cot 格式（默认）'''
         op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
         data = {
             'output': {
@@ -276,7 +276,7 @@ class TestText2SQLOperators:
         assert len(res) == 0
 
     def test_text2sql_to_sft_formatter_missing_cot(self):
-        """测试 Text2SQLToSFTFormatter - 缺少 CoT 时只输出 SQL"""
+        '''测试 Text2SQLToSFTFormatter - 缺少 CoT 时只输出 SQL'''
         op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
         data = {
             'output': {
@@ -290,7 +290,7 @@ class TestText2SQLOperators:
         assert res[0]['output'] == 'SELECT * FROM users'
 
     def test_sql_question_generator(self):
-        """测试 SQLQuestionGenerator 根据 schema 生成问题"""
+        '''测试 SQLQuestionGenerator 根据 schema 生成问题'''
         mock_model = MockModel(
             return_val=(
                 '[QUESTION-START]How many users are there?[QUESTION-END]\n'
