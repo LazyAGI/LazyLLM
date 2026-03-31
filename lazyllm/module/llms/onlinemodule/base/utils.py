@@ -31,6 +31,33 @@ def select_source_with_default_key(available_models, explicit_source: Optional[s
                    f'You can set one of those environment: {excepted}')
 
 
+def resolve_online_params(
+    model: Optional[str], source: Optional[str], url: Optional[str], extra: dict,
+    *, model_aliases: Union[str, tuple] = (), url_aliases: Union[str, tuple] = (), source_registry=None,
+) -> tuple:
+    if isinstance(model_aliases, str): model_aliases = (model_aliases,)
+    if isinstance(url_aliases, str): url_aliases = (url_aliases,)
+    remaining = dict(extra)
+    for alias in model_aliases:
+        if (val := remaining.pop(alias, None)) is not None:
+            if model is not None:
+                raise ValueError(f'Conflicting parameters: `model` and `{alias}` are both provided. Use `model` only.')
+            model = val
+    for alias in url_aliases:
+        if (val := remaining.pop(alias, None)) is not None:
+            if url is not None:
+                raise ValueError(f'Conflicting parameters: `url` and `{alias}` are both provided. Use `url` only.')
+            url = val
+    if source_registry is not None and model is not None:
+        _in = (lambda x: x in source_registry) if hasattr(source_registry, '__contains__') else source_registry
+        if _in(model):
+            if source is not None and (_in(source) or source == 'dynamic'):
+                raise ValueError(f'`{model!r}` is a recognised source name; '
+                                 f'do not also provide `source={source!r}`.')
+            source, model = model, source
+    return model, source, url, remaining
+
+
 def check_and_add_config(key, description, cfg=config):
     if key.lower() not in config.get_all_configs():
         cfg.add(key, str, '', f'{key.upper()}', description=description)

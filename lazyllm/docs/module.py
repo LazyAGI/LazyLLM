@@ -1458,7 +1458,7 @@ Args:
     source (Optional[str]): 使用的服务提供方。为在线模块（``OnlineModule``）指定 ``qwen`` / ``glm`` / ``openai`` 等；若设为 ``local`` 则强制创建本地 TrainableModule。
     type (Optional[str]): 模型类型。若未指定会尝试从 kwargs 中获取或由在线模块自动推断。
     config (Union[str, bool]): 是否启用 ``auto_model_config_map`` 的覆盖逻辑，或者用户指定的 config 文件路径。默认为 True。
-    **kwargs: 兼容 `model` 的同义字段 `base_model` 和 `embed_model_name`，不接收其他用户传入的字段。
+    **kwargs: 仅接受 `model` 的同义字段 `base_model`、`embed_model_name` 和 `model_name`，不接收其他用户自定义字段。其他模型参数（如 ``stream``、``type``、``url`` 等）应在配置文件（``auto_model_config_map``）中指定，由 ``config_id`` 引用后自动注入。
 ''')
 
 add_english_doc('AutoModel', '''\
@@ -1472,7 +1472,7 @@ Args:
     source (Optional[str]): Provider for online modules (``qwen`` / ``glm`` / ``openai``). Set to ``local`` to force a local TrainableModule.
     type (Optional[str]): Model type. If omitted, it will try to fetch from kwargs or be inferred by the online module.
     config (Union[str, bool]): Whether to enable overrides from ``auto_model_config_map``, or a user-specified config file path. Defaults to True.
-    **kwargs: Accepts `base_model` and `embed_model_name` as synonyms for `model`; does not accept other user-provided fields.
+    **kwargs: Only the synonyms `base_model`, `embed_model_name` and `model_name` for `model` are accepted; no other user-supplied fields are allowed. Other model parameters (e.g. ``stream``, ``type``, ``url``) should be specified in the configuration file (``auto_model_config_map``) and referenced via ``config_id`` so they are injected automatically.
 ''')
 
 add_chinese_doc('OnlineModule', '''\
@@ -1525,8 +1525,8 @@ add_chinese_doc('OnlineChatModule', '''\
 
 Args:
     model (str): 指定要访问的模型 (注意使用豆包时需用 Model ID 或 Endpoint ID，获取方式详见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。使用模型前，要先在豆包平台开通对应服务。)，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` / ``deepseek/deepseek-v3.2(ppio)`` 
-    source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``ppio`` / ``deepseek(暂时不支持访问)``
-    base_url (str): 指定要访问的平台的基础链接，默认是官方链接
+    source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``ppio`` / ``deepseek(暂时不支持访问)``。也可以直接将 source 名称作为 ``model`` 传入，系统会自动识别并交换两者。
+    url (str): 指定要访问的平台的基础链接，默认是官方链接。也可使用别名 ``base_url`` 传入。
     system_prompt (str): 指定请求的system prompt，默认是官方给的system prompt
     api_key (str): 可显式传入 API Key；当设置为 ``auto`` 或 ``dynamic`` 时，将在运行时从配置读取，支持动态切换 key
     stream (bool): 是否流式请求和输出，默认为流式
@@ -1538,9 +1538,9 @@ add_english_doc('OnlineChatModule', '''\
 Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen, doubao, ppio and deepseek (since the platform does not allow recharges for the time being, access is not supported for the time being). For how to obtain the platform's API key, please visit [Getting Started](/#platform)
 
 Args:
-    model (str): Specify the model to access (Note that you need to use Model ID or Endpoint ID when using Doubao. For details on how to obtain it, see [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). Before using the model, you must first activate the corresponding service on the Doubao platform.), default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` / ``deepseek/deepseek-v3.2(ppio)`` .
+    model (str): Specify the model to access (Note that you need to use Model ID or Endpoint ID when using Doubao. For details on how to obtain it, see [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). Before using the model, you must first activate the corresponding service on the Doubao platform.), default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` / ``deepseek/deepseek-v3.2(ppio)`` . A recognised source name can also be passed here; it will be automatically swapped into ``source``.
     source (str): Specify the type of module to create. Options include  ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``ppio`` / ``deepseek (not yet supported)`` .
-    base_url (str): Specify the base link of the platform to be accessed. The default is the official link.
+    url (str): Specify the base link of the platform to be accessed. The default is the official link. The alias ``base_url`` is also accepted.
     system_prompt (str): Specify the requested system prompt. The default is the official system prompt.
     api_key (str): You can pass an explicit API key. If set to ``auto`` or ``dynamic``, the key is resolved from config at runtime, enabling dynamic key switching.
     stream (bool): Whether to request and output in streaming mode, default is streaming.
@@ -1677,22 +1677,28 @@ add_chinese_doc('OnlineEmbeddingModule', '''\
 用来管理创建目前市面上的在线Embedding服务模块，目前支持openai、sensenova、glm、qwen、doubao
 
 Args:
+    model (str): 指定要访问的模型 (注意使用豆包时需用 Model ID 或 Endpoint ID，获取方式详见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。使用模型前，要先在豆包平台开通对应服务。)，默认为 ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)``。也可使用别名 ``embed_model_name`` 或 ``model_name`` 传入。也可将 source 名称直接作为 ``model`` 传入，系统会自动识别并交换两者。
     source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``qwen`` / ``doubao``
-    embed_url (str): 指定要访问的平台的基础链接，默认是官方链接
-    embed_mode_name (str): 指定要访问的模型 (注意使用豆包时需用 Model ID 或 Endpoint ID，获取方式详见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。使用模型前，要先在豆包平台开通对应服务。)，默认为 ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)`` 
+    url (str): 指定要访问的平台的基础链接，默认是官方链接。也可使用别名 ``embed_url`` 或 ``base_url`` 传入。
+    type (str): 模型服务类型，可选 ``embed`` / ``rerank``，默认根据模型名自动推断。
     api_key (str): 可显式传入 API Key；当设置为 ``auto`` 或 ``dynamic`` 时，将在运行时从配置读取，支持动态切换 key
     dynamic_auth (bool): 是否启用动态鉴权；为 True 时等价于 ``api_key='dynamic'``
+    return_trace (bool): 是否将结果记录在trace中，默认为False
+    batch_size (int): 批量请求时每批的大小，默认为32
 ''')
 
 add_english_doc('OnlineEmbeddingModule', '''\
 Used to manage and create online Embedding service modules currently on the market, currently supporting openai, sensenova, glm, qwen, doubao.
 
 Args:
+    model (str): Specify the model to access (Note that you need to use Model ID or Endpoint ID when using Doubao. For details on how to obtain it, see [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). Before using the model, you must first activate the corresponding service on the Doubao platform.), default is ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)``. The aliases ``embed_model_name`` and ``model_name`` are also accepted. A recognised source name can be passed here too; it will be automatically swapped into ``source``.
     source (str): Specify the type of module to create. Options are  ``openai`` /  ``sensenova`` /  ``glm`` /  ``qwen`` / ``doubao``.
-    embed_url (str): Specify the base link of the platform to be accessed. The default is the official link.
-    embed_mode_name (str): Specify the model to access (Note that you need to use Model ID or Endpoint ID when using Doubao. For details on how to obtain it, see [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). Before using the model, you must first activate the corresponding service on the Doubao platform.), default is ``text-embedding-ada-002(openai)`` / ``nova-embedding-stable(sensenova)`` / ``embedding-2(glm)`` / ``text-embedding-v1(qwen)`` / ``doubao-embedding-text-240715(doubao)``
+    url (str): Specify the base link of the platform to be accessed. The default is the official link. The aliases ``embed_url`` and ``base_url`` are also accepted.
+    type (str): Service type, either ``embed`` or ``rerank``. Inferred from the model name when omitted.
     api_key (str): You can pass an explicit API key. If set to ``auto`` or ``dynamic``, the key is resolved from config at runtime, enabling dynamic key switching.
     dynamic_auth (bool): Whether to enable dynamic auth. When True, it is equivalent to ``api_key='dynamic'``.
+    return_trace (bool): Whether to record the results in trace. Defaults to False.
+    batch_size (int): Batch size for bulk requests. Defaults to 32.
 ''')
 
 add_example('OnlineEmbeddingModule', '''\
@@ -1701,6 +1707,8 @@ add_example('OnlineEmbeddingModule', '''\
 >>> emb = m("hello world")
 >>> print(f"emb: {emb}")
 emb: [0.0010528564, 0.0063285828, 0.0049476624, -0.012008667, ..., -0.009124756, 0.0032043457, -0.051696777]
+>>> m2 = lazyllm.OnlineEmbeddingModule("sensenova")
+>>> emb2 = m2("hello world")
 ''')
 
 add_chinese_doc('OnlineMultiModalModule', '''\
@@ -1710,7 +1718,7 @@ Args:
     model (str): 指定要访问的模型名称。
     source (str): 指定要创建的模块类型，如 ``qwen`` / ``glm`` / ``minimax`` / ``siliconflow`` / ``doubao`` 等。
     type (str): 多模态任务类型，可选 ``stt`` / ``tts`` / ``text2image`` / ``image_editing``。
-    base_url (str): 指定要访问的平台基础链接，默认使用各平台官方链接。
+    url (str): 指定要访问的平台基础链接，默认使用各平台官方链接。也可使用别名 ``base_url`` 传入。
     api_key (str): 可显式传入 API Key；当设置为 ``auto`` 或 ``dynamic`` 时，将在运行时从配置读取，支持动态切换 key。
     dynamic_auth (bool): 是否启用动态鉴权；为 True 时等价于 ``api_key='dynamic'``。
     return_trace (bool): 是否将结果记录在 trace 中，默认为 False。
@@ -1723,7 +1731,7 @@ Args:
     model (str): Model name to use.
     source (str): Supplier to use, such as ``qwen`` / ``glm`` / ``minimax`` / ``siliconflow`` / ``doubao``.
     type (str): Multimodal task type, one of ``stt`` / ``tts`` / ``text2image`` / ``image_editing``.
-    base_url (str): Base URL of the platform. Defaults to each supplier's official endpoint.
+    url (str): Base URL of the platform. Defaults to each supplier's official endpoint. The alias ``base_url`` is also accepted.
     api_key (str): You can pass an explicit API key. If set to ``auto`` or ``dynamic``, the key is resolved from config at runtime, enabling dynamic key switching.
     dynamic_auth (bool): Whether to enable dynamic auth. When True, it is equivalent to ``api_key='dynamic'``.
     return_trace (bool): Whether to record the result in trace. Defaults to False.
