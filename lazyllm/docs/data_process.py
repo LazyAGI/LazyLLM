@@ -7172,7 +7172,7 @@ Args:
     threshold (float): 平均值阈值，用于决定是否保留
 """)
 
-add_english_doc('data.operators.pdf_.multi_features_filter', """\
+add_english_doc('data.operators.pdf_ops.multi_features_filter', """\
 Filter operator based on the average of multiple feature values.
 
 - Convert all values in data[input_key] to floats and compute the average.  

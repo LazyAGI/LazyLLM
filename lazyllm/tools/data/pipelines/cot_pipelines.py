@@ -16,6 +16,8 @@ def build_cot_pipeline(
         boxed_answer=True,
         hash_answer=False
 ):
+    if boxed_answer == hash_answer:
+        raise ValueError("Only one of 'boxed_answer' or 'hash_answer' can be True. Or they can't be both False!")
     with pipeline() as ppl:
         if use_self_consistency:
             ppl.generator = genCot.SelfConsistencyCoTGenerator(

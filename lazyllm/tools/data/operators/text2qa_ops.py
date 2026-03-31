@@ -295,7 +295,7 @@ def to_alpaca_sft(
     answer = data.get(answer_key)
 
     if not instruction or not answer:
-        return None
+        return []
 
     return {
         'instruction': instruction,
