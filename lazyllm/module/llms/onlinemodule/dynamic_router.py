@@ -23,7 +23,9 @@ class _DynamicSourceRouterMixin(ModuleBase):
 
     @staticmethod
     def _resolve_type_name(type_name: Optional[str], model: Optional[str], options: Optional[List[str]] = None) -> str:
-        type_name = LLMType._normalize(type_name or get_model_type(model))
+        if type_name: type_name = LLMType._normalize(type_name)
+        elif model: type_name = LLMType._normalize(get_model_type(model))
+        else: return None
         if options: assert type_name in options, f'type {type_name} is not in options {options}'
         return type_name
 

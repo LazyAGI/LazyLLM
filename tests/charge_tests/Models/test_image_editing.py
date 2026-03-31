@@ -94,7 +94,7 @@ class TestImageEditing:
 
         data_path = lazyllm.config['data_path']
         image_path1 = os.path.join(data_path, 'ci_data/dog.png')
-        image_path2 = os.path.join(data_path, 'ci_data/ji.png')
+        image_path2 = os.path.join(data_path, 'ci_data/ji.jpg')
         interleaved_input = [
             '这是第一张参考图：',
             image_path1,

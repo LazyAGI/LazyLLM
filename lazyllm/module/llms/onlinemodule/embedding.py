@@ -60,7 +60,7 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
             return super().__new__(cls)
         if source is None and api_key is not None:
             raise ValueError('No source is given but an api_key is provided.')
-        type_name = OnlineEmbeddingModule._resolve_type_name(kwargs.pop('type', None), embed_model_name)
+        type_name = OnlineEmbeddingModule._resolve_type_name(type, embed_model_name)
         if type_name == 'embed':
             source, default_key = select_source_with_default_key(lazyllm.online.embed, source, LLMType.EMBED)
         elif type_name == 'rerank':
