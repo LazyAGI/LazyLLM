@@ -3,7 +3,7 @@ from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Any, ContextManager, List, Optional, Union
 from lazyllm.common.bind import _MetaBind
 from .base import OnlineMultiModalBase
-from .base.utils import select_source_with_default_key
+from .base.utils import select_source_with_default_key, resolve_online_params
 from .map_model_type import get_model_type
 from .dynamic_router import _DynamicSourceRouterMixin, dynamic_model_config_context
 
@@ -44,35 +44,42 @@ class OnlineMultiModalModule(_DynamicSourceRouterMixin, metaclass=_OnlineMultiMo
         resolved = get_model_type(model) if model else None
         if resolved == 'sd':
             return 'text2image'
-        assert resolved in OnlineMultiModalModule.TYPE_GROUP_MAP, 'type must be provided for OnlineMultiModalModule.'
+        if resolved not in OnlineMultiModalModule.TYPE_GROUP_MAP:
+            raise ValueError(
+                f'Cannot infer multimodal type from model {model!r}. '
+                f'Please provide `type` explicitly (one of: {list(OnlineMultiModalModule.TYPE_GROUP_MAP.keys())}).')
         return resolved
 
     @staticmethod
-    def _validate_parameters(source: Optional[str], model: Optional[str], type: str, base_url: Optional[str],
+    def _validate_parameters(source: Optional[str], model: Optional[str], type: str, url: Optional[str],
                              skip_auth: bool = False, **kwargs) -> tuple:
-        assert type in OnlineMultiModalModule.TYPE_GROUP_MAP, f'Invalid type: {type}'
-        if model in lazyllm.online[type] and source is None:
-            source, model = model, source
+        if type not in OnlineMultiModalModule.TYPE_GROUP_MAP:
+            raise ValueError(
+                f'Invalid type: {type!r}. Must be one of: {list(OnlineMultiModalModule.TYPE_GROUP_MAP.keys())}')
         register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type).lower()
+        model, source, url, kwargs = resolve_online_params(
+            model, source, url, kwargs, source_registry=lazyllm.online[register_type])
         source, default_key = select_source_with_default_key(lazyllm.online[register_type], source, type)
         if default_key and not kwargs.get('api_key'):
             kwargs['api_key'] = default_key
-        if skip_auth and not base_url:
-            raise KeyError('base_url must be set for local serving.')
+        if skip_auth and not url:
+            raise ValueError('url must be set for local serving.')
         default_module_cls = getattr(lazyllm.online[register_type], source)
         default_model_name = getattr(default_module_cls, 'IMAGE_EDITING_MODEL_NAME' if type == 'image_editing'
                                      else 'MODEL_NAME', None)
         if model is None and default_model_name:
             model = default_model_name
             lazyllm.LOG.info(f'For type {type}, source {source}. Automatically selected default model: {model}')
-        if base_url is not None:
-            kwargs['base_url'] = base_url
+        if url is not None:
+            kwargs['base_url'] = url
         return source, model, kwargs
 
-    def __new__(cls, model: str = None, source: str = None, type: str = None, base_url: str = None,
+    def __new__(cls, model: str = None, source: str = None, url: str = None, type: str = None,
                 return_trace: bool = False, api_key: str = None, dynamic_auth: bool = False,
                 skip_auth: bool = False, id: Optional[str] = None, name: Optional[str] = None,
                 group_id: Optional[str] = None, **kwargs):
+        model, source, url, kwargs = resolve_online_params(
+            model, source, url, kwargs, url_aliases='base_url')
         if cls._should_use_dynamic(source, dynamic_auth, skip_auth):
             return super().__new__(cls)
         if source is None and api_key is not None:
@@ -82,7 +89,7 @@ class OnlineMultiModalModule(_DynamicSourceRouterMixin, metaclass=_OnlineMultiMo
         type = OnlineMultiModalModule._resolve_type_name(
             type if type is not None else kwargs.pop('function', None), model)
         source, model, kwargs_normalized = OnlineMultiModalModule._validate_parameters(
-            source=source, model=model, type=type, base_url=base_url, skip_auth=skip_auth, **kwargs)
+            source=source, model=model, type=type, url=url, skip_auth=skip_auth, **kwargs)
         params = {'return_trace': return_trace, 'type': type}
         if model is not None:
             params['model'] = model
@@ -90,13 +97,15 @@ class OnlineMultiModalModule(_DynamicSourceRouterMixin, metaclass=_OnlineMultiMo
         register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type).lower()
         return getattr(lazyllm.online[register_type], source)(**params)
 
-    def __init__(self, model: str = None, source: str = None, type: str = None, base_url: str = None,
+    def __init__(self, model: str = None, source: str = None, url: str = None, type: str = None,
                  return_trace: bool = False, api_key: str = None, dynamic_auth: bool = False,
                  skip_auth: bool = False, id: Optional[str] = None, name: Optional[str] = None,
                  group_id: Optional[str] = None, **kwargs):
+        model, source, url, kwargs = resolve_online_params(
+            model, source, url, kwargs, url_aliases='base_url')
         _DynamicSourceRouterMixin.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
         self._model_name = model
-        self._base_url = base_url
+        self._base_url = url
         self._skip_auth = skip_auth
         self._type = self._resolve_type_name(type, model)
         self._kwargs = kwargs

@@ -14,7 +14,7 @@ from lazyllm import globals, pipeline
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
-from .utils import LazyLLMOnlineBase
+from .utils import LazyLLMOnlineBase, resolve_online_params
 
 class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     TRAINABLE_MODEL_LIST = []
@@ -126,9 +126,10 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         # TODO(dengyuang): if current forward set stream_output = False but self._stream = True, will use stream = True
         stream_output = stream_output or self._stream
         __input, files = self._get_files(__input, lazyllm_files)
-        runtime_base_url = url or kw.pop('base_url', None)
-        runtime_url = self._get_chat_url(runtime_base_url) if runtime_base_url else self._chat_url
-        runtime_model = model or kw.pop('model_name', None) or self._model_name
+        model, _, url, kw = resolve_online_params(model, None, url, kw,
+                                                  model_aliases='model_name', url_aliases='base_url')
+        runtime_url = self._get_chat_url(url) if url else self._chat_url
+        runtime_model = model or self._model_name
 
         params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
         if tools: params['tools'] = tools

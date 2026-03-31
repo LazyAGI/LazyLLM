@@ -68,14 +68,16 @@ class _DynamicSourceRouterMixin(ModuleBase):
                     self._suppliers[supplier_key] = self._build_supplier(source, skip_auth)
         return self._suppliers[supplier_key]
 
+    _URL_ALIASES = frozenset(('base_url', 'embed_url'))
+    _MODEL_ALIASES = frozenset(('model_name', 'embed_model_name', 'embed_name'))
+
     def _merge_dynamic_forward_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         bucket = self.__class__._get_dynamic_bucket()
         if not bucket: return kwargs
         out = dict(kwargs)
-        if 'url' not in out and 'base_url' not in out:
+        if 'url' not in out and not (self._URL_ALIASES & out.keys()):
             if (u := bucket.get('url')) is not None: out['url'] = u
-        if ('model' not in out and 'model_name' not in out
-                and 'embed_model_name' not in out):
+        if 'model' not in out and not (self._MODEL_ALIASES & out.keys()):
             if (m := bucket.get('model')) is not None: out['model'] = m
         return out
 
