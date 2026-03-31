@@ -26,8 +26,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
                  static_params: Optional[StaticParams] = None, type: Optional[str] = None, **kwargs):
         if any([model_name.startswith(prefix) for prefix in self.VLM_MODEL_PREFIX]):
-            if type is None: type = 'VLM'
-            else: assert type == 'VLM', f'model_name {model_name} is a VLM model, but type is {type}'
+            if type is None: type = LLMType.VLM
+            else: assert type == LLMType.VLM, f'model_name {model_name} is a VLM model, but type is {type}'
         super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         LLMBase.__init__(self, stream=stream, type=type, static_params=static_params)
         self.__base_url = base_url

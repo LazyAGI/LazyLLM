@@ -4,6 +4,7 @@ import pytest
 
 import lazyllm
 from lazyllm.components.formatter import decode_query_with_filepaths
+from lazyllm.module.module import ModuleExecutionError
 
 from ...utils import get_api_key, get_path
 
@@ -118,5 +119,5 @@ class TestImageEditing:
             '请生成图片'
         ]
 
-        with pytest.raises(AssertionError, match='Cannot use both interleaved input'):
+        with pytest.raises(ModuleExecutionError, match='Cannot use both interleaved input'):
             img_edit(interleaved_input, files=[image_path])

@@ -69,7 +69,7 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
                  api_key: str = None, secret_key: str = None, stream: bool = True,
                  return_trace: bool = False, **kwargs):
         base_url = base_url or 'https://api.sensenova.cn/compatible-mode/v1/'
-        model = model or 'SenseNova-V6-5-Pro'
+        model = model or 'SenseChat-5'
         if secret_key and isinstance(api_key, (tuple, list)):
             raise KeyError('multi-key is not support when secret_key is provided, please use single-key mode!')
         if api_key not in LAZY_API_KEY_TOKENS:
