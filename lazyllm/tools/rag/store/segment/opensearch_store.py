@@ -274,9 +274,15 @@ class OpenSearchStore(LazyLLMStoreBase):
     def _deserialize_node(self, segment: dict) -> dict:
         seg = dict(segment)
         if self._global_metadata_desc and self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
-            seg['meta'] = json.loads(seg.get('meta', '{}'))
-            seg['global_meta'] = json.loads(seg.get('global_meta', '{}'))
-            seg['image_keys'] = json.loads(seg.get('image_keys', '[]'))
+            meta = seg.get('meta', '{}')
+            global_meta = seg.get('global_meta', '{}')
+            image_keys = seg.get('image_keys', '[]')
+            if isinstance(meta, (str, bytes, bytearray)):
+                seg['meta'] = json.loads(meta)
+            if isinstance(global_meta, (str, bytes, bytearray)):
+                seg['global_meta'] = json.loads(global_meta)
+            if isinstance(image_keys, (str, bytes, bytearray)):
+                seg['image_keys'] = json.loads(image_keys)
         return seg
 
     def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:  # noqa: C901
