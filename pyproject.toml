@@ -32,10 +32,6 @@ dependencies = [
     "loguru >=0.7.2",
     "pydantic >=2.11.7,<3.0.0",
     "requests >=2.32.2",
-    "langfuse >=3.0.0,<4.0.0",
-    "opentelemetry-api >=1.27.0,<2.0.0",
-    "opentelemetry-sdk >=1.27.0,<2.0.0",
-    "opentelemetry-exporter-otlp-proto-http >=1.27.0,<2.0.0",
     "uvicorn >=0.23.2",
     "cloudpickle >=3.0.0",
     "docstring-parser >=0.16,<0.17", # tools/agent
@@ -65,6 +61,7 @@ rag-advanced = "Install advanced RAG features, including vector database support
 agent-advanced = "Install advanced agent-related features with MCP support"
 dev = "Install developer dependencies for code style checks and testing scripts"
 online-advanced = "Install dependencies for online multimodal"
+tracing = "Install dependencies for tracing with OpenTelemetry and Langfuse"
 
 [tool.pytest.ini_options]
 markers = [
@@ -80,6 +77,10 @@ order_group_scope = "class"
 appdirs = { version = "*", optional = true }
 loralib = { version = "*", optional = true }
 json_repair = { version = "*", optional = true }
+langfuse = { version = ">=3.0.0,<4.0.0", optional = true }
+opentelemetry-api = { version = ">=1.27.0,<2.0.0", optional = true }
+opentelemetry-sdk = { version = ">=1.27.0,<2.0.0", optional = true }
+opentelemetry-exporter-otlp-proto-http = { version = ">=1.27.0,<2.0.0", optional = true }
 flake8 = { version = ">=7.0.0", optional = true }
 chromadb = {version = ">=1.0.6", optional = true}
 sentence-transformers = { version = "^3.0.1", optional = true }
@@ -175,6 +176,12 @@ protobuf = { version = ">=3.20.1", optional = true }
 fsspec = { version = "*", optional = true }
 
 [tool.poetry.extras]
+tracing = [
+    "langfuse",
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-http"
+]
 standard = [
     "appdirs",
     "chromadb",
@@ -318,6 +325,10 @@ full = [
     "httpx",
     "async-timeout",
     "protobuf",
+    "langfuse",
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-http",
     "json_repair"
 ]
 alpaca-lora = [

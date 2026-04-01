@@ -264,12 +264,6 @@ config = (_NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Di
         ).add('allow_internal_network', bool, False, 'ALLOW_INTERNAL_NETWORK',
               description='Whether to allow loading images from internal network addresses. '
                           'Set to False for security in production environments.'
-        ).add('trace_enabled', bool, True, 'TRACE_ENABLED',
-              description='Whether LazyLLM tracing is enabled by default.'
-        ).add('trace_backend', str, 'langfuse', 'TRACE_BACKEND',
-              description='The tracing backend used by LazyLLM.'
-        ).add('trace_content_enabled', bool, True, 'TRACE_CONTENT_ENABLED',
-              description='Whether tracing records basic input and output payloads by default.'
         ))
 
 def refresh_config(key):
