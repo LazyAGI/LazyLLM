@@ -165,6 +165,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Install package in editable mode
+        run: pip install -e .
+
       - name: RunTests
         uses: ./.github/actions/run_tests
         with:

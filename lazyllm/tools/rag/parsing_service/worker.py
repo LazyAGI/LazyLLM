@@ -2,10 +2,9 @@ import json
 import time
 import traceback
 import threading
-import cloudpickle
 
 from datetime import datetime
-from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapper
+from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapper, load_obj
 from ..utils import BaseResponse, _get_default_db_config
 from .base import (
     FINISHED_TASK_QUEUE_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO,
@@ -86,7 +85,7 @@ class DocumentProcessorWorker(ModuleBase):
                     display_name = algorithm.display_name
                     description = algorithm.description
                     info_pickle = algorithm.info_pickle
-                    info = cloudpickle.loads(info_pickle)
+                    info = load_obj(info_pickle)
                     store = info['store']
                     reader = info['reader']
                     node_groups = info['node_groups']
