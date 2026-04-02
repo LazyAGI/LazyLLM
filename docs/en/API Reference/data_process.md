@@ -183,5 +183,9 @@
 ### Structured Data Pipeline
 
 ::: lazyllm.tools.data.pipelines.pt_data_ppl.build_structured_data_pipeline
+
+### PT Data Pipeline
+
+::: lazyllm.tools.data.pipelines.pt_data_ppl
     members:
     exclude-members:

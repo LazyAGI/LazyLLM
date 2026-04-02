@@ -183,5 +183,9 @@
 ### 结构化数据构造 Pipeline
 
 ::: lazyllm.tools.data.pipelines.pt_data_ppl.build_structured_data_pipeline
+
+### 预训练数据处理 Pipeline
+
+::: lazyllm.tools.data.pipelines.pt_data_ppl
     members:
     exclude-members:

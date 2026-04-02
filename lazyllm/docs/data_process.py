@@ -4618,6 +4618,73 @@ print(res[0]['parsed'])
 ```
 """)
 
+add_chinese_doc('data.pipelines.pt_data_ppl.build_long_context_pipeline', """\
+构建长上下文预训练数据 Pipeline。该流程先对短 context 执行 LLM 扩写，再将扩写结果重组为包含干扰段的长上下文。
+
+Args:
+    llm: 文本语言模型实例
+    context_key (str): 上下文字段名，默认 'context'
+    question_key (str): 问题字段名，默认 'question'
+    answer_key (str): 答案字段名，默认 'answer'
+    expanded_key (str): 扩写结果字段名，默认 'expanded_context'
+    long_context_key (str): 长上下文字段名，默认 'long_context'
+    expansion_prompt (str|None): 扩写阶段自定义提示词，默认 None
+    num_distractors (int): 每条样本采样的干扰段数量，默认 3
+    passage_sep (str): 长上下文段落拼接分隔符，默认 '\\n\\n'
+    seed (int|None): 随机种子，用于重组结果复现，默认 None
+    expansion_concurrency_mode (str): 扩写算子并发模式，默认 'thread'
+    reconstruction_concurrency_mode (str): 重组算子并发模式，默认 'thread'
+
+**Returns:**\n
+- 一个可调用的 pipeline 对象，输出字段包含 context、long_context_key、question、answer。
+""")
+
+add_english_doc('data.pipelines.pt_data_ppl.build_long_context_pipeline', """\
+Build a long-context pretraining data pipeline. The flow first expands short contexts with an LLM,
+then reconstructs them into long contexts with distractor passages.
+
+Args:
+    llm: text language model instance
+    context_key (str): key for context, default 'context'
+    question_key (str): key for question, default 'question'
+    answer_key (str): key for answer, default 'answer'
+    expanded_key (str): key for expanded context output, default 'expanded_context'
+    long_context_key (str): key for long context output, default 'long_context'
+    expansion_prompt (str|None): optional custom prompt for expansion stage, default None
+    num_distractors (int): number of distractor passages per sample, default 3
+    passage_sep (str): separator for concatenating passages, default '\\n\\n'
+    seed (int|None): random seed for reproducible reconstruction, default None
+    expansion_concurrency_mode (str): concurrency mode for expansion operator, default 'thread'
+    reconstruction_concurrency_mode (str): concurrency mode for reconstruction operator, default 'thread'
+
+**Returns:**\n
+- A callable pipeline object that outputs context, long_context_key, question, and answer.
+""")
+
+add_example('data.pipelines.pt_data_ppl.build_long_context_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_long_context_pipeline
+
+ppl = build_long_context_pipeline(
+    llm=model,
+    context_key='context',
+    question_key='question',
+    answer_key='answer',
+    expanded_key='expanded_context',
+    long_context_key='long_context',
+    expansion_prompt=None,
+    num_distractors=3,
+    passage_sep='\n\n',
+    seed=42,
+    expansion_concurrency_mode='thread',
+    reconstruction_concurrency_mode='thread',
+)
+data = [{'context': 'short context', 'question': 'Q?', 'answer': 'A'}]
+res = ppl(data)
+print(res[0]['context'], res[0]['long_context'])
+```
+""")
+
 # =========================
 # Embedding Data Formatter
 # =========================
@@ -7198,5 +7265,81 @@ vlm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
 op = pt.Phi4QAGenerator(vlm, num_qa=2)
 res = op([{'context': 'Some context.', 'image_path': '/path/to/image.jpg'}])
 # res[0]['qa_pairs'] contains pretraining-format Q&A
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.ContextExpansion', """\
+使用 LLM 将短 context 扩写为更长且连贯的文本，并保持问题-答案语义一致。
+
+Args:
+    llm: 文本语言模型实例
+    context_key (str): 原始上下文字段名，默认 'context'
+    question_key (str): 问题字段名，默认 'question'
+    answer_key (str): 答案字段名，默认 'answer'
+    expanded_key (str): 扩写结果字段名，默认 'expanded_context'
+    prompt (str): 可选，自定义提示词
+""")
+
+add_english_doc('data.operators.pt_op.ContextExpansion', """\
+Use an LLM to expand a short context into a longer, coherent passage while preserving
+question-answer consistency.
+
+Args:
+    llm: text language model instance
+    context_key (str): key for source context, default 'context'
+    question_key (str): key for question, default 'question'
+    answer_key (str): key for answer, default 'answer'
+    expanded_key (str): key for expanded context output, default 'expanded_context'
+    prompt (str): optional custom prompt
+""")
+
+add_example('data.operators.pt_op.ContextExpansion', """\
+```python
+from lazyllm.tools.data import pt
+
+op = pt.ContextExpansion(llm=model)
+res = op([{'context': 'short context', 'question': 'Q?', 'answer': 'A'}])
+print(res[0]['expanded_context'])
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.ContextReconstruction', """\
+将扩写后的文本重组为长上下文：每条样本保留一个正例段，并从其他样本随机采样干扰段后打乱拼接。
+
+Args:
+    context_key (str): 扩写后上下文字段名，默认 'expanded_context'
+    question_key (str): 问题字段名，默认 'question'
+    answer_key (str): 答案字段名，默认 'answer'
+    long_context_key (str): 长上下文输出字段名，默认 'long_context'
+    num_distractors (int): 干扰段数量，默认 3
+    passage_sep (str): 段落拼接分隔符，默认 '\\n\\n'
+    seed (int|None): 随机种子，默认 None
+""")
+
+add_english_doc('data.operators.pt_op.ContextReconstruction', """\
+Reconstruct long context from expanded passages: keep one positive passage for each sample,
+sample distractors from other samples, then shuffle and concatenate them.
+
+Args:
+    context_key (str): key for expanded context, default 'expanded_context'
+    question_key (str): key for question, default 'question'
+    answer_key (str): key for answer, default 'answer'
+    long_context_key (str): key for long context output, default 'long_context'
+    num_distractors (int): number of distractor passages, default 3
+    passage_sep (str): separator used to concatenate passages, default '\\n\\n'
+    seed (int|None): random seed, default None
+""")
+
+add_example('data.operators.pt_op.ContextReconstruction', """\
+```python
+from lazyllm.tools.data import pt
+
+op = pt.ContextReconstruction(num_distractors=2, long_context_key='lc', seed=42)
+data = [
+    {'expanded_context': 'ctx_1', 'question': 'Q1', 'answer': 'A1'},
+    {'expanded_context': 'ctx_2', 'question': 'Q2', 'answer': 'A2'},
+]
+res = op(data)
+print(res[0]['context'], res[0]['lc'])
 ```
 """)
