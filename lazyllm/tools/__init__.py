@@ -5,6 +5,9 @@ if TYPE_CHECKING:
     from .rag import (Document, GraphDocument, UrlGraphDocument, Reranker, Retriever, TempDocRetriever,
                     GraphRetriever, SentenceSplitter, LLMParser)
     from .webpages import WebModule
+    from .fs import (LazyLLMFSBase, CloudFSBufferedFile, CloudFS, CloudFsWatchdog,
+                     FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS,
+                     ObsidianFS)
     from .agent import (
         ToolManager,
         FunctionCall,
@@ -31,6 +34,8 @@ if TYPE_CHECKING:
     from .http_request import HttpRequest, HttpExecutorResponse
     from .data import data_register
     from .review import get_errors, ChineseCorrector
+    from .git import (LazyLLMGitBase, PrInfo, ReviewCommentInfo, Git,
+                      GitHub, GitLab, Gitee, GitCode)
 
 
 def __getattr__(name: str):
@@ -115,6 +120,32 @@ _SUBMOD_MAP = {
     'review': [
         'get_errors',
         'ChineseCorrector'
+    ],
+    'git': [
+        'LazyLLMGitBase',
+        'PrInfo',
+        'ReviewCommentInfo',
+        'Git',
+        'GitHub',
+        'GitLab',
+        'Gitee',
+        'GitCode',
+        'review',
+    ],
+    'fs': [
+        'LazyLLMFSBase',
+        'CloudFSBufferedFile',
+        'CloudFS',
+        'CloudFsWatchdog',
+        'FeishuFS',
+        'ConfluenceFS',
+        'NotionFS',
+        'GoogleDriveFS',
+        'OneDriveFS',
+        'YuqueFS',
+        'OnesFS',
+        'S3FS',
+        'ObsidianFS',
     ],
 }
 _SUBMOD_MAP_REVERSE = {v: k for k, vs in _SUBMOD_MAP.items() for v in vs}

@@ -506,9 +506,8 @@ def special_model_rule(model_name: str) -> Optional[str]:
 
 @functools.lru_cache
 def get_model_type(model_name: str) -> str:
+    if not model_name: return None
     model_name = model_name.lower()
-    if not model_name:
-        return 'llm'
     for rule in (special_model_rule, feature_keyword_rule):
         try:
             result = rule(model_name)

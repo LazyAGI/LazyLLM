@@ -36,7 +36,7 @@ class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
                 url: str = None, model: str = None, **kwargs):
         '''Main forward method with file handling'''
         try:
-            input, files = self._get_files(input, lazyllm_files)
+            input, files = self._get_files(input, lazyllm_files or kwargs.pop('files', None))
             runtime_url = url or kwargs.pop('base_url', None) or self._base_url
             runtime_model = model or kwargs.pop('model_name', None) or self._model_name
             call_params = {'input': input, **kwargs}

@@ -1,8 +1,11 @@
 from ....module import ModuleBase
-from lazyllm import config, LazyLLMRegisterMetaClass
+from lazyllm import config, LazyLLMRegisterMetaClass, globals
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Optional, Union, List
 import random
+
+
+LAZY_API_KEY_TOKENS = frozenset(('auto', 'dynamic'))
 
 
 config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE',
@@ -28,9 +31,9 @@ def select_source_with_default_key(available_models, explicit_source: Optional[s
                    f'You can set one of those environment: {excepted}')
 
 
-def check_and_add_config(key, description):
+def check_and_add_config(key, description, cfg=config):
     if key.lower() not in config.get_all_configs():
-        config.add(key, str, '', f'{key.upper()}', description=description)
+        cfg.add(key, str, '', f'{key.upper()}', description=description)
 
 
 class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
@@ -40,18 +43,32 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                  skip_auth: Optional[bool] = False, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
         if not skip_auth and not api_key: raise ValueError('api_key is required')
+        self._dynamic_auth = (not skip_auth) and isinstance(api_key, str) and api_key in LAZY_API_KEY_TOKENS
         self.__api_keys = '' if skip_auth else api_key
-        self.__headers = [self._get_header(key) for key in (api_key if isinstance(api_key, list) else [api_key])]
-        if config['cache_online_module']:
-            self.use_cache()
+        self.__headers = ([self._get_header('')] if skip_auth else None if self._dynamic_auth else
+                          [self._get_header(key) for key in (api_key if isinstance(api_key, list) else [api_key])])
+        if config['cache_online_module']: self.use_cache()
+
+    @classmethod
+    def _default_api_key(cls) -> str:
+        if cls._model_series is None:
+            raise ValueError(f'{cls.__name__} has no _model_series; cannot resolve default api_key.')
+        return globals.config[f'{cls._model_series}_api_key']
 
     @property
     def series(self):
         return self.__class__._model_series
 
+    def _materialize_lazy_api_key(self) -> str:
+        return self._default_api_key()
+
     @property
     def _api_key(self):
-        return random.choice(self.__api_keys) if isinstance(self.__api_keys, list) else self.__api_keys
+        if self._dynamic_auth:
+            return self._materialize_lazy_api_key()
+        if isinstance(self.__api_keys, list):
+            return random.choice(self.__api_keys)
+        return self.__api_keys
 
     @staticmethod
     def _get_header(api_key: str) -> dict:
@@ -63,6 +80,8 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
     @property
     def _header(self):
+        if self._dynamic_auth:
+            return self._get_header(self._api_key)
         return random.choice(self.__headers)
 
     @staticmethod
@@ -70,13 +89,13 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         allowed = set(list(LLMType))
         config_type_dict = {
-            LLMType.CHAT: ('_model_name', 'The default model name for '),
-            LLMType.EMBED: ('_model_name', 'The default embed model name for '),
-            LLMType.RERANK: ('_model_name', 'The default rerank model name for '),
-            LLMType.MULTIMODAL_EMBED: ('_multimodal_embed_model_name', 'The default multimodal embed model name for '),
-            LLMType.STT: ('_stt_model_name', 'The default stt model name for '),
-            LLMType.TTS: ('_tts_model_name', 'The default tts model name for '),
-            LLMType.TEXT2IMAGE: ('_text2image_model_name', 'The default text2image model name for '),
+            LLMType.CHAT: ('', 'The default model name for '),
+            LLMType.EMBED: ('', 'The default embed model name for '),
+            LLMType.RERANK: ('', 'The default rerank model name for '),
+            LLMType.MULTIMODAL_EMBED: ('_multimodal_embed', 'The default multimodal embed model name for '),
+            LLMType.STT: ('_stt', 'The default stt model name for '),
+            LLMType.TTS: ('_tts', 'The default tts model name for '),
+            LLMType.TEXT2IMAGE: ('_text2image', 'The default text2image model name for '),
         }
 
         check_and_add_config(key='default_source', description='The default model source for online modules.')
@@ -94,9 +113,9 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             cls._model_series = supplier = name[:-len(subgroup)].lower()
 
             check_and_add_config(key=f'{supplier}_api_key',
-                                 description=f'The API key for {supplier}')
+                                 description=f'The API key for {supplier}', cfg=globals.config)
 
             if subgroup in config_type_dict:
                 key_suffix, description = config_type_dict[subgroup]
-                check_and_add_config(key=f'{supplier}{key_suffix}',
-                                     description=f'{description}{supplier}')
+                check_and_add_config(key=f'{supplier}{key_suffix}_model_name',
+                                     description=f'{description}{supplier}', cfg=globals.config)

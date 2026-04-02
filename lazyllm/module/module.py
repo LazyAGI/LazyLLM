@@ -5,7 +5,7 @@ from lazyllm import ThreadPoolExecutor
 
 import lazyllm
 from lazyllm import FlatList, Option, kwargs, globals, locals, colored_text, redis_client
-from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
+from lazyllm.common import _register_trim_module, HandledException, _change_exception_type, SessionConfigableBase
 from ..components.formatter.formatterbase import file_content_hash, transform_path
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
@@ -262,7 +262,7 @@ module_cache = ModuleCache()
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
 # example: ActionModule.submodules:: isinstance(x, ModuleBase) will add submodule.
-class ModuleBase(metaclass=_MetaBind):
+class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
     builder_keys = []  # keys in builder support Option by default
 
     def __new__(cls, *args, **kw):
@@ -281,14 +281,14 @@ class ModuleBase(metaclass=_MetaBind):
                     f'{k} cannot accept Option'
         return object.__new__(cls)
 
-    def __init__(self, *, return_trace=False):
+    def __init__(self, *, return_trace=False, id: Optional[str] = None, name: Optional[str] = None,
+                 group_id: Optional[str] = None):
+        super().__init__(id=id, name=name, group_id=group_id)
         self._submodules = []
         self._evalset = None
         self._return_trace = return_trace
         self.mode_list = ('train', 'server', 'eval')
-        self._set_mid()
         self._used_by_moduleid = None
-        self._module_name = None
         self._options = []
         self.eval_result = None
         self._use_cache: Union[bool, str] = False
@@ -362,7 +362,8 @@ class ModuleBase(metaclass=_MetaBind):
                 return module_cache.get(self.__cache_hash__, args, kw)
             except CacheNotFoundError:
                 self._cache_miss_handler()
-        r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
+        with globals.stack_enter(self.identities):
+            r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
         if self._use_cache and 'W' in lazyllm.config['cache_mode']:
             module_cache.set(self.__cache_hash__, args, kw, r)
         return r
@@ -409,16 +410,12 @@ class ModuleBase(metaclass=_MetaBind):
     def _get_post_process_tasks(self): return None
 
     def _set_mid(self, mid=None):
-        self._module_id = mid if mid else str(uuid.uuid4().hex)
+        self._config_id = mid if mid else str(uuid.uuid4().hex)
         return self
 
     @property
-    def name(self):
-        return self._module_name
-
-    @name.setter
-    def name(self, name):
-        self._module_name = name
+    def _module_id(self):
+        return self._config_id
 
     @property
     def submodules(self):
@@ -554,7 +551,7 @@ class ActionModule(ModuleBase):
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Action', subs=[repr(self.action)],
-                                 name=self._module_name, return_trace=self._return_trace)
+                                 name=self.name, return_trace=self._return_trace)
 
 
 def flow_start(self):

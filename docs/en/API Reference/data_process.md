@@ -179,3 +179,9 @@
 ::: lazyllm.tools.data.pipelines.pt_img_ppl
     members:
     exclude-members:
+
+### Structured Data Pipeline
+
+::: lazyllm.tools.data.pipelines.pt_data_ppl
+    members:
+    exclude-members:

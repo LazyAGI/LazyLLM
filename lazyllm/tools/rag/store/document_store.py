@@ -153,14 +153,14 @@ class _DocumentStore(object):
     def is_group_empty(self, group: str) -> bool:
         return not self.impl.get(self._gen_collection_name(group), {}, limit=10)
 
-    def update_nodes(self, nodes: List[DocNode]):   # noqa: C901
+    def update_nodes(self, nodes: List[DocNode], copy: bool = False):   # noqa: C901
         if not nodes:
             return
         try:
             if self._embed and self.impl.capability == StoreCapability.SEGMENT:
                 LOG.warning(f'[_DocumentStore - {self._algo_name}] Embed is provided'
                             f' but store {self.impl} does not support embedding')
-            if self.impl.need_embedding:
+            if self.impl.need_embedding and not copy:
                 parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
             group_segments = defaultdict(list)
             for node in nodes:
@@ -389,6 +389,7 @@ class _DocumentStore(object):
             kb_id=node.global_metadata.get(RAG_KB_ID, DEFAULT_KB_ID),
             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
+            copy_source=node._copy_source or {},
         )
         if node.parent:
             segment.parent = node.parent._uid if isinstance(node.parent, DocNode) else node.parent
