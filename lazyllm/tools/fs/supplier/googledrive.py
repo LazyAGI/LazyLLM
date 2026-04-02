@@ -153,6 +153,33 @@ class GoogleDriveFS(LazyLLMFSBase):
     def rmdir(self, path: str) -> None:
         self.rm_file(path)
 
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        if self.isdir(path1):  # type: ignore[attr-defined]
+            raise NotImplementedError('GoogleDriveFS does not support folder copy via the official API')
+        parts1, parts2 = self._parse_path(path1), self._parse_path(path2)
+        file_id = parts1[-1] if parts1 else ''
+        if not file_id:
+            raise FileNotFoundError(path1)
+        parent_id = parts2[-2] if len(parts2) >= 2 else 'root'
+        metadata: Dict[str, Any] = {'parents': [parent_id], 'name': parts2[-1]} if parts2 else {'parents': ['root']}
+        self._post(f'{self._base_url}/files/{file_id}/copy',
+                   json=metadata, params={'supportsAllDrives': 'true'})
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        parts1, parts2 = self._parse_path(path1), self._parse_path(path2)
+        file_id = parts1[-1] if parts1 else ''
+        if not file_id:
+            raise FileNotFoundError(path1)
+        new_parent = parts2[-2] if len(parts2) >= 2 else 'root'
+        info = self._get(f'{self._base_url}/files/{file_id}',
+                         params={'fields': 'parents', 'supportsAllDrives': 'true'})
+        old_parents = ','.join(info.get('parents', []))
+        body: Dict[str, Any] = {'name': parts2[-1]} if parts2 else {}
+        self._patch(f'{self._base_url}/files/{file_id}',
+                    params={'addParents': new_parent, 'removeParents': old_parents,
+                            'supportsAllDrives': 'true', 'fields': 'id'},
+                    json=body or None)
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)
         file_id = parts[-1] if parts else path

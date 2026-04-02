@@ -4,6 +4,7 @@ from lazyllm import config
 from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind
 from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals, _get_callsite
 from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
+from lazyllm.common import SessionConfigableBase
 from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
@@ -78,14 +79,15 @@ def _get_flow_stack():
 _register_trim_module({'lazyllm.flow.flow': ['__call__']}, continuous=True)
 _register_trim_module({'lazyllm.flow.flow': ['_run', 'invoke'], 'lazyllm.common.bind': ['__call__']})
 
-class FlowBase(metaclass=_MetaBind):
-    def __init__(self, *items, item_names=None, auto_capture=False) -> None:
+class FlowBase(SessionConfigableBase, metaclass=_MetaBind):
+    def __init__(self, *items, item_names=None, auto_capture=False, id: Optional[str] = None, name: Optional[str] = None,
+                 group_id: Optional[str] = None) -> None:
+        super().__init__(id=id, name=name, group_id=group_id)
         self._father = None
         self._items, self._item_names, self._item_ids, self._item_pos = [], [], [], []
         self._auto_capture = auto_capture
         self._capture = True
         self._curr_frame = None
-        self._flow_id = str(uuid.uuid4().hex)
         self._find_user_instantiation_frame()
 
         for k, v in zip(item_names if item_names else repeat(None), items):
@@ -95,6 +97,10 @@ class FlowBase(metaclass=_MetaBind):
         self._auto_registered = False
 
     def __post_init__(self): pass
+
+    @property
+    def _flow_id(self):
+        return self._config_id
 
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
@@ -207,13 +213,15 @@ bind.__exit__ = _bind_exit
 # TODO(wangzhihong): support workflow launcher.
 # Disable item launchers if launcher is already set in workflow.
 class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, *args, post_action=None, auto_capture=False, **kw):
+    def __init__(self, *args, post_action=None, auto_capture=False, id: Optional[str] = None,
+                 name: Optional[str] = None, group_id: Optional[str] = None, **kw):
         assert len(args) == 0 or len(kw) == 0, f'Cannot provide args `{args}` and kwargs `{kw}` at the same time'
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
             assert len(args) == 1, 'args should be list of callable functions'
             args = args[0]
         args = list(args) + [v() if isinstance(v, type) else v for v in kw.values()]
-        super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
+        super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture,
+                                        id=id, name=name, group_id=group_id)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
         self._hooks = set()
@@ -226,7 +234,8 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             else:
                 hook_objs.append(hook_type(self))
             hook_objs[-1].pre_hook(*args, **kw)
-        output = self._run(args[0] if len(args) == 1 else package(args), **kw)
+        with globals.stack_enter(self.identities):
+            output = self._run(args[0] if len(args) == 1 else package(args), **kw)
         if self.post_action is not None: self.invoke(self.post_action, output)
         if self._sync: self.wait()
         r = self._post_process(output)

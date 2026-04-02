@@ -92,6 +92,12 @@ class YuqueFS(LazyLLMFSBase):
         login, repo_slug = parts[0], parts[1]
         self._delete(f'{self._base_url}/repos/{login}/{repo_slug}')
 
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        raise NotImplementedError('YuqueFS: Yuque official API does not support copy')
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        raise NotImplementedError('YuqueFS: Yuque official API does not support move')
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)
         if len(parts) < 3:
