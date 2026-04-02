@@ -8,29 +8,28 @@ class RAGContentIdExtractorPrompt(PromptABC):
 
     def build_system_prompt(self) -> str:
         return '''
-        You need to extract the content_identifier from question. Here's how:
-  1. For each question, identify the main subject/noun phrase that the question is about
-  2. This should typically be:
-    - Proper nouns (names, titles)
-    - Specific technical terms
-    - Unique identifiers in the question
+        You extract a short "content_identifier" from the input. The input may be:
+        - a natural-language question, OR
+        - a document/passage (several sentences).
 
-  Examples:
-  {
-      "question": "What is the third movie in the Avatar series?",
-      "content_identifier": "Avatar series"
-  },
-  {
-      "question": "龙美术馆2025年展览展览时间范围是什么",
-      "content_identifier": "龙美术馆"
-  }
+        Rules:
+        1. Identify the main subject: person, place, organization, work title, or core topic.
+        2. Use a compact phrase (usually 2–12 Chinese characters or 2–6 English words).
+        3. Output MUST be valid JSON only, one line, no markdown fences, no explanation:
+           {"content_identifier": "<string>"}
 
-  Return JSON format with key "content_identifier"
-'''
+        Examples:
+        {"content_identifier": "Avatar series"}
+        {"content_identifier": "龙美术馆"}
+        {"content_identifier": "Enugu"}
+        '''
 
     def build_prompt(self, input) -> str:
         return f'''
-        Now process this question:{input}
+        Input (question or passage):
+        {input}
+
+        Respond with ONLY: {{"content_identifier": "..."}}
         '''
 
 
@@ -64,25 +63,34 @@ class RAGFactsConclusionPrompt(PromptABC):
 
   ## III. Relationship (R) Generation Standards
   ### Attribute Requirements
-  - **Structured**: Use semicolons to separate multi-metrics
+  - **Structured**: Put ALL attributes inside ONE JSON string value for `R`.
+  - Inside that string, use semicolons to separate multiple `key=value` pairs.
+  - **Wrong (invalid JSON)**: `"R":"birth_date=May 5, 1942";name=Tammy Wynette"`
+    (do not put `;name=...` outside the closing quote of `R`).
+  - **Correct**: `"R":"birth_date=May 5, 1942;name=Tammy Wynette"`
   - **Operational**: Directly usable for database queries or calculations
 
   ## IV. Output Specifications (STRICT — follow exactly)
   - The model response MUST be one JSON **array** at the top level:
     `[{"conclusion": "<string>", "R": "<string>"}, ...]`
   - Every item MUST include both `"conclusion"` and `"R"` (string values).
+  - The `R` field MUST be a single JSON string. All `key=value` pairs MUST appear
+    inside that string, separated by `;` if needed.
   - Even a single atomic conclusion MUST be expressed as a **one-element array**,
     not as a single JSON object. Example: `[{"conclusion":"...","R":"..."}]`.
   - Do NOT wrap the array in an outer object (no `{"conclusions": [...]}` unless
     the caller explicitly asks for that legacy shape).
   - Do NOT output markdown fences, comments, or any text before or after the array.
+  - **Stop generation immediately after the closing `]` of the array.** Do not continue
+    with chat tokens (e.g. `<|im_start|>`), explanations, other languages, or repeated filler.
+  - At most **15** array elements; prefer fewer, higher-quality atomic facts.
         '''
 
     def build_prompt(self, input) -> str:
         return f'''
     The document content to be processed is as follows: {input}
 
-    Respond with ONLY a JSON array as specified in the system message.
+    Respond with ONLY a JSON array as specified in the system message. End your reply right after `]`.
     '''
 
 
@@ -187,22 +195,30 @@ class RAGAnswerVariantsPrompt(PromptABC):
 
     def build_system_prompt(self) -> str:
         return '''
-  You are an expert in **linguistic variation** and **data augmentation**. Your task is to generate a \
-comprehensive list of all plausible and commonly recognized alternative expressions, formats, and aliases \
-for a given input entity.
+  You are an expert in **linguistic variation** and **data augmentation**. Your task is to generate \
+alternative expressions, formats, and aliases for a given input entity.
 
   **Key Guidelines:**
   1. **Equivalence:** Each alternative expression must refer to *exactly the same entity*
   2. **Scope of Variation:** Focus on formatting conventions, abbreviations, aliases
   3. **Inclusion of Original:** Always include the original input as the first item
-  5. **Format:** Output the variations as a JSON list of strings.
+  4. **Format:** Output **only** a JSON array of strings. No markdown, no code fences, no text before/after.
+  5. **Hard limit:** At most **20** array elements. Do not repeat the same spelling; do not pad with near-duplicates.
+  6. **Valid JSON (critical):** Each element is one JSON string. **Never put an unescaped double-quote character
+     inside a string value.** If a name or nickname would need quotes, rephrase without quotes (e.g. use *Vova*
+     without ASCII `"`), or use apostrophes `'` inside the text, or omit the nickname.
+  7. Avoid ambiguous `+` or stray punctuation right before a closing `"`; keep each string one coherent phrase.
+  8. **Stop rule:** After the closing `]` of the array, output nothing else—no chat tokens, no repetition, \
+no other language, no `<|...|>` markers.
+  9. Prefer **shorter** variants when the answer is long so the full array fits without truncation.
         '''
 
     def build_prompt(self, answer) -> str:
         return f'''
     The original answer is: {answer}
-    Please list all possible textual expressions that have the same meaning or refer to the same entity.
-    Respond with a JSON list of strings. Do not explain.
+    List plausible textual expressions that refer to the same entity (same meaning).
+    Respond with ONLY a JSON array of strings (max 20 items), no explanation. Ensure valid JSON: no broken strings, \
+no unescaped `"` inside values, array must end with `]` and then stop.
         '''
 
 
@@ -250,16 +266,27 @@ class RAGDepthBackwardSupersetPrompt(PromptABC):
     def __init__(self):
         pass
 
+    def build_system_prompt(self) -> str:
+        return '''
+You must output **only** one JSON object with exactly two keys:
+  "identifier": string (superset or broader concept),
+  "relation": string (how the input relates to that superset).
+
+Rules:
+- No markdown, no ``` fences, no preamble or postscript.
+- No text in other languages mixed outside the JSON.
+- Do not repeat the JSON; output it once and stop.
+        '''
+
     def build_prompt(self, input) -> str:
         return f'''
         Conduct divergent searches based on the input element to find an appropriate superset related to \
 its attributes.
 
-  Return format requirements: Please return the result in JSON format with keys 'identifier': str \
-(identifier) and 'relation': str (relationship).
-
   Current input:
   {input}
+
+  Return the JSON object as specified in the system message.
         '''
 
 

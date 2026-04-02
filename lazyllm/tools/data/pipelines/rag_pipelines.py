@@ -3,7 +3,14 @@ from lazyllm import pipeline
 from lazyllm import LOG
 from lazyllm.tools.data import agenticrag
 
-def atomic_rag_pipeline(llm, input_key='text', max_per_task=10, max_question=10, llm_verify_filter_threshold=1):
+def atomic_rag_pipeline(
+    llm,
+    input_key='text',
+    max_per_task=10,
+    max_question=10,
+    llm_verify_filter_threshold=1,
+    max_optional_variants=20,
+):
     with pipeline() as ppl:
         ppl.get_identifier = agenticrag.AgenticRAGGetIdentifier(llm=llm, input_key=input_key)
         ppl.get_conclusion = agenticrag.AgenticRAGGetConclusion(llm=llm, input_key=input_key)
@@ -12,7 +19,7 @@ def atomic_rag_pipeline(llm, input_key='text', max_per_task=10, max_question=10,
         ppl.clean_qa = agenticrag.AgenticRAGCleanQA(llm=llm)
         ppl.llm_verify = agenticrag.AgenticRAGLLMVerify(llm=llm, filter_threshold=llm_verify_filter_threshold)
         ppl.golden_doc = agenticrag.AgenticRAGGoldenDocAnswer(llm=llm, input_key=input_key)
-        ppl.optional = agenticrag.AgenticRAGOptionalAnswers(llm=llm)
+        ppl.optional = agenticrag.AgenticRAGOptionalAnswers(llm=llm, max_variants=max_optional_variants)
         ppl.group = agenticrag.AgenticRAGGroupAndLimit(input_key=input_key, max_question=max_question)
 
     return ppl
@@ -141,6 +148,9 @@ def width_qa_pipeline(
     output_question_key: str = 'generated_width_task',
     check_require_state_one: bool = False,
     width_filter_threshold: Optional[int] = None,
+    merge_pair_stride: int = 1,
+    merge_max_pairs: Optional[int] = None,
+    merge_max_workers: int = 8,
 ):
     def pipeline_fn(data: List[dict]):
         # Step 1: Prepare input batch with key mapping
@@ -160,7 +170,12 @@ def width_qa_pipeline(
 
         # Step 2: Execute full-batch operator outside pipeline
         LOG.info('Merging adjacent QA pairs (full-batch operation)...')
-        merge_op = agenticrag.WidthQAGMergePairs(llm=llm)
+        merge_op = agenticrag.WidthQAGMergePairs(
+            llm=llm,
+            pair_stride=merge_pair_stride,
+            max_merge_pairs=merge_max_pairs,
+            merge_max_workers=merge_max_workers,
+        )
         merged_data_list = merge_op(input_batch)
 
         if not merged_data_list:

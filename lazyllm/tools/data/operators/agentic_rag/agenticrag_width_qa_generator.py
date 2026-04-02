@@ -1,4 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
+
 from lazyllm import LOG
 from lazyllm.components.formatter import JsonFormatter
 from ...base_data import data_register
@@ -18,9 +20,19 @@ else:
 
 class WidthQAGMergePairs(agenticrag):
 
-    def __init__(self, llm=None, **kwargs):
+    def __init__(
+        self,
+        llm=None,
+        pair_stride: int = 1,
+        max_merge_pairs: Optional[int] = None,
+        merge_max_workers: int = 8,
+        **kwargs,
+    ):
         super().__init__(rewrite_func='forward_batch_input', **kwargs)
         self.prompt_template = RAGWidthQuestionSynthesisPrompt()
+        self._pair_stride = max(1, int(pair_stride))
+        self._max_merge_pairs = max_merge_pairs
+        self._merge_max_workers = int(merge_max_workers)
 
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
@@ -31,9 +43,12 @@ class WidthQAGMergePairs(agenticrag):
 
     def _build_prompts(self, data: List[dict]) -> list:
         user_prompts = []
-        for i in range(len(data) - 1):
+        for i in range(0, len(data) - 1, self._pair_stride):
             pair = [data[i], data[i + 1]]
             user_prompts.append(self.prompt_template.build_prompt(pair))
+        if self._max_merge_pairs is not None:
+            cap = max(0, int(self._max_merge_pairs))
+            user_prompts = user_prompts[:cap]
         return user_prompts
 
     def _parse_merge_result(self, result, idx: int, input_batch: List[dict]) -> Optional[dict]:
@@ -72,15 +87,21 @@ class WidthQAGMergePairs(agenticrag):
             LOG.warning('Need at least 2 items to merge.')
             return []
 
-        LOG.info(f'Merging {len(data)} items into width questions...')
         user_prompts = self._build_prompts(data)
+        LOG.info(
+            f'Merging {len(data)} items into width questions '
+            f'({len(user_prompts)} LLM calls, stride={self._pair_stride}, workers={self._merge_max_workers})...'
+        )
 
         if not user_prompts:
             return []
 
-        merge_results = []
-        for prompt in user_prompts:
-            merge_results.append(self._llm_serve(prompt))
+        if self._merge_max_workers > 1:
+            workers = min(self._merge_max_workers, len(user_prompts))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                merge_results = list(pool.map(self._llm_serve, user_prompts))
+        else:
+            merge_results = [self._llm_serve(p) for p in user_prompts]
 
         merged_data_list = []
         for idx, result in enumerate(merge_results):

@@ -1,6 +1,13 @@
-from typing import Any, Optional
+import json
+from typing import Any, List, Optional
+
 from lazyllm import LOG
-from lazyllm.components.formatter import JsonFormatter
+from lazyllm.components.formatter import EmptyFormatter, JsonFormatter
+
+try:
+    import json5
+except ImportError:
+    json5 = None
 from ...base_data import data_register
 from ...prompts import (
     RAGDepthQueryIdPrompt,
@@ -64,6 +71,108 @@ def _normalize_content_identifier_value(val: Any) -> str:
         type(val).__name__,
     )
     return ''
+
+
+def _assistant_content_str(result: Any) -> str:
+    if isinstance(result, dict):
+        c = result.get('content', '')
+        return c if isinstance(c, str) else ''
+    if isinstance(result, str):
+        return result
+    return str(result) if result is not None else ''
+
+
+def _strip_optional_json_lang_prefix(piece: str) -> str:
+    """Remove leading ``json`` language tag after a ``` fence opener."""
+    t = piece.lstrip('\n\r ')
+    if len(t) >= 4 and t[:4].lower() == 'json' and (len(t) == 4 or t[4] in '\n\r \t'):
+        return t[4:].lstrip('\n\r ')
+    return piece
+
+
+def _chunks_from_triple_backtick_split(s: str) -> List[str]:
+    """Split on ``` fences. Regex ``*?`` cannot handle nested ```json inside a broken JSON string."""
+    parts = s.split('```')
+    if len(parts) < 2:
+        return []
+    chunks: List[str] = []
+    for piece in parts[1:]:
+        if not piece.strip():
+            continue
+        body = _strip_optional_json_lang_prefix(piece)
+        chunks.append(body.strip())
+    return chunks
+
+
+def _parse_backward_json_object(text: str) -> Optional[dict]:
+    """Parse {{identifier, relation}} from raw LLM output (markdown, mixed text, duplicate JSON blocks)."""
+    if not text or not isinstance(text, str):
+        return None
+    s = text.strip()
+    chunks = _chunks_from_triple_backtick_split(s)
+    if not chunks:
+        chunks.append(s)
+
+    from lazyllm.thirdparty import json_repair
+
+    def _try_parse(chunk: str) -> Optional[dict]:
+        for fn in (json.loads, json5.loads if json5 else None, json_repair.loads):
+            if fn is None:
+                continue
+            try:
+                obj = fn(chunk)
+                if isinstance(obj, dict) and 'identifier' in obj and 'relation' in obj:
+                    return obj
+            except Exception:
+                continue
+        start = chunk.find('{')
+        if start < 0:
+            return None
+        depth = 0
+        in_str = False
+        esc = False
+        for i in range(start, len(chunk)):
+            c = chunk[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == '\\':
+                    esc = True
+                elif c == '"':
+                    in_str = False
+                continue
+            if c == '"':
+                in_str = True
+            elif c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0:
+                    sub = chunk[start : i + 1]
+                    for fn in (json.loads, json5.loads if json5 else None, json_repair.loads):
+                        if fn is None:
+                            continue
+                        try:
+                            obj = fn(sub)
+                            if isinstance(obj, dict) and 'identifier' in obj and 'relation' in obj:
+                                return obj
+                        except Exception:
+                            continue
+                    break
+        return None
+
+    # Prefer later fenced blocks: models often emit a broken JSON first, then a corrected one.
+    for chunk in reversed(chunks):
+        parsed = _try_parse(chunk)
+        if parsed is not None:
+            return parsed
+    try:
+        obj = json_repair.loads(s)
+        if isinstance(obj, dict) and 'identifier' in obj and 'relation' in obj:
+            return obj
+    except Exception:
+        pass
+    return None
 
 
 def _parse_depth_identifier_llm_result(result: Any) -> str:
@@ -141,7 +250,9 @@ class DepthQAGBackwardTask(agenticrag):
         self.prompt_template = RAGDepthBackwardSupersetPrompt()
 
         if llm is not None:
-            self._llm_serve = llm.share().formatter(JsonFormatter())
+            system_prompt = self.prompt_template.build_system_prompt()
+            # Raw text + tolerant parse: models often wrap JSON in ```json``` or add commentary.
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(EmptyFormatter())
             self._llm_serve.start()
         else:
             self._llm_serve = None
@@ -168,7 +279,17 @@ class DepthQAGBackwardTask(agenticrag):
     def _parse_backward_result(self, result) -> Optional[dict]:
         try:
             if isinstance(result, dict) and 'identifier' in result and 'relation' in result:
-                return result
+                return {
+                    'identifier': str(result['identifier']),
+                    'relation': str(result['relation']),
+                }
+            text = _assistant_content_str(result)
+            obj = _parse_backward_json_object(text)
+            if obj is not None:
+                return {
+                    'identifier': str(obj.get('identifier', '')),
+                    'relation': str(obj.get('relation', '')),
+                }
             LOG.warning('[Skipped]: Invalid backward result')
         except Exception as e:
             LOG.warning(f'[Error]: Failed to parse backward result: {e}')

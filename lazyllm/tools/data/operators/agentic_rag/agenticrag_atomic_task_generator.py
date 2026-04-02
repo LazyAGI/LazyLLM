@@ -1,11 +1,12 @@
 import json
+import re
 from typing import Any, List, Optional
 
 import json5
 
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
-from lazyllm.components.formatter import JsonFormatter
+from lazyllm.components.formatter import EmptyFormatter, JsonFormatter
 
 from ...base_data import data_register
 from ...prompts import (
@@ -36,6 +37,45 @@ def _extract_json_content(item: str) -> str:
     )
 
 
+def _assistant_content_str(result: Any) -> str:
+    if isinstance(result, dict):
+        c = result.get('content', '')
+        return c if isinstance(c, str) else ''
+    if isinstance(result, str):
+        return result
+    return str(result) if result is not None else ''
+
+
+def _truncate_conclusion_garbage_suffix(text: str) -> str:
+    """Drop trailing hallucinated text after valid JSON (chat tokens, spam, other languages)."""
+    if not text:
+        return text
+    t = text
+    markers = (
+        '<|im_start|>',
+        '<|im_sep|>',
+        '<|im_end|>',
+        '<|assistant|>',
+        '<|user|>',
+        '<|system|>',
+        '</s>',
+        '\x00',
+    )
+    cut = len(t)
+    for m in markers:
+        p = t.find(m)
+        if p >= 0:
+            cut = min(cut, p)
+    if cut < len(t):
+        t = t[:cut]
+    # Repeated filler often seen when model derails
+    spam = '元素元素元素'
+    p = t.find(spam)
+    if p >= 0:
+        t = t[:p]
+    return t.rstrip()
+
+
 def _loads_json_lenient(raw: str) -> Optional[Any]:
     """Try strict JSON, then JSON5 (trailing commas, etc.)."""
     try:
@@ -47,6 +87,34 @@ def _loads_json_lenient(raw: str) -> Optional[Any]:
             return None
 
 
+def _repair_split_r_attributes(text: str) -> str:
+    """Merge invalid patterns like \"R\":\"a\";key=value\" into one R string (common LLM mistake)."""
+    if not text or '"R"' not in text:
+        return text
+    t = text
+    for _ in range(128):
+        m = re.search(r'"R"\s*:\s*"([^"]*)"\s*;\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*', t)
+        if not m:
+            break
+        rest = t[m.end():]
+        vm = re.match(r'([^"]*)"', rest)
+        if vm:
+            val = vm.group(1)
+            consumed = vm.end()
+        else:
+            vm2 = re.match(
+                r'((?:[^"]|"(?![,\}\]]))+?)(?=\s*";[a-zA-Z_][a-zA-Z0-9_]*\s*=|\s*"|$)',
+                rest,
+            )
+            if not vm2:
+                break
+            val = vm2.group(1).strip()
+            consumed = vm2.end()
+        merged = f'"R":"{m.group(1)};{m.group(2)}={val}"'
+        t = t[: m.start()] + merged + t[m.end() + consumed :]
+    return t
+
+
 def _normalize_to_conclusion_list(parsed: Any) -> Optional[List[Any]]:
     if isinstance(parsed, list):
         return parsed
@@ -56,16 +124,33 @@ def _normalize_to_conclusion_list(parsed: Any) -> Optional[List[Any]]:
 
 
 def _find_matching_array_end(text: str, start: int) -> Optional[int]:
-    """start is index of '['; returns index of matching ']' or None."""
+    """Match '[' at start with the matching ']', ignoring `[]` inside JSON strings."""
+    if start >= len(text) or text[start] != '[':
+        return None
     depth = 0
-    for i in range(start, len(text)):
-        ch = text[i]
-        if ch == '[':
+    i = start
+    in_str = False
+    esc = False
+    while i < len(text):
+        c = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == '\\':
+                esc = True
+            elif c == '"':
+                in_str = False
+            i += 1
+            continue
+        if c == '"':
+            in_str = True
+        elif c == '[':
             depth += 1
-        elif ch == ']':
+        elif c == ']':
             depth -= 1
             if depth == 0:
                 return i
+        i += 1
     return None
 
 
@@ -87,11 +172,46 @@ def _parse_embedded_json_array(cleaned: str) -> Optional[List[Any]]:
 def _extract_json_array_from_text(text: str) -> Optional[List[Any]]:
     if not text or not isinstance(text, str):
         return None
-    cleaned = _extract_json_content(text)
+    cleaned = _repair_split_r_attributes(
+        _extract_json_content(_truncate_conclusion_garbage_suffix(text))
+    )
     parsed = _loads_json_lenient(cleaned)
     if parsed is not None:
         return _normalize_to_conclusion_list(parsed)
+    try:
+        from lazyllm.thirdparty import json_repair
+
+        parsed = json_repair.loads(cleaned)
+        norm = _normalize_to_conclusion_list(parsed)
+        if norm is not None:
+            return norm
+    except Exception:
+        pass
     return _parse_embedded_json_array(cleaned)
+
+
+def _parse_optional_answer_variants(raw: Any, max_variants: int) -> List[str]:
+    """Parse RAGAnswerVariants LLM output into string variants (tolerant JSON / repair)."""
+    cap = max(1, int(max_variants))
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        out: List[str] = []
+        for x in raw[:cap]:
+            if isinstance(x, str) and x.strip():
+                out.append(x.strip())
+        return out
+    s = _assistant_content_str(raw)
+    if not s.strip():
+        return []
+    arr = _extract_json_array_from_text(s)
+    if not arr:
+        return []
+    out = []
+    for x in arr[:cap]:
+        if isinstance(x, str) and x.strip():
+            out.append(x.strip())
+    return out
 
 
 def _dict_with_conclusions_list(obj: dict) -> Optional[List[Any]]:
@@ -123,7 +243,9 @@ def _parse_raw_conclusion_to_list(raw: Any, max_per_task: int) -> List[Any]:
         s = raw.strip()
         if not s:
             return []
-        cleaned = _extract_json_content(s)
+        cleaned = _repair_split_r_attributes(
+            _extract_json_content(_truncate_conclusion_garbage_suffix(s))
+        )
         parsed = _loads_json_lenient(cleaned)
         if isinstance(parsed, list):
             return parsed[:cap]
@@ -133,6 +255,20 @@ def _parse_raw_conclusion_to_list(raw: Any, max_per_task: int) -> List[Any]:
             wrapped = _dict_with_conclusions_list(parsed)
             if wrapped is not None:
                 return wrapped[:cap]
+        try:
+            from lazyllm.thirdparty import json_repair
+
+            parsed = json_repair.loads(cleaned)
+            if isinstance(parsed, list):
+                return parsed[:cap]
+            if isinstance(parsed, dict):
+                if 'conclusion' in parsed and 'R' in parsed:
+                    return [parsed][:cap]
+                wrapped = _dict_with_conclusions_list(parsed)
+                if wrapped is not None:
+                    return wrapped[:cap]
+        except Exception:
+            pass
         fallback = _extract_json_array_from_text(s)
         if fallback is not None:
             return fallback[:cap]
@@ -187,7 +323,8 @@ class AgenticRAGGetConclusion(agenticrag):
 
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
-            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
+            # Raw text: models often append chat tokens / spam after JSON; JsonFormatter then fails.
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(EmptyFormatter())
             self._llm_serve.start()
         else:
             self._llm_serve = None
@@ -200,7 +337,8 @@ class AgenticRAGGetConclusion(agenticrag):
 
         try:
             result = self._llm_serve(user_prompt)
-            data['raw_conclusion'] = result
+            raw = _assistant_content_str(result)
+            data['raw_conclusion'] = _truncate_conclusion_garbage_suffix(raw)
         except Exception as e:
             LOG.warning(f'Failed to extract conclusion: {e}')
             data['raw_conclusion'] = ''
@@ -419,12 +557,15 @@ class AgenticRAGGoldenDocAnswer(agenticrag):
 
 class AgenticRAGOptionalAnswers(agenticrag):
 
-    def __init__(self, llm=None, **kwargs):
+    def __init__(self, llm=None, max_variants: int = 20, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.prompt_template = RAGAnswerVariantsPrompt()
+        self._max_variants = max(1, int(max_variants))
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
-            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
+            # Raw text + tolerant parse: JsonFormatter wrongly rejected valid JSON when array
+            # strings contained unmatched `{`/`}`; use the same lenient path as conclusions.
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(EmptyFormatter())
             self._llm_serve.start()
         else:
             self._llm_serve = None
@@ -438,8 +579,9 @@ class AgenticRAGOptionalAnswers(agenticrag):
 
         try:
             result = self._llm_serve(user_prompt)
-            if isinstance(result, list):
-                data['optional_answer'] = result
+            variants = _parse_optional_answer_variants(result, self._max_variants)
+            if variants:
+                data['optional_answer'] = variants
             else:
                 data['optional_answer'] = [refined_answer]
         except Exception as e:
