@@ -203,3 +203,26 @@
 ::: lazyllm.tools.data.pipelines.pdf_pipelines
     members:
     exclude-members:
+### Tool-Use Pipeline
+
+::: lazyllm.tools.data.pipelines.tool_use_pipelines
+    members:
+    exclude-members:
+
+### Text2SQL Pipeline
+
+::: lazyllm.tools.data.pipelines.text2sql_pipelines
+    members:
+    exclude-members:
+
+### Code Generation Pipeline
+
+::: lazyllm.tools.data.pipelines.codegen_pipelines
+    members:
+    exclude-members:
+
+### Preference Pipeline
+
+::: lazyllm.tools.data.pipelines.preference_pipelines
+    members:
+    exclude-members:

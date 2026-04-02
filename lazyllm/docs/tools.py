@@ -1,4 +1,5 @@
 # flake8: noqa E501
+from audioop import add
 import importlib
 from . import utils
 import functools
@@ -17,6 +18,11 @@ add_tools_example = functools.partial(utils.add_example, module=importlib.import
 add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.agent'))
 add_agent_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent'))
 add_agent_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent'))
+
+# functions for lazyllm.tools.sandbox
+add_sandbox_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.sandbox'))
+add_sandbox_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.sandbox'))
+add_sandbox_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.sandbox'))
 
 # functions for lazyllm.tools.services
 add_services_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.services'))
@@ -5054,18 +5060,356 @@ add_example('rag.transform.code.XMLSplitter', '''
 >>> print(splitter)
 ''')
 
+add_english_doc('rag.transform.base.Rule', '''
+A rule to apply to the nodes.
+
+Args:
+    name (str): The name of the rule.
+    match (Callable): The function to match the nodes.
+    apply (Callable): The function to apply to the nodes.
+    priority (int): The priority of the rule.
+    metadata (Dict[str, Any]): The metadata of the rule.
+''')
+
+add_chinese_doc('rag.transform.base.Rule', '''
+一个规则，用于应用到节点。
+
+Args:
+    name (str): 规则的名称。
+    match (Callable): 匹配节点的函数。
+    apply (Callable): 应用节点的函数。
+    priority (int): 规则的优先级。
+    metadata (Dict[str, Any]): 规则的元数据。
+''')
+
+add_english_doc('rag.transform.base.Rule.build', '''
+Build a rule from a pattern string or a predicate function.
+
+Args:
+    name (str): The name of the rule.
+    rule (Union[str, Callable[[Any], bool]]): The pattern string or the predicate function.
+    apply (Callable[[Any, 'Rule'], Any]): The function to apply to the nodes.
+''')
+
+add_chinese_doc('rag.transform.base.Rule.build', '''
+从模式字符串或谓词函数构建一个规则。
+
+Args:
+    name (str): 规则的名称。
+    rule (Union[str, Callable[[Any], bool]]): 模式字符串或谓词函数。
+    apply (Callable[[Any, 'Rule'], Any]): 应用节点的函数。
+''')
+
+add_example('rag.transform.base.Rule.build', '''
+>>> import lazyllm
+>>> from lazyllm.tools import Rule
+>>> rule = Rule.build(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)
+>>> print(rule)
+''')
+
+add_english_doc('rag.transform.base.RuleSet', '''
+A set of rules to apply to the nodes.
+
+Args:
+    rules (List[Rule]): The rules to apply to the nodes.
+''')
+
+add_chinese_doc('rag.transform.base.RuleSet', '''
+一个规则集，用于应用到节点。
+
+Args:
+    rules (List[Rule]): 要应用的规则。
+''')
+
+add_example('rag.transform.base.RuleSet', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RuleSet
+>>> rules = RuleSet([Rule(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)])
+>>> print(rules)
+''')
+
+add_english_doc('rag.transform.base.RuleSet.add', '''
+Add a rule to the rule set.
+
+Args:
+    *rules (Rule): The rules to add to the rule set.
+''')
+
+add_chinese_doc('rag.transform.base.RuleSet.add', '''
+添加一个规则到规则集。
+
+Args:
+    *rules (Rule): 要添加的规则。
+''')
+
+add_example('rag.transform.base.RuleSet.add', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RuleSet
+>>> rules = RuleSet([Rule(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)])
+>>> rules.add(Rule(name='rule2', rule=lambda n: n.text.endswith('World'), apply=lambda n, r: n))
+>>> print(rules)
+''')
+
+add_english_doc('rag.transform.base.RuleSet.extend', '''
+Extend the rule set with another rule set.
+
+Args:
+    rules (RuleSet): The rule set to extend.
+''')
+
+add_chinese_doc('rag.transform.base.RuleSet.extend', '''
+扩展规则集。
+
+Args:
+    rules (RuleSet): 要扩展的规则集。
+''')
+
+add_example('rag.transform.base.RuleSet.extend', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RuleSet
+>>> rules = RuleSet([Rule(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)])
+>>> rules.extend(RuleSet([Rule(name='rule2', rule=lambda n: n.text.endswith('World'), apply=lambda n, r: n)]))
+>>> print(rules)
+''')
+
+add_english_doc('rag.transform.base.RuleSet.first', '''
+Get the first rule that matches the data.
+
+Args:
+    data (Any): The data to match.
+''')
+add_chinese_doc('rag.transform.base.RuleSet.first', '''
+获取第一个匹配数据的规则。
+''')
+
+add_example('rag.transform.base.RuleSet.first', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RuleSet
+>>> rules = RuleSet([Rule(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)])
+>>> print(rules.first(Node(text='Hello World')))
+''')
+
+add_english_doc('rag.transform.base.RuleSet.all', '''
+Get all the rules that match the data.
+
+Args:
+    data (Any): The data to match.
+''')
+
+add_chinese_doc('rag.transform.base.RuleSet.all', '''
+获取所有匹配数据的规则。
+
+Args:
+    data (Any): 要匹配的数据。
+''')
+
+add_example('rag.transform.base.RuleSet.all', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RuleSet
+>>> rules = RuleSet([Rule(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)])
+>>> print(rules.all(Node(text='Hello World')))
+''')
+
+add_english_doc('rag.transform.base.RuleSet.filter', '''
+Filter the rule set with a predicate function.
+
+Args:
+    predicate (Callable[[Rule], bool]): The predicate function to filter the rule set.
+''')
+
+add_chinese_doc('rag.transform.base.RuleSet.filter', '''
+过滤规则集。
+
+Args:
+    predicate (Callable[[Rule], bool]): 过滤规则集的谓词函数。
+''')
+
+add_english_doc('rag.transform.layout.LayoutNodeParser', '''
+A layout node parser that parses layout nodes by semantics.
+
+Args:
+    rules (RuleSet): The rules to apply to the nodes.
+    group_by (Callable): The function to group the nodes.
+    post_process (Callable): The function to post process the nodes.
+    sort_by (Callable): The function to sort the nodes.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.layout.LayoutNodeParser', '''
+一个布局节点解析器，负责解析布局节点。
+
+Args:
+    rules (RuleSet): 要应用的规则。
+    group_by (Callable): 分组节点的函数。
+    post_process (Callable): 后处理节点的函数。
+    sort_by (Callable): 排序节点的函数。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
+''')
+
+add_example('rag.transform.layout.LayoutNodeParser', '''
+>>> import lazyllm
+>>> from lazyllm.tools import LayoutNodeParser
+>>> parser = LayoutNodeParser(rules=RuleSet([Rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)]))
+>>> parser(nodes)
+''')
+
+add_english_doc('rag.transform.treebuilder.TreeBuilderParser', '''
+A tree builder parser that builds a tree from the nodes.
+
+Args:
+    rules (RuleSet): The rules to apply to the nodes.
+    get_level (Callable): The function to get the level of the nodes.
+    is_valid_child (Callable): The function to check if a node is a valid child.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.treebuilder.TreeBuilderParser', '''
+一个树构建器，负责构建一个树。
+
+Args:
+    rules (RuleSet): 要应用的规则。
+    get_level (Callable): 获取节点层级的函数。
+    is_valid_child (Callable): 检查节点是否为有效子节点的函数。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
+''')
+
+add_example('rag.transform.treebuilder.TreeBuilderParser', '''
+>>> import lazyllm
+>>> from lazyllm.tools import TreeBuilderParser
+>>> parser = TreeBuilderParser(rules=RuleSet([Rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)]))
+>>> parser(nodes)
+''')
+
+add_english_doc('rag.transform.treefixer.TreeFixerParser', '''
+A tree fixer parser that fixes a tree from the nodes.
+
+Args:
+    rules (RuleSet): The rules to apply to the nodes.
+    skip_level_under (int): The level to skip the nodes.
+    extra_patterns (List[Tuple[str, str]]): The extra patterns to apply to the nodes.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.treefixer.TreeFixerParser', '''
+一个树修复器，负责修复一个树。
+
+Args:
+    rules (RuleSet): 要应用的规则。
+    skip_level_under (int): 跳过节点层级的函数。
+    extra_patterns (List[Tuple[str, str]]): 额外的模式。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
+''')
+
+add_example('rag.transform.treefixer.TreeFixerParser', '''
+>>> import lazyllm
+>>> from lazyllm.tools import TreeFixerParser
+>>> parser = TreeFixerParser(rules=RuleSet([Rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)]))
+>>> parser(nodes)
+''')
+
+add_english_doc('rag.transform.contentfilter.ContentFiltParser', '''
+A content filter parser that filters the nodes by the rules.
+
+Args:
+    rules (RuleSet): The rules to apply to the nodes.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.contentfilter.ContentFiltParser', '''
+一个内容过滤器解析器，负责过滤节点。
+
+Args:
+    rules (RuleSet): 要应用的规则。
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_example('rag.transform.contentfilter.ContentFiltParser', '''
+>>> import lazyllm
+>>> from lazyllm.tools import ContentFiltParser
+>>> parser = ContentFiltParser(rules=RuleSet([Rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)]))
+>>> parser(nodes)
+''')
+
+add_english_doc('rag.transform.groupby.GroupNodeParser', '''
+A group node parser that groups the nodes by the rules.
+
+Args:
+    max_length (int): The maximum length of the nodes.
+    merge_title (bool): Whether to merge the title of the nodes.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.groupby.GroupNodeParser', '''
+一个组节点解析器，负责组节点。
+
+Args:
+    max_length (int): 节点的最大长度。
+    merge_title (bool): 是否合并节点的标题。
+    num_workers (int): 控制并行处理的线程/进程数量。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
+''')
+
+add_example('rag.transform.groupby.GroupNodeParser', '''
+>>> import lazyllm
+>>> from lazyllm.tools import GroupNodeParser
+>>> parser = GroupNodeParser(max_length=1024, merge_title=True, num_workers=10)
+>>> parser(nodes)
+''')
+
+add_english_doc('rag.transform.groupby.GroupNodeParser.process', '''
+Process nodes with optional match and miss handlers.
+
+Args:
+    nodes (List[Any]): The nodes to process.
+    on_match (Optional[Callable]): The function to handle matched nodes.
+    on_miss (Optional[Callable]): The function to handle missed nodes.
+''')
+
+add_chinese_doc('rag.transform.groupby.GroupNodeParser.process', '''
+处理节点，可选匹配和缺失处理。
+
+Args:
+    nodes (List[Any]): 要处理的节点。
+    on_match (Optional[Callable]): 处理匹配节点的函数。
+    on_miss (Optional[Callable]): 处理缺失节点的函数。
+''')
+
+add_example('rag.transform.groupby.GroupNodeParser.process', '''
+>>> import lazyllm
+>>> from lazyllm.tools import GroupNodeParser
+>>> parser = GroupNodeParser(max_length=1024, merge_title=True, num_workers=10)
+>>> nodes = parser.process(nodes, on_match=lambda n, mr, ctx: mr[1], on_miss=lambda n, ctx: n)
+''')
+
 add_english_doc('rag.transform.base.NodeTransform', '''
 Processes document nodes in batch, supporting both single-threaded and multi-threaded modes.
 
 Args:
     num_workers (int): Controls whether multi-threading is enabled (enabled when >0).
+    rules (RuleSet): The rules to apply to the nodes.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
 ''')
 
 add_chinese_doc('rag.transform.base.NodeTransform', '''
 批量处理文档节点，支持单线程/多线程模式。
 
 Args:
-    num_workers (int)：控制是否启用多线程（>0 时启用）。
+    num_workers (int)：控制是否启用多线程（>0 时启用, 默认为0）。
+    rules (RuleSet): 要应用的规则。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
 ''')
 
 add_example('rag.transform.base.NodeTransform', '''
@@ -5094,19 +5438,19 @@ Args:
     **kwargs: 额外转换参数。
 ''')
 
-add_english_doc('rag.transform.base.NodeTransform.transform', '''
+add_english_doc('rag.transform.base.NodeTransform.forward', '''
 [Abstract] Core transformation logic to implement.
 
 Args:
-    document (DocNode): Input document node.
+    nodes (Union[List[DocNode], DocNode]): Input document node(s).
     **kwargs: Implementation-specific parameters.
 ''')
 
-add_chinese_doc('rag.transform.base.NodeTransform.transform', '''
+add_chinese_doc('rag.transform.base.NodeTransform.forward', '''
 [抽象方法] 需要子类实现的核心转换逻辑。
 
 Args:
-    document (DocNode): 输入文档节点。
+    nodes (Union[List[DocNode], DocNode]): 输入文档节点(s)。
     **kwargs: 实现相关的参数。
 ''')
 
@@ -5124,6 +5468,33 @@ add_chinese_doc('rag.transform.base.NodeTransform.with_name', '''
 Args:
     name (Optional[str]): 转换器的新名称。
     copy (bool): 是否返回副本，默认为True。
+''')
+
+add_english_doc('rag.transform.base.NodeTransform.process', '''
+Process nodes with optional match and miss handlers.
+
+Args:
+    nodes (List[Any]): The nodes to process.
+    on_match (Optional[Callable]): The function to handle matched nodes.
+    on_miss (Optional[Callable]): The function to handle missed nodes.
+''')
+
+add_chinese_doc('rag.transform.base.NodeTransform.process', '''
+处理节点，可选匹配和缺失处理。
+
+Args:
+    nodes (List[Any]): 要处理的节点。
+    on_match (Optional[Callable]): 处理匹配节点的函数。
+    on_miss (Optional[Callable]): 处理缺失节点的函数。
+''')
+
+add_example('rag.transform.base.NodeTransform.process', '''
+>>> import lazyllm
+>>> from lazyllm.tools import NodeTransform
+>>> node_tran = NodeTransform(num_workers=num_workers)
+>>> doc = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
+>>> nodes = node_tran.batch_forward(doc, "word_split")
+>>> nodes = node_tran.process(nodes, on_match=lambda n, mr, ctx: mr[1], on_miss=lambda n, ctx: n)
 ''')
 
 add_english_doc('rag.transform.factory.TransformArgs', '''
@@ -5184,21 +5555,21 @@ add_example('rag.transform.factory.LLMParser', '''
 >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
 ''')
 
-add_english_doc('rag.transform.factory.LLMParser.transform', '''
+add_english_doc('rag.transform.factory.LLMParser.forward', '''
 Perform the set task on the specified document.
 
 Args:
     node (DocNode): The document on which the extraction task needs to be performed.
 ''')
 
-add_chinese_doc('rag.transform.factory.LLMParser.transform', '''
+add_chinese_doc('rag.transform.factory.LLMParser.forward', '''
 在指定的文档上执行设定的任务。
 
 Args:
     node (DocNode): 需要执行抽取任务的文档。
 ''')
 
-add_example('rag.transform.factory.LLMParser.transform', '''
+add_example('rag.transform.factory.LLMParser.forward', '''
 >>> import lazyllm
 >>> from lazyllm.tools import LLMParser
 >>> llm = lazyllm.TrainableModule("internlm2-chat-7b").start()
@@ -5208,8 +5579,8 @@ add_example('rag.transform.factory.LLMParser.transform', '''
 >>> documents = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
 >>> rm = lazyllm.Retriever(documents, group_name='CoarseChunk', similarity='bm25', topk=6)
 >>> doc_nodes = rm("test")
->>> summary_result = summary_parser.transform(doc_nodes[0])
->>> keywords_result = keywords_parser.transform(doc_nodes[0])
+>>> summary_result = summary_parser.forward(doc_nodes[0])
+>>> keywords_result = keywords_parser.forward(doc_nodes[0])
 ''')
 
 # FuncNodeTransform
@@ -5274,7 +5645,7 @@ add_example('rag.transform.factory.FuncNodeTransform', '''
 ''')
 
 # FuncNodeTransform.transform
-add_english_doc('rag.transform.factory.FuncNodeTransform.transform', '''
+add_english_doc('rag.transform.factory.FuncNodeTransform.forward', '''
 Transform a document node using the wrapped user-defined function.
 
 This method applies the user-defined function to either the text content of the node (when trans_node=False) or the node itself (when trans_node=True).
@@ -5287,7 +5658,7 @@ Args:
 - List[Union[str, DocNode]]: The transformed results, which can be either strings or DocNode objects depending on the function implementation.
 ''')
 
-add_chinese_doc('rag.transform.factory.FuncNodeTransform.transform', '''
+add_chinese_doc('rag.transform.factory.FuncNodeTransform.forward', '''
 使用包装的用户自定义函数转换文档节点。
 
 此方法将用户自定义函数应用于节点的文本内容（当 trans_node=False 时）或节点本身（当 trans_node=True 时）。
@@ -5337,17 +5708,17 @@ add_example('rag.transform.factory.AdaptiveTransform', '''\
 ...     }
 ... ]
 >>> adaptive = AdaptiveTransform(transforms)
->>> results1 = adaptive.transform(doc1)
+>>> results1 = adaptive.forward(doc1)
 >>> print(f"文档1转换结果: {len(results1)} 个块")
 >>> for i, result in enumerate(results1):
 ...     print(f"  块 {i+1}: {result.text}")
->>> results2 = adaptive.transform(doc2)
+>>> results2 = adaptive.forward(doc2)
 >>> print(f"文档2转换结果: {len(results2)} 个块")
 >>> for i, result in enumerate(results2):
 ...     print(f"  块 {i+1}: {result.text}")      
 ''')
 
-add_english_doc('rag.transform.factory.AdaptiveTransform.transform', '''\
+add_english_doc('rag.transform.factory.AdaptiveTransform.forward', '''\
 Transform a document using the appropriate transformation strategy based on pattern matching.
 
 This method evaluates each transform configuration in order and applies the first one that matches the document's path pattern. The matching logic supports both glob patterns and custom callable functions.
@@ -5360,7 +5731,7 @@ Args:
 - List[Union[str, DocNode]]: A list of transformed results (strings or DocNode objects).
 ''')
 
-add_chinese_doc('rag.transform.factory.AdaptiveTransform.transform', '''\
+add_chinese_doc('rag.transform.factory.AdaptiveTransform.forward', '''\
 根据模式匹配使用适当的转换策略转换文档。
 
 此方法按顺序评估每个转换配置，并应用第一个匹配文档路径模式的转换。匹配逻辑支持glob模式和自定义可调用函数。
@@ -7264,6 +7635,7 @@ ToolManager是一个工具管理类，用于提供工具信息和工具调用给
 Args:
     tools (List[str]): 工具名称字符串列表。
     return_trace (bool): 是否返回中间步骤和工具调用信息。
+    sandbox (LazyLLMSandboxBase | None): 沙箱实例。若提供，则当工具的 ``execute_in_sandbox`` 为 True 时，工具将在此沙箱中执行，并自动处理文件上传/下载。
 ''')
 
 add_english_doc('ToolManager', '''\
@@ -7274,6 +7646,7 @@ When constructing this management class, you need to pass in a list of tool name
 Args:
     tools (List[str]): A list of tool name strings.
     return_trace (bool): If True, return intermediate steps and tool calls.
+    sandbox (LazyLLMSandboxBase | None): A sandbox instance. When provided, tools with ``execute_in_sandbox`` set to True will be executed inside this sandbox, with automatic file upload/download handling.
 
 ''')
 
@@ -7328,17 +7701,235 @@ add_example('ToolManager', """\
 '{"location": "Beijing", "temperature": "85", "unit": "fahrenheit", "num_days": 3}'
 """)
 
+add_agent_chinese_doc('register', '''\
+工具注册器，用于将函数注册为可供 FunctionCall/Agent 调用的工具。
+
+Args:
+    group (str): 工具分组，建议使用 'tool'。
+    execute_in_sandbox (bool): 是否在沙箱中执行，默认 True；若不希望在沙箱执行，请设置为 False。
+    input_files_parm (str): 指定函数中哪个参数包含输入文件路径，沙箱会在执行前上传这些文件。该参数指向的函数参数类型必须为 ``str`` 或 ``List[str]``。
+    output_files_parm (str): 指定函数中哪个参数包含输出文件路径，沙箱执行完成后会下载这些文件。该参数指向的函数参数类型必须为 ``str`` 或 ``List[str]``。
+    output_files (List[str]): 额外的输出文件路径列表，用于工具中硬编码的输出文件名（不通过函数参数传递），沙箱执行后也会下载这些文件。
+''')
+
+add_agent_english_doc('register', '''\
+Tool registrar for registering functions as tools callable by FunctionCall/Agent.
+
+Args:
+    group (str): tool group, recommend using 'tool'.
+    execute_in_sandbox (bool): whether to execute in sandbox, default True; set False to disable sandbox execution.
+    input_files_parm (str): the name of the function parameter that holds input file paths; the sandbox uploads these files before execution. The parameter it points to must be of type ``str`` or ``List[str]``.
+    output_files_parm (str): the name of the function parameter that holds output file paths; the sandbox downloads these files after execution. The parameter it points to must be of type ``str`` or ``List[str]``.
+    output_files (List[str]): additional output file paths for the sandbox to download, for cases where output filenames are hardcoded in the tool rather than passed as parameters.
+''')
+
+add_agent_example('register', """\
+>>> from lazyllm.tools import fc_register
+>>> @fc_register("tool")
+>>> def my_tool(text: str):
+...     '''Simple tool.
+...
+...     Args:
+...         text (str): input text.
+...     '''
+...     return text.upper()
+
+>>> from typing import List, Optional
+>>> @fc_register("tool", input_files_parm="input_paths", output_files_parm="output_paths")
+>>> def file_tool(input_paths: Optional[List[str]] = None, output_paths: Optional[List[str]] = None):
+...     '''Process files in sandbox.
+...
+...     Args:
+...         input_paths (List[str] | None): input file paths.
+...         output_paths (List[str] | None): output file paths.
+...     '''
+...     return "done"
+""")
+
+add_agent_chinese_doc('code_interpreter', '''\
+内置代码解释工具，基于沙箱执行代码并返回结果。默认使用本地沙箱（DummySandbox），也可通过配置切换为远程沙箱（SandboxFusion）。
+
+沙箱选择：
+- config['sandbox_type'] == 'dummy'：使用 DummySandbox，仅支持 python。
+- config['sandbox_type'] == 'sandbox_fusion'：使用 SandboxFusion，支持 python / bash。
+
+环境变量：
+- LAZYLLM_SANDBOX_TYPE: 设置为 "dummy" 或 "sandbox_fusion"。
+- LAZYLLM_SANDBOX_FUSION_BASE_URL: 远程沙箱服务地址（仅 sandbox_fusion 模式需要）。
+
+Args:
+    code (str): 待执行的代码。
+    language (str): 代码语言，默认 'python'。
+
+**Returns:**\n
+    dict 或 str：成功时为执行结果字典（包含 stdout/stderr/returncode 等字段）；失败时为错误信息字符串。
+''')
+
+add_agent_english_doc('code_interpreter', '''\
+Built-in code interpreter tool that executes code inside a sandbox and returns the result.
+It uses DummySandbox by default, and can be switched to SandboxFusion via configuration.
+
+Sandbox selection:
+- config['sandbox_type'] == 'dummy': DummySandbox, python only.
+- config['sandbox_type'] == 'sandbox_fusion': SandboxFusion, python / bash.
+
+Environment variables:
+- LAZYLLM_SANDBOX_TYPE: set to "dummy" or "sandbox_fusion".
+- LAZYLLM_SANDBOX_FUSION_BASE_URL: remote sandbox base URL (sandbox_fusion only).
+
+Args:
+    code (str): code to execute.
+    language (str): code language, default 'python'.
+
+**Returns:**\n
+    dict or str: a result dict on success (stdout/stderr/returncode, etc.); error message string on failure.
+''')
+
+add_agent_example('code_interpreter', """\
+>>> from lazyllm.tools.agent import code_interpreter
+>>> result = code_interpreter("print('hello')")
+>>> print(result['stdout'].strip())
+hello
+""")
+
+add_sandbox_chinese_doc('LazyLLMSandboxBase', '''\
+沙箱执行基类，定义统一的代码执行接口与语言检查逻辑。
+
+Args:
+    output_dir_path (str | None): 输出文件保存目录，默认当前工作目录，可能会覆盖当前工作目录下的文件。
+    return_trace (bool): 是否返回中间执行信息（由 ModuleBase 控制）。
+
+Notes:
+    子类需实现 `_is_available` 与 `_execute` 方法。
+''')
+
+add_sandbox_english_doc('LazyLLMSandboxBase', '''\
+Base class for sandbox execution with a unified call interface and language validation.
+
+Args:
+    output_dir_path (str | None): output directory for generated files, default is cwd.
+    return_trace (bool): whether to return intermediate execution info (controlled by ModuleBase).
+
+Notes:
+    Subclasses must implement `_is_available` and `_execute`.
+''')
+
+add_sandbox_chinese_doc('LazyLLMSandboxBase.forward', '''\
+统一执行入口，负责语言校验并调用具体实现。
+
+Args:
+    code (str): 待执行的代码。
+    language (str): 代码语言，默认 'python'。
+    input_files (list[str] | None): 输入文件路径列表，可选。
+    output_files (list[str] | None): 需要回传的输出文件列表，可选。
+
+**Returns:**\n
+    由具体沙箱实现返回的结果（通常为 dict 或错误信息字符串）。
+''')
+
+add_sandbox_english_doc('LazyLLMSandboxBase.forward', '''\
+Unified execution entry that validates language and delegates to the implementation.
+
+Args:
+    code (str): code to execute.
+    language (str): code language, default 'python'.
+    input_files (list[str] | None): optional list of input file paths.
+    output_files (list[str] | None): optional list of output files to fetch.
+
+**Returns:**\n
+    Result produced by the sandbox implementation (usually a dict or an error message string).
+''')
+
+add_sandbox_chinese_doc('DummySandbox', '''\
+本地沙箱实现（python-only），用于在受限环境中执行代码。
+
+特点：
+- 通过 AST + SecurityVisitor 做基础安全检查。
+- 在临时目录中运行代码，执行完毕后清理。
+- 返回 stdout/stderr/returncode 的字典结果。
+
+Args:
+    timeout (int): 超时时间（秒），默认 30。
+    project_dir (str | None): 若指定，将项目内 .py 文件复制到沙箱执行目录，便于引用。
+    return_trace (bool): 是否返回中间执行信息。
+''')
+
+add_sandbox_english_doc('DummySandbox', '''\
+Local sandbox implementation (python-only) for executing code in a restricted environment.
+
+Features:
+- Basic safety checks with AST + SecurityVisitor.
+- Runs code in a temp directory and cleans up afterwards.
+- Returns a dict with stdout/stderr/returncode.
+
+Args:
+    timeout (int): timeout in seconds, default 30.
+    project_dir (str | None): if provided, copies .py files into sandbox for imports.
+    return_trace (bool): whether to return intermediate execution info.
+''')
+
+add_sandbox_example('DummySandbox', """\
+>>> from lazyllm.tools.sandbox import DummySandbox
+>>> sandbox = DummySandbox(timeout=10)
+>>> result = sandbox(code="print(1 + 1)")
+>>> print(result['stdout'].strip())
+2
+""")
+
+add_sandbox_chinese_doc('SandboxFusion', '''\
+远程沙箱实现，通过 HTTP API 执行代码并获取结果。
+
+支持语言：python / bash。可配置编译超时、运行超时、内存限制，并支持上传工程文件与拉取输出文件。
+
+Args:
+    base_url (str): 远程沙箱服务地址，默认来自 config['sandbox_fusion_base_url']。
+    compile_timeout (int): 编译超时（秒），默认 10。
+    run_timeout (int): 运行超时（秒），默认 10。
+    memory_limit_mb (int): 内存限制（MB），-1 表示不限制。
+    project_dir (str | None): 若指定，将工程目录下的 .py 文件上传到沙箱。
+
+Notes:
+    需要配置 LAZYLLM_SANDBOX_FUSION_BASE_URL 或显式传入 base_url。
+''')
+
+add_sandbox_english_doc('SandboxFusion', '''\
+Remote sandbox implementation that executes code via HTTP API.
+
+Supports python / bash. Configurable compile/run timeouts and memory limits. Can upload project files and fetch output files.
+
+Args:
+    base_url (str): remote sandbox base URL, defaults to config['sandbox_fusion_base_url'].
+    compile_timeout (int): compile timeout in seconds, default 10.
+    run_timeout (int): run timeout in seconds, default 10.
+    memory_limit_mb (int): memory limit in MB, -1 means no limit.
+    project_dir (str | None): if provided, uploads .py files from the project directory.
+
+Notes:
+    Set LAZYLLM_SANDBOX_FUSION_BASE_URL or pass base_url explicitly.
+''')
+
+add_sandbox_example('SandboxFusion', """\
+>>> from lazyllm import config
+>>> from lazyllm.tools.sandbox import SandboxFusion
+>>> config['sandbox_fusion_base_url'] = "http://localhost:8000"
+>>> sandbox = SandboxFusion(run_timeout=5)
+>>> result = sandbox(code="print('ok')")
+>>> print(result['stdout'].strip())
+ok
+""")
+
 add_chinese_doc('ModuleTool', '''\
 用于构建工具模块的基类。
 
 该类封装了函数签名和文档字符串的自动解析逻辑，可生成标准化的参数模式（基于 pydantic），并对输入进行校验和工具调用的标准封装。
 
-`__init__(self, verbose=False, return_trace=True)`
+`__init__(self, verbose=False, return_trace=True, execute_in_sandbox=True)`
 初始化工具模块。
 
 Args:
     verbose (bool): 是否在执行过程中输出详细日志。
     return_trace (bool): 是否在结果中保留中间执行痕迹。
+    execute_in_sandbox (bool): 是否在沙箱中执行，默认 True。当 ToolManager 配置了沙箱且此值为 True 时，工具将在沙箱中执行。
 ''')
 
 add_english_doc('ModuleTool', '''\
@@ -7346,12 +7937,13 @@ Base class for defining tools using callable Python functions.
 
 This class automatically parses function signatures and docstrings to build a parameter schema using `pydantic`. It also performs input validation and handles standardized tool execution.
 
-`__init__(self, verbose=False, return_trace=True)`
+`__init__(self, verbose=False, return_trace=True, execute_in_sandbox=True)`
 Initializes a tool wrapper module.
 
 Args:
     verbose (bool): Whether to print verbose logs during execution.
     return_trace (bool): Whether to keep intermediate execution trace in the result.
+    execute_in_sandbox (bool): Whether to execute in sandbox, default True. When ToolManager has a sandbox configured and this is True, the tool will be executed inside the sandbox.
 ''')
 
 add_example('ModuleTool', """
@@ -7428,6 +8020,31 @@ Args:
 
 **Returns:**\n
 - bool: True if valid and complete; False otherwise.
+''')
+
+add_chinese_doc("ModuleTool.to_sandbox_code", '''
+生成用于在沙箱中执行的代码字符串。
+
+该方法会序列化当前工具与传入参数，返回一段可在沙箱环境中反序列化并执行的 Python 代码。
+
+Args:
+    tool_arguments (Dict[str, Any]): 以字典形式提供的工具参数。
+
+**Returns:**\n
+- str: 可在沙箱中执行的 Python 代码字符串。
+''')
+
+add_english_doc("ModuleTool.to_sandbox_code", '''
+Generate a sandbox-executable code string.
+
+This method serializes the tool instance and arguments, and returns a Python code snippet
+that can be deserialized and executed inside a sandbox environment.
+
+Args:
+    tool_arguments (Dict[str, Any]): Tool arguments as a dict.
+
+**Returns:**\n
+- str: A Python code string executable in a sandbox environment.
 ''')
 
 add_chinese_doc('FunctionCall', '''\

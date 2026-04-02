@@ -5,6 +5,10 @@ from .enhance_pipelines import build_enhance_qa_pipeline
 from .img_pipelines import build_img2qa_pipeline
 from .math_pipelines import build_math_cot_pipeline
 from .text_pipelines import build_text2qa_pipeline
+from .tool_use_pipelines import build_tool_use_pipeline, build_simple_tool_use_pipeline
+from .text2sql_pipelines import text2sql_enhanced_ppl, text2sql_synthetic_ppl
+from .preference_pipelines import build_preference_pipeline
+from .codegen_pipelines import build_codegen_pipeline, build_simple_codegen_pipeline
 
 __all__ = [
     'build_demo_pipeline',
@@ -14,4 +18,11 @@ __all__ = [
     'build_img2qa_pipeline',
     'build_math_cot_pipeline',
     'build_text2qa_pipeline',
+    'build_tool_use_pipeline',
+    'build_simple_tool_use_pipeline',
+    'text2sql_synthetic_ppl',
+    'text2sql_enhanced_ppl',
+    'build_preference_pipeline',
+    'build_codegen_pipeline',
+    'build_simple_codegen_pipeline',
 ]

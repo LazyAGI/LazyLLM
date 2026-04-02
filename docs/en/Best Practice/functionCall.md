@@ -67,6 +67,48 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 
 The registration method is very simple. After importing `fc_register`, you can add it directly above the predefined function name in the manner of a decorator. Note that when adding, you need to specify the default group `tool`, and the default registered tool name is the name of the function being registered.
 
+### Sandbox Execution and File Transfer
+
+When `ToolManager` is configured with a sandbox, tools are executed inside the sandbox by default. The following parameters control sandbox behavior during registration:
+
+- `execute_in_sandbox` (bool): Whether to execute in the sandbox, default `True`. Set to `False` to disable sandbox execution.
+- `input_files_parm` (str): The name of the function parameter that holds input file paths. The sandbox uploads these files before execution. The parameter it points to must be of type `str` or `List[str]`.
+- `output_files_parm` (str): The name of the function parameter that holds output file paths. The sandbox downloads these files after execution. The parameter it points to must be of type `str` or `List[str]`.
+- `output_files` (List[str]): Additional output file paths for the sandbox to download. Use this for output filenames that are hardcoded in the tool rather than passed as parameters.
+
+Here is an example tool that uploads a file and downloads a generated result:
+
+```python
+from typing import List, Optional
+from lazyllm.tools import fc_register
+
+@fc_register("tool", input_files_parm="input_paths", output_files_parm="output_paths")
+def count_lines_in_file(
+    input_paths: Optional[List[str]] = None,
+    output_paths: Optional[List[str]] = None,
+):
+    """
+    Count lines of the first input file and write to an output file.
+
+    Args:
+        input_paths (List[str] | None): input file paths.
+        output_paths (List[str] | None): output file paths.
+    """
+    if not input_paths or not output_paths:
+        return "input_paths/output_paths required"
+    src = input_paths[0]
+    dst = output_paths[0]
+    with open(src, "r", encoding="utf-8") as f:
+        count = sum(1 for _ in f)
+    with open(dst, "w", encoding="utf-8") as f:
+        f.write(str(count))
+    return {"lines": count}
+```
+
+In the example above, `input_files_parm="input_paths"` tells the sandbox that files listed in the `input_paths` parameter should be uploaded before execution; `output_files_parm="output_paths"` tells the sandbox that files listed in the `output_paths` parameter should be downloaded after execution.
+
+To disable sandbox execution for a tool, register with: `@fc_register("tool", execute_in_sandbox=False)`.
+
 We can also register the tool under a different name by filling in the second parameter during registration, for example:
 
 ```python
@@ -221,6 +263,41 @@ print(f"ret: {ret}")
 
     - When registering a function or tool, you must specify the default group `tool`, otherwise the model will not be able to use the corresponding tool.
     - When using the model, thers is no need to distinguish between [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule], because the output types of [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] are designed to the same.
+
+## Built-in Tool: code_interpreter
+
+LazyLLM provides a built-in tool `code_interpreter` that executes code inside a sandbox and returns the result. It is already registered with `fc_register("tool")`, so you can use it directly by name.
+
+### Example
+
+```python
+import lazyllm
+from lazyllm.tools import FunctionCall
+
+llm = lazyllm.OnlineChatModule()
+tools = ["code_interpreter"]
+fc = FunctionCall(llm, tools)
+
+query = "Use python to compute the sum from 1 to 100"
+ret = fc(query)
+print(ret)
+```
+
+### Sandbox configuration
+
+`code_interpreter` uses the local sandbox (`DummySandbox`, python only) by default. Switch to `SandboxFusion` for remote execution or bash support:
+
+```python
+from lazyllm import config
+
+config['sandbox_type'] = 'sandbox_fusion'
+config['sandbox_fusion_base_url'] = 'http://your-sandbox-host:8000'
+```
+
+Environment variables:
+
+- `LAZYLLM_SANDBOX_TYPE`: `dummy` or `sandbox_fusion`
+- `LAZYLLM_SANDBOX_FUSION_BASE_URL`: remote sandbox base URL
 
 ## Design Concept of FunctionCall
 The design process of [FunctionCall][lazyllm.tools.agent.FunctionCall] is carried out in a bottom-up manner. First, since [FunctionCall][lazyllm.tools.agent.FunctionCall] must call LLM, the output format of the model must be consistent. Therefore, the outputs of [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] are aligned. Then a single round of [FunctionCall][lazyllm.tools.agent.FunctionCall] is implemented, that is, LLM and tools are called once. Finally, the complete [ReactAgent][lazyllm.tools.agent.ReactAgent] is implemented, that is, [FunctionCall][lazyllm.tools.agent.FunctionCall] is iterated multiple times until the model iteration is completed or the maximum number of iterations is exceeded.

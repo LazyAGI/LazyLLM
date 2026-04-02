@@ -19,7 +19,7 @@ class _LanguageSplitterBase(_TextSplitterBase):
         self._filetype = filetype
         self._extra_params = kwargs
 
-    def transform(self, node: DocNode, **kwargs) -> List[DocNode]:
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         return self.split_text(
             node.get_text(),
             metadata_size=self._get_metadata_size(node)
@@ -934,12 +934,11 @@ class CodeSplitter(_TextSplitterBase):
             **self._extra_params
         )
 
-    def transform(self, node: DocNode, **kwargs) -> List[DocNode]:
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         if self._splitter is None:
             LOG.warning('Filetype not specified, cannot determine split method')
             return [DocNode(text=node.get_text(), metadata={'tag': 'unknown_type'})]
-
-        return self._splitter.transform(node, **kwargs)
+        return self._splitter.forward(node, **kwargs)
 
     def split_text(self, text: str, metadata_size: int = 0) -> List[DocNode]:
         if self._splitter is None:
