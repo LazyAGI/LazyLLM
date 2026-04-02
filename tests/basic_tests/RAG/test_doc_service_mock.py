@@ -713,18 +713,35 @@ class TestDocServiceMockLocal:
         def _queue_task(task_id: str, final_status: DocStatus):
             cls._pending_task_status[task_id] = final_status
 
-        cls.manager._parser_client.add_doc = lambda task_id, algo_id, kb_id, doc_id, file_path, metadata=None, reparse_group=None: (
-            _queue_task(task_id, DocStatus.SUCCESS) or
-            BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
-        )
-        cls.manager._parser_client.update_meta = lambda task_id, algo_id, kb_id, doc_id, metadata=None, file_path=None: (
-            _queue_task(task_id, DocStatus.SUCCESS) or
-            BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
-        )
-        cls.manager._parser_client.delete_doc = lambda task_id, algo_id, kb_id, doc_id: (
-            _queue_task(task_id, DocStatus.SUCCESS) or
-            BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
-        )
+        def _add_doc(task_id, algo_id, kb_id, doc_id, file_path, metadata=None, reparse_group=None):
+            _queue_task(task_id, DocStatus.SUCCESS)
+            return BaseResponse(
+                code=200,
+                msg='success',
+                data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id},
+            )
+
+        cls.manager._parser_client.add_doc = _add_doc
+
+        def _update_meta(task_id, algo_id, kb_id, doc_id, metadata=None, file_path=None):
+            _queue_task(task_id, DocStatus.SUCCESS)
+            return BaseResponse(
+                code=200,
+                msg='success',
+                data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id},
+            )
+
+        cls.manager._parser_client.update_meta = _update_meta
+
+        def _delete_doc(task_id, algo_id, kb_id, doc_id):
+            _queue_task(task_id, DocStatus.SUCCESS)
+            return BaseResponse(
+                code=200,
+                msg='success',
+                data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id},
+            )
+
+        cls.manager._parser_client.delete_doc = _delete_doc
         cls.manager._parser_client.cancel_task = lambda task_id: BaseResponse(
             code=200, msg='success', data={'task_id': task_id, 'cancel_status': True}
         )
