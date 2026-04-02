@@ -41,7 +41,7 @@ class TestImgQAPipeline:
     def test_img2qa_pipeline(self):
 
         excepted_output = {
-            'query': 'Is the mass hyperintense or hypointense?',
+            'query': 'what is the animal in the pic?',
             'answer': 'Reasoning: Upon vxxxxxxxx',
             'score': 1
         }
@@ -57,11 +57,11 @@ class TestImgQAPipeline:
             to_chat=True
         )
 
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        test_img = os.path.join(current_dir, 'vlm_example', 'test_img.png')
+        data_path = config['data_path']
+        test_img = os.path.join(data_path, 'ci_data/dog.png')
         data = {'image': test_img,
-                'context': 'is the mass hyperintense or hypointense?',
-                'reference': 'hyperintense'
+                'context': 'what is the animal in the pic?',
+                'reference': 'a dog'
         }
 
         res = ppl(data)
