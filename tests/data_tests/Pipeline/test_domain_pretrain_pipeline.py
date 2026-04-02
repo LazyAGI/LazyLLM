@@ -6,6 +6,8 @@ import pytest
 
 from lazyllm import config
 from lazyllm.flow import Pipeline
+from lazyllm.tools.data.operators import token_chunker as _token_chunker_mod
+from lazyllm.tools.data.pipelines import domain_pretrain_pipelines as _dpp
 from lazyllm.tools.data.pipelines.domain_pretrain_pipelines import (
     DOMAIN_PRETRAIN_FEATURES,
     build_domain_pretrain_pipeline,
@@ -14,7 +16,20 @@ from lazyllm.tools.data.pipelines.domain_pretrain_pipelines import (
 )
 
 
-def _zh_pretrain_body(num_paragraphs: int = 30):
+@pytest.fixture(scope='module', autouse=True)
+def _lazyllm_data_process_path_isolated():
+    """整文件只建一次临时目录并 refresh config，避免每个用例重复 mkdtemp/rmtree。"""
+    root_dir = tempfile.mkdtemp()
+    keep = config['data_process_path']
+    os.environ['LAZYLLM_DATA_PROCESS_PATH'] = root_dir
+    config.refresh()
+    yield
+    os.environ['LAZYLLM_DATA_PROCESS_PATH'] = keep
+    config.refresh()
+    shutil.rmtree(root_dir, ignore_errors=True)
+
+
+def _zh_pretrain_body(num_paragraphs: int = 10):
     parts = []
     for i in range(num_paragraphs):
         parts.append(
@@ -25,7 +40,7 @@ def _zh_pretrain_body(num_paragraphs: int = 30):
 
 
 
-def _en_text_pt_non_empty_body(num_paragraphs: int = 140):
+def _en_text_pt_non_empty_body(num_paragraphs: int = 28):
     base_terms = [
         'qzvra', 'plnko', 'trvex', 'mylor', 'snkud', 'brvot', 'clqen',
         'dvrym', 'frtul', 'gnvix', 'hpral', 'jtkem', 'kvnor', 'lqzid',
@@ -40,19 +55,36 @@ def _en_text_pt_non_empty_body(num_paragraphs: int = 140):
     return '\n\n'.join(parts)
 
 
+@pytest.fixture
+def fast_text_pt_heavy_ops(monkeypatch):
+    """text_pt 流水线含 MinHash（默认 128 perm）与 TokenChunker（默认多进程），测例改为轻量参数。"""
+    _tc_init = _token_chunker_mod.TokenChunker.__init__
+
+    def _token_chunker_single(
+        self,
+        input_key='content',
+        model_path=None,
+        max_tokens=1024,
+        min_tokens=200,
+        _concurrency_mode='single',
+        **kwargs,
+    ):
+        return _tc_init(
+            self, input_key, model_path, max_tokens, min_tokens, _concurrency_mode, **kwargs
+        )
+
+    monkeypatch.setattr(_token_chunker_mod.TokenChunker, '__init__', _token_chunker_single)
+
+    _mh = _dpp.filter.MinHashDeduplicator
+
+    def _minhash_smaller_perm(*args, **kwargs):
+        kwargs.setdefault('num_perm', 32)
+        return _mh(*args, **kwargs)
+
+    monkeypatch.setattr(_dpp.filter, 'MinHashDeduplicator', _minhash_smaller_perm)
+
+
 class TestDomainPretrainPipelines:
-    def setup_method(self):
-        self.root_dir = tempfile.mkdtemp()
-        self.keep_dir = config['data_process_path']
-        os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
-        config.refresh()
-
-    def teardown_method(self):
-        os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.keep_dir
-        config.refresh()
-        if os.path.exists(self.root_dir):
-            shutil.rmtree(self.root_dir, ignore_errors=True)
-
     def test_domain_pretrain_features_export(self):
         assert isinstance(DOMAIN_PRETRAIN_FEATURES, tuple)
         assert 'field_normalization' in DOMAIN_PRETRAIN_FEATURES
@@ -67,7 +99,7 @@ class TestDomainPretrainPipelines:
         assert isinstance(ppl, Pipeline)
         for name in ('field_normalization', 'text_normalizer', 'sensitive_cleaner', 'ngram_filter'):
             assert hasattr(ppl, name), f'missing step {name}'
-        text = _zh_pretrain_body(30)
+        text = _zh_pretrain_body()
         res = ppl([{'content': text}])
         assert isinstance(res, list) and len(res) == 1
         assert 'content' in res[0] and len(res[0]['content']) > 0
@@ -81,7 +113,7 @@ class TestDomainPretrainPipelines:
                 'field_mapping': {'body': 'content'},
             },
         )
-        text = _zh_pretrain_body(32)
+        text = _zh_pretrain_body()
         res = ppl([{'body': text}])
         assert isinstance(res, list) and len(res) == 1
         assert 'content' in res[0]
@@ -96,7 +128,7 @@ class TestDomainPretrainPipelines:
                 'domain_relevance_scorer': False,
             },
         )
-        text = _zh_pretrain_body(36)
+        text = _zh_pretrain_body()
         res = ppl([{'content': text}])
         assert isinstance(res, list) and len(res) == 1
         assert '_keyword_hits' in res[0]
@@ -112,7 +144,7 @@ class TestDomainPretrainPipelines:
             },
             options={'min_relevance_score': 0.0001},
         )
-        text = _zh_pretrain_body(36)
+        text = _zh_pretrain_body()
         res = ppl([{'content': text}])
         assert isinstance(res, list) and len(res) == 1
         assert '_domain_relevance_score' in res[0]
@@ -127,7 +159,7 @@ class TestDomainPretrainPipelines:
         )
         parts = [
             f'Paragraph {i} discusses science, data, and software engineering practices.'
-            for i in range(25)
+            for i in range(8)
         ]
         text = '\n\n'.join(parts)
         res = ppl([{'content': text}])
@@ -146,7 +178,7 @@ class TestDomainPretrainPipelines:
             },
             domain_keywords=['测试', '流水线'],
         )
-        text = _zh_pretrain_body(34) + '测试与流水线关键词。'
+        text = _zh_pretrain_body() + '测试与流水线关键词。'
         res = ppl([{'content': text}])
         assert isinstance(res, list) and len(res) == 1
         assert '_keyword_hits' in res[0]
@@ -167,6 +199,7 @@ class TestDomainPretrainPipelines:
         ):
             assert hasattr(ppl, name), f'missing step {name}'
 
+    @pytest.mark.usefixtures('fast_text_pt_heavy_ops')
     def test_build_text_pt_pipeline_runs_if_tokenizer_available(self):
         ppl = build_text_pt_pipeline(
             content_key='content',
@@ -194,6 +227,7 @@ class TestDomainPretrainPipelines:
         assert isinstance(ppl, Pipeline)
         assert hasattr(ppl, 'domain_enhance') and hasattr(ppl, 'text_pt')
 
+    @pytest.mark.usefixtures('fast_text_pt_heavy_ops')
     def test_build_text_pt_plus_runs_if_tokenizer_available(self):
         ppl = build_text_pt_plus_domain_pretrain_pipeline(
             domain='general',

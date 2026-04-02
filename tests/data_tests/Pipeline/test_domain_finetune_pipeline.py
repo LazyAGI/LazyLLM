@@ -7,6 +7,8 @@ import pytest
 
 from lazyllm import config
 from lazyllm.flow import Pipeline
+from lazyllm.tools.data import embedding as _data_embedding
+from lazyllm.tools.data.base_data import LazyLLMDataBase
 from lazyllm.tools.data.pipelines.domain_finetune_pipelines import (
     DOMAIN_FINETUNE_FEATURES,
     build_data_augmentation_pipeline,
@@ -18,6 +20,19 @@ from lazyllm.tools.data.pipelines.domain_finetune_pipelines import (
     build_text_cleaning_pipeline,
     build_train_test_split_pipeline,
 )
+
+
+@pytest.fixture(scope='module', autouse=True)
+def _lazyllm_data_process_path_isolated():
+    """整文件只建一次临时目录并 refresh config，避免每个用例重复 mkdtemp/rmtree。"""
+    root_dir = tempfile.mkdtemp()
+    keep = config['data_process_path']
+    os.environ['LAZYLLM_DATA_PROCESS_PATH'] = root_dir
+    config.refresh()
+    yield
+    os.environ['LAZYLLM_DATA_PROCESS_PATH'] = keep
+    config.refresh()
+    shutil.rmtree(root_dir, ignore_errors=True)
 
 
 class SimpleMockLLM:
@@ -39,18 +54,6 @@ class SimpleMockLLM:
 
 
 class TestDomainFinetunePipelines:
-    def setup_method(self):
-        self.root_dir = tempfile.mkdtemp()
-        self.keep_dir = config['data_process_path']
-        os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
-        config.refresh()
-
-    def teardown_method(self):
-        os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.keep_dir
-        config.refresh()
-        if os.path.exists(self.root_dir):
-            shutil.rmtree(self.root_dir, ignore_errors=True)
-
     def test_domain_finetune_features_export(self):
         assert isinstance(DOMAIN_FINETUNE_FEATURES, tuple)
         assert 'normalization' in DOMAIN_FINETUNE_FEATURES
@@ -123,7 +126,14 @@ class TestDomainFinetunePipelines:
         assert isinstance(res, list) and len(res) >= 1
         assert 'content' in res[0]
 
-    def test_build_data_augmentation_pipeline_synonym_replace(self):
+    def test_build_data_augmentation_pipeline_synonym_replace(self, monkeypatch):
+        # EmbeddingAdjacentWordSwap 默认 _concurrency_mode='process'，单条数据也会起进程池；测例改为 single 覆盖逻辑即可。
+        def _fast_init(self, num_augments=2, input_key='query', **kwargs):
+            LazyLLMDataBase.__init__(self, _concurrency_mode='single', **kwargs)
+            self.num_augments = num_augments
+            self.input_key = input_key
+
+        monkeypatch.setattr(_data_embedding.EmbeddingAdjacentWordSwap, '__init__', _fast_init)
         ppl = build_data_augmentation_pipeline(
             input_key='content',
             augment_methods=['synonym_replace'],
@@ -240,13 +250,16 @@ class TestDomainFinetunePipelines:
 
     @pytest.mark.parametrize('dedup_method', ['hash', 'minhash'])
     def test_build_domain_finetune_pipeline_deduplication(self, dedup_method):
+        opts = {'dedup_method': dedup_method}
+        if dedup_method == 'minhash':
+            opts['minhash_num_perm'] = 32
         ppl = build_domain_finetune_pipeline(
             domain='general',
             input_key='content',
             output_key='formatted_text',
             enabled={'normalization': True, 'deduplication': True},
             language='en',
-            options={'dedup_method': dedup_method},
+            options=opts,
         )
         words = ' '.join([f'w{i}' for i in range(15)])
         dup_body = words + ' ' + ('z' * 100)
