@@ -365,11 +365,9 @@ class ConversationListExpander(domain_finetune):
         self.output_output_key = output_output_key
 
     def _strip_prefix(self, text: str, prefix: str) -> str:
-        """去除前缀并 strip，若不匹配则直接 strip。"""
         return text[len(prefix):].strip() if text.startswith(prefix) else text.strip()
 
     def _parse_pairs(self, data_list: list) -> List[Dict[str, str]]:
-        """按步长 2 从交替列表中提取 QA 对，过滤过短的条目。"""
         pairs = []
         i = 0
         while i + 1 < len(data_list):
@@ -407,15 +405,6 @@ class ConversationListExpander(domain_finetune):
         return expanded
 
 class DomainFormatAlpaca(domain_finetune):
-    """
-    将单条数据格式化为 Alpaca 格式（instruction / input / output）。
-
-    支持输入：
-    - 字符串 content（作为 output）
-    - dict content（含 instruction/input/output）
-    - 多轮 messages（取最后一个 user/assistant 对）
-    """
-
     def __init__(
         self,
         input_key: str = 'content',
@@ -467,15 +456,6 @@ class DomainFormatAlpaca(domain_finetune):
 
 
 class DomainFormatShareGPT(domain_finetune):
-    """
-    将单条数据格式化为 ShareGPT 格式（messages: system/user/assistant）。
-
-    支持输入：
-    - 字符串 content
-    - dict content（含 instruction/input/output）
-    - 已有 messages 列表（多轮对话，保留完整轮次）
-    """
-
     def __init__(
         self,
         input_key: str = 'content',
@@ -526,8 +506,6 @@ class DomainFormatShareGPT(domain_finetune):
 
 
 class DomainFormatRaw(domain_finetune):
-    """保持原始内容，仅添加 system 指令。"""
-
     def __init__(
         self,
         input_key: str = 'content',
@@ -556,20 +534,6 @@ class DomainFormatRaw(domain_finetune):
 
 
 class DomainFormatChatML(domain_finetune):
-    """
-    将单条数据格式化为 ChatML 文本格式（适用于 Qwen、MiniCPM 等支持 ChatML 的模型）。
-
-    输出示例：
-    {
-        "text": "<|im_start|>system\\n...<|im_end|>\\n<|im_start|>user\\n...<|im_end|>\\n<|im_start|>assistant\\n...<|im_end|>"
-    }
-
-    支持输入：
-    - 字符串 content
-    - dict content（含 instruction/input/output）
-    - 已有 messages 列表（多轮对话）
-    """
-
     def __init__(
         self,
         input_key: str = 'content',
@@ -621,8 +585,6 @@ class DomainFormatChatML(domain_finetune):
 
 
 class TrainValTestSplitter(domain_finetune):
-    """将样本列表按比例划分为 train / validation / test。"""
-
     __reg_overwrite__ = 'forward_batch_input'
 
     def __init__(
@@ -672,28 +634,6 @@ class TrainValTestSplitter(domain_finetune):
 
 
 class LLMDataExtractor(domain_finetune):
-    """
-    使用 LLM 从原始领域文本中提取结构化训练数据。
-
-    将原始文本（如文章、报告、文档）转换为用于微调的问答对或指令-输出对，
-    实现从无结构或弱结构垂直领域数据到训练样本的自动转换。
-
-    支持两种提取格式：
-    - "qa"：提取问答对，适合知识密集型文本（研报、文献、文档等）
-    - "instruction"：提取指令-输出对，适合任务导向型文本
-
-    提取结果写入 output_key（列表），需配合 SampleExpander 展开为独立样本。
-
-    Args:
-        input_key: 输入文本的 key（字符串，或包含 messages/content 的 dict）
-        output_key: 写入提取结果（list of dict）的 key
-        llm: LLM 服务（可调用对象，接受 prompt 字符串，返回字符串）
-        num_samples: 每段文本期望提取的样本数量
-        extract_format: "qa"（问答对）或 "instruction"（指令-输出对）
-        lang: 语言，"zh" 或 "en"
-        max_input_chars: 截断输入文本的最大字符数，避免超出 LLM 上下文
-    """
-
     def __init__(
         self,
         input_key: str = 'content',
@@ -722,7 +662,6 @@ class LLMDataExtractor(domain_finetune):
             num_samples=self.num_samples,
         )
 
-        # 参考 AgenticRAG* 类：在初始化阶段构建带有 system prompt 的 LLM 服务
         if llm is not None:
             try:
                 system_prompt = self._prompt_template.build_system_prompt()
@@ -801,24 +740,6 @@ class LLMDataExtractor(domain_finetune):
 
 
 class LLMFieldMapper(domain_finetune):
-    """
-    使用 LLM 将未知结构的字段映射到标准微调格式。
-
-    当数据的字段名称不符合任何已知格式（Alpaca、QA pairs、ShareGPT 等）时，
-    调用 LLM 分析各字段语义，自动将其映射为 {instruction, input, output} 格式，
-    作为规则化解析的兜底机制。
-
-    仅当 output_key 在 data 中尚未设置时才激活，避免重复处理。
-
-    Args:
-        output_key: 标准格式写入的 key（与 DatasetFormatNormalizer 保持一致）
-        text_key: 拼接文本写入的 key（供 filter 使用，与 DatasetFormatNormalizer 保持一致）
-        llm: LLM 服务
-        lang: 语言，"zh" 或 "en"
-        exclude_keys: 不传入 LLM 的内部 key 列表
-        max_data_chars: 序列化数据传入 LLM 的最大字符数
-    """
-
     def __init__(
         self,
         output_key: str = 'content',
@@ -842,7 +763,6 @@ class LLMFieldMapper(domain_finetune):
         self._llm_serve = None
         self._prompt_template = DomainFinetuneFieldMappingPrompt(lang=self.lang)
 
-        # 参考 AgenticRAG*：在初始化阶段配置带 system prompt 的 LLM 服务
         if llm is not None:
             try:
                 system_prompt = self._prompt_template.build_system_prompt()
@@ -904,18 +824,6 @@ class LLMFieldMapper(domain_finetune):
 
 
 class OutputContentFilter(domain_finetune):
-    """
-    过滤 output/assistant 内容过短的样本，确保训练数据答案具有足够信息量。
-
-    支持 dict content（含 output 字段或 messages 中的 assistant 消息）和纯字符串 content。
-    返回 None 时该样本被丢弃。
-
-    Args:
-        input_key: content 字段 key
-        min_output_chars: output 文本最少字符数（含空白之外的有效内容）
-        output_field: dict content 中对应输出的字段名（默认 "output"）
-    """
-
     def __init__(
         self,
         input_key: str = 'content',
@@ -952,17 +860,6 @@ class OutputContentFilter(domain_finetune):
 
 
 class InputOutputRatioFilter(domain_finetune):
-    """
-    过滤 output 长度与 input 长度之比过低的样本，去除问题长、回答极短的低质量数据。
-
-    比例 = len(output.strip()) / len(input.strip())，当 input 为空时跳过检查。
-    例：min_ratio=0.3 表示 output 字符数至少为 input 字符数的 30%。
-
-    Args:
-        input_key: content 字段 key
-        min_ratio: output/input 字符数比例下限
-    """
-
     def __init__(
         self,
         input_key: str = 'content',
@@ -1003,7 +900,6 @@ class InputOutputRatioFilter(domain_finetune):
 
 
 class SampleExpander(domain_finetune):
-
     __reg_overwrite__ = 'forward_batch_input'
 
     def __init__(
