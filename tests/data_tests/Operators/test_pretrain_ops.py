@@ -221,7 +221,6 @@ class TestPretrainOperators:
         assert len(res_empty) == 1
         assert res_empty[0]['parsed'] == {}
 
-
     def test_context_expansion(self):
         expanded_text = 'This is a much longer and more detailed context about the topic.'
         llm = MockModel(expanded_text)
