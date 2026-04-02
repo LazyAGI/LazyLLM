@@ -145,6 +145,30 @@
     members:
     exclude-members:
 
+### 工具调用Pipeline
+
+::: lazyllm.tools.data.pipelines.tool_use_pipelines
+    members:
+    exclude-members:
+
+### Text2SQL Pipeline
+
+::: lazyllm.tools.data.pipelines.text2sql_pipelines
+    members:
+    exclude-members:
+
+### 代码生成Pipeline
+
+::: lazyllm.tools.data.pipelines.codegen_pipelines
+    members:
+    exclude-members:
+
+### 偏好数据Pipeline
+
+::: lazyllm.tools.data.pipelines.preference_pipelines
+    members:
+    exclude-members:
+
 ### 垂直领域微调 Pipeline
 
 ::: lazyllm.tools.data.pipelines.domain_finetune_pipelines

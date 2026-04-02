@@ -143,3 +143,56 @@ class TestToolUseOperators:
         data = {'task': 'greet'}
         res = op([data])
         assert res[0]['conv']['messages'][0]['role'] == 'user'
+
+    def test_quality_filter_pass(self):
+        mock_model = self.MockModel(return_val={'completeness': 4, 'feasibility': 4})
+
+        op = tool_use_ops.ToolUseQualityFilter(
+            model=mock_model,
+            min_completeness_score=3,
+            min_feasibility_score=3,
+            _save_data=False
+        )
+        data = {'instruction': 'test instruction', 'input': 'test input', 'output': 'test output'}
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['instruction'] == 'test instruction'
+
+    def test_quality_filter_fail_completeness(self):
+        mock_model = self.MockModel(return_val={'completeness': 2, 'feasibility': 4})
+
+        op = tool_use_ops.ToolUseQualityFilter(
+            model=mock_model,
+            min_completeness_score=3,
+            min_feasibility_score=3,
+            _save_data=False
+        )
+        data = {'instruction': 'test instruction', 'input': 'test input', 'output': 'test output'}
+        res = op([data])
+        assert len(res) == 0
+
+    def test_quality_filter_fail_feasibility(self):
+        mock_model = self.MockModel(return_val={'completeness': 5, 'feasibility': 2})
+
+        op = tool_use_ops.ToolUseQualityFilter(
+            model=mock_model,
+            min_completeness_score=3,
+            min_feasibility_score=3,
+            _save_data=False
+        )
+        data = {'instruction': 'test instruction', 'input': 'test input', 'output': 'test output'}
+        res = op([data])
+        assert len(res) == 0
+
+    def test_quality_filter_empty_output(self):
+        mock_model = self.MockModel(return_val={'completeness': 5, 'feasibility': 5})
+
+        op = tool_use_ops.ToolUseQualityFilter(
+            model=mock_model,
+            min_completeness_score=3,
+            min_feasibility_score=3,
+            _save_data=False
+        )
+        data = {'instruction': 'test instruction', 'input': 'test input', 'output': ''}
+        res = op([data])
+        assert len(res) == 0

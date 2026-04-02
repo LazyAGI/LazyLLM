@@ -83,6 +83,28 @@ class TestText2SQLOperators:
         assert res[0]['SQL'] == 'SELECT * FROM users'
         assert res[0]['db_id'] == 'test_db'
 
+    def test_sql_generator_preserves_fields(self):
+        mock_model = MockModel(return_val='```sql SELECT * FROM users ```')
+        op = text2sql_ops.SQLGenerator(
+            model=mock_model,
+            database_manager=self.db_manager,
+            output_num=1,
+            _save_data=False
+        )
+        data = {
+            'db_id': 'test_db',
+            'question': 'Show all users',
+            'prompt': 'Schema: CREATE TABLE users...',
+            'evidence': 'none'
+        }
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['SQL'] == 'SELECT * FROM users'
+        assert res[0]['db_id'] == 'test_db'
+        assert res[0]['question'] == 'Show all users'
+        assert res[0]['prompt'] == 'Schema: CREATE TABLE users...'
+        assert res[0]['evidence'] == 'none'
+
     def test_sql_executability_filter(self):
         op = text2sql_ops.SQLRuntimeSieve(
             database_manager=self.db_manager,
@@ -193,3 +215,97 @@ class TestText2SQLOperators:
         # thresholds [2, 5, 9], labels ['extra', 'hard', 'medium', 'easy']
         # score 10 > 9 -> labels[-1] -> 'easy'
         assert res[0]['sql_execution_difficulty'] == 'easy'
+
+    def test_text2sql_to_sft_formatter_alpaca(self):
+        '''测试 Text2SQLToSFTFormatter - alpaca 格式'''
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='alpaca')
+        data = {
+            'output': {
+                'prompt': 'Database Schema:\nCREATE TABLE users...',
+                'question': 'Show all users',
+                'SQL': 'SELECT * FROM users',
+                'cot_reasoning': 'Step 1: Identify table...'
+            }
+        }
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['instruction'] == op.DEFAULT_INSTRUCTION
+        assert res[0]['input'] == 'Database Schema:\nCREATE TABLE users...'
+        assert res[0]['output'] == 'SELECT * FROM users'
+
+    def test_text2sql_to_sft_formatter_cot(self):
+        '''测试 Text2SQLToSFTFormatter - cot 格式（默认）'''
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
+        data = {
+            'output': {
+                'prompt': 'Database Schema:\nCREATE TABLE users...',
+                'question': 'Show all users',
+                'SQL': 'SELECT * FROM users',
+                'cot_reasoning': 'Step 1: Identify table\nStep 2: Select all'
+            }
+        }
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['instruction'] == 'Database Schema:\nCREATE TABLE users...'
+        assert res[0]['input'] == ''
+        assert 'Step 1: Identify table' in res[0]['output']
+        assert 'SELECT * FROM users' in res[0]['output']
+
+    def test_text2sql_to_sft_formatter_flat_structure(self):
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
+        data = {
+            'prompt': 'Database Schema:\nCREATE TABLE orders...',
+            'question': 'Count orders',
+            'SQL': 'SELECT COUNT(*) FROM orders',
+            'cot_reasoning': 'Step 1: Count records'
+        }
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['instruction'] == 'Database Schema:\nCREATE TABLE orders...'
+        assert res[0]['output'] == '<think>\nStep 1: Count records\n</think>\n\nSELECT COUNT(*) FROM orders'
+
+    def test_text2sql_to_sft_formatter_missing_sql(self):
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
+        data = {
+            'output': {
+                'prompt': 'Some prompt',
+                'question': 'Some question'
+            }
+        }
+        res = op([data])
+        assert len(res) == 0
+
+    def test_text2sql_to_sft_formatter_missing_cot(self):
+        '''测试 Text2SQLToSFTFormatter - 缺少 CoT 时只输出 SQL'''
+        op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
+        data = {
+            'output': {
+                'prompt': 'Database Schema:\nCREATE TABLE users...',
+                'question': 'Show all users',
+                'SQL': 'SELECT * FROM users'
+            }
+        }
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['output'] == 'SELECT * FROM users'
+
+    def test_sql_question_generator(self):
+        '''测试 SQLQuestionGenerator 根据 schema 生成问题'''
+        mock_model = MockModel(
+            return_val=(
+                '[QUESTION-START]How many users are there?[QUESTION-END]\n'
+                '[EXTERNAL-KNOWLEDGE-START]Count all records[EXTERNAL-KNOWLEDGE-END]'
+            )
+        )
+        op = text2sql_ops.SQLQuestionGenerator(
+            model=mock_model,
+            database_manager=self.db_manager,
+            output_num=1,
+            target_complexity='hard',
+            _save_data=False
+        )
+        data = {'db_id': 'test_db'}
+        res = op([data])
+        assert len(res) == 1
+        assert res[0]['question'] == 'How many users are there?'
+        assert res[0]['evidence'] == 'Count all records'

@@ -1928,16 +1928,16 @@ add_chinese_doc('data.operators.codegen_ops.CodeInstructionGenerator', """\
 
 从原始对话消息（messages）中抽取用户指令，并将其重写为统一的“代码增强指令”，输出为一条英文描述 + 一个包含完整函数骨架的 Python 代码块。
 
-输出示例结构（默认 input_key='messages', output_key='generated_instruction'):
+输出示例结构（默认 input_key='messages', output_key='instruction'):
 
 - messages: 原始多轮对话（保持不变）
-- generated_instruction (str): 标准化后的英文指令 + Python 代码块
+- instruction (str): 标准化后的英文指令 + Python 代码块
 
 Args:
     model: LazyLLM 模型对象（必需），会被 share() 后复用。
     prompt_template (str|None): 可选，自定义系统提示词（若提供则替换默认 sys_prompt）。
     input_key (str): 输入对话字段名，默认 'messages'。
-    output_key (str): 输出标准化指令字段名，默认 'generated_instruction'。
+    output_key (str): 输出标准化指令字段名，默认 'instruction'。
     **kwargs: 传递给基类算子的其它参数（如 _max_workers、_save_data 等）。
 """)
 
@@ -1946,16 +1946,16 @@ Code-gen pipeline operator: CodeInstructionGenerator.
 
 Extracts the user instruction from raw messages and rewrites it into a standardized English instruction plus a Python function skeleton code block.
 
-Typical output structure (default input_key='messages', output_key='generated_instruction'):
+Typical output structure (default input_key='messages', output_key='instruction'):
 
 - messages: original multi-turn messages (unchanged)
-- generated_instruction (str): standardized English instruction + Python code block
+- instruction (str): standardized English instruction + Python code block
 
 Args:
     model: a LazyLLM model object (required), shared via share().
     prompt_template (str|None): optional custom system prompt (overrides default).
     input_key (str): input conversation field name, default 'messages'.
-    output_key (str): output standardized instruction field name, default 'generated_instruction'.
+    output_key (str): output standardized instruction field name, default 'instruction'.
     **kwargs: extra args forwarded to the base operator (e.g. _max_workers, _save_data).
 """)
 
@@ -1964,10 +1964,10 @@ from lazyllm.tools.data.operators.codegen_ops import CodeInstructionGenerator
 
 op = CodeInstructionGenerator(model=model,
                                          input_key='messages',
-                                         output_key='generated_instruction')
+                                         output_key='instruction')
 item = {
     'messages': [
-        {'role': 'user', 'content': '写一个 Python 函数，打印 hello'}
+        {'role': 'user', 'content': 'Write a Python function that prints hello'}
     ]
 }
 res = op(item)
@@ -1976,7 +1976,7 @@ print(res)
 # Output Example:
 # {
 #    'messages': [...],
-#    'generated_instruction': "Write a Python function that prints 'hello'.\\n"
+#    'instruction': "Write a Python function that prints 'hello'.\\n"
 #                             "```python\\n"
 #                             "def solution():\\n"
 #                             "    print('hello')\\n"
@@ -1987,7 +1987,7 @@ print(res)
 add_chinese_doc('data.operators.codegen_ops.ScriptSynthesizer', """\
 代码生成流水线算子：指令到代码生成器。
 
-给定自然语言代码指令（通常是上一阶段生成的 generated_instruction 或精简后的 instruction），生成对应的 Python 源代码文本，并尝试自动去掉 Markdown 代码块外壳，只保留代码本身。
+给定自然语言代码指令（通常是上一阶段生成的 instruction），生成对应的 Python 源代码文本，并尝试自动去掉 Markdown 代码块外壳，只保留代码本身。
 
 输出示例结构（默认 input_key='instruction', output_key='new_code'):
 
@@ -2005,7 +2005,7 @@ Args:
 add_english_doc('data.operators.codegen_ops.ScriptSynthesizer', """\
 Code-gen pipeline operator: ScriptSynthesizer.
 
-Given a natural language code instruction (often from the previous generated_instruction or a cleaned instruction field), generates the corresponding Python source code, stripping Markdown code fences when present.
+Given a natural language code instruction (often from the previous instruction), generates the corresponding Python source code, stripping Markdown code fences when present.
 
 Typical output structure (default input_key='instruction', output_key='new_code'):
 
@@ -2042,7 +2042,7 @@ print(res)
 add_chinese_doc('data.operators.codegen_ops.LogicIntegrityAuditor', """\
 代码生成流水线算子：代码质量评估器。
 
-对单条 (generated_instruction, generated_code) 样本进行自动代码评审，输出一个质量分数（0–10）与一段文字反馈，默认使用 JSON 格式进行解析。
+对单条 (instruction, new_code) 样本进行自动代码评审，输出一个质量分数（0–10）与一段文字反馈，默认使用 JSON 格式进行解析。
 
 输出示例结构（默认 input_instruction_key='instruction', input_code_key='new_code'):
 
@@ -2064,7 +2064,7 @@ Args:
 add_english_doc('data.operators.codegen_ops.LogicIntegrityAuditor', """\
 Code-gen pipeline operator: LogicIntegrityAuditor.
 
-Evaluates a single (generated_instruction, generated_code) sample, producing a quality score (0–10) and textual feedback, parsed from a JSON-formatted model response.
+Evaluates a single (instruction, new_code) sample, producing a quality score (0–10) and textual feedback, parsed from a JSON-formatted model response.
 
 Typical output structure (default input_instruction_key='instruction', input_code_key='new_code'):
 
@@ -2106,11 +2106,13 @@ print(res)
 add_chinese_doc('data.operators.codegen_ops.ThresholdSieve', """\
 代码生成流水线算子：代码质量分数过滤器。
 
-基于 LogicIntegrityAuditor 的打分结果，对样本进行区间过滤：
+基于 quality_score 对样本进行区间过滤：
 
-- 若样本尚未包含 quality_score/feedback，会先自动调用内部 scorer 进行评估；
+- 从输入数据中获取 quality_score 字段的值；
 - 若得分在 [min_score, max_score] 区间内，则为样本打上标签并保留；
 - 否则返回空列表 []，表示此样本在流水线中被过滤掉。
+
+注意：此算子不包含 model，仅做阈值判断。quality_score 需要由 LogicIntegrityAuditor 等前置算子生成。
 
 输出示例结构（默认 output_key='quality_score_filter_label'）：
 
@@ -2121,13 +2123,9 @@ add_chinese_doc('data.operators.codegen_ops.ThresholdSieve', """\
 - quality_score_filter_label: 1  （通过过滤为 1，未通过则样本被丢弃）
 
 Args:
-    model: LazyLLM 模型对象（必需），用于内部评估。
     min_score (int): 通过过滤的最小分数（含），默认 7。
     max_score (int): 通过过滤的最大分数（含），默认 10。
-    input_instruction_key (str): 输入指令字段名，默认 'instruction'。
-    input_code_key (str): 输入代码字段名，默认 'new_code'。
-    output_score_key (str): 分数字段名，默认 'quality_score'。
-    output_feedback_key (str): 反馈字段名，默认 'feedback'。
+    input_score_key (str): 输入分数字段名，默认 'quality_score'。
     output_key (str): 过滤标签字段名，默认 'quality_score_filter_label'。
     **kwargs: 传递给基类算子的其它参数。
 """)
@@ -2135,11 +2133,13 @@ Args:
 add_english_doc('data.operators.codegen_ops.ThresholdSieve', """\
 Code-gen pipeline operator: ThresholdSieve.
 
-Filters samples based on code quality scores produced by LogicIntegrityAuditor:
+Filters samples based on code quality scores:
 
-- If quality_score/feedback are missing, it first calls the internal scorer.
+- Reads the quality_score field from input data.
 - If the score is within [min_score, max_score], the sample is kept and labeled.
 - Otherwise, it returns an empty list [], effectively dropping the sample from the pipeline.
+
+Note: This operator does not contain a model and only performs threshold checking. The quality_score should be generated by a preceding operator such as LogicIntegrityAuditor.
 
 Typical output structure (default output_key='quality_score_filter_label'):
 
@@ -2150,13 +2150,9 @@ Typical output structure (default output_key='quality_score_filter_label'):
 - quality_score_filter_label: 1  (1 for passed, 0 otherwise; non-passed samples are dropped)
 
 Args:
-    model: a LazyLLM model object (required), used by the internal scorer.
     min_score (int): minimum score (inclusive) to pass the filter, default 7.
     max_score (int): maximum score (inclusive) to pass the filter, default 10.
-    input_instruction_key (str): input instruction field, default 'instruction'.
-    input_code_key (str): input code field, default 'new_code'.
-    output_score_key (str): score field name, default 'quality_score'.
-    output_feedback_key (str): feedback field name, default 'feedback'.
+    input_score_key (str): input score field name, default 'quality_score'.
     output_key (str): filter label field name, default 'quality_score_filter_label'.
     **kwargs: extra args forwarded to the base operator.
 """)
@@ -2165,10 +2161,13 @@ add_example('data.operators.codegen_ops.ThresholdSieve', """\
 ```python
 from lazyllm.tools.data.operators.codegen_ops import ThresholdSieve
 
-op = ThresholdSieve(model=model, min_score=7, max_score=10)
+# Note: ThresholdSieve does not require a model, it only checks the score
+op = ThresholdSieve(min_score=7, max_score=10)
 item = {
     'instruction': "Write a Python function that prints 'hello'.",
-    'new_code': "def solution():\\n    print('hello')"
+    'new_code': "def solution():\\n    print('hello')",
+    'quality_score': 8,  # This should be generated by LogicIntegrityAuditor
+    'feedback': 'Good code.'
 }
 res = op(item)
 print(res)
@@ -2176,993 +2175,55 @@ print(res)
 #   'instruction': '...',
 #   'new_code': '...',
 #   'quality_score': 8,
-#   'feedback': 'Good code. The logic is clear and follows PEP8.',
+#   'feedback': 'Good code.',
 #   'quality_score_filter_label': 1
 # }
 ```
 """)
 
+add_chinese_doc('data.operators.codegen_ops.CodeFeedbackFormatter', """\
+代码反馈格式化算子。
 
-
-# =========================
-# domain_finetune_ops
-# =========================
-
-add_chinese_doc('data.operators.domain_finetune_ops.rename_key', """\
-将 input_key 重命名或复制为 output_key。
+将指令、代码和反馈格式化为训练数据格式。
 
 Args:
-    data (dict): 单条数据字典
-    input_key (str): 源字段名，默认 'content'
-    output_key (str): 目标字段名，默认 'cleaned_content'
-    remove_input (bool): 若为 True 则删除原 input_key，否则保留
+    instruction_key (str): 指令字段名，默认 'instruction'。
+    input_code_key (str): 代码字段名，默认 'input_code'。
+    feedback_key (str): 反馈字段名，默认 'feedback'。
 """)
 
-add_english_doc('data.operators.domain_finetune_ops.rename_key', """\
-Rename or copy input_key to output_key.
+add_english_doc('data.operators.codegen_ops.CodeFeedbackFormatter', """\
+Code feedback formatter operator.
+
+Formats instruction, code and feedback into training data format.
 
 Args:
-    data (dict): single data dict
-    input_key (str): source field name, default 'content'
-    output_key (str): target field name, default 'cleaned_content'
-    remove_input (bool): if True, remove original input_key; otherwise keep it
+    instruction_key (str): instruction field name, default 'instruction'.
+    input_code_key (str): code field name, default 'input_code'.
+    feedback_key (str): feedback field name, default 'feedback'.
 """)
 
-add_example('data.operators.domain_finetune_ops.rename_key', """\
+add_example('data.operators.codegen_ops.CodeFeedbackFormatter', """\
 ```python
-from lazyllm.tools.data import domain_finetune
+from lazyllm.tools.data.operators.codegen_ops import CodeFeedbackFormatter
 
-op = domain_finetune.rename_key(input_key='content', output_key='cleaned_content', remove_input=True)
-res = op([{'content': 'hello world'}])
-print(res)
-# [{'cleaned_content': 'hello world'}]
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.prepare_load_path', """\
-为 KBC 源数据转换准备统一加载路径。
-
-在 FileOrURLNormalizer + HTML/PDF 转换之后，将 _markdown_path 或 _raw_path 写入 _path_to_load，
-供 KBCLoadText 使用。
-
-Args:
-    data (dict): 单条数据字典，需含 _type 及 _raw_path/_markdown_path
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.prepare_load_path', """\
-Prepare unified load path for KBC source data conversion.
-
-After FileOrURLNormalizer + HTML/PDF conversion, writes _markdown_path or _raw_path
-to _path_to_load for KBCLoadText to use.
-
-Args:
-    data (dict): single data dict with _type and _raw_path/_markdown_path
-""")
-
-add_example('data.operators.domain_finetune_ops.prepare_load_path', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.prepare_load_path()
-data = [{'_type': 'pdf', '_markdown_path': '/path/to/doc.md'}]
-res = op(data)
-print(res[0]['_path_to_load'])
-# /path/to/doc.md
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.normalize_text', """\
-规范化文本：清理首尾空白，可选将全角标点转为半角。
-
-Args:
-    data (dict): 单条数据字典
-    input_key (str): 文本字段名，默认 'content'
-    fix_chinese_punct (bool): 是否将全角标点转为半角，默认 False
-    strip_whitespace (bool): 是否清理首尾空白，默认 True
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.normalize_text', """\
-Normalize text: strip whitespace, optionally convert full-width punctuation to half-width.
-
-Args:
-    data (dict): single data dict
-    input_key (str): text field name, default 'content'
-    fix_chinese_punct (bool): whether to convert full-width to half-width punctuation, default False
-    strip_whitespace (bool): whether to strip leading/trailing whitespace, default True
-""")
-
-add_example('data.operators.domain_finetune_ops.normalize_text', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.normalize_text(input_key='content', fix_chinese_punct=True)
-res = op([{'content': '  hello，world。  '}])
-print(res)
-# [{'content': 'hello,world.'}]
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.extract_content_text', """\
-从结构化 content dict 或字符串提取纯文本，供过滤器使用。
-
-当 content 为 dict 时，拼接 instruction/input/output 或 messages；
-当 content 为 str 时，直接使用。结果写入 output_key。
-
-Args:
-    data (dict): 单条数据字典
-    input_key (str): 输入字段名，默认 'content'
-    output_key (str): 输出字段名，默认 '_filter_text'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.extract_content_text', """\
-Extract plain text from structured content dict or string for use by filters.
-
-When content is dict: concatenates instruction/input/output or messages.
-When content is str: uses directly. Writes result to output_key.
-
-Args:
-    data (dict): single data dict
-    input_key (str): input field name, default 'content'
-    output_key (str): output field name, default '_filter_text'
-""")
-
-add_example('data.operators.domain_finetune_ops.extract_content_text', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.extract_content_text(input_key='content', output_key='_filter_text')
-data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'C'}}]
-res = op(data)
-print(res[0]['_filter_text'])
-# 'A B C'
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.merge_context_and_question', """\
-将独立的 context 和 question 字段合并为单一 question 字段，便于后续归一化统一处理。
-
-通用适配「原文片段 + 问题 + 答案」类垂直领域数据集（财报/法律/技术文档等）。
-
-合并逻辑：若存在非空 context，则 target = f"{context_label}: {context}\\n\\n{question_label}: {question}"；否则 target = question。
-
-Args:
-    question_key (str): 原始问题字段名，默认 'question'
-    context_key (str): 上下文字段名，默认 'context'
-    target_key (str): 写回的目标字段名，默认覆盖 'question'
-    context_label (str): 上下文前缀标签
-    question_label (str): 问题前缀标签
-    drop_context (bool): 是否在合并后删除原 context 字段
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.merge_context_and_question', """\
-Merge separate context and question fields into a single question field for downstream normalization.
-
-Adapts to vertical-domain datasets (financial reports, legal, technical docs) with "passage + question + answer" format.
-
-Merge logic: if context exists, target = f"{context_label}: {context}\\n\\n{question_label}: {question}"; else target = question.
-
-Args:
-    question_key (str): original question field name, default 'question'
-    context_key (str): context field name, default 'context'
-    target_key (str): target field name, default 'question'
-    context_label (str): prefix label for context
-    question_label (str): prefix label for question
-    drop_context (bool): whether to remove original context after merge
-""")
-
-add_example('data.operators.domain_finetune_ops.merge_context_and_question', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.merge_context_and_question(
-    question_key='question', context_key='context',
-    context_label='Context', question_label='Question'
+op = CodeFeedbackFormatter(
+    instruction_key='instruction',
+    input_code_key='new_code',
+    feedback_key='feedback'
 )
-data = [{'context': '财报摘要...', 'question': '营收是多少？', 'answer': '100万'}]
-res = op(data)
-print(res[0]['question'])
-# 'Context: 财报摘要...Question: 营收是多少？'
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.DatasetFormatNormalizer', """\
-将常见垂类数据集格式统一转换为内部结构化格式。
-
-支持的输入格式：Alpaca、QA pairs、Simple IO、ShareGPT、OpenAI、Plain text、Custom（通过 field_mapping 指定字段映射）。
-
-输出：单轮为 {instruction, input, output}；多轮为 {messages: [{role, content}, ...]}（含 system 消息）
-同时将拼接文本写入 text_key（供清洗/过滤使用）。
-
-Args:
-    output_key (str): 输出字段名，默认 'content'
-    text_key (str): 拼接文本写入字段名，默认 '_filter_text'
-    instruction (str|None): 默认 instruction 文本
-    field_mapping (dict|None): 自定义字段映射，先于自动检测执行
-    keep_system (bool): 是否保留 system 消息
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.DatasetFormatNormalizer', """\
-Normalize common vertical-domain dataset formats into internal structured format.
-
-Supports: Alpaca, QA pairs, Simple IO, ShareGPT, OpenAI, Plain text, Custom (via field_mapping).
-
-Output: single-turn as {instruction, input, output}; multi-turn as {messages: [{role, content}, ...]} (with system message).
-Also writes concatenated text to text_key for cleaning/filtering.
-
-Args:
-    output_key (str): output field name, default 'content'
-    text_key (str): concatenated text field name, default '_filter_text'
-    instruction (str|None): default instruction text
-    field_mapping (dict|None): custom field mapping, applied before auto-detection
-    keep_system (bool): whether to keep system message
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_finetune_ops.DatasetFormatNormalizer', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.DatasetFormatNormalizer(output_key='content')
-data = [{'question': 'What is AI?', 'answer': 'AI is...'}]
-res = op(data)
-print(res[0]['content'])
-# {'instruction': '...', 'input': 'What is AI?', 'output': 'AI is...'}
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.HashDeduplicator', """\
-基于 MD5 哈希的精确去重。
-
-对批量输入进行去重，保留首次出现的样本。哈希基于 input_key 字段的内容计算。
-
-Args:
-    input_key (str): 用于计算哈希的字段名，默认 'content'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.HashDeduplicator', """\
-Exact deduplication based on MD5 hash.
-
-Deduplicates batch input, keeping first occurrence of each sample. Hash is computed from input_key field content.
-
-Args:
-    input_key (str): field name for hash computation, default 'content'
-""")
-
-add_example('data.operators.domain_finetune_ops.HashDeduplicator', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.HashDeduplicator(input_key='content')
-data = [{'content': 'hello'}, {'content': 'hello'}, {'content': 'world'}]
-res = op(data)
+item = {
+    'instruction': 'Write a function to add two numbers.',
+    'new_code': 'def add(a, b):\\n    return a + b',
+    'feedback': 'Good code, but add type hints.'
+}
+res = op(item)
 print(res)
-# [{'content': 'hello'}, {'content': 'world'}]
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.ConversationListExpander', """\
-将交替列表格式的多轮对话拆分展开为独立 QA 样本。
-
-适用于数据集字段为 list[str] 且奇偶交替表示问/答的格式，如：
-["问：头疼怎么办", "答：建议就医", "问：需要拍片吗", "答：视情况而定"]
-展开后每条记录变为多条 {input: "头疼怎么办", output: "建议就医"} 样本。
-
-Args:
-    list_key (str): 存放交替对话列表的字段名，默认 'data'
-    question_prefix (str): 问题前缀，匹配后去除
-    answer_prefix (str): 回答前缀，匹配后去除
-    min_question_chars (int): 问题去除前缀后最少字符数
-    min_answer_chars (int): 回答去除前缀后最少字符数
-    output_input_key (str): 输出样本中问题的字段名，默认 'input'
-    output_output_key (str): 输出样本中回答的字段名，默认 'output'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.ConversationListExpander', """\
-Expand alternating list-form multi-turn conversations into independent QA samples.
-
-For datasets where list[str] alternates question/answer, e.g.:
-["Q: headache?", "A: see doctor", "Q: need X-ray?", "A: depends"]
-Each record expands to multiple {input: "headache?", output: "see doctor"} samples.
-
-Args:
-    list_key (str): field name for alternating list, default 'data'
-    question_prefix (str): prefix to strip from questions
-    answer_prefix (str): prefix to strip from answers
-    min_question_chars (int): minimum chars for question after stripping
-    min_answer_chars (int): minimum chars for answer after stripping
-    output_input_key (str): output field for question, default 'input'
-    output_output_key (str): output field for answer, default 'output'
-""")
-
-add_example('data.operators.domain_finetune_ops.ConversationListExpander', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.ConversationListExpander(
-    list_key='data', question_prefix='问：', answer_prefix='答：',
-    min_question_chars=8, min_answer_chars=50
-)
-data = [{'data': ['问：头疼怎么办', '答：建议就医，注意休息']}]
-res = op(data)
-print(res)
-# [{'input': '头疼怎么办', 'output': '建议就医，注意休息'}]
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.DomainFormatAlpaca', """\
-将单条数据格式化为 Alpaca 格式（instruction / input / output）。
-
-支持输入：字符串 content（作为 output）、dict content（含 instruction/input/output）、多轮 messages（取最后一个 user/assistant 对）。
-
-Args:
-    input_key (str): 输入字段名，默认 'content'
-    output_key (str): 输出字段名，默认 'formatted_text'
-    instruction (str|None): 默认 instruction 文本
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.DomainFormatAlpaca', """\
-Format single data item into Alpaca format (instruction / input / output).
-
-Supports: string content (as output), dict content (instruction/input/output), multi-turn messages (last user/assistant pair).
-
-Args:
-    input_key (str): input field name, default 'content'
-    output_key (str): output field name, default 'formatted_text'
-    instruction (str|None): default instruction text
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_finetune_ops.DomainFormatAlpaca', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.DomainFormatAlpaca(input_key='content', output_key='formatted_text')
-data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'C'}}]
-res = op(data)
-print(res[0]['formatted_text'])
-# {'instruction': 'A', 'input': 'B', 'output': 'C'}
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.DomainFormatShareGPT', """\
-将单条数据格式化为 ShareGPT 格式（messages: system/user/assistant）。
-
-支持输入：字符串 content、dict content（含 instruction/input/output）、已有 messages 列表（多轮对话，保留完整轮次）。
-
-Args:
-    input_key (str): 输入字段名，默认 'content'
-    output_key (str): 输出字段名，默认 'formatted_text'
-    instruction (str|None): 默认 instruction 文本
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.DomainFormatShareGPT', """\
-Format single data item into ShareGPT format (messages: system/user/assistant).
-
-Supports: string content, dict content (instruction/input/output), existing messages list (multi-turn, full turns preserved).
-
-Args:
-    input_key (str): input field name, default 'content'
-    output_key (str): output field name, default 'formatted_text'
-    instruction (str|None): default instruction text
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_finetune_ops.DomainFormatShareGPT', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.DomainFormatShareGPT(input_key='content', output_key='formatted_text')
-data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'C'}}]
-res = op(data)
-print(res[0]['formatted_text'])
-# {'messages': [{'role': 'system', 'content': 'A'}, {'role': 'user', 'content': 'B'}, {'role': 'assistant', 'content': 'C'}]}
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.DomainFormatRaw', """\
-保持原始内容，仅添加 system 指令。
-
-Args:
-    input_key (str): 输入字段名，默认 'content'
-    output_key (str): 输出字段名，默认 'formatted_text'
-    instruction (str|None): 默认 instruction 文本
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.DomainFormatRaw', """\
-Keep original content, only add system instruction.
-
-Args:
-    input_key (str): input field name, default 'content'
-    output_key (str): output field name, default 'formatted_text'
-    instruction (str|None): default instruction text
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_finetune_ops.DomainFormatRaw', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.DomainFormatRaw(input_key='content', output_key='formatted_text')
-data = [{'content': 'Plain text content'}]
-res = op(data)
-print(res[0]['formatted_text'])
-# {'system': '...', 'content': 'Plain text content'}
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.DomainFormatChatML', """\
-将单条数据格式化为 ChatML 文本格式（适用于 Qwen、MiniCPM 等支持 ChatML 的模型）。
-
-输出示例：{"text": "<|im_start|>system\\n...<|im_end|>\\n<|im_start|>user\\n...<|im_end|>\\n<|im_start|>assistant\\n...<|im_end|>"}
-
-支持输入：字符串 content、dict content（含 instruction/input/output）、已有 messages 列表（多轮对话）。
-
-Args:
-    input_key (str): 输入字段名，默认 'content'
-    output_key (str): 输出字段名，默认 'formatted_text'
-    instruction (str|None): 默认 instruction 文本
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.DomainFormatChatML', """\
-Format single data item into ChatML text format (for Qwen, MiniCPM etc.).
-
-Output example: {"text": "<|im_start|>system\\n...<|im_end|>\\n<|im_start|>user\\n...<|im_end|>\\n<|im_start|>assistant\\n...<|im_end|>"}
-
-Supports: string content, dict content (instruction/input/output), existing messages list (multi-turn).
-
-Args:
-    input_key (str): input field name, default 'content'
-    output_key (str): output field name, default 'formatted_text'
-    instruction (str|None): default instruction text
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_finetune_ops.DomainFormatChatML', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.DomainFormatChatML(input_key='content', output_key='formatted_text')
-data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'C'}}]
-res = op(data)
-print(res[0]['formatted_text']['text'][:50])
-# '<|im_start|>system\\nA<|im_end|>\\n<|im_start|>user\\nB<|im_end|>...'
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.TrainValTestSplitter', """\
-将样本列表按比例划分为 train / validation / test。
-
-Args:
-    train_ratio (float): 训练集比例，默认 0.8
-    validation_ratio (float): 验证集比例，默认 0.1
-    test_ratio (float): 测试集比例，默认 0.1
-    seed (int): 随机种子，默认 42
-    stratify_key (str|None): 可选分层字段名
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.TrainValTestSplitter', """\
-Split sample list into train / validation / test by ratio.
-
-Args:
-    train_ratio (float): training set ratio, default 0.8
-    validation_ratio (float): validation set ratio, default 0.1
-    test_ratio (float): test set ratio, default 0.1
-    seed (int): random seed, default 42
-    stratify_key (str|None): optional stratification field name
-""")
-
-add_example('data.operators.domain_finetune_ops.TrainValTestSplitter', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.TrainValTestSplitter(train_ratio=0.8, validation_ratio=0.1, test_ratio=0.1, seed=42)
-data = [{'content': f'sample_{i}'} for i in range(100)]
-res = op(data)
-print(len(res['train']), len(res['validation']), len(res['test']))
-# 80 10 10
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.LLMDataExtractor', """\
-使用 LLM 从原始领域文本中提取结构化训练数据。
-
-将原始文本（如文章、报告、文档）转换为用于微调的问答对或指令-输出对，
-实现从无结构或弱结构垂直领域数据到训练样本的自动转换。
-
-支持两种提取格式："qa"（问答对）和 "instruction"（指令-输出对）。
-提取结果写入 output_key（列表），需配合 SampleExpander 展开为独立样本。
-
-Args:
-    input_key (str): 输入文本的 key，默认 'content'
-    output_key (str): 写入提取结果的 key，默认 '_extracted_samples'
-    llm: LLM 服务（可调用对象）
-    num_samples (int): 每段文本期望提取的样本数量
-    extract_format (str): "qa"（问答对）或 "instruction"（指令-输出对）
-    lang (str): 语言，"zh" 或 "en"
-    max_input_chars (int): 截断输入文本的最大字符数
-    instruction (str): 默认 instruction 文本
-    _concurrency_mode (str): 并发模式，默认 'thread'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.LLMDataExtractor', """\
-Extract structured training data from raw domain text using LLM.
-
-Converts raw text (articles, reports, docs) into QA pairs or instruction-output pairs for fine-tuning.
-
-Supports formats: "qa" (QA pairs) and "instruction" (instruction-output pairs).
-Results written to output_key (list); use SampleExpander to expand into independent samples.
-
-Args:
-    input_key (str): input text key, default 'content'
-    output_key (str): output field for extracted samples, default '_extracted_samples'
-    llm: LLM service (callable)
-    num_samples (int): expected samples per text
-    extract_format (str): "qa" or "instruction"
-    lang (str): language, "zh" or "en"
-    max_input_chars (int): max chars to truncate input
-    instruction (str): default instruction text
-    _concurrency_mode (str): concurrency mode, default 'thread'
-""")
-
-add_example('data.operators.domain_finetune_ops.LLMDataExtractor', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.LLMDataExtractor(llm=my_llm, input_key='content', num_samples=3, extract_format='qa')
-data = [{'content': '人工智能是计算机科学的一个分支。它研究如何让机器模拟人类智能。'}]
-res = op(data)
-print(res[0]['_extracted_samples'])
-# [{'instruction': '...', 'input': '...', 'output': '...'}, ...]
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.LLMFieldMapper', """\
-使用 LLM 将未知结构的字段映射到标准微调格式。
-
-当数据的字段名称不符合任何已知格式时，调用 LLM 分析各字段语义，自动将其映射为 {instruction, input, output} 格式，
-作为规则化解析的兜底机制。仅当 output_key 在 data 中尚未设置时才激活。
-
-Args:
-    output_key (str): 标准格式写入的 key，默认 'content'
-    text_key (str): 拼接文本写入的 key，默认 '_filter_text'
-    llm: LLM 服务
-    lang (str): 语言，"zh" 或 "en"
-    exclude_keys (list|None): 不传入 LLM 的内部 key 列表
-    max_data_chars (int): 序列化数据传入 LLM 的最大字符数
-    _concurrency_mode (str): 并发模式，默认 'thread'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.LLMFieldMapper', """\
-Map unknown-structure fields to standard fine-tuning format using LLM.
-
-When field names do not match known formats, uses LLM to analyze semantics and map to {instruction, input, output}.
-Fallback for rule-based parsing. Only activates when output_key is not yet set in data.
-
-Args:
-    output_key (str): output field for standard format, default 'content'
-    text_key (str): concatenated text field, default '_filter_text'
-    llm: LLM service
-    lang (str): language, "zh" or "en"
-    exclude_keys (list|None): internal keys to exclude from LLM
-    max_data_chars (int): max chars to serialize for LLM
-    _concurrency_mode (str): concurrency mode, default 'thread'
-""")
-
-add_example('data.operators.domain_finetune_ops.LLMFieldMapper', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.LLMFieldMapper(llm=my_llm, output_key='content')
-data = [{'question': 'What is AI?', 'answer': 'AI is...'}]
-res = op(data)
-print(res[0]['content'])
-# {'instruction': '...', 'input': 'What is AI?', 'output': 'AI is...'}
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.OutputContentFilter', """\
-过滤 output/assistant 内容过短的样本，确保训练数据答案具有足够信息量。
-
-支持 dict content（含 output 字段或 messages 中的 assistant 消息）和纯字符串 content。
-返回 None 时该样本被丢弃。
-
-Args:
-    input_key (str): content 字段 key，默认 'content'
-    min_output_chars (int): output 文本最少字符数，默认 80
-    output_field (str): dict content 中对应输出的字段名，默认 "output"
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.OutputContentFilter', """\
-Filter samples with too short output/assistant content.
-
-Supports dict content (output field or assistant messages) and plain string content.
-Returns None to discard the sample.
-
-Args:
-    input_key (str): content field key, default 'content'
-    min_output_chars (int): minimum output chars, default 80
-    output_field (str): output field name in dict content, default "output"
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_finetune_ops.OutputContentFilter', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.OutputContentFilter(input_key='content', min_output_chars=80)
-data = [{'content': {'instruction': 'A', 'input': 'B', 'output': 'short'}}]
-res = op(data)
-print(res)
-# [None]  # 样本被丢弃
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.InputOutputRatioFilter', """\
-过滤 output 长度与 input 长度之比过低的样本，去除问题长、回答极短的低质量数据。
-
-比例 = len(output.strip()) / len(input.strip())，当 input 为空时跳过检查。
-例：min_ratio=0.3 表示 output 字符数至少为 input 字符数的 30%。
-
-Args:
-    input_key (str): content 字段 key，默认 'content'
-    min_ratio (float): output/input 字符数比例下限，默认 0.3
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.InputOutputRatioFilter', """\
-Filter samples with too low output/input length ratio.
-
-Ratio = len(output.strip()) / len(input.strip())；skips when input is empty.
-E.g. min_ratio=0.3 means output must be at least 30% of input length.
-
-Args:
-    input_key (str): content field key, default 'content'
-    min_ratio (float): minimum output/input ratio, default 0.3
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_finetune_ops.InputOutputRatioFilter', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.InputOutputRatioFilter(input_key='content', min_ratio=0.3)
-data = [{'content': {'input': 'A' * 100, 'output': 'short'}}]
-res = op(data)
-print(res)
-# [None]  # 比例过低，样本被丢弃
-```
-""")
-
-add_chinese_doc('data.operators.domain_finetune_ops.SampleExpander', """\
-将批量数据中的 LLM 提取样本列表展开为独立的训练样本。
-
-配合 LLMDataExtractor 使用：LLMDataExtractor 为每条原始数据生成包含多个样本的列表（存于 samples_key），
-SampleExpander 将这些列表展开，每个提取样本生成一条独立记录。
-若某条数据没有提取到任何样本，由 drop_empty_extraction 决定是否丢弃原始记录。
-
-Args:
-    samples_key (str): LLMDataExtractor 写入提取结果的 key，默认 '_extracted_samples'
-    output_key (str): 展开后每条样本写入的目标 key，默认 'content'
-    keep_original_keys (list|None): 需要从原始记录保留到展开样本中的 key 列表
-    drop_empty_extraction (bool): 为 True 时丢弃未能提取到任何样本的原始记录，默认 False
-""")
-
-add_english_doc('data.operators.domain_finetune_ops.SampleExpander', """\
-Expand LLM-extracted sample lists in batch data into independent training samples.
-
-Works with LLMDataExtractor: LLMDataExtractor produces a list per record (stored in samples_key),
-SampleExpander expands these into separate records. drop_empty_extraction controls whether to discard records with no samples.
-
-Args:
-    samples_key (str): key for extracted samples, default '_extracted_samples'
-    output_key (str): target key for each expanded sample, default 'content'
-    keep_original_keys (list|None): keys to retain from original record
-    drop_empty_extraction (bool): discard records with no samples when True, default False
-""")
-
-add_example('data.operators.domain_finetune_ops.SampleExpander', """\
-```python
-from lazyllm.tools.data import domain_finetune
-
-op = domain_finetune.SampleExpander(samples_key='_extracted_samples', output_key='content')
-data = [
-    {'_extracted_samples': [{'instruction': 'A', 'input': 'B', 'output': 'C'}, {'instruction': 'D', 'input': 'E', 'output': 'F'}], 'meta': 1},
-    {'_extracted_samples': [], 'meta': 2}
-]
-res = op(data)
-print(len(res))
-# 3  # 两条展开样本（来自第一条记录）+ 一条空记录（第二条记录，drop_empty_extraction=False 时保留）
-```
-""")
-
-# =========================
-# domain_pretrain_ops
-# =========================
-
-add_chinese_doc('data.operators.domain_pretrain_ops.PretrainFieldNormalizer', """\
-将不同领域数据集的杂乱字段名统一归一化到指定的 content_key。
-
-支持：field_mapping 显式重命名、concat_fields 多字段拼接、fallback_fields 自动检测。
-处理顺序：1) field_mapping 2) concat_fields 3) fallback_fields。
-
-Args:
-    content_key (str): 统一后的目标字段名，默认 'content'
-    field_mapping (dict|None): 显式字段重命名 {src_key: dst_key}
-    concat_fields (list|None): 需拼接的多个字段名列表
-    concat_separator (str): 拼接分隔符，默认 '\\n\\n'
-    fallback_fields (list|None): 自动检测时的候选字段搜索顺序
-    drop_original (bool): 归一化后是否删除原始字段
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_pretrain_ops.PretrainFieldNormalizer', """\
-Normalize heterogeneous field names from different domain datasets to a unified content_key.
-
-Supports: field_mapping explicit rename, concat_fields multi-field concatenation, fallback_fields auto-detection.
-Order: 1) field_mapping 2) concat_fields 3) fallback_fields.
-
-Args:
-    content_key (str): target field name, default 'content'
-    field_mapping (dict|None): explicit field rename {src_key: dst_key}
-    concat_fields (list|None): list of fields to concatenate
-    concat_separator (str): separator for concatenation, default '\\n\\n'
-    fallback_fields (list|None): candidate field search order for auto-detection
-    drop_original (bool): whether to drop original fields after normalization
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_pretrain_ops.PretrainFieldNormalizer', """\
-```python
-from lazyllm.tools.data import domain_pretrain
-
-op = domain_pretrain.PretrainFieldNormalizer(content_key='content', field_mapping={'text': 'content'})
-data = [{'text': 'hello world'}]
-res = op(data)
-print(res[0]['content'])
-# 'hello world'
-```
-""")
-
-add_chinese_doc('data.operators.domain_pretrain_ops.DomainKeywordFilter', """\
-基于 Aho-Corasick 自动机的高效领域关键词过滤器。
-
-支持两种模式：any（包含任意关键词即保留）、density（关键词命中密度超过阈值才保留）。
-
-Args:
-    input_key (str): 输入文本字段名，默认 'content'
-    keywords (list|None): 关键词列表
-    mode (str): 'any' 或 'density'，默认 'any'
-    min_keyword_hits (int): any 模式下的最少命中数，默认 1
-    min_keyword_density (float): density 模式下的最小密度阈值，默认 0.001
-    case_sensitive (bool): 是否区分大小写，默认 False
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_pretrain_ops.DomainKeywordFilter', """\
-Efficient domain keyword filter based on Aho-Corasick automaton.
-
-Supports two modes: any (keep if any keyword present), density (keep if keyword density exceeds threshold).
-
-Args:
-    input_key (str): input text field name, default 'content'
-    keywords (list|None): list of keywords
-    mode (str): 'any' or 'density', default 'any'
-    min_keyword_hits (int): minimum hits for any mode, default 1
-    min_keyword_density (float): minimum density threshold for density mode, default 0.001
-    case_sensitive (bool): case sensitive, default False
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_pretrain_ops.DomainKeywordFilter', """\
-```python
-from lazyllm.tools.data import domain_pretrain
-
-op = domain_pretrain.DomainKeywordFilter(keywords=['医学', '诊断'], mode='any', input_key='content')
-data = [{'content': '这是一篇医学诊断相关的文章'}]
-res = op(data)
-print(res[0]['_keyword_hits'])
-# 2
-```
-""")
-
-add_chinese_doc('data.operators.domain_pretrain_ops.DomainRelevanceScorer', """\
-基于 TF-IDF 思想的领域相关性评分器。
-
-通过计算领域关键词在文本中的 TF-IDF 加权得分，评估文本与目标领域的相关程度。
-得分低于阈值的文本被过滤。
-
-Args:
-    input_key (str): 输入文本字段名，默认 'content'
-    keywords (list|None): 领域关键词列表
-    keyword_weights (dict|None): 关键词权重 {keyword: weight}
-    min_score (float): 最低得分阈值，默认 0.1
-    language (str): 语言，'zh' 或 'en'，默认 'zh'
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_pretrain_ops.DomainRelevanceScorer', """\
-Domain relevance scorer based on TF-IDF concept.
-
-Computes TF-IDF weighted score of domain keywords in text; filters low-relevance samples.
-
-Args:
-    input_key (str): input text field name, default 'content'
-    keywords (list|None): domain keyword list
-    keyword_weights (dict|None): keyword weights {keyword: weight}
-    min_score (float): minimum score threshold, default 0.1
-    language (str): language, 'zh' or 'en', default 'zh'
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_pretrain_ops.DomainRelevanceScorer', """\
-```python
-from lazyllm.tools.data import domain_pretrain
-
-op = domain_pretrain.DomainRelevanceScorer(keywords=['医学', '诊断'], min_score=0.1, input_key='content')
-data = [{'content': '医学诊断是临床医学的重要内容'}]
-res = op(data)
-print(res[0]['_domain_relevance_score'])
-# 0.xxx
-```
-""")
-
-add_chinese_doc('data.operators.domain_pretrain_ops.NGramRepetitionFilter', """\
-N-gram 重复度过滤器，过滤包含过多重复片段的低质量文本。
-
-网络爬取的数据中常见大量重复模式（如广告、模板文本），通过检测 n-gram 重复率来识别并过滤。
-
-Args:
-    input_key (str): 输入文本字段名，默认 'content'
-    n (int): n-gram 长度，默认 10
-    max_repetition_ratio (float): 最大重复率阈值，超过则过滤，默认 0.3
-    language (str): 语言，'zh' 或 'en'，默认 'zh'
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_pretrain_ops.NGramRepetitionFilter', """\
-N-gram repetition filter: filters low-quality text with excessive repeated patterns.
-
-Common in crawled data (ads, templates).
-
-Args:
-    input_key (str): input text field name, default 'content'
-    n (int): n-gram size, default 10
-    max_repetition_ratio (float): max repetition ratio threshold, default 0.3
-    language (str): language, 'zh' or 'en', default 'zh'
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_pretrain_ops.NGramRepetitionFilter', """\
-```python
-from lazyllm.tools.data import domain_pretrain
-
-op = domain_pretrain.NGramRepetitionFilter(n=5, max_repetition_ratio=0.3, input_key='content')
-data = [{'content': '正常文本内容，没有重复模式'}]
-res = op(data)
-print(res[0]['_ngram_repetition_ratio'])
-# 0.0 或较低值
-```
-""")
-
-add_chinese_doc('data.operators.domain_pretrain_ops.sensitive_info_cleaner', """\
-清洗文本中的敏感信息（手机号、邮箱、IP 地址、银行卡号）。
-
-采用替换而非过滤策略，保留文本但遮蔽敏感字段。
-
-Args:
-    data (dict): 单条数据字典
-    input_key (str): 文本字段名，默认 'content'
-    remove_phone (bool): 是否移除手机号，默认 True
-    remove_email (bool): 是否移除邮箱，默认 True
-    remove_ip (bool): 是否移除 IP 地址，默认 True
-    remove_bank_card (bool): 是否移除银行卡号，默认 True
-    replacement (str): 替换字符串，默认 '[REDACTED]'
-""")
-
-add_english_doc('data.operators.domain_pretrain_ops.sensitive_info_cleaner', """\
-Clean sensitive information (phone, email, IP, bank card) from text.
-
-Uses replacement instead of removal; masks sensitive fields while preserving text.
-
-Args:
-    data (dict): single data dict
-    input_key (str): text field name, default 'content'
-    remove_phone (bool): remove phone numbers, default True
-    remove_email (bool): remove emails, default True
-    remove_ip (bool): remove IP addresses, default True
-    remove_bank_card (bool): remove bank card numbers, default True
-    replacement (str): replacement string, default '[REDACTED]'
-""")
-
-add_example('data.operators.domain_pretrain_ops.sensitive_info_cleaner', """\
-```python
-from lazyllm.tools.data import domain_pretrain
-
-op = domain_pretrain.sensitive_info_cleaner(input_key='content')
-data = [{'content': '联系方式：13812345678，邮箱：test@example.com'}]
-res = op(data)
-print(res[0]['content'])
-# '联系方式：[REDACTED]，邮箱：[REDACTED]'
-```
-""")
-
-add_chinese_doc('data.operators.domain_pretrain_ops.text_normalizer', """\
-Unicode 规范化 + 空白字符统一 + 编码修复。
-
-Args:
-    data (dict): 单条数据字典
-    input_key (str): 文本字段名，默认 'content'
-    unicode_form (str): Unicode 规范化形式，默认 'NFKC'
-    fix_encoding (bool): 是否修复编码错误，默认 True
-    normalize_whitespace (bool): 是否归一化空白字符，默认 True
-    strip (bool): 是否去除首尾空白，默认 True
-""")
-
-add_english_doc('data.operators.domain_pretrain_ops.text_normalizer', """\
-Unicode normalization + whitespace unification + encoding fix.
-
-Args:
-    data (dict): single data dict
-    input_key (str): text field name, default 'content'
-    unicode_form (str): Unicode normalization form, default 'NFKC'
-    fix_encoding (bool): fix encoding errors, default True
-    normalize_whitespace (bool): normalize whitespace, default True
-    strip (bool): strip leading/trailing whitespace, default True
-""")
-
-add_example('data.operators.domain_pretrain_ops.text_normalizer', """\
-```python
-from lazyllm.tools.data import domain_pretrain
-
-op = domain_pretrain.text_normalizer(input_key='content')
-data = [{'content': '  hello\\t\\tworld\\n\\n\\nfoo  '}]
-res = op(data)
-print(res[0]['content'])
-# 'hello world\\n\\nfoo'
-```
-""")
-
-add_chinese_doc('data.operators.domain_pretrain_ops.DocumentLanguageFilter', """\
-基于字符统计的快速语言检测过滤器。
-
-通过 CJK 字符占比和 ASCII 字符占比快速判断文本的主要语言，
-过滤与目标语言不匹配的文档。比 fasttext 模型更轻量。
-
-Args:
-    input_key (str): 输入文本字段名，默认 'content'
-    target_language (str): 目标语言，'zh' 或 'en'，默认 'zh'
-    min_target_ratio (float): 目标语言字符占比下限，默认 0.3
-    _concurrency_mode (str): 并发模式，默认 'process'
-""")
-
-add_english_doc('data.operators.domain_pretrain_ops.DocumentLanguageFilter', """\
-Fast language detection filter based on character statistics.
-
-Uses CJK/ASCII ratio to determine primary language; filters non-matching documents.
-Lighter than fasttext model.
-
-Args:
-    input_key (str): input text field name, default 'content'
-    target_language (str): target language, 'zh' or 'en', default 'zh'
-    min_target_ratio (float): minimum target language character ratio, default 0.3
-    _concurrency_mode (str): concurrency mode, default 'process'
-""")
-
-add_example('data.operators.domain_pretrain_ops.DocumentLanguageFilter', """\
-```python
-from lazyllm.tools.data import domain_pretrain
-
-op = domain_pretrain.DocumentLanguageFilter(target_language='zh', min_target_ratio=0.3, input_key='content')
-data = [{'content': '这是一段中文文本。'}, {'content': 'This is English text.'}]
-res = op(data)
-print(len(res))
-# 1  # 仅保留中文
+# {
+#   'instruction': 'Write a function to add two numbers.',
+#   'input': '',
+#   'output': "def add(a, b):\\n    return a + b"
+# }
 ```
 """)
 
@@ -4051,16 +3112,13 @@ add_example('data.operators.preference_ops.IntentExtractor', """\
 ```python
 from lazyllm.tools.data.operators.preference_ops import IntentExtractor
 
-# model 需要由你的项目环境提供，例如 lazyllm.xxx(...) 得到的模型对象
+# The model should be provided by your project environment, e.g., from lazyllm.xxx(...)
 op = IntentExtractor(model=model, input_key='content', output_key='intent')
 print(op({'content': 'I want to stay at a hotel in Beijing.'}))
-# [{
+# {
 #   'content': 'I want to stay at a hotel in Beijing.',
-#   'intent': {
-#     'intent': 'book_hotel',
-#     'entities': [{'entity': 'location', 'value': 'Beijing'}]
-#   }
-# }]
+#   'intent': 'book_hotel'
+# }
 ```
 """)
 
@@ -4069,11 +3127,16 @@ add_chinese_doc('data.operators.preference_ops.PreferenceResponseGenerator', """
 
 根据上一步得到的意图（或任意指令文本），生成 n 条候选回复列表写入到输出字段中。
 
+内置两种系统提示词角色：prompt_a 为安全型助手（拒绝有害请求），prompt_b 为无限制型助手（按字面意图回复），
+交替用于生成候选回复以产生偏好对所需的多样性。
+
 Args:
     model: LazyLLM 模型对象（必需），会被 share() 后复用。
     n (int): 生成候选回复条数，默认 3。
     temperature (float): 采样温度，默认 1.0。
-    system_prompt (str|None): 可选系统提示词；提供则会对模型调用 .prompt(system_prompt)。
+    system_prompt (str|None): 可选，若提供则 prompt_a 和 prompt_b 均使用该提示词。
+    system_prompt_a (str|None): 可选，自定义 prompt_a（安全型）系统提示词，不提供则使用内置提示词。
+    system_prompt_b (str|None): 可选，自定义 prompt_b（无限制型）系统提示词，不提供则使用内置提示词。
     input_key (str): 输入字段名，默认 'intent'。
     output_key (str): 输出字段名，默认 'responses'。
     **kwargs: 传递给基类算子的其它参数。
@@ -4084,11 +3147,17 @@ Preference operator: multi-response generator.
 
 Given the intent (or any instruction text), generates n candidate responses and writes them as a list to the output field.
 
+Two built-in system prompt roles are used: prompt_a is a safety-conscious assistant (refuses harmful requests)
+and prompt_b is an unconstrained assistant (follows literal intent). They alternate across the n responses to
+produce the diversity needed for preference pair construction.
+
 Args:
     model: a LazyLLM model object (required), will be shared via share().
     n (int): number of candidate responses to generate, default 3.
     temperature (float): sampling temperature, default 1.0.
-    system_prompt (str|None): optional system prompt; if provided, applies .prompt(system_prompt) to the model.
+    system_prompt (str|None): optional; if provided, both prompt_a and prompt_b use this prompt.
+    system_prompt_a (str|None): optional custom system prompt for the safety-conscious role; uses built-in if None.
+    system_prompt_b (str|None): optional custom system prompt for the unconstrained role; uses built-in if None.
     input_key (str): input field name, default 'intent'.
     output_key (str): output field name, default 'responses'.
     **kwargs: extra args passed to the base operator.
@@ -4100,13 +3169,14 @@ from lazyllm.tools.data.operators.preference_ops import PreferenceResponseGenera
 
 op = PreferenceResponseGenerator(model=model, n=3, temperature=0.8, input_key='intent', output_key='responses')
 print(op({'intent': 'book a hotel'}))
-# [{
-#   'intent': {'intent': 'book a hotel'},
+# {
+#   'intent': 'book a hotel',
 #   'responses': [
-#     "<think>Okay, the user wants to book a hotel. ...",
-#     "<think>Okay, the user wants to book a hotel. ..."
+#     'Sure, I can help you find a hotel. Could you tell me the destination and dates?',
+#     'Here are step-by-step instructions to book a hotel: ...',
+#     'I would be happy to assist with your hotel booking...'
 #   ]
-# }]
+# }
 ```
 """)
 
@@ -4171,14 +3241,14 @@ data = {
     ],
 }
 print(op(data))
-# [{
+# {
 #   'intent': {'intent': 'book a hotel'},
 #   'responses': [
 #     'I can help you book a hotel in Beijing.',
 #     'Here are some hotels for you.'
 #   ],
 #   'evaluation': [10, 8]
-# }]
+# }
 ```
 """)
 
@@ -4248,11 +3318,11 @@ data = {
     'evaluation': [10, 6],
 }
 print(op(data))
-# [{
+# {
 #   'instruction': 'book a hotel',
 #   'chosen': 'good response',
 #   'rejected': 'bad response'
-# }]
+# }
 ```
 """)
 
@@ -4302,17 +3372,17 @@ add_example('data.operators.tool_use_ops.ChainedLogicAssembler', """\
 from lazyllm.tools.data.operators.tool_use_ops import ChainedLogicAssembler
 
 atomic_tasks = [
-    {'task': '获取出发地与目的地'},
-    {'task': '确认出行日期'},
-    {'task': '筛选符合条件的车次'},
+    {'task': 'Get departure and destination'},
+    {'task': 'Confirm travel date'},
+    {'task': 'Filter available trains'},
 ]
 op = ChainedLogicAssembler(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
 print(op({'atomic_tasks': atomic_tasks}))
 # {
 #   'atomic_tasks': [...],
 #   'sequential_tasks': [
-#     {'task': '获取出发地与目的地', 'next_task': '确认出行日期', 'composed_task': '先获取站点再确认日期'},
-#     {'task': '确认出行日期', 'next_task': '筛选符合条件的车次', 'composed_task': '在已知日期基础上筛选车次'},
+#     {'task': 'Get departure and destination', 'next_task': 'Confirm travel date', 'composed_task': 'Get locations then confirm date'},
+#     {'task': 'Confirm travel date', 'next_task': 'Filter available trains', 'composed_task': 'Filter trains based on known date'},
 #     ...
 #   ]
 # }
@@ -4358,19 +3428,19 @@ add_example('data.operators.tool_use_ops.TopologyArchitect', """\
 from lazyllm.tools.data.operators.tool_use_ops import TopologyArchitect
 
 atomic_tasks = [
-    {'task': '收集出行需求'},
-    {'task': '查询可选车次'},
-    {'task': '对比价格与时间'},
-    {'task': '完成下单支付'},
+    {'task': 'Collect travel requirements'},
+    {'task': 'Query available trains'},
+    {'task': 'Compare price and time'},
+    {'task': 'Complete order payment'},
 ]
 op = TopologyArchitect(model=model, input_key='atomic_tasks', output_key='para_seq_tasks')
 print(op({'atomic_tasks': atomic_tasks}))
 # {
 #   'atomic_tasks': [...],
 #   'para_seq_tasks': {
-#     'parallel_tasks': ['同时查询不同日期/车次方案', ...],
-#     'sequential_tasks': ['先确认日期再选车次', ...],
-#     'hybrid_tasks': ['并行对比多个方案后统一决策并下单', ...]
+#     'parallel_tasks': ['Query different dates/trains simultaneously', ...],
+#     'sequential_tasks': ['Confirm date before selecting train', ...],
+#     'hybrid_tasks': ['Compare multiple options in parallel then decide and order', ...]
 #   }
 # }
 ```
@@ -4420,9 +3490,9 @@ add_example('data.operators.tool_use_ops.ViabilitySieve', """\
 ```python
 from lazyllm.tools.data.operators.tool_use_ops import ViabilitySieve
 
-composition_tasks = ['先获取出发地和目的地再筛选车次', '直接随机推荐一个车次']
+composition_tasks = ['Get departure/destination then filter trains', 'Randomly recommend a train']
 atomic_tasks = [
-    {'task': '获取出发地与目的地'}, {'task': '确认出行日期'}, {'task': '筛选符合条件的车次'}
+    {'task': 'Get departure and destination'}, {'task': 'Confirm travel date'}, {'task': 'Filter available trains'}
 ]
 op = ViabilitySieve(model=model,
                            input_composition_key='composition_tasks',
@@ -4432,7 +3502,7 @@ print(op({'composition_tasks': composition_tasks, 'atomic_tasks': atomic_tasks})
 # {
 #   'composition_tasks': [...],
 #   'atomic_tasks': [...],
-#   'filtered_composition_tasks': ['先获取出发地和目的地再筛选车次', ...]
+#   'filtered_composition_tasks': ['Get departure/destination then filter trains', ...]
 # }
 ```
 """)
@@ -4441,6 +3511,8 @@ add_chinese_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
 工具调用数据生成算子：函数规格生成器。
 
 根据组合任务及其子任务，生成一组适合用于工具调用（function calling）的函数规格列表。
+
+若输入的组合任务为列表，则自动取第一个元素进行处理。
 
 输出 JSON 典型结构：
 
@@ -4464,6 +3536,8 @@ Tool-use data operator: function specification generator.
 
 Given a composed task and its subtasks, generates a list of function specifications suitable for tool calling.
 
+If the input composed task is a list, the first element will be used automatically.
+
 Typical JSON structure:
 
 - functions: list of dicts:
@@ -4485,11 +3559,11 @@ add_example('data.operators.tool_use_ops.ProtocolSpecifier', """\
 ```python
 from lazyllm.tools.data.operators.tool_use_ops import ProtocolSpecifier
 
-composition_task = '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表'
+composition_task = 'Query available high-speed trains based on departure, destination and date, return candidate list'
 atomic_tasks = [
-    {'task': '获取出发地与目的地'},
-    {'task': '确认出行日期'},
-    {'task': '调用车次查询接口并过滤结果'},
+    {'task': 'Get departure and destination'},
+    {'task': 'Confirm travel date'},
+    {'task': 'Call train query API and filter results'},
 ]
 op = ProtocolSpecifier(model=model,
                        input_composition_key='composition_task',
@@ -4497,14 +3571,14 @@ op = ProtocolSpecifier(model=model,
                        output_key='functions')
 print(op({'composition_task': composition_task, 'atomic_tasks': atomic_tasks}))
 # {
-#   'composition_task': '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表',
+#   'composition_task': 'Query available high-speed trains based on departure, destination and date, return candidate list',
 #   'atomic_tasks': [...],
 #   'functions': [
 #     {
 #       'name': 'query_train_tickets',
-#       'description': '根据出发地、目的地与日期查询高铁车次',
+#       'description': 'Query high-speed trains based on departure, destination and date',
 #       'args': [{'name': 'from_city', 'type': 'string', ...}, ...],
-#       'returns': {'type': 'TrainList', 'description': '符合条件的车次列表'}
+#       'returns': {'type': 'TrainList', 'description': 'List of matching trains'}
 #     },
 #     ...
 #   ]
@@ -4516,6 +3590,8 @@ add_chinese_doc('data.operators.tool_use_ops.DialogueSimulator', """\
 工具调用数据生成算子：多轮对话生成器（含 Tool 调用）。
 
 根据组合任务与可用函数列表，生成带有 User / Assistant / Tool 三种角色的多轮对话 JSON，用于构造工具调用训练数据。
+
+若输入的组合任务为列表，则自动取第一个元素进行处理。
 
 输出 JSON 典型结构：
 
@@ -4539,6 +3615,8 @@ Tool-use data operator: multi-turn conversation generator (with tools).
 
 Given a composed task and a list of available functions, generates a multi-turn conversation JSON involving User, Assistant and Tool roles, suitable for tool-calling training data.
 
+If the input composed task is a list, the first element will be used automatically.
+
 Typical JSON structure:
 
 - messages: list of dicts:
@@ -4560,11 +3638,11 @@ add_example('data.operators.tool_use_ops.DialogueSimulator', """\
 ```python
 from lazyllm.tools.data.operators.tool_use_ops import DialogueSimulator
 
-composition_task = '根据用户需求查询并推荐合适的高铁车次'
+composition_task = 'Query and recommend suitable high-speed trains based on user needs'
 functions = [
     {
         'name': 'query_train_tickets',
-        'description': '查询高铁车次',
+        'description': 'Query high-speed trains',
         'args': [...],
         'returns': {...},
     }
@@ -4576,13 +3654,13 @@ op = DialogueSimulator(model=model,
                                     n_turns=6)
 print(op({'composition_task': composition_task, 'functions': functions}))
 # {
-#   'composition_task': '根据用户需求查询并推荐合适的高铁车次',
+#   'composition_task': 'Query and recommend suitable high-speed trains based on user needs',
 #   'functions': [...],
 #   'conversation': {
 #     'messages': [
-#       {'role': 'user', 'content': '我想订一张明天下午从北京到上海的高铁票'},
-#       {'role': 'assistant', 'content': '好的，我先为您确认出发时间与车次。'},
-#       {'role': 'tool', 'name': 'query_train_tickets', 'content': '{...工具返回...}'},
+#       {'role': 'user', 'content': 'I want to book a high-speed train ticket from Beijing to Shanghai tomorrow afternoon'},
+#       {'role': 'assistant', 'content': 'Sure, let me confirm the departure time and available trains for you.'},
+#       {'role': 'tool', 'name': 'query_train_tickets', 'content': '{...tool response...}'},
 #       ...
 #     ]
 #   }
@@ -4640,20 +3718,20 @@ from lazyllm.tools.data.operators.tool_use_ops import ContextualBeacon
 
 op = ContextualBeacon(model=model, input_key='content', output_key='scenario')
 item = {
-    'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？'
+    'content': 'User: I want to book a high-speed train ticket from Beijing to Shanghai, preferably in the afternoon.\\nAssistant: Sure, what is the specific date?'
 }
 print(op(item))
 
 # Output Example:
 # {
-#   'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？',
+#   'content': 'User: I want to book a high-speed train ticket from Beijing to Shanghai, preferably in the afternoon.\\nAssistant: Sure, what is the specific date?',
 #   'scenario': {
-#     'scene': '用户咨询高铁购票服务',
-#     'domain': '出行/购票',
-#     'user_profile': '普通出行乘客',
-#     'assistant_goal': '帮助用户完成车次与时间筛选并完成购票',
-#     'constraints': ['出发地为北京', '目的地为上海', '尽量下午出发'],
-#     'key_entities': ['北京', '上海', '高铁', '下午']
+#     'scene': 'User inquires about high-speed train ticket booking service',
+#     'domain': 'Travel/Ticketing',
+#     'user_profile': 'Regular traveler',
+#     'assistant_goal': 'Help user filter trains by time and complete booking',
+#     'constraints': ['Departure from Beijing', 'Destination is Shanghai', 'Prefer afternoon departure'],
+#     'key_entities': ['Beijing', 'Shanghai', 'high-speed train', 'afternoon']
 #   }
 # }
 ```
@@ -4700,17 +3778,17 @@ add_example('data.operators.tool_use_ops.ScenarioDiverger', """\
 from lazyllm.tools.data.operators.tool_use_ops import ScenarioDiverger
 
 base = {
-    'scene': '用户咨询高铁购票服务',
-    'domain': '出行/购票',
-    'assistant_goal': '帮助用户完成车次筛选并购票',
+    'scene': 'User inquires about high-speed train ticket booking service',
+    'domain': 'Travel/Ticketing',
+    'assistant_goal': 'Help user filter trains and complete booking',
 }
 op = ScenarioDiverger(model=model, input_key='scenario', output_key='expanded_scenarios', n=3)
 print(op({'scenario': base}))
 # {
 #   'scenario': {...},
 #   'expanded_scenarios': [
-#     {'scene': '用户预订跨城商务出差火车票', ...},
-#     {'scene': '用户为家人购买回乡火车票', ...},
+#     {'scene': 'User books train ticket for cross-city business trip', ...},
+#     {'scene': 'User buys return ticket for family member', ...},
 #     ...
 #   ]
 # }
@@ -4766,19 +3844,137 @@ add_example('data.operators.tool_use_ops.DecompositionKernel', """\
 from lazyllm.tools.data.operators.tool_use_ops import DecompositionKernel
 
 scenario = {
-    'scene': '用户咨询高铁购票服务',
-    'assistant_goal': '帮助用户完成车次筛选并购票',
+    'scene': 'User inquires about high-speed train ticket booking service',
+    'assistant_goal': 'Help user filter trains and complete booking',
 }
 op = DecompositionKernel(model=model, input_key='scenario', output_key='atomic_tasks', n=4)
 print(op({'scenario': scenario}))
 # {
 #   'scenario': {...},
 #   'atomic_tasks': [
-#     {'task': '获取用户出发地和目的地', 'input': '', 'output': '出发地与目的地', 'constraints': [...]},
-#     {'task': '确认出行日期与大致时间', ...},
+#     {'task': 'Get user departure and destination', 'input': '', 'output': 'Departure and destination', 'constraints': [...]},
+#     {'task': 'Confirm travel date and approximate time', ...},
 #     ...
 #   ]
 # }
+```
+""")
+
+add_chinese_doc('data.operators.tool_use_ops.ToolUseToSFTFormatter', """\
+工具调用数据转换算子：将工具调用对话数据转换为 SFT 训练格式。
+
+支持两种输出格式：
+
+- alpaca: 转换为 Alpaca 格式（instruction/input/output）
+- chatml (默认): 转换为 ChatML 格式（含 system/user/assistant/tool 角色）
+
+当 format_type='chatml' 时，输出包含完整的对话历史，包括工具调用和工具返回结果。
+
+Args:
+    format_type (str): 输出格式类型，可选 'alpaca' 或 'chatml'，默认 'chatml'。
+    system_prompt (str|None): 可选系统提示词，默认使用内置中文提示。
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.ToolUseToSFTFormatter', """\
+Tool-use data conversion operator: converts tool-use conversation data to SFT training format.
+
+Supports two output formats:
+
+- alpaca: Converts to Alpaca format (instruction/input/output)
+- chatml (default): Converts to ChatML format (with system/user/assistant/tool roles)
+
+When format_type='chatml', output includes complete conversation history including tool calls and tool responses.
+
+Args:
+    format_type (str): output format type, options: 'alpaca' or 'chatml', default 'chatml'.
+    system_prompt (str|None): optional system prompt, defaults to built-in Chinese prompt.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.ToolUseToSFTFormatter', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import ToolUseToSFTFormatter
+
+# ChatML format (default)
+op = ToolUseToSFTFormatter(format_type='chatml')
+data = {
+    'content': 'Book a train ticket from Beijing to Shanghai',
+    'functions': [
+        {'name': 'query_trains', 'description': 'Query available trains'}
+    ],
+    'conversation': {
+        'messages': [
+            {'role': 'user', 'content': 'Book a train ticket from Beijing to Shanghai'},
+            {'role': 'assistant', 'content': 'I will help you query available trains'},
+            {'role': 'tool', 'name': 'query_trains', 'content': '{"trains": ["G1", "G3"]}'},
+            {'role': 'assistant', 'content': 'Found trains G1 and G3 for you'}
+        ]
+    }
+}
+res = op(data)
+print(res['messages'][0]['role'])  # 'system'
+print(res['messages'][1]['role'])  # 'user'
+
+# Alpaca format
+op_alpaca = ToolUseToSFTFormatter(format_type='alpaca')
+res_alpaca = op_alpaca(data)
+print(res_alpaca['instruction'])  # Contains system prompt and available tools
+print(res_alpaca['output'])       # Assistant responses
+```
+""")
+
+add_chinese_doc('data.operators.tool_use_ops.ToolUseQualityFilter', """\
+工具调用数据生成算子：质量过滤器。
+
+对工具调用训练数据进行质量评估，根据完整性（completeness）与可行性（feasibility）两项评分过滤不达标的样本。
+
+评分维度（1-5 分制）：
+
+- completeness: 回复是否完整覆盖了任务需求，是否包含所有必要步骤
+- feasibility: 任务是否现实可行，回复是否具有实际可操作性
+
+Args:
+    model: LazyLLM 模型对象（必需），用于质量评分。
+    min_completeness_score (float): 完整性最低分，默认 4。
+    min_feasibility_score (float): 可行性最低分，默认 4。
+    system_prompt (str|None): 可选系统提示词。
+    **kwargs: 传递给基类算子的其它参数。
+""")
+
+add_english_doc('data.operators.tool_use_ops.ToolUseQualityFilter', """\
+Tool-use data operator: quality filter.
+
+Evaluates tool-calling training samples on completeness and feasibility, and filters out those
+that fall below the minimum thresholds.
+
+Scoring dimensions (1-5 scale):
+
+- completeness: Does the response fully cover the task? Are all necessary steps included?
+- feasibility: Is the task realistically achievable? Is the response practically actionable?
+
+Args:
+    model: a LazyLLM model object (required), used for quality scoring.
+    min_completeness_score (float): minimum completeness score threshold, default 4.
+    min_feasibility_score (float): minimum feasibility score threshold, default 4.
+    system_prompt (str|None): optional system prompt.
+    **kwargs: extra args passed to the base operator.
+""")
+
+add_example('data.operators.tool_use_ops.ToolUseQualityFilter', """\
+```python
+from lazyllm.tools.data.operators.tool_use_ops import ToolUseQualityFilter
+
+op = ToolUseQualityFilter(model=judge_model, min_completeness_score=3, min_feasibility_score=3)
+data = {
+    'formatted': {
+        'instruction': 'You are a helpful assistant.',
+        'input': 'Book a train ticket from Beijing to Shanghai',
+        'output': 'I will help you query available trains and complete the booking.'
+    }
+}
+result = op(data)
+# Returns data if scores >= thresholds, else returns []
 ```
 """)
 
@@ -4830,16 +4026,158 @@ add_example('data.operators.text2sql_ops.SQLForge', """\
 ```python
 from lazyllm.tools.data.operators.text2sql_ops import SQLForge
 
-# 假设 database_manager 已封装了你的 SQLite / Postgres 等数据库
+# Assume database_manager wraps your SQLite / Postgres database
 op = SQLForge(model=model, database_manager=database_manager, output_num=10)
 
-# 如果 data 中不指定 db_id，则为所有数据库各生成若干条 SQL
+# If db_id is not specified in data, generates SQLs for all databases
 res = op({})
 print(res[0])
 # {
 #   'db_id': 'database_1',
 #   'SQL': 'SELECT ...',
 #   'sql_complexity_type': 'easy'
+# }
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLGenerator', """\
+Text2SQL 数据生成算子：基于问题生成 SQL。
+
+根据给定的自然语言问题 (question) 和数据库 Schema，生成对应的 SQL 查询语句。
+
+主要行为：
+
+- 接收包含 question 和 db_id 的输入数据
+- 基于数据库 Schema 构建 prompt
+- 调用模型生成 SQL，并从响应中解析出 ```sql ... ``` 代码块
+- 支持使用预构建的 prompt（通过 input_prompt_key）
+
+Args:
+    model: LazyLLM 模型对象（必需），会被 share() 后复用
+    database_manager: 提供数据库 Schema 的管理器（必需），需实现：
+        - get_create_statements_and_insert_statements(db_name)
+    output_num (int): 每个问题生成的 SQL 数量，默认 1
+    prompt_template: 可选，自定义 prompt 构造器对象，需实现 build_prompt(...)
+    system_prompt (str|None): 可选系统提示词，不传则使用内置英文提示
+    target_complexity (str): 目标复杂度 ('easy', 'medium', 'hard')，默认 'hard'
+    **kwargs: 传递给基类 Text2SQLOps/LazyLLMDataBase 的其它参数
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLGenerator', """\
+Text2SQL data operator: Generate SQL based on questions.
+
+Generates SQL queries corresponding to the given natural language question and database schema.
+
+Behavior:
+
+- Receives input data containing question and db_id
+- Builds prompt based on database schema
+- Calls model to generate SQL and parses ```sql ... ``` code blocks from response
+- Supports using pre-built prompt (via input_prompt_key)
+
+Args:
+    model: LazyLLM model object (required), shared via share()
+    database_manager: schema provider (required) implementing:
+        - get_create_statements_and_insert_statements(db_name)
+    output_num (int): number of SQLs to generate per question, default 1
+    prompt_template: optional custom prompt builder with build_prompt(...)
+    system_prompt (str|None): optional system prompt, defaults to built-in English prompt
+    target_complexity (str): target complexity ('easy', 'medium', 'hard'), default 'hard'
+    **kwargs: extra args forwarded to the base class
+""")
+
+add_example('data.operators.text2sql_ops.SQLGenerator', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLGenerator
+
+op = SQLGenerator(model=model, database_manager=database_manager, output_num=1)
+
+# Input with question and db_id
+item = {'db_id': 'test_db', 'question': 'Find all users older than 18'}
+res = op(item)
+print(res[0])
+# {
+#   'db_id': 'test_db',
+#   'question': 'Find all users older than 18',
+#   'SQL': 'SELECT * FROM users WHERE age > 18;',
+#   'sql_complexity_type': 'hard'
+# }
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.SQLQuestionGenerator', """\
+Text2SQL 数据生成算子：基于 Schema 生成自然语言问题。
+
+根据数据库 Schema 自动生成复杂的自然语言问题，用于 Text2SQL 训练数据的构建。
+
+主要行为：
+
+- 分析数据库 Schema 理解表关系
+- 根据 target_complexity 生成不同复杂度的问题
+- 支持生成多个问题，每个问题附带外部知识提示
+- 使用特殊标记 [QUESTION-START]/[QUESTION-END] 解析问题
+
+复杂度等级：
+- easy: 单表 SELECT 查询
+- medium: 涉及 JOIN、GROUP BY 或简单子查询
+- hard: 多 JOIN、子查询、窗口函数、CTE 等高级特性
+
+Args:
+    model: LazyLLM 模型对象（必需）
+    database_manager: 提供数据库 Schema 的管理器（必需），需实现：
+        - get_create_statements_and_insert_statements(db_name)
+    output_num (int): 每个数据库生成的问题数量，默认 5
+    target_complexity (str): 目标复杂度 ('easy', 'medium', 'hard')，默认 'hard'
+    system_prompt (str|None): 可选系统提示词
+    **kwargs: 传递给基类 Text2SQLOps/LazyLLMDataBase 的其它参数
+""")
+
+add_english_doc('data.operators.text2sql_ops.SQLQuestionGenerator', """\
+Text2SQL data operator: Generate natural language questions based on Schema.
+
+Automatically generates complex natural language questions from database schema for Text2SQL training data construction.
+
+Behavior:
+
+- Analyzes database schema to understand table relationships
+- Generates questions of varying complexity based on target_complexity
+- Supports generating multiple questions, each with external knowledge hints
+- Uses special markers [QUESTION-START]/[QUESTION-END] to parse questions
+
+Complexity levels:
+- easy: single table SELECT queries
+- medium: involving JOINs, GROUP BY, or simple subqueries
+- hard: multiple JOINs, subqueries, window functions, CTEs, etc.
+
+Args:
+    model: LazyLLM model object (required)
+    database_manager: schema provider (required) implementing:
+        - get_create_statements_and_insert_statements(db_name)
+    output_num (int): number of questions to generate per database, default 5
+    target_complexity (str): target complexity ('easy', 'medium', 'hard'), default 'hard'
+    system_prompt (str|None): optional system prompt
+    **kwargs: extra args forwarded to the base class
+""")
+
+add_example('data.operators.text2sql_ops.SQLQuestionGenerator', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import SQLQuestionGenerator
+
+op = SQLQuestionGenerator(
+    model=model,
+    database_manager=database_manager,
+    output_num=3,
+    target_complexity='hard'
+)
+
+# Generate questions for a database
+item = {'db_id': 'test_db'}
+res = op(item)
+print(res[0])
+# {
+#   'db_id': 'test_db',
+#   'question': 'What is the total sales for each product category?',
+#   'external_knowledge': 'Tables: products(category), sales(product_id, amount)'
 # }
 ```
 """)
@@ -4878,7 +4216,7 @@ from lazyllm.tools.data.operators.text2sql_ops import SQLRuntimeSieve
 op = SQLRuntimeSieve(database_manager=database_manager)
 item = {'db_id': 'db_1', 'SQL': 'SELECT * FROM users;'}
 res = op(item)
-print(res)  # 若 SQL 可在 db_1 上 explain 成功，则返回原始 dict；否则返回 None
+print(res)  # Returns original dict if SQL can be explained on db_1; otherwise returns None
 ```
 """)
 
@@ -4941,8 +4279,8 @@ print(res)
 #   'db_id': 'db_1',
 #   'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
 #   'question_type': 'default',
-#   'question': '有多少已支付的订单？',
-#   'evidence': '...可选的外部知识...'
+#   'question': 'How many paid orders are there?',
+#   'evidence': '...optional external knowledge...'
 # }
 ```
 """)
@@ -4993,7 +4331,7 @@ op = TSQLSemanticAuditor(model=model, database_manager=database_manager)
 item = {
     'db_id': 'db_1',
     'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
-    'question': '有多少已支付的订单？',
+    'question': 'How many paid orders are there?',
     'evidence': ''
 }
 res = op(item)
@@ -5001,10 +4339,10 @@ print(res)
 # {
 #   'db_id': 'db_1',
 #   'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
-#   'question': '有多少已支付的订单？',
+#   'question': 'How many paid orders are there?',
 #   'evidence': ''
 # }
-# 如果模型判断不匹配，则返回 None
+# Returns None if the model judges a mismatch
 ```
 """)
 
@@ -5051,8 +4389,8 @@ from lazyllm.tools.data.operators.text2sql_ops import SQLContextAssembler
 op = SQLContextAssembler(database_manager=database_manager)
 item = {
     'db_id': 'db_1',
-    'question': '有多少已支付的订单？',
-    'evidence': '订单表中 status 字段标记订单状态。'
+    'question': 'How many paid orders are there?',
+    'evidence': 'The status field in the orders table marks the order status.'
 }
 res = op(item)
 print(res['prompt'])
@@ -5060,8 +4398,8 @@ print(res['prompt'])
 # CREATE TABLE orders (id INT, status TEXT, ...);
 # ...
 #
-# Question: 有多少已支付的订单？
-# Evidence: 订单表中 status 字段标记订单状态。
+# Question: How many paid orders are there?
+# Evidence: The status field in the orders table marks the order status.
 # Generate a SQL query for postgres.
 ```
 """)
@@ -5101,15 +4439,15 @@ from lazyllm.tools.data.operators.text2sql_ops import SQLReasoningTracer
 op = SQLReasoningTracer(model=model, database_manager=database_manager, output_num=3)
 item = {
     'db_id': 'db_1',
-    'question': '有多少已支付的订单？',
+    'question': 'How many paid orders are there?',
     'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
     'evidence': ''
 }
 res = op(item)
 print(len(res['cot_responses']))
-print(res['cot_responses'][0][:200])  # 打印第一条 CoT 的前 200 个字符
+print(res['cot_responses'][0][:200])  # Print first 200 chars of first CoT
 # 3
-# "Database Schema: ... Question: 有多少已支付的订单？ ... 推理步骤1：... 推理步骤2：... ```sql SELECT count(*) FROM orders WHERE status = 'paid';```"
+# "Database Schema: ... Question: How many paid orders are there? ... Step 1: ... Step 2: ... ```sql SELECT count(*) FROM orders WHERE status = 'paid';```"
 ```
 """)
 
@@ -5166,7 +4504,7 @@ item = {
 res = op(item)
 print(res['cot_reasoning'][:200])
 print(res['SQL'])
-# "...首先识别需要统计已支付订单数量，其次在 orders 表中过滤 status = 'paid' ... ```sql SELECT count(*) FROM orders WHERE status = 'paid';```"
+# "...First identify the need to count paid orders, then filter by status = 'paid' in orders table ... ```sql SELECT count(*) FROM orders WHERE status = 'paid';```"
 # "SELECT count(*) FROM orders WHERE status = 'paid';"
 ```
 """)
@@ -5257,16 +4595,81 @@ from lazyllm.tools.data.operators.text2sql_ops import SQLEffortRanker
 op = SQLEffortRanker(model=model, database_manager=database_manager, num_generations=15)
 item = {
     'db_id': 'db_1',
-    'prompt': 'Database Schema: ... Question: 有多少已支付的订单？',
+    'prompt': 'Database Schema: ... Question: How many paid orders are there?',
     'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';'
 }
 res = op(item)
 print(res)
 # {
 #   'db_id': 'db_1',
-#   'prompt': 'Database Schema: ... Question: 有多少已支付的订单？',
+#   'prompt': 'Database Schema: ... Question: How many paid orders are there?',
 #   'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
 #   'sql_execution_difficulty': 'medium'
+# }
+```
+""")
+
+add_chinese_doc('data.operators.text2sql_ops.Text2SQLToSFTFormatter', """\
+Text2SQL 数据转换算子：将 Text2SQL 数据转换为 SFT 训练格式。
+
+支持两种输出格式：
+
+- cot (默认): instruction=prompt, input='', output=`<think>cot_reasoning</think>`\\n\\nSQL
+- alpaca: instruction=固定提示, input=prompt, output=SQL
+
+当 format_type='cot' 且存在 cot_reasoning 时，输出会包含 `<think>` 标签包裹的推理过程。
+当 format_type='alpaca' 时，输出为标准 Alpaca 格式。
+
+Args:
+    format_type (str): 输出格式类型，可选 'cot', 'alpaca'，默认 'cot'。
+    instruction (str|None): Alpaca 格式下的 instruction 内容，默认使用内置 SQL expert 提示。
+    **kwargs: 其它传递给基类算子的参数。
+""")
+
+add_english_doc('data.operators.text2sql_ops.Text2SQLToSFTFormatter', """\
+Text2SQL data conversion operator: converts Text2SQL data to SFT training format.
+
+Supports two output formats:
+
+- cot (default): instruction=prompt, input='', output=`<think>cot_reasoning</think>`\\n\\nSQL
+- alpaca: instruction=fixed prompt, input=prompt, output=SQL
+
+When format_type='cot' and cot_reasoning exists, output will include reasoning wrapped in `<think>` tags.
+When format_type='alpaca', output follows standard Alpaca format.
+
+Args:
+    format_type (str): output format type, options: 'cot', 'alpaca', default 'cot'.
+    instruction (str|None): instruction content for alpaca format, defaults to built-in SQL expert prompt.
+    **kwargs: extra args forwarded to the base operator.
+""")
+
+add_example('data.operators.text2sql_ops.Text2SQLToSFTFormatter', """\
+```python
+from lazyllm.tools.data.operators.text2sql_ops import Text2SQLToSFTFormatter
+
+# CoT format (default)
+op = Text2SQLToSFTFormatter(format_type='cot')
+data = {
+    'prompt': 'Database Schema:\\nCREATE TABLE orders...',
+    'SQL': 'SELECT COUNT(*) FROM orders',
+    'cot_reasoning': 'Step 1: Count records'
+}
+res = op([data])
+print(res[0])
+# {
+#   'instruction': 'Database Schema:\\nCREATE TABLE orders...',
+#   'input': '',
+#   'output': `<think>\\nStep 1: Count records\\n</think>\\n\\nSELECT COUNT(*) FROM orders`
+# }
+
+# Alpaca format
+op_alpaca = Text2SQLToSFTFormatter(format_type='alpaca')
+res_alpaca = op_alpaca([data])
+print(res_alpaca[0])
+# {
+#   'instruction': 'I want you to act as a SQL expert...',
+#   'input': 'Database Schema:\\nCREATE TABLE orders...',
+#   'output': 'SELECT COUNT(*) FROM orders'
 # }
 ```
 """)
@@ -5390,6 +4793,402 @@ ppl = build_demo_pipeline(input_key='text')
 data = [{'text': 'lazyLLM'}]
 res = ppl(data)
 print(res)  # demonstrates how operators are combined and applied
+```
+""")
+
+# codegen_pipelines
+add_chinese_doc('data.pipelines.codegen_pipelines.build_codegen_pipeline', """\
+构建代码生成数据处理流水线，用于生成高质量的代码训练数据。
+
+该流水线包含以下步骤：
+
+1. CodeInstructionGenerator: 标准化代码指令
+2. ScriptSynthesizer: 根据指令生成代码
+3. LogicIntegrityAuditor: 评估代码质量
+4. ThresholdSieve: 根据质量分数过滤
+5. CodeFeedbackFormatter: 格式化为训练数据格式
+
+Args:
+    model: LLM 模型对象
+    input_key (str): 输入字段名，默认 'messages'
+    min_score (int): 最低质量分数，默认 7
+    max_score (int): 最高质量分数，默认 10
+
+**Returns:**
+    一个可调用的 pipeline 对象，输出格式为 {'instruction', 'input', 'output'}。
+""")
+
+add_english_doc('data.pipelines.codegen_pipelines.build_codegen_pipeline', """\
+Build a code generation data processing pipeline for high-quality code training data.
+
+The pipeline includes the following steps:
+
+1. CodeInstructionGenerator: Standardize code instructions
+2. ScriptSynthesizer: Generate code from instructions
+3. LogicIntegrityAuditor: Evaluate code quality
+4. ThresholdSieve: Filter based on quality score
+5. CodeFeedbackFormatter: Format as training data
+
+Args:
+    model: LLM model object
+    input_key (str): input field name, default 'messages'
+    min_score (int): minimum quality score, default 7
+    max_score (int): maximum quality score, default 10
+
+**Returns:**
+    A callable pipeline object that outputs {'instruction', 'input', 'output'} format.
+""")
+
+add_example('data.pipelines.codegen_pipelines.build_codegen_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.codegen_pipelines import build_codegen_pipeline
+
+ppl = build_codegen_pipeline(model=your_model, input_key='messages', min_score=7)
+data = [{'messages': [{'role': 'user', 'content': 'Write a function to add two numbers.'}]}]
+res = ppl(data)
+print(res[0])  # {'instruction': '...', 'input': '', 'output': 'code'}
+```
+""")
+
+add_chinese_doc('data.pipelines.codegen_pipelines.build_simple_codegen_pipeline', """\
+构建简化版代码生成流水线，仅包含指令生成和代码合成。
+
+Args:
+    model: LLM 模型对象
+    input_key (str): 输入字段名，默认 'messages'
+
+**Returns:**
+    一个可调用的 pipeline 对象。
+""")
+
+add_english_doc('data.pipelines.codegen_pipelines.build_simple_codegen_pipeline', """\
+Build a simple code generation pipeline with only instruction generation and code synthesis.
+
+Args:
+    model: LLM model object
+    input_key (str): input field name, default 'messages'
+
+**Returns:**
+    A callable pipeline object.
+""")
+
+# preference_pipelines
+add_chinese_doc('data.pipelines.preference_pipelines.build_preference_pipeline', """\
+构建偏好数据处理流水线，用于构建偏好训练数据（chosen/rejected）。
+
+该流水线包含以下步骤：
+
+1. IntentExtractor: 提取用户意图
+2. PreferenceResponseGenerator: 生成多个候选回复
+3. ResponseEvaluator: 评估回复质量
+4. PreferencePairConstructor: 构建偏好对
+
+Args:
+    model: LLM 模型对象
+    input_key (str): 输入字段名，默认 'content'
+    n (int): 生成候选回复数量，默认 3
+    temperature (float): 采样温度，默认 1.0
+    strategy (str): 偏好对构建策略，默认 'max_min'
+    threshold (float): 分数阈值（strategy='threshold' 时使用），默认 0.5
+    system_prompt_a (str|None): 自定义安全型助手系统提示词，默认 None
+    system_prompt_b (str|None): 自定义无限制型助手系统提示词，默认 None
+
+**Returns:**
+    一个可调用的 pipeline 对象，输出包含 chosen 和 rejected 的偏好对。
+""")
+
+add_english_doc('data.pipelines.preference_pipelines.build_preference_pipeline', """\
+Build a preference data processing pipeline for constructing preference training data (chosen/rejected).
+
+The pipeline includes the following steps:
+
+1. IntentExtractor: Extract user intent
+2. PreferenceResponseGenerator: Generate multiple candidate responses
+3. ResponseEvaluator: Evaluate response quality
+4. PreferencePairConstructor: Build preference pairs
+
+Args:
+    model: LLM model object
+    input_key (str): input field name, default 'content'
+    n (int): number of candidate responses to generate, default 3
+    temperature (float): sampling temperature, default 1.0
+    strategy (str): preference pair construction strategy, default 'max_min'
+    threshold (float): score gap threshold used when strategy='threshold', default 0.5
+    system_prompt_a (str|None): custom system prompt for the safety-conscious role, default None
+    system_prompt_b (str|None): custom system prompt for the unconstrained role, default None
+
+**Returns:**
+    A callable pipeline object that outputs preference pairs with chosen and rejected.
+""")
+
+add_example('data.pipelines.preference_pipelines.build_preference_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.preference_pipelines import build_preference_pipeline
+
+ppl = build_preference_pipeline(model=your_model, input_key='content', n=2, strategy='max_min')
+data = [{'content': 'I want to book a hotel.'}]
+res = ppl(data)
+print(res[0])  # {'chosen': '...', 'rejected': '...', 'instruction': '...'}
+```
+""")
+
+# text2sql_pipelines
+add_chinese_doc('data.pipelines.text2sql_pipelines.text2sql_synthetic_ppl', """\
+构建 Text2SQL 完整数据处理流水线，用于生成 SQL 查询训练数据。
+
+该流水线包含以下步骤：
+
+1. SQLForge: 生成候选 SQL 查询
+2. SQLRuntimeSieve: 运行时过滤无效 SQL
+3. SQLIntentSynthesizer: 合成自然语言意图
+4. TSQLSemanticAuditor: 语义审核
+5. SQLContextAssembler: 组装上下文
+6. SQLReasoningTracer: 追踪推理过程
+7. SQLConsensusUnifier: 统一共识结果
+8. SQLSyntaxProfiler: 分析语法特征
+9. SQLEffortRanker: 排序选择最优结果
+
+Args:
+    model: LLM 模型对象
+    database_manager: 数据库管理器对象
+    embedding_model: 嵌入模型对象，可选
+    output_num (int): 输出数量，默认 300
+    num_generations (int): 生成次数，默认 10
+    input_query_num (int): 输入查询数量，默认 5
+
+**Returns:**
+    一个可调用的 pipeline 对象，用于生成高质量的 Text2SQL 训练数据。
+""")
+
+add_english_doc('data.pipelines.text2sql_pipelines.text2sql_synthetic_ppl', """\
+Build a full Text2SQL data processing pipeline for generating SQL query training data.
+
+The pipeline includes the following steps:
+
+1. SQLForge: Generate candidate SQL queries
+2. SQLRuntimeSieve: Filter invalid SQL at runtime
+3. SQLIntentSynthesizer: Synthesize natural language intents
+4. TSQLSemanticAuditor: Semantic auditing
+5. SQLContextAssembler: Assemble context
+6. SQLReasoningTracer: Trace reasoning process
+7. SQLConsensusUnifier: Unify consensus results
+8. SQLSyntaxProfiler: Analyze syntax features
+9. SQLEffortRanker: Rank and select optimal results
+
+Args:
+    model: LLM model object
+    database_manager: Database manager object
+    embedding_model: Embedding model object, optional
+    output_num (int): output number, default 300
+    num_generations (int): number of generations, default 10
+    input_query_num (int): input query number, default 5
+
+**Returns:**
+    A callable pipeline object for generating high-quality Text2SQL training data.
+""")
+
+add_example('data.pipelines.text2sql_pipelines.text2sql_synthetic_ppl', """\
+```python
+from lazyllm.tools.data.pipelines.text2sql_pipelines import text2sql_synthetic_ppl
+
+ppl = text2sql_synthetic_ppl(
+    model=your_model,
+    database_manager=db_manager,
+    output_num=100
+)
+data = [{'query': 'Find all users older than 18'}]
+res = ppl(data)
+print(res)  # List of generated SQL training samples
+```
+""")
+
+add_chinese_doc('data.pipelines.text2sql_pipelines.text2sql_enhanced_ppl', """\
+构建 Text2SQL 问题优先数据处理流水线，先根据 schema 生成复杂问题，再根据问题生成 SQL。
+
+该流水线流程：
+
+1. SQLQuestionGenerator: 根据 schema 直接生成复杂自然语言问题
+2. SQLContextAssembler: 组装 schema + question 成完整 prompt
+3. SQLGenerator: 根据 question 生成高质量 SQL
+4. SQLRuntimeSieve: 过滤无效 SQL
+5. SQLReasoningTracer: 生成推理过程 (CoT)
+6. SQLConsensusUnifier: 选择最佳 SQL
+7. SQLSyntaxProfiler: 语法分析
+8. SQLEffortRanker: 难度排序
+9. Text2SQLToSFTFormatter: 格式转换
+
+Args:
+    model: LLM 模型对象
+    database_manager: 数据库管理器对象
+    embedding_model: 嵌入模型对象，可选
+    output_num (int): 输出数量，默认 3
+    num_generations (int): 生成次数，默认 10
+    output_format (str): 输出格式，默认 'alpaca'
+    target_complexity (str): 目标复杂度，默认 'hard'
+
+**Returns:**
+    一个可调用的 pipeline 对象，用于生成高质量的 Text2SQL 训练数据。
+""")
+
+add_english_doc('data.pipelines.text2sql_pipelines.text2sql_enhanced_ppl', """\
+Build a Text2SQL question-first data processing pipeline, generating complex questions from schema first, then generating SQL based on the questions.
+
+Pipeline flow:
+
+1. SQLQuestionGenerator: Generate complex natural language questions directly from schema
+2. SQLContextAssembler: Assemble schema + question into complete prompt
+3. SQLGenerator: Generate high-quality SQL based on the question
+4. SQLRuntimeSieve: Filter invalid SQL
+5. SQLReasoningTracer: Generate reasoning process (CoT)
+6. SQLConsensusUnifier: Select best SQL
+7. SQLSyntaxProfiler: Syntax analysis
+8. SQLEffortRanker: Difficulty ranking
+9. Text2SQLToSFTFormatter: Format conversion
+
+Args:
+    model: LLM model object
+    database_manager: Database manager object
+    embedding_model: Embedding model object, optional
+    output_num (int): Output number, default 3
+    num_generations (int): Number of generations, default 10
+    output_format (str): Output format, default 'alpaca'
+    target_complexity (str): Target complexity, default 'hard'
+
+**Returns:**
+    A callable pipeline object for generating high-quality Text2SQL training data.
+""")
+
+add_example('data.pipelines.text2sql_pipelines.text2sql_enhanced_ppl', """\
+```python
+from lazyllm.tools.data.pipelines.text2sql_pipelines import text2sql_enhanced_ppl
+
+ppl = text2sql_enhanced_ppl(
+    model=your_model,
+    database_manager=db_manager,
+    output_num=3
+)
+data = [{'db_id': 'test_db'}]
+res = ppl(data)
+print(res[0]['question'])  # Generated question
+print(res[0]['SQL'])       # Generated SQL
+```
+""")
+
+# tool_use_pipelines
+add_chinese_doc('data.pipelines.tool_use_pipelines.build_tool_use_pipeline', """\
+构建工具使用数据处理流水线，用于生成工具调用训练数据。
+
+该流水线包含以下步骤：
+
+1. ContextualBeacon: 生成场景上下文
+2. ScenarioDiverger: 扩展多样化场景
+3. DecompositionKernel: 分解原子任务
+4. ChainedLogicAssembler: 组装顺序任务链
+5. TopologyArchitect: 构建并行拓扑
+6. ViabilitySieve: 过滤不可行组合
+7. ProtocolSpecifier: 指定函数协议
+8. DialogueSimulator: 模拟对话交互
+9. ToolUseToSFTFormatter（可选）: 格式化为 SFT 训练格式
+10. ToolUseQualityFilter（可选）: 质量过滤
+
+Args:
+    model: LLM 模型对象
+    input_key (str): 输入字段名，默认 'content'
+    n_turns (int): 对话轮数，默认 6
+    output_format (str|None): 输出格式，可选 'alpaca' 或 'chatml'，为 None 时不进行格式转换，默认 None
+    quality_filter (bool): 是否启用质量过滤，默认 True
+    judge_model: 用于质量评估的模型，为 None 时使用 model，默认 None
+
+**Returns:**
+    一个可调用的 pipeline 对象，输出包含对话和工具调用信息的训练数据。
+""")
+
+add_english_doc('data.pipelines.tool_use_pipelines.build_tool_use_pipeline', """\
+Build a tool-use data processing pipeline for generating tool calling training data.
+
+The pipeline includes the following steps:
+
+1. ContextualBeacon: Generate scenario context
+2. ScenarioDiverger: Expand diverse scenarios
+3. DecompositionKernel: Decompose atomic tasks
+4. ChainedLogicAssembler: Assemble sequential task chains
+5. TopologyArchitect: Build parallel topology
+6. ViabilitySieve: Filter infeasible combinations
+7. ProtocolSpecifier: Specify function protocols
+8. DialogueSimulator: Simulate dialogue interactions
+9. ToolUseToSFTFormatter (optional): Format to SFT training format
+10. ToolUseQualityFilter (optional): Quality filtering
+
+Args:
+    model: LLM model object
+    input_key (str): input field name, default 'content'
+    n_turns (int): number of dialogue turns, default 6
+    output_format (str|None): output format, 'alpaca' or 'chatml', None means no formatting, default None
+    quality_filter (bool): whether to enable quality filtering, default True
+    judge_model: model used for quality evaluation, uses model if None, default None
+
+**Returns:**
+    A callable pipeline object that outputs training data with dialogue and tool calls.
+""")
+
+add_example('data.pipelines.tool_use_pipelines.build_tool_use_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.tool_use_pipelines import build_tool_use_pipeline
+
+ppl = build_tool_use_pipeline(model=your_model, input_key='content', n_turns=5)
+data = [{'content': 'Book a flight and hotel for my trip.'}]
+res = ppl(data)
+print(res[0])  # Contains 'conversation' with tool calls
+```
+""")
+
+add_chinese_doc('data.pipelines.tool_use_pipelines.build_simple_tool_use_pipeline', """\
+构建简化版工具使用流水线，包含场景生成、任务分解和对话模拟。
+
+相比 build_tool_use_pipeline，该流水线省略了 ScenarioDiverger、ChainedLogicAssembler、TopologyArchitect
+和 ViabilitySieve，直接从场景生成原子任务后驱动对话模拟，适合快速构造少量工具调用训练数据。
+
+Args:
+    model: LLM 模型对象
+    input_key (str): 输入字段名，默认 'content'
+    n_tasks (int): 原子任务数量上限，默认 5
+    n_turns (int): 对话轮数，默认 6
+    output_format (str|None): 输出格式，可选 'alpaca' 或 'chatml'，为 None 时不进行格式转换，默认 None
+    quality_filter (bool): 是否启用质量过滤，默认 True
+    judge_model: 用于质量评估的模型，为 None 时使用 model，默认 None
+
+**Returns:**
+    一个可调用的 pipeline 对象。
+""")
+
+add_english_doc('data.pipelines.tool_use_pipelines.build_simple_tool_use_pipeline', """\
+Build a simple tool-use pipeline with scenario generation, task decomposition and dialogue simulation.
+
+Compared to build_tool_use_pipeline, this pipeline omits ScenarioDiverger, ChainedLogicAssembler,
+TopologyArchitect and ViabilitySieve, going directly from scenario to atomic tasks and dialogue
+simulation. Suitable for quickly generating small amounts of tool-calling training data.
+
+Args:
+    model: LLM model object
+    input_key (str): input field name, default 'content'
+    n_tasks (int): maximum number of atomic tasks, default 5
+    n_turns (int): number of dialogue turns, default 6
+    output_format (str|None): output format, 'alpaca' or 'chatml', None means no formatting, default None
+    quality_filter (bool): whether to enable quality filtering, default True
+    judge_model: model used for quality evaluation, uses model if None, default None
+
+**Returns:**
+    A callable pipeline object.
+""")
+
+add_example('data.pipelines.tool_use_pipelines.build_simple_tool_use_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.tool_use_pipelines import build_simple_tool_use_pipeline
+
+ppl = build_simple_tool_use_pipeline(model=your_model, input_key='content', n_tasks=3, n_turns=4)
+data = [{'content': 'Help me book a restaurant near the office.'}]
+res = ppl(data)
+print(res[0])  # Contains 'conversation' with tool calls
 ```
 """)
 

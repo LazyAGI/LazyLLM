@@ -248,7 +248,7 @@ class PDFToMarkdownConverterAPI(kbc):
         try:
             reader = MineruPDFReader(
                 url=self.mineru_url,
-                backend=self.mineru_backend,
+                # backend=self.mineru_backend,
                 upload_mode=self.upload_mode,
                 split_doc=False,
             )
