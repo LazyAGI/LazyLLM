@@ -1,28 +1,15 @@
 import re
-from lazyllm import LOG, TrainableModule, config
+from lazyllm import LOG, TrainableModule
 from lazyllm.tools.data import data_register
 from lazyllm.thirdparty import transformers
-import regex
 from lazyllm.components.formatter import JsonFormatter
 
 import os
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
-DEFAULT_MODEL = 'qwen2.5-0.5b-instruct'
+DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
 DEFAULT_TOKENIZER = 'Qwen/Qwen2.5-0.5B'
-if config['model_path']:
-    token_path = os.path.join(config['model_path'], DEFAULT_MODEL)
-    if os.path.exists(token_path):
-        DEFAULT_TOKENIZER = token_path
-
 Text2qa = data_register.new_group('Text2qa')
-
-def boxed_res_extractor(text):
-    if not isinstance(text, str):
-        return None
-    pattern = r'\\boxed\{(?P<content>(?:[^{}]+|\{(?&content)\})*)\}'
-    matches = regex.findall(pattern, text)
-    return matches[-1].strip() if matches else None
 
 class TextToChunks(Text2qa):
     def __init__(self,
@@ -159,9 +146,27 @@ class ChunkToQA(Text2qa):
         output_structure = f'''
         输出格式要求：
         {{
-            "{self.query_key}": "生成的问题",
+            "{self.query_key}": "问题",
             "{self.answer_key}": "答案"
         }}
+        '''
+
+        self.default_prompt = '''
+        任务：根据给定文本构造一个用于监督微调（SFT）的问答对。
+
+        约束条件：
+        - 提问需要具体，不可以出现文中xxx、今天是xxx、这种莫能两可的问题，
+        - 问题必须可以仅通过原文回答。
+        - 答案必须忠实于原文表达。
+        - 不允许添加任何外部知识。
+        - 不允许推测或扩展。
+        - 问题应覆盖文本中的核心事实或关键观点。
+        - 只生成一个问答对。
+
+        输出要求：
+        - 仅输出 JSON。
+        - 不要输出解释说明。
+        - 不要输出多余内容。
         '''
 
         if model is None:
@@ -182,11 +187,19 @@ class ChunkToQA(Text2qa):
             return data
 
         if self.user_prompt is None:
-            user_prompt = '根据下面文本生成一个 QA 对：\n'
+            user_prompt = self.default_prompt
         else:
             user_prompt = self.user_prompt
 
-        inp = f'{user_prompt}\n{chunk}'
+        inp = f'{user_prompt}\n原文：{chunk}\n'
+
+        inp += f'''
+        输出格式要求：
+        {{
+            "{self.query_key}": "问题",
+            "{self.answer_key}": "答案"
+        }}
+        '''
 
         qa = self.model(inp)
 
@@ -249,13 +262,150 @@ class QAScorer(Text2qa):
 
         {qa}
 
-        规则：
-        - 严格基于原文 → 1
-        - 否则 → 0
+        评分规则：
+        - 如果问题和答案都严格基于原文内容，且答案可以从原文中直接或明确推断得到，打 1。
+        - 如果问题或答案与原文无关、编造内容、无法从原文得到依据、或语义混乱，打 0。
+        - 如果 QA 无意义或不构成有效问答，打 0。
+        输出格式示例：
+        {{"{self.output_key}": "0"}}
         '''
         else:
             user_prompt = self.user_prompt + qa
         res = self.model(user_prompt)
 
-        data[self.output_key] = res.get(self.output_key, 0)
+        data[self.output_key] = float(res.get(self.output_key, 0))
+        return data
+
+@data_register('data.Text2qa', rewrite_func='forward')
+def qa_score_filter(data, input_key, min_score):
+    score = data.get(input_key, 0)
+    if score >= min_score:
+        return None
+    return []
+
+@data_register('data.Text2qa', rewrite_func='forward')
+def to_alpaca_sft(
+        data,
+        query_key='query',
+        context_key='context',
+        answer_key='output'
+):
+    instruction = data.get(query_key)
+    context = data.get(context_key, '')
+    answer = data.get(answer_key)
+
+    if not instruction or not answer:
+        return []
+
+    return {
+        'instruction': instruction,
+        'input': context if context else '',
+        'output': answer
+    }
+
+@data_register('data.Text2qa', rewrite_func='forward')
+def to_chat_sft(
+        data,
+        query_key='query',
+        context_key='context',
+        answer_key='output'
+):
+
+    query = data.get(query_key)
+    context = data.get(context_key, '')
+    answer = data.get(answer_key)
+
+    if not query or not answer:
+        return None
+
+    if context:
+        user_content = f'{context}\n\n问题：{query}'
+    else:
+        user_content = query
+
+    return {
+        'messages': [
+            {
+                'role': 'user',
+                'content': user_content
+            },
+            {
+                'role': 'assistant',
+                'content': answer
+            }
+        ]
+    }
+
+'''
+Adapted from the implementation in Tianyi Lab's Cherry_LLM project:
+https://github.com/tianyi-lab/Cherry_LLM/blob/main/cherry_seletion/data_by_IFD_vic.py
+'''
+class IFDScorer(Text2qa):
+    def __init__(self,
+                 model,
+                 tokenizer,
+                 input_key='chunk',
+                 output_key='IFD_score',
+                 query_key='query',
+                 answer_key='answer',
+                 max_length=512,
+                 **kwargs):
+        super().__init__(_concurrency_mode='thread', **kwargs)
+        self.input_key = input_key
+        self.output_key = output_key
+        self.query_key = query_key
+        self.answer_key = answer_key
+        self.model = model
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def _get_token_loss(self, context: str, answer: str):
+        from torch.nn import CrossEntropyLoss
+        import torch
+
+        text = context + answer
+        input_ids = self.tokenizer.encode(text, return_tensors='pt', truncation=True, max_length=self.max_length)
+        target_ids = input_ids.clone()
+
+        with torch.no_grad():
+            outputs = self.model(input_ids, labels=target_ids)
+            logits = outputs.logits
+            vocab_size = logits.shape[-1]
+            loss_fct = CrossEntropyLoss(reduction='none')
+            token_loss = loss_fct(logits.view(-1, vocab_size), target_ids.view(-1))
+        return token_loss.cpu().numpy()
+
+    def _calc_loss_part(self, context: str, answer: str):
+        import numpy as np
+        full_text = context + answer
+        input_ids = self.tokenizer.encode(full_text, return_tensors='pt', truncation=True, max_length=self.max_length)
+        start_idx = len(self.tokenizer.encode(context)) if context else 0
+        end_idx = input_ids.shape[1]
+
+        token_loss_full = self._get_token_loss(context, answer)
+        token_loss_answer = token_loss_full[start_idx:end_idx]
+        if len(token_loss_answer) == 0:
+            return None
+        return float(np.mean(token_loss_answer))
+
+    def forward(self, data: dict):
+        instruction = data.get(self.query_key, '')
+        answer = data.get(self.answer_key, '')
+
+        if not (instruction and answer):
+            return []
+
+        # DAS: answer without instruction
+        das = self._calc_loss_part('', answer)
+        # CAS: answer with instruction
+        cas = self._calc_loss_part(instruction, answer)
+
+        if das is None or cas is None or das == 0:
+            ifd_score = None
+        else:
+            ifd_score = cas / das
+
+        data[self.output_key] = ifd_score
+        data['CAS'] = cas
+        data['DAS'] = das
         return data

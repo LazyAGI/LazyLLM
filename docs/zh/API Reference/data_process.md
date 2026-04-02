@@ -168,6 +168,39 @@
     members:
     exclude-members:
 
+### 文本生成 QA 数据流水线
+
+::: lazyllm.tools.data.pipelines.text_pipelines
+    members:
+    exclude-members:
+
+### QA 增强数据流水线
+
+::: lazyllm.tools.data.pipelines.enhance_pipelines
+    members:
+    exclude-members:
+
+### 思维链（CoT）数据流水线
+
+::: lazyllm.tools.data.pipelines.cot_pipelines
+    members:
+    exclude-members:
+
+### 图像数据处理流水线
+
+::: lazyllm.tools.data.pipelines.img_pipelines
+    members:
+    exclude-members:
+
+### 数学数据处理流水线
+
+::: lazyllm.tools.data.pipelines.math_pipelines
+    members:
+    exclude-members:
+
+### PDF 数据处理流水线
+
+::: lazyllm.tools.data.pipelines.pdf_pipelines
 ### 工具调用Pipeline
 
 ::: lazyllm.tools.data.pipelines.tool_use_pipelines

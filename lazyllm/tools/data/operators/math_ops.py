@@ -1,36 +1,20 @@
-import os
-import re
-import regex
-
 from ..base_data import data_register
-
-from lazyllm import TrainableModule, LOG, config
-from lazyllm.components.formatter import JsonFormatter
+from lazyllm import TrainableModule, LOG
+import re
 from lazyllm.thirdparty import transformers
+from lazyllm.components.formatter import JsonFormatter
+from lazyllm.tools.data.operators.utils import boxed_res_extractor
 
-DEFAULT_MODEL = 'qwen2.5-0.5b-instruct'
+DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
 DEFAULT_TOKENIZER = 'Qwen/Qwen2.5-0.5B'
-if config['model_path']:
-    token_path = os.path.join(config['model_path'], DEFAULT_MODEL)
-    if os.path.exists(token_path):
-        DEFAULT_TOKENIZER = token_path
-
 MathQA = data_register.new_group('mathQA')
 
 
-def boxed_extractor(text):
-    if not isinstance(text, str):
-        return None
-    pattern = r'\\boxed\{(?P<content>(?:[^{}]+|\{(?&content)\})*)\}'
-    matches = regex.findall(pattern, text)
-    return matches[-1].strip() if matches else None
-
-
 @data_register('data.mathQA', rewrite_func='forward')
-def math_answer_extractor(data, input_key='answer', output_key='math_answer'):
+def boxed_answer_extractor(data, input_key='answer', output_key='math_answer'):
     assert isinstance(data, dict)
-    answer = data[input_key]
-    math_answer = boxed_extractor(answer)
+    answer = data.get(input_key, '')
+    math_answer = boxed_res_extractor(answer)
     data[output_key] = math_answer
     return data
 
@@ -383,9 +367,7 @@ class ReasoningAnswerTokenLengthFilter(MathQA):
         if token_len <= self.max_answer_token_length:
             return None
 
-        # clear eligible answer
-        data[self.input_key] = ''
-        return data
+        return []
 
 class QuestionFusionGenerator(MathQA):
     def __init__(self,
