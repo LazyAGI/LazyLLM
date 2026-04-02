@@ -165,10 +165,8 @@ class TestRerankerPipeline:
                     assert doc not in (item.get('pos') or [])
 
     def test_build_reranker_hard_neg_pipeline_unknown_strategy_raises(self):
-        run = build_reranker_hard_neg_pipeline(mining_strategy='invalid')
-        data = [{'query': 'q', 'pos': ['p']}]
         with pytest.raises(ValueError, match='Unknown mining strategy'):
-            run(data)
+            build_reranker_hard_neg_pipeline(mining_strategy='invalid')
 
     def test_reranker_qa_generate_pipeline_with_mock_llm_and_data(self):
         mock_llm = MockLLM(return_value={
