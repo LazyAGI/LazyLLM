@@ -4573,6 +4573,51 @@ res = ppl(data)
 ```
 """)
 
+add_chinese_doc('data.pipelines.pt_data_ppl.build_structured_data_pipeline', """\
+构建结构化数据抽取流水线：通过 Text2Json 将输入文本按指定 schema 或提示词解析为结构化字段。
+
+Args:
+    llm: 用于抽取结构化结果的语言模型实例
+    input_key (str): 输入文本字段名，默认 'text'
+    output_key (str): 输出结构化字段名，默认 'parsed'
+    prompt (str | None): 可选提示词；为空时使用 Text2Json 默认提示模板
+
+**Returns:**\n
+- 一个 pipeline 对象，输入为包含 input_key 的样本列表，输出样本新增 output_key 对应的结构化结果。
+""")
+
+add_english_doc('data.pipelines.pt_data_ppl.build_structured_data_pipeline', """\
+Build a structured data extraction pipeline: it uses Text2Json to parse input text into structured fields.
+
+Args:
+    llm: language model instance used for structured extraction
+    input_key (str): field name for input text, default 'text'
+    output_key (str): field name for structured output, default 'parsed'
+    prompt (str | None): optional prompt; Text2Json default prompt is used when None
+
+**Returns:**\n
+- A pipeline object that takes samples containing input_key and appends structured results to output_key.
+""")
+
+add_example('data.pipelines.pt_data_ppl.build_structured_data_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_structured_data_pipeline
+
+llm = lazyllm.OnlineChatModule(source='sensenova')
+ppl = build_structured_data_pipeline(
+    llm=llm,
+    input_key='text',
+    output_key='parsed',
+    prompt='Extract person name and city from the text.',
+)
+
+data = [{'text': 'Alice lives in Shanghai.'}]
+res = ppl(data)
+print(res[0]['parsed'])
+```
+""")
+
 # =========================
 # Embedding Data Formatter
 # =========================
