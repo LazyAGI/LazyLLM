@@ -7268,6 +7268,36 @@ res = op([{'context': 'Some context.', 'image_path': '/path/to/image.jpg'}])
 ```
 """)
 
+add_chinese_doc('data.operators.pt_op.Text2Json', """\
+使用 LLM 将输入文本抽取为结构化 JSON 结果，并写入指定输出字段。
+
+Args:
+    llm: 文本语言模型实例
+    input_key (str): 输入文本字段名，默认 'text'
+    output_key (str): 结构化结果输出字段名，默认 'parsed'
+    prompt (str): 可选，自定义提示词
+""")
+
+add_english_doc('data.operators.pt_op.Text2Json', """\
+Use an LLM to extract structured JSON from input text and write it to the target field.
+
+Args:
+    llm: text language model instance
+    input_key (str): key for input text, default 'text'
+    output_key (str): key for structured output, default 'parsed'
+    prompt (str): optional custom prompt
+""")
+
+add_example('data.operators.pt_op.Text2Json', """\
+```python
+from lazyllm.tools.data import pt
+
+op = pt.Text2Json(llm=model, input_key='text', output_key='parsed')
+res = op([{'text': 'Alice works at Company X.'}])
+print(res[0]['parsed'])
+```
+""")
+
 add_chinese_doc('data.operators.pt_op.ContextExpansion', """\
 使用 LLM 将短 context 扩写为更长且连贯的文本，并保持问题-答案语义一致。
 
@@ -7303,7 +7333,7 @@ print(res[0]['expanded_context'])
 ```
 """)
 
-add_chinese_doc('data.operators.pt_op.ContextReconstruction', """\
+add_chinese_doc('data.operators.pt_op.context_reconstruction', """\
 将扩写后的文本重组为长上下文：每条样本保留一个正例段，并从其他样本随机采样干扰段后打乱拼接。
 
 Args:
@@ -7316,7 +7346,7 @@ Args:
     seed (int|None): 随机种子，默认 None
 """)
 
-add_english_doc('data.operators.pt_op.ContextReconstruction', """\
+add_english_doc('data.operators.pt_op.context_reconstruction', """\
 Reconstruct long context from expanded passages: keep one positive passage for each sample,
 sample distractors from other samples, then shuffle and concatenate them.
 
@@ -7330,11 +7360,11 @@ Args:
     seed (int|None): random seed, default None
 """)
 
-add_example('data.operators.pt_op.ContextReconstruction', """\
+add_example('data.operators.pt_op.context_reconstruction', """\
 ```python
 from lazyllm.tools.data import pt
 
-op = pt.ContextReconstruction(num_distractors=2, long_context_key='lc', seed=42)
+op = pt.context_reconstruction(num_distractors=2, long_context_key='lc', seed=42)
 data = [
     {'expanded_context': 'ctx_1', 'question': 'Q1', 'answer': 'A1'},
     {'expanded_context': 'ctx_2', 'question': 'Q2', 'answer': 'A2'},

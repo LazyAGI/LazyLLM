@@ -593,42 +593,32 @@ class ContextExpansion(PT):
             return []
 
 
-class ContextReconstruction(PT):
-    def __init__(self, context_key='expanded_context', question_key='question',
-                 answer_key='answer', long_context_key='long_context',
-                 num_distractors=3, passage_sep='\n\n', seed=None, **kwargs):
-        super().__init__(**kwargs)
-        self.context_key = context_key
-        self.question_key = question_key
-        self.answer_key = answer_key
-        self.long_context_key = long_context_key
-        self.num_distractors = num_distractors
-        self.passage_sep = passage_sep
-        self.seed = seed
-
-    def forward_batch_input(self, data, **kwargs):
-        assert isinstance(data, list)
-        rng = random.Random(self.seed)
-        results = []
-        for i, item in enumerate(data):
-            assert isinstance(item, dict)
-            positive_ctx = item.get(self.context_key, '')
-            question = item.get(self.question_key, '')
-            answer = item.get(self.answer_key, '')
-            if not positive_ctx or not question or not answer:
-                continue
-            other_ctxs = [
-                d.get(self.context_key, '') for j, d in enumerate(data)
-                if j != i and d.get(self.context_key, '')
-            ]
-            k = min(self.num_distractors, len(other_ctxs))
-            distractors = rng.sample(other_ctxs, k) if k > 0 else []
-            passages = [positive_ctx] + distractors
-            rng.shuffle(passages)
-            results.append({
-                'context': positive_ctx,
-                self.long_context_key: self.passage_sep.join(passages),
-                self.question_key: question,
-                self.answer_key: answer,
-            })
-        return results
+@data_register('data.pt', rewrite_func='forward_batch_input', _concurrency_mode='thread')
+def context_reconstruction(data, context_key='expanded_context', question_key='question',
+                           answer_key='answer', long_context_key='long_context',
+                           num_distractors=3, passage_sep='\n\n', seed=None):
+    assert isinstance(data, list)
+    rng = random.Random(seed)
+    results = []
+    for i, item in enumerate(data):
+        assert isinstance(item, dict)
+        positive_ctx = item.get(context_key, '')
+        question = item.get(question_key, '')
+        answer = item.get(answer_key, '')
+        if not positive_ctx or not question or not answer:
+            continue
+        other_ctxs = [
+            d.get(context_key, '') for j, d in enumerate(data)
+            if j != i and d.get(context_key, '')
+        ]
+        k = min(num_distractors, len(other_ctxs))
+        distractors = rng.sample(other_ctxs, k) if k > 0 else []
+        passages = [positive_ctx] + distractors
+        rng.shuffle(passages)
+        results.append({
+            'context': positive_ctx,
+            long_context_key: passage_sep.join(passages),
+            question_key: question,
+            answer_key: answer,
+        })
+    return results

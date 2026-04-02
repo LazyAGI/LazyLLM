@@ -142,7 +142,7 @@ def build_long_context_pipeline(llm, context_key='context', question_key='questi
             prompt=expansion_prompt,
             _concurrency_mode=expansion_concurrency_mode,
         )
-        ppl.context_reconstruction = pt.ContextReconstruction(
+        ppl.context_reconstruction = pt.context_reconstruction(
             context_key=expanded_key,
             question_key=question_key,
             answer_key=answer_key,

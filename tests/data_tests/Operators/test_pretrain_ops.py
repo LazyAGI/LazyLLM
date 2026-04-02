@@ -249,7 +249,7 @@ class TestPretrainOperators:
         assert op_bad(inputs) == []
 
     def test_context_reconstruction(self):
-        op = pt.ContextReconstruction(num_distractors=2, seed=42)
+        op = pt.context_reconstruction(num_distractors=2, seed=42)
         batch = [
             {'expanded_context': f'ctx_{i}', 'question': f'Q{i}', 'answer': f'A{i}'}
             for i in range(4)
@@ -265,7 +265,7 @@ class TestPretrainOperators:
             assert len(passages) == 3
             assert f'ctx_{i}' in item['long_context']
 
-        custom_key_op = pt.ContextReconstruction(long_context_key='lc', num_distractors=2, seed=42)
+        custom_key_op = pt.context_reconstruction(long_context_key='lc', num_distractors=2, seed=42)
         custom_key_res = custom_key_op(batch)
         assert len(custom_key_res) == 4
         assert 'lc' in custom_key_res[0]
@@ -289,7 +289,7 @@ class TestPretrainOperators:
         assert len(res3) == 1
         assert res3[0]['question'] == 'QY'
 
-        deterministic_op = pt.ContextReconstruction(num_distractors=2, seed=0)
+        deterministic_op = pt.context_reconstruction(num_distractors=2, seed=0)
         res_a = deterministic_op(batch)
         res_b = deterministic_op(batch)
         assert [r['long_context'] for r in res_a] == [r['long_context'] for r in res_b]
