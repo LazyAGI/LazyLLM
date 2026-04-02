@@ -4406,9 +4406,9 @@ print(res)  # demonstrates how operators are combined and applied
 ```
 """)
 
-# text & pretrain pipelines docs
+# pretrain pipelines
 
-add_chinese_doc('data.pipelines.pt_text_ppl.build_text_pt_pipeline', """\
+add_chinese_doc('data.pipelines.pt_data_ppl.build_text_pt_pipeline', """\
 构建纯文本预训练语料清洗流水线：包含 filter/refine 算子。通过 language='zh' 或 'en' 设置语言类型。
 
 包含的 filter：null_content、char_count、word_count、sentence_count、special_char、
@@ -4430,7 +4430,7 @@ Args:
 - 一个 pipeline 对象，输入为形如 [{'content': '...'}] 的列表，输出为经过清洗与切分后的样本列表。
 """)
 
-add_english_doc('data.pipelines.pt_text_ppl.build_text_pt_pipeline', """\
+add_english_doc('data.pipelines.pt_data_ppl.build_text_pt_pipeline', """\
 Build a pure-text pretraining corpus cleaning pipeline with all filter/refine operators. Set language='zh' or 'en' for language-dependent ops.
 
 Filters: null_content, char_count, word_count, sentence_count, special_char, watermark, idcard,
@@ -4452,9 +4452,9 @@ Args:
 - A pipeline object that takes a list like [{'content': '...'}] and returns cleaned and chunked samples.
 """)
 
-add_example('data.pipelines.pt_text_ppl.build_text_pt_pipeline', """\
+add_example('data.pipelines.pt_data_ppl.build_text_pt_pipeline', """\
 ```python
-from lazyllm.tools.data.pipelines.pt_text_ppl import build_text_pt_pipeline
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_text_pt_pipeline
 
 ppl = build_text_pt_pipeline(
     content_key='content',
@@ -4471,7 +4471,7 @@ res = ppl(data)
 ```
 """)
 
-add_chinese_doc('data.pipelines.pt_text_ppl.build_phi4_pt_pipeline', """\
+add_chinese_doc('data.pipelines.pt_data_ppl.build_phi4_pt_pipeline', """\
 构建基于 Phi-4 风格的预训练 QA 合成流水线：对 context 先通过 ContextQualFilter 过滤（是否适合生成 QA），然后使用 Phi4QAGenerator 直接生成多轮 Q&A。
 
 Args:
@@ -4484,7 +4484,7 @@ Args:
 - 一个 pipeline 对象，输入为 [{'context': '...'}] 或含 image_key 的样本，输出为带 'qa_pairs' 字段的样本列表。
 """)
 
-add_english_doc('data.pipelines.pt_text_ppl.build_phi4_pt_pipeline', """\
+add_english_doc('data.pipelines.pt_data_ppl.build_phi4_pt_pipeline', """\
 Build a Phi-4 style pretraining QA synthesis pipeline: it first filters contexts with ContextQualFilter, \
 then directly generates multi-turn Q&A pairs via Phi4QAGenerator.
 
@@ -4498,10 +4498,10 @@ Args:
 - A pipeline object that takes [{'context': '...'}] (optionally with images) and returns samples with 'qa_pairs'.
 """)
 
-add_example('data.pipelines.pt_text_ppl.build_phi4_pt_pipeline', """\
+add_example('data.pipelines.pt_data_ppl.build_phi4_pt_pipeline', """\
 ```python
 import lazyllm
-from lazyllm.tools.data.pipelines.pt_text_ppl import build_phi4_pt_pipeline
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_phi4_pt_pipeline
 
 llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
 ppl = build_phi4_pt_pipeline(
@@ -4517,7 +4517,7 @@ res = ppl(data)
 ```
 """)
 
-add_chinese_doc('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
+add_chinese_doc('data.pipelines.pt_data_ppl.build_mm_pt_pipeline', """\
 构建多模态（图文）预训练数据清洗流水线：对图片做完整性检查、分辨率过滤与 resize、可选去重；若提供 vlm 则做图文相关性过滤。
 
 Args:
@@ -4534,7 +4534,7 @@ Args:
 - 一个 pipeline 对象，输入为含 image_path（及可选 text）的多模态样本列表，输出为经清洗与过滤后的样本列表。
 """)
 
-add_english_doc('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
+add_english_doc('data.pipelines.pt_data_ppl.build_mm_pt_pipeline', """\
 Build a multimodal (image-text) pretraining data cleaning pipeline: image integrity check, resolution filter and resize, \
 optional deduplication; optionally text-image relevance filtering when vlm is provided.
 
@@ -4552,9 +4552,9 @@ Args:
 - A pipeline object that takes multimodal samples (image_path and optional text) and returns cleaned/filtered samples.
 """)
 
-add_example('data.pipelines.pt_img_ppl.build_mm_pt_pipeline', """\
+add_example('data.pipelines.pt_data_ppl.build_mm_pt_pipeline', """\
 ```python
-from lazyllm.tools.data.pipelines.pt_img_ppl import build_mm_pt_pipeline
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_mm_pt_pipeline
 
 ppl = build_mm_pt_pipeline(
     image_key='image_path',
