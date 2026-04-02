@@ -224,3 +224,9 @@
 ::: lazyllm.tools.data.pipelines.preference_pipelines
     members:
     exclude-members:
+
+### 预训练数据处理 Pipeline
+
+::: lazyllm.tools.data.pipelines.pt_data_ppl
+    members:
+    exclude-members:

@@ -200,3 +200,96 @@ class TestPretrainOperators:
         op_reject = pt.ContextQualFilter(vlm_reject, _concurrency_mode='single')
         res_reject = op_reject(inputs)
         assert len(res_reject) == 0
+
+    def test_text2json(self):
+        expected_response = {
+            'triples': [
+                {'subject': 'Alice', 'predicate': 'works at', 'object': 'Company X'},
+            ],
+        }
+        llm = MockModel(expected_response)
+        op = pt.Text2Json(llm, input_key='text', output_key='parsed', _concurrency_mode='single')
+        inputs = [{'text': 'Alice works at Company X.'}]
+        res = op(inputs)
+        assert len(res) == 1
+        assert res[0]['parsed'] == expected_response
+        assert res[0]['parsed']['triples'][0]['subject'] == 'Alice'
+
+        empty_llm = MockModel({})
+        op_empty = pt.Text2Json(empty_llm, _concurrency_mode='single')
+        res_empty = op_empty([{'text': 'Some text.'}])
+        assert len(res_empty) == 1
+        assert res_empty[0]['parsed'] == {}
+
+    def test_context_expansion(self):
+        expanded_text = 'This is a much longer and more detailed context about the topic.'
+        llm = MockModel(expanded_text)
+        op = pt.ContextExpansion(llm, _concurrency_mode='single')
+
+        inputs = [{'context': 'Short ctx.', 'question': 'What is it?', 'answer': 'A thing.'}]
+        res = op(inputs)
+        assert len(res) == 1
+        assert res[0]['expanded_context'] == expanded_text
+        assert res[0]['context'] == 'Short ctx.'
+        assert res[0]['question'] == 'What is it?'
+        assert res[0]['answer'] == 'A thing.'
+
+        assert pt.ContextExpansion(llm, _concurrency_mode='single')(
+            [{'context': '', 'question': 'Q', 'answer': 'A'}]
+        ) == []
+        assert pt.ContextExpansion(llm, _concurrency_mode='single')(
+            [{'context': 'ctx', 'question': '', 'answer': 'A'}]
+        ) == []
+        assert pt.ContextExpansion(llm, _concurrency_mode='single')(
+            [{'context': 'ctx', 'question': 'Q', 'answer': ''}]
+        ) == []
+
+        llm_bad = MockModel(None)
+        op_bad = pt.ContextExpansion(llm_bad, _concurrency_mode='single')
+        assert op_bad(inputs) == []
+
+    def test_context_reconstruction(self):
+        op = pt.context_reconstruction(num_distractors=2, seed=42)
+        batch = [
+            {'expanded_context': f'ctx_{i}', 'question': f'Q{i}', 'answer': f'A{i}'}
+            for i in range(4)
+        ]
+        res = op(batch)
+        assert len(res) == 4
+        for i, item in enumerate(res):
+            assert item['context'] == f'ctx_{i}'
+            assert 'long_context' in item
+            assert item['question'] == f'Q{i}'
+            assert item['answer'] == f'A{i}'
+            passages = item['long_context'].split('\n\n')
+            assert len(passages) == 3
+            assert f'ctx_{i}' in item['long_context']
+
+        custom_key_op = pt.context_reconstruction(long_context_key='lc', num_distractors=2, seed=42)
+        custom_key_res = custom_key_op(batch)
+        assert len(custom_key_res) == 4
+        assert 'lc' in custom_key_res[0]
+        assert 'long_context' not in custom_key_res[0]
+
+        small_batch = [
+            {'expanded_context': 'ctx_A', 'question': 'QA', 'answer': 'AA'},
+            {'expanded_context': 'ctx_B', 'question': 'QB', 'answer': 'AB'},
+        ]
+        res2 = op(small_batch)
+        assert len(res2) == 2
+        for item in res2:
+            passages = item['long_context'].split('\n\n')
+            assert len(passages) == 2
+
+        incomplete = [
+            {'expanded_context': 'ctx_X', 'question': '', 'answer': 'AX'},
+            {'expanded_context': 'ctx_Y', 'question': 'QY', 'answer': 'AY'},
+        ]
+        res3 = op(incomplete)
+        assert len(res3) == 1
+        assert res3[0]['question'] == 'QY'
+
+        deterministic_op = pt.context_reconstruction(num_distractors=2, seed=0)
+        res_a = deterministic_op(batch)
+        res_b = deterministic_op(batch)
+        assert [r['long_context'] for r in res_a] == [r['long_context'] for r in res_b]
