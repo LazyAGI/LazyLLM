@@ -36,6 +36,18 @@
     members:
     exclude-members:
 
+### Domain Pretrain Operators
+
+::: lazyllm.tools.data.operators.domain_pretrain_ops
+    members:
+    exclude-members:
+
+### Domain Finetune Operators
+
+::: lazyllm.tools.data.operators.domain_finetune_ops
+    members:
+    exclude-members:
+
 ### Refine Operators
 
 ::: lazyllm.tools.data.operators.refine_op
@@ -92,21 +104,10 @@
 
 ### Agentic rag
 
-::: lazyllm.tools.data.operators.agentic_rag.agenticrag_atomic_task_generator
+::: lazyllm.tools.data.operators.agentic_rag
     members:
     exclude-members:
 
-::: lazyllm.tools.data.operators.agentic_rag.agenticrag_depth_qa_generator
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.agentic_rag.agenticrag_width_qa_generator
-    members:
-    exclude-members:
 
 ### Embedding synthesis
 
@@ -116,33 +117,10 @@
 
 ### Knowledge clean
 
-::: lazyllm.tools.data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api
+::: lazyllm.tools.data.operators.knowledge_cleaning
     members:
     exclude-members:
 
-::: lazyllm.tools.data.operators.knowledge_cleaning.kbc_chunk_generator_batch
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.kbc_chunk_generator
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.kbc_text_cleaner_batch
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.kbc_text_cleaner
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.knowledge_cleaning.qa_extract
-    members:
-    exclude-members:
 
 ### Reranker synthesis
 
@@ -168,6 +146,41 @@
     members:
     exclude-members:
 
+### Text to QA Pipeline
+
+::: lazyllm.tools.data.pipelines.text_pipelines
+    members:
+    exclude-members:
+
+### QA Enhancement Pipeline
+
+::: lazyllm.tools.data.pipelines.enhance_pipelines
+    members:
+    exclude-members:
+
+### Chain-of-Thought Pipeline
+
+::: lazyllm.tools.data.pipelines.cot_pipelines
+    members:
+    exclude-members:
+
+### Image Pipeline
+
+::: lazyllm.tools.data.pipelines.img_pipelines
+    members:
+    exclude-members:
+
+### Math Pipeline
+
+::: lazyllm.tools.data.pipelines.math_pipelines
+    members:
+    exclude-members:
+
+### PDF Pipeline
+
+::: lazyllm.tools.data.pipelines.pdf_pipelines
+    members:
+    exclude-members:
 ### Tool-Use Pipeline
 
 ::: lazyllm.tools.data.pipelines.tool_use_pipelines
@@ -189,5 +202,47 @@
 ### Preference Pipeline
 
 ::: lazyllm.tools.data.pipelines.preference_pipelines
+    members:
+    exclude-members:
+
+### Domain Finetune Pipeline
+
+::: lazyllm.tools.data.pipelines.domain_finetune_pipelines
+    members:
+    exclude-members:
+
+### Domain Pretrain Pipeline
+
+::: lazyllm.tools.data.pipelines.domain_pretrain_pipelines
+    members:
+    exclude-members:
+
+### Agentic RAG Pipeline
+
+::: lazyllm.tools.data.pipelines.rag_pipelines
+    members:
+    exclude-members:
+
+### Knowledge Base Cleaning Pipeline
+
+::: lazyllm.tools.data.pipelines.kc_pipelines
+    members:
+    exclude-members:
+
+### Embedding Data Synthesis Pipeline
+
+::: lazyllm.tools.data.pipelines.embedding_pipelines
+    members:
+    exclude-members:
+
+### Reranker Data Synthesis Pipeline
+
+::: lazyllm.tools.data.pipelines.reranker_pipelines
+    members:
+    exclude-members:
+
+### PT Data Pipeline
+
+::: lazyllm.tools.data.pipelines.pt_data_ppl
     members:
     exclude-members:

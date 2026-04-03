@@ -22,6 +22,8 @@ from .operators import agentic_rag  # noqa: F401
 from .operators import embedding_synthesis  # noqa: F401
 from .operators import knowledge_cleaning  # noqa: F401
 from .operators import reranker_synthesis  # noqa: F401
+from .operators import domain_finetune_ops  # noqa: F401
+from .operators import domain_pretrain_ops  # noqa: F401
 
 def __getattr__(name):
     if name == 'pipelines':
