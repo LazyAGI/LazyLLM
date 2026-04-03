@@ -28,16 +28,6 @@ def _stringify_statements(statements, max_lines=None):
 
 def _default_build_prompt(create_statements, insert_statements, db_engine,
                           question=None, target_complexity='hard'):
-    '''
-    Build the SQL generation prompt.
-
-    Args:
-        create_statements: List of CREATE TABLE statements.
-        insert_statements: List of INSERT statements.
-        db_engine: Database engine type.
-        question: Optional user question used to generate SQL.
-        target_complexity: Target complexity level ('easy', 'medium', 'hard').
-    '''
     schema_text = _stringify_statements(create_statements, max_lines=400)
     sample_text = _stringify_statements(insert_statements, max_lines=200)
 
