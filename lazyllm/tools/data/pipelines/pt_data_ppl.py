@@ -1,9 +1,5 @@
 from lazyllm import pipeline
-from lazyllm.tools.data import filter
-from lazyllm.tools.data import pt
-from lazyllm.tools.data import pt_mm
-from lazyllm.tools.data import refine
-from lazyllm.tools.data.operators.token_chunker import TokenChunker
+from lazyllm.tools.data import filter, pt, pt_mm, refine, chunker
 
 
 def build_text_pt_pipeline(
@@ -54,7 +50,7 @@ def build_text_pt_pipeline(
         ppl.remove_html_entity = refine.remove_html_entity(input_key=content_key)
         ppl.remove_emoji = refine.remove_emoji(input_key=content_key)
         ppl.remove_extra_spaces = refine.remove_extra_spaces(input_key=content_key)
-        ppl.token_chunker = TokenChunker(
+        ppl.token_chunker = chunker.TokenChunker(
             input_key=content_key,
             max_tokens=max_tokens,
             min_tokens=min_tokens
