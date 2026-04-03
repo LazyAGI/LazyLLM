@@ -1,13 +1,4 @@
 from ..configs import config
-
-
-config.add('trace_enabled', bool, True, 'TRACE_ENABLED',
-           description='Whether LazyLLM tracing is enabled by default.')
-config.add('trace_backend', str, 'langfuse', 'TRACE_BACKEND',
-           description='The tracing backend used by LazyLLM.')
-config.add('trace_content_enabled', bool, True, 'TRACE_CONTENT_ENABLED',
-           description='Whether tracing records basic input and output payloads by default.')
-
 from .runtime import (
     TracingSetupError,
     start_span,
@@ -24,8 +15,20 @@ from .configs import (
     set_default_module_trace_config,
     resolve_default_module_trace,
 )
+from .backends import get_tracing_backend
+from .backends.base import TracingBackend
+
+
+config.add('trace_enabled', bool, True, 'TRACE_ENABLED',
+           description='Whether LazyLLM tracing is enabled by default.')
+config.add('trace_backend', str, 'langfuse', 'TRACE_BACKEND',
+           description='The tracing backend used by LazyLLM.')
+config.add('trace_content_enabled', bool, True, 'TRACE_CONTENT_ENABLED',
+           description='Whether tracing records basic input and output payloads by default.')
 
 __all__ = [
+    'TracingBackend',
+    'get_tracing_backend',
     'TracingSetupError',
     'start_span',
     'set_span_output',

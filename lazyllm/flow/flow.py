@@ -20,7 +20,7 @@ from typing import Union, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
-from ..hook import LazyLLMHook, LazyTracingHook, run_pre_hooks
+from ..hook import LazyLLMHook, prepare_hooks, register_hooks, resolve_default_hooks, run_hooks
 from itertools import repeat
 
 
@@ -218,29 +218,25 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
-        self._builtin_hooks = [LazyTracingHook]
         self._hooks = []
+        register_hooks(self, resolve_default_hooks(self))
 
     def __call__(self, *args, **kw):
-        hook_objs = []
-        run_pre_hooks(self, self._builtin_hooks, hook_objs, *args, raise_on_error=True, **kw)
-        run_pre_hooks(self, self._hooks, hook_objs, *args, raise_on_error=False, **kw)
+        hook_objs = prepare_hooks(self, self._hooks, *args, **kw)
 
         try:
             output = self._run(args[0] if len(args) == 1 else package(args), **kw)
             if self.post_action is not None: self.invoke(self.post_action, output)
             if self._sync: self.wait()
             r = self._post_process(output)
-            for hook_obj in hook_objs[::-1]:
-                hook_obj.post_hook(r)
+            run_hooks(hook_objs, 'post_hook', r)
             return r
         except Exception as e:
-            for hook_obj in hook_objs[::-1]:
-                hook_obj.on_error(e)
+            LOG.error(f'Flow `{self.__class__.__name__}` raised {type(e).__name__}: {e}')
+            run_hooks(hook_objs, 'on_error', e)
             raise
         finally:
-            for hook_obj in hook_objs:
-                hook_obj.report()
+            run_hooks(hook_objs, 'report')
 
     def register_hook(self, hook_type: LazyLLMHook):
         self._hooks.append(hook_type)
