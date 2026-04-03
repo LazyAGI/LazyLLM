@@ -234,7 +234,6 @@ class TestText2SQLOperators:
         assert res[0]['output'] == 'SELECT * FROM users'
 
     def test_text2sql_to_sft_formatter_cot(self):
-        '''测试 Text2SQLToSFTFormatter - cot 格式（默认）'''
         op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
         data = {
             'output': {
@@ -276,7 +275,6 @@ class TestText2SQLOperators:
         assert len(res) == 0
 
     def test_text2sql_to_sft_formatter_missing_cot(self):
-        '''测试 Text2SQLToSFTFormatter - 缺少 CoT 时只输出 SQL'''
         op = text2sql_ops.Text2SQLToSFTFormatter(format_type='cot')
         data = {
             'output': {

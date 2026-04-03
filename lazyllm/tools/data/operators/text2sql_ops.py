@@ -28,16 +28,6 @@ def _stringify_statements(statements, max_lines=None):
 
 def _default_build_prompt(create_statements, insert_statements, db_engine,
                           question=None, target_complexity='hard'):
-    '''
-    构建 SQL 生成 prompt
-
-    Args:
-        create_statements: CREATE TABLE 语句列表
-        insert_statements: INSERT 语句列表
-        db_engine: 数据库引擎类型
-        question: 用户问题（可选），如果提供则基于问题生成 SQL
-        target_complexity: 目标复杂度 ('easy', 'medium', 'hard')
-    '''
     schema_text = _stringify_statements(create_statements, max_lines=400)
     sample_text = _stringify_statements(insert_statements, max_lines=200)
 
