@@ -63,9 +63,9 @@ def build_text_pt_pipeline(
 
 
 def build_phi4_pt_pipeline(
+        llm,
         context_key='context',
         image_key=None,
-        llm=None,
         num_qa=5):
     with pipeline() as ppl:
         ppl.context_qual_filter = pt.ContextQualFilter(

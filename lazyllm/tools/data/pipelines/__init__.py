@@ -32,7 +32,6 @@ __all__ = [
     'build_preference_pipeline',
     'build_codegen_pipeline',
     'build_simple_codegen_pipeline',
-    'build_demo_pipeline',
     'build_text_pt_pipeline',
     'build_phi4_pt_pipeline',
     'build_mm_pt_pipeline',
