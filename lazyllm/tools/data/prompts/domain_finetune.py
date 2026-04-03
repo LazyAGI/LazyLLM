@@ -3,10 +3,6 @@ from typing import Any, Dict
 
 from .base_prompt import PromptABC
 
-# ---------------------------------------------------------------------------
-# 领域预设：归一化/格式化用 instruction（中英）与质量过滤配置
-# 供 domain_finetune_pipelines 使用，未显式传入时由 domain + language 控制
-# ---------------------------------------------------------------------------
 DOMAIN_PRESETS: Dict[str, Dict[str, Any]] = {
     'finance': {
         'instruction_zh': '你是一位专业的金融分析师。请根据给定的上下文，提供准确、专业且合规的金融分析或解答。',
@@ -114,7 +110,7 @@ DOMAIN_PRESETS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-# 格式化阶段默认英文 instruction（与 DOMAIN_PRESETS 中 instruction_en 可略有差异，供 formatter 兜底）
+
 DOMAIN_INSTRUCTION_EN: Dict[str, str] = {
     'finance': 'You are a professional financial analyst. Please provide accurate and professional financial analysis or answers based on the given context.',
     'medical': 'You are a medical information assistant. The information provided is for reference only and does not constitute medical advice. Please consult a professional doctor for medical issues.',

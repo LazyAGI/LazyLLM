@@ -24,7 +24,6 @@ from lazyllm.tools.data.pipelines.domain_finetune_pipelines import (
 
 @pytest.fixture(scope='module', autouse=True)
 def _lazyllm_data_process_path_isolated():
-    """整文件只建一次临时目录并 refresh config，避免每个用例重复 mkdtemp/rmtree。"""
     root_dir = tempfile.mkdtemp()
     keep = config['data_process_path']
     os.environ['LAZYLLM_DATA_PROCESS_PATH'] = root_dir
@@ -127,7 +126,6 @@ class TestDomainFinetunePipelines:
         assert 'content' in res[0]
 
     def test_build_data_augmentation_pipeline_synonym_replace(self, monkeypatch):
-        # EmbeddingAdjacentWordSwap 默认 _concurrency_mode='process'，单条数据也会起进程池；测例改为 single 覆盖逻辑即可。
         def _fast_init(self, num_augments=2, input_key='query', **kwargs):
             LazyLLMDataBase.__init__(self, _concurrency_mode='single', **kwargs)
             self.num_augments = num_augments

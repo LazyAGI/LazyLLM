@@ -18,7 +18,6 @@ from lazyllm.tools.data.pipelines.domain_pretrain_pipelines import (
 
 @pytest.fixture(scope='module', autouse=True)
 def _lazyllm_data_process_path_isolated():
-    """整文件只建一次临时目录并 refresh config，避免每个用例重复 mkdtemp/rmtree。"""
     root_dir = tempfile.mkdtemp()
     keep = config['data_process_path']
     os.environ['LAZYLLM_DATA_PROCESS_PATH'] = root_dir
@@ -57,7 +56,6 @@ def _en_text_pt_non_empty_body(num_paragraphs: int = 28):
 
 @pytest.fixture
 def fast_text_pt_heavy_ops(monkeypatch):
-    """text_pt 流水线含 MinHash（默认 128 perm）与 TokenChunker（默认多进程），测例改为轻量参数。"""
     _tc_init = _token_chunker_mod.TokenChunker.__init__
 
     def _token_chunker_single(
