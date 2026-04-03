@@ -140,6 +140,18 @@ class TestAgenticRAGOperators:
         result = op([{'question': 'What?'}])[0]
         assert result['identifier'] == 'depth_id'
 
+    def test_depth_qag_get_identifier_json_dict(self):
+        mock_llm = MockLLM(answer_return={'content_identifier': 'from_json'})
+        op = agenticrag.DepthQAGGetIdentifier(llm=mock_llm, input_key='question')
+        result = op([{'question': 'What?'}])[0]
+        assert result['identifier'] == 'from_json'
+
+    def test_depth_qag_get_identifier_json_missing_key(self):
+        mock_llm = MockLLM(answer_return={'unexpected': 'x'})
+        op = agenticrag.DepthQAGGetIdentifier(llm=mock_llm, input_key='question')
+        result = op([{'question': 'What?'}])[0]
+        assert result['identifier'] == ''
+
     def test_depth_qag_backward_task(self):
         mock_llm = MockLLM(answer_return={'identifier': 'back_id', 'relation': 'back_rel'})
         op = agenticrag.DepthQAGBackwardTask(llm=mock_llm)

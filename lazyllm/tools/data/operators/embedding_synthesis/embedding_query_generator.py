@@ -33,12 +33,14 @@ class EmbeddingGenerateQueries(embedding):
         num_queries: int = 3,
         lang: str = 'zh',
         query_types: Optional[List[str]] = None,
+        input_key: str = 'passage',
         **kwargs,
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.prompt_template = EmbeddingQueryGeneratorPrompt(lang=lang)
         self.num_queries = num_queries
         self.query_types = query_types or ['factual', 'semantic', 'inferential']
+        self.input_key = input_key
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
             self._llm_serve = (
@@ -53,13 +55,12 @@ class EmbeddingGenerateQueries(embedding):
     def forward(
         self,
         data: dict,
-        input_key: str = 'passage',
         **kwargs,
     ) -> dict:
         if self._llm_serve is None:
             raise ValueError('LLM is not configured')
 
-        passage = data.get(input_key, '')
+        passage = data.get(self.input_key, '')
         if not passage:
             return {**data, '_query_response': ''}
 
