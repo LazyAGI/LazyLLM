@@ -9406,6 +9406,112 @@ res = op([{'context': 'Some context.', 'image_path': '/path/to/image.jpg'}])
 ```
 """)
 
+add_chinese_doc('data.operators.pt_op.Text2Json', """\
+使用 LLM 将输入文本抽取为结构化 JSON 结果，并写入指定输出字段。
+
+Args:
+    llm: 文本语言模型实例
+    input_key (str): 输入文本字段名，默认 'text'
+    output_key (str): 结构化结果输出字段名，默认 'parsed'
+    prompt (str): 可选，自定义提示词
+""")
+
+add_english_doc('data.operators.pt_op.Text2Json', """\
+Use an LLM to extract structured JSON from input text and write it to the target field.
+
+Args:
+    llm: text language model instance
+    input_key (str): key for input text, default 'text'
+    output_key (str): key for structured output, default 'parsed'
+    prompt (str): optional custom prompt
+""")
+
+add_example('data.operators.pt_op.Text2Json', """\
+```python
+from lazyllm.tools.data import pt
+
+op = pt.Text2Json(llm=model, input_key='text', output_key='parsed')
+res = op([{'text': 'Alice works at Company X.'}])
+print(res[0]['parsed'])
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.ContextExpansion', """\
+使用 LLM 将短 context 扩写为更长且连贯的文本，并保持问题-答案语义一致。
+
+Args:
+    llm: 文本语言模型实例
+    context_key (str): 原始上下文字段名，默认 'context'
+    question_key (str): 问题字段名，默认 'question'
+    answer_key (str): 答案字段名，默认 'answer'
+    expanded_key (str): 扩写结果字段名，默认 'expanded_context'
+    prompt (str): 可选，自定义提示词
+""")
+
+add_english_doc('data.operators.pt_op.ContextExpansion', """\
+Use an LLM to expand a short context into a longer, coherent passage while preserving
+question-answer consistency.
+
+Args:
+    llm: text language model instance
+    context_key (str): key for source context, default 'context'
+    question_key (str): key for question, default 'question'
+    answer_key (str): key for answer, default 'answer'
+    expanded_key (str): key for expanded context output, default 'expanded_context'
+    prompt (str): optional custom prompt
+""")
+
+add_example('data.operators.pt_op.ContextExpansion', """\
+```python
+from lazyllm.tools.data import pt
+
+op = pt.ContextExpansion(llm=model)
+res = op([{'context': 'short context', 'question': 'Q?', 'answer': 'A'}])
+print(res[0]['expanded_context'])
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.context_reconstruction', """\
+将扩写后的文本重组为长上下文：每条样本保留一个正例段，并从其他样本随机采样干扰段后打乱拼接。
+
+Args:
+    context_key (str): 扩写后上下文字段名，默认 'expanded_context'
+    question_key (str): 问题字段名，默认 'question'
+    answer_key (str): 答案字段名，默认 'answer'
+    long_context_key (str): 长上下文输出字段名，默认 'long_context'
+    num_distractors (int): 干扰段数量，默认 3
+    passage_sep (str): 段落拼接分隔符，默认 '\\n\\n'
+    seed (int|None): 随机种子，默认 None
+""")
+
+add_english_doc('data.operators.pt_op.context_reconstruction', """\
+Reconstruct long context from expanded passages: keep one positive passage for each sample,
+sample distractors from other samples, then shuffle and concatenate them.
+
+Args:
+    context_key (str): key for expanded context, default 'expanded_context'
+    question_key (str): key for question, default 'question'
+    answer_key (str): key for answer, default 'answer'
+    long_context_key (str): key for long context output, default 'long_context'
+    num_distractors (int): number of distractor passages, default 3
+    passage_sep (str): separator used to concatenate passages, default '\\n\\n'
+    seed (int|None): random seed, default None
+""")
+
+add_example('data.operators.pt_op.context_reconstruction', """\
+```python
+from lazyllm.tools.data import pt
+
+op = pt.context_reconstruction(num_distractors=2, long_context_key='lc', seed=42)
+data = [
+    {'expanded_context': 'ctx_1', 'question': 'Q1', 'answer': 'A1'},
+    {'expanded_context': 'ctx_2', 'question': 'Q2', 'answer': 'A2'},
+]
+res = op(data)
+print(res[0]['context'], res[0]['lc'])
+```
+""")
+
 add_chinese_doc('data.operators.cot_ops.wrong_filter', """\
 筛选样本的算子。
 
@@ -10329,3 +10435,281 @@ print(res)
 ```
 """)
 
+# pretrain pipelines
+
+add_chinese_doc('data.pipelines.pt_data_ppl.build_text_pt_pipeline', """\
+构建纯文本预训练语料清洗流水线：包含 filter/refine 算子。通过 language='zh' 或 'en' 设置语言类型。
+
+包含的 filter：null_content、char_count、word_count、sentence_count、special_char、
+watermark、idcard、javascript、lorem_ipsum、colon_end、ellipsis_end、no_punc、curly_bracket、
+bullet_point、SymbolRatioFilter、StopWordFilter、unique_word、WordBlocklistFilter、MinHashDeduplicator。
+包含的 refine：remove_html_url、remove_html_entity、remove_emoji、remove_extra_spaces。
+
+Args:
+    content_key (str): 原始文本字段名，默认 'content'
+    language (str): 语言类型，'zh' 或 'en'，影响 word_count、sentence_count、no_punc、StopWordFilter、unique_word、WordBlocklistFilter
+    min_chars (int): 最小字符数阈值（去空格后），默认 100
+    max_chars (int): 最大字符数阈值，默认 100000
+    min_words (int): 最小词数阈值，默认 10
+    max_words (int): 最大词数阈值，默认 10000
+    max_tokens (int): 单个 chunk 的最大 token 数，默认 1024
+    min_tokens (int): 单个 chunk 的最小 token 数，默认 200
+
+**Returns:**\n
+- 一个 pipeline 对象，输入为形如 [{'content': '...'}] 的列表，输出为经过清洗与切分后的样本列表。
+""")
+
+add_english_doc('data.pipelines.pt_data_ppl.build_text_pt_pipeline', """\
+Build a pure-text pretraining corpus cleaning pipeline with all filter/refine operators. Set language='zh' or 'en' for language-dependent ops.
+
+Filters: null_content, char_count, word_count, sentence_count, special_char, watermark, idcard,
+javascript, lorem_ipsum, colon_end, ellipsis_end, no_punc, curly_bracket, bullet_point, SymbolRatioFilter,
+StopWordFilter, unique_word, WordBlocklistFilter, MinHashDeduplicator.
+Refines: remove_html_url, remove_html_entity, remove_emoji, remove_extra_spaces.
+
+Args:
+    content_key (str): field name for raw text, default 'content'
+    language (str): language type 'zh' or 'en', affects word_count, sentence_count, no_punc, StopWordFilter, unique_word, WordBlocklistFilter
+    min_chars (int): minimum characters (after stripping spaces), default 100
+    max_chars (int): maximum characters, default 100000
+    min_words (int): minimum word count, default 10
+    max_words (int): maximum word count, default 10000
+    max_tokens (int): maximum tokens per chunk, default 1024
+    min_tokens (int): minimum tokens per chunk, default 200
+
+**Returns:**\n
+- A pipeline object that takes a list like [{'content': '...'}] and returns cleaned and chunked samples.
+""")
+
+add_example('data.pipelines.pt_data_ppl.build_text_pt_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_text_pt_pipeline
+
+ppl = build_text_pt_pipeline(
+    content_key='content',
+    language='zh',
+    min_chars=50,
+    max_chars=200000,
+    max_tokens=512,
+    min_tokens=50,
+)
+
+data = [{'content': '这里是一段用于预训练的原始文本，需要做清洗与切分。'}]
+res = ppl(data)
+# res 是清洗 + chunk 之后的样本列表
+```
+""")
+
+add_chinese_doc('data.pipelines.pt_data_ppl.build_phi4_pt_pipeline', """\
+构建基于 Phi-4 风格的预训练 QA 合成流水线：对 context 先通过 ContextQualFilter 过滤（是否适合生成 QA），然后使用 Phi4QAGenerator 直接生成多轮 Q&A。
+
+Args:
+    context_key (str): 上下文字段名，默认 'context'
+    image_key (str): 可选图片路径字段名，默认 None（只文本）；如提供则做图文多模态 QA 合成
+    llm: 支持多模态或纯文本的 LLM 实例
+    num_qa (int): 每个样本生成的问答对数量，默认 5
+
+**Returns:**\n
+- 一个 pipeline 对象，输入为 [{'context': '...'}] 或含 image_key 的样本，输出为带 'qa_pairs' 字段的样本列表。
+""")
+
+add_english_doc('data.pipelines.pt_data_ppl.build_phi4_pt_pipeline', """\
+Build a Phi-4 style pretraining QA synthesis pipeline: it first filters contexts with ContextQualFilter, \
+then directly generates multi-turn Q&A pairs via Phi4QAGenerator.
+
+Args:
+    context_key (str): field name for context, default 'context'
+    image_key (str): optional field name for image paths, default None (text-only); when provided, multimodal QA is generated
+    llm: LLM instance (vision- or text-language model)
+    num_qa (int): number of QA pairs to generate per sample, default 5
+
+**Returns:**\n
+- A pipeline object that takes [{'context': '...'}] (optionally with images) and returns samples with 'qa_pairs'.
+""")
+
+add_example('data.pipelines.pt_data_ppl.build_phi4_pt_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_phi4_pt_pipeline
+
+llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
+ppl = build_phi4_pt_pipeline(
+    context_key='context',
+    image_key=None,
+    llm=llm,
+    num_qa=3,
+)
+
+data = [{'context': 'This is a knowledge paragraph used to generate phi-4 style Q&A.'}]
+res = ppl(data)
+# res[0]['qa_pairs'] contains generated QA pairs
+```
+""")
+
+add_chinese_doc('data.pipelines.pt_data_ppl.build_mm_pt_pipeline', """\
+构建多模态（图文）预训练数据清洗流水线：对图片做完整性检查、分辨率过滤与 resize、可选去重；若提供 vlm 则做图文相关性过滤。
+
+Args:
+    image_key (str): 图片路径字段名，默认 'image_path'
+    text_key (str): 用于图文相关性判定的文本字段名，默认 'text'
+    vlm: 视觉语言大模型实例，用于图文相关性过滤；为 None 时不进行相关性过滤
+    min_width (int): 图片最小宽度过滤阈值，默认 256
+    min_height (int): 图片最小高度过滤阈值，默认 256
+    max_side (int): 图片最长边 resize 上限，默认 1024
+    relevance_threshold (float): 图文相关性过滤阈值，默认 0.6
+    use_dedup (bool): 是否启用图片去重，默认 True
+
+**Returns:**\n
+- 一个 pipeline 对象，输入为含 image_path（及可选 text）的多模态样本列表，输出为经清洗与过滤后的样本列表。
+""")
+
+add_english_doc('data.pipelines.pt_data_ppl.build_mm_pt_pipeline', """\
+Build a multimodal (image-text) pretraining data cleaning pipeline: image integrity check, resolution filter and resize, \
+optional deduplication; optionally text-image relevance filtering when vlm is provided.
+
+Args:
+    image_key (str): field name for image paths, default 'image_path'
+    text_key (str): field name for text used in relevance filtering, default 'text'
+    vlm: vision-language model instance for text-image relevance filtering; None to skip
+    min_width (int): minimum image width, default 256
+    min_height (int): minimum image height, default 256
+    max_side (int): maximum image side for resizing, default 1024
+    relevance_threshold (float): text-image relevance threshold, default 0.6
+    use_dedup (bool): whether to enable image deduplication, default True
+
+**Returns:**\n
+- A pipeline object that takes multimodal samples (image_path and optional text) and returns cleaned/filtered samples.
+""")
+
+add_example('data.pipelines.pt_data_ppl.build_mm_pt_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_mm_pt_pipeline
+
+ppl = build_mm_pt_pipeline(
+    image_key='image_path',
+    text_key='text',
+    vlm=None,
+    min_width=1,
+    min_height=1,
+    max_side=1024,
+    relevance_threshold=0.5,
+    use_dedup=True,
+)
+
+data = [{'text': 'A caption for the image.', 'image_path': '/path/to/image.jpg'}]
+res = ppl(data)
+# res 为经完整性、分辨率与可选去重后的样本列表
+```
+""")
+
+add_chinese_doc('data.pipelines.pt_data_ppl.build_structured_data_pipeline', """\
+构建结构化数据抽取流水线：通过 Text2Json 将输入文本按指定 schema 或提示词解析为结构化字段。
+
+Args:
+    llm: 用于抽取结构化结果的语言模型实例
+    input_key (str): 输入文本字段名，默认 'text'
+    output_key (str): 输出结构化字段名，默认 'parsed'
+    prompt (str | None): 可选提示词；为空时使用 Text2Json 默认提示模板
+
+**Returns:**\n
+- 一个 pipeline 对象，输入为包含 input_key 的样本列表，输出样本新增 output_key 对应的结构化结果。
+""")
+
+add_english_doc('data.pipelines.pt_data_ppl.build_structured_data_pipeline', """\
+Build a structured data extraction pipeline: it uses Text2Json to parse input text into structured fields.
+
+Args:
+    llm: language model instance used for structured extraction
+    input_key (str): field name for input text, default 'text'
+    output_key (str): field name for structured output, default 'parsed'
+    prompt (str | None): optional prompt; Text2Json default prompt is used when None
+
+**Returns:**\n
+- A pipeline object that takes samples containing input_key and appends structured results to output_key.
+""")
+
+add_example('data.pipelines.pt_data_ppl.build_structured_data_pipeline', """\
+```python
+import lazyllm
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_structured_data_pipeline
+
+llm = lazyllm.OnlineChatModule(source='sensenova')
+ppl = build_structured_data_pipeline(
+    llm=llm,
+    input_key='text',
+    output_key='parsed',
+    prompt='Extract person name and city from the text.',
+)
+
+data = [{'text': 'Alice lives in Shanghai.'}]
+res = ppl(data)
+print(res[0]['parsed'])
+```
+""")
+
+add_chinese_doc('data.pipelines.pt_data_ppl.build_long_context_pipeline', """\
+构建长上下文预训练数据 Pipeline。该流程先对短 context 执行 LLM 扩写，再将扩写结果重组为包含干扰段的长上下文。
+
+Args:
+    llm: 文本语言模型实例
+    context_key (str): 上下文字段名，默认 'context'
+    question_key (str): 问题字段名，默认 'question'
+    answer_key (str): 答案字段名，默认 'answer'
+    expanded_key (str): 扩写结果字段名，默认 'expanded_context'
+    long_context_key (str): 长上下文字段名，默认 'long_context'
+    expansion_prompt (str|None): 扩写阶段自定义提示词，默认 None
+    num_distractors (int): 每条样本采样的干扰段数量，默认 3
+    passage_sep (str): 长上下文段落拼接分隔符，默认 '\\n\\n'
+    seed (int|None): 随机种子，用于重组结果复现，默认 None
+    expansion_concurrency_mode (str): 扩写算子并发模式，默认 'thread'
+    reconstruction_concurrency_mode (str): 重组算子并发模式，默认 'thread'
+
+**Returns:**\n
+- 一个可调用的 pipeline 对象，输出字段包含 context、long_context_key、question、answer。
+""")
+
+add_english_doc('data.pipelines.pt_data_ppl.build_long_context_pipeline', """\
+Build a long-context pretraining data pipeline. The flow first expands short contexts with an LLM,
+then reconstructs them into long contexts with distractor passages.
+
+Args:
+    llm: text language model instance
+    context_key (str): key for context, default 'context'
+    question_key (str): key for question, default 'question'
+    answer_key (str): key for answer, default 'answer'
+    expanded_key (str): key for expanded context output, default 'expanded_context'
+    long_context_key (str): key for long context output, default 'long_context'
+    expansion_prompt (str|None): optional custom prompt for expansion stage, default None
+    num_distractors (int): number of distractor passages per sample, default 3
+    passage_sep (str): separator for concatenating passages, default '\\n\\n'
+    seed (int|None): random seed for reproducible reconstruction, default None
+    expansion_concurrency_mode (str): concurrency mode for expansion operator, default 'thread'
+    reconstruction_concurrency_mode (str): concurrency mode for reconstruction operator, default 'thread'
+
+**Returns:**\n
+- A callable pipeline object that outputs context, long_context_key, question, and answer.
+""")
+
+add_example('data.pipelines.pt_data_ppl.build_long_context_pipeline', """\
+```python
+from lazyllm.tools.data.pipelines.pt_data_ppl import build_long_context_pipeline
+
+ppl = build_long_context_pipeline(
+    llm=model,
+    context_key='context',
+    question_key='question',
+    answer_key='answer',
+    expanded_key='expanded_context',
+    long_context_key='long_context',
+    expansion_prompt=None,
+    num_distractors=3,
+    passage_sep='\n\n',
+    seed=42,
+    expansion_concurrency_mode='thread',
+    reconstruction_concurrency_mode='thread',
+)
+data = [{'context': 'short context', 'question': 'Q?', 'answer': 'A'}]
+res = ppl(data)
+print(res[0]['context'], res[0]['long_context'])
+```
+""")

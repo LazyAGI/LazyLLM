@@ -9,6 +9,13 @@ from .tool_use_pipelines import build_tool_use_pipeline, build_simple_tool_use_p
 from .text2sql_pipelines import text2sql_enhanced_ppl, text2sql_synthetic_ppl
 from .preference_pipelines import build_preference_pipeline
 from .codegen_pipelines import build_codegen_pipeline, build_simple_codegen_pipeline
+from .pt_data_ppl import (
+    build_long_context_pipeline,
+    build_mm_pt_pipeline,
+    build_phi4_pt_pipeline,
+    build_structured_data_pipeline,
+    build_text_pt_pipeline,
+)
 
 __all__ = [
     'build_demo_pipeline',
@@ -25,6 +32,11 @@ __all__ = [
     'build_preference_pipeline',
     'build_codegen_pipeline',
     'build_simple_codegen_pipeline',
+    'build_text_pt_pipeline',
+    'build_phi4_pt_pipeline',
+    'build_mm_pt_pipeline',
+    'build_structured_data_pipeline',
+    'build_long_context_pipeline',
 ]
 from .embedding_pipelines import (
     build_embedding_data_augmentation_pipeline,

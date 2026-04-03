@@ -1,5 +1,6 @@
 import os
 import re
+import random
 import hashlib
 from typing import Set, Optional
 from ..base_data import data_register
@@ -504,3 +505,118 @@ class Phi4QAGenerator(PT):
         except Exception as e:
             LOG.warning(f'Phi4 Q&A generation failed: {e}')
             return []
+
+class Text2Json(PT):
+    DEFAULT_PROMPT = (
+        'Extract structured data from the given text. Output JSON only, no other content.\n'
+        'Example format:\n'
+        '{\n'
+        '  "triples": [{"subject": "", "predicate": "", "object": ""}]\n'
+        '}\n'
+        'You may use other keys and structures as needed. Output valid JSON only.'
+    )
+
+    def __init__(self, llm, input_key='text', output_key='parsed',
+                 prompt: Optional[str] = None,
+                 _concurrency_mode='thread', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
+        if llm is None:
+            raise ValueError('Text2Json requires llm.')
+        self.input_key = input_key
+        self.output_key = output_key
+        self.prompt = prompt or self.DEFAULT_PROMPT
+        self._extractor = llm.share().prompt(self.prompt).formatter(JsonFormatter())
+
+    def forward(self, data, **kwargs):
+        assert isinstance(data, dict)
+        text = data.get(self.input_key, '')
+        if not text or not str(text).strip():
+            return []
+        try:
+            query = f'Text:\n{text}'
+            out = self._extractor(query)
+            if not isinstance(out, dict):
+                return []
+            data[self.output_key] = out
+            return data
+        except Exception as e:
+            LOG.warning(f'Text2Json extraction failed: {e}')
+            return []
+
+
+class ContextExpansion(PT):
+    DEFAULT_PROMPT = (
+        'Expand the given context into a longer, more detailed document.\n'
+        'Requirements:\n'
+        '1. Keep the original meaning and factual content unchanged\n'
+        '2. Ensure the answer to the given question remains correct in the expanded text\n'
+        '3. Do NOT explicitly highlight or mark the answer\n'
+        '4. Add relevant background information, details, and narrative flow\n'
+        '5. Make the text more natural and coherent\n'
+        'Output the expanded context only, without any prefix or label.'
+    )
+
+    def __init__(self, llm, context_key='context', question_key='question', answer_key='answer',
+                 expanded_key='expanded_context', prompt: Optional[str] = None,
+                 _concurrency_mode='thread', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
+        if llm is None:
+            raise ValueError('ContextExpansion requires llm.')
+        self.context_key = context_key
+        self.question_key = question_key
+        self.answer_key = answer_key
+        self.expanded_key = expanded_key
+        self._expander = llm.share().prompt(prompt or self.DEFAULT_PROMPT)
+
+    def forward(self, data, **kwargs):
+        assert isinstance(data, dict)
+        context = data.get(self.context_key, '')
+        question = data.get(self.question_key, '')
+        answer = data.get(self.answer_key, '')
+        if not context or not question or not answer:
+            return []
+        try:
+            query = (
+                f'Context:\n{context}\n\n'
+                f'Question:\n{question}\n\n'
+                f'Answer:\n{answer}'
+            )
+            expanded = self._expander(query)
+            if not expanded or not isinstance(expanded, str):
+                return []
+            data[self.expanded_key] = expanded.strip()
+            return data
+        except Exception as e:
+            LOG.warning(f'Context expansion failed: {e}')
+            return []
+
+
+@data_register('data.pt', rewrite_func='forward_batch_input', _concurrency_mode='thread')
+def context_reconstruction(data, context_key='expanded_context', question_key='question',
+                           answer_key='answer', long_context_key='long_context',
+                           num_distractors=3, passage_sep='\n\n', seed=None):
+    assert isinstance(data, list)
+    rng = random.Random(seed)
+    results = []
+    for i, item in enumerate(data):
+        assert isinstance(item, dict)
+        positive_ctx = item.get(context_key, '')
+        question = item.get(question_key, '')
+        answer = item.get(answer_key, '')
+        if not positive_ctx or not question or not answer:
+            continue
+        other_ctxs = [
+            d.get(context_key, '') for j, d in enumerate(data)
+            if j != i and d.get(context_key, '')
+        ]
+        k = min(num_distractors, len(other_ctxs))
+        distractors = rng.sample(other_ctxs, k) if k > 0 else []
+        passages = [positive_ctx] + distractors
+        rng.shuffle(passages)
+        results.append({
+            'context': positive_ctx,
+            long_context_key: passage_sep.join(passages),
+            question_key: question,
+            answer_key: answer,
+        })
+    return results
