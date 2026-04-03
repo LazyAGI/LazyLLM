@@ -116,6 +116,22 @@ Generate a report of the hook execution.
 This is an abstract method and must be implemented in subclasses.
 ''')
 
+add_chinese_doc('HookPhaseError', '''\
+Hook 阶段错误，当一个 hook 阶段中有一个或多个 strict 模式的 hook 执行失败时抛出。
+
+Args:
+    phase (str): 发生错误的 hook 阶段名称（如 ``'post_hook'``、``'on_error'``、``'report'``）。
+    errors: 包含 ``(hook_obj, exception)`` 元组的序列，记录所有失败的 hook 及其异常。
+''')
+
+add_english_doc('HookPhaseError', '''\
+Raised when one or more strict-mode hooks fail during a hook phase.
+
+Args:
+    phase (str): The name of the hook phase where the error(s) occurred (e.g. ``'post_hook'``, ``'on_error'``, ``'report'``).
+    errors: A sequence of ``(hook_obj, exception)`` tuples recording each failed hook and its exception.
+''')
+
 add_chinese_doc('LazyTracingHook', '''\
 为 flow 或 module 创建 tracing hook。
 
