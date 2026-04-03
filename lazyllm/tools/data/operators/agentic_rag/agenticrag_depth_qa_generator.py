@@ -1,6 +1,13 @@
-from typing import Optional
+import json
+from typing import Any, List, Optional
+
 from lazyllm import LOG
-from lazyllm.components.formatter import JsonFormatter
+from lazyllm.components.formatter import EmptyFormatter, JsonFormatter
+
+try:
+    import json5
+except ImportError:
+    json5 = None
 from ...base_data import data_register
 from ...prompts import (
     RAGDepthQueryIdPrompt,
@@ -18,6 +25,185 @@ if 'agenticrag' in LazyLLMRegisterMetaClass.all_clses['data']:
 else:
     agenticrag = data_register.new_group('agenticrag')
 
+
+def _unwrap_first_list(result: Any) -> Any:
+    if isinstance(result, list):
+        if len(result) == 0:
+            return None
+        return result[0]
+    return result
+
+
+def _normalize_content_identifier_value(val: Any) -> str:
+    """Coerce the content_identifier field to a single string; invalid nesting yields ''."""
+    if val is None:
+        return ''
+    if isinstance(val, str):
+        return val.strip()
+    if isinstance(val, (int, float, bool)):
+        return str(val)
+    if isinstance(val, list):
+        parts: list[str] = []
+        for x in val:
+            if isinstance(x, str) and x.strip():
+                parts.append(x.strip())
+            elif isinstance(x, (int, float, bool)):
+                parts.append(str(x))
+        if not parts:
+            LOG.warning(
+                'DepthQAGGetIdentifier: content_identifier list contained no string/scalar items; '
+                'expected a single string per prompt.'
+            )
+            return ''
+        if len(parts) > 1:
+            LOG.warning(
+                'DepthQAGGetIdentifier: content_identifier was a list of multiple items; '
+                'using the first string only.'
+            )
+        return parts[0]
+    if isinstance(val, dict):
+        LOG.warning(
+            'DepthQAGGetIdentifier: content_identifier must be a plain string, not an object; ignoring.'
+        )
+        return ''
+    LOG.warning(
+        'DepthQAGGetIdentifier: unsupported type for content_identifier: %s',
+        type(val).__name__,
+    )
+    return ''
+
+
+def _assistant_content_str(result: Any) -> str:
+    if isinstance(result, dict):
+        c = result.get('content', '')
+        return c if isinstance(c, str) else ''
+    if isinstance(result, str):
+        return result
+    return str(result) if result is not None else ''
+
+
+def _strip_optional_json_lang_prefix(piece: str) -> str:
+    """Remove leading ``json`` language tag after a ``` fence opener."""
+    t = piece.lstrip('\n\r ')
+    if len(t) >= 4 and t[:4].lower() == 'json' and (len(t) == 4 or t[4] in '\n\r \t'):
+        return t[4:].lstrip('\n\r ')
+    return piece
+
+
+def _chunks_from_triple_backtick_split(s: str) -> List[str]:
+    """Split on ``` fences. Regex ``*?`` cannot handle nested ```json inside a broken JSON string."""
+    parts = s.split('```')
+    if len(parts) < 2:
+        return []
+    chunks: List[str] = []
+    for piece in parts[1:]:
+        if not piece.strip():
+            continue
+        body = _strip_optional_json_lang_prefix(piece)
+        chunks.append(body.strip())
+    return chunks
+
+
+def _parse_backward_json_object(text: str) -> Optional[dict]:
+    """Parse {{identifier, relation}} from raw LLM output (markdown, mixed text, duplicate JSON blocks)."""
+    if not text or not isinstance(text, str):
+        return None
+    s = text.strip()
+    chunks = _chunks_from_triple_backtick_split(s)
+    if not chunks:
+        chunks.append(s)
+
+    from lazyllm.thirdparty import json_repair
+
+    def _try_parse(chunk: str) -> Optional[dict]:
+        for fn in (json.loads, json5.loads if json5 else None, json_repair.loads):
+            if fn is None:
+                continue
+            try:
+                obj = fn(chunk)
+                if isinstance(obj, dict) and 'identifier' in obj and 'relation' in obj:
+                    return obj
+            except Exception:
+                continue
+        start = chunk.find('{')
+        if start < 0:
+            return None
+        depth = 0
+        in_str = False
+        esc = False
+        for i in range(start, len(chunk)):
+            c = chunk[i]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == '\\':
+                    esc = True
+                elif c == '"':
+                    in_str = False
+                continue
+            if c == '"':
+                in_str = True
+            elif c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0:
+                    sub = chunk[start : i + 1]
+                    for fn in (json.loads, json5.loads if json5 else None, json_repair.loads):
+                        if fn is None:
+                            continue
+                        try:
+                            obj = fn(sub)
+                            if isinstance(obj, dict) and 'identifier' in obj and 'relation' in obj:
+                                return obj
+                        except Exception:
+                            continue
+                    break
+        return None
+
+    # Prefer later fenced blocks: models often emit a broken JSON first, then a corrected one.
+    for chunk in reversed(chunks):
+        parsed = _try_parse(chunk)
+        if parsed is not None:
+            return parsed
+    try:
+        obj = json_repair.loads(s)
+        if isinstance(obj, dict) and 'identifier' in obj and 'relation' in obj:
+            return obj
+    except Exception:
+        pass
+    return None
+
+
+def _parse_depth_identifier_llm_result(result: Any) -> str:
+    """Parse JsonFormatter output into a single identifier string with predictable fallbacks."""
+    result = _unwrap_first_list(result)
+    if result is None:
+        return ''
+
+    if isinstance(result, dict):
+        if 'content_identifier' not in result:
+            LOG.warning(
+                'DepthQAGGetIdentifier: JSON missing "content_identifier"; '
+                'expected {{"content_identifier": "<string>"}}. Keys: %s',
+                list(result.keys()),
+            )
+            return ''
+        return _normalize_content_identifier_value(result['content_identifier'])
+
+    if isinstance(result, str):
+        return result.strip()
+
+    if isinstance(result, (int, float, bool)):
+        return str(result)
+
+    LOG.warning(
+        'DepthQAGGetIdentifier: unexpected LLM result type after unwrap: %s',
+        type(result).__name__,
+    )
+    return ''
+
+
 class DepthQAGGetIdentifier(agenticrag):
 
     def __init__(self, llm=None, input_key: str = 'question', **kwargs):
@@ -27,7 +213,7 @@ class DepthQAGGetIdentifier(agenticrag):
 
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
-            self._llm_serve = llm.share().prompt(system_prompt)
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()
         else:
             self._llm_serve = None
@@ -45,7 +231,7 @@ class DepthQAGGetIdentifier(agenticrag):
 
         try:
             result = self._llm_serve(user_prompt)
-            data['identifier'] = result
+            data['identifier'] = _parse_depth_identifier_llm_result(result)
         except Exception as e:
             LOG.warning(f'Failed to get identifier: {e}')
             data['identifier'] = ''
@@ -64,7 +250,9 @@ class DepthQAGBackwardTask(agenticrag):
         self.prompt_template = RAGDepthBackwardSupersetPrompt()
 
         if llm is not None:
-            self._llm_serve = llm.share().formatter(JsonFormatter())
+            system_prompt = self.prompt_template.build_system_prompt()
+            # Raw text + tolerant parse: models often wrap JSON in ```json``` or add commentary.
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(EmptyFormatter())
             self._llm_serve.start()
         else:
             self._llm_serve = None
@@ -91,7 +279,17 @@ class DepthQAGBackwardTask(agenticrag):
     def _parse_backward_result(self, result) -> Optional[dict]:
         try:
             if isinstance(result, dict) and 'identifier' in result and 'relation' in result:
-                return result
+                return {
+                    'identifier': str(result['identifier']),
+                    'relation': str(result['relation']),
+                }
+            text = _assistant_content_str(result)
+            obj = _parse_backward_json_object(text)
+            if obj is not None:
+                return {
+                    'identifier': str(obj.get('identifier', '')),
+                    'relation': str(obj.get('relation', '')),
+                }
             LOG.warning('[Skipped]: Invalid backward result')
         except Exception as e:
             LOG.warning(f'[Error]: Failed to parse backward result: {e}')
@@ -137,7 +335,16 @@ class DepthQAGCheckSuperset(agenticrag):
     def _is_valid_superset(self, result) -> bool:
         try:
             if isinstance(result, dict):
-                return result.get('new_query') == 'valid'
+                new_query = result.get('new_query')
+                if new_query is None:
+                    return False
+                if not isinstance(new_query, str):
+                    LOG.warning(
+                        'DepthQAGCheckSuperset: new_query must be a string (e.g. "valid"), got %s',
+                        type(new_query).__name__,
+                    )
+                    return False
+                return new_query.lower() == 'valid'
         except Exception as e:
             LOG.warning(f'[Error]: Failed to check superset: {e}')
         return False
@@ -194,9 +401,11 @@ class DepthQAGGenerateQuestion(agenticrag):
 
 class DepthQAGVerifyQuestion(agenticrag):
 
-    def __init__(self, llm=None, question_key: str = 'depth_question', **kwargs):
+    def __init__(self, llm=None, question_key: str = 'depth_question',
+                 filter_threshold: Optional[int] = 1, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.question_key = question_key
+        self.filter_threshold = filter_threshold
         self.answer_template = RAGDepthSolverPrompt()
         self.score_template = RAGDepthConsistencyScoringPrompt()
 
@@ -235,13 +444,17 @@ class DepthQAGVerifyQuestion(agenticrag):
         try:
             score_result = self._llm_score_serve(score_prompt)
             if isinstance(score_result, dict):
-                score = score_result.get('answer_score', 0)
+                raw_score = score_result.get('answer_score', 0)
+                try:
+                    score = int(raw_score) if raw_score is not None else 0
+                except (TypeError, ValueError):
+                    score = 0
             else:
                 score = 0
             data['llm_score'] = score
 
-            # Filter out easy questions (score >= 1)
-            if score >= 1:
+            # filter_threshold=None 表示不过滤；否则 score >= filter_threshold 时过滤
+            if self.filter_threshold is not None and score >= self.filter_threshold:
                 data.pop('llm_answer', None)
                 data.pop('llm_score', None)
                 return []

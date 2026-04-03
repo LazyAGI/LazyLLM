@@ -4,7 +4,6 @@ from urllib.parse import urlparse
 
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
-from lazyllm.thirdparty import trafilatura
 from ...base_data import data_register
 
 
@@ -76,18 +75,18 @@ def _download_pdf(url, save_path):
 
 
 class FileOrURLNormalizer(kbc):
-    def __init__(self, intermediate_dir: str = 'intermediate', **kwargs):
+    def __init__(self, intermediate_dir: str = 'intermediate', input_key: str = 'source', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.intermediate_dir = intermediate_dir
+        self.input_key = input_key
         os.makedirs(self.intermediate_dir, exist_ok=True)
 
     def forward(
         self,
         data: dict,
-        input_key: str = 'source',
         **kwargs,
     ) -> dict:
-        src = data.get(input_key, '')
+        src = data.get(self.input_key, '')
         if not src:
             return {**data, '_type': 'invalid', '_error': 'Empty source'}
 
@@ -165,13 +164,19 @@ class HTMLToMarkdownConverter(kbc):
         if data.get('_type', '') != 'html':
             return data
 
+        try:
+            from trafilatura import fetch_url, extract
+        except ImportError:
+            LOG.error('trafilatura is not installed. Please install it with `pip install trafilatura`.')
+            return {**data, '_markdown_path': ''}
+
         url = data.get('_url')
         raw_path = data.get('_raw_path')
         output_path = data.get('_output_path', '')
 
         try:
             if url:
-                downloaded = trafilatura.fetch_url(url)
+                downloaded = fetch_url(url)
                 if not downloaded:
                     error_msg = (
                         'fail to fetch this url. '
@@ -187,7 +192,7 @@ class HTMLToMarkdownConverter(kbc):
             else:
                 return {**data, '_markdown_path': ''}
 
-            result = trafilatura.extract(
+            result = extract(
                 downloaded,
                 output_format='markdown',
                 with_metadata=True,
@@ -243,7 +248,7 @@ class PDFToMarkdownConverterAPI(kbc):
         try:
             reader = MineruPDFReader(
                 url=self.mineru_url,
-                backend=self.mineru_backend,
+                # backend=self.mineru_backend,
                 upload_mode=self.upload_mode,
                 split_doc=False,
             )

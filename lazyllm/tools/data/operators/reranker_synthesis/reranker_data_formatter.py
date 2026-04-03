@@ -137,7 +137,7 @@ class RerankerTrainTestSplitter(reranker):
         self.test_output_file = test_output_file
         LOG.info(f'Initializing {self.__class__.__name__} with test_size: {test_size}')
 
-    def forward_batch_input(self, data: List[dict]) -> List[dict]:
+    def forward_batch_input(self, data: List[dict], **kwargs) -> List[dict]:
         assert isinstance(data, list), 'Input data must be a list'
         records = list(data)
 

@@ -7,6 +7,18 @@ class DocRefinementPrompt(PromptABC):
         self.lang = lang
         self.strict_mode = strict_mode
 
+    def build_system_prompt(self) -> str:
+        if self.lang == 'en':
+            return (
+                'You always respond with exactly one JSON object and nothing else. '
+                'The object must have exactly one key "text" (string). The string must wrap '
+                'the refined body between the literal markers <cleaned_start> and <cleaned_end>.'
+            )
+        return (
+            '你只输出一个 JSON 对象，不得包含其它说明文字。该对象有且仅有键 "text"（字符串类型），'
+            '且字符串正文必须夹在 <cleaned_start> 与 <cleaned_end> 之间。'
+        )
+
     def build_prompt(self, raw_content: str) -> str:
         if self.lang == 'en':
             self.prompt_header = f'''
@@ -47,7 +59,10 @@ As a precise Knowledge Processing Specialist, you must follow these guidelines R
 - Classified: Label as 〖SEC∶classified〗
 - Illegal: Substitute with 〖ILLEGAL∶removed〗
 
-Response must be enclosed within <cleaned_start> and <cleaned_end>.
+You MUST return a valid JSON object of the form:
+{{"text": "<cleaned_start>...<cleaned_end>"}}
+where the value of "text" contains ONLY the refined content and
+starts with <cleaned_start> and ends with <cleaned_end>.
 '''
         else:
             self.prompt_header = f'''
@@ -83,7 +98,9 @@ Response must be enclosed within <cleaned_start> and <cleaned_end>.
 - 个人敏感信息需要脱敏处理
 - 机密内容替换为【涉密内容已加密】
 
-输出内容需以<cleaned_start>开始，<cleaned_end>结束。
+最终仅输出一个合法 JSON 对象：
+{{"text": "<cleaned_start>...<cleaned_end>"}}
+其中 text 字段必须以 <cleaned_start> 开始、以 <cleaned_end> 结束，不得包含其他无关内容。
 '''
 
         if self.lang == 'en':
@@ -96,8 +113,8 @@ Workflow Steps:
 5. [Result Generation] Produce refined text
 '''.strip()
             output_requirement = (
-                'Response should include ONLY refined text enclosed by '
-                '<cleaned_start> and <cleaned_end>.'
+                'Return ONLY one JSON object: {"text": "<cleaned_start>...<cleaned_end>"} '
+                'with no additional explanations or formatting.'
             )
         else:
             processing_steps = '''
@@ -108,7 +125,10 @@ Workflow Steps:
 4. [层级验证] 检查文档结构
 5. [结果生成] 输出处理后的文本
 '''.strip()
-            output_requirement = '响应内容应仅包含处理后的文本，以<cleaned_start>开始，<cleaned_end>结束，不得包含其他内容。'
+            output_requirement = (
+                '只输出一个 JSON 对象：{"text": "<cleaned_start>...<cleaned_end>"}，'
+                '不要输出任何额外说明或前后缀。'
+            )
 
         return f'''
 {self.prompt_header}
