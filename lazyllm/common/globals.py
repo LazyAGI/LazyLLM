@@ -135,7 +135,7 @@ class Globals(metaclass=SingletonABCMeta):
         usage={},
         trace={},
         config={},
-        call_stack=[
+        call_stack=[]
     )
 
     def __new__(cls, *args, **kw):

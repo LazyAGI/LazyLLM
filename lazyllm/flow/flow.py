@@ -234,7 +234,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
 
         try:
             with globals.stack_enter(self.identities):
-              output = self._run(args[0] if len(args) == 1 else package(args), **kw)
+                output = self._run(args[0] if len(args) == 1 else package(args), **kw)
             if self.post_action is not None: self.invoke(self.post_action, output)
             if self._sync: self.wait()
             r = self._post_process(output)
