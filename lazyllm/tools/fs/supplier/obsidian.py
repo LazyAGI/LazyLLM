@@ -1,5 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -118,6 +119,20 @@ class ObsidianFS(LazyLLMFSBase):
         if os.path.isdir(full):
             raise IsADirectoryError(path)
         os.remove(full)
+
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        src, dst = self._abspath(path1), self._abspath(path2)
+        if os.path.isdir(src):
+            if not recursive:
+                raise ValueError(f'Cannot copy directory {path1} without recursive=True')
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        if os.path.isdir(self._abspath(path1)) and not recursive:
+            raise ValueError(f'Cannot move directory {path1} without recursive=True')
+        shutil.move(self._abspath(path1), self._abspath(path2))
 
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         full = self._abspath(path)
