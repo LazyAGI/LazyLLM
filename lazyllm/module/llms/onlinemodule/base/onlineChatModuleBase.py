@@ -21,7 +21,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     VLM_MODEL_PREFIX = []
     NO_PROXY = True
     __lazyllm_registry_key__ = LLMType.CHAT
-    __format__ = 'openai'
+    _message_format = 'openai'
 
     def __init__(self, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
@@ -135,7 +135,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         runtime_url = self._get_chat_url(url) if url else self._chat_url
         runtime_model = model or self._model_name
 
-        params = {'input': __input, 'history': llm_chat_history, 'format': self.__format__}
+        params = {'input': __input, 'history': llm_chat_history, 'format': self._message_format}
         if tools: params['tools'] = tools
         data = self._prompt.generate_prompt(**params)
         data.update(self._static_params, **dict(model=runtime_model, stream=bool(stream_output)))

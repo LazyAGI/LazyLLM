@@ -13,12 +13,12 @@ class ClaudeChat(OnlineChatModuleBase):
 
     _ANTHROPIC_VERSION = '2023-06-01'
     _DEFAULT_MAX_TOKENS = 4096
-    __format__ = 'anthropic'
+    _message_format = 'anthropic'
 
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         base_url = base_url or 'https://api.anthropic.com/v1/'
-        model = model or 'claude-opus-4-5'
+        model = model or 'claude-3-5-sonnet-20241022'
         super().__init__(api_key=api_key or self._default_api_key(),
                          base_url=base_url, model_name=model, stream=stream,
                          return_trace=return_trace, **kwargs)
@@ -86,8 +86,9 @@ class ClaudeChat(OnlineChatModuleBase):
                 return {'choices': [{'delta': {'role': 'assistant', 'content': delta_obj.get('text', '')}}]}
             if delta_obj.get('type') == 'input_json_delta':
                 # Partial tool input — carry as tool_calls delta with index
+                partial = delta_obj.get('partial_json', '')
                 return {'choices': [{'index': msg.get('index', 0),
-                                     'delta': {'tool_calls': [{'function': {'arguments': delta_obj.get('partial_json', '')}}]}}]}
+                                     'delta': {'tool_calls': [{'function': {'arguments': partial}}]}}]}
         if msg_type == 'content_block_start':
             block = msg.get('content_block', {})
             if block.get('type') == 'tool_use':
@@ -124,9 +125,11 @@ class ClaudeChat(OnlineChatModuleBase):
             return ''
 
     def _validate_api_key(self):
+        # Anthropic has no /v1/models endpoint; send a minimal request to verify the key.
         try:
-            models_url = urljoin(self._base_url, 'models')
-            response = requests.get(models_url, headers=self._header, timeout=10)
+            data = {'model': self._model_name, 'max_tokens': 1,
+                    'messages': [{'role': 'user', 'content': 'hi'}]}
+            response = requests.post(self._chat_url, json=data, headers=self._header, timeout=10)
             return response.status_code == 200
         except Exception:
             return False
