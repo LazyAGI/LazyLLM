@@ -21,6 +21,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     VLM_MODEL_PREFIX = []
     NO_PROXY = True
     __lazyllm_registry_key__ = LLMType.CHAT
+    __format__ = 'openai'
 
     def __init__(self, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
@@ -69,6 +70,9 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
         return msg
+
+    def _prepare_request_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return data
 
     def _str_to_json(self, msg: str, stream_output: bool):
         if isinstance(msg, bytes):
@@ -131,7 +135,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         runtime_url = self._get_chat_url(url) if url else self._chat_url
         runtime_model = model or self._model_name
 
-        params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
+        params = {'input': __input, 'history': llm_chat_history, 'format': self.__format__}
         if tools: params['tools'] = tools
         data = self._prompt.generate_prompt(**params)
         data.update(self._static_params, **dict(model=runtime_model, stream=bool(stream_output)))
@@ -146,6 +150,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                     if msg.get('role') == 'user' and isinstance(msg.get('content'), str):
                         msg['content'] = self._format_vl_chat_query(msg['content'])
 
+        data = self._prepare_request_data(data)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
                            proxies=proxies) as r:
