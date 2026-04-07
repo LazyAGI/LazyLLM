@@ -434,8 +434,8 @@ class RichDocNode(DocNode):
                 'content': node.text,
                 'metadata': dict(node.metadata),
                 'global_metadata': dict(node.global_metadata),
-                'excluded_embed_metadata_keys': list(node.excluded_embed_metadata_keys),
-                'excluded_llm_metadata_keys': list(node.excluded_llm_metadata_keys),
+                'excluded_embed_metadata_keys': node.excluded_embed_metadata_keys,
+                'excluded_llm_metadata_keys': node.excluded_llm_metadata_keys,
             }
             return json.dumps(formatted_node, ensure_ascii=False)
 

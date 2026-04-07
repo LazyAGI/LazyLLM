@@ -754,7 +754,7 @@ jobs:
   cpp_ext_test:
     name: C++ Build + Python Regression (${{ matrix.os }})
     needs: [ clone ]
-    if: always() && needs.clone.result == 'success'
+    if: always()
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
