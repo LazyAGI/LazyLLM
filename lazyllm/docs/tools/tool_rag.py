@@ -5,12 +5,6 @@ from .. import utils
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools'))
 add_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools'))
 add_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools'))
-add_doc_service_chinese_doc = functools.partial(
-    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.rag.doc_service')
-)
-add_doc_service_english_doc = functools.partial(
-    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.rag.doc_service')
-)
 
 add_english_doc('Document', '''\
 Initialize a document management module with optional embedding, storage, and user interface.
@@ -56,7 +50,7 @@ Args:
     enable_path_monitoring (Optional[bool]): 是否监控本地数据目录的文件新增和删除。仅在未接入 ``DocServer`` / ``DocumentProcessor`` 的本地模式下默认开启。
 ''')
 
-add_doc_service_english_doc('DocServer', '''\
+add_english_doc('DocServer', '''\
 Primary entry point of the refactored document service.
 
 ``DocServer`` manages document upload/add/reparse/delete flows, task tracking, knowledge-base management,
@@ -75,7 +69,7 @@ Args:
     launcher: Launcher used to start local services.
 ''')
 
-add_doc_service_chinese_doc('DocServer', '''\
+add_chinese_doc('DocServer', '''\
 重构后文档服务的主入口。
 
 ``DocServer`` 负责文档上传/添加/重解析/删除、任务跟踪、知识库管理、chunk 查看，以及跨知识库文档转移。
@@ -93,7 +87,7 @@ Args:
     launcher: 本地服务启动器。
 ''')
 
-add_doc_service_english_doc('DocServer.list_chunks', '''\
+add_english_doc('DocServer.list_chunks', '''\
 List parsed chunks for a document through the ``/v1/chunks`` endpoint.
 
 Args:
@@ -109,7 +103,7 @@ Returns:
     Paginated chunk data including ``items`` and ``total``.
 ''')
 
-add_doc_service_chinese_doc('DocServer.list_chunks', '''\
+add_chinese_doc('DocServer.list_chunks', '''\
 通过 ``/v1/chunks`` 接口分页查看文档的解析 chunk。
 
 Args:
@@ -125,7 +119,7 @@ Returns:
     包含 ``items`` 与 ``total`` 的分页结果。
 ''')
 
-add_doc_service_english_doc('DocServer.transfer', '''\
+add_english_doc('DocServer.transfer', '''\
 Transfer parsed documents between knowledge bases under the same algorithm.
 
 The request body is a ``TransferRequest``. Each transfer item must provide a unique ``target_doc_id`` in the target
@@ -133,7 +127,7 @@ knowledge base. Transfer across different algorithms is not supported. Optional 
 ``target_file_path`` can override the destination file name/path recorded for the transferred document.
 ''')
 
-add_doc_service_chinese_doc('DocServer.transfer', '''\
+add_chinese_doc('DocServer.transfer', '''\
 在同一算法下的不同知识库之间转移已解析文档。
 
 请求体为 ``TransferRequest``。每个转移项都必须在目标知识库中提供唯一的 ``target_doc_id``。
