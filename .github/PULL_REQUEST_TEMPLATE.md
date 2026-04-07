@@ -1,70 +1,180 @@
 <!-- 
-在提交PR之前，请认真阅读以下规则。
-1. 我们每行的字符限制是120，提交代码前请在保持语义清晰的基础上，尽你所能的压缩代码行数
-2. 我们强制要求单引号优先；但由于一些历史提交的文件并没有做相关要求，因此代码仓库中还存在一些不规范的代码，如果你修改到某个文件，请顺便处理整个文件，变成单引号优先。
-3. 我们禁止在代码中使用print，请在提交之前删除所有的print语句
-4. 我们禁止无意义的注释，包括重复一遍函数名，翻译代码，显而易见。注释应该讲“为什么这么写”，即对一大段代码讲解执行逻辑、设计思路、参考来源或解决了什么问题。
-5. 在提交PR之前，请在你的分支上执行如下命令
-```bash
-pip install flake8-quotes
-pip install flake8-bugbear
-make lint-only-diff
-```
-
-Please read the following rules carefully before submitting a PR.
-1. We have a character limit of 120 per line. Please compress the code lines as much as possible while maintaining semantic clarity before submitting code.
-2. We enforce single quotes priority; however, due to some historical commits that didn't follow this requirement, there are still some non-standard codes in the codebase. If you modify a file, please also process the entire file to use single quotes priority.
-3. We prohibit the use of print in code. Please delete all print statements before submitting.
-4. We prohibit meaningless comments, including repeating function names, translating code, or stating the obvious. Comments should explain "why it's written this way", i.e., explain the execution logic, design ideas, reference sources, or problems solved for a large block of code.
-5. Before submitting a PR, please execute the following commands on your branch
-```bash
-pip install flake8-quotes
-pip install flake8-bugbear
-make lint-only-diff
-```
+在提交 PR 前，请确保 / Before submitting a PR, please ensure:
+1. 每行不超过 120 字符 / Max 120 characters per line
+2. 单引号优先（修改文件需统一）/ Prefer single quotes (be consistent within modified files)
+3. 禁止 print / No print statements
+4. 注释需解释"为什么"和"怎么做"，而不是"是什么" / Comments should explain "why" and "how", not "what"
+5. 执行 / Run:
+   pip install flake8-quotes
+   pip install flake8-bugbear
+   make lint-only-diff
+6. 删除本模板的全部注释 / Delete all template comments before submitting
 -->
 
-## 📌 PR 内容 / PR Description
-<!-- 简要描述本次 PR 的改动点 / Briefly describe the changes in this PR -->
+# 📌 PR 内容 / PR Description
+
 - 
 
-## 🔍 相关 Issue / Related Issue
-<!-- 例如：Fix #123 / Close #456 -->
+---
+
+# 🎯 问题背景 / Problem Context
+
+<!-- 为什么要做这个改动 / Why is this change needed -->
 - 
 
-## ✅ 变更类型 / Type of Change
-<!-- 勾选对应选项 / Check the relevant options -->
-- [ ] 修复 Bug / Bug fix (non-breaking change that fixes an issue)
-- [ ] 新功能 / New feature (non-breaking change that adds functionality)
-- [ ] 重构 / Refactor (no functionality change, code structure optimized)
-- [ ] 重大变更 / Breaking change (fix or feature that would cause existing functionality to change)
-- [ ] 文档更新 / Documentation update (changes to docs only)
-- [ ] 性能优化 / Performance optimization
+# 🔍 相关 Issue / Related Issue
 
-## 🧪 如何测试 / How Has This Been Tested?
-<!-- 描述测试步骤 / Describe the tests that you ran to verify your changes -->
-1. 
-2. 
-3. 
+*
 
-## 📷 截图 / Demo (Optional)
-<!-- 如果是文档改动或者性能优化 / If document changes or performance optimization, please attach screenshots -->
-- 
+---
 
-## ⚡ 更新后的用法示例 / Usage After Update
-<!-- 请提供更新后的调用示例 / Provide example(s) of usage after your changes -->
+# ✅ 变更类型 / Type of Change
+
+* [ ] Bug fix
+* [ ] New feature
+* [ ] Refactor
+* [ ] Breaking change
+* [ ] Documentation
+* [ ] Performance optimization
+
+---
+
+# 🧪 如何测试 / How Has This Been Tested?
+
+1.
+2.
+3.
+
+---
+
+# 📷 Demo (Optional)
+
+*
+
+---
+
+# ⚡ 更新后的用法示例 / Usage After Update
+
 ```python
-# 示例 / Example
 ```
 
-## 🔄 重构前 / 重构后对比 (仅当 Type 为 Refactor) / Refactor Before & After (only for Refactor)
-<!-- 请提供重构前后的调用对比 / Provide before & after usage for refactor -->
+---
 
-### 重构前 / Before:
+# 🔄 重构对比 / Refactor Comparison (如适用 / if applicable)
+
+## Before
+
+```python
+```
+
+## After
+
+```python
+```
+
+# ⚠️ 注意事项 / Additional Notes
+
+*
+
+---
 
 
-### 重构后 / After:
+# 🧠 AI 参与情况 / AI Involvement
 
+<!-- 本 PR 是否使用 AI 工具 / Whether AI tools were used in this PR -->
+- [ ] 未使用 AI / No AI used
+- [ ] 使用 AI 辅助（局部代码）/ AI-assisted (partial code)
+- [ ] 使用 AI 主导（大部分代码）/ AI-led (majority of code)
 
-## ⚠️ 注意事项 / Additional Notes
-<!-- 是否有依赖更新、迁移步骤或其他注意点 / Mention dependencies, migration steps, or any other concerns -->
+**使用工具 / Tools Used：**
+- [ ] Cursor
+- [ ] CodeX
+- [ ] ClaudeCode
+- [ ] OpenCode
+- [ ] 其他 / Other：
+
+# 🤖 AI 生成过程 / AI Generation Process
+
+## 初始 Prompt / Initial Prompt
+<!-- 最开始你是怎么问 AI 的 / How did you initially prompt the AI -->
+```text
+```
+
+## AI 初始输出质量 / Initial Output Quality
+
+* [ ] 一次正确 / Correct on first try
+* [ ] 部分正确 / Partially correct
+* [ ] 基本不可用 / Mostly unusable
+
+## **问题点 / Issues：**
+
+## 🔧 人工干预过程 / Human Intervention
+
+<!-- 重点：这是核心 / Key section: this is the core -->
+
+### 第一次修正 / First Correction
+
+**修改后的 Prompt / 操作 / Updated Prompt or Action：**
+
+```text
+```
+
+### **原因 / Reason：**
+
+### 第二次修正（如有）/ Second Correction (if any)
+
+**修改后的 Prompt / 操作 / Updated Prompt or Action：**
+
+```text
+```
+
+### **原因 / Reason：**
+
+### 最终策略总结 / Final Strategy Summary
+
+<!-- 这一步非常关键：沉淀经验 / This step is critical: capture learnings -->
+
+*
+
+---
+
+# 📊 AI vs 人工贡献占比 / AI vs Human Contribution
+
+<!-- 粗略评估 / Rough estimate -->
+
+* AI 生成代码占比 / AI-generated code：`%`
+* 人工修改占比 / Human modifications：`%`
+
+**主要人工修改点 / Key Human Modifications：**
+
+* [ ] 逻辑修正 / Logic fixes
+* [ ] 边界处理 / Edge case handling
+* [ ] 性能优化 / Performance optimization
+* [ ] 代码风格 / Code style
+* [ ] 架构调整 / Architecture adjustments
+
+---
+
+# ⚠️ AI 问题记录 / AI Failure Cases
+
+<!-- 失败案例非常有价值 / Failure cases are very valuable -->
+
+### ❌ 失败 Prompt 示例 / Failed Prompt Example
+
+```text
+```
+
+### ❌ 问题表现 / Issue Description
+
+*
+
+### ✅ 改进后 Prompt / Improved Prompt
+
+```text
+```
+
+# 🧩 可复用经验 / Reusable Patterns
+
+* Prompt 模板 / Prompt template：
+* 常见坑 / Common pitfalls：
+* 推荐做法 / Recommended practices：
