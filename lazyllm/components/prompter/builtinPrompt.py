@@ -65,16 +65,16 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                      'tool_end_token', 'tool_args_token']:
             if local[name] is not None: setattr(self, f'_{name}', local[name])
 
-    def _get_tools(self, tools, *, return_dict):
-        return tools if return_dict else '### Function-call Tools. \n\n' +\
+    def _get_tools(self, tools, *, for_chat_api: bool):
+        return tools if for_chat_api else '### Function-call Tools. \n\n' +\
             f'{json.dumps(tools, ensure_ascii=False)}\n\n' if tools else ''
 
     def _get_tools_name(self, tools):
         return json.dumps([t['function']['name'] for t in tools], ensure_ascii=False) if tools else ''
 
-    def _get_histories(self, history, *, return_dict):  # noqa: C901
+    def _get_histories(self, history, *, for_chat_api: bool):  # noqa: C901
         if not self._history and not history: return ''
-        if return_dict:
+        if for_chat_api:
             content = []
             for item in self._history + (history or []):
                 if isinstance(item, list):
@@ -119,9 +119,9 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             else:
                 raise NotImplementedError('Cannot transform json history to {type(history[0])} now')
 
-    def _get_instruction_and_input(self, input, *, return_dict=False, tools=None):
+    def _get_instruction_and_input(self, input, *, for_chat_api: bool = False, tools=None):
         instruction = self._instruction_template
-        fc_prompt = '' if return_dict or not tools else FC_PROMPT
+        fc_prompt = '' if for_chat_api or not tools else FC_PROMPT
         if fc_prompt and FC_PROMPT_PLACEHOLDER not in instruction:
             instruction = f'{instruction}\n\n{fc_prompt}'
         instruction = instruction.replace(FC_PROMPT_PLACEHOLDER, fc_prompt)
@@ -230,9 +230,10 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
         tools = tools or self._tools
-        instruction, input = self._get_instruction_and_input(input, return_dict=bool(format), tools=tools)
-        history = self._get_histories(history, return_dict=bool(format))
-        tools = self._get_tools(tools, return_dict=bool(format))
+        for_chat_api = bool(format)
+        instruction, input = self._get_instruction_and_input(input, for_chat_api=for_chat_api, tools=tools)
+        history = self._get_histories(history, for_chat_api=for_chat_api)
+        tools = self._get_tools(tools, for_chat_api=for_chat_api)
         self._check_values(instruction, input, history, tools)
         instruction, user_instruction = self._split_instruction(instruction)
         if format == 'anthropic':
@@ -252,8 +253,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
 class EmptyPrompter(LazyLLMPrompterBase):
 
-    def generate_prompt(self, input, history=None, tools=None, label=None, show=False,
-                        return_dict=False, format=None):
+    def generate_prompt(self, input, history=None, tools=None, label=None, *, show=False,
+                        return_dict: bool = False, format=None):
         if return_dict and format is None:
             LOG.log_once('return_dict is deprecated, use format="openai" instead.', level='warning')
             format = 'openai'
