@@ -1633,6 +1633,64 @@ add_example('llms.onlinemodule.supplier.ppio.PPIOChat', '''\
 >>> print(response)
 ''')
 
+add_chinese_doc('llms.onlinemodule.supplier.claude.ClaudeChat', '''\
+Claude 在线聊天模块，继承自 OnlineChatModuleBase。
+封装了对 Anthropic Claude Messages API（/v1/messages）的调用，用于进行多轮问答交互。
+默认使用模型 `claude-opus-4-5`，支持流式输出、工具调用和调用链追踪。
+
+与 OpenAI 兼容格式不同，该模块使用 Anthropic 原生 API 格式：请求头使用 `x-api-key` 和
+`anthropic-version`，`system` 消息作为顶层字段传递，工具定义使用 `input_schema` 字段。
+传入的 OpenAI 格式工具定义会自动转换为 Anthropic 格式。
+
+Args:
+    model (str): 使用的模型名称，默认为 `claude-opus-4-5`。
+    base_url (str): API 基础 URL，默认为 `https://api.anthropic.com/v1/`。
+    api_key (Optional[str]): Anthropic API Key，若未提供，则从 `lazyllm.config['claude_api_key']` 读取。
+    stream (bool): 是否启用流式输出，默认为 True。
+    return_trace (bool): 是否返回调用链追踪信息，默认为 False。
+    **kwargs: 其他传递给基类 OnlineChatModuleBase 的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.claude.ClaudeChat', '''\
+Claude online chat module, inheriting from OnlineChatModuleBase.
+Wraps the Anthropic Claude Messages API (/v1/messages) for multi-turn Q&A interactions.
+Defaults to model `claude-opus-4-5`, supporting streaming, tool calls, and optional trace return.
+
+Unlike OpenAI-compatible format, this module uses the native Anthropic API format: the request
+header uses `x-api-key` and `anthropic-version`, the `system` message is passed as a top-level
+field, and tools use the `input_schema` field. OpenAI-format tool definitions are automatically
+converted to Anthropic format.
+
+Args:
+    model (str): The model name to use. Defaults to `claude-opus-4-5`.
+    base_url (str): Base URL of the API. Defaults to `https://api.anthropic.com/v1/`.
+    api_key (Optional[str]): Anthropic API key. If not provided, it is read from `lazyllm.config['claude_api_key']`.
+    stream (bool): Whether to enable streaming output. Defaults to True.
+    return_trace (bool): Whether to return trace information. Defaults to False.
+    **kwargs: Additional arguments passed to the base class OnlineChatModuleBase.
+''')
+
+add_example('llms.onlinemodule.supplier.claude.ClaudeChat', '''\
+>>> import lazyllm
+>>> # Set environment variable: export LAZYLLM_CLAUDE_API_KEY=your_api_key
+>>> chat = lazyllm.OnlineChatModule(source='claude', model='claude-opus-4-5')
+>>> response = chat('Hello, who are you?')
+>>> print(response)
+
+>>> # Tool call example (requires FunctionCallFormatter to preserve tool_calls in output)
+>>> from lazyllm.components.formatter import FunctionCallFormatter
+>>> tools = [{'type': 'function', 'function': {
+...     'name': 'get_weather',
+...     'description': 'Get the current weather for a city',
+...     'parameters': {'type': 'object', 'properties': {'city': {'type': 'string'}}, 'required': ['city']}
+... }}]
+>>> chat = lazyllm.OnlineChatModule(source='claude', model='claude-opus-4-5', stream=False)
+>>> chat._formatter = FunctionCallFormatter()
+>>> result = chat('Please call get_weather for Beijing', tools=tools)
+>>> print(result)
+''')
+
+
 add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIEmbed', '''\
 OpenAI 在线嵌入模块。
 该类封装了对 OpenAI 嵌入 API 的调用，默认使用模型 `text-embedding-ada-002`，用于将文本编码为向量表示。

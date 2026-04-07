@@ -78,17 +78,17 @@ from lazyllm import AlpacaPrompter
 p = AlpacaPrompter('hello world {instruction}')
 p.generate_prompt('this is my input')
 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nhello world this is my input\n\n\n### Response:\n'
-p.generate_prompt('this is my input', return_dict=True)
+p.generate_prompt('this is my input', format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nhello world this is my input\n\n'}, {'role': 'user', 'content': ''}]}
 p = AlpacaPrompter('hello world {instruction}, {input}', extra_keys=['knowledge'])
 p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'))
 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nhello world hello world, my input\n\nHere are some extra messages you can referred to:\n\n### knowledge:\nlazyllm\n\n\n### Response:\n'
-p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), return_dict=True)
+p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nhello world hello world, my input\n\nHere are some extra messages you can referred to:\n\n### knowledge:\nlazyllm\n\n'}, {'role': 'user', 'content': ''}]}
 p = AlpacaPrompter(dict(system="hello world", user="this is user instruction {input}"))
 p.generate_prompt(dict(input="my input"))
 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nhello word\n\n\n\nthis is user instruction my input### Response:\n'
-p.generate_prompt(dict(input="my input"), return_dict=True)
+p.generate_prompt(dict(input="my input"), format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
 ```
 
@@ -127,7 +127,7 @@ p.generate_prompt({
 p = ChatPrompter(dict(system="hello world", user="this is user instruction {input}"))
 p.generate_prompt({'input': "my input", 'query': "this is user query"})
 'You are an AI-Agent developed by LazyLLM.hello world\nthis is user instruction my input this is user query\n'
-p.generate_prompt({'input': "my input", 'query': "this is user query"}, return_dict=True)
+p.generate_prompt({'input': "my input", 'query': "this is user query"}, format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
 ```
 

@@ -523,7 +523,7 @@ def generate_character_description(character_name):
         that emphasizes their personalities.
         Speak directly to {character_name}.
         Do not add anything else.''',
-        return_dict=True)
+        format='openai')
     character_description = lazyllm.OnlineChatModule(model='Qwen3-32B', static_params=temp)(contents)
     return character_description
 
