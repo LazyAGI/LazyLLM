@@ -11,12 +11,6 @@ add_doc_service_chinese_doc = functools.partial(
 add_doc_service_english_doc = functools.partial(
     utils.add_english_doc, module=importlib.import_module('lazyllm.tools.rag.doc_service')
 )
-add_doc_service_base_chinese_doc = functools.partial(
-    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.rag.doc_service.base')
-)
-add_doc_service_base_english_doc = functools.partial(
-    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.rag.doc_service.base')
-)
 
 add_english_doc('Document', '''\
 Initialize a document management module with optional embedding, storage, and user interface.
@@ -144,56 +138,6 @@ add_doc_service_chinese_doc('DocServer.transfer', '''\
 
 请求体为 ``TransferRequest``。每个转移项都必须在目标知识库中提供唯一的 ``target_doc_id``。
 当前不支持跨算法 transfer。可选字段 ``target_filename`` 与 ``target_file_path`` 用于覆盖目标文档记录的文件名或文件路径。
-''')
-
-add_doc_service_base_english_doc('TransferItem', '''\
-Single item in a document transfer request.
-
-Args:
-    doc_id (str): Source document ID.
-    target_doc_id (str): Required destination document ID. Must be unique in the target knowledge base.
-    source_kb_id (str): Source knowledge-base ID.
-    source_algo_id (str): Source algorithm ID.
-    target_kb_id (str): Destination knowledge-base ID.
-    target_algo_id (str): Destination algorithm ID.
-    target_metadata (Optional[Dict[str, Any]]): Metadata patch applied on top of the source document metadata for the transferred target document.
-    target_filename (Optional[str]): Target file name override.
-    target_file_path (Optional[str]): Target file path override. If set together with ``target_filename``, both must
-        point to the same basename.
-    mode (str): Transfer mode. Supports ``copy`` and ``move``.
-''')
-
-add_doc_service_base_chinese_doc('TransferItem', '''\
-文档转移请求中的单个条目。
-
-Args:
-    doc_id (str): 源文档 ID。
-    target_doc_id (str): 必填的目标文档 ID，在目标知识库中必须唯一。
-    source_kb_id (str): 源知识库 ID。
-    source_algo_id (str): 源算法 ID。
-    target_kb_id (str): 目标知识库 ID。
-    target_algo_id (str): 目标算法 ID。
-    target_metadata (Optional[Dict[str, Any]]): 基于源文档 metadata 做继承后，再覆盖写入目标文档的 metadata patch。
-    target_filename (Optional[str]): 目标文件名覆盖值。
-    target_file_path (Optional[str]): 目标文件路径覆盖值；若与 ``target_filename`` 同时传入，二者 basename
-        必须一致。
-    mode (str): 转移模式，支持 ``copy`` 与 ``move``。
-''')
-
-add_doc_service_base_english_doc('TransferRequest', '''\
-Batch transfer request for ``DocServer.transfer``.
-
-Args:
-    items (List[TransferItem]): Transfer items to execute.
-    idempotency_key (Optional[str]): Optional idempotency key for safe retries.
-''')
-
-add_doc_service_base_chinese_doc('TransferRequest', '''\
-``DocServer.transfer`` 使用的批量转移请求。
-
-Args:
-    items (List[TransferItem]): 要执行的转移条目列表。
-    idempotency_key (Optional[str]): 可选幂等键，用于安全重试。
 ''')
 
 add_example('Document', '''\
