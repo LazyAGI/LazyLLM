@@ -26,8 +26,8 @@ The ``Document`` module provides a unified interface for managing document datas
 Args:
     dataset_path (Optional[str]): Path to the dataset directory. If not found, the system will attempt to locate it in ``lazyllm.config["data_path"]``.
     embed (Optional[Union[Callable, Dict[str, Callable]]]): Embedding function or mapping of embedding functions. When a dictionary is provided, keys are embedding names and values are embedding models.
-    create_ui (bool, optional): Deprecated alias of ``manager`` kept for compatibility.
-    manager (Union[bool, str], optional): Whether to enable the document manager. If ``True``, launches ``DocServer`` together with a local parsing service. If ``'ui'``, also enables the document management web UI.
+    create_ui (bool, optional): Whether to create the document-management UI. It requires an available ``DocServer`` and can be combined with ``manager=True`` or ``manager=DocServer(...)``.
+    manager (Union[bool, str, DocServer, Document._Manager, DocumentProcessor], optional): Document manager mode. ``True`` launches a local ``DocServer`` together with a local parsing service. ``DocServer(...)`` connects an existing document-management service. ``DocumentProcessor(...)`` connects a parsing service only and requires a non-map ``store_conf``. ``'ui'`` is accepted as a deprecated compatibility alias for ``manager=True, create_ui=True``.
     server (Union[bool, int], optional): Whether to run a server interface for knowledge bases. ``True`` enables a default server, an integer specifies a custom port, and ``False`` disables it. Defaults to ``False``.
     name (Optional[str]): Name identifier for this document collection. Defaults to the system default name.
     launcher (Optional[Launcher]): Launcher instance for managing server processes. Defaults to a remote asynchronous launcher.
@@ -37,8 +37,7 @@ Args:
     display_name (Optional[str]): Human-readable display name for this document module. Defaults to the collection name.
     description (Optional[str]): Description of the document collection. Defaults to ``"algorithm description"``.
     schema_extractor (Optional[Union[LLMBase, SchemaExtractor]]): Optional schema extractor used for metadata schema analysis and registration.
-    doc_server_port (Optional[int]): Explicit local port for ``DocServer`` when ``manager`` is enabled.
-    enable_path_monitoring (Optional[bool]): Whether to watch the local dataset path for file additions and removals. Defaults to enabled for local documents without manager mode.
+    enable_path_monitoring (Optional[bool]): Whether to watch the local dataset path for file additions and removals. Defaults to enabled only for local documents without ``DocServer``/``DocumentProcessor`` manager mode.
 ''')
 
 add_chinese_doc('Document', '''\
@@ -49,8 +48,8 @@ add_chinese_doc('Document', '''\
 Args:
     dataset_path (Optional[str]): 数据集目录路径。如果路径不存在，系统会尝试在 ``lazyllm.config["data_path"]`` 中查找。
     embed (Optional[Union[Callable, Dict[str, Callable]]]): 文档向量化函数或函数字典。若为字典，键为 embedding 名称，值为对应的模型。
-    create_ui (bool, optional): ``manager`` 的兼容别名，已废弃。
-    manager (Union[bool, str], optional): 是否启用文档管理服务。``True`` 表示启动 ``DocServer`` 及其本地 parsing service；``'ui'`` 表示同时启动 Web 管理界面。
+    create_ui (bool, optional): 是否创建文档管理 UI。该能力要求当前存在可用的 ``DocServer``，可与 ``manager=True`` 或 ``manager=DocServer(...)`` 组合使用。
+    manager (Union[bool, str, DocServer, Document._Manager, DocumentProcessor], optional): 文档管理模式。``True`` 表示启动本地 ``DocServer`` 及其 parsing service；``DocServer(...)`` 表示连接已有文档管理服务；``DocumentProcessor(...)`` 表示仅连接解析服务，此时必须提供非 map 的 ``store_conf``；``'ui'`` 仅作为 ``manager=True, create_ui=True`` 的兼容写法保留。
     server (Union[bool, int], optional): 是否为知识库运行服务接口。``True`` 表示启动默认服务；整型数值表示自定义端口；``False`` 表示关闭。默认为 ``False``。
     name (Optional[str]): 文档集合的名称标识符。默认为系统默认名称。
     launcher (Optional[Launcher]): 启动器实例，用于管理服务进程。默认使用远程异步启动器。
@@ -60,8 +59,7 @@ Args:
     display_name (Optional[str]): 文档模块的可读显示名称。默认为集合名称。
     description (Optional[str]): 文档集合的描述。默认为 ``"algorithm description"``。
     schema_extractor (Optional[Union[LLMBase, SchemaExtractor]]): 可选 schema extractor，用于元数据 schema 分析与注册。
-    doc_server_port (Optional[int]): ``manager`` 启用时 ``DocServer`` 使用的本地端口。
-    enable_path_monitoring (Optional[bool]): 是否监控本地数据目录的文件新增和删除。对非 manager 的本地文档默认开启。
+    enable_path_monitoring (Optional[bool]): 是否监控本地数据目录的文件新增和删除。仅在未接入 ``DocServer`` / ``DocumentProcessor`` 的本地模式下默认开启。
 ''')
 
 add_doc_service_english_doc('DocServer', '''\
@@ -657,8 +655,8 @@ add_example('Document.register_global_reader', '''
 ...         data = f.read()
 ...     return [DocNode(text=data)]
 ...
->>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
->>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc1 = Document(dataset_path="your_files_path")
+>>> doc2 = Document(dataset_path="your_files_path")
 >>> files = ["your_yml_files"]
 >>> docs1 = doc1._impl._reader.load_data(input_files=files)
 >>> docs2 = doc2._impl._reader.load_data(input_files=files)
@@ -702,8 +700,8 @@ add_example('Document.add_reader', '''
 ...     print("Call the function processYml.")
 ...     return [DocNode(text=data)]
 ...
->>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
->>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc1 = Document(dataset_path="your_files_path")
+>>> doc2 = Document(dataset_path="your_files_path")
 >>> doc1.add_reader("**/*.yml", YmlReader)
 >>> print(doc1._impl._local_file_reader)
 {'**/*.yml': <class '__main__.YmlReader'>}
@@ -1142,7 +1140,7 @@ add_example('rag.readers.ReaderBase', '''
 ...         return [DocNode(text=data)]
 ...
 >>> files = ["your_yml_files"]
->>> doc = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc = Document(dataset_path="your_files_path")
 >>> reader = doc._impl._reader.load_data(input_files=files)
 # Call the class YmlReader.
 ''')

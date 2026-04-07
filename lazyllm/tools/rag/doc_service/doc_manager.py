@@ -84,6 +84,26 @@ def _sha256_file(file_path: str) -> str:
     return digest.hexdigest()
 
 
+def _merge_transfer_metadata(
+    source_metadata: Dict[str, Any], target_metadata: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    metadata = dict(source_metadata or {})
+    if target_metadata:
+        metadata.update(target_metadata)
+    return metadata
+
+
+def _resolve_transfer_target_path(
+    source_path: str, target_filename: Optional[str], target_file_path: Optional[str]
+) -> str:
+    if target_file_path:
+        return target_file_path
+    if target_filename:
+        base_dir = os.path.dirname(source_path) if source_path else ''
+        return os.path.join(base_dir, target_filename) if base_dir else target_filename
+    return source_path
+
+
 class _ParserClient:
     def __init__(self, parser_url: str):
         parser_url = parser_url.rstrip('/')
@@ -602,17 +622,19 @@ class DocManager:
         metadata: Dict[str, Any],
         source_type: SourceType,
         upload_status: DocStatus = DocStatus.SUCCESS,
+        allowed_path_doc_ids: Optional[Set[str]] = None,
     ):
         now = now_ts()
         file_type = os.path.splitext(path)[1].lstrip('.').lower() or None
         size_bytes = os.path.getsize(path) if os.path.exists(path) else None
         content_hash = _sha256_file(path) if os.path.exists(path) else None
+        allowed_path_doc_ids = allowed_path_doc_ids or set()
         try:
             with self._db_manager.get_session() as session:
                 Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
                 row = session.query(Doc).filter(Doc.doc_id == doc_id).first()
                 path_row = session.query(Doc).filter(Doc.path == path).first()
-                if path_row is not None and path_row.doc_id != doc_id:
+                if path_row is not None and path_row.doc_id != doc_id and path_row.doc_id not in allowed_path_doc_ids:
                     raise DocServiceError(
                         'E_STATE_CONFLICT',
                         f'doc path already exists: {path}',
@@ -645,7 +667,11 @@ class DocManager:
                 session.add(row)
         except IntegrityError as exc:
             existing = self._get_doc_by_path(path)
-            if existing is not None and existing.get('doc_id') != doc_id:
+            if (
+                existing is not None
+                and existing.get('doc_id') != doc_id
+                and existing.get('doc_id') not in allowed_path_doc_ids
+            ):
                 raise DocServiceError(
                     'E_STATE_CONFLICT',
                     f'doc path already exists: {path}',
@@ -938,7 +964,7 @@ class DocManager:
         file_path: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
         reparse_group: Optional[str] = None, cleanup_policy: Optional[str] = None,
         parser_kb_id: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None,
-        extra_message: Optional[Dict[str, Any]] = None,
+        extra_message: Optional[Dict[str, Any]] = None, parser_doc_id: Optional[str] = None,
     ):
         task_id = str(uuid4())
         task_message = {
@@ -976,7 +1002,7 @@ class DocManager:
         )
         try:
             self._create_parser_task(
-                task_id, doc_id, kb_id, algo_id, task_type,
+                task_id, parser_doc_id or doc_id, kb_id, algo_id, task_type,
                 file_path=file_path, metadata=metadata, reparse_group=reparse_group,
                 parser_kb_id=parser_kb_id, transfer_params=transfer_params,
             )
@@ -1122,13 +1148,13 @@ class DocManager:
                     {'doc_id': item.doc_id, 'source_kb_id': item.source_kb_id, 'target_kb_id': item.target_kb_id},
                 )
             seen_pairs.add(item_key)
-            target_key = (item.doc_id, item.target_kb_id, item.target_algo_id)
+            target_key = (item.target_doc_id, item.target_kb_id, item.target_algo_id)
             if target_key in seen_targets:
                 raise DocServiceError(
                     'E_INVALID_PARAM',
                     'duplicate transfer target detected',
                     {
-                        'doc_id': item.doc_id,
+                        'doc_id': item.target_doc_id,
                         'target_kb_id': item.target_kb_id,
                         'target_algo_id': item.target_algo_id,
                     },
@@ -1150,11 +1176,11 @@ class DocManager:
             self._validate_kb_algorithm(item.source_kb_id, item.source_algo_id)
             self._validate_kb_algorithm(item.target_kb_id, item.target_algo_id)
             self._assert_action_allowed(item.doc_id, item.source_kb_id, item.source_algo_id, 'transfer')
-            if self._has_kb_document(item.target_kb_id, item.doc_id):
+            if self._has_kb_document(item.target_kb_id, item.target_doc_id):
                 raise DocServiceError(
                     'E_STATE_CONFLICT',
-                    f'doc already exists in target kb: {item.doc_id}',
-                    {'doc_id': item.doc_id, 'target_kb_id': item.target_kb_id},
+                    f'doc already exists in target kb: {item.target_doc_id}',
+                    {'doc_id': item.target_doc_id, 'target_kb_id': item.target_kb_id},
                 )
             source_snapshot = self._get_parse_snapshot(item.doc_id, item.source_kb_id, item.source_algo_id)
             if source_snapshot is None or source_snapshot.get('status') != DocStatus.SUCCESS.value:
@@ -1168,19 +1194,27 @@ class DocManager:
                         'status': source_snapshot.get('status') if source_snapshot else None,
                     },
                 )
+            source_metadata = _from_json(doc.get('meta'))
+            target_metadata = _merge_transfer_metadata(source_metadata, item.target_metadata)
+            target_path = _resolve_transfer_target_path(doc.get('path'), item.target_filename, item.target_file_path)
+            target_filename = os.path.basename(target_path)
             prepared_items.append({
                 'doc_id': item.doc_id,
+                'target_doc_id': item.target_doc_id,
                 'source_kb_id': item.source_kb_id,
                 'source_algo_id': item.source_algo_id,
                 'target_kb_id': item.target_kb_id,
                 'target_algo_id': item.target_algo_id,
                 'mode': item.mode,
                 'file_path': doc.get('path'),
-                'metadata': _from_json(doc.get('meta')),
+                'target_file_path': target_path,
+                'target_filename': target_filename,
+                'metadata': target_metadata,
+                'source_type': SourceType(doc.get('source_type')),
                 'transfer_params': {
                     'mode': 'mv' if item.mode == 'move' else 'cp',
                     'target_algo_id': item.target_algo_id,
-                    'target_doc_id': item.doc_id,
+                    'target_doc_id': item.target_doc_id,
                     'target_kb_id': item.target_kb_id,
                 },
             })
@@ -1327,41 +1361,59 @@ class DocManager:
         for item in prepared_items:
             task_id = None
             try:
-                self._ensure_kb_document(item['target_kb_id'], item['doc_id'])
+                self._upsert_doc(
+                    doc_id=item['target_doc_id'],
+                    filename=item['target_filename'],
+                    path=item['target_file_path'],
+                    metadata=item['metadata'],
+                    source_type=item['source_type'],
+                    upload_status=DocStatus.SUCCESS,
+                    allowed_path_doc_ids={item['doc_id']},
+                )
+                self._ensure_kb_document(item['target_kb_id'], item['target_doc_id'])
                 task_id, snapshot = self._enqueue_task(
-                    item['doc_id'], item['target_kb_id'], item['target_algo_id'], TaskType.DOC_TRANSFER,
+                    item['target_doc_id'], item['target_kb_id'], item['target_algo_id'], TaskType.DOC_TRANSFER,
                     idempotency_key=request.idempotency_key,
                     file_path=item['file_path'],
                     metadata=item['metadata'],
                     parser_kb_id=item['source_kb_id'],
                     transfer_params=item['transfer_params'],
                     extra_message={
+                        'source_doc_id': item['doc_id'],
                         'source_kb_id': item['source_kb_id'],
                         'source_algo_id': item['source_algo_id'],
                         'target_kb_id': item['target_kb_id'],
                         'target_algo_id': item['target_algo_id'],
+                        'target_doc_id': item['target_doc_id'],
                         'mode': item['mode'],
                     },
+                    parser_doc_id=item['doc_id'],
                 )
                 error_code = None
                 error_msg = None
                 accepted = True
             except Exception as exc:
-                snapshot = self._get_parse_snapshot(item['doc_id'], item['target_kb_id'], item['target_algo_id']) or {}
+                snapshot = self._get_parse_snapshot(
+                    item['target_doc_id'], item['target_kb_id'], item['target_algo_id']
+                ) or {}
                 task_id = task_id or snapshot.get('current_task_id')
                 error_code = snapshot.get('last_error_code')
                 if not error_code:
                     error_code = exc.biz_code if isinstance(exc, DocServiceError) else type(exc).__name__
-                error_msg = snapshot.get('last_error_msg') or (exc.msg if isinstance(exc, DocServiceError) else str(exc))
+                error_msg = snapshot.get('last_error_msg') or (
+                    exc.msg if isinstance(exc, DocServiceError) else str(exc)
+                )
                 accepted = False
             items.append({
                 'doc_id': item['doc_id'],
+                'target_doc_id': item['target_doc_id'],
                 'task_id': task_id,
                 'source_kb_id': item['source_kb_id'],
                 'target_kb_id': item['target_kb_id'],
                 'source_algo_id': item['source_algo_id'],
                 'target_algo_id': item['target_algo_id'],
                 'mode': item['mode'],
+                'target_file_path': item['target_file_path'],
                 'status': snapshot.get('status', DocStatus.FAILED.value),
                 'accepted': accepted,
                 'error_code': error_code,
@@ -1504,10 +1556,11 @@ class DocManager:
                 and task_message.get('mode') == 'move'
             ):
                 source_kb_id = task_message.get('source_kb_id')
+                source_doc_id = task_message.get('source_doc_id') or doc_id
                 if source_kb_id and source_kb_id != kb_id:
-                    self._remove_kb_document(source_kb_id, doc_id)
-                    self._delete_parse_snapshots(doc_id, source_kb_id)
-                    self._sync_doc_upload_status(doc_id)
+                    self._remove_kb_document(source_kb_id, source_doc_id)
+                    self._delete_parse_snapshots(source_doc_id, source_kb_id)
+                    self._sync_doc_upload_status(source_doc_id)
 
             self._update_task_record(
                 callback.task_id,

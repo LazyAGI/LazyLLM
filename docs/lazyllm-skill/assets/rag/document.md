@@ -91,8 +91,8 @@ def processYml(file):
 ...     print("Call the function processYml.")
 ...     return [DocNode(text=data)]
 ...
-doc1 = Document(dataset_path="your_files_path", create_ui=False)
-doc2 = Document(dataset_path="your_files_path", create_ui=False)
+doc1 = Document(dataset_path="your_files_path")
+doc2 = Document(dataset_path="your_files_path")
 doc1.add_reader("**/*.yml", YmlReader)
 print(doc1._impl._local_file_reader)
 {'**/*.yml': <class '__main__.YmlReader'>}
@@ -212,5 +212,4 @@ query = "何为天道？"
 res = retriever(query=query)
 print(f"answer: {res}")
 ```
-
 

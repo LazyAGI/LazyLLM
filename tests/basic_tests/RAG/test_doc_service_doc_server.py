@@ -4,6 +4,7 @@ import os
 import tempfile
 
 import pytest
+import requests
 
 from lazyllm.thirdparty import fastapi
 
@@ -151,6 +152,19 @@ def test_run_wraps_doc_service_error():
     assert body['msg'] == 'bad req'
     assert body['data']['biz_code'] == 'E_INVALID_PARAM'
     assert body['data']['x'] == 1
+
+
+def test_parser_url_returns_none_when_remote_endpoint_unavailable(monkeypatch):
+    server = object.__new__(DocServer)
+    server._raw_impl = None
+    server._impl = type('FakeImpl', (), {'_url': 'http://127.0.0.1:19002/generate'})()
+
+    def _raise(*args, **kwargs):
+        raise requests.ConnectionError('missing endpoint')
+
+    monkeypatch.setattr(requests, 'get', _raise)
+
+    assert server.parser_url is None
 
 
 def test_cancel_task_http_requires_task_id(server_impl):

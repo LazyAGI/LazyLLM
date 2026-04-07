@@ -4,6 +4,7 @@ check_dependency_by_group('rag')
 
 # flake8: noqa: E402
 from .document import Document
+from .doc_manager import DocManager
 from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever, ContextRetriever, WeightedRetriever, PriorityRetriever
 from .graph_retriever import GraphRetriever
@@ -29,6 +30,7 @@ add_post_action_for_default_reader = SimpleDirectoryReader.add_post_action_for_d
 __all__ = [
     'add_post_action_for_default_reader',
     'Document',
+    'DocManager',
     'GraphDocument',
     'UrlGraphDocument',
     'Reranker',

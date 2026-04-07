@@ -6,6 +6,8 @@ import os
 import traceback
 from typing import Any, Dict, List, Optional
 
+import requests
+
 from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, UrlModule, once_wrapper
 from lazyllm.thirdparty import fastapi
 
@@ -586,6 +588,11 @@ class DocServer(ModuleBase):
             self._lazy_init()
             return BaseResponse(code=200, msg='success', data=self._manager.health())
 
+        @app.get('/v1/internal/parser-url')
+        def get_parser_url(self):
+            self._lazy_init()
+            return BaseResponse(code=200, msg='success', data={'parser_url': self._parser_url})
+
         def __call__(self, func_name: str, *args, **kwargs):
             return getattr(self, func_name)(*args, **kwargs)
 
@@ -690,6 +697,19 @@ class DocServer(ModuleBase):
     @property
     def _url(self):
         return self.url
+
+    @property
+    def parser_url(self):
+        if self._raw_impl:
+            return self._raw_impl._parser_url
+        base_url = self.url.rsplit('/', 1)[0]
+        try:
+            response = requests.get(f'{base_url}/v1/internal/parser-url', timeout=5)
+            response.raise_for_status()
+            return response.json()['data']['parser_url']
+        except (requests.RequestException, KeyError, TypeError, ValueError) as exc:
+            LOG.warning(f'[DocServer] failed to resolve remote parser_url from {base_url}: {exc}')
+            return None
 
     @staticmethod
     def _normalize_dispatch_result(result):

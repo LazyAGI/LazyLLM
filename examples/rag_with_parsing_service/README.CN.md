@@ -23,6 +23,8 @@ RAG 解析服务示例
 
 参考 `document.py` 的配置：
 - `manager=DocumentProcessor(url="http://0.0.0.0:9966")` 指向解析服务。
+- 该模式下 `Document` 不会创建 `DocServer` 或 UI，`dataset_path` 也不会再用于本地扫盘。
+- 必须显式提供 `store_conf`，且不能使用纯 map store。
 - `server=9977` 将 Document 作为服务暴露。
 
 然后在 `retriever_using_url.py` 中使用：

@@ -185,7 +185,7 @@ class DocImpl:
 
         self._resolve_index_pending_registrations()
         if self._processor:
-            assert cloud and isinstance(self._processor, DocumentProcessor)
+            assert isinstance(self._processor, DocumentProcessor)
             self._processor.register_algorithm(self._algo_name, self._store, self._reader, self.node_groups,
                                                self._schema_extractor, self._display_name, self._description)
         else:

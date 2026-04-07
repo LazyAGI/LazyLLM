@@ -32,7 +32,6 @@ def _wait_task(base_url: str, task_id: str, targets: set[str], timeout: float = 
 def main():
     parser = argparse.ArgumentParser(description='DocService mock quickstart.')
     parser.add_argument('--wait', action='store_true', help='Keep server alive for manual API/docs inspection.')
-    parser.add_argument('--doc-server-port', type=int, default=None, help='DocServer listen port.')
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory(prefix='lazyllm_doc_service_demo_') as tmp:
@@ -46,7 +45,6 @@ def main():
             dataset_path=storage,
             manager=True,
             name='demo_doc_service',
-            doc_server_port=args.doc_server_port,
         )
         doc.start()
 

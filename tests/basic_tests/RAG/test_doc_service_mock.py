@@ -238,25 +238,6 @@ class TestDocServiceMock:
         kb_delete = requests.delete(f'{self.base_url}/v1/kbs/kb_a', timeout=8)
         assert kb_delete.status_code == 200
 
-    def test_document_manager_supports_doc_server_port(self):
-        from lazyllm import Document
-
-        tmp_dir = tempfile.mkdtemp(prefix='lazyllm_doc_port_')
-        storage_dir = os.path.join(tmp_dir, 'uploads')
-        os.makedirs(storage_dir, exist_ok=True)
-        fixed_port = 18898
-        doc = Document(dataset_path=storage_dir, manager=True, doc_server_port=fixed_port, name='doc_port_test')
-        try:
-            self._ensure_bindable()
-            doc.start()
-            base_url = doc.manager.url.rsplit('/', 1)[0]
-            assert base_url.endswith(f':{fixed_port}')
-            health = requests.get(f'{base_url}/v1/health', timeout=5)
-            assert health.status_code == 200
-        finally:
-            doc.stop()
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-
     def test_missing_p0_endpoints_exist(self):
         kb_create = requests.post(f'{self.base_url}/v1/kbs', json={'kb_id': 'kb_endpoints'}, timeout=5)
         assert kb_create.status_code == 200

@@ -26,6 +26,8 @@ others can access it remotely by URL, and Retrievers can use that URL directly.
 
 See `document.py` for the setup:
 - `manager=DocumentProcessor(url="http://0.0.0.0:9966")` points to the parsing service.
+- In this mode `Document` does not create a `DocServer` or UI, and `dataset_path` is not used for local path monitoring.
+- `store_conf` is required and must not be a pure map store.
 - `server=9977` exposes the Document as a service.
 
 Then use `retriever_using_url.py` to create:
