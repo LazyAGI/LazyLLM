@@ -4,14 +4,12 @@ from typing import List, Literal, Optional, Union
 import lazyllm
 from lazyllm.thirdparty import ahocorasick
 from lazyllm import LOG, JsonFormatter, ChatPrompter
-from lazyllm.components import EmptyFormatter
-from lazyllm.components.prompter import EmptyPrompter
 from lazyllm.module import LLMBase, TrainableModule
 
 PromptLang = Literal['zh', 'en']
 
 # ── LLM prompts (Chinese default, English optional) ───────────────────────────
-_LLM_SYSTEM_ZH = """你是一个自然语言处理专家，擅长判断词语边界与语义完整性。
+_LLM_SYSTEM_ZH = '''你是一个自然语言处理专家，擅长判断词语边界与语义完整性。
 
 ## 任务
 给定一段查询文本和若干候选匹配词，判断每个候选词在文本中是否以**完整、独立的词语**形式出现。
@@ -30,13 +28,15 @@ _LLM_SYSTEM_ZH = """你是一个自然语言处理专家，擅长判断词语边
 严格返回JSON数组，元素个数与候选词数量一致，每个元素为 true 或 false。
 不要输出任何其他内容。
 示例：[true, false, true]
-"""
-_LLM_USER_ZH = """查询文本："{query}"\n\n候选匹配：\n{candidates_text}"""
+'''
 
-_LLM_SYSTEM_EN = """You are an NLP expert skilled at judging word boundaries and semantic completeness.
+_LLM_USER_ZH = '查询文本："{query}"\n\n候选匹配：\n{candidates_text}'
+
+_LLM_SYSTEM_EN = '''You are an NLP expert skilled at judging word boundaries and semantic completeness.
 
 ## Task
-Given a query string and several candidate substring matches, decide whether each candidate appears as a **complete, standalone word** in the text.
+Given a query string and several candidate substring matches,
+decide whether each candidate appears as a **complete, standalone word** in the text.
 
 ## Rules
 1. If the candidate is a semantically complete word on its own (not part of a longer word), return true.
@@ -51,8 +51,9 @@ Given a query string and several candidate substring matches, decide whether eac
 ## Output
 Return **only** a JSON array with one boolean per candidate, same order as listed.
 Example: [true, false, true]
-"""
-_LLM_USER_EN = """Query text: "{query}"\n\nCandidates:\n{candidates_text}"""
+'''
+
+_LLM_USER_EN = 'Query text: "{query}"\n\nCandidates:\n{candidates_text}'
 
 
 def _default_llm_prompt(lang: PromptLang) -> ChatPrompter:
@@ -188,8 +189,8 @@ class QueryEnhACProcessor:
         self,
         data_source=None,
         discriminator=None,
-        cluster_key: str = "cluster_id",
-        word_key: str = "word",
+        cluster_key: str = 'cluster_id',
+        word_key: str = 'word',
         max_retries: int = 3,
         prompt_lang: PromptLang = 'zh',
     ):
@@ -203,15 +204,13 @@ class QueryEnhACProcessor:
         self._boundary_filter: Optional[Union[_LLMFilter, _BERTFilter]] = None
         self._build_filter(discriminator)
 
-        self.vocab_data: list = []
-        self.word_to_cluster: dict = {}
-        self.cluster_to_words: dict = {}
-        self.automaton: Optional[ahocorasick.Automaton] = None
+        self.vocab_data = []
+        self.word_to_cluster = {}
+        self.cluster_to_words = {}
+        self.automaton = None
 
         self._data_source = data_source if data_source is not None else []
         self._rebuild_automaton()
-
-    # ── 内部构建方法 ────────────────────────────────────────────────────────────
 
     def _build_filter(self, discriminator):
         if discriminator is None:
@@ -266,7 +265,6 @@ class QueryEnhACProcessor:
 
         LOG.info(f'AC automaton built, vocabulary size: {len(self.word_to_cluster)}')
 
-
     def update_data_source(self, data_source):
         self._data_source = data_source
         self._rebuild_automaton()
@@ -282,10 +280,10 @@ class QueryEnhACProcessor:
         for end_idx, (cluster_id, matched_word) in self.automaton.iter(str(query)):
             start_idx = end_idx - len(matched_word) + 1
             raw_matches.append({
-                "word": matched_word,
-                "cluster_id": cluster_id,
-                "start": start_idx,
-                "end": end_idx,
+                'word': matched_word,
+                'cluster_id': cluster_id,
+                'start': start_idx,
+                'end': end_idx,
             })
 
         if not raw_matches:
@@ -298,13 +296,13 @@ class QueryEnhACProcessor:
             )
             return []
 
-        raw_matches.sort(key=lambda x: (x["start"], -len(x["word"])))
+        raw_matches.sort(key=lambda x: (x['start'], -len(x['word'])))
         result, last_end = [], -1
         for m in raw_matches:
-            if m["start"] <= last_end:
+            if m['start'] <= last_end:
                 continue
             result.append(m)
-            last_end = m["end"]
+            last_end = m['end']
         return self._boundary_filter(query, result)
 
     def _enhance_single(self, query: str) -> str:
@@ -317,22 +315,22 @@ class QueryEnhACProcessor:
         seen_clusters: set = set()
 
         for match in matches:
-            start_idx = match["start"]
-            end_idx = match["end"]
+            start_idx = match['start']
+            end_idx = match['end']
 
             if start_idx > last_pos:
                 enhanced_parts.append(query[last_pos:start_idx])
 
-            cluster_id = match["cluster_id"]
+            cluster_id = match['cluster_id']
             if cluster_id in seen_clusters:
-                replacement = match["word"]
+                replacement = match['word']
             else:
                 seen_clusters.add(cluster_id)
                 cluster_words = self.cluster_to_words.get(cluster_id, [])
-                other_words = [w for w in cluster_words if w != match["word"]]
+                other_words = [w for w in cluster_words if w != match['word']]
                 replacement = (
-                    f"{match['word']}（{', '.join(other_words)}）"
-                    if other_words else match["word"]
+                    f'{match["word"]}（{", ".join(other_words)}）'
+                    if other_words else match['word']
                 )
 
             enhanced_parts.append(replacement)
@@ -341,7 +339,7 @@ class QueryEnhACProcessor:
         if last_pos < len(query):
             enhanced_parts.append(query[last_pos:])
 
-        return "".join(enhanced_parts)
+        return ''.join(enhanced_parts)
 
     def get_matches(self, query: str) -> List[dict]:
         out: List[dict] = []
@@ -358,16 +356,3 @@ class QueryEnhACProcessor:
         if isinstance(queries, str):
             return self._enhance_single(queries)
         return [self._enhance_single(q) for q in queries]
-
-
-# ── 默认数据源（测试用）────────────────────────────────────────────────────────
-def _default_data_source():
-    """提供默认的模拟词表数据供测试"""
-    return [
-        {"cluster_id": "C001", "word": "民法"},
-        {"cluster_id": "C001", "word": "minfa"},
-        {"cluster_id": "C002", "word": "丙醇"},
-        {"cluster_id": "C002", "word": "bingchun"},
-        {"cluster_id": "C003", "word": "染色体"},
-        {"cluster_id": "C003", "word": "ranseti"},
-    ]

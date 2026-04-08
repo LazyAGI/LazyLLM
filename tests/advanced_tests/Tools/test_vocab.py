@@ -11,13 +11,6 @@ from lazyllm.tools.rag.query_enh_ac import (
 
 
 def _mock_llm_discriminator(*call_returns):
-    """Build a MagicMock LLMBase chain for the terminal module __call__.
-
-    - One arg that is a list of only bools: use as fixed JSON list response every call (e.g. ``[True]``).
-    - One arg that is any other list: ``side_effect`` sequence (one value per call).
-    - One non-list arg: ``return_value`` for every call.
-    - Multiple args: ``side_effect`` in order.
-    """
     model = MagicMock(spec=LLMBase)
     terminal = MagicMock()
     if len(call_returns) == 1:
@@ -39,7 +32,7 @@ class TestQueryEnhACProcessor(object):
     @pytest.mark.run_on_change('lazyllm/tools/rag/query_enh_ac.py')
     def test_invalid_prompt_lang_raises(self):
         with pytest.raises(ValueError, match='prompt_lang'):
-            QueryEnhACProcessor(data_source=[], discriminator=None, prompt_lang='fr')  # type: ignore[arg-type]
+            QueryEnhACProcessor(data_source=[], discriminator=None, prompt_lang='fr')
 
     @pytest.mark.run_on_change('lazyllm/tools/rag/query_enh_ac.py')
     def test_invalid_discriminator_type_raises(self):
@@ -219,7 +212,6 @@ class TestLLMFilter(object):
 
 
 def _mock_bert_module_chain(*call_returns):
-    """Terminal is what ``model.share()`` returns; :class:`_BERTFilter` calls it as ``terminal(word, text_b=...)``."""
     terminal = MagicMock()
     if len(call_returns) == 1:
         only = call_returns[0]
@@ -267,5 +259,3 @@ class TestBERTFilter(object):
             out = f('qq', matches)
         assert out == []
         assert terminal.call_count == 2
-
-
