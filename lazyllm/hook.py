@@ -98,12 +98,18 @@ class LazyTracingHook(LazyLLMHook):
         self._span_handle = start_span(span_kind=self._span_kind, target=self._obj, args=args, kwargs=kwargs)
 
     def post_hook(self, output):
+        if self._span_handle is None:
+            return
         set_span_output(self._span_handle, output)
 
     def on_error(self, exc):
+        if self._span_handle is None:
+            return
         set_span_error(self._span_handle, exc)
 
     def report(self):
+        if self._span_handle is None:
+            return
         finish_span(self._span_handle)
         self._span_handle = None
 
