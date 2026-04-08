@@ -64,8 +64,8 @@ lazyllm::MetadataMode ParseMetadataMode(const py::object& mode) {
     return lazyllm::MetadataMode::NONE;
 }
 
-lazyllm::DocNodeCore::MetadataVType PyToMetadataValue(const py::handle& value) {
-    if (value.is_none()) return std::any(py::none());
+lazyllm::MetadataVType PyToMetadataValue(const py::handle& value) {
+    if (value.is_none()) return std::string("None");
     if (py::isinstance<py::bool_>(value)) return static_cast<int>(value.cast<bool>());
     if (py::isinstance<py::int_>(value)) return value.cast<int>();
     if (py::isinstance<py::float_>(value)) return value.cast<double>();
@@ -73,7 +73,7 @@ lazyllm::DocNodeCore::MetadataVType PyToMetadataValue(const py::handle& value) {
 
     if (py::isinstance<py::sequence>(value) && !py::isinstance<py::str>(value)) {
         py::sequence seq = value.cast<py::sequence>();
-        if (seq.empty()) return std::any(py::reinterpret_borrow<py::object>(value));
+        if (seq.empty()) return std::vector<std::string>{};
 
         bool all_str = true;
         bool all_int = true;
@@ -106,11 +106,16 @@ lazyllm::DocNodeCore::MetadataVType PyToMetadataValue(const py::handle& value) {
             for (py::handle item : seq) out.push_back(py::cast<double>(item));
             return out;
         }
+
+        std::vector<std::string> out;
+        out.reserve(seq.size());
+        for (py::handle item : seq) out.push_back(py::str(item).cast<std::string>());
+        return out;
     }
-    return std::any(py::reinterpret_borrow<py::object>(value));
+    return py::str(value).cast<std::string>();
 }
 
-py::object MetadataValueToPy(const lazyllm::DocNodeCore::MetadataVType& value) {
+py::object MetadataValueToPy(const lazyllm::MetadataVType& value) {
     return std::visit([](const auto& v) -> py::object {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, std::string>) return py::str(v);
@@ -119,38 +124,8 @@ py::object MetadataValueToPy(const lazyllm::DocNodeCore::MetadataVType& value) {
         if constexpr (std::is_same_v<T, std::vector<std::string>>) return py::cast(v);
         if constexpr (std::is_same_v<T, std::vector<int>>) return py::cast(v);
         if constexpr (std::is_same_v<T, std::vector<double>>) return py::cast(v);
-        if constexpr (std::is_same_v<T, std::any>) return AnyToPy(v);
         return py::none();
     }, value);
-}
-
-std::any PyToAny(const py::handle& value) {
-    if (value.is_none()) return py::none();
-    if (py::isinstance<py::bool_>(value)) return value.cast<bool>();
-    if (py::isinstance<py::int_>(value)) return value.cast<long long>();
-    if (py::isinstance<py::float_>(value)) return value.cast<double>();
-    if (py::isinstance<py::str>(value)) return value.cast<std::string>();
-    return py::reinterpret_borrow<py::object>(value);
-}
-
-py::object AnyToPy(const std::any& value) {
-    const auto& t = value.type();
-    if (!value.has_value()) return py::none();
-    if (t == typeid(py::object)) return std::any_cast<py::object>(value);
-    if (t == typeid(py::none)) return py::none();
-    if (t == typeid(std::string)) return py::str(std::any_cast<std::string>(value));
-    if (t == typeid(const char*)) return py::str(std::any_cast<const char*>(value));
-    if (t == typeid(char*)) return py::str(std::any_cast<char*>(value));
-    if (t == typeid(bool)) return py::bool_(std::any_cast<bool>(value));
-    if (t == typeid(int)) return py::int_(std::any_cast<int>(value));
-    if (t == typeid(long)) return py::int_(std::any_cast<long>(value));
-    if (t == typeid(long long)) return py::int_(std::any_cast<long long>(value));
-    if (t == typeid(unsigned int)) return py::int_(std::any_cast<unsigned int>(value));
-    if (t == typeid(unsigned long)) return py::int_(std::any_cast<unsigned long>(value));
-    if (t == typeid(unsigned long long)) return py::int_(std::any_cast<unsigned long long>(value));
-    if (t == typeid(float)) return py::float_(std::any_cast<float>(value));
-    if (t == typeid(double)) return py::float_(std::any_cast<double>(value));
-    return py::str("<unsupported>");
 }
 
 } // namespace lazyllm::pybind_utils

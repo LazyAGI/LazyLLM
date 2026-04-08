@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "tokenizer.hpp"
+#include "utils.hpp"
 
 namespace lazyllm {
 

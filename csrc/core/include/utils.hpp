@@ -63,6 +63,12 @@ inline std::string to_hex(size_t v) {
     return oss.str();
 }
 
+inline std::string NumberToString(double v) {
+    std::ostringstream oss;
+    oss << v;
+    return oss.str();
+}
+
 inline std::string GenerateUUID() {
     static const char HEX_CHAR[] = "0123456789abcdef";
     static const int SEGS[] = {8, 4, 4, 4, 12};
@@ -82,7 +88,8 @@ inline std::string GenerateUUID() {
     return out;
 }
 
-std::string VectorToString(const std::vector<std::string>& values) {
+inline std::string VectorToString(const std::vector<std::string>& values) {
+    if (values.empty()) return "[]";
     std::string out = "[";
     for (size_t i = 0; i < values.size() - 1; ++i) {
         out += values[i];
@@ -93,24 +100,26 @@ std::string VectorToString(const std::vector<std::string>& values) {
     return out;
 }
 
-std::string VectorToString(const std::vector<int>& values) {
+inline std::string VectorToString(const std::vector<int>& values) {
+    if (values.empty()) return "[]";
     std::string out = "[";
     for (size_t i = 0; i < values.size() - 1; ++i) {
-        out += std::string(values[i]);
+        out += std::to_string(values[i]);
         out += ",";
     }
-    out += std::string(values.back());
+    out += std::to_string(values.back());
     out += "]";
     return out;
 }
 
-std::string VectorToString(const std::vector<double>& values) {
+inline std::string VectorToString(const std::vector<double>& values) {
+    if (values.empty()) return "[]";
     std::string out = "[";
     for (size_t i = 0; i < values.size() - 1; ++i) {
-        out += std::string(values[i]);
+        out += NumberToString(values[i]);
         out += ",";
     }
-    out += std::string(values.back());
+    out += NumberToString(values.back());
     out += "]";
     return out;
 }

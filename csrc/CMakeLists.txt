@@ -31,6 +31,11 @@ file(GLOB_RECURSE LAZYLLM_BINDING_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/binding/*.cpp")
 set(INTERFACE_TARGET_NAME lazyllm_cpp)
 pybind11_add_module(${INTERFACE_TARGET_NAME} ${LAZYLLM_BINDING_SOURCES})
+target_include_directories(${INTERFACE_TARGET_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/binding
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/include
+)
+target_link_libraries(${INTERFACE_TARGET_NAME} PRIVATE lazyllm_core)
 lazyllm_enable_strict_warnings(${INTERFACE_TARGET_NAME})
 
 # Runtime loader configuration per platform.

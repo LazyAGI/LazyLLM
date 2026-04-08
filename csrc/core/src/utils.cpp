@@ -11,7 +11,7 @@ std::string any_to_string(const MetadataVType& value) {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, std::string>) return v;
         if constexpr (std::is_same_v<T, int>) return std::to_string(v);
-        if constexpr (std::is_same_v<T, double>) return std::to_string(v);
+        if constexpr (std::is_same_v<T, double>) return NumberToString(v);
         if constexpr (std::is_same_v<T, std::vector<std::string>>) return VectorToString(v);
         if constexpr (std::is_same_v<T, std::vector<int>>) return VectorToString(v);
         if constexpr (std::is_same_v<T, std::vector<double>>) return VectorToString(v);

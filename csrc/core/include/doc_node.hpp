@@ -8,8 +8,6 @@
 #include <variant>
 #include <vector>
 
-#include <xxhash.h>
-
 #include "utils.hpp"
 
 namespace lazyllm {
@@ -39,7 +37,7 @@ struct DocNodeCore {
     DocNodeCore& operator=(const DocNodeCore&) = default;
     virtual ~DocNodeCore() = default;
 
-    std::string get_metadata_string(MetadataMode mode = MetadataMode::ALL) const {
+    virtual std::string get_metadata_string(MetadataMode mode = MetadataMode::ALL) const {
         if (mode == MetadataMode::NONE) return "";
 
         std::set<std::string> valid_keys;
@@ -57,7 +55,7 @@ struct DocNodeCore {
         return JoinLines(kv_strings);
     }
 
-    std::string get_text(MetadataMode mode = MetadataMode::NONE) const {
+    virtual std::string get_text(MetadataMode mode = MetadataMode::NONE) const {
         if (mode == MetadataMode::NONE) return _text;
         const auto& metadata_string = get_metadata_string(mode);
         if (metadata_string.empty()) return _text;
