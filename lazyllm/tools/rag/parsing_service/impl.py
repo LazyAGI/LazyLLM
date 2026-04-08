@@ -5,6 +5,7 @@ from graphlib import CycleError, TopologicalSorter
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
+from itertools import repeat
 
 from lazyllm import LOG
 
@@ -99,12 +100,9 @@ class _Processor:
             if not input_files: return
             add_start = time.time()
             if not ids: ids = [gen_docid(path) for path in input_files]
-            if metadatas is None:
-                metadatas = [{} for _ in input_files]
-            for metadata, doc_id, path in zip(metadatas, ids, input_files):
-                metadata.setdefault(RAG_DOC_ID, doc_id)
-                metadata.setdefault(RAG_DOC_PATH, path)
-                metadata.setdefault(RAG_KB_ID, kb_id or DEFAULT_KB_ID)
+            temp_metas = [{RAG_DOC_ID: doc_id, RAG_DOC_PATH: path, RAG_KB_ID: kb_id or DEFAULT_KB_ID}
+                          for doc_id, path in zip(ids, input_files)]
+            metadatas = [{**temp, **(metadata)} for metadata, temp in zip(metadatas or repeat({}), temp_metas)]
             kb_id = metadatas[0].get(RAG_KB_ID, DEFAULT_KB_ID) if kb_id is None else kb_id
 
             load_start = time.time()

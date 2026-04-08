@@ -85,7 +85,7 @@ class TestDocImpl(unittest.TestCase):
         new_doc = DocNode(text='new dummy text', group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_ID: gen_docid(self.tmp_file_b.name), RAG_DOC_PATH: self.tmp_file_b.name}
         self.mock_directory_reader.load_data.return_value = {LAZY_ROOT_NAME: [new_doc], LAZY_IMAGE_GROUP: []}
-        self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
+        self.doc_impl._processor._add_doc([self.tmp_file_b.name])
         assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 2
 
 class TestDocument(unittest.TestCase):

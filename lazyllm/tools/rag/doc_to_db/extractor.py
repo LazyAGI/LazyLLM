@@ -13,7 +13,7 @@ from string import Template
 
 from lazyllm import LOG, ThreadPoolExecutor, once_wrapper
 from lazyllm.components import JsonFormatter
-from lazyllm.module import LLMBase
+from lazyllm.module import LLMBase, ModuleBase
 
 from ...sql.sql_manager import DBStatus, SqlManager
 from ..doc_node import DocNode
@@ -33,7 +33,7 @@ from .utils import _col_type_name
 ONE_DOC_LENGTH_LIMIT = 102400
 
 
-class SchemaExtractor:
+class SchemaExtractor(ModuleBase):
     '''Schema aware extractor that materializes BaseModel schemas into database tables.'''
 
     TABLE_PREFIX = 'lazyllm_schema'
@@ -724,8 +724,8 @@ class SchemaExtractor:
             results.append(ExtractResult(data=row_data, metadata=meta))
         return results
 
-    def __call__(self, data: Union[str, List[DocNode]],
-                 algo_id: str = DocListManager.DEFAULT_GROUP_NAME) -> ExtractResult:
+    def forward(self, data: Union[str, List[DocNode]],
+                algo_id: str = DocListManager.DEFAULT_GROUP_NAME) -> ExtractResult:
         # NOTE: data should be from single file source (kb_id, doc_id should be the same)
         self._lazy_init()
         res = self.extract_and_store(data=data, algo_id=algo_id)
