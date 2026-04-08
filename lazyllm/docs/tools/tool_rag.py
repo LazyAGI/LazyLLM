@@ -9441,3 +9441,121 @@ add_example(
     >>> print(results)
     [{'source': '句子1', 'target': '修正后句子1', 'errors': [...]}, ...]
 """)
+
+# RAG-QueryEnhACProcessor
+add_chinese_doc('rag.QueryEnhACProcessor', '''\
+基于 Aho–Corasick（AC）自动机的查询同义词扩展处理器。
+
+在查询串上匹配词表中的词，将保留的命中词替换为「原词 + 同簇其它词形」的展示形式（首遇簇内词时展开，同句后续同簇命中仅保留原词）。匹配先做**最长无重叠**预选，再由判别器判断是否为独立词边界。若 ``discriminator`` 为 ``None`` 且 AC 仍有命中，会记录警告并不改写查询；判别器推理失败时过滤器返回空命中，同样保持原句。
+
+Args:
+    data_source: 词表数据源。可为无参可调用（每次调用返回 ``list[dict]``），或直接为字典列表。每条记录需包含 ``cluster_key``、``word_key`` 所指字段；缺字段项会被跳过。
+    discriminator: 词边界判别器。支持 ``OnlineChatModule``、用于 LLM 的 ``TrainableModule``（经 ``prompt``/``formatter`` 链），或已 ``deploy_method(lazyllm.deploy.BertDeploy)`` 且 ``start()`` 的 ``TrainableModule``（序列分类，与 ac-jieba 语义对齐）。``None`` 表示不增强。
+    cluster_key (str): 同义词簇 ID 字段名，默认 ``"cluster_id"``。
+    word_key (str): 词文字段名，默认 ``"word"``。
+    max_retries (int): LLM 整批调用或 BERT 逐条调用失败时的最大重试次数，默认 ``3``。
+    prompt_lang (Literal["zh", "en"]): 内置 LLM 提示语言；``discriminator`` 为 ``None`` 或 BERT 部署的 ``TrainableModule`` 时无效。
+
+Methods:
+    - ``__call__(queries)``: 对单条字符串或字符串列表做增强。\\n
+    - ``get_matches(query)``: 返回经 AC + 边界过滤后的匹配列表。\\n
+    - ``update_data_source`` / ``update_discriminator``: 热更新词表或判别器。\\n
+''')
+
+add_english_doc('rag.QueryEnhACProcessor', '''\
+Query synonym expansion using an Aho–Corasick (AC) automaton.
+
+Matches vocabulary words in the query string, then replaces kept hits with the original word plus other surface forms in the same cluster (first hit per cluster is expanded; later hits in the same cluster keep only the matched word). Candidates are pre-filtered to **longest non-overlapping** matches, then a discriminator decides true word boundaries. If ``discriminator`` is ``None`` but the automaton still matches, a warning is logged and the query is unchanged; if the discriminator fails after retries, enhancement is skipped and the original query is kept.
+
+Args:
+    data_source: Vocabulary source: a no-arg callable returning ``list[dict]``, or a list of dicts. Each record must contain the fields named by ``cluster_key`` and ``word_key``; incomplete rows are skipped.
+    discriminator: Boundary discriminator: ``OnlineChatModule``, ``TrainableModule`` for LLM (with prompt/formatter chain), or a started ``TrainableModule`` with ``deploy_method(lazyllm.deploy.BertDeploy)`` (sequence classification, same semantics as ac-jieba). ``None`` disables enhancement.
+    cluster_key (str): Field name for synonym cluster id, default ``"cluster_id"``.
+    word_key (str): Field name for surface word text, default ``"word"``.
+    max_retries (int): Max retries for batched LLM calls or per-match BERT calls, default ``3``.
+    prompt_lang (Literal["zh", "en"]): Language for built-in LLM prompts; ignored when ``discriminator`` is ``None`` or a BERT-deployed ``TrainableModule``.
+
+Methods:
+    - ``__call__(queries)``: Enhance a single string or a list of strings.\\n
+    - ``get_matches(query)``: Return matches after AC + boundary filtering.\\n
+    - ``update_data_source`` / ``update_discriminator``: Hot-swap vocabulary or discriminator.\\n
+''')
+
+add_chinese_doc('rag.QueryEnhACProcessor.update_data_source', '''\
+热更新词表数据源并重建 AC 自动机。
+
+Args:
+    data_source: 新的数据源，规则与构造参数 ``data_source`` 相同。
+''')
+
+add_english_doc('rag.QueryEnhACProcessor.update_data_source', '''\
+Replace the vocabulary source and rebuild the AC automaton.
+
+Args:
+    data_source: New source, same rules as the constructor ``data_source`` argument.
+''')
+
+add_chinese_doc('rag.QueryEnhACProcessor.update_discriminator', '''\
+热更新词边界判别器（按新实例类型重新构建内部 LLM / BERT 过滤器）。
+
+Args:
+    discriminator: 新的判别器；类型须与构造参数一致，可为 ``None``。
+''')
+
+add_english_doc('rag.QueryEnhACProcessor.update_discriminator', '''\
+Hot-swap the boundary discriminator (rebuilds the internal LLM / BERT filter from the new instance).
+
+Args:
+    discriminator: New discriminator; same supported types as the constructor, or ``None``.
+''')
+
+add_chinese_doc('rag.QueryEnhACProcessor.get_matches', '''\
+返回经 AC 匹配与边界过滤后的命中列表（与 ac-jieba ``return_matches_only`` 形态对齐）。
+
+**Returns:**\\n
+- ``List[dict]``: 每项含当前 ``word_key``、``cluster_key`` 字段，以及 ``cluster_words``（该簇全部词形列表）。\\n
+''')
+
+add_english_doc('rag.QueryEnhACProcessor.get_matches', '''\
+Return matches after AC matching and boundary filtering (shape aligned with ac-jieba ``return_matches_only``).
+
+**Returns:**\\n
+- ``List[dict]``: Each item contains the configured ``word_key`` and ``cluster_key`` fields, plus ``cluster_words`` (all words in that cluster).\\n
+''')
+
+add_chinese_doc('rag.QueryEnhACProcessor.__call__', '''\
+对查询执行同义词扩展增强。
+
+Args:
+    queries (Union[str, List[str]]): 单条查询字符串，或查询字符串列表。
+
+**Returns:**\\n
+- ``Union[str, List[str]]``: 与输入同结构——单条入参返回字符串，列表入参返回增强后的字符串列表。\\n
+''')
+
+add_english_doc('rag.QueryEnhACProcessor.__call__', '''\
+Run synonym expansion on one or more queries.
+
+Args:
+    queries (Union[str, List[str]]): A single query string or a list of query strings.
+
+**Returns:**\\n
+- ``Union[str, List[str]]``: Same structure as input—a string for a single query, or a list of enhanced strings.\\n
+''')
+
+add_example('rag.QueryEnhACProcessor', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag import QueryEnhACProcessor
+>>> def vocab():
+...     return [
+...         {"cluster_id": "C1", "word": "民法"},
+...         {"cluster_id": "C1", "word": "civil law"},
+...     ]
+>>> model = lazyllm.OnlineChatModule()
+>>> proc = QueryEnhACProcessor(data_source=vocab, discriminator=model)
+>>> out = proc("什么是民法？")
+>>> proc.update_data_source(vocab)
+>>> proc.update_discriminator(model)
+''')
+
+
