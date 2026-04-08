@@ -834,6 +834,8 @@ class DocManager:
 
     def _apply_doc_upload_status(self, doc_id: str, task_type: TaskType, status: DocStatus):
         if task_type == TaskType.DOC_ADD:
+            if status in (DocStatus.WORKING, DocStatus.FAILED, DocStatus.CANCELED, DocStatus.SUCCESS):
+                self._set_doc_upload_status(doc_id, status)
             return
         if task_type == TaskType.DOC_DELETE:
             if status == DocStatus.DELETING:

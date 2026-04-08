@@ -51,10 +51,13 @@ class WebUi:
         return response.json()['msg']
 
     def list_groups(self):
-        response = requests.get(
-            f'{self.base_url}/list_kb_groups', headers=self.basic_headers(False)
-        )
-        return response.json()['data']
+        response = requests.get(f'{self.base_url}/list_kb_groups', headers=self.basic_headers(False))
+        payload = response.json()
+        if 'data' in payload:
+            return payload['data']
+        response = requests.get(f'{self.base_url}/v1/kbs', headers=self.basic_headers(False))
+        payload = response.json()
+        return [item.get('kb_id') for item in payload.get('data', {}).get('items', []) if item.get('kb_id')]
 
     def upload_files(self, group_name: str, override: bool = True):
         response = requests.post(
