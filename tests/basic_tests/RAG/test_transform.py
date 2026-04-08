@@ -9,13 +9,14 @@ from lazyllm.tools.rag.transform.markdown import _MdSplit
 from lazyllm.tools.rag.transform.layout import NO_GROUPING
 from lazyllm.tools.rag.transform.base import NodeTransform, _TextSplitterBase, _Split, _TokenTextSplitter
 from lazyllm.tools.rag.doc_node import DocNode, RichDocNode
-from lazyllm.tools.rag.global_metadata import RAG_DOC_ID
+from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 import pytest
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.document import Document
 from lazyllm.tools.rag.retriever import Retriever
 from lazyllm.tools.rag.store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from lazyllm.tools.rag.store.document_store import _DocumentStore
+from lazyllm.tools.rag.store.store_base import DEFAULT_KB_ID
 from lazyllm.tools.rag.parsing_service import _Processor
 from lazyllm.tools.rag.utils import gen_docid
 from lazyllm.tools.rag.global_metadata import RAG_KB_ID
@@ -1806,3 +1807,43 @@ class TestBatchForwardRefPath:
             for p in (p1, p2):
                 if os.path.exists(p):
                     os.unlink(p)
+
+    def test_prepare_doc_inputs_handles_empty_input_files(self):
+        ids, metadatas, kb_id = _Processor._prepare_doc_inputs([])
+
+        assert ids == []
+        assert metadatas == []
+        assert kb_id == DEFAULT_KB_ID
+
+    def test_reparse_allows_missing_metadatas(self):
+        doc_path = '/tmp/reparse.txt'
+        doc_id = 'doc-1'
+        reader = MagicMock()
+        reader.load_data.return_value = {
+            LAZY_ROOT_NAME: [],
+            LAZY_IMAGE_GROUP: [],
+        }
+        store = MagicMock()
+        store.get_nodes.return_value = []
+        processor = _Processor(
+            algo_id='test_reparse',
+            store=store,
+            reader=reader,
+            node_groups={},
+        )
+        processor.add_doc = MagicMock()
+
+        processor._reparse_docs(group_name='all', doc_ids=[doc_id], doc_paths=[doc_path], metadatas=None)
+
+        reader.load_data.assert_called_once_with(
+            [doc_path],
+            [{RAG_DOC_ID: doc_id, RAG_DOC_PATH: doc_path, RAG_KB_ID: DEFAULT_KB_ID}],
+            split_nodes_by_type=True,
+        )
+        processor.add_doc.assert_called_once_with(
+            input_files=[doc_path],
+            ids=[doc_id],
+            metadatas=[{RAG_DOC_ID: doc_id, RAG_DOC_PATH: doc_path, RAG_KB_ID: DEFAULT_KB_ID}],
+            kb_id=DEFAULT_KB_ID,
+            preloaded_root_nodes=reader.load_data.return_value,
+        )
