@@ -143,10 +143,10 @@ def _llm_call_with_retry(llm: Any, prompt: str, parse_json: bool = True) -> Any:
             err_str = str(exc)
             is_qps = bool(_QPS_PATTERNS.search(err_str))
             if delay is None:
-                break
+                raise RuntimeError(f'LLM call failed after {len(delays) - 1} retries: {err_str}') from exc
             wait = delay * (3 if is_qps else 1)
             lazyllm.LOG.warning(
-                f'LLM call failed (attempt {attempt + 1}/4, {"QPS" if is_qps else "error"}): '
+                f'LLM call failed (attempt {attempt + 1}/{len(delays) - 1}, {"QPS" if is_qps else "error"}): '
                 f'{err_str[:120]}. Retrying in {wait}s...'
             )
             time.sleep(wait)
@@ -161,8 +161,8 @@ def _llm_call_with_retry(llm: Any, prompt: str, parse_json: bool = True) -> Any:
         lazyllm.LOG.warning(f'JSON parse/repair failed. Raw response snippet: {raw_response[:300]}')
         return []
 
-    lazyllm.LOG.warning(f'LLM call gave up after retries: {last_llm_exc}')
-    return [] if parse_json else ''
+    # unreachable, but satisfies type checker
+    raise RuntimeError(f'LLM call gave up after retries: {last_llm_exc}')
 
 
 # ---------------------------------------------------------------------------

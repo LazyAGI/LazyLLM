@@ -100,9 +100,8 @@ def review(
             clone_dir=clone_dir, existing_comments=existing_comments, language=language,
         )
     finally:
-        if clone_dir:
-            if os.path.isdir(clone_dir):
-                shutil.rmtree(clone_dir, ignore_errors=True)
+        if clone_dir and os.path.isdir(clone_dir):
+            shutil.rmtree(clone_dir, ignore_errors=True)
 
     posted = 0
     if post_to_github and head_sha:

@@ -13,7 +13,7 @@ from .utils import (
     _language_instruction, _safe_llm_call,
     _truncate_hunk_content, _extract_json_text, _parse_json_with_repair,
 )
-from .pre_analysis import _read_file_context, _get_arch_index, _get_symbol_index
+from .pre_analysis import _read_file_context, _get_arch_index, _get_symbol_index, _build_scoped_agent_tools
 
 
 def _lookup_relevant_symbols(diff_content: str, symbol_index: Dict[str, str]) -> str:
@@ -342,66 +342,6 @@ def _parse_agent_review_output(raw: str) -> List[Dict[str, Any]]:
     return result
 
 
-def _build_agent_tools(clone_dir: str) -> list:
-    from lazyllm.tools.agent.file_tool import read_file, list_dir, search_in_files
-    from lazyllm.tools.agent.shell_tool import shell_tool
-
-    def read_file_scoped(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> dict:
-        '''Read a source file from the cloned repository, with optional line range.
-
-        Args:
-            path (str): File path relative to repo root, or absolute path inside clone_dir.
-            start_line (int, optional): 1-based start line (inclusive).
-            end_line (int, optional): 1-based end line (inclusive).
-
-        Returns:
-            dict: File content and metadata.
-        '''
-        abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
-        return read_file(abs_path, start_line=start_line, end_line=end_line, root=clone_dir)
-
-    def search_scoped(pattern: str, glob: Optional[str] = None, max_results: int = 40) -> dict:
-        '''Search files in the cloned repository for a regex pattern.
-
-        Args:
-            pattern (str): Regex pattern to search for.
-            glob (str, optional): Filename glob filter (e.g., "*.py").
-            max_results (int, optional): Max number of matches to return. Defaults to 40.
-
-        Returns:
-            dict: List of matches with file path and line number.
-        '''
-        return search_in_files(pattern, path=clone_dir, glob=glob, max_results=max_results, root=clone_dir)
-
-    def list_dir_scoped(path: str = '.', recursive: bool = False) -> dict:
-        '''List directory entries inside the cloned repository.
-
-        Args:
-            path (str, optional): Path relative to repo root. Defaults to repo root.
-            recursive (bool, optional): Whether to walk recursively.
-
-        Returns:
-            dict: List of entries.
-        '''
-        abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
-        return list_dir(abs_path, recursive=recursive, root=clone_dir)
-
-    def shell_scoped(cmd: str, timeout: int = 30) -> dict:
-        '''Run a read-only shell command (grep, find, git log, etc.) in the cloned repository.
-        Do NOT use write commands (rm, mv, git commit, etc.).
-
-        Args:
-            cmd (str): The shell command to execute.
-            timeout (int, optional): Timeout in seconds. Defaults to 30.
-
-        Returns:
-            dict: Execution result including stdout, stderr, exit_code.
-        '''
-        return shell_tool(cmd, cwd=clone_dir, timeout=timeout, allow_unsafe=False)
-
-    return [read_file_scoped, search_scoped, list_dir_scoped, shell_scoped]
-
-
 def _split_file_diff_into_chunks(diff_text: str, max_chars: int) -> List[Tuple[str, str]]:
     if len(diff_text) <= max_chars:
         return [('all hunks', diff_text)]
@@ -491,7 +431,7 @@ def _r2_build_shared_context(
         arch_doc=arch_snippet,
         budget=_R2_SHARED_CTX_BUDGET,
     )
-    tools = _build_agent_tools(clone_dir)
+    tools = _build_scoped_agent_tools(clone_dir)
     try:
         agent = ReactAgent(llm, tools=tools, max_retries=_R2_SHARED_AGENT_RETRIES, workspace=clone_dir)
         raw = agent(prompt)
@@ -541,7 +481,7 @@ def _round2_agent_review(
     arch_snippet = (arch_doc or '')[:_R2_ARCH_BUDGET]
     summary_snippet = (pr_summary or '')[:_R2_SUMMARY_BUDGET]
     lang_instr = _language_instruction(language)
-    tools = _build_agent_tools(clone_dir)
+    tools = _build_scoped_agent_tools(clone_dir)
 
     prog = _Progress('Round 2: per-file agent review', len(file_diffs))
     all_results: List[Dict[str, Any]] = []

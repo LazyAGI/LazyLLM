@@ -22,8 +22,6 @@ _SKIP_EXTS = {'.pyc', '.pyo', '.so', '.egg', '.egg-info'}
 # arch analysis budgets (chars)
 _ARCH_SNAPSHOT_BUDGET = 6000
 _ARCH_OUTLINE_MAX_SECTIONS = 7
-_ARCH_SECTION_PROMPT_BUDGET = 3500
-_ARCH_SECTION_MAX_RETRIES = 6
 _ARCH_PREV_SUMMARY_BUDGET = 600
 
 # bot user filter for review spec
@@ -271,7 +269,7 @@ Be concise (max 800 words). Output plain text, no markdown headers.
 '''
 
 
-def _build_arch_agent_tools(clone_dir: str) -> list:
+def _build_scoped_agent_tools(clone_dir: str) -> list:
     from lazyllm.tools.agent.file_tool import read_file, list_dir, search_in_files
     from lazyllm.tools.agent.shell_tool import shell_tool
 
@@ -289,13 +287,13 @@ def _build_arch_agent_tools(clone_dir: str) -> list:
         abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
         return read_file(abs_path, start_line=start_line, end_line=end_line, root=clone_dir)
 
-    def search_scoped(pattern: str, glob: Optional[str] = None, max_results: int = 30) -> dict:
+    def search_scoped(pattern: str, glob: Optional[str] = None, max_results: int = 40) -> dict:
         '''Search files in the cloned repository for a regex pattern.
 
         Args:
             pattern (str): Regex pattern to search for.
             glob (str, optional): Filename glob filter (e.g., "*.py").
-            max_results (int, optional): Max number of matches to return. Defaults to 30.
+            max_results (int, optional): Max number of matches to return. Defaults to 40.
 
         Returns:
             dict: List of matches with file path and line number.
@@ -423,7 +421,7 @@ def _build_arch_index(arch_doc: str) -> str:
             rest = line[m.end():].strip()
             if rest:
                 lines.append(f'[{current_title}] {rest[:80]}')
-        elif current_title and line.strip() and not lines or (lines and not lines[-1].startswith(f'[{current_title}]')):
+        elif current_title and line.strip() and (not lines or not lines[-1].startswith(f'[{current_title}]')):
             lines.append(f'[{current_title}] {line.strip()[:80]}')
     if not lines:
         # fallback: take first sentence of each paragraph
@@ -766,22 +764,23 @@ def _run_arch_analysis(
     arch_doc = ckpt.get('arch_doc') or ''
     clone_dir: Optional[str] = None
     prog = _Progress('Pre-analysis: fetch repo & analyze architecture')
+    clone_url, branch = _resolve_clone_target(pr, repo)
+    lazyllm.LOG.info(f'Cloning {clone_url} @ {branch}')
     try:
-        clone_url, branch = _resolve_clone_target(pr, repo)
-        lazyllm.LOG.info(f'Cloning {clone_url} @ {branch}')
         clone_dir, _file_tree = _fetch_repo_code(clone_url, branch)
-        prog.update('cloned, analyzing...')
-        arch_doc = analyze_repo_architecture(llm, clone_dir, arch_cache_path)
-        ckpt.save('arch_doc', arch_doc)
-        if arch_doc and arch_cache_path:
-            lazyllm.LOG.success(f'Architecture doc saved to: {arch_cache_path}')
     except Exception as e:
-        lazyllm.LOG.warning(f'Pre-analysis fetch/arch failed: {e}')
-        if clone_dir and os.path.isdir(clone_dir):
-            import shutil
-            shutil.rmtree(clone_dir, ignore_errors=True)
-        clone_dir = None
-    prog.done('architecture doc ready' if arch_doc else 'skipped (error)')
+        raise RuntimeError(f'Failed to clone repo {clone_url} @ {branch}: {e}') from e
+    prog.update('cloned, analyzing...')
+    try:
+        arch_doc = analyze_repo_architecture(llm, clone_dir, arch_cache_path)
+    except Exception:
+        import shutil
+        shutil.rmtree(clone_dir, ignore_errors=True)
+        raise
+    ckpt.save('arch_doc', arch_doc)
+    if arch_doc and arch_cache_path:
+        lazyllm.LOG.success(f'Architecture doc saved to: {arch_cache_path}')
+    prog.done('architecture doc ready')
     return arch_doc, clone_dir
 
 

@@ -21,7 +21,7 @@ if os.path.isdir(_gh_bin):
 
 def main():
     repo = 'LazyAGI/LazyLLM'
-    pr_number = 1022
+    pr_number = 1083
 
     from lazyllm.tools.git import Git, review
 
