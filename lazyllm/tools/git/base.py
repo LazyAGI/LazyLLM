@@ -162,7 +162,8 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
 
     @abstractmethod
     def submit_review(self, number: int, event: str, body: str = '',
-                      comment_ids: Optional[List[Any]] = None) -> Dict[str, Any]:
+                      comments: Optional[List[Dict[str, Any]]] = None,
+                      commit_id: Optional[str] = None) -> Dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod
@@ -259,3 +260,14 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
         if errors:
             return {'success': False, 'message': '; '.join(errors), 'created': created}
         return {'success': True, 'message': 'committed', 'created': created}
+
+    def submit_review_with_comments(
+        self,
+        number: int,
+        body: str,
+        comments: List[Dict[str, Any]],
+        commit_id: Optional[str] = None,
+        event: str = 'COMMENT',
+    ) -> Dict[str, Any]:
+        return self.submit_review(number=number, event=event, body=body,
+                                  comments=comments, commit_id=commit_id)

@@ -178,10 +178,21 @@ class Gitee(LazyLLMGitBase):
         return {'success': True, 'comment_id': data.get('id'), 'message': 'created'}
 
     def submit_review(self, number: int, event: str, body: str = '',
-                      comment_ids: Optional[List[Any]] = None) -> Dict[str, Any]:
+                      comments: Optional[List[Dict[str, Any]]] = None,
+                      commit_id: Optional[str] = None) -> Dict[str, Any]:
         payload = {'body': body, 'event': event.upper() == 'APPROVE' and 'approve' or event}
-        if comment_ids is not None:
-            payload['comments'] = comment_ids
+        if comments:
+            # Gitee may not support GitHub-like batch inline comments; fallback to creating comments one-by-one.
+            for c in comments:
+                if not isinstance(c, dict) or not c.get('body'):
+                    continue
+                self.create_review_comment(
+                    number=number,
+                    body=c['body'],
+                    path=c.get('path', ''),
+                    line=c.get('line'),
+                    commit_id=commit_id,
+                )
         r = self._req('POST', f'/pulls/{number}/review', json=payload)
         if r.status_code not in (200, 201):
             return {'success': False, 'message': r.text or r.reason}

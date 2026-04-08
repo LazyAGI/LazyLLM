@@ -178,11 +178,25 @@ class GitLab(LazyLLMGitBase):
         return {'success': True, 'comment_id': cid, 'message': 'created'}
 
     def submit_review(self, number: int, event: str, body: str = '',
-                      comment_ids: Optional[List[Any]] = None) -> Dict[str, Any]:
+                      comments: Optional[List[Dict[str, Any]]] = None,
+                      commit_id: Optional[str] = None) -> Dict[str, Any]:
         if event.upper() == 'APPROVE':
             return self.approve_pull_request(number)
         if body:
             self._req('POST', f'/merge_requests/{number}/notes', json={'body': body})
+        if comments:
+            for c in comments:
+                if not isinstance(c, dict) or not c.get('body'):
+                    continue
+                # GitLab needs precise position; fallback to MR note if not provided.
+                path = c.get('path', '')
+                line = c.get('line')
+                if path and line is not None and commit_id:
+                    self.create_review_comment(
+                        number=number, body=c['body'], path=path, line=int(line), commit_id=commit_id
+                    )
+                else:
+                    self._req('POST', f'/merge_requests/{number}/notes', json={'body': c['body']})
         return {'success': True, 'message': 'submitted'}
 
     def approve_pull_request(self, number: int, sha: Optional[str] = None) -> Dict[str, Any]:

@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-# Test lazyllm.tools.git.review and GitHub integration (e.g. PR #1053).
-# Usage (token resolved inside review; if gh is only in zshrc, prepend PATH):
-#   python scripts/test_git_review.py
-#   PATH="$HOME/gh/bin:$PATH" python scripts/test_git_review.py
-# Full review (model called per hunk, line-level comments; default sensenova):
-#   LAZYLLM_RUN_FULL_REVIEW=1 python scripts/test_git_review.py
-# Review and post to PR (line comments visible in Files changed):
-#   LAZYLLM_RUN_FULL_REVIEW=1 LAZYLLM_POST_REVIEW_TO_GITHUB=1 python scripts/test_git_review.py
+# Review PR #1068 (LazyAGI/LazyLLM) using the multi-round intelligent review system.
+# Usage:
+#   python examples/git_review.py
+#   LAZYLLM_RUN_FULL_REVIEW=1 python examples/git_review.py
+#   LAZYLLM_RUN_FULL_REVIEW=1 LAZYLLM_POST_REVIEW_TO_GITHUB=1 python examples/git_review.py
+#
+# Cache files (optional, skip re-analysis on repeated runs):
+#   LAZYLLM_ARCH_CACHE=/tmp/lazyllm_arch.json
+#   LAZYLLM_SPEC_CACHE=/tmp/lazyllm_spec.json
 
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# If gh lives in ~/gh/bin and is only in zshrc, add it to PATH
 _gh_bin = os.path.expanduser('~/gh/bin')
 if os.path.isdir(_gh_bin):
     os.environ['PATH'] = _gh_bin + os.pathsep + os.environ.get('PATH', '')
@@ -21,7 +21,7 @@ if os.path.isdir(_gh_bin):
 
 def main():
     repo = 'LazyAGI/LazyLLM'
-    pr_number = 1053
+    pr_number = 1022
 
     from lazyllm.tools.git import Git, review
 
@@ -54,12 +54,13 @@ def main():
         print('Done.')
         return 0
 
-    # Use sensenova for testing (real model output, no bypass)
     import lazyllm
-    llm = lazyllm.OnlineChatModule(source='sensenova')
+    llm = lazyllm.OnlineChatModule(source='claude', model='claude-opus-4-6', base_url='https://cld.ppapi.vip/v1/')
     post_to_github = os.environ.get('LAZYLLM_POST_REVIEW_TO_GITHUB') == '1'
+    arch_cache = os.environ.get('LAZYLLM_ARCH_CACHE') or None
+    spec_cache = os.environ.get('LAZYLLM_SPEC_CACHE') or None
 
-    print('3. Running code review (model per hunk, line-level comments)...')
+    print('3. Running multi-round code review (pre-analysis + 4 rounds)...')
     if post_to_github:
         print('   Will post line-level comments to PR Files changed.')
     try:
@@ -69,14 +70,22 @@ def main():
             backend='github',
             llm=llm,
             post_to_github=post_to_github,
+            arch_cache_path=arch_cache,
+            review_spec_cache_path=spec_cache,
+            fetch_repo_code=True,
+            max_history_prs=400,
         )
         print('--- Review result ---')
         print(out.get('summary', out))
-        print(f'   Comments: {len(out.get("comments", []))}, posted: {out.get("comments_posted", 0)}')
-        for i, c in enumerate(out.get('comments', [])[:5]):
-            print(f'   [{i+1}] {c.get("path")} L{c.get("line")} [{c.get("severity")}] {c.get("problem", "")[:60]}...')
-        if len(out.get('comments', [])) > 5:
-            print('   ...')
+        comments = out.get('comments', [])
+        print(f'   Total issues: {len(comments)}, posted: {out.get("comments_posted", 0)}')
+        for i, c in enumerate(comments[:10]):
+            cat = c.get('bug_category', '')
+            sev = c.get('severity', '')
+            prob = c.get('problem', '')[:60]
+            print(f'   [{i+1}] {c.get("path")} L{c.get("line")} [{sev}][{cat}] {prob}...')
+        if len(comments) > 10:
+            print(f'   ... and {len(comments) - 10} more')
         if post_to_github and out.get('comments_posted', 0) > 0:
             print('\n[Posted] Line-level comments posted to PR; check Files changed for inline comments.')
     except Exception as e:

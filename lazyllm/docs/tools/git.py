@@ -774,3 +774,208 @@ _add_git_example('LazyLLMGitBase', '''\
 >>> backend.create_pull_request('feat', 'main', 'Title', 'Body')
 >>> backend.merge_pull_request(1)
 ''')
+
+# ---------------------------------------------------------------------------
+# review module: review / analyze_repo_architecture / analyze_historical_reviews
+# ---------------------------------------------------------------------------
+_add_review_chinese = functools.partial(
+    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.git.review'))
+_add_review_english = functools.partial(
+    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.git.review'))
+_add_review_example = functools.partial(
+    utils.add_example, module=importlib.import_module('lazyllm.tools.git.review'))
+
+_add_review_chinese('review', '''\
+对指定 Pull Request 执行四轮 AI 代码审查，并可将结果自动发布到 GitHub/GitLab/Gitee 等平台。
+
+四轮分析流程：
+1. **Round 1**：逐 hunk 分析，最大召回率，找出所有潜在问题。
+2. **Round 2**：Agent 跨文件上下文探索，发现接口不一致、继承违规等深层问题。
+3. **Round 3**：全局架构视角，检查设计规范符合性。
+4. **Round 4**：合并去重，压缩输出，过滤已有评论。
+
+Args:
+    pr_number (int): Pull Request 编号。
+    repo (str): 仓库全名，格式为 ``owner/repo``，默认 ``'LazyAGI/LazyLLM'``。
+    token (str, optional): 平台 Access Token。未传时从环境变量读取（如 ``GITHUB_TOKEN``）。
+    backend (str, optional): Git 平台类型，支持 ``'github'``、``'gitlab'``、``'gitee'``、``'gitcode'``。未传时自动推断。
+    llm (Any, optional): 用于审查的 LLM 实例。未传时使用默认 LLM（需配置 ``LAZYLLM_*`` 环境变量）。
+    api_base (str, optional): 自托管 Git 平台的 API 根地址，公有云平台无需传入。
+    post_to_github (bool): 是否将审查结果发布为 PR 评论，默认 ``True``。
+    max_diff_chars (int, optional): diff 文本最大字符数，超出则截断，默认 ``120000``。
+    max_hunks (int, optional): 最多分析的 hunk 数量，默认 ``50``。
+    arch_cache_path (str, optional): 架构文档缓存文件路径。未传时自动存储到 ``~/.lazyllm/review/arch_<repo>.json``。
+    review_spec_cache_path (str, optional): Review 规范缓存文件路径。未传时自动存储到 ``~/.lazyllm/review/spec_<repo>.json``。
+    fetch_repo_code (bool): 是否 clone 仓库代码用于深度分析，默认 ``True``。
+    max_history_prs (int): 分析历史 PR 评论时最多采样的 PR 数量，默认 ``20``。
+    checkpoint_path (str, optional): 断点续跑文件路径。未传时自动生成临时路径。
+    clear_checkpoint (bool): 是否清除已有断点重新开始，默认 ``False``。
+    language (str): 审查结果语言，``'cn'`` 为中文，``'en'`` 为英文，默认 ``'cn'``。
+
+Returns:
+    dict: 包含以下字段：
+
+    - ``comments`` (list): 最终审查意见列表，每项含 ``path``、``line``、``severity``、``bug_category``、``problem``、``suggestion``。
+    - ``posted`` (int): 成功发布到平台的评论数量。
+    - ``summary`` (str): 本次审查的摘要文字。
+''')
+
+_add_review_english('review', '''\
+Run a four-round AI code review on a Pull Request and optionally post the results as comments
+to GitHub / GitLab / Gitee / GitCode.
+
+Four-round pipeline:
+1. **Round 1**: Per-hunk analysis with maximum recall — finds every potential issue.
+2. **Round 2**: Agent-driven cross-file exploration — detects interface inconsistencies, inheritance violations, etc.
+3. **Round 3**: Global architecture review — checks design-standard compliance.
+4. **Round 4**: Merge, deduplicate, compress, and filter against existing comments.
+
+Args:
+    pr_number (int): Pull Request number.
+    repo (str): Full repository name in ``owner/repo`` format. Defaults to ``'LazyAGI/LazyLLM'``.
+    token (str, optional): Platform access token. Falls back to environment variables (e.g. ``GITHUB_TOKEN``) if omitted.
+    backend (str, optional): Git platform type — ``'github'``, ``'gitlab'``, ``'gitee'``, or ``'gitcode'``. Auto-detected if omitted.
+    llm (Any, optional): LLM instance to use for review. Uses the default LLM (configured via ``LAZYLLM_*`` env vars) if omitted.
+    api_base (str, optional): API root URL for self-hosted Git platforms. Not needed for public cloud platforms.
+    post_to_github (bool): Whether to post review results as PR comments. Defaults to ``True``.
+    max_diff_chars (int, optional): Maximum characters of diff text to process; truncated if exceeded. Defaults to ``120000``.
+    max_hunks (int, optional): Maximum number of hunks to analyse. Defaults to ``50``.
+    arch_cache_path (str, optional): Path to the architecture doc cache file. Auto-stored at ``~/.lazyllm/review/arch_<repo>.json`` if omitted.
+    review_spec_cache_path (str, optional): Path to the review-spec cache file. Auto-stored at ``~/.lazyllm/review/spec_<repo>.json`` if omitted.
+    fetch_repo_code (bool): Whether to clone the repository for deep analysis. Defaults to ``True``.
+    max_history_prs (int): Maximum number of historical PRs to sample when building the review spec. Defaults to ``20``.
+    checkpoint_path (str, optional): Path for checkpoint / resume file. Auto-generated if omitted.
+    clear_checkpoint (bool): Whether to discard an existing checkpoint and restart. Defaults to ``False``.
+    language (str): Output language — ``'cn'`` for Chinese, ``'en'`` for English. Defaults to ``'cn'``.
+
+Returns:
+    dict: A dictionary with the following keys:
+
+    - ``comments`` (list): Final review comment list; each item has ``path``, ``line``, ``severity``, ``bug_category``, ``problem``, ``suggestion``.
+    - ``posted`` (int): Number of comments successfully posted to the platform.
+    - ``summary`` (str): Human-readable summary of this review run.
+''')
+
+_add_review_example('review', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.git.review import review
+>>> # Basic usage: review PR #42 and post comments to GitHub
+>>> result = review(42, repo='MyOrg/MyRepo', token='ghp_xxx')
+>>> print(result['summary'])
+>>> # Dry-run (do not post comments)
+>>> result = review(42, repo='MyOrg/MyRepo', token='ghp_xxx', post_to_github=False)
+>>> for c in result['comments']:
+...     print(c['path'], c['line'], c['severity'], c['problem'])
+''')
+
+_add_review_chinese('analyze_repo_architecture', '''\
+对已 clone 到本地的仓库进行三阶段架构分析，生成结构化架构文档并缓存。
+
+三阶段流程：
+1. **静态采样**：按优先级采集目录树、各子包 ``__init__.py``、关键基类文件头部，总量 ≤ 6000 字符。
+2. **大纲生成**：单次 LLM 调用，基于采样快照生成 5-7 节 JSON 大纲（含每节的探索方向和搜索提示）。
+3. **分节 Agent 填充**：每节独立 ReactAgent 探索，prompt 严格控制在 3500 字符以内，节间摘要压缩传递。
+
+任意阶段失败时自动 fallback 到静态快照单次 LLM 调用。
+
+生成的文档同时写入三个缓存 key：``arch_doc``（完整文档）、``arch_index``（每节标题+首句摘要）、``arch_symbol_index``（关键符号名→描述映射）。
+
+Args:
+    llm (Any): 用于分析的 LLM 实例。
+    clone_dir (str): 仓库本地 clone 路径。
+    cache_path (str, optional): 缓存文件路径（JSON 格式）。未传时不缓存。
+
+Returns:
+    str: 架构文档全文（纯文本，含 ``[SectionTitle]`` 分节标记）。
+''')
+
+_add_review_english('analyze_repo_architecture', '''\
+Analyse a locally cloned repository in three stages and produce a structured architecture document,
+which is then persisted to a cache file.
+
+Three-stage pipeline:
+1. **Static snapshot**: Collects directory tree, sub-package ``__init__.py`` files, and key base-class file headers by priority; total ≤ 6 000 chars.
+2. **Outline generation**: Single LLM call that produces a 5-7 section JSON outline from the snapshot, with per-section focus and search hints.
+3. **Per-section Agent fill**: Each section is explored by an independent ReactAgent; prompt is capped at 3 500 chars; inter-section context is passed as compressed summaries.
+
+Falls back to a single static LLM call if any stage fails.
+
+The generated document is written to three cache keys: ``arch_doc`` (full text), ``arch_index`` (title + first-sentence per section), and ``arch_symbol_index`` (symbol-name → description map).
+
+Args:
+    llm (Any): LLM instance to use for analysis.
+    clone_dir (str): Local path of the cloned repository.
+    cache_path (str, optional): Path to the JSON cache file. Not cached if omitted.
+
+Returns:
+    str: Full architecture document (plain text with ``[SectionTitle]`` markers).
+''')
+
+_add_review_example('analyze_repo_architecture', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.git.review import analyze_repo_architecture
+>>> llm = lazyllm.OnlineChatModule(source='openai')
+>>> arch_doc = analyze_repo_architecture(llm, '/tmp/my_repo_clone', cache_path='/tmp/arch.json')
+>>> print(arch_doc[:500])
+''')
+
+_add_review_chinese('analyze_historical_reviews', '''\
+从仓库历史已合并 PR 的人工评审评论中提炼 Review 规范，生成结构化检查清单并缓存。
+
+处理流程：
+1. 拉取 closed PR 列表，过滤出已合并（``merged_at`` 非空）的 PR，取最近 ``max_prs`` 个。
+2. 收集各 PR 的 review 评论，自动过滤 bot 账号（匹配 ``bot``、``[bot]``、``github-actions``、``dependabot`` 等）。
+3. 对超过 150 字符的评论批量 LLM 压缩为一句话，按 top 用户分组截量，总量控制在 3000 字符以内。
+4. 单次 LLM 调用，输出固定五节结构化规范：命名约定、拒绝模式、偏好风格、高频问题、项目特定规则。
+
+Args:
+    backend (LazyLLMGitBase): Git 平台实例（GitHub/GitLab/Gitee/GitCode）。
+    llm (Any): 用于分析的 LLM 实例。
+    cache_path (str, optional): 缓存文件路径（JSON 格式）。未传时不缓存。
+    max_prs (int): 最多采样的已合并 PR 数量，默认 ``200``。
+
+Returns:
+    str: 结构化 Review 规范文本，包含以下五节（以 ``# Title`` 为节标题）：
+
+    - ``# Naming Conventions``
+    - ``# Rejected Patterns``
+    - ``# Preferred Style & Idioms``
+    - ``# Recurring Issues``
+    - ``# Project-Specific Rules``
+''')
+
+_add_review_english('analyze_historical_reviews', '''\
+Extract a structured review-standards checklist from human review comments on historically merged PRs
+in the repository, and persist it to a cache file.
+
+Processing pipeline:
+1. Fetch the closed-PR list; filter to merged PRs (``merged_at`` non-null); take the most recent ``max_prs``.
+2. Collect review comments from each PR; automatically skip bot accounts (matching ``bot``, ``[bot]``, ``github-actions``, ``dependabot``, etc.).
+3. Batch-compress comments longer than 150 chars to one sentence via LLM; group by top users and cap total to 3 000 chars.
+4. Single LLM call that outputs a fixed five-section structured checklist.
+
+Args:
+    backend (LazyLLMGitBase): Git platform instance (GitHub / GitLab / Gitee / GitCode).
+    llm (Any): LLM instance to use for analysis.
+    cache_path (str, optional): Path to the JSON cache file. Not cached if omitted.
+    max_prs (int): Maximum number of merged PRs to sample. Defaults to ``200``.
+
+Returns:
+    str: Structured review-spec text with five sections (prefixed by ``# Title``):
+
+    - ``# Naming Conventions``
+    - ``# Rejected Patterns``
+    - ``# Preferred Style & Idioms``
+    - ``# Recurring Issues``
+    - ``# Project-Specific Rules``
+''')
+
+_add_review_example('analyze_historical_reviews', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.git import Git
+>>> from lazyllm.tools.git.review import analyze_historical_reviews
+>>> backend = Git(backend='github', token='ghp_xxx', repo='MyOrg/MyRepo')
+>>> llm = lazyllm.OnlineChatModule(source='openai')
+>>> spec = analyze_historical_reviews(backend, llm, cache_path='/tmp/spec.json', max_prs=30)
+>>> print(spec)
+''')
