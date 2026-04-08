@@ -88,6 +88,16 @@ __all__ = [
     # hook
     'LazyLLMHook',
     'LazyLLMFuncHook',
+    'LazyTracingHook',
+
+    # tracing
+    'TracingSetupError',
+    'get_trace_context',
+    'set_trace_context',
+    'enable_trace',
+    'disable_trace',
+    'TracingBackend',
+    'LangfuseBackend',
 
     # tools
     'Document',

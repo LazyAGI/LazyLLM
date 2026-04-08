@@ -151,6 +151,46 @@ Args:
     obj: The flow or module object to be traced.
 ''')
 
+add_chinese_doc('LazyTracingHook.pre_hook', '''\
+创建并激活当前 flow 或 module 对应的 tracing span。
+
+该方法会在被包裹对象执行前调用，并根据当前调用参数初始化 span 上下文。
+
+Args:
+    *args: 传递给目标对象的位置参数。
+    **kwargs: 传递给目标对象的关键字参数。
+''')
+
+add_english_doc('LazyTracingHook.pre_hook', '''\
+Create and activate the tracing span for the current flow or module.
+
+This method is called before the wrapped object executes and initializes the span context
+from the current call arguments.
+
+Args:
+    *args: Positional arguments passed to the target object.
+    **kwargs: Keyword arguments passed to the target object.
+''')
+
+add_chinese_doc('LazyTracingHook.post_hook', '''\
+在 tracing span 上记录执行输出。
+
+该方法会在被包裹对象成功执行后调用，把返回结果写入当前 span。
+
+Args:
+    output: 被包裹对象的返回值。
+''')
+
+add_english_doc('LazyTracingHook.post_hook', '''\
+Record the execution output on the active tracing span.
+
+This method is called after the wrapped object completes successfully and writes the
+returned result to the current span.
+
+Args:
+    output: The return value of the wrapped object.
+''')
+
 add_chinese_doc('LazyTracingHook.on_error', '''\
 在 tracing span 上记录异常状态。
 
@@ -168,4 +208,17 @@ to the current span.
 
 Args:
     exc: The exception raised during execution.
+''')
+
+add_chinese_doc('LazyTracingHook.report', '''\
+结束并上报当前 tracing span。
+
+该方法会在 hook 生命周期结束时调用，用于关闭当前 span 并完成本次 tracing 记录。
+''')
+
+add_english_doc('LazyTracingHook.report', '''\
+Finish and report the current tracing span.
+
+This method is called at the end of the hook lifecycle to close the current span and
+complete the tracing record for this execution.
 ''')

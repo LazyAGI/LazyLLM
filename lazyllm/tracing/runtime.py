@@ -15,7 +15,7 @@ _TRACE_CONTEXT_DEFAULTS = {
     'trace_id': None,
     'session_id': None,
     'user_id': None,
-    'request_tags': [],
+    'request_tags': None,
     'sampled': None,
     'parent_span_id': None,
     'debug_capture_payload': None,

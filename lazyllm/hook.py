@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import inspect
 import ast
 import copy
+from typing import Any, Sequence
 from .common import LOG, globals
 from .configs import config
 from .tracing.runtime import start_span, set_span_output, set_span_error, finish_span
@@ -10,7 +11,7 @@ from .tracing.configs import resolve_default_module_trace
 
 class LazyLLMHook(ABC):
     __hook_priority__ = 100
-    __hook_error_mode__ = 'ignore'
+    __hook_error_mode__ = 'warn'
 
     @abstractmethod
     def __init__(self, obj):
@@ -32,7 +33,7 @@ class LazyLLMHook(ABC):
 
 
 class HookPhaseError(RuntimeError):
-    def __init__(self, phase: str, errors):
+    def __init__(self, phase: str, errors: Sequence[tuple[Any, Exception]]):
         self.phase = phase
         self.errors = tuple(errors)
         super().__init__(phase, self.errors)
@@ -127,8 +128,8 @@ def _hook_priority(hook_obj):
 
 
 def _hook_error_mode(hook_obj):
-    mode = getattr(hook_obj, '__hook_error_mode__', 'ignore')
-    if mode not in ('ignore', 'raise'):
+    mode = getattr(hook_obj, '__hook_error_mode__', 'warn')
+    if mode not in ('warn', 'raise'):
         raise ValueError(f'Invalid hook error mode: {mode}')
     return mode
 
@@ -136,8 +137,6 @@ def _hook_error_mode(hook_obj):
 def _raise_hook_phase_errors(phase: str, errors):
     if not errors:
         return
-    if len(errors) == 1:
-        raise errors[0][1]
     raise HookPhaseError(phase, errors)
 
 

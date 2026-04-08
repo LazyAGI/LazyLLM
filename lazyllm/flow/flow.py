@@ -157,12 +157,12 @@ class FlowBase(SessionConfigableBase, metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
-            if hasattr(value, '_module_id') and hasattr(value, 'name') and not value.name:
+            if hasattr(value, '_module_id') and hasattr(value, 'name') and value.name is None:
                 value.name = name
             if len(_get_flow_stack()) > 1 and not self._auto_registered:
                 super(__class__, self).__setattr__('_auto_registered', True)
-                locals = self._curr_frame.f_locals.copy()
-                for key, item in locals.items():
+                frame_locals = self._curr_frame.f_locals.copy()
+                for key, item in frame_locals.items():
                     if item == self and (parent := _get_flow_stack()[-2]) != item:
                         if key not in parent._item_names and parent._defined_at_the_same_scope(self):
                             parent._add(key, self)
@@ -238,17 +238,29 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             if self.post_action is not None: self.invoke(self.post_action, output)
             if self._sync: self.wait()
             r = self._post_process(output)
-            run_hooks(hook_objs, 'post_hook', r)
-            return r
         except Exception as e:
             LOG.error(f'Flow `{self.__class__.__name__}` raised {type(e).__name__}: {e}')
-            run_hooks(hook_objs, 'on_error', e)
+            try:
+                run_hooks(hook_objs, 'on_error', e)
+            except Exception:
+                LOG.warning('Flow on_error hook failed', exc_info=True)
             raise
+        else:
+            run_hooks(hook_objs, 'post_hook', r)
+            return r
         finally:
-            run_hooks(hook_objs, 'report')
+            try:
+                run_hooks(hook_objs, 'report')
+            except Exception:
+                LOG.warning('Flow report hook failed', exc_info=True)
 
     def register_hook(self, hook_type: LazyLLMHook):
-        self._hooks.append(hook_type)
+        if not (isinstance(hook_type, LazyLLMHook)
+                or (isinstance(hook_type, type) and issubclass(hook_type, LazyLLMHook))):
+            raise TypeError(f'Invalid hook type: {type(hook_type)}, '
+                            'must be subclass or instance of LazyLLMHook')
+        if hook_type not in self._hooks:
+            self._hooks.append(hook_type)
 
     def unregister_hook(self, hook_type: LazyLLMHook):
         if hook_type in self._hooks:

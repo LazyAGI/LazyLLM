@@ -337,21 +337,31 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
                  if args and isinstance(args[0], kwargs) else self._call_impl(*args, **kw))
             if self._return_trace:
                 lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
+        except HandledException as e:
+            LOG.error(f'Module `{self.__class__.__name__}` raised {type(e).__name__}: {e}')
+            try:
+                run_hooks(hook_objs, 'on_error', e)
+            except Exception:
+                LOG.warning('Module on_error hook failed', exc_info=True)
+            raise
+        except Exception as e:
+            LOG.error(f'An error occurred in {self.__class__}' + (f' with name {self.name}' if self.name else
+                      '') + f'. Args: `{args}`, Kwargs: `{kw}`')
+            err = _change_exception_type(e, ModuleExecutionError)
+            try:
+                run_hooks(hook_objs, 'on_error', err)
+            except Exception:
+                LOG.warning('Module on_error hook failed', exc_info=True)
+            raise err from None
+        else:
             run_hooks(hook_objs, 'post_hook', r)
             self._clear_usage()
             return r
-        except HandledException as e:
-            LOG.error(f'Module `{self.__class__.__name__}` raised {type(e).__name__}: {e}')
-            run_hooks(hook_objs, 'on_error', e)
-            raise
-        except Exception as e:
-            LOG.error(f'An error occured in {self.__class__}' + (f' with name {self.name}' if self.name else
-                      '') + f'. Args: `{args}`, Kwargs: `{kw}`')
-            err = _change_exception_type(e, ModuleExecutionError)
-            run_hooks(hook_objs, 'on_error', err)
-            raise err from None
         finally:
-            run_hooks(hook_objs, 'report')
+            try:
+                run_hooks(hook_objs, 'report')
+            except Exception:
+                LOG.warning('Module report hook failed', exc_info=True)
 
     def _call_impl(self, *args, **kw):
         if self._use_cache and 'R' in lazyllm.config['cache_mode']:
@@ -393,7 +403,8 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
         if not isinstance(hook_type, LazyLLMHook):
             raise TypeError(f'Invalid hook type: {type(hook_type)}, '
                             'must be subclass or instance of LazyLLMHook, or callable function')
-        self._hooks.append(hook_type)
+        if hook_type not in self._hooks:
+            self._hooks.append(hook_type)
 
     def unregister_hook(self, hook_type: LazyLLMHook):
         if hook_type in self._hooks:
