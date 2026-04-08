@@ -3,6 +3,7 @@
 #include <sstream>
 #include <fstream>
 #include <vector>
+#include <array>
 #include <random>
 #include <algorithm>
 #include <iomanip>
@@ -71,19 +72,26 @@ inline std::string NumberToString(double v) {
 
 inline std::string GenerateUUID() {
     static const char HEX_CHAR[] = "0123456789abcdef";
-    static const int SEGS[] = {8, 4, 4, 4, 12};
 
     // Single static generator per thread.
     static thread_local std::mt19937 GEN(std::random_device{}());
-    static thread_local std::uniform_int_distribution<int> DIST(0, 15);
+    static thread_local std::uniform_int_distribution<int> DIST(0, 255);
+
+    std::array<unsigned char, 16> bytes{};
+    for (auto& b : bytes) b = static_cast<unsigned char>(DIST(GEN));
+
+    // RFC 4122 UUID v4:
+    // - Version: high 4 bits of byte 6 are 0100b.
+    // - Variant: high 2 bits of byte 8 are 10b.
+    bytes[6] = static_cast<unsigned char>((bytes[6] & 0x0F) | 0x40);
+    bytes[8] = static_cast<unsigned char>((bytes[8] & 0x3F) | 0x80);
 
     std::string out;
     out.reserve(36);
-    for (int segLength : SEGS) {
-        for (int i = 0; i < segLength; ++i)
-            out.push_back(HEX_CHAR[DIST(GEN)]);
-        if (segLength < 12)
-            out.push_back('-');
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        if (i == 4 || i == 6 || i == 8 || i == 10) out.push_back('-');
+        out.push_back(HEX_CHAR[(bytes[i] >> 4) & 0x0F]);
+        out.push_back(HEX_CHAR[bytes[i] & 0x0F]);
     }
     return out;
 }

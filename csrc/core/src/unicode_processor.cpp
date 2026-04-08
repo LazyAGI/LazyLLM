@@ -25,6 +25,7 @@ void UnicodeProcessor::for_each_utf8_unit(const Utf8Visitor& visitor) const {
         if (n <= 0) {
             i += 1;
             continue;
+            // TODO 后续加强日志的时候，把所有遇到的不合法字符都收集起来，一次性打印出来
         }
 
         visitor(i, static_cast<size_t>(n), codepoint);

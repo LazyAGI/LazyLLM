@@ -42,7 +42,7 @@ TEST(utils, to_hex_returns_lowercase_hex_text) {
 
 TEST(utils, generate_uuid_matches_expected_pattern) {
     const std::string uuid = lazyllm::GenerateUUID();
-    const std::regex pattern("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+    const std::regex pattern("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$");
     EXPECT_TRUE(std::regex_match(uuid, pattern));
 }
 

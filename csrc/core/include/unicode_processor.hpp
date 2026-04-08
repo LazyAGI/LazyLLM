@@ -10,7 +10,7 @@ namespace lazyllm {
 
 class UnicodeProcessor {
 public:
-    UnicodeProcessor(const std::string_view& text) : _text(text), _text_len(text.size()) {}
+    UnicodeProcessor(std::string_view text) : _text(text), _text_len(text.size()) {}
     std::vector<std::string_view> split_to_chars() const;
     std::vector<std::string_view> split_by_punctuation() const;
 
