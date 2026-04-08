@@ -1,13 +1,13 @@
+import inspect
 import json
 import random
-import inspect
 import threading
 import time
 import traceback
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from uuid import NAMESPACE_URL, uuid5
-from typing import Any, Callable, Dict, Optional, Tuple, List
 
 from lazyllm import (
     LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app,
@@ -38,7 +38,7 @@ CALLBACK_RETRY_MAX_ATTEMPTS = 5
 
 class DocumentProcessor(ModuleBase):
 
-    class _Impl():
+    class _Impl:
         def __init__(self, db_config: Optional[Dict[str, Any]] = None, num_workers: int = 1,
                      post_func: Optional[Callable] = None, path_prefix: Optional[str] = None,
                      callback_url: Optional[str] = None,
@@ -496,13 +496,7 @@ class DocumentProcessor(ModuleBase):
             }
 
         def _list_doc_chunks_data(
-            self,
-            algo_id: str,
-            kb_id: str,
-            doc_id: str,
-            group: str,
-            offset: int = 0,
-            limit: int = 20,
+            self, algo_id: str, kb_id: str, doc_id: str, group: str, offset: int = 0, limit: int = 20
         ) -> Dict[str, Any]:
             algorithm = self._get_algo(algo_id)
             if algorithm is None:

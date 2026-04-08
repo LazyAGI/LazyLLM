@@ -1,15 +1,15 @@
 import argparse
-import os
-import sys
-import inspect
-import traceback
-from types import GeneratorType
-import time
-import pickle
-import codecs
 import asyncio
+import codecs
+import inspect
+import os
+import pickle
 import functools
+import sys
+import time
+import traceback
 from functools import partial
+from types import GeneratorType
 from typing import Callable
 
 
@@ -34,9 +34,8 @@ _inject_pythonpath(sys.argv[1:])
 from lazyllm.common.utils import str2obj  # noqa: E402
 import uvicorn  # noqa: E402
 import lazyllm  # noqa: E402
-from lazyllm import kwargs, package, load_obj  # noqa: E402
-from lazyllm import FastapiApp, globals  # noqa: E402
-from lazyllm.common import _trim_traceback, _register_trim_module  # noqa: E402
+from lazyllm import FastapiApp, globals, kwargs, load_obj, package  # noqa: E402
+from lazyllm.common import _register_trim_module, _trim_traceback  # noqa: E402
 
 from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import Response, StreamingResponse  # noqa: E402

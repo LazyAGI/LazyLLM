@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 from ..parsing_service.base import TaskType
 
 
@@ -58,17 +58,6 @@ class DocServiceError(Exception):
         return BIZ_HTTP_CODE.get(self.biz_code, 500)
 
 
-class TaskCreateRequest(BaseModel):
-    task_id: str = Field(default_factory=lambda: str(uuid4()))
-    task_type: TaskType
-    doc_id: str
-    kb_id: str = '__default__'
-    algo_id: str = '__default__'
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    priority: int = 0
-    callback_url: Optional[str] = None
-
-
 class TaskCallbackRequest(BaseModel):
     callback_id: str = Field(default_factory=lambda: str(uuid4()))
     task_id: str
@@ -91,11 +80,11 @@ class AddFileItem(BaseModel):
         return self
 
 
-class AddRequest(BaseModel):
+class DocItemsRequest(BaseModel):
     items: List[AddFileItem]
     kb_id: str = '__default__'
     algo_id: str = '__default__'
-    source_type: SourceType = SourceType.EXTERNAL
+    source_type: Optional[SourceType] = None
     idempotency_key: Optional[str] = None
 
     @model_validator(mode='after')
@@ -105,21 +94,11 @@ class AddRequest(BaseModel):
         return self
 
 
-class UploadRequest(BaseModel):
-    items: List[AddFileItem]
-    kb_id: str = '__default__'
-    algo_id: str = '__default__'
-    source_type: SourceType = SourceType.API
-    idempotency_key: Optional[str] = None
-
-    @model_validator(mode='after')
-    def validate_items(self):
-        if not self.items:
-            raise ValueError('items is required')
-        return self
+AddRequest = DocItemsRequest
+UploadRequest = DocItemsRequest
 
 
-class ReparseRequest(BaseModel):
+class _DocMutationRequest(BaseModel):
     doc_ids: List[str]
     kb_id: str = '__default__'
     algo_id: str = '__default__'
@@ -132,30 +111,45 @@ class ReparseRequest(BaseModel):
         return self
 
 
-class DeleteRequest(BaseModel):
-    doc_ids: List[str]
-    kb_id: str = '__default__'
-    algo_id: str = '__default__'
-    idempotency_key: Optional[str] = None
+class ReparseRequest(_DocMutationRequest):
+    pass
 
-    @model_validator(mode='after')
-    def validate_doc_ids(self):
-        if not self.doc_ids:
-            raise ValueError('doc_ids is required')
-        return self
+
+class DeleteRequest(_DocMutationRequest):
+    pass
 
 
 class TransferItem(BaseModel):
     doc_id: str
     target_doc_id: str
-    source_kb_id: str = '__default__'
-    source_algo_id: str = '__default__'
+    kb_id: str = Field(default='__default__', validation_alias=AliasChoices('kb_id', 'source_kb_id'))
+    algo_id: str = Field(default='__default__', validation_alias=AliasChoices('algo_id', 'source_algo_id'))
     target_kb_id: str
     target_algo_id: str
     target_metadata: Optional[Dict[str, Any]] = None
     target_filename: Optional[str] = None
     target_file_path: Optional[str] = None
     mode: str = 'copy'
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_source_fields(cls, data):
+        if not isinstance(data, dict):
+            return data
+        normalized = dict(data)
+        if 'kb_id' not in normalized and 'source_kb_id' in normalized:
+            normalized['kb_id'] = normalized['source_kb_id']
+        if 'algo_id' not in normalized and 'source_algo_id' in normalized:
+            normalized['algo_id'] = normalized['source_algo_id']
+        return normalized
+
+    @property
+    def source_kb_id(self) -> str:
+        return self.kb_id
+
+    @property
+    def source_algo_id(self) -> str:
+        return self.algo_id
 
 
 class TransferRequest(BaseModel):
@@ -185,6 +179,55 @@ class MetadataPatchRequest(BaseModel):
         if not self.items:
             raise ValueError('items is required')
         return self
+
+
+class KbDeleteBatchRequest(BaseModel):
+    kb_ids: List[str]
+    idempotency_key: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_kb_ids(self):
+        if not self.kb_ids:
+            raise ValueError('kb_ids is required')
+        return self
+
+
+class AlgorithmInfoRequest(BaseModel):
+    algo_id: str
+
+
+class TaskInfoRequest(BaseModel):
+    task_id: str
+
+
+class TaskBatchRequest(BaseModel):
+    task_ids: List[str]
+
+    @model_validator(mode='after')
+    def validate_task_ids(self):
+        if not self.task_ids:
+            raise ValueError('task_ids is required')
+        return self
+
+
+class TaskCancelRequest(BaseModel):
+    task_id: str
+    idempotency_key: Optional[str] = None
+
+
+class TaskCallbackPayload(BaseModel):
+    callback_id: Optional[str] = None
+    task_id: Optional[str] = None
+    event_type: Optional[CallbackEventType] = None
+    status: Optional[DocStatus] = None
+    task_status: Optional[DocStatus] = None
+    error_code: Optional[str] = None
+    error_msg: Optional[str] = None
+    task_type: Optional[TaskType] = None
+    doc_id: Optional[str] = None
+    kb_id: Optional[str] = None
+    algo_id: Optional[str] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
 
 
 class KbCreateRequest(BaseModel):
@@ -251,7 +294,7 @@ CALLBACK_RECORDS_TABLE_INFO = {
 
 DOC_SERVICE_TASKS_TABLE_INFO = {
     'name': 'lazyllm_doc_service_tasks',
-    'comment': 'Doc service task state table',
+    'comment': 'Doc service task history table',
     'columns': [
         {'name': 'id', 'data_type': 'integer', 'nullable': False, 'is_primary_key': True,
          'comment': 'Auto increment ID'},
@@ -351,7 +394,7 @@ KB_ALGORITHM_TABLE_INFO = {
 
 PARSE_STATE_TABLE_INFO = {
     'name': 'lazyllm_doc_parse_state',
-    'comment': 'Latest parse state table',
+    'comment': 'Latest parse state snapshot table',
     'columns': [
         {'name': 'id', 'data_type': 'integer', 'nullable': False, 'is_primary_key': True,
          'comment': 'Auto increment ID'},
@@ -380,7 +423,3 @@ PARSE_STATE_TABLE_INFO = {
          'comment': 'Updated time'},
     ],
 }
-
-
-def now_ts() -> datetime:
-    return datetime.now()

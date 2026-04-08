@@ -5,6 +5,7 @@ import tempfile
 
 import pytest
 import requests
+from pydantic import ValidationError
 
 from lazyllm.thirdparty import fastapi
 
@@ -17,43 +18,30 @@ from lazyllm.tools.rag.doc_service.base import (
     KbUpdateRequest,
     SourceType,
     TaskCallbackRequest,
+    TaskCancelRequest,
     UploadRequest,
 )
 from lazyllm.tools.rag.utils import BaseResponse
-
-
-class _JsonRequest:
-    def __init__(self, payload):
-        self._payload = payload
-
-    async def json(self):
-        return self._payload
-
-
-class _FormData:
-    def __init__(self, files):
-        self._files = files
-
-    def getlist(self, name):
-        assert name == 'files'
-        return self._files
-
-
-class _FormRequest:
-    def __init__(self, files):
-        self._form = _FormData(files)
-
-    async def form(self):
-        return self._form
 
 
 class _UploadFile:
     def __init__(self, filename: str, content: bytes):
         self.filename = filename
         self._content = content
+        self._offset = 0
 
-    async def read(self):
-        return self._content
+    async def read(self, size: int = -1):
+        if self._offset >= len(self._content):
+            return b''
+        if size is None or size < 0:
+            size = len(self._content) - self._offset
+        start = self._offset
+        end = min(len(self._content), start + size)
+        self._offset = end
+        return self._content[start:end]
+
+    async def close(self):
+        return None
 
 
 class _FakeManager:
@@ -167,11 +155,9 @@ def test_parser_url_returns_none_when_remote_endpoint_unavailable(monkeypatch):
     assert server.parser_url is None
 
 
-def test_cancel_task_http_requires_task_id(server_impl):
-    with pytest.raises(fastapi.HTTPException) as exc:
-        asyncio.run(server_impl.cancel_task(_JsonRequest({})))
-    assert exc.value.status_code == 400
-    assert exc.value.detail == 'task_id is required'
+def test_task_cancel_request_requires_task_id():
+    with pytest.raises(ValidationError):
+        TaskCancelRequest.model_validate({})
 
 
 def test_cancel_task_http_maps_conflict(server_impl):
@@ -181,7 +167,7 @@ def test_cancel_task_http_maps_conflict(server_impl):
         data={'task_id': 'task-1', 'cancel_status': False, 'status': 'WORKING'},
     )
 
-    response = asyncio.run(server_impl.cancel_task(_JsonRequest({'task_id': 'task-1', 'idempotency_key': 'idem'})))
+    response = server_impl.cancel_task(TaskCancelRequest(task_id='task-1', idempotency_key='idem'))
     body = _decode_response(response)
 
     assert server_impl._manager.run_calls[0]['endpoint'] == '/v1/tasks/cancel'
@@ -243,7 +229,7 @@ def test_upload_http_saves_unique_files_and_only_first_doc_id(server_impl):
     ]
 
     response = asyncio.run(server_impl.upload(
-        _FormRequest(files),
+        files=files,
         kb_id='kb-upload',
         algo_id='__default__',
         source_type=SourceType.API,

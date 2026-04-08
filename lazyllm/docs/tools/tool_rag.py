@@ -51,7 +51,7 @@ Args:
 ''')
 
 add_english_doc('DocServer', '''\
-Primary entry point of the refactored document service.
+Primary entry point of the document service.
 
 ``DocServer`` manages document upload/add/reparse/delete flows, task tracking, knowledge-base management,
 chunk inspection, and cross-kb transfer. It is the recommended replacement for the legacy ``DocManager`` /
@@ -70,7 +70,7 @@ Args:
 ''')
 
 add_chinese_doc('DocServer', '''\
-重构后文档服务的主入口。
+文档服务的主入口。
 
 ``DocServer`` 负责文档上传/添加/重解析/删除、任务跟踪、知识库管理、chunk 查看，以及跨知识库文档转移。
 它是 legacy ``DocManager`` / ``DocListManager`` API 的推荐替代方案。
@@ -85,6 +85,130 @@ Args:
     storage_dir (Optional[str]): 上传文件保存目录。
     callback_url (Optional[str]): 接收解析任务回调的地址。
     launcher: 本地服务启动器。
+''')
+
+add_english_doc('DocServer.add', '''\
+Add existing local files through the ``/v1/docs/add`` endpoint.
+
+Use this method when the file paths are already accessible on the DocServer host. The request body is an
+``AddRequest`` containing ``kb_id``, ``algo_id``, and ``items``. Each item can provide ``file_path``,
+optional ``doc_id``, and optional ``metadata``.
+
+Returns:
+    Standard API response. ``data["items"]`` contains the accepted ``doc_id`` and asynchronous ``task_id``.
+''')
+
+add_chinese_doc('DocServer.add', '''\
+通过 ``/v1/docs/add`` 接口添加服务端可直接访问的本地文件。
+
+当文件路径已经对 DocServer 所在机器可见时，使用该方法。请求体为 ``AddRequest``，包含 ``kb_id``、``algo_id``
+和 ``items``。每个 item 可提供 ``file_path``，以及可选的 ``doc_id``、``metadata``。
+
+Returns:
+    标准 API 响应。``data["items"]`` 中包含接受后的 ``doc_id`` 和异步 ``task_id``。
+''')
+
+add_english_doc('DocServer.upload', '''\
+Upload files into DocServer-managed storage through the ``/v1/docs/upload`` flow.
+
+Use this method when you want DocServer to manage uploaded copies of the source files. The request body is an
+``UploadRequest`` with ``kb_id``, ``algo_id``, and ``items``. Each item uses ``file_path`` as the local source
+path and can optionally include ``doc_id`` or ``metadata``.
+
+Returns:
+    Standard API response. ``data["items"]`` contains the accepted ``doc_id`` and asynchronous ``task_id``.
+''')
+
+add_chinese_doc('DocServer.upload', '''\
+通过 ``/v1/docs/upload`` 流程将文件上传到 DocServer 管理的存储目录。
+
+当你希望由 DocServer 保存上传副本时，使用该方法。请求体为 ``UploadRequest``，包含 ``kb_id``、``algo_id``
+和 ``items``。每个 item 使用 ``file_path`` 作为本地源路径，也可以附带可选的 ``doc_id``、``metadata``。
+
+Returns:
+    标准 API 响应。``data["items"]`` 中包含接受后的 ``doc_id`` 和异步 ``task_id``。
+''')
+
+add_english_doc('DocServer.reparse', '''\
+Reparse existing documents through the ``/v1/docs/reparse`` endpoint.
+
+The request body is a ``ReparseRequest`` with ``kb_id``, ``algo_id``, and ``doc_ids``. Use it after metadata
+or parsing configuration changes when you want to enqueue new parse tasks for existing documents.
+''')
+
+add_chinese_doc('DocServer.reparse', '''\
+通过 ``/v1/docs/reparse`` 接口重新解析已有文档。
+
+请求体为 ``ReparseRequest``，包含 ``kb_id``、``algo_id`` 和 ``doc_ids``。当元数据或解析配置变更后，
+需要为已有文档重新入队解析任务时，可使用该方法。
+''')
+
+add_english_doc('DocServer.delete', '''\
+Delete documents from a knowledge base through the ``/v1/docs/delete`` endpoint.
+
+The request body is a ``DeleteRequest`` with ``kb_id``, ``algo_id``, and ``doc_ids``. Deletion is asynchronous,
+so the returned ``task_id`` should be tracked through the task APIs when you need final status.
+''')
+
+add_chinese_doc('DocServer.delete', '''\
+通过 ``/v1/docs/delete`` 接口从知识库中删除文档。
+
+请求体为 ``DeleteRequest``，包含 ``kb_id``、``algo_id`` 和 ``doc_ids``。删除是异步操作，因此如果需要最终状态，
+应继续通过任务接口跟踪返回的 ``task_id``。
+''')
+
+add_english_doc('DocServer.patch_metadata', '''\
+Patch document metadata through the ``/v1/docs/metadata/patch`` endpoint.
+
+The request body is a ``MetadataPatchRequest`` with ``kb_id``, ``algo_id``, and ``items``. Each item targets one
+document and carries a partial metadata patch in ``patch``.
+''')
+
+add_chinese_doc('DocServer.patch_metadata', '''\
+通过 ``/v1/docs/metadata/patch`` 接口更新文档元数据。
+
+请求体为 ``MetadataPatchRequest``，包含 ``kb_id``、``algo_id`` 和 ``items``。每个 item 指向一个文档，
+并在 ``patch`` 中携带需要合并的局部元数据。
+''')
+
+add_english_doc('DocServer.get_task', '''\
+Get one task record through the ``/v1/tasks/{task_id}`` endpoint.
+
+Args:
+    task_id (str): Task ID returned by add, upload, reparse, delete, transfer, or metadata patch operations.
+
+Returns:
+    Standard API response with the current task status and task payload.
+''')
+
+add_chinese_doc('DocServer.get_task', '''\
+通过 ``/v1/tasks/{task_id}`` 接口获取单个任务记录。
+
+Args:
+    task_id (str): add、upload、reparse、delete、transfer 或 metadata patch 等操作返回的任务 ID。
+
+Returns:
+    包含当前任务状态和任务负载的标准 API 响应。
+''')
+
+add_english_doc('DocServer.cancel_task', '''\
+Cancel a waiting task through the ``/v1/tasks/cancel`` endpoint.
+
+Args:
+    task_id (str): Task ID to cancel.
+
+Returns:
+    Standard API response indicating whether the task was canceled successfully.
+''')
+
+add_chinese_doc('DocServer.cancel_task', '''\
+通过 ``/v1/tasks/cancel`` 接口取消一个处于等待中的任务。
+
+Args:
+    task_id (str): 要取消的任务 ID。
+
+Returns:
+    表示任务是否取消成功的标准 API 响应。
 ''')
 
 add_english_doc('DocServer.list_chunks', '''\

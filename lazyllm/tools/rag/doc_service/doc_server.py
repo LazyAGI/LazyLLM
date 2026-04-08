@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import requests
 
@@ -13,13 +13,32 @@ from lazyllm.thirdparty import fastapi
 
 from ..utils import BaseResponse, _get_default_db_config, ensure_call_endpoint
 from .base import (
-    AddRequest, DeleteRequest, DocServiceError, KbBatchQueryRequest, KbCreateRequest, KbUpdateRequest,
-    MetadataPatchRequest, ReparseRequest,
+    AddFileItem,
+    AddRequest,
+    AlgorithmInfoRequest,
+    CallbackEventType,
+    DeleteRequest,
+    DocServiceError,
+    DocStatus,
+    KbBatchQueryRequest,
+    KbCreateRequest,
+    KbDeleteBatchRequest,
+    KbUpdateRequest,
+    MetadataPatchRequest,
+    ReparseRequest,
+    SourceType,
+    TaskBatchRequest,
+    TaskCallbackPayload,
+    TaskCallbackRequest,
+    TaskCancelRequest,
+    TaskInfoRequest,
+    TransferRequest,
+    UploadRequest,
 )
-from .base import CallbackEventType, DocStatus, SourceType, TaskCallbackRequest
-from .base import TransferRequest
-from .base import UploadRequest, AddFileItem
 from .doc_manager import DocManager
+from .utils import sha256_file
+
+DEFAULT_OPENAPI_OUTPUT_PATH = os.path.join(os.path.dirname(__file__), 'doc_server.openapi.json')
 
 
 class DocServer(ModuleBase):
@@ -84,6 +103,7 @@ class DocServer(ModuleBase):
 
         @staticmethod
         def _build_upload_payload(request: UploadRequest, file_identities: Optional[List[Dict[str, Any]]] = None):
+            source_type = request.source_type or SourceType.API
             items = file_identities
             if items is None:
                 items = []
@@ -91,10 +111,8 @@ class DocServer(ModuleBase):
                     content_hash = None
                     size_bytes = None
                     if os.path.exists(item.file_path):
-                        with open(item.file_path, 'rb') as fh:
-                            content = fh.read()
-                        content_hash = hashlib.sha256(content).hexdigest()
-                        size_bytes = len(content)
+                        content_hash = sha256_file(item.file_path)
+                        size_bytes = os.path.getsize(item.file_path)
                     items.append({
                         'filename': os.path.basename(item.file_path),
                         'content_hash': content_hash,
@@ -104,7 +122,7 @@ class DocServer(ModuleBase):
             return {
                 'kb_id': request.kb_id,
                 'algo_id': request.algo_id,
-                'source_type': request.source_type.value,
+                'source_type': source_type.value,
                 'idempotency_key': request.idempotency_key,
                 'items': items,
             }
@@ -131,6 +149,34 @@ class DocServer(ModuleBase):
                     return candidate
             digest = hashlib.sha256(safe_name.encode()).hexdigest()[:8]
             return os.path.join(self._storage_dir, f'{prefix}-{digest}{suffix}')
+
+        @staticmethod
+        async def _save_upload_file(upload_file: 'fastapi.UploadFile', file_path: str):
+            with open(file_path, 'wb') as fh:
+                while True:
+                    chunk = await upload_file.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+            await upload_file.close()
+
+        async def _persist_uploads(self, files: List['fastapi.UploadFile']):
+            saved_paths = []
+            file_identities = []
+            reserved_paths: Set[str] = set()
+            for upload_file in files:
+                filename = getattr(upload_file, 'filename', None) or 'upload.bin'
+                file_path = self._gen_unique_upload_path(filename, reserved_paths)
+                await self._save_upload_file(upload_file, file_path)
+                reserved_paths.add(file_path)
+                saved_paths.append(file_path)
+                file_identities.append({
+                    'filename': os.path.basename(file_path),
+                    'content_hash': sha256_file(file_path),
+                    'size_bytes': os.path.getsize(file_path),
+                    'doc_id': None,
+                })
+            return saved_paths, file_identities
 
         def _run_upload(self, request: UploadRequest, payload: Optional[Dict[str, Any]] = None):
             idem_payload = payload or self._build_upload_payload(request)
@@ -205,60 +251,46 @@ class DocServer(ModuleBase):
         @app.post('/v1/docs/upload')
         async def upload(
             self,
-            request: 'fastapi.Request',
-            kb_id: str = '__default__',
-            algo_id: str = '__default__',
-            source_type: SourceType = SourceType.API,
-            doc_id: Optional[str] = None,
-            idempotency_key: Optional[str] = None,
+            files: List['fastapi.UploadFile'] = fastapi.File(...),  # noqa: B008
+            kb_id: Optional[str] = fastapi.Form(None),  # noqa: B008
+            algo_id: Optional[str] = fastapi.Form(None),  # noqa: B008
+            source_type: Optional[SourceType] = fastapi.Form(None),  # noqa: B008
+            doc_id: Optional[str] = fastapi.Form(None),  # noqa: B008
+            idempotency_key: Optional[str] = fastapi.Form(None),  # noqa: B008
+            kb_id_query: Optional[str] = fastapi.Query(None, alias='kb_id', include_in_schema=False),  # noqa: B008
+            algo_id_query: Optional[str] = fastapi.Query(None, alias='algo_id', include_in_schema=False),  # noqa: B008
+            source_type_query: Optional[SourceType] = fastapi.Query(  # noqa: B008
+                None, alias='source_type', include_in_schema=False
+            ),
+            doc_id_query: Optional[str] = fastapi.Query(None, alias='doc_id', include_in_schema=False),  # noqa: B008
+            idempotency_key_query: Optional[str] = fastapi.Query(  # noqa: B008
+                None,
+                alias='idempotency_key',
+                include_in_schema=False,
+            ),
         ):
             self._lazy_init()
-            form = await request.form()
-            files = form.getlist('files')
             if not files:
                 raise fastapi.HTTPException(status_code=400, detail='files is required')
-            buffered_files = []
-            file_identities = []
-            for idx, file in enumerate(files):
-                filename = getattr(file, 'filename', None) or str(getattr(file, 'name', 'upload.bin'))
-                content = await file.read() if hasattr(file, 'read') else file.file.read()
-                buffered_files.append({'filename': filename, 'content': content})
-                file_identities.append({
-                    'filename': filename,
-                    'content_hash': hashlib.sha256(content).hexdigest(),
-                    'size_bytes': len(content),
-                    'doc_id': doc_id if idx == 0 else None,
-                })
-
-            def _handle_upload():
-                saved_paths = []
-                reserved_paths = set()
-                for item in buffered_files:
-                    file_path = self._gen_unique_upload_path(item['filename'], reserved_paths)
-                    with open(file_path, 'wb') as fh:
-                        fh.write(item['content'])
-                    saved_paths.append(file_path)
-                    reserved_paths.add(file_path)
-                upload_request = UploadRequest(
-                    items=[AddFileItem(file_path=path, doc_id=(doc_id if idx == 0 else None))
-                           for idx, path in enumerate(saved_paths)],
-                    kb_id=kb_id,
-                    algo_id=algo_id,
-                    source_type=source_type,
-                    idempotency_key=idempotency_key,
-                )
-                return {'items': self._manager.upload(upload_request)}
-
-            payload = {
-                'kb_id': kb_id,
-                'algo_id': algo_id,
-                'source_type': source_type.value,
-                'idempotency_key': idempotency_key,
-                'items': file_identities,
-            }
-            return self._run(lambda: self._manager.run_idempotent(
-                '/v1/docs/upload', idempotency_key, payload, _handle_upload
-            ))
+            kb_id = kb_id or kb_id_query or '__default__'
+            algo_id = algo_id or algo_id_query or '__default__'
+            source_type = source_type or source_type_query or SourceType.API
+            doc_id = doc_id or doc_id_query
+            idempotency_key = idempotency_key or idempotency_key_query
+            saved_paths, file_identities = await self._persist_uploads(files)
+            upload_request = UploadRequest(
+                items=[
+                    AddFileItem(file_path=path, doc_id=(doc_id if idx == 0 else None))
+                    for idx, path in enumerate(saved_paths)
+                ],
+                kb_id=kb_id,
+                algo_id=algo_id,
+                source_type=source_type,
+                idempotency_key=idempotency_key,
+            )
+            if file_identities:
+                file_identities[0]['doc_id'] = doc_id
+            return self._run_upload(upload_request, self._build_upload_payload(upload_request, file_identities))
 
         @app.post('/v1/docs/add')
         def add(self, request: AddRequest):
@@ -359,15 +391,12 @@ class DocServer(ModuleBase):
             return self._response(data=resp.data, code=resp.code, msg=resp.msg, status_code=resp.code)
 
         @app.post('/v1/tasks/cancel')
-        async def cancel_task(self, request: 'fastapi.Request'):
-            payload = await request.json()
-            task_id = payload.get('task_id')
-            if not task_id:
-                raise fastapi.HTTPException(status_code=400, detail='task_id is required')
-            idempotency_key = payload.get('idempotency_key')
+        def cancel_task(self, request: TaskCancelRequest):
+            self._lazy_init()
+            payload = request.model_dump(mode='json')
 
             def _cancel():
-                resp = self._manager.cancel_task(task_id)
+                resp = self._manager.cancel_task(request.task_id)
                 if resp.code == 404:
                     raise DocServiceError('E_NOT_FOUND', resp.msg, resp.data)
                 if resp.code == 409:
@@ -376,7 +405,7 @@ class DocServer(ModuleBase):
                     raise DocServiceError('E_INVALID_PARAM', resp.msg, resp.data)
                 return resp.data
             return self._run(lambda: self._manager.run_idempotent(
-                '/v1/tasks/cancel', idempotency_key, payload, _cancel
+                '/v1/tasks/cancel', request.idempotency_key, payload, _cancel
             ))
 
         def task_callback(self, callback: Any):
@@ -384,10 +413,8 @@ class DocServer(ModuleBase):
             return self._run(lambda: self._manager.on_task_callback(self._normalize_task_callback(callback)))
 
         @app.post('/v1/internal/callbacks/tasks')
-        async def task_callback_http(self, request: 'fastapi.Request'):
-            self._lazy_init()
-            payload = await request.json()
-            return self.task_callback(payload)
+        def task_callback_http(self, request: TaskCallbackPayload):
+            return self.task_callback(request.model_dump(mode='json', exclude_none=True))
 
         @app.get('/v1/algo/list')
         def list_algo(self):
@@ -409,14 +436,9 @@ class DocServer(ModuleBase):
             return self._run(lambda: self._manager.list_algorithms_compat())
 
         @app.post('/v1/algorithms/info')
-        async def get_algorithm_info(self, request: 'fastapi.Request'):
+        def get_algorithm_info(self, request: AlgorithmInfoRequest):
             self._lazy_init()
-            payload = await request.json()
-            algo_id = payload.get('algo_id')
-            if not algo_id:
-                return self._response(data={'biz_code': 'E_INVALID_PARAM'}, code=400,
-                                      msg='algo_id is required', status_code=400)
-            return self._run(lambda: self._manager.get_algorithm_info(algo_id))
+            return self._run(lambda: self._manager.get_algorithm_info(request.algo_id))
 
         def get_algorithm_info_impl(self, algo_id: str):
             self._lazy_init()
@@ -445,25 +467,18 @@ class DocServer(ModuleBase):
             ))
 
         @app.post('/v1/tasks/batch')
-        async def get_tasks_batch(self, request: 'fastapi.Request'):
+        def get_tasks_batch(self, request: TaskBatchRequest):
             self._lazy_init()
-            payload = await request.json()
-            task_ids = payload.get('task_ids') or []
-            return self._run(lambda: self._manager.get_tasks_batch(task_ids))
+            return self._run(lambda: self._manager.get_tasks_batch(request.task_ids))
 
         def get_tasks_batch_impl(self, task_ids: List[str]):
             self._lazy_init()
             return self._run(lambda: self._manager.get_tasks_batch(task_ids))
 
         @app.post('/v1/tasks/info')
-        async def get_task_info(self, request: 'fastapi.Request'):
+        def get_task_info(self, request: TaskInfoRequest):
             self._lazy_init()
-            payload = await request.json()
-            task_id = payload.get('task_id')
-            if not task_id:
-                return self._response(data={'biz_code': 'E_INVALID_PARAM'}, code=400,
-                                      msg='task_id is required', status_code=400)
-            resp = self._manager.get_task(task_id)
+            resp = self._manager.get_task(request.task_id)
             return self._response(
                 data=self._format_task_response_data(resp.data),
                 code=resp.code,
@@ -567,13 +582,11 @@ class DocServer(ModuleBase):
             ))
 
         @app.delete('/v1/kbs')
-        async def delete_kbs(self, request: 'fastapi.Request'):
+        def delete_kbs(self, request: KbDeleteBatchRequest):
             self._lazy_init()
-            payload = await request.json()
-            kb_ids = payload.get('kb_ids') or []
-            idempotency_key = payload.get('idempotency_key')
+            payload = request.model_dump(mode='json')
             return self._run(lambda: self._manager.run_idempotent(
-                '/v1/kbs:delete', idempotency_key, payload, lambda: self._manager.delete_kbs(kb_ids)
+                '/v1/kbs:delete', request.idempotency_key, payload, lambda: self._manager.delete_kbs(request.kb_ids)
             ))
 
         def delete_kbs_impl(self, kb_ids: List[str], idempotency_key: Optional[str] = None):
@@ -657,6 +670,11 @@ class DocServer(ModuleBase):
             parser_url='http://127.0.0.1:9966',
         )
         cls._register_openapi_routes(openapi_app, impl)
+        for route in openapi_app.routes:
+            body_field = getattr(route, 'body_field', None)
+            annotation = getattr(getattr(body_field, 'field_info', None), 'annotation', None)
+            if hasattr(annotation, 'model_rebuild'):
+                annotation.model_rebuild(force=True, _types_namespace=route.endpoint.__globals__)
         return openapi_app
 
     @classmethod
@@ -664,9 +682,16 @@ class DocServer(ModuleBase):
         return cls.build_openapi_app(title=title, version=version).openapi()
 
     @classmethod
-    def export_openapi(cls, output_path: str, title: str = 'LazyLLM DocService API', version: str = '1.0.0'):
+    def export_openapi(
+        cls,
+        output_path: str = DEFAULT_OPENAPI_OUTPUT_PATH,
+        title: str = 'LazyLLM DocService API',
+        version: str = '1.0.0',
+    ):
         schema = cls.build_openapi_schema(title=title, version=version)
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
         with open(output_path, 'w', encoding='utf-8') as fh:
             json.dump(schema, fh, ensure_ascii=False, indent=2, sort_keys=True)
         return output_path

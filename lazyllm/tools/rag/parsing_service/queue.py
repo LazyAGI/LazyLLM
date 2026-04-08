@@ -38,6 +38,8 @@ class _SQLBasedQueue:
             raise
 
     def _ensure_columns_exist(self):
+        # Keep queue tables backward compatible by adding newly introduced columns
+        # to existing tables instead of requiring a manual migration step.
         inspector = sqlalchemy.inspect(self._sql_manager.engine)
         existing_columns = {column['name'] for column in inspector.get_columns(self._table_name)}
         missing_columns = [column for column in self._columns if column['name'] not in existing_columns]

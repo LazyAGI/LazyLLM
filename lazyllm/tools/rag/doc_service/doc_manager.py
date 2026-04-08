@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import hashlib
+from datetime import datetime, timedelta
 import json
 import os
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 from uuid import uuid4
 
-import requests
 import sqlalchemy
 from sqlalchemy.exc import IntegrityError
 
+from lazyllm import LOG
 from lazyllm.thirdparty import fastapi
 
 from ..utils import BaseResponse, _get_default_db_config, _orm_to_dict
@@ -37,195 +36,18 @@ from .base import (
     TransferRequest,
     UploadRequest,
     DocStatus,
-    now_ts,
 )
-from ..parsing_service.base import (
-    AddDocRequest as ParsingAddDocRequest,
-    CancelTaskRequest as ParsingCancelTaskRequest,
-    DeleteDocRequest as ParsingDeleteDocRequest,
-    FileInfo as ParsingFileInfo,
-    TransferParams as ParsingTransferParams,
-    UpdateMetaRequest as ParsingUpdateMetaRequest,
+from .parser_client import ParserClient
+from .utils import (
+    from_json,
+    gen_doc_id,
+    hash_payload,
+    merge_transfer_metadata,
+    resolve_transfer_target_path,
+    sha256_file,
+    stable_json,
+    to_json,
 )
-
-
-def _to_json(data: Optional[Dict[str, Any]]) -> str:
-    return json.dumps(data or {}, ensure_ascii=False)
-
-
-def _from_json(raw: Optional[str]) -> Dict[str, Any]:
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except Exception:
-        return {}
-
-
-def gen_doc_id(file_path: str, doc_id: Optional[str] = None) -> str:
-    if doc_id:
-        return doc_id
-    return hashlib.sha256(file_path.encode()).hexdigest()
-
-
-def _stable_json(data: Any) -> str:
-    return json.dumps(data, ensure_ascii=False, sort_keys=True, default=str)
-
-
-def _hash_payload(data: Any) -> str:
-    return hashlib.sha256(_stable_json(data).encode()).hexdigest()
-
-
-def _sha256_file(file_path: str) -> str:
-    digest = hashlib.sha256()
-    with open(file_path, 'rb') as fh:
-        for chunk in iter(lambda: fh.read(1024 * 1024), b''):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _merge_transfer_metadata(
-    source_metadata: Dict[str, Any], target_metadata: Optional[Dict[str, Any]]
-) -> Dict[str, Any]:
-    metadata = dict(source_metadata or {})
-    if target_metadata:
-        metadata.update(target_metadata)
-    return metadata
-
-
-def _resolve_transfer_target_path(
-    source_path: str, target_filename: Optional[str], target_file_path: Optional[str]
-) -> str:
-    if target_file_path:
-        return target_file_path
-    if target_filename:
-        base_dir = os.path.dirname(source_path) if source_path else ''
-        return os.path.join(base_dir, target_filename) if base_dir else target_filename
-    return source_path
-
-
-class _ParserClient:
-    def __init__(self, parser_url: str):
-        parser_url = parser_url.rstrip('/')
-        if parser_url.endswith('/_call') or parser_url.endswith('/generate'):
-            parser_url = parser_url.rsplit('/', 1)[0]
-        self._parser_url = parser_url
-
-    def _post(self, path: str, payload: Dict[str, Any]):
-        url = f'{self._parser_url}{path}'
-        resp = requests.post(url, json=payload, timeout=8)
-        if resp.status_code >= 400:
-            raise RuntimeError(f'parser http error: {resp.status_code} {resp.text}')
-        return resp.json()
-
-    def _get(self, path: str, params: Optional[Dict[str, Any]] = None):
-        url = f'{self._parser_url}{path}'
-        resp = requests.get(url, params=params, timeout=8)
-        if resp.status_code >= 400:
-            raise RuntimeError(f'parser http error: {resp.status_code} {resp.text}')
-        return resp.json()
-
-    def _delete(self, path: str, payload: Optional[Dict[str, Any]] = None):
-        url = f'{self._parser_url}{path}'
-        resp = requests.delete(url, json=payload, timeout=8)
-        if resp.status_code >= 400:
-            raise RuntimeError(f'parser http error: {resp.status_code} {resp.text}')
-        return resp.json()
-
-    def _get_with_fallback(self, paths: List[str], params: Optional[Dict[str, Any]] = None):
-        last_error = None
-        for path in paths:
-            try:
-                return self._get(path, params=params)
-            except RuntimeError as exc:
-                last_error = exc
-                if '404' not in str(exc):
-                    raise
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError('parser http error: no path provided')
-
-    def add_doc(self, task_id: str, algo_id: str, kb_id: str, doc_id: str, file_path: str,
-                metadata: Optional[Dict[str, Any]] = None, reparse_group: Optional[str] = None,
-                callback_url: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None):
-        req = ParsingAddDocRequest(
-            task_id=task_id,
-            algo_id=algo_id,
-            kb_id=kb_id,
-            callback_url=callback_url,
-            feedback_url=callback_url,
-            file_infos=[ParsingFileInfo(
-                file_path=file_path,
-                doc_id=doc_id,
-                metadata=metadata or {},
-                reparse_group=reparse_group,
-                transfer_params=(
-                    ParsingTransferParams.model_validate(transfer_params)
-                    if transfer_params is not None else None
-                ),
-            )],
-        )
-        data = self._post('/doc/add', req.model_dump(mode='json'))
-        return BaseResponse.model_validate(data)
-
-    def update_meta(self, task_id: str, algo_id: str, kb_id: str, doc_id: str,
-                    metadata: Optional[Dict[str, Any]] = None, file_path: Optional[str] = None,
-                    callback_url: Optional[str] = None):
-        req = ParsingUpdateMetaRequest(
-            task_id=task_id,
-            algo_id=algo_id,
-            kb_id=kb_id,
-            callback_url=callback_url,
-            feedback_url=callback_url,
-            file_infos=[ParsingFileInfo(file_path=file_path, doc_id=doc_id, metadata=metadata or {})],
-        )
-        data = self._post('/doc/meta/update', req.model_dump(mode='json'))
-        return BaseResponse.model_validate(data)
-
-    def delete_doc(self, task_id: str, algo_id: str, kb_id: str, doc_id: str,
-                   callback_url: Optional[str] = None):
-        req = ParsingDeleteDocRequest(
-            task_id=task_id,
-            algo_id=algo_id,
-            kb_id=kb_id,
-            doc_ids=[doc_id],
-            callback_url=callback_url,
-            feedback_url=callback_url,
-        )
-        data = self._delete('/doc/delete', req.model_dump(mode='json'))
-        return BaseResponse.model_validate(data)
-
-    def cancel_task(self, task_id: str):
-        req = ParsingCancelTaskRequest(task_id=task_id)
-        data = self._post('/doc/cancel', req.model_dump(mode='json'))
-        return BaseResponse.model_validate(data)
-
-    def list_algorithms(self):
-        data = self._get_with_fallback(['/v1/algo/list', '/algo/list'])
-        return BaseResponse.model_validate(data)
-
-    def get_algorithm_groups(self, algo_id: str):
-        try:
-            data = self._get_with_fallback([
-                f'/v1/algo/{algo_id}/groups',
-                f'/algo/{algo_id}/group/info',
-            ])
-            return BaseResponse.model_validate(data)
-        except RuntimeError as exc:
-            if '404' in str(exc):
-                return BaseResponse(code=404, msg='algo not found', data=None)
-            raise
-
-    def list_doc_chunks(self, algo_id: str, kb_id: str, doc_id: str, group: str, offset: int, page_size: int):
-        data = self._get('/doc/chunks', params={
-            'algo_id': algo_id,
-            'kb_id': kb_id,
-            'doc_id': doc_id,
-            'group': group,
-            'offset': offset,
-            'page_size': page_size,
-        })
-        return BaseResponse.model_validate(data)
 
 
 class DocManager:
@@ -247,9 +69,9 @@ class DocManager:
                                          DOC_SERVICE_TASKS_TABLE_INFO]},
         )
         self._ensure_indexes()
-        self._parser_client = _ParserClient(parser_url=parser_url)
+        self._parser_client = ParserClient(parser_url=parser_url)
+        self._parser_client.health()
         self._callback_url = callback_url
-        self._upsert_default_kb()
 
     def set_callback_url(self, callback_url: str):
         self._callback_url = callback_url
@@ -295,7 +117,7 @@ class DocManager:
         for stmt in stmts:
             self._db_manager.execute_commit(stmt)
 
-    def _upsert_default_kb(self):
+    def _ensure_default_kb(self):
         self._ensure_kb('__default__', display_name='__default__')
         self._ensure_kb_algorithm('__default__', '__default__')
         self._cleanup_idempotency_records()
@@ -303,7 +125,7 @@ class DocManager:
     def _ensure_kb(self, kb_id: str, display_name: Optional[str] = None, description: Optional[str] = None,
                    owner_id: Optional[str] = None, meta: Optional[Dict[str, Any]] = None,
                    update_fields: Optional[Set[str]] = None):
-        now = now_ts()
+        now = datetime.now()
         with self._db_manager.get_session() as session:
             Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
             row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
@@ -315,7 +137,7 @@ class DocManager:
                     doc_count=0,
                     status=KBStatus.ACTIVE.value,
                     owner_id=owner_id,
-                    meta=_to_json(meta),
+                    meta=to_json(meta),
                     created_at=now,
                     updated_at=now,
                 )
@@ -329,14 +151,14 @@ class DocManager:
                 if 'owner_id' in update_fields:
                     row.owner_id = owner_id
                 if 'meta' in update_fields:
-                    row.meta = _to_json(meta)
+                    row.meta = to_json(meta)
                 if row.status == KBStatus.DELETED.value:
                     row.status = KBStatus.ACTIVE.value
                 row.updated_at = now
             session.add(row)
 
     def _ensure_kb_algorithm(self, kb_id: str, algo_id: str):
-        now = now_ts()
+        now = datetime.now()
         with self._db_manager.get_session() as session:
             Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
             row = session.query(Rel).filter(Rel.kb_id == kb_id).first()
@@ -372,13 +194,15 @@ class DocManager:
             'doc_count': kb_row.doc_count,
             'status': kb_row.status,
             'owner_id': kb_row.owner_id,
-            'meta': _from_json(kb_row.meta),
+            'meta': from_json(kb_row.meta),
             'algo_id': algo_row.algo_id if algo_row is not None else None,
             'created_at': kb_row.created_at,
             'updated_at': kb_row.updated_at,
         }
 
     def _validate_kb_algorithm(self, kb_id: str, algo_id: str):
+        if kb_id == '__default__':
+            self._ensure_default_kb()
         kb = self._get_kb(kb_id)
         if kb is None:
             raise DocServiceError('E_NOT_FOUND', f'kb not found: {kb_id}', {'kb_id': kb_id})
@@ -401,7 +225,7 @@ class DocManager:
         raise DocServiceError('E_INVALID_PARAM', f'invalid algo_id: {algo_id}', {'algo_id': algo_id})
 
     def _ensure_kb_document(self, kb_id: str, doc_id: str):
-        now = now_ts()
+        now = datetime.now()
         created = False
         with self._db_manager.get_session() as session:
             Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
@@ -438,7 +262,7 @@ class DocManager:
             return _orm_to_dict(row) if row else None
 
     def _cleanup_idempotency_records(self, ttl_days: int = 7):
-        cutoff = now_ts() - timedelta(days=ttl_days)
+        cutoff = datetime.now() - timedelta(days=ttl_days)
         with self._db_manager.get_session() as session:
             Record = self._db_manager.get_table_orm_class(IDEMPOTENCY_RECORDS_TABLE_INFO['name'])
             session.query(Record).filter(Record.updated_at < cutoff).delete()
@@ -446,7 +270,7 @@ class DocManager:
     def _claim_idempotency_key(self, endpoint: str, idempotency_key: str, req_hash: str):
         with self._db_manager.get_session() as session:
             Record = self._db_manager.get_table_orm_class(IDEMPOTENCY_RECORDS_TABLE_INFO['name'])
-            now = now_ts()
+            now = datetime.now()
             row = Record(
                 endpoint=endpoint,
                 idempotency_key=idempotency_key,
@@ -470,8 +294,8 @@ class DocManager:
             if row is None:
                 return
             row.status = 'COMPLETED'
-            row.response_json = _stable_json(response)
-            row.updated_at = now_ts()
+            row.response_json = stable_json(response)
+            row.updated_at = datetime.now()
             session.add(row)
 
     def _drop_idempotency_claim(self, endpoint: str, idempotency_key: str):
@@ -487,7 +311,7 @@ class DocManager:
     def run_idempotent(self, endpoint: str, idempotency_key: Optional[str], payload: Any, handler):
         if not idempotency_key:
             return handler()
-        req_hash = _hash_payload(payload)
+        req_hash = hash_payload(payload)
         try:
             self._claim_idempotency_key(endpoint, idempotency_key, req_hash)
         except IntegrityError:
@@ -513,7 +337,7 @@ class DocManager:
     def _record_callback(self, callback_id: str, task_id: str):
         with self._db_manager.get_session() as session:
             Record = self._db_manager.get_table_orm_class(CALLBACK_RECORDS_TABLE_INFO['name'])
-            session.add(Record(callback_id=callback_id, task_id=task_id, created_at=now_ts()))
+            session.add(Record(callback_id=callback_id, task_id=task_id, created_at=datetime.now()))
             try:
                 session.flush()
                 return True
@@ -531,7 +355,7 @@ class DocManager:
 
     def _create_task_record(self, task_id: str, task_type: TaskType, doc_id: str, kb_id: str, algo_id: str,
                             status: DocStatus, message: Optional[Dict[str, Any]] = None):
-        now = now_ts()
+        now = datetime.now()
         with self._db_manager.get_session() as session:
             Task = self._db_manager.get_table_orm_class(DOC_SERVICE_TASKS_TABLE_INFO['name'])
             session.add(Task(
@@ -541,7 +365,7 @@ class DocManager:
                 kb_id=kb_id,
                 algo_id=algo_id,
                 status=status.value,
-                message=_to_json(message),
+                message=to_json(message),
                 error_code=None,
                 error_msg=None,
                 created_at=now,
@@ -558,7 +382,7 @@ class DocManager:
             if row is None:
                 return None
             task = _orm_to_dict(row)
-            task['message'] = _from_json(task.get('message'))
+            task['message'] = from_json(task.get('message'))
             return task
 
     def _update_task_record(self, task_id: str, **fields):
@@ -569,7 +393,7 @@ class DocManager:
                 return None
             for key, value in fields.items():
                 setattr(row, key, value)
-            row.updated_at = now_ts()
+            row.updated_at = datetime.now()
             session.add(row)
         return self._get_task_record(task_id)
 
@@ -583,7 +407,7 @@ class DocManager:
             kb_row.doc_count = session.query(Rel).filter(Rel.kb_id == kb_id).count()
             if kb_row.status == KBStatus.DELETING.value and kb_row.doc_count == 0:
                 kb_row.status = KBStatus.DELETED.value
-            kb_row.updated_at = now_ts()
+            kb_row.updated_at = datetime.now()
             session.add(kb_row)
 
     def _list_kb_doc_ids(self, kb_id: str) -> List[str]:
@@ -624,10 +448,10 @@ class DocManager:
         upload_status: DocStatus = DocStatus.SUCCESS,
         allowed_path_doc_ids: Optional[Set[str]] = None,
     ):
-        now = now_ts()
+        now = datetime.now()
         file_type = os.path.splitext(path)[1].lstrip('.').lower() or None
         size_bytes = os.path.getsize(path) if os.path.exists(path) else None
-        content_hash = _sha256_file(path) if os.path.exists(path) else None
+        content_hash = sha256_file(path) if os.path.exists(path) else None
         allowed_path_doc_ids = allowed_path_doc_ids or set()
         try:
             with self._db_manager.get_session() as session:
@@ -645,7 +469,7 @@ class DocManager:
                         doc_id=doc_id,
                         filename=filename,
                         path=path,
-                        meta=_to_json(metadata),
+                        meta=to_json(metadata),
                         upload_status=upload_status.value,
                         source_type=source_type.value,
                         file_type=file_type,
@@ -657,7 +481,7 @@ class DocManager:
                 else:
                     row.filename = filename
                     row.path = path
-                    row.meta = _to_json(metadata)
+                    row.meta = to_json(metadata)
                     row.upload_status = upload_status.value
                     row.source_type = source_type.value
                     row.file_type = file_type
@@ -687,7 +511,7 @@ class DocManager:
             if row is None:
                 return None
             row.upload_status = status.value
-            row.updated_at = now_ts()
+            row.updated_at = datetime.now()
             session.add(row)
         return self._get_doc(doc_id)
 
@@ -743,7 +567,7 @@ class DocManager:
         if message.get('cleanup_policy') == cleanup_policy:
             return
         message['cleanup_policy'] = cleanup_policy
-        self._update_task_record(task_id, message=_to_json(message))
+        self._update_task_record(task_id, message=to_json(message))
 
     def _finalize_kb_deletion_if_empty(self, kb_id: str) -> bool:
         with self._db_manager.get_session() as session:
@@ -839,7 +663,7 @@ class DocManager:
         started_at: Optional[datetime] = None,
         finished_at: Optional[datetime] = None,
     ):
-        now = now_ts()
+        now = datetime.now()
         with self._db_manager.get_session() as session:
             State = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
             row = (
@@ -993,7 +817,7 @@ class DocManager:
             current_task_id=task_id,
             idempotency_key=idempotency_key,
             priority=priority,
-            queued_at=now_ts(),
+            queued_at=datetime.now(),
             started_at=None,
             finished_at=None,
             error_code=None,
@@ -1007,7 +831,7 @@ class DocManager:
                 parser_kb_id=parser_kb_id, transfer_params=transfer_params,
             )
         except Exception as exc:
-            finished_at = now_ts()
+            finished_at = datetime.now()
             error_msg = str(exc)
             self._update_task_record(
                 task_id,
@@ -1082,7 +906,7 @@ class DocManager:
             prepared_items.append({
                 'doc_id': doc_id,
                 'file_path': doc.get('path'),
-                'metadata': _from_json(doc.get('meta')),
+                'metadata': from_json(doc.get('meta')),
             })
         return prepared_items
 
@@ -1126,7 +950,7 @@ class DocManager:
             if doc is None or not self._has_kb_document(request.kb_id, item.doc_id):
                 raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {item.doc_id}')
             self._assert_action_allowed(item.doc_id, request.kb_id, request.algo_id, 'metadata')
-            merged = _from_json(doc.get('meta'))
+            merged = from_json(doc.get('meta'))
             merged.update(item.patch)
             prepared_items.append({'doc_id': item.doc_id, 'metadata': merged, 'file_path': doc.get('path')})
         return prepared_items
@@ -1194,13 +1018,15 @@ class DocManager:
                         'status': source_snapshot.get('status') if source_snapshot else None,
                     },
                 )
-            source_metadata = _from_json(doc.get('meta'))
-            target_metadata = _merge_transfer_metadata(source_metadata, item.target_metadata)
-            target_path = _resolve_transfer_target_path(doc.get('path'), item.target_filename, item.target_file_path)
+            source_metadata = from_json(doc.get('meta'))
+            target_metadata = merge_transfer_metadata(source_metadata, item.target_metadata)
+            target_path = resolve_transfer_target_path(doc.get('path'), item.target_filename, item.target_file_path)
             target_filename = os.path.basename(target_path)
             prepared_items.append({
                 'doc_id': item.doc_id,
                 'target_doc_id': item.target_doc_id,
+                'kb_id': item.kb_id,
+                'algo_id': item.algo_id,
                 'source_kb_id': item.source_kb_id,
                 'source_algo_id': item.source_algo_id,
                 'target_kb_id': item.target_kb_id,
@@ -1223,6 +1049,7 @@ class DocManager:
     def upload(self, request: UploadRequest) -> List[Dict[str, Any]]:
         self._validate_kb_algorithm(request.kb_id, request.algo_id)
         prepared_items = self._prepare_upload_items(request)
+        source_type = request.source_type or SourceType.API
         items: List[Dict[str, Any]] = []
         for item in prepared_items:
             doc_id = item['doc_id']
@@ -1233,7 +1060,7 @@ class DocManager:
                 filename=item['filename'],
                 path=file_path,
                 metadata=metadata,
-                source_type=request.source_type,
+                source_type=source_type,
                 upload_status=DocStatus.SUCCESS,
             )
             self._ensure_kb_document(request.kb_id, doc_id)
@@ -1272,7 +1099,7 @@ class DocManager:
             items=request.items,
             kb_id=request.kb_id,
             algo_id=request.algo_id,
-            source_type=request.source_type,
+            source_type=request.source_type or SourceType.EXTERNAL,
             idempotency_key=request.idempotency_key,
         ))
 
@@ -1339,7 +1166,7 @@ class DocManager:
                 row = session.query(Doc).filter(Doc.doc_id == doc_id).first()
                 if self._doc_relation_count(doc_id) <= 1:
                     row.upload_status = DocStatus.DELETING.value
-                row.updated_at = now_ts()
+                row.updated_at = datetime.now()
                 session.add(row)
 
             task_id, snapshot = self._enqueue_task(
@@ -1408,6 +1235,8 @@ class DocManager:
                 'doc_id': item['doc_id'],
                 'target_doc_id': item['target_doc_id'],
                 'task_id': task_id,
+                'kb_id': item['kb_id'],
+                'algo_id': item['algo_id'],
                 'source_kb_id': item['source_kb_id'],
                 'target_kb_id': item['target_kb_id'],
                 'source_algo_id': item['source_algo_id'],
@@ -1431,8 +1260,8 @@ class DocManager:
             with self._db_manager.get_session() as session:
                 Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
                 row = session.query(Doc).filter(Doc.doc_id == item['doc_id']).first()
-                row.meta = _to_json(item['metadata'])
-                row.updated_at = now_ts()
+                row.meta = to_json(item['metadata'])
+                row.updated_at = datetime.now()
                 session.add(row)
 
             task_id, _ = self._enqueue_task(
@@ -1513,7 +1342,7 @@ class DocManager:
                 self._update_task_record(
                     callback.task_id,
                     status=DocStatus.WORKING.value,
-                    started_at=now_ts(),
+                    started_at=datetime.now(),
                     finished_at=None,
                     error_code=None,
                     error_msg=None,
@@ -1528,7 +1357,7 @@ class DocManager:
                         snapshot,
                         task_type=task_type,
                         current_task_id=callback.task_id,
-                        started_at=now_ts(),
+                        started_at=datetime.now(),
                         finished_at=None,
                         error_code=None,
                         error_msg=None,
@@ -1567,7 +1396,7 @@ class DocManager:
                 status=final_status.value,
                 error_code=callback.error_code,
                 error_msg=callback.error_msg,
-                finished_at=now_ts(),
+                finished_at=datetime.now(),
             )
 
             self._upsert_parse_snapshot(
@@ -1582,7 +1411,7 @@ class DocManager:
                     error_code=callback.error_code,
                     error_msg=callback.error_msg,
                     failed_stage=failed_stage,
-                    finished_at=now_ts(),
+                    finished_at=datetime.now(),
                 ),
             )
 
@@ -1635,7 +1464,7 @@ class DocManager:
                 )
                 if status and (snapshot is None or snapshot.get('status') not in status):
                     continue
-                doc['metadata'] = _from_json(doc.get('meta'))
+                doc['metadata'] = from_json(doc.get('meta'))
                 items.append({'doc': doc, 'relation': relation, 'snapshot': snapshot})
             total = len(items)
             page_items = items[(page - 1) * page_size:page * page_size]
@@ -1646,7 +1475,7 @@ class DocManager:
         if not doc:
             raise DocServiceError('E_NOT_FOUND', f'doc not found: {doc_id}', {'doc_id': doc_id})
 
-        doc['metadata'] = _from_json(doc.get('meta'))
+        doc['metadata'] = from_json(doc.get('meta'))
         snapshots = self.list_docs(page=1, page_size=2000)['items']
         matched_items = []
         for item in snapshots:
@@ -1671,8 +1500,8 @@ class DocManager:
         if callable(parser_list_tasks):
             try:
                 return parser_list_tasks(status=status, page=page, page_size=page_size)
-            except Exception:
-                pass
+            except Exception as exc:
+                LOG.warning(f'[DocService] Fallback to local task list: {exc}')
         page = max(page, 1)
         page_size = max(page_size, 1)
         with self._db_manager.get_session() as session:
@@ -1690,7 +1519,7 @@ class DocManager:
             items = []
             for row in rows:
                 task = _orm_to_dict(row)
-                task['message'] = _from_json(task.get('message'))
+                task['message'] = from_json(task.get('message'))
                 items.append(task)
         return BaseResponse(code=200, msg='success', data={
             'items': items,
@@ -1704,8 +1533,8 @@ class DocManager:
         if callable(parser_get_task):
             try:
                 return parser_get_task(task_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                LOG.warning(f'[DocService] Fallback to local task query: {exc}')
         task = self._get_task_record(task_id)
         if task is None:
             return BaseResponse(code=404, msg='task not found', data=None)
@@ -1830,12 +1659,17 @@ class DocManager:
         return data
 
     def health(self):
+        parser_ok = False
+        try:
+            parser_ok = self._parser_client.health().code == 200
+        except Exception as exc:
+            LOG.warning(f'[DocService] Parser health check failed: {exc}')
         return {
             'status': 'ok',
             'version': 'v1',
             'deps': {
                 'sql': True,
-                'parser': bool(getattr(self._parser_client, '_parser_url', None)),
+                'parser': parser_ok,
             },
         }
 
@@ -1983,7 +1817,7 @@ class DocManager:
                 kb_row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
                 if kb_row is not None:
                     kb_row.status = new_status
-                    kb_row.updated_at = now_ts()
+                    kb_row.updated_at = datetime.now()
                     session.add(kb_row)
         else:
             self._finalize_kb_deletion_if_empty(kb_id)

@@ -207,9 +207,12 @@ WAITING_TASK_QUEUE_TABLE_INFO = {
 }
 
 # Finished task queue table
+# NOTE: callback-related columns were appended after the initial queue schema. Existing deployments may still
+# use an older table layout, but queue initialization already auto-adds any missing nullable columns in place
+# via ``_SQLBasedQueue._ensure_columns_exist()``, so startup remains backward compatible without extra migration code.
 FINISHED_TASK_QUEUE_TABLE_INFO = {
     'name': 'lazyllm_finished_task_queue',
-    'comment': 'Finished task queue table',
+    'comment': 'Finished task queue table; legacy tables are extended in place with new columns at startup',
     'columns': [
         {'name': 'id', 'data_type': 'integer', 'nullable': False, 'is_primary_key': True,
          'comment': 'Auto increment ID'},

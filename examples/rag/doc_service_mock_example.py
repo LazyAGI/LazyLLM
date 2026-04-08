@@ -1,125 +1,84 @@
-'''DocService mock quickstart.
+'''Connect a Document to a deployed DocServer.
 
-Run:
-    python examples/rag/doc_service_mock_example.py
+Start DocServer first:
+    python examples/rag/doc_service_standalone.py --wait
+
+Run this example:
+    python examples/rag/doc_service_mock_example.py --doc-server-url http://127.0.0.1:8848
 '''
 
 from __future__ import annotations
 
 import argparse
-import io
 import os
 import tempfile
 import time
 
-import requests
-
 from lazyllm import Document
+from lazyllm.tools.rag.doc_service import DocServer
+from lazyllm.tools.rag.doc_service.base import AddFileItem, AddRequest
 
 
-def _wait_task(base_url: str, task_id: str, targets: set[str], timeout: float = 10.0):
-    start = time.time()
-    while time.time() - start < timeout:
-        resp = requests.get(f'{base_url}/v1/tasks/{task_id}', timeout=5)
-        resp.raise_for_status()
-        task = resp.json()['data']
-        if task['status'] in targets:
+def _normalize_base_url(url: str) -> str:
+    url = url.rstrip('/')
+    if url.endswith('/_call') or url.endswith('/generate'):
+        return url.rsplit('/', 1)[0]
+    return url
+
+
+def _wait_task(server: DocServer, task_id: str, timeout: float = 30.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        task = server.get_task(task_id)['data']
+        if task['status'] in {'SUCCESS', 'FAILED', 'CANCELED', 'DELETED'}:
             return task
-        time.sleep(0.2)
-    raise TimeoutError(f'task {task_id} did not reach {targets}')
+        time.sleep(0.5)
+    raise TimeoutError(f'task {task_id} did not finish in time')
 
 
 def main():
-    parser = argparse.ArgumentParser(description='DocService mock quickstart.')
-    parser.add_argument('--wait', action='store_true', help='Keep server alive for manual API/docs inspection.')
+    parser = argparse.ArgumentParser(description='Connect a Document to an existing DocServer.')
+    parser.add_argument('--doc-server-url', type=str, required=True, help='Existing DocServer base URL.')
+    parser.add_argument('--algo-id', type=str, default='doc_service_demo_algo', help='Document algorithm ID.')
+    parser.add_argument('--kb-id', type=str, default='__default__', help='Knowledge base ID.')
     args = parser.parse_args()
 
-    with tempfile.TemporaryDirectory(prefix='lazyllm_doc_service_demo_') as tmp:
-        storage = os.path.join(tmp, 'uploads')
-        os.makedirs(storage, exist_ok=True)
-        seed_path = os.path.join(storage, 'seed.txt')
-        with open(seed_path, 'w', encoding='utf-8') as f:
-            f.write('seed content')
+    doc_server = DocServer(url=_normalize_base_url(args.doc_server_url))
+    with tempfile.TemporaryDirectory(prefix='lazyllm_doc_service_example_') as dataset_dir:
+        file_path = os.path.join(dataset_dir, 'demo.txt')
+        with open(file_path, 'w', encoding='utf-8') as file:
+            file.write('hello from a real doc_service example\n')
 
-        doc = Document(
-            dataset_path=storage,
-            manager=True,
-            name='demo_doc_service',
-        )
-        doc.start()
+        # Step 1: create a Document and bind it to the deployed DocServer.
+        document = Document(dataset_path=dataset_dir, manager=doc_server, name=args.algo_id)
+        document.start()
 
         try:
-            base_url = doc.manager.url.rsplit('/', 1)[0]
-            print(f'DocService URL: {base_url}')
-            print(f'Swagger Docs: {base_url}/docs')
+            base_url = _normalize_base_url(args.doc_server_url)
+            print(f'DocServer URL: {base_url}')
+            print(f'DocServer Docs: {base_url}/docs')
 
-            upload_resp = requests.post(
-                f'{base_url}/v1/docs/upload',
-                params={'kb_id': 'kb_demo', 'algo_id': '__default__'},
-                files=[('files', ('demo.txt', io.BytesIO(b'hello lazyllm rag'), 'text/plain'))],
-                timeout=10,
-            )
-            upload_resp.raise_for_status()
-            upload_item = upload_resp.json()['data']['items'][0]
-            doc_id = upload_item['doc_id']
-            task_id = upload_item['task_id']
-            _wait_task(base_url, task_id, {'SUCCESS'})
+            # Step 2: add a local file through the DocServer client.
+            response = doc_server.add(AddRequest(
+                kb_id=args.kb_id,
+                algo_id=args.algo_id,
+                items=[AddFileItem(file_path=file_path)],
+            ))
+            item = response['data']['items'][0]
+            print(f'Doc ID: {item["doc_id"]}')
+            print(f'Task ID: {item["task_id"]}')
 
-            patch_resp = requests.post(
-                f'{base_url}/v1/docs/metadata/patch',
-                json={
-                    'kb_id': 'kb_demo',
-                    'algo_id': '__default__',
-                    'items': [{'doc_id': doc_id, 'patch': {'owner': 'demo_user', 'scene': 'quickstart'}}],
-                },
-                timeout=10,
-            )
-            patch_resp.raise_for_status()
-            patch_task = patch_resp.json()['data']['items'][0]['task_id']
-            _wait_task(base_url, patch_task, {'SUCCESS'})
+            # Step 3: wait for the asynchronous parse task to finish.
+            task = _wait_task(doc_server, item['task_id'])
+            print(f'Task Status: {task["status"]}')
 
-            reparse_resp = requests.post(
-                f'{base_url}/v1/docs/reparse',
-                json={'kb_id': 'kb_demo', 'algo_id': '__default__', 'doc_ids': [doc_id]},
-                timeout=10,
-            )
-            reparse_resp.raise_for_status()
-            reparse_task = reparse_resp.json()['data']['task_ids'][0]
-            _wait_task(base_url, reparse_task, {'SUCCESS'})
-
-            add_resp = requests.post(
-                f'{base_url}/v1/docs/add',
-                json={'kb_id': 'kb_demo', 'algo_id': '__default__', 'items': [{'file_path': seed_path}]},
-                timeout=10,
-            )
-            add_resp.raise_for_status()
-            add_task = add_resp.json()['data']['items'][0]['task_id']
-            _wait_task(base_url, add_task, {'SUCCESS'})
-
-            docs_resp = requests.get(
-                f'{base_url}/v1/docs',
-                params={'kb_id': 'kb_demo', 'include_deleted_or_canceled': False},
-                timeout=10,
-            )
-            docs_resp.raise_for_status()
-            docs = docs_resp.json()['data']['items']
-            print(f'Current docs in kb_demo: {len(docs)}')
-
-            delete_resp = requests.post(
-                f'{base_url}/v1/docs/delete',
-                json={'kb_id': 'kb_demo', 'algo_id': '__default__', 'doc_ids': [doc_id]},
-                timeout=10,
-            )
-            delete_resp.raise_for_status()
-            delete_task = delete_resp.json()['data']['items'][0]['task_id']
-            _wait_task(base_url, delete_task, {'DELETED'})
-            print('Doc lifecycle demo completed.')
-            if args.wait:
-                print('Server is running. Press Ctrl+C to stop...')
-                while True:
-                    time.sleep(1)
+            # Step 4: list documents from the target knowledge base.
+            docs = doc_server.list_docs(
+                kb_id=args.kb_id, algo_id=args.algo_id, include_deleted_or_canceled=False
+            )['data']['items']
+            print(f'Doc Count In {args.kb_id}: {len(docs)}')
         finally:
-            doc.stop()
+            document.stop()
 
 
 if __name__ == '__main__':
