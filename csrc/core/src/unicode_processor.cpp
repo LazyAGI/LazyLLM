@@ -15,11 +15,12 @@ const std::array<char32_t, 9> UnicodeProcessor::kPunctuationCodepoints = {
 
 void UnicodeProcessor::for_each_utf8_unit(const Utf8Visitor& visitor) const {
     size_t i = 0;
-    while (i < _text_len) {
+    auto text_size = _text.size();
+    while (i < text_size) {
         utf8proc_int32_t codepoint = -1;
         const utf8proc_ssize_t n = utf8proc_iterate(
             reinterpret_cast<const utf8proc_uint8_t*>(_text.data() + i),
-            static_cast<utf8proc_ssize_t>(_text_len - i),
+            static_cast<utf8proc_ssize_t>(text_size - i),
             &codepoint);
 
         if (n <= 0) {
@@ -53,7 +54,7 @@ void UnicodeProcessor::for_each_utf8_unit(const Utf8Visitor& visitor) const {
 std::vector<std::string_view> UnicodeProcessor::split_to_chars() const {
     std::vector<std::string_view> out;
     if (_text.empty()) return out;
-    out.reserve(_text_len); // Grapheme count <= byte length
+    out.reserve(_text.size()); // Grapheme count <= byte length
 
     size_t cluster_start = std::string_view::npos;
     utf8proc_int32_t prev = -1;

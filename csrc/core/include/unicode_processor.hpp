@@ -10,7 +10,7 @@ namespace lazyllm {
 
 class UnicodeProcessor {
 public:
-    UnicodeProcessor(std::string_view text) : _text(text), _text_len(text.size()) {}
+    UnicodeProcessor(std::string_view text) : _text(text) {}
     std::vector<std::string_view> split_to_chars() const;
     std::vector<std::string_view> split_by_punctuation() const;
 
@@ -25,7 +25,6 @@ private:
 
     static const std::array<char32_t, 9> kPunctuationCodepoints;
     std::string_view _text;
-    size_t _text_len = 0;
 };
 
 } // namespace lazyllm
