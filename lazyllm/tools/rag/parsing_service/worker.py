@@ -26,7 +26,8 @@ class DocumentProcessorWorker(ModuleBase):
     class _Impl():
         def __init__(self, db_config: dict = None, task_poller=None, lease_duration: float = 300.0,
                      lease_renew_interval: float = 60.0, high_priority_task_types: list[str] = None,
-                     high_priority_only: bool = False, poll_mode: str = 'thread'):
+                     high_priority_only: bool = False, poll_mode: str = 'thread',
+                     callback_task_statuses: list[str] = None, callback_task_types: list[str] = None):
             self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
             self._shutdown = False
             self._processors: dict[str, _Processor] = {}  # algo_id -> _Processor
@@ -49,6 +50,10 @@ class DocumentProcessorWorker(ModuleBase):
             self._lease_renew_interval = lease_renew_interval
             self._high_priority_task_types = set(high_priority_task_types or [])
             self._high_priority_only = high_priority_only
+            self._callback_task_statuses = {TaskStatus(status).value for status in callback_task_statuses} \
+                if callback_task_statuses else None
+            self._callback_task_types = {TaskType(task_type).value for task_type in callback_task_types} \
+                if callback_task_types else None
 
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
@@ -587,6 +592,10 @@ class DocumentProcessorWorker(ModuleBase):
                                    callback_url: str = None, task_context_json: str = None):
             try:
                 self._lazy_init()
+                if self._callback_task_statuses and task_status.value not in self._callback_task_statuses:
+                    return
+                if self._callback_task_types and task_type not in self._callback_task_types:
+                    return
                 self._finished_task_queue.enqueue(
                     task_id=task_id,
                     task_type=task_type,
@@ -716,7 +725,8 @@ class DocumentProcessorWorker(ModuleBase):
     def __init__(self, db_config: dict = None, num_workers: int = 1, port: int = None,
                  task_poller=None, lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
                  high_priority_task_types: list[str] = None, high_priority_only: bool = False,
-                 poll_mode: str = 'thread'):
+                 poll_mode: str = 'thread', callback_task_statuses: list[str] = None,
+                 callback_task_types: list[str] = None):
         super().__init__()
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         self._num_workers = num_workers
@@ -729,6 +739,8 @@ class DocumentProcessorWorker(ModuleBase):
             high_priority_task_types=high_priority_task_types,
             high_priority_only=high_priority_only,
             poll_mode=poll_mode,
+            callback_task_statuses=callback_task_statuses,
+            callback_task_types=callback_task_types,
         )
         self._worker_impl = ServerModule(worker_impl, port=self._port, num_replicas=self._num_workers)
         LOG.info(f'[DocumentProcessorWorker] Worker initialized with {num_workers} workers')

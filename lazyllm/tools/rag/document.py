@@ -17,7 +17,7 @@ from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_f
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .store.store_base import DEFAULT_KB_ID
 from .index_base import IndexBase
-from .utils import ensure_call_endpoint
+from .utils import RAG_DEFAULT_GROUP_NAME, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
 import copy
@@ -44,18 +44,25 @@ class _MetaDocument(_MetaBind):
 
 class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     class _Manager(ModuleBase):
-        DEFAULT_GROUP_NAME = '__default__'
-
-        def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                     manager: Union[bool, str, DocServer] = False, server: Union[bool, int] = False,
-                     name: Optional[str] = None,
-                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
-                     doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
-                     doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
-                     display_name: Optional[str] = '', description: Optional[str] = 'algorithm description',
-                     schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
-                     create_ui: bool = False,
-                     enable_path_monitoring: Optional[bool] = None):
+        def __init__(  # noqa: C901
+            self,
+            dataset_path: Optional[str],
+            embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
+            manager: Union[bool, str, DocServer] = False,
+            server: Union[bool, int] = False,
+            name: Optional[str] = None,
+            launcher: Optional[Launcher] = None,
+            store_conf: Optional[Dict] = None,
+            doc_fields: Optional[Dict[str, DocField]] = None,
+            cloud: bool = False,
+            doc_files: Optional[List[str]] = None,
+            processor: Optional[DocumentProcessor] = None,
+            display_name: Optional[str] = '',
+            description: Optional[str] = 'algorithm description',
+            schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
+            create_ui: bool = False,
+            enable_path_monitoring: Optional[bool] = None,
+        ):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -70,6 +77,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._dataset_path = dataset_path
             self._embed = self._get_embeds(embed)
             self._processor = processor
+            self._create_ui = create_ui
+            self._spawn_doc_server = False
+            self._doc_processor_started = False
             compat_ui_manager = manager == 'ui'
             if compat_ui_manager:
                 lazyllm.LOG.warning('`manager=\'ui\'` is deprecated, use `manager=True, create_ui=True` instead')
@@ -81,14 +91,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._doc_impl_dataset_path = doc_impl_dataset_path
             self._doc_processor = None
             if spawn_doc_server:
+                self._spawn_doc_server = True
                 self._doc_processor = DocumentProcessor(launcher=self._launcher, pythonpath=_LOCAL_PYTHONPATH)
-                self._doc_processor.start()
-                self._manager = DocServer(
-                    launcher=self._launcher,
-                    storage_dir=dataset_path,
-                    parser_url=self._doc_processor.url,
-                    pythonpath=_LOCAL_PYTHONPATH,
-                )
+                self._submodules.remove(self._doc_processor)
             elif connect_doc_server:
                 self._manager = manager
                 parser_url = getattr(getattr(manager, '_raw_impl', None), '_parser_url', None)
@@ -96,11 +101,11 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                     parser_url = manager.parser_url
                 if parser_url:
                     self._doc_processor = DocumentProcessor(url=parser_url)
-            self._schema_extractor = self._register_submodules(schema_extractor)
+            self._schema_extractor = schema_extractor
             self._store_conf = store_conf
             self._display_name = display_name
             self._description = description
-            name = name or self.DEFAULT_GROUP_NAME
+            name = name or RAG_DEFAULT_GROUP_NAME
             if not display_name: display_name = name
             if enable_path_monitoring is None:
                 enable_path_monitoring = False if (spawn_doc_server or connect_doc_server or processor) else True
@@ -115,7 +120,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 store=store_conf, processor=doc_processor, algo_name=name, display_name=display_name,
                 description=description, schema_extractor=schema_extractor)})
 
-            if create_ui:
+            if create_ui and not self._spawn_doc_server:
                 self.ensure_doc_web()
             if server: self._kbs = ServerModule(self._kbs, port=(None if isinstance(server, bool) else int(server)))
             self._global_metadata_desc = doc_fields
@@ -138,6 +143,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         def ensure_doc_web(self):
             if hasattr(self, '_docweb'):
                 return self._docweb
+            if self._spawn_doc_server and not hasattr(self, '_manager'):
+                raise ValueError('`create_ui=True` with `manager=True` requires `Document.start()` before using the UI')
             if not hasattr(self, '_manager') or not isinstance(self._manager, DocServer):
                 raise ValueError(
                     '`create_ui=True` requires an available DocServer. '
@@ -146,33 +153,50 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._docweb = DocWebModule(doc_server=self._manager)
             return self._docweb
 
+        def _ensure_doc_processor_started(self):
+            if self._doc_processor and not self._doc_processor_started:
+                self._doc_processor.start()
+                self._doc_processor_started = True
+
+        def _ensure_managed_services_started(self):
+            if self._spawn_doc_server:
+                self._ensure_doc_processor_started()
+                if not hasattr(self, '_manager'):
+                    self._manager = DocServer(
+                        launcher=self._launcher,
+                        storage_dir=self._dataset_path,
+                        parser_url=self._doc_processor.url,
+                        pythonpath=_LOCAL_PYTHONPATH,
+                    )
+                    self._manager.start()
+                if self._create_ui and not hasattr(self, '_docweb'):
+                    self.ensure_doc_web()
+                    self._docweb.start()
+
+        def _get_deploy_tasks(self):
+            if self._spawn_doc_server and not hasattr(self, '_manager'):
+                return lazyllm.pipeline(self._ensure_managed_services_started)
+            return None
+
         def _get_embeds(self, embed):
             embeds = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
-            return self._register_submodules(embeds)
-
-        def _register_submodules(self, m):
-            if not m: return m
-            for embed in (m.values() if isinstance(m, dict) else m if isinstance(m, (tuple, list)) else [m]):
-                if isinstance(embed, ModuleBase): self._submodules.append(embed)
-            return m
+            for index, module in enumerate(embeds.values()):
+                if isinstance(module, ModuleBase):
+                    setattr(self, f'_embed_module_{index}', module)
+            return embeds
 
         def add_kb_group(self, name, doc_fields: Optional[Dict[str, DocField]] = None,
-                         store_conf: Optional[Dict] = None,
-                         embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
+                         store_conf: Optional[Dict] = None, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                          schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
             embed = self._get_embeds(embed) if embed else self._embed
-            schema_extractor = self._register_submodules(schema_extractor) or self._schema_extractor
+            schema_extractor = schema_extractor or self._schema_extractor
+            if isinstance(schema_extractor, ModuleBase):
+                setattr(self, f'_schema_extractor_{name}', schema_extractor)
             impl = DocImpl(
-                dataset_path=self._doc_impl_dataset_path,
-                embed=embed,
-                kb_group_name=name,
-                enable_path_monitoring=self._enable_path_monitoring,
-                global_metadata_desc=doc_fields,
-                store=store_conf or self._store_conf,
-                processor=self._doc_processor or self._processor,
-                algo_name=name,
-                display_name=name,
-                description=self._description,
+                dataset_path=self._doc_impl_dataset_path, embed=embed, kb_group_name=name,
+                enable_path_monitoring=self._enable_path_monitoring, global_metadata_desc=doc_fields,
+                store=store_conf or self._store_conf, processor=self._doc_processor or self._processor,
+                algo_name=name, display_name=name, description=self._description,
                 schema_extractor=schema_extractor,
             )
             (self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs)[name] = impl
@@ -231,7 +255,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             assert store_conf is None or store_conf['type'] == 'map', (
                 'Only map store is supported for Document with temp-files')
 
-        name = name or Document._Manager.DEFAULT_GROUP_NAME
+        name = name or RAG_DEFAULT_GROUP_NAME
 
         if isinstance(manager, Document._Manager):
             assert not server, 'Server infomation is already set to by manager'
@@ -254,7 +278,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 if _is_local_map_store(store_conf):
                     raise ValueError('`manager=DocumentProcessor(...)` does not support pure local map store')
                 processor, cloud = manager, True
-                processor.start()
                 manager = False
             else:
                 cloud, processor = False, None
@@ -454,6 +477,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def _forward(self, func_name: str, *args, **kw):
         return self._manager(self._curr_group, func_name, *args, **kw)
 
+    def start(self):
+        return super().start()
+
     def find_parent(self, target) -> Callable:
         return functools.partial(self._forward, 'find_parent', group=target)
 
@@ -503,7 +529,7 @@ class UrlDocument(ModuleBase):
         super().__init__()
         self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
         self._manager = lazyllm.UrlModule(url=ensure_call_endpoint(url))
-        self._curr_group = name or Document._Manager.DEFAULT_GROUP_NAME
+        self._curr_group = name or RAG_DEFAULT_GROUP_NAME
 
     def _forward(self, func_name: str, *args, **kwargs):
         args = (self._curr_group, func_name, *args)

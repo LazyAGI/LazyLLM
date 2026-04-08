@@ -20,7 +20,8 @@ from lazyllm.tools.rag.doc_service.base import (
     TransferRequest,
     UploadRequest,
 )
-from lazyllm.tools.rag.doc_service.doc_manager import DocManager, _ParserClient
+from lazyllm.tools.rag.doc_service.doc_manager import DocManager
+from lazyllm.tools.rag.doc_service.parser_client import ParserClient
 from lazyllm.tools.rag.parsing_service.base import TaskType
 from lazyllm.tools.rag.utils import BaseResponse
 
@@ -38,7 +39,12 @@ class _ManagerHarness:
             'port': None,
             'db_name': os.path.join(self.tmp_dir, 'doc_service_local.db'),
         }
-        self.manager = DocManager(db_config=self.db_config, parser_url='http://parser.test')
+        original_health = ParserClient.health
+        ParserClient.health = lambda self: BaseResponse(code=200, msg='success', data={'ok': True})
+        try:
+            self.manager = DocManager(db_config=self.db_config, parser_url='http://parser.test')
+        finally:
+            ParserClient.health = original_health
         self.pending_task_status = {}
         self.cancel_calls = []
         self.delete_calls = []
@@ -331,6 +337,35 @@ def test_manager_transfer_uses_target_doc_id_for_target_records(manager_harness)
     assert manager_harness.manager._has_kb_document('kb_transfer_source', 'source-doc') is True
 
 
+def test_manager_transfer_same_kb_copy_reuses_source_path(manager_harness):
+    manager_harness.manager.create_kb('kb_same_transfer', algo_id='__default__')
+    file_path = manager_harness.make_file('same-transfer.txt', 'same transfer content')
+    upload = manager_harness.manager.upload(UploadRequest(
+        kb_id='kb_same_transfer',
+        algo_id='__default__',
+        items=[AddFileItem(file_path=file_path, doc_id='same-source-doc')],
+    ))
+    manager_harness.finish_task(upload[0]['task_id'])
+
+    items = manager_harness.manager.transfer(TransferRequest(items=[TransferItem(
+        doc_id='same-source-doc',
+        target_doc_id='same-target-doc',
+        source_kb_id='kb_same_transfer',
+        source_algo_id='__default__',
+        target_kb_id='kb_same_transfer',
+        target_algo_id='__default__',
+        mode='copy',
+    )]))
+
+    assert items[0]['accepted'] is True
+    assert items[0]['status'] == DocStatus.WAITING.value
+    assert items[0]['target_file_path'] == file_path
+    assert manager_harness.add_doc_calls[-1]['doc_id'] == 'same-source-doc'
+    assert manager_harness.add_doc_calls[-1]['transfer_params']['target_doc_id'] == 'same-target-doc'
+    assert manager_harness.manager._has_kb_document('kb_same_transfer', 'same-source-doc') is True
+    assert manager_harness.manager._has_kb_document('kb_same_transfer', 'same-target-doc') is True
+
+
 def test_manager_transfer_move_cleans_source_doc_with_target_doc_id(manager_harness):
     manager_harness.manager.create_kb('kb_move_source', algo_id='__default__')
     manager_harness.manager.create_kb('kb_move_target', algo_id='__default__')
@@ -520,10 +555,12 @@ def test_manager_callback_payload_fallback_and_delete_transition(manager_harness
 
 
 def test_parser_client_algo_endpoint_fallback():
-    client = _ParserClient(parser_url='http://parser.test')
+    client = ParserClient(parser_url='http://parser.test')
     calls = []
 
-    def fake_get(path, params=None):
+    def fake_request(method, path, params=None, **kwargs):
+        assert method == 'GET'
+        assert kwargs == {}
         del params
         calls.append(path)
         if path == '/v1/algo/list':
@@ -544,7 +581,7 @@ def test_parser_client_algo_endpoint_fallback():
             }
         raise AssertionError(path)
 
-    client._get = fake_get
+    client._request = fake_request
 
     algo_resp = client.list_algorithms()
     group_resp = client.get_algorithm_groups('__default__')

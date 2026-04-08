@@ -37,8 +37,7 @@ import lazyllm  # noqa: E402
 from lazyllm import FastapiApp, globals, kwargs, load_obj, package  # noqa: E402
 from lazyllm.common import _register_trim_module, _trim_traceback  # noqa: E402
 
-from fastapi import FastAPI, Request  # noqa: E402
-from fastapi.responses import Response, StreamingResponse  # noqa: E402
+from lazyllm.thirdparty import fastapi  # noqa: E402
 import requests  # noqa: E402
 
 # TODO(sunxiaoye): delete in the future
@@ -80,7 +79,7 @@ _err_msg = ('service of ServerModule execuate failed.\n\nThe above exception was
 _err_msg += (f' defined at `{load_obj(args.defined_pos)}`' if args.defined_pos else '') + ':\n'
 
 
-app = FastAPI()
+app = fastapi.FastAPI()
 FastapiApp.update()
 
 async def async_wrapper(func, *args, **kwargs):
@@ -95,30 +94,30 @@ async def async_wrapper(func, *args, **kwargs):
 
 def security_check(f: Callable):
     @functools.wraps(f)
-    async def wrapper(request: Request):
+    async def wrapper(request: fastapi.Request):
         if args.security_key and args.security_key != request.headers.get('Security-Key'):
-            return Response(content='Authentication failed', status_code=401)
+            return fastapi.responses.Response(content='Authentication failed', status_code=401)
         return (await f(request)) if inspect.iscoroutinefunction(f) else f(request)
     return wrapper
 
 @app.post('/_call')
 @security_check
-async def lazyllm_call(request: Request):
+async def lazyllm_call(request: fastapi.Request):
     try:
         fname, args, kwargs = await request.json()
         args, kwargs = load_obj(args), load_obj(kwargs)
         r = await async_wrapper(getattr(func, fname), *args, **kwargs)
-        return Response(content=codecs.encode(pickle.dumps(r), 'base64'))
+        return fastapi.responses.Response(content=codecs.encode(pickle.dumps(r), 'base64'))
     except requests.RequestException as e:
-        return Response(content=f'{str(e)}', status_code=500)
+        return fastapi.responses.Response(content=f'{str(e)}', status_code=500)
     except Exception:
         exc_type, exc_value, exc_tb = sys.exc_info()
         formatted = ''.join(traceback.format_exception(exc_type, exc_value, _trim_traceback(exc_tb)))
-        return Response(content=f'{_err_msg}\n{formatted}', status_code=500)
+        return fastapi.responses.Response(content=f'{_err_msg}\n{formatted}', status_code=500)
 
 @app.post('/generate')
 @security_check
-async def generate(request: Request): # noqa C901
+async def generate(request: fastapi.Request): # noqa C901
     try:
         input, kw = (await request.json()), {}
         try:
@@ -157,7 +156,7 @@ async def generate(request: Request): # noqa C901
             def generate_stream():
                 for o in output:
                     yield impl(o)
-            return StreamingResponse(generate_stream(), media_type='text_plain')
+            return fastapi.responses.StreamingResponse(generate_stream(), media_type='text_plain')
         elif args.after_function:
             assert (callable(after_func)), 'after_func must be callable'
             r = inspect.getfullargspec(after_func)
@@ -169,13 +168,13 @@ async def generate(request: Request): # noqa C901
                     after_func(output, **{r.kwonlyargs[0]: origin})
             elif len(new_args) == 2:
                 output = after_func(output, origin)
-        return Response(content=impl(output))
+        return fastapi.responses.Response(content=impl(output))
     except requests.RequestException as e:
-        return Response(content=f'{str(e)}', status_code=500)
+        return fastapi.responses.Response(content=f'{str(e)}', status_code=500)
     except Exception:
         exc_type, exc_value, exc_tb = sys.exc_info()
         formatted = ''.join(traceback.format_exception(exc_type, exc_value, _trim_traceback(exc_tb)))
-        return Response(content=f'{_err_msg}\n{formatted}', status_code=500)
+        return fastapi.responses.Response(content=f'{_err_msg}\n{formatted}', status_code=500)
     finally:
         globals.clear()
 

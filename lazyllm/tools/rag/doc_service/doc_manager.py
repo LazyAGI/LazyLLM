@@ -15,38 +15,16 @@ from lazyllm.thirdparty import fastapi
 from ..utils import BaseResponse, _get_default_db_config, _orm_to_dict
 from ...sql import SqlManager
 from .base import (
-    CALLBACK_RECORDS_TABLE_INFO,
-    DocServiceError,
-    DocStatus,
-    KBStatus,
-    SourceType,
-    TaskType,
-    AddRequest,
-    DeleteRequest,
-    MetadataPatchRequest,
-    ReparseRequest,
-    TaskCallbackRequest,
-    TransferRequest,
+    AddRequest, CALLBACK_RECORDS_TABLE_INFO, CallbackEventType, DOC_SERVICE_TASKS_TABLE_INFO,
+    DOCUMENTS_TABLE_INFO, DeleteRequest, DocServiceError, DocStatus, IDEMPOTENCY_RECORDS_TABLE_INFO,
+    KB_ALGORITHM_TABLE_INFO, KB_DOCUMENTS_TABLE_INFO, KBS_TABLE_INFO, KBStatus, MetadataPatchRequest,
+    PARSE_STATE_TABLE_INFO, ReparseRequest, SourceType, TaskCallbackRequest, TaskType, TransferRequest,
     UploadRequest,
-    DOC_SERVICE_TASKS_TABLE_INFO,
-    DOCUMENTS_TABLE_INFO,
-    IDEMPOTENCY_RECORDS_TABLE_INFO,
-    KB_ALGORITHM_TABLE_INFO,
-    KB_DOCUMENTS_TABLE_INFO,
-    KBS_TABLE_INFO,
-    PARSE_STATE_TABLE_INFO,
-    CallbackEventType,
 )
 from .parser_client import ParserClient
 from .utils import (
-    from_json,
-    gen_doc_id,
-    hash_payload,
-    merge_transfer_metadata,
-    resolve_transfer_target_path,
-    sha256_file,
-    stable_json,
-    to_json,
+    from_json, gen_doc_id, hash_payload, merge_transfer_metadata, resolve_transfer_target_path,
+    sha256_file, stable_json, to_json,
 )
 
 
@@ -81,7 +59,8 @@ class DocManager:
 
     def _ensure_indexes(self):
         stmts = [
-            'CREATE UNIQUE INDEX IF NOT EXISTS uq_docs_path ON lazyllm_documents(path)',
+            'DROP INDEX IF EXISTS uq_docs_path',
+            'CREATE INDEX IF NOT EXISTS idx_docs_path ON lazyllm_documents(path)',
             'CREATE INDEX IF NOT EXISTS idx_documents_upload_status ON lazyllm_documents(upload_status)',
             'CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON lazyllm_documents(updated_at)',
             'CREATE UNIQUE INDEX IF NOT EXISTS uq_kb_display_name '
@@ -133,17 +112,9 @@ class DocManager:
             Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
             row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
             if row is None:
-                row = Kb(
-                    kb_id=kb_id,
-                    display_name=display_name,
-                    description=description,
-                    doc_count=0,
-                    status=KBStatus.ACTIVE.value,
-                    owner_id=owner_id,
-                    meta=to_json(meta),
-                    created_at=now,
-                    updated_at=now,
-                )
+                row = Kb(kb_id=kb_id, display_name=display_name, description=description, doc_count=0,
+                         status=KBStatus.ACTIVE.value, owner_id=owner_id, meta=to_json(meta),
+                         created_at=now, updated_at=now)
             else:
                 if update_fields is None:
                     update_fields = set()
@@ -168,10 +139,9 @@ class DocManager:
             if row is None:
                 row = Rel(kb_id=kb_id, algo_id=algo_id, created_at=now, updated_at=now)
             elif row.algo_id != algo_id:
-                raise DocServiceError(
-                    'E_STATE_CONFLICT', f'kb {kb_id} is already bound to algorithm {row.algo_id}',
-                    {'kb_id': kb_id, 'bound_algo_id': row.algo_id, 'requested_algo_id': algo_id}
-                )
+                raise DocServiceError('E_STATE_CONFLICT', f'kb {kb_id} is already bound to algorithm {row.algo_id}',
+                                      {'kb_id': kb_id, 'bound_algo_id': row.algo_id,
+                                       'requested_algo_id': algo_id})
             else:
                 row.updated_at = now
             session.add(row)

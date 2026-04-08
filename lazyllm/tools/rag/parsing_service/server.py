@@ -44,7 +44,8 @@ class DocumentProcessor(ModuleBase):
                      callback_url: Optional[str] = None,
                      lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
                      high_priority_task_types: Optional[List[str]] = None,
-                     high_priority_workers: int = 1):
+                     high_priority_workers: int = 1, callback_task_statuses: Optional[List[str]] = None,
+                     callback_task_types: Optional[List[str]] = None):
             self._db_config = db_config
             self._num_workers = num_workers
             self._post_func = post_func
@@ -61,6 +62,8 @@ class DocumentProcessor(ModuleBase):
                 else [TaskType.DOC_DELETE.value]
             )
             self._high_priority_workers = max(high_priority_workers, 0)
+            self._callback_task_statuses = callback_task_statuses
+            self._callback_task_types = callback_task_types
             self._callback_retry_attempts: Dict[int, int] = {}
 
             self._db_manager = None
@@ -112,6 +115,8 @@ class DocumentProcessor(ModuleBase):
                         lease_renew_interval=self._lease_renew_interval,
                         high_priority_task_types=high_priority_types,
                         high_priority_only=True,
+                        callback_task_statuses=self._callback_task_statuses,
+                        callback_task_types=self._callback_task_types,
                     )
                     self._high_priority_workers_module.start()
                 if normal_workers > 0:
@@ -121,6 +126,8 @@ class DocumentProcessor(ModuleBase):
                         lease_duration=self._lease_duration,
                         lease_renew_interval=self._lease_renew_interval,
                         high_priority_task_types=high_priority_types,
+                        callback_task_statuses=self._callback_task_statuses,
+                        callback_task_types=self._callback_task_types,
                     )
                     self._workers.start()
             LOG.info('[DocumentProcessor] Lazy initialization completed!')
@@ -826,7 +833,9 @@ class DocumentProcessor(ModuleBase):
                  launcher: Optional[Launcher] = None, post_func: Optional[Callable] = None,
                  path_prefix: Optional[str] = None, callback_url: Optional[str] = None, lease_duration: float = 300.0,
                  lease_renew_interval: float = 60.0, high_priority_task_types: Optional[List[str]] = None,
-                 high_priority_workers: int = 1, pythonpath: Optional[str] = None):
+                 high_priority_workers: int = 1, pythonpath: Optional[str] = None,
+                 callback_task_statuses: Optional[List[str]] = None,
+                 callback_task_types: Optional[List[str]] = None):
         super().__init__()
         self._raw_impl = None  # save the reference of the original Impl object
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
@@ -841,7 +850,9 @@ class DocumentProcessor(ModuleBase):
                 lease_renew_interval=lease_renew_interval,
                 high_priority_task_types=high_priority_task_types,
                 high_priority_workers=high_priority_workers,
-                callback_url=callback_url
+                callback_url=callback_url,
+                callback_task_statuses=callback_task_statuses,
+                callback_task_types=callback_task_types,
             )
             self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher, pythonpath=pythonpath)
         else:

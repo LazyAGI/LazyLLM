@@ -6,7 +6,8 @@ import requests
 import pytest
 
 from lazyllm.tools.rag.parsing_service import DocumentProcessor
-from lazyllm.tools.rag.parsing_service.base import TaskStatus
+from lazyllm.tools.rag.parsing_service.base import TaskStatus, TaskType
+from lazyllm.tools.rag.parsing_service.worker import DocumentProcessorWorker
 from lazyllm import Document, Retriever
 
 STATIC_STATUS = [TaskStatus.SUCCESS.value, TaskStatus.FAILED.value, TaskStatus.CANCELED.value]
@@ -131,6 +132,49 @@ class TestDocProcessor(object):
             assert nodes[0].global_metadata.get('test_meta') == 'test1'
         except requests.exceptions.RequestException as e:
             self.fail(f'Request failed: {e}')
+
+
+class _FakeFinishedTaskQueue:
+    def __init__(self):
+        self.items = []
+
+    def enqueue(self, **kwargs):
+        self.items.append(kwargs)
+
+
+def test_worker_callback_filters_allow_all_by_default():
+    impl = DocumentProcessorWorker._Impl()
+    queue = _FakeFinishedTaskQueue()
+    impl._lazy_init = lambda: None
+    impl._finished_task_queue = queue
+
+    impl._enqueue_finished_task(
+        task_id='task-1',
+        task_type=TaskType.DOC_ADD.value,
+        task_status=TaskStatus.WORKING,
+        callback_url='http://callback.test',
+    )
+
+    assert [item['task_id'] for item in queue.items] == ['task-1']
+
+
+def test_worker_callback_filters_skip_non_matching_records():
+    impl = DocumentProcessorWorker._Impl(
+        callback_task_statuses=[TaskStatus.SUCCESS.value],
+        callback_task_types=[TaskType.DOC_ADD.value],
+    )
+    queue = _FakeFinishedTaskQueue()
+    impl._lazy_init = lambda: None
+    impl._finished_task_queue = queue
+
+    impl._enqueue_finished_task(task_id='task-delete', task_type=TaskType.DOC_DELETE.value,
+                                task_status=TaskStatus.SUCCESS)
+    impl._enqueue_finished_task(task_id='task-working', task_type=TaskType.DOC_ADD.value,
+                                task_status=TaskStatus.WORKING)
+    impl._enqueue_finished_task(task_id='task-add-success', task_type=TaskType.DOC_ADD.value,
+                                task_status=TaskStatus.SUCCESS)
+
+    assert [item['task_id'] for item in queue.items] == ['task-add-success']
 
     @pytest.mark.order(2)
     def test_reparse(self):

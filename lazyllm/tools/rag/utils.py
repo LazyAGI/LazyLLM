@@ -45,6 +45,8 @@ config.add(
 config.add('default_dlmanager', str, 'sqlite', 'DEFAULT_DOCLIST_MANAGER',
            description='The default document list manager for RAG.')
 
+RAG_DEFAULT_GROUP_NAME = '__default__'
+
 def gen_docid(file_path: str) -> str:
     return hashlib.sha256(file_path.encode()).hexdigest()
 
@@ -104,7 +106,7 @@ class DocPathParsingResult(BaseModel):
 
 @deprecated('Document(dataset_path=..., enable_path_monitoring=...)')
 class DocListManager(ABC):
-    DEFAULT_GROUP_NAME = '__default__'
+    DEFAULT_GROUP_NAME = RAG_DEFAULT_GROUP_NAME
     __pool__ = dict()
 
     class Status:

@@ -230,8 +230,8 @@ class TaskCallbackPayload(BaseModel):
     payload: Dict[str, Any] = Field(default_factory=dict)
 
 
-class KbCreateRequest(BaseModel):
-    kb_id: str
+class KbRequest(BaseModel):
+    kb_id: Optional[str] = None
     display_name: Optional[str] = None
     description: Optional[str] = None
     owner_id: Optional[str] = None
@@ -240,13 +240,8 @@ class KbCreateRequest(BaseModel):
     idempotency_key: Optional[str] = None
 
 
-class KbUpdateRequest(BaseModel):
-    display_name: Optional[str] = None
-    description: Optional[str] = None
-    owner_id: Optional[str] = None
-    meta: Optional[Dict[str, Any]] = None
-    algo_id: Optional[str] = None
-    idempotency_key: Optional[str] = None
+KbCreateRequest = KbRequest
+KbUpdateRequest = KbRequest
 
 
 class KbBatchQueryRequest(BaseModel):

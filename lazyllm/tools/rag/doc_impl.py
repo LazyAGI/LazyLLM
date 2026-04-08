@@ -14,7 +14,7 @@ from .store.store_base import DEFAULT_KB_ID
 from .store.document_store import _DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import gen_docid, is_sparse, _get_default_db_config
+from .utils import RAG_DEFAULT_GROUP_NAME, gen_docid, is_sparse, _get_default_db_config
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 from .data_type import DataType
 from .parsing_service import _Processor, DocumentProcessor
@@ -68,7 +68,6 @@ class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
-    DEFAULT_GROUP_NAME = '__default__'
 
     def __init__(self, embed: Dict[str, Callable], dataset_path: Optional[str] = None,
                  enable_path_monitoring: bool = False,
@@ -80,7 +79,7 @@ class DocImpl:
                  schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
-        self._kb_group_name = kb_group_name or self.DEFAULT_GROUP_NAME
+        self._kb_group_name = kb_group_name or RAG_DEFAULT_GROUP_NAME
         self._dataset_path = dataset_path
         self._enable_path_monitoring = bool(enable_path_monitoring and dataset_path and doc_files is None)
         self._doc_files = doc_files
@@ -546,16 +545,9 @@ class DocImpl:
                    sort_by_number: bool = False) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
         self._lazy_init()
         return self._store.get_nodes(
-            uids=uids,
-            doc_ids=doc_ids,
-            group=group,
-            kb_id=kb_id,
-            numbers=numbers,
-            limit=limit,
-            offset=offset,
-            return_total=return_total,
-            sort_by_number=sort_by_number,
-            display=True,
+            uids=uids, doc_ids=doc_ids, group=group, kb_id=kb_id, numbers=numbers,
+            limit=limit, offset=offset, return_total=return_total,
+            sort_by_number=sort_by_number, display=True,
         )
 
     def _get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),

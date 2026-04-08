@@ -52,6 +52,8 @@ class DocServer(ModuleBase):
             parser_url: Optional[str] = None,
             callback_url: Optional[str] = None,
         ):
+            if not parser_url:
+                raise ValueError('parser_url is required; doc_service no longer starts a mock parsing server')
             self._storage_dir = storage_dir
             self._db_config = db_config
             self._parser_db_config = parser_db_config
@@ -64,8 +66,6 @@ class DocServer(ModuleBase):
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
             os.makedirs(self._storage_dir, exist_ok=True)
-            if not self._parser_url:
-                raise ValueError('parser_url is required; doc_service no longer starts a mock parsing server')
             self._manager = DocManager(
                 db_config=self._db_config,
                 parser_url=self._parser_url,
@@ -131,7 +131,7 @@ class DocServer(ModuleBase):
         def _build_update_kb_payload(kb_id: str, request: KbUpdateRequest):
             payload = request.model_dump(mode='json', exclude_unset=True)
             payload['kb_id'] = kb_id
-            payload['explicit_fields'] = sorted(request.model_fields_set)
+            payload['explicit_fields'] = sorted(field for field in request.model_fields_set if field != 'kb_id')
             return payload
 
         def _gen_unique_upload_path(self, filename: str, reserved_paths: Optional[set] = None):
@@ -257,26 +257,13 @@ class DocServer(ModuleBase):
             source_type: Optional[SourceType] = fastapi.Form(None),  # noqa: B008
             doc_id: Optional[str] = fastapi.Form(None),  # noqa: B008
             idempotency_key: Optional[str] = fastapi.Form(None),  # noqa: B008
-            kb_id_query: Optional[str] = fastapi.Query(None, alias='kb_id', include_in_schema=False),  # noqa: B008
-            algo_id_query: Optional[str] = fastapi.Query(None, alias='algo_id', include_in_schema=False),  # noqa: B008
-            source_type_query: Optional[SourceType] = fastapi.Query(  # noqa: B008
-                None, alias='source_type', include_in_schema=False
-            ),
-            doc_id_query: Optional[str] = fastapi.Query(None, alias='doc_id', include_in_schema=False),  # noqa: B008
-            idempotency_key_query: Optional[str] = fastapi.Query(  # noqa: B008
-                None,
-                alias='idempotency_key',
-                include_in_schema=False,
-            ),
         ):
             self._lazy_init()
             if not files:
                 raise fastapi.HTTPException(status_code=400, detail='files is required')
-            kb_id = kb_id or kb_id_query or '__default__'
-            algo_id = algo_id or algo_id_query or '__default__'
-            source_type = source_type or source_type_query or SourceType.API
-            doc_id = doc_id or doc_id_query
-            idempotency_key = idempotency_key or idempotency_key_query
+            kb_id = kb_id or '__default__'
+            algo_id = algo_id or '__default__'
+            source_type = source_type or SourceType.API
             saved_paths, file_identities = await self._persist_uploads(files)
             upload_request = UploadRequest(
                 items=[
@@ -457,13 +444,8 @@ class DocServer(ModuleBase):
         ):
             self._lazy_init()
             return self._run(lambda: self._manager.list_chunks(
-                kb_id=kb_id,
-                doc_id=doc_id,
-                group=group,
-                algo_id=algo_id,
-                page=page,
-                page_size=page_size,
-                offset=offset,
+                kb_id=kb_id, doc_id=doc_id, group=group, algo_id=algo_id,
+                page=page, page_size=page_size, offset=offset,
             ))
 
         @app.post('/v1/tasks/batch')
@@ -535,6 +517,8 @@ class DocServer(ModuleBase):
         @app.post('/v1/kbs')
         def create_kb(self, request: KbCreateRequest):
             self._lazy_init()
+            if not request.kb_id:
+                raise DocServiceError('E_INVALID_PARAM', 'kb_id is required')
             payload = request.model_dump(mode='json')
             return self._run(lambda: self._manager.run_idempotent(
                 '/v1/kbs', request.idempotency_key, payload,
@@ -550,6 +534,12 @@ class DocServer(ModuleBase):
 
         def update_kb_by_id(self, kb_id: str, request: KbUpdateRequest):
             self._lazy_init()
+            if request.kb_id and request.kb_id != kb_id:
+                raise DocServiceError(
+                    'E_INVALID_PARAM',
+                    f'kb_id mismatch: path={kb_id}, body={request.kb_id}',
+                    {'kb_id': kb_id, 'request_kb_id': request.kb_id},
+                )
             payload = self._build_update_kb_payload(kb_id, request)
             return self._run(lambda: self._manager.run_idempotent(
                 f'/v1/kbs/{kb_id}:patch', request.idempotency_key, payload,

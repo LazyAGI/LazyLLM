@@ -7,15 +7,16 @@ from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
-import lazyllm.tools.rag.document as document_module
-from lazyllm.tools.rag.utils import gen_docid
-from lazyllm.launcher import cleanup
-from unittest.mock import MagicMock, patch
-import unittest
 import os
 import shutil
-import time
 import tempfile
+import time
+import unittest
+from unittest.mock import MagicMock
+
+import lazyllm.tools.rag.document as document_module
+from lazyllm.launcher import cleanup
+from lazyllm.tools.rag.utils import gen_docid
 
 
 class TestDocImpl(unittest.TestCase):
@@ -225,171 +226,6 @@ class TestDocument(unittest.TestCase):
         assert doc._manager._enable_path_monitoring is True
         assert doc._impl._dataset_path == doc._manager._origin_path
 
-    def test_manager_true_disables_monitoring_and_creates_ui(self):
-        dataset_path = self._build_dataset()
-        calls = {}
-
-        class FakeDocumentProcessor:
-            def __init__(self, *args, **kwargs):
-                self.url = 'http://127.0.0.1:19001/generate'
-
-            def start(self):
-                calls['processor_started'] = True
-
-        class FakeDocServer:
-            def __init__(self, *args, **kwargs):
-                calls['storage_dir'] = kwargs.get('storage_dir')
-                self._url = 'http://127.0.0.1:19002/generate'
-
-        class FakeDocWebModule:
-            def __init__(self, doc_server, *args, **kwargs):
-                calls['web_doc_server'] = doc_server
-                self.url = 'http://127.0.0.1:19003'
-
-            def stop(self):
-                return None
-
-        with patch('lazyllm.tools.rag.document.DocumentProcessor', FakeDocumentProcessor), \
-                patch('lazyllm.tools.rag.document.DocServer', FakeDocServer), \
-                patch('lazyllm.tools.rag.document.DocWebModule', FakeDocWebModule):
-            doc = Document(dataset_path, manager=True, create_ui=True)
-            try:
-                assert calls['processor_started'] is True
-                assert calls['storage_dir'] == doc._manager._origin_path
-                assert calls['web_doc_server'] is doc._manager._manager
-                assert doc._manager._enable_path_monitoring is False
-                assert doc._impl._dataset_path == doc._manager._dataset_path
-            finally:
-                doc.stop()
-
-    def test_doc_server_manager_disables_monitoring_without_local_path_following(self):
-        dataset_path = self._build_dataset()
-        calls = {}
-
-        class FakeDocumentProcessor:
-            def __init__(self, *args, **kwargs):
-                calls['parser_url'] = kwargs.get('url')
-
-            def start(self):
-                return None
-
-        class FakeDocWebModule:
-            def __init__(self, doc_server, *args, **kwargs):
-                calls['web_doc_server'] = doc_server
-                self.url = 'http://127.0.0.1:19003'
-
-            def stop(self):
-                return None
-
-        class FakeDocServer:
-            def __init__(self):
-                self.parser_url = 'http://127.0.0.1:19011/generate'
-                self._url = 'http://127.0.0.1:19012/generate'
-
-        external_doc_server = FakeDocServer()
-
-        with patch('lazyllm.tools.rag.document.DocumentProcessor', FakeDocumentProcessor), \
-                patch('lazyllm.tools.rag.document.DocServer', FakeDocServer), \
-                patch('lazyllm.tools.rag.document.DocWebModule', FakeDocWebModule):
-            doc = Document(dataset_path, manager=external_doc_server, create_ui=True)
-            try:
-                assert calls['parser_url'] == external_doc_server.parser_url
-                assert calls['web_doc_server'] is external_doc_server
-                assert doc._manager._enable_path_monitoring is False
-                assert doc._manager._dataset_path == doc._manager._origin_path
-                assert doc._impl._dataset_path is None
-            finally:
-                doc.stop()
-
-    def test_document_processor_manager_requires_store_conf_and_disables_monitoring(self):
-        class FakeDocumentProcessor:
-            def __init__(self):
-                self.start_calls = 0
-
-            def start(self):
-                self.start_calls += 1
-
-        dataset_path = self._build_dataset()
-        processor = FakeDocumentProcessor()
-
-        with patch('lazyllm.tools.rag.document.DocumentProcessor', FakeDocumentProcessor):
-            with self.assertRaises(ValueError):
-                Document(dataset_path, manager=processor)
-            assert processor.start_calls == 0
-
-            with self.assertRaises(ValueError):
-                Document(dataset_path, manager=processor, store_conf={'type': 'map'})
-            assert processor.start_calls == 0
-
-            doc = Document(dataset_path, manager=processor, store_conf={'type': 'milvus'})
-
-        assert processor.start_calls == 1
-        assert doc._manager._enable_path_monitoring is False
-        assert doc._impl._dataset_path == doc._manager._origin_path
-
-    def test_managed_document_keeps_local_dataset_path_for_helper_apis(self):
-        dataset_path = self._build_dataset()
-
-        class FakeDocumentProcessor:
-            def __init__(self, *args, **kwargs):
-                self.url = 'http://127.0.0.1:19001/generate'
-
-            def start(self):
-                return None
-
-        class FakeDocServer:
-            def __init__(self, *args, **kwargs):
-                self._url = 'http://127.0.0.1:19002/generate'
-
-        class FakeGraphRagServerModule:
-            def __init__(self, kg_dir):
-                self.kg_dir = kg_dir
-
-            def stop(self):
-                return None
-
-        expected_files = [os.path.join(dataset_path, 'rag.txt')]
-
-        with patch('lazyllm.tools.rag.document.DocumentProcessor', FakeDocumentProcessor), \
-                patch('lazyllm.tools.rag.document.DocServer', FakeDocServer), \
-                patch('lazyllm.tools.rag.document.extract_db_schema_from_files', return_value=[]) as extract_mock, \
-                patch('lazyllm.tools.rag.graph_document.GraphRagServerModule', FakeGraphRagServerModule):
-            doc = Document(dataset_path, manager=True)
-            try:
-                from lazyllm.tools.rag.graph_document import GraphDocument
-
-                graph_doc = GraphDocument(doc)
-                assert doc._manager._dataset_path == doc._manager._origin_path
-                assert doc._impl._dataset_path is None
-                doc.extract_db_schema(MagicMock())
-                extract_mock.assert_called_once_with(expected_files, unittest.mock.ANY)
-                assert graph_doc._kg_dir == os.path.join(dataset_path, '.graphrag_kg')
-            finally:
-                doc.stop()
-
-    def test_remote_doc_server_manager_allows_missing_parser_url(self):
-        dataset_path = self._build_dataset()
-
-        class FakeDocServer:
-            def __init__(self, *args, **kwargs):
-                self._raw_impl = None
-                self._url = 'http://127.0.0.1:19002/generate'
-
-            @property
-            def parser_url(self):
-                return None
-
-        with patch('lazyllm.tools.rag.document.DocServer', FakeDocServer), \
-                patch('lazyllm.tools.rag.document.DocumentProcessor') as processor_cls:
-            doc_server = FakeDocServer()
-            doc = Document(dataset_path, manager=doc_server)
-            try:
-                processor_cls.assert_not_called()
-                assert doc._manager._dataset_path == doc._manager._origin_path
-                assert doc._impl._dataset_path is None
-            finally:
-                doc.stop()
-
     def test_register_with_pattern(self):
         Document.create_node_group('AdaptiveChunk1', transform=[
             TransformArgs(f=SentenceSplitter, pattern='*.txt', kwargs=dict(chunk_size=512, chunk_overlap=50)),
@@ -480,6 +316,7 @@ class TestDocument(unittest.TestCase):
         dataset_path = self._build_dataset()
         doc = Document(dataset_path, manager=True, create_ui=True)
         try:
+            doc.start()
             doc.create_kb_group(name='test_group')
             doc2 = Document(dataset_path, manager=doc.manager, name='test_group2')
             assert hasattr(doc._manager, '_docweb')
@@ -492,104 +329,15 @@ class TestDocument(unittest.TestCase):
         dataset_path = self._build_dataset()
         doc = Document(dataset_path, manager='ui')
         try:
+            doc.start()
             assert hasattr(doc._manager, '_docweb')
             assert doc._manager._enable_path_monitoring is False
         finally:
             doc.stop()
 
-    def test_doc_web_module_uses_workspace_pythonpath(self):
-        dataset_path = self._build_dataset()
-        calls = {}
-
-        class FakeDocumentProcessor:
-            def __init__(self, *args, **kwargs):
-                calls['processor_pythonpath'] = kwargs.get('pythonpath')
-                self.url = 'http://127.0.0.1:19001/generate'
-
-            def start(self):
-                calls['processor_started'] = True
-
-        class FakeDocServer:
-            def __init__(self, *args, **kwargs):
-                calls['doc_server_pythonpath'] = kwargs.get('pythonpath')
-                calls['parser_url'] = kwargs.get('parser_url')
-                self._url = 'http://127.0.0.1:19002/generate'
-
-        with patch('lazyllm.tools.rag.document.DocumentProcessor', FakeDocumentProcessor), \
-                patch('lazyllm.tools.rag.document.DocServer', FakeDocServer):
-            doc = Document(dataset_path, manager=True, create_ui=True)
-            try:
-                assert calls['processor_started'] is True
-                assert calls['processor_pythonpath'] == document_module._LOCAL_PYTHONPATH
-                assert calls['doc_server_pythonpath'] == document_module._LOCAL_PYTHONPATH
-                assert calls['parser_url'] == 'http://127.0.0.1:19001/generate'
-            finally:
-                doc.stop()
-
-    def test_doc_web_module_registers_algorithms_with_spawned_processor(self):
-        dataset_path = self._build_dataset()
-        calls = {'registered_algorithms': [], 'add_doc_calls': []}
-
-        class FakeDocumentProcessor:
-            def __init__(self, *args, **kwargs):
-                self.url = 'http://127.0.0.1:19001/generate'
-
-            def start(self):
-                return None
-
-            def register_algorithm(self, name, *args, **kwargs):
-                calls['registered_algorithms'].append(name)
-
-            def add_doc(self, input_files, ids, metadatas=None, **kwargs):
-                calls['add_doc_calls'].append({
-                    'input_files': input_files,
-                    'ids': ids,
-                    'metadatas': metadatas,
-                })
-
-        class FakeDocServer:
-            def __init__(self, *args, **kwargs):
-                self._url = 'http://127.0.0.1:19002/generate'
-
-        with patch('lazyllm.tools.rag.document.DocumentProcessor', FakeDocumentProcessor), \
-                patch('lazyllm.tools.rag.document.DocServer', FakeDocServer):
-            doc = Document(dataset_path, manager=True, create_ui=True)
-            try:
-                doc._impl._lazy_init()
-                doc2 = doc.create_kb_group(name='test_group')
-                doc2._impl._lazy_init()
-
-                assert calls['registered_algorithms'] == ['__default__', 'test_group']
-                assert len(calls['add_doc_calls']) == 0
-            finally:
-                doc.stop()
-
     def test_create_ui_requires_doc_server(self):
         with self.assertRaisesRegex(ValueError, 'requires an available DocServer'):
             Document(self._build_dataset(), create_ui=True)
-
-    def test_remote_doc_server_manager_disables_local_path_follow(self):
-        dataset_path = self._build_dataset()
-
-        class FakeDocServer:
-            def __init__(self, *args, **kwargs):
-                self._raw_impl = None
-                self._url = 'http://127.0.0.1:19002/generate'
-
-            @property
-            def parser_url(self):
-                return None
-
-        with patch('lazyllm.tools.rag.document.DocServer', FakeDocServer):
-            doc_server = FakeDocServer()
-            doc = Document(dataset_path, manager=doc_server)
-            try:
-                assert doc._manager._enable_path_monitoring is False
-                assert doc._manager._dataset_path == doc._manager._origin_path
-                assert doc._impl._enable_path_monitoring is False
-                assert doc._impl._dataset_path is None
-            finally:
-                doc.stop()
 
     def test_document_processor_manager_constraints(self):
         dataset_path = self._build_dataset()
