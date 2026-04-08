@@ -15,27 +15,27 @@ from lazyllm.thirdparty import fastapi
 from ..utils import BaseResponse, _get_default_db_config, _orm_to_dict
 from ...sql import SqlManager
 from .base import (
-    AddRequest,
-    CallbackEventType,
     CALLBACK_RECORDS_TABLE_INFO,
-    DeleteRequest,
-    DOC_SERVICE_TASKS_TABLE_INFO,
     DocServiceError,
+    DocStatus,
+    KBStatus,
+    SourceType,
+    TaskType,
+    AddRequest,
+    DeleteRequest,
+    MetadataPatchRequest,
+    ReparseRequest,
+    TaskCallbackRequest,
+    TransferRequest,
+    UploadRequest,
+    DOC_SERVICE_TASKS_TABLE_INFO,
     DOCUMENTS_TABLE_INFO,
     IDEMPOTENCY_RECORDS_TABLE_INFO,
     KB_ALGORITHM_TABLE_INFO,
     KB_DOCUMENTS_TABLE_INFO,
-    KBStatus,
     KBS_TABLE_INFO,
-    MetadataPatchRequest,
     PARSE_STATE_TABLE_INFO,
-    ReparseRequest,
-    SourceType,
-    TaskCallbackRequest,
-    TaskType,
-    TransferRequest,
-    UploadRequest,
-    DocStatus,
+    CallbackEventType,
 )
 from .parser_client import ParserClient
 from .utils import (
@@ -63,10 +63,13 @@ class DocManager:
         self._db_config = db_config or _get_default_db_config('doc_service')
         self._db_manager = SqlManager(
             **self._db_config,
-            tables_info_dict={'tables': [DOCUMENTS_TABLE_INFO, KBS_TABLE_INFO, KB_DOCUMENTS_TABLE_INFO,
-                                         KB_ALGORITHM_TABLE_INFO, PARSE_STATE_TABLE_INFO,
-                                         IDEMPOTENCY_RECORDS_TABLE_INFO, CALLBACK_RECORDS_TABLE_INFO,
-                                         DOC_SERVICE_TASKS_TABLE_INFO]},
+            tables_info_dict={
+                'tables': [
+                    DOCUMENTS_TABLE_INFO, KBS_TABLE_INFO, KB_DOCUMENTS_TABLE_INFO, KB_ALGORITHM_TABLE_INFO,
+                    PARSE_STATE_TABLE_INFO, IDEMPOTENCY_RECORDS_TABLE_INFO, CALLBACK_RECORDS_TABLE_INFO,
+                    DOC_SERVICE_TASKS_TABLE_INFO,
+                ]
+            },
         )
         self._ensure_indexes()
         self._parser_client = ParserClient(parser_url=parser_url)
