@@ -24,8 +24,46 @@ class MetadataMode(str, Enum):
 
 
 @cpp_class
+class DocNodeCore:
+    def __init__(self,
+        text: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        uid: Optional[str] = None
+    ):
+        self._uid: str = uid or str(uuid.uuid4())
+        self._text: str = text or ''
+        self._metadata: Dict[str, Any] = metadata or {}
+
+        # Metadata keys that are excluded from text for the embed model.
+        self._excluded_embed_metadata_keys: List[str] = []
+        # Metadata keys that are excluded from text for the LLM.
+        self._excluded_llm_metadata_keys: List[str] = []
+
+    def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
+        '''Metadata info string.'''
+        if mode == MetadataMode.NONE:
+            return ''
+
+        metadata_keys = set(self._metadata.keys())
+        if mode == MetadataMode.LLM:
+            for key in self.excluded_llm_metadata_keys:
+                if key in metadata_keys:
+                    metadata_keys.remove(key)
+        elif mode == MetadataMode.EMBED:
+            for key in self.excluded_embed_metadata_keys:
+                if key in metadata_keys:
+                    metadata_keys.remove(key)
+
+        return '\n'.join([f'{key}: {self._metadata[key]}' for key in metadata_keys])
+
+    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
+        metadata_str = self.get_metadata_str(metadata_mode).strip()
+        if not metadata_str:
+            return self.text if self.text else ''
+        return f'{metadata_str}\n\n{self.text}'.strip()
+
 @reset_on_pickle(('_lock', threading.Lock))
-class DocNode:
+class DocNode(DocNodeCore):
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
                  parent: Optional[Union[str, 'DocNode']] = None, store=None,
@@ -34,18 +72,12 @@ class DocNode:
         if text and content:
             raise ValueError('`text` and `content` cannot be set at the same time.')
         if not content and not text: content = ''
-        self._uid: str = uid if uid else str(uuid.uuid4())
         self._content: Optional[Union[str, List[Any]]] = content if content is not None else text
+        super().__init__(text=text, metadata=metadata, uid=uid)
         self._group: Optional[str] = group
         self._embedding: Optional[Dict[str, List[float]]] = embedding or {}
-        # metadata: the chunk's meta
-        self._metadata: Dict[str, Any] = metadata or {}
         # Global metadata: the file's global metadata (higher level)
         self._global_metadata = global_metadata or {}
-        # Metadata keys that are excluded from text for the embed model.
-        self._excluded_embed_metadata_keys: List[str] = []
-        # Metadata keys that are excluded from text for the LLM.
-        self._excluded_llm_metadata_keys: List[str] = []
         # NOTE: node in parent should be id when stored in db (use store to recover): parent: 'uid'
         self._parent: Optional[Union[str, 'DocNode']] = parent
         self._children: Dict[str, List['DocNode']] = defaultdict(list)
@@ -265,29 +297,6 @@ class DocNode:
 
     def get_content(self) -> str:
         return self.get_text(MetadataMode.LLM)
-
-    def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
-        '''Metadata info string.'''
-        if mode == MetadataMode.NONE:
-            return ''
-
-        metadata_keys = set(self.metadata.keys())
-        if mode == MetadataMode.LLM:
-            for key in self.excluded_llm_metadata_keys:
-                if key in metadata_keys:
-                    metadata_keys.remove(key)
-        elif mode == MetadataMode.EMBED:
-            for key in self.excluded_embed_metadata_keys:
-                if key in metadata_keys:
-                    metadata_keys.remove(key)
-
-        return '\n'.join([f'{key}: {self.metadata[key]}' for key in metadata_keys])
-
-    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
-        metadata_str = self.get_metadata_str(metadata_mode).strip()
-        if not metadata_str:
-            return self.text if self.text else ''
-        return f'{metadata_str}\n\n{self.text}'.strip()
 
     def to_dict(self) -> Dict:
         return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)

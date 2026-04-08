@@ -14,8 +14,8 @@ std::string DumpJson(const py::object& obj);
 py::object LoadJson(const std::string& text);
 bool ExtractStringSequence(const py::object& obj, std::vector<std::string>* out);
 lazyllm::MetadataMode ParseMetadataMode(const py::object& mode);
-lazyllm::DocNode::MetadataVType PyToMetadataValue(const py::handle& value);
-py::object MetadataValueToPy(const lazyllm::DocNode::MetadataVType& value);
+lazyllm::DocNodeCore::MetadataVType PyToMetadataValue(const py::handle& value);
+py::object MetadataValueToPy(const lazyllm::DocNodeCore::MetadataVType& value);
 std::any PyToAny(const py::handle& value);
 py::object AnyToPy(const std::any& value);
 

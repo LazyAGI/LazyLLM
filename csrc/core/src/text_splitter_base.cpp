@@ -20,7 +20,7 @@ namespace lazyllm {
  * Notes:
  * - This function returns std::string chunks intentionally because current tokenizer
  *   encode/decode materializes strings in the merge path.
- * - Ownership is explicit here to avoid dangling string_view in downstream DocNode construction.
+ * - Ownership is explicit here to avoid dangling string_view in downstream DocNodeCore construction.
  *
  * TODO:
  * - After tokenizer supports true string_view encode/decode, migrate this path back to

@@ -14,7 +14,6 @@
 #include <variant>
 #include <vector>
 
-#include "doc_node.hpp"
 #include "tokenizer.hpp"
 
 namespace lazyllm {
@@ -37,12 +36,6 @@ protected:
 
 private:
     std::tuple<std::vector<std::string_view>, bool> split_by_functions(const std::string_view& text) const;
-
-    int get_node_metadata_size(const DocNode& node) const {
-        return std::max(
-            get_token_size(node.get_metadata_string(MetadataMode::EMBED)),
-            get_token_size(node.get_metadata_string(MetadataMode::LLM)));
-    }
 
     int get_token_size(const std::string_view& view) const {
         if (view.empty()) return 0;

@@ -12,13 +12,6 @@
 
 namespace lazyllm {
 
-using MetadataVType = std::variant<
-    std::string, std::vector<std::string>,
-    int, std::vector<int>,
-    double, std::vector<double>,
-    std::any
->;
-
 struct RAGMetadataKeys {
     inline static constexpr std::string_view KB_ID = "kb_id";
     inline static constexpr std::string_view DOC_ID = "docid";
@@ -89,6 +82,43 @@ inline std::string GenerateUUID() {
     return out;
 }
 
+std::string VectorToString(const std::vector<std::string>& values) {
+    std::string out = "[";
+    for (size_t i = 0; i < values.size() - 1; ++i) {
+        out += values[i];
+        out += ",";
+    }
+    out += values.back();
+    out += "]";
+    return out;
+}
+
+std::string VectorToString(const std::vector<int>& values) {
+    std::string out = "[";
+    for (size_t i = 0; i < values.size() - 1; ++i) {
+        out += std::string(values[i]);
+        out += ",";
+    }
+    out += std::string(values.back());
+    out += "]";
+    return out;
+}
+
+std::string VectorToString(const std::vector<double>& values) {
+    std::string out = "[";
+    for (size_t i = 0; i < values.size() - 1; ++i) {
+        out += std::string(values[i]);
+        out += ",";
+    }
+    out += std::string(values.back());
+    out += "]";
+    return out;
+}
+using MetadataVType = std::variant<
+    std::string, std::vector<std::string>,
+    int, std::vector<int>,
+    double, std::vector<double>
+>;
 std::string any_to_string(const MetadataVType& value);
 
 inline bool is_adjacent(const std::string_view& left, const std::string_view& right) {

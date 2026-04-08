@@ -1,6 +1,5 @@
 #include "lazyllm.hpp"
 
-#include "document_store.hpp"
 #include "doc_node.hpp"
 
 #include <memory>

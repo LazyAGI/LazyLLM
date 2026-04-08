@@ -2,20 +2,13 @@ import importlib
 import os
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, cast
+from lazyllm import config
+
+config.add('cpp_switch', bool, False, 'ENABLE_CPP_OVERRIDE')
 
 _LAZYLLM_CPP_MODULE = None
-_LAZYLLM_CPP_ENABLED = None
 _C = TypeVar('_C', bound=type)
 _CLASS_ATTR_MISSING = object()
-
-
-def _is_enabled() -> bool:
-    global _LAZYLLM_CPP_ENABLED
-    if _LAZYLLM_CPP_ENABLED is None:
-        value = os.getenv('LAZYLLM_ENABLE_CPP_OVERRIDE')
-        _LAZYLLM_CPP_ENABLED = value is not None and (value == '1' or value.lower() == 'true')
-    return _LAZYLLM_CPP_ENABLED
-
 
 def _load_cpp_module():
     global _LAZYLLM_CPP_MODULE
@@ -133,7 +126,7 @@ def cpp_class(py_class: Optional[_C] = None):
         if not isinstance(cls, type):
             raise TypeError(f'@cpp_class can only decorate classes, got: {type(cls).__name__}')
 
-        if not _is_enabled():
+        if not config.cpp_switch:
             return cls
 
         cpp_module = _load_cpp_module()
@@ -162,7 +155,7 @@ def cpp_proxy(  # noqa: C901
         if not isinstance(cls, type):
             raise TypeError(f'@cpp_proxy can only decorate classes, got: {type(cls).__name__}')
 
-        if not _is_enabled():
+        if not config.cpp_switch:
             return cls
 
         cpp_module = _load_cpp_module()

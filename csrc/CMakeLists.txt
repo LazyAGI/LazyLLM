@@ -26,20 +26,11 @@ target_link_libraries(lazyllm_core PUBLIC tiktoken)
 target_link_libraries(lazyllm_core PUBLIC utf8proc)
 lazyllm_enable_strict_warnings(lazyllm_core)
 
-# Config lazyllm_adaptor lib which maintains callback invocations.
-file(GLOB_RECURSE LAZYLLM_ADAPTOR_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/adaptor/*.cpp")
-add_library(lazyllm_adaptor STATIC ${LAZYLLM_ADAPTOR_SOURCES})
-target_include_directories(lazyllm_adaptor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/adaptor)
-target_link_libraries(lazyllm_adaptor PUBLIC pybind11::headers Python3::Python lazyllm_core)
-lazyllm_enable_strict_warnings(lazyllm_adaptor)
-
 # Config lazyllm_cpp lib with binding infomations.
 file(GLOB_RECURSE LAZYLLM_BINDING_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/binding/*.cpp")
 set(INTERFACE_TARGET_NAME lazyllm_cpp)
 pybind11_add_module(${INTERFACE_TARGET_NAME} ${LAZYLLM_BINDING_SOURCES})
-target_link_libraries(${INTERFACE_TARGET_NAME} PRIVATE lazyllm_core lazyllm_adaptor)
 lazyllm_enable_strict_warnings(${INTERFACE_TARGET_NAME})
 
 # Runtime loader configuration per platform.

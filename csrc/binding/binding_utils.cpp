@@ -64,7 +64,7 @@ lazyllm::MetadataMode ParseMetadataMode(const py::object& mode) {
     return lazyllm::MetadataMode::NONE;
 }
 
-lazyllm::DocNode::MetadataVType PyToMetadataValue(const py::handle& value) {
+lazyllm::DocNodeCore::MetadataVType PyToMetadataValue(const py::handle& value) {
     if (value.is_none()) return std::any(py::none());
     if (py::isinstance<py::bool_>(value)) return static_cast<int>(value.cast<bool>());
     if (py::isinstance<py::int_>(value)) return value.cast<int>();
@@ -110,7 +110,7 @@ lazyllm::DocNode::MetadataVType PyToMetadataValue(const py::handle& value) {
     return std::any(py::reinterpret_borrow<py::object>(value));
 }
 
-py::object MetadataValueToPy(const lazyllm::DocNode::MetadataVType& value) {
+py::object MetadataValueToPy(const lazyllm::DocNodeCore::MetadataVType& value) {
     return std::visit([](const auto& v) -> py::object {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, std::string>) return py::str(v);
