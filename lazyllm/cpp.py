@@ -1,13 +1,12 @@
 import importlib
+import inspect
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, cast
 
 from lazyllm import config
 
 config.add('cpp_switch', bool, False, 'ENABLE_CPP_OVERRIDE')
-
 _LAZYLLM_CPP_MODULE = None
-_C = TypeVar('_C', bound=type)
 
 
 def _load_cpp_module():
@@ -15,16 +14,6 @@ def _load_cpp_module():
     if _LAZYLLM_CPP_MODULE is None:
         _LAZYLLM_CPP_MODULE = importlib.import_module('lazyllm.lazyllm_cpp')
     return _LAZYLLM_CPP_MODULE
-
-
-def _validate_name_list(value: Optional[List[str]], field_name: str) -> List[str]:
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise TypeError(f'@cpp_proxy {field_name} must be list[str], got: {type(value).__name__}')
-    if any(not isinstance(name, str) for name in value):
-        raise TypeError(f'@cpp_proxy {field_name} must be list[str].')
-    return value
 
 
 def _validate_method_aliases(value: Optional[Dict[str, str]]) -> Dict[str, str]:
@@ -40,56 +29,21 @@ def _validate_method_aliases(value: Optional[Dict[str, str]]) -> Dict[str, str]:
     return value
 
 
-def _resolve_impl_cls(cpp_module: Any, runtime_cls: type, default_impl_name: str):
-    default_impl = getattr(cpp_module, default_impl_name)
-    impl_name = getattr(runtime_cls, '__cpp_proxy_impl_name__', default_impl_name)
-    return getattr(cpp_module, impl_name, default_impl)
+def _build_valid_kwargs(impl_cls: type, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    'Extract params from kwargs, and kwargs only, for C++ object which name is the same and type is matched.'
+    signature = inspect.signature(impl_cls.__init__)
+
+    valid_params: Dict[str, Any] = {}
+    for name, value in kwargs.items():
+        param = signature.parameters.get(name)
+        expected_type = param.annotation
+        if type(value) is expected_type:
+            valid_params[name] = value
+
+    return valid_params
 
 
-def _create_impl_instance(
-    impl_cls: type,
-    init_args: Tuple[Any, ...],
-    init_kwargs: Dict[str, Any],
-):
-    attempts: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [
-        (init_args, dict(init_kwargs)),
-        ((), {}),
-    ]
-    last_error: Optional[TypeError] = None
-    for args, kwargs in attempts:
-        try:
-            return impl_cls(*args, **kwargs)
-        except TypeError as exc:
-            last_error = exc
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError(f'Failed to initialize C++ proxy impl: {impl_cls.__name__}')
-
-
-def _sync_state_to_impl(impl: Any, state: Dict[str, Any], impl_holder_name: str) -> None:
-    for attr_name, value in state.items():
-        if attr_name == impl_holder_name:
-            continue
-        try:
-            if hasattr(impl, attr_name):
-                setattr(impl, attr_name, value)
-        except (AttributeError, TypeError, RuntimeError):
-            continue
-
-
-def _public_callable_names(cls: type) -> List[str]:
-    names: List[str] = []
-    for name in dir(cls):
-        if name.startswith('_'):
-            continue
-        try:
-            member = getattr(cls, name)
-        except Exception:
-            continue
-        if callable(member):
-            names.append(name)
-    return names
-
+_C = TypeVar('_C', bound=type)
 
 def cpp_class(py_class: Optional[_C] = None):
     def _decorate(cls: _C) -> _C:
@@ -109,16 +63,17 @@ def cpp_class(py_class: Optional[_C] = None):
     return _decorate(py_class)
 
 
-def cpp_proxy(
-    py_class: Optional[_C] = None,
-    *,
-    funcs_to_override: Optional[List[str]] = None,
-    attrs_to_proxy: Optional[List[str]] = None,
-    cpp_method_aliases: Optional[Dict[str, str]] = None,
-):
-    proxy_names = _validate_name_list(funcs_to_override, 'funcs_to_override')
-    proxy_attrs = set(_validate_name_list(attrs_to_proxy, 'attrs_to_proxy'))
-    method_aliases = _validate_method_aliases(cpp_method_aliases)
+def _validate_name_list(value: Optional[List[str]], field_name: str) -> List[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise TypeError(f'@cpp_proxy {field_name} must be list[str], got: {type(value).__name__}')
+    if any(not isinstance(name, str) for name in value):
+        raise TypeError(f'@cpp_proxy {field_name} must be list[str].')
+    return value
+
+
+def cpp_proxy(py_class: Optional[_C] = None):
 
     def _decorate(cls: _C) -> _C:
         if not isinstance(cls, type):
@@ -132,25 +87,30 @@ def cpp_proxy(
         if not hasattr(cpp_module, default_impl_name):
             raise AttributeError(f'@cpp_proxy cannot find C++ impl: {default_impl_name}')
 
-        cls.__cpp_proxy_impl_name__ = default_impl_name
-
         impl_holder = '_c_obj'
+        impl_cls = getattr(cpp_module, default_impl_name)
         original_init = cls.__init__
 
         @wraps(original_init)
         def _proxied_init(self, *args, **kwargs):
-            original_init(self, *args, **kwargs)
-            if getattr(self, impl_holder, None) is not None:
-                return
+            'Create C++ object instance right after Python __init__.'
 
-            impl_cls = _resolve_impl_cls(cpp_module, type(self), default_impl_name)
-            impl = _create_impl_instance(impl_cls, args, kwargs)
-            object.__setattr__(self, impl_holder, impl)
-            _sync_state_to_impl(impl, dict(getattr(self, '__dict__', {})), impl_holder)
+            original_init(self, *args, **kwargs)
+
+            valid_params = _build_valid_kwargs(impl_cls, kwargs)
+            self.__setattr__(impl_holder, impl_cls(**valid_params))
 
         cls.__init__ = _proxied_init
 
-        cpp_method_names = set(_public_callable_names(getattr(cpp_module, default_impl_name)))
+        # Proxy C++ methods
+        cpp_method_names: List[str] = []
+        for name in dir(impl_cls):
+            try:
+                member = getattr(impl_cls, name)
+            except Exception:
+                continue
+            if callable(member):
+                cpp_method_names.append(name)
 
         if not proxy_names:
             auto_names = [name for name in cpp_method_names if hasattr(cls, name)]
