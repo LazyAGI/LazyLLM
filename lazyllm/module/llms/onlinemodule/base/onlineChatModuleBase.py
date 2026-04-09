@@ -125,10 +125,10 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         return src[-1]
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
-                tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None,
-                url: str = None, model: str = None, **kw):
-        # TODO(dengyuang): if current forward set stream_output = False but self._stream = True, will use stream = True
-        stream_output = stream_output or self._stream
+                tools: List[Dict[str, Any]] = None, stream_output: bool = None, stream: bool = None,
+                lazyllm_files=None, url: str = None, model: str = None, **kw):
+        stream_output = stream_output if stream_output is not None else stream
+        stream_output = stream_output if stream_output is not None else self._stream
         __input, files = self._get_files(__input, lazyllm_files)
         model, _, url, kw = resolve_online_params(model, None, url, kw,
                                                   model_aliases='model_name', url_aliases='base_url')
