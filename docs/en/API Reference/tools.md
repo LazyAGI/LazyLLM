@@ -545,3 +545,7 @@
 ::: lazyllm.tools.review.tools.chinese_corrector.ChineseCorrector
     members: correct, correct_batch
     exclude-members:
+
+::: lazyllm.tools.rag.QueryEnhACProcessor
+    members:
+    exclude-members:

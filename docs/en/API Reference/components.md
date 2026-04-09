@@ -116,6 +116,11 @@
 ::: lazyllm.components.deploy.text_to_speech.utils.TTSBase
     options:
       heading_level: 3
+
+::: lazyllm.components.deploy.BertDeploy
+    options:
+      heading_level: 3
+
 ---
 
 ## Prompter
