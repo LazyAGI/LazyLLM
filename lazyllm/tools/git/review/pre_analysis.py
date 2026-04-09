@@ -33,17 +33,32 @@ _LARGE_FILE_THRESHOLD = 600
 _CONTEXT_LINES = 50
 
 
+def _is_complete_clone(clone_dir: str) -> bool:
+    try:
+        result = subprocess.run(
+            ['git', '-C', clone_dir, 'rev-parse', 'HEAD'],
+            capture_output=True, text=True, timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None) -> Tuple[str, str]:
     import shutil
     clone_dir = work_dir or tempfile.mkdtemp(prefix='lazyllm_review_')
-    # if target dir exists but is incomplete (no .git), wipe it before cloning
-    if os.path.isdir(clone_dir) and not os.path.isdir(os.path.join(clone_dir, '.git')):
-        shutil.rmtree(clone_dir, ignore_errors=True)
+    if os.path.isdir(clone_dir):
+        if _is_complete_clone(clone_dir):
+            lazyllm.LOG.info(f'Reusing existing clone at {clone_dir}')
+        else:
+            # incomplete or broken clone — wipe and retry
+            shutil.rmtree(clone_dir, ignore_errors=True)
     try:
-        subprocess.run(
-            ['git', 'clone', '--single-branch', '--branch', branch, '--depth', '1', repo_url, clone_dir],
-            capture_output=True, text=True, timeout=120, check=True,
-        )
+        if not _is_complete_clone(clone_dir):
+            subprocess.run(
+                ['git', 'clone', '--single-branch', '--branch', branch, '--depth', '1', repo_url, clone_dir],
+                capture_output=True, text=True, timeout=120, check=True,
+            )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f'git clone failed: {e.stderr or e.stdout}') from e
     except subprocess.TimeoutExpired as e:
@@ -1042,14 +1057,23 @@ def analyze_historical_reviews(
     if cached and cached_max_prs >= max_prs:
         return cached
 
-    pr_list_res = backend.list_pull_requests(state='closed', max_results=max_prs)
-    if not pr_list_res.get('success'):
-        return '(historical review analysis unavailable)'
-    prs = pr_list_res.get('list') or []
-
-    # filter to merged PRs first
-    merged = [p for p in prs if _is_merged_pr(p)]
-    target = merged[:max_prs] if merged else prs[:max_prs]
+    # fetch in batches until we have enough merged PRs or exhaust the API
+    merged: List[Any] = []
+    fetch_size = max_prs
+    while len(merged) < max_prs:
+        pr_list_res = backend.list_pull_requests(state='closed', max_results=fetch_size)
+        if not pr_list_res.get('success'):
+            return '(historical review analysis unavailable)'
+        prs = pr_list_res.get('list') or []
+        if not prs:
+            break
+        merged = [p for p in prs if _is_merged_pr(p)]
+        if len(merged) >= max_prs or len(prs) < fetch_size:
+            # enough merged found, or no more pages available
+            break
+        # not enough merged — fetch more closed PRs (2x each round, capped at 1000)
+        fetch_size = min(fetch_size * 2, 1000)
+    target = merged[:max_prs]
     total = len(target)
 
     if not target:
