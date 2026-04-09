@@ -4,15 +4,14 @@
 #   python examples/git_review.py --pr_number=1083
 #   LAZYLLM_RUN_FULL_REVIEW=1 python examples/git_review.py --pr_number=1083 --model=claude-opus-4-6
 #   LAZYLLM_RUN_FULL_REVIEW=1 LAZYLLM_POST_REVIEW_TO_GITHUB=1 \
-#       python examples/git_review.py --pr_number=1083 --model=claude-opus-4-6 \
-#       --base_url=https://cld.ppapi.vip/v1/
+#       python examples/git_review.py --pr_number=1083 --model=claude-opus-4.6
 #
 # Required:
 #   --pr_number     PR number to review (no default, must be provided)
 #
 # Optional:
 #   --repo          GitHub repo in "owner/name" format (default: LazyAGI/LazyLLM)
-#   --model         LLM model name (default: claude-opus-4-6)
+#   --model         LLM model name (default: claude-opus-4.6)
 #   --base_url      LLM API base URL, e.g. a proxy URL (default: None, use official endpoint)
 #   --language      Review language: cn or en (default: cn)
 #   --max_history_prs  Max historical PRs to analyze for review spec (default: 400)
