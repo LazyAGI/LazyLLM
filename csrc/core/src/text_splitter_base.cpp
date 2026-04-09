@@ -126,21 +126,15 @@ std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separat
  *  @todo Replace eager string materialization once tokenizer encode/decode supports
  *  end-to-end zero-copy string_view operations.
  */
-std::vector<std::string> TextSplitterBase::merge_chunks(
-    const std::vector<ChunkView>& splits, int chunk_size) const
+std::vector<std::string> TextSplitterBase::merge_chunks(std::vector<Chunk> splits, int chunk_size) const
 {
     if (splits.empty()) return {};
 
-    std::vector<Chunk> merged_splits;
-    merged_splits.reserve(splits.size() + 2);
-    for (const auto& split : splits)
-        merged_splits.push_back(Chunk{std::string(split.view), split.is_sentence, split.token_size});
+    if (splits.size() == 1) return {splits.front().text};
 
-    if (merged_splits.size() == 1) return {merged_splits.front().text};
-
-    if (merged_splits.back().token_size == chunk_size && _overlap > 0) {
-        Chunk end_split = merged_splits.back();
-        merged_splits.pop_back();
+    if (splits.back().token_size == chunk_size && _overlap > 0) {
+        Chunk end_split = splits.back();
+        splits.pop_back();
 
         auto text_tokens = _tokenizer->encode(end_split.text);
         const size_t half = text_tokens.size() / 2;
@@ -150,17 +144,17 @@ std::vector<std::string> TextSplitterBase::merge_chunks(
 
         std::string prefix_text = _tokenizer->decode(prefix_tokens);
         std::string suffix_text = _tokenizer->decode(suffix_tokens);
-        merged_splits.push_back(
+        splits.push_back(
             Chunk{prefix_text, end_split.is_sentence, get_token_size(prefix_text)});
-        merged_splits.push_back(
+        splits.push_back(
             Chunk{suffix_text, end_split.is_sentence, get_token_size(suffix_text)});
     }
 
-    Chunk end_split = merged_splits.back();
+    Chunk end_split = splits.back();
     std::vector<std::string> reversed_result;
-    reversed_result.reserve(merged_splits.size());
-    for (int idx = static_cast<int>(merged_splits.size()) - 2; idx >= 0; --idx) {
-        const Chunk& start_split = merged_splits[static_cast<size_t>(idx)];
+    reversed_result.reserve(splits.size());
+    for (int idx = static_cast<int>(splits.size()) - 2; idx >= 0; --idx) {
+        const Chunk& start_split = splits[static_cast<size_t>(idx)];
         if (start_split.token_size <= _overlap && end_split.token_size <= chunk_size - _overlap) {
             end_split += start_split;
             continue;
@@ -171,7 +165,7 @@ std::vector<std::string> TextSplitterBase::merge_chunks(
         }
 
         const int remaining_space = chunk_size - end_split.token_size;
-        const int overlap_len = std::min({_overlap, remaining_space, start_split.token_size});
+        const int overlap_len = std::min({static_cast<int>(_overlap), remaining_space, start_split.token_size});
         if (overlap_len > 0) {
             auto start_tokens = _tokenizer->encode(start_split.text);
             std::vector<int> overlap_tokens(start_tokens.end() - overlap_len, start_tokens.end());

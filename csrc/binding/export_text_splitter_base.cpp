@@ -50,35 +50,21 @@ public:
     }
 
     std::vector<std::string> merge_chunks_impl(py::list splits, int chunk_size) const {
-        struct OwnedSplit {
-            std::string text;
-            bool is_sentence;
-            int token_size;
-        };
-
-        std::vector<OwnedSplit> owned;
+        std::vector<lazyllm::Chunk> owned;
         owned.reserve(py::len(splits));
         for (auto item : splits) {
             py::object split = py::reinterpret_borrow<py::object>(item);
-            owned.push_back(
-                OwnedSplit{
-                    split.attr("text").cast<std::string>(),
-                    split.attr("is_sentence").cast<bool>(),
-                    split.attr("token_size").cast<int>()
-                }
+            owned.emplace_back(
+                split.attr("text").cast<std::string>(),
+                split.attr("is_sentence").cast<bool>(),
+                split.attr("token_size").cast<int>()
             );
-        }
-
-        std::vector<lazyllm::ChunkView> views;
-        views.reserve(owned.size());
-        for (const auto& split : owned) {
-            views.push_back(lazyllm::ChunkView{split.text, split.is_sentence, split.token_size});
         }
 
         std::vector<std::string> chunks;
         {
             py::gil_scoped_release release;
-            chunks = lazyllm::TextSplitterBase::merge_chunks(views, chunk_size);
+            chunks = lazyllm::TextSplitterBase::merge_chunks(owned, chunk_size);
         }
         return chunks;
     }
@@ -97,6 +83,6 @@ void exportTextSpliterBase(py::module& m) {
         .def_property("_overlap", &TextSplitterBaseCPPImpl::overlap, &TextSplitterBaseCPPImpl::set_overlap)
         .def("split_text", &TextSplitterBaseCPPImpl::split_text, py::arg("text"), py::arg("metadata_size"),
             py::call_guard<py::gil_scoped_release>())
-        .def("split_recursive", &TextSplitterBaseCPPImpl::split_recursive_impl, py::arg("text"), py::arg("chunk_size"))
-        .def("merge_chunks", &TextSplitterBaseCPPImpl::merge_chunks_impl, py::arg("splits"), py::arg("chunk_size"));
+        .def("_split", &TextSplitterBaseCPPImpl::split_recursive_impl, py::arg("text"), py::arg("chunk_size"))
+        .def("_merge", &TextSplitterBaseCPPImpl::merge_chunks_impl, py::arg("splits"), py::arg("chunk_size"));
 }

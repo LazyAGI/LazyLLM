@@ -33,7 +33,7 @@ public:
 
 protected:
     virtual std::vector<ChunkView> split_recursive(const std::string_view& view, const int chunk_size) const;
-    virtual std::vector<std::string> merge_chunks(const std::vector<ChunkView>& splits, int chunk_size) const;
+    virtual std::vector<std::string> merge_chunks(std::vector<Chunk> splits, int chunk_size) const;
 
 private:
     std::tuple<std::vector<std::string_view>, bool> split_by_functions(const std::string_view& text) const;
