@@ -16,7 +16,7 @@ from .utils import (
 )
 from .pre_analysis import (
     _read_file_context, _get_arch_index, _get_symbol_index,
-    _build_scoped_agent_tools, _build_scoped_agent_tools_with_cache,
+    _build_scoped_agent_tools_with_cache,
     _lookup_relevant_rules,
 )
 from lazyllm.tools.agent import ReactAgent
@@ -157,6 +157,7 @@ def _round1_hunk_analysis(
     clone_dir: Optional[str] = None,
     language: str = 'cn',
     symbol_index: Optional[Dict[str, str]] = None,
+    ckpt: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
     # use arch_index (structured summary) instead of raw truncation for better info density
     arch_snippet = _get_arch_index(arch_doc) if arch_doc else '(not available)'
@@ -166,13 +167,26 @@ def _round1_hunk_analysis(
     lock = threading.Lock()
     results_by_idx: Dict[int, List[Dict[str, Any]]] = {}
 
+    def _cache_key(path: str, new_start: int) -> str:
+        safe = re.sub(r'[^a-zA-Z0-9_]', '_', path)
+        return f'r1_hunk_{safe}_{new_start}'
+
     def _task(idx: int, hunk: Tuple[str, int, int, str]) -> None:
         path, new_start, new_count, content = hunk
+        key = _cache_key(path, new_start)
+        cached = ckpt.get(key) if ckpt else None
+        if cached is not None:
+            with lock:
+                results_by_idx[idx] = cached
+                prog.update(f'{path}:{new_start} (cached)')
+            return
         items = _analyze_single_hunk(llm, path, new_start, new_count, content,
                                      arch_snippet, spec_snippet, summary_snippet,
                                      clone_dir, language, symbol_index)
         with lock:
             results_by_idx[idx] = items
+            if ckpt:
+                ckpt.save(key, items)
             prog.update(f'{path}:{new_start} ({len(items)} issues)')
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -245,7 +259,7 @@ def _round2_context_enrichment(
         return []
     prog = _Progress('Round 2: context enrichment')
     arch_snippet = arch_doc[:800] if arch_doc else '(not available)'
-    round1_json = json.dumps(round1, ensure_ascii=False, indent=2)[:3000]
+    round1_json = json.dumps(round1[:15], ensure_ascii=False, indent=2)
     diff_snippet = diff_text[:6000] if diff_text else ''
     prompt = _ROUND2_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
@@ -322,7 +336,6 @@ _R2_R1_BUDGET = 1200
 _R2_ARCH_BUDGET = 600
 _R2_SUMMARY_BUDGET = 400
 _R2_SHARED_CTX_BUDGET = 1500
-_R2_SHARED_AGENT_RETRIES = 4
 _R2_FILE_AGENT_RETRIES = 5
 _R2_FILE_TIMEOUT_SECS = 300
 
@@ -393,110 +406,110 @@ def _split_file_diff_into_chunks(diff_text: str, max_chars: int) -> List[Tuple[s
     return chunks or [('all hunks', diff_text[:max_chars])]
 
 
-_R2_SHARED_CTX_PROMPT = '''\
-You are a code analysis assistant. Analyze the imports and changed interfaces in this PR diff.
-
-## PR Diff (all files)
-{diff_text}
-
-## Project Architecture (brief)
-{arch_doc}
-
-Your task:
-1. Identify symbols (classes, functions, constants) that are imported by TWO OR MORE changed files.
-2. For each shared symbol, find its definition location and read its signature (not implementation).
-3. Identify function/method signatures that changed in this diff (old vs new).
-4. Summarize intra-PR file dependencies (which changed file imports which other changed file).
-
-Output a structured plain-text summary with these sections:
-[Shared Symbols]
-<symbol_name> (<file>:<line>) — <one-line description of signature>
-...
-
-[Intra-PR Dependencies]
-<file_A> → <file_B> (imports <symbol>)
-...
-
-[Changed Interfaces]
-<symbol>: <brief description of what changed>
-...
-
-Be concise. Total output must be under {budget} characters.
-If nothing relevant found in a section, write "(none)".
-'''
+def _r2_parse_diff_imports(diff_text: str) -> Tuple[Dict[str, set], Dict[str, str], Dict[str, str]]:
+    file_imports: Dict[str, set] = {}
+    old_sigs: Dict[str, str] = {}
+    new_sigs: Dict[str, str] = {}
+    current_file = ''
+    for line in diff_text.splitlines():
+        if line.startswith('+++ b/'):
+            current_file = line[6:].strip()
+        elif line.startswith('+') and not line.startswith('+++'):
+            body = line[1:]
+            m_import = re.match(r'\s*(?:from\s+(\S+)\s+import\s+(.+)|import\s+(\S+))', body)
+            if m_import and current_file:
+                if m_import.group(2):
+                    for sym in re.split(r',\s*', m_import.group(2)):
+                        sym = sym.strip().split(' as ')[0].strip()
+                        if sym:
+                            file_imports.setdefault(current_file, set()).add(sym)
+                elif m_import.group(3):
+                    file_imports.setdefault(current_file, set()).add(m_import.group(3).strip())
+            m_def = re.match(r'\s*def\s+(\w+)\s*\(([^)]*)\)', body)
+            if m_def:
+                new_sigs[m_def.group(1)] = f'def {m_def.group(1)}({m_def.group(2)[:80]})'
+        elif line.startswith('-') and not line.startswith('---'):
+            m_def = re.match(r'\s*def\s+(\w+)\s*\(([^)]*)\)', line[1:])
+            if m_def:
+                old_sigs[m_def.group(1)] = f'def {m_def.group(1)}({m_def.group(2)[:80]})'
+    return file_imports, old_sigs, new_sigs
 
 
-def _r2_build_shared_context(
-    llm: Any,
-    diff_text: str,
-    arch_doc: str,
-    clone_dir: str,
-    language: str = 'cn',
-) -> str:
-    # extract all changed file paths
+def _r2_build_shared_context(diff_text: str) -> str:
     changed_files = list({path for path, _, _, _ in _parse_unified_diff(diff_text)})
     if len(changed_files) < 2:
-        # single-file PR: no cross-file context needed
         return ''
 
-    arch_snippet = (arch_doc or '')[:_R2_ARCH_BUDGET]
-    diff_snippet = diff_text[:3000]
-    prompt = _R2_SHARED_CTX_PROMPT.format(
-        diff_text=diff_snippet,
-        arch_doc=arch_snippet,
-        budget=_R2_SHARED_CTX_BUDGET,
-    )
-    tools = _build_scoped_agent_tools(clone_dir)
-    try:
-        agent = ReactAgent(llm, tools=tools, max_retries=_R2_SHARED_AGENT_RETRIES, workspace=clone_dir)
-        raw = agent(prompt)
-        text = (raw if isinstance(raw, str) else str(raw))
-        # strip markdown code fences to avoid polluting downstream prompts
-        text = re.sub(r'```[^\n]*\n?', '', text)
-        result = text[:_R2_SHARED_CTX_BUDGET]
-        lazyllm.LOG.info(f'Round 2 shared context built: {len(result)} chars')
-        return result
-    except Exception as e:
-        raise RuntimeError(f'Round 2 shared context build failed: {e}') from e
+    file_imports, old_sigs, new_sigs = _r2_parse_diff_imports(diff_text)
+
+    changed_interfaces: Dict[str, List[str]] = {
+        sym: [old_sigs[sym], new_sigs[sym]]
+        for sym in new_sigs
+        if sym in old_sigs and old_sigs[sym] != new_sigs[sym]
+    }
+
+    all_symbols: Dict[str, List[str]] = {}
+    for fpath, syms in file_imports.items():
+        for sym in syms:
+            all_symbols.setdefault(sym, []).append(fpath)
+    shared = {sym: files for sym, files in all_symbols.items() if len(files) >= 2}
+
+    changed_file_set = set(changed_files)
+    intra_deps: List[str] = []
+    for fpath, syms in file_imports.items():
+        for sym in syms:
+            for other in changed_file_set:
+                if other != fpath and sym in (file_imports.get(other) or set()):
+                    intra_deps.append(f'{fpath} → {other} (imports {sym})')
+
+    parts: List[str] = []
+    if shared:
+        lines = [f'{sym} (in {", ".join(files[:3])})' for sym, files in list(shared.items())[:10]]
+        parts.append('[Shared Symbols]\n' + '\n'.join(lines))
+    else:
+        parts.append('[Shared Symbols]\n(none)')
+
+    parts.append('[Intra-PR Dependencies]\n' + ('\n'.join(intra_deps[:10]) if intra_deps else '(none)'))
+
+    if changed_interfaces:
+        lines = [f'{sym}: {old} → {new}' for sym, (old, new) in list(changed_interfaces.items())[:8]]
+        parts.append('[Changed Interfaces]\n' + '\n'.join(lines))
+    else:
+        parts.append('[Changed Interfaces]\n(none)')
+
+    result = '\n\n'.join(parts)[:_R2_SHARED_CTX_BUDGET]
+    lazyllm.LOG.info(f'Round 2 shared context built (static): {len(result)} chars')
+    return result
 
 
 _R2_CONTEXT_COLLECT_PROMPT_TMPL = '''\
-You are a code analysis assistant. Your ONLY task is to explore the repository and collect context \
-about the symbols changed in the diff below. Do NOT produce review comments yet.
+You are a code analysis assistant. Your ONLY task is to collect context about the symbols changed \
+in the diff below. Do NOT produce review comments yet.
 
 ## File Being Analyzed
 {path}
 
-## Diff Chunk (for reference — do NOT review yet)
+## Diff Chunk
 ```diff
 {diff_chunk}
 ```
 
-## Your Exploration Tasks
-For each class or function modified in the diff above:
-1. Call analyze_symbol("<ClassName or funcName>", "<file_path>") to analyze it and its dependencies.
-2. Search for callers: search_scoped(r"<symbol_name>\\(") to find where it is called.
-3. If the symbol inherits from a base class, call analyze_symbol on the base class too.
-4. Search for related documentation: search_scoped("<symbol_name>", glob="*.md") \
-or search_scoped("<symbol_name>", glob="*.rst").
+## Exploration Plan — follow these steps IN ORDER, stop early if context is sufficient:
 
-When you have explored all relevant symbols (or reached the tool call limit), output a structured \
-plain-text summary with these sections:
+Step 1: For each class or function modified in the diff, call analyze_symbol("<name>", "{path}").
+Step 2: For each symbol found, call grep_callers("<name>") to find call sites outside this file.
+Step 3: If a symbol inherits from a base class, call analyze_symbol("<base_class>", "<base_file>").
+Step 4: STOP. Do not search docs or make additional calls.
 
-[Analyzed Symbols]
-<key>: <signature> — <summary>
-  deps: [<dep_key>, ...]
-...
+## Output Format (STRICT)
+Output ONLY the following compact block. Total output MUST be under 600 characters.
+Do NOT use prose. Use the exact keys below:
 
-[Callers]
-<caller_func> in <file>:<line> — <how it calls the changed code>
-...
+explored: [sym1, sym2, ...]
+callers: [file:line, ...]
+base_changes: [desc, ...]
+risk: [one-line finding, ...]
 
-[Docs]
-<doc_file>:<section> — <relevant excerpt (max 100 chars)>
-...
-
-Be concise. If a section has nothing, write "(none)".
 {lang_instruction}
 '''
 
@@ -546,6 +559,30 @@ If no issues found, output [].
 '''
 
 
+def _make_traced_tool(tool: Any, step_counter: List[int], path: str) -> Any:
+    import inspect
+    sig = inspect.signature(tool)
+    params = list(sig.parameters.keys())
+
+    def traced(*args, **kwargs):
+        step_counter[0] += 1
+        bound = sig.bind(*args, **kwargs)
+        bound.apply_defaults()
+        arg_parts = []
+        for k, v in bound.arguments.items():
+            v_str = repr(v) if not isinstance(v, str) else v
+            if len(v_str) > 60:
+                v_str = v_str[:57] + '...'
+            arg_parts.append(f'{k}={v_str}' if k != params[0] else v_str)
+        lazyllm.LOG.info(f'  [R2 Step {step_counter[0]}] {tool.__name__}({", ".join(arg_parts)})')
+        return tool(*args, **kwargs)
+
+    traced.__name__ = tool.__name__
+    traced.__doc__ = tool.__doc__
+    traced.__annotations__ = tool.__annotations__
+    return traced
+
+
 def _r2_build_file_context(
     llm: Any,
     path: str,
@@ -554,24 +591,32 @@ def _r2_build_file_context(
     tools: List[Any],
     language: str = 'cn',
 ) -> str:
-    '''Stage 1: agent explores the repo and collects symbol context for a single file.'''
     lang_instr = _language_instruction(language)
     prompt = _R2_CONTEXT_COLLECT_PROMPT_TMPL.format(
         path=path,
         diff_chunk=diff_chunk[:2000],
         lang_instruction=lang_instr,
     )
+    step_counter = [0]
+    traced_tools = [_make_traced_tool(t, step_counter, path) for t in tools]
     agent = ReactAgent(
-        llm, tools=tools, max_retries=_R2_FILE_AGENT_RETRIES,
+        llm, tools=traced_tools, max_retries=_R2_FILE_AGENT_RETRIES,
         workspace=clone_dir, force_summarize=True,
         force_summarize_context=f'Exploring context for {path}:\n{diff_chunk[:300]}',
+        keep_full_turns=2,
     )
+    # scoped tools are closures that access clone_dir directly — disable sandbox
+    # so they run in-process instead of being cloudpickle-serialized into a subprocess
+    for tool in agent._tools_manager.all_tools:
+        tool.execute_in_sandbox = False
+    lazyllm.LOG.info(f'  [Agent] Analyzing {path} ...')
     with ThreadPoolExecutor(max_workers=1) as ex:
         fut = ex.submit(agent, prompt)
         try:
             raw = fut.result(timeout=_R2_FILE_TIMEOUT_SECS)
         except TimeoutError:
             raise RuntimeError(f'Round 2 context collection timed out for {path} after {_R2_FILE_TIMEOUT_SECS}s')
+    lazyllm.LOG.info(f'  [Agent] Done {path}')
     return raw if isinstance(raw, str) else str(raw)
 
 
@@ -630,28 +675,50 @@ def _r2_extract_issues(
     return result
 
 
-def _r2_process_file(
-    llm: Any,
-    path: str,
-    diff_chunk: str,
-    hunk_range: str,
-    shared_context: str,
-    r1_text: str,
-    arch_doc: str,
-    pr_summary: str,
-    clone_dir: str,
-    symbol_cache: Dict[str, Any],
-    tools: List[Any],
-    language: str = 'cn',
-) -> List[Dict[str, Any]]:
-    '''Run both stages for a single file diff chunk.'''
-    # Stage 1: collect symbol context (agent exploration)
-    symbol_context = _r2_build_file_context(llm, path, diff_chunk, clone_dir, tools, language)
-    # Stage 2: extract issues (plain LLM call)
-    return _r2_extract_issues(
-        llm, path, diff_chunk, hunk_range, symbol_context, shared_context,
-        r1_text, arch_doc, pr_summary, language,
-    )
+def _r2_process_file_chunk(
+    llm: Any, path: str, fdiff: str, r1_text: str,
+    shared_context: str, arch_doc: str, pr_summary: str,
+    clone_dir: str, symbol_cache: Dict[str, Any], tools: List[Any],
+    language: str, ckpt: Optional[Any], all_results: List[Dict[str, Any]],
+) -> None:
+    safe_path = re.sub(r'[^a-zA-Z0-9_]', '_', path)
+    # check if all chunks are already cached before running agent
+    chunks = _split_file_diff_into_chunks(fdiff, _R2_DIFF_CHUNK)
+    uncached_chunks = []
+    for hunk_range, diff_chunk in chunks:
+        safe_range = re.sub(r'[^a-zA-Z0-9_]', '_', hunk_range)
+        r2_key = f'r2_file_{safe_path}_{safe_range}'
+        cached_items = ckpt.get(r2_key) if ckpt else None
+        if cached_items is not None:
+            all_results.extend(cached_items)
+            lazyllm.LOG.info(f'  [R2] {path} ({hunk_range}) loaded from cache ({len(cached_items)} issues)')
+        else:
+            uncached_chunks.append((hunk_range, diff_chunk, r2_key))
+
+    if not uncached_chunks:
+        return
+
+    # run agent ONCE for the whole file to collect symbol context
+    try:
+        symbol_context = _r2_build_file_context(llm, path, fdiff[:4000], clone_dir, tools, language)
+    except Exception as e:
+        if 'timed out' in str(e):
+            raise
+        lazyllm.LOG.warning(f'Round 2 context collection failed for {path}: {e}')
+        symbol_context = ''
+
+    # extract issues per chunk, reusing the shared symbol_context
+    for hunk_range, diff_chunk, r2_key in uncached_chunks:
+        try:
+            items = _r2_extract_issues(
+                llm, path, diff_chunk, hunk_range, symbol_context, shared_context,
+                r1_text, arch_doc, pr_summary, language,
+            )
+            if ckpt:
+                ckpt.save(r2_key, items)
+            all_results.extend(items)
+        except Exception as e:
+            lazyllm.LOG.warning(f'Round 2 issue extraction failed for {path} ({hunk_range}): {e}')
 
 
 def _round2_agent_review(
@@ -668,10 +735,10 @@ def _round2_agent_review(
         lazyllm.LOG.warning('Round 2 agent: clone_dir not available, skipping agent review')
         return []
 
-    # build or restore shared context
+    # build or restore shared context (static analysis, no LLM call)
     shared_context = (ckpt.get('r2_shared_context') if ckpt else None) or ''
     if not shared_context:
-        shared_context = _r2_build_shared_context(llm, diff_text, arch_doc, clone_dir, language)
+        shared_context = _r2_build_shared_context(diff_text)
         if ckpt and shared_context:
             ckpt.save('r2_shared_context', shared_context)
 
@@ -698,21 +765,10 @@ def _round2_agent_review(
         r1_text = '\n'.join(r1_lines) if r1_lines else '(none)'
         if len(r1_text) > _R2_R1_BUDGET:
             r1_text = r1_text[:_R2_R1_BUDGET] + '\n...(truncated)'
-
-        for hunk_range, diff_chunk in _split_file_diff_into_chunks(fdiff, _R2_DIFF_CHUNK):
-            try:
-                items = _r2_process_file(
-                    llm, path, diff_chunk, hunk_range,
-                    shared_context, r1_text, arch_doc, pr_summary,
-                    clone_dir, symbol_cache, tools, language,
-                )
-                all_results.extend(items)
-            except Exception as e:
-                # only JSON parse failures in _r2_extract_issues are silently skipped;
-                # context collection failures (agent timeout etc.) propagate as raise
-                if 'timed out' in str(e) or 'context collection' in str(e):
-                    raise
-                lazyllm.LOG.warning(f'Round 2 issue extraction failed for {path} ({hunk_range}): {e}')
+        _r2_process_file_chunk(
+            llm, path, fdiff, r1_text, shared_context, arch_doc, pr_summary,
+            clone_dir, symbol_cache, tools, language, ckpt, all_results,
+        )
         prog.update(f'{path} ({len(r1_lines)} r1 issues)')
 
     prog.done(f'{len(all_results)} new issues found by agent')
@@ -1045,26 +1101,17 @@ def _run_four_rounds(
     existing_comments: Optional[List[Dict[str, Any]]] = None,
     language: str = 'cn',
 ) -> List[Dict[str, Any]]:
-    r1 = ckpt.get('r1')
-    if r1 is None:
-        r1 = _round1_hunk_analysis(
-            llm, hunks, arch_doc, review_spec, pr_summary=pr_summary,
-            clone_dir=clone_dir, language=language,
-            symbol_index=_get_symbol_index(arch_doc) if arch_doc else None,
-        )
-        ckpt.save('r1', r1)
-    else:
-        _Progress('Round 1: hunk analysis').done(f'loaded from checkpoint ({len(r1)} issues)')
+    r1 = _round1_hunk_analysis(
+        llm, hunks, arch_doc, review_spec, pr_summary=pr_summary,
+        clone_dir=clone_dir, language=language,
+        symbol_index=_get_symbol_index(arch_doc) if arch_doc else None,
+        ckpt=ckpt,
+    )
 
-    r2 = ckpt.get('r2')
-    if r2 is None:
-        r2 = _round2_agent_review(
-            llm, r1, diff_text, arch_doc, pr_summary=pr_summary,
-            clone_dir=clone_dir, language=language, ckpt=ckpt,
-        )
-        ckpt.save('r2', r2)
-    else:
-        _Progress('Round 2: agent context exploration').done(f'loaded from checkpoint ({len(r2)} issues)')
+    r2 = _round2_agent_review(
+        llm, r1, diff_text, arch_doc, pr_summary=pr_summary,
+        clone_dir=clone_dir, language=language, ckpt=ckpt,
+    )
 
     r3 = ckpt.get('r3')
     if r3 is None:

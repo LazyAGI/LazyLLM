@@ -515,6 +515,42 @@ _add_git_example('LazyLLMGitBase.submit_review', '''\
 >>> backend.submit_review(1, 'APPROVE', body='LGTM')
 ''')
 
+_add_git_chinese('LazyLLMGitBase.submit_review_with_comments', '''\
+提交带行级评论的评审（通过 / 请求修改 / 仅评论）。
+
+是 submit_review 的便捷封装，将评论列表与评审结论合并为一次 API 调用提交。
+
+Args:
+    number (int): PR/MR 编号。
+    body (str): 评审总结正文。
+    comments (List[dict]): 行级评论列表，每项包含 path、line、body 等字段。
+    commit_id (str, optional): 关联的 commit SHA，默认为 None（使用最新 commit）。
+    event (str): 事件类型，如 APPROVE、REQUEST_CHANGES、COMMENT，默认为 COMMENT。
+
+Returns:
+    dict: 包含 success、message。
+''')
+_add_git_english('LazyLLMGitBase.submit_review_with_comments', '''\
+Submit a review with inline line-level comments in a single API call.
+
+Convenience wrapper around submit_review that bundles a list of comments
+together with the review event.
+
+Args:
+    number (int): PR/MR number.
+    body (str): Review summary body.
+    comments (List[dict]): List of inline comments, each containing path, line, body, etc.
+    commit_id (str, optional): Associated commit SHA. Defaults to None (uses latest commit).
+    event (str): Event type, e.g. APPROVE, REQUEST_CHANGES, COMMENT. Defaults to COMMENT.
+
+Returns:
+    dict: success, message.
+''')
+_add_git_example('LazyLLMGitBase.submit_review_with_comments', '''\
+>>> comments = [{'path': 'foo.py', 'line': 10, 'body': 'Consider using a list comprehension here.'}]
+>>> backend.submit_review_with_comments(42, body='Please address the inline comments.', comments=comments)
+''')
+
 _add_git_chinese('LazyLLMGitBase.approve_pull_request', '''\
 批准 PR/MR。
 
@@ -778,12 +814,10 @@ _add_git_example('LazyLLMGitBase', '''\
 # ---------------------------------------------------------------------------
 # review module: review / analyze_repo_architecture / analyze_historical_reviews
 # ---------------------------------------------------------------------------
-_add_review_chinese = functools.partial(
-    utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.git.review'))
-_add_review_english = functools.partial(
-    utils.add_english_doc, module=importlib.import_module('lazyllm.tools.git.review'))
-_add_review_example = functools.partial(
-    utils.add_example, module=importlib.import_module('lazyllm.tools.git.review'))
+_review_mod = importlib.import_module('lazyllm.tools.git.review')
+_add_review_chinese = functools.partial(utils.add_chinese_doc, module=_review_mod)
+_add_review_english = functools.partial(utils.add_english_doc, module=_review_mod)
+_add_review_example = functools.partial(utils.add_example, module=_review_mod)
 
 _add_review_chinese('review', '''\
 对指定 Pull Request 执行四轮 AI 代码审查，并可将结果自动发布到 GitHub/GitLab/Gitee 等平台。

@@ -74,7 +74,8 @@ class ReactAgent(LazyLLMAgentBase):
                  prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, List[str]]] = None, desc: str = '',
                  workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
-                 force_summarize: bool = False, force_summarize_context: str = ''):
+                 force_summarize: bool = False, force_summarize_context: str = '',
+                 keep_full_turns: int = 0):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox)
@@ -86,12 +87,14 @@ class ReactAgent(LazyLLMAgentBase):
         self._prompt = prompt
         self._force_summarize = force_summarize
         self._force_summarize_context = force_summarize_context
+        self._keep_full_turns = keep_full_turns
 
     @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
         agent = loop(FunctionCall(llm=self._llm, _prompt=self._prompt, return_trace=self._return_trace,
                                   stream=self._stream, _tool_manager=self._tools_manager,
-                                  skill_manager=self._skill_manager, workspace=self.workspace),
+                                  skill_manager=self._skill_manager, workspace=self.workspace,
+                                  keep_full_turns=self._keep_full_turns),
                      stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
         self._agent = agent
 

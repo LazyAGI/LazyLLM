@@ -39,11 +39,37 @@ class StreamResponse():
         return package(*inputs)
 
 
+_COMPACTION_TRUNCATE_LEN = 200  # chars kept per old tool result
+
+
+def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -> List[Dict[str, Any]]:
+    # identify tool-result message indices (role == 'tool'), from oldest to newest
+    tool_indices = [i for i, m in enumerate(history) if m.get('role') == 'tool']
+    # keep the last keep_full_turns tool results intact; truncate the rest
+    cutoff = len(tool_indices) - keep_full_turns
+    if cutoff <= 0:
+        return history
+    to_truncate = set(tool_indices[:cutoff])
+    result = []
+    for i, msg in enumerate(history):
+        if i in to_truncate:
+            content = msg.get('content', '')
+            if isinstance(content, str) and len(content) > _COMPACTION_TRUNCATE_LEN:
+                name = msg.get('name', '')
+                truncated = content[:_COMPACTION_TRUNCATE_LEN]
+                msg = dict(msg, content=f'[truncated {len(content)} chars] {truncated}...')
+                if name:
+                    msg['name'] = name
+        result.append(msg)
+    return result
+
+
 class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None, _tool_manager: Optional[ToolManager] = None,
-                 skill_manager=None, workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None):
+                 skill_manager=None, workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
+                 keep_full_turns: int = 0):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
@@ -54,6 +80,7 @@ class FunctionCall(ModuleBase):
             self._sandbox = _tool_manager.sandbox
         self._skill_manager = skill_manager
         self._workspace = workspace
+        self._keep_full_turns = keep_full_turns
         prompt = _prompt or FC_PROMPT
         if self._workspace:
             prompt = (
@@ -122,6 +149,8 @@ class FunctionCall(ModuleBase):
             history_idx += 1
             workspace['history'].extend(tool_call_results)
         chat_history = workspace['history'][:history_idx]
+        if self._keep_full_turns > 0:
+            chat_history = _compact_chat_history(chat_history, self._keep_full_turns)
         locals['chat_history'][self._llm._module_id] = chat_history
         if self._skill_manager and isinstance(input, dict) and 'available_skills' not in input:
             available = workspace.get('available_skills')

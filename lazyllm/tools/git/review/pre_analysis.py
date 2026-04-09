@@ -56,7 +56,7 @@ def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None)
     try:
         if not _is_complete_clone(clone_dir):
             subprocess.run(
-                ['git', 'clone', '--single-branch', '--branch', branch, '--depth', '1', repo_url, clone_dir],
+                ['git', 'clone', '--single-branch', '--branch', branch, '--depth', '1', '--', repo_url, clone_dir],
                 capture_output=True, text=True, timeout=120, check=True,
             )
     except subprocess.CalledProcessError as e:
@@ -406,10 +406,10 @@ def _build_scoped_agent_tools(clone_dir: str) -> list:
     from lazyllm.tools.agent.shell_tool import shell_tool
 
     def read_file_scoped(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> dict:
-        '''Read a source file from the cloned repository, with optional line range.
+        '''Read a source file from the cloned repository.
 
         Args:
-            path (str): File path relative to repo root, or absolute path inside clone_dir.
+            path (str): File path relative to repo root.
             start_line (int, optional): 1-based start line (inclusive).
             end_line (int, optional): 1-based end line (inclusive).
 
@@ -417,6 +417,8 @@ def _build_scoped_agent_tools(clone_dir: str) -> list:
             dict: File content and metadata.
         '''
         abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
+        line_info = f':{start_line}-{end_line}' if (start_line or end_line) else ''
+        lazyllm.LOG.info(f'  [Agent] Read {path}{line_info}')
         return read_file(abs_path, start_line=start_line, end_line=end_line, root=clone_dir)
 
     def search_scoped(pattern: str, glob: Optional[str] = None, max_results: int = 40) -> dict:
@@ -430,6 +432,7 @@ def _build_scoped_agent_tools(clone_dir: str) -> list:
         Returns:
             dict: List of matches with file path and line number.
         '''
+        lazyllm.LOG.info(f'  [Agent] Search {pattern!r}' + (f' in {glob}' if glob else ''))
         return search_in_files(pattern, path=clone_dir, glob=glob, max_results=max_results, root=clone_dir)
 
     def list_dir_scoped(path: str = '.', recursive: bool = False) -> dict:
@@ -442,12 +445,12 @@ def _build_scoped_agent_tools(clone_dir: str) -> list:
         Returns:
             dict: List of entries.
         '''
+        lazyllm.LOG.info(f'  [Agent] ListDir {path}' + (' (recursive)' if recursive else ''))
         abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
         return list_dir(abs_path, recursive=recursive, root=clone_dir)
 
     def shell_scoped(cmd: str, timeout: int = 30) -> dict:
         '''Run a read-only shell command (grep, find, git log, etc.) in the cloned repository.
-        Do NOT use write commands (rm, mv, git commit, etc.).
 
         Args:
             cmd (str): The shell command to execute.
@@ -456,9 +459,51 @@ def _build_scoped_agent_tools(clone_dir: str) -> list:
         Returns:
             dict: Execution result including stdout, stderr, exit_code.
         '''
+        lazyllm.LOG.info(f'  [Agent] Shell {cmd!r}')
         return shell_tool(cmd, cwd=clone_dir, timeout=timeout, allow_unsafe=False)
 
-    return [read_file_scoped, search_scoped, list_dir_scoped, shell_scoped]
+    def read_files_batch(paths: str) -> dict:
+        '''Read multiple source files at once. Pass a comma-separated list of relative paths.
+        More efficient than calling read_file_scoped multiple times.
+
+        Args:
+            paths (str): Comma-separated file paths relative to repo root (e.g. "a.py,b.py,c.py").
+
+        Returns:
+            dict: Mapping of path -> content (truncated to 800 chars each). Missing files are noted.
+        '''
+        path_list = [p.strip() for p in paths.split(',') if p.strip()]
+        lazyllm.LOG.info(f'  [Agent] ReadBatch {path_list}')
+        results = {}
+        for p in path_list[:6]:  # cap at 6 files to avoid context explosion
+            abs_path = p if os.path.isabs(p) else os.path.join(clone_dir, p)
+            if not os.path.isfile(abs_path):
+                results[p] = '(not found)'
+                continue
+            try:
+                with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
+                    content = f.read(1600)
+                results[p] = content
+            except OSError:
+                results[p] = '(read error)'
+        return {'files': results, 'count': len(results)}
+
+    def grep_callers(symbol: str, max_results: int = 20) -> dict:
+        '''Find all call sites of a function or class in the repository.
+        Faster and more precise than search_scoped for finding callers.
+
+        Args:
+            symbol (str): Function or class name to search for (e.g. "MyClass" or "my_func").
+            max_results (int, optional): Max number of results. Defaults to 20.
+
+        Returns:
+            dict: List of matches with file, line, and context snippet.
+        '''
+        lazyllm.LOG.info(f'  [Agent] GrepCallers {symbol!r}')
+        pattern = rf'\b{re.escape(symbol)}\s*[\(\.]'
+        return search_in_files(pattern, path=clone_dir, glob='*.py', max_results=max_results, root=clone_dir)
+
+    return [read_file_scoped, read_files_batch, grep_callers, search_scoped, list_dir_scoped, shell_scoped]
 
 
 # ---------------------------------------------------------------------------
@@ -872,7 +917,7 @@ You are a code review expert. The following are HUMAN review comments from a sin
 Extract concrete, actionable review rules from these comments.
 
 For each rule found, output a JSON object with these fields:
-- "rule_id": string like "ERR001", "STY002", "DSN003" (ERR=error/exception, STY=style, DSN=design, \
+- "rule_id": string like "PR{pr_num}_ERR001", "PR{pr_num}_STY002" (ERR=error/exception, STY=style, DSN=design, \
 PERF=performance, SEC=security, XFILE=cross-file consistency)
 - "title": short title (max 8 words)
 - "severity": "P0" | "P1" | "P2"  (P0=must fix, P1=should fix, P2=nice to have)
@@ -881,7 +926,7 @@ PERF=performance, SEC=security, XFILE=cross-file consistency)
 - "good_example": short code snippet showing the correct pattern (or "" if not applicable)
 - "fix": one-sentence fix suggestion
 
-Pay special attention to cross-file consistency issues (use rule_id prefix "XFILE"):
+Pay special attention to cross-file consistency issues (use rule_id prefix "PR{pr_num}_XFILE"):
 - Interface changed but callers not updated
 - Symmetric methods (encode/decode, open/close) only one side updated
 - Registry/factory pattern: new entry added but docs/tests not updated
@@ -890,19 +935,22 @@ Pay special attention to cross-file consistency issues (use rule_id prefix "XFIL
 Output ONLY a JSON array. If no clear rules can be extracted: output [].
 
 <review_comments>
-{comments_text}
+{{comments_text}}
 </review_comments>
 '''
 
 _MERGE_RULES_PROMPT = '''\
 You are a code review expert. Below are rule cards extracted from multiple pull requests.
-Merge duplicate or highly similar rules into one (keep the most informative example).
-Remove rules that are too vague or project-unspecific.
-Sort by severity (P0 first), then by frequency (most common first).
-Keep at most {max_rules} rules total.
+Your task:
+1. Merge duplicate or highly similar rules into one (keep the most informative example and detect patterns).
+2. Remove rules that are too vague, trivial, or project-unspecific.
+3. Re-assign clean rule_ids using standard prefixes: ERR, STY, DSN, PERF, SEC, XFILE (e.g. ERR001, STY002).
+4. Sort by severity (P0 first), then by frequency/importance.
+5. Keep at most {max_rules} rules total.
 
 For each final rule, output a JSON object with:
-- "rule_id", "title", "severity", "detect" (list), "bad_example", "good_example", "fix"
+- "rule_id": clean id like "ERR001" (no PR prefix)
+- "title", "severity", "detect" (list), "bad_example", "good_example", "fix"
 
 Output ONLY a JSON array.
 
@@ -980,7 +1028,7 @@ def _extract_rules_from_pr_comments(
     if not comments:
         return []
     comments_text = _compress_comments_for_pr(llm, comments)
-    prompt = _EXTRACT_RULES_PROMPT.format(comments_text=comments_text)
+    prompt = _EXTRACT_RULES_PROMPT.format(pr_num=pr_num).replace('{{comments_text}}', comments_text)
     try:
         result = _safe_llm_call(llm, prompt)
         return [r for r in (result if isinstance(result, list) else []) if isinstance(r, dict)]
@@ -1042,7 +1090,8 @@ def _collect_rules_for_pr(
         prog.update(f'[{idx}/{total}] PR #{pr_num} — 0 human comments → skipped')
         return
     rules = _extract_rules_from_pr_comments(llm, pr_num, comments)
-    _save_cache(cache_path, pr_cache_key, json.dumps(rules, ensure_ascii=False))
+    if rules:
+        _save_cache(cache_path, pr_cache_key, json.dumps(rules, ensure_ascii=False))
     all_rules.extend(rules)
     prog.update(f'[{idx}/{total}] PR #{pr_num} — {len(comments)} comments → {len(rules)} rules extracted')
 

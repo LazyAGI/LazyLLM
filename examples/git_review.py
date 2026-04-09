@@ -4,7 +4,7 @@
 #   python examples/git_review.py --pr_number=1083
 #   LAZYLLM_RUN_FULL_REVIEW=1 python examples/git_review.py --pr_number=1083 --model=claude-opus-4-6
 #   LAZYLLM_RUN_FULL_REVIEW=1 LAZYLLM_POST_REVIEW_TO_GITHUB=1 \
-#       python examples/git_review.py --pr_number=1083 --model=claude-opus-4.6
+#       python examples/git_review.py --pr_number=1083 --model=claude-opus-4-6
 #
 # Required:
 #   --pr_number     PR number to review (no default, must be provided)
@@ -39,6 +39,7 @@ def _parse_args():
     parser = argparse.ArgumentParser(description='Multi-round PR code review')
     parser.add_argument('--pr_number', type=int, required=True,
                         help='PR number to review (required)')
+    parser.add_argument('--source', default='claude', help='LLM source, default: claude')
     parser.add_argument('--repo', default='LazyAGI/LazyLLM',
                         help='GitHub repo in owner/name format (default: LazyAGI/LazyLLM)')
     parser.add_argument('--model', default='claude-opus-4-6',
@@ -48,7 +49,7 @@ def _parse_args():
     parser.add_argument('--language', default='cn', choices=['cn', 'en'],
                         help='Review output language (default: cn)')
     parser.add_argument('--max_history_prs', type=int, default=50,
-                        help='Max historical PRs to analyze for review spec (default: 400)')
+                        help='Max historical PRs to analyze for review spec (default: 50)')
     parser.add_argument('--keep_clone', action='store_true',
                         help='Keep cloned repo directory after review')
     parser.add_argument('--clear_checkpoint', action='store_true',
@@ -93,7 +94,7 @@ def main():  # noqa C901
         return 0
 
     import lazyllm
-    llm_kwargs = dict(source='claude', model=args.model)
+    llm_kwargs = dict(source=args.source, model=args.model)
     if args.base_url:
         llm_kwargs['base_url'] = args.base_url
     llm = lazyllm.OnlineChatModule(**llm_kwargs)
@@ -126,7 +127,7 @@ def main():  # noqa C901
         for i, c in enumerate(comments[:10]):
             cat = c.get('bug_category', '')
             sev = c.get('severity', '')
-            prob = c.get('problem', '')[:60]
+            prob = (c.get('problem') or '')[:60]
             print(f'   [{i+1}] {c.get("path")} L{c.get("line")} [{sev}][{cat}] {prob}...')
         if len(comments) > 10:
             print(f'   ... and {len(comments) - 10} more')

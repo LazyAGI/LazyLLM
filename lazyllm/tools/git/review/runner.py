@@ -35,6 +35,7 @@ def review(  # noqa: C901
     language: str = 'cn',
     keep_clone: bool = False,
 ) -> Dict[str, Any]:
+    llm = llm.share(stream=False)
     try:
         import lazyllm.tools.git.review as _self_mod
         original_review_code = inspect.getsource(_self_mod)
@@ -104,16 +105,15 @@ def review(  # noqa: C901
     else:
         _Progress('Pre-round: summarizing PR changes').done('loaded from checkpoint')
 
-    try:
-        existing_comments = _fetch_existing_pr_comments(backend_inst, pr_number)
-        prog_main.update(f'{len(existing_comments)} existing PR comments fetched')
-        final_comments = _run_four_rounds(
-            llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
-            clone_dir=clone_dir, existing_comments=existing_comments, language=language,
-        )
-    finally:
-        if not keep_clone and os.path.isdir(pr_dir):
-            shutil.rmtree(pr_dir, ignore_errors=True)
+    existing_comments = _fetch_existing_pr_comments(backend_inst, pr_number)
+    prog_main.update(f'{len(existing_comments)} existing PR comments fetched')
+    final_comments = _run_four_rounds(
+        llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
+        clone_dir=clone_dir, existing_comments=existing_comments, language=language,
+    )
+    # only clean up pr_dir on successful completion; on failure keep it for resume
+    if not keep_clone and os.path.isdir(pr_dir):
+        shutil.rmtree(pr_dir, ignore_errors=True)
 
     posted = 0
     if post_to_github and head_sha:
