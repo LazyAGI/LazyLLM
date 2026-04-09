@@ -143,7 +143,7 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
 
     @abstractmethod
     def list_pull_requests(self, state: str = 'open', head: Optional[str] = None,
-                           base: Optional[str] = None) -> Dict[str, Any]:
+                           base: Optional[str] = None, max_results: int = 100) -> Dict[str, Any]:
         raise NotImplementedError
 
     @abstractmethod

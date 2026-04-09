@@ -16,7 +16,7 @@ from .utils import (
 )
 
 
-def review(
+def review(  # noqa: C901
     pr_number: int,
     repo: str = 'LazyAGI/LazyLLM',
     token: Optional[str] = None,
@@ -33,6 +33,7 @@ def review(
     checkpoint_path: Optional[str] = None,
     clear_checkpoint: bool = False,
     language: str = 'cn',
+    keep_clone: bool = False,
 ) -> Dict[str, Any]:
     try:
         import lazyllm.tools.git.review as _self_mod
@@ -58,12 +59,18 @@ def review(
     if not head_sha and post_to_github:
         raise RuntimeError('Cannot get PR head sha; cannot post line-level comments')
 
-    diff_res = backend_inst.get_pr_diff(pr_number)
-    if not diff_res.get('success'):
-        raise RuntimeError(f'Failed to get PR #{pr_number} diff: {diff_res.get("message", "unknown")}')
-    diff_text = diff_res.get('diff', '')
-    if max_diff_chars and len(diff_text) > max_diff_chars:
-        diff_text = diff_text[:max_diff_chars] + '\n... [diff truncated]\n'
+    # diff: load from checkpoint if available, otherwise fetch and cache
+    diff_text = ckpt.get('diff_text')
+    if diff_text is None:
+        diff_res = backend_inst.get_pr_diff(pr_number)
+        if not diff_res.get('success'):
+            raise RuntimeError(f'Failed to get PR #{pr_number} diff: {diff_res.get("message", "unknown")}')
+        diff_text = diff_res.get('diff', '')
+        if max_diff_chars and len(diff_text) > max_diff_chars:
+            diff_text = diff_text[:max_diff_chars] + '\n... [diff truncated]\n'
+        ckpt.save('diff_text', diff_text)
+    else:
+        _Progress('Pre-round: fetching diff').done('loaded from checkpoint')
 
     hunks = _parse_unified_diff(diff_text)
     if max_hunks and len(hunks) > max_hunks:
@@ -78,6 +85,10 @@ def review(
         llm, backend_inst, repo, pr, fetch_repo_code,
         arch_cache_path, review_spec_cache_path, max_history_prs, ckpt,
     )
+
+    # persist clone_dir to checkpoint for reuse on resume
+    if clone_dir and keep_clone:
+        ckpt.save('clone_dir', clone_dir)
 
     pr_summary = ckpt.get('pr_summary')
     if pr_summary is None:
@@ -100,7 +111,7 @@ def review(
             clone_dir=clone_dir, existing_comments=existing_comments, language=language,
         )
     finally:
-        if clone_dir and os.path.isdir(clone_dir):
+        if clone_dir and os.path.isdir(clone_dir) and not keep_clone:
             shutil.rmtree(clone_dir, ignore_errors=True)
 
     posted = 0

@@ -30,7 +30,7 @@ _BOT_USER_PATTERNS = re.compile(
 )
 
 _LARGE_FILE_THRESHOLD = 600
-_CONTEXT_LINES = 300
+_CONTEXT_LINES = 50
 
 
 def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None) -> Tuple[str, str]:
@@ -58,6 +58,60 @@ def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None)
     return clone_dir, '\n'.join(tree_lines)
 
 
+def _find_enclosing_scope(lines: List[str], hunk_start: int) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+    '''Scan upward from hunk_start to find the enclosing class or function.
+    Returns (scope_line_idx, scope_kind, scope_name), scope_line_idx is 0-based.
+    '''
+    for i in range(min(hunk_start - 1, len(lines) - 1), -1, -1):
+        m = re.match(r'^(\s*)(class|def)\s+(\w+)', lines[i])
+        if m:
+            return i, m.group(2), m.group(3)
+    return None, None, None
+
+
+def _find_enclosing_class(lines: List[str], from_idx: int) -> Optional[int]:
+    '''Walk upward from from_idx to find the nearest class definition at a lower indent.'''
+    if from_idx <= 0:
+        return None
+    ref_indent = len(lines[from_idx]) - len(lines[from_idx].lstrip())
+    for i in range(from_idx - 1, -1, -1):
+        m = re.match(r'^(\s*)class\s+(\w+)', lines[i])
+        if m:
+            if len(m.group(1)) < ref_indent:
+                return i
+    return None
+
+
+def _extract_class_method_signatures(lines: List[str], class_line_idx: int) -> List[str]:
+    '''Extract all direct method signatures of the class at class_line_idx.'''
+    if class_line_idx < 0 or class_line_idx >= len(lines):
+        return []
+    class_indent = len(lines[class_line_idx]) - len(lines[class_line_idx].lstrip())
+    sigs: List[str] = []
+    for i in range(class_line_idx + 1, len(lines)):
+        line = lines[i]
+        stripped = line.lstrip()
+        if not stripped:
+            continue
+        indent = len(line) - len(stripped)
+        if indent <= class_indent and not stripped.startswith('#'):
+            break
+        if re.match(r'def\s+\w+', stripped) and indent in (class_indent + 4, class_indent + 2):
+            sig = stripped.rstrip()
+            if ')' not in sig:
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    sig += ' ' + lines[j].strip()
+                    if ')' in lines[j]:
+                        break
+            sigs.append(f'  {sig.split(chr(10))[0][:120]}')
+    return sigs
+
+
+def _extract_module_function_signatures(lines: List[str]) -> List[str]:
+    '''Extract top-level function signatures (def at indent 0).'''
+    return [line.rstrip()[:120] for line in lines if re.match(r'^def\s+\w+', line)]
+
+
 def _read_file_context(
     clone_dir: str,
     path: str,
@@ -75,11 +129,45 @@ def _read_file_context(
     total = len(lines)
     if total <= _LARGE_FILE_THRESHOLD:
         numbered = ''.join(f'{i + 1:4d} | {ln}' for i, ln in enumerate(lines))
-        return f'(full file, {total} lines)\n{numbered}'
-    start = max(0, hunk_start - 1 - _CONTEXT_LINES)
-    end = min(total, hunk_end + _CONTEXT_LINES)
-    numbered = ''.join(f'{start + i + 1:4d} | {ln}' for i, ln in enumerate(lines[start:end]))
-    return f'(excerpt lines {start + 1}–{end} of {total})\n{numbered}'
+        base = f'(full file, {total} lines)\n{numbered}'
+    else:
+        start = max(0, hunk_start - 1 - _CONTEXT_LINES)
+        end = min(total, hunk_end + _CONTEXT_LINES)
+        numbered = ''.join(f'{start + i + 1:4d} | {ln}' for i, ln in enumerate(lines[start:end]))
+        base = f'(excerpt lines {start + 1}–{end} of {total})\n{numbered}'
+
+    # --- enclosing scope annotation ---
+    scope_idx, scope_kind, scope_name = _find_enclosing_scope(lines, hunk_start)
+    if scope_idx is None:
+        return base
+
+    scope_line_no = scope_idx + 1
+    extras: List[str] = [f'\n[Enclosing scope: {scope_kind} {scope_name} (line {scope_line_no})]']
+
+    if scope_kind == 'def':
+        class_idx = _find_enclosing_class(lines, scope_idx)
+        if class_idx is not None:
+            cm = re.match(r'^\s*class\s+(\w+)', lines[class_idx])
+            class_name = cm.group(1) if cm else '?'
+            extras[0] += f' inside class {class_name} (line {class_idx + 1})'
+            sigs = _extract_class_method_signatures(lines, class_idx)
+            if sigs:
+                extras.append('[Sibling method signatures of enclosing class]')
+                extras.extend(sigs)
+        else:
+            sigs = _extract_module_function_signatures(lines)
+            sigs = [s for s in sigs if not re.match(rf'^def\s+{re.escape(scope_name)}\s*\(', s)]
+            if sigs:
+                extras.append('[Other top-level function signatures in this file]')
+                extras.extend(sigs[:20])
+    else:
+        # enclosing scope is a class
+        sigs = _extract_class_method_signatures(lines, scope_idx)
+        if sigs:
+            extras.append('[Method signatures of enclosing class]')
+            extras.extend(sigs)
+
+    return base + '\n' + '\n'.join(extras)
 
 
 def _resolve_clone_target(pr: Any, base_repo: str) -> Tuple[str, str]:
@@ -144,7 +232,7 @@ def _read_file_head(path: str, max_bytes: int) -> str:
         return ''
 
 
-def _collect_structured_snapshot(clone_dir: str) -> str:
+def _collect_structured_snapshot(clone_dir: str) -> str:  # noqa: C901
     parts: List[str] = []
     budget = _ARCH_SNAPSHOT_BUDGET
 
@@ -190,6 +278,22 @@ def _collect_structured_snapshot(clone_dir: str) -> str:
             parts.append(f'## {rel}\n{snippet}')
             budget -= len(parts[-1])
 
+    # 5. dependency / build files (500 bytes each)
+    dep_files = [
+        ('setup.py', 500), ('pyproject.toml', 500),
+        ('requirements.txt', 500), ('requirements-dev.txt', 300),
+        ('CMakeLists.txt', 300), ('Makefile', 200),
+    ]
+    for rel, limit in dep_files:
+        if budget <= 0:
+            break
+        fpath = os.path.join(clone_dir, rel)
+        content = _read_file_head(fpath, limit)
+        if content:
+            snippet = content[:min(limit, budget)]
+            parts.append(f'## {rel}\n{snippet}')
+            budget -= len(parts[-1])
+
     return '\n\n'.join(parts)
 
 
@@ -205,6 +309,15 @@ For each section output a JSON object with:
 - "title": section name (e.g. "Module Responsibilities")
 - "focus": one sentence describing what to cover
 - "search_hints": list of 2-3 regex patterns for search_in_files to find relevant code
+
+The FIRST section MUST be:
+{{"title": "Module Hierarchy", "focus": "模块分层结构：底层基础模块、中间层、上层业务模块，以及明确禁止的依赖方向（底层不得感知上层）", \
+"search_hints": ["^from lazyllm", "^import lazyllm", "from \\."]}}
+
+The SECOND section MUST be:
+{{"title": "Environment & Dependencies",
+ "focus": "Python/compiler version requirements, key dependency packages and version constraints",
+ "search_hints": ["python_requires", "install_requires", "cmake_minimum_required"]}}
 
 The LAST section MUST be:
 {{"title": "Key Utilities & Usage Notes", "focus": "关键辅助函数、数据结构的典型用法和注意事项", \
@@ -329,13 +442,209 @@ def _build_scoped_agent_tools(clone_dir: str) -> list:
     return [read_file_scoped, search_scoped, list_dir_scoped, shell_scoped]
 
 
+# ---------------------------------------------------------------------------
+# Symbol Knowledge Cache — shared across all files in a Round 2 pass
+# ---------------------------------------------------------------------------
+
+_SYMBOL_SUMMARY_PROMPT_TMPL = '''\
+You are a code analyst. Given the following class or function definition, write a ONE-sentence summary \
+(max 100 words) covering: purpose, key constraints, and any important usage notes.
+
+File: {file_path}
+Symbol: {symbol_name}
+
+```
+{code_snippet}
+```
+
+Output ONLY the one-sentence summary.
+'''
+
+
+def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str, Any]) -> Any:  # noqa: C901
+    '''Build the analyze_symbol tool, bound to the given llm, clone_dir, and shared symbol_cache.'''
+    from lazyllm.tools.agent.file_tool import search_in_files
+
+    def analyze_symbol(symbol_name: str, file_path: str = '', max_depth: int = 2) -> dict:
+        '''Read and analyze a class or function, store result in the shared symbol cache.
+        Returns the cached entry immediately if already analyzed.
+        Recursively analyzes direct dependencies up to max_depth=2.
+
+        Args:
+            symbol_name (str): Class or function name to analyze (e.g. "TrainableModule").
+            file_path (str, optional): File path relative to repo root. If empty, will search.
+            max_depth (int, optional): Recursion depth limit. Defaults to 2.
+
+        Returns:
+            dict: SymbolEntry with keys: key, kind, file, line_start, signature, docstring, summary, deps.
+        '''
+        # normalize file_path
+        if file_path and os.path.isabs(file_path):
+            file_path = os.path.relpath(file_path, clone_dir)
+
+        cache_key = f'{file_path}::{symbol_name}' if file_path else f'::{symbol_name}'
+
+        # check cache first
+        if cache_key in symbol_cache:
+            return {'cached': True, 'entry': symbol_cache[cache_key]}
+
+        # search for definition if file_path not given or not found
+        abs_file = os.path.join(clone_dir, file_path) if file_path else ''
+        if not abs_file or not os.path.isfile(abs_file):
+            try:
+                res = search_in_files(
+                    rf'^\s*(class|def)\s+{re.escape(symbol_name)}\s*[\(:]',
+                    path=clone_dir, glob='*.py', max_results=3, root=clone_dir,
+                )
+                matches = res.get('results', []) if isinstance(res, dict) else []
+                if matches:
+                    abs_file = matches[0].get('path', '')
+                    file_path = os.path.relpath(abs_file, clone_dir) if abs_file else file_path
+                    cache_key = f'{file_path}::{symbol_name}'
+                    if cache_key in symbol_cache:
+                        return {'cached': True, 'entry': symbol_cache[cache_key]}
+            except Exception:
+                pass
+
+        if not abs_file or not os.path.isfile(abs_file):
+            return {'cached': False, 'entry': None, 'error': f'Cannot locate {symbol_name}'}
+
+        # read definition + docstring + method signatures
+        try:
+            with open(abs_file, 'r', encoding='utf-8', errors='replace') as f:
+                lines = f.readlines()
+        except OSError:
+            return {'cached': False, 'entry': None, 'error': f'Cannot read {abs_file}'}
+
+        # find the definition line
+        def_line_idx = None
+        kind = 'function'
+        for i, line in enumerate(lines):
+            m = re.match(rf'^\s*(class|def)\s+{re.escape(symbol_name)}\s*[\(:]', line)
+            if m:
+                def_line_idx = i
+                kind = 'class' if m.group(1) == 'class' else 'function'
+                break
+
+        if def_line_idx is None:
+            return {'cached': False, 'entry': None, 'error': f'{symbol_name} not found in {file_path}'}
+
+        # extract signature (up to closing ':')
+        sig_lines = [lines[def_line_idx].rstrip()]
+        if ')' not in sig_lines[0] and kind == 'function':
+            for j in range(def_line_idx + 1, min(def_line_idx + 6, len(lines))):
+                sig_lines.append(lines[j].rstrip())
+                if ')' in lines[j]:
+                    break
+        signature = ' '.join(s.strip() for s in sig_lines)[:200]
+
+        # extract docstring
+        docstring = ''
+        ds_start = def_line_idx + 1
+        if ds_start < len(lines):
+            stripped = lines[ds_start].strip()
+            if stripped.startswith('"""') or stripped.startswith("'''"):
+                quote = stripped[:3]
+                ds_lines = [stripped]
+                if not stripped.endswith(quote) or len(stripped) == 3:
+                    for j in range(ds_start + 1, min(ds_start + 15, len(lines))):
+                        ds_lines.append(lines[j].rstrip())
+                        if quote in lines[j] and j > ds_start:
+                            break
+                docstring = '\n'.join(ds_lines)[:500]
+
+        # extract method signatures if class
+        method_sigs: List[str] = []
+        if kind == 'class':
+            class_indent = len(lines[def_line_idx]) - len(lines[def_line_idx].lstrip())
+            for i in range(def_line_idx + 1, len(lines)):
+                ln = lines[i]
+                stripped = ln.lstrip()
+                if not stripped:
+                    continue
+                indent = len(ln) - len(stripped)
+                if indent <= class_indent and not stripped.startswith('#'):
+                    break
+                if re.match(r'def\s+\w+', stripped) and indent in (class_indent + 4, class_indent + 2):
+                    method_sigs.append(f'  {stripped.rstrip()[:120]}')
+
+        # build code snippet for LLM summary
+        end_idx = min(def_line_idx + 40, len(lines))
+        code_snippet = ''.join(lines[def_line_idx:end_idx])
+        if method_sigs:
+            code_snippet += '\n  # ... methods:\n' + '\n'.join(method_sigs[:10])
+
+        # LLM summary
+        summary = ''
+        try:
+            summary_prompt = _SYMBOL_SUMMARY_PROMPT_TMPL.format(
+                file_path=file_path, symbol_name=symbol_name, code_snippet=code_snippet[:1500],
+            )
+            summary = _safe_llm_call_text(llm, summary_prompt) or ''
+        except Exception:
+            summary = signature
+
+        # extract deps from imports in the file
+        deps: List[str] = []
+        import_pattern = re.compile(r'^\s*(?:from\s+(\S+)\s+import\s+(.+)|import\s+(.+))')
+        for line in lines[:50]:
+            m = import_pattern.match(line)
+            if m:
+                if m.group(2):
+                    for sym in re.split(r',\s*', m.group(2)):
+                        sym = sym.strip().split(' as ')[0].strip()
+                        if sym and sym[0].isupper():
+                            deps.append(f'{m.group(1)}::{sym}')
+                elif m.group(3):
+                    deps.append(m.group(3).strip())
+
+        entry: Dict[str, Any] = {
+            'key': cache_key,
+            'kind': kind,
+            'file': file_path,
+            'line_start': def_line_idx + 1,
+            'signature': signature,
+            'docstring': docstring,
+            'summary': summary,
+            'method_signatures': method_sigs[:15],
+            'deps': deps[:10],
+        }
+        symbol_cache[cache_key] = entry
+
+        # recursively analyze direct deps (depth - 1)
+        if max_depth > 1:
+            for dep_key in deps[:5]:
+                parts = dep_key.split('::')
+                if len(parts) == 2 and parts[1] and parts[1][0].isupper():
+                    dep_sym, dep_file = parts[1], ''
+                    dep_cache_key = f'::{dep_sym}'
+                    if dep_cache_key not in symbol_cache and dep_sym != symbol_name:
+                        try:
+                            analyze_symbol(dep_sym, dep_file, max_depth=max_depth - 1)
+                        except Exception:
+                            pass
+
+        return {'cached': False, 'entry': entry}
+
+    return analyze_symbol
+
+
+def _build_scoped_agent_tools_with_cache(
+    clone_dir: str, llm: Any, symbol_cache: Dict[str, Any]
+) -> list:
+    '''Build agent tools including analyze_symbol bound to the shared symbol_cache.'''
+    tools = _build_scoped_agent_tools(clone_dir)
+    analyze_symbol = _build_analyze_symbol_tool(llm, clone_dir, symbol_cache)
+    return tools + [analyze_symbol]
+
+
 def _summarize_section(llm: Any, title: str, content: str) -> str:
     prompt = f'Summarize in 1-2 sentences (max 200 chars):\n[{title}]\n{content[:800]}'
     result = _safe_llm_call_text(llm, prompt) or content[:100]
     return result[:200]
 
 
-def _arch_collect_snippets(clone_dir: str, section: Dict[str, Any], max_chars: int = 2000) -> str:
+def _arch_collect_snippets(clone_dir: str, section: Dict[str, Any], max_chars: int = 2000) -> str:  # noqa: C901
     from lazyllm.tools.agent.file_tool import search_in_files, read_file
     hints = section.get('search_hints', [])
     parts: List[str] = []
@@ -353,8 +662,26 @@ def _arch_collect_snippets(clone_dir: str, section: Dict[str, Any], max_chars: i
             seen_paths.add(path)
             try:
                 line = int(m.get('line', 1))
-                fc = read_file(path, start_line=max(1, line - 2), end_line=line + 20, root=clone_dir)
-                snippet = fc.get('content', '') if isinstance(fc, dict) else ''
+                match_text = m.get('text', '')
+                # for class definitions: read definition line + method signatures only
+                if re.match(r'\s*class\s+\w+', match_text):
+                    fc = read_file(path, start_line=max(1, line - 1), end_line=line + 2, root=clone_dir)
+                    class_def = fc.get('content', '') if isinstance(fc, dict) else ''
+                    # extract method signatures from the class body
+                    try:
+                        with open(path, 'r', encoding='utf-8', errors='replace') as _f:
+                            all_lines = _f.readlines()
+                        sigs = _extract_class_method_signatures(all_lines, line - 1)
+                        snippet = class_def + ('\n' + '\n'.join(sigs[:12]) if sigs else '')
+                    except Exception:
+                        snippet = class_def
+                # for function definitions: read signature + docstring
+                elif re.match(r'\s*def\s+\w+', match_text):
+                    fc = read_file(path, start_line=max(1, line - 1), end_line=line + 10, root=clone_dir)
+                    snippet = fc.get('content', '') if isinstance(fc, dict) else ''
+                else:
+                    fc = read_file(path, start_line=max(1, line - 2), end_line=line + 20, root=clone_dir)
+                    snippet = fc.get('content', '') if isinstance(fc, dict) else ''
             except Exception:
                 snippet = m.get('text', '')
             if snippet:
@@ -491,7 +818,7 @@ _MAX_COMMENTS_PER_USER = 15
 # compress individual comment bodies longer than this
 _COMMENT_COMPRESS_THRESHOLD = 150
 # max rules kept in final spec
-_SPEC_MAX_RULES = 15
+_SPEC_MAX_RULES = 50
 
 
 def _is_merged_pr(pr: Any) -> bool:
@@ -602,7 +929,7 @@ def _compress_comments_for_pr(
                 if isinstance(r, dict) and 'idx' in r and 'summary' in r:
                     summaries[int(r['idx'])] = str(r['summary'])
         except Exception as e:
-            lazyllm.LOG.warning(f'Comment compression failed: {e}')
+            raise RuntimeError(f'Comment compression failed: {e}') from e
     lines = []
     for item in indexed:
         body = summaries.get(item['idx']) or item['body'][:_COMMENT_COMPRESS_THRESHOLD]
@@ -622,8 +949,7 @@ def _extract_rules_from_pr_comments(
         result = _safe_llm_call(llm, prompt)
         return [r for r in (result if isinstance(result, list) else []) if isinstance(r, dict)]
     except Exception as e:
-        lazyllm.LOG.warning(f'Rule extraction for PR #{pr_num} failed: {e}')
-        return []
+        raise RuntimeError(f'Rule extraction for PR #{pr_num} failed: {e}') from e
 
 
 def _merge_rule_cards(
@@ -637,16 +963,7 @@ def _merge_rule_cards(
         result = _safe_llm_call(llm, prompt)
         return [r for r in (result if isinstance(result, list) else []) if isinstance(r, dict)]
     except Exception as e:
-        lazyllm.LOG.warning(f'Rule merge failed: {e}')
-        # fallback: deduplicate by title, keep first occurrence
-        seen: set = set()
-        deduped = []
-        for r in all_rules:
-            key = r.get('title', '')
-            if key not in seen:
-                seen.add(key)
-                deduped.append(r)
-        return deduped[:_SPEC_MAX_RULES]
+        raise RuntimeError(f'Rule merge failed: {e}') from e
 
 
 def analyze_historical_reviews(
@@ -656,7 +973,7 @@ def analyze_historical_reviews(
     if cached:
         return cached
 
-    pr_list_res = backend.list_pull_requests(state='closed')
+    pr_list_res = backend.list_pull_requests(state='closed', max_results=max_prs)
     if not pr_list_res.get('success'):
         return '(historical review analysis unavailable)'
     prs = pr_list_res.get('list') or []
@@ -701,10 +1018,67 @@ def analyze_historical_reviews(
         return '(no historical review comments found)'
 
     merged_rules = _merge_rule_cards(llm, all_rules)
-    review_spec = '\n\n'.join(_format_rule_card(r) for r in merged_rules)
+    # two-level storage: summaries (lightweight index) + details (full rule cards)
+    summaries = [{'rule_id': r.get('rule_id', ''), 'title': r.get('title', '')} for r in merged_rules]
+    details = {r.get('rule_id', f'R{i:03d}'): r for i, r in enumerate(merged_rules)}
+    review_spec_obj = {'summaries': summaries, 'details': details}
+    review_spec = json.dumps(review_spec_obj, ensure_ascii=False)
     review_spec = review_spec or '(review spec analysis unavailable)'
     _save_cache(cache_path, 'review_spec', review_spec)
     return review_spec
+
+
+def _lookup_relevant_rules(review_spec: str, diff_content: str, max_detail: int = 10) -> str:  # noqa: C901
+    '''Two-level rule lookup: match summaries by keywords, then load full detail cards.
+
+    Returns a formatted string with:
+    - Full rule cards for matched rules (up to max_detail)
+    - Title-only list for unmatched rules
+    '''
+    if not review_spec or review_spec.startswith('('):
+        return review_spec or ''
+    try:
+        spec_obj = json.loads(review_spec)
+    except (json.JSONDecodeError, ValueError):
+        # legacy plain-text format — return as-is (truncated)
+        return review_spec[:2000]
+
+    summaries = spec_obj.get('summaries', [])
+    details = spec_obj.get('details', {})
+
+    # extract keywords from diff: file names, class names, function names
+    keywords: set = set()
+    for line in diff_content.splitlines()[:200]:
+        # file paths
+        if line.startswith('+++ ') or line.startswith('--- '):
+            fname = line.split('/')[-1].replace('.py', '').lower()
+            if fname:
+                keywords.add(fname)
+        # class/function names
+        for m in re.finditer(r'\b([A-Z][a-zA-Z0-9]+|[a-z_][a-z_0-9]{3,})\b', line):
+            keywords.add(m.group(1).lower())
+
+    matched_ids: List[str] = []
+    unmatched_titles: List[str] = []
+    for s in summaries:
+        rule_id = s.get('rule_id', '')
+        title = s.get('title', '')
+        title_lower = title.lower()
+        if any(kw in title_lower for kw in keywords if len(kw) > 3):
+            matched_ids.append(rule_id)
+        else:
+            unmatched_titles.append(f'[{rule_id}] {title}')
+
+    parts: List[str] = []
+    for rule_id in matched_ids[:max_detail]:
+        rule = details.get(rule_id)
+        if rule:
+            parts.append(_format_rule_card(rule))
+
+    if unmatched_titles:
+        parts.append('## Other rules (title only)\n' + '\n'.join(unmatched_titles))
+
+    return '\n\n'.join(parts) if parts else '(no matching rules found)'
 
 
 # ---------------------------------------------------------------------------
@@ -796,7 +1170,11 @@ def _run_spec_analysis(
             if review_spec and review_spec_cache_path:
                 lazyllm.LOG.success(f'Review spec saved to: {review_spec_cache_path}')
         except Exception as e:
-            lazyllm.LOG.warning(f'Historical review analysis failed: {e}')
+            # distinguish: no history PRs (acceptable) vs API/LLM failure (fatal)
+            if 'no review comments' in str(e).lower() or 'not found' in str(e).lower():
+                lazyllm.LOG.warning(f'Historical review analysis: {e}')
+            else:
+                raise
     else:
         _save_cache(review_spec_cache_path, 'review_spec', review_spec)
         _Progress('Pre-analysis: review spec').done('loaded from checkpoint')
@@ -836,7 +1214,7 @@ def _run_pre_analysis(
             lazyllm.LOG.info(f'Cloning {clone_url} @ {branch} for agent file access')
             clone_dir, _ = _fetch_repo_code(clone_url, branch)
         except Exception as e:
-            lazyllm.LOG.warning(f'Clone for agent failed: {e}')
+            raise RuntimeError(f'Clone for agent failed: {e}') from e
     else:
         _save_cache(arch_cache_path, 'arch_doc', arch_doc)
         _Progress('Pre-analysis: architecture').done('loaded from checkpoint')

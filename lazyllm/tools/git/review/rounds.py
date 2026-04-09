@@ -12,8 +12,14 @@ from .utils import (
     _Progress, _VALID_CATEGORIES, _VALID_SEVERITIES,
     _language_instruction, _safe_llm_call,
     _truncate_hunk_content, _extract_json_text, _parse_json_with_repair,
+    _parse_unified_diff,
 )
-from .pre_analysis import _read_file_context, _get_arch_index, _get_symbol_index, _build_scoped_agent_tools
+from .pre_analysis import (
+    _read_file_context, _get_arch_index, _get_symbol_index,
+    _build_scoped_agent_tools, _build_scoped_agent_tools_with_cache,
+    _lookup_relevant_rules,
+)
+from lazyllm.tools.agent import ReactAgent
 
 
 def _lookup_relevant_symbols(diff_content: str, symbol_index: Dict[str, str]) -> str:
@@ -40,6 +46,9 @@ You are a meticulous code reviewer. Your goal is maximum recall — report every
 
 ## Current File Context
 The following is the content of `{path}` for reference. Do NOT report issues for lines outside the diff hunk.
+The context includes: (1) ±50 lines around the hunk, (2) the enclosing class/function scope label,
+(3) sibling method signatures of the enclosing class (or other top-level function signatures).
+Use these to detect interface inconsistencies, missing overrides, and contract violations.
 {file_context}
 
 ## Task
@@ -168,10 +177,16 @@ def _round1_hunk_analysis(
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {pool.submit(_task, i, h): i for i, h in enumerate(hunks)}
+        failed = 0
         for f in as_completed(futures):
             exc = f.exception()
             if exc:
+                failed += 1
                 lazyllm.LOG.warning(f'Round 1 hunk task failed: {exc}')
+        if failed > 0 and len(hunks) > 0 and failed / len(hunks) > 0.5:
+            raise RuntimeError(
+                f'Round 1 failed on {failed}/{len(hunks)} hunks (>{50}%); aborting.'
+            )
 
     all_comments: List[Dict[str, Any]] = []
     for i in range(len(hunks)):
@@ -294,8 +309,10 @@ Repo cloned to: {clone_dir}
 
 Use tools (search_in_files, read_file, list_dir, shell_tool) to explore callers/base classes.
 Focus: interface inconsistencies, abstraction violations, missing symmetric updates, wrong arg types.
+Limit tool calls to at most 3. Once you have enough information, stop calling tools immediately.
 
-Output ONLY a JSON array. Each item: path, line, severity, bug_category, problem, suggestion.
+IMPORTANT: Your final response MUST be ONLY a JSON array (no explanation, no markdown wrapper).
+Each item: path, line, severity, bug_category, problem, suggestion.
 line must be a new-file line visible in the diff. If no new issues: output []
 '''
 
@@ -307,6 +324,7 @@ _R2_SUMMARY_BUDGET = 400
 _R2_SHARED_CTX_BUDGET = 1500
 _R2_SHARED_AGENT_RETRIES = 4
 _R2_FILE_AGENT_RETRIES = 5
+_R2_FILE_TIMEOUT_SECS = 300
 
 
 def _parse_agent_review_output(raw: str) -> List[Dict[str, Any]]:
@@ -415,9 +433,6 @@ def _r2_build_shared_context(
     clone_dir: str,
     language: str = 'cn',
 ) -> str:
-    from lazyllm.tools.agent import ReactAgent
-    from .utils import _parse_unified_diff
-
     # extract all changed file paths
     changed_files = list({path for path, _, _, _ in _parse_unified_diff(diff_text)})
     if len(changed_files) < 2:
@@ -435,12 +450,208 @@ def _r2_build_shared_context(
     try:
         agent = ReactAgent(llm, tools=tools, max_retries=_R2_SHARED_AGENT_RETRIES, workspace=clone_dir)
         raw = agent(prompt)
-        result = (raw if isinstance(raw, str) else str(raw))[:_R2_SHARED_CTX_BUDGET]
+        text = (raw if isinstance(raw, str) else str(raw))
+        # strip markdown code fences to avoid polluting downstream prompts
+        text = re.sub(r'```[^\n]*\n?', '', text)
+        result = text[:_R2_SHARED_CTX_BUDGET]
         lazyllm.LOG.info(f'Round 2 shared context built: {len(result)} chars')
         return result
     except Exception as e:
-        lazyllm.LOG.warning(f'Round 2 shared context build failed: {e}')
-        return ''
+        raise RuntimeError(f'Round 2 shared context build failed: {e}') from e
+
+
+_R2_CONTEXT_COLLECT_PROMPT_TMPL = '''\
+You are a code analysis assistant. Your ONLY task is to explore the repository and collect context \
+about the symbols changed in the diff below. Do NOT produce review comments yet.
+
+## File Being Analyzed
+{path}
+
+## Diff Chunk (for reference — do NOT review yet)
+```diff
+{diff_chunk}
+```
+
+## Your Exploration Tasks
+For each class or function modified in the diff above:
+1. Call analyze_symbol("<ClassName or funcName>", "<file_path>") to analyze it and its dependencies.
+2. Search for callers: search_scoped(r"<symbol_name>\\(") to find where it is called.
+3. If the symbol inherits from a base class, call analyze_symbol on the base class too.
+4. Search for related documentation: search_scoped("<symbol_name>", glob="*.md") \
+or search_scoped("<symbol_name>", glob="*.rst").
+
+When you have explored all relevant symbols (or reached the tool call limit), output a structured \
+plain-text summary with these sections:
+
+[Analyzed Symbols]
+<key>: <signature> — <summary>
+  deps: [<dep_key>, ...]
+...
+
+[Callers]
+<caller_func> in <file>:<line> — <how it calls the changed code>
+...
+
+[Docs]
+<doc_file>:<section> — <relevant excerpt (max 100 chars)>
+...
+
+Be concise. If a section has nothing, write "(none)".
+{lang_instruction}
+'''
+
+_R2_ISSUE_EXTRACT_PROMPT_TMPL = '''\
+You are a senior code reviewer performing a second-pass context-enriched analysis.
+{lang_instruction}
+
+## PR Summary
+{pr_summary}
+
+## Project Architecture (brief)
+{arch_doc}
+
+## Cross-File Shared Context
+{shared_context}
+
+## Symbol Context (collected by agent exploration)
+{symbol_context}
+
+## First-Pass Issues (Round 1) for this file
+{round1_json}
+
+## Diff to Review
+File: `{path}` ({hunk_range})
+```diff
+{diff_text}
+```
+
+## Task
+Using ALL the context above, find issues that require cross-file or cross-function context to detect:
+- Interface inconsistencies (method signatures changed but callers not updated)
+- Abstraction violations (bypassing base class contracts)
+- Design breakage (changes that violate existing patterns)
+- Missing updates to related code (e.g. updated one method but not its symmetric counterpart)
+- Dependency violations (lower-layer module importing upper-layer module)
+
+For EVERY issue found, output a JSON object with:
+- "path": file path (must be `{path}`)
+- "line": line number (must be within the diff chunk)
+- "severity": "critical" | "medium" | "normal"
+- "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability
+- "problem": clear description of the issue
+- "suggestion": how to fix it (wrap code snippets with markdown code fences)
+
+Output ONLY a JSON array. No explanation, no markdown wrapper.
+If no issues found, output [].
+'''
+
+
+def _r2_build_file_context(
+    llm: Any,
+    path: str,
+    diff_chunk: str,
+    clone_dir: str,
+    tools: List[Any],
+    language: str = 'cn',
+) -> str:
+    '''Stage 1: agent explores the repo and collects symbol context for a single file.'''
+    lang_instr = _language_instruction(language)
+    prompt = _R2_CONTEXT_COLLECT_PROMPT_TMPL.format(
+        path=path,
+        diff_chunk=diff_chunk[:2000],
+        lang_instruction=lang_instr,
+    )
+    agent = ReactAgent(
+        llm, tools=tools, max_retries=_R2_FILE_AGENT_RETRIES,
+        workspace=clone_dir, force_summarize=True,
+        force_summarize_context=f'Exploring context for {path}:\n{diff_chunk[:300]}',
+    )
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(agent, prompt)
+        try:
+            raw = fut.result(timeout=_R2_FILE_TIMEOUT_SECS)
+        except TimeoutError:
+            raise RuntimeError(f'Round 2 context collection timed out for {path} after {_R2_FILE_TIMEOUT_SECS}s')
+    return raw if isinstance(raw, str) else str(raw)
+
+
+def _r2_extract_issues(
+    llm: Any,
+    path: str,
+    diff_chunk: str,
+    hunk_range: str,
+    symbol_context: str,
+    shared_context: str,
+    r1_text: str,
+    arch_doc: str,
+    pr_summary: str,
+    language: str = 'cn',
+) -> List[Dict[str, Any]]:
+    '''Stage 2: plain LLM call to extract issues using collected context.'''
+    lang_instr = _language_instruction(language)
+    arch_snippet = (arch_doc or '')[:_R2_ARCH_BUDGET]
+    summary_snippet = (pr_summary or '')[:_R2_SUMMARY_BUDGET]
+    prompt = _R2_ISSUE_EXTRACT_PROMPT_TMPL.format(
+        lang_instruction=lang_instr,
+        pr_summary=summary_snippet,
+        arch_doc=arch_snippet,
+        shared_context=shared_context or '(none)',
+        symbol_context=symbol_context[:3000] if symbol_context else '(none)',
+        round1_json=r1_text,
+        path=path,
+        hunk_range=hunk_range,
+        diff_text=diff_chunk,
+    )
+    items = _safe_llm_call(llm, prompt)
+    result: List[Dict[str, Any]] = []
+    for item in (items if isinstance(items, list) else []):
+        if not isinstance(item, dict) or item.get('problem') is None:
+            continue
+        try:
+            line = int(item.get('line', 0))
+        except (TypeError, ValueError):
+            continue
+        if line <= 0 or not item.get('path'):
+            continue
+        category = item.get('bug_category') or 'design'
+        if category not in _VALID_CATEGORIES:
+            category = 'design'
+        severity = item.get('severity') or 'normal'
+        if severity not in _VALID_SEVERITIES:
+            severity = 'normal'
+        result.append({
+            'path': item['path'],
+            'line': line,
+            'severity': severity,
+            'bug_category': category,
+            'problem': str(item.get('problem', '')),
+            'suggestion': str(item.get('suggestion', '')),
+        })
+    return result
+
+
+def _r2_process_file(
+    llm: Any,
+    path: str,
+    diff_chunk: str,
+    hunk_range: str,
+    shared_context: str,
+    r1_text: str,
+    arch_doc: str,
+    pr_summary: str,
+    clone_dir: str,
+    symbol_cache: Dict[str, Any],
+    tools: List[Any],
+    language: str = 'cn',
+) -> List[Dict[str, Any]]:
+    '''Run both stages for a single file diff chunk.'''
+    # Stage 1: collect symbol context (agent exploration)
+    symbol_context = _r2_build_file_context(llm, path, diff_chunk, clone_dir, tools, language)
+    # Stage 2: extract issues (plain LLM call)
+    return _r2_extract_issues(
+        llm, path, diff_chunk, hunk_range, symbol_context, shared_context,
+        r1_text, arch_doc, pr_summary, language,
+    )
 
 
 def _round2_agent_review(
@@ -456,9 +667,6 @@ def _round2_agent_review(
     if clone_dir is None or not os.path.isdir(clone_dir):
         lazyllm.LOG.warning('Round 2 agent: clone_dir not available, skipping agent review')
         return []
-
-    from lazyllm.tools.agent import ReactAgent
-    from .utils import _parse_unified_diff
 
     # build or restore shared context
     shared_context = (ckpt.get('r2_shared_context') if ckpt else None) or ''
@@ -478,10 +686,9 @@ def _round2_agent_review(
             f'line {c.get("line")}: [{c.get("severity")}] {c.get("problem", "")[:100]}'
         )
 
-    arch_snippet = (arch_doc or '')[:_R2_ARCH_BUDGET]
-    summary_snippet = (pr_summary or '')[:_R2_SUMMARY_BUDGET]
-    lang_instr = _language_instruction(language)
-    tools = _build_scoped_agent_tools(clone_dir)
+    # build symbol cache shared across all files
+    symbol_cache: Dict[str, Any] = {}
+    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache)
 
     prog = _Progress('Round 2: per-file agent review', len(file_diffs))
     all_results: List[Dict[str, Any]] = []
@@ -493,24 +700,19 @@ def _round2_agent_review(
             r1_text = r1_text[:_R2_R1_BUDGET] + '\n...(truncated)'
 
         for hunk_range, diff_chunk in _split_file_diff_into_chunks(fdiff, _R2_DIFF_CHUNK):
-            prompt = _ROUND2_FILE_PROMPT_TMPL.format(
-                lang_instruction=lang_instr,
-                clone_dir=clone_dir,
-                pr_summary=summary_snippet,
-                arch_doc=arch_snippet,
-                shared_context=shared_context or '(none)',
-                round1_json=r1_text,
-                path=path,
-                hunk_range=hunk_range,
-                diff_text=diff_chunk,
-            )
             try:
-                agent = ReactAgent(llm, tools=tools, max_retries=_R2_FILE_AGENT_RETRIES, workspace=clone_dir)
-                raw = agent(prompt)
-                items = _parse_agent_review_output(raw if isinstance(raw, str) else json.dumps(raw))
+                items = _r2_process_file(
+                    llm, path, diff_chunk, hunk_range,
+                    shared_context, r1_text, arch_doc, pr_summary,
+                    clone_dir, symbol_cache, tools, language,
+                )
                 all_results.extend(items)
             except Exception as e:
-                lazyllm.LOG.warning(f'Round 2 agent failed for {path} ({hunk_range}): {e}')
+                # only JSON parse failures in _r2_extract_issues are silently skipped;
+                # context collection failures (agent timeout etc.) propagate as raise
+                if 'timed out' in str(e) or 'context collection' in str(e):
+                    raise
+                lazyllm.LOG.warning(f'Round 2 issue extraction failed for {path} ({hunk_range}): {e}')
         prog.update(f'{path} ({len(r1_lines)} r1 issues)')
 
     prog.done(f'{len(all_results)} new issues found by agent')
@@ -531,11 +733,13 @@ You are a software architect performing a global architecture review.
 ## Project Review Standards
 {review_spec}
 
-## Issues Found So Far
+## Issues Found So Far (this file)
 {prev_json}
 
-## Full Diff
+## Diff for `{path}`
+```diff
 {diff_text}
+```
 
 ## Task
 Analyze the diff from a global architecture perspective. Focus on issues that span multiple files or
@@ -545,6 +749,7 @@ require understanding the overall system design:
 3. Coupling increase — does this change create tight coupling between previously independent components?
 4. Design pattern violations — does this break existing patterns (registry, factory, observer, etc.)?
 5. Violations of project review standards listed above
+6. Dependency inversion violations — does a lower-layer module now import an upper-layer module?
 
 Report ONLY issues NOT already covered in "Issues Found So Far".
 Each item must have: path, line, severity, bug_category (prefer design|maintainability), problem, suggestion.
@@ -552,37 +757,38 @@ In the suggestion field, wrap code snippets with markdown code fences using the 
 When showing old vs new code, use a unified diff block (```diff\\n- old lines\\n+ new lines\\n```).
 line must be a valid new-file line number visible in the diff.
 Output ONLY a JSON array. No explanation, no markdown wrapper.
+If no issues found, output [].
 '''
 
 
-def _round3_global_analysis(
+def _round3_analyze_file(
     llm: Any,
-    round2: List[Dict[str, Any]],
-    diff_text: str,
+    path: str,
+    fdiff: str,
     review_spec: str,
-    pr_summary: str = '',
+    pr_summary: str,
+    prev_issues: List[Dict[str, Any]],
     language: str = 'cn',
 ) -> List[Dict[str, Any]]:
-    prog = _Progress('Round 3: global architecture analysis')
-    spec_snippet = review_spec[:600] if review_spec else '(not available)'
+    spec_snippet = _lookup_relevant_rules(review_spec, fdiff, max_detail=8) if review_spec else '(not available)'
     prev_summaries = [
         f'{c.get("path")}:{c.get("line")} [{c.get("severity")}] {(c.get("problem") or "")[:80]}'
-        for c in round2
+        for c in prev_issues
     ]
-    prev_json = '\n'.join(prev_summaries[:60])
-    if len(prev_json) > 2000:
-        prev_json = prev_json[:2000] + '\n...(truncated)'
-    diff_snippet = diff_text[:5000] if diff_text else ''
+    prev_json = '\n'.join(prev_summaries[:30])
+    if len(prev_json) > 1000:
+        prev_json = prev_json[:1000] + '\n...(truncated)'
     prompt = _ROUND3_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
-        pr_summary=pr_summary[:600] if pr_summary else '(not available)',
+        pr_summary=pr_summary[:400] if pr_summary else '(not available)',
         review_spec=spec_snippet,
-        prev_json=prev_json,
-        diff_text=diff_snippet,
+        prev_json=prev_json or '(none)',
+        path=path,
+        diff_text=fdiff[:4000],
     )
     items = _safe_llm_call(llm, prompt)
     result: List[Dict[str, Any]] = []
-    for item in items:
+    for item in (items if isinstance(items, list) else []):
         if not isinstance(item, dict) or item.get('problem') is None:
             continue
         try:
@@ -598,14 +804,42 @@ def _round3_global_analysis(
         if severity not in _VALID_SEVERITIES:
             severity = 'normal'
         result.append({
-            'path': item.get('path') or '',
+            'path': item.get('path') or path,
             'line': line,
             'severity': severity,
             'bug_category': category,
-            'problem': item.get('problem') or '',
-            'suggestion': item.get('suggestion') or '',
+            'problem': str(item.get('problem', '')),
+            'suggestion': str(item.get('suggestion', '')),
         })
-    prog.done(f'{len(result)} architecture-level issues')
+    return result
+
+
+def _round3_global_analysis(
+    llm: Any,
+    round2: List[Dict[str, Any]],
+    diff_text: str,
+    review_spec: str,
+    pr_summary: str = '',
+    language: str = 'cn',
+) -> List[Dict[str, Any]]:
+    # split diff by file
+    file_diffs: Dict[str, str] = {}
+    for path, _start, _count, content in _parse_unified_diff(diff_text):
+        file_diffs[path] = file_diffs.get(path, '') + content
+
+    # group prev issues by file
+    prev_by_file: Dict[str, List[Dict[str, Any]]] = {}
+    for c in round2:
+        prev_by_file.setdefault(c.get('path', ''), []).append(c)
+
+    prog = _Progress('Round 3: global architecture analysis', len(file_diffs))
+    result: List[Dict[str, Any]] = []
+    for path, fdiff in file_diffs.items():
+        prev = prev_by_file.get(path, [])
+        items = _round3_analyze_file(llm, path, fdiff, review_spec, pr_summary, prev, language)
+        result.extend(items)
+        prog.update(path)
+    prog.done(f'{len(result)} issues found')
     return result
 
 
@@ -640,7 +874,7 @@ def _batch_llm_summarize(
             if isinstance(r, dict) and 'idx' in r and 'summary' in r:
                 summaries[int(r['idx'])] = str(r['summary'])
     except Exception as e:
-        lazyllm.LOG.warning(f'{label} compression failed: {e}')
+        raise RuntimeError(f'{label} compression failed: {e}') from e
     return summaries
 
 
@@ -690,6 +924,7 @@ def _compress_new_issues(
             'line': c.get('line', ''),
             'severity': c.get('severity', 'normal'),
             'bug_category': c.get('bug_category', 'logic'),
+            'source': c.get('source', ''),
             'summary': summary,
         })
     return result
@@ -700,7 +935,8 @@ You are a senior code reviewer performing final consolidation of review findings
 {lang_instruction}
 
 ## New Issues Found (3 rounds)
-Each item has: idx (unique id), path, line, severity, bug_category, summary (one-sentence problem description).
+Each item has: idx (unique id), path, line, severity, bug_category, source (r1/r2/r3), \
+summary (one-sentence problem description).
 {new_issues_json}
 
 ## Existing PR Comments (already posted — do NOT repeat these)
@@ -709,6 +945,8 @@ Each item has: idx, path, line, summary.
 
 ## Task
 1. Remove exact or near-duplicate new issues (keep the one with highest severity or most detail; record its idx)
+   - When a r2 issue and a r1 issue describe the same location (same path+line), prefer the r2 version \
+(it has more cross-file context); discard the r1 duplicate.
 2. Merge new issues that describe the same root cause at the same location (keep one idx)
 3. Remove any new issue whose problem is already covered by an existing PR comment \
    (match by same path+line or same core problem)
@@ -837,7 +1075,13 @@ def _run_four_rounds(
 
     final = ckpt.get('final')
     if final is None:
-        final = _round4_merge_and_deduplicate(llm, r1 + r2 + r3, existing_comments=existing_comments, language=language)
+        # tag each issue with its source round before merging
+        def _tag(issues: List[Dict[str, Any]], src: str) -> List[Dict[str, Any]]:
+            return [{**c, 'source': src} for c in issues]
+        final = _round4_merge_and_deduplicate(
+            llm, _tag(r1, 'r1') + _tag(r2, 'r2') + _tag(r3, 'r3'),
+            existing_comments=existing_comments, language=language,
+        )
         ckpt.save('final', final)
     else:
         _Progress('Round 4: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')

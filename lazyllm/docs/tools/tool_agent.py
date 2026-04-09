@@ -823,7 +823,7 @@ ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程
 Args:
     llm: 大语言模型实例，用于生成推理和工具调用决策
     tools (List[str]): 可用工具列表，可以是工具函数或工具名称
-    max_retries (int): 最大重试次数，当工具调用失败时自动重试，默认为5
+    max_retries (int): 工具调用循环的最大轮次，超出后触发兜底逻辑或抛出异常，默认为5
     return_trace (bool): 是否返回完整的执行轨迹，用于调试和分析，默认为False
     prompt (str): 自定义提示词模板，如果为None则使用内置模板
     stream (bool): 是否启用流式输出，用于实时显示生成过程，默认为False
@@ -831,22 +831,27 @@ Args:
     skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
     desc (str): Agent 能力描述，可为空。
     workspace (str): Agent 默认工作目录，默认是 `config['home']/agent_workspace`。
+    force_summarize (bool): 是否在达到 max_retries 仍未输出最终答案时，强制追加一次 LLM 调用以获取总结输出，而非直接抛出异常。默认为 False。
+        开启后，Agent 会将完整对话历史连同强制总结指令一起发送给 LLM，要求其立即停止工具调用并输出最终答案。
+        适用于工具调用轮次较多、LLM 难以自主停止的场景。
 ''')
 
 add_english_doc('ReactAgent', '''\
-ReactAgent follows the process of `Thought->Action->Observation->Thought...->Finish` step by step through LLM and tool calls to display the steps to solve user questions and the final answer to the user.
+ReactAgent follows the `Thought->Action->Observation->Thought...->Finish` loop to solve user tasks step by step through LLM reasoning and tool calls, then delivers a final answer.
 
 Args:
-    llm: Large language model instance for generating reasoning and tool calling decisions
-    tools (List[str]): List of available tools, can be tool functions or tool names
-    max_retries (int): Maximum retry count, automatically retries when tool calling fails, defaults to 5
-    return_trace (bool): Whether to return complete execution trace for debugging and analysis, defaults to False
-    prompt (str): Custom prompt template, uses built-in template if None
-    stream (bool): Whether to enable streaming output for real-time generation display, defaults to False
-    return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
-    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
-    desc (str): Optional agent capability description.
-    workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
+    llm: The large language model instance used for reasoning and tool-call decisions.
+    tools (List[str]): List of available tools, either as callable functions or tool name strings.
+    max_retries (int): Maximum number of tool-call loop iterations. When exceeded, the force-summarize fallback is triggered (if enabled) or an exception is raised. Defaults to 5.
+    return_trace (bool): Whether to return the full execution trace for debugging and analysis. Defaults to False.
+    prompt (str): Custom prompt template. If None, the built-in ReAct instruction template is used.
+    stream (bool): Whether to enable streaming output for real-time display. Defaults to False.
+    return_last_tool_calls (bool): If True, returns the last tool-call trace when the model finishes with pending tool calls.
+    skills (bool | str | List[str]): Skills configuration. True enables Skills with automatic selection; a str/list enables the specified skills.
+    desc (str): Description of the agent capabilities. Can be empty.
+    workspace (str): Default working directory for the agent. Defaults to `config['home']/agent_workspace`.
+    force_summarize (bool): When True, if the agent has not produced a final answer after max_retries iterations, one additional LLM call is made with the full conversation history plus a force-summarize instruction, asking the model to stop tool calls and output its final answer immediately. If False (default), a ValueError is raised instead.
+        Useful when the task involves many tool-call steps and the LLM struggles to stop on its own.
 
 ''')
 

@@ -114,27 +114,40 @@ class GitHub(LazyLLMGitBase):
         return {'success': True, 'pr': pr}
 
     def list_pull_requests(self, state: str = 'open', head: Optional[str] = None,
-                           base: Optional[str] = None) -> Dict[str, Any]:
-        params = {'state': state}
+                           base: Optional[str] = None, max_results: int = 100) -> Dict[str, Any]:
+        params: Dict[str, Any] = {'state': state, 'per_page': min(100, max_results)}
         if head is not None:
             params['head'] = head
         if base is not None:
             params['base'] = base
-        r = self._req('GET', '/pulls', params=params)
-        if r.status_code != 200:
-            return self._fail(r)
         out = []
-        for data in r.json():
-            out.append(PrInfo(
-                number=data['number'],
-                title=data['title'],
-                state=data.get('state', 'open'),
-                body=data.get('body') or '',
-                source_branch=data.get('head', {}).get('ref', ''),
-                target_branch=data.get('base', {}).get('ref', ''),
-                html_url=data.get('html_url', ''),
-                raw=data,
-            ))
+        url: Optional[str] = self._url('/pulls')
+        while url and len(out) < max_results:
+            r = self._session.get(url, params=params)
+            params = {}  # only pass params on first request; subsequent URLs are fully formed
+            if r.status_code != 200:
+                return self._fail(r)
+            for data in r.json():
+                out.append(PrInfo(
+                    number=data['number'],
+                    title=data['title'],
+                    state=data.get('state', 'open'),
+                    body=data.get('body') or '',
+                    source_branch=data.get('head', {}).get('ref', ''),
+                    target_branch=data.get('base', {}).get('ref', ''),
+                    html_url=data.get('html_url', ''),
+                    raw=data,
+                ))
+                if len(out) >= max_results:
+                    break
+            link = r.headers.get('Link', '')
+            next_url = None
+            for part in link.split(','):
+                part = part.strip()
+                if 'rel="next"' in part:
+                    next_url = part.split(';')[0].strip().strip('<>')
+                    break
+            url = next_url
         return {'success': True, 'list': out}
 
     def get_pr_diff(self, number: int) -> Dict[str, Any]:
