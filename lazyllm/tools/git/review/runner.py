@@ -41,10 +41,14 @@ def review(  # noqa: C901
     except Exception:
         original_review_code = ''
 
+    pr_dir = _ReviewCheckpoint.pr_dir(pr_number, repo)
     ckpt_path = checkpoint_path or _ReviewCheckpoint.default_path(pr_number, repo)
     ckpt = _ReviewCheckpoint(ckpt_path)
     if clear_checkpoint:
         ckpt.clear()
+        # also wipe the whole pr_dir so clone is re-fetched
+        if os.path.isdir(pr_dir):
+            shutil.rmtree(pr_dir, ignore_errors=True)
         ckpt = _ReviewCheckpoint(ckpt_path)
 
     prog_main = _Progress(f'Review PR #{pr_number} @ {repo}')
@@ -84,11 +88,8 @@ def review(  # noqa: C901
     arch_doc, review_spec, clone_dir = _run_pre_analysis(
         llm, backend_inst, repo, pr, fetch_repo_code,
         arch_cache_path, review_spec_cache_path, max_history_prs, ckpt,
+        pr_dir=pr_dir,
     )
-
-    # persist clone_dir to checkpoint for reuse on resume
-    if clone_dir and keep_clone:
-        ckpt.save('clone_dir', clone_dir)
 
     pr_summary = ckpt.get('pr_summary')
     if pr_summary is None:
@@ -111,8 +112,8 @@ def review(  # noqa: C901
             clone_dir=clone_dir, existing_comments=existing_comments, language=language,
         )
     finally:
-        if clone_dir and os.path.isdir(clone_dir) and not keep_clone:
-            shutil.rmtree(clone_dir, ignore_errors=True)
+        if not keep_clone and os.path.isdir(pr_dir):
+            shutil.rmtree(pr_dir, ignore_errors=True)
 
     posted = 0
     if post_to_github and head_sha:
@@ -134,7 +135,6 @@ def review(  # noqa: C901
         f'{posted} comment(s) posted to GitHub.'
     )
     prog_main.done(summary)
-    ckpt.clear()
 
     return {
         'summary': summary,

@@ -715,14 +715,21 @@ def _arch_fill_section(
 
 
 def _arch_fill_all_sections(
-    llm: Any, clone_dir: str, outline: List[Dict[str, Any]], dir_tree_1level: str
+    llm: Any, clone_dir: str, outline: List[Dict[str, Any]], dir_tree_1level: str,
+    cache_path: Optional[str] = None,
 ) -> str:
     sections: List[str] = []
     prev_summaries: List[str] = []
     prog = _Progress('Arch: filling sections', len(outline))
     for sec in outline:
-        content = _arch_fill_section(llm, clone_dir, sec, dir_tree_1level, prev_summaries)
         title = sec.get('title', 'Section')
+        cache_key = f'arch_section_{re.sub(r"[^a-zA-Z0-9]", "_", title).lower()}'
+        content = _load_cache(cache_path, cache_key)
+        if content:
+            prog.update(f'{title} (cached)')
+        else:
+            content = _arch_fill_section(llm, clone_dir, sec, dir_tree_1level, prev_summaries)
+            _save_cache(cache_path, cache_key, content)
         sections.append(f'[{title}]\n{content}')
         summary = _summarize_section(llm, title, content)
         prev_summaries.append(f'{title}: {summary}')
@@ -794,10 +801,20 @@ def analyze_repo_architecture(
     snapshot = _collect_structured_snapshot(clone_dir)
     dir_tree_1 = _build_dir_tree(clone_dir, max_depth=1)
 
-    outline = _arch_generate_outline(llm, snapshot)
+    outline_cached = _load_cache(cache_path, 'arch_outline')
+    if outline_cached:
+        try:
+            outline = json.loads(outline_cached)
+        except (json.JSONDecodeError, TypeError):
+            outline = None
+    else:
+        outline = None
     if not outline:
-        raise ValueError('Arch outline generation returned empty result')
-    arch_doc = _arch_fill_all_sections(llm, clone_dir, outline, dir_tree_1)
+        outline = _arch_generate_outline(llm, snapshot)
+        if not outline:
+            raise ValueError('Arch outline generation returned empty result')
+        _save_cache(cache_path, 'arch_outline', json.dumps(outline, ensure_ascii=False))
+    arch_doc = _arch_fill_all_sections(llm, clone_dir, outline, dir_tree_1, cache_path)
 
     arch_doc = arch_doc or '(architecture analysis unavailable)'
     # save full doc + index + symbol index in same cache file
@@ -966,6 +983,51 @@ def _merge_rule_cards(
         raise RuntimeError(f'Rule merge failed: {e}') from e
 
 
+def _collect_rules_for_pr(
+    backend: LazyLLMGitBase, llm: Any, pr: Any,
+    idx: int, total: int, cache_path: Optional[str],
+    prog: Any, all_rules: List[Dict[str, Any]],
+) -> None:
+    pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
+    if pr_num is None:
+        prog.update(f'[{idx}/{total}] skipped (no number)')
+        return
+    pr_cache_key = f'spec_pr_{pr_num}_rules'
+    cached_rules_str = _load_cache(cache_path, pr_cache_key)
+    if cached_rules_str:
+        try:
+            rules = json.loads(cached_rules_str)
+            all_rules.extend(rules)
+            prog.update(f'[{idx}/{total}] PR #{pr_num} — {len(rules)} rules (cached)')
+            return
+        except (json.JSONDecodeError, TypeError):
+            pass
+    try:
+        res = backend.list_review_comments(pr_num)
+    except Exception as e:
+        lazyllm.LOG.warning(f'PR #{pr_num} comments fetch error (skipped): {e}')
+        prog.update(f'[{idx}/{total}] PR #{pr_num} (network error, skipped)')
+        return
+    if not res.get('success'):
+        prog.update(f'[{idx}/{total}] PR #{pr_num} (fetch failed)')
+        return
+    comments = [
+        {'user': (c.get('user') if isinstance(c, dict) else getattr(c, 'user', '')) or '',
+         'body': (c.get('body') if isinstance(c, dict) else getattr(c, 'body', '')) or ''}
+        for c in (res.get('comments') or [])
+        if ((c.get('body') if isinstance(c, dict) else getattr(c, 'body', '')) or '').strip()
+        and not _BOT_USER_PATTERNS.search(
+            (c.get('user') if isinstance(c, dict) else getattr(c, 'user', '')) or '')
+    ]
+    if not comments:
+        prog.update(f'[{idx}/{total}] PR #{pr_num} — 0 human comments → skipped')
+        return
+    rules = _extract_rules_from_pr_comments(llm, pr_num, comments)
+    _save_cache(cache_path, pr_cache_key, json.dumps(rules, ensure_ascii=False))
+    all_rules.extend(rules)
+    prog.update(f'[{idx}/{total}] PR #{pr_num} — {len(comments)} comments → {len(rules)} rules extracted')
+
+
 def analyze_historical_reviews(
     backend: LazyLLMGitBase, llm: Any, cache_path: Optional[str] = None, max_prs: int = 200
 ) -> str:
@@ -990,27 +1052,7 @@ def analyze_historical_reviews(
     all_rules: List[Dict[str, Any]] = []
 
     for idx, pr in enumerate(target, 1):
-        pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
-        if pr_num is None:
-            prog.update(f'[{idx}/{total}] skipped (no number)')
-            continue
-        res = backend.list_review_comments(pr_num)
-        if not res.get('success'):
-            prog.update(f'[{idx}/{total}] PR #{pr_num} (fetch failed)')
-            continue
-        comments = []
-        for c in (res.get('comments') or []):
-            body = (c.get('body') if isinstance(c, dict) else getattr(c, 'body', '')) or ''
-            user = (c.get('user') if isinstance(c, dict) else getattr(c, 'user', '')) or ''
-            if not body.strip() or _BOT_USER_PATTERNS.search(user):
-                continue
-            comments.append({'user': user, 'body': body})
-        if not comments:
-            prog.update(f'[{idx}/{total}] PR #{pr_num} — 0 human comments → skipped')
-            continue
-        rules = _extract_rules_from_pr_comments(llm, pr_num, comments)
-        all_rules.extend(rules)
-        prog.update(f'[{idx}/{total}] PR #{pr_num} — {len(comments)} comments → {len(rules)} rules extracted')
+        _collect_rules_for_pr(backend, llm, pr, idx, total, cache_path, prog, all_rules)
 
     prog.done(f'{len(all_rules)} raw rules from {total} PRs, merging...')
 
@@ -1133,7 +1175,8 @@ def _pre_round_pr_summary(
 # ---------------------------------------------------------------------------
 
 def _run_arch_analysis(
-    llm: Any, pr: Any, repo: str, arch_cache_path: str, ckpt: Any
+    llm: Any, pr: Any, repo: str, arch_cache_path: str, ckpt: Any,
+    clone_target_dir: Optional[str] = None,
 ) -> Tuple[str, Optional[str]]:
     arch_doc = ckpt.get('arch_doc') or ''
     clone_dir: Optional[str] = None
@@ -1141,9 +1184,10 @@ def _run_arch_analysis(
     clone_url, branch = _resolve_clone_target(pr, repo)
     lazyllm.LOG.info(f'Cloning {clone_url} @ {branch}')
     try:
-        clone_dir, _file_tree = _fetch_repo_code(clone_url, branch)
+        clone_dir, _file_tree = _fetch_repo_code(clone_url, branch, work_dir=clone_target_dir)
     except Exception as e:
         raise RuntimeError(f'Failed to clone repo {clone_url} @ {branch}: {e}') from e
+    ckpt.save('clone_dir', clone_dir)
     prog.update('cloned, analyzing...')
     try:
         arch_doc = analyze_repo_architecture(llm, clone_dir, arch_cache_path)
@@ -1191,30 +1235,40 @@ def _run_pre_analysis(
     review_spec_cache_path: Optional[str],
     max_history_prs: int,
     ckpt: Any,
+    pr_dir: Optional[str] = None,
 ) -> Tuple[str, str, Optional[str]]:
     from .checkpoint import _ReviewCheckpoint
     safe_repo = re.sub(r'[^a-zA-Z0-9_-]', '_', repo)
-    cache_dir = _ReviewCheckpoint.review_cache_dir()
+    cache_dir = _ReviewCheckpoint.global_cache_dir()
     if arch_cache_path is None:
         arch_cache_path = os.path.join(cache_dir, f'arch_{safe_repo}.json')
     if review_spec_cache_path is None:
         review_spec_cache_path = os.path.join(cache_dir, f'spec_{safe_repo}.json')
 
     arch_doc = ckpt.get('arch_doc') or ''
-    clone_dir: Optional[str] = None
+    # restore clone_dir from checkpoint if it still exists on disk
+    clone_dir: Optional[str] = ckpt.get('clone_dir') or None
+    if clone_dir and not os.path.isdir(clone_dir):
+        clone_dir = None
+
+    clone_target_dir = os.path.join(pr_dir, 'clone') if pr_dir else None
 
     if fetch_repo_code and not arch_doc:
-        arch_doc, clone_dir = _run_arch_analysis(llm, pr, repo, arch_cache_path, ckpt)
+        arch_doc, clone_dir = _run_arch_analysis(llm, pr, repo, arch_cache_path, ckpt, clone_target_dir)
     elif fetch_repo_code:
-        # arch_doc already cached — still clone so Round 2 agent can read source files
+        # arch_doc already cached — still need clone for Round 2 agent
         _save_cache(arch_cache_path, 'arch_doc', arch_doc)
         _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
-        try:
-            clone_url, branch = _resolve_clone_target(pr, repo)
-            lazyllm.LOG.info(f'Cloning {clone_url} @ {branch} for agent file access')
-            clone_dir, _ = _fetch_repo_code(clone_url, branch)
-        except Exception as e:
-            raise RuntimeError(f'Clone for agent failed: {e}') from e
+        if not clone_dir:
+            try:
+                clone_url, branch = _resolve_clone_target(pr, repo)
+                lazyllm.LOG.info(f'Cloning {clone_url} @ {branch} for agent file access')
+                clone_dir, _ = _fetch_repo_code(clone_url, branch, work_dir=clone_target_dir)
+                ckpt.save('clone_dir', clone_dir)
+            except Exception as e:
+                raise RuntimeError(f'Clone for agent failed: {e}') from e
+        else:
+            lazyllm.LOG.info(f'Reusing cached clone at {clone_dir}')
     else:
         _save_cache(arch_cache_path, 'arch_doc', arch_doc)
         _Progress('Pre-analysis: architecture').done('loaded from checkpoint')

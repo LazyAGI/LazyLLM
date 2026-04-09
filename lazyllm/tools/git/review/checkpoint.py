@@ -95,15 +95,27 @@ class _ReviewCheckpoint:
             pass
 
     @staticmethod
-    def default_path(pr_number: int, repo: str) -> str:
-        safe_repo = re.sub(r'[^a-zA-Z0-9_-]', '_', repo)
-        base = os.path.join(os.path.expanduser(lazyllm.config['home']), 'review', safe_repo)
-        os.makedirs(base, exist_ok=True)
-        return os.path.join(base, f'pr{pr_number}.json')
+    def _review_root() -> str:
+        return os.path.join(os.path.expanduser(lazyllm.config['home']), 'review')
 
     @staticmethod
-    def review_cache_dir() -> str:
-        home = os.path.expanduser(lazyllm.config['home'])
-        d = os.path.join(home, 'review')
+    def global_cache_dir() -> str:
+        d = os.path.join(_ReviewCheckpoint._review_root(), 'cache')
         os.makedirs(d, exist_ok=True)
         return d
+
+    @staticmethod
+    def pr_dir(pr_number: int, repo: str) -> str:
+        safe_repo = re.sub(r'[^a-zA-Z0-9_-]', '_', repo)
+        d = os.path.join(_ReviewCheckpoint._review_root(), f'{safe_repo}_pr{pr_number}')
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    @staticmethod
+    def default_path(pr_number: int, repo: str) -> str:
+        return os.path.join(_ReviewCheckpoint.pr_dir(pr_number, repo), 'checkpoint.json')
+
+    # kept for backward compatibility
+    @staticmethod
+    def review_cache_dir() -> str:
+        return _ReviewCheckpoint.global_cache_dir()
