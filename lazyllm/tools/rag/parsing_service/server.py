@@ -19,7 +19,7 @@ from lazyllm.thirdparty import fastapi
 from .base import (
     ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
     TaskStatus, TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest,
-    _calculate_task_score
+    _calculate_task_score, _resolve_add_doc_task_type
 )
 from .worker import DocumentProcessorWorker as Worker
 from .queue import _SQLBasedQueue as Queue
@@ -561,24 +561,11 @@ class DocumentProcessor(ModuleBase):
             return BaseResponse(code=200, msg='success', data=data)
 
         @staticmethod
-        def _resolve_add_task_type(file_infos) -> str:
-            has_reparse = False
-            has_new_file = False
-            for file_info in file_infos:
-                if file_info.reparse_group is not None:
-                    has_reparse = True
-                else:
-                    has_new_file = True
-            if has_new_file and has_reparse:
-                raise fastapi.HTTPException(
-                    status_code=400,
-                    detail='new_file_ids and reparse_file_ids cannot be specified at the same time'
-                )
-            if has_reparse:
-                return TaskType.DOC_REPARSE.value
-            if has_new_file:
-                return TaskType.DOC_ADD.value
-            raise fastapi.HTTPException(status_code=400, detail='no input files or reparse group specified')
+        def _resolve_add_task_type(request: AddDocRequest) -> str:
+            try:
+                return _resolve_add_doc_task_type(request)
+            except ValueError as exc:
+                raise fastapi.HTTPException(status_code=400, detail=str(exc)) from exc
 
         @app.post('/doc/add')
         def add_doc(self, request: AddDocRequest):  # noqa: C901
@@ -598,7 +585,7 @@ class DocumentProcessor(ModuleBase):
             for file_info in file_infos:
                 if self._path_prefix:
                     file_info.file_path = create_file_path(path=file_info.file_path, prefix=self._path_prefix)
-            task_type = self._resolve_add_task_type(file_infos)
+            task_type = self._resolve_add_task_type(request)
             payload = request.model_dump()
             resolved_callback_url = self._resolve_callback_url(payload)
             if resolved_callback_url:

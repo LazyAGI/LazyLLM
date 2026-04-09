@@ -158,6 +158,11 @@ class _DocumentStore(object):
     def is_group_empty(self, group: str) -> bool:
         return not self.impl.get(self._gen_collection_name(group), {}, limit=10)
 
+    def _upsert_segments(self, group: str, segments: List[dict]) -> None:
+        collection_name = self._gen_collection_name(group)
+        if not self.impl.upsert(collection_name, segments):
+            raise RuntimeError(f'[_DocumentStore - {self._algo_name}] Failed to upsert segments for group {group}')
+
     def update_nodes(self, nodes: List[DocNode], copy: bool = False):   # noqa: C901
         if not nodes:
             return
@@ -176,7 +181,7 @@ class _DocumentStore(object):
                     LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
                     continue
                 for i in range(0, len(segments), INSERT_BATCH_SIZE):
-                    self.impl.upsert(self._gen_collection_name(group), segments[i:i + INSERT_BATCH_SIZE])
+                    self._upsert_segments(group, segments[i:i + INSERT_BATCH_SIZE])
             # update indices
             for index in self._indices.values():
                 index.update(nodes)
@@ -288,7 +293,7 @@ class _DocumentStore(object):
             segment['global_meta'].update(metadata)
             group_segments[segment.get('group')].append(segment)
         for group, segments in group_segments.items():
-            self.impl.upsert(self._gen_collection_name(group), segments)
+            self._upsert_segments(group, segments)
         LOG.info(f'[_DocumentStore] Updated metadata for doc_id: {doc_id} in dataset: {kb_id}')
         return
 

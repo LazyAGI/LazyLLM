@@ -109,6 +109,7 @@ class _Processor:
                 transfer_mode: Optional[str] = None, target_kb_id: Optional[str] = None,
                 target_doc_ids: Optional[List[str]] = None,
                 preloaded_root_nodes: Optional[Dict[str, List[DocNode]]] = None):
+        ids = ids or []
         try:
             if not input_files: return
             add_start = time.time()
@@ -180,8 +181,26 @@ class _Processor:
             LOG.info(f'[_Processor - add_doc] Add documents done! files:{input_files}, '
                      f'Total Time: {add_time}s, Data Loading Time: {load_time}s')
         except Exception as e:
+            cleanup_doc_ids = ids if transfer_mode is None else (target_doc_ids or [])
+            cleanup_kb_id = kb_id if transfer_mode is None else target_kb_id
+            self._cleanup_failed_add(cleanup_doc_ids, cleanup_kb_id, clear_schema=transfer_mode is None)
             LOG.error(f'Add documents failed: {e}, {traceback.format_exc()}')
             raise e
+
+    def _cleanup_failed_add(self, doc_ids: List[str], kb_id: Optional[str], clear_schema: bool) -> None:
+        if not doc_ids:
+            return
+        try:
+            self._store.remove_nodes(doc_ids=doc_ids, kb_id=kb_id)
+        except Exception as cleanup_exc:
+            LOG.error(f'Failed to cleanup nodes for docs {doc_ids} in kb {kb_id}: {cleanup_exc}, '
+                      f'{traceback.format_exc()}')
+        if clear_schema and self._schema_extractor:
+            try:
+                self._schema_extractor._delete_extract_data(algo_id=self._algo_id, kb_id=kb_id, doc_ids=doc_ids)
+            except Exception as cleanup_exc:
+                LOG.error(f'Failed to cleanup schema data for docs {doc_ids} in kb {kb_id}: {cleanup_exc}, '
+                          f'{traceback.format_exc()}')
 
     def close(self):
         self._thread_pool.shutdown(wait=True)
