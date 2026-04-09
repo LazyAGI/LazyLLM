@@ -1,4 +1,3 @@
-import json
 import os
 from typing import Any, Dict, Optional
 
@@ -46,7 +45,7 @@ class _BertSequenceClassificationService:
         self._model.eval()
         LOG.info(f'Bert deploy: loaded model from {self._model_path} on {self._device}')
 
-    def __call__(self, data: Dict[str, Any]) -> str:
+    def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
         lazyllm.call_once(self._init_flag, self._load_model)
         # TrainableModule may assign the whole JSON body to ``text_a``; flatten once.
         if isinstance(data.get('text_a'), dict):
@@ -85,7 +84,7 @@ class _BertSequenceClassificationService:
             'probs': probs.cpu().tolist()[0],
             'predicted_label': pred,
         }
-        return json.dumps(out)
+        return out
 
     @classmethod
     def rebuild(cls, model_path, trust_remote_code, max_length, device, init):

@@ -193,6 +193,7 @@ class QueryEnhACProcessor:
         word_key: str = 'word',
         max_retries: int = 3,
         prompt_lang: PromptLang = 'zh',
+        threshold: float = 0.5,
     ):
         if prompt_lang not in ('zh', 'en'):
             raise ValueError(f'prompt_lang must be "zh" or "en", got {prompt_lang!r}')
@@ -200,6 +201,7 @@ class QueryEnhACProcessor:
         self.word_key = word_key
         self._max_retries = max_retries
         self._prompt_lang: PromptLang = prompt_lang
+        self._threshold = float(threshold)
 
         self._boundary_filter: Optional[Union[_LLMFilter, _BERTFilter]] = None
         self._build_filter(discriminator)
@@ -219,6 +221,7 @@ class QueryEnhACProcessor:
         if isinstance(discriminator, TrainableModule) and _is_bert_deploy(discriminator):
             self._boundary_filter = _BERTFilter(
                 model=discriminator,
+                threshold=self._threshold,
                 max_retries=self._max_retries,
             )
             return
