@@ -47,7 +47,7 @@ def _parse_args():
                         help='LLM API base URL, e.g. a proxy URL (default: None, use official endpoint)')
     parser.add_argument('--language', default='cn', choices=['cn', 'en'],
                         help='Review output language (default: cn)')
-    parser.add_argument('--max_history_prs', type=int, default=400,
+    parser.add_argument('--max_history_prs', type=int, default=50,
                         help='Max historical PRs to analyze for review spec (default: 400)')
     parser.add_argument('--keep_clone', action='store_true',
                         help='Keep cloned repo directory after review')

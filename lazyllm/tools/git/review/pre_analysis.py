@@ -34,7 +34,11 @@ _CONTEXT_LINES = 50
 
 
 def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None) -> Tuple[str, str]:
+    import shutil
     clone_dir = work_dir or tempfile.mkdtemp(prefix='lazyllm_review_')
+    # if target dir exists but is incomplete (no .git), wipe it before cloning
+    if os.path.isdir(clone_dir) and not os.path.isdir(os.path.join(clone_dir, '.git')):
+        shutil.rmtree(clone_dir, ignore_errors=True)
     try:
         subprocess.run(
             ['git', 'clone', '--single-branch', '--branch', branch, '--depth', '1', repo_url, clone_dir],
@@ -1032,7 +1036,10 @@ def analyze_historical_reviews(
     backend: LazyLLMGitBase, llm: Any, cache_path: Optional[str] = None, max_prs: int = 200
 ) -> str:
     cached = _load_cache(cache_path, 'review_spec')
-    if cached:
+    cached_max_prs_str = _load_cache(cache_path, 'review_spec_max_prs')
+    cached_max_prs = int(cached_max_prs_str) if cached_max_prs_str and cached_max_prs_str.isdigit() else 0
+    # reuse cache only when max_prs has not grown
+    if cached and cached_max_prs >= max_prs:
         return cached
 
     pr_list_res = backend.list_pull_requests(state='closed', max_results=max_prs)
@@ -1066,7 +1073,7 @@ def analyze_historical_reviews(
     review_spec_obj = {'summaries': summaries, 'details': details}
     review_spec = json.dumps(review_spec_obj, ensure_ascii=False)
     review_spec = review_spec or '(review spec analysis unavailable)'
-    _save_cache(cache_path, 'review_spec', review_spec)
+    _save_cache_multi(cache_path, {'review_spec': review_spec, 'review_spec_max_prs': str(max_prs)})
     return review_spec
 
 
