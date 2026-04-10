@@ -17,6 +17,9 @@
 #   --max_history_prs  Max historical PRs to analyze for review spec (default: 400)
 #   --keep_clone    Keep cloned repo after review (flag, default: off)
 #   --clear_checkpoint  Clear checkpoint and start fresh (flag, default: off)
+#   --resume_from   Resume from a specific stage: clone|arch|spec|pr_summary|r1|r2|r3|final
+#                   Stages before the specified one will load from cache (if available).
+#                   If a prior stage has no cache, a warning is printed and it re-computes.
 #
 # Environment variables (still supported):
 #   LAZYLLM_RUN_FULL_REVIEW=1       actually run the LLM review (otherwise just fetch PR info)
@@ -54,6 +57,9 @@ def _parse_args():
                         help='Keep cloned repo directory after review')
     parser.add_argument('--clear_checkpoint', action='store_true',
                         help='Clear checkpoint and start fresh')
+    parser.add_argument('--resume_from', default=None,
+                        choices=['clone', 'arch', 'spec', 'pr_summary', 'r1', 'r2', 'r3', 'final'],
+                        help='Resume from a specific stage (clone/arch/spec/pr_summary/r1/r2/r3/final)')
     return parser.parse_args()
 
 
@@ -106,6 +112,8 @@ def main():  # noqa C901
     if post_to_github:
         print('   Will post line-level comments to PR Files changed.')
     try:
+        from lazyllm.tools.git.review.checkpoint import ReviewStage
+        resume_from = ReviewStage(args.resume_from) if args.resume_from else None
         out = review(
             pr_number,
             repo=repo,
@@ -119,6 +127,7 @@ def main():  # noqa C901
             language=args.language,
             keep_clone=args.keep_clone,
             clear_checkpoint=args.clear_checkpoint,
+            resume_from=resume_from,
         )
         print('--- Review result ---')
         print(out.get('summary', out))

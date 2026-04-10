@@ -5,7 +5,7 @@ import shutil
 from typing import Any, Dict, Optional
 
 from ..client import Git
-from .checkpoint import _ReviewCheckpoint
+from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
 from .rounds import _run_four_rounds
 from .poster import _fetch_existing_pr_comments, _post_review_comments
@@ -32,6 +32,7 @@ def review(  # noqa: C901
     max_history_prs: int = 20,
     checkpoint_path: Optional[str] = None,
     clear_checkpoint: bool = False,
+    resume_from: Optional[ReviewStage] = None,
     language: str = 'cn',
     keep_clone: bool = False,
 ) -> Dict[str, Any]:
@@ -44,13 +45,15 @@ def review(  # noqa: C901
 
     pr_dir = _ReviewCheckpoint.pr_dir(pr_number, repo)
     ckpt_path = checkpoint_path or _ReviewCheckpoint.default_path(pr_number, repo)
-    ckpt = _ReviewCheckpoint(ckpt_path)
     if clear_checkpoint:
+        # clear_checkpoint takes priority over resume_from
+        ckpt = _ReviewCheckpoint(ckpt_path)
         ckpt.clear()
-        # also wipe the whole pr_dir so clone is re-fetched
         if os.path.isdir(pr_dir):
             shutil.rmtree(pr_dir, ignore_errors=True)
         ckpt = _ReviewCheckpoint(ckpt_path)
+    else:
+        ckpt = _ReviewCheckpoint(ckpt_path, resume_from=resume_from)
 
     prog_main = _Progress(f'Review PR #{pr_number} @ {repo}')
 
@@ -102,6 +105,7 @@ def review(  # noqa: C901
             language=language,
         )
         ckpt.save('pr_summary', pr_summary)
+        ckpt.mark_stage_done(ReviewStage.PR_SUMMARY)
     else:
         _Progress('Pre-round: summarizing PR changes').done('loaded from checkpoint')
 

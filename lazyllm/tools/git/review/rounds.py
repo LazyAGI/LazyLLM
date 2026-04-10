@@ -19,6 +19,7 @@ from .pre_analysis import (
     _build_scoped_agent_tools_with_cache,
     _lookup_relevant_rules,
 )
+from .checkpoint import ReviewStage
 from lazyllm.tools.agent import ReactAgent
 
 
@@ -166,6 +167,7 @@ def _round1_hunk_analysis(
     prog = _Progress('Round 1: hunk analysis', len(hunks))
     lock = threading.Lock()
     results_by_idx: Dict[int, List[Dict[str, Any]]] = {}
+    use_cache = ckpt.should_use_cache(ReviewStage.R1) if ckpt else True
 
     def _cache_key(path: str, new_start: int) -> str:
         safe = re.sub(r'[^a-zA-Z0-9_]', '_', path)
@@ -175,11 +177,14 @@ def _round1_hunk_analysis(
         path, new_start, new_count, content = hunk
         key = _cache_key(path, new_start)
         cached = ckpt.get(key) if ckpt else None
-        if cached is not None:
+        if cached is not None and use_cache:
             with lock:
                 results_by_idx[idx] = cached
                 prog.update(f'{path}:{new_start} (cached)')
             return
+        if cached is None and not use_cache:
+            # no cache for this hunk when resuming from R1 — warn once per file
+            lazyllm.LOG.warning(f'Round 1: no cache for {path}:{new_start}, re-computing')
         items = _analyze_single_hunk(llm, path, new_start, new_count, content,
                                      arch_snippet, spec_snippet, summary_snippet,
                                      clone_dir, language, symbol_index)
@@ -680,19 +685,24 @@ def _r2_process_file_chunk(
     shared_context: str, arch_doc: str, pr_summary: str,
     clone_dir: str, symbol_cache: Dict[str, Any], tools: List[Any],
     language: str, ckpt: Optional[Any], all_results: List[Dict[str, Any]],
+    use_cache: bool = True,
 ) -> None:
     safe_path = re.sub(r'[^a-zA-Z0-9_]', '_', path)
     # check if all chunks are already cached before running agent
     chunks = _split_file_diff_into_chunks(fdiff, _R2_DIFF_CHUNK)
     uncached_chunks = []
+    has_any_cache = False
     for hunk_range, diff_chunk in chunks:
         safe_range = re.sub(r'[^a-zA-Z0-9_]', '_', hunk_range)
         r2_key = f'r2_file_{safe_path}_{safe_range}'
         cached_items = ckpt.get(r2_key) if ckpt else None
-        if cached_items is not None:
+        if cached_items is not None and use_cache:
+            has_any_cache = True
             all_results.extend(cached_items)
             lazyllm.LOG.info(f'  [R2] {path} ({hunk_range}) loaded from cache ({len(cached_items)} issues)')
         else:
+            if cached_items is None and not use_cache and not has_any_cache:
+                lazyllm.LOG.warning(f'Round 2: no cache for {path} ({hunk_range}), re-computing')
             uncached_chunks.append((hunk_range, diff_chunk, r2_key))
 
     if not uncached_chunks:
@@ -768,6 +778,7 @@ def _round2_agent_review(
         _r2_process_file_chunk(
             llm, path, fdiff, r1_text, shared_context, arch_doc, pr_summary,
             clone_dir, symbol_cache, tools, language, ckpt, all_results,
+            use_cache=ckpt.should_use_cache(ReviewStage.R2) if ckpt else True,
         )
         prog.update(f'{path} ({len(r1_lines)} r1 issues)')
 
@@ -1107,22 +1118,32 @@ def _run_four_rounds(
         symbol_index=_get_symbol_index(arch_doc) if arch_doc else None,
         ckpt=ckpt,
     )
+    ckpt.mark_stage_done(ReviewStage.R1)
 
     r2 = _round2_agent_review(
         llm, r1, diff_text, arch_doc, pr_summary=pr_summary,
         clone_dir=clone_dir, language=language, ckpt=ckpt,
     )
+    ckpt.mark_stage_done(ReviewStage.R2)
 
+    use_r3_cache = ckpt.should_use_cache(ReviewStage.R3)
     r3 = ckpt.get('r3')
     if r3 is None:
+        if not use_r3_cache:
+            lazyllm.LOG.warning('Round 3: no cache found, re-computing')
         r3 = _round3_global_analysis(llm, r1 + r2, diff_text, review_spec, pr_summary=pr_summary, language=language)
         ckpt.save('r3', r3)
+        ckpt.mark_stage_done(ReviewStage.R3)
     else:
         _Progress('Round 3: global analysis').done(f'loaded from checkpoint ({len(r3)} issues)')
 
+    use_final_cache = ckpt.should_use_cache(ReviewStage.FINAL)
     final = ckpt.get('final')
     if final is None:
+        if not use_final_cache:
+            lazyllm.LOG.warning('Round 4: no cache found, re-computing')
         # tag each issue with its source round before merging
+
         def _tag(issues: List[Dict[str, Any]], src: str) -> List[Dict[str, Any]]:
             return [{**c, 'source': src} for c in issues]
         final = _round4_merge_and_deduplicate(
@@ -1130,6 +1151,7 @@ def _run_four_rounds(
             existing_comments=existing_comments, language=language,
         )
         ckpt.save('final', final)
+        ckpt.mark_stage_done(ReviewStage.FINAL)
     else:
         _Progress('Round 4: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')
     return final

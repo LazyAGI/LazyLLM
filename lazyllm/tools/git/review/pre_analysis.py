@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import lazyllm
 
 from ..base import LazyLLMGitBase
-from .checkpoint import _load_cache, _save_cache, _save_cache_multi
+from .checkpoint import _load_cache, _save_cache, _save_cache_multi, ReviewStage
 from .utils import _Progress, _safe_llm_call, _safe_llm_call_text
 
 # ---------------------------------------------------------------------------
@@ -1268,6 +1268,7 @@ def _run_arch_analysis(
     except Exception as e:
         raise RuntimeError(f'Failed to clone repo {clone_url} @ {branch}: {e}') from e
     ckpt.save('clone_dir', clone_dir)
+    ckpt.mark_stage_done(ReviewStage.CLONE)
     prog.update('cloned, analyzing...')
     try:
         arch_doc = analyze_repo_architecture(llm, clone_dir, arch_cache_path)
@@ -1276,6 +1277,7 @@ def _run_arch_analysis(
         shutil.rmtree(clone_dir, ignore_errors=True)
         raise
     ckpt.save('arch_doc', arch_doc)
+    ckpt.mark_stage_done(ReviewStage.ARCH)
     if arch_doc and arch_cache_path:
         lazyllm.LOG.success(f'Architecture doc saved to: {arch_cache_path}')
     prog.done('architecture doc ready')
@@ -1291,6 +1293,7 @@ def _run_spec_analysis(
         try:
             review_spec = analyze_historical_reviews(backend_inst, llm, review_spec_cache_path, max_history_prs)
             ckpt.save('review_spec', review_spec)
+            ckpt.mark_stage_done(ReviewStage.SPEC)
             if review_spec and review_spec_cache_path:
                 lazyllm.LOG.success(f'Review spec saved to: {review_spec_cache_path}')
         except Exception as e:
