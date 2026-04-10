@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import inspect
 import ast
 import copy
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 from .common import LOG
 
 
@@ -103,6 +103,24 @@ def _raise_hook_phase_errors(phase: str, errors):
     if not errors:
         return
     raise HookPhaseError(phase, errors)
+
+
+_builtin_hook_providers: list[Callable[[Any], list]] = []
+
+
+def register_builtin_hook_provider(provider: Callable[[Any], list]):
+    if provider not in _builtin_hook_providers:
+        _builtin_hook_providers.append(provider)
+    return provider
+
+
+def resolve_builtin_hooks(obj):
+    hooks = []
+    for provider in _builtin_hook_providers:
+        provided_hooks = provider(obj)
+        if provided_hooks:
+            hooks.extend(provided_hooks)
+    return hooks
 
 
 def register_hooks(obj, hooks):

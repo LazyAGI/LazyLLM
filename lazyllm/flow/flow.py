@@ -21,8 +21,7 @@ from typing import Union, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
-from ..hook import LazyLLMHook, prepare_hooks, register_hooks, run_hooks
-from ..tracing.hook import resolve_tracing_hooks
+from ..hook import LazyLLMHook, prepare_hooks, register_hooks, resolve_builtin_hooks, run_hooks
 from itertools import repeat
 
 
@@ -228,7 +227,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
         self._hooks = []
-        register_hooks(self, resolve_tracing_hooks(self))
+        register_hooks(self, resolve_builtin_hooks(self))
 
     def __call__(self, *args, **kw):
         hook_objs = prepare_hooks(self, self._hooks, *args, **kw)

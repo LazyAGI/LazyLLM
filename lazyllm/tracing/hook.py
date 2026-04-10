@@ -1,6 +1,6 @@
 from ..common import globals
 from ..configs import config
-from ..hook import LazyLLMHook
+from ..hook import LazyLLMHook, register_builtin_hook_provider
 from .configs import resolve_default_module_trace
 from .runtime import finish_span, set_span_error, set_span_output, start_span
 
@@ -51,6 +51,9 @@ def resolve_tracing_hooks(obj):
         ):
             return []
     return [LazyTracingHook]
+
+
+register_builtin_hook_provider(resolve_tracing_hooks)
 
 
 __all__ = [
