@@ -6,6 +6,12 @@ add_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.impo
 add_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools'))
 add_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools'))
 
+
+def _add_bilingual_docs(doc_map):
+    for obj_name, (zh_doc, en_doc) in doc_map.items():
+        add_chinese_doc(obj_name, zh_doc)
+        add_english_doc(obj_name, en_doc)
+
 add_english_doc('Document', '''\
 Initialize a document management module with optional embedding, storage, and user interface.
 
@@ -257,6 +263,307 @@ add_chinese_doc('DocServer.transfer', '''\
 请求体为 ``TransferRequest``。每个转移项都必须在目标知识库中提供唯一的 ``target_doc_id``。
 当前不支持跨算法 transfer。可选字段 ``target_filename`` 与 ``target_file_path`` 用于覆盖目标文档记录的文件名或文件路径。
 ''')
+
+_add_bilingual_docs({
+    'rag.doc_service.base.DocServiceError': (
+        'Doc service 使用的结构化业务异常。',
+        'Structured business exception used by doc_service.'
+    ),
+    'rag.doc_service.base.AddFileItem.validate_file_path': (
+        '校验单个文件项中的 ``file_path`` 字段。',
+        'Validate the ``file_path`` field of one file item.'
+    ),
+    'rag.doc_service.base.DocItemsRequest.validate_items': (
+        '校验文档 item 列表不能为空。',
+        'Validate that the document item list is not empty.'
+    ),
+    'rag.doc_service.base.TransferItem.normalize_source_fields': (
+        '将旧版 source 字段归一化到当前 transfer item schema。',
+        'Normalize legacy source fields into the current transfer-item schema.'
+    ),
+    'rag.doc_service.base.TransferRequest.validate_items': (
+        '校验 transfer 请求中的 item 列表及其基本约束。',
+        'Validate transfer request items and their basic constraints.'
+    ),
+    'rag.doc_service.base.MetadataPatchRequest.validate_items': (
+        '校验 metadata patch 请求中的 item 列表。',
+        'Validate metadata patch request items.'
+    ),
+    'rag.doc_service.base.KbDeleteBatchRequest.validate_kb_ids': (
+        '校验批量删除知识库请求中的 ``kb_ids``。',
+        'Validate ``kb_ids`` in a batch knowledge-base delete request.'
+    ),
+    'rag.doc_service.base.TaskBatchRequest.validate_task_ids': (
+        '校验批量任务查询请求中的 ``task_ids``。',
+        'Validate ``task_ids`` in a batch task query request.'
+    ),
+    'rag.doc_service.base.KbBatchQueryRequest.validate_kb_ids': (
+        '校验批量知识库查询请求中的 ``kb_ids``。',
+        'Validate ``kb_ids`` in a batch knowledge-base query request.'
+    ),
+    'rag.parsing_service.base.AddDocRequest.normalize_deprecated_fields': (
+        '将旧版 add-doc 字段归一化到当前请求格式。',
+        'Normalize deprecated add-doc fields into the current request format.'
+    ),
+    'rag.parsing_service.base.UpdateMetaRequest.normalize_deprecated_fields': (
+        '将旧版 update-meta 字段归一化到当前请求格式。',
+        'Normalize deprecated update-meta fields into the current request format.'
+    ),
+    'rag.parsing_service.base.DeleteDocRequest.normalize_legacy_fields': (
+        '将旧版 delete-doc 字段归一化到当前请求格式。',
+        'Normalize legacy delete-doc fields into the current request format.'
+    ),
+    'rag.parsing_service.server.DocumentProcessor.set_callback_url': (
+        '更新 parsing service 发送任务回调时使用的 callback URL。',
+        'Update the callback URL used by the parsing service for task callbacks.'
+    ),
+    'rag.transform.base.NodeTransform.transform': (
+        '将单个文档节点转换为零个或多个输出节点。',
+        'Transform one document node into zero or more output nodes.'
+    ),
+    'rag.doc_service.doc_manager.DocManager': (
+        'Doc service 的核心业务实现，负责文档、任务、知识库以及 parser 协调。',
+        'Core doc_service implementation for document, task, knowledge-base, and parser coordination.'
+    ),
+    'rag.doc_service.parser_client.ParserClient': (
+        '用于访问 parsing service HTTP 接口的轻量客户端。',
+        'Lightweight client for parsing-service HTTP endpoints.'
+    ),
+})
+
+_add_bilingual_docs({
+    f'rag.doc_service.doc_manager.DocManager.{name}': docs
+    for name, docs in {
+        'set_callback_url': (
+            '设置运行时任务回调 URL。',
+            'Set the runtime task callback URL.'
+        ),
+        'run_idempotent': (
+            '在幂等键保护下执行一次 doc service 变更操作。',
+            'Execute one doc_service mutation under idempotency-key protection.'
+        ),
+        'upload': (
+            '接收上传文件并为其创建异步解析任务。',
+            'Accept uploaded files and create asynchronous parse tasks for them.'
+        ),
+        'add_files': (
+            '登记服务端可见文件并为其创建异步解析任务。',
+            'Register server-visible files and create asynchronous parse tasks for them.'
+        ),
+        'reparse': (
+            '为已有文档重新入队解析任务。',
+            'Enqueue new parse tasks for existing documents.'
+        ),
+        'delete': (
+            '从知识库中删除文档并创建异步删除任务。',
+            'Delete documents from a knowledge base and create asynchronous delete tasks.'
+        ),
+        'transfer': (
+            '在同一算法下跨知识库转移文档。',
+            'Transfer documents between knowledge bases under the same algorithm.'
+        ),
+        'patch_metadata': (
+            '对已有文档执行局部 metadata 更新。',
+            'Apply partial metadata updates to existing documents.'
+        ),
+        'on_task_callback': (
+            '处理 parser service 回调的任务状态更新。',
+            'Handle task-state callbacks sent by the parsing service.'
+        ),
+        'list_docs': (
+            '分页列出知识库中的文档。',
+            'List documents in a knowledge base with pagination.'
+        ),
+        'get_doc_detail': (
+            '查询单个文档的详细信息。',
+            'Return detailed information for one document.'
+        ),
+        'list_tasks': (
+            '按状态分页列出任务记录。',
+            'List task records by status with pagination.'
+        ),
+        'get_task': (
+            '按任务 ID 获取单个任务记录。',
+            'Get one task record by task ID.'
+        ),
+        'get_tasks_batch': (
+            '批量获取多个任务记录。',
+            'Fetch multiple task records in one batch.'
+        ),
+        'cancel_task': (
+            '取消一个尚未执行完成的任务。',
+            'Cancel a task that has not finished executing.'
+        ),
+        'list_algorithms': (
+            '列出 parsing service 提供的算法。',
+            'List algorithms exposed by the parsing service.'
+        ),
+        'get_algo_groups': (
+            '获取指定算法的节点组信息。',
+            'Get node-group information for one algorithm.'
+        ),
+        'list_algorithms_compat': (
+            '以兼容旧客户端的格式返回算法列表。',
+            'Return the algorithm list in a legacy-compatible format.'
+        ),
+        'get_algorithm_info': (
+            '获取指定算法的详细信息。',
+            'Get detailed information for one algorithm.'
+        ),
+        'list_chunks': (
+            '分页查看指定文档的解析 chunk。',
+            'List parsed chunks for one document with pagination.'
+        ),
+        'health': (
+            '执行 doc service 健康检查。',
+            'Run a health check for doc_service.'
+        ),
+        'list_kbs': (
+            '分页列出知识库。',
+            'List knowledge bases with pagination.'
+        ),
+        'get_kb': (
+            '获取单个知识库的信息。',
+            'Get information for one knowledge base.'
+        ),
+        'batch_get_kbs': (
+            '批量获取多个知识库的信息。',
+            'Fetch information for multiple knowledge bases in one batch.'
+        ),
+        'create_kb': (
+            '创建新的知识库。',
+            'Create a new knowledge base.'
+        ),
+        'update_kb': (
+            '更新已有知识库的元信息。',
+            'Update metadata of an existing knowledge base.'
+        ),
+        'delete_kb': (
+            '删除一个知识库。',
+            'Delete one knowledge base.'
+        ),
+        'delete_kbs': (
+            '批量删除多个知识库。',
+            'Delete multiple knowledge bases in one batch.'
+        ),
+    }.items()
+})
+
+_add_bilingual_docs({
+    f'rag.doc_service.parser_client.ParserClient.{name}': docs
+    for name, docs in {
+        'health': (
+            '检查 parsing service 是否可用。',
+            'Check whether the parsing service is healthy.'
+        ),
+        'add_doc': (
+            '向 parsing service 提交新增文档任务。',
+            'Submit an add-document task to the parsing service.'
+        ),
+        'update_meta': (
+            '向 parsing service 提交 metadata 更新任务。',
+            'Submit a metadata-update task to the parsing service.'
+        ),
+        'delete_doc': (
+            '向 parsing service 提交删除文档任务。',
+            'Submit a delete-document task to the parsing service.'
+        ),
+        'cancel_task': (
+            '请求 parsing service 取消一个任务。',
+            'Ask the parsing service to cancel a task.'
+        ),
+        'list_algorithms': (
+            '获取 parsing service 当前暴露的算法列表。',
+            'Get the list of algorithms currently exposed by the parsing service.'
+        ),
+        'get_algorithm_groups': (
+            '获取指定算法的节点组信息。',
+            'Get node-group information for one algorithm.'
+        ),
+        'list_doc_chunks': (
+            '获取指定文档在某个节点组下的 chunk 列表。',
+            'Get parsed chunks for one document under a specific node group.'
+        ),
+    }.items()
+})
+
+_add_bilingual_docs({
+    f'rag.doc_service.doc_server.DocServer.{name}': docs
+    for name, docs in {
+        'build_openapi_app': (
+            '构建用于导出 OpenAPI 的 FastAPI 应用对象。',
+            'Build the FastAPI application used for OpenAPI export.'
+        ),
+        'build_openapi_schema': (
+            '生成 doc service 的 OpenAPI schema。',
+            'Generate the OpenAPI schema for doc_service.'
+        ),
+        'export_openapi': (
+            '将 doc service 的 OpenAPI schema 导出到文件。',
+            'Export the doc_service OpenAPI schema to a file.'
+        ),
+        'list_docs': (
+            '分页列出知识库中的文档。',
+            'List documents in a knowledge base with pagination.'
+        ),
+        'get_doc': (
+            '获取单个文档的详细信息。',
+            'Get detailed information for one document.'
+        ),
+        'list_tasks': (
+            '分页列出任务记录。',
+            'List task records with pagination.'
+        ),
+        'get_tasks_batch': (
+            '批量获取多个任务记录。',
+            'Fetch multiple task records in one batch.'
+        ),
+        'get_task_info': (
+            '获取单个任务记录。',
+            'Get one task record.'
+        ),
+        'set_runtime_callback_url': (
+            '更新运行时任务回调 URL。',
+            'Update the runtime task callback URL.'
+        ),
+        'list_kbs': (
+            '分页列出知识库。',
+            'List knowledge bases with pagination.'
+        ),
+        'get_kb': (
+            '获取单个知识库的信息。',
+            'Get information for one knowledge base.'
+        ),
+        'list_algorithms': (
+            '列出可用算法。',
+            'List available algorithms.'
+        ),
+        'get_algorithm_info': (
+            '获取指定算法的详细信息。',
+            'Get detailed information for one algorithm.'
+        ),
+        'create_kb': (
+            '创建新的知识库。',
+            'Create a new knowledge base.'
+        ),
+        'update_kb': (
+            '更新知识库的元信息。',
+            'Update knowledge-base metadata.'
+        ),
+        'batch_get_kbs': (
+            '批量获取多个知识库的信息。',
+            'Fetch information for multiple knowledge bases in one batch.'
+        ),
+        'delete_kb': (
+            '删除一个知识库。',
+            'Delete one knowledge base.'
+        ),
+        'delete_kbs': (
+            '批量删除多个知识库。',
+            'Delete multiple knowledge bases in one batch.'
+        ),
+    }.items()
+})
 
 add_example('Document', '''\
 >>> import lazyllm
@@ -8930,14 +9237,6 @@ Add a local file reader.
 Args:
     pattern (str): File pattern.
     func (Optional[Callable]): Reader function.
-''')
-
-add_chinese_doc('rag.doc_impl.DocImpl.worker', '''\
-后台工作线程，处理文档的解析、删除、添加等操作。
-''')
-
-add_english_doc('rag.doc_impl.DocImpl.worker', '''\
-Background worker thread for handling document parsing, deletion, addition, and other operations.
 ''')
 
 add_chinese_doc('rag.doc_impl.DocImpl.activate_group', '''\
