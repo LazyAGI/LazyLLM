@@ -17,6 +17,7 @@ from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModul
                      ServerModule, TrialModule, register as module_register,
                      OnlineModule, OnlineChatModule, OnlineEmbeddingModule, AutoModel, OnlineMultiModalModule)
 from .hook import LazyLLMHook, LazyLLMFuncHook
+from .tracing import TracingSetupError, get_trace_context, set_trace_context
 from .prompt_templates import ActorPrompt, DataPrompt
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -88,16 +89,11 @@ __all__ = [
     # hook
     'LazyLLMHook',
     'LazyLLMFuncHook',
-    'LazyTracingHook',
 
     # tracing
     'TracingSetupError',
     'get_trace_context',
     'set_trace_context',
-    'enable_trace',
-    'disable_trace',
-    'TracingBackend',
-    'LangfuseBackend',
 
     # tools
     'Document',
