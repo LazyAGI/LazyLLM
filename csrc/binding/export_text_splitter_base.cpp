@@ -86,20 +86,5 @@ void exportTextSpliterBase(py::module& m) {
         .def("_split", &TextSplitterBaseCPPImpl::split_recursive_impl, py::arg("text"), py::arg("chunk_size"))
         .def("_merge", &TextSplitterBaseCPPImpl::merge_chunks_impl, py::arg("splits"), py::arg("chunk_size"));
 
-    cls.attr("__proxy_methods__") = py::make_tuple("split_text", "_split", "_merge");
-
-    py::dict method_signatures;
-    method_signatures["split_text"] = py::make_tuple("text", "metadata_size");
-    method_signatures["_split"] = py::make_tuple("text", "chunk_size");
-    method_signatures["_merge"] = py::make_tuple("splits", "chunk_size");
-    cls.attr("__proxy_method_signatures__") = method_signatures;
-
-    cls.attr("__proxy_attrs__") = py::make_tuple("_chunk_size", "_overlap");
-
-    py::module_ builtins = py::module_::import("builtins");
-    py::dict init_param_types;
-    init_param_types["chunk_size"] = builtins.attr("int");
-    init_param_types["overlap"] = builtins.attr("int");
-    init_param_types["encoding_name"] = builtins.attr("str");
-    cls.attr("__init_param_types__") = init_param_types;
+    (void)cls;
 }

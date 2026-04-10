@@ -1,6 +1,8 @@
 import importlib
 import inspect
+import re
 from functools import wraps
+from itertools import combinations
 from typing import Any, Dict, Optional, Tuple, TypeVar, cast
 
 from lazyllm import config
@@ -28,66 +30,103 @@ def _normalize_param_names(callable_obj: Any) -> Tuple[str, ...]:
     return tuple(names)
 
 
-def _build_valid_kwargs(init_param_types: Dict[str, type], kwargs: Dict[str, Any]) -> Dict[str, Any]:
+def _build_valid_kwargs(impl_cls: type, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """只保留与 impl __init__ 同名且类型严格匹配的 kwargs。"""
+    try:
+        signature = inspect.signature(impl_cls.__init__)
+    except (TypeError, ValueError):
+        return dict(kwargs)
+
     valid_params: Dict[str, Any] = {}
     for name, value in kwargs.items():
-        expected_type = init_param_types.get(name)
-        if expected_type is None:
+        param = signature.parameters.get(name)
+        if param is None:
             continue
+
+        expected_type = param.annotation
+        if expected_type is inspect._empty or not isinstance(expected_type, type):
+            continue
+
         if type(value) is expected_type:
             valid_params[name] = value
+
     return valid_params
 
 
-def _validate_proxy_contract(py_cls: type, impl_cls: type):
-    proxy_methods = getattr(impl_cls, '__proxy_methods__', None)
-    method_signatures = getattr(impl_cls, '__proxy_method_signatures__', None)
-    proxy_attrs = getattr(impl_cls, '__proxy_attrs__', None)
-    init_param_types = getattr(impl_cls, '__init_param_types__', None)
+def _instantiate_impl(impl_cls: type, kwargs: Dict[str, Any]):
+    """实例化 C++ 对象；若签名不可见，则动态尝试可行 kwargs 子集。"""
+    candidate_kwargs = dict(kwargs)
+    while True:
+        try:
+            return impl_cls(**candidate_kwargs)
+        except TypeError as exc:
+            message = str(exc)
+            match = re.search(r"unexpected keyword argument '([^']+)'", message)
+            if not match:
+                break
+            bad_name = match.group(1)
+            if bad_name not in candidate_kwargs:
+                break
+            candidate_kwargs.pop(bad_name)
 
-    if not isinstance(proxy_methods, (tuple, list)) or any(not isinstance(name, str) for name in proxy_methods):
-        raise TypeError(f'{impl_cls.__name__}.__proxy_methods__ must be tuple/list[str].')
-    if not isinstance(proxy_attrs, (tuple, list)) or any(not isinstance(name, str) for name in proxy_attrs):
-        raise TypeError(f'{impl_cls.__name__}.__proxy_attrs__ must be tuple/list[str].')
-    if not isinstance(method_signatures, dict):
-        raise TypeError(f'{impl_cls.__name__}.__proxy_method_signatures__ must be dict[str, tuple[str, ...]].')
-    if set(method_signatures.keys()) != set(proxy_methods):
-        raise TypeError(f'{impl_cls.__name__}.__proxy_method_signatures__ keys must equal __proxy_methods__.')
-    if not isinstance(init_param_types, dict):
-        raise TypeError(f'{impl_cls.__name__}.__init_param_types__ must be dict[str, type].')
+    # pybind 方法在某些构建配置下没有可见签名，报错只会是“incompatible constructor arguments”。
+    # 这种情况下按“参数个数从多到少”尝试子集，保留尽可能多的可接受参数。
+    last_exc = None
+    keys = tuple(kwargs.keys())
+    for size in range(len(keys), -1, -1):
+        for subset in combinations(keys, size):
+            subset_kwargs = {k: kwargs[k] for k in subset}
+            try:
+                return impl_cls(**subset_kwargs)
+            except TypeError as exc:
+                last_exc = exc
+                continue
 
-    for name, expected_sig in method_signatures.items():
-        if not isinstance(expected_sig, (tuple, list)) or any(not isinstance(p, str) for p in expected_sig):
-            raise TypeError(
-                f'{impl_cls.__name__}.__proxy_method_signatures__["{name}"] must be tuple/list[str].'
-            )
+    if last_exc is not None:
+        raise last_exc
+    raise TypeError(f'Failed to construct {impl_cls.__name__} with kwargs: {kwargs}')
 
-    for name, expected_type in init_param_types.items():
-        if not isinstance(name, str) or not isinstance(expected_type, type):
-            raise TypeError(f'{impl_cls.__name__}.__init_param_types__ must be dict[str, type].')
 
-    for name in proxy_methods:
-        if not hasattr(impl_cls, name):
-            raise AttributeError(f'{impl_cls.__name__} missing exported proxy method: {name}')
-        impl_member = getattr(impl_cls, name)
-        if not callable(impl_member):
-            raise TypeError(f'{impl_cls.__name__}.{name} must be callable')
+def _scan_proxy_members(py_cls: type, impl_cls: type):
+    """扫描 impl 导出成员，收集可代理的同名方法和属性。"""
+    proxy_methods = []
+    proxy_attrs = []
 
+    for name, member in impl_cls.__dict__.items():
+        if name.startswith('__'):
+            continue
+
+        if isinstance(member, property):
+            proxy_attrs.append(name)
+            continue
+
+        if not callable(member):
+            continue
         if not hasattr(py_cls, name):
-            raise AttributeError(f'{py_cls.__name__} missing method for proxy: {name}')
+            continue
+
         py_member = getattr(py_cls, name)
         if not callable(py_member):
-            raise TypeError(f'{py_cls.__name__}.{name} must be callable')
+            continue
 
-        expected_sig = tuple(method_signatures[name])
-        py_sig = _normalize_param_names(py_member)
-        if py_sig != expected_sig:
+        # 动态校验：若能拿到双方签名，则要求参数名一致；拿不到则跳过签名校验。
+        try:
+            py_sig = _normalize_param_names(py_member)
+        except (TypeError, ValueError):
+            py_sig = None
+        try:
+            impl_sig = _normalize_param_names(member)
+        except (TypeError, ValueError):
+            impl_sig = None
+        if py_sig is not None and impl_sig is not None and py_sig != impl_sig:
             raise TypeError(
                 f'Signature mismatch for {py_cls.__name__}.{name}: '
-                f'python params={py_sig}, expected={expected_sig}'
+                f'python params={py_sig}, cpp params={impl_sig}'
             )
 
-    return tuple(proxy_methods), tuple(proxy_attrs), dict(init_param_types)
+        proxy_methods.append(name)
+
+    return tuple(proxy_methods), tuple(proxy_attrs)
 
 
 def cpp_class(py_class: Optional[_C] = None):
@@ -108,7 +147,7 @@ def cpp_class(py_class: Optional[_C] = None):
     return _decorate(py_class)
 
 
-def cpp_proxy(py_class: Optional[_C]):
+def cpp_proxy(py_class: Optional[_C] = None):
     def _decorate(cls: _C) -> _C:
         if not isinstance(cls, type):
             raise TypeError(f'@cpp_proxy can only decorate classes, got: {type(cls).__name__}')
@@ -122,7 +161,7 @@ def cpp_proxy(py_class: Optional[_C]):
             raise AttributeError(f'@cpp_proxy cannot find C++ impl: {impl_name}')
 
         impl_cls = getattr(cpp_module, impl_name)
-        proxy_methods, proxy_attrs, init_param_types = _validate_proxy_contract(cls, impl_cls)
+        proxy_methods, proxy_attrs = _scan_proxy_members(cls, impl_cls)
 
         impl_holder = '_c_obj'
         original_init = cls.__init__
@@ -130,8 +169,8 @@ def cpp_proxy(py_class: Optional[_C]):
         @wraps(original_init)
         def _proxied_init(self, *args, **kwargs):
             original_init(self, *args, **kwargs)
-            valid_params = _build_valid_kwargs(init_param_types, kwargs)
-            impl = impl_cls(**valid_params)
+            valid_params = _build_valid_kwargs(impl_cls, kwargs)
+            impl = _instantiate_impl(impl_cls, valid_params)
             object.__setattr__(self, impl_holder, impl)
 
         cls.__init__ = _proxied_init

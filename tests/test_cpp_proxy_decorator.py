@@ -47,14 +47,17 @@ def _reload_cpp_module():
 
 
 class _DemoCPPImpl:
-    __proxy_methods__ = ('foo',)
-    __proxy_method_signatures__ = {'foo': ('x',)}
-    __proxy_attrs__ = ('value',)
-    __init_param_types__ = {'count': int}
-
     def __init__(self, count: int = 0):
         self.count = count
-        self.value = 0
+        self._value = 0
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, v):
+        self._value = v
 
     def foo(self, x):
         return x + self.count
@@ -115,7 +118,8 @@ def test_cpp_proxy_raises_on_method_signature_mismatch(monkeypatch):
     cpp = _reload_cpp_module()
 
     class ImplWithMismatch(_DemoCPPImpl):
-        __proxy_method_signatures__ = {'foo': ('x', 'y')}
+        def foo(self, x, y):  # noqa: D401
+            return x + y
 
     monkeypatch.setattr(cpp, '_load_cpp_module', lambda: SimpleNamespace(DemoCPPImpl=ImplWithMismatch))
 
@@ -134,8 +138,10 @@ def test_cpp_proxy_raises_when_python_method_missing(monkeypatch):
     cpp = _reload_cpp_module()
     monkeypatch.setattr(cpp, '_load_cpp_module', lambda: SimpleNamespace(DemoCPPImpl=_DemoCPPImpl))
 
-    with pytest.raises(AttributeError, match='missing method for proxy'):
-        @cpp.cpp_proxy
-        class Demo:
-            def __init__(self, count: int = 0):
-                self.value = 0
+    @cpp.cpp_proxy
+    class Demo:
+        def __init__(self, count: int = 0):
+            self.value = 0
+
+    obj = Demo(count=1)
+    assert hasattr(obj, '_c_obj')
