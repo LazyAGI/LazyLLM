@@ -25,7 +25,7 @@ class LazyLLMHook(ABC):
     def on_error(self, exc):
         return None
 
-    def report(self):  # This is not an abstract method, but it is required to be implemented in subclasses.
+    def finalize(self):
         raise NotImplementedError
 
 
@@ -152,15 +152,15 @@ def prepare_hooks(obj, hook_types, *args, **kwargs):
             hook_obj.pre_hook(*args, **kwargs)
         except Exception as e:
             try:
-                hook_obj.report()
-            except Exception as report_exc:
+                hook_obj.finalize()
+            except Exception as finalize_exc:
                 if _hook_error_mode(hook_obj) == 'raise':
-                    raise report_exc
-                LOG.warning(f'Hook `{type(hook_obj).__name__}` report failed and will be skipped: {report_exc}')
+                    raise finalize_exc
+                LOG.warning(f'Hook `{type(hook_obj).__name__}` finalize failed and will be skipped: {finalize_exc}')
             if _hook_error_mode(hook_obj) == 'raise':
                 for active_hook in hook_objs:
                     try:
-                        active_hook.report()
+                        active_hook.finalize()
                     except Exception:
                         pass
                 raise
@@ -171,7 +171,7 @@ def prepare_hooks(obj, hook_types, *args, **kwargs):
 
 
 def run_hooks(hook_objs, phase: str, *phase_args):
-    if phase not in ('post_hook', 'on_error', 'report'):
+    if phase not in ('post_hook', 'on_error', 'finalize'):
         raise ValueError(f'Invalid hook phase: {phase}')
     strict_errors = []
     ordered_hooks = hook_objs[::-1]

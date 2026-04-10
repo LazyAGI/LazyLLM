@@ -30,7 +30,7 @@ class LazyTracingHook(LazyLLMHook):
             return
         set_span_error(self._span_handle, exc)
 
-    def report(self):
+    def finalize(self):
         if self._span_handle is None:
             return
         finish_span(self._span_handle)

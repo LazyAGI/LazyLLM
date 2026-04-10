@@ -359,9 +359,9 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
             return r
         finally:
             try:
-                run_hooks(hook_objs, 'report')
+                run_hooks(hook_objs, 'finalize')
             except Exception:
-                LOG.warning('Module report hook failed', exc_info=True)
+                LOG.warning('Module finalize hook failed', exc_info=True)
 
     def _call_impl(self, *args, **kw):
         if self._use_cache and 'R' in lazyllm.config['cache_mode']:

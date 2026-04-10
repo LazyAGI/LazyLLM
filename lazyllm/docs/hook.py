@@ -104,23 +104,30 @@ Args:
     exc: The exception raised by the monitored function.
 ''')
 
-add_chinese_doc('LazyLLMHook.report', '''\
-生成钩子的执行报告。
+add_chinese_doc('LazyLLMHook.finalize', '''\
+执行 hook 生命周期的最终收尾逻辑。
 
-这是一个抽象方法，需要在子类中实现。
+该方法会在 hook 生命周期结束时调用，适合执行资源释放、收尾处理或最终上报。
+
+这是推荐使用的最终阶段接口。为兼容旧实现，``report`` 仍然可用，并会被视为
+``finalize`` 的历史别名。
 ''')
 
-add_english_doc('LazyLLMHook.report', '''\
-Generate a report of the hook execution.
+add_english_doc('LazyLLMHook.finalize', '''\
+Run the final cleanup logic of the hook lifecycle.
 
-This is an abstract method and must be implemented in subclasses.
+This method is called at the end of the hook lifecycle and is intended for cleanup,
+resource release, or final reporting.
+
+This is the preferred final-phase interface. For backward compatibility, ``report`` is
+still supported and treated as a legacy alias of ``finalize``.
 ''')
 
 add_chinese_doc('HookPhaseError', '''\
 Hook 阶段错误，当一个 hook 阶段中有一个或多个 strict 模式的 hook 执行失败时抛出。
 
 Args:
-    phase (str): 发生错误的 hook 阶段名称（如 ``'post_hook'``、``'on_error'``、``'report'``）。
+    phase (str): 发生错误的 hook 阶段名称（如 ``'post_hook'``、``'on_error'``、``'finalize'``）。
     errors: 包含 ``(hook_obj, exception)`` 元组的序列，记录所有失败的 hook 及其异常。
 ''')
 
@@ -128,8 +135,56 @@ add_english_doc('HookPhaseError', '''\
 Raised when one or more strict-mode hooks fail during a hook phase.
 
 Args:
-    phase (str): The name of the hook phase where the error(s) occurred (e.g. ``'post_hook'``, ``'on_error'``, ``'report'``).
+    phase (str): The name of the hook phase where the error(s) occurred (e.g. ``'post_hook'``, ``'on_error'``, ``'finalize'``).
     errors: A sequence of ``(hook_obj, exception)`` tuples recording each failed hook and its exception.
+''')
+
+add_chinese_doc('register_builtin_hook_provider', '''\
+注册一个内建 hook provider。
+
+provider 接收一个待初始化的对象（如 flow 或 module），并返回应自动注册到该对象上的
+hook 类型或 hook 实例列表。该机制用于让 tracing 等子系统在不侵入通用 hook 框架的前提下，
+动态参与默认 hook 注册。
+
+Args:
+    provider: 一个可调用对象，签名形如 ``provider(obj) -> list``。
+''')
+
+add_english_doc('register_builtin_hook_provider', '''\
+Register a built-in hook provider.
+
+A provider receives the object being initialized (for example, a flow or module) and
+returns a list of hook types or hook instances that should be automatically registered
+on that object. This allows subsystems such as tracing to participate in default hook
+registration without coupling the generic hook framework to a specific feature.
+
+Args:
+    provider: A callable with a signature like ``provider(obj) -> list``.
+''')
+
+add_chinese_doc('resolve_builtin_hooks', '''\
+解析并收集当前对象应自动注册的内建 hooks。
+
+该函数会依次调用所有已注册的内建 hook provider，并合并它们返回的 hook 列表。
+
+Args:
+    obj: 当前待初始化的对象（如 flow 或 module）。
+
+Returns:
+    list: 需要注册到该对象上的 hook 类型或 hook 实例列表。
+''')
+
+add_english_doc('resolve_builtin_hooks', '''\
+Resolve and collect built-in hooks that should be automatically registered on the current object.
+
+This function calls each registered built-in hook provider in order and merges the hook
+lists they return.
+
+Args:
+    obj: The object currently being initialized (for example, a flow or module).
+
+Returns:
+    list: A list of hook types or hook instances to register on that object.
 ''')
 
 utils.add_chinese_doc('LazyTracingHook', '''\
@@ -210,15 +265,16 @@ Args:
     exc: The exception raised during execution.
 ''', module=lazyllm.tracing)
 
-utils.add_chinese_doc('LazyTracingHook.report', '''\
+utils.add_chinese_doc('LazyTracingHook.finalize', '''\
 结束并上报当前 tracing span。
 
 该方法会在 hook 生命周期结束时调用，用于关闭当前 span 并完成本次 tracing 记录。
 ''', module=lazyllm.tracing)
 
-utils.add_english_doc('LazyTracingHook.report', '''\
-Finish and report the current tracing span.
+utils.add_english_doc('LazyTracingHook.finalize', '''\
+Finalize the current tracing span.
 
 This method is called at the end of the hook lifecycle to close the current span and
 complete the tracing record for this execution.
 ''', module=lazyllm.tracing)
+

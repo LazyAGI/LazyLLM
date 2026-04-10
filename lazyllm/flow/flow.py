@@ -250,9 +250,9 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             return r
         finally:
             try:
-                run_hooks(hook_objs, 'report')
+                run_hooks(hook_objs, 'finalize')
             except Exception:
-                LOG.warning('Flow report hook failed', exc_info=True)
+                LOG.warning('Flow finalize hook failed', exc_info=True)
 
     def register_hook(self, hook_type: LazyLLMHook):
         if not (isinstance(hook_type, LazyLLMHook)

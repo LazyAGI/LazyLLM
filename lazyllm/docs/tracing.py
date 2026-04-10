@@ -3,6 +3,38 @@ from . import utils
 import functools
 import lazyllm
 
+# ============= Tracing helpers
+
+add_chinese_doc_trace = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing)
+add_english_doc_trace = functools.partial(utils.add_english_doc, module=lazyllm.tracing)
+
+add_chinese_doc_trace('resolve_tracing_hooks', '''\
+解析并返回当前对象应自动注册的 tracing hooks。
+
+该函数会根据全局 trace 配置、采样标志以及 module 默认 trace 策略，决定是否为当前
+flow 或 module 注册 ``LazyTracingHook``。
+
+Args:
+    obj: 当前待初始化的 flow 或 module 对象。
+
+Returns:
+    list: 应自动注册到该对象上的 tracing hook 列表。
+''')
+
+add_english_doc_trace('resolve_tracing_hooks', '''\
+Resolve and return tracing hooks that should be automatically registered on the current object.
+
+This function decides whether to register ``LazyTracingHook`` for the current flow or
+module according to the global trace configuration, sampling flag, and default module
+trace policy.
+
+Args:
+    obj: The flow or module object currently being initialized.
+
+Returns:
+    list: A list of tracing hooks that should be automatically registered on that object.
+''')
+
 # ============= TracingBackend
 
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.backends.base)
