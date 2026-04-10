@@ -15,6 +15,7 @@ from .configs import (
     set_default_module_trace_config,
     resolve_default_module_trace,
 )
+from .hook import LazyTracingHook, resolve_tracing_hooks
 from .backends import get_tracing_backend
 from .backends.base import TracingBackend
 
@@ -28,6 +29,8 @@ config.add('trace_content_enabled', bool, True, 'TRACE_CONTENT_ENABLED',
 
 __all__ = [
     'TracingBackend',
+    'LazyTracingHook',
+    'resolve_tracing_hooks',
     'get_tracing_backend',
     'TracingSetupError',
     'start_span',

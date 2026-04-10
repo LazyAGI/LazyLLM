@@ -10,7 +10,8 @@ from ..components.formatter.formatterbase import file_content_hash, transform_pa
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
-from ..hook import LazyLLMHook, LazyLLMFuncHook, prepare_hooks, register_hooks, resolve_default_hooks, run_hooks
+from ..hook import LazyLLMHook, LazyLLMFuncHook, prepare_hooks, register_hooks, run_hooks
+from ..tracing.hook import resolve_tracing_hooks
 from lazyllm import FileSystemQueue, LOG
 from contextlib import contextmanager
 from typing import Optional, Union, Dict, List, Callable
@@ -292,7 +293,7 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
         self.eval_result = None
         self._use_cache: Union[bool, str] = False
         self._hooks = []
-        register_hooks(self, resolve_default_hooks(self))
+        register_hooks(self, resolve_tracing_hooks(self))
 
     def __setattr__(self, name: str, value):
         if isinstance(value, ModuleBase):
