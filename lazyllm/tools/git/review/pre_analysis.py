@@ -21,8 +21,16 @@ _SKIP_EXTS = {'.pyc', '.pyo', '.so', '.egg', '.egg-info'}
 
 # arch analysis budgets (chars)
 _ARCH_SNAPSHOT_BUDGET = 6000
-_ARCH_OUTLINE_MAX_SECTIONS = 7
-_ARCH_PREV_SUMMARY_BUDGET = 600
+_ARCH_OUTLINE_MAX_SECTIONS = 12
+_ARCH_OUTLINE_MAX_SECTIONS_WITH_AGENT = 9
+_ARCH_PREV_SUMMARY_BUDGET = 1500
+
+# agent instruction files to scan (in priority order)
+_AGENT_INSTRUCTION_FILES = [
+    'AGENTS.md', 'AGENTS.override.md', 'CLAUDE.md',
+    'GEMINI.md', '.cursorrules', 'CONTRIBUTING.md',
+]
+_AGENT_INSTRUCTIONS_MAX_CHARS = 8000
 
 # bot user filter for review spec
 _BOT_USER_PATTERNS = re.compile(
@@ -31,6 +39,17 @@ _BOT_USER_PATTERNS = re.compile(
 
 _LARGE_FILE_THRESHOLD = 600
 _CONTEXT_LINES = 50
+
+
+def _read_agent_instructions(clone_dir: str) -> str:
+    parts = []
+    for fname in _AGENT_INSTRUCTION_FILES:
+        fpath = os.path.join(clone_dir, fname)
+        content = _read_file_head(fpath, _AGENT_INSTRUCTIONS_MAX_CHARS)
+        if content:
+            parts.append(f'### {fname}\n{content}')
+    combined = '\n\n'.join(parts)
+    return combined[:_AGENT_INSTRUCTIONS_MAX_CHARS]
 
 
 def _is_complete_clone(clone_dir: str) -> bool:
@@ -44,12 +63,45 @@ def _is_complete_clone(clone_dir: str) -> bool:
         return False
 
 
+def _try_pull_if_outdated(clone_dir: str, branch: str) -> bool:
+    '''Fetch remote and fast-forward if the local HEAD is behind. Returns True if updated.'''
+    try:
+        fetch = subprocess.run(
+            ['git', '-C', clone_dir, 'fetch', '--depth', '1', 'origin', branch],
+            capture_output=True, text=True, timeout=60,
+        )
+        if fetch.returncode != 0:
+            lazyllm.LOG.warning(f'git fetch failed: {fetch.stderr.strip()}')
+            return False
+        local = subprocess.run(
+            ['git', '-C', clone_dir, 'rev-parse', 'HEAD'],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        remote = subprocess.run(
+            ['git', '-C', clone_dir, 'rev-parse', 'FETCH_HEAD'],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        if local == remote:
+            lazyllm.LOG.info(f'Clone is up-to-date at {local[:8]}')
+            return False
+        subprocess.run(
+            ['git', '-C', clone_dir, 'reset', '--hard', 'FETCH_HEAD'],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        lazyllm.LOG.info(f'Clone updated: {local[:8]} → {remote[:8]}')
+        return True
+    except Exception as e:
+        lazyllm.LOG.warning(f'Failed to pull latest changes: {e}')
+        return False
+
+
 def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None) -> Tuple[str, str]:
     import shutil
     clone_dir = work_dir or tempfile.mkdtemp(prefix='lazyllm_review_')
     if os.path.isdir(clone_dir):
         if _is_complete_clone(clone_dir):
-            lazyllm.LOG.info(f'Reusing existing clone at {clone_dir}')
+            lazyllm.LOG.info(f'Reusing existing clone at {clone_dir}, checking for updates...')
+            _try_pull_if_outdated(clone_dir, branch)
         else:
             # incomplete or broken clone — wipe and retry
             shutil.rmtree(clone_dir, ignore_errors=True)
@@ -313,6 +365,17 @@ def _collect_structured_snapshot(clone_dir: str) -> str:  # noqa: C901
             parts.append(f'## {rel}\n{snippet}')
             budget -= len(parts[-1])
 
+    # 6. agent instruction files (up to 2000 chars each, highest priority for outline generation)
+    for rel in _AGENT_INSTRUCTION_FILES:
+        if budget <= 0:
+            break
+        fpath = os.path.join(clone_dir, rel)
+        content = _read_file_head(fpath, 2000)
+        if content:
+            snippet = content[:min(2000, budget)]
+            parts.append(f'## {rel} (agent instructions)\n{snippet}')
+            budget -= len(parts[-1])
+
     return '\n\n'.join(parts)
 
 
@@ -338,6 +401,8 @@ The SECOND section MUST be:
  "focus": "Python/compiler version requirements, key dependency packages and version constraints",
  "search_hints": ["python_requires", "install_requires", "cmake_minimum_required"]}}
 
+{gotchas_instruction}
+
 The LAST section MUST be:
 {{"title": "Key Utilities & Usage Notes", "focus": "关键辅助函数、数据结构的典型用法和注意事项", \
 "search_hints": ["def _[a-z]", "class.*Dict", "ArgsDict|LazyLLMCMD"]}}
@@ -349,15 +414,32 @@ Output ONLY a JSON array. No explanation.
 </snapshot>
 '''
 
+_ARCH_GOTCHAS_INSTRUCTION = '''\
+The SECOND-TO-LAST section MUST be:
+{{"title": "Non-Obvious Behaviors & Gotchas", \
+"focus": "初始值、全局状态、线程安全约定、注册系统行为、容易被误解的设计决策（如某字段永不为 None 的保证）", \
+"search_hints": ["__global_attrs__", "ThreadSafeDict", "once_wrapper", "LazyLLMRegisterMeta"]}}'''
 
-def _arch_generate_outline(llm: Any, snapshot: str) -> List[Dict[str, Any]]:
+_ARCH_HAS_AGENT_INSTRUCTION = '''\
+NOTE: This project already has an AGENTS.md (or equivalent) covering conventions and gotchas. \
+Focus sections on module structure, class hierarchies, cross-module dependency rules, and design \
+patterns instead. Do NOT generate a "Gotchas" section — that is already covered by AGENTS.md.'''
+
+
+def _arch_generate_outline(
+    llm: Any, snapshot: str, agent_instructions: str = '',
+) -> List[Dict[str, Any]]:
+    has_agent = bool(agent_instructions)
+    max_sections = _ARCH_OUTLINE_MAX_SECTIONS_WITH_AGENT if has_agent else _ARCH_OUTLINE_MAX_SECTIONS
+    gotchas_instruction = _ARCH_HAS_AGENT_INSTRUCTION if has_agent else _ARCH_GOTCHAS_INSTRUCTION
     prompt = _ARCH_OUTLINE_PROMPT.format(
-        max_sections=_ARCH_OUTLINE_MAX_SECTIONS,
+        max_sections=max_sections,
+        gotchas_instruction=gotchas_instruction,
         snapshot=snapshot[:4000],
     )
     result = _safe_llm_call(llm, prompt)
     if isinstance(result, list) and result:
-        return result[:_ARCH_OUTLINE_MAX_SECTIONS]
+        return result[:max_sections]
     raise ValueError(f'Arch outline generation returned invalid result: {result!r}')
 
 
@@ -382,9 +464,10 @@ Focus: {section_focus}
 {code_snippets}
 
 Based on the code snippets above, write the section content.
-- Max 150 words for this section
+- Max 500 words for this section
 - Plain text, no markdown headers
 - Focus only on: {section_focus}
+- Include key class names, function signatures, and usage patterns where relevant
 
 Output ONLY the section content text.
 '''
@@ -708,7 +791,7 @@ def _summarize_section(llm: Any, title: str, content: str) -> str:
     return result[:200]
 
 
-def _arch_collect_snippets(clone_dir: str, section: Dict[str, Any], max_chars: int = 2000) -> str:  # noqa: C901
+def _arch_collect_snippets(clone_dir: str, section: Dict[str, Any], max_chars: int = 6000) -> str:  # noqa: C901
     from lazyllm.tools.agent.file_tool import search_in_files, read_file
     hints = section.get('search_hints', [])
     parts: List[str] = []
@@ -770,12 +853,12 @@ def _arch_fill_section(
         section_focus=section.get('focus', ''),
         dir_tree=dir_tree_1level[:400],
         prev_summaries=prev_text,
-        code_snippets=snippets[:2000],
+        code_snippets=snippets[:6000],
     )
     raw = _safe_llm_call_text(llm, prompt)
     if not raw:
         raise ValueError(f'LLM returned empty result for section "{section.get("title")}"')
-    return raw[:1200]
+    return raw[:3500]
 
 
 def _arch_fill_all_sections(
@@ -834,20 +917,87 @@ def _get_arch_index(arch_doc: str) -> str:
     return _build_arch_index(arch_doc)[:400]
 
 
-def _build_symbol_index(arch_doc: str) -> Dict[str, str]:
-    index: Dict[str, str] = {}
-    in_utilities = False
+def _parse_arch_sections(arch_doc: str) -> List[Tuple[str, str]]:
+    '''Parse arch_doc into (title, content) pairs. Sections start with [Title].'''
+    sections: List[Tuple[str, str]] = []
+    current_title = ''
+    current_lines: List[str] = []
     for line in arch_doc.splitlines():
-        if re.match(r'^\[Key Utilities', line, re.IGNORECASE):
-            in_utilities = True
-            continue
-        if re.match(r'^\[', line) and in_utilities:
+        m = re.match(r'^\[(.+?)\]', line)
+        if m:
+            if current_title:
+                sections.append((current_title, '\n'.join(current_lines).strip()))
+            current_title = m.group(1)
+            rest = line[m.end():].strip()
+            current_lines = [rest] if rest else []
+        else:
+            current_lines.append(line)
+    if current_title:
+        sections.append((current_title, '\n'.join(current_lines).strip()))
+    return sections
+
+
+# sections always injected regardless of file path (high value for all reviews)
+_ARCH_ALWAYS_INJECT = frozenset({
+    'module hierarchy',
+    'non-obvious behaviors & gotchas',
+    'non-obvious behaviors',
+    'gotchas',
+    'key utilities',
+    'key utilities & usage notes',
+})
+
+
+def _extract_arch_for_file(arch_doc: str, file_path: str, max_chars: int = 3000) -> str:
+    '''Return the most relevant arch_doc sections for a given file path.
+
+    Strategy:
+    1. Always include Module Hierarchy, Gotchas, and Key Utilities sections.
+    2. Score remaining sections by keyword overlap with the file path components.
+    3. Fill up to max_chars, prioritising higher-scored sections.
+    '''
+    if not arch_doc:
+        return '(not available)'
+    sections = _parse_arch_sections(arch_doc)
+    if not sections:
+        return arch_doc[:max_chars]
+
+    path_keywords = {p for p in re.split(r'[/\\._]', file_path.lower()) if len(p) > 2}
+
+    def _score(title: str, content: str) -> int:
+        t_lower = title.lower()
+        base = 100 if any(p in t_lower for p in _ARCH_ALWAYS_INJECT) else 0
+        combined = t_lower + ' ' + content.lower()
+        overlap = sum(1 for kw in path_keywords if kw in combined)
+        return base + overlap * 10
+
+    scored = sorted(sections, key=lambda sc: _score(sc[0], sc[1]), reverse=True)
+
+    parts: List[str] = []
+    remaining = max_chars
+    for title, content in scored:
+        if remaining <= 0:
             break
-        if in_utilities and line.strip():
-            # expect lines like "symbol_name: description"
-            m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)\s*[:(]\s*(.+)', line.strip())
-            if m:
-                index[m.group(1)] = m.group(2)[:150]
+        block = f'[{title}]\n{content}'
+        parts.append(block[:remaining])
+        remaining -= len(parts[-1]) + 2  # +2 for '\n\n' separator
+
+    return '\n\n'.join(parts)
+
+
+def _build_symbol_index(arch_doc: str) -> Dict[str, str]:
+    '''Extract symbol→description pairs from the Key Utilities section of arch_doc.
+    Parses the full arch_doc (not a truncated slice) so the index is always populated.
+    '''
+    index: Dict[str, str] = {}
+    sections = _parse_arch_sections(arch_doc)
+    for title, content in sections:
+        if re.match(r'key utilities', title, re.IGNORECASE):
+            for line in content.splitlines():
+                m = re.match(r'^([A-Za-z_][A-Za-z0-9_]*)\s*[:(]\s*(.+)', line.strip())
+                if m:
+                    index[m.group(1)] = m.group(2)[:150]
+            break
     return index
 
 
@@ -856,7 +1006,7 @@ def _get_symbol_index(arch_doc: str) -> Dict[str, str]:
 
 
 def analyze_repo_architecture(
-    llm: Any, clone_dir: str, cache_path: Optional[str] = None
+    llm: Any, clone_dir: str, cache_path: Optional[str] = None, agent_instructions: str = '',
 ) -> str:
     cached = _load_cache(cache_path, 'arch_doc')
     if cached:
@@ -874,7 +1024,7 @@ def analyze_repo_architecture(
     else:
         outline = None
     if not outline:
-        outline = _arch_generate_outline(llm, snapshot)
+        outline = _arch_generate_outline(llm, snapshot, agent_instructions)
         if not outline:
             raise ValueError('Arch outline generation returned empty result')
         _save_cache(cache_path, 'arch_outline', json.dumps(outline, ensure_ascii=False))
@@ -1270,8 +1420,12 @@ def _run_arch_analysis(
     ckpt.save('clone_dir', clone_dir)
     ckpt.mark_stage_done(ReviewStage.CLONE)
     prog.update('cloned, analyzing...')
+    agent_instructions = _read_agent_instructions(clone_dir)
+    if agent_instructions:
+        _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
+        lazyllm.LOG.info(f'Found agent instructions ({len(agent_instructions)} chars)')
     try:
-        arch_doc = analyze_repo_architecture(llm, clone_dir, arch_cache_path)
+        arch_doc = analyze_repo_architecture(llm, clone_dir, arch_cache_path, agent_instructions)
     except Exception:
         import shutil
         shutil.rmtree(clone_dir, ignore_errors=True)
@@ -1281,7 +1435,7 @@ def _run_arch_analysis(
     if arch_doc and arch_cache_path:
         lazyllm.LOG.success(f'Architecture doc saved to: {arch_cache_path}')
     prog.done('architecture doc ready')
-    return arch_doc, clone_dir
+    return arch_doc, clone_dir, agent_instructions
 
 
 def _run_spec_analysis(
@@ -1319,14 +1473,14 @@ def _run_pre_analysis(
     max_history_prs: int,
     ckpt: Any,
     pr_dir: Optional[str] = None,
-) -> Tuple[str, str, Optional[str]]:
+) -> Tuple[str, str, Optional[str], str]:
+    # returns (arch_doc, review_spec, clone_dir, agent_instructions)
     from .checkpoint import _ReviewCheckpoint
-    safe_repo = re.sub(r'[^a-zA-Z0-9_-]', '_', repo)
-    cache_dir = _ReviewCheckpoint.global_cache_dir()
+    repo_cache_dir = _ReviewCheckpoint.repo_cache_dir(repo)
     if arch_cache_path is None:
-        arch_cache_path = os.path.join(cache_dir, f'arch_{safe_repo}.json')
+        arch_cache_path = os.path.join(repo_cache_dir, 'arch.json')
     if review_spec_cache_path is None:
-        review_spec_cache_path = os.path.join(cache_dir, f'spec_{safe_repo}.json')
+        review_spec_cache_path = os.path.join(repo_cache_dir, 'spec.json')
 
     arch_doc = ckpt.get('arch_doc') or ''
     # restore clone_dir from checkpoint if it still exists on disk
@@ -1335,9 +1489,12 @@ def _run_pre_analysis(
         clone_dir = None
 
     clone_target_dir = os.path.join(pr_dir, 'clone') if pr_dir else None
+    agent_instructions = _load_cache(arch_cache_path, 'agent_instructions') or ''
 
     if fetch_repo_code and not arch_doc:
-        arch_doc, clone_dir = _run_arch_analysis(llm, pr, repo, arch_cache_path, ckpt, clone_target_dir)
+        arch_doc, clone_dir, agent_instructions = _run_arch_analysis(
+            llm, pr, repo, arch_cache_path, ckpt, clone_target_dir,
+        )
     elif fetch_repo_code:
         # arch_doc already cached — still need clone for Round 2 agent
         _save_cache(arch_cache_path, 'arch_doc', arch_doc)
@@ -1352,9 +1509,14 @@ def _run_pre_analysis(
                 raise RuntimeError(f'Clone for agent failed: {e}') from e
         else:
             lazyllm.LOG.info(f'Reusing cached clone at {clone_dir}')
+        # read agent instructions from the (possibly freshly cloned) repo
+        if not agent_instructions and clone_dir:
+            agent_instructions = _read_agent_instructions(clone_dir)
+            if agent_instructions:
+                _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
     else:
         _save_cache(arch_cache_path, 'arch_doc', arch_doc)
         _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
 
     review_spec = _run_spec_analysis(backend_inst, llm, review_spec_cache_path, max_history_prs, ckpt)
-    return arch_doc, review_spec, clone_dir
+    return arch_doc, review_spec, clone_dir, agent_instructions

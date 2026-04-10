@@ -183,9 +183,15 @@ class _ReviewCheckpoint:
         return d
 
     @staticmethod
-    def pr_dir(pr_number: int, repo: str) -> str:
+    def repo_cache_dir(repo: str) -> str:
         safe_repo = re.sub(r'[^a-zA-Z0-9_-]', '_', repo)
-        d = os.path.join(_ReviewCheckpoint._review_root(), f'{safe_repo}_pr{pr_number}')
+        d = os.path.join(_ReviewCheckpoint._review_root(), 'cache', safe_repo)
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    @staticmethod
+    def pr_dir(pr_number: int, repo: str) -> str:
+        d = os.path.join(_ReviewCheckpoint.repo_cache_dir(repo), str(pr_number))
         os.makedirs(d, exist_ok=True)
         return d
 

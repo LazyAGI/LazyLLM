@@ -89,7 +89,7 @@ def review(  # noqa: C901
     llm = _ensure_non_streaming_llm(llm)
     model_name = _get_model_name(llm)
 
-    arch_doc, review_spec, clone_dir = _run_pre_analysis(
+    arch_doc, review_spec, clone_dir, agent_instructions = _run_pre_analysis(
         llm, backend_inst, repo, pr, fetch_repo_code,
         arch_cache_path, review_spec_cache_path, max_history_prs, ckpt,
         pr_dir=pr_dir,
@@ -114,6 +114,7 @@ def review(  # noqa: C901
     final_comments = _run_four_rounds(
         llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
         clone_dir=clone_dir, existing_comments=existing_comments, language=language,
+        agent_instructions=agent_instructions,
     )
     # only clean up pr_dir on successful completion; on failure keep it for resume
     if not keep_clone and os.path.isdir(pr_dir):
