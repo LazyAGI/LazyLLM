@@ -43,7 +43,8 @@ def main():
     parser.add_argument('--kb-id', type=str, default='__default__', help='Knowledge base ID.')
     args = parser.parse_args()
 
-    doc_server = DocServer(url=_normalize_base_url(args.doc_server_url))
+    base_url = _normalize_base_url(args.doc_server_url)
+    doc_server = DocServer(url=base_url)
     with tempfile.TemporaryDirectory(prefix='lazyllm_doc_service_example_') as dataset_dir:
         file_path = os.path.join(dataset_dir, 'demo.txt')
         with open(file_path, 'w', encoding='utf-8') as file:
@@ -54,7 +55,6 @@ def main():
         document.start()
 
         try:
-            base_url = _normalize_base_url(args.doc_server_url)
             print(f'DocServer URL: {base_url}')
             print(f'DocServer Docs: {base_url}/docs')
 

@@ -25,6 +25,9 @@ class KBStatus(str, Enum):
     DELETED = 'DELETED'
 
 
+KbStatus = KBStatus
+
+
 class SourceType(str, Enum):
     API = 'API'
     SCAN = 'SCAN'

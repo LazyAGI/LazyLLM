@@ -63,7 +63,8 @@ class BuiltinGroups(object):
                      lambda x: x._content, LAZY_IMAGE_GROUP, True)
 
 
-@reset_on_pickle(('_local_monitor_lock', threading.Lock))
+@reset_on_pickle(('_local_monitor_lock', threading.Lock), ('_local_monitor_thread', None),
+                 ('_local_monitor_continue', bool))
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}

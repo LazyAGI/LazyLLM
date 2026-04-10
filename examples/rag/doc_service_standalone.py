@@ -17,13 +17,11 @@ from typing import Any, Dict
 import requests
 
 from lazyllm import Document
-from lazyllm.tools.rag.doc_service import DocServer
-from lazyllm.tools.rag.doc_service.doc_server import DEFAULT_OPENAPI_OUTPUT_PATH
+from lazyllm.tools.rag.doc_service import DEFAULT_OPENAPI_OUTPUT_PATH, DocServer
 from lazyllm.tools.rag.parsing_service import DocumentProcessor
 
 REAL_ALGO_ID = 'real-standalone-algo'
 FIXED_DB_ROOT = './tmp/db'
-DEFAULT_OPENAPI_PATH = DEFAULT_OPENAPI_OUTPUT_PATH
 
 
 def _make_db_config(db_name: str) -> Dict[str, Any]:
@@ -130,9 +128,9 @@ def main():
         '--export-openapi',
         type=str,
         nargs='?',
-        const=DEFAULT_OPENAPI_PATH,
+        const=DEFAULT_OPENAPI_OUTPUT_PATH,
         default=None,
-        help=f'Export DocServer OpenAPI JSON and exit. Default path: {DEFAULT_OPENAPI_PATH}',
+        help=f'Export DocServer OpenAPI JSON and exit. Default path: {DEFAULT_OPENAPI_OUTPUT_PATH}',
     )
     args = parser.parse_args()
 

@@ -10,6 +10,7 @@ from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransf
 import os
 import shutil
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import MagicMock
@@ -160,6 +161,19 @@ class TestDocImpl(unittest.TestCase):
 
         assert restored._local_monitor_lock is not None
         assert restored._local_monitor_thread is None
+        assert restored._local_monitor_continue is False
+
+    def test_doc_impl_resets_local_monitor_state_on_pickle(self):
+        doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
+        doc_impl._local_monitor_thread = threading.Thread(target=lambda: None)
+        doc_impl._local_monitor_continue = True
+
+        serialized = cloudpickle.dumps(doc_impl)
+        restored = cloudpickle.loads(serialized)
+
+        assert restored._local_monitor_lock is not None
+        assert restored._local_monitor_thread is None
+        assert restored._local_monitor_continue is False
 
 class TestDocument(unittest.TestCase):
     @classmethod

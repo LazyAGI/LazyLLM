@@ -183,10 +183,11 @@ def dump_obj(f):
 
     @contextmanager
     def env_helper():
-        os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'ON'
-        modules = _collect_test_modules(f)
+        original_cloudpickle_flag = os.environ.get('LAZYLLM_ON_CLOUDPICKLE')
         registered_modules = []
         try:
+            os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'ON'
+            modules = _collect_test_modules(f)
             for module in modules:
                 cloudpickle.register_pickle_by_value(module)
                 registered_modules.append(module)
@@ -194,7 +195,10 @@ def dump_obj(f):
         finally:
             for module in reversed(registered_modules):
                 cloudpickle.unregister_pickle_by_value(module)
-            os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'OFF'
+            if original_cloudpickle_flag is None:
+                os.environ.pop('LAZYLLM_ON_CLOUDPICKLE', None)
+            else:
+                os.environ['LAZYLLM_ON_CLOUDPICKLE'] = original_cloudpickle_flag
 
     with env_helper():
         return None if f is None else base64.b64encode(cloudpickle.dumps(f)).decode('utf-8')

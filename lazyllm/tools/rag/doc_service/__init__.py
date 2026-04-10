@@ -7,6 +7,7 @@ from .base import (
     DocServiceError,
     DocStatus,
     KBStatus,
+    KbStatus,
     KbBatchQueryRequest,
     KbCreateRequest,
     KbDeleteBatchRequest,
@@ -23,8 +24,8 @@ from .base import (
     TransferRequest,
     UploadRequest,
 )
-from .doc_server import DocServer
-from .doc_manager import DocManager
+from .doc_server import DEFAULT_OPENAPI_OUTPUT_PATH, DocServer
+from .doc_manager import DocManager  # Legacy compatibility export for advanced callers.
 
 __all__ = [
     'AddFileItem',
@@ -32,11 +33,13 @@ __all__ = [
     'AlgorithmInfoRequest',
     'CallbackEventType',
     'DeleteRequest',
+    'DEFAULT_OPENAPI_OUTPUT_PATH',
     'DocManager',
     'DocServer',
     'DocServiceError',
     'DocStatus',
     'KBStatus',
+    'KbStatus',
     'KbBatchQueryRequest',
     'KbCreateRequest',
     'KbDeleteBatchRequest',

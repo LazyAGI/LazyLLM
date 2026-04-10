@@ -15,7 +15,7 @@ Args:
     dataset_path (Optional[str]): Path to the dataset directory. If not found, the system will attempt to locate it in ``lazyllm.config["data_path"]``.
     embed (Optional[Union[Callable, Dict[str, Callable]]]): Embedding function or mapping of embedding functions. When a dictionary is provided, keys are embedding names and values are embedding models.
     create_ui (bool, optional): Whether to create the document-management UI. It requires an available ``DocServer`` and can be combined with ``manager=True`` or ``manager=DocServer(...)``.
-    manager (Union[bool, str, DocServer, Document._Manager, DocumentProcessor], optional): Document manager mode. ``True`` launches a local ``DocServer`` together with a local parsing service. ``DocServer(...)`` connects an existing document-management service. ``DocumentProcessor(...)`` connects a parsing service only and requires a non-map ``store_conf``. ``'ui'`` is accepted as a deprecated compatibility alias for ``manager=True, create_ui=True``.
+    manager (Union[bool, str, DocServer, DocumentProcessor], optional): Document manager mode. ``True`` launches a local ``DocServer`` together with a local parsing service. ``DocServer(...)`` connects an existing document-management service. ``DocumentProcessor(...)`` connects a parsing service only and requires a non-map ``store_conf``. ``'ui'`` is accepted as a deprecated compatibility alias for ``manager=True, create_ui=True``.
     server (Union[bool, int], optional): Whether to run a server interface for knowledge bases. ``True`` enables a default server, an integer specifies a custom port, and ``False`` disables it. Defaults to ``False``.
     name (Optional[str]): Name identifier for this document collection. Defaults to the system default name.
     launcher (Optional[Launcher]): Launcher instance for managing server processes. Defaults to a remote asynchronous launcher.
@@ -37,7 +37,7 @@ Args:
     dataset_path (Optional[str]): 数据集目录路径。如果路径不存在，系统会尝试在 ``lazyllm.config["data_path"]`` 中查找。
     embed (Optional[Union[Callable, Dict[str, Callable]]]): 文档向量化函数或函数字典。若为字典，键为 embedding 名称，值为对应的模型。
     create_ui (bool, optional): 是否创建文档管理 UI。该能力要求当前存在可用的 ``DocServer``，可与 ``manager=True`` 或 ``manager=DocServer(...)`` 组合使用。
-    manager (Union[bool, str, DocServer, Document._Manager, DocumentProcessor], optional): 文档管理模式。``True`` 表示启动本地 ``DocServer`` 及其 parsing service；``DocServer(...)`` 表示连接已有文档管理服务；``DocumentProcessor(...)`` 表示仅连接解析服务，此时必须提供非 map 的 ``store_conf``；``'ui'`` 仅作为 ``manager=True, create_ui=True`` 的兼容写法保留。
+    manager (Union[bool, str, DocServer, DocumentProcessor], optional): 文档管理模式。``True`` 表示启动本地 ``DocServer`` 及其 parsing service；``DocServer(...)`` 表示连接已有文档管理服务；``DocumentProcessor(...)`` 表示仅连接解析服务，此时必须提供非 map 的 ``store_conf``；``'ui'`` 仅作为 ``manager=True, create_ui=True`` 的兼容写法保留。
     server (Union[bool, int], optional): 是否为知识库运行服务接口。``True`` 表示启动默认服务；整型数值表示自定义端口；``False`` 表示关闭。默认为 ``False``。
     name (Optional[str]): 文档集合的名称标识符。默认为系统默认名称。
     launcher (Optional[Launcher]): 启动器实例，用于管理服务进程。默认使用远程异步启动器。
@@ -94,7 +94,7 @@ Use this method when the file paths are already accessible on the DocServer host
 ``AddRequest`` containing ``kb_id``, ``algo_id``, and ``items``. Each item can provide ``file_path``,
 optional ``doc_id``, and optional ``metadata``.
 
-Returns:
+**Returns:**
     Standard API response. ``data["items"]`` contains the accepted ``doc_id`` and asynchronous ``task_id``.
 ''')
 
@@ -104,7 +104,7 @@ add_chinese_doc('DocServer.add', '''\
 当文件路径已经对 DocServer 所在机器可见时，使用该方法。请求体为 ``AddRequest``，包含 ``kb_id``、``algo_id``
 和 ``items``。每个 item 可提供 ``file_path``，以及可选的 ``doc_id``、``metadata``。
 
-Returns:
+**Returns:**
     标准 API 响应。``data["items"]`` 中包含接受后的 ``doc_id`` 和异步 ``task_id``。
 ''')
 
@@ -115,7 +115,7 @@ Use this method when you want DocServer to manage uploaded copies of the source 
 ``UploadRequest`` with ``kb_id``, ``algo_id``, and ``items``. Each item uses ``file_path`` as the local source
 path and can optionally include ``doc_id`` or ``metadata``.
 
-Returns:
+**Returns:**
     Standard API response. ``data["items"]`` contains the accepted ``doc_id`` and asynchronous ``task_id``.
 ''')
 
@@ -125,7 +125,7 @@ add_chinese_doc('DocServer.upload', '''\
 当你希望由 DocServer 保存上传副本时，使用该方法。请求体为 ``UploadRequest``，包含 ``kb_id``、``algo_id``
 和 ``items``。每个 item 使用 ``file_path`` 作为本地源路径，也可以附带可选的 ``doc_id``、``metadata``。
 
-Returns:
+**Returns:**
     标准 API 响应。``data["items"]`` 中包含接受后的 ``doc_id`` 和异步 ``task_id``。
 ''')
 
@@ -177,7 +177,7 @@ Get one task record through the ``/v1/tasks/{task_id}`` endpoint.
 Args:
     task_id (str): Task ID returned by add, upload, reparse, delete, transfer, or metadata patch operations.
 
-Returns:
+**Returns:**
     Standard API response with the current task status and task payload.
 ''')
 
@@ -187,7 +187,7 @@ add_chinese_doc('DocServer.get_task', '''\
 Args:
     task_id (str): add、upload、reparse、delete、transfer 或 metadata patch 等操作返回的任务 ID。
 
-Returns:
+**Returns:**
     包含当前任务状态和任务负载的标准 API 响应。
 ''')
 
@@ -197,7 +197,7 @@ Cancel a waiting task through the ``/v1/tasks/cancel`` endpoint.
 Args:
     task_id (str): Task ID to cancel.
 
-Returns:
+**Returns:**
     Standard API response indicating whether the task was canceled successfully.
 ''')
 
@@ -207,7 +207,7 @@ add_chinese_doc('DocServer.cancel_task', '''\
 Args:
     task_id (str): 要取消的任务 ID。
 
-Returns:
+**Returns:**
     表示任务是否取消成功的标准 API 响应。
 ''')
 
