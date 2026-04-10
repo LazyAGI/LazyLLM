@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 from ..client import Git
 from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
-from .rounds import _run_four_rounds
+from .rounds import _run_five_rounds
 from .poster import _fetch_existing_pr_comments, _post_review_comments
 from .utils import (
     _get_default_llm, _ensure_non_streaming_llm, _get_model_name,
@@ -36,7 +36,6 @@ def review(  # noqa: C901
     language: str = 'cn',
     keep_clone: bool = False,
 ) -> Dict[str, Any]:
-    llm = llm.share(stream=False)
     try:
         import lazyllm.tools.git.review as _self_mod
         original_review_code = inspect.getsource(_self_mod)
@@ -111,7 +110,7 @@ def review(  # noqa: C901
 
     existing_comments = _fetch_existing_pr_comments(backend_inst, pr_number)
     prog_main.update(f'{len(existing_comments)} existing PR comments fetched')
-    final_comments = _run_four_rounds(
+    final_comments = _run_five_rounds(
         llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
         clone_dir=clone_dir, existing_comments=existing_comments, language=language,
         agent_instructions=agent_instructions,

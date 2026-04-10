@@ -224,7 +224,8 @@ def _language_instruction(lang: str) -> str:
 
 
 def _normalize_comment_item(
-    item: Dict[str, Any], new_start: int, end_line: int, default_path: str
+    item: Dict[str, Any], new_start: int = 0, end_line: Optional[int] = None,
+    default_path: str = '', default_category: str = 'logic',
 ) -> Optional[Dict[str, Any]]:
     line = item.get('line')
     if line is None or item.get('problem') is None:
@@ -233,11 +234,14 @@ def _normalize_comment_item(
         line = int(line)
     except (TypeError, ValueError):
         return None
-    if not (new_start <= line < end_line):
+    if end_line is not None:
+        if not (new_start <= line < end_line):
+            return None
+    elif line <= 0:
         return None
-    category = item.get('bug_category') or 'logic'
+    category = item.get('bug_category') or default_category
     if category not in _VALID_CATEGORIES:
-        category = 'logic'
+        category = default_category
     severity = item.get('severity') or 'normal'
     if severity not in _VALID_SEVERITIES:
         severity = 'normal'

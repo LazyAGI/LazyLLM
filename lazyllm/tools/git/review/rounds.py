@@ -12,7 +12,7 @@ from .utils import (
     _Progress, _VALID_CATEGORIES, _VALID_SEVERITIES,
     _language_instruction, _safe_llm_call,
     _truncate_hunk_content, _extract_json_text, _parse_json_with_repair,
-    _parse_unified_diff,
+    _parse_unified_diff, _normalize_comment_item,
 )
 from .pre_analysis import (
     _read_file_context, _get_symbol_index,
@@ -84,6 +84,12 @@ Categories:
 Output ONLY a JSON array. No explanation, no markdown wrapper.
 If no issues: output []
 
+STRICT RULES — violations will be rejected:
+1. Only report issues caused by the diff itself (added/modified/deleted lines). \
+If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
+2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
+missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
+
 <diff>
 {content}
 </diff>
@@ -139,6 +145,12 @@ Categories:
 Output ONLY a JSON array covering ALL hunks. No explanation, no markdown wrapper.
 If no issues: output []
 
+STRICT RULES — violations will be rejected:
+1. Only report issues caused by the diff itself (added/modified/deleted lines). \
+If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
+2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
+missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
+
 {hunks_content}
 '''
 
@@ -185,28 +197,11 @@ def _analyze_single_hunk(
     items = _safe_llm_call(llm, prompt)
     result = []
     for item in items:
-        if not isinstance(item, dict) or item.get('problem') is None:
-            continue
-        try:
-            line = int(item.get('line', 0))
-        except (TypeError, ValueError):
-            continue
-        if not (new_start <= line < new_start + new_count):
-            continue
-        category = item.get('bug_category') or 'logic'
-        if category not in _VALID_CATEGORIES:
-            category = 'logic'
-        severity = item.get('severity') or 'normal'
-        if severity not in _VALID_SEVERITIES:
-            severity = 'normal'
-        result.append({
-            'path': item.get('path') or path,
-            'line': line,
-            'severity': severity,
-            'bug_category': category,
-            'problem': item.get('problem') or '',
-            'suggestion': item.get('suggestion') or '',
-        })
+        normalized = _normalize_comment_item(
+            item, new_start=new_start, end_line=new_start + new_count, default_path=path,
+        )
+        if normalized is not None:
+            result.append(normalized)
     return result
 
 
@@ -215,26 +210,12 @@ def _assign_batch_item(
     hunks: List[Tuple[int, int, str]],
     path: str,
 ) -> Optional[Tuple[int, Dict[str, Any]]]:
-    try:
-        line = int(item.get('line', 0))
-    except (TypeError, ValueError):
-        return None
     for new_start, new_count, _ in hunks:
-        if new_start <= line < new_start + new_count:
-            category = item.get('bug_category') or 'logic'
-            if category not in _VALID_CATEGORIES:
-                category = 'logic'
-            severity = item.get('severity') or 'normal'
-            if severity not in _VALID_SEVERITIES:
-                severity = 'normal'
-            return new_start, {
-                'path': item.get('path') or path,
-                'line': line,
-                'severity': severity,
-                'bug_category': category,
-                'problem': item.get('problem') or '',
-                'suggestion': item.get('suggestion') or '',
-            }
+        normalized = _normalize_comment_item(
+            item, new_start=new_start, end_line=new_start + new_count, default_path=path,
+        )
+        if normalized is not None:
+            return new_start, normalized
     return None
 
 
@@ -442,94 +423,6 @@ def _round1_hunk_analysis(
         all_comments.extend(results_by_idx.get(i, []))
     prog.done(f'{len(all_comments)} issues total')
     return all_comments
-
-
-# ---------------------------------------------------------------------------
-# Round 2: context enrichment (LLM-based)
-# ---------------------------------------------------------------------------
-
-_ROUND2_PROMPT_TMPL = '''\
-You are a senior code reviewer performing a second-pass context enrichment analysis.
-{lang_instruction}
-
-## PR Summary
-{pr_summary}
-
-## Project Architecture
-{arch_doc}
-
-## First-Pass Issues Found
-{round1_json}
-
-## Full Diff
-{diff_text}
-
-## Task
-Based on the architecture context and the full diff, perform a deeper analysis:
-1. For each first-pass issue, verify if it is valid and enrich the description if needed
-2. Find NEW issues that require cross-file or cross-function context to detect:
-   - Interface inconsistencies (method signatures changed but callers not updated)
-   - Abstraction violations (bypassing base class contracts)
-   - Design breakage (changes that violate existing patterns)
-   - Missing updates to related code (e.g. updated one method but not its symmetric counterpart)
-
-Output a JSON array of ALL issues (both confirmed first-pass and newly found).
-Each item must have: path, line, severity, bug_category, problem, suggestion.
-In the suggestion field, wrap code snippets with markdown code fences using the correct language tag. \
-When showing old vs new code, use a unified diff block (```diff\\n- old lines\\n+ new lines\\n```).
-line must be a valid new-file line number visible in the diff.
-Output ONLY the JSON array. No explanation, no markdown wrapper.
-'''
-
-
-def _round2_context_enrichment(
-    llm: Any,
-    round1: List[Dict[str, Any]],
-    diff_text: str,
-    arch_doc: str,
-    pr_summary: str = '',
-    language: str = 'cn',
-) -> List[Dict[str, Any]]:
-    if not round1 and not diff_text:
-        return []
-    prog = _Progress('Round 2: context enrichment')
-    arch_snippet = arch_doc[:800] if arch_doc else '(not available)'
-    round1_json = json.dumps(round1[:15], ensure_ascii=False, indent=2)
-    diff_snippet = diff_text[:6000] if diff_text else ''
-    prompt = _ROUND2_PROMPT_TMPL.format(
-        lang_instruction=_language_instruction(language),
-        pr_summary=pr_summary[:600] if pr_summary else '(not available)',
-        arch_doc=arch_snippet,
-        round1_json=round1_json,
-        diff_text=diff_snippet,
-    )
-    items = _safe_llm_call(llm, prompt)
-    result: List[Dict[str, Any]] = []
-    for item in items:
-        if not isinstance(item, dict) or item.get('problem') is None:
-            continue
-        try:
-            line = int(item.get('line', 0))
-        except (TypeError, ValueError):
-            continue
-        if line <= 0:
-            continue
-        category = item.get('bug_category') or 'design'
-        if category not in _VALID_CATEGORIES:
-            category = 'design'
-        severity = item.get('severity') or 'normal'
-        if severity not in _VALID_SEVERITIES:
-            severity = 'normal'
-        result.append({
-            'path': item.get('path') or '',
-            'line': line,
-            'severity': severity,
-            'bug_category': category,
-            'problem': item.get('problem') or '',
-            'suggestion': item.get('suggestion') or '',
-        })
-    prog.done(f'{len(result)} issues (enriched/new)')
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -806,6 +699,12 @@ For EVERY issue in the output (kept/modified R1 + new), output a JSON object wit
 
 Output ONLY a JSON array. No explanation, no markdown wrapper.
 If no issues found, output [].
+
+STRICT RULES — violations will be rejected:
+1. Only report issues caused by the diff itself (added/modified/deleted lines). \
+If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
+2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
+missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
 '''
 
 
@@ -873,31 +772,17 @@ def _r2_build_file_context(
 def _r2_parse_item(item: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Optional[int]]]:
     if not isinstance(item, dict) or item.get('problem') is None:
         return None
-    try:
-        line = int(item.get('line', 0))
-    except (TypeError, ValueError):
+    if not item.get('path'):
         return None
-    if line <= 0 or not item.get('path'):
+    normalized = _normalize_comment_item(item, default_path='', default_category='design')
+    if normalized is None:
         return None
-    category = item.get('bug_category') or 'design'
-    if category not in _VALID_CATEGORIES:
-        category = 'design'
-    severity = item.get('severity') or 'normal'
-    if severity not in _VALID_SEVERITIES:
-        severity = 'normal'
     r1_idx = item.get('r1_idx')
     try:
         r1_idx = int(r1_idx) if r1_idx is not None else None
     except (TypeError, ValueError):
         r1_idx = None
-    return {
-        'path': item['path'],
-        'line': line,
-        'severity': severity,
-        'bug_category': category,
-        'problem': str(item.get('problem', '')),
-        'suggestion': str(item.get('suggestion', '')),
-    }, r1_idx
+    return normalized, r1_idx
 
 
 def _r2_extract_issues(
@@ -1113,6 +998,12 @@ When showing old vs new code, use a unified diff block (```diff\\n- old lines\\n
 line must be a valid new-file line number visible in the diff.
 Output ONLY a JSON array. No explanation, no markdown wrapper.
 If no issues found, output [].
+
+STRICT RULES — violations will be rejected:
+1. Only report issues caused by the diff itself (added/modified/deleted lines). \
+If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
+2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
+missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
 '''
 
 
@@ -1148,28 +1039,9 @@ def _round3_analyze_file(
     items = _safe_llm_call(llm, prompt)
     result: List[Dict[str, Any]] = []
     for item in (items if isinstance(items, list) else []):
-        if not isinstance(item, dict) or item.get('problem') is None:
-            continue
-        try:
-            line = int(item.get('line', 0))
-        except (TypeError, ValueError):
-            continue
-        if line <= 0:
-            continue
-        category = item.get('bug_category') or 'design'
-        if category not in _VALID_CATEGORIES:
-            category = 'design'
-        severity = item.get('severity') or 'normal'
-        if severity not in _VALID_SEVERITIES:
-            severity = 'normal'
-        result.append({
-            'path': item.get('path') or path,
-            'line': line,
-            'severity': severity,
-            'bug_category': category,
-            'problem': str(item.get('problem', '')),
-            'suggestion': str(item.get('suggestion', '')),
-        })
+        normalized = _normalize_comment_item(item, default_path=path, default_category='design')
+        if normalized is not None:
+            result.append(normalized)
     return result
 
 
@@ -1207,7 +1079,168 @@ def _round3_global_analysis(
 
 
 # ---------------------------------------------------------------------------
-# Round 4: merge and deduplicate
+# Round 4: architect-level design review
+# ---------------------------------------------------------------------------
+
+_ROUND4_ARCHITECT_PROMPT_TMPL = '''\
+You are a principal software architect performing a holistic design review.
+{lang_instruction}
+
+Your goal is NOT to find bugs — earlier rounds already did that.
+Your goal is to evaluate whether the design is OPTIMAL.
+
+The standard is: "Would a world-class architect approve this design as-is, \
+or would they ask for a redesign?"
+
+## Project Agent Instructions
+{agent_instructions}
+
+## Project Architecture
+{arch_doc}
+
+## PR Summary
+{pr_summary}
+
+## Issues Found So Far (do NOT repeat these)
+{prev_issues_summary}
+
+## Full Diff (all changed files)
+```diff
+{diff_text}
+```
+
+## Evaluation Dimensions
+
+### 1. Module Responsibility
+- Does each changed file/class have a single, well-defined responsibility?
+- Is any module doing too much (god class/module)?
+- Is any logic split across modules in a way that makes it hard to reason about?
+- Should this new code live in a different module entirely?
+
+### 2. Layering & Dependencies
+- Does the change respect the existing layer boundaries?
+- Does any lower-layer module now import from a higher-layer module?
+- Are there any new circular dependencies introduced?
+- Is the dependency direction consistent with the rest of the codebase?
+
+### 3. API Design
+- Is the new/changed API minimal — does it expose only what callers need?
+- Are parameter names and types self-documenting?
+- Is the API easy to use correctly and hard to use incorrectly?
+- Does it follow the principle of least surprise?
+- Are there implicit ordering constraints or hidden preconditions that callers must know?
+- Could the API be simplified by merging parameters, using sensible defaults, or removing options?
+
+### 4. Consistency
+- Do similar classes/functions in the same module follow the same interface pattern?
+- If there are multiple subclasses, do they all have the same initialization/call convention?
+- Are error handling patterns consistent (exceptions vs return codes vs None)?
+- Are naming conventions consistent (verb_noun vs noun_verb, snake_case, etc.)?
+- If this module has a "register" or "factory" pattern, does the new code follow it?
+
+### 5. Abstraction & Reuse
+- Is there logic in this diff that already exists elsewhere in the codebase (per arch_doc)?
+- Is the new abstraction at the right level — not too generic, not too specific?
+- Is there a base class or utility that should be used but isn't?
+- Does the new code introduce a parallel hierarchy that duplicates an existing one?
+- Could a 10-line function be replaced by a 1-line call to an existing utility?
+
+### 6. Complexity & Simplicity
+- Is the implementation the simplest possible solution to the problem?
+- Are there unnecessary intermediate variables, wrapper classes, or indirection layers?
+- Could a multi-step pipeline be expressed as a single expression or comprehension?
+- Is there state that could be eliminated by making the function pure?
+- Does the control flow have unnecessary branches that could be unified?
+
+### 7. Extensibility
+- If a new variant of this feature needs to be added, how much code changes?
+- Is the extension point in the right place (open/closed principle)?
+- Are magic strings/numbers that should be enums or config values?
+- Is the new code hardcoded to specific implementations instead of abstractions?
+
+### 8. Replaceability & Decoupling
+- Does the new code depend on concrete classes where it should depend on interfaces/protocols?
+- Is the new component testable in isolation, or does it require the full system?
+- Are there hidden global state dependencies (singletons, module-level variables)?
+- Could the component be swapped for a different implementation without changing callers?
+
+### 9. Testability
+- Can the new logic be unit-tested without mocking the entire system?
+- Are there side effects (file I/O, network, time) mixed into pure logic that should be separated?
+- Is there implicit state that makes test order matter?
+- Are the boundaries between "pure logic" and "side effects" clear?
+
+### 10. Overall Design Verdict
+- Is this the optimal design, or is there a simpler/more consistent alternative?
+- What is the single most important architectural change that would most improve this code?
+
+## Critical Mindset
+Ask yourself for EVERY changed file:
+- "Is this the right place for this code?"
+- "Is this the right abstraction?"
+- "Would I be comfortable if a new team member read this and used it as a pattern?"
+- "In 6 months, will this be easy or painful to extend?"
+
+## Output Rules
+- Report ONLY issues NOT already in "Issues Found So Far"
+- Focus on DESIGN issues (bug_category: design | maintainability)
+- Severity guide:
+  - critical: fundamental design flaw that will cause pain at scale or block future features
+  - medium: inconsistency or unnecessary complexity that should be fixed before merge
+  - normal: minor improvement that would make the code cleaner
+- Each issue MUST reference a specific line in the diff (path + line number)
+- suggestion MUST include a concrete alternative (not just "consider refactoring")
+- Output ONLY a JSON array. Each item: path, line, severity, bug_category, problem, suggestion.
+- If no issues found, output [].
+
+STRICT RULES — violations will be rejected:
+1. Only report issues caused by the diff itself (added/modified/deleted lines). \
+If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
+2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
+missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
+'''
+
+_R4_DIFF_BUDGET = 12000  # chars of full diff to include in architect prompt
+
+
+def _round4_architect_review(
+    llm: Any,
+    diff_text: str,
+    arch_doc: str,
+    prev_issues: List[Dict[str, Any]],
+    pr_summary: str = '',
+    language: str = 'cn',
+    agent_instructions: str = '',
+) -> List[Dict[str, Any]]:
+    prog = _Progress('Round 4: architect design review')
+    prev_summaries = [
+        f'{c.get("path")}:{c.get("line")} [{c.get("severity")}] {(c.get("problem") or "")[:80]}'
+        for c in prev_issues
+    ]
+    prev_issues_summary = '\n'.join(prev_summaries[:40])
+    if len(prev_issues_summary) > 2000:
+        prev_issues_summary = prev_issues_summary[:2000] + '\n...(truncated)'
+
+    prompt = _ROUND4_ARCHITECT_PROMPT_TMPL.format(
+        lang_instruction=_language_instruction(language),
+        agent_instructions=agent_instructions or '(not available)',
+        arch_doc=arch_doc or '(not available)',
+        pr_summary=pr_summary[:600] if pr_summary else '(not available)',
+        prev_issues_summary=prev_issues_summary or '(none)',
+        diff_text=diff_text[:_R4_DIFF_BUDGET],
+    )
+    items = _safe_llm_call(llm, prompt)
+    result: List[Dict[str, Any]] = []
+    for item in (items if isinstance(items, list) else []):
+        normalized = _normalize_comment_item(item, default_path='', default_category='design')
+        if normalized is not None:
+            result.append(normalized)
+    prog.done(f'{len(result)} architect issues found')
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Round 5: merge and deduplicate
 # ---------------------------------------------------------------------------
 
 _COMPRESS_COMMENTS_PROMPT_TMPL = '''\
@@ -1326,7 +1359,7 @@ Output ONLY the JSON array. No explanation, no markdown wrapper.
 '''
 
 
-def _round4_merge_and_deduplicate(
+def _round5_merge_and_deduplicate(
     llm: Any,
     all_comments: List[Dict[str, Any]],
     existing_comments: Optional[List[Dict[str, Any]]] = None,
@@ -1334,7 +1367,7 @@ def _round4_merge_and_deduplicate(
 ) -> List[Dict[str, Any]]:
     if not all_comments:
         return []
-    prog = _Progress('Round 4: merge & deduplicate')
+    prog = _Progress('Round 5: merge & deduplicate')
     valid = [c for c in all_comments if c.get('path') and c.get('line', 0) > 0]
     if not valid:
         prog.done('no valid comments')
@@ -1381,19 +1414,21 @@ def _round4_merge_and_deduplicate(
             'bug_category': category,
             'problem': item.get('problem') or '',
             'suggestion': original.get('suggestion') or '',
+            '_review_version': 2,
         })
     if not result:
         _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
-        result = sorted(valid, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2))
+        result = [{**c, '_review_version': 2}
+                  for c in sorted(valid, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2))]
     prog.done(f'{len(result)} final issues')
     return result
 
 
 # ---------------------------------------------------------------------------
-# Orchestration: run all four rounds
+# Orchestration: run all five rounds
 # ---------------------------------------------------------------------------
 
-def _run_four_rounds(
+def _run_five_rounds(
     llm: Any,
     hunks: List[Tuple[str, int, int, str]],
     diff_text: str,
@@ -1435,11 +1470,31 @@ def _run_four_rounds(
     else:
         _Progress('Round 3: global analysis').done(f'loaded from checkpoint ({len(r3)} issues)')
 
+    use_r4_cache = ckpt.should_use_cache(ReviewStage.R4)
+    r4 = ckpt.get('r4')
+    if r4 is None:
+        if not use_r4_cache:
+            lazyllm.LOG.warning('Round 4: no cache found, re-computing')
+        r4 = _round4_architect_review(
+            llm, diff_text, arch_doc, r1 + r2 + r3, pr_summary=pr_summary,
+            language=language, agent_instructions=agent_instructions,
+        )
+        ckpt.save('r4', r4)
+        ckpt.mark_stage_done(ReviewStage.R4)
+    else:
+        _Progress('Round 4: architect review').done(f'loaded from checkpoint ({len(r4)} issues)')
+
     use_final_cache = ckpt.should_use_cache(ReviewStage.FINAL)
     final = ckpt.get('final')
+    # discard old-format final (produced before R4 architect round was added)
+    if final is not None and isinstance(final, list) and not any(
+        c.get('_review_version') == 2 for c in final[:1]
+    ):
+        lazyllm.LOG.info('Round 5: discarding old-format final checkpoint, re-computing')
+        final = None
     if final is None:
         if not use_final_cache:
-            lazyllm.LOG.warning('Round 4: no cache found, re-computing')
+            lazyllm.LOG.warning('Round 5: no cache found, re-computing')
 
         def _tag(issues: List[Dict[str, Any]], src: str) -> List[Dict[str, Any]]:
             return [{**c, 'source': src} for c in issues]
@@ -1458,12 +1513,12 @@ def _run_four_rounds(
             if c.get('path') not in r2_covered_files
             or f'{c.get("path")}:{c.get("line")}' not in r2_covered_keys
         ]
-        final = _round4_merge_and_deduplicate(
-            llm, _tag(r1_passthrough, 'r1') + _tag(r2, 'r2') + _tag(r3, 'r3'),
+        final = _round5_merge_and_deduplicate(
+            llm, _tag(r1_passthrough, 'r1') + _tag(r2, 'r2') + _tag(r3, 'r3') + _tag(r4, 'r4'),
             existing_comments=existing_comments, language=language,
         )
         ckpt.save('final', final)
         ckpt.mark_stage_done(ReviewStage.FINAL)
     else:
-        _Progress('Round 4: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')
+        _Progress('Round 5: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')
     return final

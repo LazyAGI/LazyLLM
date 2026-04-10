@@ -16,6 +16,7 @@ class ReviewStage(enum.Enum):
     R1 = 'r1'
     R2 = 'r2'
     R3 = 'r3'
+    R4 = 'r4'
     FINAL = 'final'
 
     @staticmethod
@@ -23,7 +24,7 @@ class ReviewStage(enum.Enum):
         return [
             ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
             ReviewStage.PR_SUMMARY, ReviewStage.R1, ReviewStage.R2,
-            ReviewStage.R3, ReviewStage.FINAL,
+            ReviewStage.R3, ReviewStage.R4, ReviewStage.FINAL,
         ]
 
     def index(self) -> int:
@@ -118,6 +119,7 @@ class _ReviewCheckpoint:
             ReviewStage.R1: [],   # r1 uses per-hunk keys (r1_hunk_*)
             ReviewStage.R2: ['r2_shared_context'],  # r2 uses per-file keys (r2_file_*)
             ReviewStage.R3: ['r3'],
+            ReviewStage.R4: ['r4'],
             ReviewStage.FINAL: ['final'],
         }
         for s in ReviewStage.ordered():
