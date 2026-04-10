@@ -484,7 +484,7 @@ Be concise (max 800 words). Output plain text, no markdown headers.
 '''
 
 
-def _build_scoped_agent_tools(clone_dir: str) -> list:
+def _build_scoped_agent_tools(clone_dir: str) -> list:  # noqa: C901
     from lazyllm.tools.agent.file_tool import read_file, list_dir, search_in_files
     from lazyllm.tools.agent.shell_tool import shell_tool
 
@@ -574,6 +574,7 @@ def _build_scoped_agent_tools(clone_dir: str) -> list:
     def grep_callers(symbol: str, max_results: int = 20) -> dict:
         '''Find all call sites of a function or class in the repository.
         Faster and more precise than search_scoped for finding callers.
+        Searches all source files regardless of language.
 
         Args:
             symbol (str): Function or class name to search for (e.g. "MyClass" or "my_func").
@@ -584,7 +585,7 @@ def _build_scoped_agent_tools(clone_dir: str) -> list:
         '''
         lazyllm.LOG.info(f'  [Agent] GrepCallers {symbol!r}')
         pattern = rf'\b{re.escape(symbol)}\s*[\(\.]'
-        return search_in_files(pattern, path=clone_dir, glob='*.py', max_results=max_results, root=clone_dir)
+        return search_in_files(pattern, path=clone_dir, max_results=max_results, root=clone_dir)
 
     return [read_file_scoped, read_files_batch, grep_callers, search_scoped, list_dir_scoped, shell_scoped]
 
@@ -592,6 +593,44 @@ def _build_scoped_agent_tools(clone_dir: str) -> list:
 # ---------------------------------------------------------------------------
 # Symbol Knowledge Cache — shared across all files in a Round 2 pass
 # ---------------------------------------------------------------------------
+
+# Per-language patterns for locating symbol definitions.
+# Each entry: (glob, def_pattern, kind_group_idx)
+# def_pattern must have a named group `name` matching the symbol name.
+_LANG_SYMBOL_PATTERNS: List[Tuple[str, str, str]] = [
+    # Python: class Foo / def foo
+    ('*.py', r'^\s*(?P<kw>class|def)\s+(?P<name>\w+)\s*[\(:]', 'kw'),
+    # C/C++: RetType ClassName::method( or just FuncName(
+    ('*.cpp', r'^\s*(?:[\w:<>*&]+\s+)+(?P<name>\w+)\s*\(', ''),
+    ('*.cc', r'^\s*(?:[\w:<>*&]+\s+)+(?P<name>\w+)\s*\(', ''),
+    ('*.cxx', r'^\s*(?:[\w:<>*&]+\s+)+(?P<name>\w+)\s*\(', ''),
+    ('*.h', r'^\s*(?:class|struct|enum)\s+(?P<name>\w+)', ''),
+    ('*.hpp', r'^\s*(?:class|struct|enum)\s+(?P<name>\w+)', ''),
+    # Go: func (recv) FuncName( or func FuncName(
+    ('*.go', r'^\s*func\s+(?:\(\w+\s+\*?\w+\)\s+)?(?P<name>\w+)\s*\(', ''),
+    # Rust: fn func_name / struct Name / impl Name / trait Name
+    ('*.rs', r'^\s*(?:pub\s+)?(?:async\s+)?(?P<kw>fn|struct|impl|trait|enum)\s+(?P<name>\w+)', 'kw'),
+    # Java: class/interface/enum or method
+    ('*.java', r'^\s*(?:public\s+|private\s+|protected\s+|static\s+|final\s+)*'
+               r'(?P<kw>class|interface|enum)\s+(?P<name>\w+)', 'kw'),
+    ('*.java', r'^\s*(?:public\s+|private\s+|protected\s+|static\s+|final\s+)*'
+               r'[\w<>\[\]]+\s+(?P<name>\w+)\s*\(', ''),
+    # JavaScript / TypeScript
+    ('*.js', r'^\s*(?:export\s+)?(?:async\s+)?(?:function\s+(?P<name>\w+)|'
+             r'(?:class|const|let|var)\s+(?P<name2>\w+))', ''),
+    ('*.ts', r'^\s*(?:export\s+)?(?:async\s+)?(?:function\s+(?P<name>\w+)|'
+             r'(?:class|const|let|var|interface|type)\s+(?P<name2>\w+))', ''),
+    ('*.jsx', r'^\s*(?:export\s+)?(?:async\s+)?(?:function\s+(?P<name>\w+)|'
+              r'(?:class|const|let|var)\s+(?P<name2>\w+))', ''),
+    ('*.tsx', r'^\s*(?:export\s+)?(?:async\s+)?(?:function\s+(?P<name>\w+)|'
+              r'(?:class|const|let|var|interface|type)\s+(?P<name2>\w+))', ''),
+]
+
+# Globs for source files to search when no file_path is given
+_SOURCE_GLOBS = [
+    '*.py', '*.cpp', '*.cc', '*.cxx', '*.h', '*.hpp',
+    '*.go', '*.rs', '*.java', '*.js', '*.ts', '*.jsx', '*.tsx',
+]
 
 _SYMBOL_SUMMARY_PROMPT_TMPL = '''\
 You are a code analyst. Given the following class or function definition, write a ONE-sentence summary \
@@ -639,17 +678,22 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
         abs_file = os.path.join(clone_dir, file_path) if file_path else ''
         if not abs_file or not os.path.isfile(abs_file):
             try:
-                res = search_in_files(
-                    rf'^\s*(class|def)\s+{re.escape(symbol_name)}\s*[\(:]',
-                    path=clone_dir, glob='*.py', max_results=3, root=clone_dir,
-                )
-                matches = res.get('results', []) if isinstance(res, dict) else []
-                if matches:
-                    abs_file = matches[0].get('path', '')
-                    file_path = os.path.relpath(abs_file, clone_dir) if abs_file else file_path
-                    cache_key = f'{file_path}::{symbol_name}'
-                    if cache_key in symbol_cache:
-                        return {'cached': True, 'entry': symbol_cache[cache_key]}
+                # try each language pattern until a match is found
+                for glob_pat, def_pat, _ in _LANG_SYMBOL_PATTERNS:
+                    res = search_in_files(
+                        def_pat.replace('(?P<name>', f'(?P<name>{re.escape(symbol_name)}')
+                        if '(?P<name>' in def_pat else
+                        def_pat.replace('(?P<name2>', f'(?P<name2>{re.escape(symbol_name)}'),
+                        path=clone_dir, glob=glob_pat, max_results=3, root=clone_dir,
+                    )
+                    matches = res.get('results', []) if isinstance(res, dict) else []
+                    if matches:
+                        abs_file = matches[0].get('path', '')
+                        file_path = os.path.relpath(abs_file, clone_dir) if abs_file else file_path
+                        cache_key = f'{file_path}::{symbol_name}'
+                        if cache_key in symbol_cache:
+                            return {'cached': True, 'entry': symbol_cache[cache_key]}
+                        break
             except Exception:
                 pass
 
@@ -663,33 +707,43 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
         except OSError:
             return {'cached': False, 'entry': None, 'error': f'Cannot read {abs_file}'}
 
-        # find the definition line
+        # find the definition line (language-agnostic: search for symbol name near line start)
         def_line_idx = None
         kind = 'function'
+        ext = os.path.splitext(abs_file)[1].lower()
+        # build a broad pattern: symbol name preceded by keyword or type tokens
+        broad_pat = re.compile(
+            rf'(?:^|\s)(?P<kw>class|struct|interface|trait|enum|def|fn|func|function)'
+            rf'\s+{re.escape(symbol_name)}\s*[\(\[:<{{]'
+            rf'|(?:^|\s){re.escape(symbol_name)}\s*[\(\[:]',
+            re.MULTILINE,
+        )
         for i, line in enumerate(lines):
-            m = re.match(rf'^\s*(class|def)\s+{re.escape(symbol_name)}\s*[\(:]', line)
+            m = broad_pat.search(line)
             if m:
                 def_line_idx = i
-                kind = 'class' if m.group(1) == 'class' else 'function'
+                kw = (m.group('kw') if 'kw' in m.groupdict() and m.group('kw') else '').lower()
+                kind = 'class' if kw in ('class', 'struct', 'interface', 'trait', 'enum') else 'function'
                 break
 
         if def_line_idx is None:
             return {'cached': False, 'entry': None, 'error': f'{symbol_name} not found in {file_path}'}
 
-        # extract signature (up to closing ':')
+        # extract signature: grab lines until closing ')' or '{' or ':'
         sig_lines = [lines[def_line_idx].rstrip()]
-        if ')' not in sig_lines[0] and kind == 'function':
-            for j in range(def_line_idx + 1, min(def_line_idx + 6, len(lines))):
+        if not any(c in sig_lines[0] for c in ('{', ':', ')')):
+            for j in range(def_line_idx + 1, min(def_line_idx + 8, len(lines))):
                 sig_lines.append(lines[j].rstrip())
-                if ')' in lines[j]:
+                if any(c in lines[j] for c in ('{', ':', ')')):
                     break
         signature = ' '.join(s.strip() for s in sig_lines)[:200]
 
-        # extract docstring
+        # extract leading comment/docstring (language-agnostic heuristic)
         docstring = ''
         ds_start = def_line_idx + 1
         if ds_start < len(lines):
             stripped = lines[ds_start].strip()
+            # Python-style
             if stripped.startswith('"""') or stripped.startswith("'''"):
                 quote = stripped[:3]
                 ds_lines = [stripped]
@@ -699,21 +753,37 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
                         if quote in lines[j] and j > ds_start:
                             break
                 docstring = '\n'.join(ds_lines)[:500]
+            # C/C++/Java/Go/Rust block comment /** ... */ or /* ... */
+            elif stripped.startswith('/*') or stripped.startswith('//'):
+                ds_lines = [stripped]
+                for j in range(ds_start + 1, min(ds_start + 15, len(lines))):
+                    ds_lines.append(lines[j].rstrip())
+                    if '*/' in lines[j] or (not lines[j].strip().startswith('//') and j > ds_start):
+                        break
+                docstring = '\n'.join(ds_lines)[:500]
 
-        # extract method signatures if class
+        # extract method/function signatures if class-like (language-agnostic)
         method_sigs: List[str] = []
         if kind == 'class':
-            class_indent = len(lines[def_line_idx]) - len(lines[def_line_idx].lstrip())
-            for i in range(def_line_idx + 1, len(lines)):
-                ln = lines[i]
-                stripped = ln.lstrip()
-                if not stripped:
-                    continue
-                indent = len(ln) - len(stripped)
-                if indent <= class_indent and not stripped.startswith('#'):
-                    break
-                if re.match(r'def\s+\w+', stripped) and indent in (class_indent + 4, class_indent + 2):
-                    method_sigs.append(f'  {stripped.rstrip()[:120]}')
+            # Python: look for `def ` at one indent level deeper
+            if ext == '.py':
+                class_indent = len(lines[def_line_idx]) - len(lines[def_line_idx].lstrip())
+                for i in range(def_line_idx + 1, len(lines)):
+                    ln = lines[i]
+                    stripped_ln = ln.lstrip()
+                    if not stripped_ln:
+                        continue
+                    indent = len(ln) - len(stripped_ln)
+                    if indent <= class_indent and not stripped_ln.startswith('#'):
+                        break
+                    if re.match(r'def\s+\w+', stripped_ln) and indent in (class_indent + 4, class_indent + 2):
+                        method_sigs.append(f'  {stripped_ln.rstrip()[:120]}')
+            else:
+                # Generic: look for function/method keywords within next 60 lines
+                kw_pat = re.compile(r'(?:func|fn|def|function|void|public|private|protected)\s+\w+\s*\(')
+                for i in range(def_line_idx + 1, min(def_line_idx + 60, len(lines))):
+                    if kw_pat.search(lines[i]):
+                        method_sigs.append(f'  {lines[i].rstrip()[:120]}')
 
         # build code snippet for LLM summary
         end_idx = min(def_line_idx + 40, len(lines))
@@ -731,19 +801,55 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
         except Exception:
             summary = signature
 
-        # extract deps from imports in the file
+        # extract deps from imports/includes in the file (language-agnostic)
         deps: List[str] = []
-        import_pattern = re.compile(r'^\s*(?:from\s+(\S+)\s+import\s+(.+)|import\s+(.+))')
-        for line in lines[:50]:
-            m = import_pattern.match(line)
-            if m:
-                if m.group(2):
-                    for sym in re.split(r',\s*', m.group(2)):
-                        sym = sym.strip().split(' as ')[0].strip()
-                        if sym and sym[0].isupper():
-                            deps.append(f'{m.group(1)}::{sym}')
-                elif m.group(3):
-                    deps.append(m.group(3).strip())
+        # Python: from X import Y / import X
+        py_import = re.compile(r'^\s*(?:from\s+(\S+)\s+import\s+(.+)|import\s+(.+))')
+        # C/C++: #include "foo.h" or <foo>
+        c_include = re.compile(r'^\s*#include\s+[<"]([^>"]+)[>"]')
+        # Go: import "pkg" or import ( "pkg" )
+        go_import = re.compile(r'^\s*import\s+"([^"]+)"')
+        # Rust: use crate::module::Type
+        rs_use = re.compile(r'^\s*use\s+([\w:]+)(?:::\{([^}]+)\})?')
+        # Java: import com.example.Class
+        java_import = re.compile(r'^\s*import\s+([\w.]+);')
+        # JS/TS: import { X } from 'y' or require('y')
+        js_import = re.compile(
+            r'''^\s*(?:import\s+.*from\s+['"]([^'"]+)['"]'''
+            r'''|(?:const|let|var)\s+\w+\s*=\s*require\(['"]([^'"]+)['"]\))'''
+        )
+
+        for line in lines[:80]:
+            if ext == '.py':
+                m = py_import.match(line)
+                if m:
+                    if m.group(2):
+                        for sym in re.split(r',\s*', m.group(2)):
+                            sym = sym.strip().split(' as ')[0].strip()
+                            if sym and sym[0].isupper():
+                                deps.append(f'{m.group(1)}::{sym}')
+                    elif m.group(3):
+                        deps.append(m.group(3).strip())
+            elif ext in ('.cpp', '.cc', '.cxx', '.h', '.hpp'):
+                m = c_include.match(line)
+                if m:
+                    deps.append(m.group(1))
+            elif ext == '.go':
+                m = go_import.match(line)
+                if m:
+                    deps.append(m.group(1))
+            elif ext == '.rs':
+                m = rs_use.match(line)
+                if m:
+                    deps.append(m.group(1) + (f'::{{{m.group(2)}}}' if m.group(2) else ''))
+            elif ext == '.java':
+                m = java_import.match(line)
+                if m:
+                    deps.append(m.group(1))
+            elif ext in ('.js', '.ts', '.jsx', '.tsx'):
+                m = js_import.match(line)
+                if m:
+                    deps.append(m.group(1) or m.group(2) or '')
 
         entry: Dict[str, Any] = {
             'key': cache_key,
@@ -889,6 +995,135 @@ def _arch_fill_all_sections(
 
 
 # ---------------------------------------------------------------------------
+# Public API Catalog — LLM identifies public files, regex extracts symbols
+# ---------------------------------------------------------------------------
+
+_PUBLIC_API_FILES_PROMPT_TMPL = '''\
+You are analyzing a software project. Based on the directory tree below, identify files that \
+serve as shared/public utility or base-class libraries — files whose functions and classes are \
+intended to be reused by other modules.
+
+For each such file output a JSON object with:
+- "file": path relative to repo root (e.g. "common/utils.py")
+- "scope": the path prefix under which this file is relevant.
+  Use "global" if it is a top-level shared library usable by the entire project.
+  Otherwise use the directory path of the module it belongs to (e.g. "tools/agent").
+- "reason": one short phrase explaining why it is public (e.g. "top-level utils", "agent helpers")
+
+Rules:
+- Only include files that are clearly utility/helper/base libraries, NOT application logic files.
+- Do NOT include test files, example files, migration scripts, or generated files.
+- Limit to at most 30 files.
+- Output ONLY a JSON array. No explanation.
+
+<directory_tree>
+{dir_tree}
+</directory_tree>
+'''
+
+# source file extensions to scan for public symbols
+_PUBLIC_SYM_EXTS = {'.py', '.go', '.ts', '.js', '.tsx', '.jsx', '.java', '.rs', '.cpp', '.cc', '.h', '.hpp'}
+
+# per-language patterns: (ext_set, pattern, name_group)
+_JAVA_PUB_PAT = (
+    r'^\s*(?:public\s+|protected\s+)(?:static\s+)?'
+    r'(?:class|interface|enum|\w[\w<>\[\]]*)\s+([A-Z][A-Za-z0-9_]*)'
+)
+_PUBLIC_SYM_PATTERNS: List[Tuple[frozenset, str, str]] = [
+    (frozenset({'.py'}), r'^(?:def|class)\s+([A-Za-z][A-Za-z0-9_]*)\s*[\(:]', 'name'),
+    (frozenset({'.go'}), r'^func\s+(?:\(\w+\s+\*?\w+\)\s+)?([A-Z][A-Za-z0-9_]*)\s*\(', 'name'),
+    (frozenset({'.ts', '.tsx', '.js', '.jsx'}),
+     r'^export\s+(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z][A-Za-z0-9_]*)', 'name'),
+    (frozenset({'.java'}), _JAVA_PUB_PAT, 'name'),
+    (frozenset({'.rs'}), r'^pub\s+(?:async\s+)?(?:fn|struct|enum|trait)\s+([a-z_][A-Za-z0-9_]*)', 'name'),
+    (frozenset({'.cpp', '.cc', '.h', '.hpp'}),
+     r'^(?:class|struct|enum)\s+([A-Z][A-Za-z0-9_]*)', 'name'),
+]
+
+_PUBLIC_API_MAX_ENTRIES_PER_FILE = 40
+_PUBLIC_API_MAX_FILES = 30
+
+
+def _get_sym_pattern(ext: str) -> Optional[re.Pattern]:
+    for ext_set, pat, _ in _PUBLIC_SYM_PATTERNS:
+        if ext in ext_set:
+            return re.compile(pat)
+    return None
+
+
+def _extract_sym_desc(lines: List[str], idx: int) -> str:
+    if idx + 1 >= len(lines):
+        return ''
+    nxt = lines[idx + 1].strip()
+    if nxt.startswith('"""') or nxt.startswith("'''"):
+        return nxt.strip('"\'').strip()[:80]
+    if nxt.startswith('//') or nxt.startswith('#') or nxt.startswith('/*'):
+        return re.sub(r'^[/#*\s]+', '', nxt).strip()[:80]
+    return ''
+
+
+def _scan_file_symbols(lines: List[str], pattern: re.Pattern) -> List[str]:
+    entries: List[str] = []
+    for i, line in enumerate(lines):
+        m = pattern.match(line)
+        if not m:
+            continue
+        sym_name = m.group(1)
+        if sym_name.startswith('_'):
+            continue
+        sig = line.rstrip()[:120]
+        desc = _extract_sym_desc(lines, i)
+        entries.append(f'{sig}: {desc}' if desc else sig)
+        if len(entries) >= _PUBLIC_API_MAX_ENTRIES_PER_FILE:
+            break
+    return entries
+
+
+def _extract_public_symbols(clone_dir: str, file_entries: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    catalog: Dict[str, List[str]] = {}
+    for entry in file_entries[:_PUBLIC_API_MAX_FILES]:
+        fpath = entry.get('file', '')
+        scope = entry.get('scope', 'global') or 'global'
+        abs_path = os.path.join(clone_dir, fpath)
+        if not os.path.isfile(abs_path):
+            continue
+        ext = os.path.splitext(fpath)[1].lower()
+        if ext not in _PUBLIC_SYM_EXTS:
+            continue
+        pattern = _get_sym_pattern(ext)
+        if pattern is None:
+            continue
+        try:
+            with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
+                lines = f.readlines()
+        except OSError:
+            continue
+        syms = _scan_file_symbols(lines, pattern)
+        if syms:
+            catalog.setdefault(scope, []).extend(syms)
+    return catalog
+
+
+def _build_public_api_catalog(
+    llm: Any, clone_dir: str, cache_path: Optional[str] = None,
+) -> str:
+    cached = _load_cache(cache_path, 'public_api_catalog')
+    if cached:
+        return cached
+
+    dir_tree = _build_dir_tree(clone_dir, max_depth=3)
+    prompt = _PUBLIC_API_FILES_PROMPT_TMPL.format(dir_tree=dir_tree[:4000])
+    file_entries = _safe_llm_call(llm, prompt)
+    if not isinstance(file_entries, list):
+        file_entries = []
+
+    catalog = _extract_public_symbols(clone_dir, file_entries)
+    result = json.dumps(catalog, ensure_ascii=False)
+    _save_cache(cache_path, 'public_api_catalog', result)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Architecture analysis — index & symbol extraction
 # ---------------------------------------------------------------------------
 
@@ -948,13 +1183,38 @@ _ARCH_ALWAYS_INJECT = frozenset({
 })
 
 
+def _candidate_scopes(file_path: str) -> List[str]:
+    parts = file_path.replace('\\', '/').split('/')
+    scopes = ['global']
+    for i in range(1, len(parts)):  # exclude filename itself
+        scopes.append('/'.join(parts[:i]))
+    return scopes
+
+
+def _format_catalog_for_file(catalog_json: str, file_path: str, max_chars: int = 1500) -> str:
+    try:
+        catalog: Dict[str, List[str]] = json.loads(catalog_json)
+    except (json.JSONDecodeError, ValueError):
+        return catalog_json[:max_chars]
+    candidate = set(_candidate_scopes(file_path))
+    lines: List[str] = []
+    for scope, entries in catalog.items():
+        if scope not in candidate:
+            continue
+        lines.append(f'[scope: {scope}]')
+        lines.extend(f'  {e}' for e in entries[:30])
+    result = '\n'.join(lines)
+    return result[:max_chars] if result else '(no matching public APIs for this file)'
+
+
 def _extract_arch_for_file(arch_doc: str, file_path: str, max_chars: int = 3000) -> str:
     '''Return the most relevant arch_doc sections for a given file path.
 
     Strategy:
     1. Always include Module Hierarchy, Gotchas, and Key Utilities sections.
-    2. Score remaining sections by keyword overlap with the file path components.
-    3. Fill up to max_chars, prioritising higher-scored sections.
+    2. For Public API Catalog: filter by candidate scopes derived from file_path (pure prefix match).
+    3. Score remaining sections by keyword overlap with the file path components.
+    4. Fill up to max_chars, prioritising higher-scored sections.
     '''
     if not arch_doc:
         return '(not available)'
@@ -978,6 +1238,14 @@ def _extract_arch_for_file(arch_doc: str, file_path: str, max_chars: int = 3000)
     for title, content in scored:
         if remaining <= 0:
             break
+        # Public API Catalog: filter by candidate scopes, not full content
+        if re.match(r'public api catalog', title, re.IGNORECASE):
+            filtered = _format_catalog_for_file(content, file_path, max_chars=min(remaining, 1200))
+            if filtered and not filtered.startswith('(no matching'):
+                block = f'[{title}]\n{filtered}'
+                parts.append(block[:remaining])
+                remaining -= len(parts[-1]) + 2
+            continue
         block = f'[{title}]\n{content}'
         parts.append(block[:remaining])
         remaining -= len(parts[-1]) + 2  # +2 for '\n\n' separator
@@ -1031,6 +1299,15 @@ def analyze_repo_architecture(
     arch_doc = _arch_fill_all_sections(llm, clone_dir, outline, dir_tree_1, cache_path)
 
     arch_doc = arch_doc or '(architecture analysis unavailable)'
+
+    # append Public API Catalog section (LLM identifies files, regex extracts symbols)
+    try:
+        public_api_json = _build_public_api_catalog(llm, clone_dir, cache_path)
+        if public_api_json and not public_api_json.startswith('('):
+            arch_doc = arch_doc + f'\n\n[Public API Catalog]\n{public_api_json}'
+    except Exception as e:
+        lazyllm.LOG.warning(f'Public API Catalog generation failed: {e}')
+
     # save full doc + index + symbol index in same cache file
     _save_cache_multi(cache_path, {
         'arch_doc': arch_doc,

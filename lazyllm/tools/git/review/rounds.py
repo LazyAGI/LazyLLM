@@ -10,7 +10,7 @@ import lazyllm
 
 from .utils import (
     _Progress, _VALID_CATEGORIES, _VALID_SEVERITIES,
-    _language_instruction, _safe_llm_call,
+    _language_instruction, _safe_llm_call, _safe_llm_call_text,
     _truncate_hunk_content, _extract_json_text, _parse_json_with_repair,
     _parse_unified_diff, _normalize_comment_item,
 )
@@ -1079,6 +1079,98 @@ def _round3_global_analysis(
 
 
 # ---------------------------------------------------------------------------
+# Round 4a: generate PR design document
+# ---------------------------------------------------------------------------
+
+_ROUND4_DOC_PROMPT_TMPL = '''\
+Based on the following information, generate a complete PR design document.
+{lang_instruction}
+
+Do NOT just describe "what code changed". Reconstruct the design intent of this PR.
+
+## Project Architecture
+{arch_doc}
+
+## PR Summary
+{pr_summary}
+
+## Full Diff
+```diff
+{diff_text}
+```
+
+Output a structured document with the following sections:
+
+【1. 背景与问题定义】
+- 这个 PR 想解决什么问题？
+- 这个问题在现有架构中的位置是什么？
+- 是否是新需求 / bugfix / 重构？
+
+【2. 设计目标】
+- 这个改动希望达到什么效果？
+- 是否有明确的设计约束（性能 / 可扩展性 / 一致性等）？
+
+【3. 设计方案】
+- 核心思路是什么？
+- 为什么这样设计？（是否有备选方案）
+- 是否符合现有架构分层？
+
+【4. 模块影响分析】
+- 修改/新增了哪些模块？
+- 每个模块职责是否发生变化？
+- 是否引入新的依赖关系？
+
+【5. API 设计】
+- 新增/修改了哪些接口？
+- 输入输出是什么？
+- 是否与现有 API 风格一致？
+
+【6. 使用方式（Usage Example）】
+- 给出典型使用示例（调用方式）
+- 是否对用户使用方式有影响？
+
+【7. 兼容性与影响范围】
+- 是否影响已有功能？
+- 是否是 breaking change？
+
+【8. 风险与边界】
+- 是否存在潜在问题或未覆盖场景？
+- 是否有隐含假设？
+
+【9. 可扩展性分析】
+- 后续类似需求是否容易扩展？
+- 当前设计是否容易演进？
+
+Notes:
+- If information is insufficient, make reasonable inferences and explicitly mark them as "假设".
+- Do not omit implicit design decisions.
+- Output plain text with the section headers above. No extra markdown.
+'''
+
+_R4_DOC_DIFF_BUDGET = 8000
+
+
+def _round4_generate_pr_doc(
+    llm: Any,
+    diff_text: str,
+    arch_doc: str,
+    pr_summary: str = '',
+    language: str = 'cn',
+    agent_instructions: str = '',
+) -> str:
+    prog = _Progress('Round 4a: generating PR design document')
+    prompt = _ROUND4_DOC_PROMPT_TMPL.format(
+        lang_instruction=_language_instruction(language),
+        arch_doc=arch_doc[:2000] if arch_doc else '(not available)',
+        pr_summary=pr_summary[:600] if pr_summary else '(not available)',
+        diff_text=diff_text[:_R4_DOC_DIFF_BUDGET],
+    )
+    result = _safe_llm_call_text(llm, prompt) or '(PR design document unavailable)'
+    prog.done(f'{len(result)} chars')
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Round 4: architect-level design review
 # ---------------------------------------------------------------------------
 
@@ -1098,8 +1190,18 @@ or would they ask for a redesign?"
 ## Project Architecture
 {arch_doc}
 
+## Reuse Check
+The [Public API Catalog] section in the architecture above lists public functions/classes
+scoped to this PR's files (pre-filtered by file path). If any logic in this diff
+reimplements something already in that catalog, report it
+(bug_category: maintainability, severity: medium).
+Cite the existing symbol name and its scope, and suggest reusing or adapting it.
+
 ## PR Summary
 {pr_summary}
+
+## PR Design Document (auto-generated)
+{pr_design_doc}
 
 ## Issues Found So Far (do NOT repeat these)
 {prev_issues_summary}
@@ -1211,6 +1313,7 @@ def _round4_architect_review(
     pr_summary: str = '',
     language: str = 'cn',
     agent_instructions: str = '',
+    pr_design_doc: str = '',
 ) -> List[Dict[str, Any]]:
     prog = _Progress('Round 4: architect design review')
     prev_summaries = [
@@ -1226,6 +1329,7 @@ def _round4_architect_review(
         agent_instructions=agent_instructions or '(not available)',
         arch_doc=arch_doc or '(not available)',
         pr_summary=pr_summary[:600] if pr_summary else '(not available)',
+        pr_design_doc=pr_design_doc[:3000] if pr_design_doc else '(not available)',
         prev_issues_summary=prev_issues_summary or '(none)',
         diff_text=diff_text[:_R4_DIFF_BUDGET],
     )
@@ -1470,6 +1574,20 @@ def _run_five_rounds(
     else:
         _Progress('Round 3: global analysis').done(f'loaded from checkpoint ({len(r3)} issues)')
 
+    use_r4_doc_cache = ckpt.should_use_cache(ReviewStage.R4_DOC)
+    pr_design_doc = ckpt.get('r4_doc')
+    if pr_design_doc is None:
+        if not use_r4_doc_cache:
+            lazyllm.LOG.warning('Round 4a: no cache found, re-computing')
+        pr_design_doc = _round4_generate_pr_doc(
+            llm, diff_text, arch_doc, pr_summary=pr_summary,
+            language=language, agent_instructions=agent_instructions,
+        )
+        ckpt.save('r4_doc', pr_design_doc)
+        ckpt.mark_stage_done(ReviewStage.R4_DOC)
+    else:
+        _Progress('Round 4a: PR design document').done(f'loaded from checkpoint ({len(pr_design_doc)} chars)')
+
     use_r4_cache = ckpt.should_use_cache(ReviewStage.R4)
     r4 = ckpt.get('r4')
     if r4 is None:
@@ -1478,6 +1596,7 @@ def _run_five_rounds(
         r4 = _round4_architect_review(
             llm, diff_text, arch_doc, r1 + r2 + r3, pr_summary=pr_summary,
             language=language, agent_instructions=agent_instructions,
+            pr_design_doc=pr_design_doc,
         )
         ckpt.save('r4', r4)
         ckpt.mark_stage_done(ReviewStage.R4)

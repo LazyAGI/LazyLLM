@@ -16,6 +16,7 @@ class ReviewStage(enum.Enum):
     R1 = 'r1'
     R2 = 'r2'
     R3 = 'r3'
+    R4_DOC = 'r4_doc'
     R4 = 'r4'
     FINAL = 'final'
 
@@ -24,7 +25,7 @@ class ReviewStage(enum.Enum):
         return [
             ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
             ReviewStage.PR_SUMMARY, ReviewStage.R1, ReviewStage.R2,
-            ReviewStage.R3, ReviewStage.R4, ReviewStage.FINAL,
+            ReviewStage.R3, ReviewStage.R4_DOC, ReviewStage.R4, ReviewStage.FINAL,
         ]
 
     def index(self) -> int:

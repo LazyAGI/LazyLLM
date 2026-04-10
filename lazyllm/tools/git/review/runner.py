@@ -146,5 +146,6 @@ def review(  # noqa: C901
         'comments_posted': posted,
         'comment_stats': stats,
         'pr_summary': pr_summary,
+        'pr_design_doc': ckpt.get('r4_doc') or '',
         'original_review_code': original_review_code,
     }
