@@ -7,19 +7,19 @@ namespace lazyllm {
 
 std::string join_views(
     size_t string_size,
-    std::vector<ChunkView>::const_iterator begin,
-    const std::vector<ChunkView>::const_iterator& end
+    std::vector<Chunk>::const_iterator begin,
+    const std::vector<Chunk>::const_iterator& end
 ) {
     std::string out;
     out.reserve(string_size);
     while(begin != end) {
-        out.append(begin->view);
+        out.append(begin->text);
         ++begin;
     }
     return out;
 }
 
-std::vector<std::string> SentenceSplitter::merge_chunks(const std::vector<ChunkView>& chunks, int chunk_size) const {
+std::vector<std::string> SentenceSplitter::merge_chunks(std::vector<Chunk> chunks, int chunk_size) const {
     std::vector<std::string> out;
 
     auto iLeft = chunks.begin();
@@ -35,7 +35,7 @@ std::vector<std::string> SentenceSplitter::merge_chunks(const std::vector<ChunkV
         // Grow right edge to the largest window under chunk_size.
         while (iRight != iEnd && window_token_sum + iRight->token_size <= chunk_size) {
             window_token_sum += iRight->token_size;
-            string_size += iRight->view.size();
+            string_size += iRight->text.size();
             ++iRight;
         }
 
@@ -47,7 +47,7 @@ std::vector<std::string> SentenceSplitter::merge_chunks(const std::vector<ChunkV
             window_token_sum > _overlap || window_token_sum + iRight->token_size > chunk_size
         )) {
             window_token_sum -= iLeft->token_size;
-            string_size -= iLeft->view.size();
+            string_size -= iLeft->text.size();
             ++iLeft;
         }
         // Now window contains only overlap.

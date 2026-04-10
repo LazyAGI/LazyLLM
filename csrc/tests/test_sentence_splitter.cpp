@@ -44,7 +44,7 @@ public:
 TEST(sentence_splitter, merge_chunks_applies_overlap) {
     TestSentenceSplitter splitter(5, 2);
 
-    const std::vector<lazyllm::ChunkView> splits{
+    const std::vector<lazyllm::Chunk> splits{
         {"ab", false, 2},
         {"cd", false, 2},
         {"ef", false, 2},
@@ -56,7 +56,7 @@ TEST(sentence_splitter, merge_chunks_applies_overlap) {
 
 TEST(sentence_splitter, merge_chunks_throws_on_oversized_single_split) {
     TestSentenceSplitter splitter(3, 1);
-    const std::vector<lazyllm::ChunkView> splits{
+    const std::vector<lazyllm::Chunk> splits{
         {"abcd", false, 4},
     };
 
@@ -66,7 +66,7 @@ TEST(sentence_splitter, merge_chunks_throws_on_oversized_single_split) {
 TEST(sentence_splitter, merge_chunks_shrinks_overlap_to_fit_next_chunk) {
     TestSentenceSplitter splitter(5, 4);
 
-    const std::vector<lazyllm::ChunkView> splits{
+    const std::vector<lazyllm::Chunk> splits{
         {"aa", false, 2},
         {"b", false, 1},
         {"cccc", false, 4},

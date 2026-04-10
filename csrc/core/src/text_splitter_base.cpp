@@ -42,8 +42,13 @@ std::vector<std::string> TextSplitterBase::split_text(const std::string_view& vi
             "Consider increasing the chunk size or decreasing the size of " +
             "your metadata to avoid this.");
     }
-    auto splits = split_recursive(view, effective_chunk_size);
-    return merge_chunks(splits, effective_chunk_size);
+    auto split_views = split_recursive(view, effective_chunk_size);
+    std::vector<Chunk> splits;
+    splits.reserve(split_views.size());
+    for (const auto& split : split_views) {
+        splits.push_back(Chunk{std::string(split.view), split.is_sentence, split.token_size});
+    }
+    return merge_chunks(std::move(splits), effective_chunk_size);
 }
 
 std::vector<ChunkView> TextSplitterBase::split_recursive(

@@ -232,10 +232,7 @@ _tiktoken_env_lock = threading.Lock()
 
 _UNSET = object()
 
-@cpp_proxy(funcs_to_override=[
-    'split_text',
-    '_merge',
-], cpp_method_aliases={'_merge': 'merge_chunks'})
+@cpp_proxy
 class _TextSplitterBase(NodeTransform):
     _default_params = {}
     _default_params_lock = threading.RLock()

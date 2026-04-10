@@ -1,9 +1,29 @@
 import importlib.util
+import os
 import pytest
 import sys
 import types
 from pathlib import Path
 from types import SimpleNamespace
+
+
+class _ConfigStub:
+    def __init__(self):
+        self._values = {'home': str(Path.home() / '.lazyllm')}
+
+    def add(self, name, _type, default, env_name, *args, **kwargs):
+        raw = os.getenv(f'LAZYLLM_{env_name}')
+        if raw is None:
+            value = default
+        elif _type is bool:
+            value = raw.lower() in {'1', 'true', 'yes', 'on'}
+        else:
+            value = _type(raw)
+        self._values[name] = value
+        setattr(self, name, value)
+
+    def __getitem__(self, key):
+        return self._values[key]
 
 
 def _reload_cpp_module():
@@ -15,6 +35,7 @@ def _reload_cpp_module():
 
     pkg = types.ModuleType('lazyllm')
     pkg.__path__ = [str(module_path.parent)]  # type: ignore[attr-defined]
+    pkg.config = _ConfigStub()  # type: ignore[attr-defined]
     sys.modules['lazyllm'] = pkg
 
     spec = importlib.util.spec_from_file_location(module_name, module_path)
@@ -86,4 +107,3 @@ def test_cpp_class_propagates_import_error_when_enabled(monkeypatch):
 
     with pytest.raises(ImportError, match='boom'):
         cpp.cpp_class(AnyClass)
-

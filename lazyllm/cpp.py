@@ -1,12 +1,14 @@
 import importlib
 import inspect
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, cast
+from typing import Any, Dict, Optional, Tuple, TypeVar, cast
 
 from lazyllm import config
 
 config.add('cpp_switch', bool, False, 'ENABLE_CPP_OVERRIDE')
+
 _LAZYLLM_CPP_MODULE = None
+_C = TypeVar('_C', bound=type)
 
 
 def _load_cpp_module():
@@ -16,34 +18,77 @@ def _load_cpp_module():
     return _LAZYLLM_CPP_MODULE
 
 
-def _validate_method_aliases(value: Optional[Dict[str, str]]) -> Dict[str, str]:
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise TypeError(
-            f'@cpp_proxy cpp_method_aliases must be dict[str, str], got: {type(value).__name__}'
-        )
-    for py_name, cpp_name in value.items():
-        if not isinstance(py_name, str) or not isinstance(cpp_name, str):
-            raise TypeError('@cpp_proxy cpp_method_aliases must be dict[str, str].')
-    return value
+def _normalize_param_names(callable_obj: Any) -> Tuple[str, ...]:
+    signature = inspect.signature(callable_obj)
+    names = []
+    for index, param in enumerate(signature.parameters.values()):
+        if index == 0 and param.name in ('self', 'cls'):
+            continue
+        names.append(param.name)
+    return tuple(names)
 
 
-def _build_valid_kwargs(impl_cls: type, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    'Extract params from kwargs, and kwargs only, for C++ object which name is the same and type is matched.'
-    signature = inspect.signature(impl_cls.__init__)
-
+def _build_valid_kwargs(init_param_types: Dict[str, type], kwargs: Dict[str, Any]) -> Dict[str, Any]:
     valid_params: Dict[str, Any] = {}
     for name, value in kwargs.items():
-        param = signature.parameters.get(name)
-        expected_type = param.annotation
+        expected_type = init_param_types.get(name)
+        if expected_type is None:
+            continue
         if type(value) is expected_type:
             valid_params[name] = value
-
     return valid_params
 
 
-_C = TypeVar('_C', bound=type)
+def _validate_proxy_contract(py_cls: type, impl_cls: type):
+    proxy_methods = getattr(impl_cls, '__proxy_methods__', None)
+    method_signatures = getattr(impl_cls, '__proxy_method_signatures__', None)
+    proxy_attrs = getattr(impl_cls, '__proxy_attrs__', None)
+    init_param_types = getattr(impl_cls, '__init_param_types__', None)
+
+    if not isinstance(proxy_methods, (tuple, list)) or any(not isinstance(name, str) for name in proxy_methods):
+        raise TypeError(f'{impl_cls.__name__}.__proxy_methods__ must be tuple/list[str].')
+    if not isinstance(proxy_attrs, (tuple, list)) or any(not isinstance(name, str) for name in proxy_attrs):
+        raise TypeError(f'{impl_cls.__name__}.__proxy_attrs__ must be tuple/list[str].')
+    if not isinstance(method_signatures, dict):
+        raise TypeError(f'{impl_cls.__name__}.__proxy_method_signatures__ must be dict[str, tuple[str, ...]].')
+    if set(method_signatures.keys()) != set(proxy_methods):
+        raise TypeError(f'{impl_cls.__name__}.__proxy_method_signatures__ keys must equal __proxy_methods__.')
+    if not isinstance(init_param_types, dict):
+        raise TypeError(f'{impl_cls.__name__}.__init_param_types__ must be dict[str, type].')
+
+    for name, expected_sig in method_signatures.items():
+        if not isinstance(expected_sig, (tuple, list)) or any(not isinstance(p, str) for p in expected_sig):
+            raise TypeError(
+                f'{impl_cls.__name__}.__proxy_method_signatures__["{name}"] must be tuple/list[str].'
+            )
+
+    for name, expected_type in init_param_types.items():
+        if not isinstance(name, str) or not isinstance(expected_type, type):
+            raise TypeError(f'{impl_cls.__name__}.__init_param_types__ must be dict[str, type].')
+
+    for name in proxy_methods:
+        if not hasattr(impl_cls, name):
+            raise AttributeError(f'{impl_cls.__name__} missing exported proxy method: {name}')
+        impl_member = getattr(impl_cls, name)
+        if not callable(impl_member):
+            raise TypeError(f'{impl_cls.__name__}.{name} must be callable')
+
+        if not hasattr(py_cls, name):
+            raise AttributeError(f'{py_cls.__name__} missing method for proxy: {name}')
+        py_member = getattr(py_cls, name)
+        if not callable(py_member):
+            raise TypeError(f'{py_cls.__name__}.{name} must be callable')
+
+        expected_sig = tuple(method_signatures[name])
+        py_sig = _normalize_param_names(py_member)
+        if py_sig != expected_sig:
+            raise TypeError(
+                f'Signature mismatch for {py_cls.__name__}.{name}: '
+                f'python params={py_sig}, expected={expected_sig}'
+            )
+
+    return tuple(proxy_methods), tuple(proxy_attrs), dict(init_param_types)
+
 
 def cpp_class(py_class: Optional[_C] = None):
     def _decorate(cls: _C) -> _C:
@@ -63,18 +108,7 @@ def cpp_class(py_class: Optional[_C] = None):
     return _decorate(py_class)
 
 
-def _validate_name_list(value: Optional[List[str]], field_name: str) -> List[str]:
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise TypeError(f'@cpp_proxy {field_name} must be list[str], got: {type(value).__name__}')
-    if any(not isinstance(name, str) for name in value):
-        raise TypeError(f'@cpp_proxy {field_name} must be list[str].')
-    return value
-
-
-def cpp_proxy(py_class: Optional[_C] = None):
-
+def cpp_proxy(py_class: Optional[_C]):
     def _decorate(cls: _C) -> _C:
         if not isinstance(cls, type):
             raise TypeError(f'@cpp_proxy can only decorate classes, got: {type(cls).__name__}')
@@ -83,102 +117,46 @@ def cpp_proxy(py_class: Optional[_C] = None):
             return cls
 
         cpp_module = _load_cpp_module()
-        default_impl_name = f'{cls.__name__}CPPImpl'
-        if not hasattr(cpp_module, default_impl_name):
-            raise AttributeError(f'@cpp_proxy cannot find C++ impl: {default_impl_name}')
+        impl_name = f'{cls.__name__}CPPImpl'
+        if not hasattr(cpp_module, impl_name):
+            raise AttributeError(f'@cpp_proxy cannot find C++ impl: {impl_name}')
+
+        impl_cls = getattr(cpp_module, impl_name)
+        proxy_methods, proxy_attrs, init_param_types = _validate_proxy_contract(cls, impl_cls)
 
         impl_holder = '_c_obj'
-        impl_cls = getattr(cpp_module, default_impl_name)
         original_init = cls.__init__
 
         @wraps(original_init)
         def _proxied_init(self, *args, **kwargs):
-            'Create C++ object instance right after Python __init__.'
-
             original_init(self, *args, **kwargs)
-
-            valid_params = _build_valid_kwargs(impl_cls, kwargs)
-            self.__setattr__(impl_holder, impl_cls(**valid_params))
+            valid_params = _build_valid_kwargs(init_param_types, kwargs)
+            impl = impl_cls(**valid_params)
+            object.__setattr__(self, impl_holder, impl)
 
         cls.__init__ = _proxied_init
 
-        # Proxy C++ methods
-        cpp_method_names: List[str] = []
-        for name in dir(impl_cls):
-            try:
-                member = getattr(impl_cls, name)
-            except Exception:
-                continue
-            if callable(member):
-                cpp_method_names.append(name)
-
-        if not proxy_names:
-            auto_names = [name for name in cpp_method_names if hasattr(cls, name)]
-            for py_name, cpp_name in method_aliases.items():
-                if cpp_name in cpp_method_names and hasattr(cls, py_name) and py_name not in auto_names:
-                    auto_names.append(py_name)
-            proxy_method_names = auto_names
-        else:
-            proxy_method_names = list(proxy_names)
-
-        def _make_method_proxy(py_name: str, cpp_name: str, original: Callable[..., Any]):
-            @wraps(original)
+        def _make_method_proxy(method_name: str, original_method):
+            @wraps(original_method)
             def _proxy(self, *args, **kwargs):
-                # Keep subclass polymorphism on Python side unless that subclass
-                # has its own @cpp_proxy decoration.
-                if type(self) is not cls:
-                    return original(self, *args, **kwargs)
-
-                impl = getattr(self, impl_holder, None)
-                if impl is None:
-                    return original(self, *args, **kwargs)
-
-                cpp_method = getattr(impl, cpp_name, None)
-                if cpp_method is None:
-                    return original(self, *args, **kwargs)
-
-                try:
-                    result = cpp_method(*args, **kwargs)
-                except RuntimeError:
-                    # Keep Python-side exception/warning semantics when
-                    # C++ fast-path reports recoverable runtime errors.
-                    return original(self, *args, **kwargs)
+                impl = getattr(self, impl_holder)
+                cpp_method = getattr(impl, method_name)
+                result = cpp_method(*args, **kwargs)
                 return self if result is impl else result
 
             return _proxy
 
-        for py_name in proxy_method_names:
-            if not hasattr(cls, py_name):
-                raise AttributeError(
-                    f'@cpp_proxy funcs_to_override contains unknown method: {cls.__name__}.{py_name}'
-                )
-
-            cpp_name = method_aliases.get(py_name, py_name)
-            if proxy_names and cpp_name not in cpp_method_names:
-                raise AttributeError(
-                    f'@cpp_proxy cannot find C++ method: {default_impl_name}.{cpp_name}'
-                )
-
-            original = getattr(cls, py_name)
-            if not callable(original):
-                continue
-            setattr(cls, py_name, _make_method_proxy(py_name, cpp_name, original))
+        for method_name in proxy_methods:
+            original_method = getattr(cls, method_name)
+            setattr(cls, method_name, _make_method_proxy(method_name, original_method))
 
         if proxy_attrs:
             original_setattr = cls.__setattr__
 
             def _proxied_setattr(self, name, value):
                 original_setattr(self, name, value)
-                if name not in proxy_attrs:
-                    return
-                impl = getattr(self, impl_holder, None)
-                if impl is None:
-                    return
-                try:
-                    if hasattr(impl, name):
-                        setattr(impl, name, value)
-                except (AttributeError, TypeError, RuntimeError):
-                    return
+                if name in proxy_attrs and hasattr(self, impl_holder):
+                    setattr(getattr(self, impl_holder), name, value)
 
             cls.__setattr__ = _proxied_setattr
 

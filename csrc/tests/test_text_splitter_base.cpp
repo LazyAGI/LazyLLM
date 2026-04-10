@@ -85,7 +85,7 @@ TEST(text_splitter_base, merge_chunks_uses_overlap) {
     TestTextSplitter splitter(100, 1);
     splitter.set_tokenizer_for_test(std::make_shared<ByteTokenizer>());
 
-    const std::vector<lazyllm::ChunkView> splits{
+    const std::vector<lazyllm::Chunk> splits{
         {"ab", true, 2},
         {"cd", true, 2},
         {"ef", true, 2},
@@ -117,7 +117,7 @@ TEST(text_splitter_base, merge_chunks_throws_on_oversized_end_split) {
     TestTextSplitter splitter(100, 1);
     splitter.set_tokenizer_for_test(std::make_shared<ByteTokenizer>());
 
-    const std::vector<lazyllm::ChunkView> splits{
+    const std::vector<lazyllm::Chunk> splits{
         {"a", true, 1},
         {"bbbb", true, 4},
     };
