@@ -1317,13 +1317,11 @@ Each item has: idx, path, line, summary.
 
 Output a JSON array of the surviving issues. Each item must have ONLY:
 - "idx": integer (original idx from the new issues list above)
-- "path": file path
-- "line": line number
 - "severity": critical | medium | normal
 - "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability
 - "problem": one sentence (keep or slightly improve the original summary)
 
-Do NOT include "suggestion" — it will be restored from the original data.
+Do NOT include "path", "line", or "suggestion" — they will be restored from the original data.
 Output ONLY the JSON array. No explanation, no markdown wrapper.
 '''
 
@@ -1364,11 +1362,11 @@ def _round4_merge_and_deduplicate(
         if not isinstance(item, dict) or item.get('problem') is None:
             continue
         try:
-            line = int(item.get('line', 0))
             idx = int(item.get('idx', -1))
         except (TypeError, ValueError):
             continue
-        if line <= 0 or not item.get('path'):
+        original = idx_map.get(idx)
+        if original is None:
             continue
         category = item.get('bug_category') or 'logic'
         if category not in _VALID_CATEGORIES:
@@ -1376,14 +1374,13 @@ def _round4_merge_and_deduplicate(
         severity = item.get('severity') or 'normal'
         if severity not in _VALID_SEVERITIES:
             severity = 'normal'
-        suggestion = idx_map.get(idx, {}).get('suggestion') or ''
         result.append({
-            'path': item['path'],
-            'line': line,
+            'path': original['path'],
+            'line': original['line'],
             'severity': severity,
             'bug_category': category,
             'problem': item.get('problem') or '',
-            'suggestion': suggestion,
+            'suggestion': original.get('suggestion') or '',
         })
     if not result:
         _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}

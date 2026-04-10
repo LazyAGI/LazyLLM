@@ -109,7 +109,7 @@ def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None)
         if not _is_complete_clone(clone_dir):
             subprocess.run(
                 ['git', 'clone', '--single-branch', '--branch', branch, '--depth', '1', '--', repo_url, clone_dir],
-                capture_output=True, text=True, timeout=120, check=True,
+                capture_output=True, text=True, timeout=300, check=True,
             )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f'git clone failed: {e.stderr or e.stdout}') from e
@@ -1276,6 +1276,8 @@ def analyze_historical_reviews(
     total = len(target)
 
     if not target:
+        _save_cache_multi(cache_path, {'review_spec': '(no historical review comments found)',
+                                       'review_spec_max_prs': str(max_prs)})
         return '(no historical review comments found)'
 
     prog = _Progress('Spec: extracting rules from historical PRs', total)
@@ -1287,6 +1289,8 @@ def analyze_historical_reviews(
     prog.done(f'{len(all_rules)} raw rules from {total} PRs, merging...')
 
     if not all_rules:
+        _save_cache_multi(cache_path, {'review_spec': '(no historical review comments found)',
+                                       'review_spec_max_prs': str(max_prs)})
         return '(no historical review comments found)'
 
     merged_rules = _merge_rule_cards(llm, all_rules)
@@ -1449,7 +1453,10 @@ def _run_spec_analysis(
             ckpt.save('review_spec', review_spec)
             ckpt.mark_stage_done(ReviewStage.SPEC)
             if review_spec and review_spec_cache_path:
-                lazyllm.LOG.success(f'Review spec saved to: {review_spec_cache_path}')
+                if review_spec.startswith('('):
+                    lazyllm.LOG.warning(f'Review spec not generated: {review_spec}')
+                else:
+                    lazyllm.LOG.success(f'Review spec saved to: {review_spec_cache_path}')
         except Exception as e:
             # distinguish: no history PRs (acceptable) vs API/LLM failure (fatal)
             if 'no review comments' in str(e).lower() or 'not found' in str(e).lower():

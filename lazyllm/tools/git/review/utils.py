@@ -41,7 +41,7 @@ def _parse_unified_diff(diff_text: str) -> List[Tuple[str, int, int, str]]:
     for line in diff_text.splitlines():
         if line.startswith('diff --git '):
             flush_hunk()
-            m = re.match(r'diff --git a/(.+?) b/(.+?)(?:\s|$)', line)
+            m = re.match(r'diff --git a/(.+) b/(.+)$', line)
             current_path = m.group(2) if m else None
             new_start, new_count = 0, 0
             continue
