@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import time
+from pathlib import Path
 from typing import Any, Dict
 
 import requests
@@ -59,8 +60,8 @@ def _wait_http_ok(url: str, timeout: float = 20.0):
 def _build_store_conf(root_dir: str) -> Dict[str, Any]:
     segment_store_path = os.path.join(root_dir, 'segments.db')
     milvus_store_path = os.path.join(root_dir, 'milvus_lite.db')
-    open(segment_store_path, 'a', encoding='utf-8').close()
-    open(milvus_store_path, 'a', encoding='utf-8').close()
+    Path(segment_store_path).touch()
+    Path(milvus_store_path).touch()
     return {
         'segment_store': {'type': 'map', 'kwargs': {'uri': segment_store_path}},
         'vector_store': {
@@ -149,6 +150,7 @@ def main():
         if parser_url:
             parser_url = parser_url.rstrip('/')
             _wait_http_ok(f'{parser_url}/health')
+            _wait_algo_ready(parser_url, args.algo_id)
         else:
             parser_server, parser_url = _start_local_parser(args.parser_port, paths['parser_db'])
             document = _register_demo_algorithm(parser_url, args.algo_id, paths['store_dir'])
@@ -169,8 +171,7 @@ def main():
         print(f'Parser URL: {parser_url}', flush=True)
         print(f'Storage Dir: {paths["storage_dir"]}', flush=True)
         print(f'Doc DB: {paths["doc_db"]}', flush=True)
-        if document:
-            print(f'Algorithm ID: {args.algo_id}', flush=True)
+        print(f'Algorithm ID: {args.algo_id}', flush=True)
 
         if args.wait:
             # Step 4: keep the services alive for manual API testing.

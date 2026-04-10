@@ -4,7 +4,7 @@ check_dependency_by_group('rag')
 
 # flake8: noqa: E402
 from .document import Document
-from .doc_manager import DocManager
+from .doc_manager import DocManager, DocListManager
 from .doc_service import DocServer
 from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever, ContextRetriever, WeightedRetriever, PriorityRetriever
@@ -32,6 +32,7 @@ __all__ = [
     'add_post_action_for_default_reader',
     'Document',
     'DocManager',
+    'DocListManager',
     'DocServer',
     'GraphDocument',
     'UrlGraphDocument',

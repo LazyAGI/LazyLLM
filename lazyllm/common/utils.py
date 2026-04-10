@@ -185,12 +185,14 @@ def dump_obj(f):
     def env_helper():
         os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'ON'
         modules = _collect_test_modules(f)
-        for module in modules:
-            cloudpickle.register_pickle_by_value(module)
+        registered_modules = []
         try:
+            for module in modules:
+                cloudpickle.register_pickle_by_value(module)
+                registered_modules.append(module)
             yield
         finally:
-            for module in modules:
+            for module in reversed(registered_modules):
                 cloudpickle.unregister_pickle_by_value(module)
             os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'OFF'
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypeAlias
 from uuid import uuid4
 
 from pydantic import AliasChoices, BaseModel, Field, model_validator
@@ -43,6 +43,7 @@ BIZ_HTTP_CODE = {
     'E_STATE_CONFLICT': 409,
     'E_IDEMPOTENCY_CONFLICT': 409,
     'E_IDEMPOTENCY_IN_PROGRESS': 409,
+    'E_UPSTREAM_ERROR': 502,
 }
 
 
@@ -94,8 +95,8 @@ class DocItemsRequest(BaseModel):
         return self
 
 
-AddRequest = DocItemsRequest
-UploadRequest = DocItemsRequest
+AddRequest: TypeAlias = DocItemsRequest
+UploadRequest: TypeAlias = DocItemsRequest
 
 
 class _DocMutationRequest(BaseModel):
@@ -240,8 +241,8 @@ class KbRequest(BaseModel):
     idempotency_key: Optional[str] = None
 
 
-KbCreateRequest = KbRequest
-KbUpdateRequest = KbRequest
+KbCreateRequest: TypeAlias = KbRequest
+KbUpdateRequest: TypeAlias = KbRequest
 
 
 class KbBatchQueryRequest(BaseModel):
@@ -330,6 +331,18 @@ DOCUMENTS_TABLE_INFO = {
          'comment': 'Created time'},
         {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
          'comment': 'Updated time'},
+    ],
+}
+
+
+DOC_PATH_LOCKS_TABLE_INFO = {
+    'name': 'lazyllm_doc_path_locks',
+    'comment': 'Transient lock table for serializing document path writes',
+    'columns': [
+        {'name': 'path', 'data_type': 'string', 'nullable': False, 'is_primary_key': True,
+         'comment': 'Absolute file path'},
+        {'name': 'created_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
+         'comment': 'Created time'},
     ],
 }
 

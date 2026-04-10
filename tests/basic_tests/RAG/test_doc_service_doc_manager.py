@@ -1,5 +1,6 @@
 import os
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -169,6 +170,42 @@ def test_manager_run_idempotent_atomic(manager_harness):
     replay = manager_harness.manager.run_idempotent('/local/atomic', 'same-key', {'k': 1}, handler)
     assert len(started) == 1
     assert replay == result
+
+
+def test_manager_upsert_same_path_is_serialized(manager_harness):
+    file_path = manager_harness.make_file('serialized.txt', 'serialized content')
+    barrier = threading.Barrier(2)
+
+    def worker(doc_id: str):
+        barrier.wait()
+        return manager_harness.manager._upsert_doc(
+            doc_id=doc_id,
+            filename='serialized.txt',
+            path=file_path,
+            metadata={},
+            source_type=SourceType.API,
+            upload_status=DocStatus.SUCCESS,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(worker, doc_id) for doc_id in ('serialized-a', 'serialized-b')]
+
+    results = []
+    errors = []
+    for future in futures:
+        try:
+            results.append(future.result(timeout=2))
+        except Exception as exc:
+            errors.append(exc)
+
+    assert len(results) == 1
+    assert len(errors) == 1
+    assert isinstance(errors[0], DocServiceError)
+    assert errors[0].biz_code == 'E_STATE_CONFLICT'
+
+    with manager_harness.manager._db_manager.get_session() as session:
+        Doc = manager_harness.manager._db_manager.get_table_orm_class('lazyllm_documents')
+        assert session.query(Doc).filter(Doc.path == file_path).count() == 1
 
 
 def test_manager_upload_callback_and_doc_detail(manager_harness):
@@ -395,6 +432,46 @@ def test_manager_transfer_move_cleans_source_doc_with_target_doc_id(manager_harn
     assert manager_harness.manager._get_doc('source-doc-move')['upload_status'] == DocStatus.DELETED.value
     assert manager_harness.manager._get_doc('target-doc-move')['upload_status'] == DocStatus.SUCCESS.value
     assert manager_harness.manager._get_parse_snapshot('source-doc-move', 'kb_move_source', '__default__') is None
+
+
+def test_manager_purge_local_and_rebind_keep_doc_consistent(manager_harness):
+    manager_harness.manager.create_kb('kb_purge_source', algo_id='__default__')
+    manager_harness.manager.create_kb('kb_purge_target', algo_id='__default__')
+    file_path = manager_harness.make_file('purge-rebind.txt', 'purge rebind content')
+    uploaded = manager_harness.manager.upload(UploadRequest(
+        kb_id='kb_purge_source',
+        algo_id='__default__',
+        items=[AddFileItem(file_path=file_path, doc_id='shared-doc')],
+    ))
+    manager_harness.finish_task(uploaded[0]['task_id'])
+
+    barrier = threading.Barrier(2)
+
+    def purge():
+        barrier.wait()
+        manager_harness.manager._purge_deleted_kb_doc_data('kb_purge_source', 'shared-doc', remove_relation=True)
+
+    def rebind():
+        barrier.wait()
+        return manager_harness.manager.upload(UploadRequest(
+            kb_id='kb_purge_target',
+            algo_id='__default__',
+            items=[AddFileItem(file_path=file_path, doc_id='shared-doc')],
+        ))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        purge_future = pool.submit(purge)
+        rebind_future = pool.submit(rebind)
+        purge_future.result(timeout=2)
+        rebound = rebind_future.result(timeout=2)
+
+    manager_harness.finish_task(rebound[0]['task_id'])
+
+    assert manager_harness.manager._has_kb_document('kb_purge_source', 'shared-doc') is False
+    assert manager_harness.manager._has_kb_document('kb_purge_target', 'shared-doc') is True
+    doc = manager_harness.manager._get_doc('shared-doc')
+    assert doc is not None
+    assert doc['path'] == file_path
 
 
 def test_manager_transfer_target_fields_override_source_defaults(manager_harness):

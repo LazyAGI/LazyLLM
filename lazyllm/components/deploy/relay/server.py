@@ -104,9 +104,9 @@ def security_check(f: Callable):
 @security_check
 async def lazyllm_call(request: fastapi.Request):
     try:
-        fname, args, kwargs = await request.json()
-        args, kwargs = load_obj(args), load_obj(kwargs)
-        r = await async_wrapper(getattr(func, fname), *args, **kwargs)
+        fname, call_args, call_kwargs = await request.json()
+        call_args, call_kwargs = load_obj(call_args), load_obj(call_kwargs)
+        r = await async_wrapper(getattr(func, fname), *call_args, **call_kwargs)
         return fastapi.responses.Response(content=codecs.encode(pickle.dumps(r), 'base64'))
     except requests.RequestException as e:
         return fastapi.responses.Response(content=f'{str(e)}', status_code=500)
@@ -156,7 +156,7 @@ async def generate(request: fastapi.Request): # noqa C901
             def generate_stream():
                 for o in output:
                     yield impl(o)
-            return fastapi.responses.StreamingResponse(generate_stream(), media_type='text_plain')
+            return fastapi.responses.StreamingResponse(generate_stream(), media_type='text/plain')
         elif args.after_function:
             assert (callable(after_func)), 'after_func must be callable'
             r = inspect.getfullargspec(after_func)
