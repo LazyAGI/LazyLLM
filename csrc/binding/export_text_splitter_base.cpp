@@ -31,24 +31,6 @@ public:
     void set_overlap(int value) { _overlap = value; }
 
 
-    py::list split_recursive_impl(const std::string& text, int chunk_size) const {
-        std::vector<lazyllm::ChunkView> splits;
-        {
-            py::gil_scoped_release release;
-            splits = lazyllm::TextSplitterBase::split_recursive(text, chunk_size);
-        }
-
-        py::object split_cls = py::module_::import("lazyllm.tools.rag.transform.base").attr("_Split");
-        py::list out;
-        for (const auto& split : splits) {
-            out.append(split_cls(
-                py::arg("text") = std::string(split.view),
-                py::arg("is_sentence") = split.is_sentence,
-                py::arg("token_size") = split.token_size));
-        }
-        return out;
-    }
-
     std::vector<std::string> merge_chunks_impl(py::list splits, int chunk_size) const {
         std::vector<lazyllm::Chunk> owned;
         owned.reserve(py::len(splits));
@@ -68,6 +50,26 @@ public:
         }
         return chunks;
     }
+
+    py::list split_text_impl(const std::string& text, int metadata_size) const {
+        std::vector<std::string> chunks;
+        {
+            py::gil_scoped_release release;
+            chunks = lazyllm::TextSplitterBase::split_text(text, metadata_size);
+        }
+
+        py::list out;
+        for (const auto& chunk : chunks) {
+            PyObject* decoded = PyUnicode_DecodeUTF8(
+                chunk.data(),
+                static_cast<Py_ssize_t>(chunk.size()),
+                "replace"
+            );
+            if (decoded == nullptr) throw py::error_already_set();
+            out.append(py::reinterpret_steal<py::str>(decoded));
+        }
+        return out;
+    }
 };
 
 } // namespace
@@ -81,9 +83,7 @@ void exportTextSpliterBase(py::module& m) {
         )
         .def_property("_chunk_size", &TextSplitterBaseCPPImpl::chunk_size, &TextSplitterBaseCPPImpl::set_chunk_size)
         .def_property("_overlap", &TextSplitterBaseCPPImpl::overlap, &TextSplitterBaseCPPImpl::set_overlap)
-        .def("split_text", &TextSplitterBaseCPPImpl::split_text, py::arg("text"), py::arg("metadata_size"),
-            py::call_guard<py::gil_scoped_release>())
-        .def("_split", &TextSplitterBaseCPPImpl::split_recursive_impl, py::arg("text"), py::arg("chunk_size"))
+        .def("split_text", &TextSplitterBaseCPPImpl::split_text_impl, py::arg("text"), py::arg("metadata_size"))
         .def("_merge", &TextSplitterBaseCPPImpl::merge_chunks_impl, py::arg("splits"), py::arg("chunk_size"));
 
     (void)cls;

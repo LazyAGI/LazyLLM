@@ -1,16 +1,26 @@
 #include "unicode_processor.hpp"
 namespace lazyllm {
 
-const std::array<char32_t, 9> UnicodeProcessor::kPunctuationCodepoints = {
+const std::array<char32_t, 6> UnicodeProcessor::kSentenceEndingCodepoints = {
+    U'.',
+    U'!',
+    U'?',
+    U'\u3002', // CJK full stop
+    U'\uFF1F', // fullwidth question mark
+    U'\uFF01', // fullwidth exclamation mark
+};
+
+const std::array<char32_t, 10> UnicodeProcessor::kSubSentencePunctuationCodepoints = {
     U',',
     U'.',
     U';',
     U'!',
-    U'\uFF0C', // ，
-    U'\uFF1B', // ；
-    U'\u3002', // 。
-    U'\uFF1F', // ？
-    U'\uFF01', // ！
+    U'?',
+    U'\uFF0C', // fullwidth comma
+    U'\uFF1B', // fullwidth semicolon
+    U'\u3002', // CJK full stop
+    U'\uFF1F', // fullwidth question mark
+    U'\uFF01', // fullwidth exclamation mark
 };
 
 void UnicodeProcessor::for_each_utf8_unit(const Utf8Visitor& visitor) const {
@@ -26,7 +36,8 @@ void UnicodeProcessor::for_each_utf8_unit(const Utf8Visitor& visitor) const {
         if (n <= 0) {
             i += 1;
             continue;
-            // TODO 后续加强日志的时候，把所有遇到的不合法字符都收集起来，一次性打印出来
+            // TODO: when adding stronger logging, collect all invalid UTF-8
+            // bytes encountered and report them together.
         }
 
         visitor(i, static_cast<size_t>(n), codepoint);
@@ -76,21 +87,62 @@ std::vector<std::string_view> UnicodeProcessor::split_to_chars() const {
     return out;
 }
 
+std::vector<std::string_view> UnicodeProcessor::split_by_sentence_endings() const {
+    if (_text.empty()) return {};
+
+    std::vector<std::string_view> out;
+    size_t chunk_start = std::string_view::npos;
+    bool trim_leading_space = true;
+
+    for_each_utf8_unit([&](size_t offset, size_t byte_len, char32_t codepoint) {
+        const bool is_space = utf8proc_category(codepoint) == UTF8PROC_CATEGORY_ZS
+            || codepoint == U'\t' || codepoint == U'\n' || codepoint == U'\r' || codepoint == U'\f';
+        if (chunk_start == std::string_view::npos && is_space && trim_leading_space) return;
+
+        if (is_sentence_ending_punctuation(codepoint)) {
+            if (chunk_start != std::string_view::npos) {
+                const size_t end = offset + byte_len;
+                out.push_back(_text.substr(chunk_start, end - chunk_start));
+                chunk_start = std::string_view::npos;
+                trim_leading_space = true;
+            }
+        } else if (chunk_start == std::string_view::npos) {
+            chunk_start = offset;
+            trim_leading_space = false;
+        }
+    });
+
+    if (chunk_start != std::string_view::npos) {
+        out.emplace_back(_text.substr(chunk_start));
+    }
+    if (out.empty()) out.emplace_back(_text);
+    return out;
+}
+
 std::vector<std::string_view> UnicodeProcessor::split_by_punctuation() const {
     if (_text.empty()) return {};
 
     std::vector<std::string_view> out;
     size_t chunk_start = std::string_view::npos;
+    bool trim_leading_space = true;
 
     for_each_utf8_unit([&](size_t offset, size_t byte_len, char32_t codepoint) {
-        if (is_sentence_punctuation(codepoint)) {
+        const bool is_space = utf8proc_category(codepoint) == UTF8PROC_CATEGORY_ZS
+            || codepoint == U'\t' || codepoint == U'\n' || codepoint == U'\r' || codepoint == U'\f';
+        if (chunk_start == std::string_view::npos && is_space && trim_leading_space) return;
+
+        if (is_sub_sentence_punctuation(codepoint)) {
             if (chunk_start != std::string_view::npos) {
                 const size_t end = offset + byte_len;
                 out.push_back(_text.substr(chunk_start, end - chunk_start));
                 chunk_start = std::string_view::npos;
+                trim_leading_space = (
+                    codepoint == U'.' || codepoint == U'!' || codepoint == U'\uFF1F'
+                    || codepoint == U'\uFF01' || codepoint == U'?' || codepoint == U'\u3002');
             }
         } else if (chunk_start == std::string_view::npos) {
             chunk_start = offset;
+            trim_leading_space = false;
         }
     });
 

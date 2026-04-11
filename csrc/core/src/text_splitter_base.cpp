@@ -30,17 +30,14 @@ std::vector<std::string> TextSplitterBase::split_text(const std::string_view& vi
     if (view.empty()) return {""};
     int effective_chunk_size = _chunk_size - metadata_size;
     if (effective_chunk_size <= 0) {
-        throw std::runtime_error(
+        throw std::invalid_argument(
             "Metadata length (" + std::to_string(metadata_size) +
             ") is longer than chunk size (" + std::to_string(_chunk_size) +
             "). Consider increasing the chunk size or decreasing the size of your metadata to avoid this.");
     }
     else if (effective_chunk_size < 50) {
-        throw std::runtime_error(
-            "Metadata length (" + std::to_string(metadata_size) + ") is close to chunk size (" +
-            std::to_string(_chunk_size) + "). Resulting chunks are less than 50 tokens. " +
-            "Consider increasing the chunk size or decreasing the size of " +
-            "your metadata to avoid this.");
+        // Keep Python behavior: this is only a warning there, not an exception.
+        // We continue splitting with the small effective chunk size.
     }
     auto split_views = split_recursive(view, effective_chunk_size);
     std::vector<Chunk> splits;
@@ -76,6 +73,9 @@ std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_funct
     const std::string_view& text) const
 {
     auto views = split_text_while_keeping_separator(text, "\n\n\n");
+    if (views.size() > 1) return {views, true};
+
+    views = UnicodeProcessor(text).split_by_sentence_endings();
     if (views.size() > 1) return {views, true};
 
     views = UnicodeProcessor(text).split_by_punctuation();
@@ -161,7 +161,11 @@ std::vector<std::string> TextSplitterBase::merge_chunks(std::vector<Chunk> split
     for (int idx = static_cast<int>(splits.size()) - 2; idx >= 0; --idx) {
         const Chunk& start_split = splits[static_cast<size_t>(idx)];
         if (start_split.token_size <= _overlap && end_split.token_size <= chunk_size - _overlap) {
-            end_split += start_split;
+            end_split = Chunk{
+                start_split.text + end_split.text,
+                start_split.is_sentence && end_split.is_sentence,
+                start_split.token_size + end_split.token_size
+            };
             continue;
         }
 

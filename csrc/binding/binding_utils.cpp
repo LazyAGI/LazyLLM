@@ -65,7 +65,12 @@ lazyllm::MetadataMode ParseMetadataMode(const py::object& mode) {
 }
 
 lazyllm::MetadataVType PyToMetadataValue(const py::handle& value) {
-    if (value.is_none()) return std::string("None");
+    if (value.is_none()) {
+        throw py::type_error(
+            "Unsupported metadata value type: None. "
+            "Only str/int/float and list[str]/list[int]/list[float] are allowed."
+        );
+    }
     if (py::isinstance<py::bool_>(value)) return static_cast<int>(value.cast<bool>());
     if (py::isinstance<py::int_>(value)) return value.cast<int>();
     if (py::isinstance<py::float_>(value)) return value.cast<double>();
@@ -106,13 +111,15 @@ lazyllm::MetadataVType PyToMetadataValue(const py::handle& value) {
             for (py::handle item : seq) out.push_back(py::cast<double>(item));
             return out;
         }
-
-        std::vector<std::string> out;
-        out.reserve(seq.size());
-        for (py::handle item : seq) out.push_back(py::str(item).cast<std::string>());
-        return out;
+        throw py::type_error(
+            "Unsupported metadata sequence element type. "
+            "Only str/int/float (and homogeneous lists of them) are allowed."
+        );
     }
-    return py::str(value).cast<std::string>();
+    throw py::type_error(
+        "Unsupported metadata value type. "
+        "Only str/int/float and list[str]/list[int]/list[float] are allowed."
+    );
 }
 
 py::object MetadataValueToPy(const lazyllm::MetadataVType& value) {

@@ -31,7 +31,7 @@ def _normalize_param_names(callable_obj: Any) -> Tuple[str, ...]:
 
 
 def _build_valid_kwargs(impl_cls: type, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    """只保留与 impl __init__ 同名且类型严格匹配的 kwargs。"""
+    '''Keep only kwargs whose names exist in impl __init__ and whose types match exactly.'''
     try:
         signature = inspect.signature(impl_cls.__init__)
     except (TypeError, ValueError):
@@ -54,7 +54,7 @@ def _build_valid_kwargs(impl_cls: type, kwargs: Dict[str, Any]) -> Dict[str, Any
 
 
 def _instantiate_impl(impl_cls: type, kwargs: Dict[str, Any]):
-    """实例化 C++ 对象；若签名不可见，则动态尝试可行 kwargs 子集。"""
+    '''Instantiate the C++ object; if signature is unavailable, try valid kwargs subsets dynamically.'''
     candidate_kwargs = dict(kwargs)
     while True:
         try:
@@ -69,8 +69,9 @@ def _instantiate_impl(impl_cls: type, kwargs: Dict[str, Any]):
                 break
             candidate_kwargs.pop(bad_name)
 
-    # pybind 方法在某些构建配置下没有可见签名，报错只会是“incompatible constructor arguments”。
-    # 这种情况下按“参数个数从多到少”尝试子集，保留尽可能多的可接受参数。
+    # In some pybind build configurations, method signatures are not introspectable and
+    # only "incompatible constructor arguments" is reported. In that case, try subsets
+    # from larger to smaller to keep as many accepted kwargs as possible.
     last_exc = None
     keys = tuple(kwargs.keys())
     for size in range(len(keys), -1, -1):
@@ -88,7 +89,7 @@ def _instantiate_impl(impl_cls: type, kwargs: Dict[str, Any]):
 
 
 def _scan_proxy_members(py_cls: type, impl_cls: type):
-    """扫描 impl 导出成员，收集可代理的同名方法和属性。"""
+    '''Scan exported impl members and collect same-name methods/properties for proxying.'''
     proxy_methods = []
     proxy_attrs = []
 
@@ -102,14 +103,15 @@ def _scan_proxy_members(py_cls: type, impl_cls: type):
 
         if not callable(member):
             continue
-        if not hasattr(py_cls, name):
+        if name not in py_cls.__dict__:
             continue
 
-        py_member = getattr(py_cls, name)
+        py_member = py_cls.__dict__[name]
         if not callable(py_member):
             continue
 
-        # 动态校验：若能拿到双方签名，则要求参数名一致；拿不到则跳过签名校验。
+        # Dynamic validation: if both signatures are available, require identical
+        # parameter names; otherwise skip signature validation.
         try:
             py_sig = _normalize_param_names(py_member)
         except (TypeError, ValueError):
@@ -147,7 +149,12 @@ def cpp_class(py_class: Optional[_C] = None):
     return _decorate(py_class)
 
 
-def cpp_proxy(py_class: Optional[_C] = None):
+def cpp_proxy(
+    py_class: Optional[_C] = None,
+    *,
+    method_fallbacks: Optional[Dict[str, Tuple[str, ...]]] = None,
+    python_methods_for_self: Tuple[str, ...] = (),
+):
     def _decorate(cls: _C) -> _C:
         if not isinstance(cls, type):
             raise TypeError(f'@cpp_proxy can only decorate classes, got: {type(cls).__name__}')
@@ -162,6 +169,8 @@ def cpp_proxy(py_class: Optional[_C] = None):
 
         impl_cls = getattr(cpp_module, impl_name)
         proxy_methods, proxy_attrs = _scan_proxy_members(cls, impl_cls)
+        fallback_rules = method_fallbacks or {}
+        force_python_methods = set(python_methods_for_self)
 
         impl_holder = '_c_obj'
         original_init = cls.__init__
@@ -178,6 +187,13 @@ def cpp_proxy(py_class: Optional[_C] = None):
         def _make_method_proxy(method_name: str, original_method):
             @wraps(original_method)
             def _proxy(self, *args, **kwargs):
+                if type(self) is cls and method_name in force_python_methods:
+                    return original_method(self, *args, **kwargs)
+                if type(self) is not cls:
+                    deps = fallback_rules.get(method_name, ())
+                    if any(dep_name in type(self).__dict__ for dep_name in deps):
+                        return original_method(self, *args, **kwargs)
+
                 impl = getattr(self, impl_holder)
                 cpp_method = getattr(impl, method_name)
                 result = cpp_method(*args, **kwargs)

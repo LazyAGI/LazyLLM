@@ -61,12 +61,12 @@ TEST(text_splitter_base, split_text_keep_separator_skips_leading_separator) {
 
 TEST(text_splitter_base, split_text_throws_when_metadata_exceeds_chunk_size) {
     lazyllm::TextSplitterBase splitter(60, 0);
-    EXPECT_THROW((void)splitter.split_text("abc", 60), std::runtime_error);
+    EXPECT_THROW((void)splitter.split_text("abc", 60), std::invalid_argument);
 }
 
-TEST(text_splitter_base, split_text_throws_when_metadata_budget_too_small) {
+TEST(text_splitter_base, split_text_allows_small_metadata_budget) {
     lazyllm::TextSplitterBase splitter(60, 0);
-    EXPECT_THROW((void)splitter.split_text("abc", 11), std::runtime_error);
+    EXPECT_NO_THROW((void)splitter.split_text("abc", 11));
 }
 
 TEST(text_splitter_base, split_recursive_falls_back_to_char_level) {

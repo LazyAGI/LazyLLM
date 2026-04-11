@@ -254,6 +254,8 @@ class DocNode(DocNodeCore):
         )
 
     def __repr__(self) -> str:
+        if config.cpp_switch:
+            return '<Node>'
         return str(self) if config['mode'] == Mode.Debug else f'<Node id={self._uid}>'
 
     def __eq__(self, other):
@@ -303,13 +305,33 @@ class DocNode(DocNodeCore):
 
     def copy(self, global_metadata: dict = None, metadata: dict = None,
              preserve_uid: bool = False) -> 'DocNode':
-        node = copy.copy(self)
+        if config.cpp_switch:
+            node = DocNode(
+                uid=self.uid if preserve_uid else None,
+                content=copy.deepcopy(self._content),
+                group=self._group,
+                embedding=copy.deepcopy(self._embedding),
+                parent=self._parent,
+                store=self._store,
+                node_groups=self._node_groups,
+                metadata=dict(self._metadata or {}),
+                global_metadata=dict(self._global_metadata or {}),
+            )
+            node._children = copy.copy(self._children)
+            node._children_loaded = self._children_loaded
+            node.embedding_state = set(self.embedding_state)
+            node.relevance_score = self.relevance_score
+            node.similarity_score = self.similarity_score
+            node._content_hash = self._content_hash
+        else:
+            node = copy.copy(self)
+            if not preserve_uid:
+                node._uid = str(uuid.uuid4())
+            node._metadata = dict(self._metadata or {})
+            node._global_metadata = dict(self._global_metadata or {})
+
         node._copy_source = {'uid': self.uid, RAG_KB_ID: self.global_metadata.get(RAG_KB_ID),
                              RAG_DOC_ID: self.global_metadata.get(RAG_DOC_ID)}
-        if not preserve_uid:
-            node._uid = str(uuid.uuid4())
-        node._metadata = dict(self._metadata or {})
-        node._global_metadata = dict(self._global_metadata or {})
         if metadata:
             node._metadata.update(metadata)
         if global_metadata:
