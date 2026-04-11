@@ -10,7 +10,10 @@ namespace lazyllm {
 
 class UnicodeProcessor {
 public:
-    UnicodeProcessor(std::string_view text) : _text(text) {}
+    explicit UnicodeProcessor(std::string_view text) : _text(text) {}
+    UnicodeProcessor(std::string&&) = delete;
+    UnicodeProcessor(const std::string&&) = delete;
+
     std::vector<std::string_view> split_to_chars() const;
     std::vector<std::string_view> split_by_sentence_endings() const;
     std::vector<std::string_view> split_by_punctuation() const;
