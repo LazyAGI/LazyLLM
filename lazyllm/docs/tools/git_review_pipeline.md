@@ -1,328 +1,504 @@
 # LazyLLM Git PR Review 完整流程说明
 
-本文档描述 `lazyllm.tools.git.review` 中一次 PR review 的端到端流程：预分析、五轮分析、合并去重、发帖，以及缓存与断点续跑机制。涉及源码路径：`lazyllm/tools/git/review/`（`runner.py`、`pre_analysis.py`、`rounds.py`、`checkpoint.py`、`utils.py`、`poster.py`）。
+本文档描述 `lazyllm.tools.git.review` 中一次 PR review 的端到端流程：预分析、五轮分析（R1–R5）、合并去重、发帖，以及缓存与断点续跑。源码目录：`lazyllm/tools/git/review/`（`runner.py`、`pre_analysis.py`、`rounds.py`、`constants.py`、`checkpoint.py`、`utils.py`、`poster.py`）。
+
+全局单次请求上下文预算见 `constants.SINGLE_CALL_CONTEXT_BUDGET`（默认 **80000** 字符），各轮在该预算内预留固定开销后再塞入 diff / arch 等。
+
+**结构性优化（已实现）**：`BudgetManager`（按优先级分配总预算，供后续各轮逐步接入）、R2 对每 diff 分块的 **`_filter_symbol_context_for_chunk`**（符号上下文与 chunk 对齐）、R4 **默认两步**（R4a 设计文档 → R4b 架构师 issue，可选单次合并 `prefer_combined=True`）、R5 **先确定性去重再 LLM**、checkpoint 对 **`clone_dir` 存在性**、`r1`/`r2` 聚合键的 stage 映射，以及 **`mark_stage_done` 仅在 FINAL 清除 `_invalidated_from`**。
 
 ---
 
-## 1. 总览：从入口到结束
+## 1. 端到端流程总览
 
-### 1.1 入口 `review()`（`runner.py`）
+### 1.1 流程图（逻辑顺序）
 
-1. **Checkpoint 初始化**
-   - `pr_dir = ~/.lazyllm/review/cache/{safe_repo}/{pr_number}/`
-   - `checkpoint_path` 默认：`{pr_dir}/checkpoint.json`
-   - `clear_checkpoint=True`：清空 checkpoint 文件并删除整个 `pr_dir`（含 clone），从零开始。
-   - 否则：`resume_from=ReviewStage.X` 时写入 `_invalidated_from` 标记（**不物理删除**历史字段），见第 6 节。
+```mermaid
+flowchart TD
+    A[review 入口] --> B[Checkpoint 初始化]
+    B --> C[拉取 PR / diff / 解析 hunks]
+    C --> D[_run_pre_analysis]
+    D --> E[_pre_round_pr_summary]
+    E --> F[_fetch_existing_pr_comments]
+    F --> G[_run_five_rounds R1→R5]
+    G --> H{keep_clone?}
+    H -->|否| I[删除 pr_dir/clone]
+    H -->|是| J[保留 clone]
+    I --> K{post_to_github?}
+    J --> K
+    K -->|是| L[_post_review_comments]
+    K -->|否| M[返回结果]
+    L --> M
+```
 
-2. **拉取 PR 与 diff**
-   - `diff_text`：优先从 checkpoint 读；否则 API 拉取，可按 `max_diff_chars` 截断后写入 checkpoint。
+### 1.2 阶段一览
+
+| 顺序 | 阶段 | 主要产物 / 作用 |
+|------|------|-----------------|
+| 0 | Checkpoint | `pr_dir`、`checkpoint.json`、`resume_from` → `_invalidated_from` |
+| 1 | Diff | `diff_text`（可 `max_diff_chars` 截断）、`hunks`（可 `max_hunks` 截断） |
+| 2 | 预分析 | `arch_doc`、`review_spec`、`clone_dir`、`agent_instructions` |
+| 3 | PR 摘要 | `pr_summary` |
+| 4 | 已有评论 | `existing_comments`（供 R5 去重，**不**参与 R1–R4 生成） |
+| 5 | R1 | 按 hunk/批次的静态审查 |
+| 6 | R2 | 每文件 Agent 收集符号上下文 + 按 diff 分块抽取 issue |
+| 7 | R3 | 多文件分批的全局/规则视角 |
+| 8 | R4 | **默认** R4a（`_round4_generate_pr_doc`）→ R4b（`_round4_architect_review`，输入含 `pr_design_doc`）；可选 `prefer_combined=True` 尝试单次 JSON `{pr_design_doc, issues}`，失败则仍落回两步 |
+| 9 | R5 | 先 **`_deterministic_dedup`**（同 path+line+category 折叠），再压缩 + **1×JSON LLM** 与已有评论合并；打 `_review_version: 2` |
+| 10 | 发帖 | `submit_review` / 逐条 `create_review_comment` |
+| 11 | 清理 | 默认删除 `{pr_dir}/clone/`，保留 `checkpoint.json` |
+
+---
+
+## 2. 入口 `review()`（`runner.py`）
+
+1. **Checkpoint**
+   - `pr_dir = ~/.lazyllm/review/cache/{safe_repo}/{pr_number}/`（`lazyllm.config['home']` 下，见 `_ReviewCheckpoint`）。
+   - `checkpoint_path` 默认：`{pr_dir}/checkpoint.json`。
+   - `clear_checkpoint=True`：清空 checkpoint 文件并 `shutil.rmtree(pr_dir)`（含 clone），从零开始。
+   - 否则：`resume_from=ReviewStage.X` 时写入 `_invalidated_from`（**不物理删除**历史字段），见第 7 节。
+
+2. **PR 与 diff**
+   - `diff_text`：优先 `ckpt.get('diff_text')`；否则 API 拉取，可按 `max_diff_chars` 截断并写回 checkpoint。
    - `hunks = _parse_unified_diff(diff_text)`，可按 `max_hunks` 截断。
 
-3. **预分析** `_run_pre_analysis(...)`：得到 `arch_doc`、`review_spec`、`clone_dir`、`agent_instructions`。
+3. **预分析** `_run_pre_analysis(...)` → `arch_doc`、`review_spec`、`clone_dir`、`agent_instructions`。
 
 4. **PR 摘要** `_pre_round_pr_summary`：checkpoint 命中则跳过，否则 1 次文本 LLM。
 
-5. **五轮** `_run_five_rounds`：R1→R2→R3→R4（合并设计文档 + 架构师评审）→FINAL（合并去重）。
+5. **拉取已有 PR 评论** `_fetch_existing_pr_comments`：在**进入五轮之前**执行，结果传入 `_run_five_rounds`，**仅用于 R5** 与已发帖评论去重。
 
-6. **清理 clone**
-   - 仅删除 `{pr_dir}/clone/`，**保留** `checkpoint.json`（避免误删断点）。
+6. **五轮** `_run_five_rounds`：R1 → R2 → R3 → R4 → R5（FINAL）。
 
-7. **可选发帖** `_post_review_comments`：需 `head_sha`；仅对带 `path`+`line` 的 issue 发行评。
+7. **清理 clone**：`keep_clone=False` 时仅删除 `{pr_dir}/clone/`，**保留** `checkpoint.json`。
 
-8. **返回值**：含 `comments`、`pr_summary`、`pr_design_doc`（R4 合并阶段写入 checkpoint 的 `pr_design_doc`）等。
+8. **可选发帖** `_post_review_comments`：需 `head_sha`；行级评论仅针对带 `path` + `line` 的 issue。
 
----
-
-## 2. Token / 调用次数说明（估算方法）
-
-代码中多为 **字符预算（chars）** 而非 token。下表将 **输入 ≈ 各段预算之和 + 固定 prompt 模板**，**输出** 按任务类型给出量级；**1 次调用** 指一次 `_safe_llm_call`（JSON）或 `_safe_llm_call_text`（纯文本）。实际 token 与模型分词有关，需按比例换算。
-
-| 阶段 | 典型输入规模（字符级） | 典型输出 | 调用次数（量级） |
-|------|------------------------|----------|------------------|
-| 架构 outline | snapshot≤4k + 模板 | JSON 数组，小 | 1 |
-| 每 arch section | 目录+摘要≤1.5k + snippets≤6k + 模板 | ≤3.5k 文本 | 2/section（填充+摘要） |
-| Public API 文件列表 | 目录树≤4k + 模板 | JSON≤30 项 | 1 |
-| 历史规则 / PR | 视 PR 数与评论长度 | 规则卡 JSON | 每 PR 1–2 + 合并 1 |
-| R1 每 batch | arch≤3k + hunk + 上下文 + 模板 | JSON 数组 | 1/batch |
-| R2 每文件 | Agent 多轮 + 1 次 issue 提取 | 结构化文本 + JSON | Agent 多轮 + 1 |
-| R3 每文件 | 全量 arch + 规则 + diff≤4k + 模板 | JSON 数组 | 1 |
-| R4a | arch≤2k + summary≤600 + diff≤8k | 长文本（9 节） | 1 |
-| R4 | 全 arch + design≤3k + diff≤12k + 前序摘要≤2k | JSON 数组 | 1 |
-| R5 | 压缩后的 new+existing JSON | JSON 数组 | 1 + 可选批量压缩 |
+9. **返回值**：含 `comments`、`pr_summary`、`pr_design_doc`（R4 写入 checkpoint 的 `pr_design_doc`）等。
 
 ---
 
-## 3. 预分析（`pre_analysis.py`）
+## 3. 全局预算与 Token 说明（估算）
 
-### 3.1 编排 `_run_pre_analysis`
+代码中多为 **字符预算**。下表与 `constants.py`、`rounds.py` 中的常量对齐；**1 次调用** 指一次 `_safe_llm_call`（JSON）或 `_safe_llm_call_text`（纯文本）。实际 token 需按模型分词换算。
 
-- **arch**
-  - 若 `fetch_repo_code` 且 checkpoint 无 `arch_doc`：`clone` 到 `{pr_dir}/clone/`，再 `analyze_repo_architecture`。
-  - 若已有 `arch_doc` 但需 agent：可能复用或重建 `clone_dir`，并读 `agent_instructions`（可来自 arch 侧缓存）。
-- **review_spec**：`_run_spec_analysis` → `analyze_historical_reviews`（可跳过或从 checkpoint 加载）。
+### 3.1 `BudgetManager`（`constants.py`）
+
+`BudgetManager(total=SINGLE_CALL_CONTEXT_BUDGET)` 通过 **`register(name, priority, max_chars)`** 注册具名槽位，**`allocate(arch=..., diff=..., ...)`** 按 **priority 降序** 依次从总预算中扣减，每槽最多 `min(max_chars, remaining)`，超出则截断并追加 `...(truncated)`。未注册的 `**kwargs` 键原样透传、不截断。
+
+当前各轮仍以既有 `clip_text` / 固定 slice 为主；`BudgetManager` 为统一预算入口，可在后续将 R1/R3 等逐步迁移到该接口。
+
+| 常量 / 阶段 | 说明 |
+|-------------|------|
+| `SINGLE_CALL_CONTEXT_BUDGET` | 单次请求总上下文约 80k 字符 |
+| `R1_DIFF_BUDGET` | `SINGLE_CALL_CONTEXT_BUDGET - 25000` → R1 同一批内合并的 hunk diff 总长上限约 **55k** |
+| R1 单 hunk | hunk 内容 `_truncate_hunk_content` 约 80 行；`review_spec`/`pr_summary` 各取前 **600** 字符 |
+| R2 | Agent：`compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)`；抽取 diff 分块 `_R2_EXTRACT_DIFF_CHUNK`；每块前对 Agent 输出做 **`_filter_symbol_context_for_chunk(symbol_context, diff_chunk)`** 再送入 `_r2_extract_issues`（最多 **3000** 字符）；`shared_context` 上限 `_R2_SHARED_CTX_BUDGET=4000`；抽取阶段 arch `_R2_ARCH_BUDGET=6000`；R1 列表 JSON `_R2_R1_BUDGET=8000` |
+| R3 | `arch_use` 约 **38k**；`prev_json` 默认最多 **16k**；多文件按 `budget_files` 打包成 batch，每 batch 一次 LLM |
+| R4（默认） | **两步各 1 次文本/JSON**：R4a `_round4_generate_pr_doc`（`arch` 约 **12k**，`diff` 按 hunk 预算）；R4b `_round4_architect_review`（`arch` 约 **42k**，`pr_design_doc` 约 **12k** 等） |
+| R4（可选合并） | `prefer_combined=True` 时一次 `_safe_llm_call_text` + JSON 解析；失败则日志后执行与默认相同的两步 |
+| R5 | **`_deterministic_dedup`** 后，长评论 / 长 issue 批量压缩，再 **1×JSON LLM** 与已有评论合并 |
+
+---
+
+## 4. 预分析（`pre_analysis.py`）
+
+### 4.1 编排 `_run_pre_analysis`
+
+- 默认 `arch_cache_path`：`{repo_cache_dir}/arch.json`；`review_spec_cache_path`：`{repo_cache_dir}/spec.json`。
+- **`fetch_repo_code=True` 且无 `arch_doc`**：`_run_arch_analysis`（clone → `analyze_repo_architecture`）。
+- **`fetch_repo_code=True` 且已有 `arch_doc`**：从 checkpoint 恢复；若缺 `clone_dir` 则再 clone 供 R2 Agent；尽量加载 `agent_instructions`。
+- **`fetch_repo_code=False`**：不重新 clone；仍走 `_run_spec_analysis` 拉规则（若 checkpoint 无 `review_spec`）。
 - 返回：`(arch_doc, review_spec, clone_dir, agent_instructions)`。
 
-### 3.2 架构文档 `analyze_repo_architecture`
+### 4.2 架构文档 `analyze_repo_architecture`
 
 1. **`_collect_structured_snapshot`**（无 LLM）  
-   总预算 `_ARCH_SNAPSHOT_BUDGET=6000`：2 级目录树、顶层/子包 `__init__.py`、关键文件头、依赖文件、`AGENTS.md` 等。
+   预算 `_ARCH_SNAPSHOT_BUDGET=6000`：目录树、`__init__.py` 头、依赖、`AGENTS.md` 等。
 
 2. **`_arch_generate_outline`**（**1×JSON LLM**）  
    - 输入：`snapshot[:4000]`。  
-   - 有 agent 指令时 section 数约 9，否则约 12；强制首尾章节（模块分层、环境依赖、Key Utilities；无 agent 时还有 Gotchas）。  
+   - 有 agent 指令时节数约 9，否则约 12；含首尾固定章节等。  
    - 输出：每节 `title` / `focus` / `search_hints`。
 
-3. **`_arch_fill_all_sections`**（每节 **2×文本 LLM**）  
-   - `_arch_collect_snippets`：按 `search_hints` 在 `*.py` 中搜索，每 pattern 最多约 8 条命中，拼接至多约 6k 字符。  
-   - `_arch_fill_section`：目录树 400 + `prev_summaries` 总预算 `_ARCH_PREV_SUMMARY_BUDGET=1500` + snippets；单节输出截断 **3500**。  
-   - `_summarize_section`：再生成 ≤200 字符摘要供后续节使用。  
-   - 每节可缓存到 repo 级 `arch.json`（`arch_section_*`）。
+3. **各节填充**（每节若干次 LLM，视实现为单节或批量；摘要链 `prev_summaries` 受 `_ARCH_PREV_SUMMARY_BUDGET=1500` 约束）。
 
-4. **`_build_public_api_catalog`**（**1×JSON LLM + 无 LLM 扫描**）  
-   - LLM：输入 3 级目录树≤4000，输出最多 30 个 `{file, scope, reason}`。  
-   - 代码：按扩展名用正则提取公开符号（跳过 `_` 前缀等），每文件最多 40 条，按 `scope` 聚合成 JSON。  
-   - 结果追加到 `arch_doc`：`[Public API Catalog]\n{json}`，并缓存 `public_api_catalog`。
+4. **`_build_public_api_catalog`**（**1×JSON LLM** + 正则扫描）  
+   - 目录树≤4000；结果合并进 `arch_doc` 的 `[Public API Catalog]`。
 
-5. **落盘** `_save_cache_multi(arch.json)`：`arch_doc`、`arch_index`、`arch_symbol_index`。
+5. **落盘** `_save_cache_multi(arch.json)`：`arch_doc`、`arch_index`、`arch_symbol_index` 等。
 
-**本节 LLM 次数粗算**：`1 + 2×N_sections + 1`（N_sections≈9 或 12）。
+### 4.3 历史 review 规则 `analyze_historical_reviews`
 
-### 3.3 历史 review 规则 `analyze_historical_reviews`
+- 拉取已合并 PR 评论；过滤 bot；长评论压缩再抽规则；多 PR 再合并；写入 `spec.json` / checkpoint。
 
-- 拉取已合并 PR 的评论；过滤 bot；长评论先压缩再抽规则；多 PR 规则再 **1 次合并** LLM。  
-- 产出两级结构：`summaries`（轻量）+ `details`（完整规则卡），写入 `spec.json` / checkpoint。
+### 4.4 PR 摘要 `_pre_round_pr_summary`
 
-### 3.4 PR 摘要 `_pre_round_pr_summary`
+- **1×文本 LLM**：`pr_body[:800]`、`diff_text[:5000]`（大 PR 仅覆盖 diff 前部）。
 
-- **1×文本 LLM**：`pr_title` + `pr_body[:800]` + `diff[:5000]` + 语言指令；输出结构化短摘要（模板要求约 400 词内）。
-
-### 3.5 上下文裁剪与规则查找
+### 4.5 上下文裁剪与规则查找
 
 - **`_extract_arch_for_file(arch_doc, file_path, max_chars=3000)`**  
-  - 解析 `[Section]` 块；对标题匹配 `_ARCH_ALWAYS_INJECT`（Module Hierarchy、Gotchas、Key Utilities 等）给高分。  
-  - **Public API Catalog**：解析 JSON，用 **`_candidate_scopes(file_path)`**（`global` + 各级父路径）过滤，只注入与当前文件相关的 scope，避免全量灌入。  
-  - 按分数降序拼块直到 `max_chars`。
+  解析 `[Section]`；`_ARCH_ALWAYS_INJECT` 标题加权；Public API Catalog 按 `_candidate_scopes(file_path)` 过滤。
 
-- **`_lookup_relevant_rules`**：从 diff 前 200 行提关键词，匹配规则 `title`，最多加载 `max_detail` 条完整卡片，其余仅标题列表。
+- **`_lookup_relevant_rules(review_spec, diff_content, max_detail)`**  
+  从 `diff_content` **前 200 行** 提关键词匹配规则 `title`；完整规则卡最多 `max_detail` 条。
 
-### 3.6 Round 2 用 Agent 工具（`clone_dir` 限定在仓库内）
+### 4.6 Round 2 用 Agent 工具（`clone_dir` 限定在仓库内）
 
-`_build_scoped_agent_tools`：
-
-| 工具 | 作用 |
-|------|------|
-| `read_file_scoped` | 按行范围读文件 |
-| `read_files_batch` | 批量读，最多 6 文件×1600 字符 |
-| `grep_callers` | 按符号搜调用点 |
-| `search_scoped` | 正则搜索，默认约 40 结果 |
-| `list_dir_scoped` | 列目录 |
-| `shell_scoped` | 只读 shell（`allow_unsafe=False`） |
-
-`_build_scoped_agent_tools_with_cache` 额外 **`analyze_symbol`**：定位定义、抽签名/docstring、**内部可再调 LLM** 生成一句摘要，结果进共享 `symbol_cache` 跨文件复用。
+`_build_scoped_agent_tools` / `_build_scoped_agent_tools_with_cache`：`read_file_scoped`、`read_files_batch`、`grep_callers`、`search_scoped`、`list_dir_scoped`、`shell_scoped`（只读），以及带缓存的 **`analyze_symbol`**（内部可再调 LLM）。
 
 ---
 
-## 4. 五轮分析（`rounds.py`）
+## 5. 五轮分析（`rounds.py`）
 
-### 4.1 Round 1：按 hunk / 批次的静态审查
+### 5.1 Round 1：按 hunk / 批次的静态审查
 
-- **并发**：`ThreadPoolExecutor(max_workers=4)`，按文件分组。  
-- **批处理**：同文件多 hunk 合并，单批 diff 总长约 **`_R1_BATCH_DIFF_LIMIT=60000`**；单 hunk 可走单条分析。  
-- **每条输入**：  
-  - 截断 hunk（如 `_truncate_hunk_content` 约 80 行）；  
-  - **`_read_file_context`**：小文件全文带行号，大文件 hunk 前后 `_CONTEXT_LINES=50`，附封闭 scope（class/def）及兄弟签名；  
-  - `arch_doc` → **`_extract_arch_for_file(..., 3000)`**；  
-  - `review_spec`、`pr_summary`、`agent_instructions` 等截断；  
-  - 可选从 arch 的 Key Utilities 建 **symbol_index**，匹配 diff 中符号注入说明。  
-- **输出**：JSON 数组，`path/line/severity/bug_category/problem/suggestion`，**仅针对 diff 引入的问题**。  
-- **LLM**：每批 **1 次** JSON 调用。
+- **并发**：`ThreadPoolExecutor(max_workers=4)`，按文件分组。
+- **批处理**：同文件多个 hunk 按 **`R1_DIFF_BUDGET`** 合并；单 hunk 可走单条分析。
+- **每条输入**：截断 hunk、`_read_file_context`（含 scope）、`_extract_arch_for_file(..., 3000)`、`review_spec`/`pr_summary` 片段、可选 `symbol_index`、**`agent_instructions`**。
+- **输出**：JSON 数组；全 PR 级按 `max_issues_for_diff` / `cap_issues_by_severity` 限流。
+- **Checkpoint**：`r1_hunk_{safe_path}_{new_start}`。
 
-### 4.2 Round 2：按文件的 ReactAgent + 再判别
+### 5.2 Round 2：Agent 上下文 + 按块抽取
 
-- **依赖**：`clone_dir` 必须存在。  
-- **共享静态上下文** `_r2_build_shared_context`（无 LLM，预算 **`_R2_SHARED_CTX_BUDGET=1500`**）：跨文件重复 import、PR 内依赖、变更接口签名等。  
-- **每文件 Step A**：`ReactAgent`（`max_retries=5`，`force_summarize=True`，`keep_full_turns=2`，timeout 300s），工具为上述 6+1；按 prompt 顺序读 AGENTS、对改动符号 `analyze_symbol`、`grep_callers`、必要时分析基类；输出短结构化 **`explored/callers/base_changes/risk`**（约 600 字符预算）。  
-- **每文件 Step B**：**1×JSON LLM** `_r2_extract_issues`，输入：`arch`（每文件 `_R2_ARCH_BUDGET=3000`）、`shared_context`、`symbol_context[:3000]`、`round1`（**`_R2_R1_BUDGET=1200`**）、`diff` 分块 **`_R2_DIFF_CHUNK=4000`**；对 R1 条目 KEEP/MODIFY/DISCARD，并产出新 issue。  
-- **LLM 次数**：每文件 **1 + Agent 内多轮**（常见约数轮至十余轮量级，依工具调用而定）。
+- **无 `clone_dir`**：跳过 R2，返回 `[]` 与空 `discarded` 集合。
+- **共享上下文**：`r2_shared_context` 可缓存；静态构建 `_r2_build_shared_context(diff_text)`（跨文件共享符号、PR 内依赖、接口变更等），上限 `_R2_SHARED_CTX_BUDGET`。
+- **每文件**：
+  1. **Agent**：`compress_diff_for_agent_heuristic` + **`_R2_AGENT_DIFF_BUDGET`** → `_r2_build_file_context`（`ReactAgent`，`read_file_scoped` 等 tools，`diff_chunk` 进 prompt 最多 **8000** 字符，`force_summarize_context` 含 diff 前 **1200** 字符）。
+  2. **分块抽取**：`_split_file_diff_into_chunks(fdiff, _R2_EXTRACT_DIFF_CHUNK)`，每块先 **`chunk_ctx = _filter_symbol_context_for_chunk(symbol_context, diff_chunk)`**（从 chunk 中提取标识符，过滤 Agent 输出中与当前块相关的行，再截断至 3000 字符），再调用 **`_r2_extract_issues(..., chunk_ctx, ...)`**（KEEP/MODIFY/DISCARD R1 + 新 issue），产出 `r2_disc_{path}` 记录被丢弃的 R1 `path:line`。
+- **Checkpoint**：`r2_file_*`、`r2_disc_*`。
 
-### 4.3 Round 3：按文件的全局/规则视角
+### 5.3 Round 3：多文件分批的全局/规则视角
 
-- **传入 `prev_issues` 实际为 `r1+r2`**，再按文件过滤。  
-- **每文件 1×JSON LLM**：`arch_doc` **完整**（不截断）、`review_spec` 经 `_lookup_relevant_rules(fdiff, max_detail=8)`、`pr_summary[:400]`、`prev_json` 最多 30 条且总长约 1000、`diff` 单文件 **4000**；偏重 **design / maintainability**。
+- **输入**：`round2` 参数实际传入 **`r1 + r2`**（`prev_issues`），按文件过滤到当前 batch。
+- **每 batch 1×JSON LLM**：`arch_doc` 截断至 **~38k**；`_lookup_relevant_rules(..., batch_diff_joined[:12000], max_detail=12)`；`prev_json` 由 `_round3_build_prev_json` 生成（默认总长 **16k**，每条 problem 前 **100** 字符）；`files_block` 为 batch 内多文件 diff。
+- **校验**：issue 的 `path` 须在 batch 内且行号落在该文件 diff 新增行范围内。
 
-### 4.4 Round 4：设计文档 + 架构师评审（合并）
+### 5.4 Round 4：设计文档 + 架构师评审（R4a / R4b）
 
-- **优先 1×JSON LLM**：单次输出 `{"pr_design_doc": "...", "issues": [...]}`（9 章设计文档 + 10 维架构师 issue 列表 + Reuse Check）；`arch`/`diff`/`prev_issues` 按 **约 80k 字符** 总预算裁剪。  
-- 解析失败时 **fallback**：先 `_round4_generate_pr_doc`（文本），再 `_round4_architect_review`（JSON issues）。  
-- **`pr_design_doc`** 与 **`r4`**（issues）分别写入 checkpoint；`runner.review()` 返回的 `pr_design_doc` 来自 **`pr_design_doc`** 键。
+- **默认路径**（`prefer_combined=False`，`runner` 未传参即如此）：**R4a** `_round4_generate_pr_doc`（文本设计文档）→ **R4b** `_round4_architect_review`（JSON issues，`pr_design_doc` 作为输入之一）。数据流：`R1+R2+R3 的 prev_issues` → R4a 产出 doc → R4b 结合 doc + arch + diff 产出 issues。
+- **可选合并路径**（`prefer_combined=True`）：一次 **`_safe_llm_call_text`** + `_parse_llm_json_object`，期望单个 JSON `{ "pr_design_doc", "issues" }`；`arch` 约 **40k**、`diff` 经 `clip_diff_by_hunk_budget(..., SINGLE_CALL_CONTEXT_BUDGET - 42000)`。解析失败则打日志后**仍执行**上述两步。
+- **`pr_design_doc` 与 `r4`** 写入 checkpoint；`runner.review()` 返回的 `pr_design_doc` 来自 checkpoint 的 **`pr_design_doc`** 键。
 
-### 4.5 Round 5（FINAL）：合并去重
+### 5.5 Round 5（FINAL）：合并去重
 
-1. **`_compress_existing_comments`**：已有 PR 评论 `body>200` 则批量 **1×LLM** 压成一句（≤20 词）；否则截断 200。  
-2. **`_compress_new_issues`**：`problem+suggestion>300` 则批量压缩；否则 `problem[:120]`。  
-3. **1×JSON LLM** 去重合并：新 issue（带 `source`: r1/r2/r3/r4）与已有评论对比，同 path+line **r2 优先于 r1**，去掉已被人工评论覆盖的项，合并同根因，并按 severity 排序。  
-4. 若 LLM 返回空，fallback 按 **critical > medium > normal** 排序。  
-5. 每条最终 issue 带 **`_review_version: 2`**；旧 checkpoint 无此标记会触发 **final 整表重算**。
+1. **`_deterministic_dedup`**：按 **`(path, line, bug_category)`** 分组；组内保留 **severity 更优** 的一条，同 severity 时按 **`source` 优先级** `r2 > r1 > r3 > r4` 选一条。减少送入后续步骤的重复项。
+2. **`_compress_existing_comments`** / **`_compress_new_issues`**：超长则批量 LLM 压成短句；否则截断。（索引基于 dedup 后的列表。）
+3. **1×JSON LLM**：新 issue（带 `source`: r1/r2/r3/r4）与已有 PR 评论对比；提示词仍要求同 path+line 时 **r2 优先于 r1**；输出仅保留 `idx` 等，再从 **deduped** 列表恢复完整字段。
+4. 若 LLM 返回空，fallback 按 **critical > medium > normal** 对 **deduped** 排序。
+5. 每条最终 issue 带 **`_review_version: 2`**；旧格式 final 会触发整表重算。
 
-### 4.6 `_run_five_rounds` 与 R1 透传
+### 5.6 R5 输入合并与 R1 透传
 
-- 合并进入 R5：`r1_passthrough`（规则见代码：R2 覆盖文件中丢弃被 R2 处理过的同 path:line）+ `r2` + `r3` + `r4`，并 `_tag(..., source=...)`。
+- `r1_passthrough`：若某文件被 R2 处理，则丢弃该文件上已被 R2 覆盖的 `path:line`（与 `discarded_r1_keys`、`r2_covered_keys` 共同约束）。
+- 合并进入 R5：`tag(r1_passthrough, r1)` + `r2` + `r3` + `r4`。
 
 ---
 
-## 5. 发帖（`poster.py`）
+## 6. 发帖（`poster.py`）
 
-- **`_fetch_existing_pr_comments`**：`list_review_comments`，规范化 `body/path/line`。  
-- **`_post_review_comments`**：先 **`submit_review`**（`commit_id=head_sha`，`event=COMMENT`，附 `review_body` + 批量行评）；失败则逐条 **`create_review_comment`**。  
-- 无 `path`/`line` 的 issue **不会**作为行评发出。
+- **`_fetch_existing_pr_comments`**：`list_review_comments`，规范化 `body` / `path` / `line`。
+- **`_post_review_comments`**：优先 **`submit_review`**（`commit_id=head_sha`，`event=COMMENT`，附 `review_body` + 行评）；失败则逐条 **`create_review_comment`**。
+- 无 `path` / `line` 的 issue **不会**作为行评发出。
 
 ---
 
-## 6. 缓存与断点（`checkpoint.py` + `runner.py`）
+## 7. 缓存与断点（`checkpoint.py` + `runner.py`）
 
-### 6.1 两套存储
+### 7.1 两套存储
 
 | 类型 | 路径 | 内容 |
 |------|------|------|
-| **PR checkpoint** | `{pr_dir}/checkpoint.json` | `diff_text`、`pr_summary`、`r1_hunk_*`、`r2_file_*`、`r2_disc_*`、`r3`、`pr_design_doc`、`r4`、`final`、`clone_dir`、`_stage_done_*`、`_invalidated_from` 等 |
-| **Repo 级 arch/spec** | `~/.lazyllm/review/cache/{safe_repo}/arch.json` / `spec.json` | `arch_doc`、`arch_outline`、`arch_section_*`、`public_api_catalog`、`agent_instructions`、`review_spec` 等 |
+| **PR checkpoint** | `{pr_dir}/checkpoint.json` | `diff_text`、`pr_summary`、`r1_hunk_*`、`r2_file_*`、`r2_disc_*`、`r2_shared_context`、`r3`、`pr_design_doc`、`r4`、`final`、`clone_dir`、`_stage_done_*`、`_invalidated_from` 等 |
+| **Repo 级 arch/spec** | `~/.lazyllm/review/cache/{safe_repo}/arch.json` / `spec.json` | `arch_doc`、`arch_section_*`、`public_api_catalog`、`agent_instructions`、`review_spec` 等 |
 
-`_load_cache` / `_save_cache` / `_save_cache_multi` 用于 **arch.json / spec.json**；`_ReviewCheckpoint` 用于 **checkpoint.json**。
-
-### 6.2 `ReviewStage` 顺序
+### 7.2 `ReviewStage.ordered()`
 
 `CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4 → FINAL`
 
-### 6.3 `resume_from` 与 `_invalidated_from`（只标记、不删数据）
+### 7.3 `resume_from`、`_invalidated_from` 与 `clone_dir`
 
-- 构造 checkpoint 时若传入 `resume_from`：写入 **`_invalidated_from`** 为该 stage 的 value，**不** `pop` 旧字段。  
-- **`get(key)`**：若 key 映射到的 stage 的 **index ≥ invalidation 起点**，则返回 `None`（逻辑上视为未缓存）。  
-- **`should_use_cache(stage)`**：无 `resume_from` 时若存在 `_invalidated_from`，则仅 **`stage < invalidated`** 为 True；仍有 `resume_from` 参数时则用 **`stage < resume_from`**。  
-- **`mark_stage_done(stage)`**：若 `stage.index() >= invalidated.index()`，会 **清除** `_invalidated_from` 并清空内存中的 `resume_from`，表示从该阶段起已重新跑通。
+- 传入 `resume_from`：写入 **`_invalidated_from`**，不删旧字段。
+- **`get('clone_dir')`**：若 JSON 中有值但 **目录不存在**（例如成功收尾已删 `pr_dir/clone/`），视为缺失，返回 **`None`**，触发预分析路径重新 clone。
+- **`_stage_for_key`**：聚合键 **`r1`**、**`r2`** 分别映射到 **`ReviewStage.R1` / `R2`**，与 `r1_hunk_*`、`r2_file_*` 一致参与 invalidation，避免 `resume_from` 时读到过期的聚合结果。
+- **`get(key)`**（其它键）：若 key 对应 stage **index ≥ invalidation 起点**，返回 `None`。
+- **`should_use_cache(stage)`**：无 `resume_from` 时若存在 `_invalidated_from`，则仅 **`stage < invalidated`** 为 True；有 `resume_from` 时用 **`stage < resume_from`**。
+- **`mark_stage_done(stage)`**：仅在 **`stage == FINAL`** 时清除 **`_invalidated_from`** 并重置内存中的 **`resume_from`**，保证在一次完整跑通前，自 invalidation 起点起的下游缓存键始终被 `get()` 屏蔽，避免混用旧轮次数据。
 
-### 6.4 `clear_checkpoint=True`
+### 7.4 `clear_checkpoint=True`
 
-删除 checkpoint 文件并 **删除整个 `pr_dir`**（与仅删 `clone/` 的成功收尾不同）。
+删除 checkpoint 并 **整个 `pr_dir`**（与成功结束时只删 `clone/` 不同）。
 
-### 6.5 成功结束后的目录
+### 7.5 成功结束后的目录
 
-- 删除 **`{pr_dir}/clone/`** 释放磁盘；**保留** `checkpoint.json` 供下次续跑。
-
----
-
-## 7. LLM 调用与工具小结
-
-- **JSON 输出**：R1/R2 issue 提取、R3、R4、R5 去重、架构 outline、规则提取、Public API 文件列表等 → `_safe_llm_call`。  
-- **文本输出**：各 arch section、section 摘要、PR 摘要、R4a 设计文档等 → `_safe_llm_call_text`。  
-- **Agent**：仅 **Round 2** 使用 `ReactAgent`，工具为 scoped 读写/搜索/shell + **`analyze_symbol`**（内部可再调 LLM）。  
-- **重试**：`utils` 中间层对 JSON 解析失败、限流等有重试与 `json_repair` 兜底。
+删除 **`{pr_dir}/clone/`**；**保留** `checkpoint.json`。
 
 ---
 
-## 8. 文件索引
+## 8. LLM 调用与工具小结
+
+- **JSON**：R1、R2 抽取、R3、R5、架构 outline、规则、Public API 等。
+- **文本**：arch 各节、PR 摘要、R4a 设计文档；R4 在 **`prefer_combined=True`** 时的单次合并调用等。
+- **Agent**：**Round 2** 的 `ReactAgent`（上下文收集阶段），工具为 scoped 读写/搜索/shell + **`analyze_symbol`**。
+- **重试**：`utils` 中对 JSON 解析失败、限流等有重试与 `json_repair` 兜底。
+
+---
+
+## 9. 文件索引
 
 | 模块 | 职责 |
 |------|------|
-| `runner.py` | 编排、diff、预分析、五轮、清理 clone、发帖、返回 `pr_design_doc` |
-| `pre_analysis.py` | clone、架构、规则、PR 摘要、Public API Catalog、arch 按文件裁剪、agent 工具 |
-| `rounds.py` | R1–R5、批处理与并发、Round 2 Agent、R4a/R4、合并去重 |
-| `checkpoint.py` | PR 断点、stage、invalidation 标记、`get` 屏蔽逻辑 |
+| `runner.py` | 编排、diff、预分析、拉已有评论、五轮、清理 clone、发帖 |
+| `constants.py` | `SINGLE_CALL_CONTEXT_BUDGET`、`R1_DIFF_BUDGET`、`BudgetManager`、issue 密度与 diff 启发式压缩 |
+| `pre_analysis.py` | clone、架构、规则、PR 摘要、Public API、arch 裁剪、Agent 工具 |
+| `rounds.py` | R1–R5、R2 分块符号过滤、R4 两步/可选合并、R5 确定性去重 + LLM |
+| `checkpoint.py` | PR 断点、stage、`clone_dir` 校验、`r1`/`r2` 键映射、invalidation、**FINAL 才清除** `_invalidated_from` |
 | `utils.py` | LLM 封装、diff 解析、评论规范化、review body |
 | `poster.py` | 拉已有评论、提交 review / 行评 |
 
 ---
 
-## 9. 设计评审：不合理之处（信息截断与一致性）
+## 10. 设计评审：已知局限（与截断相关）
 
-以下对照当前实现（`lazyllm/tools/git/review/*.py`）归纳：**多为硬截断（truncation），而非面向语义的压缩**，容易在「参考信息不足」或「前后轮不一致」时误判。
+以下基于当前实现归纳；具体数值以源码常量为准。部分条目已被上文「结构性优化」缓解，仍列出剩余风险。
 
-### 9.1 架构分析链路
+| 区域 | 现象 | 风险 / 备注 |
+|------|------|-------------|
+| 架构 outline | `snapshot[:4000]`，快照总预算 6000 | 部分结构化快照未进入 outline |
+| PR 预摘要 | `body[:800]`、`diff[:5000]` | 大 PR 尾部变更在预摘要中不可见 |
+| runner diff | `max_diff_chars` 截断整份 diff | 超大 PR 后续 hunk 无法进入任一轮 |
+| R1 | `review_spec`/`pr_summary` 各 600 字符 | 与 R3 全量规则 + 长 arch 不对称 |
+| R2 | 全文件 **一次** Agent 生成 `symbol_context`；分块侧已用 **`_filter_symbol_context_for_chunk`** 对齐 | Agent 仍可能未覆盖极长 diff 尾部；过滤基于标识符启发式 |
+| 规则匹配 | `_lookup_relevant_rules` 仅用 diff **前 200 行** | 关键词集中在尾部时匹配可能偏 |
+| R4 默认两步 | R4a `arch` 约 12k | 设计文档仍受 arch 截断影响；R4b 另有大段 arch |
+| R5 | 跨 **不同** `bug_category` 的同 path+line 重复仍依赖 LLM | 确定性步骤只折叠 **相同 category** |
+| BudgetManager | 已提供类，**各轮尚未全面改用** `allocate` | 与旧 `clip_*` 并存 |
 
-| 现象 | 代码位置 | 风险 |
-|------|----------|------|
-| 快照预算 6000，但 outline 只用 `snapshot[:4000]` | `pre_analysis.py` `_arch_generate_outline` | 约 1/3 结构化快照未参与 outline，目录/依赖信息可能偏废。 |
-| 每节 `_summarize_section` 只摘要 `content[:800]` | `pre_analysis.py` | 长 section 的摘要丢失后半段重点，后续 section 的「已文档化摘要」链式误差累积。 |
-| Public API：目录树 `[:4000]` | `_build_public_api_catalog` | 深仓库前几屏占满预算，深层 `utils` 可能进不了 LLM 视野。 |
+### 与检索增强的关系
 
-### 9.2 PR 预摘要与全链路 diff
-
-| 现象 | 代码位置 | 风险 |
-|------|----------|------|
-| `pr_body[:800]`、`diff[:5000]` | `_pre_round_pr_summary` | 大 PR 的描述与 diff 头部占满窗口，**尾部变更**在预摘要阶段即不可见。 |
-| `runner` 层 `max_diff_chars` 截断整份 diff | `runner.py` | 超大 PR 后续 hunk 根本不会进入 R1–R5（文档需与默认参数一并说明）。 |
-
-### 9.3 Round 1
-
-| 现象 | 代码位置 | 风险 |
-|------|----------|------|
-| `review_spec[:600]`、`pr_summary[:600]` | `rounds.py` `_round1_hunk_analysis` | 规则全文与 PR 摘要在首轮即被压成极短片段，**与 R3「全量 arch + 规则查找」不对称**，R1 可能漏掉依赖规则卡的结论。 |
-| 每文件共用一份 `_extract_arch_for_file(..., 3000)` | `_r1_task_batch` | 合理，但若该文件与高分 section 无关，仍可能挤掉 Public API 等块（取决于打分）。 |
-
-### 9.4 Round 2（问题最集中）
-
-| 现象 | 代码位置 | 风险 |
-|------|----------|------|
-| Agent 上下文只用 **`fdiff[:4000]`** | `_r2_process_file_chunk` | 单文件 diff 超过 4k 时，**后半文件变更根本不会进入「探索上下文」的 Agent**，但后续仍按 chunk 做 issue 提取。 |
-| Agent prompt 内再截断 **`diff_chunk[:2000]`**，`force_summarize_context` 仅 **`[:300]`** | `_r2_build_file_context` | 同一文件 diff 被三重截断；300 字符摘要几乎只能承载路径级提示，**语义信息量极低**。 |
-| 每文件 **只跑 1 次** Agent，再对多 chunk 复用同一 `symbol_context` | `_r2_process_file_chunk` | 若关键符号/调用关系落在 **4000 字符之后**的 chunk，Agent 未探索过，R2 仍用旧上下文做提取，**跨 chunk 漏检风险高**。 |
-| `r1_text` 上限 **1200** 字符 | `_r2_extract_issues` | R1 条目多时直接被截断，LLM 无法对完整 R1 列表做 KEEP/MODIFY/DISCARD。 |
-
-### 9.5 Round 3
-
-| 现象 | 代码位置 | 风险 |
-|------|----------|------|
-| `prev_json` 30 条且总长 **1000** | `rounds.py` `_round3_analyze_file` | 平均每条约 33 字符，**几乎只能看见路径:行号+极短 problem**，R1/R2 的 suggestion 基本丢失，与「全局分析」目标不匹配。 |
-| 单文件 diff **`fdiff[:4000]`** | 同上 | 大文件后半段不参与 R3。 |
-
-### 9.6 Round 4a / Round 4
-
-| 现象 | 代码位置 | 风险 |
-|------|----------|------|
-| R4a：`arch_doc[:2000]` | `_round4_generate_pr_doc` | 完整 `arch_doc`（含多节 + Public API JSON）被压到 2k，**设计文档推断严重缺参考**。 |
-| R4：`pr_design_doc[:3000]`、`diff[:12000]` | `_round4_architect_review` | 相对合理，但若与 R4a 的「缺 arch」叠加，架构评审仍可能建立在残缺设计上。 |
-
-### 9.7 Round 5 与历史规则
-
-| 现象 | 代码位置 | 风险 |
-|------|----------|------|
-| 合并规则时 `rules_json[:8000]` | `pre_analysis.py` 合并路径 | 规则过多时合并输入被砍，**合并结果可能不完整**。 |
-| `_lookup_relevant_rules` 只用 diff **前 200 行**提关键词 | `pre_analysis.py` | 变更集中在 diff 尾部时，**规则标题匹配可能失准**。 |
-
-### 9.8 与「检索增强」的关系
-
-框架内可用 **`lazyllm.tools.rag.retriever.ContextRetriever`**（对内存长文本做 BM25/向量检索，`TempPathGenerator` + LRU 缓存），当前 review **管线未接入**。在以下场景用「按 query 从长 arch / 长 diff / review_spec 中取 top-k 片段」替代单纯头部截断，通常比继续缩小 `[:N]` 更合理：
-
-- 按 **当前文件路径 + hunk 文本** 从 `arch_doc` 检索相关段落，替代仅靠 `_extract_arch_for_file` 静态打分。  
-- 对 **超长 diff** 按文件或符号检索相关 hunk，再喂给 R2 Agent / R4。  
-- 对 **review_spec** 按 diff 关键词检索规则全文，而非仅 title 关键字 + 前 200 行。
+可用 **`lazyllm.tools.rag.retriever.ContextRetriever`** 等对长 `arch_doc` / diff / `review_spec` 做按需检索；当前 review 管线**未接入**，长文本仍以头部或静态裁剪为主。
 
 ---
 
-## 10. 设计评审：可优化方向
+## 11. 可优化方向（概要）
 
-### 10.1 减少 LLM 调用次数
-
-| 思路 | 说明 |
+| 方向 | 说明 |
 |------|------|
-| 架构 section **批量填充** | 当前每节 1 次填充 + 1 次摘要；可改为「一次输出多节草稿」或「仅对超长节摘要」，减少 2N 中的常数因子。 |
-| **合并 R4a 与 R4** | 若延迟允许，可用一次结构化输出同时产出「设计文档段落 + 问题列表」（需严格 JSON schema），减少 1 次往返（需评估输出长度与稳定性）。 |
-| R5 **压缩批大小** | 已有批量压缩；若 existing/new  issue 数量稳定，可合并为单次「压缩+去重」提示词（当前已是先压再 dedup，可再减少一轮空转）。 |
-
-### 10.2 用缓存减少重复模型调用（在已有 checkpoint 之外）
-
-| 思路 | 说明 |
-|------|------|
-| **`r2_shared_context` 已缓存** | 同 PR 重跑时跳过静态分析；确保 `resume_from` 不误清该 key（当前逻辑依赖 checkpoint）。 |
-| **按 `(repo, arch_doc hash)` 缓存 Public API 正则扫描结果** | LLM 文件列表不变时，clone 未变可跳过 `_extract_public_symbols` 的重扫。 |
-| **Symbol 摘要缓存** | `analyze_symbol` 已对 `symbol_cache` 做进程内缓存；跨 PR 若 clone 路径与 commit 相同可考虑落盘 key（需谨慎失效条件）。 |
-
-### 10.3 优先修复的高收益项（实施顺序建议）
-
-1. **R2**：对 Agent 输入改为「每 chunk 各跑一次轻量探索」或「全量 fdiff 分块检索 + 合并上下文」，至少去掉 **`fdiff[:4000]` 与 `[:2000]/[:300]` 叠加截断**中的最严一层。  
-2. **R3 `prev_json`**：改为按条数限制 + 每条约 **200–400 字符** 的摘要（或先 LLM 批量压缩 R1+R2 再喂 R3），避免 1000 字符硬切。  
-3. **R4a `arch_doc[:2000]`**：改为与 R1 一致的 `_extract_arch_for_file` 或 ContextRetriever 取 top-k，与全文长度解耦。  
-4. **预摘要 diff**：对大 PR 至少记录「已截断」并在后续轮次用完整 diff（或分块）补全关键阶段。
+| 减少调用次数 | 架构多节批量填充；若稳定性允许可对 R4 尝试 `prefer_combined=True` 减少一步；评估 R5 压缩批次 |
+| 缓存 | `r2_shared_context`、arch/spec 多级缓存；`analyze_symbol` 进程内缓存已存在 |
+| 预算统一 | 将 R1/R3/R4 等逐步迁移到 **`BudgetManager.allocate`**，与总上限对齐 |
+| 高收益修复 | R2 对超大文件按 chunk 补充 Agent 探索或检索；预摘要对大 PR 标注截断并补读；规则匹配扩大 diff 采样窗口；R5 对「同 path+line 不同 category」增加确定性策略（需谨慎） |
 
 ---
 
-*文档版本与代码同步说明：若后续调整 budget 或 stage 枚举，请以源码常量及 `ReviewStage.ordered()` 为准。本节（9–10）为基于源码的静态评审，实施改动前请再跑回归与成本评估。*
+## 12. 评估与运行指标（Evaluation & Metrics）
+
+本节定义**可采集**的评估维度、字段与示例结构。当前管线**未内置统一指标上报**；多数项需在下文「建议埋点」处增加计数/计时后写入日志或 JSONL 报告。指标设计目标：判断**覆盖是否充分**、**issue 质量与分布**、**性能与稳定性**是否可接受。
+
+### 12.1 覆盖能力（Coverage）
+
+#### 12.1.1 原始 diff 规模（run 级）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `diff_chars_total` | `int` | `len(diff_text)`（可能与 `max_diff_chars` 截断后一致） |
+| `diff_lines_total` | `int` | `diff_text.count('\n') + 1` 或按行迭代 |
+| `effective_diff_lines` | `int` | 与 `constants.effective_diff_line_count` 一致，用于 issue 密度上限 |
+| `hunk_count` | `int` | 解析后的 hunk 数（受 `max_hunks` 截断前/后可各记一项） |
+| `truncated_by_max_diff_chars` | `bool` | 是否发生 runner 层 diff 截断 |
+| `truncated_by_max_hunks` | `bool` | 是否发生 hunk 数量截断 |
+
+#### 12.1.2 各轮处理的 diff「占比」说明
+
+管线**不是**「同一 diff 逐轮完整复制」：R1 按 **hunk/批**、R2 按 **文件内 chunk**、R3 按 **多文件 batch**、R4 对 **全 PR diff** 做 `clip_diff_by_hunk_budget`。因此「占比」宜定义为**字符量或有效行数**上的估算，而非简单百分比。
+
+建议字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `r1_diff_chars_in_prompts` | `int` | 所有 R1 调用中进入 prompt 的 hunk 内容字符之和（可 batch 内去重累计） |
+| `r2_files_processed` | `int` | 有 diff 的文件数 |
+| `r2_extract_chunks_total` | `int` | `_split_file_diff_into_chunks` 产生的 chunk 总数 |
+| `r2_agent_diff_chars` | `int` | 每文件 `compress_diff_for_agent_heuristic` 输出长度（可求和） |
+| `r3_batch_count` | `int` | R3 batch 数 |
+| `r3_diff_chars_in_batches` | `int` | 各 batch 内拼接的 diff 字符之和 |
+| `r4a_diff_chars` | `int` | `_round4_generate_pr_doc` 中 `diff_use` 长度 |
+| `r4b_diff_chars` | `int` | `_round4_architect_review` 中 `diff_use` 长度 |
+| `coverage_ratios` | `object` | 可选：各轮 `*_chars / diff_chars_total` 的上界（>1 若多轮重复计同一字符，需文档化算法） |
+
+**示例（单次 run 的摘要 JSON，无真实数值）：**
+
+```json
+{
+  "run_id": "pr-123-20260411T120000Z",
+  "diff_chars_total": 95000,
+  "effective_diff_lines": 420,
+  "hunk_count": 38,
+  "truncated_by_max_diff_chars": true,
+  "r1_diff_chars_in_prompts": 88000,
+  "r2_extract_chunks_total": 12,
+  "r4a_diff_chars": 58000,
+  "r4b_diff_chars": 42000
+}
+```
+
+#### 12.1.3 大文件与 chunk 策略（能否保证「至少一轮」）
+
+| 问题 | 当前行为（可写进评估结论） |
+|------|---------------------------|
+| 是否每个 hunk 至少被 R1 处理？ | 在 **未** 被 `max_hunks` / `max_diff_chars` 裁掉的前提下，R1 按文件批处理 hunk，**原则上全覆盖**；若 diff 被截断，尾部 hunk 可能不在管线内。 |
+| R2 是否每个文件的 diff 都进入抽取？ | 是（按文件聚合 `fdiff`）；超长文件按 `_R2_EXTRACT_DIFF_CHUNK` **分块**，每块一次 `_r2_extract_issues`。 |
+| 「超大文件」兜底 | 无单独「>X 行」分支；依赖 **chunk 分块** + **issue 密度** `max_issues_for_diff` / `cap_issues_by_severity`。评估时可设阈值 `large_file_lines_threshold`（如 500），统计 `files_over_threshold` 与每文件 chunk 数。 |
+
+**建议采集：** `max_hunks_hit`、`max_diff_chars_hit`、`per_file_chunk_count: { "path/to": 3 }`。
+
+---
+
+### 12.2 Issue 质量（Quality）
+
+#### 12.2.1 各轮 issue 数量
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `count_r1` | `int` | `len(r1)` |
+| `count_r2` | `int` | `len(r2)` |
+| `count_r3` | `int` | `len(r3)` |
+| `count_r4` | `int` | `len(r4)` |
+| `count_final` | `int` | `len(final)` |
+
+可在 `_run_five_rounds` 末尾或 checkpoint 写入前一次性记录。
+
+#### 12.2.2 Final 来源占比（`source` 字段）
+
+合并进 R5 前 issue 带 `source`: `r1` \| `r2` \| `r3` \| `r4`。Final 恢复后若仍保留 `source` 可统计；若最终结构去掉 `source`，需在 R5 输出前**暂存**映射。
+
+**示例：**
+
+```json
+{
+  "count_final": 17,
+  "final_source_ratio": {
+    "r1": 0.12,
+    "r2": 0.35,
+    "r3": 0.18,
+    "r4": 0.35
+  }
+}
+```
+
+#### 12.2.3 Issue 类型分布（`bug_category`）
+
+对 `final`（或各轮）列表按 `bug_category` 计数。合法值见 `utils._VALID_CATEGORIES`（如 `logic`、`design`、`maintainability` 等）。
+
+**示例：**
+
+```json
+{
+  "final_bug_category_counts": {
+    "logic": 4,
+    "design": 6,
+    "maintainability": 3,
+    "style": 1
+  }
+}
+```
+
+---
+
+### 12.3 性能与成本（Performance & Cost）
+
+#### 12.3.1 LLM 调用次数
+
+| 指标 | 说明 |
+|------|------|
+| `llm_calls_r1` | 单 hunk 调用 + batch 调用次数之和 |
+| `llm_calls_r2_extract` | `_r2_extract_issues` 次数（≈ chunk 数） |
+| `llm_calls_r2_agent` | 每文件 1 次 Agent（上下文收集）；**不计** `analyze_symbol` 内可能嵌套的 LLM |
+| `llm_calls_r3` | batch 数 |
+| `llm_calls_r4a` / `llm_calls_r4b` | 默认两步各 1；`prefer_combined=True` 时合并成功则 1，失败则 +2 |
+| `llm_calls_r5` | 压缩批次数 + 最终合并 1 次（视 `_compress_*` 是否触发） |
+| `arch_preanalysis_calls` | 预分析内 outline/section/spec 等（若在 `pre_analysis` 统一汇总） |
+
+**R2 Agent「平均轮数」：** 以 `ReactAgent` 实际 tool 调用次数计，当前在 `_make_traced_tool` 中已有 `step_counter` 日志；可改为**每文件聚合** `r2_agent_tool_steps[path]`，再对文件求平均。
+
+#### 12.3.2 Token
+
+当前实现以**字符预算**为主，**未**统一记录 token。若底层 LLM 包装返回 `usage`（`prompt_tokens` / `completion_tokens`），可在封装层累加。
+
+| 字段 | 类型 |
+|------|------|
+| `tokens_input_total` | `int` |
+| `tokens_output_total` | `int` |
+| `tokens_by_stage` | `object`（可选，key 为 `r1`…`r5`/`pre`） |
+
+无 token 时可用 **`estimate_prompt_chars(*parts)`** 或各 prompt 字符串长度之和作为**代理指标**（`proxy_prompt_chars`）。
+
+#### 12.3.3 时间
+
+| 字段 | 说明 |
+|------|------|
+| `wall_time_total_sec` | `review()` 入口到返回 |
+| `time_pre_analysis_sec` | `_run_pre_analysis` + `pr_summary` |
+| `time_r1_sec` … `time_r5_sec` | 各轮分段（`time.perf_counter`） |
+| `time_r2_agent_sec` | 仅 `_r2_build_file_context` 累加（可 per-file max/avg） |
+
+**示例：**
+
+```json
+{
+  "wall_time_total_sec": 842.5,
+  "time_r2_sec": 510.2,
+  "time_r2_agent_sec": 480.0,
+  "llm_calls_r2_extract": 44
+}
+```
+
+---
+
+### 12.4 稳定性（Stability）
+
+| 指标 | 含义 | 当前状态 |
+|------|------|----------|
+| `r4_combined_attempted` | `prefer_combined=True` 时尝试合并调用 | 需调用方传参才会发生 |
+| `r4_combined_parse_failed` | 合并 JSON 解析失败并打 warning | 已有日志：`Round 4: combined JSON parse failed` |
+| `json_repair_used` | `_parse_json_with_repair` 成功且走了 repair 分支 | **未**区分：需在 `utils._parse_json_with_repair` 或 `_safe_llm_call` 内对「先 json.loads 失败再 repair」计数 |
+| `r2_agent_timeout_count` | `_r2_build_file_context` 超时 | 超时抛错；可 catch 记 `+1` |
+| `r2_agent_context_failed_count` | 非超时异常导致 `symbol_context=''` | 已有 warning，可计数 |
+
+**多次运行一致性：** 对同一 `pr_number` + 相同 checkpoint 策略，比较两次 `final` 的 `(path,line,bug_category)` 集合的 Jaccard 或简单计数差；需**固定随机种子**（若 LLM 可调）且关闭缓存变量，否则仅能做**定性**对比。
+
+---
+
+### 12.5（可选）与人工 review 对比
+
+若线下有标注（人工认为应报 / 不应报），可定义：
+
+| 字段 | 说明 |
+|------|------|
+| `human_labeled_issues` | 列表：`{path, line, label: "tp"|"fp"|"miss"}` |
+| `precision_at_final` | Final 中与人工一致的「问题点」/ Final 条数（需对齐规则） |
+| `recall_vs_human` | 人工标注应报条数中被 Final 覆盖的比例 |
+
+**可采集性**：依赖**人工标注流程**与 ID 对齐，不属于自动埋点。
+
+---
+
+### 12.6 建议埋点位置（当前代码无统一 Metrics 对象）
+
+| 目标 | 建议位置 |
+|------|----------|
+| 总耗时、diff/hunk 规模 | [`runner.py`](../../tools/git/review/runner.py) `review()` 开始/结束；diff 截断后 |
+| R1–R5 耗时与各轮 issue 数 | [`rounds.py`](../../tools/git/review/rounds.py) `_run_five_rounds` 内各段 `perf_counter`；每轮结束 `len(r*)` |
+| R1 调用次数 | `_r1_run_batch` / `_analyze_single_hunk` 每次调用 `_safe_llm_call` 处 +1 |
+| R2 chunk 数、Agent 耗时、tool 步数 | `_r2_process_file_chunk`（chunk 循环）、`_r2_build_file_context`（计时与 `step_counter` 汇总） |
+| R3 batch 数 | `_round3_global_analysis` 循环 |
+| R4 合并失败 | `_round4_combined_review` 中 `prefer_combined` 分支解析失败处 |
+| R5 确定性去重比例 | `_round5_merge_and_deduplicate` 已有 `len(valid) -> len(deduped)` 日志，可改为结构化输出 |
+| JSON repair 率 | [`utils.py`](../../tools/git/review/utils.py) `_parse_json_with_repair`：比较 `json.loads` 与 repair 路径 |
+| Token | 若 LLM 对象返回 usage，在 `_safe_llm_call` / `_safe_llm_call_text` 成功返回后累加 |
+
+**输出形式建议：** 单次 run 写 **`review_metrics.json`** 至 `pr_dir`，或追加 **JSONL** 一行，便于离线聚合；字段名与 §12.1–12.4 保持一致即可保证**可采集、可对比**。
+
+---
+
+*若后续调整 budget、`ReviewStage.ordered()`、R4/R5 行为或增加埋点，请同步更新本节字段定义。*

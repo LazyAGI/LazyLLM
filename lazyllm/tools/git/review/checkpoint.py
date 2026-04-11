@@ -119,6 +119,8 @@ class _ReviewCheckpoint:
             'arch_doc': ReviewStage.ARCH,
             'review_spec': ReviewStage.SPEC,
             'pr_summary': ReviewStage.PR_SUMMARY,
+            'r1': ReviewStage.R1,
+            'r2': ReviewStage.R2,
             'r3': ReviewStage.R3,
             'pr_design_doc': ReviewStage.R4,
             'r4': ReviewStage.R4,
@@ -144,6 +146,10 @@ class _ReviewCheckpoint:
         val = self._data.get(key)
         if val is None:
             return None
+        # clone_dir staleness check: treat as missing if directory no longer exists
+        if key == 'clone_dir' and val and not os.path.isdir(val):
+            lazyllm.LOG.warning(f'Cached clone_dir {val} no longer exists, treating as missing')
+            return None
         # if this key belongs to an invalidated stage, treat as missing
         inv = self._invalidated_stage()
         if inv is not None:
@@ -158,9 +164,10 @@ class _ReviewCheckpoint:
 
     def mark_stage_done(self, stage: ReviewStage) -> None:
         self._data[self._STAGE_DONE_PREFIX + stage.value] = True
-        # once a stage is written, clear the invalidation marker if it pointed to this stage
+        # clear the invalidation marker only after the full pipeline completes (FINAL),
+        # so that all downstream stages remain invalidated until the run finishes
         inv = self._invalidated_stage()
-        if inv is not None and stage.index() >= inv.index():
+        if inv is not None and stage == ReviewStage.FINAL:
             self._data.pop(self._INVALIDATED_FROM_KEY, None)
             self._resume_from = None
         self._flush()

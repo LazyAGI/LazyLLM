@@ -1,8 +1,9 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import dataclasses
 import inspect
 import os
 import shutil
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ..client import Git
 from .checkpoint import _ReviewCheckpoint, ReviewStage
@@ -14,6 +15,60 @@ from .utils import (
     _get_head_sha_from_pr, _parse_unified_diff, _Progress,
     _category_stats, _build_review_body,
 )
+from .constants import R2_MAX_FILES, R2_MAX_CHUNKS_PER_FILE
+
+
+@dataclasses.dataclass
+class _DiffStats:
+    diff_lines_total: int
+    file_count: int
+    file_diff_lines: Dict[str, int]  # path -> effective diff line count
+    truncated_diff: bool
+    truncated_hunks: bool
+
+
+@dataclasses.dataclass
+class _ReviewStrategy:
+    enable_r2: bool
+    large_file_threshold: int   # files with more diff lines than this → chunk mode
+    max_files_for_r2: int       # total files R2 will process; excess → R1 passthrough
+    max_chunks_per_file: int    # per-file chunk cap in chunk mode
+
+
+def _compute_diff_stats(
+    diff_text: str,
+    hunks: list,
+    truncated_diff: bool,
+    truncated_hunks: bool,
+) -> _DiffStats:
+    from .constants import effective_diff_line_count
+    file_diff_lines: Dict[str, int] = {}
+    for path, _start, _count, content in hunks:
+        file_diff_lines[path] = file_diff_lines.get(path, 0) + effective_diff_line_count(content)
+    return _DiffStats(
+        diff_lines_total=sum(file_diff_lines.values()),
+        file_count=len(file_diff_lines),
+        file_diff_lines=file_diff_lines,
+        truncated_diff=truncated_diff,
+        truncated_hunks=truncated_hunks,
+    )
+
+
+def _decide_review_strategy(stats: _DiffStats) -> _ReviewStrategy:
+    # Skip R2 entirely for very large PRs to avoid excessive LLM calls
+    if stats.diff_lines_total > 2000 or stats.file_count > 30:
+        return _ReviewStrategy(
+            enable_r2=False,
+            large_file_threshold=200,
+            max_files_for_r2=0,
+            max_chunks_per_file=0,
+        )
+    return _ReviewStrategy(
+        enable_r2=True,
+        large_file_threshold=200,
+        max_files_for_r2=R2_MAX_FILES,
+        max_chunks_per_file=R2_MAX_CHUNKS_PER_FILE,
+    )
 
 
 def review(  # noqa: C901
@@ -67,6 +122,7 @@ def review(  # noqa: C901
         raise RuntimeError('Cannot get PR head sha; cannot post line-level comments')
 
     # diff: load from checkpoint if available, otherwise fetch and cache
+    truncated_diff = False
     diff_text = ckpt.get('diff_text')
     if diff_text is None:
         diff_res = backend_inst.get_pr_diff(pr_number)
@@ -75,14 +131,46 @@ def review(  # noqa: C901
         diff_text = diff_res.get('diff', '')
         if max_diff_chars and len(diff_text) > max_diff_chars:
             diff_text = diff_text[:max_diff_chars] + '\n... [diff truncated]\n'
+            truncated_diff = True
         ckpt.save('diff_text', diff_text)
     else:
         _Progress('Pre-round: fetching diff').done('loaded from checkpoint')
 
     hunks = _parse_unified_diff(diff_text)
+    truncated_hunks = False
     if max_hunks and len(hunks) > max_hunks:
         hunks = hunks[:max_hunks]
+        truncated_hunks = True
     prog_main.update(f'diff parsed: {len(hunks)} hunks')
+
+    # build diff stats and decide review strategy
+    diff_stats = _compute_diff_stats(diff_text, hunks, truncated_diff, truncated_hunks)
+    strategy = _decide_review_strategy(diff_stats)
+
+    # build meta warning issues for truncation
+    meta_warnings: List[Dict[str, Any]] = []
+    if truncated_diff:
+        meta_warnings.append({
+            'type': 'meta',
+            'severity': 'normal',
+            'bug_category': 'maintainability',
+            'path': '',
+            'line': 0,
+            'problem': f'Review may be incomplete: diff was truncated at {max_diff_chars} chars.',
+            'suggestion': 'Consider increasing max_diff_chars or splitting the PR.',
+            'source': 'meta',
+        })
+    if truncated_hunks:
+        meta_warnings.append({
+            'type': 'meta',
+            'severity': 'normal',
+            'bug_category': 'maintainability',
+            'path': '',
+            'line': 0,
+            'problem': f'Review may be incomplete: only first {max_hunks} hunks were analyzed.',
+            'suggestion': 'Consider increasing max_hunks or splitting the PR.',
+            'source': 'meta',
+        })
 
     llm = _get_default_llm() if llm is None else llm
     llm = _ensure_non_streaming_llm(llm)
@@ -110,11 +198,25 @@ def review(  # noqa: C901
 
     existing_comments = _fetch_existing_pr_comments(backend_inst, pr_number)
     prog_main.update(f'{len(existing_comments)} existing PR comments fetched')
-    final_comments = _run_five_rounds(
+
+    # run lint analysis (independent of LLM rounds)
+    lint_issues: List[Dict[str, Any]] = []
+    if clone_dir and os.path.isdir(clone_dir):
+        try:
+            from .lint_runner import _run_lint_analysis
+            lint_issues = _run_lint_analysis(diff_text, clone_dir)
+        except Exception as e:
+            import lazyllm
+            lazyllm.LOG.warning(f'Lint analysis failed: {e}')
+
+    final_comments, r2_metrics = _run_five_rounds(
         llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
         clone_dir=clone_dir, existing_comments=existing_comments, language=language,
-        agent_instructions=agent_instructions,
+        agent_instructions=agent_instructions, strategy=strategy,
+        lint_issues=lint_issues,
     )
+    final_comments = meta_warnings + final_comments
+
     # clean up only the clone subdirectory (not the whole pr_dir which contains checkpoint)
     clone_subdir = os.path.join(pr_dir, 'clone')
     if not keep_clone and os.path.isdir(clone_subdir):
@@ -141,6 +243,17 @@ def review(  # noqa: C901
     )
     prog_main.done(summary)
 
+    metrics = {
+        'r2_mode': 'skip' if not strategy.enable_r2 else 'mixed',
+        'r2_files_chunk': r2_metrics.get('r2_files_chunk', 0),
+        'r2_files_group': r2_metrics.get('r2_files_group', 0),
+        'r2_files_skipped': r2_metrics.get('r2_files_skipped', 0),
+        'r2_chunks_total': r2_metrics.get('r2_chunks_total', 0),
+        'truncated_diff_flag': truncated_diff,
+        'truncated_hunks_flag': truncated_hunks,
+        'lint_issues_count': len(lint_issues),
+    }
+
     return {
         'summary': summary,
         'comments': final_comments,
@@ -149,4 +262,5 @@ def review(  # noqa: C901
         'pr_summary': pr_summary,
         'pr_design_doc': ckpt.get('pr_design_doc') or '',
         'original_review_code': original_review_code,
+        'metrics': metrics,
     }

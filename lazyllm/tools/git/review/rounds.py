@@ -23,7 +23,7 @@ from .pre_analysis import (
 from .constants import (
     SINGLE_CALL_CONTEXT_BUDGET, R1_DIFF_BUDGET, ISSUE_DENSITY_RULE_TEXT,
     max_issues_for_diff, cap_issues_by_severity, clip_text, clip_diff_by_hunk_budget,
-    compress_diff_for_agent_heuristic,
+    compress_diff_for_agent_heuristic, effective_diff_line_count,
 )
 from .checkpoint import ReviewStage
 from lazyllm.tools.agent import ReactAgent
@@ -31,6 +31,21 @@ from lazyllm.tools.agent import ReactAgent
 def _lookup_relevant_symbols(diff_content: str, symbol_index: Dict[str, str]) -> str:
     hits = [f'{sym}: {desc}' for sym, desc in symbol_index.items() if sym in diff_content]
     return '\n'.join(hits[:5])
+
+
+def _sample_text(text: str, max_chars: int) -> str:
+    # Sample head + middle + tail to preserve coverage across long texts.
+    if len(text) <= max_chars:
+        return text
+    third = max_chars // 3
+    mid = len(text) // 2
+    return (
+        text[:third]
+        + '\n...\n'
+        + text[mid - third // 2: mid + third // 2]
+        + '\n...\n'
+        + text[-third:]
+    )
 
 _R1_CATEGORIES_BLOCK = '''\
 Categories:
@@ -318,7 +333,7 @@ def _round1_hunk_analysis(
     ckpt: Optional[Any] = None,
     agent_instructions: str = '',
 ) -> List[Dict[str, Any]]:
-    spec_snippet = review_spec[:600] if review_spec else '(not available)'
+    spec_snippet = _sample_text(review_spec, 600) if review_spec else '(not available)'
     summary_snippet = pr_summary[:600] if pr_summary else '(not available)'
     prog = _Progress('Round 1: hunk analysis', len(hunks))
     lock = threading.Lock()
@@ -508,6 +523,177 @@ def _r2_build_shared_context(diff_text: str) -> str:
     result = '\n\n'.join(parts)[:_R2_SHARED_CTX_BUDGET]
     lazyllm.LOG.info(f'Round 2 shared context built (static): {len(result)} chars')
     return result
+
+# Budget for related small-file diffs appended to large-file symbol_context
+_R2_RELATED_DIFF_BUDGET = 4000
+
+
+def _classify_files_for_r2(
+    file_diffs: Dict[str, str],
+    large_file_threshold: int,
+    max_files: int,
+) -> Tuple[List[str], List[str], List[str]]:
+    # Returns (large_files, small_files, skipped_files)
+    # Files are sorted by diff size descending so largest get priority within the cap.
+    def _diff_lines(d: str) -> int:
+        return effective_diff_line_count(d)
+
+    sorted_files = sorted(file_diffs.keys(), key=lambda p: _diff_lines(file_diffs[p]), reverse=True)
+    large: List[str] = []
+    small: List[str] = []
+    skipped: List[str] = []
+    for path in sorted_files:
+        if len(large) + len(small) >= max_files:
+            skipped.append(path)
+        elif _diff_lines(file_diffs[path]) > large_file_threshold:
+            large.append(path)
+        else:
+            small.append(path)
+    return large, small, skipped
+
+
+def _find_related_small_files(
+    large_diff: str,
+    small_files: List[str],
+    file_diffs: Dict[str, str],
+) -> List[str]:
+    # Extract module names imported in the large file's diff, match against small file paths.
+    import_re = re.compile(r'^\+\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))', re.MULTILINE)
+    imported_modules: set = set()
+    for m in import_re.finditer(large_diff):
+        mod = (m.group(1) or m.group(2) or '').split('.')[-1]
+        if mod:
+            imported_modules.add(mod)
+    if not imported_modules:
+        return []
+    related: List[str] = []
+    for path in small_files:
+        stem = os.path.splitext(os.path.basename(path))[0]
+        if stem in imported_modules:
+            related.append(path)
+    return related
+
+
+def _r2_group_files(small_files: List[str], max_per_group: int = 5) -> List[List[str]]:
+    # Group small files by their immediate parent directory.
+    dir_map: Dict[str, List[str]] = {}
+    for path in small_files:
+        d = os.path.dirname(path) or '.'
+        dir_map.setdefault(d, []).append(path)
+    groups: List[List[str]] = []
+    for files in dir_map.values():
+        for i in range(0, len(files), max_per_group):
+            groups.append(files[i:i + max_per_group])
+    return groups
+
+
+_ROUND2_GROUP_PROMPT_TMPL = '''\
+You are a senior code reviewer performing a second-pass context-enriched analysis on a GROUP of related files.
+{lang_instruction}
+
+## PR Summary
+{pr_summary}
+
+## Project Agent Instructions
+{agent_instructions}
+
+## Project Architecture (brief)
+{arch_doc}
+
+## Cross-File Shared Context
+{shared_context}
+
+## Round-1 Issues Already Found (do NOT repeat)
+{round1_json}
+
+## Diffs for All Files in This Group
+{files_block}
+
+## Task
+Review ALL diffs above together. Focus on cross-file issues within this group:
+1. Interface inconsistencies — method signatures changed but callers in the same group not updated
+2. Missing symmetric updates — one file updated but its counterpart in the group is not
+3. Shared state or dependency violations between files in this group
+4. Design breakage visible only when viewing the group together
+
+For EVERY issue found, output a JSON object with:
+- "path": exact file path from the diffs above
+- "line": new-file line number visible in that file's diff
+- "severity": "critical" | "medium" | "normal"
+- "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability
+- "problem": clear description
+- "suggestion": how to fix it (wrap code snippets with markdown code fences)
+
+Output ONLY a JSON array. No explanation, no markdown wrapper.
+If no new issues: output []
+
+STRICT RULES:
+1. Only report issues caused by the diff itself (added/modified/deleted lines).
+2. Do NOT repeat issues already listed in Round-1 Issues above.
+3. {density_rule}
+'''
+
+
+def _r2_group_review(
+    llm: Any,
+    group_paths: List[str],
+    file_diffs: Dict[str, str],
+    r1_by_file: Dict[str, List[Dict[str, Any]]],
+    shared_context: str,
+    arch_doc: str,
+    pr_summary: str,
+    language: str,
+    ckpt: Optional[Any],
+    all_results: List[Dict[str, Any]],
+    all_discarded: set,
+    use_cache: bool = True,
+    agent_instructions: str = '',
+) -> None:
+    group_key = 'r2_group_' + re.sub(r'[^a-zA-Z0-9]', '_', '_'.join(sorted(group_paths)))[:80]
+    cached = ckpt.get(group_key) if ckpt else None
+    if cached is not None and use_cache:
+        all_results.extend(cached)
+        lazyllm.LOG.info(f'  [R2-group] {group_paths} loaded from cache ({len(cached)} issues)')
+        return
+
+    files_block_parts: List[str] = []
+    all_r1: List[Dict[str, Any]] = []
+    for path in group_paths:
+        fdiff = file_diffs.get(path, '')
+        files_block_parts.append(f'### File: {path}\n```diff\n{fdiff}\n```')
+        all_r1.extend(r1_by_file.get(path, []))
+
+    files_block = '\n\n'.join(files_block_parts)
+    round1_json = json.dumps(all_r1, ensure_ascii=False, indent=2) if all_r1 else '[]'
+    arch_snippet = clip_text(arch_doc or '', 4000)
+    density_rule = ISSUE_DENSITY_RULE_TEXT
+
+    prompt = _ROUND2_GROUP_PROMPT_TMPL.format(
+        lang_instruction=_language_instruction(language),
+        pr_summary=pr_summary[:600] if pr_summary else '(not available)',
+        agent_instructions=agent_instructions[:400] if agent_instructions else '',
+        arch_doc=arch_snippet,
+        shared_context=shared_context[:_R2_SHARED_CTX_BUDGET],
+        round1_json=round1_json[:4000],
+        files_block=files_block[:40000],
+        density_rule=density_rule,
+    )
+
+    raw = _safe_llm_call_text(llm, prompt, tag='r2_group')
+    items: List[Dict[str, Any]] = []
+    try:
+        parsed = _parse_json_with_repair(_extract_json_text(raw))
+        if isinstance(parsed, list):
+            for it in parsed:
+                norm = _normalize_comment_item(it, group_paths[0] if group_paths else '')
+                if norm:
+                    items.append(norm)
+    except Exception as e:
+        lazyllm.LOG.warning(f'Round 2 group review parse failed for {group_paths}: {e}')
+
+    if ckpt:
+        ckpt.save(group_key, items)
+    all_results.extend(items)
 
 _R2_CONTEXT_COLLECT_PROMPT_TMPL = '''\
 You are a code analysis assistant. Your ONLY task is to collect context about the symbols changed \
@@ -712,6 +898,23 @@ def _r2_dedupe_issues_by_line(issues: List[Dict[str, Any]]) -> List[Dict[str, An
     seen: set = set()
     return [it for it in issues if (k := f'{it.get("path")}:{it.get("line")}') not in seen and not seen.add(k)]
 
+def _filter_symbol_context_for_chunk(symbol_context: str, diff_chunk: str) -> str:
+    # extract identifiers from the diff chunk to filter symbol_context lines
+    chunk_symbols = set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{2,})\b', diff_chunk))
+    if not chunk_symbols:
+        return symbol_context[:3000]
+    lines = symbol_context.splitlines()
+    relevant: List[str] = []
+    prev_matched = False
+    for line in lines:
+        matched = any(s in line for s in chunk_symbols)
+        if matched or prev_matched:
+            relevant.append(line)
+        prev_matched = matched
+    filtered = '\n'.join(relevant)
+    return filtered[:3000] if filtered else symbol_context[:3000]
+
+
 def _r2_process_file_chunk(
     llm: Any, path: str, fdiff: str, r1_issues: List[Dict[str, Any]],
     shared_context: str, arch_doc: str, pr_summary: str,
@@ -720,6 +923,8 @@ def _r2_process_file_chunk(
     all_discarded: set,
     use_cache: bool = True,
     agent_instructions: str = '',
+    max_chunks: int = 3,
+    related_diff_snippet: str = '',
 ) -> None:
     safe_path = re.sub(r'[^a-zA-Z0-9_]', '_', path)
     r2_key = f'r2_file_{safe_path}'
@@ -743,13 +948,25 @@ def _r2_process_file_chunk(
         lazyllm.LOG.warning(f'Round 2 context collection failed for {path}: {e}')
         symbol_context = ''
 
+    # append related small-file diffs to symbol_context so LLM sees caller changes
+    if related_diff_snippet:
+        combined = symbol_context + '\n\n[Related File Diffs]\n' + related_diff_snippet
+        symbol_context = combined[:len(symbol_context) + _R2_RELATED_DIFF_BUDGET]
+
     merged: List[Dict[str, Any]] = []
     merged_disc: set = set()
     chunks = _split_file_diff_into_chunks(fdiff, _R2_EXTRACT_DIFF_CHUNK)
+    # enforce per-file chunk cap
+    if max_chunks and len(chunks) > max_chunks:
+        lazyllm.LOG.warning(
+            f'Round 2: {path} has {len(chunks)} chunks, capping at {max_chunks}'
+        )
+        chunks = chunks[:max_chunks]
     for hunk_range, diff_chunk in chunks:
         try:
+            chunk_ctx = _filter_symbol_context_for_chunk(symbol_context, diff_chunk)
             items, discarded = _r2_extract_issues(
-                llm, path, diff_chunk, hunk_range, symbol_context, shared_context,
+                llm, path, diff_chunk, hunk_range, chunk_ctx, shared_context,
                 r1_issues, arch_doc, pr_summary, language, agent_instructions,
             )
             merged.extend(items)
@@ -776,11 +993,25 @@ def _round2_agent_review(
     language: str = 'cn',
     ckpt: Optional[Any] = None,
     agent_instructions: str = '',
-) -> Tuple[List[Dict[str, Any]], set]:
-    # returns (r2_issues, discarded_r1_line_keys)
+    strategy: Optional[Any] = None,
+) -> Tuple[List[Dict[str, Any]], set, Dict[str, int]]:
+    # returns (r2_issues, discarded_r1_line_keys, metrics_dict)
+    r2_metrics: Dict[str, int] = {
+        'r2_files_chunk': 0, 'r2_files_group': 0,
+        'r2_files_skipped': 0, 'r2_chunks_total': 0,
+    }
+
+    if strategy is not None and not strategy.enable_r2:
+        lazyllm.LOG.warning('Round 2 agent: skipped by strategy (PR too large)')
+        return [], set(), r2_metrics
+
     if clone_dir is None or not os.path.isdir(clone_dir):
         lazyllm.LOG.warning('Round 2 agent: clone_dir not available, skipping agent review')
-        return [], set()
+        return [], set(), r2_metrics
+
+    max_files = strategy.max_files_for_r2 if strategy else 20
+    large_threshold = strategy.large_file_threshold if strategy else 200
+    max_chunks = strategy.max_chunks_per_file if strategy else 3
 
     shared_context = (ckpt.get('r2_shared_context') if ckpt else None) or ''
     if not shared_context:
@@ -797,25 +1028,63 @@ def _round2_agent_review(
         for p in {c.get('path') or '' for c in round1}
     }
 
+    # classify files into large (chunk mode) and small (group mode)
+    large_files, small_files, skipped_files = _classify_files_for_r2(
+        file_diffs, large_threshold, max_files
+    )
+    r2_metrics['r2_files_skipped'] = len(skipped_files)
+    if skipped_files:
+        lazyllm.LOG.warning(
+            f'Round 2: {len(skipped_files)} files skipped due to max_files_for_r2={max_files}: '
+            + ', '.join(skipped_files[:5])
+        )
+
     symbol_cache: Dict[str, Any] = {}
     tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache)
 
-    prog = _Progress('Round 2: per-file agent review', len(file_diffs))
+    prog = _Progress('Round 2: per-file agent review', len(large_files) + len(small_files))
     all_results: List[Dict[str, Any]] = []
     all_discarded: set = set()
 
-    for path, fdiff in file_diffs.items():
+    # --- chunk mode: large files (with related small files merged in) ---
+    remaining_small = list(small_files)
+    for path in large_files:
+        fdiff = file_diffs[path]
+        # find small files related to this large file via imports
+        related = _find_related_small_files(fdiff, remaining_small, file_diffs)
+        for rp in related:
+            remaining_small.remove(rp)
+        # build related diff snippet to append to symbol_context
+        related_diff_parts = [f'# Related file: {rp}\n{file_diffs[rp]}' for rp in related]
+        related_diff_snippet = clip_text('\n\n'.join(related_diff_parts), _R2_RELATED_DIFF_BUDGET)
+
         r1_issues = r1_by_file.get(path, [])
         _r2_process_file_chunk(
             llm, path, fdiff, r1_issues, shared_context, arch_doc, pr_summary,
             clone_dir, symbol_cache, tools, language, ckpt, all_results, all_discarded,
             use_cache=ckpt.should_use_cache(ReviewStage.R2) if ckpt else True,
             agent_instructions=agent_instructions,
+            max_chunks=max_chunks,
+            related_diff_snippet=related_diff_snippet,
         )
-        prog.update(f'{path} ({len(r1_issues)} r1 issues)')
+        r2_metrics['r2_files_chunk'] += 1
+        prog.update(f'{path} [chunk] ({len(r1_issues)} r1 issues, {len(related)} related)')
+
+    # --- group mode: remaining small files ---
+    if remaining_small:
+        groups = _r2_group_files(remaining_small)
+        use_cache = ckpt.should_use_cache(ReviewStage.R2) if ckpt else True
+        for group in groups:
+            _r2_group_review(
+                llm, group, file_diffs, r1_by_file, shared_context, arch_doc, pr_summary,
+                language, ckpt, all_results, all_discarded,
+                use_cache=use_cache, agent_instructions=agent_instructions,
+            )
+            r2_metrics['r2_files_group'] += len(group)
+            prog.update(f'group {group} [group]')
 
     prog.done(f'{len(all_results)} issues from agent; {len(all_discarded)} r1 issues discarded')
-    return all_results, all_discarded
+    return all_results, all_discarded, r2_metrics
 
 _ROUND3_BATCH_PROMPT_TMPL = '''\
 You are a software architect performing a global architecture review on MULTIPLE files in one batch.
@@ -1253,36 +1522,42 @@ def _parse_llm_json_object(raw: str) -> Optional[Dict[str, Any]]:
 def _round4_combined_review(
     llm: Any, diff_text: str, arch_doc: str, prev_issues: List[Dict[str, Any]],
     pr_summary: str = '', language: str = 'cn', agent_instructions: str = '',
+    prefer_combined: bool = False,
 ) -> Tuple[str, List[Dict[str, Any]]]:
-    prog = _Progress('Round 4: design doc + architect review (combined)')
-    diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 42000)
-    arch_use = clip_text(arch_doc or '', 40000) if arch_doc else '(not available)'
-    prev_summaries = [
-        f'{c.get("path")}:{c.get("line")} [{c.get("severity")}] {(c.get("problem") or "")[:80]}'
-        for c in prev_issues
-    ]
-    prev_issues_summary = '\n'.join(prev_summaries[:50])[:14000]
-    prompt = _ROUND4_COMBINED_PROMPT_TMPL.format(
-        lang_instruction=_language_instruction(language),
-        agent_instructions=agent_instructions or '(not available)',
-        arch_doc=arch_use, pr_summary=pr_summary[:900] if pr_summary else '(not available)',
-        prev_issues_summary=prev_issues_summary or '(none)',
-        diff_text=diff_use, density_rule=ISSUE_DENSITY_RULE_TEXT,
-    )
-    raw = _safe_llm_call_text(llm, prompt)
-    obj = _parse_llm_json_object(raw or '')
-    if obj and isinstance(obj.get('pr_design_doc'), str) and isinstance(obj.get('issues'), list):
-        doc_out = obj.get('pr_design_doc') or ''
-        issues_out = [
-            n for item in obj['issues']
-            if isinstance(item, dict)
-            and (n := _normalize_comment_item(item, default_path='', default_category='design')) is not None
+    # default: two-step path (R4a doc → R4b issues) for reliability
+    # prefer_combined=True: attempt single-call JSON first, fall back to two-step on parse failure
+    if prefer_combined:
+        prog = _Progress('Round 4: design doc + architect review (combined)')
+        diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 42000)
+        arch_use = clip_text(arch_doc or '', 40000) if arch_doc else '(not available)'
+        prev_summaries = [
+            f'{c.get("path")}:{c.get("line")} [{c.get("severity")}] {(c.get("problem") or "")[:80]}'
+            for c in prev_issues
         ]
-        issues_out = cap_issues_by_severity(issues_out, max_issues_for_diff(diff_use))
-        prog.done(f'doc {len(doc_out)} chars; {len(issues_out)} issues')
-        return doc_out, issues_out
+        prev_issues_summary = '\n'.join(prev_summaries[:50])[:14000]
+        prompt = _ROUND4_COMBINED_PROMPT_TMPL.format(
+            lang_instruction=_language_instruction(language),
+            agent_instructions=agent_instructions or '(not available)',
+            arch_doc=arch_use, pr_summary=pr_summary[:900] if pr_summary else '(not available)',
+            prev_issues_summary=prev_issues_summary or '(none)',
+            diff_text=diff_use, density_rule=ISSUE_DENSITY_RULE_TEXT,
+        )
+        raw = _safe_llm_call_text(llm, prompt)
+        obj = _parse_llm_json_object(raw or '')
+        if obj and isinstance(obj.get('pr_design_doc'), str) and isinstance(obj.get('issues'), list):
+            doc_out = obj.get('pr_design_doc') or ''
+            issues_out = [
+                n for item in obj['issues']
+                if isinstance(item, dict)
+                and (n := _normalize_comment_item(item, default_path='', default_category='design')) is not None
+            ]
+            issues_out = cap_issues_by_severity(issues_out, max_issues_for_diff(diff_use))
+            prog.done(f'doc {len(doc_out)} chars; {len(issues_out)} issues')
+            return doc_out, issues_out
+        lazyllm.LOG.warning('Round 4: combined JSON parse failed, falling back to two-step')
+        prog.done('combined failed, switching to two-step')
 
-    lazyllm.LOG.warning('Round 4: combined JSON parse failed, using two-step fallback')
+    # two-step path: R4a generates design doc, R4b uses it as input for architect issues
     doc_out = _round4_generate_pr_doc(
         llm, diff_text, arch_doc, pr_summary=pr_summary, language=language, agent_instructions=agent_instructions,
     )
@@ -1290,7 +1565,6 @@ def _round4_combined_review(
         llm, diff_text, arch_doc, prev_issues, pr_summary=pr_summary,
         language=language, agent_instructions=agent_instructions, pr_design_doc=doc_out,
     )
-    prog.done(f'fallback doc {len(doc_out)} chars; {len(issues_out)} issues')
     return doc_out, issues_out
 
 _COMPRESS_COMMENTS_PROMPT_TMPL = '''\
@@ -1389,6 +1663,28 @@ Do NOT include "path", "line", or "suggestion" — they will be restored from th
 Output ONLY the JSON array. No explanation, no markdown wrapper.
 '''
 
+def _deterministic_dedup(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    # group by (path, line, bug_category); within each group keep highest-severity item
+    # source priority: r2 > r1 > r3 > r4 (more context = more reliable)
+    _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
+    _src_order = {'r2': 0, 'r1': 1, 'r3': 2, 'r4': 3}
+    groups: Dict[tuple, List[Dict[str, Any]]] = {}
+    for c in issues:
+        key = (c.get('path', ''), int(c.get('line') or 0), c.get('bug_category', ''))
+        groups.setdefault(key, []).append(c)
+    result = []
+    for group in groups.values():
+        best = min(
+            group,
+            key=lambda c: (
+                _sev_order.get(c.get('severity', 'normal'), 2),
+                _src_order.get(c.get('source', ''), 9),
+            ),
+        )
+        result.append(best)
+    return result
+
+
 def _round5_merge_and_deduplicate(
     llm: Any, all_comments: List[Dict[str, Any]],
     existing_comments: Optional[List[Dict[str, Any]]] = None, language: str = 'cn',
@@ -1401,7 +1697,11 @@ def _round5_merge_and_deduplicate(
         prog.done('no valid comments')
         return []
 
-    compressed_new = _compress_new_issues(llm, valid)
+    # deterministic dedup before LLM: collapse exact (path, line, category) duplicates
+    deduped = _deterministic_dedup(valid)
+    lazyllm.LOG.info(f'Round 5: deterministic dedup {len(valid)} -> {len(deduped)} issues')
+
+    compressed_new = _compress_new_issues(llm, deduped)
     existing_json = json.dumps(_compress_existing_comments(llm, existing_comments), ensure_ascii=False, indent=2) \
         if existing_comments else '(none)'
     prompt = _ROUND4_PROMPT_TMPL.format(
@@ -1410,7 +1710,7 @@ def _round5_merge_and_deduplicate(
         existing_json=existing_json,
     )
     items = _safe_llm_call(llm, prompt)
-    idx_map = {i: c for i, c in enumerate(valid)}
+    idx_map = {i: c for i, c in enumerate(deduped)}
     result: List[Dict[str, Any]] = []
     for item in (items if isinstance(items, list) else []):
         if not isinstance(item, dict) or item.get('problem') is None:
@@ -1435,7 +1735,7 @@ def _round5_merge_and_deduplicate(
     if not result:
         _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
         result = [{**c, '_review_version': 2}
-                  for c in sorted(valid, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2))]
+                  for c in sorted(deduped, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2))]
     prog.done(f'{len(result)} final issues')
     return result
 
@@ -1451,7 +1751,9 @@ def _run_five_rounds(
     existing_comments: Optional[List[Dict[str, Any]]] = None,
     language: str = 'cn',
     agent_instructions: str = '',
-) -> List[Dict[str, Any]]:
+    strategy: Optional[Any] = None,
+    lint_issues: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     r1 = _round1_hunk_analysis(
         llm, hunks, arch_doc, review_spec, pr_summary=pr_summary,
         clone_dir=clone_dir, language=language,
@@ -1460,10 +1762,10 @@ def _run_five_rounds(
     )
     ckpt.mark_stage_done(ReviewStage.R1)
 
-    r2, discarded_r1_keys = _round2_agent_review(
+    r2, discarded_r1_keys, r2_metrics = _round2_agent_review(
         llm, r1, diff_text, arch_doc, pr_summary=pr_summary,
         clone_dir=clone_dir, language=language, ckpt=ckpt,
-        agent_instructions=agent_instructions,
+        agent_instructions=agent_instructions, strategy=strategy,
     )
     ckpt.mark_stage_done(ReviewStage.R2)
 
@@ -1526,12 +1828,15 @@ def _run_five_rounds(
             if c.get('path') not in r2_covered_files
             or f'{c.get("path")}:{c.get("line")}' not in r2_covered_keys
         ]
+        # inject lint issues directly into R5 (bypass R1-R4)
+        lint_tagged = _tag(lint_issues or [], 'lint')
         final = _round5_merge_and_deduplicate(
-            llm, _tag(r1_passthrough, 'r1') + _tag(r2, 'r2') + _tag(r3, 'r3') + _tag(r4, 'r4'),
+            llm,
+            _tag(r1_passthrough, 'r1') + _tag(r2, 'r2') + _tag(r3, 'r3') + _tag(r4, 'r4') + lint_tagged,
             existing_comments=existing_comments, language=language,
         )
         ckpt.save('final', final)
         ckpt.mark_stage_done(ReviewStage.FINAL)
     else:
         _Progress('Round 5: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')
-    return final
+    return final, r2_metrics
