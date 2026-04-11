@@ -16,7 +16,6 @@ class ReviewStage(enum.Enum):
     R1 = 'r1'
     R2 = 'r2'
     R3 = 'r3'
-    R4_DOC = 'r4_doc'
     R4 = 'r4'
     FINAL = 'final'
 
@@ -25,7 +24,7 @@ class ReviewStage(enum.Enum):
         return [
             ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
             ReviewStage.PR_SUMMARY, ReviewStage.R1, ReviewStage.R2,
-            ReviewStage.R3, ReviewStage.R4_DOC, ReviewStage.R4, ReviewStage.FINAL,
+            ReviewStage.R3, ReviewStage.R4, ReviewStage.FINAL,
         ]
 
     def index(self) -> int:
@@ -49,7 +48,7 @@ def _load_cache(cache_path: Optional[str], key: str) -> Optional[str]:
         return None
 
 
-def _save_cache(cache_path: Optional[str], key: str, value: str) -> None:
+def _write_cache(cache_path: Optional[str], updates: Dict[str, Any]) -> None:
     if not cache_path:
         return
     try:
@@ -63,38 +62,27 @@ def _save_cache(cache_path: Optional[str], key: str, value: str) -> None:
                     data = {}
             except (json.JSONDecodeError, OSError):
                 data = {}
-        data[key] = value
+        data.update(updates)
         with open(cache_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except OSError:
         pass
+
+
+def _save_cache(cache_path: Optional[str], key: str, value: str) -> None:
+    _write_cache(cache_path, {key: value})
 
 
 def _save_cache_multi(cache_path: Optional[str], entries: Dict[str, Any]) -> None:
-    if not cache_path:
-        return
-    try:
-        os.makedirs(os.path.dirname(os.path.abspath(cache_path)), exist_ok=True)
-        data: Dict[str, Any] = {}
-        if os.path.isfile(cache_path):
-            try:
-                with open(cache_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                if not isinstance(data, dict):
-                    data = {}
-            except (json.JSONDecodeError, OSError):
-                data = {}
-        data.update(entries)
-        with open(cache_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except OSError:
-        pass
+    _write_cache(cache_path, entries)
 
 
 class _ReviewCheckpoint:
-    _KEYS = ('arch_doc', 'review_spec', 'r2_shared_context', 'r1', 'r2', 'r3', 'final')
+    _KEYS = ('arch_doc', 'review_spec', 'r2_shared_context', 'r1', 'r2', 'r3', 'pr_design_doc', 'r4', 'final')
     # internal key prefix for stage completion markers
     _STAGE_DONE_PREFIX = '_stage_done_'
+    # internal key recording the invalidation boundary (stage value string)
+    _INVALIDATED_FROM_KEY = '_invalidated_from'
 
     def __init__(self, path: str, resume_from: Optional[ReviewStage] = None) -> None:
         self._path = path
@@ -108,40 +96,61 @@ class _ReviewCheckpoint:
             except (json.JSONDecodeError, OSError):
                 self._data = {}
         if resume_from is not None:
-            self._invalidate_from(resume_from)
+            self._mark_invalidated_from(resume_from)
 
-    def _invalidate_from(self, stage: ReviewStage) -> None:
-        # clear all stage data at or after `stage`, keep earlier stages
-        stage_to_keys: Dict[ReviewStage, list] = {
-            ReviewStage.CLONE: ['clone_dir'],
-            ReviewStage.ARCH: ['arch_doc'],
-            ReviewStage.SPEC: ['review_spec'],
-            ReviewStage.PR_SUMMARY: ['pr_summary'],
-            ReviewStage.R1: [],   # r1 uses per-hunk keys (r1_hunk_*)
-            ReviewStage.R2: ['r2_shared_context'],  # r2 uses per-file keys (r2_file_*)
-            ReviewStage.R3: ['r3'],
-            ReviewStage.R4: ['r4'],
-            ReviewStage.FINAL: ['final'],
-        }
-        for s in ReviewStage.ordered():
-            if s.index() >= stage.index():
-                for key in stage_to_keys.get(s, []):
-                    self._data.pop(key, None)
-                # clear per-hunk / per-file keys for r1 and r2
-                if s == ReviewStage.R1:
-                    for k in list(self._data.keys()):
-                        if k.startswith('r1_hunk_'):
-                            del self._data[k]
-                elif s == ReviewStage.R2:
-                    for k in list(self._data.keys()):
-                        if k.startswith('r2_file_'):
-                            del self._data[k]
-                # clear stage-done marker
-                self._data.pop(self._STAGE_DONE_PREFIX + s.value, None)
+    def _mark_invalidated_from(self, stage: ReviewStage) -> None:
+        # record the invalidation boundary without deleting any data
+        # data at or after this stage will be ignored by get() / should_use_cache()
+        self._data[self._INVALIDATED_FROM_KEY] = stage.value
         self._flush()
 
+    def _invalidated_stage(self) -> Optional[ReviewStage]:
+        val = self._data.get(self._INVALIDATED_FROM_KEY)
+        if val is None:
+            return None
+        try:
+            return ReviewStage(val)
+        except ValueError:
+            return None
+
+    def _stage_for_key(self, key: str) -> Optional[ReviewStage]:
+        key_to_stage: Dict[str, ReviewStage] = {
+            'clone_dir': ReviewStage.CLONE,
+            'arch_doc': ReviewStage.ARCH,
+            'review_spec': ReviewStage.SPEC,
+            'pr_summary': ReviewStage.PR_SUMMARY,
+            'r3': ReviewStage.R3,
+            'pr_design_doc': ReviewStage.R4,
+            'r4': ReviewStage.R4,
+            'final': ReviewStage.FINAL,
+            'r2_shared_context': ReviewStage.R2,
+            'diff_text': ReviewStage.CLONE,
+        }
+        if key in key_to_stage:
+            return key_to_stage[key]
+        if key.startswith('r1_hunk_'):
+            return ReviewStage.R1
+        if key.startswith('r2_file_'):
+            return ReviewStage.R2
+        if key.startswith(self._STAGE_DONE_PREFIX):
+            stage_val = key[len(self._STAGE_DONE_PREFIX):]
+            try:
+                return ReviewStage(stage_val)
+            except ValueError:
+                return None
+        return None
+
     def get(self, key: str) -> Any:
-        return self._data.get(key)
+        val = self._data.get(key)
+        if val is None:
+            return None
+        # if this key belongs to an invalidated stage, treat as missing
+        inv = self._invalidated_stage()
+        if inv is not None:
+            key_stage = self._stage_for_key(key)
+            if key_stage is not None and key_stage.index() >= inv.index():
+                return None
+        return val
 
     def save(self, key: str, value: Any) -> None:
         self._data[key] = value
@@ -149,14 +158,22 @@ class _ReviewCheckpoint:
 
     def mark_stage_done(self, stage: ReviewStage) -> None:
         self._data[self._STAGE_DONE_PREFIX + stage.value] = True
+        # once a stage is written, clear the invalidation marker if it pointed to this stage
+        inv = self._invalidated_stage()
+        if inv is not None and stage.index() >= inv.index():
+            self._data.pop(self._INVALIDATED_FROM_KEY, None)
+            self._resume_from = None
         self._flush()
 
     def is_stage_done(self, stage: ReviewStage) -> bool:
-        return bool(self._data.get(self._STAGE_DONE_PREFIX + stage.value))
+        return bool(self.get(self._STAGE_DONE_PREFIX + stage.value))
 
     def should_use_cache(self, stage: ReviewStage) -> bool:
         if self._resume_from is None:
-            return True
+            inv = self._invalidated_stage()
+            if inv is None:
+                return True
+            return stage < inv
         return stage < self._resume_from
 
     def _flush(self) -> None:

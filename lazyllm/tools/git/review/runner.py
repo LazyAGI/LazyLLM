@@ -115,9 +115,10 @@ def review(  # noqa: C901
         clone_dir=clone_dir, existing_comments=existing_comments, language=language,
         agent_instructions=agent_instructions,
     )
-    # only clean up pr_dir on successful completion; on failure keep it for resume
-    if not keep_clone and os.path.isdir(pr_dir):
-        shutil.rmtree(pr_dir, ignore_errors=True)
+    # clean up only the clone subdirectory (not the whole pr_dir which contains checkpoint)
+    clone_subdir = os.path.join(pr_dir, 'clone')
+    if not keep_clone and os.path.isdir(clone_subdir):
+        shutil.rmtree(clone_subdir, ignore_errors=True)
 
     posted = 0
     if post_to_github and head_sha:
@@ -146,6 +147,6 @@ def review(  # noqa: C901
         'comments_posted': posted,
         'comment_stats': stats,
         'pr_summary': pr_summary,
-        'pr_design_doc': ckpt.get('r4_doc') or '',
+        'pr_design_doc': ckpt.get('pr_design_doc') or '',
         'original_review_code': original_review_code,
     }
