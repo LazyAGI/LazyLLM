@@ -26,7 +26,7 @@ target_link_libraries(lazyllm_core PUBLIC tiktoken)
 target_link_libraries(lazyllm_core PUBLIC utf8proc)
 lazyllm_enable_strict_warnings(lazyllm_core)
 
-# Config lazyllm_cpp lib with binding infomations.
+# Config lazyllm_cpp lib with binding informations.
 file(GLOB_RECURSE LAZYLLM_BINDING_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/binding/*.cpp")
 set(INTERFACE_TARGET_NAME lazyllm_cpp)

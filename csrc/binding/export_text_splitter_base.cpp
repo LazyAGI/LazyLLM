@@ -74,7 +74,7 @@ public:
 
 } // namespace
 
-void exportTextSpliterBase(py::module& m) {
+void exportTextSplitterBase(py::module& m) {
     auto cls = py::class_<TextSplitterBaseCPPImpl>(m, "_TextSplitterBaseCPPImpl", py::dynamic_attr())
         .def(py::init<unsigned, unsigned, const std::string&>(),
             py::arg("chunk_size") = 1024,
