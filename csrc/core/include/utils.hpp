@@ -14,15 +14,15 @@
 namespace lazyllm {
 
 struct RAGMetadataKeys {
-    inline static constexpr std::string_view KB_ID = "kb_id";
-    inline static constexpr std::string_view DOC_ID = "docid";
-    inline static constexpr std::string_view DOC_PATH = "lazyllm_doc_path";
-    inline static constexpr std::string_view DOC_FILE_NAME = "file_name";
-    inline static constexpr std::string_view DOC_FILE_TYPE = "file_type";
-    inline static constexpr std::string_view DOC_FILE_SIZE = "file_size";
-    inline static constexpr std::string_view DOC_CREATION_DATE = "creation_date";
-    inline static constexpr std::string_view DOC_LAST_MODIFIED_DATE = "last_modified_date";
-    inline static constexpr std::string_view DOC_LAST_ACCESSED_DATE = "last_accessed_date";
+    static constexpr std::string_view KB_ID = "kb_id";
+    static constexpr std::string_view DOC_ID = "docid";
+    static constexpr std::string_view DOC_PATH = "lazyllm_doc_path";
+    static constexpr std::string_view DOC_FILE_NAME = "file_name";
+    static constexpr std::string_view DOC_FILE_TYPE = "file_type";
+    static constexpr std::string_view DOC_FILE_SIZE = "file_size";
+    static constexpr std::string_view DOC_CREATION_DATE = "creation_date";
+    static constexpr std::string_view DOC_LAST_MODIFIED_DATE = "last_modified_date";
+    static constexpr std::string_view DOC_LAST_ACCESSED_DATE = "last_accessed_date";
 };
 
 inline std::string JoinLines(const std::vector<std::string>& lines, char delim = '\n') {
