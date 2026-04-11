@@ -131,7 +131,7 @@ def _scan_proxy_members(py_cls: type, impl_cls: type):
     return tuple(proxy_methods), tuple(proxy_attrs)
 
 
-def cpp_class(py_class: Optional[_C] = None):
+def cpp_class(py_class: Optional[_C] = None, *, cpp_class_name: Optional[str] = None):
     def _decorate(cls: _C) -> _C:
         if not isinstance(cls, type):
             raise TypeError(f'@cpp_class can only decorate classes, got: {type(cls).__name__}')
@@ -140,7 +140,7 @@ def cpp_class(py_class: Optional[_C] = None):
             return cls
 
         cpp_module = _load_cpp_module()
-        export_name = cls.__name__
+        export_name = cpp_class_name or cls.__name__
         cpp_export = getattr(cpp_module, export_name)
         return cast(_C, cpp_export)
 
@@ -154,6 +154,7 @@ def cpp_proxy(
     *,
     method_fallbacks: Optional[Dict[str, Tuple[str, ...]]] = None,
     python_methods_for_self: Tuple[str, ...] = (),
+    cpp_class_name: Optional[str] = None,
 ):
     def _decorate(cls: _C) -> _C:
         if not isinstance(cls, type):
@@ -163,7 +164,7 @@ def cpp_proxy(
             return cls
 
         cpp_module = _load_cpp_module()
-        impl_name = f'{cls.__name__}CPPImpl'
+        impl_name = cpp_class_name or f'{cls.__name__}CPPImpl'
         if not hasattr(cpp_module, impl_name):
             raise AttributeError(f'@cpp_proxy cannot find C++ impl: {impl_name}')
 
