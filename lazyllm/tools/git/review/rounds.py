@@ -3,6 +3,7 @@ import json
 import os
 import re
 import threading
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -19,6 +20,8 @@ from .pre_analysis import (
     _build_scoped_agent_tools_with_cache,
     _lookup_relevant_rules,
     _extract_arch_for_file,
+    _extract_abstract_method_names,
+    _find_subclass_implementations,
 )
 from .constants import (
     SINGLE_CALL_CONTEXT_BUDGET, R1_DIFF_BUDGET, ISSUE_DENSITY_RULE_TEXT,
@@ -65,7 +68,37 @@ STRICT RULES — violations will be rejected:
 If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
 2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
 missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
-3. {density_rule}'''
+3. Do NOT flag defensive programming as a bug. Patterns like `max(n, 1)`, `or default`, \
+`if x is None: x = []`, guard clauses, and similar constructs are intentional safety measures — \
+report them only if they introduce a concrete logical error (e.g. masking a real zero that matters).
+4. Do NOT flag a helper function as "duplicate code" or "should reuse X" unless you can confirm \
+that X exists in the current codebase AND has an identical or compatible interface. \
+Specialized helpers (e.g. agent tool wrappers, prompt builders) are NOT duplicates of \
+general-purpose utilities even if they perform similar operations.
+5. If the diff changes an abstract method or base-class interface, do NOT report it as a \
+"breaking change" without first verifying (via file_context or your knowledge of the diff) \
+that subclass implementations have NOT been updated. Only report if you have evidence that \
+at least one concrete subclass is out of sync.
+6. {density_rule}'''
+
+# Rules 1-5 are shared across all rounds (density_rule is round-specific and injected separately)
+_SHARED_STRICT_RULES_PREFIX = '''\
+STRICT RULES — violations will be rejected:
+1. Only report issues caused by the diff itself (added/modified/deleted lines). \
+If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
+2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
+missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
+3. Do NOT flag defensive programming as a bug. Patterns like `max(n, 1)`, `or default`, \
+`if x is None: x = []`, guard clauses, and similar constructs are intentional safety measures — \
+report them only if they introduce a concrete logical error (e.g. masking a real zero that matters).
+4. Do NOT flag a helper function as "duplicate code" or "should reuse X" unless you can confirm \
+that X exists in the current codebase AND has an identical or compatible interface. \
+Specialized helpers (e.g. agent tool wrappers, prompt builders) are NOT duplicates of \
+general-purpose utilities even if they perform similar operations.
+5. If the diff changes an abstract method or base-class interface, do NOT report it as a \
+"breaking change" without first verifying (via file_context or your knowledge of the diff) \
+that subclass implementations have NOT been updated. Only report if you have evidence that \
+at least one concrete subclass is out of sync.'''
 
 _R1_ISSUE_FIELDS = '''\
 For EVERY issue found, output a JSON object with:
@@ -207,6 +240,16 @@ def _analyze_hunk_batch(
     max_end = max(s + c for s, c, _ in hunks) if hunks else 1
     file_context = _read_file_context(clone_dir, path, min_start, max_end) if clone_dir else ''
     all_content = '\n'.join(cnt for _, _, cnt in hunks)
+    # if diff touches abstract method signatures, inject subclass implementations into context
+    abstract_methods = _extract_abstract_method_names(all_content)
+    if abstract_methods and clone_dir:
+        subclass_sigs = _find_subclass_implementations(clone_dir, abstract_methods)
+        if subclass_sigs:
+            file_context = (
+                file_context
+                + f'\n\n[Subclass implementations of changed abstract methods '
+                f'({", ".join(abstract_methods)})]\n{subclass_sigs}'
+            )
     effective_arch = arch_snippet
     if symbol_index:
         sym_notes = _lookup_relevant_symbols(all_content, symbol_index)
@@ -354,8 +397,15 @@ def _round1_hunk_analysis(
             ): path
             for path, idxs in file_to_idxs.items()
         }
-        failed = sum(1 for f in as_completed(futures) if f.exception() and lazyllm.LOG.warning(
-            f'Round 1 file task failed ({futures[f]}): {f.exception()}') or True)
+        failed = 0
+        for f in as_completed(futures):
+            exc = f.exception()
+            if exc is not None:
+                failed += 1
+                lazyllm.LOG.warning(
+                    f'Round 1 file task failed ({futures[f]}): {exc}\n'
+                    + ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                )
         if failed > 0 and len(file_to_idxs) > 0 and failed / len(file_to_idxs) > 0.5:
             raise RuntimeError(f'Round 1 failed on {failed}/{len(file_to_idxs)} files (>{50}%); aborting.')
 
@@ -364,6 +414,89 @@ def _round1_hunk_analysis(
     all_comments = cap_issues_by_severity(all_comments, cap)
     prog.done(f'{len(all_comments)} issues total')
     return all_comments
+
+
+_R1B_SIMPLICITY_PROMPT_TMPL = '''\
+You are a code quality reviewer focused on code simplicity and conciseness.
+{lang_instruction}
+
+## PR Summary
+{pr_summary}
+
+## Task
+Review the ADDED lines (lines starting with +) in the diff below for `{path}`.
+Identify redundant, verbose, or unnecessarily complex code that can be simplified.
+Focus ONLY on newly added code. Do NOT report issues about removed lines or context lines.
+
+Examples of what to flag:
+- Variables assigned once and used only once (inline them)
+- Conditions that can be simplified with a ternary or `any()`/`all()`
+- Loops that can be replaced with list/dict comprehensions or generator expressions
+- Repeated logic that can be extracted or reused from existing utilities
+- Unnecessary intermediate variables or redundant assignments
+
+## Diff (added lines only, from file `{path}`)
+```diff
+{added_diff}
+```
+
+''' + _R1_ISSUE_FIELDS + '''
+
+Return a JSON array. Each item must have: path, line (new-file line number of the added line),
+bug_category (must be "style"), severity (must be "normal"), problem, suggestion.
+If no simplification opportunities exist, return [].
+'''
+
+
+def _r1b_collect_added_lines(hunks: List[Tuple[str, int, int, str]], path: str) -> Tuple[str, int, int]:
+    # merge all hunks for a file, return (added_diff_text, first_new_line, last_new_line)
+    added_lines = []
+    first_line, last_line = None, None
+    for hunk_path, new_start, _new_end, diff_text in hunks:
+        if hunk_path != path:
+            continue
+        cur_line = new_start
+        for raw in diff_text.splitlines():
+            if raw.startswith('+++') or raw.startswith('---'):
+                continue
+            if raw.startswith('+'):
+                added_lines.append(f'+{cur_line:>5}: {raw[1:]}')
+                if first_line is None:
+                    first_line = cur_line
+                last_line = cur_line
+                cur_line += 1
+            elif not raw.startswith('-'):
+                cur_line += 1
+    return '\n'.join(added_lines), first_line or 0, last_line or 0
+
+
+def _round1b_simplicity_check(
+    llm: Any, hunks: List[Tuple[str, int, int, str]],
+    pr_summary: str, language: str,
+) -> List[Dict[str, Any]]:
+    prog = _Progress('Round 1b: simplicity check')
+    files = list(dict.fromkeys(h[0] for h in hunks))
+    results: List[Dict[str, Any]] = []
+    for path in files:
+        added_diff, first_line, last_line = _r1b_collect_added_lines(hunks, path)
+        if not added_diff or last_line - first_line < 5:
+            # skip tiny diffs - not worth a simplicity pass
+            continue
+        prompt = _R1B_SIMPLICITY_PROMPT_TMPL.format(
+            lang_instruction=_language_instruction(language),
+            pr_summary=clip_text(pr_summary, 1500),
+            path=path,
+            added_diff=clip_text(added_diff, R1_DIFF_BUDGET),
+        )
+        items = _safe_llm_call(llm, prompt)
+        for it in (items if isinstance(items, list) else []):
+            norm = _normalize_comment_item(it, path)
+            if norm:
+                results.append(norm)
+        prog.update(path)
+    prog.done(f'{len(results)} simplicity issues found')
+    return results
+
 
 _ROUND2_FILE_PROMPT_TMPL = '''\
 You are a senior code reviewer. Find NEW cross-context issues in the file below.
@@ -679,7 +812,7 @@ def _r2_group_review(
         density_rule=density_rule,
     )
 
-    raw = _safe_llm_call_text(llm, prompt, tag='r2_group')
+    raw = _safe_llm_call_text(llm, prompt)
     items: List[Dict[str, Any]] = []
     try:
         parsed = _parse_json_with_repair(_extract_json_text(raw))
@@ -785,18 +918,20 @@ For EVERY issue in the output (kept/modified R1 + new), output a JSON object wit
 Output ONLY a JSON array. No explanation, no markdown wrapper.
 If no issues found, output [].
 
-STRICT RULES — violations will be rejected:
-1. Only report issues caused by the diff itself (added/modified/deleted lines). \
-If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
-2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
-missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
-3. {density_rule}
+''' + _SHARED_STRICT_RULES_PREFIX + '''
+6. {density_rule}
 '''
+
+_r2_agent_instance_counter = [0]
+
 
 def _make_traced_tool(tool: Any, step_counter: List[int], path: str) -> Any:
     import inspect
     sig = inspect.signature(tool)
     params = list(sig.parameters.keys())
+    # use a unique suffix per agent instance to avoid duplicate class registration in LazyLLM
+    _r2_agent_instance_counter[0] += 1
+    unique_name = f'{tool.__name__}_r2_{_r2_agent_instance_counter[0]}'
 
     def traced(*args, **kwargs):
         step_counter[0] += 1
@@ -811,7 +946,7 @@ def _make_traced_tool(tool: Any, step_counter: List[int], path: str) -> Any:
         lazyllm.LOG.info(f'  [R2 Step {step_counter[0]}] {tool.__name__}({", ".join(arg_parts)})')
         return tool(*args, **kwargs)
 
-    traced.__name__ = tool.__name__
+    traced.__name__ = unique_name
     traced.__doc__ = tool.__doc__
     traced.__annotations__ = tool.__annotations__
     return traced
@@ -824,12 +959,16 @@ def _r2_build_file_context(
     )
     step_counter = [0]
     traced_tools = [_make_traced_tool(t, step_counter, path) for t in tools]
-    agent = ReactAgent(
-        llm, tools=traced_tools, max_retries=_R2_FILE_AGENT_RETRIES,
-        workspace=clone_dir, force_summarize=True,
-        force_summarize_context=f'Exploring context for {path}:\n{diff_chunk[:1200]}',
-        keep_full_turns=2,
-    )
+    try:
+        agent = ReactAgent(
+            llm, tools=traced_tools, max_retries=_R2_FILE_AGENT_RETRIES,
+            workspace=clone_dir, force_summarize=True,
+            force_summarize_context=f'Exploring context for {path}:\n{diff_chunk[:1200]}',
+            keep_full_turns=2,
+        )
+    except Exception as e:
+        lazyllm.LOG.warning(f'  [Agent] ReactAgent init failed for {path}: {e}; skipping context collection')
+        return ''
     for tool in agent._tools_manager.all_tools:
         tool.execute_in_sandbox = False
     lazyllm.LOG.info(f'  [Agent] Analyzing {path} ...')
@@ -1002,7 +1141,7 @@ def _round2_agent_review(
     }
 
     if strategy is not None and not strategy.enable_r2:
-        lazyllm.LOG.warning('Round 2 agent: skipped by strategy (PR too large)')
+        lazyllm.LOG.warning('Round 2 agent: skipped by strategy (enable_r2=False)')
         return [], set(), r2_metrics
 
     if clone_dir is None or not os.path.isdir(clone_dir):
@@ -1214,17 +1353,23 @@ def _round3_global_analysis(
         items = _safe_llm_call(llm, prompt)
         batch_out: List[Dict[str, Any]] = []
         for item in (items if isinstance(items, list) else []):
-            normalized = _normalize_comment_item(item, default_path='', default_category='design')
-            if normalized is None:
-                continue
-            pth = str(normalized.get('path') or '')
-            try:
-                line = int(normalized.get('line') or 0)
-            except (TypeError, ValueError):
-                continue
-            if pth not in paths_in or not _round3_issue_line_valid(diff_text, pth, line):
-                continue
-            batch_out.append(normalized)
+            if isinstance(item, list):
+                # LLM occasionally wraps the array in an extra list; flatten one level
+                sub_items = item
+            else:
+                sub_items = [item]
+            for it in sub_items:
+                normalized = _normalize_comment_item(it, default_path='', default_category='design')
+                if normalized is None:
+                    continue
+                pth = str(normalized.get('path') or '')
+                try:
+                    line = int(normalized.get('line') or 0)
+                except (TypeError, ValueError):
+                    continue
+                if pth not in paths_in or not _round3_issue_line_valid(diff_text, pth, line):
+                    continue
+                batch_out.append(normalized)
         result.extend(cap_issues_by_severity(batch_out, max_issues_for_diff(batch_diff_joined)))
         prog.update(','.join(paths_in[:3]) + ('...' if len(paths_in) > 3 else ''))
     prog.done(f'{len(result)} issues found')
@@ -1437,12 +1582,8 @@ Ask yourself for EVERY changed file:
 - Output ONLY a JSON array. Each item: path, line, severity, bug_category, problem, suggestion.
 - If no issues found, output [].
 
-STRICT RULES — violations will be rejected:
-1. Only report issues caused by the diff itself (added/modified/deleted lines). \
-If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
-2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
-missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
-3. {density_rule}
+''' + _SHARED_STRICT_RULES_PREFIX + '''
+6. {density_rule}
 '''
 
 def _round4_architect_review(
@@ -1501,10 +1642,9 @@ You are a principal software architect. Output ONE JSON object with exactly two 
 Output shape (JSON object, no markdown code fences around the whole output):
 {{"pr_design_doc": "<text>", "issues": [{{"path","line","severity","bug_category","problem","suggestion"}}, ...]}}
 
-STRICT RULES:
-1. Only issues caused by added/modified/deleted lines in the diff; each line must be visible in the diff.
-2. Design-focused bug_category: design or maintainability.
-3. {density_rule}
+''' + _SHARED_STRICT_RULES_PREFIX + '''
+6. Design-focused bug_category: design or maintainability.
+7. {density_rule}
 '''
 
 def _parse_llm_json_object(raw: str) -> Optional[Dict[str, Any]]:
@@ -1665,9 +1805,9 @@ Output ONLY the JSON array. No explanation, no markdown wrapper.
 
 def _deterministic_dedup(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     # group by (path, line, bug_category); within each group keep highest-severity item
-    # source priority: r2 > r1 > r3 > r4 (more context = more reliable)
+    # source priority: r2 > r1 > r1b > r3 > r4 (more context = more reliable)
     _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
-    _src_order = {'r2': 0, 'r1': 1, 'r3': 2, 'r4': 3}
+    _src_order = {'r2': 0, 'r1': 1, 'r1b': 2, 'r3': 3, 'r4': 4}
     groups: Dict[tuple, List[Dict[str, Any]]] = {}
     for c in issues:
         key = (c.get('path', ''), int(c.get('line') or 0), c.get('bug_category', ''))
@@ -1712,6 +1852,7 @@ def _round5_merge_and_deduplicate(
     items = _safe_llm_call(llm, prompt)
     idx_map = {i: c for i, c in enumerate(deduped)}
     result: List[Dict[str, Any]] = []
+    kept_idxs: set = set()
     for item in (items if isinstance(items, list) else []):
         if not isinstance(item, dict) or item.get('problem') is None:
             continue
@@ -1722,6 +1863,7 @@ def _round5_merge_and_deduplicate(
         original = idx_map.get(idx)
         if original is None:
             continue
+        kept_idxs.add(idx)
         category = item.get('bug_category') or 'logic'
         severity = item.get('severity') or 'normal'
         result.append({
@@ -1732,6 +1874,16 @@ def _round5_merge_and_deduplicate(
             'suggestion': original.get('suggestion') or '',
             '_review_version': 2,
         })
+    discarded_idxs = set(idx_map.keys()) - kept_idxs
+    if discarded_idxs:
+        lazyllm.LOG.info(
+            f'Round 5: LLM discarded {len(discarded_idxs)} issues: '
+            + ', '.join(
+                f'#{i} {idx_map[i].get("path", "?")}:{idx_map[i].get("line", "?")} '
+                f'[{idx_map[i].get("severity","?")}][{idx_map[i].get("bug_category","?")}]'
+                for i in sorted(discarded_idxs)
+            )
+        )
     if not result:
         _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
         result = [{**c, '_review_version': 2}
@@ -1761,6 +1913,8 @@ def _run_five_rounds(
         ckpt=ckpt, agent_instructions=agent_instructions,
     )
     ckpt.mark_stage_done(ReviewStage.R1)
+
+    r1b = _round1b_simplicity_check(llm, hunks, pr_summary=pr_summary, language=language)
 
     r2, discarded_r1_keys, r2_metrics = _round2_agent_review(
         llm, r1, diff_text, arch_doc, pr_summary=pr_summary,
@@ -1832,7 +1986,8 @@ def _run_five_rounds(
         lint_tagged = _tag(lint_issues or [], 'lint')
         final = _round5_merge_and_deduplicate(
             llm,
-            _tag(r1_passthrough, 'r1') + _tag(r2, 'r2') + _tag(r3, 'r3') + _tag(r4, 'r4') + lint_tagged,
+            _tag(r1_passthrough, 'r1') + _tag(r1b, 'r1b') + _tag(r2, 'r2')
+            + _tag(r3, 'r3') + _tag(r4, 'r4') + lint_tagged,
             existing_comments=existing_comments, language=language,
         )
         ckpt.save('final', final)

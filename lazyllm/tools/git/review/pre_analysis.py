@@ -37,6 +37,21 @@ _BOT_USER_PATTERNS = re.compile(
 _LARGE_FILE_THRESHOLD = 600
 _CONTEXT_LINES = 50
 
+_FRAMEWORK_GOTCHAS_NOTICE = '''\
+### Framework-Specific Gotchas (auto-generated)
+When reviewing this codebase, be aware of the following common pitfalls:
+- Names that shadow Python builtins (e.g. `locals`, `globals`, `type`, `id`) may be \
+framework-defined objects with dict-like or special behavior — do NOT assume they are \
+Python built-in functions. Verify by checking imports or surrounding code before reporting.
+- Module-level code guarded by environment variables (e.g. `if os.environ.get(...)`) or \
+conditional imports is intentional — do NOT report it as "will always fail" without \
+confirming the guard condition.
+- Abstract base class method signature changes are only "breaking" if at least one concrete \
+subclass has NOT been updated. Check the diff for subclass updates before reporting.
+- `max(n, 1)` and similar floor-clamp patterns are defensive programming, not bugs.
+'''
+
+
 def _read_agent_instructions(clone_dir: str) -> str:
     parts = []
     for fname in _AGENT_INSTRUCTION_FILES:
@@ -44,6 +59,7 @@ def _read_agent_instructions(clone_dir: str) -> str:
         content = _read_file_head(fpath, _AGENT_INSTRUCTIONS_MAX_CHARS)
         if content:
             parts.append(f'### {fname}\n{content}')
+    parts.append(_FRAMEWORK_GOTCHAS_NOTICE)
     combined = '\n\n'.join(parts)
     return combined[:_AGENT_INSTRUCTIONS_MAX_CHARS]
 
@@ -158,6 +174,59 @@ def _extract_class_method_signatures(lines: List[str], class_line_idx: int) -> L
 
 def _extract_module_function_signatures(lines: List[str]) -> List[str]:
     return [line.rstrip()[:120] for line in lines if re.match(r'^def\s+\w+', line)]
+
+def _extract_abstract_method_names(diff_content: str) -> List[str]:
+    # find method names that appear after @abstractmethod in added lines
+    names: List[str] = []
+    lines = diff_content.splitlines()
+    prev_abstract = False
+    for line in lines:
+        stripped = line.lstrip('+ ')
+        if stripped.strip() == '@abstractmethod':
+            prev_abstract = True
+            continue
+        if prev_abstract:
+            m = re.match(r'def\s+(\w+)\s*\(', stripped)
+            if m:
+                names.append(m.group(1))
+            prev_abstract = False
+        else:
+            prev_abstract = False
+    return names
+
+
+def _find_subclass_implementations(clone_dir: str, method_names: List[str], max_files: int = 8) -> str:
+    # search Python files in clone_dir for concrete implementations of the given method names
+    if not method_names or not clone_dir or not os.path.isdir(clone_dir):
+        return ''
+    results: List[str] = []
+    pattern = re.compile(r'^\s{4,}def\s+(' + '|'.join(re.escape(n) for n in method_names) + r')\s*\(')
+    files_checked = 0
+    for root, dirs, files in os.walk(clone_dir):
+        dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
+        for fname in files:
+            if not fname.endswith('.py'):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
+                    file_lines = f.readlines()
+            except OSError:
+                continue
+            for i, line in enumerate(file_lines):
+                if pattern.match(line):
+                    rel = os.path.relpath(fpath, clone_dir)
+                    sig = line.rstrip()[:120]
+                    results.append(f'{rel}:{i + 1}: {sig}')
+                    files_checked += 1
+                    if files_checked >= max_files:
+                        break
+            if files_checked >= max_files:
+                break
+        if files_checked >= max_files:
+            break
+    return '\n'.join(results)
+
 
 def _read_file_context(clone_dir: str, path: str, hunk_start: int, hunk_end: int) -> str:
     abs_path = os.path.join(clone_dir, path)

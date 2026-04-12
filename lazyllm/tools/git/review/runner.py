@@ -55,14 +55,26 @@ def _compute_diff_stats(
 
 
 def _decide_review_strategy(stats: _DiffStats) -> _ReviewStrategy:
-    # Skip R2 entirely for very large PRs to avoid excessive LLM calls
-    if stats.diff_lines_total > 2000 or stats.file_count > 30:
+    # R2 is always enabled — large PRs get tighter limits so the most important files
+    # (largest diff, sorted first by _classify_files_for_r2) are still deeply reviewed
+    # while excess files fall back to R1 passthrough.
+    if stats.diff_lines_total > 3000 or stats.file_count > 50:
+        # very large PR: tight limits, only top files get chunk-mode agent review
         return _ReviewStrategy(
-            enable_r2=False,
-            large_file_threshold=200,
-            max_files_for_r2=0,
-            max_chunks_per_file=0,
+            enable_r2=True,
+            large_file_threshold=100,
+            max_files_for_r2=10,
+            max_chunks_per_file=2,
         )
+    if stats.diff_lines_total > 1000 or stats.file_count > 20:
+        # large PR: moderate limits
+        return _ReviewStrategy(
+            enable_r2=True,
+            large_file_threshold=150,
+            max_files_for_r2=15,
+            max_chunks_per_file=2,
+        )
+    # normal PR: full limits
     return _ReviewStrategy(
         enable_r2=True,
         large_file_threshold=200,

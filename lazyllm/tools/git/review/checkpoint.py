@@ -21,20 +21,23 @@ class ReviewStage(enum.Enum):
 
     @staticmethod
     def ordered() -> list:
-        return [
-            ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
-            ReviewStage.PR_SUMMARY, ReviewStage.R1, ReviewStage.R2,
-            ReviewStage.R3, ReviewStage.R4, ReviewStage.FINAL,
-        ]
+        return _REVIEW_STAGE_ORDER
 
     def index(self) -> int:
-        return ReviewStage.ordered().index(self)
+        return _REVIEW_STAGE_ORDER.index(self)
 
     def __le__(self, other: 'ReviewStage') -> bool:
         return self.index() <= other.index()
 
     def __lt__(self, other: 'ReviewStage') -> bool:
         return self.index() < other.index()
+
+
+_REVIEW_STAGE_ORDER = [
+    ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
+    ReviewStage.PR_SUMMARY, ReviewStage.R1, ReviewStage.R2,
+    ReviewStage.R3, ReviewStage.R4, ReviewStage.FINAL,
+]
 
 
 def _load_cache(cache_path: Optional[str], key: str) -> Optional[str]:

@@ -61,6 +61,9 @@ def _post_review_comments(
         }
         for c in all_comments if c.get('path') and c.get('line')
     ]
+    dropped = len(all_comments) - len(comments_payload)
+    if dropped:
+        lazyllm.LOG.warning(f'{dropped} comment(s) dropped: missing path or line field')
     if not comments_payload:
         return 0
 
@@ -92,6 +95,11 @@ def _post_review_comments(
         ok = r.get('success')
         if ok:
             posted += 1
-        prog2.update(f'{c["path"]}:{c["line"]} ({"ok" if ok else r.get("message", "fail")[:40]})')
+        else:
+            err_msg = r.get('message', 'fail')
+            lazyllm.LOG.warning(
+                f'Failed to post comment on {c["path"]}:{c["line"]}: {err_msg}'
+            )
+        prog2.update(f'{c["path"]}:{c["line"]} ({"ok" if ok else r.get("message", "fail")[:60]})')
     prog2.done(f'{posted}/{len(comments_payload)} posted')
     return posted

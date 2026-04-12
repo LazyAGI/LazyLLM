@@ -157,7 +157,16 @@ def _llm_call_with_retry(llm: Any, prompt: str, parse_json: bool = True) -> Any:
         json_text = _extract_json_text(raw_response)
         parsed = _parse_json_with_repair(json_text)
         if parsed is not None:
-            return parsed if isinstance(parsed, list) else ([] if not isinstance(parsed, dict) else [parsed])
+            if isinstance(parsed, list):
+                # flatten one level of nesting in case LLM wraps the array: [[{...}]] → [{...}]
+                flat = []
+                for item in parsed:
+                    if isinstance(item, list):
+                        flat.extend(item)
+                    else:
+                        flat.append(item)
+                return flat
+            return [parsed] if isinstance(parsed, dict) else []
         lazyllm.LOG.warning(f'JSON parse/repair failed. Raw response snippet: {raw_response[:300]}')
         return []
 
