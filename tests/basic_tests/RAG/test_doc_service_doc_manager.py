@@ -55,6 +55,13 @@ class _ManagerHarness:
         self._patch_parser_client()
 
     def close(self):
+        # Dispose SQLAlchemy engine before removing temp dir; on Windows the
+        # open DB connections lock the .db / -wal / -shm files and prevent
+        # TemporaryDirectory.cleanup() from succeeding.
+        if hasattr(self.manager, '_db_manager') and hasattr(self.manager._db_manager, '_engine'):
+            engine = self.manager._db_manager._engine
+            if engine is not None:
+                engine.dispose()
         self._tmp_dir.cleanup()
 
     def make_file(self, name: str, content: str):

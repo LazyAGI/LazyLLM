@@ -68,6 +68,7 @@ class SchemaExtractor(ModuleBase):
     def __init__(self, db_config: Dict[str, Any], llm: LLMBase, *, table_prefix: Optional[str] = None,
                  force_refresh: bool = False, extraction_mode: ExtractionMode = ExtractionMode.TEXT,
                  max_len: int = ONE_DOC_LENGTH_LIMIT, num_workers: int = 4):
+        super().__init__()
         if not isinstance(llm, LLMBase):
             raise TypeError('llm must be an instance of LLMBase')
         self._llm = llm
