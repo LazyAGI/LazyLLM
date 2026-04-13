@@ -102,6 +102,142 @@ def _fetch_deepwiki_summary(owner_repo: str) -> str:
         return ''
 
 
+_DEEPWIKI_QA_TTL_DAYS = 30  # cache TTL in days
+
+
+def _deepwiki_qa_cache_path(owner_repo: str) -> str:
+    owner, repo = (owner_repo.split('/', 1) + [''])[:2]
+    return os.path.join(lazyllm.config['home'], 'review', 'cache', owner, repo, 'deepwiki_qa.json')
+
+
+def _deepwiki_qa_load(qa_cache_file: str, cache_key: str) -> Optional[Dict[str, Any]]:
+    if not os.path.isfile(qa_cache_file):
+        return None
+    try:
+        with open(qa_cache_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data.get(cache_key) if isinstance(data, dict) else None
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _deepwiki_qa_find_similar(
+    qa_cache_file: str, question: str, ttl_secs: float, now: float,
+) -> Optional[str]:
+    # Fuzzy cache hit: find a non-expired entry whose cached question shares enough keywords.
+    if not os.path.isfile(qa_cache_file):
+        return None
+    try:
+        with open(qa_cache_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    q_words = set(re.findall(r'[a-zA-Z_]\w*', question.lower()))
+    best_score, best_answer = 0.0, None
+    for entry in data.values():
+        if not isinstance(entry, dict):
+            continue
+        if now - entry.get('fetched_at', 0) >= ttl_secs:
+            continue
+        cached_q = entry.get('question', '')
+        c_words = set(re.findall(r'[a-zA-Z_]\w*', cached_q.lower()))
+        if not c_words:
+            continue
+        overlap = len(q_words & c_words) / max(len(q_words | c_words), 1)
+        if overlap > best_score:
+            best_score, best_answer = overlap, entry.get('answer', '')
+    # Require at least 60% keyword overlap to consider it a semantic hit
+    return best_answer if best_score >= 0.6 else None
+
+
+def _deepwiki_qa_save(qa_cache_file: str, cache_key: str, entry: Dict[str, Any]) -> None:
+    try:
+        data: Dict[str, Any] = {}
+        if os.path.isfile(qa_cache_file):
+            try:
+                with open(qa_cache_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                data = {}
+        data[cache_key] = entry
+        os.makedirs(os.path.dirname(os.path.abspath(qa_cache_file)), exist_ok=True)
+        with open(qa_cache_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        lazyllm.LOG.info(f'DeepWiki: failed to write QA cache: {e}')
+
+
+def _deepwiki_ask_cached(owner_repo: str, question: str, max_chars: int = 2000) -> str:
+    # Ask DeepWiki a question about a repo, with a persistent per-repo cache.
+    # Cache lives at ~/.lazyllm/review/cache/{owner}/{repo}/deepwiki_qa.json.
+    # Each entry stores {answer, fetched_at, question}. TTL is _DEEPWIKI_QA_TTL_DAYS days.
+    # On expiry: re-fetch from DeepWiki; on network failure: extend TTL and return stale answer.
+    import hashlib
+    import time
+
+    qa_cache_file = _deepwiki_qa_cache_path(owner_repo)
+    cache_key = hashlib.md5(question.encode()).hexdigest()[:16]
+    now = time.time()
+    ttl_secs = _DEEPWIKI_QA_TTL_DAYS * 86400
+
+    entry = _deepwiki_qa_load(qa_cache_file, cache_key)
+    if entry and isinstance(entry, dict) and (now - entry.get('fetched_at', 0)) < ttl_secs:
+        return entry.get('answer', '')
+
+    # Fuzzy hit: reuse a semantically similar cached answer before going to network
+    similar = _deepwiki_qa_find_similar(qa_cache_file, question, ttl_secs, now)
+    if similar:
+        return similar
+
+    answer = _deepwiki_fetch_answer(owner_repo, question, max_chars)
+
+    if answer:
+        _deepwiki_qa_save(qa_cache_file, cache_key, {'answer': answer, 'fetched_at': now, 'question': question})
+    elif entry:
+        # Network failure: extend TTL so we don't hammer DeepWiki on every call
+        lazyllm.LOG.info(f'DeepWiki: extending stale cache for {owner_repo!r} (network failure)')
+        _deepwiki_qa_save(qa_cache_file, cache_key, dict(entry, fetched_at=now))
+        answer = entry.get('answer', '')
+
+    return answer
+
+
+def _deepwiki_fetch_answer(owner_repo: str, question: str, max_chars: int) -> str:
+    try:
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamablehttp_client
+    except ImportError:
+        return ''
+
+    import asyncio
+
+    async def _query() -> str:
+        try:
+            async with streamablehttp_client(_DEEPWIKI_MCP_URL) as (read, write, _):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    result = await session.call_tool(
+                        'ask_question',
+                        {'repoName': owner_repo, 'question': question},
+                    )
+                    if not result or not result.content:
+                        return ''
+                    return '\n'.join(
+                        c.text for c in result.content if hasattr(c, 'text') and c.text
+                    )[:max_chars]
+        except Exception as e:
+            lazyllm.LOG.info(f'DeepWiki ask_question failed ({owner_repo!r}): {e}')
+            return ''
+
+    try:
+        return asyncio.run(_query())
+    except Exception as e:
+        lazyllm.LOG.info(f'DeepWiki asyncio run failed: {e}')
+        return ''
+
+
 def _read_agent_instructions(clone_dir: str) -> str:
     parts = []
     for fname in _AGENT_INSTRUCTION_FILES:
@@ -530,31 +666,63 @@ Be concise (max 800 words). Output plain text, no markdown headers.
 </snapshot>
 '''
 
-def _build_scoped_agent_tools(clone_dir: str) -> list:  # noqa: C901
+def _build_scoped_agent_tools(  # noqa: C901
+    clone_dir: str, owner_repo: str = '', cache_path: Optional[str] = None,
+) -> list:
     from lazyllm.tools.agent.file_tool import read_file, list_dir, search_in_files
     from lazyllm.tools.agent.shell_tool import shell_tool
 
     def read_file_scoped(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> dict:
+        '''Read a source file from the repository, with optional line range.
+
+        Args:
+            path (str): Relative or absolute path to the file.
+            start_line (int, optional): 1-based start line (inclusive).
+            end_line (int, optional): 1-based end line (inclusive).
+        '''
         abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
         line_info = f':{start_line}-{end_line}' if (start_line or end_line) else ''
         lazyllm.LOG.info(f'  [Agent] Read {path}{line_info}')
         return read_file(abs_path, start_line=start_line, end_line=end_line, root=clone_dir)
 
     def search_scoped(pattern: str, glob: Optional[str] = None, max_results: int = 40) -> dict:
+        '''Search files in the repository for a regex pattern.
+
+        Args:
+            pattern (str): Regex pattern to search for.
+            glob (str, optional): Filename glob filter, e.g. "*.py".
+            max_results (int, optional): Max number of matches to return.
+        '''
         lazyllm.LOG.info(f'  [Agent] Search {pattern!r}' + (f' in {glob}' if glob else ''))
         return search_in_files(pattern, path=clone_dir, glob=glob, max_results=max_results, root=clone_dir)
 
     def list_dir_scoped(path: str = '.', recursive: bool = False) -> dict:
+        '''List directory entries in the repository.
+
+        Args:
+            path (str, optional): Directory path relative to repo root. Defaults to root.
+            recursive (bool, optional): Whether to walk recursively.
+        '''
         lazyllm.LOG.info(f'  [Agent] ListDir {path}' + (' (recursive)' if recursive else ''))
         abs_path = path if os.path.isabs(path) else os.path.join(clone_dir, path)
         return list_dir(abs_path, recursive=recursive, root=clone_dir)
 
     def shell_scoped(cmd: str, timeout: int = 30) -> dict:
+        '''Run a read-only shell command inside the repository directory.
+
+        Args:
+            cmd (str): Shell command to execute (unsafe commands are blocked).
+            timeout (int, optional): Timeout in seconds. Defaults to 30.
+        '''
         lazyllm.LOG.info(f'  [Agent] Shell {cmd!r}')
         return shell_tool(cmd, cwd=clone_dir, timeout=timeout, allow_unsafe=False)
 
     def read_files_batch(paths: str) -> dict:
-        # Read multiple source files at once. Pass a comma-separated list of relative paths.
+        '''Read multiple source files at once.
+
+        Args:
+            paths (str): Comma-separated list of relative file paths to read.
+        '''
         path_list = [p.strip() for p in paths.split(',') if p.strip()]
         lazyllm.LOG.info(f'  [Agent] ReadBatch {path_list}')
         results = {}
@@ -568,12 +736,35 @@ def _build_scoped_agent_tools(clone_dir: str) -> list:  # noqa: C901
         return {'files': results, 'count': len(results)}
 
     def grep_callers(symbol: str, max_results: int = 20) -> dict:
-        # Find all call sites of a function or class in the repository.
+        '''Find all call sites of a function or class in the repository.
+
+        Args:
+            symbol (str): Function or class name to search for.
+            max_results (int, optional): Max number of matches to return.
+        '''
         lazyllm.LOG.info(f'  [Agent] GrepCallers {symbol!r}')
         pattern = rf'\b{re.escape(symbol)}\s*[\(\.]'
         return search_in_files(pattern, path=clone_dir, max_results=max_results, root=clone_dir)
 
-    return [read_file_scoped, read_files_batch, grep_callers, search_scoped, list_dir_scoped, shell_scoped]
+    def ask_deepwiki(question: str) -> str:
+        '''Ask DeepWiki a question about this repository's architecture or design.
+        Use for high-level questions about module responsibilities, design patterns,
+        or cross-module relationships that are hard to answer from local code alone.
+        Returns a plain text answer.
+
+        Args:
+            question (str): The question to ask about the repository.
+        '''
+        if not owner_repo:
+            return '(DeepWiki not configured for this repo)'
+        lazyllm.LOG.info(f'  [Agent] DeepWiki ask: {question!r}')
+        answer = _deepwiki_ask_cached(owner_repo, question, max_chars=2000)
+        return answer or '(no answer from DeepWiki)'
+
+    tools = [read_file_scoped, read_files_batch, grep_callers, search_scoped, list_dir_scoped, shell_scoped]
+    if owner_repo:
+        tools.append(ask_deepwiki)
+    return tools
 
 # Per-language patterns for locating symbol definitions.
 # Each entry: (glob, def_pattern, kind_group_idx)
@@ -813,9 +1004,10 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
     return analyze_symbol
 
 def _build_scoped_agent_tools_with_cache(
-    clone_dir: str, llm: Any, symbol_cache: Dict[str, Any]
+    clone_dir: str, llm: Any, symbol_cache: Dict[str, Any],
+    owner_repo: str = '', cache_path: Optional[str] = None,
 ) -> list:
-    tools = _build_scoped_agent_tools(clone_dir)
+    tools = _build_scoped_agent_tools(clone_dir, owner_repo=owner_repo, cache_path=cache_path)
     analyze_symbol = _build_analyze_symbol_tool(llm, clone_dir, symbol_cache)
     return tools + [analyze_symbol]
 
@@ -899,9 +1091,19 @@ def _arch_pack_pairs(
 def _arch_fill_batch_llm(
     llm: Any, batch: List[Tuple[Dict[str, Any], str]],
     dir_tree_1level: str, prev_summaries: List[str],
+    owner_repo: str = '', cache_path: Optional[str] = None,
 ) -> Dict[str, str]:
+    def _deepwiki_block(sec: Dict[str, Any]) -> str:
+        if not owner_repo:
+            return ''
+        title, focus = sec.get('title', ''), sec.get('focus', '')
+        question = f'Explain the "{title}" aspect of this project: {focus}'
+        answer = _deepwiki_ask_cached(owner_repo, question, max_chars=1200)
+        return f'\n\nDeepWiki reference:\n{answer}' if answer else ''
+
     sections_block = '\n---\n'.join(
-        f'### Section: {sec.get("title", "")}\nFocus: {sec.get("focus", "")}\n\nSnippets:\n{snippets}'
+        f'### Section: {sec.get("title", "")}\nFocus: {sec.get("focus", "")}'
+        f'\n\nSnippets:\n{snippets}{_deepwiki_block(sec)}'
         for sec, snippets in batch
     )
     prev_text = ('\n'.join(prev_summaries) or '(none yet)')[-_ARCH_PREV_SUMMARY_BUDGET:]
@@ -926,7 +1128,7 @@ def _section_cache_key(title: str) -> str:
 
 def _arch_fill_all_sections(
     llm: Any, clone_dir: str, outline: List[Dict[str, Any]], dir_tree_1level: str,
-    cache_path: Optional[str] = None,
+    cache_path: Optional[str] = None, owner_repo: str = '',
 ) -> str:
     pairs = [(sec, _arch_collect_snippets(clone_dir, sec)) for sec in outline]
     batch_budget = max(28000, SINGLE_CALL_CONTEXT_BUDGET - 18000)
@@ -946,7 +1148,7 @@ def _arch_fill_all_sections(
             else:
                 missing.append((sec, snip))
         if missing:
-            got = _arch_fill_batch_llm(llm, missing, dir_tree_1level, prev_summaries)
+            got = _arch_fill_batch_llm(llm, missing, dir_tree_1level, prev_summaries, owner_repo, cache_path)
             for sec, _snip in missing:
                 title = sec.get('title', 'Section')
                 content = got[title][:3500] if title in got and got[title].strip() else \
@@ -1222,7 +1424,7 @@ def analyze_repo_architecture(
         if not outline:
             raise ValueError('Arch outline generation returned empty result')
         _save_cache(cache_path, 'arch_outline', json.dumps(outline, ensure_ascii=False))
-    arch_doc = _arch_fill_all_sections(llm, clone_dir, outline, dir_tree_1, cache_path) or \
+    arch_doc = _arch_fill_all_sections(llm, clone_dir, outline, dir_tree_1, cache_path, owner_repo or '') or \
         '(architecture analysis unavailable)'
 
     try:

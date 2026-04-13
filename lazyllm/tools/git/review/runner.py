@@ -210,7 +210,7 @@ def review(  # noqa: C901
         llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
         clone_dir=clone_dir, existing_comments=existing_comments, language=language,
         agent_instructions=agent_instructions, strategy=strategy,
-        lint_issues=lint_issues,
+        lint_issues=lint_issues, owner_repo=repo, arch_cache_path=arch_cache_path,
     )
     final_comments = meta_warnings + final_comments
 

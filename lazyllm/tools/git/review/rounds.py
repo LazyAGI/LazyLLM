@@ -1226,6 +1226,8 @@ def _round2_agent_review(
     ckpt: Optional[Any] = None,
     agent_instructions: str = '',
     strategy: Optional[Any] = None,
+    owner_repo: str = '',
+    arch_cache_path: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], set, Dict[str, int]]:
     # returns (r2_issues, discarded_r1_line_keys, metrics_dict)
     r2_metrics: Dict[str, int] = {
@@ -1271,7 +1273,7 @@ def _round2_agent_review(
         )
 
     symbol_cache: Dict[str, Any] = {}
-    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache)
+    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
 
     prog = _Progress('Round 2: unified agent review', len(units))
     all_results: List[Dict[str, Any]] = []
@@ -1979,6 +1981,8 @@ def _run_five_rounds(  # noqa: C901
     agent_instructions: str = '',
     strategy: Optional[Any] = None,
     lint_issues: Optional[List[Dict[str, Any]]] = None,
+    owner_repo: str = '',
+    arch_cache_path: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     from .constants import BudgetManager, TOTAL_CALL_BUDGET
     _budget = BudgetManager(total_calls=TOTAL_CALL_BUDGET)  # noqa: F841 — reserved for future call tracking
@@ -2035,6 +2039,7 @@ def _run_five_rounds(  # noqa: C901
         llm, r1, diff_text, arch_doc, pr_summary=pr_summary,
         clone_dir=clone_dir, language=language, ckpt=ckpt,
         agent_instructions=agent_instructions, strategy=strategy,
+        owner_repo=owner_repo, arch_cache_path=arch_cache_path,
     )
     ckpt.mark_stage_done(ReviewStage.R2)
 
