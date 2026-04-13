@@ -101,16 +101,9 @@ class _TracingRuntime:
             LOG.warning(message)
             self._warned = True
 
-    def _raise_setup_error(self, message: str):
-        self._warn_once(message)
-        raise TracingSetupError(message)
-
     def _get_backend(self):
         backend_name = config['trace_backend']
-        try:
-            return get_tracing_backend(backend_name)
-        except ValueError as exc:
-            self._raise_setup_error(str(exc))
+        return get_tracing_backend(backend_name)
 
     def _ensure_runtime(self) -> bool:
         if self._initialized:
@@ -127,13 +120,20 @@ class _TracingRuntime:
                 Status = opentelemetry.trace.status.Status
                 StatusCode = opentelemetry.trace.status.StatusCode
             except ImportError as exc:
-                self._raise_setup_error(str(exc))
-            backend = self._get_backend()
+                self._warn_once(str(exc))
+                return False
+
+            try:
+                backend = self._get_backend()
+            except (ValueError, TracingSetupError) as exc:
+                self._warn_once(str(exc))
+                return False
 
             try:
                 exporter = backend.build_exporter()
             except Exception as exc:
-                self._raise_setup_error(f'LazyLLM {backend.name} tracing initialization failed: {exc}')
+                self._warn_once(f'LazyLLM {backend.name} tracing initialization failed: {exc}')
+                return False
 
             resource = Resource.create({'service.name': _TRACE_SERVICE_NAME})
             provider = TracerProvider(resource=resource)
@@ -209,7 +209,8 @@ class _TracingRuntime:
         trace_ctx = get_trace_context()
         if not self._trace_enabled(trace_ctx):
             return None
-        self._ensure_runtime()
+        if not self._ensure_runtime():
+            return None
 
         capture_payload = _capture_payload_enabled(trace_ctx)
         span_name = self._target_name(target, span_kind)
