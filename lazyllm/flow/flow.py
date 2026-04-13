@@ -23,6 +23,7 @@ from collections import deque
 import uuid
 from ..hook import LazyLLMHook, execution_with_hooks, register_hooks, resolve_builtin_hooks
 from ..tracing.collect.output_attrs import push_ifs_matched_attrs, push_switch_matched_attrs
+from ..tracing.runtime import start_span, set_span_output, set_span_error, finish_span
 from itertools import repeat
 
 
@@ -303,13 +304,20 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 it._args = [self.output(a) if a in self._items else a for a in it._args]
                 it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
             kw['_bind_args_source'] = bind_args_source
+
+        _callable_span = (start_span(span_kind='callable', target=it, args=(__input,), kwargs=kw)
+                          if not isinstance(it, LazyLLMFlowsBase) and not hasattr(it, '_module_id')
+                          else None)
         try:
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(__input, (package, kwargs)):
-                return it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
+                output = it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
             else:
-                return it(__input, **kw)
-        except HandledException as e: raise e
+                output = it(__input, **kw)
+        except HandledException as e:
+            set_span_error(_callable_span, e)
+            raise e
         except Exception as e:
+            set_span_error(_callable_span, e)
             try:
                 pos = self._item_pos[self._items.index(it)]
             except Exception:
@@ -322,6 +330,11 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             LOG.debug(f'Error type: {type(e).__name__}, Error message: {str(e)}\n'
                       f'Traceback: {"".join(traceback.format_exception(*sys.exc_info()))}')
             raise _change_exception_type(e, FlowException) from None
+        else:
+            set_span_output(_callable_span, output)
+            return output
+        finally:
+            finish_span(_callable_span)
 
     def bind(self, *args, **kw):
         return bind(self, *args, **kw)
