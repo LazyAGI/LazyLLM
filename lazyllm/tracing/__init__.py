@@ -1,6 +1,7 @@
 from importlib import import_module
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
+    # flake8: noqa: E401
     from .runtime import (
         TracingSetupError,
         start_span,
