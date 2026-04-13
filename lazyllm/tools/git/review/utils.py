@@ -308,6 +308,9 @@ def _normalize_comment_item(
     default_path: str = '', default_category: str = 'logic',
 ) -> Optional[Dict[str, Any]]:
     line = item.get('line')
+    # LLM sometimes outputs 'description' instead of 'problem' (especially in R4)
+    if item.get('problem') is None and item.get('description') is not None:
+        item = dict(item, problem=item['description'])
     if line is None or item.get('problem') is None:
         lazyllm.LOG.info(f'[NORMALIZE_SKIP] missing line or problem: {str(item)[:200]}')
         return None

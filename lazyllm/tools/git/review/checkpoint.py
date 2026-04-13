@@ -16,8 +16,10 @@ class ReviewStage(enum.Enum):
     R1 = 'r1'
     R2 = 'r2'
     R3 = 'r3'
+    R4A = 'r4a'
     R4 = 'r4'
     FINAL = 'final'
+    UPLOAD = 'upload'
 
     @staticmethod
     def ordered() -> list:
@@ -36,7 +38,7 @@ class ReviewStage(enum.Enum):
 _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
     ReviewStage.PR_SUMMARY, ReviewStage.R1, ReviewStage.R2,
-    ReviewStage.R3, ReviewStage.R4, ReviewStage.FINAL,
+    ReviewStage.R3, ReviewStage.R4A, ReviewStage.R4, ReviewStage.FINAL, ReviewStage.UPLOAD,
 ]
 
 
@@ -125,11 +127,12 @@ class _ReviewCheckpoint:
             'r1': ReviewStage.R1,
             'r2': ReviewStage.R2,
             'r3': ReviewStage.R3,
-            'pr_design_doc': ReviewStage.R4,
+            'pr_design_doc': ReviewStage.R4A,
             'r4': ReviewStage.R4,
             'final': ReviewStage.FINAL,
             'r2_shared_context': ReviewStage.R2,
             'diff_text': ReviewStage.CLONE,
+            'final_comments': ReviewStage.UPLOAD,
         }
         if key in key_to_stage:
             return key_to_stage[key]
@@ -172,7 +175,7 @@ class _ReviewCheckpoint:
         # clear the invalidation marker only after the full pipeline completes (FINAL),
         # so that all downstream stages remain invalidated until the run finishes
         inv = self._invalidated_stage()
-        if inv is not None and stage == ReviewStage.FINAL:
+        if inv is not None and stage == ReviewStage.UPLOAD:
             self._data.pop(self._INVALIDATED_FROM_KEY, None)
             self._resume_from = None
         self._flush()

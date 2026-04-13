@@ -2182,22 +2182,36 @@ def _run_five_rounds(  # noqa: C901
     else:
         _Progress('Round 3: global analysis').done(f'loaded from checkpoint ({len(r3)} issues)')
 
-    use_r4_cache = ckpt.should_use_cache(ReviewStage.R4)
+    use_r4a_cache = ckpt.should_use_cache(ReviewStage.R4A)
     pr_design_doc = ckpt.get('pr_design_doc')
-    r4 = ckpt.get('r4')
-    if pr_design_doc is None or r4 is None:
-        if not use_r4_cache:
-            lazyllm.LOG.warning('Round 4: no cache found, re-computing')
-        pr_design_doc, r4 = _round4_combined_review(
+    if pr_design_doc is None:
+        if not use_r4a_cache:
+            lazyllm.LOG.warning('Round 4a: no cache found, re-computing')
+        pr_design_doc = _round4_generate_pr_doc(
             llm, diff_text, arch_doc, pr_summary=pr_summary,
             language=language, agent_instructions=agent_instructions,
         )
         ckpt.save('pr_design_doc', pr_design_doc)
+        ckpt.mark_stage_done(ReviewStage.R4A)
+    else:
+        _Progress('Round 4a: generating PR design document').done(
+            f'loaded from checkpoint ({len(pr_design_doc)} chars)'
+        )
+
+    use_r4_cache = ckpt.should_use_cache(ReviewStage.R4)
+    r4 = ckpt.get('r4')
+    if r4 is None:
+        if not use_r4_cache:
+            lazyllm.LOG.warning('Round 4: no cache found, re-computing')
+        r4 = _round4_architect_review(
+            llm, diff_text, arch_doc, pr_summary=pr_summary,
+            language=language, agent_instructions=agent_instructions, pr_design_doc=pr_design_doc,
+        )
         ckpt.save('r4', r4)
         ckpt.mark_stage_done(ReviewStage.R4)
     else:
-        _Progress('Round 4: design doc + architect').done(
-            f'loaded from checkpoint (doc {len(pr_design_doc)} chars, {len(r4)} issues)'
+        _Progress('Round 4: architect design review').done(
+            f'loaded from checkpoint ({len(r4)} issues)'
         )
 
     use_final_cache = ckpt.should_use_cache(ReviewStage.FINAL)

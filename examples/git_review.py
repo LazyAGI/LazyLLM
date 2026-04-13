@@ -17,7 +17,7 @@
 #   --max_history_prs  Max historical PRs to analyze for review spec (default: 400)
 #   --keep_clone    Keep cloned repo after review (flag, default: off)
 #   --clear_checkpoint  Clear checkpoint and start fresh (flag, default: off)
-#   --resume_from   Resume from a specific stage: clone|arch|spec|pr_summary|r1|r2|r3|final
+#   --resume_from   Resume from a specific stage: clone|arch|spec|pr_summary|r1|r2|r3|r4a|r4|final|upload
 #                   Stages before the specified one will load from cache (if available).
 #                   If a prior stage has no cache, a warning is printed and it re-computes.
 #
@@ -59,8 +59,8 @@ def _parse_args():
     parser.add_argument('--clear_checkpoint', action='store_true',
                         help='Clear checkpoint and start fresh')
     parser.add_argument('--resume_from', default=None,
-                        choices=['clone', 'arch', 'spec', 'pr_summary', 'r1', 'r2', 'r3', 'final'],
-                        help='Resume from a specific stage (clone/arch/spec/pr_summary/r1/r2/r3/final)')
+                        choices=['clone', 'arch', 'spec', 'pr_summary', 'r1', 'r2', 'r3', 'r4a', 'r4', 'final', 'upload'],
+                        help='Resume from a specific stage (clone/arch/spec/pr_summary/r1/r2/r3/r4a/r4/final/upload)')
     return parser.parse_args()
 
 

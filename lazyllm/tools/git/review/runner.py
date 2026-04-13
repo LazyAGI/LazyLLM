@@ -249,13 +249,21 @@ def review(  # noqa: C901
             import lazyllm
             lazyllm.LOG.warning(f'Lint analysis failed: {e}')
 
-    final_comments, r2_metrics = _run_five_rounds(
-        llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
-        clone_dir=clone_dir, existing_comments=existing_comments, language=language,
-        agent_instructions=agent_instructions, strategy=strategy,
-        lint_issues=lint_issues, owner_repo=repo, arch_cache_path=arch_cache_path,
-    )
-    final_comments = meta_warnings + final_comments
+    cached_final = ckpt.get('final_comments')
+    if cached_final is not None:
+        final_comments = cached_final
+        r2_metrics: Dict[str, Any] = {}
+        _Progress('All review rounds').done('loaded from checkpoint')
+    else:
+        final_comments, r2_metrics = _run_five_rounds(
+            llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
+            clone_dir=clone_dir, existing_comments=existing_comments, language=language,
+            agent_instructions=agent_instructions, strategy=strategy,
+            lint_issues=lint_issues, owner_repo=repo, arch_cache_path=arch_cache_path,
+        )
+        final_comments = meta_warnings + final_comments
+        ckpt.save('final_comments', final_comments)
+        ckpt.mark_stage_done(ReviewStage.FINAL)
 
     # clean up only the clone subdirectory (not the whole pr_dir which contains checkpoint)
     clone_subdir = os.path.join(pr_dir, 'clone')
@@ -264,15 +272,23 @@ def review(  # noqa: C901
 
     posted = 0
     if post_to_github and head_sha:
-        review_body = _build_review_body(
-            pr_summary=pr_summary,
-            total=len(final_comments),
-            stats=_category_stats(final_comments),
-            model_name=model_name,
-        )
-        posted = _post_review_comments(
-            backend_inst, pr_number, head_sha, final_comments, model_name, review_body=review_body
-        )
+        if ckpt.should_use_cache(ReviewStage.UPLOAD):
+            _Progress('Upload: posting review comments').done('loaded from checkpoint (already uploaded)')
+        else:
+            review_body = _build_review_body(
+                pr_summary=pr_summary,
+                total=len(final_comments),
+                stats=_category_stats(final_comments),
+                model_name=model_name,
+            )
+            posted, upload_all_ok = _post_review_comments(
+                backend_inst, pr_number, head_sha, final_comments, model_name, review_body=review_body, ckpt=ckpt
+            )
+            if upload_all_ok:
+                ckpt.mark_stage_done(ReviewStage.UPLOAD)
+            else:
+                import lazyllm as _lazyllm
+                _lazyllm.LOG.warning('Some upload batches failed; re-run with --resume_from=upload to retry')
 
     n = len(final_comments)
     stats = _category_stats(final_comments)

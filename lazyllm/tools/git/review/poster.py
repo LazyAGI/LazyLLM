@@ -1,10 +1,15 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import time
 from typing import Any, Dict, List, Optional
 
 import lazyllm
 
 from ..base import LazyLLMGitBase
 from .utils import _Progress
+
+_BATCH_SIZE = 30          # comments per submit_review call (GitHub limit is ~50)
+_BATCH_INTERVAL = 5.0     # seconds between batches to avoid secondary rate limit
+_RATE_LIMIT_BACKOFF = [60, 120, 300]  # retry waits (seconds) on 403
 
 
 def _comment_body_text(c: Dict[str, Any], model_name: str) -> str:
@@ -44,6 +49,33 @@ def _fetch_existing_pr_comments(backend: LazyLLMGitBase, pr_number: int) -> List
     return result
 
 
+def _submit_with_retry(
+    backend: LazyLLMGitBase,
+    pr_number: int,
+    head_sha: Optional[str],
+    batch: List[Dict[str, Any]],
+    body: str,
+) -> bool:
+    for wait in _RATE_LIMIT_BACKOFF + [None]:
+        r = backend.submit_review(
+            number=pr_number,
+            event='COMMENT',
+            body=body,
+            comments=batch,
+            commit_id=head_sha,
+        )
+        if r.get('success'):
+            return True
+        status = r.get('status_code', 0)
+        if status == 403 and wait is not None:
+            lazyllm.LOG.warning(f'Rate limited (403), retrying after {wait}s...')
+            time.sleep(wait)
+            continue
+        lazyllm.LOG.warning(f'submit_review failed: {r.get("message", "unknown")[:200]}')
+        return False
+    return False
+
+
 def _post_review_comments(
     backend: LazyLLMGitBase,
     pr_number: int,
@@ -51,7 +83,8 @@ def _post_review_comments(
     all_comments: List[Dict[str, Any]],
     model_name: str = 'unknown-model',
     review_body: str = '',
-) -> int:
+    ckpt: Optional[Any] = None,
+) -> tuple:
     comments_payload = [
         {
             'path': c['path'],
@@ -65,41 +98,31 @@ def _post_review_comments(
     if dropped:
         lazyllm.LOG.warning(f'{dropped} comment(s) dropped: missing path or line field')
     if not comments_payload:
-        return 0
+        return 0, True
 
-    prog = _Progress('Posting review (batch submit_review)', len(comments_payload))
-    for c in comments_payload:
-        prog.update(f'{c["path"]}:{c["line"]}')
-
-    out = backend.submit_review(
-        number=pr_number,
-        event='COMMENT',
-        body=review_body or '',
-        comments=comments_payload,
-        commit_id=head_sha,
-    )
-    if out.get('success'):
-        prog.done(f'ok: {len(comments_payload)}/{len(comments_payload)}')
-        return len(comments_payload)
-
-    lazyllm.LOG.warning(
-        f'Batch submit_review failed ({out.get("message", "unknown")}), '
-        f'falling back to one-by-one create_review_comment'
-    )
-    prog2 = _Progress('Posting comments one-by-one (fallback)', len(comments_payload))
-    posted = 0
-    for c in comments_payload:
-        r = backend.create_review_comment(
-            pr_number, body=c['body'], path=c['path'], line=c['line'], commit_id=head_sha,
-        )
-        ok = r.get('success')
+    batches = [comments_payload[i:i + _BATCH_SIZE] for i in range(0, len(comments_payload), _BATCH_SIZE)]
+    # load already-completed batch indices from checkpoint (not subject to stage invalidation)
+    done_batches: set = set(ckpt.get('upload_done_batches') or [] if ckpt else [])
+    prog = _Progress(f'Posting review ({len(comments_payload)} comments, {len(batches)} batch(es))', len(batches))
+    posted = sum(len(batches[i]) for i in done_batches if i < len(batches))
+    all_ok = True
+    for idx, batch in enumerate(batches):
+        if idx in done_batches:
+            prog.update(f'batch {idx + 1}/{len(batches)}: skipped (already posted)')
+            continue
+        # first non-skipped batch carries the review_body summary
+        body = review_body if idx == 0 or not done_batches else ''
+        ok = _submit_with_retry(backend, pr_number, head_sha, batch, body)
         if ok:
-            posted += 1
+            posted += len(batch)
+            done_batches.add(idx)
+            if ckpt:
+                ckpt.save('upload_done_batches', list(done_batches))
+            prog.update(f'batch {idx + 1}/{len(batches)}: {len(batch)} comments ok')
         else:
-            err_msg = r.get('message', 'fail')
-            lazyllm.LOG.warning(
-                f'Failed to post comment on {c["path"]}:{c["line"]}: {err_msg}'
-            )
-        prog2.update(f'{c["path"]}:{c["line"]} ({"ok" if ok else r.get("message", "fail")[:60]})')
-    prog2.done(f'{posted}/{len(comments_payload)} posted')
-    return posted
+            all_ok = False
+            prog.update(f'batch {idx + 1}/{len(batches)}: FAILED, skipping')
+        if idx < len(batches) - 1:
+            time.sleep(_BATCH_INTERVAL)
+    prog.done(f'{posted}/{len(comments_payload)} posted')
+    return posted, all_ok
