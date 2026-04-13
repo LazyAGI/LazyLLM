@@ -149,6 +149,96 @@ def cpp_class(py_class: Optional[_C] = None, *, cpp_class_name: Optional[str] = 
     return _decorate(py_class)
 
 
+def _resolve_impl_cls(cls: type[Any], cpp_class_name: Optional[str]) -> type:
+    cpp_module = _load_cpp_module()
+    impl_name = cpp_class_name or f'{cls.__name__}CPPImpl'
+    if not hasattr(cpp_module, impl_name):
+        raise AttributeError(f'@cpp_proxy cannot find C++ impl: {impl_name}')
+    return getattr(cpp_module, impl_name)
+
+
+def _install_proxied_init(cls: type[Any], impl_cls: type, impl_holder: str):
+    original_init = cls.__init__
+
+    @wraps(original_init)
+    def _proxied_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        valid_params = _build_valid_kwargs(impl_cls, kwargs)
+        impl = _instantiate_impl(impl_cls, valid_params)
+        object.__setattr__(self, impl_holder, impl)
+
+    cls.__init__ = _proxied_init
+
+
+def _should_use_python_method(
+    self,
+    cls: type[Any],
+    method_name: str,
+    force_python_methods: set,
+    fallback_rules: Dict[str, Tuple[str, ...]],
+) -> bool:
+    if type(self) is cls and method_name in force_python_methods:
+        return True
+    if type(self) is cls:
+        return False
+
+    deps = fallback_rules.get(method_name, ())
+    return any(dep_name in type(self).__dict__ for dep_name in deps)
+
+
+def _make_method_proxy(
+    cls: type[Any],
+    method_name: str,
+    original_method,
+    impl_holder: str,
+    force_python_methods: set,
+    fallback_rules: Dict[str, Tuple[str, ...]],
+):
+    @wraps(original_method)
+    def _proxy(self, *args, **kwargs):
+        if _should_use_python_method(self, cls, method_name, force_python_methods, fallback_rules):
+            return original_method(self, *args, **kwargs)
+
+        impl = getattr(self, impl_holder)
+        cpp_method = getattr(impl, method_name)
+        result = cpp_method(*args, **kwargs)
+        return self if result is impl else result
+
+    return _proxy
+
+
+def _install_method_proxies(
+    cls: type[Any],
+    proxy_methods: Tuple[str, ...],
+    impl_holder: str,
+    force_python_methods: set,
+    fallback_rules: Dict[str, Tuple[str, ...]],
+):
+    for method_name in proxy_methods:
+        original_method = getattr(cls, method_name)
+        setattr(
+            cls,
+            method_name,
+            _make_method_proxy(
+                cls, method_name, original_method, impl_holder, force_python_methods, fallback_rules
+            ),
+        )
+
+
+def _install_attr_proxy(cls: type[Any], proxy_attrs: Tuple[str, ...], impl_holder: str):
+    if not proxy_attrs:
+        return
+
+    original_setattr = cls.__setattr__
+
+    def _proxied_setattr(self, name, value):
+        original_setattr(self, name, value)
+        if name in proxy_attrs and hasattr(self, impl_holder):
+            setattr(getattr(self, impl_holder), name, value)
+
+    cls.__setattr__ = _proxied_setattr
+
+
 def cpp_proxy(
     py_class: Optional[_C] = None,
     *,
@@ -163,58 +253,15 @@ def cpp_proxy(
         if not config.cpp_switch:
             return cls
 
-        cpp_module = _load_cpp_module()
-        impl_name = cpp_class_name or f'{cls.__name__}CPPImpl'
-        if not hasattr(cpp_module, impl_name):
-            raise AttributeError(f'@cpp_proxy cannot find C++ impl: {impl_name}')
-
-        impl_cls = getattr(cpp_module, impl_name)
+        impl_cls = _resolve_impl_cls(cls, cpp_class_name)
         proxy_methods, proxy_attrs = _scan_proxy_members(cls, impl_cls)
         fallback_rules = method_fallbacks or {}
         force_python_methods = set(python_methods_for_self)
 
         impl_holder = '_c_obj'
-        original_init = cls.__init__
-
-        @wraps(original_init)
-        def _proxied_init(self, *args, **kwargs):
-            original_init(self, *args, **kwargs)
-            valid_params = _build_valid_kwargs(impl_cls, kwargs)
-            impl = _instantiate_impl(impl_cls, valid_params)
-            object.__setattr__(self, impl_holder, impl)
-
-        cls.__init__ = _proxied_init
-
-        def _make_method_proxy(method_name: str, original_method):
-            @wraps(original_method)
-            def _proxy(self, *args, **kwargs):
-                if type(self) is cls and method_name in force_python_methods:
-                    return original_method(self, *args, **kwargs)
-                if type(self) is not cls:
-                    deps = fallback_rules.get(method_name, ())
-                    if any(dep_name in type(self).__dict__ for dep_name in deps):
-                        return original_method(self, *args, **kwargs)
-
-                impl = getattr(self, impl_holder)
-                cpp_method = getattr(impl, method_name)
-                result = cpp_method(*args, **kwargs)
-                return self if result is impl else result
-
-            return _proxy
-
-        for method_name in proxy_methods:
-            original_method = getattr(cls, method_name)
-            setattr(cls, method_name, _make_method_proxy(method_name, original_method))
-
-        if proxy_attrs:
-            original_setattr = cls.__setattr__
-
-            def _proxied_setattr(self, name, value):
-                original_setattr(self, name, value)
-                if name in proxy_attrs and hasattr(self, impl_holder):
-                    setattr(getattr(self, impl_holder), name, value)
-
-            cls.__setattr__ = _proxied_setattr
+        _install_proxied_init(cls, impl_cls, impl_holder)
+        _install_method_proxies(cls, proxy_methods, impl_holder, force_python_methods, fallback_rules)
+        _install_attr_proxy(cls, proxy_attrs, impl_holder)
 
         return cls
 
