@@ -1,5 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import json
+import math
 import os
 import re
 import threading
@@ -25,11 +26,11 @@ from .pre_analysis import (
     _extract_file_skeleton,
 )
 from .constants import (
-    SINGLE_CALL_CONTEXT_BUDGET, R1_DIFF_BUDGET, ISSUE_DENSITY_RULE_TEXT,
+    SINGLE_CALL_CONTEXT_BUDGET, R1_DIFF_BUDGET,
     R1_WINDOW_MAX_HUNKS, R1_WINDOW_MAX_DIFF_CHARS,
     R2_UNIT_DIFF_BUDGET, R2_MAX_CHUNKS_HARD,
     max_issues_for_diff, cap_issues_by_severity, clip_text, clip_diff_by_hunk_budget,
-    compress_diff_for_agent_heuristic, effective_diff_line_count,
+    compress_diff_for_agent_heuristic, effective_diff_line_count, issue_density_rule,
 )
 from .checkpoint import ReviewStage
 from lazyllm.tools.agent import ReactAgent
@@ -119,9 +120,9 @@ server.py, worker.py, main.py, __main__.py, or if the diff contains an \
 _R1_ISSUE_FIELDS = '''\
 For EVERY issue found, output a JSON object with:
 - "path": "{path}"
-- "line": integer (new-file line number, must be in [{start}, {end})). \
+- "line": integer (new-file line number from the numbered file_context above). \
 MUST point to an added/modified line (starting with "+") directly responsible for the issue. \
-Do NOT point to context lines, import lines outside the hunk, or any line outside [{start}, {end}).
+Prefer lines within [{start}, {end}); you may reference nearby context lines if the issue is clearly caused by the diff.
 - "severity": "critical" | "medium" | "normal"
 - "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability|dependency
 - "problem": one sentence describing the issue and its root cause
@@ -132,9 +133,10 @@ When showing old vs new code, use a unified diff block (```diff\\n- old lines\\n
 _R1_ISSUE_FIELDS_BATCH = '''\
 For EVERY issue found, output a JSON object with:
 - "path": "{path}"
-- "line": integer (new-file line number, must fall within the hunk's [start, end) range). \
+- "line": integer (new-file line number from the numbered file_context above). \
 MUST point to an added/modified line (starting with "+") directly responsible for the issue. \
-Do NOT point to context lines, import lines outside the hunk, or any line outside the hunk range.
+Prefer lines within the hunk's [start, end) range; you may reference nearby context lines if the
+issue is clearly caused by the diff.
 - "severity": "critical" | "medium" | "normal"
 - "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability|dependency
 - "problem": one sentence describing the issue and its root cause
@@ -171,9 +173,9 @@ For these issues use bug_category="style" and severity="normal".'''
 _ROUND1_PROMPT_TMPL = _R1_COMMON_HEADER + '''
 
 ## Current File Context
-The following is the content of `{path}` for reference. Do NOT report issues for lines outside the diff hunk.
-The context includes: (1) ±50 lines around the hunk, (2) the enclosing class/function scope label,
-(3) sibling method signatures of the enclosing class (or other top-level function signatures).
+The following is the content of `{path}` for reference. Lines are numbered — use these numbers when reporting issues.
+The context includes: (1) ±50 lines around the hunk, (2) enclosing class/function scope,
+(3) sibling method signatures.
 Use these to detect interface inconsistencies, missing overrides, and contract violations.
 {file_context}
 
@@ -198,7 +200,7 @@ If no issues: output []
 _ROUND1_BATCH_PROMPT_TMPL = _R1_COMMON_HEADER + '''
 
 ## Current File Context
-The following is the content of `{path}` for reference. Do NOT report issues for lines outside the diff hunks below.
+The following is the content of `{path}` for reference. Lines are numbered — use these numbers when reporting issues.
 The context includes: (1) the full file or a wide excerpt, (2) enclosing class/function scope labels,
 (3) sibling method signatures. Use these to detect interface inconsistencies, missing overrides, and contract violations.
 {file_context}
@@ -221,14 +223,38 @@ If no issues: output []
 
 # max total diff chars for a batched R1 call (leaves room for context + prompt overhead)
 
+_R1_LARGE_HUNK_OVERLAP = 30   # overlap lines between windows to avoid missing cross-boundary issues
+# Fixed overhead for non-diff slots in the R1 prompt (arch + spec + summary + file_context + template)
+_R1_PROMPT_OVERHEAD = 25000
+
+
+def _r1_diff_budget(arch_snippet: str, spec_snippet: str, summary_snippet: str,
+                    agent_instructions: str, file_context: str) -> int:
+    # Compute how many chars are left for diff content after all other R1 prompt slots.
+    overhead = (len(arch_snippet or '') + len(spec_snippet or '') + len(summary_snippet or '')
+                + len(agent_instructions or '') + len(file_context or '') + _R1_PROMPT_OVERHEAD)
+    return max(8000, SINGLE_CALL_CONTEXT_BUDGET - overhead)
+
+
 def _analyze_single_hunk(
     llm: Any, path: str, new_start: int, new_count: int, content: str,
     arch_snippet: str, spec_snippet: str, summary_snippet: str,
     clone_dir: Optional[str] = None, language: str = 'cn',
     symbol_index: Optional[Dict[str, str]] = None, agent_instructions: str = '',
 ) -> List[Dict[str, Any]]:
-    content = _truncate_hunk_content(content, 80)
     file_context = _read_file_context(clone_dir, path, new_start, new_start + new_count) if clone_dir else ''
+    diff_budget = _r1_diff_budget(arch_snippet, spec_snippet, summary_snippet, agent_instructions, file_context)
+    # Estimate window size in lines from budget (avg ~50 chars/line for diff)
+    window_lines = max(80, diff_budget // 50)
+    lines = content.splitlines(keepends=True)
+    # For large hunks, split into overlapping windows and merge results.
+    if len(lines) > window_lines:
+        return _analyze_large_hunk(
+            llm, path, new_start, new_count, lines, window_lines,
+            arch_snippet, spec_snippet, summary_snippet,
+            clone_dir, language, symbol_index, agent_instructions,
+        )
+    content = _truncate_hunk_content(content, window_lines)
     effective_arch = arch_snippet
     if symbol_index:
         sym_notes = _lookup_relevant_symbols(content, symbol_index)
@@ -240,12 +266,73 @@ def _analyze_single_hunk(
         arch_doc=effective_arch, review_spec=spec_snippet,
         file_context=file_context or '(not available)',
         path=path, start=new_start, end=new_start + new_count, content=content,
-        density_rule=ISSUE_DENSITY_RULE_TEXT,
+        density_rule=issue_density_rule(content),
     )
     items = _safe_llm_call(llm, prompt)
     return [n for item in items if (n := _normalize_comment_item(
         item, new_start=new_start, end_line=new_start + new_count, default_path=path,
     )) is not None]
+
+
+def _analyze_large_hunk(
+    llm: Any, path: str, new_start: int, new_count: int, lines: List[str], window_lines: int,
+    arch_snippet: str, spec_snippet: str, summary_snippet: str,
+    clone_dir: Optional[str], language: str,
+    symbol_index: Optional[Dict[str, str]], agent_instructions: str,
+) -> List[Dict[str, Any]]:
+    # Split a large hunk into overlapping windows and merge deduplicated results.
+    step = max(1, window_lines - _R1_LARGE_HUNK_OVERLAP)
+    all_items: List[Dict[str, Any]] = []
+    seen_keys: set = set()
+    total = len(lines)
+    win_idx = 0
+    while win_idx * step < total:
+        start_offset = win_idx * step
+        end_offset = min(start_offset + window_lines, total)
+        win_lines = lines[start_offset:end_offset]
+        win_content = ''.join(win_lines)
+        # Compute the actual file line numbers for this window
+        # Count leading context/removed lines to find the +line offset
+        added_before = sum(1 for ln in lines[:start_offset] if ln.startswith('+'))
+        win_start = new_start + added_before
+        win_count = sum(1 for ln in win_lines if ln.startswith('+'))
+        win_content_trunc = _truncate_hunk_content(win_content, window_lines)
+        file_context = _read_file_context(clone_dir, path, win_start, win_start + win_count) if clone_dir else ''
+        # Re-compute budget now that we have the actual file_context size
+        actual_budget = _r1_diff_budget(arch_snippet, spec_snippet, summary_snippet, agent_instructions, file_context)
+        actual_window = max(80, actual_budget // 50)
+        if actual_window < window_lines:
+            win_content_trunc = _truncate_hunk_content(win_content, actual_window)
+        effective_arch = arch_snippet
+        if symbol_index:
+            sym_notes = _lookup_relevant_symbols(win_content_trunc, symbol_index)
+            if sym_notes:
+                effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
+        prompt = _ROUND1_PROMPT_TMPL.format(
+            lang_instruction=_language_instruction(language),
+            pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
+            arch_doc=effective_arch, review_spec=spec_snippet,
+            file_context=file_context or '(not available)',
+            path=path, start=win_start, end=win_start + win_count, content=win_content_trunc,
+            density_rule=issue_density_rule(win_content_trunc),
+        )
+        items = _safe_llm_call(llm, prompt)
+        for item in items:
+            n = _normalize_comment_item(
+                item, new_start=new_start, end_line=new_start + new_count, default_path=path,
+            )
+            if n is None:
+                continue
+            dedup_key = (n.get('path'), n.get('line'), n.get('bug_category'), (n.get('problem') or '')[:60])
+            if dedup_key not in seen_keys:
+                seen_keys.add(dedup_key)
+                all_items.append(n)
+        win_idx += 1
+        lazyllm.LOG.info(
+            f'  [R1] Large hunk window {win_idx}/{math.ceil(total / step)}: '
+            f'{path}:{win_start}-{win_start + win_count} ({len(all_items)} issues so far)'
+        )
+    return all_items
 
 def _assign_batch_item(
     item: Dict[str, Any],
@@ -285,8 +372,11 @@ def _analyze_hunk_batch(
         sym_notes = _lookup_relevant_symbols(all_content, symbol_index)
         if sym_notes:
             effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
+    hunk_budget = max(500, _r1_diff_budget(arch_snippet, spec_snippet, summary_snippet,
+                                           agent_instructions, file_context) // max(1, len(hunks)))
+    hunk_budget_lines = max(80, hunk_budget // 50)
     hunk_blocks = [
-        f'<hunk path="{path}" start={s} end={s + c}>\n{_truncate_hunk_content(cnt, 80)}\n</hunk>'
+        f'<hunk path="{path}" start={s} end={s + c}>\n{_truncate_hunk_content(cnt, hunk_budget_lines)}\n</hunk>'
         for s, c, cnt in hunks
     ]
     prompt = _ROUND1_BATCH_PROMPT_TMPL.format(
@@ -294,7 +384,7 @@ def _analyze_hunk_batch(
         pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
         arch_doc=effective_arch, review_spec=spec_snippet,
         file_context=file_context or '(not available)',
-        path=path, hunks_content='\n\n'.join(hunk_blocks), density_rule=ISSUE_DENSITY_RULE_TEXT,
+        path=path, hunks_content='\n\n'.join(hunk_blocks), density_rule=issue_density_rule('\n'.join(hunk_blocks)),
     )
     items = _safe_llm_call(llm, prompt)
     results: Dict[int, List[Dict[str, Any]]] = {s: [] for s, _, _ in hunks}
@@ -343,7 +433,7 @@ def _r1_run_batch(
             results_by_idx[idx] = items
             if ckpt:
                 ckpt.save(cache_key_fn(path, new_start), items)
-            prog.update(f'{path}:{new_start} ({len(items)} issues)')
+            prog.update(f'{path}:{new_start}-{new_start + new_count - 1} ({len(items)} issues)')
     else:
         batch_hunks = [(hunks[i][1], hunks[i][2], hunks[i][3]) for i in batch_idxs]
         batch_results = _analyze_hunk_batch(
@@ -358,7 +448,8 @@ def _r1_run_batch(
                 results_by_idx[idx] = items
                 if ckpt:
                     ckpt.save(cache_key_fn(path, new_start), items)
-                prog.update(f'{path}:{new_start} ({len(items)} issues)')
+                _, new_start, new_count, _ = hunks[idx]
+                prog.update(f'{path}:{new_start}-{new_start + new_count - 1} ({len(items)} issues)')
 
 def _r1_cache_key(path: str, new_start: int) -> str:
     return f'r1_hunk_{re.sub(r"[^a-zA-Z0-9_]", "_", path)}_{new_start}'
@@ -373,12 +464,12 @@ def _r1_task_batch(
     arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=3000)
     uncached_idxs: List[int] = []
     for idx in idxs:
-        _, new_start, _, _ = hunks[idx]
+        _, new_start, new_count, _ = hunks[idx]
         cached = ckpt.get(_r1_cache_key(path, new_start)) if ckpt else None
         if cached is not None and use_cache:
             with lock:
                 results_by_idx[idx] = cached
-                prog.update(f'{path}:{new_start} (cached)')
+                prog.update(f'{path}:{new_start}-{new_start + new_count - 1} (cached)')
         else:
             if cached is None and not use_cache:
                 lazyllm.LOG.warning(f'Round 1: no cache for {path}:{new_start}, re-computing')
@@ -754,7 +845,7 @@ def _r2_group_review(
     files_block = '\n\n'.join(files_block_parts)
     round1_json = json.dumps(all_r1, ensure_ascii=False, indent=2) if all_r1 else '[]'
     arch_snippet = clip_text(arch_doc or '', 4000)
-    density_rule = ISSUE_DENSITY_RULE_TEXT
+    density_rule = issue_density_rule(files_block)
 
     prompt = _ROUND2_GROUP_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
@@ -1125,7 +1216,7 @@ def _r2_extract_issues(
         file_skeleton=file_skeleton[:3000] if file_skeleton else '(not available)',
         symbol_context=symbol_context[:3000] if symbol_context else '(none)',
         round1_json=r1_text, path=path, hunk_range=hunk_range, diff_text=diff_chunk,
-        density_rule=ISSUE_DENSITY_RULE_TEXT,
+        density_rule=issue_density_rule(diff_chunk),
     )
     items = _safe_llm_call(llm, prompt)
     result: List[Dict[str, Any]] = []
@@ -1429,7 +1520,7 @@ def _round3_global_analysis(
             arch_doc=arch_use,
             review_spec=batch_review_spec,
             files_block='\n\n'.join(f'## File: {path}\n```diff\n{fdiff}\n```' for path, fdiff in batch),
-            density_rule=ISSUE_DENSITY_RULE_TEXT,
+            density_rule=issue_density_rule('\n'.join(fdiff for _, fdiff in batch)),
         )
         items = _safe_llm_call(llm, prompt)
         batch_out: List[Dict[str, Any]] = []
@@ -1676,7 +1767,7 @@ def _round4_architect_review(
         agent_instructions=agent_instructions or '(not available)',
         arch_doc=arch_use, pr_summary=pr_summary[:800] if pr_summary else '(not available)',
         pr_design_doc=clip_text(pr_design_doc, 12000) if pr_design_doc else '(not available)',
-        diff_text=diff_use, density_rule=ISSUE_DENSITY_RULE_TEXT,
+        diff_text=diff_use, density_rule=issue_density_rule(diff_use),
     )
     items = _safe_llm_call(llm, prompt)
     result = [n for item in (items if isinstance(items, list) else [])
@@ -1744,7 +1835,7 @@ def _round4_combined_review(
             lang_instruction=_language_instruction(language),
             agent_instructions=agent_instructions or '(not available)',
             arch_doc=arch_use, pr_summary=pr_summary[:900] if pr_summary else '(not available)',
-            diff_text=diff_use, density_rule=ISSUE_DENSITY_RULE_TEXT,
+            diff_text=diff_use, density_rule=issue_density_rule(diff_use),
         )
         raw = _safe_llm_call_text(llm, prompt)
         obj = _parse_llm_json_object(raw or '')

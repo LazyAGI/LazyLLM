@@ -119,6 +119,21 @@ def _parse_json_with_repair(text: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
+    # Attempt to salvage a truncated JSON array: find the last complete object and close the array.
+    last_obj_end = text.rfind('}')
+    if last_obj_end != -1:
+        candidate = text[:last_obj_end + 1]
+        # strip trailing comma/whitespace and close the array
+        candidate = candidate.rstrip().rstrip(',') + ']'
+        # ensure it starts with '['
+        if not candidate.lstrip().startswith('['):
+            bracket = candidate.find('{')
+            if bracket != -1:
+                candidate = '[' + candidate[bracket:]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
     try:
         from json_repair import repair_json
         repaired = repair_json(text, return_objects=True)
@@ -167,8 +182,15 @@ def _llm_call_with_retry(llm: Any, prompt: str, parse_json: bool = True) -> Any:
                         flat.append(item)
                 return flat
             return [parsed] if isinstance(parsed, dict) else []
-        lazyllm.LOG.warning(f'JSON parse/repair failed. Raw response snippet: {raw_response[:300]}')
-        return []
+        # JSON parse failed — could be a truncated response; retry if budget allows
+        if delay is None:
+            lazyllm.LOG.warning(f'JSON parse/repair failed after all retries. Raw snippet: {raw_response[:300]}')
+            return []
+        lazyllm.LOG.warning(
+            f'JSON parse failed (attempt {attempt + 1}/{len(delays) - 1}), retrying. '
+            f'Raw snippet: {raw_response[:120]}'
+        )
+        time.sleep(delay)
 
     # unreachable, but satisfies type checker
     raise RuntimeError(f'LLM call gave up after retries: {last_llm_exc}')
@@ -250,7 +272,11 @@ def _normalize_comment_item(
     except (TypeError, ValueError):
         return None
     if end_line is not None:
-        if not (new_start <= line < end_line):
+        # Allow a generous tolerance: LLM may reference lines slightly outside the hunk
+        # (e.g. from file_context). Hard-reject only clearly out-of-range lines.
+        hunk_size = max(end_line - new_start, 1)
+        tolerance = max(50, hunk_size // 2)
+        if not (new_start - tolerance <= line < end_line + tolerance):
             return None
     elif line <= 0:
         return None

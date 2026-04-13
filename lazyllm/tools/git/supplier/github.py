@@ -151,26 +151,79 @@ class GitHub(LazyLLMGitBase):
         return {'success': True, 'list': out}
 
     def get_pr_diff(self, number: int) -> Dict[str, Any]:
-        r = self._req('GET', f'/pulls/{number}', headers={'Accept': 'application/vnd.github.v3.diff'})
-        if r.status_code != 200:
-            return self._fail(r)
-        return {'success': True, 'diff': r.text}
+        # GitHub's diff endpoint truncates at ~3000 lines for large PRs.
+        # Use /files (paginated) to fetch each file's patch and assemble a proper unified diff.
+        self._require_repo()
+        files = []
+        url: Optional[str] = self._url(f'/pulls/{number}/files')
+        params: Dict[str, Any] = {'per_page': 100}
+        while url:
+            r = self._session.get(url, params=params)
+            params = {}
+            if r.status_code != 200:
+                return self._fail(r)
+            files.extend(r.json())
+            link = r.headers.get('Link', '')
+            url = None
+            for part in link.split(','):
+                part = part.strip()
+                if 'rel="next"' in part:
+                    url = part.split(';')[0].strip().strip('<>')
+                    break
+        # Assemble unified diff from per-file patches
+        diff_parts = []
+        for f in files:
+            filename = f.get('filename', '')
+            prev = f.get('previous_filename', filename)
+            patch = f.get('patch', '')
+            status = f.get('status', '')
+            if status == 'removed':
+                diff_parts.append(f'diff --git a/{prev} b/{filename}')
+                diff_parts.append(f'--- a/{prev}')
+                diff_parts.append('+++ /dev/null')
+            elif status == 'added':
+                diff_parts.append(f'diff --git a/{filename} b/{filename}')
+                diff_parts.append('--- /dev/null')
+                diff_parts.append(f'+++ b/{filename}')
+            elif status == 'renamed':
+                diff_parts.append(f'diff --git a/{prev} b/{filename}')
+                diff_parts.append(f'--- a/{prev}')
+                diff_parts.append(f'+++ b/{filename}')
+            else:
+                diff_parts.append(f'diff --git a/{filename} b/{filename}')
+                diff_parts.append(f'--- a/{filename}')
+                diff_parts.append(f'+++ b/{filename}')
+            if patch:
+                diff_parts.append(patch)
+        return {'success': True, 'diff': '\n'.join(diff_parts) + '\n'}
 
     def list_review_comments(self, number: int) -> Dict[str, Any]:
-        r = self._req('GET', f'/pulls/{number}/comments')
-        if r.status_code != 200:
-            return self._fail(r)
+        self._require_repo()
         out = []
-        for c in r.json():
-            out.append(ReviewCommentInfo(
-                id=c['id'],
-                body=c.get('body', ''),
-                path=c.get('path', ''),
-                line=c.get('line'),
-                side=c.get('side', 'RIGHT'),
-                user=c.get('user', {}).get('login', ''),
-                raw=c,
-            ))
+        url: Optional[str] = self._url(f'/pulls/{number}/comments')
+        params: Dict[str, Any] = {'per_page': 100}
+        while url:
+            r = self._session.get(url, params=params)
+            params = {}
+            if r.status_code != 200:
+                return self._fail(r)
+            for c in r.json():
+                out.append(ReviewCommentInfo(
+                    id=c['id'],
+                    body=c.get('body', ''),
+                    path=c.get('path', ''),
+                    line=c.get('line'),
+                    side=c.get('side', 'RIGHT'),
+                    user=c.get('user', {}).get('login', ''),
+                    raw=c,
+                ))
+            link = r.headers.get('Link', '')
+            url = None
+            for part in link.split(','):
+                part = part.strip()
+                if 'rel="next"' in part:
+                    url = part.split(';')[0].strip().strip('<>')
+                    break
         return {'success': True, 'comments': out}
 
     def create_review_comment(self, number: int, body: str, path: str,

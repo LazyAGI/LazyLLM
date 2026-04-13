@@ -4,7 +4,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 # Single-request context budget (chars). Tune if the backend uses token limits.
-SINGLE_CALL_CONTEXT_BUDGET = 80000
+SINGLE_CALL_CONTEXT_BUDGET = 120000
 
 # Reserve for system prompt + arch + metadata when packing diff into one call
 R1_DIFF_BUDGET = SINGLE_CALL_CONTEXT_BUDGET - 25000
@@ -33,6 +33,18 @@ ISSUE_DENSITY_RULE_TEXT = (
     f'At most {ISSUE_DENSITY_MAX_PER_BLOCK} issues per {ISSUE_DENSITY_LINE_BLOCK} effective diff lines '
     '(lines starting with + or -, excluding +++/--- file headers); if exceeded, keep highest-severity first.'
 )
+
+
+def issue_density_rule(diff_text: str) -> str:
+    # Pre-compute the exact issue cap from the diff and inject it directly into the prompt,
+    # so the LLM doesn't have to count lines itself.
+    n = max_issues_for_diff(diff_text)
+    eff_lines = effective_diff_line_count(diff_text)
+    return (
+        f'Output AT MOST {n} issues total for this diff '
+        f'({eff_lines} effective diff lines × {ISSUE_DENSITY_MAX_PER_BLOCK}/{ISSUE_DENSITY_LINE_BLOCK} cap). '
+        f'If you find more, keep the highest-severity ones first.'
+    )
 
 
 def estimate_prompt_chars(*parts: str) -> int:
