@@ -3,6 +3,7 @@
 #include <regex>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "utils.hpp"
@@ -91,4 +92,17 @@ TEST(utils, any_to_string_formats_vector_metadata_values_with_brackets) {
     EXPECT_EQ(
         lazyllm::any_to_string(lazyllm::MetadataVType(std::vector<double>{1.5, 2.0})),
         "[1.5,2]");
+}
+
+TEST(utils, any_to_string_formats_none_metadata_value) {
+    EXPECT_EQ(lazyllm::any_to_string(lazyllm::MetadataVType(std::nullopt)), "None");
+}
+
+TEST(utils, any_to_string_formats_string_map_metadata_values) {
+    EXPECT_EQ(
+        lazyllm::any_to_string(lazyllm::MetadataVType(std::unordered_map<std::string, std::string>{
+            {"lang", "en"}, {"type", "text"}
+        })),
+        "{lang:en,type:text}"
+    );
 }

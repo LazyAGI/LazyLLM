@@ -25,10 +25,8 @@ class MetadataMode(str, Enum):
 
 @cpp_class
 class DocNodeCore:
-    def __init__(self,
-        text: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        uid: Optional[str] = None
+    def __init__(
+        self, text: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None, uid: Optional[str] = None
     ):
         self._uid: str = uid or str(uuid.uuid4())
         self._text: str = text or ''

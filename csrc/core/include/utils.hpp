@@ -10,6 +10,8 @@
 #include <set>
 #include <variant>
 #include <any>
+#include <optional>
+#include <unordered_map>
 
 namespace lazyllm {
 
@@ -131,11 +133,27 @@ inline std::string VectorToString(const std::vector<double>& values) {
     out += "]";
     return out;
 }
-using MetadataVType = std::variant<
+
+inline std::string MapToString(const std::unordered_map<std::string, std::string>& values) {
+    if (values.empty()) return "{}";
+    std::vector<std::pair<std::string, std::string>> kv(values.begin(), values.end());
+    std::sort(kv.begin(), kv.end(), [](const auto& l, const auto& r) { return l.first < r.first; });
+    std::string out = "{";
+    for (size_t i = 0; i + 1 < kv.size(); ++i) {
+        out += kv[i].first + ":" + kv[i].second + ",";
+    }
+    out += kv.back().first + ":" + kv.back().second;
+    out += "}";
+    return out;
+}
+
+using MetadataVariantType = std::variant<
     std::string, std::vector<std::string>,
     int, std::vector<int>,
-    double, std::vector<double>
+    double, std::vector<double>,
+    std::unordered_map<std::string, std::string>
 >;
+using MetadataVType = std::optional<MetadataVariantType>;
 std::string any_to_string(const MetadataVType& value);
 
 inline bool is_adjacent(const std::string_view& left, const std::string_view& right) {

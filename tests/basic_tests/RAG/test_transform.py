@@ -261,8 +261,6 @@ class TestMarkdownSplitter:
         ]
 
     def test_merge(self):
-        if lazyllm.config.cpp_switch:
-            pytest.skip('C++ metadata only supports MetadataVType; this case uses None metadata values.')
         md_text = '\n\n# LinuxBoot on Ampere Mt. Jade Platform' \
                   '\nThe Ampere Altra Family processor based Mt. Jade platform is a high-performance ARM server platform, offering up to 256 processor cores in a ' \
                   'dual socket configuration. The Tianocore EDK2 firmware for the Mt. Jade platform has been fully upstreamed to the tianocore/edk2-platforms repository, '\

@@ -65,16 +65,26 @@ lazyllm::MetadataMode ParseMetadataMode(const py::object& mode) {
 }
 
 lazyllm::MetadataVType PyToMetadataValue(const py::handle& value) {
-    if (value.is_none()) {
-        throw py::type_error(
-            "Unsupported metadata value type: None. "
-            "Only str/int/float and list[str]/list[int]/list[float] are allowed."
-        );
-    }
+    if (value.is_none()) return std::nullopt;
     if (py::isinstance<py::bool_>(value)) return static_cast<int>(value.cast<bool>());
     if (py::isinstance<py::int_>(value)) return value.cast<int>();
     if (py::isinstance<py::float_>(value)) return value.cast<double>();
     if (py::isinstance<py::str>(value)) return value.cast<std::string>();
+    if (py::isinstance<py::dict>(value)) {
+        py::dict d = value.cast<py::dict>();
+        std::unordered_map<std::string, std::string> out;
+        out.reserve(d.size());
+        for (auto item : d) {
+            if (!py::isinstance<py::str>(item.first) || !py::isinstance<py::str>(item.second)) {
+                throw py::type_error(
+                    "Unsupported metadata dict value type. "
+                    "Only dict[str, str] is allowed."
+                );
+            }
+            out.emplace(py::cast<std::string>(item.first), py::cast<std::string>(item.second));
+        }
+        return out;
+    }
 
     if (py::isinstance<py::sequence>(value) && !py::isinstance<py::str>(value)) {
         py::sequence seq = value.cast<py::sequence>();
@@ -118,11 +128,12 @@ lazyllm::MetadataVType PyToMetadataValue(const py::handle& value) {
     }
     throw py::type_error(
         "Unsupported metadata value type. "
-        "Only str/int/float and list[str]/list[int]/list[float] are allowed."
+        "Only None/str/int/float/dict[str,str] and list[str]/list[int]/list[float] are allowed."
     );
 }
 
 py::object MetadataValueToPy(const lazyllm::MetadataVType& value) {
+    if (!value.has_value()) return py::none();
     return std::visit([](const auto& v) -> py::object {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, std::string>) return py::str(v);
@@ -131,8 +142,9 @@ py::object MetadataValueToPy(const lazyllm::MetadataVType& value) {
         if constexpr (std::is_same_v<T, std::vector<std::string>>) return py::cast(v);
         if constexpr (std::is_same_v<T, std::vector<int>>) return py::cast(v);
         if constexpr (std::is_same_v<T, std::vector<double>>) return py::cast(v);
+        if constexpr (std::is_same_v<T, std::unordered_map<std::string, std::string>>) return py::cast(v);
         return py::none();
-    }, value);
+    }, *value);
 }
 
 } // namespace lazyllm::pybind_utils
