@@ -8,7 +8,6 @@ class TestDocument:
         self.embed_model1 = lazyllm.TrainableModule('bge-m3').start()
         self.embed_model2 = lazyllm.TrainableModule('bge-m3').start()
 
-        Document(dataset_path='rag_master')._impl._dlm.release()
         document1 = Document(dataset_path='rag_master', embed=self.embed_model1)
         document1.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
         retriever1 = Retriever(document1, group_name='sentences', similarity='cosine', topk=10)

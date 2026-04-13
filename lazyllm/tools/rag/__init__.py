@@ -4,7 +4,6 @@ check_dependency_by_group('rag')
 
 # flake8: noqa: E402
 from .document import Document
-from .doc_manager import DocManager  # Legacy compatibility export; DocManager itself is deprecated.
 from .doc_service import DocServer
 from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever, ContextRetriever, WeightedRetriever, PriorityRetriever
@@ -24,7 +23,7 @@ from .data_type import DataType
 from .index_base import IndexBase
 from .store import LazyLLMStoreBase
 from .doc_to_db import SchemaExtractor
-from .utils import DocListManager  # Legacy compatibility export; DocListManager itself is deprecated.
+from .utils import DocListManager  # noqa: F401 — Legacy compat; DocListManager is @deprecated.
 
 
 add_post_action_for_default_reader = SimpleDirectoryReader.add_post_action_for_default_reader
@@ -32,7 +31,6 @@ add_post_action_for_default_reader = SimpleDirectoryReader.add_post_action_for_d
 __all__ = [
     'add_post_action_for_default_reader',
     'Document',
-    'DocManager',
     'DocListManager',
     'DocServer',
     'GraphDocument',
