@@ -23,7 +23,7 @@ from .data_type import DataType
 from .index_base import IndexBase
 from .store import LazyLLMStoreBase
 from .doc_to_db import SchemaExtractor
-from .utils import DocListManager  # noqa: F401 — Legacy compat; DocListManager is @deprecated.
+
 
 
 add_post_action_for_default_reader = SimpleDirectoryReader.add_post_action_for_default_reader
@@ -31,7 +31,6 @@ add_post_action_for_default_reader = SimpleDirectoryReader.add_post_action_for_d
 __all__ = [
     'add_post_action_for_default_reader',
     'Document',
-    'DocListManager',
     'DocServer',
     'GraphDocument',
     'UrlGraphDocument',
