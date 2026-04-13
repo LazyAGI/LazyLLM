@@ -184,3 +184,9 @@ def run_hooks(hook_objs, phase: str, *phase_args):
             else:
                 LOG.warning(f'Hook `{type(hook_obj).__name__}` {phase} failed and will be skipped: {e}')
     _raise_hook_phase_errors(phase, strict_errors)
+
+
+try:
+    from .tracing.hook import resolve_tracing_hooks  # noqa: F401, E402
+except ImportError:
+    pass
