@@ -149,14 +149,10 @@ def review(  # noqa: C901
         _Progress('Pre-round: fetching diff').done('loaded from checkpoint')
 
     hunks = _parse_unified_diff(diff_text)
-    truncated_hunks = False
-    if max_hunks and len(hunks) > max_hunks:
-        hunks = hunks[:max_hunks]
-        truncated_hunks = True
     prog_main.update(f'diff parsed: {len(hunks)} hunks')
 
     # build diff stats and decide review strategy
-    diff_stats = _compute_diff_stats(diff_text, hunks, truncated_diff, truncated_hunks)
+    diff_stats = _compute_diff_stats(diff_text, hunks, truncated_diff, False)
     strategy = _decide_review_strategy(diff_stats)
 
     # build meta warning issues for truncation
@@ -170,17 +166,6 @@ def review(  # noqa: C901
             'line': 0,
             'problem': f'Review may be incomplete: diff was truncated at {max_diff_chars} chars.',
             'suggestion': 'Consider increasing max_diff_chars or splitting the PR.',
-            'source': 'meta',
-        })
-    if truncated_hunks:
-        meta_warnings.append({
-            'type': 'meta',
-            'severity': 'normal',
-            'bug_category': 'maintainability',
-            'path': '',
-            'line': 0,
-            'problem': f'Review may be incomplete: only first {max_hunks} hunks were analyzed.',
-            'suggestion': 'Consider increasing max_hunks or splitting the PR.',
             'source': 'meta',
         })
 
@@ -262,7 +247,7 @@ def review(  # noqa: C901
         'r2_files_skipped': r2_metrics.get('r2_files_skipped', 0),
         'r2_chunks_total': r2_metrics.get('r2_chunks_total', 0),
         'truncated_diff_flag': truncated_diff,
-        'truncated_hunks_flag': truncated_hunks,
+        'truncated_hunks_flag': False,  # hunks are now processed in windows, no truncation
         'lint_issues_count': len(lint_issues),
     }
 

@@ -20,6 +20,13 @@ TOTAL_CALL_BUDGET = 60
 R2_MAX_FILES = 20
 R2_MAX_CHUNKS_PER_FILE = 3
 
+# R2 unit diff budget: max combined diff chars per review unit (anchor + absorbed small files)
+R2_UNIT_DIFF_BUDGET = 40000
+
+# R1 window limits: split large hunk lists into windows to avoid truncation
+R1_WINDOW_MAX_HUNKS = 30
+R1_WINDOW_MAX_DIFF_CHARS = 60000
+
 ISSUE_DENSITY_RULE_TEXT = (
     f'At most {ISSUE_DENSITY_MAX_PER_BLOCK} issues per {ISSUE_DENSITY_LINE_BLOCK} effective diff lines '
     '(lines starting with + or -, excluding +++/--- file headers); if exceeded, keep highest-severity first.'
@@ -116,10 +123,12 @@ class BudgetManager:
     #   # result values are clipped strings ready for prompt assembly
 
     def __init__(self, total: int = SINGLE_CALL_CONTEXT_BUDGET, total_calls: int = TOTAL_CALL_BUDGET) -> None:
+        import threading
         self._total = total
         self._total_calls = total_calls
         self._used_calls = 0
         self._slots: Dict[str, Tuple[int, int]] = {}  # name -> (priority, max_chars)
+        self._lock = threading.Lock()
 
     def register(self, name: str, priority: int, max_chars: int) -> 'BudgetManager':
         self._slots[name] = (priority, max_chars)
@@ -127,13 +136,15 @@ class BudgetManager:
 
     def consume_call(self, n: int = 1) -> bool:
         # Returns True if budget allows; False if over limit (does not consume on False).
-        if self._used_calls + n > self._total_calls:
-            return False
-        self._used_calls += n
-        return True
+        with self._lock:
+            if self._used_calls + n > self._total_calls:
+                return False
+            self._used_calls += n
+            return True
 
     def remaining_calls(self) -> int:
-        return max(0, self._total_calls - self._used_calls)
+        with self._lock:
+            return max(0, self._total_calls - self._used_calls)
 
     def allocate_calls(self, stage: str, default: int = 1) -> int:
         # Returns how many calls are available for a stage (capped at remaining budget).

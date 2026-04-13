@@ -25,6 +25,8 @@ from .pre_analysis import (
 )
 from .constants import (
     SINGLE_CALL_CONTEXT_BUDGET, R1_DIFF_BUDGET, ISSUE_DENSITY_RULE_TEXT,
+    R1_WINDOW_MAX_HUNKS, R1_WINDOW_MAX_DIFF_CHARS,
+    R2_UNIT_DIFF_BUDGET,
     max_issues_for_diff, cap_issues_by_severity, clip_text, clip_diff_by_hunk_budget,
     compress_diff_for_agent_heuristic, effective_diff_line_count,
 )
@@ -55,12 +57,17 @@ Categories:
 - logic: boundary conditions, null values, wrong branches
 - type: type mismatch, implicit conversion
 - safety: injection, privilege escalation, sensitive data
-- exception: missing/wrong error handling
+- exception: missing/wrong error handling; errors from multiple operations that should be collected \
+and re-raised together instead of failing on the first one
 - performance: redundant computation, large objects, inefficient loops
 - concurrency: race condition, deadlock
-- design: wrong abstraction, bad inheritance
+- design: wrong abstraction, bad inheritance, new class/interface that violates existing protocol patterns \
+(e.g. accepts whole object instead of a narrow interface), unnecessary coupling between modules
 - style: naming, comments, formatting
-- maintainability: duplicate code, high coupling'''
+- maintainability: duplicate code, high coupling, code/config placed in wrong module (violates module \
+ownership rules — e.g. tracing config in top-level configs.py instead of tracing/)
+- dependency: new hard dependency that should be optional/extra (e.g. added to install_requires but \
+only used by an optional feature; should be in extras_require or optional-dependencies instead)'''
 
 _R1_STRICT_RULES = '''\
 STRICT RULES — violations will be rejected:
@@ -79,7 +86,11 @@ general-purpose utilities even if they perform similar operations.
 "breaking change" without first verifying (via file_context or your knowledge of the diff) \
 that subclass implementations have NOT been updated. Only report if you have evidence that \
 at least one concrete subclass is out of sync.
-6. {density_rule}'''
+6. Do NOT report top-level side-effects (e.g. sys.path modification, module-level function calls) \
+as bugs when the file is an entry-point script. A file is an entry-point script if its name is \
+server.py, worker.py, main.py, __main__.py, or if the diff contains an \
+`if __name__ == "__main__":` block. Top-level setup code in such files is intentional.
+7. {density_rule}'''
 
 # Rules 1-5 are shared across all rounds (density_rule is round-specific and injected separately)
 _SHARED_STRICT_RULES_PREFIX = '''\
@@ -98,14 +109,20 @@ general-purpose utilities even if they perform similar operations.
 5. If the diff changes an abstract method or base-class interface, do NOT report it as a \
 "breaking change" without first verifying (via file_context or your knowledge of the diff) \
 that subclass implementations have NOT been updated. Only report if you have evidence that \
-at least one concrete subclass is out of sync.'''
+at least one concrete subclass is out of sync.
+6. Do NOT report top-level side-effects (e.g. sys.path modification, module-level function calls) \
+as bugs when the file is an entry-point script. A file is an entry-point script if its name is \
+server.py, worker.py, main.py, __main__.py, or if the diff contains an \
+`if __name__ == "__main__":` block. Top-level setup code in such files is intentional.'''
 
 _R1_ISSUE_FIELDS = '''\
 For EVERY issue found, output a JSON object with:
 - "path": "{path}"
-- "line": integer (new-file line number, must be in [{start}, {end}))
+- "line": integer (new-file line number, must be in [{start}, {end})). \
+MUST point to an added/modified line (starting with "+") directly responsible for the issue. \
+Do NOT point to context lines, import lines outside the hunk, or any line outside [{start}, {end}).
 - "severity": "critical" | "medium" | "normal"
-- "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability
+- "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability|dependency
 - "problem": one sentence describing the issue and its root cause
 - "suggestion": concrete fix. Wrap ALL code snippets with markdown code fences using the correct language tag \
 for this file (e.g., ```python\\n...\\n``` for .py files). \
@@ -114,9 +131,11 @@ When showing old vs new code, use a unified diff block (```diff\\n- old lines\\n
 _R1_ISSUE_FIELDS_BATCH = '''\
 For EVERY issue found, output a JSON object with:
 - "path": "{path}"
-- "line": integer (new-file line number, must fall within the hunk's [start, end) range)
+- "line": integer (new-file line number, must fall within the hunk's [start, end) range). \
+MUST point to an added/modified line (starting with "+") directly responsible for the issue. \
+Do NOT point to context lines, import lines outside the hunk, or any line outside the hunk range.
 - "severity": "critical" | "medium" | "normal"
-- "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability
+- "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability|dependency
 - "problem": one sentence describing the issue and its root cause
 - "suggestion": concrete fix. Wrap ALL code snippets with markdown code fences using the correct language tag \
 for this file (e.g., ```python\\n...\\n``` for .py files). \
@@ -448,6 +467,10 @@ Repo cloned to: {clone_dir}
 
 Use tools (search_in_files, read_file, list_dir, shell_tool) to explore callers/base classes.
 Focus: interface inconsistencies, abstraction violations, missing symmetric updates, wrong arg types.
+Also check: if the diff introduces a new class or interface, verify it follows the project's existing
+protocol/abstraction patterns (e.g. does it accept a narrow interface instead of a whole object?
+does it belong in the correct module per Module Ownership Rules in the architecture doc?
+is a new hard dependency that should be optional/extra?).
 Limit tool calls to at most 3. Once you have enough information, stop calling tools immediately.
 
 IMPORTANT: Your final response MUST be ONLY a JSON array (no explanation, no markdown wrapper).
@@ -676,6 +699,9 @@ Review ALL diffs above together. Focus on cross-file issues within this group:
 2. Missing symmetric updates — one file updated but its counterpart in the group is not
 3. Shared state or dependency violations between files in this group
 4. Design breakage visible only when viewing the group together
+5. Protocol violations — new class/interface that accepts a whole object instead of a narrow interface, \
+or violates module ownership rules (e.g. config defined outside its feature module, \
+new hard dependency that should be optional/extra)
 
 For EVERY issue found, output a JSON object with:
 - "path": exact file path from the diffs above
@@ -755,6 +781,145 @@ def _r2_group_review(
     if ckpt:
         ckpt.save(group_key, items)
     all_results.extend(items)
+
+
+def _build_r2_review_units(
+    file_diffs: Dict[str, str],
+    large_file_threshold: int,
+    max_files: int,
+    unit_diff_budget: int = R2_UNIT_DIFF_BUDGET,
+) -> Tuple[List[Dict[str, Any]], List[str]]:
+    # Returns (units, skipped_files).
+    # Each unit: {'anchor': path_or_None, 'files': [path, ...], 'diff': combined_diff_str}
+    # anchor units: large file + absorbed related small files (within budget)
+    # group units: remaining small files grouped by directory (within budget)
+    def diff_chars(p: str) -> int:
+        return len(file_diffs.get(p, ''))
+
+    sorted_files = sorted(file_diffs.keys(), key=diff_chars, reverse=True)
+    anchor_files = [p for p in sorted_files if diff_chars(p) > large_file_threshold]
+    small_files = [p for p in sorted_files if diff_chars(p) <= large_file_threshold]
+
+    total = anchor_files + small_files
+    if len(total) > max_files:
+        skipped = set(total[max_files:])
+        anchor_files = [p for p in anchor_files if p not in skipped]
+        small_files = [p for p in small_files if p not in skipped]
+    else:
+        skipped = set()
+
+    absorbed: set = set()
+    units: List[Dict[str, Any]] = []
+
+    for anchor in anchor_files:
+        related = _find_related_small_files(
+            file_diffs[anchor], [p for p in small_files if p not in absorbed], file_diffs
+        )
+        unit_files = [anchor]
+        unit_diff = file_diffs[anchor]
+        for rel in related:
+            candidate = unit_diff + '\n' + file_diffs[rel]
+            if len(candidate) <= unit_diff_budget:
+                unit_files.append(rel)
+                unit_diff = candidate
+                absorbed.add(rel)
+        units.append({'anchor': anchor, 'files': unit_files, 'diff': unit_diff})
+
+    # remaining small files: group by directory, merge within budget
+    remaining = [p for p in small_files if p not in absorbed]
+    dir_map: Dict[str, List[str]] = {}
+    for p in remaining:
+        dir_map.setdefault(os.path.dirname(p) or '.', []).append(p)
+
+    for dir_files in dir_map.values():
+        cur_files: List[str] = []
+        cur_diff = ''
+        for p in dir_files:
+            candidate = (cur_diff + '\n' + file_diffs[p]) if cur_diff else file_diffs[p]
+            if cur_files and len(candidate) > unit_diff_budget:
+                units.append({'anchor': None, 'files': cur_files, 'diff': cur_diff})
+                cur_files, cur_diff = [p], file_diffs[p]
+            else:
+                cur_files.append(p)
+                cur_diff = candidate
+        if cur_files:
+            units.append({'anchor': None, 'files': cur_files, 'diff': cur_diff})
+
+    return units, list(skipped)
+
+
+def _r2_unit_agent_review(
+    llm: Any,
+    unit: Dict[str, Any],
+    r1_by_file: Dict[str, List[Dict[str, Any]]],
+    shared_context: str,
+    arch_doc: str,
+    pr_summary: str,
+    clone_dir: str,
+    symbol_cache: Dict[str, Any],
+    tools: Any,
+    language: str,
+    ckpt: Optional[Any],
+    all_results: List[Dict[str, Any]],
+    all_discarded: set,
+    use_cache: bool,
+    agent_instructions: str,
+    max_chunks: int,
+) -> None:
+    files = unit['files']
+    anchor = unit['anchor']
+    unit_diff = unit['diff']
+
+    # checkpoint key: anchor file or sorted group files
+    if anchor:
+        safe = re.sub(r'[^a-zA-Z0-9_]', '_', anchor)
+        r2_key = f'r2_file_{safe}'
+        r2_disc_key = f'r2_disc_{safe}'
+    else:
+        safe = re.sub(r'[^a-zA-Z0-9]', '_', '_'.join(sorted(files)))[:80]
+        r2_key = f'r2_group_{safe}'
+        r2_disc_key = f'r2_disc_group_{safe}'
+
+    cached = ckpt.get(r2_key) if ckpt else None
+    if cached is not None and use_cache:
+        all_results.extend(cached)
+        cached_disc = (ckpt.get(r2_disc_key) if ckpt else None) or []
+        all_discarded.update(cached_disc)
+        lazyllm.LOG.info(f'  [R2] {files} loaded from cache ({len(cached)} issues)')
+        return
+
+    # collect agent context using the primary file (anchor or first file)
+    primary = anchor or files[0]
+    agent_diff = compress_diff_for_agent_heuristic(unit_diff, _R2_AGENT_DIFF_BUDGET)
+    try:
+        symbol_context = _r2_build_file_context(llm, primary, agent_diff, clone_dir, tools, language)
+    except Exception as e:
+        if 'timed out' in str(e):
+            raise
+        lazyllm.LOG.warning(f'Round 2 unit context failed for {files}: {e}')
+        symbol_context = ''
+
+    # chunk-based issue extraction over the combined unit diff
+    chunks = _split_file_diff_into_chunks(unit_diff, _R2_EXTRACT_DIFF_CHUNK)[:max_chunks]
+    r1_issues = [c for f in files for c in r1_by_file.get(f, [])]
+    items: List[Dict[str, Any]] = []
+    discarded: set = set()
+    for hunk_range, diff_chunk in chunks:
+        filtered_ctx = _filter_symbol_context_for_chunk(symbol_context, diff_chunk)
+        new_items, new_disc = _r2_extract_issues(
+            llm, primary, hunk_range, diff_chunk,
+            filtered_ctx, shared_context, arch_doc, pr_summary,
+            r1_issues, language, agent_instructions,
+        )
+        items.extend(new_items)
+        discarded.update(new_disc)
+
+    if ckpt:
+        ckpt.save(r2_key, items)
+        ckpt.save(r2_disc_key, list(discarded))
+    all_results.extend(items)
+    all_discarded.update(discarded)
+
 
 _R2_CONTEXT_COLLECT_PROMPT_TMPL = '''\
 You are a code analysis assistant. Your ONLY task is to collect context about the symbols changed \
@@ -1095,10 +1260,9 @@ def _round2_agent_review(
         for p in {c.get('path') or '' for c in round1}
     }
 
-    # classify files into large (chunk mode) and small (group mode)
-    large_files, small_files, skipped_files = _classify_files_for_r2(
-        file_diffs, large_threshold, max_files
-    )
+    # build unified review units: anchor files absorb related small files,
+    # remaining small files are grouped by directory; all units use Agent
+    units, skipped_files = _build_r2_review_units(file_diffs, large_threshold, max_files)
     r2_metrics['r2_files_skipped'] = len(skipped_files)
     if skipped_files:
         lazyllm.LOG.warning(
@@ -1109,46 +1273,24 @@ def _round2_agent_review(
     symbol_cache: Dict[str, Any] = {}
     tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache)
 
-    prog = _Progress('Round 2: per-file agent review', len(large_files) + len(small_files))
+    prog = _Progress('Round 2: unified agent review', len(units))
     all_results: List[Dict[str, Any]] = []
     all_discarded: set = set()
+    use_cache = ckpt.should_use_cache(ReviewStage.R2) if ckpt else True
 
-    # --- chunk mode: large files (with related small files merged in) ---
-    remaining_small = list(small_files)
-    for path in large_files:
-        fdiff = file_diffs[path]
-        # find small files related to this large file via imports
-        related = _find_related_small_files(fdiff, remaining_small, file_diffs)
-        for rp in related:
-            remaining_small.remove(rp)
-        # build related diff snippet to append to symbol_context
-        related_diff_parts = [f'# Related file: {rp}\n{file_diffs[rp]}' for rp in related]
-        related_diff_snippet = clip_text('\n\n'.join(related_diff_parts), _R2_RELATED_DIFF_BUDGET)
-
-        r1_issues = r1_by_file.get(path, [])
-        _r2_process_file_chunk(
-            llm, path, fdiff, r1_issues, shared_context, arch_doc, pr_summary,
+    for unit in units:
+        _r2_unit_agent_review(
+            llm, unit, r1_by_file, shared_context, arch_doc, pr_summary,
             clone_dir, symbol_cache, tools, language, ckpt, all_results, all_discarded,
-            use_cache=ckpt.should_use_cache(ReviewStage.R2) if ckpt else True,
-            agent_instructions=agent_instructions,
+            use_cache=use_cache, agent_instructions=agent_instructions,
             max_chunks=max_chunks,
-            related_diff_snippet=related_diff_snippet,
         )
-        r2_metrics['r2_files_chunk'] += 1
-        prog.update(f'{path} [chunk] ({len(r1_issues)} r1 issues, {len(related)} related)')
-
-    # --- group mode: remaining small files ---
-    if remaining_small:
-        groups = _r2_group_files(remaining_small)
-        use_cache = ckpt.should_use_cache(ReviewStage.R2) if ckpt else True
-        for group in groups:
-            _r2_group_review(
-                llm, group, file_diffs, r1_by_file, shared_context, arch_doc, pr_summary,
-                language, ckpt, all_results, all_discarded,
-                use_cache=use_cache, agent_instructions=agent_instructions,
-            )
-            r2_metrics['r2_files_group'] += len(group)
-            prog.update(f'group {group} [group]')
+        if unit['anchor']:
+            r2_metrics['r2_files_chunk'] += 1
+            prog.update(f'{unit["anchor"]} [anchor+{len(unit["files"]) - 1} related]')
+        else:
+            r2_metrics['r2_files_group'] += len(unit['files'])
+            prog.update(f'group {unit["files"]} [{len(unit["files"])} files]')
 
     prog.done(f'{len(all_results)} issues from agent; {len(all_discarded)} r1 issues discarded')
     return all_results, all_discarded, r2_metrics
@@ -1168,9 +1310,6 @@ You are a software architect performing a global architecture review on MULTIPLE
 
 ## Project Review Standards
 {review_spec}
-
-## Issues Found So Far (same files as this batch — Round 2 only)
-{prev_json}
 
 ## Files and diffs (batch)
 {files_block}
@@ -1241,16 +1380,12 @@ def _round3_build_prev_json(prev_issues: List[Dict[str, Any]], max_chars: int = 
     return (prev_json[:max_chars] + '\n...(truncated)' if len(prev_json) > max_chars else prev_json) or '(none)'
 
 def _round3_global_analysis(
-    llm: Any, round2: List[Dict[str, Any]], diff_text: str, review_spec: str,
+    llm: Any, diff_text: str, review_spec: str,
     pr_summary: str = '', language: str = 'cn', arch_doc: str = '', agent_instructions: str = '',
 ) -> List[Dict[str, Any]]:
     file_diffs: Dict[str, str] = {}
     for path, _start, _count, content in _parse_unified_diff(diff_text):
         file_diffs[path] = file_diffs.get(path, '') + content
-
-    prev_by_file: Dict[str, List[Dict[str, Any]]] = {}
-    for c in round2:
-        prev_by_file.setdefault(c.get('path', ''), []).append(c)
 
     arch_use = clip_text(arch_doc or '', 38000)
     pr_snip = pr_summary[:800] if pr_summary else '(not available)'
@@ -1262,7 +1397,6 @@ def _round3_global_analysis(
     result: List[Dict[str, Any]] = []
     for batch in batches:
         paths_in = [p for p, _ in batch]
-        prev = [c for p in paths_in for c in prev_by_file.get(p, [])]
         batch_diff_joined = ''.join(fdiff + '\n' for _, fdiff in batch)
         batch_review_spec = (
             _lookup_relevant_rules(review_spec, batch_diff_joined[:12000], max_detail=12)
@@ -1274,7 +1408,6 @@ def _round3_global_analysis(
             pr_summary=pr_snip, agent_instructions=agent_instructions or '(not available)',
             arch_doc=arch_use,
             review_spec=batch_review_spec,
-            prev_json=_round3_build_prev_json(prev),
             files_block='\n\n'.join(f'## File: {path}\n```diff\n{fdiff}\n```' for path, fdiff in batch),
             density_rule=ISSUE_DENSITY_RULE_TEXT,
         )
@@ -1418,9 +1551,6 @@ Cite the existing symbol name and its scope, and suggest reusing or adapting it.
 ## PR Design Document (auto-generated)
 {pr_design_doc}
 
-## Issues Found So Far (do NOT repeat these)
-{prev_issues_summary}
-
 ## Full Diff (all changed files)
 ```diff
 {diff_text}
@@ -1515,14 +1645,10 @@ Ask yourself for EVERY changed file:
 '''
 
 def _round4_architect_review(
-    llm: Any, diff_text: str, arch_doc: str, prev_issues: List[Dict[str, Any]],
+    llm: Any, diff_text: str, arch_doc: str,
     pr_summary: str = '', language: str = 'cn', agent_instructions: str = '', pr_design_doc: str = '',
 ) -> List[Dict[str, Any]]:
     prog = _Progress('Round 4: architect design review')
-    prev_issues_summary = '\n'.join(
-        f'{c.get("path")}:{c.get("line")} [{c.get("severity")}] {(c.get("problem") or "")[:80]}'
-        for c in prev_issues[:45]
-    )[:12000]
     diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 38000)
     arch_use = clip_text(arch_doc or '', 42000) if arch_doc else '(not available)'
     prompt = _ROUND4_ARCHITECT_PROMPT_TMPL.format(
@@ -1530,7 +1656,6 @@ def _round4_architect_review(
         agent_instructions=agent_instructions or '(not available)',
         arch_doc=arch_use, pr_summary=pr_summary[:800] if pr_summary else '(not available)',
         pr_design_doc=clip_text(pr_design_doc, 12000) if pr_design_doc else '(not available)',
-        prev_issues_summary=prev_issues_summary or '(none)',
         diff_text=diff_use, density_rule=ISSUE_DENSITY_RULE_TEXT,
     )
     items = _safe_llm_call(llm, prompt)
@@ -1559,9 +1684,6 @@ You are a principal software architect. Output ONE JSON object with exactly two 
 ## PR Summary
 {pr_summary}
 
-## Issues Found So Far (do NOT repeat in "issues")
-{prev_issues_summary}
-
 ## Full Diff
 ```diff
 {diff_text}
@@ -1588,7 +1710,7 @@ def _parse_llm_json_object(raw: str) -> Optional[Dict[str, Any]]:
     return None
 
 def _round4_combined_review(
-    llm: Any, diff_text: str, arch_doc: str, prev_issues: List[Dict[str, Any]],
+    llm: Any, diff_text: str, arch_doc: str,
     pr_summary: str = '', language: str = 'cn', agent_instructions: str = '',
     prefer_combined: bool = False,
 ) -> Tuple[str, List[Dict[str, Any]]]:
@@ -1598,16 +1720,10 @@ def _round4_combined_review(
         prog = _Progress('Round 4: design doc + architect review (combined)')
         diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 42000)
         arch_use = clip_text(arch_doc or '', 40000) if arch_doc else '(not available)'
-        prev_summaries = [
-            f'{c.get("path")}:{c.get("line")} [{c.get("severity")}] {(c.get("problem") or "")[:80]}'
-            for c in prev_issues
-        ]
-        prev_issues_summary = '\n'.join(prev_summaries[:50])[:14000]
         prompt = _ROUND4_COMBINED_PROMPT_TMPL.format(
             lang_instruction=_language_instruction(language),
             agent_instructions=agent_instructions or '(not available)',
             arch_doc=arch_use, pr_summary=pr_summary[:900] if pr_summary else '(not available)',
-            prev_issues_summary=prev_issues_summary or '(none)',
             diff_text=diff_use, density_rule=ISSUE_DENSITY_RULE_TEXT,
         )
         raw = _safe_llm_call_text(llm, prompt)
@@ -1630,7 +1746,7 @@ def _round4_combined_review(
         llm, diff_text, arch_doc, pr_summary=pr_summary, language=language, agent_instructions=agent_instructions,
     )
     issues_out = _round4_architect_review(
-        llm, diff_text, arch_doc, prev_issues, pr_summary=pr_summary,
+        llm, diff_text, arch_doc, pr_summary=pr_summary,
         language=language, agent_instructions=agent_instructions, pr_design_doc=doc_out,
     )
     return doc_out, issues_out
@@ -1699,7 +1815,7 @@ def _compress_new_issues(llm: Any, issues: List[Dict[str, Any]]) -> List[Dict[st
         }
     return _compress_items(llm, issues, _NEW_ISSUE_COMPRESS_THRESHOLD, body_fn, extra_fn)
 
-_ROUND4_PROMPT_TMPL = '''\
+_ROUND5_PROMPT_TMPL = '''\
 You are a senior code reviewer performing final consolidation of review findings.
 {lang_instruction}
 
@@ -1731,7 +1847,30 @@ Do NOT include "path", "line", or "suggestion" — they will be restored from th
 Output ONLY the JSON array. No explanation, no markdown wrapper.
 '''
 
-def _deterministic_dedup(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _token_overlap(a: str, b: str) -> float:
+    ta = set(re.findall(r'\w+', a.lower()))
+    tb = set(re.findall(r'\w+', b.lower()))
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / min(len(ta), len(tb))
+
+
+def _merge_similar_issues(group: List[Dict[str, Any]], threshold: float) -> List[Dict[str, Any]]:
+    _sev = {'critical': 0, 'medium': 1, 'normal': 2}
+    kept: List[Dict[str, Any]] = []
+    for c in sorted(group, key=lambda x: _sev.get(x.get('severity', 'normal'), 2)):
+        for k in kept:
+            if _token_overlap(c.get('problem', ''), k.get('problem', '')) >= threshold:
+                extra = c.get('suggestion', '')
+                if extra and extra not in k.get('suggestion', ''):
+                    k['suggestion'] = k.get('suggestion', '') + '\n' + extra
+                break
+        else:
+            kept.append(dict(c))
+    return kept
+
+
+def _deterministic_dedup(issues: List[Dict[str, Any]], cross_category: bool = True) -> List[Dict[str, Any]]:
     # group by (path, line, bug_category); within each group keep highest-severity item
     # source priority: r2 > r1 > r3 > r4 (more context = more reliable)
     _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
@@ -1740,16 +1879,23 @@ def _deterministic_dedup(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     for c in issues:
         key = (c.get('path', ''), int(c.get('line') or 0), c.get('bug_category', ''))
         groups.setdefault(key, []).append(c)
-    result = []
-    for group in groups.values():
-        best = min(
-            group,
-            key=lambda c: (
-                _sev_order.get(c.get('severity', 'normal'), 2),
-                _src_order.get(c.get('source', ''), 9),
-            ),
-        )
-        result.append(best)
+    after_plc = [
+        min(group, key=lambda c: (
+            _sev_order.get(c.get('severity', 'normal'), 2),
+            _src_order.get(c.get('source', ''), 9),
+        ))
+        for group in groups.values()
+    ]
+    if not cross_category:
+        return after_plc
+    # second pass: collapse same (path, line) across categories when problem text is similar
+    by_pl: Dict[tuple, List[Dict[str, Any]]] = {}
+    for c in after_plc:
+        key = (c.get('path', ''), int(c.get('line') or 0))
+        by_pl.setdefault(key, []).append(c)
+    result: List[Dict[str, Any]] = []
+    for group in by_pl.values():
+        result.extend([group[0]] if len(group) == 1 else _merge_similar_issues(group, threshold=0.6))
     return result
 
 
@@ -1772,7 +1918,7 @@ def _round5_merge_and_deduplicate(
     compressed_new = _compress_new_issues(llm, deduped)
     existing_json = json.dumps(_compress_existing_comments(llm, existing_comments), ensure_ascii=False, indent=2) \
         if existing_comments else '(none)'
-    prompt = _ROUND4_PROMPT_TMPL.format(
+    prompt = _ROUND5_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         new_issues_json=json.dumps(compressed_new, ensure_ascii=False, indent=2),
         existing_json=existing_json,
@@ -1819,7 +1965,7 @@ def _round5_merge_and_deduplicate(
     prog.done(f'{len(result)} final issues')
     return result
 
-def _run_five_rounds(
+def _run_five_rounds(  # noqa: C901
     llm: Any,
     hunks: List[Tuple[str, int, int, str]],
     diff_text: str,
@@ -1834,12 +1980,55 @@ def _run_five_rounds(
     strategy: Optional[Any] = None,
     lint_issues: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
-    r1 = _round1_hunk_analysis(
-        llm, hunks, arch_doc, review_spec, pr_summary=pr_summary,
-        clone_dir=clone_dir, language=language,
-        symbol_index=_get_symbol_index(arch_doc) if arch_doc else None,
-        ckpt=ckpt, agent_instructions=agent_instructions,
-    )
+    from .constants import BudgetManager, TOTAL_CALL_BUDGET
+    _budget = BudgetManager(total_calls=TOTAL_CALL_BUDGET)  # noqa: F841 — reserved for future call tracking
+
+    # split hunks into windows to avoid R1 truncation on large PRs
+    def _rebuild_diff_from_hunks(win_hunks: List[Tuple[str, int, int, str]]) -> str:
+        by_path: Dict[str, List[str]] = {}
+        for path, _s, _c, content in win_hunks:
+            by_path.setdefault(path, []).append(content)
+        return '\n'.join(
+            f'--- a/{p}\n+++ b/{p}\n' + ''.join(cs) for p, cs in by_path.items()
+        )
+
+    def _split_into_windows(
+        all_hunks: List[Tuple[str, int, int, str]],
+    ) -> List[Tuple[List[Tuple[str, int, int, str]], str]]:
+        windows, cur, cur_sz = [], [], 0
+        for h in all_hunks:
+            sz = len(h[3])
+            if cur and (len(cur) >= R1_WINDOW_MAX_HUNKS or cur_sz + sz > R1_WINDOW_MAX_DIFF_CHARS):
+                windows.append((cur, _rebuild_diff_from_hunks(cur)))
+                cur, cur_sz = [], 0
+            cur.append(h)
+            cur_sz += sz
+        if cur:
+            windows.append((cur, _rebuild_diff_from_hunks(cur)))
+        return windows
+
+    windows = _split_into_windows(hunks)
+    if len(windows) > 1:
+        lazyllm.LOG.info(f'Round 1: processing {len(hunks)} hunks in {len(windows)} windows')
+
+    r1_all: List[Dict[str, Any]] = []
+    sym_index = _get_symbol_index(arch_doc) if arch_doc else None
+    for win_idx, (win_hunks, _win_diff) in enumerate(windows):
+        win_key = f'r1_window_{win_idx}'
+        use_win_cache = ckpt.should_use_cache(ReviewStage.R1)
+        cached_win = ckpt.get(win_key) if use_win_cache else None
+        if cached_win is not None:
+            r1_all.extend(cached_win)
+            continue
+        win_r1 = _round1_hunk_analysis(
+            llm, win_hunks, arch_doc, review_spec, pr_summary=pr_summary,
+            clone_dir=clone_dir, language=language,
+            symbol_index=sym_index,
+            ckpt=ckpt, agent_instructions=agent_instructions,
+        )
+        ckpt.save(win_key, win_r1)
+        r1_all.extend(win_r1)
+    r1 = r1_all
     ckpt.mark_stage_done(ReviewStage.R1)
 
     r2, discarded_r1_keys, r2_metrics = _round2_agent_review(
@@ -1855,7 +2044,7 @@ def _run_five_rounds(
         if not use_r3_cache:
             lazyllm.LOG.warning('Round 3: no cache found, re-computing')
         r3 = _round3_global_analysis(
-            llm, r1 + r2, diff_text, review_spec, pr_summary=pr_summary, language=language,
+            llm, diff_text, review_spec, pr_summary=pr_summary, language=language,
             arch_doc=arch_doc, agent_instructions=agent_instructions,
         )
         ckpt.save('r3', r3)
@@ -1870,7 +2059,7 @@ def _run_five_rounds(
         if not use_r4_cache:
             lazyllm.LOG.warning('Round 4: no cache found, re-computing')
         pr_design_doc, r4 = _round4_combined_review(
-            llm, diff_text, arch_doc, r1 + r2 + r3, pr_summary=pr_summary,
+            llm, diff_text, arch_doc, pr_summary=pr_summary,
             language=language, agent_instructions=agent_instructions,
         )
         ckpt.save('pr_design_doc', pr_design_doc)

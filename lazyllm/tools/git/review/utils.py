@@ -201,11 +201,17 @@ def _get_model_name(llm: Any) -> str:
     return 'unknown-model'
 
 
-def _safe_llm_call(llm: Any, prompt: str) -> List[Dict[str, Any]]:
+def _safe_llm_call(llm: Any, prompt: str, budget: Optional[Any] = None) -> List[Dict[str, Any]]:
+    if budget is not None and not budget.consume_call():
+        lazyllm.LOG.warning('LLM call budget exhausted, skipping JSON call')
+        return []
     return _llm_call_with_retry(llm, prompt, parse_json=True)
 
 
-def _safe_llm_call_text(llm: Any, prompt: str) -> str:
+def _safe_llm_call_text(llm: Any, prompt: str, budget: Optional[Any] = None) -> str:
+    if budget is not None and not budget.consume_call():
+        lazyllm.LOG.warning('LLM call budget exhausted, skipping text call')
+        return ''
     return _llm_call_with_retry(llm, prompt, parse_json=False)
 
 

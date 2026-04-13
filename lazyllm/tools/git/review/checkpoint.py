@@ -135,6 +135,8 @@ class _ReviewCheckpoint:
             return key_to_stage[key]
         if key.startswith('r1_hunk_'):
             return ReviewStage.R1
+        if key.startswith('r1_window_'):
+            return ReviewStage.R1
         if key.startswith('r2_file_'):
             return ReviewStage.R2
         if key.startswith(self._STAGE_DONE_PREFIX):

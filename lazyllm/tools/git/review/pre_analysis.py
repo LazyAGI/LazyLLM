@@ -18,8 +18,8 @@ from .utils import (
 _SKIP_DIRS = {'.git', '__pycache__', '.cache', '.tox', 'node_modules', '.mypy_cache', '.pytest_cache', 'dist', 'build'}
 _SKIP_EXTS = {'.pyc', '.pyo', '.so', '.egg', '.egg-info'}
 _ARCH_SNAPSHOT_BUDGET = 6000
-_ARCH_OUTLINE_MAX_SECTIONS = 12
-_ARCH_OUTLINE_MAX_SECTIONS_WITH_AGENT = 9
+_ARCH_OUTLINE_MAX_SECTIONS = 13
+_ARCH_OUTLINE_MAX_SECTIONS_WITH_AGENT = 10
 _ARCH_PREV_SUMMARY_BUDGET = 1500
 
 # agent instruction files to scan (in priority order)
@@ -373,8 +373,15 @@ The FIRST section MUST be:
 
 The SECOND section MUST be:
 {{"title": "Environment & Dependencies",
- "focus": "Python/compiler version requirements, key dependency packages and version constraints",
- "search_hints": ["python_requires", "install_requires", "cmake_minimum_required"]}}
+ "focus": "Python/compiler version requirements, key dependency packages and version constraints; \
+which dependencies are optional/extras vs hard requirements, and the naming convention for optional groups",
+ "search_hints": ["python_requires", "install_requires", "optional.dependencies", "extras_require"]}}
+
+The THIRD section MUST be:
+{{"title": "Module Ownership Rules",
+ "focus": "每个模块/子包的职责边界：哪类代码必须放在哪个模块（如配置项必须在功能模块内定义而非顶层 configs.py，\
+tracing 相关代码必须在 tracing/ 下），以及跨模块引用的允许方向",
+ "search_hints": ["^class.*Config", "lazyllm\\.config\\.add", "from lazyllm\\.configs"]}}
 
 {gotchas_instruction}
 
@@ -1053,6 +1060,8 @@ def _get_arch_index(arch_doc: str) -> str:
 # sections always injected regardless of file path (high value for all reviews)
 _ARCH_ALWAYS_INJECT = frozenset({
     'module hierarchy',
+    'module ownership rules',
+    'environment & dependencies',
     'non-obvious behaviors & gotchas',
     'non-obvious behaviors',
     'gotchas',
@@ -1403,6 +1412,24 @@ def analyze_historical_reviews(
     _save_cache_multi(cache_path, {'review_spec': review_spec, 'review_spec_max_prs': str(max_prs)})
     return review_spec
 
+def _sample_diff_for_rules(diff_content: str, total_lines: int = 300) -> str:
+    lines = diff_content.splitlines()
+    n = len(lines)
+    if n <= total_lines:
+        return diff_content
+    seg = total_lines // 3
+    head = lines[:seg]
+    mid_start = max(seg, n // 2 - seg // 2)
+    mid = lines[mid_start: mid_start + seg]
+    tail = lines[max(n - seg, mid_start + seg):]
+    return '\n'.join(head + ['...'] + mid + ['...'] + tail)
+
+
+def _extract_symbol_keywords_from_diff(diff_content: str) -> List[str]:
+    pat = re.compile(r'^\+\s*(?:def|class)\s+(\w+)', re.MULTILINE)
+    return pat.findall(diff_content)[:30]
+
+
 def _lookup_relevant_rules(review_spec: str, diff_content: str, max_detail: int = 10) -> str:  # noqa: C901
     if not review_spec or review_spec.startswith('('):
         return review_spec or ''
@@ -1414,8 +1441,10 @@ def _lookup_relevant_rules(review_spec: str, diff_content: str, max_detail: int 
     summaries = spec_obj.get('summaries', [])
     details = spec_obj.get('details', {})
 
-    keywords: set = set()
-    for line in diff_content.splitlines()[:200]:
+    sample = _sample_diff_for_rules(diff_content)
+    symbol_kws = {s.lower() for s in _extract_symbol_keywords_from_diff(diff_content)}
+    keywords: set = set(symbol_kws)
+    for line in sample.splitlines():
         if line.startswith('+++ ') or line.startswith('--- '):
             fname = line.split('/')[-1].replace('.py', '').lower()
             if fname:
