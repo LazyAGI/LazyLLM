@@ -6,6 +6,7 @@ from enum import Enum
 from .document import Document, UrlDocument, DocImpl
 from .store import LAZY_ROOT_NAME
 from .similarity import registered_similarities
+from .global_metadata import RAG_KB_ID
 import functools
 import lazyllm
 
@@ -19,7 +20,24 @@ class _PostProcess(object):
             'Only content output can be joined')
         self._join = join
 
+    def _metadata_tree_nodes_refill(self, node: DocNode) -> None:
+        if 'tree_node_uids' not in node.metadata:
+            return
+
+        tree_node_uids = node.metadata.get('tree_node_uids')
+        store = getattr(node, '_store', None)
+        if store is None:
+            return
+
+        node.metadata['tree_node_uids'] = store.get_nodes(
+            uids=tree_node_uids, kb_id=node.global_metadata.get(RAG_KB_ID))
+
+
     def _post_process(self, nodes):
+        # Refill metadata tree nodes, from uid to DocNode
+        for node in nodes:
+            self._metadata_tree_nodes_refill(node)
+
         if self._output_format == 'content':
             nodes = [node.get_content() for node in nodes]
             if isinstance(self._join, str): nodes = self._join.join(nodes)

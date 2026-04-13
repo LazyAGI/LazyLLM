@@ -63,19 +63,26 @@ class TreeBuilderParser(NodeTransform):
             return []
 
         for node in nodes:
-            if 'children' in node.metadata:
-                node.metadata.pop('children')
+            node.metadata.pop('tree_node_uids', None)
 
         root = DocNode(text='root', metadata={'text_level': 0})
         stack = [root]
+        root_children: List[DocNode] = []
+
+        def _append_tree_uid(parent: DocNode, child: DocNode) -> None:
+            uids = parent.metadata.get('tree_node_uids', [])
+            if not isinstance(uids, list):
+                uids = []
+            uids.append(child.uid)
+            parent.metadata['tree_node_uids'] = uids
+            if parent is root:
+                root_children.append(child)
 
         for node in nodes:
             level = self._get_level(node)
 
             if level == 0:
-                if 'children' not in stack[-1].metadata:
-                    stack[-1].metadata['children'] = []
-                stack[-1].metadata['children'].append(node)
+                _append_tree_uid(stack[-1], node)
                 continue
 
             target_parent_index = -1
@@ -93,17 +100,13 @@ class TreeBuilderParser(NodeTransform):
                 while len(stack) - 1 > target_parent_index:
                     stack.pop()
 
-                if 'children' not in stack[-1].metadata:
-                    stack[-1].metadata['children'] = []
-                stack[-1].metadata['children'].append(node)
+                _append_tree_uid(stack[-1], node)
                 stack.append(node)
             else:
                 while len(stack) > 1:
                     stack.pop()
 
-                if 'children' not in stack[0].metadata:
-                    stack[0].metadata['children'] = []
-                stack[0].metadata['children'].append(node)
+                _append_tree_uid(stack[0], node)
                 stack.append(node)
 
-        return root.metadata.get('children', [])
+        return root_children

@@ -3,6 +3,7 @@ from lazyllm.tools.rag.store import EMBED_DEFAULT_KEY
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag import (Document, Retriever, TempDocRetriever, ContextRetriever,
                                WeightedRetriever, PriorityRetriever)
+from lazyllm.tools.rag.retriever import _PostProcess
 from lazyllm.launcher import cleanup
 from lazyllm import config
 from unittest.mock import MagicMock
@@ -35,6 +36,23 @@ class TestRetriever(object):
         assert retriever2._similarity == 'cosine'
         assert retriever2._per_doc_embed_keys is False
         assert retriever2._embed_keys == [EMBED_DEFAULT_KEY]
+
+    def test_post_process_backfills_tree_nodes_by_uid(self):
+        child1 = DocNode(text='child1')
+        child2 = DocNode(text='child2')
+        parent = DocNode(text='parent', metadata={'tree_node_uids': [child1.uid, child2.uid]})
+
+        store = MagicMock()
+        uid_to_node = {child1.uid: child1, child2.uid: child2}
+        store.get_nodes.side_effect = (
+            lambda uids=None, **kwargs: [uid_to_node[uid] for uid in uids if uid in uid_to_node]
+        )
+        parent._store = store
+        parent._node_groups = {}
+
+        result = _PostProcess()._post_process([parent])
+        assert result[0] is parent
+        assert [node.uid for node in parent.tree_nodes] == [child1.uid, child2.uid]
 
 class TestTempRetriever():
     def test_temp_retriever(self):

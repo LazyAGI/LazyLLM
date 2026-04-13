@@ -37,6 +37,7 @@ class TreeFixerParser(NodeTransform):
             base = list(base) + list(extra_patterns)
         self._compiled_patterns = [(re.compile(p), fmt) for p, fmt in base]
         self._skip_level_under = skip_level_under if skip_level_under is not None else 1
+        self._uid_to_node: dict[str, DocNode] = {}
         self._reset_state()
 
     def _reset_state(self) -> None:
@@ -50,6 +51,7 @@ class TreeFixerParser(NodeTransform):
         nodes = node.nodes if isinstance(node, RichDocNode) else [node]
         if not nodes:
             return []
+        self._uid_to_node = {}
         flat_nodes = self._flatten_nodes(nodes)
         if not flat_nodes:
             return []
@@ -61,12 +63,31 @@ class TreeFixerParser(NodeTransform):
     def _flatten_nodes(self, nodes: List[DocNode]) -> List[DocNode]:
         result = []
         for node in nodes:
-            children = node.metadata.pop('children', [])
-            node.metadata['children'] = []
+            self._uid_to_node[node.uid] = node
+            children = self._resolve_tree_nodes(node, node.metadata.pop('tree_node_uids', []))
+            node.metadata['tree_node_uids'] = []
             result.append(node)
             if children:
                 result.extend(self._flatten_nodes(children))
         return result
+
+    def _resolve_tree_nodes(self, node: DocNode, tree_node_uids: Any) -> List[DocNode]:
+        if not isinstance(tree_node_uids, list):
+            return []
+        uids = [uid for uid in tree_node_uids if isinstance(uid, str)]
+        if not uids:
+            return []
+
+        missing = [uid for uid in uids if uid not in self._uid_to_node]
+        if missing and getattr(node, '_store', None):
+            fetched = node._store.get_nodes(uids=missing)
+            for child in fetched:
+                child._store = node._store
+                child._node_groups = node._node_groups
+                child._children_loaded = False
+                self._uid_to_node[child.uid] = child
+
+        return [self._uid_to_node[uid] for uid in uids if uid in self._uid_to_node]
 
     def _extract_numbering(self, node: DocNode) -> Tuple[Optional[str], Optional[Any]]:
         if not node or not node.text:
@@ -149,7 +170,7 @@ class TreeFixerParser(NodeTransform):
             orig = node.metadata.get('text_level', 1)
             if orig >= 1:
                 node.metadata['text_level'] = level
-            children = node.metadata.get('children', [])
+            children = self._resolve_tree_nodes(node, node.metadata.get('tree_node_uids', []))
             if children:
                 self._update_text_levels(children, level + 1)
 
@@ -274,6 +295,9 @@ class TreeFixerParser(NodeTransform):
             return
         if not getattr(parent, 'metadata', None) or parent.metadata is None:
             parent.metadata = {}
-        if 'children' not in parent.metadata:
-            parent.metadata['children'] = []
-        parent.metadata['children'].append(child)
+        uids = parent.metadata.get('tree_node_uids', [])
+        if not isinstance(uids, list):
+            uids = []
+        uids.append(child.uid)
+        parent.metadata['tree_node_uids'] = uids
+        self._uid_to_node[child.uid] = child
