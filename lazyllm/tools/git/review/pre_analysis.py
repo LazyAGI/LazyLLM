@@ -37,6 +37,11 @@ _BOT_USER_PATTERNS = re.compile(
 _LARGE_FILE_THRESHOLD = 600
 _CONTEXT_LINES = 50
 
+# DeepWiki integration
+_DEEPWIKI_MCP_URL = 'https://mcp.deepwiki.com/mcp'
+_DEEPWIKI_STALE_DAYS = 90  # treat index as stale if older than this many days
+_DEEPWIKI_SUMMARY_BUDGET = 4000  # max chars injected into snapshot
+
 _FRAMEWORK_GOTCHAS_NOTICE = '''\
 ### Framework-Specific Gotchas (auto-generated)
 When reviewing this codebase, be aware of the following common pitfalls:
@@ -50,6 +55,51 @@ confirming the guard condition.
 subclass has NOT been updated. Check the diff for subclass updates before reporting.
 - `max(n, 1)` and similar floor-clamp patterns are defensive programming, not bugs.
 '''
+
+
+def _parse_owner_repo(clone_url: str) -> Optional[str]:
+    # Extract "owner/repo" from a git clone URL (https or ssh).
+    # Returns None if the URL doesn't look like a GitHub/GitLab/Gitee repo.
+    m = re.search(r'(?:github\.com|gitlab\.com|gitee\.com)[:/]([^/]+/[^/]+?)(?:\.git)?$', clone_url)
+    return m.group(1) if m else None
+
+
+def _fetch_deepwiki_summary(owner_repo: str) -> str:
+    # Query DeepWiki MCP for pre-indexed architecture summary of a public repo.
+    # Returns empty string if unavailable or on any error.
+    try:
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamablehttp_client
+    except ImportError:
+        lazyllm.LOG.info('mcp package not installed, skipping DeepWiki integration')
+        return ''
+
+    import asyncio
+
+    async def _query() -> str:
+        try:
+            async with streamablehttp_client(_DEEPWIKI_MCP_URL) as (read, write, _):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    result = await session.call_tool(
+                        'read_wiki_contents',
+                        {'repoName': owner_repo},
+                    )
+                    if not result or not result.content:
+                        return ''
+                    text = '\n'.join(
+                        c.text for c in result.content if hasattr(c, 'text') and c.text
+                    )
+                    return text[:_DEEPWIKI_SUMMARY_BUDGET]
+        except Exception as e:
+            lazyllm.LOG.info(f'DeepWiki query failed for {owner_repo}: {e}')
+            return ''
+
+    try:
+        return asyncio.run(_query())
+    except Exception as e:
+        lazyllm.LOG.info(f'DeepWiki asyncio run failed: {e}')
+        return ''
 
 
 def _read_agent_instructions(clone_dir: str) -> str:
@@ -1141,12 +1191,24 @@ def _get_symbol_index(arch_doc: str) -> Dict[str, str]:
 
 def analyze_repo_architecture(
     llm: Any, clone_dir: str, cache_path: Optional[str] = None, agent_instructions: str = '',
+    clone_url: str = '',
 ) -> str:
     cached = _load_cache(cache_path, 'arch_doc')
     if cached:
         return cached
 
     snapshot = _collect_structured_snapshot(clone_dir)
+
+    # Augment snapshot with DeepWiki pre-indexed summary when available
+    owner_repo = _parse_owner_repo(clone_url) if clone_url else None
+    if owner_repo:
+        lazyllm.LOG.info(f'Fetching DeepWiki summary for {owner_repo}...')
+        deepwiki_text = _fetch_deepwiki_summary(owner_repo)
+        if deepwiki_text:
+            snapshot = snapshot + f'\n\n## DeepWiki Pre-indexed Summary\n{deepwiki_text}'
+            lazyllm.LOG.info(f'DeepWiki summary injected ({len(deepwiki_text)} chars)')
+        else:
+            lazyllm.LOG.info(f'DeepWiki: no summary available for {owner_repo}')
     dir_tree_1 = _build_dir_tree(clone_dir, max_depth=1)
 
     outline_cached = _load_cache(cache_path, 'arch_outline')
@@ -1526,7 +1588,7 @@ def _run_arch_analysis(
         _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
         lazyllm.LOG.info(f'Found agent instructions ({len(agent_instructions)} chars)')
     try:
-        arch_doc = analyze_repo_architecture(llm, clone_dir, arch_cache_path, agent_instructions)
+        arch_doc = analyze_repo_architecture(llm, clone_dir, arch_cache_path, agent_instructions, clone_url)
     except Exception:
         import shutil
         shutil.rmtree(clone_dir, ignore_errors=True)
