@@ -1191,7 +1191,7 @@ def _get_symbol_index(arch_doc: str) -> Dict[str, str]:
 
 def analyze_repo_architecture(
     llm: Any, clone_dir: str, cache_path: Optional[str] = None, agent_instructions: str = '',
-    clone_url: str = '',
+    clone_url: str = '', base_repo: str = '',
 ) -> str:
     cached = _load_cache(cache_path, 'arch_doc')
     if cached:
@@ -1199,8 +1199,9 @@ def analyze_repo_architecture(
 
     snapshot = _collect_structured_snapshot(clone_dir)
 
-    # Augment snapshot with DeepWiki pre-indexed summary when available
-    owner_repo = _parse_owner_repo(clone_url) if clone_url else None
+    # Augment snapshot with DeepWiki pre-indexed summary when available.
+    # Always use base_repo for DeepWiki: architecture is defined by the base, not the fork.
+    owner_repo = base_repo or _parse_owner_repo(clone_url)
     if owner_repo:
         lazyllm.LOG.info(f'Fetching DeepWiki summary for {owner_repo}...')
         deepwiki_text = _fetch_deepwiki_summary(owner_repo)
@@ -1588,7 +1589,9 @@ def _run_arch_analysis(
         _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
         lazyllm.LOG.info(f'Found agent instructions ({len(agent_instructions)} chars)')
     try:
-        arch_doc = analyze_repo_architecture(llm, clone_dir, arch_cache_path, agent_instructions, clone_url)
+        arch_doc = analyze_repo_architecture(
+            llm, clone_dir, arch_cache_path, agent_instructions, clone_url, base_repo=repo,
+        )
     except Exception:
         import shutil
         shutil.rmtree(clone_dir, ignore_errors=True)
