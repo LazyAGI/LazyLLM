@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from lazyllm import LOG
 from ..utils import gen_docid
@@ -61,6 +61,26 @@ def resolve_transfer_target_path(
         base_dir = os.path.dirname(source_path) if source_path else ''
         return os.path.join(base_dir, target_filename) if base_dir else target_filename
     return source_path
+
+
+def list_dataset_files(dataset_path: str) -> List[str]:
+    """Recursively scan a directory, skip hidden files/dirs, return sorted absolute paths."""
+    if not dataset_path or not os.path.exists(dataset_path):
+        return []
+    if not os.path.isdir(dataset_path):
+        filename = os.path.basename(dataset_path)
+        if filename.startswith('.'):
+            return []
+        return [dataset_path] if os.path.isfile(dataset_path) else []
+
+    files: List[str] = []
+    for root, dirs, names in os.walk(os.path.abspath(dataset_path)):
+        path_parts = root.split(os.sep)
+        if any(part.startswith('.') for part in path_parts if part):
+            continue
+        dirs[:] = [name for name in dirs if not name.startswith('.')]
+        files.extend(os.path.join(root, name) for name in names if not name.startswith('.'))
+    return sorted(files)
 
 
 def normalize_api_base_url(url: str) -> str:

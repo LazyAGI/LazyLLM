@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
+import time
 import traceback
 from typing import Any, Dict, List, Optional, Set
 
@@ -51,6 +53,8 @@ class DocServer(ModuleBase):
             parser_poll_interval: float = 0.05,
             parser_url: Optional[str] = None,
             callback_url: Optional[str] = None,
+            enable_scan: bool = False,
+            scan_interval: int = 10,
         ):
             if not parser_url:
                 raise ValueError('parser_url is required; doc_service no longer starts a mock parsing server')
@@ -62,18 +66,135 @@ class DocServer(ModuleBase):
             self._callback_url = callback_url
             self._parser = None
             self._manager = None
+            self._enable_scan = enable_scan
+            self._scan_interval = scan_interval
+            self._scan_thread = None
+            self._scan_continue = False
+            self._owned_kbs: Set[str] = set()
 
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
-            os.makedirs(self._storage_dir, exist_ok=True)
+            if self._storage_dir and not os.path.exists(self._storage_dir):
+                os.makedirs(self._storage_dir, exist_ok=True)
             self._manager = DocManager(
                 db_config=self._db_config,
                 parser_url=self._parser_url,
                 callback_url=self._callback_url,
             )
+            # NOTE: scanning is NOT started here.  Use ``enable_scanning()`` after
+            # all KB registrations and parser algorithm registrations are complete
+            # so the first scan sees a consistent _owned_kbs set and can route
+            # requests to algorithms that actually exist on the parser.
+            # For standalone / direct DocServer usage with enable_scan=True and no
+            # explicit ``enable_scanning()`` call, the scan thread is started lazily
+            # on the first ``_sync_dataset()`` invocation if still not running.
 
         def stop(self):
+            self._scan_continue = False
+            if self._scan_thread and self._scan_thread.is_alive():
+                self._scan_thread.join(timeout=2)
             return None
+
+        def _sync_dataset_for_kb(self, kb_id: str, algo_id: str, disk_files: list, disk_set: set):
+            """Sync one KB: diff disk vs documents table → upload new / delete stale via unified pipeline."""
+            from .utils import gen_doc_id
+            # For retry: exclude FAILED/CANCELED so they get re-uploaded
+            synced_docs = self._manager._list_kb_docs_by_path(kb_id, exclude_failed=True)
+            # For stale cleanup: include FAILED/CANCELED so removed files get cleaned up
+            all_known_docs = self._manager._list_kb_docs_by_path(kb_id, exclude_failed=False)
+
+            # New files (or previously failed) → upload(source_type=SCAN)
+            new_paths = [p for p in disk_files if p not in synced_docs]
+            if new_paths:
+                try:
+                    request = UploadRequest(
+                        items=[AddFileItem(file_path=p) for p in new_paths],
+                        kb_id=kb_id, algo_id=algo_id, source_type=SourceType.SCAN,
+                    )
+                    self._manager.upload(request)
+                except Exception as exc:
+                    LOG.error(f'[Scan] upload failed for kb={kb_id}: {len(new_paths)} files: {exc}')
+
+            # Stale files (including failed ones whose source file was removed) → delete
+            stale_ids = [did for path, did in all_known_docs.items() if path not in disk_set]
+            if stale_ids:
+                try:
+                    request = DeleteRequest(doc_ids=stale_ids, kb_id=kb_id, algo_id=algo_id)
+                    self._manager.delete(request)
+                except Exception as exc:
+                    LOG.error(f'[Scan] delete failed for kb={kb_id}: {len(stale_ids)} docs: {exc}')
+
+            if new_paths or stale_ids:
+                LOG.info(f'[Scan] kb={kb_id} sync done: added={len(new_paths)}, deleted={len(stale_ids)}')
+
+        def _sync_dataset(self):
+            """One-shot scan: list dir → sync all active KB+algo pairs."""
+            from .utils import list_dataset_files
+            disk_files = list_dataset_files(self._storage_dir)
+            disk_set = set(disk_files)
+
+            kb_algo_pairs = self._manager._list_active_kb_algo_pairs()
+            if not kb_algo_pairs:
+                kb_algo_pairs = [('__default__', '__default__')]
+
+            # When this instance has explicitly registered KBs, only scan those
+            # to avoid processing KBs that belong to other Document instances
+            # sharing the same global DB.
+            owned = self._owned_kbs.copy()
+            if owned:
+                kb_algo_pairs = [(kb, algo) for kb, algo in kb_algo_pairs if kb in owned]
+
+            for kb_id, algo_id in kb_algo_pairs:
+                try:
+                    self._sync_dataset_for_kb(kb_id, algo_id, disk_files, disk_set)
+                except Exception as exc:
+                    LOG.error(f'[Scan] sync failed for kb={kb_id}, algo={algo_id}: {exc}')
+
+        def _scan_worker(self):
+            """Daemon thread: periodically scan dataset directory."""
+            while self._scan_continue:
+                try:
+                    self._sync_dataset()
+                except Exception as exc:
+                    LOG.error(f'[Scan] sync failed: {exc}')
+                time.sleep(self._scan_interval)
+
+        def _start_scan_monitoring(self):
+            if self._scan_thread and self._scan_thread.is_alive():
+                return
+            self._scan_continue = True
+            self._scan_thread = threading.Thread(target=self._scan_worker, daemon=True)
+            self._scan_thread.start()
+
+        def enable_scanning(self):
+            """Start scanning after all KB registrations and parser algo registrations
+            are complete.  Safe to call multiple times (idempotent).
+
+            This is the intended way for ``Document._Manager`` to trigger the first
+            scan: it ensures ``_owned_kbs`` is fully populated and all algorithms
+            have been registered with the parser before any file-level sync happens.
+            """
+            self._lazy_init()
+            if not self._enable_scan:
+                return
+            if not (self._storage_dir and os.path.isdir(self._storage_dir)):
+                return
+            self._sync_dataset()
+            self._start_scan_monitoring()
+
+        def ensure_kb_registered(self, kb_id: str, algo_id: Optional[str] = None):
+            """Lightweight KB registration: ensure KB + algo binding rows exist in DB.
+
+            Unlike ``create_kb_by_id`` this does NOT validate algorithm existence
+            against the parser, so it can be called before the algorithm is registered
+            (e.g. during ``add_kb_group`` which creates a DocImpl that will register
+            its algorithm later during ``_lazy_init``).
+            """
+            self._lazy_init()
+            algo_id = algo_id or kb_id
+            self._manager._ensure_kb(kb_id, display_name=kb_id)
+            self._manager._ensure_kb_algorithm(kb_id, algo_id)
+            self._owned_kbs.add(kb_id)
 
         def set_runtime_callback_url(self, callback_url: str):
             self._lazy_init()
@@ -611,6 +732,8 @@ class DocServer(ModuleBase):
         callback_url: Optional[str] = None,
         pythonpath: Optional[str] = None,
         launcher=None,
+        enable_scan: bool = False,
+        scan_interval: int = 10,
     ):
         super().__init__()
         self._raw_impl = None
@@ -629,6 +752,8 @@ class DocServer(ModuleBase):
                 parser_poll_interval=parser_poll_interval,
                 parser_url=parser_url,
                 callback_url=callback_url,
+                enable_scan=enable_scan,
+                scan_interval=scan_interval,
             )
             self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher, pythonpath=pythonpath)
 
@@ -811,3 +936,9 @@ class DocServer(ModuleBase):
 
     def delete_kbs(self, kb_ids: List[str]):
         return self._dispatch('delete_kbs_impl', kb_ids)
+
+    def ensure_kb_registered(self, kb_id: str, algo_id: Optional[str] = None):
+        return self._dispatch('ensure_kb_registered', kb_id, algo_id)
+
+    def enable_scanning(self):
+        return self._dispatch('enable_scanning')

@@ -671,3 +671,111 @@ def test_parser_client_algo_endpoint_fallback():
         '/v1/algo/__default__/groups',
         '/algo/__default__/group/info',
     ]
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for scan logic (FAILED/CANCELED retry, stale cleanup,
+# multi-KB scan iteration)
+# ---------------------------------------------------------------------------
+
+def test_list_kb_docs_excludes_failed_for_retry(manager_harness):
+    """FAILED/CANCELED docs must be excluded from the 'synced' view so scan retries them."""
+    mgr = manager_harness.manager
+    mgr.create_kb('kb_retry', algo_id='__default__')
+    file_ok = manager_harness.make_file('ok.txt', 'ok')
+    file_fail = manager_harness.make_file('fail.txt', 'fail')
+
+    items = mgr.upload(UploadRequest(
+        kb_id='kb_retry', algo_id='__default__',
+        items=[
+            AddFileItem(file_path=file_ok, doc_id='doc-ok'),
+            AddFileItem(file_path=file_fail, doc_id='doc-fail'),
+        ],
+    ))
+    # Complete one as SUCCESS, the other as FAILED
+    manager_harness.finish_task(items[0]['task_id'], status=DocStatus.SUCCESS)
+    manager_harness.finish_task(items[1]['task_id'], status=DocStatus.FAILED)
+
+    # exclude_failed=True (default): FAILED doc should NOT appear → scan will retry it
+    synced = mgr._list_kb_docs_by_path('kb_retry', exclude_failed=True)
+    assert file_ok in synced
+    assert file_fail not in synced
+
+    # exclude_failed=False: FAILED doc SHOULD appear → stale cleanup can see it
+    all_known = mgr._list_kb_docs_by_path('kb_retry', exclude_failed=False)
+    assert file_ok in all_known
+    assert file_fail in all_known
+
+
+def test_stale_cleanup_sees_failed_docs(manager_harness):
+    """When a FAILED doc's source file is removed from disk, stale cleanup must still find it."""
+    mgr = manager_harness.manager
+    mgr.create_kb('kb_stale', algo_id='__default__')
+    file_path = manager_harness.make_file('stale.txt', 'stale')
+
+    items = mgr.upload(UploadRequest(
+        kb_id='kb_stale', algo_id='__default__',
+        items=[AddFileItem(file_path=file_path, doc_id='doc-stale')],
+    ))
+    manager_harness.finish_task(items[0]['task_id'], status=DocStatus.FAILED)
+
+    # File removed from disk
+    os.remove(file_path)
+    disk_set = set()
+
+    # exclude_failed=False should still contain the failed doc for stale cleanup
+    all_known = mgr._list_kb_docs_by_path('kb_stale', exclude_failed=False)
+    stale_ids = [did for path, did in all_known.items() if path not in disk_set]
+    assert 'doc-stale' in stale_ids
+
+
+def test_list_active_kb_algo_pairs(manager_harness):
+    """_list_active_kb_algo_pairs should return all active KB+algo bindings for multi-KB scan."""
+    mgr = manager_harness.manager
+    mgr.create_kb('kb_a', algo_id='__default__')
+    mgr.create_kb('kb_b', algo_id='__default__')
+
+    pairs = mgr._list_active_kb_algo_pairs()
+    kb_ids = {kb_id for kb_id, _ in pairs}
+    # Both KBs plus the auto-created __default__ should be present
+    assert 'kb_a' in kb_ids
+    assert 'kb_b' in kb_ids
+
+
+def test_ensure_kb_registers_in_active_pairs(manager_harness):
+    """Lightweight ensure_kb + ensure_kb_algorithm must make the KB visible to scan."""
+    mgr = manager_harness.manager
+    # Use the lightweight registration path (no algorithm validation)
+    mgr._ensure_kb('custom_group', display_name='custom_group')
+    mgr._ensure_kb_algorithm('custom_group', 'custom_group')
+
+    pairs = mgr._list_active_kb_algo_pairs()
+    pair_set = {(kb_id, algo_id) for kb_id, algo_id in pairs}
+    assert ('custom_group', 'custom_group') in pair_set, (
+        'KB registered via _ensure_kb + _ensure_kb_algorithm must appear in active pairs for scan'
+    )
+
+
+def test_scan_syncs_non_default_kb(manager_harness):
+    """End-to-end: after registering a non-default KB, scan should upload files to it."""
+    mgr = manager_harness.manager
+    # Register a non-default KB
+    mgr._ensure_kb('my_group', display_name='my_group')
+    mgr._ensure_kb_algorithm('my_group', 'my_group')
+    file_path = manager_harness.make_file('scan_target.txt', 'content')
+
+    # Simulate what _sync_dataset_for_kb does: check new paths
+    synced = mgr._list_kb_docs_by_path('my_group', exclude_failed=True)
+    assert file_path not in synced, 'File should not be synced yet'
+
+    # Upload via the scan path
+    items = mgr.upload(UploadRequest(
+        kb_id='my_group', algo_id='my_group',
+        items=[AddFileItem(file_path=file_path)],
+        source_type=SourceType.SCAN,
+    ))
+    manager_harness.finish_task(items[0]['task_id'], status=DocStatus.SUCCESS)
+
+    # Now scan should see the file as synced
+    synced = mgr._list_kb_docs_by_path('my_group', exclude_failed=True)
+    assert file_path in synced, 'After scan upload, file must appear in synced docs'

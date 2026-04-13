@@ -89,6 +89,7 @@ class DocImpl:
         self._local_monitor_continue = False
         self._local_monitor_interval = 10
         self._local_monitor_lock = threading.Lock()
+        self._tracked_docs: Dict[str, str] = {}  # path -> doc_id, tracks files added to store
         self.node_groups: Dict[str, Dict] = {
             LAZY_ROOT_NAME: dict(parent=None, display_name='Original Source', group_type=NodeGroupType.ORIGINAL),
             LAZY_IMAGE_GROUP: dict(parent=None, display_name='Image Node', group_type=NodeGroupType.OTHER)
@@ -298,65 +299,51 @@ class DocImpl:
         self._local_file_reader[pattern] = func
         self._reader._lazy_init.flag.reset()
 
-    def _add_doc_to_store(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]]):
+    def _add_doc_to_store(self, input_files: List[str], ids: List[str],
+                          metadatas: List[Dict[str, Any]]) -> Set[str]:
+        """Add documents to store. Returns the set of doc_ids that were successfully added."""
+        success_ids: Set[str] = set()
         for filepath, doc_id, metadata in zip(input_files, ids, metadatas):
             try:
                 self._processor.add_doc([filepath], [doc_id], [metadata] if metadata is not None else None)
+                success_ids.add(doc_id)
             except Exception as e:
                 LOG.error(f'Error adding document {doc_id} ({filepath}) to store: {e}')
+        return success_ids
 
     def _list_dataset_files(self) -> List[str]:
-        if not self._dataset_path or not os.path.exists(self._dataset_path):
-            return []
-        if not os.path.isdir(self._dataset_path):
-            filename = os.path.basename(self._dataset_path)
-            if filename.startswith('.'):
-                return []
-            return [self._dataset_path] if os.path.isfile(self._dataset_path) else []
-
-        files = []
-        for root, dirs, names in os.walk(os.path.abspath(self._dataset_path)):
-            path_parts = root.split(os.sep)
-            if any(part.startswith('.') for part in path_parts if part):
-                continue
-            dirs[:] = [name for name in dirs if not name.startswith('.')]
-            files.extend(os.path.join(root, name) for name in names if not name.startswith('.'))
-        return sorted(files)
+        from .doc_service.utils import list_dataset_files
+        return list_dataset_files(self._dataset_path)
 
     def _list_local_files(self) -> Tuple[List[str], List[str], List[Dict[str, Any]]]:
         paths = list(self._doc_files) if self._doc_files is not None else self._list_dataset_files()
         ids = [gen_docid(path) for path in paths]
         return ids, paths, [{} for _ in paths]
 
-    def _list_store_root_docs(self) -> Dict[str, str]:
-        docs = {}
-        for node in self._store.get_nodes(group=LAZY_ROOT_NAME):
-            doc_id = node.global_metadata.get(RAG_DOC_ID)
-            path = node.global_metadata.get(RAG_DOC_PATH)
-            if doc_id and path:
-                docs.setdefault(path, doc_id)
-        return docs
-
     def _sync_local_dataset(self):
         with self._local_monitor_lock:
             ids, paths, metadatas = self._list_local_files()
             current_docs = dict(zip(paths, ids))
-            store_docs = self._list_store_root_docs()
 
-            stale_doc_ids = [doc_id for path, doc_id in store_docs.items() if path not in current_docs]
-            if stale_doc_ids:
-                self._delete_doc_from_store(doc_ids=stale_doc_ids)
+            # Delete stale docs (in tracked but no longer on disk)
+            stale_ids = [did for p, did in self._tracked_docs.items() if p not in current_docs]
+            if stale_ids:
+                self._delete_doc_from_store(doc_ids=stale_ids)
+                stale_set = set(stale_ids)
+                self._tracked_docs = {p: d for p, d in self._tracked_docs.items() if d not in stale_set}
 
-            pending_paths = [path for path in paths if path not in store_docs]
-            if pending_paths:
-                doc_id_map = dict(zip(paths, ids))
-                metadata_map = dict(zip(paths, metadatas))
-                self._add_doc_to_store(
-                    pending_paths,
-                    [doc_id_map[path] for path in pending_paths],
-                    [metadata_map[path] for path in pending_paths],
-                )
-            self._local_files = set(self._list_store_root_docs().keys())
+            # Add pending docs (on disk but not yet tracked)
+            pending = [(p, current_docs[p]) for p in paths if p not in self._tracked_docs]
+            if pending:
+                pp, pi = zip(*pending)
+                pm = [{} for _ in pp]
+                success_ids = self._add_doc_to_store(list(pp), list(pi), pm)
+                # Only track files that were successfully added
+                for p, did in pending:
+                    if did in success_ids:
+                        self._tracked_docs[p] = did
+
+            self._local_files = set(self._tracked_docs.keys())
 
     def _monitor_local_dataset_worker(self):
         while self._local_monitor_continue:

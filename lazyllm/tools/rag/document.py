@@ -31,6 +31,10 @@ def _is_local_map_store(store_conf: Optional[Dict]) -> bool:
     return isinstance(store_conf, dict) and store_conf.get('type') == 'map'
 
 
+def _is_persistent_store(store_conf: Optional[Dict]) -> bool:
+    return store_conf is not None and not _is_local_map_store(store_conf)
+
+
 class CallableDict(dict):
     def __call__(self, cls, *args, **kw):
         return self[cls](*args, **kw)
@@ -87,6 +91,16 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 raise ValueError(f'Unsupported manager value: {manager}')
             spawn_doc_server = bool(manager) and not isinstance(manager, DocServer)
             connect_doc_server = isinstance(manager, DocServer)
+            # Auto-upgrade: persistent store + dataset_path → must use DocServer for production-grade
+            # file tracking. Skip when: explicit processor provided, or dataset_path is an existing single file.
+            # Non-existing paths are treated as future directories (will be created by DocServer).
+            if (not spawn_doc_server and not connect_doc_server and not processor
+                    and _is_persistent_store(store_conf) and dataset_path
+                    and not os.path.isfile(dataset_path)):
+                lazyllm.LOG.info(
+                    f'Persistent store detected (type={store_conf.get("type")}), '
+                    f'auto-enabling DocServer for production-grade file tracking and scan.')
+                spawn_doc_server = True
             doc_impl_dataset_path = dataset_path if not (spawn_doc_server or connect_doc_server) else None
             self._doc_impl_dataset_path = doc_impl_dataset_path
             self._doc_processor = None
@@ -162,13 +176,30 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             if self._spawn_doc_server:
                 self._ensure_doc_processor_started()
                 if not hasattr(self, '_manager'):
+                    # Create DocServer with scanning DISABLED initially.
+                    # Scanning is deferred until after all KB registrations and
+                    # parser algorithm registrations are complete, so the very
+                    # first scan sees a fully populated _owned_kbs set and can
+                    # route requests to algorithms that exist on the parser.
                     self._manager = DocServer(
                         launcher=self._launcher,
                         storage_dir=self._dataset_path,
                         parser_url=self._doc_processor.url,
                         pythonpath=_LOCAL_PYTHONPATH,
+                        enable_scan=bool(self._dataset_path),
                     )
                     self._manager.start()
+                    # Back-fill KB registrations for groups created before DocServer existed
+                    kbs = self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs
+                    for kb_name in kbs:
+                        self._manager.ensure_kb_registered(kb_name)
+                    # Force-init all DocImpl instances so their algorithms get registered
+                    # with the parser service (not just recorded in the doc-service DB).
+                    for impl in kbs.values():
+                        impl._lazy_init()
+                    # NOW start scanning — _owned_kbs is populated and all parser
+                    # algorithms are registered, so the first scan is consistent.
+                    self._manager.enable_scanning()
                 if self._create_ui and not hasattr(self, '_docweb'):
                     self.ensure_doc_web()
                     self._docweb.start()
@@ -200,6 +231,12 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 schema_extractor=schema_extractor,
             )
             (self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs)[name] = impl
+            # Register KB in DocServer DB so scan can discover this group
+            if hasattr(self, '_manager') and isinstance(self._manager, DocServer):
+                self._manager.ensure_kb_registered(name)
+                # If DocServer is already running, init DocImpl now so its algorithm
+                # gets registered with the parser before the next scan cycle.
+                impl._lazy_init()
 
         def get_doc_by_kb_group(self, name):
             return self._kbs._impl._m[name] if isinstance(self._kbs, ServerModule) else self._kbs[name]

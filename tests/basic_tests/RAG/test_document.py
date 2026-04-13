@@ -412,3 +412,298 @@ class TestDocument(unittest.TestCase):
         assert len(window) == 5
         assert window == sorted(window, key=lambda n: n.number)
         assert all(n.number in [1, 2, 3, 4, 5] for n in window)
+
+    def test_local_failed_insert_not_tracked(self):
+        """Regression: _add_doc_to_store failures must not be tracked in _tracked_docs."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_a = os.path.join(temp_dir, 'a.txt')
+            file_b = os.path.join(temp_dir, 'b.txt')
+            with open(file_a, 'w') as f:
+                f.write('a')
+            with open(file_b, 'w') as f:
+                f.write('b')
+
+            mock_embed = MagicMock()
+            mock_embed.return_value = [0.1, 0.2, 0.3]
+            doc_impl = DocImpl(embed=mock_embed, dataset_path=temp_dir, enable_path_monitoring=False)
+
+            call_count = [0]
+            original_add = doc_impl._processor.add_doc if hasattr(doc_impl, '_processor') and doc_impl._processor else None
+
+            def mock_add_doc(files, ids, metadatas=None):
+                call_count[0] += 1
+                if call_count[0] == 2:
+                    raise RuntimeError('Simulated add failure')
+                from lazyllm.tools.rag.doc_node import DocNode
+                from lazyllm.tools.rag.store import LAZY_ROOT_NAME
+                from lazyllm.tools.rag.store.store_base import LAZY_IMAGE_GROUP
+                from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_DOC_PATH
+                node = DocNode(group=LAZY_ROOT_NAME, text='test')
+                node._global_metadata = {RAG_DOC_ID: ids[0], RAG_DOC_PATH: files[0]}
+                return {LAZY_ROOT_NAME: [node], LAZY_IMAGE_GROUP: []}
+
+            doc_impl._reader = MagicMock()
+            doc_impl._reader.load_data.side_effect = (
+                lambda input_files, metadatas, split_nodes_by_type=True: mock_add_doc(input_files, [f'id_{i}' for i in range(len(input_files))], metadatas)
+            )
+            doc_impl._lazy_init()
+
+            # Only 1 out of 2 files should be tracked (the other failed)
+            assert len(doc_impl._tracked_docs) == 1
+
+    def test_persistent_store_auto_upgrade_nonexisting_dir(self):
+        """Regression: auto-upgrade must trigger for non-existing dataset_path (future dir).
+
+        Instantiates Document._Manager and verifies _spawn_doc_server is True.
+        """
+        nonexisting = os.path.join(tempfile.gettempdir(), f'lazyllm_nonexist_{os.getpid()}')
+        assert not os.path.exists(nonexisting), 'Test path should not exist'
+        milvus_conf = {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}}
+
+        mgr = Document._Manager(
+            dataset_path=nonexisting, embed=None, manager=False, server=False,
+            name='__default__', launcher=None, store_conf=milvus_conf, doc_fields=None,
+        )
+        # Auto-upgrade should have set _spawn_doc_server = True
+        assert mgr._spawn_doc_server is True, (
+            'Persistent store + non-existing dir should auto-upgrade to DocServer'
+        )
+        mgr.stop()
+
+    def test_persistent_store_no_upgrade_for_single_file(self):
+        """Regression: auto-upgrade must NOT trigger when dataset_path is an existing file."""
+        with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as f:
+            f.write(b'test')
+            single_file = f.name
+        try:
+            milvus_conf = {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}}
+            mgr = Document._Manager(
+                dataset_path=single_file, embed=None, manager=False, server=False,
+                name='__default__', launcher=None, store_conf=milvus_conf, doc_fields=None,
+            )
+            # Single file should NOT trigger auto-upgrade
+            assert mgr._spawn_doc_server is False, (
+                'Persistent store + single file should NOT auto-upgrade to DocServer'
+            )
+            mgr.stop()
+        finally:
+            os.unlink(single_file)
+
+    def test_persistent_store_existing_dir_auto_upgrade(self):
+        """Regression: auto-upgrade must trigger for existing directory + persistent store."""
+        dataset_path = self._build_dataset()
+        milvus_conf = {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}}
+
+        mgr = Document._Manager(
+            dataset_path=dataset_path, embed=None, manager=False, server=False,
+            name='__default__', launcher=None, store_conf=milvus_conf, doc_fields=None,
+        )
+        assert mgr._spawn_doc_server is True, (
+            'Persistent store + existing dir should auto-upgrade to DocServer'
+        )
+        mgr.stop()
+
+    def test_map_store_no_auto_upgrade(self):
+        """Map store should never trigger auto-upgrade regardless of dataset_path."""
+        dataset_path = self._build_dataset()
+        map_conf = {'type': 'map'}
+
+        mgr = Document._Manager(
+            dataset_path=dataset_path, embed=None, manager=False, server=False,
+            name='__default__', launcher=None, store_conf=map_conf, doc_fields=None,
+        )
+        assert mgr._spawn_doc_server is False, 'Map store should never auto-upgrade'
+        mgr.stop()
+
+    def test_create_kb_group_before_start_registers_in_doc_server(self):
+        """Regression: create_kb_group() before start() must still register KB in DocServer DB.
+
+        Lifecycle: Document(manager=True) → create_kb_group('foo') → start()
+        After start(), 'foo' must appear in DocServer's active KB list for scan.
+        """
+        dataset_path = self._build_dataset()
+        doc = Document(dataset_path, manager=True)
+        try:
+            doc.create_kb_group(name='pre_start_group')
+            doc.start()
+
+            # Access the inner DocServer._Impl manager to check DB state
+            doc_server = doc._manager._manager
+            raw_impl = getattr(doc_server, '_raw_impl', doc_server)
+            impl = getattr(raw_impl, '_impl', raw_impl)
+            if hasattr(impl, '_lazy_init'):
+                impl._lazy_init()
+            inner_manager = impl._manager
+            pairs = inner_manager._list_active_kb_algo_pairs()
+            kb_ids = {kb_id for kb_id, _ in pairs}
+            assert 'pre_start_group' in kb_ids, (
+                f'KB "pre_start_group" created before start() must be in active pairs, got: {kb_ids}'
+            )
+        finally:
+            doc.stop()
+
+    def test_pre_start_group_parser_algo_registered(self):
+        """P1 Regression: create_kb_group before start() must register algorithm with parser.
+
+        Lifecycle: Document(manager=True) → create_kb_group('foo') → start()
+        After start(), the DocImpl for 'foo' must have been initialized (i.e. _lazy_init
+        called) so that register_algorithm was invoked on the parser.  Without this,
+        scan will report 'Invalid algo_id foo' because the parser does not know 'foo'.
+        """
+        dataset_path = self._build_dataset()
+        doc = Document(dataset_path, manager=True)
+        try:
+            doc.create_kb_group(name='foo')
+            doc.start()
+
+            from lazyllm import ServerModule
+            kbs = (doc._manager._kbs._impl._m
+                   if isinstance(doc._manager._kbs, ServerModule)
+                   else doc._manager._kbs)
+            # The default group must be initialized
+            assert kbs[doc._curr_group]._lazy_init.flag, (
+                'Default DocImpl must be initialized after start()'
+            )
+            # The pre-start group must also be initialized (algorithm registered)
+            assert kbs['foo']._lazy_init.flag, (
+                'DocImpl for pre-start group "foo" must be initialized after start() '
+                'so its algorithm is registered with the parser (not just in the DB)'
+            )
+        finally:
+            doc.stop()
+
+    def test_scan_isolation_between_document_instances(self):
+        """P2 Regression: scan must only process KBs owned by the current Document instance.
+
+        DocServer._Impl._sync_dataset filters kb_algo_pairs by _owned_kbs.
+        This test creates a DocServer._Impl directly (bypassing ServerModule) and
+        verifies that _sync_dataset only processes KBs registered via ensure_kb_registered.
+        """
+        import os
+        import tempfile
+        from lazyllm.tools.rag.doc_service.doc_server import DocServer as _DocServer
+        from lazyllm.tools.rag.doc_service.parser_client import ParserClient
+        from lazyllm.tools.rag.utils import BaseResponse
+
+        dataset_path = self._build_dataset()
+
+        # Create a DocServer._Impl directly (no ServerModule indirection) with mocked parser
+        original_health = ParserClient.health
+        ParserClient.health = lambda self: BaseResponse(code=200, msg='success', data={'ok': True})
+        try:
+            with tempfile.TemporaryDirectory(prefix='lazyllm_scan_iso_') as db_dir:
+                db_config = {
+                    'db_type': 'sqlite', 'user': None, 'password': None,
+                    'host': None, 'port': None,
+                    'db_name': os.path.join(db_dir, 'scan_iso.db'),
+                }
+                impl = _DocServer._Impl(
+                    storage_dir=dataset_path,
+                    db_config=db_config,
+                    parser_url='http://mock-parser.test',
+                    enable_scan=False,  # don't start scan thread
+                )
+                impl._lazy_init()
+
+                # Register KBs from "instance 1"
+                impl.ensure_kb_registered('kb_inst1_a')
+                impl.ensure_kb_registered('kb_inst1_b')
+
+                # Simulate KBs from "instance 2" by inserting directly into DB
+                impl._manager._ensure_kb('kb_inst2_x', display_name='kb_inst2_x')
+                impl._manager._ensure_kb_algorithm('kb_inst2_x', 'kb_inst2_x')
+
+                # All KBs exist in DB
+                all_pairs = impl._manager._list_active_kb_algo_pairs()
+                all_kb_ids = {kb for kb, _ in all_pairs}
+                assert 'kb_inst1_a' in all_kb_ids
+                assert 'kb_inst1_b' in all_kb_ids
+                assert 'kb_inst2_x' in all_kb_ids
+
+                # _owned_kbs should only contain instance 1's KBs
+                assert impl._owned_kbs == {'kb_inst1_a', 'kb_inst1_b'}, (
+                    f'_owned_kbs should only contain registered KBs, got: {impl._owned_kbs}'
+                )
+
+                # Track which KBs _sync_dataset_for_kb is called for
+                synced_kbs = []
+                original_sync_for_kb = impl._sync_dataset_for_kb
+
+                def tracking_sync(kb_id, algo_id, disk_files, disk_set):
+                    synced_kbs.append(kb_id)
+
+                impl._sync_dataset_for_kb = tracking_sync
+                impl._sync_dataset()
+
+                # Only instance 1's KBs should be synced
+                assert 'kb_inst1_a' in synced_kbs, 'owned KB kb_inst1_a must be synced'
+                assert 'kb_inst1_b' in synced_kbs, 'owned KB kb_inst1_b must be synced'
+                assert 'kb_inst2_x' not in synced_kbs, (
+                    'non-owned KB kb_inst2_x must NOT be synced by this instance'
+                )
+        finally:
+            ParserClient.health = original_health
+
+    def test_first_scan_deferred_until_enable_scanning(self):
+        """P1 Regression: the very first scan must NOT run during DocServer._lazy_init.
+
+        DocServer._lazy_init() used to eagerly call _sync_dataset(), which ran before
+        _owned_kbs was populated and before parser algorithms were registered.  Now
+        scanning is deferred until enable_scanning() is called explicitly.
+        """
+        import os
+        import tempfile
+        from lazyllm.tools.rag.doc_service.doc_server import DocServer as _DocServer
+        from lazyllm.tools.rag.doc_service.parser_client import ParserClient
+        from lazyllm.tools.rag.utils import BaseResponse
+
+        dataset_path = self._build_dataset()
+
+        original_health = ParserClient.health
+        ParserClient.health = lambda self: BaseResponse(code=200, msg='success', data={'ok': True})
+        try:
+            with tempfile.TemporaryDirectory(prefix='lazyllm_deferred_scan_') as db_dir:
+                db_config = {
+                    'db_type': 'sqlite', 'user': None, 'password': None,
+                    'host': None, 'port': None,
+                    'db_name': os.path.join(db_dir, 'deferred.db'),
+                }
+                # Track all _sync_dataset_for_kb calls
+                sync_log = []
+                orig_sync_for_kb = _DocServer._Impl._sync_dataset_for_kb
+
+                def tracking_sync_for_kb(self_inner, kb_id, algo_id, disk_files, disk_set):
+                    sync_log.append(kb_id)
+
+                _DocServer._Impl._sync_dataset_for_kb = tracking_sync_for_kb
+                try:
+                    impl = _DocServer._Impl(
+                        storage_dir=dataset_path,
+                        db_config=db_config,
+                        parser_url='http://mock-parser.test',
+                        enable_scan=True,  # scanning is ENABLED but deferred
+                    )
+
+                    # _lazy_init must NOT trigger _sync_dataset
+                    impl._lazy_init()
+                    assert sync_log == [], (
+                        f'_lazy_init must NOT call _sync_dataset, but synced: {sync_log}'
+                    )
+
+                    # Simulate the Document._Manager startup sequence:
+                    # 1. Register KB
+                    impl.ensure_kb_registered('my_group')
+                    assert sync_log == [], (
+                        f'ensure_kb_registered must NOT trigger scan, but synced: {sync_log}'
+                    )
+
+                    # 2. Now explicitly enable scanning
+                    impl.enable_scanning()
+                    assert sync_log == ['my_group'], (
+                        f'enable_scanning must trigger first scan for owned KBs only, '
+                        f'got: {sync_log}'
+                    )
+                finally:
+                    _DocServer._Impl._sync_dataset_for_kb = orig_sync_for_kb
+        finally:
+            ParserClient.health = original_health

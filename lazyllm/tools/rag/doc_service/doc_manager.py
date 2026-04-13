@@ -175,6 +175,19 @@ class DocManager:
             'updated_at': kb_row.updated_at,
         }
 
+    def _list_active_kb_algo_pairs(self) -> List[tuple]:
+        """Return all active (kb_id, algo_id) bindings for scan iteration."""
+        with self._db_manager.get_session() as session:
+            Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
+            Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
+            rows = (
+                session.query(Rel.kb_id, Rel.algo_id)
+                .join(Kb, Rel.kb_id == Kb.kb_id)
+                .filter(Kb.status == KBStatus.ACTIVE.value)
+                .all()
+            )
+            return [(row.kb_id, row.algo_id) for row in rows]
+
     def _validate_kb_algorithm(self, kb_id: str, algo_id: str):
         if kb_id == '__default__':
             self._ensure_default_kb()
@@ -427,6 +440,30 @@ class DocManager:
             Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
             row = session.query(Doc).filter(Doc.path == path).first()
             return _orm_to_dict(row) if row else None
+
+    def _list_kb_docs_by_path(self, kb_id: str, exclude_failed: bool = True) -> Dict[str, str]:
+        """Query documents+kb_documents tables, return {path: doc_id}.
+
+        Args:
+            kb_id: Knowledge base ID to filter by.
+            exclude_failed: If True (default), also excludes FAILED and CANCELED docs so scan
+                can retry them. If False, only excludes DELETED — useful for stale-file cleanup
+                where we need to see failed docs whose source files were removed from disk.
+        """
+        _exclude = [DocStatus.DELETED.value]
+        if exclude_failed:
+            _exclude.extend([DocStatus.FAILED.value, DocStatus.CANCELED.value])
+        with self._db_manager.get_session() as session:
+            Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
+            Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
+            rows = (
+                session.query(Doc.path, Doc.doc_id)
+                .join(Rel, Doc.doc_id == Rel.doc_id)
+                .filter(Rel.kb_id == kb_id)
+                .filter(~Doc.upload_status.in_(_exclude))
+                .all()
+            )
+            return {row.path: row.doc_id for row in rows if row.path}
 
     def _upsert_doc_in_session(
         self,
