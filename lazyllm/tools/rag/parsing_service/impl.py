@@ -93,6 +93,8 @@ class _Processor:
     def _prepare_doc_inputs(input_files: List[str], ids: Optional[List[str]] = None,
                             metadatas: Optional[List[Dict[str, Any]]] = None,
                             kb_id: Optional[str] = None) -> tuple[List[str], List[Dict[str, Any]], str]:
+        if not input_files:
+            return [], [], kb_id or DEFAULT_KB_ID
         ids = ids or [gen_docid(path) for path in input_files]
         normalized_metadatas = metadatas or [{} for _ in input_files]
         for i, (doc_id, path) in enumerate(zip(ids, input_files)):
@@ -301,8 +303,6 @@ class _Processor:
 
     def _reparse_docs(self, group_name: str, doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict],
                       kb_id: str = None, **kwargs):
-        if not metadatas:
-            raise ValueError('metadatas is required for reparse')
         doc_ids, metadatas, kb_id = self._prepare_doc_inputs(doc_paths, doc_ids, metadatas, kb_id)
         if group_name == 'all':
             preloaded_root_nodes = self._reader.load_data(doc_paths, metadatas, split_nodes_by_type=True)
