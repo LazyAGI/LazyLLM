@@ -3,7 +3,7 @@ import json
 import os
 from typing import Any, Dict, Optional
 
-from .. import opentelemetry
+from lazyllm.thirdparty import opentelemetry
 from .base import TracingBackend
 
 

@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterable, Optional
 
 from lazyllm.common import LOG, globals
 from lazyllm.configs import config
-from . import opentelemetry
+from lazyllm.thirdparty import opentelemetry
 from .backends import get_tracing_backend
 
 
