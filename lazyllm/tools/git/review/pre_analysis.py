@@ -13,6 +13,7 @@ from .checkpoint import _load_cache, _save_cache, _save_cache_multi, ReviewStage
 from .constants import SINGLE_CALL_CONTEXT_BUDGET
 from .utils import (
     _Progress, _safe_llm_call, _safe_llm_call_text, _extract_json_text, _parse_json_with_repair,
+    JSON_OUTPUT_INSTRUCTION,
 )
 
 _SKIP_DIRS = {'.git', '__pycache__', '.cache', '.tox', 'node_modules', '.mypy_cache', '.pytest_cache', 'dist', 'build'}
@@ -646,7 +647,7 @@ The LAST section MUST be:
 {{"title": "Key Utilities & Usage Notes", "focus": "关键辅助函数、数据结构的典型用法和注意事项", \
 "search_hints": ["def _[a-z]", "class.*Dict", "ArgsDict|LazyLLMCMD"]}}
 
-Output ONLY a JSON array. No explanation.
+''' + JSON_OUTPUT_INSTRUCTION + '''
 
 <snapshot>
 {snapshot}
@@ -719,11 +720,8 @@ You are analyzing a Python project. Fill in EVERY architecture section listed be
 
 For each section: plain text (max 500 words), no markdown headers, focused on that section focus.
 
-Output ONLY a JSON array of objects in the SAME ORDER as sections above, each with:
-- "title": exact section title from the list
-- "content": section body
-
-No markdown wrapper.
+''' + JSON_OUTPUT_INSTRUCTION + '''
+Each item: "title" (exact section title) and "content" (section body).
 '''
 
 _ARCH_STATIC_PROMPT_TMPL = '''\
@@ -1265,7 +1263,7 @@ Rules:
 - Only include files that are clearly utility/helper/base libraries, NOT application logic files.
 - Do NOT include test files, example files, migration scripts, or generated files.
 - Limit to at most 30 files.
-- Output ONLY a JSON array. No explanation.
+- ''' + JSON_OUTPUT_INSTRUCTION + '''
 
 <directory_tree>
 {dir_tree}
@@ -1560,7 +1558,8 @@ Pay special attention to cross-file consistency issues (use rule_id prefix "PR{p
 - Registry/factory pattern: new entry added but docs/tests not updated
 - Abstract method added to base class but not implemented in subclasses
 
-Output ONLY a JSON array. If no clear rules can be extracted: output [].
+''' + JSON_OUTPUT_INSTRUCTION + '''
+If no clear rules can be extracted: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
 
 <review_comments>
 {{comments_text}}
@@ -1580,7 +1579,7 @@ For each final rule, output a JSON object with:
 - "rule_id": clean id like "ERR001" (no PR prefix)
 - "title", "severity", "detect" (list), "bad_example", "good_example", "fix"
 
-Output ONLY a JSON array.
+''' + JSON_OUTPUT_INSTRUCTION + '''
 
 <rule_cards>
 {rules_json}
@@ -1627,7 +1626,7 @@ def _compress_comments_for_pr(llm: Any, comments: List[Dict[str, Any]]) -> str:
             'Summarize each review comment into ONE sentence (max 20 words). '
             'Preserve: what is wrong and why.\n'
             'Output a JSON array, each item: {"idx": <same>, "summary": "<one sentence>"}.\n'
-            'Output ONLY the JSON array.\n\n'
+            + JSON_OUTPUT_INSTRUCTION + '\n\n'
             + json.dumps(batch_input, ensure_ascii=False, indent=2)
         )
         try:

@@ -103,14 +103,49 @@ _QPS_PATTERNS = re.compile(
 _RETRY_DELAYS = (3, 8, 20)  # seconds to wait before each retry attempt
 
 
+JSON_START_MARKER = '<<<JSON_START>>>'
+JSON_END_MARKER = '<<<JSON_END>>>'
+JSON_OUTPUT_INSTRUCTION = (
+    f'Wrap your JSON array with exactly these delimiters (no other text outside them):\n'
+    f'{JSON_START_MARKER}\n'
+    f'[ ... ]\n'
+    f'{JSON_END_MARKER}'
+)
+JSON_OBJ_OUTPUT_INSTRUCTION = (
+    f'Wrap your JSON object with exactly these delimiters (no other text outside them):\n'
+    f'{JSON_START_MARKER}\n'
+    f'{{ ... }}\n'
+    f'{JSON_END_MARKER}'
+)
+
+
 def _extract_json_text(raw: str) -> str:
-    m = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
-    if m:
-        return m.group(1).strip()
-    start = raw.find('[')
-    end = raw.rfind(']')
-    if start != -1 and end != -1 and end > start:
-        return raw[start:end + 1]
+    # Priority 1: unambiguous delimiters that won't collide with code fences in suggestion fields.
+    s = raw.find(JSON_START_MARKER)
+    e = raw.find(JSON_END_MARKER)
+    if s != -1 and e != -1 and e > s:
+        return raw[s + len(JSON_START_MARKER):e].strip()
+    # Priority 2: ```json ... ``` fence.
+    # Use rfind for the closing ``` so we span the ENTIRE fence including any ``` inside suggestion fields.
+    fence_open = raw.find('```')
+    fence_close = raw.rfind('```')
+    if fence_open != -1 and fence_close > fence_open:
+        inner = raw[fence_open + 3:fence_close]
+        inner = re.sub(r'^\s*json\s*', '', inner, count=1).strip()
+        if inner:
+            return inner
+    # Priority 3: outermost bracket pair — try array first, then object.
+    arr_start = raw.find('[')
+    arr_end = raw.rfind(']')
+    obj_start = raw.find('{')
+    obj_end = raw.rfind('}')
+    if arr_start != -1 and arr_end > arr_start:
+        if obj_start == -1 or arr_start <= obj_start:
+            return raw[arr_start:arr_end + 1]
+    if obj_start != -1 and obj_end > obj_start:
+        return raw[obj_start:obj_end + 1]
+    if arr_start != -1 and arr_end > arr_start:
+        return raw[arr_start:arr_end + 1]
     return raw.strip()
 
 
@@ -209,9 +244,17 @@ def _get_default_llm() -> Any:
         ) from e
 
 
+_REVIEW_MAX_TOKENS = 32000
+
+
 def _ensure_non_streaming_llm(llm: Any) -> Any:
     if hasattr(llm, '_stream') and llm._stream and hasattr(llm, 'share'):
-        return llm.share(stream=False)
+        llm = llm.share(stream=False)
+    # Ensure output is long enough to hold multi-issue JSON responses.
+    if hasattr(llm, 'static_params') and hasattr(llm, '_static_params'):
+        cur = llm._static_params.get('max_tokens', 0)
+        if not cur or cur < _REVIEW_MAX_TOKENS:
+            llm._static_params = dict(llm._static_params, max_tokens=_REVIEW_MAX_TOKENS)
     return llm
 
 
@@ -266,10 +309,12 @@ def _normalize_comment_item(
 ) -> Optional[Dict[str, Any]]:
     line = item.get('line')
     if line is None or item.get('problem') is None:
+        lazyllm.LOG.info(f'[NORMALIZE_SKIP] missing line or problem: {str(item)[:200]}')
         return None
     try:
         line = int(line)
     except (TypeError, ValueError):
+        lazyllm.LOG.info(f'[NORMALIZE_SKIP] non-int line={line!r}: {str(item)[:200]}')
         return None
     if end_line is not None:
         # Allow a generous tolerance: LLM may reference lines slightly outside the hunk
@@ -277,6 +322,10 @@ def _normalize_comment_item(
         hunk_size = max(end_line - new_start, 1)
         tolerance = max(50, hunk_size // 2)
         if not (new_start - tolerance <= line < end_line + tolerance):
+            lazyllm.LOG.info(
+                f'[NORMALIZE_SKIP] line={line} out of range [{new_start - tolerance}, {end_line + tolerance}): '
+                f'{str(item)[:200]}'
+            )
             return None
     elif line <= 0:
         return None
