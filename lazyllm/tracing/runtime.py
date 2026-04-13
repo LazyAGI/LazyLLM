@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, Optional
 
 from lazyllm.common import LOG, globals
 from lazyllm.configs import config
+from . import opentelemetry
 from .backends import get_tracing_backend
 
 
@@ -119,17 +120,14 @@ class _TracingRuntime:
                 return self._tracer is not None
             self._initialized = True
             try:
-                from opentelemetry import trace as trace_api
-                from opentelemetry.sdk.resources import Resource
-                from opentelemetry.sdk.trace import TracerProvider
-                from opentelemetry.sdk.trace.export import BatchSpanProcessor
-                from opentelemetry.trace.status import Status, StatusCode
-            except Exception as exc:
-                self._raise_setup_error(
-                    'LazyLLM tracing is disabled because OpenTelemetry dependencies are unavailable. '
-                    f'Install opentelemetry-api, opentelemetry-sdk and opentelemetry-exporter-otlp-proto-http. '
-                    f'Details: {exc}'
-                )
+                trace_api = opentelemetry.trace
+                Resource = opentelemetry.sdk.resources.Resource
+                TracerProvider = opentelemetry.sdk.trace.TracerProvider
+                BatchSpanProcessor = opentelemetry.sdk.trace.export.BatchSpanProcessor
+                Status = opentelemetry.trace.status.Status
+                StatusCode = opentelemetry.trace.status.StatusCode
+            except ImportError as exc:
+                self._raise_setup_error(str(exc))
             backend = self._get_backend()
 
             try:

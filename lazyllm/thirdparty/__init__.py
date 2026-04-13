@@ -28,6 +28,14 @@ package_name_map = {
     'ahocorasick': 'pyahocorasick',
     'psycopg2': 'psycopg2-binary',
     'yaml': 'pyyaml',
+    'opentelemetry': 'opentelemetry-api',
+    'opentelemetry.trace': 'opentelemetry-api',
+    'opentelemetry.trace.status': 'opentelemetry-api',
+    'opentelemetry.sdk': 'opentelemetry-sdk',
+    'opentelemetry.sdk.trace': 'opentelemetry-sdk',
+    'opentelemetry.sdk.trace.export': 'opentelemetry-sdk',
+    'opentelemetry.sdk.resources': 'opentelemetry-sdk',
+    'opentelemetry.exporter.otlp.proto.http.trace_exporter': 'opentelemetry-exporter-otlp-proto-http',
 }
 
 package_name_map_reverse = {v: k for k, v in package_name_map.items()}

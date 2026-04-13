@@ -3,6 +3,7 @@ import json
 import os
 from typing import Any, Dict, Optional
 
+from .. import opentelemetry
 from .base import TracingBackend
 
 
@@ -36,7 +37,7 @@ class LangfuseBackend(TracingBackend):
         auth = base64.b64encode(f"{cfg['public_key']}:{cfg['secret_key']}".encode('utf-8')).decode('ascii')
         endpoint = cfg['host'].rstrip('/') + '/api/public/otel/v1/traces'
 
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        OTLPSpanExporter = opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter
 
         return OTLPSpanExporter(
             endpoint=endpoint,
