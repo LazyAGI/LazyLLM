@@ -67,6 +67,34 @@ def _truncate_hunk_content(content: str, max_lines: int) -> str:
     return '\n'.join(content_lines)
 
 
+def _annotate_diff_with_line_numbers(content: str, new_start: int) -> str:
+    # Annotate each diff hunk line with [old_lineno|new_lineno] prefix so the LLM
+    # can unambiguously identify the new-file line number to report.
+    # Format:
+    #   [  N|  M]   context line  (both old and new advance)
+    #   [ --|  M] + added line    (only new advances)
+    #   [  N|--]  - removed line  (only old advances)
+    # new_start is the first new-file line number of this hunk.
+    # old_start is derived by scanning the hunk header; since we receive the hunk body
+    # without the @@ header, we approximate old_start = new_start (close enough for display).
+    old_no = new_start
+    new_no = new_start
+    out_lines = []
+    for raw_line in content.splitlines():
+        if raw_line.startswith('+'):
+            prefix = f'[--|{new_no:3d}]'
+            new_no += 1
+        elif raw_line.startswith('-'):
+            prefix = f'[{old_no:3d}|--]'
+            old_no += 1
+        else:
+            prefix = f'[{old_no:3d}|{new_no:3d}]'
+            old_no += 1
+            new_no += 1
+        out_lines.append(f'{prefix} {raw_line}')
+    return '\n'.join(out_lines)
+
+
 # ---------------------------------------------------------------------------
 # Progress reporter
 # ---------------------------------------------------------------------------

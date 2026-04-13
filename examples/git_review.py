@@ -59,7 +59,8 @@ def _parse_args():
     parser.add_argument('--clear_checkpoint', action='store_true',
                         help='Clear checkpoint and start fresh')
     parser.add_argument('--resume_from', default=None,
-                        choices=['clone', 'arch', 'spec', 'pr_summary', 'r1', 'r2', 'r3', 'r4a', 'r4', 'final', 'upload'],
+                        choices=['clone', 'arch', 'spec', 'pr_summary',
+                                 'r1', 'r2', 'r3', 'r4a', 'r4', 'final', 'upload'],
                         help='Resume from a specific stage (clone/arch/spec/pr_summary/r1/r2/r3/r4a/r4/final/upload)')
     return parser.parse_args()
 
