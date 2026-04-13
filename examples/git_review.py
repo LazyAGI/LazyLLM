@@ -30,6 +30,7 @@
 import argparse
 import os
 import sys
+import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -143,7 +144,7 @@ def main():  # noqa C901
         if post_to_github and out.get('comments_posted', 0) > 0:
             print('\n[Posted] Line-level comments posted to PR; check Files changed for inline comments.')
     except Exception as e:
-        print(f'   Review failed: {e}')
+        print(f'   Review failed: {e}, backtrace: {traceback.format_exc()}')
         return 1
 
     print('Done.')

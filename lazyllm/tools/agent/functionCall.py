@@ -55,11 +55,8 @@ def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -
         if i in to_truncate:
             content = msg.get('content', '')
             if isinstance(content, str) and len(content) > _COMPACTION_TRUNCATE_LEN:
-                name = msg.get('name', '')
                 truncated = content[:_COMPACTION_TRUNCATE_LEN]
                 msg = dict(msg, content=f'[truncated {len(content)} chars] {truncated}...')
-                if name:
-                    msg['name'] = name
         result.append(msg)
     return result
 

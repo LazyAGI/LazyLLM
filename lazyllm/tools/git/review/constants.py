@@ -19,6 +19,8 @@ TOTAL_CALL_BUDGET = 60
 # R2 throttle limits
 R2_MAX_FILES = 20
 R2_MAX_CHUNKS_PER_FILE = 3
+# Hard upper bound on chunks per file regardless of strategy (prevents runaway LLM calls)
+R2_MAX_CHUNKS_HARD = 8
 
 # R2 unit diff budget: max combined diff chars per review unit (anchor + absorbed small files)
 R2_UNIT_DIFF_BUDGET = 40000

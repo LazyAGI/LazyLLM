@@ -83,6 +83,47 @@ def _decide_review_strategy(stats: _DiffStats) -> _ReviewStrategy:
     )
 
 
+def _truncate_diff_at_file_boundary(diff_text: str, max_chars: int) -> tuple:
+    # Truncate diff at a clean file boundary instead of mid-file.
+    # Returns (truncated_diff, was_truncated).
+    # Finds the last "diff --git" header that starts before max_chars,
+    # and cuts just before it if including that file would exceed the limit.
+    import re
+    file_starts = [m.start() for m in re.finditer(r'^diff --git ', diff_text, re.MULTILINE)]
+    if not file_starts:
+        return diff_text[:max_chars] + '\n... [diff truncated]\n', True
+
+    # Find the last file boundary we can include completely within max_chars
+    cut_pos = file_starts[0]
+    for pos in file_starts:
+        if pos >= max_chars:
+            break
+        cut_pos = pos
+
+    # If the last included file itself exceeds max_chars, cut at max_chars within it
+    if cut_pos == file_starts[0] and file_starts[0] >= max_chars:
+        return diff_text[:max_chars] + '\n... [diff truncated]\n', True
+
+    # Find the start of the next file after cut_pos to get the full slice
+    next_file_positions = [p for p in file_starts if p > cut_pos]
+    if next_file_positions and next_file_positions[0] <= max_chars:
+        # We can include everything up to the next file boundary
+        end = next_file_positions[0]
+        skipped = len([p for p in file_starts if p >= end])
+        marker = f'\n... [diff truncated: {skipped} file(s) omitted]\n'
+        return diff_text[:end] + marker, True
+    elif not next_file_positions:
+        # All files fit
+        return diff_text, False
+    else:
+        # The file starting at cut_pos extends beyond max_chars; include it fully
+        # only if it started before max_chars (partial is worse than full)
+        end = next_file_positions[0]
+        skipped = len([p for p in file_starts if p >= end])
+        marker = f'\n... [diff truncated: {skipped} file(s) omitted]\n'
+        return diff_text[:end] + marker, True
+
+
 def review(  # noqa: C901
     pr_number: int,
     repo: str = 'LazyAGI/LazyLLM',
@@ -142,8 +183,7 @@ def review(  # noqa: C901
             raise RuntimeError(f'Failed to get PR #{pr_number} diff: {diff_res.get("message", "unknown")}')
         diff_text = diff_res.get('diff', '')
         if max_diff_chars and len(diff_text) > max_diff_chars:
-            diff_text = diff_text[:max_diff_chars] + '\n... [diff truncated]\n'
-            truncated_diff = True
+            diff_text, truncated_diff = _truncate_diff_at_file_boundary(diff_text, max_diff_chars)
         ckpt.save('diff_text', diff_text)
     else:
         _Progress('Pre-round: fetching diff').done('loaded from checkpoint')
@@ -164,7 +204,10 @@ def review(  # noqa: C901
             'bug_category': 'maintainability',
             'path': '',
             'line': 0,
-            'problem': f'Review may be incomplete: diff was truncated at {max_diff_chars} chars.',
+            'problem': (
+                f'Review may be incomplete: diff exceeded {max_diff_chars} chars and was truncated '
+                f'at a file boundary. Files beyond the limit were skipped entirely.'
+            ),
             'suggestion': 'Consider increasing max_diff_chars or splitting the PR.',
             'source': 'meta',
         })

@@ -22,11 +22,12 @@ from .pre_analysis import (
     _extract_arch_for_file,
     _extract_abstract_method_names,
     _find_subclass_implementations,
+    _extract_file_skeleton,
 )
 from .constants import (
     SINGLE_CALL_CONTEXT_BUDGET, R1_DIFF_BUDGET, ISSUE_DENSITY_RULE_TEXT,
     R1_WINDOW_MAX_HUNKS, R1_WINDOW_MAX_DIFF_CHARS,
-    R2_UNIT_DIFF_BUDGET,
+    R2_UNIT_DIFF_BUDGET, R2_MAX_CHUNKS_HARD,
     max_issues_for_diff, cap_issues_by_severity, clip_text, clip_diff_by_hunk_budget,
     compress_diff_for_agent_heuristic, effective_diff_line_count,
 )
@@ -900,16 +901,26 @@ def _r2_unit_agent_review(
         symbol_context = ''
 
     # chunk-based issue extraction over the combined unit diff
-    chunks = _split_file_diff_into_chunks(unit_diff, _R2_EXTRACT_DIFF_CHUNK)[:max_chunks]
+    # Process ALL chunks (no hard truncation) up to R2_MAX_CHUNKS_HARD to cover the full file.
+    all_chunks = _split_file_diff_into_chunks(unit_diff, _R2_EXTRACT_DIFF_CHUNK)
+    if len(all_chunks) > R2_MAX_CHUNKS_HARD:
+        lazyllm.LOG.warning(
+            f'Round 2: {anchor or files} has {len(all_chunks)} chunks, '
+            f'capping at {R2_MAX_CHUNKS_HARD} (R2_MAX_CHUNKS_HARD)'
+        )
+        all_chunks = all_chunks[:R2_MAX_CHUNKS_HARD]
+    skeleton = _extract_file_skeleton(clone_dir, anchor) if anchor else ''
+    if skeleton:
+        lazyllm.LOG.info(f'  [R2] File skeleton extracted for {anchor} ({len(skeleton)} chars)')
     r1_issues = [c for f in files for c in r1_by_file.get(f, [])]
     items: List[Dict[str, Any]] = []
     discarded: set = set()
-    for hunk_range, diff_chunk in chunks:
+    for hunk_range, diff_chunk in all_chunks:
         filtered_ctx = _filter_symbol_context_for_chunk(symbol_context, diff_chunk)
         new_items, new_disc = _r2_extract_issues(
-            llm, primary, hunk_range, diff_chunk,
-            filtered_ctx, shared_context, arch_doc, pr_summary,
-            r1_issues, language, agent_instructions,
+            llm, primary, diff_chunk, hunk_range,
+            filtered_ctx, shared_context, r1_issues, arch_doc, pr_summary,
+            language, agent_instructions, file_skeleton=skeleton,
         )
         items.extend(new_items)
         discarded.update(new_disc)
@@ -971,6 +982,9 @@ You are a senior code reviewer performing a second-pass context-enriched analysi
 
 ## Cross-File Shared Context
 {shared_context}
+
+## File Skeleton (imports, globals, class/function signatures of the whole file)
+{file_skeleton}
 
 ## Symbol Context (collected by agent exploration)
 {symbol_context}
@@ -1042,6 +1056,8 @@ def _make_traced_tool(tool: Any, step_counter: List[int], path: str) -> Any:
     traced.__name__ = unique_name
     traced.__doc__ = tool.__doc__
     traced.__annotations__ = tool.__annotations__
+    if not traced.__doc__:
+        lazyllm.LOG.warning(f'Tool {tool.__name__!r} has no docstring; ReactAgent will fail to init')
     return traced
 
 def _r2_build_file_context(
@@ -1093,6 +1109,7 @@ def _r2_extract_issues(
     llm: Any, path: str, diff_chunk: str, hunk_range: str, symbol_context: str,
     shared_context: str, r1_issues: List[Dict[str, Any]], arch_doc: str,
     pr_summary: str, language: str = 'cn', agent_instructions: str = '',
+    file_skeleton: str = '',
 ) -> Tuple[List[Dict[str, Any]], set]:
     arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=_R2_ARCH_BUDGET)
     r1_indexed = [{**c, 'r1_idx': i, 'problem': (c.get('problem') or '')[:120]} for i, c in enumerate(r1_issues)]
@@ -1105,6 +1122,7 @@ def _r2_extract_issues(
         agent_instructions=agent_instructions or '(not available)',
         arch_doc=arch_snippet,
         shared_context=shared_context or '(none)',
+        file_skeleton=file_skeleton[:3000] if file_skeleton else '(not available)',
         symbol_context=symbol_context[:3000] if symbol_context else '(none)',
         round1_json=r1_text, path=path, hunk_range=hunk_range, diff_text=diff_chunk,
         density_rule=ISSUE_DENSITY_RULE_TEXT,
@@ -1908,7 +1926,9 @@ def _round5_merge_and_deduplicate(
     if not all_comments:
         return []
     prog = _Progress('Round 5: merge & deduplicate')
-    valid = [c for c in all_comments if c.get('path') and c.get('line', 0) > 0]
+    # Accept both line-level (line > 0) and file-level (line is None/0) issues.
+    # File-level issues must still participate in dedup against existing comments.
+    valid = [c for c in all_comments if c.get('path')]
     if not valid:
         prog.done('no valid comments')
         return []

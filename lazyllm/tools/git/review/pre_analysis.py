@@ -361,6 +361,77 @@ def _extract_class_method_signatures(lines: List[str], class_line_idx: int) -> L
 def _extract_module_function_signatures(lines: List[str]) -> List[str]:
     return [line.rstrip()[:120] for line in lines if re.match(r'^def\s+\w+', line)]
 
+
+def _skeleton_collect_imports(lines: List[str], i: int) -> Tuple[str, int]:
+    stripped = lines[i].strip()
+    # skip indented (local) imports
+    if lines[i][0] == ' ' or lines[i][0] == '\t':
+        return '', i + 1
+    return stripped[:120], i + 1
+
+
+def _skeleton_collect_constant(lines: List[str], i: int) -> Tuple[str, int]:
+    stripped = lines[i].strip()
+    # skip triple-quoted string assignments (too verbose)
+    if "'''" in stripped or '"""' in stripped:
+        return '', i + 1
+    return stripped[:80], i + 1
+
+
+def _skeleton_collect_function(lines: List[str], i: int) -> Tuple[str, int]:
+    stripped = lines[i].strip()
+    sig = stripped.rstrip()
+    if ')' not in sig:
+        for j in range(i + 1, min(i + 5, len(lines))):
+            sig += ' ' + lines[j].strip()
+            if ')' in lines[j]:
+                break
+    return sig.split('\n')[0][:120], i + 1
+
+
+def _extract_file_skeleton(clone_dir: str, path: str, max_chars: int = 3000) -> str:
+    # Extract a compact structural skeleton of a source file:
+    # top-level imports, module-level constants, class/function signatures (no bodies).
+    # Used to give each diff chunk context about the whole file structure.
+    abs_path = os.path.join(clone_dir, path) if clone_dir else path
+    if not os.path.isfile(abs_path):
+        return ''
+    try:
+        with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+    except OSError:
+        return ''
+
+    parts: List[str] = []
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        stripped = raw.strip()
+        # only process top-level lines (no indentation)
+        if raw and raw[0] in (' ', '\t'):
+            i += 1
+            continue
+        if re.match(r'^(?:import|from)\s+', stripped):
+            entry, i = _skeleton_collect_imports(lines, i)
+        elif re.match(r'^[A-Z_][A-Z0-9_]*\s*=', stripped) or re.match(r'^_[A-Z][A-Z0-9_]*\s*=', stripped):
+            entry, i = _skeleton_collect_constant(lines, i)
+        elif re.match(r'^class\s+\w+', stripped):
+            entry = stripped.rstrip()[:120]
+            sigs = _extract_class_method_signatures(lines, i)
+            parts.append(entry)
+            parts.extend(sigs[:20])
+            i += 1
+            continue
+        elif re.match(r'^def\s+\w+', stripped):
+            entry, i = _skeleton_collect_function(lines, i)
+        else:
+            i += 1
+            continue
+        if entry:
+            parts.append(entry)
+
+    return '\n'.join(parts)[:max_chars]
+
 def _extract_abstract_method_names(diff_content: str) -> List[str]:
     # find method names that appear after @abstractmethod in added lines
     names: List[str] = []
@@ -836,7 +907,13 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
     from lazyllm.tools.agent.file_tool import search_in_files
 
     def analyze_symbol(symbol_name: str, file_path: str = '', max_depth: int = 2) -> dict:
-        # Read and analyze a class or function, store result in the shared symbol cache.
+        '''Read and analyze a class or function definition, with its dependencies.
+
+        Args:
+            symbol_name (str): Name of the class or function to analyze.
+            file_path (str, optional): Relative path to the file containing the symbol.
+            max_depth (int, optional): How many levels of dependencies to follow.
+        '''
         # normalize file_path
         if file_path and os.path.isabs(file_path):
             file_path = os.path.relpath(file_path, clone_dir)
@@ -1009,7 +1086,13 @@ def _build_scoped_agent_tools_with_cache(
 ) -> list:
     tools = _build_scoped_agent_tools(clone_dir, owner_repo=owner_repo, cache_path=cache_path)
     analyze_symbol = _build_analyze_symbol_tool(llm, clone_dir, symbol_cache)
-    return tools + [analyze_symbol]
+    all_tools = tools + [analyze_symbol]
+    missing = [fn.__name__ for fn in all_tools if callable(fn) and not getattr(fn, '__doc__', None)]
+    if missing:
+        lazyllm.LOG.warning(
+            f'Agent tools missing docstring (will cause ReactAgent init failure): {missing}'
+        )
+    return all_tools
 
 def _arch_collect_snippets(clone_dir: str, section: Dict[str, Any], max_chars: int = 6000) -> str:  # noqa: C901
     from lazyllm.tools.agent.file_tool import search_in_files, read_file
