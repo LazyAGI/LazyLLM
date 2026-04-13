@@ -160,12 +160,16 @@ class _TracingRuntime:
     def _target_name(target: Any, span_kind: str) -> str:
         if span_kind == 'module':
             return getattr(target, 'name', None) or getattr(target, '_module_name', None) or target.__class__.__name__
+        if span_kind == 'callable':
+            return getattr(target, '__name__', None) or target.__class__.__name__
         return target.__class__.__name__
 
     @staticmethod
     def _target_id(target: Any, span_kind: str) -> Optional[str]:
         if span_kind == 'module':
             return getattr(target, '_module_id', None)
+        if span_kind == 'callable':
+            return None
         return getattr(target, '_flow_id', None)
 
     def _base_attributes(
