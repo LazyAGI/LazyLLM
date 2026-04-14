@@ -827,24 +827,20 @@ jobs:
           cmake --install build --prefix . --component lazyllm_cpp
           ls -al lazyllm | rg "lazyllm_cpp|cpp_lib" || true
 
-      - name: Run basic tests
+      - name: Compute pytest marker
         run: |
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            MARKER="not skip_on_linux"
+            echo "PYTEST_MARKER=not skip_on_linux" >> "$GITHUB_ENV"
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            MARKER="not skip_on_mac"
+            echo "PYTEST_MARKER=not skip_on_mac" >> "$GITHUB_ENV"
           else
-            MARKER="not skip_on_win"
+            echo "PYTEST_MARKER=not skip_on_win" >> "$GITHUB_ENV"
           fi
-          pytest -v --order-scope=class -m "$MARKER" tests/basic_tests
+
+      - name: Run basic tests
+        run: |
+          pytest -v --order-scope=class -m "$PYTEST_MARKER" tests/basic_tests
 
       - name: Run advanced tests
         run: |
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            MARKER="not skip_on_linux"
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            MARKER="not skip_on_mac"
-          else
-            MARKER="not skip_on_win"
-          fi
-          pytest -v --order-scope=class -m "$MARKER" tests/advanced_tests
+          pytest -v --order-scope=class -m "$PYTEST_MARKER" tests/advanced_tests

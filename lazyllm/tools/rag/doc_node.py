@@ -64,9 +64,9 @@ class DocNode(DocNodeCore):
                  global_metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
         if text and content:
             raise ValueError('`text` and `content` cannot be set at the same time.')
+        super().__init__(text=text, metadata=metadata, uid=uid)
         if not content and not text: content = ''
         self._content: Optional[Union[str, List[Any]]] = content if content is not None else text
-        super().__init__(text=text, metadata=metadata, uid=uid)
         self._group: Optional[str] = group
         self._embedding: Optional[Dict[str, List[float]]] = embedding or {}
         # Global metadata: the file's global metadata (higher level)
