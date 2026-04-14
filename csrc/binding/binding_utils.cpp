@@ -33,33 +33,19 @@ bool ExtractStringSequence(const py::object& obj, std::vector<std::string>* out)
 }
 
 lazyllm::MetadataMode ParseMetadataMode(const py::object& mode) {
-    if (mode.is_none()) return lazyllm::MetadataMode::NONE;
-    try {
-        if (py::hasattr(mode, "name")) {
-            const auto name = py::cast<std::string>(mode.attr("name"));
-            if (name == "ALL") return lazyllm::MetadataMode::ALL;
-            if (name == "EMBED") return lazyllm::MetadataMode::EMBED;
-            if (name == "LLM") return lazyllm::MetadataMode::LLM;
-            if (name == "NONE") return lazyllm::MetadataMode::NONE;
-        }
-    } catch (const py::error_already_set&) {
+    if (py::hasattr(mode, "name")) {
+        const auto name = py::cast<std::string>(mode.attr("name"));
+        if (name == "ALL") return lazyllm::MetadataMode::ALL;
+        else if (name == "EMBED") return lazyllm::MetadataMode::EMBED;
+        else if (name == "LLM") return lazyllm::MetadataMode::LLM;
+        else return lazyllm::MetadataMode::NONE;
     }
-    if (py::isinstance<py::str>(mode)) {
+    else if (py::isinstance<py::str>(mode)) {
         const auto name = mode.cast<std::string>();
         if (name == "ALL") return lazyllm::MetadataMode::ALL;
-        if (name == "EMBED") return lazyllm::MetadataMode::EMBED;
-        if (name == "LLM") return lazyllm::MetadataMode::LLM;
-        if (name == "NONE") return lazyllm::MetadataMode::NONE;
-    }
-    if (py::isinstance<py::int_>(mode)) {
-        const auto value = mode.cast<int>();
-        switch (value) {
-        case 0: return lazyllm::MetadataMode::ALL;
-        case 1: return lazyllm::MetadataMode::EMBED;
-        case 2: return lazyllm::MetadataMode::LLM;
-        case 3: return lazyllm::MetadataMode::NONE;
-        default: break;
-        }
+        else if (name == "EMBED") return lazyllm::MetadataMode::EMBED;
+        else if (name == "LLM") return lazyllm::MetadataMode::LLM;
+        else return lazyllm::MetadataMode::NONE;
     }
     return lazyllm::MetadataMode::NONE;
 }
