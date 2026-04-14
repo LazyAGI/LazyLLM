@@ -1,4 +1,7 @@
 include(FetchContent)
+# Apply to all FetchContent_* dependencies in this configure run:
+# disable remote update checks to keep builds reproducible.
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
 find_package(Python3 COMPONENTS Interpreter Development Development.Module REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
@@ -22,7 +25,7 @@ if (NOT TARGET cpp_tiktoken)
     FetchContent_Declare(
         cpp_tiktoken
         GIT_REPOSITORY https://github.com/gh-markt/cpp-tiktoken.git
-        GIT_TAG master
+        GIT_TAG 9323db528d52e48900c75ce197c3251085b18480
     )
     FetchContent_MakeAvailable(cpp_tiktoken)
 endif()
