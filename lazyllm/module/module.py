@@ -263,7 +263,6 @@ module_cache = ModuleCache()
 # example: ActionModule.submodules:: isinstance(x, ModuleBase) will add submodule.
 class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
     builder_keys = []  # keys in builder support Option by default
-    __semantic_type__ = None
 
     def __new__(cls, *args, **kw):
         sig = inspect.signature(cls.__init__)

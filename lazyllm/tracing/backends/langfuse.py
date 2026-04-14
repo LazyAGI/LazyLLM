@@ -113,3 +113,6 @@ class LangfuseBackend(TracingBackend):
         if semantic_type == 'llm' and trace_kwargs.get('model'):
             attrs['gen_ai.request.model'] = str(trace_kwargs['model'])
         return attrs
+
+    def usage_attributes(self, usage: Dict[str, Any]) -> Dict[str, Any]:
+        return {}

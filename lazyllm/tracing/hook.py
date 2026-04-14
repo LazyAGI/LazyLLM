@@ -2,7 +2,7 @@ from ..common import globals
 from ..configs import config
 from ..hook import LazyLLMHook, register_builtin_hook_provider
 from .configs import resolve_default_module_trace
-from .runtime import finish_span, set_span_error, set_span_output, start_span
+from .runtime import finish_span, set_span_error, set_span_output, set_span_usage, start_span
 
 
 class LazyTracingHook(LazyLLMHook):
@@ -24,6 +24,11 @@ class LazyTracingHook(LazyLLMHook):
         if self._span_handle is None:
             return
         set_span_output(self._span_handle, output)
+        module_id = getattr(self._obj, '_module_id', None)
+        if module_id:
+            usage = globals['usage'].get(module_id)
+            if usage:
+                set_span_usage(self._span_handle, usage)
 
     def on_error(self, exc):
         if self._span_handle is None:
