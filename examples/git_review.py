@@ -11,10 +11,10 @@
 #
 # Optional:
 #   --repo          GitHub repo in "owner/name" format (default: LazyAGI/LazyLLM)
-#   --model         LLM model name (default: claude-opus-4.6)
+#   --model         LLM model name (default: claude-opus-4-6)
 #   --base_url      LLM API base URL, e.g. a proxy URL (default: None, use official endpoint)
 #   --language      Review language: cn or en (default: cn)
-#   --max_history_prs  Max historical PRs to analyze for review spec (default: 400)
+#   --max_history_prs  Max historical PRs to analyze for review spec (default: uses review() default of 20)
 #   --keep_clone    Keep cloned repo after review (flag, default: off)
 #   --clear_checkpoint  Clear checkpoint and start fresh (flag, default: off)
 #   --resume_from   Resume from a specific stage: clone|arch|spec|pr_summary|r1|r2|r3|r4a|r4|final|upload
@@ -32,6 +32,8 @@ import os
 import sys
 import traceback
 
+from lazyllm.tools.git.review.checkpoint import ReviewStage
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 _gh_bin = os.path.expanduser('~/gh/bin')
@@ -43,7 +45,8 @@ def _parse_args():
     parser = argparse.ArgumentParser(description='Multi-round PR code review')
     parser.add_argument('--pr_number', type=int, required=True,
                         help='PR number to review (required)')
-    parser.add_argument('--source', default='claude', help='LLM source, default: claude')
+    parser.add_argument('--source', default='claude',
+                        help='LLM source (default: claude; options: claude, openai, qwen, etc.)')
     parser.add_argument('--repo', default='LazyAGI/LazyLLM',
                         help='GitHub repo in owner/name format (default: LazyAGI/LazyLLM)')
     parser.add_argument('--model', default='claude-opus-4-6',
@@ -52,8 +55,8 @@ def _parse_args():
                         help='LLM API base URL, e.g. a proxy URL (default: None, use official endpoint)')
     parser.add_argument('--language', default='cn', choices=['cn', 'en'],
                         help='Review output language (default: cn)')
-    parser.add_argument('--max_history_prs', type=int, default=50,
-                        help='Max historical PRs to analyze for review spec (default: 50)')
+    parser.add_argument('--max_history_prs', type=int, default=None,
+                        help='Max historical PRs to analyze for review spec (default: review() default=20)')
     parser.add_argument('--keep_clone', action='store_true',
                         help='Keep cloned repo directory after review')
     parser.add_argument('--clear_checkpoint', action='store_true',
@@ -114,7 +117,6 @@ def main():  # noqa C901
     if post_to_github:
         print('   Will post line-level comments to PR Files changed.')
     try:
-        from lazyllm.tools.git.review.checkpoint import ReviewStage
         resume_from = ReviewStage(args.resume_from) if args.resume_from else None
         out = review(
             pr_number,
@@ -125,11 +127,11 @@ def main():  # noqa C901
             arch_cache_path=arch_cache,
             review_spec_cache_path=spec_cache,
             fetch_repo_code=True,
-            max_history_prs=args.max_history_prs,
             language=args.language,
             keep_clone=args.keep_clone,
             clear_checkpoint=args.clear_checkpoint,
             resume_from=resume_from,
+            **({'max_history_prs': args.max_history_prs} if args.max_history_prs is not None else {}),
         )
         print('--- Review result ---')
         print(out.get('summary', out))

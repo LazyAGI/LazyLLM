@@ -20,10 +20,12 @@ _LINT_TOOLS: Dict[str, List[str]] = {
     'rs': ['clippy'],
 }
 
-# Severity mapping from lint tool exit codes / message patterns
-_SEVERITY_KEYWORDS = {
-    'critical': ['error', 'E9', 'F8', 'syntax'],
-    'medium': ['warning', 'W', 'C'],
+# Severity mapping from lint tool exit codes / message patterns.
+# Patterns are matched against the full message using re.search with word boundaries
+# to avoid single-char false positives (e.g. 'W' matching any word containing 'w').
+_SEVERITY_PATTERNS = {
+    'critical': [r'error', r'E9\d{2}', r'F8\d{2}', r'syntax'],
+    'medium': [r'warning', r'\bW\d{3}\b', r'\bC\d{3}\b'],
 }
 
 
@@ -45,8 +47,10 @@ def _parse_changed_lines(diff_text: str) -> Dict[str, Set[int]]:
             result.setdefault(current_file, set())
         elif line.startswith('@@'):
             m = re.search(r'\+(\d+)', line)
-            current_line = int(m.group(1)) if m else 0
+            current_line = int(m.group(1)) if m else -1  # -1 means hunk header parse failed
         elif current_file:
+            if current_line < 0:
+                continue  # hunk header parse failed; skip until next @@ or file header
             if line.startswith('+') and not line.startswith('+++'):
                 result[current_file].add(current_line)
                 current_line += 1
@@ -56,12 +60,11 @@ def _parse_changed_lines(diff_text: str) -> Dict[str, Set[int]]:
 
 
 def _infer_severity(message: str) -> str:
-    msg_lower = message.lower()
-    for kw in _SEVERITY_KEYWORDS['critical']:
-        if kw in msg_lower:
+    for pat in _SEVERITY_PATTERNS['critical']:
+        if re.search(pat, message, re.IGNORECASE):
             return 'critical'
-    for kw in _SEVERITY_KEYWORDS['medium']:
-        if kw in msg_lower:
+    for pat in _SEVERITY_PATTERNS['medium']:
+        if re.search(pat, message):
             return 'medium'
     return 'normal'
 
@@ -173,6 +176,9 @@ def _run_lint_analysis(diff_text: str, clone_dir: str) -> List[Dict[str, Any]]:
 
         runner = _TOOL_RUNNERS.get(tool)
         if runner is None:
+            if tool not in warned_missing:
+                lazyllm.LOG.warning(f'Lint: tool {tool!r} found but no runner implemented; skipping .{ext} files')
+                warned_missing.add(tool)
             continue
 
         raw_issues = runner(abs_path, clone_dir)

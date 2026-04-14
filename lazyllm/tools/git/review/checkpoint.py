@@ -88,6 +88,8 @@ class _ReviewCheckpoint:
     _STAGE_DONE_PREFIX = '_stage_done_'
     # internal key recording the invalidation boundary (stage value string)
     _INVALIDATED_FROM_KEY = '_invalidated_from'
+    # mapping from checkpoint key to the ReviewStage it belongs to (built once at class level)
+    _KEY_TO_STAGE: Dict[str, 'ReviewStage'] = {}
 
     def __init__(self, path: str, resume_from: Optional[ReviewStage] = None) -> None:
         self._path = path
@@ -119,23 +121,24 @@ class _ReviewCheckpoint:
             return None
 
     def _stage_for_key(self, key: str) -> Optional[ReviewStage]:
-        key_to_stage: Dict[str, ReviewStage] = {
-            'clone_dir': ReviewStage.CLONE,
-            'arch_doc': ReviewStage.ARCH,
-            'review_spec': ReviewStage.SPEC,
-            'pr_summary': ReviewStage.PR_SUMMARY,
-            'r1': ReviewStage.R1,
-            'r2': ReviewStage.R2,
-            'r3': ReviewStage.R3,
-            'pr_design_doc': ReviewStage.R4A,
-            'r4': ReviewStage.R4,
-            'final': ReviewStage.FINAL,
-            'r2_shared_context': ReviewStage.R2,
-            'diff_text': ReviewStage.CLONE,
-            'final_comments': ReviewStage.UPLOAD,
-        }
-        if key in key_to_stage:
-            return key_to_stage[key]
+        if not _ReviewCheckpoint._KEY_TO_STAGE:
+            _ReviewCheckpoint._KEY_TO_STAGE = {
+                'clone_dir': ReviewStage.CLONE,
+                'arch_doc': ReviewStage.ARCH,
+                'review_spec': ReviewStage.SPEC,
+                'pr_summary': ReviewStage.PR_SUMMARY,
+                'r1': ReviewStage.R1,
+                'r2': ReviewStage.R2,
+                'r3': ReviewStage.R3,
+                'pr_design_doc': ReviewStage.R4A,
+                'r4': ReviewStage.R4,
+                'final': ReviewStage.FINAL,
+                'r2_shared_context': ReviewStage.R2,
+                'diff_text': ReviewStage.CLONE,
+                'final_comments': ReviewStage.UPLOAD,
+            }
+        if key in _ReviewCheckpoint._KEY_TO_STAGE:
+            return _ReviewCheckpoint._KEY_TO_STAGE[key]
         if key.startswith('r1_hunk_'):
             return ReviewStage.R1
         if key.startswith('r1_window_'):

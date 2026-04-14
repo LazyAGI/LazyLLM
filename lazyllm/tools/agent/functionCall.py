@@ -48,12 +48,18 @@ def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -
     # keep the last keep_full_turns tool results intact; truncate the rest
     cutoff = len(tool_indices) - keep_full_turns
     if cutoff <= 0:
-        return history
+        return list(history)
     to_truncate = set(tool_indices[:cutoff])
     result = []
     for i, msg in enumerate(history):
         if i in to_truncate:
             content = msg.get('content', '')
+            if content is None:
+                content = ''
+            if isinstance(content, list):
+                content = ' '.join(
+                    p.get('text', '') if isinstance(p, dict) else str(p) for p in content
+                )
             if isinstance(content, str) and len(content) > _COMPACTION_TRUNCATE_LEN:
                 truncated = content[:_COMPACTION_TRUNCATE_LEN]
                 msg = dict(msg, content=f'[truncated {len(content)} chars] {truncated}...')

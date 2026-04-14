@@ -101,6 +101,39 @@ class ReactAgent(LazyLLMAgentBase):
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         return (self._wrap_user_input_with_skills(query), llm_chat_history or [])
 
+    def _force_summarize_from_history(self, history: list) -> Optional[str]:
+        recent = history[-8:]
+        obs_lines: List[str] = []
+        for idx, m in enumerate(recent):
+            role = m.get('role', '')
+            raw_content = m.get('content')
+            if raw_content is None:
+                tool_calls = m.get('tool_calls') or []
+                if tool_calls:
+                    names = ', '.join(tc.get('function', {}).get('name', '?') for tc in tool_calls)
+                    obs_lines.append(f'{role}: [called tools: {names}]')
+                continue
+            content_str = raw_content if isinstance(raw_content, str) else str(raw_content)
+            limit = 1000 if idx == len(recent) - 1 else 300
+            obs_lines.append(f'{role}: {content_str[:limit]}')
+        obs_text = '\n'.join(obs_lines)
+        ctx_prefix = (
+            f'Original task context:\n{self._force_summarize_context[:500]}\n\n'
+            if self._force_summarize_context else ''
+        )
+        summarize_prompt = (
+            f'{ctx_prefix}'
+            f'Based on the following recent observations from your tool exploration:\n'
+            f'{obs_text}\n\n'
+            f'{_FORCE_SUMMARIZE_MSG}'
+        )
+        summarize_llm = self._llm.share(stream=False)
+        resp = summarize_llm(summarize_prompt)
+        summary = resp if isinstance(resp, str) else (
+            resp.get('content', '') if isinstance(resp, dict) else None
+        )
+        return summary if summary else None
+
     def _post_process(self, ret):
         if isinstance(ret, str):
             completed = self._pop_tool_calls()
@@ -108,45 +141,16 @@ class ReactAgent(LazyLLMAgentBase):
                 return completed
             return ret
         if self._force_summarize:
-            history = locals['_lazyllm_agent'].get('workspace', {}).get('history', [])
+            try:
+                agent_ctx = locals['_lazyllm_agent']
+            except (KeyError, TypeError):
+                agent_ctx = {}
+            history = agent_ctx.get('workspace', {}).get('history', []) if isinstance(agent_ctx, dict) else []
             if history:
-                LOG.warning(
-                    f'ReactAgent reached max_retries={self._max_retries}, attempting force summarize.'
-                )
+                LOG.warning(f'ReactAgent reached max_retries={self._max_retries}, attempting force summarize.')
                 summary = None
                 try:
-                    recent = history[-8:]
-                    obs_lines: List[str] = []
-                    for idx, m in enumerate(recent):
-                        role = m.get('role', '')
-                        raw_content = m.get('content')
-                        if raw_content is None:
-                            tool_calls = m.get('tool_calls') or []
-                            if tool_calls:
-                                names = ', '.join(
-                                    tc.get('function', {}).get('name', '?') for tc in tool_calls
-                                )
-                                obs_lines.append(f'{role}: [called tools: {names}]')
-                            continue
-                        content_str = raw_content if isinstance(raw_content, str) else str(raw_content)
-                        limit = 1000 if idx == len(recent) - 1 else 300
-                        obs_lines.append(f'{role}: {content_str[:limit]}')
-                    obs_text = '\n'.join(obs_lines)
-                    ctx_prefix = (
-                        f'Original task context:\n{self._force_summarize_context[:500]}\n\n'
-                        if self._force_summarize_context else ''
-                    )
-                    summarize_prompt = (
-                        f'{ctx_prefix}'
-                        f'Based on the following recent observations from your tool exploration:\n'
-                        f'{obs_text}\n\n'
-                        f'{_FORCE_SUMMARIZE_MSG}'
-                    )
-                    summarize_llm = self._llm.share(stream=False)
-                    resp = summarize_llm(summarize_prompt)
-                    summary = resp if isinstance(resp, str) else (
-                        resp.get('content', '') if isinstance(resp, dict) else None
-                    )
+                    summary = self._force_summarize_from_history(history)
                 except Exception as e:
                     LOG.warning(f'ReactAgent force-summarize call failed: {e}')
                 if summary is not None:

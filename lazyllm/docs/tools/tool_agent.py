@@ -823,7 +823,7 @@ ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程
 Args:
     llm: 大语言模型实例，用于生成推理和工具调用决策
     tools (List[str]): 可用工具列表，可以是工具函数或工具名称
-    max_retries (int): 工具调用循环的最大轮次，超出后触发兜底逻辑或抛出异常，默认为5
+    max_retries (int): 工具调用循环的最大轮次，超出后若 `force_summarize=True` 则触发强制总结，否则抛出异常，默认为5
     return_trace (bool): 是否返回完整的执行轨迹，用于调试和分析，默认为False
     prompt (str): 自定义提示词模板，如果为None则使用内置模板
     stream (bool): 是否启用流式输出，用于实时显示生成过程，默认为False
@@ -831,9 +831,10 @@ Args:
     skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
     desc (str): Agent 能力描述，可为空。
     workspace (str): Agent 默认工作目录，默认是 `config['home']/agent_workspace`。
-    force_summarize (bool): 是否在达到 max_retries 仍未输出最终答案时，强制追加一次 LLM 调用以获取总结输出，而非直接抛出异常。默认为 False。
-        开启后，Agent 会将完整对话历史连同强制总结指令一起发送给 LLM，要求其立即停止工具调用并输出最终答案。
-        适用于工具调用轮次较多、LLM 难以自主停止的场景。
+    force_summarize (bool): 是否在达到 max_retries 仍未输出最终答案时，强制追加一次 LLM 调用以获取总结输出。
+        为 True 时触发强制总结；为 False（默认）时直接抛出 ValueError。
+    force_summarize_context (str): 强制总结时注入的额外上下文（如原始任务描述），默认为空字符串。
+    keep_full_turns (int): 保留最近 N 轮完整工具结果不截断，其余旧结果压缩至 200 字符，默认为 0（全部压缩）。
 ''')
 
 add_english_doc('ReactAgent', '''\
@@ -852,6 +853,8 @@ Args:
     workspace (str): Default working directory for the agent. Defaults to `config['home']/agent_workspace`.
     force_summarize (bool): When True, if the agent has not produced a final answer after max_retries iterations, one additional LLM call is made with the full conversation history plus a force-summarize instruction, asking the model to stop tool calls and output its final answer immediately. If False (default), a ValueError is raised instead.
         Useful when the task involves many tool-call steps and the LLM struggles to stop on its own.
+    force_summarize_context (str): Extra context injected into the force-summarize prompt (e.g. the original task description). Defaults to empty string.
+    keep_full_turns (int): Number of most-recent tool results to keep intact during history compaction. Older results are truncated to 200 chars. Defaults to 0 (all results compacted).
 
 ''')
 

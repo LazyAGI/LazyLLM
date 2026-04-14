@@ -1,6 +1,7 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import math
 import re
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 # Single-request context budget (chars). Tune if the backend uses token limits.
@@ -108,7 +109,7 @@ def compress_diff_for_agent_heuristic(diff_text: str, max_chars: int) -> str:
     rest: List[str] = []
     pat = re.compile(r'def\s+\w+|class\s+\w+|import\s+|from\s+\w+\s+import|@@')
     for line in lines:
-        if pat.search(line) or line.startswith('@@'):
+        if pat.search(line):
             important.append(line)
         else:
             rest.append(line)
@@ -137,7 +138,6 @@ class BudgetManager:
     #   # result values are clipped strings ready for prompt assembly
 
     def __init__(self, total: int = SINGLE_CALL_CONTEXT_BUDGET, total_calls: int = TOTAL_CALL_BUDGET) -> None:
-        import threading
         self._total = total
         self._total_calls = total_calls
         self._used_calls = 0
@@ -160,8 +160,8 @@ class BudgetManager:
         with self._lock:
             return max(0, self._total_calls - self._used_calls)
 
-    def allocate_calls(self, stage: str, default: int = 1) -> int:
-        # Returns how many calls are available for a stage (capped at remaining budget).
+    def allocate_calls(self, default: int = 1) -> int:
+        # Returns how many calls are available (capped at remaining budget).
         return min(default, self.remaining_calls())
 
     def allocate(self, **contents: Optional[str]) -> Dict[str, str]:
@@ -177,7 +177,7 @@ class BudgetManager:
                 continue
             clipped = raw[:cap] + '\n...(truncated)' if len(raw) > cap else raw
             result[name] = clipped
-            remaining -= len(clipped)
+            remaining -= cap
         # pass through any contents not registered as slots (no truncation)
         for name, val in contents.items():
             if name not in result:

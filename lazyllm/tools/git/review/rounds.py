@@ -280,6 +280,7 @@ def _analyze_single_hunk(
             clone_dir, language, symbol_index, agent_instructions,
         )
     content = _truncate_hunk_content(content, window_lines)
+    actual_count = sum(1 for ln in content.splitlines() if not ln.startswith('-'))
     annotated_content = _annotate_diff_with_line_numbers(content, new_start)
     effective_arch = arch_snippet
     if symbol_index:
@@ -291,12 +292,12 @@ def _analyze_single_hunk(
         pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
         arch_doc=effective_arch, review_spec=spec_snippet,
         file_context=file_context or '(not available)',
-        path=path, start=new_start, end=new_start + new_count, content=annotated_content,
+        path=path, start=new_start, end=new_start + actual_count, content=annotated_content,
         density_rule=issue_density_rule(annotated_content),
     )
     items = _safe_llm_call(llm, prompt)
     return [n for item in items if (n := _normalize_comment_item(
-        item, new_start=new_start, end_line=new_start + new_count, default_path=path,
+        item, new_start=new_start, end_line=new_start + actual_count, default_path=path,
     )) is not None]
 
 
@@ -889,7 +890,17 @@ def _r2_group_review(
         all_r1.extend(r1_by_file.get(path, []))
 
     files_block = '\n\n'.join(files_block_parts)
-    round1_json = json.dumps(all_r1, ensure_ascii=False, indent=2) if all_r1 else '[]'
+    # Truncate the list before serialising so the JSON passed to the LLM is always valid.
+    r1_budget = 4000
+    r1_trimmed: List[Dict[str, Any]] = []
+    r1_chars = 0
+    for item in all_r1:
+        s = json.dumps(item, ensure_ascii=False)
+        if r1_chars + len(s) > r1_budget:
+            break
+        r1_trimmed.append(item)
+        r1_chars += len(s)
+    round1_json = json.dumps(r1_trimmed, ensure_ascii=False, indent=2) if r1_trimmed else '[]'
     arch_snippet = clip_text(arch_doc or '', 4000)
     density_rule = issue_density_rule(files_block)
 
@@ -899,7 +910,7 @@ def _r2_group_review(
         agent_instructions=agent_instructions[:400] if agent_instructions else '',
         arch_doc=arch_snippet,
         shared_context=shared_context[:_R2_SHARED_CTX_BUDGET],
-        round1_json=round1_json[:4000],
+        round1_json=round1_json,
         files_block=files_block[:40000],
         density_rule=density_rule,
     )
@@ -2020,6 +2031,9 @@ Each item has: idx, path, line, summary.
 {existing_json}
 
 ## Task
+Note: r1 issues that were already superseded by r2 (same path+line covered by r2) or explicitly
+discarded during R2 analysis have been pre-removed before this step,
+so r2 > r1 priority only resolves residual conflicts where both sources independently flagged the same location.
 1. Remove exact or near-duplicate new issues (keep the one with highest severity or most detail; record its idx)
    - When a r2 issue and a r1 issue describe the same location (same path+line), prefer the r2 version \
 (it has more cross-file context); discard the r1 duplicate.

@@ -814,19 +814,29 @@ _add_git_example('LazyLLMGitBase', '''\
 # ---------------------------------------------------------------------------
 # review module: review / analyze_repo_architecture / analyze_historical_reviews
 # ---------------------------------------------------------------------------
-_review_mod = importlib.import_module('lazyllm.tools.git.review')
-_add_review_chinese = functools.partial(utils.add_chinese_doc, module=_review_mod)
-_add_review_english = functools.partial(utils.add_english_doc, module=_review_mod)
-_add_review_example = functools.partial(utils.add_example, module=_review_mod)
+try:
+    _review_mod = importlib.import_module('lazyllm.tools.git.review')
+except ImportError:
+    _review_mod = None
+
+if _review_mod is not None:
+    _add_review_chinese = functools.partial(utils.add_chinese_doc, module=_review_mod)
+    _add_review_english = functools.partial(utils.add_english_doc, module=_review_mod)
+    _add_review_example = functools.partial(utils.add_example, module=_review_mod)
+else:
+    def _add_review_chinese(*args, **kwargs): pass  # noqa: E704
+    def _add_review_english(*args, **kwargs): pass  # noqa: E704
+    def _add_review_example(*args, **kwargs): pass  # noqa: E704
 
 _add_review_chinese('review', '''\
-对指定 Pull Request 执行四轮 AI 代码审查，并可将结果自动发布到 GitHub/GitLab/Gitee 等平台。
+对指定 Pull Request 执行五轮 AI 代码审查，并可将结果自动发布到 GitHub/GitLab/Gitee 等平台。
 
-四轮分析流程：
+五轮分析流程：
 1. **Round 1**：逐 hunk 分析，最大召回率，找出所有潜在问题。
 2. **Round 2**：Agent 跨文件上下文探索，发现接口不一致、继承违规等深层问题。
 3. **Round 3**：全局架构视角，检查设计规范符合性。
-4. **Round 4**：合并去重，压缩输出，过滤已有评论。
+4. **Round 4**：架构师视角深度设计审查。
+5. **Round 5**：合并去重，压缩输出，过滤已有评论。
 
 Args:
     pr_number (int): Pull Request 编号。
@@ -855,14 +865,15 @@ Returns:
 ''')
 
 _add_review_english('review', '''\
-Run a four-round AI code review on a Pull Request and optionally post the results as comments
+Run a five-round AI code review on a Pull Request and optionally post the results as comments
 to GitHub / GitLab / Gitee / GitCode.
 
-Four-round pipeline:
+Five-round pipeline:
 1. **Round 1**: Per-hunk analysis with maximum recall — finds every potential issue.
 2. **Round 2**: Agent-driven cross-file exploration — detects interface inconsistencies, inheritance violations, etc.
 3. **Round 3**: Global architecture review — checks design-standard compliance.
-4. **Round 4**: Merge, deduplicate, compress, and filter against existing comments.
+4. **Round 4**: Architect-level deep design review.
+5. **Round 5**: Merge, deduplicate, compress, and filter against existing comments.
 
 Args:
     pr_number (int): Pull Request number.
