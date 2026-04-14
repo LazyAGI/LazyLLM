@@ -13,7 +13,7 @@ import lazyllm
 from .utils import (
     _Progress, _VALID_CATEGORIES, _VALID_SEVERITIES,
     _language_instruction, _safe_llm_call, _safe_llm_call_text,
-    _truncate_hunk_content, _annotate_diff_with_line_numbers,
+    _truncate_hunk_content, _annotate_diff_with_line_numbers, _annotate_full_diff,
     _extract_json_text, _parse_json_with_repair,
     _parse_unified_diff, _normalize_comment_item,
     JSON_START_MARKER, JSON_END_MARKER, JSON_OUTPUT_INSTRUCTION, JSON_OBJ_OUTPUT_INSTRUCTION,
@@ -647,6 +647,7 @@ def _split_file_diff_into_chunks(diff_text: str, max_chars: int) -> List[Tuple[s
     current_len = 0
     chunk_start_line: Optional[int] = None
     chunk_end_line: Optional[int] = None
+    last_hunk_header: Optional[str] = None  # most recent @@ line seen
 
     def _flush(start: Optional[int], end: Optional[int], buf: List[str]) -> None:
         if buf:
@@ -660,11 +661,24 @@ def _split_file_diff_into_chunks(diff_text: str, max_chars: int) -> List[Tuple[s
             if chunk_start_line is None:
                 chunk_start_line = ln
             chunk_end_line = ln
+            last_hunk_header = line  # track latest @@ header
         if current_len + len(line) > max_chars and current:
             _flush(chunk_start_line, chunk_end_line, current)
             current = []
             current_len = 0
             chunk_start_line = chunk_end_line
+            # If we're cutting inside a hunk (next line has no @@ header),
+            # prepend the last seen @@ header so _annotate_full_diff can
+            # reset its line counters correctly.
+            if not line.startswith('@@'):
+                if last_hunk_header is None:
+                    raise ValueError(
+                        '_split_file_diff_into_chunks: need to split diff but no @@ '
+                        'hunk header has been seen yet — diff_text is missing hunk '
+                        f'headers. First 120 chars: {diff_text[:120]!r}'
+                    )
+                current.append(last_hunk_header)
+                current_len += len(last_hunk_header)
         current.append(line)
         current_len += len(line)
     _flush(chunk_start_line, chunk_end_line, current)
@@ -1040,10 +1054,12 @@ def _r2_unit_agent_review(
     discarded: set = set()
     for hunk_range, diff_chunk in all_chunks:
         filtered_ctx = _filter_symbol_context_for_chunk(symbol_context, diff_chunk)
+        annotated_chunk = _annotate_full_diff(diff_chunk)
         new_items, new_disc = _r2_extract_issues(
-            llm, primary, diff_chunk, hunk_range,
+            llm, primary, annotated_chunk, hunk_range,
             filtered_ctx, shared_context, r1_issues, arch_doc, pr_summary,
             language, agent_instructions, file_skeleton=skeleton,
+            all_paths=files,
         )
         items.extend(new_items)
         discarded.update(new_disc)
@@ -1122,7 +1138,14 @@ initialization). Do NOT include in output. These will be removed from the final 
 {round1_json}
 
 ## Diff to Review
-File: `{path}` ({hunk_range})
+File(s) in this diff: {all_paths} ({hunk_range})
+
+Each diff line is annotated with [old_lineno|new_lineno]:
+  [N|M]  context line present in both old and new file
+  [--|M] + added line (only in new file, new-file line number is M)
+  [N|--] - removed line (only in old file, no new-file line number)
+When reporting "line", always use the RIGHT-SIDE number M (the new-file line number).
+
 ```diff
 {diff_text}
 ```
@@ -1137,8 +1160,8 @@ File: `{path}` ({hunk_range})
    - Dependency violations (lower-layer module importing upper-layer module)
 
 For EVERY issue in the output (kept/modified R1 + new), output a JSON object with:
-- "path": file path (must be `{path}`)
-- "line": line number (must be within the diff chunk)
+- "path": file path (must be one of: {all_paths})
+- "line": integer — the RIGHT-SIDE (new-file) line number from the annotated diff above
 - "severity": "critical" | "medium" | "normal"
 - "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability
 - "problem": clear description of the issue
@@ -1232,13 +1255,14 @@ def _r2_extract_issues(
     llm: Any, path: str, diff_chunk: str, hunk_range: str, symbol_context: str,
     shared_context: str, r1_issues: List[Dict[str, Any]], arch_doc: str,
     pr_summary: str, language: str = 'cn', agent_instructions: str = '',
-    file_skeleton: str = '',
+    file_skeleton: str = '', all_paths: Optional[List[str]] = None,
 ) -> Tuple[List[Dict[str, Any]], set]:
     arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=_R2_ARCH_BUDGET)
     r1_indexed = [{**c, 'r1_idx': i, 'problem': (c.get('problem') or '')[:120]} for i, c in enumerate(r1_issues)]
     r1_text = json.dumps(r1_indexed, ensure_ascii=False, indent=2) if r1_indexed else '(none)'
     if len(r1_text) > _R2_R1_BUDGET:
         r1_text = r1_text[:_R2_R1_BUDGET] + '\n...(truncated)'
+    paths_str = ', '.join(f'`{p}`' for p in (all_paths or [path]))
     prompt = _R2_ISSUE_EXTRACT_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         pr_summary=(pr_summary or '')[:_R2_SUMMARY_BUDGET],
@@ -1249,6 +1273,7 @@ def _r2_extract_issues(
         symbol_context=symbol_context[:3000] if symbol_context else '(none)',
         round1_json=r1_text, path=path, hunk_range=hunk_range, diff_text=diff_chunk,
         density_rule=issue_density_rule(diff_chunk),
+        all_paths=paths_str,
     )
     items = _safe_llm_call(llm, prompt)
     result: List[Dict[str, Any]] = []
@@ -1338,9 +1363,11 @@ def _r2_process_file_chunk(
     for hunk_range, diff_chunk in chunks:
         try:
             chunk_ctx = _filter_symbol_context_for_chunk(symbol_context, diff_chunk)
+            annotated_chunk = _annotate_full_diff(diff_chunk)
             items, discarded = _r2_extract_issues(
-                llm, path, diff_chunk, hunk_range, chunk_ctx, shared_context,
+                llm, path, annotated_chunk, hunk_range, chunk_ctx, shared_context,
                 r1_issues, arch_doc, pr_summary, language, agent_instructions,
+                all_paths=[path],
             )
             merged.extend(items)
             merged_disc.update(discarded)
@@ -1395,8 +1422,9 @@ def _round2_agent_review(
             ckpt.save('r2_shared_context', shared_context)
 
     file_diffs: Dict[str, str] = {}
-    for path, _start, _count, content in _parse_unified_diff(diff_text):
-        file_diffs[path] = file_diffs.get(path, '') + content + '\n'
+    for path, new_start, new_count, content in _parse_unified_diff(diff_text):
+        hunk_header = f'@@ -{new_start},{new_count} +{new_start},{new_count} @@\n'
+        file_diffs[path] = file_diffs.get(path, '') + hunk_header + content + '\n'
 
     r1_by_file: Dict[str, List[Dict[str, Any]]] = {
         p: [c for c in round1 if c.get('path') == p]
@@ -1455,6 +1483,10 @@ You are a software architect performing a global architecture review on MULTIPLE
 {review_spec}
 
 ## Files and diffs (batch)
+Each diff line is annotated with [old_lineno|new_lineno]:
+  [N|M]  context line, [--|M] + added line (new-file line M), [N|--] - removed line.
+When reporting "line", always use the RIGHT-SIDE number M (the new-file line number).
+
 {files_block}
 
 ## Task
@@ -1470,7 +1502,7 @@ require understanding the overall system design:
 Report ONLY issues NOT already covered in "Issues Found So Far".
 Each item MUST include:
 - "path": one of the file paths from this batch (exact match)
-- "line": valid new-file line number visible in that file's diff block
+- "line": integer — the RIGHT-SIDE (new-file) line number from the annotated diff above
 - "severity", "bug_category" (prefer design|maintainability), "problem", "suggestion"
 
 In the suggestion field, wrap code snippets with markdown code fences using the correct language tag. \
@@ -1527,8 +1559,9 @@ def _round3_global_analysis(
     pr_summary: str = '', language: str = 'cn', arch_doc: str = '', agent_instructions: str = '',
 ) -> List[Dict[str, Any]]:
     file_diffs: Dict[str, str] = {}
-    for path, _start, _count, content in _parse_unified_diff(diff_text):
-        file_diffs[path] = file_diffs.get(path, '') + content
+    for path, new_start, new_count, content in _parse_unified_diff(diff_text):
+        hunk_header = f'@@ -{new_start},{new_count} +{new_start},{new_count} @@\n'
+        file_diffs[path] = file_diffs.get(path, '') + hunk_header + content
 
     arch_use = clip_text(arch_doc or '', 38000)
     pr_snip = pr_summary[:800] if pr_summary else '(not available)'
@@ -1551,7 +1584,10 @@ def _round3_global_analysis(
             pr_summary=pr_snip, agent_instructions=agent_instructions or '(not available)',
             arch_doc=arch_use,
             review_spec=batch_review_spec,
-            files_block='\n\n'.join(f'## File: {path}\n```diff\n{fdiff}\n```' for path, fdiff in batch),
+            files_block='\n\n'.join(
+                f'## File: {path}\n```diff\n{_annotate_full_diff(fdiff)}\n```'
+                for path, fdiff in batch
+            ),
             density_rule=issue_density_rule('\n'.join(fdiff for _, fdiff in batch)),
         )
         items = _safe_llm_call(llm, prompt)
@@ -1695,6 +1731,10 @@ Cite the existing symbol name and its scope, and suggest reusing or adapting it.
 {pr_design_doc}
 
 ## Full Diff (all changed files)
+Each diff line is annotated with [old_lineno|new_lineno]:
+  [N|M]  context line, [--|M] + added line (new-file line M), [N|--] - removed line.
+When reporting "line", always use the RIGHT-SIDE number M (the new-file line number).
+
 ```diff
 {diff_text}
 ```
@@ -1794,12 +1834,13 @@ def _round4_architect_review(
     prog = _Progress('Round 4: architect design review')
     diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 38000)
     arch_use = clip_text(arch_doc or '', 42000) if arch_doc else '(not available)'
+    annotated_diff = _annotate_full_diff(diff_use)
     prompt = _ROUND4_ARCHITECT_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         agent_instructions=agent_instructions or '(not available)',
         arch_doc=arch_use, pr_summary=pr_summary[:800] if pr_summary else '(not available)',
         pr_design_doc=clip_text(pr_design_doc, 12000) if pr_design_doc else '(not available)',
-        diff_text=diff_use, density_rule=issue_density_rule(diff_use),
+        diff_text=annotated_diff, density_rule=issue_density_rule(diff_use),
     )
     items = _safe_llm_call(llm, prompt)
     result = [n for item in (items if isinstance(items, list) else [])
@@ -1828,6 +1869,10 @@ You are a principal software architect. Output ONE JSON object with exactly two 
 {pr_summary}
 
 ## Full Diff
+Each diff line is annotated with [old_lineno|new_lineno]:
+  [N|M]  context line, [--|M] + added line (new-file line M), [N|--] - removed line.
+When reporting "line" in issues, always use the RIGHT-SIDE number M (the new-file line number).
+
 ```diff
 {diff_text}
 ```
@@ -1865,11 +1910,12 @@ def _round4_combined_review(
         prog = _Progress('Round 4: design doc + architect review (combined)')
         diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 42000)
         arch_use = clip_text(arch_doc or '', 40000) if arch_doc else '(not available)'
+        annotated_diff = _annotate_full_diff(diff_use)
         prompt = _ROUND4_COMBINED_PROMPT_TMPL.format(
             lang_instruction=_language_instruction(language),
             agent_instructions=agent_instructions or '(not available)',
             arch_doc=arch_use, pr_summary=pr_summary[:900] if pr_summary else '(not available)',
-            diff_text=diff_use, density_rule=issue_density_rule(diff_use),
+            diff_text=annotated_diff, density_rule=issue_density_rule(diff_use),
         )
         raw = _safe_llm_call_text(llm, prompt)
         obj = _parse_llm_json_object(raw or '')

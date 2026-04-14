@@ -9,7 +9,7 @@ from ..client import Git
 from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
 from .rounds import _run_five_rounds
-from .poster import _fetch_existing_pr_comments, _post_review_comments
+from .poster import _fetch_existing_pr_comments, _post_review_comments, _build_commentable_lines, _filter_commentable
 from .utils import (
     _get_default_llm, _ensure_non_streaming_llm, _get_model_name,
     _get_head_sha_from_pr, _parse_unified_diff, _Progress,
@@ -281,8 +281,16 @@ def review(  # noqa: C901
                 stats=_category_stats(final_comments),
                 model_name=model_name,
             )
+            commentable = _build_commentable_lines(hunks)
+            postable, n_dropped = _filter_commentable(final_comments, commentable)
+            if n_dropped:
+                import lazyllm as _lazyllm
+                _lazyllm.LOG.warning(
+                    f'{n_dropped} comment(s) dropped: line not in PR diff range '
+                    f'(would cause GitHub 422)'
+                )
             posted, upload_all_ok = _post_review_comments(
-                backend_inst, pr_number, head_sha, final_comments, model_name, review_body=review_body, ckpt=ckpt
+                backend_inst, pr_number, head_sha, postable, model_name, review_body=review_body, ckpt=ckpt
             )
             if upload_all_ok:
                 ckpt.mark_stage_done(ReviewStage.UPLOAD)

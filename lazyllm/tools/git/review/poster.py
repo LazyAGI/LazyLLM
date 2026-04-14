@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
 
@@ -10,6 +10,41 @@ from .utils import _Progress
 _BATCH_SIZE = 30          # comments per submit_review call (GitHub limit is ~50)
 _BATCH_INTERVAL = 5.0     # seconds between batches to avoid secondary rate limit
 _RATE_LIMIT_BACKOFF = [60, 120, 300]  # retry waits (seconds) on 403
+
+
+def _build_commentable_lines(hunks: List[Tuple[str, int, int, str]]) -> Dict[str, set]:
+    # Build a mapping of path -> set of new-file line numbers that are valid for GitHub
+    # review comments (i.e. lines that appear in the PR diff).
+    # GitHub only accepts line numbers that fall within a hunk's new-file range.
+    commentable: Dict[str, set] = {}
+    for path, new_start, new_count, _ in hunks:
+        s = commentable.setdefault(path, set())
+        s.update(range(new_start, new_start + new_count))
+    return commentable
+
+
+def _filter_commentable(
+    comments: List[Dict[str, Any]],
+    commentable: Dict[str, set],
+) -> Tuple[List[Dict[str, Any]], int]:
+    # Drop comments whose (path, line) is not in the PR diff.
+    # Returns (kept, dropped_count).
+    kept, dropped = [], 0
+    for c in comments:
+        path = c.get('path', '')
+        line = c.get('line')
+        if line is None:
+            dropped += 1
+            continue
+        allowed = commentable.get(path)
+        if allowed is None or int(line) not in allowed:
+            lazyllm.LOG.info(
+                f'[FILTER] dropping comment: {path}:{line} not in PR diff range'
+            )
+            dropped += 1
+        else:
+            kept.append(c)
+    return kept, dropped
 
 
 def _comment_body_text(c: Dict[str, Any], model_name: str) -> str:

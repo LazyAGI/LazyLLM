@@ -95,6 +95,61 @@ def _annotate_diff_with_line_numbers(content: str, new_start: int) -> str:
     return '\n'.join(out_lines)
 
 
+def _annotate_full_diff(diff_text: str) -> str:
+    # Annotate a full unified diff (which may contain @@ hunk headers and multiple hunks).
+    # Each @@ header resets the line counters; the header line itself is kept as-is.
+    # Raises ValueError if diff content lines appear before any @@ header is seen,
+    # which would mean line numbers start from 1 (silently wrong).
+    import re as _re
+    if not diff_text:
+        return ''
+    out_lines = []
+    old_no = 1
+    new_no = 1
+    seen_hunk_header = False
+
+    for raw_line in diff_text.splitlines():
+        mm = _re.match(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@', raw_line)
+        if mm:
+            old_no = int(mm.group(1))
+            new_no = int(mm.group(2))
+            seen_hunk_header = True
+            out_lines.append(raw_line)
+        elif raw_line.startswith(('diff ', 'index ', '--- ', '+++ ')):
+            # file-level metadata lines: pass through, no line-number tracking
+            out_lines.append(raw_line)
+        elif raw_line.startswith('+') and not raw_line.startswith('+++'):
+            if not seen_hunk_header:
+                raise ValueError(
+                    f'_annotate_full_diff: encountered added line before any @@ header '
+                    f'— diff_text is missing hunk headers. '
+                    f'First 120 chars: {diff_text[:120]!r}'
+                )
+            out_lines.append(f'[--|{new_no:4d}] {raw_line}')
+            new_no += 1
+        elif raw_line.startswith('-') and not raw_line.startswith('---'):
+            if not seen_hunk_header:
+                raise ValueError(
+                    f'_annotate_full_diff: encountered removed line before any @@ header '
+                    f'— diff_text is missing hunk headers. '
+                    f'First 120 chars: {diff_text[:120]!r}'
+                )
+            out_lines.append(f'[{old_no:4d}|--] {raw_line}')
+            old_no += 1
+        else:
+            # context line (or blank)
+            if not seen_hunk_header and raw_line.strip():
+                raise ValueError(
+                    f'_annotate_full_diff: encountered context line before any @@ header '
+                    f'— diff_text is missing hunk headers. '
+                    f'First 120 chars: {diff_text[:120]!r}'
+                )
+            out_lines.append(f'[{old_no:4d}|{new_no:4d}] {raw_line}')
+            old_no += 1
+            new_no += 1
+    return '\n'.join(out_lines)
+
+
 # ---------------------------------------------------------------------------
 # Progress reporter
 # ---------------------------------------------------------------------------

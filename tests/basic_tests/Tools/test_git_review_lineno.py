@@ -1,8 +1,10 @@
 # Tests for diff line-number annotation and large-hunk splitting logic.
 import textwrap
-import pytest
 
-from lazyllm.tools.git.review.utils import _annotate_diff_with_line_numbers, _parse_unified_diff
+from lazyllm.tools.git.review.utils import (
+    _annotate_diff_with_line_numbers, _annotate_full_diff, _parse_unified_diff,
+)
+from lazyllm.tools.git.review.poster import _build_commentable_lines, _filter_commentable
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +173,7 @@ class TestLargeHunkSplitting:
         lines = ['+add\n', ' ctx\n', '-del\n', '+add2\n', ' ctx2\n',
                  ' ctx3\n', '+add3\n', ' ctx4\n']
         wins = _compute_win_starts(lines, new_start=10, window_lines=4, overlap=1)
-        for win_start, win_count, win_lines in wins:
+        for win_start, _win_count, win_lines in wins:
             win_content = ''.join(win_lines).rstrip('\n')
             annotated = _annotate_diff_with_line_numbers(win_content, win_start)
             rows = _parse_annotated(annotated)
@@ -191,6 +193,171 @@ class TestLargeHunkSplitting:
             assert ranges[i][1] <= ranges[i + 1][0], (
                 f'overlapping new-file ranges: {ranges[i]} and {ranges[i+1]}'
             )
+
+
+# ---------------------------------------------------------------------------
+# _split_file_diff_into_chunks: each chunk must carry a @@ header
+# ---------------------------------------------------------------------------
+
+class TestSplitFileChunks:
+    def _make_big_hunk(self, new_start: int, n_lines: int) -> str:
+        hdr = f'@@ -{new_start},{n_lines} +{new_start},{n_lines} @@\n'
+        body = ''.join(f' line_{new_start + i:04d}\n' for i in range(n_lines))
+        return hdr + body
+
+    def test_small_diff_returns_single_chunk(self):
+        from lazyllm.tools.git.review.rounds import _split_file_diff_into_chunks
+        diff = self._make_big_hunk(100, 5)
+        chunks = _split_file_diff_into_chunks(diff, 100000)
+        assert len(chunks) == 1
+        assert chunks[0][0] == 'all hunks'
+
+    def test_each_chunk_has_hunk_header(self):
+        from lazyllm.tools.git.review.rounds import _split_file_diff_into_chunks
+        from lazyllm.tools.git.review.utils import _annotate_full_diff
+        # Force splitting by using a tiny max_chars
+        diff = self._make_big_hunk(100, 50)
+        chunks = _split_file_diff_into_chunks(diff, 200)
+        assert len(chunks) > 1, 'expected multiple chunks'
+        for i, (_label, chunk) in enumerate(chunks):
+            first_line = chunk.splitlines()[0] if chunk else ''
+            assert first_line.startswith('@@'), (
+                f'chunk[{i}] missing @@ header, starts with: {first_line!r}'
+            )
+            # annotate and verify first new-file line number is >= 100
+            annotated = _annotate_full_diff(chunk)
+            ann_lines = [ln for ln in annotated.splitlines() if ln.startswith('[')]
+            if ann_lines:
+                import re as _re
+                m = _re.search(r'\|([\s\d]+)\]', ann_lines[0])
+                new_no = int(m.group(1).strip()) if m else 0
+                assert new_no >= 100, (
+                    f'chunk[{i}] first new-file line={new_no}, expected >= 100'
+                )
+
+    def test_raises_when_split_needed_but_no_hunk_header(self):
+        import pytest
+        from lazyllm.tools.git.review.rounds import _split_file_diff_into_chunks
+        # Raw hunk body without @@ header — splitting must raise.
+        # Each line is 11 chars; max_chars=20 forces a split after the first line.
+        body = ''.join(f' line_{i:04d}\n' for i in range(10))
+        with pytest.raises(ValueError, match='missing hunk headers'):
+            _split_file_diff_into_chunks(body, 20)
+
+    def test_multi_hunk_chunks_have_correct_start(self):
+        from lazyllm.tools.git.review.rounds import _split_file_diff_into_chunks
+        from lazyllm.tools.git.review.utils import _annotate_full_diff
+        # Two hunks: one at line 10, one at line 500
+        diff = self._make_big_hunk(10, 5) + self._make_big_hunk(500, 5)
+        chunks = _split_file_diff_into_chunks(diff, 100000)
+        # Both hunks fit in one chunk
+        assert len(chunks) == 1
+        annotated = _annotate_full_diff(chunks[0][1])
+        # line 10 and line 500 should both appear
+        assert '|  10]' in annotated or '|  10]' in annotated
+        assert '| 500]' in annotated or '| 500]' in annotated
+
+
+# ---------------------------------------------------------------------------
+# _annotate_full_diff: handles complete unified diff with @@ headers
+# ---------------------------------------------------------------------------
+
+class TestAnnotateFullDiff:
+    def test_real_tools_md_case(self):
+        # Reproduces the exact bug from PR #1082: tools.md hunk starts at line 545
+        # but LLM was outputting line=6 (relative position in diff_chunk).
+        diff = textwrap.dedent('''\
+            @@ -545,3 +545,7 @@
+             ::: lazyllm.tools.review.tools.chinese_corrector.ChineseCorrector
+                 members: correct, correct_batch
+                 exclude-members:
+            +
+            +::: lazyllm.tools.rag.QueryEnhACProcessor
+            +    members:
+            +    exclude-members:''')
+        result = _annotate_full_diff(diff)
+        lines = result.splitlines()
+        # @@ header kept as-is
+        assert lines[0].startswith('@@')
+        # context lines start at 545
+        assert '545' in lines[1] and '545' in lines[1]
+        # first added line (blank) → new-file line 548
+        assert '[--|' in lines[4] and '548' in lines[4]
+        # +    members: → new-file line 550
+        members_line = next(ln for ln in lines if 'members:' in ln and '[--|' in ln)
+        assert '550' in members_line
+
+    def test_hunk_header_resets_counters(self):
+        diff = textwrap.dedent('''\
+            @@ -1,2 +1,3 @@
+             ctx1
+            +add1
+             ctx2
+            @@ -10,2 +11,3 @@
+             ctx3
+            +add2
+             ctx4''')
+        result = _annotate_full_diff(diff)
+        lines = result.splitlines()
+        # first hunk: ctx1=1, add1→new=2, ctx2=2/3
+        assert '|   1]' in lines[1] or '|  1]' in lines[1]
+        # second hunk header resets; ctx3 should be at old=10, new=11
+        hunk2_ctx = next(ln for ln in lines if 'ctx3' in ln)
+        assert '10' in hunk2_ctx and '11' in hunk2_ctx
+        # add2 → new=12
+        add2_line = next(ln for ln in lines if 'add2' in ln)
+        assert '[--|' in add2_line and '12' in add2_line
+
+    def test_diff_git_headers_pass_through(self):
+        diff = textwrap.dedent('''\
+            diff --git a/foo.py b/foo.py
+            index abc..def 100644
+            --- a/foo.py
+            +++ b/foo.py
+            @@ -5,2 +5,3 @@
+             line5
+            +newline
+             line6''')
+        result = _annotate_full_diff(diff)
+        lines = result.splitlines()
+        assert lines[0] == 'diff --git a/foo.py b/foo.py'
+        assert lines[1] == 'index abc..def 100644'
+        assert lines[2] == '--- a/foo.py'
+        assert lines[3] == '+++ b/foo.py'
+        assert lines[4].startswith('@@')
+        # +newline → new-file line 6
+        new_line = next(ln for ln in lines if 'newline' in ln)
+        assert '[--|' in new_line and '6' in new_line
+
+    def test_deletion_no_new_line_number(self):
+        diff = '@@ -3,3 +3,2 @@\n ctx\n-deleted\n ctx2'
+        result = _annotate_full_diff(diff)
+        del_line = next(ln for ln in result.splitlines() if 'deleted' in ln)
+        assert '|--]' in del_line
+
+    def test_empty_diff(self):
+        assert _annotate_full_diff('') == ''
+
+    def test_raises_on_added_line_without_hunk_header(self):
+        import pytest
+        with pytest.raises(ValueError, match='missing hunk headers'):
+            _annotate_full_diff('+added line without @@ header')
+
+    def test_raises_on_removed_line_without_hunk_header(self):
+        import pytest
+        with pytest.raises(ValueError, match='missing hunk headers'):
+            _annotate_full_diff('-removed line without @@ header')
+
+    def test_raises_on_context_line_without_hunk_header(self):
+        import pytest
+        with pytest.raises(ValueError, match='missing hunk headers'):
+            _annotate_full_diff(' context line without @@ header')
+
+    def test_file_metadata_before_hunk_header_is_ok(self):
+        # diff/index/---/+++ lines before @@ are fine
+        diff = 'diff --git a/f.py b/f.py\n--- a/f.py\n+++ b/f.py\n@@ -1,1 +1,2 @@\n ctx\n+add'
+        result = _annotate_full_diff(diff)
+        assert '[--|   2]' in result
 
 
 # ---------------------------------------------------------------------------
@@ -256,3 +423,69 @@ class TestParseUnifiedDiff:
         assert hunks[0][0] == 'a.py'
         assert hunks[1][0] == 'b.py'
         assert hunks[1][1] == 5
+
+
+# ---------------------------------------------------------------------------
+# _build_commentable_lines / _filter_commentable
+# ---------------------------------------------------------------------------
+
+class TestCommentableFilter:
+    def _make_hunks(self, specs):
+        # specs: list of (path, new_start, new_count)
+        return [(p, s, c, '') for p, s, c in specs]
+
+    def test_build_commentable_basic(self):
+        hunks = self._make_hunks([('foo.py', 10, 5), ('bar.py', 1, 3)])
+        cm = _build_commentable_lines(hunks)
+        assert cm['foo.py'] == {10, 11, 12, 13, 14}
+        assert cm['bar.py'] == {1, 2, 3}
+
+    def test_build_commentable_multiple_hunks_same_file(self):
+        hunks = self._make_hunks([('a.py', 1, 3), ('a.py', 20, 2)])
+        cm = _build_commentable_lines(hunks)
+        assert cm['a.py'] == {1, 2, 3, 20, 21}
+
+    def test_filter_keeps_valid(self):
+        hunks = self._make_hunks([('foo.py', 10, 5)])
+        cm = _build_commentable_lines(hunks)
+        comments = [
+            {'path': 'foo.py', 'line': 10},
+            {'path': 'foo.py', 'line': 14},
+        ]
+        kept, dropped = _filter_commentable(comments, cm)
+        assert len(kept) == 2
+        assert dropped == 0
+
+    def test_filter_drops_out_of_range(self):
+        hunks = self._make_hunks([('foo.py', 10, 5)])
+        cm = _build_commentable_lines(hunks)
+        comments = [
+            {'path': 'foo.py', 'line': 9},   # before hunk
+            {'path': 'foo.py', 'line': 15},  # after hunk (new_start+new_count = 15, exclusive)
+            {'path': 'foo.py', 'line': 12},  # valid
+        ]
+        kept, dropped = _filter_commentable(comments, cm)
+        assert len(kept) == 1
+        assert kept[0]['line'] == 12
+        assert dropped == 2
+
+    def test_filter_drops_unknown_file(self):
+        hunks = self._make_hunks([('foo.py', 1, 10)])
+        cm = _build_commentable_lines(hunks)
+        comments = [{'path': 'other.py', 'line': 5}]
+        kept, dropped = _filter_commentable(comments, cm)
+        assert kept == []
+        assert dropped == 1
+
+    def test_filter_drops_missing_line(self):
+        hunks = self._make_hunks([('foo.py', 1, 10)])
+        cm = _build_commentable_lines(hunks)
+        comments = [{'path': 'foo.py'}]  # no 'line' key
+        kept, dropped = _filter_commentable(comments, cm)
+        assert kept == []
+        assert dropped == 1
+
+    def test_filter_empty_input(self):
+        cm = _build_commentable_lines([])
+        kept, dropped = _filter_commentable([], cm)
+        assert kept == [] and dropped == 0
