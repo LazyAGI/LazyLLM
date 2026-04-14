@@ -1,4 +1,5 @@
 import importlib.util
+import json
 
 from functools import lru_cache
 from typing import Callable, List, Optional, Union
@@ -30,10 +31,34 @@ class Reranker(ModuleBase, _PostProcess):
         lazyllm.deprecated(bool(target), '`target` parameter of reranker')
         _PostProcess.__init__(self, output_format, join)
 
+    @property
+    def __trace_kwargs__(self):
+        d = {'name': self._name, 'output_format': self._output_format,
+             'join': self._join if self._join is False else True}
+        d.update(self._kwargs)
+        return d
+
     def forward(self, nodes: List[DocNode], query: str = '') -> List[DocNode]:
         results = self.registered_reranker[self._name](nodes, query=query, **self._kwargs)
         LOG.debug(f'Rerank use `{self._name}` and get nodes: {results}')
+        self._trace_cached_attrs = self._build_trace_output_attrs(results)
         return self._post_process(results)
+
+    @staticmethod
+    def _build_trace_output_attrs(results):
+        attrs = {}
+        if results and isinstance(results, list):
+            attrs['lazyllm.output.doc_count'] = len(results)
+            scores = [float(n.relevance_score) for n in results
+                      if isinstance(n, DocNode) and n.relevance_score is not None]
+            if scores:
+                attrs['lazyllm.output.relevance_scores'] = json.dumps(scores)
+        return attrs
+
+    def __trace_output_attrs__(self, output):
+        attrs = getattr(self, '_trace_cached_attrs', None) or {}
+        self._trace_cached_attrs = None
+        return attrs
 
     @classmethod
     def register_reranker(
@@ -99,11 +124,17 @@ class ModuleReranker(Reranker):
                  output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
         super().__init__(name, target, output_format, join, **kwargs)
         assert model is not None, 'Reranker model must be specified as a model name or a callable.'
+        self._model_name = model if isinstance(model, str) else type(model).__name__
         if isinstance(model, str):
-            self._model_name = model
             self._reranker = lazyllm.TrainableModule(model, type='rerank')
         else:
             self._reranker = model
+
+    @property
+    def __trace_kwargs__(self):
+        d = super().__trace_kwargs__
+        d['model'] = self._model_name
+        return d
 
     def forward(self, nodes: List[DocNode], query: str = '') -> List[DocNode]:
         if not nodes:
@@ -116,6 +147,7 @@ class ModuleReranker(Reranker):
         for index, relevance_score in sorted_indices:
             results.append(nodes[index].with_score(relevance_score))
         LOG.debug(f'Rerank use `{self._name}` and get nodes: {results}')
+        self._trace_cached_attrs = self._build_trace_output_attrs(results)
         return self._post_process(results)
 
 # User-defined similarity decorator

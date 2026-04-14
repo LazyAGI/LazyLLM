@@ -290,6 +290,13 @@ class _TracingRuntime:
             for key, value in self._backend.usage_attributes(usage).items():
                 span.set_attribute(key, value)
 
+    def set_attributes(self, handle: Optional[TraceSpanHandle], attrs: Dict[str, Any]):
+        if handle is None or not attrs:
+            return
+        span = handle.span
+        for key, value in attrs.items():
+            span.set_attribute(key, value)
+
     def set_error(self, handle: Optional[TraceSpanHandle], exc: Exception):
         if handle is None:
             return
@@ -333,6 +340,10 @@ def set_span_output(handle, output: Any):
 
 def set_span_usage(handle, usage: Dict[str, Any]):
     _runtime.set_usage(handle, usage)
+
+
+def set_span_attributes(handle, attrs: Dict[str, Any]):
+    _runtime.set_attributes(handle, attrs)
 
 
 def set_span_error(handle, exc: Exception):
