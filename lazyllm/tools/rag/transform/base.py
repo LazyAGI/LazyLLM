@@ -116,17 +116,7 @@ class NodeTransform(ModuleBase):
                     else:
                         splits = self.forward(node, **kwargs)
                 for s in splits:
-                    try:
-                        s.parent = node
-                    except Exception:
-                        parent_uid = getattr(node, 'uid', None)
-                        if not isinstance(parent_uid, str):
-                            parent_uid = getattr(node, '_uid', None)
-                        if isinstance(parent_uid, str):
-                            try:
-                                s.parent = parent_uid
-                            except Exception:
-                                pass
+                    s.parent = node
                     s._group = node_group
                 node.children[node_group] = splits
                 return splits
