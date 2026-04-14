@@ -25,7 +25,7 @@ public:
         std::string out;
         out.reserve(token_ids.size());
         for (int token_id : token_ids) {
-            out.push_back(static_cast<char>(token_id));
+            out.push_back(static_cast<char>(static_cast<unsigned char>(token_id)));
         }
         return out;
     }
