@@ -264,6 +264,7 @@ class TestSchemaExtractorRegression(unittest.TestCase):
     def test_ensure_table_handles_existing_composite_primary_key(self):
         fd, db_path = tempfile.mkstemp(suffix='.db')
         os.close(fd)
+        extractor = None
         try:
             extractor = SchemaExtractor(
                 db_config={'db_type': 'sqlite', 'user': None, 'password': None, 'host': None, 'port': None,
@@ -280,6 +281,9 @@ class TestSchemaExtractorRegression(unittest.TestCase):
             extractor._table_cache.pop(table_name, None)
             extractor._ensure_table(schema_set_id, SchemaSet)
         finally:
+            # Dispose the sqlite engine so Windows can remove the temp file.
+            if extractor is not None and extractor._sql_manager is not None:
+                extractor._sql_manager.dispose()
             if os.path.exists(db_path):
                 os.remove(db_path)
 
