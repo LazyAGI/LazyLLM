@@ -16,6 +16,13 @@ from .utils import (
     JSON_OUTPUT_INSTRUCTION,
 )
 
+# Git subprocess environment: disable interactive credential prompts so that
+# git fails fast instead of hanging when /dev/tty is unavailable (IDE, CI,
+# SSH sessions without a controlling terminal).
+#   GIT_TERMINAL_PROMPT=0  — never open a terminal prompt for credentials
+#   GIT_ASKPASS=echo       — return empty string for any askpass query → immediate auth failure
+_GIT_ENV: Dict[str, str] = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': 'echo'}
+
 _SKIP_DIRS = {'.git', '__pycache__', '.cache', '.tox', 'node_modules', '.mypy_cache', '.pytest_cache', 'dist', 'build'}
 _SKIP_EXTS = {'.pyc', '.pyo', '.so', '.egg', '.egg-info'}
 _ARCH_SNAPSHOT_BUDGET = 6000
@@ -264,7 +271,7 @@ def _try_pull_if_outdated(clone_dir: str, branch: str) -> bool:
     try:
         fetch = subprocess.run(
             ['git', '-C', clone_dir, 'fetch', '--depth', '1', 'origin', branch],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, timeout=60, env=_GIT_ENV,
         )
         if fetch.returncode != 0:
             lazyllm.LOG.warning(f'git fetch failed: {fetch.stderr.strip()}')
@@ -303,7 +310,7 @@ def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None)
         if not _is_complete_clone(clone_dir):
             subprocess.run(
                 ['git', 'clone', '--single-branch', '--branch', branch, '--depth', '1', '--', repo_url, clone_dir],
-                capture_output=True, text=True, timeout=300, check=True,
+                capture_output=True, text=True, timeout=300, check=True, env=_GIT_ENV,
             )
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f'git clone failed: {e.stderr or e.stdout}') from e

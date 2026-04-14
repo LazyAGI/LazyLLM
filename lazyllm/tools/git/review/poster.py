@@ -47,16 +47,18 @@ def _filter_commentable(
     return kept, dropped
 
 
+def _suggestion_prefix(suggestion: str) -> str:
+    return '\n' if suggestion.startswith('```') else ''
+
+
 def _comment_body_text(c: Dict[str, Any], model_name: str) -> str:
     category_tag = f'[{c.get("bug_category", "logic")}]'
     severity_tag = f'[{c.get("severity", "normal")}]'
     return (
         f'*This is an AI-generated suggestion; please verify before applying.*\n\n'
         f'**{severity_tag} {category_tag}** {c.get("problem", "")}\n\n'
-        f'**Suggestion:** {c.get("suggestion", "")}\n\n'
-        f'---\n'
-        f'auto reviewed by BOT ({model_name})'
-    )
+        f'**Suggestion:** {_suggestion_prefix(c.get("suggestion", ""))}{c.get("suggestion", "")}\n\n'
+        f'---\nauto reviewed by BOT ({model_name})')
 
 
 def _fetch_existing_pr_comments(backend: LazyLLMGitBase, pr_number: int) -> List[Dict[str, Any]]:
