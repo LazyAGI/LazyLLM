@@ -29,7 +29,7 @@ struct PyDocNodeCore : lazyllm::DocNodeCore {
 
 lazyllm::DocNodeCore::Metadata MetadataFromPy(const py::object& obj) {
     lazyllm::DocNodeCore::Metadata out;
-    if (obj.is_none()) return out;
+    if (obj.is_none() || !py::isinstance<py::dict>(obj)) return out;
     py::dict d = py::dict(obj);
     out.reserve(d.size());
     for (auto item : d) {
