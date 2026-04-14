@@ -24,7 +24,14 @@ public:
     TextSplitterBase(unsigned chunk_size, unsigned overlap, const std::string& encoding_name = "gpt2") :
         _chunk_size(chunk_size),
         _overlap(overlap),
-        _tokenizer(std::make_shared<TiktokenTokenizer>(encoding_name)) {}
+        _tokenizer(std::make_shared<TiktokenTokenizer>(encoding_name)) {
+        if (_chunk_size == 0) {
+            throw std::invalid_argument("chunk_size must be greater than 0.");
+        }
+        if (_overlap >= _chunk_size) {
+            throw std::invalid_argument("overlap must be smaller than chunk_size.");
+        }
+    }
 
     std::vector<std::string> split_text(const std::string_view& view, int metadata_size) const;
     static std::vector<std::string_view> split_text_while_keeping_separator(
