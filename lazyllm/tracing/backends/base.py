@@ -26,3 +26,7 @@ class TracingBackend(ABC):
     def observation_type_attributes(self, span_kind: str, semantic_type: Optional[str],
                                     trace_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         pass
+
+    @abstractmethod
+    def usage_attributes(self, usage: Dict[str, Any]) -> Dict[str, Any]:
+        pass

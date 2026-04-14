@@ -274,6 +274,22 @@ class _TracingRuntime:
         for key, value in self._backend.output_attributes(text, is_root_span=handle.is_root_span).items():
             span.set_attribute(key, value)
 
+    def set_usage(self, handle: Optional[TraceSpanHandle], usage: Dict[str, Any]):
+        if handle is None:
+            return
+        span = handle.span
+        prompt = usage.get('prompt_tokens')
+        completion = usage.get('completion_tokens')
+        if prompt is not None and prompt >= 0:
+            span.set_attribute('gen_ai.usage.input_tokens', int(prompt))
+        if completion is not None and completion >= 0:
+            span.set_attribute('gen_ai.usage.output_tokens', int(completion))
+        if prompt is not None and prompt >= 0 and completion is not None and completion >= 0:
+            span.set_attribute('gen_ai.usage.total_tokens', int(prompt + completion))
+        if self._backend:
+            for key, value in self._backend.usage_attributes(usage).items():
+                span.set_attribute(key, value)
+
     def set_error(self, handle: Optional[TraceSpanHandle], exc: Exception):
         if handle is None:
             return
@@ -313,6 +329,10 @@ def start_span(*, span_kind: str, target: Any, args: tuple[Any, ...], kwargs: Di
 
 def set_span_output(handle, output: Any):
     _runtime.set_output(handle, output)
+
+
+def set_span_usage(handle, usage: Dict[str, Any]):
+    _runtime.set_usage(handle, usage)
 
 
 def set_span_error(handle, exc: Exception):
