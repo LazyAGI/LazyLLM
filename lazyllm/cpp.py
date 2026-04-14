@@ -177,11 +177,8 @@ def _should_use_python_method(
     self,
     cls: type[Any],
     method_name: str,
-    force_python_methods: set,
     fallback_rules: Dict[str, Tuple[str, ...]],
 ) -> bool:
-    if type(self) is cls and method_name in force_python_methods:
-        return True
     if type(self) is cls:
         return False
 
@@ -194,12 +191,11 @@ def _make_method_proxy(
     method_name: str,
     original_method,
     impl_holder: str,
-    force_python_methods: set,
     fallback_rules: Dict[str, Tuple[str, ...]],
 ):
     @wraps(original_method)
     def _proxy(self, *args, **kwargs):
-        if _should_use_python_method(self, cls, method_name, force_python_methods, fallback_rules):
+        if _should_use_python_method(self, cls, method_name, fallback_rules):
             return original_method(self, *args, **kwargs)
 
         impl = getattr(self, impl_holder)
@@ -214,7 +210,6 @@ def _install_method_proxies(
     cls: type[Any],
     proxy_methods: Tuple[str, ...],
     impl_holder: str,
-    force_python_methods: set,
     fallback_rules: Dict[str, Tuple[str, ...]],
 ):
     for method_name in proxy_methods:
@@ -223,7 +218,7 @@ def _install_method_proxies(
             cls,
             method_name,
             _make_method_proxy(
-                cls, method_name, original_method, impl_holder, force_python_methods, fallback_rules
+                cls, method_name, original_method, impl_holder, fallback_rules
             ),
         )
 
@@ -246,7 +241,6 @@ def cpp_proxy(
     py_class: Optional[_C] = None,
     *,
     method_fallbacks: Optional[Dict[str, Tuple[str, ...]]] = None,
-    python_methods_for_self: Tuple[str, ...] = (),
     cpp_class_name: Optional[str] = None,
 ):
     def _decorate(cls: _C) -> _C:
@@ -259,11 +253,10 @@ def cpp_proxy(
         impl_cls = _resolve_impl_cls(cls, cpp_class_name)
         proxy_methods, proxy_attrs = _scan_proxy_members(cls, impl_cls)
         fallback_rules = method_fallbacks or {}
-        force_python_methods = set(python_methods_for_self)
 
         impl_holder = '_c_obj'
         _install_proxied_init(cls, impl_cls, impl_holder)
-        _install_method_proxies(cls, proxy_methods, impl_holder, force_python_methods, fallback_rules)
+        _install_method_proxies(cls, proxy_methods, impl_holder, fallback_rules)
         _install_attr_proxy(cls, proxy_attrs, impl_holder)
 
         return cls
