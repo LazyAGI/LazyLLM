@@ -37,6 +37,10 @@ class DocNodeCore:
         # Metadata keys that are excluded from text for the LLM.
         self._excluded_llm_metadata_keys: List[str] = []
 
+    @property
+    def uid(self) -> str:
+        return self._uid
+
     def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
         '''Metadata info string.'''
         if mode == MetadataMode.NONE:
@@ -84,10 +88,6 @@ class DocNode(DocNodeCore):
         self.similarity_score = None
         self._content_hash: Optional[str] = None
         self._copy_source: Optional[dict] = None
-
-    @property
-    def uid(self) -> str:
-        return self._uid
 
     @property
     def group(self) -> str:

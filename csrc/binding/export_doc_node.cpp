@@ -147,8 +147,13 @@ void exportDocNode(py::module& m) {
             py::arg("metadata") = py::none(),
             py::arg("uid") = py::none()
         )
-        .def_readwrite("_uid", &lazyllm::DocNodeCore::_uid)
+        .def_readonly("_uid", &lazyllm::DocNodeCore::_uid)
         .def_readwrite("_text", &lazyllm::DocNodeCore::_text)
+        .def_property_readonly("uid",
+            [](const lazyllm::DocNodeCore& node) -> const std::string& {
+                return node._uid;
+            }
+        )
         .def_property("_metadata",
             [](lazyllm::DocNodeCore& node) -> lazyllm::DocNodeCore::Metadata& {
                 return node._metadata;
