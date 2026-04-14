@@ -10,4 +10,6 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'mem0', 'memu', ['graphrag', 'api', 'config.load_config', 'config.enums', 'cli.index', 'cli.initialize'],
            'pyobvector', 'charset_normalizer', 'transformers', 'async_timeout', 'openpyxl', 'tiktoken', 'Stemmer',
            'sentencepiece', 'psycopg2', 'powermem', 'docx', 'json_repair', 'fasttext', 'datasketch', 'ahocorasick',
-           'math_verify', 'trafilatura', 'chonkie', ['xml', 'etree'], 'mistune', 'msal']
+           'math_verify', 'trafilatura', 'chonkie', ['xml', 'etree'], 'mistune', 'msal',
+           ['opentelemetry', 'sdk.resources', 'sdk.trace', 'sdk.trace.export',
+            'trace', 'trace.status', 'exporter.otlp.proto.http.trace_exporter']]
