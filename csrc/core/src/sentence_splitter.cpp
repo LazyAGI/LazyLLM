@@ -24,7 +24,7 @@ std::vector<std::string> SentenceSplitter::merge_chunks(std::vector<Chunk> chunk
 
     auto iLeft = chunks.begin();
     auto iRight = chunks.begin();
-    const auto& iEnd = chunks.end();
+    auto iEnd = chunks.end();
     int window_token_sum = 0;
     size_t string_size = 0;
 
