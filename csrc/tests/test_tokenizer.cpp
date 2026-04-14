@@ -20,7 +20,7 @@ public:
     std::string decode(const std::vector<int>& token_ids) const override {
         std::string out;
         out.reserve(token_ids.size());
-        for (int id : token_ids) out.push_back(static_cast<char>(id));
+        for (int id : token_ids) out.push_back(static_cast<unsigned char>(id));
         return out;
     }
 };

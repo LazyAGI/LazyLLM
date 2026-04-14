@@ -16,7 +16,10 @@ _C = TypeVar('_C', bound=type)
 def _load_cpp_module():
     global _LAZYLLM_CPP_MODULE
     if _LAZYLLM_CPP_MODULE is None:
-        _LAZYLLM_CPP_MODULE = importlib.import_module('lazyllm.lazyllm_cpp')
+        try:
+            _LAZYLLM_CPP_MODULE = importlib.import_module('lazyllm.lazyllm_cpp')
+        except ImportError:
+            raise ImportError('C++ override module not found, please reinstall lazyllm')
     return _LAZYLLM_CPP_MODULE
 
 
