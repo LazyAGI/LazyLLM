@@ -17,8 +17,8 @@ enum class MetadataMode { ALL, EMBED, LLM, NONE };
 struct DocNodeCore {
     using Metadata = std::unordered_map<std::string, MetadataVType>;
 
-    Metadata _metadata;
     std::string _text;
+    Metadata _metadata;
     std::string _uid;
     std::set<std::string> _excluded_embed_metadata_keys;
     std::set<std::string> _excluded_llm_metadata_keys;
@@ -28,8 +28,8 @@ struct DocNodeCore {
         const Metadata& metadata = {},
         const std::string& uid = ""
     ) : _text(text),
-        _uid(uid.empty() ? GenerateUUID() : uid),
-        _metadata(metadata) {}
+        _metadata(metadata),
+        _uid(uid.empty() ? GenerateUUID() : uid) {}
     explicit DocNodeCore(const char* text, const Metadata& metadata = {}, const std::string& uid = "")
         : DocNodeCore(std::string(text == nullptr ? "" : text), metadata, uid) {}
 
