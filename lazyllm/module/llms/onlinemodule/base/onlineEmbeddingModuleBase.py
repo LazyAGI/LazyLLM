@@ -8,6 +8,7 @@ from lazyllm.components.utils.downloader import ModelManager
 
 
 class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
+    __semantic_type__ = 'embedding'
     NO_PROXY = True
     __lazyllm_registry_disable__ = True
 

@@ -16,6 +16,21 @@ _LANGFUSE_TRACE_OUTPUT = 'langfuse.trace.output'
 _LANGFUSE_OBSERVATION_INPUT = 'langfuse.observation.input'
 _LANGFUSE_OBSERVATION_OUTPUT = 'langfuse.observation.output'
 _LANGFUSE_OBSERVATION_STATUS_MESSAGE = 'langfuse.observation.status_message'
+_LANGFUSE_OBSERVATION_METADATA = 'langfuse.observation.metadata'
+_LANGFUSE_OBSERVATION_TYPE = 'langfuse.observation.type'
+
+_SEMANTIC_TO_LANGFUSE_TYPE = {
+    'llm':              'generation',
+    'retriever':        'retriever',
+    'embedding':        'embedding',
+    'tool':             'tool',
+    'rerank':           'span',
+    'rewrite':          'span',
+    'fusion':           'span',
+    'context_builder':  'span',
+    'workflow_control': 'chain',
+    'custom':           'span',
+}
 
 
 class LangfuseBackend(TracingBackend):
@@ -81,3 +96,20 @@ class LangfuseBackend(TracingBackend):
         return {
             _LANGFUSE_OBSERVATION_STATUS_MESSAGE: str(exc),
         }
+
+    def metadata_attributes(self, trace_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        if not trace_kwargs:
+            return {}
+        return {
+            _LANGFUSE_OBSERVATION_METADATA: json.dumps(trace_kwargs, ensure_ascii=False, default=str),
+        }
+
+    def observation_type_attributes(self, span_kind: str, semantic_type: Optional[str],
+                                    trace_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        attrs: Dict[str, Any] = {}
+        langfuse_type = _SEMANTIC_TO_LANGFUSE_TYPE.get(semantic_type)
+        if langfuse_type:
+            attrs[_LANGFUSE_OBSERVATION_TYPE] = langfuse_type
+        if semantic_type == 'llm' and trace_kwargs.get('model'):
+            attrs['gen_ai.request.model'] = str(trace_kwargs['model'])
+        return attrs

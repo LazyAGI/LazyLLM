@@ -60,6 +60,17 @@ class StaticParams(TypedDict, total=False):
     frequency_penalty: float  # Note some online api use 'repetition_penalty'
 
 class LLMBase(object):
+    _LLMTYPE_TO_SEMANTIC = {
+        LLMType.EMBED: 'embedding',
+        LLMType.MULTIMODAL_EMBED: 'embedding',
+        LLMType.CROSS_MODAL_EMBED: 'embedding',
+        LLMType.RERANK: 'rerank',
+    }
+
+    @property
+    def __semantic_type__(self):
+        return self._LLMTYPE_TO_SEMANTIC.get(getattr(self, '_type', None), 'llm')
+
     def __init__(self, stream: Union[bool, Dict[str, str]] = False, init_prompt: bool = True,
                  type: Optional[Union[str, LLMType]] = None, static_params: Optional[StaticParams] = None):
         self._stream = stream

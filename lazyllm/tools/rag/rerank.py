@@ -11,6 +11,7 @@ from .retriever import _PostProcess
 
 
 class Reranker(ModuleBase, _PostProcess):
+    __semantic_type__ = 'rerank'
     registered_reranker = dict()
 
     def __new__(cls, name: str = 'ModuleReranker', *args, **kwargs):

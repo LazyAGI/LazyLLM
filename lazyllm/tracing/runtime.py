@@ -191,6 +191,27 @@ class _TracingRuntime:
             'lazyllm.entity.id': self._target_id(target, span_kind) or '',
             'lazyllm.status': 'ok',
         }
+
+        trace_kwargs = {}
+        try:
+            if hasattr(target, '__trace_kwargs__'):
+                trace_kwargs = target.__trace_kwargs__
+                if isinstance(trace_kwargs, dict):
+                    for k, v in trace_kwargs.items():
+                        attrs[f'lazyllm.entity.config.{k}'] = _stringify_payload(v) if isinstance(v, (dict, list)) else str(v)
+                    attrs.update(self._backend.metadata_attributes(trace_kwargs))
+        except Exception:
+            pass
+
+        semantic_type = getattr(target, '__semantic_type__', None)
+        if semantic_type is None and span_kind == 'flow':
+            semantic_type = 'workflow_control'
+        if semantic_type:
+            attrs['lazyllm.semantic_type'] = semantic_type
+        attrs.update(self._backend.observation_type_attributes(
+            span_kind=span_kind, semantic_type=semantic_type, trace_kwargs=trace_kwargs,
+        ))
+
         if trace_ctx.get('trace_id'):
             attrs['lazyllm.request.trace_id'] = str(trace_ctx['trace_id'])
         if trace_ctx.get('parent_span_id'):
