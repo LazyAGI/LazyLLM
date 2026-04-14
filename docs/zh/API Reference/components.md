@@ -104,11 +104,11 @@
     options:
       heading_level: 3
 
-::: lazyllm.components.deploy.relay.base.RelayServer
+::: lazyllm.components.deploy.BertDeploy
     options:
       heading_level: 3
 
-::: lazyllm.components.deploy.OCRDeploy
+::: lazyllm.components.deploy.relay.base.RelayServer
     options:
       heading_level: 3
 
@@ -117,10 +117,6 @@
       heading_level: 3
       
 ::: lazyllm.components.deploy.relay.base.FastapiApp
-    options:
-      heading_level: 3
-
-::: lazyllm.components.deploy.BertDeploy
     options:
       heading_level: 3
 

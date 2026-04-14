@@ -1795,12 +1795,12 @@ Args:
     **kw: 未识别的关键字参数将被记录警告并忽略。
 
 Message Format:
-    与 ``TrainableModule`` 联用时，首参映射为 ``text_a``，``text_b`` 通过关键字传入。请求体为 JSON：\\n
-    - text_a (str): 第一段文本（如候选词）\\n
-    - text_b (str): 第二段文本（如上下文片段）；可为空，此时按单序列编码\\n
+    与 ``TrainableModule`` 联用时，首参映射为 ``text_a``，``text_b`` 通过关键字传入。请求体为 JSON：
+    - text_a (str): 第一段文本（如候选词）
+    - text_b (str): 第二段文本（如上下文片段）；可为空，此时按单序列编码
 
-**Returns:**\\n
-- 服务进程返回的 JSON 字符串，含 ``logits``、``probs``、``predicted_label`` 等字段。\\n
+**Returns:**
+- 服务进程返回的 JSON 字符串，含 ``logits``、``probs``、``predicted_label`` 等字段。
 ''')
 
 add_english_doc('deploy.BertDeploy', '''\
@@ -1816,12 +1816,12 @@ Args:
     **kw: Unknown keyword arguments are logged as a warning and ignored.
 
 Message Format:
-    With ``TrainableModule``, the first positional argument maps to ``text_a`` and ``text_b`` is passed as a keyword. JSON body:\\n
-    - text_a (str): First segment (e.g. span text).\\n
-    - text_b (str): Second segment (e.g. context); may be empty for single-sequence encoding.\\n
+    With ``TrainableModule``, the first positional argument maps to ``text_a`` and ``text_b`` is passed as a keyword. JSON body:
+    - text_a (str): First segment (e.g. span text).
+    - text_b (str): Second segment (e.g. context); may be empty for single-sequence encoding.
 
-**Returns:**\\n
-- JSON string from the worker with fields such as ``logits``, ``probs``, and ``predicted_label``.\\n
+**Returns:**
+- JSON string from the worker with fields such as ``logits``, ``probs``, and ``predicted_label``.
 ''')
 
 add_example('deploy.BertDeploy', '''\

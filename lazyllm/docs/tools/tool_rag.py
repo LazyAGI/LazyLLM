@@ -9457,9 +9457,9 @@ Args:
     prompt_lang (Literal["zh", "en"]): 内置 LLM 提示语言；``discriminator`` 为 ``None`` 或 BERT 部署的 ``TrainableModule`` 时无效。
 
 Methods:
-    - ``__call__(queries)``: 对单条字符串或字符串列表做增强。\\n
-    - ``get_matches(query)``: 返回经 AC + 边界过滤后的匹配列表。\\n
-    - ``update_data_source`` / ``update_discriminator``: 热更新词表或判别器。\\n
+    - ``__call__(queries)``: 对单条字符串或字符串列表做增强。
+    - ``get_matches(query)``: 返回经 AC + 边界过滤后的匹配列表。
+    - ``update_data_source`` / ``update_discriminator``: 热更新词表或判别器。
 ''')
 
 add_english_doc('rag.QueryEnhACProcessor', '''\
@@ -9476,9 +9476,9 @@ Args:
     prompt_lang (Literal["zh", "en"]): Language for built-in LLM prompts; ignored when ``discriminator`` is ``None`` or a BERT-deployed ``TrainableModule``.
 
 Methods:
-    - ``__call__(queries)``: Enhance a single string or a list of strings.\\n
-    - ``get_matches(query)``: Return matches after AC + boundary filtering.\\n
-    - ``update_data_source`` / ``update_discriminator``: Hot-swap vocabulary or discriminator.\\n
+    - ``__call__(queries)``: Enhance a single string or a list of strings.
+    - ``get_matches(query)``: Return matches after AC + boundary filtering.
+    - ``update_data_source`` / ``update_discriminator``: Hot-swap vocabulary or discriminator.
 ''')
 
 add_chinese_doc('rag.QueryEnhACProcessor.update_data_source', '''\
@@ -9512,15 +9512,21 @@ Args:
 add_chinese_doc('rag.QueryEnhACProcessor.get_matches', '''\
 返回经 AC 匹配与边界过滤后的命中列表（与 ac-jieba ``return_matches_only`` 形态对齐）。
 
-**Returns:**\\n
-- ``List[dict]``: 每项含当前 ``word_key``、``cluster_key`` 字段，以及 ``cluster_words``（该簇全部词形列表）。\\n
+Args:
+    query (str): 待匹配的查询字符串。
+
+**Returns:**
+- ``List[dict]``: 每项含当前 ``word_key``、``cluster_key`` 字段，以及 ``cluster_words``（该簇全部词形列表）。
 ''')
 
 add_english_doc('rag.QueryEnhACProcessor.get_matches', '''\
 Return matches after AC matching and boundary filtering (shape aligned with ac-jieba ``return_matches_only``).
 
-**Returns:**\\n
-- ``List[dict]``: Each item contains the configured ``word_key`` and ``cluster_key`` fields, plus ``cluster_words`` (all words in that cluster).\\n
+Args:
+    query (str): The query string to match against the AC automaton.
+
+**Returns:**
+- ``List[dict]``: Each item contains the configured ``word_key`` and ``cluster_key`` fields, plus ``cluster_words`` (all words in that cluster).
 ''')
 
 add_chinese_doc('rag.QueryEnhACProcessor.__call__', '''\
@@ -9529,8 +9535,8 @@ add_chinese_doc('rag.QueryEnhACProcessor.__call__', '''\
 Args:
     queries (Union[str, List[str]]): 单条查询字符串，或查询字符串列表。
 
-**Returns:**\\n
-- ``Union[str, List[str]]``: 与输入同结构——单条入参返回字符串，列表入参返回增强后的字符串列表。\\n
+**Returns:**
+- ``Union[str, List[str]]``: 与输入同结构——单条入参返回字符串，列表入参返回增强后的字符串列表。
 ''')
 
 add_english_doc('rag.QueryEnhACProcessor.__call__', '''\
@@ -9539,8 +9545,8 @@ Run synonym expansion on one or more queries.
 Args:
     queries (Union[str, List[str]]): A single query string or a list of query strings.
 
-**Returns:**\\n
-- ``Union[str, List[str]]``: Same structure as input—a string for a single query, or a list of enhanced strings.\\n
+**Returns:**
+- ``Union[str, List[str]]``: Same structure as input—a string for a single query, or a list of enhanced strings.
 ''')
 
 add_example('rag.QueryEnhACProcessor', '''\
@@ -9551,9 +9557,18 @@ add_example('rag.QueryEnhACProcessor', '''\
 ...         {"cluster_id": "C1", "word": "民法"},
 ...         {"cluster_id": "C1", "word": "civil law"},
 ...     ]
+>>> # LLM discriminator
 >>> model = lazyllm.OnlineChatModule()
 >>> proc = QueryEnhACProcessor(data_source=vocab, discriminator=model)
 >>> out = proc("什么是民法？")
+>>> print(out)
+>>> # BERT discriminator
+>>> bert_m = lazyllm.TrainableModule('your-seq-cls-model', use_model_map=False).deploy_method(
+...     lazyllm.deploy.BertDeploy, max_length=128,
+... ).start()
+>>> proc2 = QueryEnhACProcessor(data_source=vocab, discriminator=bert_m)
+>>> out2 = proc2("什么是民法？")
+>>> print(out2)
 >>> proc.update_data_source(vocab)
 >>> proc.update_discriminator(model)
 ''')

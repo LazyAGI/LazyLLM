@@ -144,6 +144,10 @@ class _BERTFilter:
         if len(probs) >= 2:
             return float(probs[1])
         if len(probs) == 1:
+            LOG.warning(
+                f'_BERTFilter: BERT response has only 1 probability value; '
+                f'assuming it represents label-1 probability. obj={obj!r}'
+            )
             return float(probs[0])
         raise ValueError(f'BERT response missing probs: {obj!r}')
 
@@ -165,6 +169,7 @@ class _BERTFilter:
             placed = False
             for attempt in range(self._max_retries):
                 try:
+                    # TrainableModule merges kwargs into BertDeploy.message_format fields
                     raw = self.model(word, text_b=ctx)
                     obj = self._parse_output(raw)
                     if self._prob_label1(obj) >= self.threshold:
@@ -244,7 +249,7 @@ class QueryEnhACProcessor:
             self.vocab_data = list(self._data_source)
 
         self.word_to_cluster = {}
-        self.cluster_to_words = {}
+        cluster_word_sets: dict = {}
 
         for item in self.vocab_data:
             cluster_id = item.get(self.cluster_key)
@@ -252,10 +257,11 @@ class QueryEnhACProcessor:
             if cluster_id is None or word is None:
                 continue
             self.word_to_cluster[word] = cluster_id
-            if cluster_id not in self.cluster_to_words:
-                self.cluster_to_words[cluster_id] = []
-            if word not in self.cluster_to_words[cluster_id]:
-                self.cluster_to_words[cluster_id].append(word)
+            if cluster_id not in cluster_word_sets:
+                cluster_word_sets[cluster_id] = set()
+            cluster_word_sets[cluster_id].add(word)
+
+        self.cluster_to_words = {k: list(v) for k, v in cluster_word_sets.items()}
 
         if self.word_to_cluster:
             automaton = ahocorasick.Automaton()
@@ -279,6 +285,8 @@ class QueryEnhACProcessor:
         if not self.automaton or not query:
             return []
 
+        # Internal match dict schema (fixed keys, independent of user-facing word_key/cluster_key):
+        # {'word': str, 'cluster_id': str, 'start': int, 'end': int}
         raw_matches = []
         for end_idx, (cluster_id, matched_word) in self.automaton.iter(str(query)):
             start_idx = end_idx - len(matched_word) + 1
