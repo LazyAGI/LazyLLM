@@ -76,7 +76,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             elif dataset_path:
                 dataset_path = os.path.join(os.getcwd(), dataset_path)
 
-            self._launcher: Launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
             self._dataset_path = dataset_path
             self._embed = self._get_embeds(embed)
             self._processor = processor
@@ -98,6 +97,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                     f'Persistent store detected (type={store_conf.get("type")}), '
                     f'auto-enabling DocServer for production-grade file tracking and scan.')
                 spawn_doc_server = True
+            self._launcher: Launcher = launcher if launcher else (
+                lazyllm.launchers.empty(sync=False) if spawn_doc_server else lazyllm.launchers.remote(sync=False)
+            )
             doc_impl_dataset_path = dataset_path if not (spawn_doc_server or connect_doc_server) else None
             self._doc_impl_dataset_path = doc_impl_dataset_path
             self._doc_processor = None

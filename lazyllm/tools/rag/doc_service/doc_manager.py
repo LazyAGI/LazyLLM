@@ -61,6 +61,16 @@ class DocManager:
     def set_callback_url(self, callback_url: str):
         self._callback_url = callback_url
 
+    def close(self):
+        '''Release the DB engine held by the underlying ``SqlManager``.
+
+        Tests that point the manager at a temp-directory sqlite file need this so
+        that ``TemporaryDirectory`` cleanup on Windows does not trip on an open
+        sqlite handle.
+        '''
+        if getattr(self, '_db_manager', None) is not None:
+            self._db_manager.dispose()
+
     def _ensure_indexes(self):
         stmts = [
             'DROP INDEX IF EXISTS uq_docs_path',

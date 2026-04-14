@@ -761,13 +761,12 @@ class SchemaExtractor(ModuleBase):
         attrs: Dict[str, Any] = {
             '__tablename__': table_name,
             '__table_args__': (
-                sqlalchemy.PrimaryKeyConstraint(self.SYS_KB_ID, self.SYS_DOC_ID, name=f'pk_{table_name}_kb_doc'),
                 sqlalchemy.Index(f'idx_{table_name}_kb', self.SYS_KB_ID),
                 {'extend_existing': True},
             ),
         }
-        attrs[self.SYS_KB_ID] = sqlalchemy.Column(sqlalchemy.String(128), nullable=False)
-        attrs[self.SYS_DOC_ID] = sqlalchemy.Column(sqlalchemy.String(128), nullable=False)
+        attrs[self.SYS_KB_ID] = sqlalchemy.Column(sqlalchemy.String(128), primary_key=True, nullable=False)
+        attrs[self.SYS_DOC_ID] = sqlalchemy.Column(sqlalchemy.String(128), primary_key=True, nullable=False)
         attrs[self.SYS_ALGO_ID] = sqlalchemy.Column(sqlalchemy.String(128), nullable=False)
         attrs['extract_meta'] = sqlalchemy.Column(sqlalchemy.JSON, nullable=True)
 

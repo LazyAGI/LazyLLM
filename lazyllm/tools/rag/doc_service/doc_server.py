@@ -93,6 +93,13 @@ class DocServer(ModuleBase):
             self._scan_continue = False
             if self._scan_thread and self._scan_thread.is_alive():
                 self._scan_thread.join(timeout=2)
+            # Release the DB engine so callers can clean up the backing directory
+            # (sqlite on Windows keeps an exclusive handle until dispose()).
+            if self._manager is not None:
+                try:
+                    self._manager.close()
+                except Exception:
+                    pass
             return None
 
         def _sync_dataset_for_kb(self, kb_id: str, algo_id: str, disk_files: list, disk_set: set):

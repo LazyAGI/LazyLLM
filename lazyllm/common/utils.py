@@ -165,6 +165,15 @@ _TEST_MODULE_PREFIXES = ('test_', 'tmp.tests.')
 
 
 def _collect_test_modules(obj):
+    '''Return modules that need cloudpickle ``register_pickle_by_value``.
+
+    We only target dynamically-generated test modules (e.g. ``tmp.tests.*`` code
+    assembled at runtime) whose subprocess can't re-import them by name. Regular
+    file-backed test modules are intentionally skipped: the caller must already
+    arrange for subprocess import (via ``pythonpath=`` on ServerModule), and
+    pickling them by value balloons the command-line payload past the Windows
+    8191-char cmd limit (see PR 1069 ServerModule regression).
+    '''
     modules = []
     seen = set()
     candidates = [obj]
@@ -178,6 +187,12 @@ def _collect_test_modules(obj):
             continue
         module = sys.modules.get(module_name)
         if module is None or module_name in seen:
+            continue
+        # File-backed modules are importable by name in the subprocess; no need
+        # to embed their source by value (and doing so is what blows past the
+        # Windows cmd-line limit).
+        module_file = getattr(module, '__file__', None)
+        if module_file and os.path.isfile(module_file):
             continue
         seen.add(module_name)
         modules.append(module)

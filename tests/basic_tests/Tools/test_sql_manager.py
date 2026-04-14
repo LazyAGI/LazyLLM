@@ -53,12 +53,14 @@ class TestSqlManager(object):
         assert sql_manager.engine is final_engine
         assert mock_create_engine.call_count == 2
 
-    def test_tidb_primary_key_string_uses_varchar(self):
+    @patch('lazyllm.tools.sql.sql_manager.sqlalchemy.create_engine')
+    def test_tidb_primary_key_string_uses_varchar(self, mock_create_engine):
         sql_manager = SqlManager('tidb', 'root', 'pwd', '127.0.0.1', 4000, 'lazyllm_doc_task')
 
         primary_key_type = sql_manager._sql_type_for('string', is_primary_key=True)
         normal_string_type = sql_manager._sql_type_for('string')
 
+        mock_create_engine.assert_not_called()
         assert isinstance(primary_key_type, sqlalchemy.String)
         assert primary_key_type.length == 255
         assert normal_string_type is sqlalchemy.Text

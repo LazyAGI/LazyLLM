@@ -72,7 +72,6 @@ class SqlManager(DBManager):
         self._orm_cache = {}
         self._engine = None
         self._Session = None
-        self._Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         if tables_info_dict:
             self._init_tables_by_info(tables_info_dict)
 
@@ -259,6 +258,21 @@ class SqlManager(DBManager):
         if self._Session is None:
             self._Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         return self._Session
+
+    def dispose(self):
+        '''Release the underlying engine's connection pool.
+
+        Needed so callers (e.g. DocServer._Impl.stop) can close sqlite file handles
+        before removing the containing directory; on Windows this is required, because
+        open handles block ``TemporaryDirectory`` cleanup.
+        '''
+        if self._engine is not None:
+            try:
+                self._engine.dispose()
+            except Exception:
+                pass
+            self._engine = None
+        self._Session = None
 
     @contextmanager
     def get_session(self):

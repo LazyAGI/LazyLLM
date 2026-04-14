@@ -13,11 +13,15 @@ import tempfile
 import threading
 import time
 import unittest
+import uuid
 from unittest.mock import MagicMock
 
 import lazyllm.tools.rag.document as document_module
 from lazyllm.launcher import cleanup
+from lazyllm.module import LLMBase
+from lazyllm.tools.rag.doc_to_db import SchemaExtractor
 from lazyllm.tools.rag.utils import gen_docid
+from pydantic import BaseModel, Field
 
 
 class TestDocImpl(unittest.TestCase):
@@ -137,6 +141,30 @@ class TestDocImpl(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_doc_files_resolve_relative_paths_via_data_path(self):
+        self.mock_embed.return_value = [0.1, 0.2, 0.3]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = os.path.join(temp_dir, 'test.txt')
+            with open(file_path, 'w') as file:
+                file.write('local dataset file')
+
+            original_data_path = lazyllm.config._impl['data_path']
+            lazyllm.config._impl['data_path'] = temp_dir
+            try:
+                doc_impl = DocImpl(embed=self.mock_embed, doc_files=['test.txt'])
+                doc_impl._reader = MagicMock()
+                doc_impl._reader.load_data.side_effect = (
+                    lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
+                )
+                doc_impl._lazy_init()
+
+                nodes = doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
+                assert len(nodes) == 1
+                assert nodes[0].global_metadata[RAG_DOC_ID] == gen_docid(file_path)
+                assert nodes[0].global_metadata[RAG_DOC_PATH] == file_path
+            finally:
+                lazyllm.config._impl['data_path'] = original_data_path
+
     def test_dataset_path_monitor_adds_and_removes_files(self):
         self.mock_embed.return_value = [0.1, 0.2, 0.3]
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -225,6 +253,35 @@ class TestDocImpl(unittest.TestCase):
         assert restored._local_monitor_lock is not None
         assert restored._local_monitor_thread is None
         assert restored._local_monitor_continue is False
+
+
+class _DummyLLM(LLMBase):
+    def forward(self, *args, **kwargs):
+        return ''
+
+
+class TestSchemaExtractorRegression(unittest.TestCase):
+    def test_ensure_table_handles_existing_composite_primary_key(self):
+        fd, db_path = tempfile.mkstemp(suffix='.db')
+        os.close(fd)
+        try:
+            extractor = SchemaExtractor(
+                db_config={'db_type': 'sqlite', 'user': None, 'password': None, 'host': None, 'port': None,
+                           'db_name': db_path},
+                llm=_DummyLLM(),
+            )
+
+            class SchemaSet(BaseModel):
+                company: str = Field(default='unknown')
+
+            schema_set_id = uuid.uuid4().hex
+            extractor.register_schema_set(SchemaSet, schema_set_id=schema_set_id)
+            table_name = extractor._ensure_table(schema_set_id, SchemaSet)
+            extractor._table_cache.pop(table_name, None)
+            extractor._ensure_table(schema_set_id, SchemaSet)
+        finally:
+            if os.path.exists(db_path):
+                os.remove(db_path)
 
 class TestDocument(unittest.TestCase):
     @classmethod
@@ -397,6 +454,13 @@ class TestDocument(unittest.TestCase):
             doc.start()
             assert hasattr(doc._manager, '_docweb')
             assert doc._manager._enable_path_monitoring is False
+        finally:
+            doc.stop()
+
+    def test_local_doc_server_defaults_to_empty_launcher(self):
+        doc = Document(self._build_dataset(), manager=True)
+        try:
+            assert type(doc._manager._launcher) is lazyllm.launchers.empty
         finally:
             doc.stop()
 
@@ -651,43 +715,47 @@ class TestDocument(unittest.TestCase):
                     parser_url='http://mock-parser.test',
                     enable_scan=False,  # don't start scan thread
                 )
-                impl._lazy_init()
+                try:
+                    impl._lazy_init()
 
-                # Register KBs from "instance 1"
-                impl.ensure_kb_registered('kb_inst1_a')
-                impl.ensure_kb_registered('kb_inst1_b')
+                    # Register KBs from "instance 1"
+                    impl.ensure_kb_registered('kb_inst1_a')
+                    impl.ensure_kb_registered('kb_inst1_b')
 
-                # Simulate KBs from "instance 2" by inserting directly into DB
-                impl._manager._ensure_kb('kb_inst2_x', display_name='kb_inst2_x')
-                impl._manager._ensure_kb_algorithm('kb_inst2_x', 'kb_inst2_x')
+                    # Simulate KBs from "instance 2" by inserting directly into DB
+                    impl._manager._ensure_kb('kb_inst2_x', display_name='kb_inst2_x')
+                    impl._manager._ensure_kb_algorithm('kb_inst2_x', 'kb_inst2_x')
 
-                # All KBs exist in DB
-                all_pairs = impl._manager._list_active_kb_algo_pairs()
-                all_kb_ids = {kb for kb, _ in all_pairs}
-                assert 'kb_inst1_a' in all_kb_ids
-                assert 'kb_inst1_b' in all_kb_ids
-                assert 'kb_inst2_x' in all_kb_ids
+                    # All KBs exist in DB
+                    all_pairs = impl._manager._list_active_kb_algo_pairs()
+                    all_kb_ids = {kb for kb, _ in all_pairs}
+                    assert 'kb_inst1_a' in all_kb_ids
+                    assert 'kb_inst1_b' in all_kb_ids
+                    assert 'kb_inst2_x' in all_kb_ids
 
-                # _owned_kbs should only contain instance 1's KBs
-                assert impl._owned_kbs == {'kb_inst1_a', 'kb_inst1_b'}, (
-                    f'_owned_kbs should only contain registered KBs, got: {impl._owned_kbs}'
-                )
+                    # _owned_kbs should only contain instance 1's KBs
+                    assert impl._owned_kbs == {'kb_inst1_a', 'kb_inst1_b'}, (
+                        f'_owned_kbs should only contain registered KBs, got: {impl._owned_kbs}'
+                    )
 
-                # Track which KBs _sync_dataset_for_kb is called for
-                synced_kbs = []
+                    # Track which KBs _sync_dataset_for_kb is called for
+                    synced_kbs = []
 
-                def tracking_sync(kb_id, algo_id, disk_files, disk_set):
-                    synced_kbs.append(kb_id)
+                    def tracking_sync(kb_id, algo_id, disk_files, disk_set):
+                        synced_kbs.append(kb_id)
 
-                impl._sync_dataset_for_kb = tracking_sync
-                impl._sync_dataset()
+                    impl._sync_dataset_for_kb = tracking_sync
+                    impl._sync_dataset()
 
-                # Only instance 1's KBs should be synced
-                assert 'kb_inst1_a' in synced_kbs, 'owned KB kb_inst1_a must be synced'
-                assert 'kb_inst1_b' in synced_kbs, 'owned KB kb_inst1_b must be synced'
-                assert 'kb_inst2_x' not in synced_kbs, (
-                    'non-owned KB kb_inst2_x must NOT be synced by this instance'
-                )
+                    # Only instance 1's KBs should be synced
+                    assert 'kb_inst1_a' in synced_kbs, 'owned KB kb_inst1_a must be synced'
+                    assert 'kb_inst1_b' in synced_kbs, 'owned KB kb_inst1_b must be synced'
+                    assert 'kb_inst2_x' not in synced_kbs, (
+                        'non-owned KB kb_inst2_x must NOT be synced by this instance'
+                    )
+                finally:
+                    # Release sqlite engine so Windows can remove the tempdir.
+                    impl.stop()
         finally:
             ParserClient.health = original_health
 
@@ -722,6 +790,7 @@ class TestDocument(unittest.TestCase):
                     sync_log.append(kb_id)
 
                 _DocServer._Impl._sync_dataset_for_kb = tracking_sync_for_kb
+                impl = None
                 try:
                     impl = _DocServer._Impl(
                         storage_dir=dataset_path,
@@ -751,5 +820,8 @@ class TestDocument(unittest.TestCase):
                     )
                 finally:
                     _DocServer._Impl._sync_dataset_for_kb = orig_sync_for_kb
+                    # Release sqlite engine so Windows can remove the tempdir.
+                    if impl is not None:
+                        impl.stop()
         finally:
             ParserClient.health = original_health

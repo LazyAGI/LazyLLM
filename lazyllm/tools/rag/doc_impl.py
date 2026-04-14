@@ -4,7 +4,7 @@ import time
 from enum import Enum
 from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
-from lazyllm import LOG, once_wrapper, reset_on_pickle
+from lazyllm import LOG, once_wrapper, reset_on_pickle, config
 from lazyllm.module import LLMBase
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
@@ -320,10 +320,20 @@ class DocImpl:
         return list_dataset_files(self._dataset_path)
 
     def _list_local_files(self) -> Tuple[List[str], List[str], List[Dict[str, Any]]]:
-        paths = ([os.path.abspath(path) for path in self._doc_files]
+        paths = ([self._resolve_doc_file_path(path) for path in self._doc_files]
                  if self._doc_files is not None else self._list_dataset_files())
         ids = [gen_docid(path) for path in paths]
         return ids, paths, [{} for _ in paths]
+
+    @staticmethod
+    def _resolve_doc_file_path(path: str) -> str:
+        if os.path.isabs(path):
+            return path
+        if config['data_path']:
+            candidate = os.path.join(config['data_path'], path)
+            if os.path.exists(candidate):
+                return os.path.abspath(candidate)
+        return os.path.abspath(path)
 
     def _sync_local_dataset(self):
         with self._local_monitor_lock:
