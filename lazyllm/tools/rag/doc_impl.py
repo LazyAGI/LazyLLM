@@ -327,8 +327,11 @@ class DocImpl:
 
     @staticmethod
     def _resolve_doc_file_path(path: str) -> str:
+        # Normalize absolute paths too, matching the prior os.path.abspath(...)
+        # behavior so gen_docid produces a stable id regardless of whether the
+        # caller used "/abs/./x" vs "/abs/x" or mixed separators on Windows.
         if os.path.isabs(path):
-            return path
+            return os.path.abspath(path)
         if config['data_path']:
             candidate = os.path.join(config['data_path'], path)
             if os.path.exists(candidate):
