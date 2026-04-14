@@ -26,7 +26,7 @@ namespace lazyllm {
  * - After tokenizer supports true string_view encode/decode, migrate this path back to
  *   std::vector<std::string_view> and remove eager string materialization.
  */
-std::vector<std::string> TextSplitterBase::split_text(const std::string_view& view, int metadata_size) const {
+std::vector<std::string> TextSplitterBase::split_text(std::string_view view, int metadata_size) const {
     if (view.empty()) return {""};
     int effective_chunk_size = _chunk_size - metadata_size;
     if (effective_chunk_size <= 0) {
@@ -48,8 +48,7 @@ std::vector<std::string> TextSplitterBase::split_text(const std::string_view& vi
     return merge_chunks(std::move(splits), effective_chunk_size);
 }
 
-std::vector<ChunkView> TextSplitterBase::split_recursive(
-    const std::string_view& view, const int chunk_size) const
+std::vector<ChunkView> TextSplitterBase::split_recursive(std::string_view view, const int chunk_size) const
 {
     int token_size = get_token_size(view);
     if (token_size <= chunk_size) return {ChunkView{view, true, token_size}};
@@ -69,8 +68,7 @@ std::vector<ChunkView> TextSplitterBase::split_recursive(
     return splits;
 }
 
-std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_functions(
-    const std::string_view& text) const
+std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_functions(std::string_view text) const
 {
     auto views = split_text_while_keeping_separator(text, "\n\n\n");
     if (views.size() > 1) return {views, true};
@@ -88,8 +86,7 @@ std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_funct
 }
 
 std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separator(
-    const std::string_view& text,
-    const std::string_view& separator)
+    std::string_view text, std::string_view separator)
 {
     if (text.empty()) return {};
     else if (separator.empty()) return {text};

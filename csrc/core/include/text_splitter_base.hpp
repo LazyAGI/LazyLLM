@@ -33,10 +33,9 @@ public:
         }
     }
 
-    std::vector<std::string> split_text(const std::string_view& view, int metadata_size) const;
+    std::vector<std::string> split_text(std::string_view view, int metadata_size) const;
     static std::vector<std::string_view> split_text_while_keeping_separator(
-        const std::string_view& text,
-        const std::string_view& separator);
+        std::string_view text, std::string_view separator);
 
     unsigned chunk_size() const { return _chunk_size; }
     void set_chunk_size(unsigned value) { _chunk_size = value; }
@@ -45,11 +44,11 @@ public:
     void set_overlap(unsigned value) { _overlap = value; }
 
 protected:
-    virtual std::vector<ChunkView> split_recursive(const std::string_view& view, const int chunk_size) const;
+    virtual std::vector<ChunkView> split_recursive(std::string_view view, const int chunk_size) const;
     virtual std::vector<std::string> merge_chunks(std::vector<Chunk> splits, int chunk_size) const;
 
 private:
-    std::tuple<std::vector<std::string_view>, bool> split_by_functions(const std::string_view& text) const;
+    std::tuple<std::vector<std::string_view>, bool> split_by_functions(std::string_view text) const;
 
     int get_token_size(const std::string_view& view) const {
         if (view.empty()) return 0;

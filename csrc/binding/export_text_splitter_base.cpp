@@ -21,26 +21,6 @@ public:
         const std::string& encoding_name = "gpt2")
         : lazyllm::TextSplitterBase(chunk_size, overlap, encoding_name) {}
 
-    std::vector<std::string> merge_chunks_impl(py::list splits, int chunk_size) const {
-        std::vector<lazyllm::Chunk> owned;
-        owned.reserve(py::len(splits));
-        for (auto item : splits) {
-            py::object split = py::reinterpret_borrow<py::object>(item);
-            owned.push_back(lazyllm::Chunk{
-                split.attr("text").cast<std::string>(),
-                split.attr("is_sentence").cast<bool>(),
-                split.attr("token_size").cast<int>()
-            });
-        }
-
-        std::vector<std::string> chunks;
-        {
-            py::gil_scoped_release release;
-            chunks = lazyllm::TextSplitterBase::merge_chunks(owned, chunk_size);
-        }
-        return chunks;
-    }
-
     py::list split_text_impl(const std::string& text, int metadata_size) const {
         std::vector<std::string> chunks;
         {
@@ -73,8 +53,7 @@ void exportTextSplitterBase(py::module& m) {
         )
         .def_property("_chunk_size", &TextSplitterBaseCPPImpl::chunk_size, &TextSplitterBaseCPPImpl::set_chunk_size)
         .def_property("_overlap", &TextSplitterBaseCPPImpl::overlap, &TextSplitterBaseCPPImpl::set_overlap)
-        .def("split_text", &TextSplitterBaseCPPImpl::split_text_impl, py::arg("text"), py::arg("metadata_size"))
-        .def("_merge", &TextSplitterBaseCPPImpl::merge_chunks_impl, py::arg("splits"), py::arg("chunk_size"));
+        .def("split_text", &TextSplitterBaseCPPImpl::split_text_impl, py::arg("text"), py::arg("metadata_size"));
 
     (void)cls;
 }
