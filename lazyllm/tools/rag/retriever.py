@@ -32,7 +32,6 @@ class _PostProcess(object):
         node.metadata['tree_node_uids'] = store.get_nodes(
             uids=tree_node_uids, kb_id=node.global_metadata.get(RAG_KB_ID))
 
-
     def _post_process(self, nodes):
         # Refill metadata tree nodes, from uid to DocNode
         for node in nodes:
