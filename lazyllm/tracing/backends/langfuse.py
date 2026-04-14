@@ -98,11 +98,7 @@ class LangfuseBackend(TracingBackend):
         }
 
     def metadata_attributes(self, trace_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        if not trace_kwargs:
-            return {}
-        return {
-            _LANGFUSE_OBSERVATION_METADATA: json.dumps(trace_kwargs, ensure_ascii=False, default=str),
-        }
+        return {}
 
     def observation_type_attributes(self, span_kind: str, semantic_type: Optional[str],
                                     trace_kwargs: Dict[str, Any]) -> Dict[str, Any]:

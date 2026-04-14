@@ -1,3 +1,4 @@
+import json
 from typing import List, Optional, Union, Dict, Set, Callable, Any
 from lazyllm import ModuleBase, once_wrapper, LOG, TempPathGenerator, parallel
 
@@ -38,6 +39,22 @@ class _RetrieverBase(ModuleBase):
         high = 'high'
 
         def __repr__(self): return self.casefold()
+
+    @staticmethod
+    def _build_trace_output_attrs(nodes):
+        attrs = {}
+        if nodes and isinstance(nodes, list):
+            attrs['lazyllm.output.doc_count'] = len(nodes)
+            scores = [float(n.similarity_score) for n in nodes
+                      if isinstance(n, DocNode) and n.similarity_score is not None]
+            if scores:
+                attrs['lazyllm.output.similarity_scores'] = json.dumps(scores)
+        return attrs
+
+    def __trace_output_attrs__(self, output):
+        attrs = getattr(self, '_trace_cached_attrs', None) or {}
+        self._trace_cached_attrs = None
+        return attrs
 
 
 class Retriever(_RetrieverBase, _PostProcess):
@@ -104,7 +121,7 @@ class Retriever(_RetrieverBase, _PostProcess):
             'target': self._target,
             'mode': self._mode,
             'output_format': self._output_format,
-            'join': self._join,
+            'join': self._join if self._join is False else True,
             'weight': self._weight,
             'priority': str(self._priority) if self._priority else None,
         }
@@ -220,6 +237,7 @@ class Retriever(_RetrieverBase, _PostProcess):
             if nodes and self._target and self._target != nodes[0]._group:
                 nodes = doc.find(self._target)(nodes)
             all_nodes.extend(nodes)
+        self._trace_cached_attrs = self._build_trace_output_attrs(all_nodes)
         return self._post_process(all_nodes)
 
 

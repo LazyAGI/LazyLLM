@@ -1,8 +1,8 @@
-from ..common import globals
+from ..common import LOG, globals
 from ..configs import config
 from ..hook import LazyLLMHook, register_builtin_hook_provider
 from .configs import resolve_default_module_trace
-from .runtime import finish_span, set_span_error, set_span_output, set_span_usage, start_span
+from .runtime import finish_span, set_span_attributes, set_span_error, set_span_output, set_span_usage, start_span
 
 
 class LazyTracingHook(LazyLLMHook):
@@ -29,6 +29,13 @@ class LazyTracingHook(LazyLLMHook):
             usage = globals['usage'].get(module_id)
             if usage:
                 set_span_usage(self._span_handle, usage)
+        if hasattr(self._obj, '__trace_output_attrs__'):
+            try:
+                output_attrs = self._obj.__trace_output_attrs__(output)
+                if output_attrs:
+                    set_span_attributes(self._span_handle, output_attrs)
+            except Exception as e:
+                LOG.debug(f'__trace_output_attrs__ failed for {self._obj.__class__.__name__}: {e}')
 
     def on_error(self, exc):
         if self._span_handle is None:

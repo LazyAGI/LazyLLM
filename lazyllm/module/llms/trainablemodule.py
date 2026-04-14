@@ -269,6 +269,8 @@ class TrainableModule(UrlModule):
                  type: Optional[Union[str, LLMType]] = None, source: Optional[str] = None,
                  use_model_map: Union[str, bool] = True):
         super().__init__(url=None, stream=stream, return_trace=return_trace, init_prompt=False)
+        if type:
+            self._type = LLMType(type) if not isinstance(type, LLMType) else type
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
                                           lazyllm.deploy.auto, self._template, self._url_wrapper,
