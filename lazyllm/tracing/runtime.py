@@ -142,8 +142,8 @@ class _TracingRuntime:
             trace_api.set_tracer_provider(provider)
 
             self._provider = provider
-            self._tracer = trace_api.get_tracer('lazyllm.tracing')
             self._trace_api = trace_api
+            self._tracer = trace_api.get_tracer('lazyllm.tracing')
             self._status = (Status, StatusCode)
             self._backend = backend
             atexit.register(self.shutdown)
