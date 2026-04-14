@@ -14,7 +14,7 @@ Source directory: `lazyllm/tools/git/review/` (`runner.py`, `pre_analysis.py`, `
 |--------|---------------|
 | `runner.py` | **Main entry point**: orchestrates all sub-modules; diff fetching & truncation; strategy decisions (`_ReviewStrategy`); meta warning generation; clone directory cleanup; posting comments |
 | `pre_analysis.py` | Repository clone; architecture document generation (`analyze_repo_architecture`); historical review spec extraction (`analyze_historical_reviews`); PR summary; R2 Agent toolset construction |
-| `rounds.py` | **Five-round review core**: R1 hunk-level analysis, R2 adaptive Agent analysis, R3 global architecture analysis, R4 design doc + architect review, R5 merge/dedup |
+| `rounds.py` | **Five-round review core**: R1 hunk-level analysis, R2 adaptive Agent analysis, R3 global architecture analysis, R4 design doc + architect review + R4v ReactAgent verification, R5 merge/dedup |
 | `lint_runner.py` | Static Lint analysis (no LLM calls); results injected directly into R5 |
 | `checkpoint.py` | Checkpoint/resume: PR-level checkpoint; `ReviewStage` enum; invalidation control (`_invalidated_from`) |
 | `constants.py` | Context budget constants; `BudgetManager`; issue density control; diff heuristic compression |
@@ -35,7 +35,7 @@ flowchart TD
     G -->|arch_doc + review_spec + clone_dir + agent_instructions| H["_pre_round_pr_summary → pr_summary"]
     H --> I[_fetch_existing_pr_comments]
     I --> J[_run_lint_analysis]
-    J -->|lint_issues| K["_run_five_rounds (R1→R2→R3→R4→R5)"]
+    J -->|lint_issues| K["_run_five_rounds (R1→R2→R3→R4→R4v→R5)"]
     K --> L[Clean up clone subdirectory]
     L --> M{post_to_github?}
     M -->|yes| N[_post_review_comments → GitHub]
@@ -58,7 +58,7 @@ flowchart TD
 | 8 | Round 1 | hunk-level static review issue list |
 | 9 | Round 2 | Adaptive Agent/LLM deep context review (chunk mode + group mode) |
 | 10 | Round 3 | Global architecture multi-file batch analysis |
-| 11 | Round 4 | R4a PR design doc → R4b architect review issues |
+| 11 | Round 4 | R4a PR design doc → R4b architect review issues → R4v ReactAgent verification |
 | 12 | Round 5 | Deterministic dedup + LLM merge + Lint fusion → `final_comments` |
 | 13 | Post | Submit GitHub review; update checkpoint `UPLOAD` stage |
 | 14 | Cleanup | Delete `{pr_dir}/clone/`; retain `checkpoint.json` |
@@ -326,6 +326,16 @@ Files are sorted **descending** by effective diff lines, so the most important f
 **R4b — Architect Review** (1× JSON LLM):
 - Input: `arch_doc` (~42k) + `pr_design_doc` (~12k) + annotated `diff_text`.
 - Focuses on `bug_category: design | maintainability` issues.
+- Prompt includes `## Verification Constraints` section requiring convention check, dependency direction, design intent, and scope constraints before reporting any issue.
+
+**R4v — ReactAgent Verification** (ReactAgent, batch-grouped):
+- Input: R4b candidate issues + `clone_dir` + same agent tools as R2.
+- Three-layer merge strategy to minimize model calls:
+  1. **Pre-filter** (zero LLM calls): drop `severity=normal` issues whose `suggestion` contains hedging language (`consider`, `might want to`, `could potentially`, etc.).
+  2. **File grouping**: group remaining issues by `path`; one ReactAgent session per file (shared read context).
+  3. **Batch cap** (`_R4V_BATCH_CAP=5`): if a file has >5 issues, split into batches sorted by severity (critical → medium → normal).
+- Each ReactAgent session verifies all issues in the batch: reads relevant code, checks project conventions, searches for existing utilities, then outputs `KEEP / DROP / MODIFY` verdicts.
+- Typical reduction: 10–15 issues / 4–6 files → 3–5 ReactAgent calls (60–75% savings vs. per-issue verification).
 
 **Optional combined path** (`prefer_combined=True`): 1× text LLM + JSON parse expecting a single JSON `{"pr_design_doc": ..., "issues": [...]}`; falls back to two-step path on parse failure.
 
@@ -352,7 +362,7 @@ Files are sorted **descending** by effective diff lines, so the most important f
 
 **Processing pipeline**:
 
-1. **Source aggregation**: `tag(r1_passthrough, 'r1') + tag(r2, 'r2') + tag(r3, 'r3') + tag(r4, 'r4') + tag(lint_issues, 'lint')`.
+1. **Source aggregation**: `tag(r1_passthrough, 'r1') + tag(r2, 'r2') + tag(r3, 'r3') + tag(r4v, 'r4') + tag(lint_issues, 'lint')`.
    - `r1_passthrough`: R1 issues for files covered by R2 have entries from `r2_covered_keys` and `discarded_r1_keys` removed.
 
 2. **Deterministic dedup** `_deterministic_dedup()`:
@@ -418,6 +428,7 @@ Runs **before** the five LLM rounds; consumes no LLM calls.
 | R3 batch | arch 38000; prev_json 16000; budget_files = remaining budget |
 | R4a (doc) | arch 12000; diff uses remaining budget |
 | R4b (architect) | arch 42000; pr_design_doc 12000; diff uses remaining budget |
+| R4v (verification) | per-batch issues JSON; ReactAgent with same tools as R2 |
 | R5 | long content compressed first; 1× JSON LLM |
 
 ### 5.3 Long-Text Sampling: `_sample_text`
@@ -436,7 +447,7 @@ For long texts (e.g. `arch_doc`), applies **head + middle + tail** three-segment
 |------|----------|
 | **JSON LLM** | R1 hunk analysis, R2 chunk extraction, R2 group joint analysis, R3 global analysis, R4b architect review, R5 merge/dedup, arch outline generation, rule extraction, Public API Catalog construction |
 | **Text LLM** | Arch section content fill, PR summary, R4a design doc; combined attempt when `prefer_combined=True` |
-| **ReactAgent** | R2 chunk mode context collection (tools: scoped read/search/shell + `analyze_symbol`) |
+| **ReactAgent** | R2 chunk mode context collection (tools: scoped read/search/shell + `analyze_symbol`); R4v architect issue verification (same toolset, batch-grouped by file) |
 | **Retry** | `_llm_call_with_retry()`: auto-retry on JSON parse failure / rate limiting + `json_repair` fallback |
 
 ---
@@ -447,7 +458,7 @@ For long texts (e.g. `arch_doc`), applies **head + middle + tail** three-segment
 
 | Layer | Path | Contents |
 |-------|------|----------|
-| **PR checkpoint** | `~/.lazyllm/review/cache/{safe_repo}/{pr_number}/checkpoint.json` | `diff_text`, `pr_summary`, `r1_hunk_*`, `r2_file_*`, `r2_disc_*`, `r2_group_*`, `r2_shared_context`, `r3`, `pr_design_doc`, `r4`, `final_comments`, `clone_dir`, `_stage_done_*`, `_invalidated_from` |
+| **PR checkpoint** | `~/.lazyllm/review/cache/{safe_repo}/{pr_number}/checkpoint.json` | `diff_text`, `pr_summary`, `r1_hunk_*`, `r2_file_*`, `r2_disc_*`, `r2_group_*`, `r2_shared_context`, `r3`, `pr_design_doc`, `r4`, `r4v`, `final_comments`, `clone_dir`, `_stage_done_*`, `_invalidated_from` |
 | **Repo-level arch/spec cache** | `~/.lazyllm/review/cache/{safe_repo}/arch.json` / `spec.json` | `arch_doc`, `arch_section_*`, `public_api_catalog`, `agent_instructions`, `review_spec`, etc. |
 
 ### 7.2 Stage Order: `ReviewStage.ordered()`

@@ -1,6 +1,6 @@
 # LazyLLM Git PR Review 完整流程说明
 
-本文档描述 `lazyllm.tools.git.review` 模块的完整 PR review 端到端流程。入口为 `runner.py` 中的 `review()` 函数，依次经过预分析（架构解析、历史规范提取）、五轮 LLM 分析（R1–R4 + R5 合并去重）、静态 Lint 融合，最终将结果发布到 GitHub。
+本文档描述 `lazyllm.tools.git.review` 模块的完整 PR review 端到端流程。入口为 `runner.py` 中的 `review()` 函数，依次经过预分析（架构解析、历史规范提取）、五轮 LLM 分析（R1–R4v + R5 合并去重）、静态 Lint 融合，最终将结果发布到 GitHub。
 
 源码目录：`lazyllm/tools/git/review/`（`runner.py`、`pre_analysis.py`、`rounds.py`、`constants.py`、`checkpoint.py`、`utils.py`、`poster.py`、`lint_runner.py`）。
 
@@ -14,7 +14,7 @@
 |------|------|
 | `runner.py` | **主入口**：编排所有子模块；diff 拉取与截断；策略决策（`_ReviewStrategy`）；meta warning 生成；清理 clone 目录；发布评论 |
 | `pre_analysis.py` | 仓库 clone；架构文档生成（`analyze_repo_architecture`）；历史 review 规范提取（`analyze_historical_reviews`）；PR 摘要；R2 Agent 工具集构建 |
-| `rounds.py` | **五轮 review 核心**：R1 hunk 级分析、R2 自适应 Agent 分析、R3 全局架构分析、R4 设计文档 + 架构师评审、R5 合并去重 |
+| `rounds.py` | **五轮 review 核心**：R1 hunk 级分析、R2 自适应 Agent 分析、R3 全局架构分析、R4 设计文档 + 架构师评审 + R4v ReactAgent 验证、R5 合并去重 |
 | `lint_runner.py` | 静态 Lint 分析（不调用 LLM），结果直接注入 R5 |
 | `checkpoint.py` | 断点续传：PR 级 checkpoint；阶段枚举 `ReviewStage`；失效控制（`_invalidated_from`） |
 | `constants.py` | 上下文预算常量；`BudgetManager`；issue 密度控制；diff 启发式压缩 |
@@ -35,7 +35,7 @@ flowchart TD
     G -->|arch_doc + review_spec + clone_dir + agent_instructions| H["_pre_round_pr_summary → pr_summary"]
     H --> I[_fetch_existing_pr_comments]
     I --> J[_run_lint_analysis]
-    J -->|lint_issues| K["_run_five_rounds (R1→R2→R3→R4→R5)"]
+    J -->|lint_issues| K["_run_five_rounds (R1→R2→R3→R4→R4v→R5)"]
     K --> L[清理 clone 子目录]
     L --> M{post_to_github?}
     M -->|是| N[_post_review_comments → GitHub]
@@ -58,7 +58,7 @@ flowchart TD
 | 8 | Round 1 | hunk 级静态审查 issue 列表 |
 | 9 | Round 2 | 自适应 Agent/LLM 深度上下文审查（chunk 模式 + group 模式） |
 | 10 | Round 3 | 全局架构视角多文件批量分析 |
-| 11 | Round 4 | R4a PR 设计文档 → R4b 架构师评审 issue |
+| 11 | Round 4 | R4a PR 设计文档 → R4b 架构师评审 issue → R4v ReactAgent 验证 |
 | 12 | Round 5 | 确定性去重 + LLM 合并 + Lint 融合 → `final_comments` |
 | 13 | 发布 | 提交 GitHub review；更新 checkpoint `UPLOAD` 阶段 |
 | 14 | 清理 | 删除 `{pr_dir}/clone/`；保留 `checkpoint.json` |
@@ -326,6 +326,16 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 **R4b — 架构师视角 review**（1× JSON LLM）：
 - 输入：`arch_doc`（~42k）+ `pr_design_doc`（~12k）+ `diff_text`（标注行号）。
 - 聚焦 `bug_category: design | maintainability` 类问题。
+- Prompt 包含 `## Verification Constraints` 节，要求在上报任何 issue 前先验证：惯例一致性、依赖方向、设计意图、变更范围。
+
+**R4v — ReactAgent 验证**（ReactAgent，按文件批量）：
+- 输入：R4b 候选 issue 列表 + `clone_dir` + 与 R2 相同的 agent 工具集。
+- 三层合并策略，最小化模型调用次数：
+  1. **Pre-filter**（零 LLM 调用）：丢弃 `severity=normal` 且 `suggestion` 含模糊措辞（`consider`、`might want to`、`could potentially` 等）的 issue。
+  2. **文件分组**：按 `path` 分组，每个文件一次 ReactAgent session（共享读取上下文）。
+  3. **Batch cap**（`_R4V_BATCH_CAP=5`）：单文件 issue 超过 5 条时，按 severity 降序分批（critical → medium → normal）。
+- 每次 ReactAgent session 读取相关代码、检查项目惯例、搜索已有工具，输出 `KEEP / DROP / MODIFY` 裁决。
+- 典型节省：10–15 issue / 4–6 文件 → 3–5 次 ReactAgent 调用（节省 60–75%）。
 
 **可选合并路径**（`prefer_combined=True`）：1× 文本 LLM + JSON 解析，期望单个 JSON `{"pr_design_doc": ..., "issues": [...]}`；解析失败则 fallback 到两步路径。
 
@@ -352,7 +362,7 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 
 **处理流程**：
 
-1. **来源汇聚**：`tag(r1_passthrough, 'r1') + tag(r2, 'r2') + tag(r3, 'r3') + tag(r4, 'r4') + tag(lint_issues, 'lint')`。
+1. **来源汇聚**：`tag(r1_passthrough, 'r1') + tag(r2, 'r2') + tag(r3, 'r3') + tag(r4v, 'r4') + tag(lint_issues, 'lint')`。
    - `r1_passthrough`：已被 R2 覆盖的文件的 R1 issue 会去除 `r2_covered_keys` 和 `discarded_r1_keys` 中的条目。
 
 2. **确定性去重** `_deterministic_dedup()`：
@@ -436,7 +446,7 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 |------|------|
 | **JSON LLM** | R1 hunk 分析、R2 chunk 抽取、R2 group 联合、R3 全局分析、R4b 架构师评审、R5 合并去重、架构 outline 生成、规则提取、Public API Catalog 构建 |
 | **文本 LLM** | arch 各节内容填充、PR 摘要、R4a PR 设计文档；R4 `prefer_combined=True` 时的单次合并尝试 |
-| **ReactAgent** | R2 chunk 模式的上下文收集（工具：scoped 读写/搜索/shell + `analyze_symbol`） |
+| **ReactAgent** | R2 chunk 模式的上下文收集（工具：scoped 读写/搜索/shell + `analyze_symbol`）；R4v 架构 issue 验证（相同工具集，按文件批量分组） |
 | **重试机制** | `_llm_call_with_retry()`：JSON 解析失败/限流时自动重试 + `json_repair` 兜底 |
 
 ---
@@ -447,13 +457,13 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 
 | 层级 | 路径 | 内容 |
 |------|------|------|
-| **PR 级 checkpoint** | `~/.lazyllm/review/cache/{safe_repo}/{pr_number}/checkpoint.json` | `diff_text`、`pr_summary`、`r1_hunk_*`、`r2_file_*`、`r2_disc_*`、`r2_group_*`、`r2_shared_context`、`r3`、`pr_design_doc`、`r4`、`final_comments`、`clone_dir`、`_stage_done_*`、`_invalidated_from` |
+| **PR 级 checkpoint** | `~/.lazyllm/review/cache/{safe_repo}/{pr_number}/checkpoint.json` | `diff_text`、`pr_summary`、`r1_hunk_*`、`r2_file_*`、`r2_disc_*`、`r2_group_*`、`r2_shared_context`、`r3`、`pr_design_doc`、`r4`、`r4v`、`final_comments`、`clone_dir`、`_stage_done_*`、`_invalidated_from` |
 | **仓库级 arch/spec 缓存** | `~/.lazyllm/review/cache/{safe_repo}/arch.json` / `spec.json` | `arch_doc`、`arch_section_*`、`public_api_catalog`、`agent_instructions`、`review_spec` 等 |
 
 ### 7.2 阶段顺序 `ReviewStage.ordered()`
 
 ```
-CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4 → FINAL → UPLOAD
+CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4A → R4 → R4V → FINAL → UPLOAD
 ```
 
 ### 7.3 失效控制
@@ -535,4 +545,4 @@ CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4 → FINAL →
 
 ---
 
-*若后续调整 budget 常量、`ReviewStage.ordered()`、R2 策略、R4/R5 行为、检查项或增加新轮次，请同步更新本文档。*
+*若后续调整 budget 常量、`ReviewStage.ordered()`、R2 策略、R4/R4v/R5 行为、检查项或增加新轮次，请同步更新本文档。*

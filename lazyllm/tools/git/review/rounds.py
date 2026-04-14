@@ -101,7 +101,11 @@ at least one concrete subclass is out of sync.
 as bugs when the file is an entry-point script. A file is an entry-point script if its name is \
 server.py, worker.py, main.py, __main__.py, or if the diff contains an \
 `if __name__ == "__main__":` block. Top-level setup code in such files is intentional.
-7. {density_rule}'''
+7. Before claiming something is "missing", "unused", "unreachable", or "always X", \
+you MUST cite the specific diff lines that prove the absence. If the diff does not \
+contain enough context to confirm, state "cannot verify from diff alone" and set \
+severity to at most "normal".
+8. {density_rule}'''
 
 # Rules 1-5 are shared across all rounds (density_rule is round-specific and injected separately)
 _SHARED_STRICT_RULES_PREFIX = '''\
@@ -124,7 +128,11 @@ at least one concrete subclass is out of sync.
 6. Do NOT report top-level side-effects (e.g. sys.path modification, module-level function calls) \
 as bugs when the file is an entry-point script. A file is an entry-point script if its name is \
 server.py, worker.py, main.py, __main__.py, or if the diff contains an \
-`if __name__ == "__main__":` block. Top-level setup code in such files is intentional.'''
+`if __name__ == "__main__":` block. Top-level setup code in such files is intentional.
+7. Before claiming something is "missing", "unused", "unreachable", or "always X", \
+you MUST cite the specific diff lines that prove the absence. If the diff does not \
+contain enough context to confirm, state "cannot verify from diff alone" and set \
+severity to at most "normal".'''
 
 _R1_ISSUE_FIELDS = '''\
 For EVERY issue found, output a JSON object with:
@@ -489,8 +497,14 @@ def _r1_task_batch(
     clone_dir: Optional[str], language: str, symbol_index: Optional[Dict[str, str]],
     lock: threading.Lock, results_by_idx: Dict[int, List[Dict[str, Any]]],
     ckpt: Optional[Any], prog: Any, use_cache: bool, llm: Any, agent_instructions: str = '',
+    pr_file_summary: str = '',
 ) -> None:
     arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=3000)
+    # Inject PR file summary into arch_snippet so it flows through the existing call chain
+    # without requiring changes to _r1_run_batch / _analyze_single_hunk signatures.
+    if pr_file_summary:
+        arch_snippet = f'{arch_snippet}\n\n## PR Changed Files\n{pr_file_summary}' if arch_snippet else \
+            f'## PR Changed Files\n{pr_file_summary}'
     uncached_idxs: List[int] = []
     for idx in idxs:
         _, new_start, new_count, _ = hunks[idx]
@@ -525,6 +539,7 @@ def _round1_hunk_analysis(
     symbol_index: Optional[Dict[str, str]] = None,
     ckpt: Optional[Any] = None,
     agent_instructions: str = '',
+    pr_file_summary: str = '',
 ) -> List[Dict[str, Any]]:
     spec_snippet = _sample_text(review_spec, 600) if review_spec else '(not available)'
     summary_snippet = pr_summary[:600] if pr_summary else '(not available)'
@@ -544,6 +559,7 @@ def _round1_hunk_analysis(
                 arch_doc, spec_snippet, summary_snippet,
                 clone_dir, language, symbol_index,
                 lock, results_by_idx, ckpt, prog, use_cache, llm, agent_instructions,
+                pr_file_summary,
             ): path
             for path, idxs in file_to_idxs.items()
         }
@@ -932,6 +948,22 @@ def _r2_group_review(
     all_results.extend(items)
 
 
+def _build_pr_file_summary(hunks: List[Tuple[str, int, int, str]], max_chars: int = 2000) -> str:
+    # Build a compact per-file change summary from hunk list for R1 cross-file context.
+    from collections import defaultdict as _dd
+    added: Dict[str, int] = _dd(int)
+    removed: Dict[str, int] = _dd(int)
+    for path, _start, _count, content in hunks:
+        for line in content.splitlines():
+            if line.startswith('+') and not line.startswith('+++'):
+                added[path] += 1
+            elif line.startswith('-') and not line.startswith('---'):
+                removed[path] += 1
+    lines = [f'- {p}: +{added[p]}/-{removed[p]}' for p in sorted(set(added) | set(removed))]
+    result = '\n'.join(lines)
+    return result[:max_chars] if len(result) > max_chars else result
+
+
 def _build_r2_review_units(
     file_diffs: Dict[str, str],
     large_file_threshold: int,
@@ -1183,7 +1215,7 @@ For EVERY issue in the output (kept/modified R1 + new), output a JSON object wit
 If no issues found: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
 
 ''' + _SHARED_STRICT_RULES_PREFIX + '''
-6. {density_rule}
+8. {density_rule}
 '''
 
 _r2_agent_instance_counter = [0]
@@ -1822,6 +1854,18 @@ Ask yourself for EVERY changed file:
 - "Would I be comfortable if a new team member read this and used it as a pattern?"
 - "In 6 months, will this be easy or painful to extend?"
 
+## Verification Constraints
+Before reporting an issue, verify:
+1. Convention check: Does the project already follow this pattern elsewhere? \
+If yes, the PR is being CONSISTENT, not wrong. Do NOT flag consistency as a problem.
+2. Dependency direction: Only flag dependency issues if you can cite the specific import \
+that violates layering. "Could be decoupled" is not an issue without a concrete violation.
+3. Design intent: The PR author chose this design for a reason. Only flag it if you can \
+articulate a CONCRETE problem (not a theoretical one) that will manifest in production \
+or during the next extension.
+4. Scope: Do NOT suggest changes to code outside the diff unless the diff INTRODUCES a \
+new violation. Pre-existing patterns are out of scope for this review.
+
 ## Output Rules
 - Report ONLY issues NOT already in "Issues Found So Far"
 - Focus on DESIGN issues (bug_category: design | maintainability)
@@ -1835,7 +1879,7 @@ Ask yourself for EVERY changed file:
 - If no issues found: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
 
 ''' + _SHARED_STRICT_RULES_PREFIX + '''
-6. {density_rule}
+8. {density_rule}
 '''
 
 def _round4_architect_review(
@@ -1859,6 +1903,159 @@ def _round4_architect_review(
     result = cap_issues_by_severity(result, max_issues_for_diff(diff_use))
     prog.done(f'{len(result)} architect issues found')
     return result
+
+# ── Round 4 Verification (R4V): ReactAgent-based batch verification ──────────
+
+_LOW_CONFIDENCE_PATTERNS = re.compile(
+    r'\b(consider|might want to|could potentially|it would be nice|perhaps)\b', re.I
+)
+_SEV_ORDER = {'critical': 0, 'medium': 1, 'normal': 2}
+_R4V_BATCH_CAP = 5
+_R4V_TIMEOUT_SECS = 120
+_R4V_MAX_RETRIES = 6
+
+_R4V_VERIFY_PROMPT_TMPL = '''\
+You are an architecture verification expert.
+{lang_instruction}
+
+Below are {n} candidate architecture issues for file `{path}`.
+For EACH issue, use the provided tools to verify the claim, then output a verdict.
+
+## Verification Steps (for each issue)
+1. Read the relevant code section cited by the issue (use read_file or grep_symbol)
+2. Check if the project already follows the same pattern elsewhere (convention check)
+3. Search for existing utilities/abstractions the issue claims are missing
+4. Determine if the claimed problem is CONCRETE (will cause real pain) or THEORETICAL
+
+## Output
+Return a JSON array with one entry per input issue (in the same order).
+Each entry must have:
+- "index": integer — the 0-based index of the input issue
+- "verdict": "KEEP" | "DROP" | "MODIFY"
+  - KEEP: issue is valid and well-described
+  - DROP: issue is a misjudgment (cite evidence)
+  - MODIFY: partially correct — provide corrected description
+- "evidence": one sentence explaining your finding
+- "modified_issue": null (for KEEP/DROP) or the updated issue JSON object (for MODIFY)
+
+''' + _JSON_OUTPUT_INSTRUCTION + '''
+
+## Candidate Issues
+{issues_json}
+'''
+
+
+def _r4v_prefilter(issues: List[Dict[str, Any]]) -> tuple:
+    confident, dropped = [], []
+    for issue in issues:
+        suggestion = issue.get('suggestion', '') or ''
+        if issue.get('severity') == 'normal' and _LOW_CONFIDENCE_PATTERNS.search(suggestion):
+            dropped.append(issue)
+        else:
+            confident.append(issue)
+    return confident, dropped
+
+
+def _chunk_list(lst: list, max_size: int):
+    for i in range(0, len(lst), max_size):
+        yield lst[i:i + max_size]
+
+
+def _r4v_verify_batch(
+    llm: Any, batch: List[Dict[str, Any]], path: str,
+    clone_dir: str, tools: List[Any], arch_doc: str, language: str = 'cn',
+) -> List[Dict[str, Any]]:
+    issues_json = json.dumps(
+        [{**iss, 'index': i} for i, iss in enumerate(batch)], ensure_ascii=False, indent=2
+    )
+    prompt = _R4V_VERIFY_PROMPT_TMPL.format(
+        lang_instruction=_language_instruction(language),
+        n=len(batch), path=path, issues_json=issues_json,
+    )
+    step_counter = [0]
+    traced_tools = [_make_traced_tool(t, step_counter, path) for t in tools]
+    try:
+        agent = ReactAgent(
+            llm, tools=traced_tools, max_retries=_R4V_MAX_RETRIES,
+            workspace=clone_dir, force_summarize=True,
+            force_summarize_context=f'Verifying {len(batch)} architecture issues for {path}',
+            keep_full_turns=2,
+        )
+    except Exception as e:
+        lazyllm.LOG.warning(f'  [R4V] ReactAgent init failed for {path}: {e}; keeping all issues')
+        return batch
+    for tool in agent._tools_manager.all_tools:
+        tool.execute_in_sandbox = False
+    lazyllm.LOG.info(f'  [R4V] Verifying {len(batch)} issues for {path} ...')
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(agent, prompt)
+        try:
+            raw = fut.result(timeout=_R4V_TIMEOUT_SECS)
+        except TimeoutError:
+            lazyllm.LOG.warning(f'  [R4V] Verification timed out for {path}; keeping all issues')
+            return batch
+    verdicts = _parse_json_with_repair(_extract_json_text(raw if isinstance(raw, str) else str(raw)))
+    if not isinstance(verdicts, list):
+        lazyllm.LOG.warning(f'  [R4V] Could not parse verdicts for {path}; keeping all issues')
+        return batch
+
+    verdict_map = {int(v['index']): v for v in verdicts if isinstance(v, dict) and 'index' in v}
+    result: List[Dict[str, Any]] = []
+    for i, issue in enumerate(batch):
+        v = verdict_map.get(i)
+        if v is None:
+            result.append(issue)
+            continue
+        verdict = (v.get('verdict') or 'KEEP').upper()
+        if verdict == 'DROP':
+            lazyllm.LOG.info(f'  [R4V] Dropped issue #{i} for {path}: {v.get("evidence", "")}')
+        elif verdict == 'MODIFY' and isinstance(v.get('modified_issue'), dict):
+            modified = _normalize_comment_item(v['modified_issue'], default_path=path, default_category='design')
+            result.append(modified if modified else issue)
+        else:
+            result.append(issue)
+    return result
+
+
+def _round4_verify_issues(
+    llm: Any,
+    r4_issues: List[Dict[str, Any]],
+    clone_dir: str,
+    tools: List[Any],
+    arch_doc: str,
+    language: str = 'cn',
+) -> List[Dict[str, Any]]:
+    if not r4_issues or not clone_dir or not os.path.isdir(clone_dir):
+        return r4_issues
+
+    prog = _Progress('Round 4v: architect issue verification')
+    confident, dropped = _r4v_prefilter(r4_issues)
+    if dropped:
+        lazyllm.LOG.info(f'  [R4V] Pre-filter dropped {len(dropped)} low-confidence issues')
+
+    if not confident:
+        prog.done('all issues pre-filtered')
+        return []
+
+    from collections import defaultdict as _dd
+    by_file: Dict[str, List[Dict[str, Any]]] = _dd(list)
+    for issue in confident:
+        by_file[issue.get('path', '')].append(issue)
+
+    verified: List[Dict[str, Any]] = []
+    for path, file_issues in by_file.items():
+        sorted_issues = sorted(file_issues, key=lambda x: _SEV_ORDER.get(x.get('severity', ''), 9))
+        for batch in _chunk_list(sorted_issues, _R4V_BATCH_CAP):
+            try:
+                result = _r4v_verify_batch(llm, list(batch), path, clone_dir, tools, arch_doc, language)
+                verified.extend(result)
+            except Exception as e:
+                lazyllm.LOG.warning(f'  [R4V] Batch verification failed for {path}: {e}; keeping issues')
+                verified.extend(batch)
+
+    prog.done(f'{len(verified)} issues after verification (dropped {len(r4_issues) - len(verified)})')
+    return verified
+
 
 _ROUND4_COMBINED_PROMPT_TMPL = '''\
 You are a principal software architect. Output ONE JSON object with exactly two keys:
@@ -2222,6 +2419,7 @@ def _run_five_rounds(  # noqa: C901
 
     r1_all: List[Dict[str, Any]] = []
     sym_index = _get_symbol_index(arch_doc) if arch_doc else None
+    pr_file_summary = _build_pr_file_summary(hunks)
     for win_idx, (win_hunks, _win_diff) in enumerate(windows):
         win_key = f'r1_window_{win_idx}'
         use_win_cache = ckpt.should_use_cache(ReviewStage.R1)
@@ -2234,6 +2432,7 @@ def _run_five_rounds(  # noqa: C901
             clone_dir=clone_dir, language=language,
             symbol_index=sym_index,
             ckpt=ckpt, agent_instructions=agent_instructions,
+            pr_file_summary=pr_file_summary,
         )
         ckpt.save(win_key, win_r1)
         r1_all.extend(win_r1)
@@ -2294,6 +2493,27 @@ def _run_five_rounds(  # noqa: C901
             f'loaded from checkpoint ({len(r4)} issues)'
         )
 
+    use_r4v_cache = ckpt.should_use_cache(ReviewStage.R4V)
+    r4v = ckpt.get('r4v')
+    if r4v is None:
+        if not use_r4v_cache:
+            lazyllm.LOG.warning('Round 4v: no cache found, re-computing')
+        if clone_dir and os.path.isdir(clone_dir):
+            symbol_cache_r4v: Dict[str, Any] = {}
+            tools_r4v = _build_scoped_agent_tools_with_cache(
+                clone_dir, llm, symbol_cache_r4v, owner_repo, arch_cache_path
+            )
+            r4v = _round4_verify_issues(llm, r4, clone_dir, tools_r4v, arch_doc, language)
+        else:
+            lazyllm.LOG.warning('Round 4v: clone_dir not available, skipping verification')
+            r4v = r4
+        ckpt.save('r4v', r4v)
+        ckpt.mark_stage_done(ReviewStage.R4V)
+    else:
+        _Progress('Round 4v: architect issue verification').done(
+            f'loaded from checkpoint ({len(r4v)} issues)'
+        )
+
     use_final_cache = ckpt.should_use_cache(ReviewStage.FINAL)
     final = ckpt.get('final')
     # discard old-format final (produced before R4 architect round was added)
@@ -2326,7 +2546,7 @@ def _run_five_rounds(  # noqa: C901
         final = _round5_merge_and_deduplicate(
             llm,
             _tag(r1_passthrough, 'r1') + _tag(r2, 'r2')
-            + _tag(r3, 'r3') + _tag(r4, 'r4') + lint_tagged,
+            + _tag(r3, 'r3') + _tag(r4v, 'r4') + lint_tagged,
             existing_comments=existing_comments, language=language,
         )
         ckpt.save('final', final)

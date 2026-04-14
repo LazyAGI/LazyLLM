@@ -18,6 +18,7 @@ class ReviewStage(enum.Enum):
     R3 = 'r3'
     R4A = 'r4a'
     R4 = 'r4'
+    R4V = 'r4v'
     FINAL = 'final'
     UPLOAD = 'upload'
 
@@ -38,7 +39,7 @@ class ReviewStage(enum.Enum):
 _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
     ReviewStage.PR_SUMMARY, ReviewStage.R1, ReviewStage.R2,
-    ReviewStage.R3, ReviewStage.R4A, ReviewStage.R4, ReviewStage.FINAL, ReviewStage.UPLOAD,
+    ReviewStage.R3, ReviewStage.R4A, ReviewStage.R4, ReviewStage.R4V, ReviewStage.FINAL, ReviewStage.UPLOAD,
 ]
 
 
@@ -83,12 +84,12 @@ def _save_cache_multi(cache_path: Optional[str], entries: Dict[str, Any]) -> Non
 
 
 class _ReviewCheckpoint:
-    _KEYS = ('arch_doc', 'review_spec', 'r2_shared_context', 'r1', 'r2', 'r3', 'pr_design_doc', 'r4', 'final')
+    _KEYS = ('arch_doc', 'review_spec', 'r2_shared_context', 'r1', 'r2', 'r3', 'pr_design_doc', 'r4', 'r4v', 'final')
     # internal key prefix for stage completion markers
     _STAGE_DONE_PREFIX = '_stage_done_'
     # internal key recording the invalidation boundary (stage value string)
     _INVALIDATED_FROM_KEY = '_invalidated_from'
-    # mapping from checkpoint key to the ReviewStage it belongs to (built once at class level)
+    # mapping from checkpoint key to the ReviewStage it belongs to
     _KEY_TO_STAGE: Dict[str, 'ReviewStage'] = {}
 
     def __init__(self, path: str, resume_from: Optional[ReviewStage] = None) -> None:
@@ -132,6 +133,7 @@ class _ReviewCheckpoint:
                 'r3': ReviewStage.R3,
                 'pr_design_doc': ReviewStage.R4A,
                 'r4': ReviewStage.R4,
+                'r4v': ReviewStage.R4V,
                 'final': ReviewStage.FINAL,
                 'r2_shared_context': ReviewStage.R2,
                 'diff_text': ReviewStage.CLONE,

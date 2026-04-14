@@ -62,6 +62,16 @@ confirming the guard condition.
 - Abstract base class method signature changes are only "breaking" if at least one concrete \
 subclass has NOT been updated. Check the diff for subclass updates before reporting.
 - `max(n, 1)` and similar floor-clamp patterns are defensive programming, not bugs.
+- When code is MOVED between files (deleted in one, added in another with similar content), \
+this is a refactoring — do NOT report it as "duplicate code" or "missing reuse".
+- If a function accepts parameters that are only used in some call paths, this may be \
+intentional interface design for extensibility — verify actual callers before reporting \
+"unused parameter".
+- A class with many parameters in `__init__` may be a configuration/builder pattern, not a \
+god class — check if the parameters map to distinct concerns before reporting.
+- Do NOT suggest introducing a new abstraction layer (base class, protocol, registry) unless \
+at least 3 concrete implementations already exist or are planned in this PR. Premature \
+abstraction is worse than duplication.
 '''
 
 
@@ -561,6 +571,11 @@ def _resolve_clone_target(pr: Any, base_repo: str) -> Tuple[str, str]:
             head_clone_url += '.git'
         branch = head_branch or 'main'
         return head_clone_url, branch
+
+    # Same-repo PR: clone the head branch so agent tools read the PR's actual code,
+    # not the base branch (which may be many commits behind).
+    if head_branch:
+        return _default_url(base_repo), head_branch
 
     base_branch = base.get('ref') or getattr(pr, 'target_branch', '') or 'main'
     return _default_url(base_repo), base_branch
