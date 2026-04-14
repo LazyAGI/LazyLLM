@@ -161,26 +161,30 @@ def str2bool(v: str) -> bool:
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
-def dump_obj(f):
-    def _collect_test_modules(obj):
-        modules = []
-        seen = set()
-        candidates = [obj]
-        if hasattr(obj, '__dict__'):
-            candidates.extend(obj.__dict__.values())
-        for candidate in candidates:
-            module_name = getattr(candidate, '__module__', None)
-            if not module_name:
-                continue
-            if not (module_name.startswith('test_') or module_name.startswith('tmp.tests.')):
-                continue
-            module = sys.modules.get(module_name)
-            if module is None or module_name in seen:
-                continue
-            seen.add(module_name)
-            modules.append(module)
-        return modules
+_TEST_MODULE_PREFIXES = ('test_', 'tmp.tests.')
 
+
+def _collect_test_modules(obj):
+    modules = []
+    seen = set()
+    candidates = [obj]
+    if hasattr(obj, '__dict__'):
+        candidates.extend(obj.__dict__.values())
+    for candidate in candidates:
+        module_name = getattr(candidate, '__module__', None)
+        if not module_name:
+            continue
+        if not module_name.startswith(_TEST_MODULE_PREFIXES):
+            continue
+        module = sys.modules.get(module_name)
+        if module is None or module_name in seen:
+            continue
+        seen.add(module_name)
+        modules.append(module)
+    return modules
+
+
+def dump_obj(f):
     @contextmanager
     def env_helper():
         original_cloudpickle_flag = os.environ.get('LAZYLLM_ON_CLOUDPICKLE')

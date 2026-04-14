@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import inspect
 import json
 import os
 from typing import Any, Dict, List, Optional, Set
@@ -849,19 +850,28 @@ class DocManager:
                 {f'duplicate_{field_name}s': duplicated_list},
             )
 
+    # Kwargs that older parser client stubs may not accept; safe to drop silently.
+    _LEGACY_OPTIONAL_PARSER_KWARGS = ('callback_url',)
+
     def _call_parser_client(self, method, *args, **kwargs):
-        try:
+        legacy_fields = [f for f in self._LEGACY_OPTIONAL_PARSER_KWARGS if f in kwargs]
+        if not legacy_fields:
             return method(*args, **kwargs)
-        except TypeError as exc:
-            compat_kwargs = dict(kwargs)
-            removed = False
-            for field in ('callback_url',):
-                if field in compat_kwargs and field in str(exc):
-                    compat_kwargs.pop(field, None)
-                    removed = True
-            if not removed:
-                raise
-            return method(*args, **compat_kwargs)
+        try:
+            sig = inspect.signature(method)
+        except (TypeError, ValueError):
+            return method(*args, **kwargs)
+        if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+            return method(*args, **kwargs)
+        supported = {
+            name for name, p in sig.parameters.items()
+            if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        }
+        filtered = dict(kwargs)
+        for field in legacy_fields:
+            if field not in supported:
+                filtered.pop(field, None)
+        return method(*args, **filtered)
 
     def _create_parser_task(self, task_id: str, doc_id: str, kb_id: str, algo_id: str, task_type: TaskType,
                             file_path: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,

@@ -186,7 +186,10 @@ class DocImpl:
 
         self._resolve_index_pending_registrations()
         if self._processor:
-            assert isinstance(self._processor, DocumentProcessor)
+            if not isinstance(self._processor, DocumentProcessor):
+                raise TypeError(
+                    f'processor must be a DocumentProcessor instance, got {type(self._processor).__name__!r}'
+                )
             self._processor.register_algorithm(self._algo_name, self._store, self._reader, self.node_groups,
                                                self._schema_extractor, self._display_name, self._description)
         else:
@@ -345,13 +348,13 @@ class DocImpl:
                     if did in success_ids:
                         self._tracked_docs[p] = did
 
-            self._local_files = set(self._tracked_docs.keys())
-
     def _monitor_local_dataset_worker(self):
         while self._local_monitor_continue:
             try:
                 current_paths = set(self._list_dataset_files())
-                if current_paths != self._local_files:
+                with self._local_monitor_lock:
+                    tracked_snapshot = set(self._tracked_docs.keys())
+                if current_paths != tracked_snapshot:
                     self._sync_local_dataset()
             except Exception as exc:  # pragma: no cover - defensive
                 LOG.error(f'Failed to sync local dataset `{self._dataset_path}`: {exc}')

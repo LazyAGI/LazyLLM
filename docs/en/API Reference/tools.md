@@ -419,6 +419,7 @@
 ::: lazyllm.tools.rag.rerank.ModuleReranker
     members: forward
     exclude-members:
+
 ::: lazyllm.tools.rag.global_metadata.GlobalMetadataDesc
     members:
     exclude-members:

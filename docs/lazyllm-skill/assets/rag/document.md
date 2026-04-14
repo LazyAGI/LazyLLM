@@ -98,7 +98,7 @@ Document.register_global_reader("**/*.yml", processYml)
 ```
 
 此外可以通过register_global_reader注册读取器，作用范围对于所有的 Document 对象都可见。局部 add_reader
-只影响当前 Document，并且在匹配同一文件模式时优先于全局 reader。因此同样读取 ``your_yml_files`` 时，
+只影响当前 Document，并且在匹配同一文件模式时优先于全局 reader。因此当两个 Document 实例同样读取 ``.yml`` 文件时，
 ``doc1`` 会调用 ``YmlReader``，而 ``doc2`` 会回退到全局的 ``processYml``。
 
 ## 创建节点和组

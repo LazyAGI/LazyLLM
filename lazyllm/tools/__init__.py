@@ -55,7 +55,6 @@ def __getattr__(name: str):
 _SUBMOD_MAP = {
     'rag': [
         'Document',
-        'DocServer',
         'GraphDocument',
         'UrlGraphDocument',
         'Reranker',
@@ -63,7 +62,8 @@ _SUBMOD_MAP = {
         'Retriever',
         'GraphRetriever',
         'LLMParser',
-        'SentenceSplitter'
+        'SentenceSplitter',
+        'DocServer',
     ],
     'webpages': ['WebModule'],
     'agent': [

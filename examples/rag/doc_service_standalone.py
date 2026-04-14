@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import os
 import time
-from pathlib import Path
 from typing import Any, Dict
 
 import requests
@@ -56,10 +55,9 @@ def _wait_http_ok(url: str, timeout: float = 20.0):
 
 
 def _build_store_conf(root_dir: str) -> Dict[str, Any]:
+    os.makedirs(root_dir, exist_ok=True)
     segment_store_path = os.path.join(root_dir, 'segments.db')
     milvus_store_path = os.path.join(root_dir, 'milvus_lite.db')
-    Path(segment_store_path).touch()
-    Path(milvus_store_path).touch()
     return {
         'segment_store': {'type': 'map', 'kwargs': {'uri': segment_store_path}},
         'vector_store': {
@@ -75,11 +73,14 @@ def _build_store_conf(root_dir: str) -> Dict[str, Any]:
 def _wait_algo_ready(parser_url: str, algo_id: str, timeout: float = 20.0):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        response = requests.get(f'{parser_url}/algo/list', timeout=5)
-        if response.status_code == 200:
-            items = response.json().get('data', [])
-            if any(item.get('algo_id') == algo_id for item in items):
-                return
+        try:
+            response = requests.get(f'{parser_url}/algo/list', timeout=5)
+            if response.status_code == 200:
+                items = response.json().get('data', [])
+                if any(item.get('algo_id') == algo_id for item in items):
+                    return
+        except Exception:
+            pass
         time.sleep(0.2)
     raise RuntimeError(f'algorithm is not ready: {algo_id}')
 
@@ -180,18 +181,18 @@ def main():
         if server:
             try:
                 server.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f'[warn] failed to stop DocServer: {exc}', flush=True)
         if document:
             try:
                 document.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f'[warn] failed to stop Document: {exc}', flush=True)
         if parser_server:
             try:
                 parser_server.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f'[warn] failed to stop parser server: {exc}', flush=True)
 
 
 if __name__ == '__main__':

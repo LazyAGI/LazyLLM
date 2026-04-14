@@ -29,7 +29,10 @@ def _normalize_base_url(url: str) -> str:
 def _wait_task(server: DocServer, task_id: str, timeout: float = 30.0):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        task = server.get_task(task_id)['data']
+        resp = server.get_task(task_id)
+        task = resp.get('data') if isinstance(resp, dict) else None
+        if not isinstance(task, dict) or 'status' not in task:
+            raise RuntimeError(f'get_task returned unexpected response: {resp}')
         if task['status'] in {'SUCCESS', 'FAILED', 'CANCELED', 'DELETED'}:
             return task
         time.sleep(0.5)
@@ -52,9 +55,9 @@ def main():
 
         # Step 1: create a Document and bind it to the deployed DocServer.
         document = Document(dataset_path=dataset_dir, manager=doc_server, name=args.algo_id)
-        document.start()
 
         try:
+            document.start()
             print(f'DocServer URL: {base_url}')
             print(f'DocServer Docs: {base_url}/docs')
 
@@ -64,7 +67,10 @@ def main():
                 algo_id=args.algo_id,
                 items=[AddFileItem(file_path=file_path)],
             ))
-            item = response['data']['items'][0]
+            items = (response.get('data') or {}).get('items') if isinstance(response, dict) else None
+            if not items:
+                raise RuntimeError(f'add() returned no items, full response: {response}')
+            item = items[0]
             print(f'Doc ID: {item["doc_id"]}')
             print(f'Task ID: {item["task_id"]}')
 
