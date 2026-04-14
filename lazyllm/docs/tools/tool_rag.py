@@ -3512,6 +3512,24 @@ Args:
     text(str):节点内容与content互斥
 ''')
 
+add_english_doc('rag.doc_node.DocNodeCore', '''
+Core document node class for text and metadata storage.
+
+Args:
+    text (Optional[str]): Node text content.
+    metadata (Optional[Dict[str, Any]]): Node-level metadata.
+    uid (Optional[str]): Unique node identifier. If not provided, a UUID is generated.
+''')
+
+add_chinese_doc('rag.doc_node.DocNodeCore', '''
+文档节点核心类，用于保存文本与元数据。
+
+Args:
+    text (Optional[str]): 节点文本内容。
+    metadata (Optional[Dict[str, Any]]): 节点级元数据。
+    uid (Optional[str]): 节点唯一标识；未提供时自动生成 UUID。
+''')
+
 add_english_doc('rag.doc_node.DocNode.get_metadata_str', '''
 Get formatted metadata string.
 
@@ -5271,6 +5289,22 @@ add_chinese_doc('rag.transform.base.NodeTransform.forward', '''
 
 Args:
     nodes (Union[List[DocNode], DocNode]): 输入文档节点(s)。
+    **kwargs: 实现相关的参数。
+''')
+
+add_english_doc('rag.transform.base.NodeTransform.transform', '''
+[Deprecated] Alias method of `forward()`.
+
+Args:
+    node (DocNode): Input document node.
+    **kwargs: Implementation-specific parameters.
+''')
+
+add_chinese_doc('rag.transform.base.NodeTransform.transform', '''
+[已废弃] `forward()` 的别名方法。
+
+Args:
+    node (DocNode): 输入文档节点。
     **kwargs: 实现相关的参数。
 ''')
 
