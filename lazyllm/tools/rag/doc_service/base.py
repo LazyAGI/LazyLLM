@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, TypeAlias
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from pydantic import AliasChoices, BaseModel, Field, model_validator
@@ -98,8 +98,8 @@ class DocItemsRequest(BaseModel):
         return self
 
 
-AddRequest: TypeAlias = DocItemsRequest
-UploadRequest: TypeAlias = DocItemsRequest
+AddRequest = DocItemsRequest
+UploadRequest = DocItemsRequest
 
 
 class _DocMutationRequest(BaseModel):
@@ -244,8 +244,8 @@ class KbRequest(BaseModel):
     idempotency_key: Optional[str] = None
 
 
-KbCreateRequest: TypeAlias = KbRequest
-KbUpdateRequest: TypeAlias = KbRequest
+KbCreateRequest = KbRequest
+KbUpdateRequest = KbRequest
 
 
 class KbBatchQueryRequest(BaseModel):

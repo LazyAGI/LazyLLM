@@ -179,6 +179,20 @@ def test_manager_run_idempotent_atomic(manager_harness):
     assert replay == result
 
 
+def test_manager_run_idempotent_completion_failure_releases_claim(manager_harness):
+    original_complete = manager_harness.manager._complete_idempotency_record
+    manager_harness.manager._complete_idempotency_record = lambda *args, **kwargs: (_ for _ in ()).throw(
+        RuntimeError('complete failed')
+    )
+
+    with pytest.raises(RuntimeError, match='complete failed'):
+        manager_harness.manager.run_idempotent('/local/complete-fail', 'same-key', {'k': 1}, lambda: {'ok': True})
+
+    manager_harness.manager._complete_idempotency_record = original_complete
+    result = manager_harness.manager.run_idempotent('/local/complete-fail', 'same-key', {'k': 1}, lambda: {'ok': True})
+    assert result == {'ok': True}
+
+
 def test_manager_upsert_same_path_is_serialized(manager_harness):
     file_path = manager_harness.make_file('serialized.txt', 'serialized content')
     barrier = threading.Barrier(2)
@@ -230,6 +244,9 @@ def test_manager_upload_callback_and_doc_detail(manager_harness):
     assert items[0]['parse_status'] == DocStatus.WAITING.value
 
     manager_harness.finish_task(task_id)
+    manager_harness.manager.list_docs = lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError('get_doc_detail should not scan list_docs')
+    )
 
     task = manager_harness.manager.get_task(task_id)
     detail = manager_harness.manager.get_doc_detail('upload-doc')
@@ -305,8 +322,9 @@ def test_manager_delete_waiting_add_uses_cancel_path(manager_harness):
     assert items[0]['status'] == DocStatus.CANCELED.value
     assert manager_harness.cancel_calls == [original_task_id]
     assert manager_harness.delete_calls == []
-    assert snapshot['status'] == DocStatus.CANCELED.value
-    assert doc['upload_status'] == DocStatus.CANCELED.value
+    assert snapshot is None
+    assert manager_harness.manager._has_kb_document('kb_delete_waiting', 'delete-waiting-doc') is False
+    assert doc is None
 
 
 def test_manager_stale_callback_ignored_after_reparse(manager_harness):
@@ -686,7 +704,7 @@ def test_parser_client_algo_endpoint_fallback():
 # ---------------------------------------------------------------------------
 
 def test_list_kb_docs_excludes_failed_for_retry(manager_harness):
-    """FAILED/CANCELED docs must be excluded from the 'synced' view so scan retries them."""
+    '''FAILED/CANCELED docs must be excluded from the synced view so scan retries them.'''
     mgr = manager_harness.manager
     mgr.create_kb('kb_retry', algo_id='__default__')
     file_ok = manager_harness.make_file('ok.txt', 'ok')
@@ -715,7 +733,7 @@ def test_list_kb_docs_excludes_failed_for_retry(manager_harness):
 
 
 def test_stale_cleanup_sees_failed_docs(manager_harness):
-    """When a FAILED doc's source file is removed from disk, stale cleanup must still find it."""
+    '''When a FAILED doc source file is removed from disk, stale cleanup must still find it.'''
     mgr = manager_harness.manager
     mgr.create_kb('kb_stale', algo_id='__default__')
     file_path = manager_harness.make_file('stale.txt', 'stale')
@@ -737,7 +755,7 @@ def test_stale_cleanup_sees_failed_docs(manager_harness):
 
 
 def test_list_active_kb_algo_pairs(manager_harness):
-    """_list_active_kb_algo_pairs should return all active KB+algo bindings for multi-KB scan."""
+    '''_list_active_kb_algo_pairs should return all active KB+algo bindings for multi-KB scan.'''
     mgr = manager_harness.manager
     mgr.create_kb('kb_a', algo_id='__default__')
     mgr.create_kb('kb_b', algo_id='__default__')
@@ -750,7 +768,7 @@ def test_list_active_kb_algo_pairs(manager_harness):
 
 
 def test_ensure_kb_registers_in_active_pairs(manager_harness):
-    """Lightweight ensure_kb + ensure_kb_algorithm must make the KB visible to scan."""
+    '''Lightweight ensure_kb + ensure_kb_algorithm must make the KB visible to scan.'''
     mgr = manager_harness.manager
     # Use the lightweight registration path (no algorithm validation)
     mgr._ensure_kb('custom_group', display_name='custom_group')
@@ -764,7 +782,7 @@ def test_ensure_kb_registers_in_active_pairs(manager_harness):
 
 
 def test_scan_syncs_non_default_kb(manager_harness):
-    """End-to-end: after registering a non-default KB, scan should upload files to it."""
+    '''End-to-end: after registering a non-default KB, scan should upload files to it.'''
     mgr = manager_harness.manager
     # Register a non-default KB
     mgr._ensure_kb('my_group', display_name='my_group')

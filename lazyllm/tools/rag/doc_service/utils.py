@@ -64,14 +64,14 @@ def resolve_transfer_target_path(
 
 
 def list_dataset_files(dataset_path: str) -> List[str]:
-    """Recursively scan a directory, skip hidden files/dirs, return sorted absolute paths."""
+    '''Recursively scan a directory, skip hidden files/dirs, return sorted absolute paths.'''
     if not dataset_path or not os.path.exists(dataset_path):
         return []
     if not os.path.isdir(dataset_path):
         filename = os.path.basename(dataset_path)
         if filename.startswith('.'):
             return []
-        return [dataset_path] if os.path.isfile(dataset_path) else []
+        return [os.path.abspath(dataset_path)] if os.path.isfile(dataset_path) else []
 
     files: List[str] = []
     for root, dirs, names in os.walk(os.path.abspath(dataset_path)):
@@ -79,7 +79,7 @@ def list_dataset_files(dataset_path: str) -> List[str]:
         if any(part.startswith('.') for part in path_parts if part):
             continue
         dirs[:] = [name for name in dirs if not name.startswith('.')]
-        files.extend(os.path.join(root, name) for name in names if not name.startswith('.'))
+        files.extend(os.path.abspath(os.path.join(root, name)) for name in names if not name.startswith('.'))
     return sorted(files)
 
 

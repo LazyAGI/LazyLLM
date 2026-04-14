@@ -1,5 +1,4 @@
 import os
-import warnings
 from typing import Callable, Optional, Dict, Union, List, Type, Set, Tuple
 from functools import cached_property
 from pydantic import BaseModel
@@ -85,9 +84,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._spawn_doc_server = False
             self._doc_processor_started = False
             compat_ui_manager = manager == 'ui'
-            if compat_ui_manager:
-                lazyllm.LOG.warning('`manager=\'ui\'` is deprecated, use `manager=True, create_ui=True` instead')
-            elif isinstance(manager, str):
+            if not compat_ui_manager and isinstance(manager, str):
                 raise ValueError(f'Unsupported manager value: {manager}')
             spawn_doc_server = bool(manager) and not isinstance(manager, DocServer)
             connect_doc_server = isinstance(manager, DocServer)
@@ -242,6 +239,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             return self._kbs._impl._m[name] if isinstance(self._kbs, ServerModule) else self._kbs[name]
 
         def stop(self):
+            kbs = self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs
+            for impl in kbs.values():
+                impl.stop_local_monitoring()
             if hasattr(self, '_docweb'):
                 self._docweb.stop()
             self._launcher.cleanup()
@@ -275,12 +275,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         if isinstance(manager, str):
             if manager != 'ui':
                 raise ValueError(f'Unsupported manager value: {manager}')
-            warnings.warn(
-                '`manager="ui"` is deprecated, use `manager=True, create_ui=True` instead.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            lazyllm.LOG.warning('`manager="ui"` is deprecated, use `manager=True, create_ui=True` instead')
             create_ui = True
             manager = True
         if isinstance(dataset_path, (tuple, list)):

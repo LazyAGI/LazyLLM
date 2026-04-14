@@ -54,6 +54,7 @@ class DocManager:
             self._parser_client.health()
         except Exception as exc:
             raise RuntimeError(f'parser service is unavailable: {parser_url}') from exc
+        self._cleanup_idempotency_records()
         self._callback_url = callback_url
 
     def set_callback_url(self, callback_url: str):
@@ -104,7 +105,6 @@ class DocManager:
     def _ensure_default_kb(self):
         self._ensure_kb('__default__', display_name='__default__')
         self._ensure_kb_algorithm('__default__', '__default__')
-        self._cleanup_idempotency_records()
 
     def _ensure_kb(self, kb_id: str, display_name: Optional[str] = None, description: Optional[str] = None,
                    owner_id: Optional[str] = None, meta: Optional[Dict[str, Any]] = None,
@@ -176,7 +176,7 @@ class DocManager:
         }
 
     def _list_active_kb_algo_pairs(self) -> List[tuple]:
-        """Return all active (kb_id, algo_id) bindings for scan iteration."""
+        '''Return all active (kb_id, algo_id) bindings for scan iteration.'''
         with self._db_manager.get_session() as session:
             Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
             Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
@@ -336,7 +336,11 @@ class DocManager:
         except Exception:
             self._drop_idempotency_claim(endpoint, idempotency_key)
             raise
-        self._complete_idempotency_record(endpoint, idempotency_key, response)
+        try:
+            self._complete_idempotency_record(endpoint, idempotency_key, response)
+        except Exception:
+            self._drop_idempotency_claim(endpoint, idempotency_key)
+            raise
         return response
 
     def _record_callback(self, callback_id: str, task_id: str):
@@ -442,14 +446,14 @@ class DocManager:
             return _orm_to_dict(row) if row else None
 
     def _list_kb_docs_by_path(self, kb_id: str, exclude_failed: bool = True) -> Dict[str, str]:
-        """Query documents+kb_documents tables, return {path: doc_id}.
+        '''Query documents+kb_documents tables, return {path: doc_id}.
 
         Args:
             kb_id: Knowledge base ID to filter by.
             exclude_failed: If True (default), also excludes FAILED and CANCELED docs so scan
                 can retry them. If False, only excludes DELETED — useful for stale-file cleanup
                 where we need to see failed docs whose source files were removed from disk.
-        """
+        '''
         _exclude = [DocStatus.DELETED.value]
         if exclude_failed:
             _exclude.extend([DocStatus.FAILED.value, DocStatus.CANCELED.value])
@@ -979,15 +983,18 @@ class DocManager:
             return
         if task_type == TaskType.DOC_DELETE:
             if status == DocStatus.DELETING:
-                if self._doc_relation_count(doc_id) <= 1:
+                relation_count = self._doc_relation_count(doc_id)
+                if relation_count <= 1:
                     self._set_doc_upload_status(doc_id, DocStatus.DELETING)
                 return
             if status == DocStatus.DELETED:
-                target = DocStatus.SUCCESS if self._doc_relation_count(doc_id) > 0 else DocStatus.DELETED
+                relation_count = self._doc_relation_count(doc_id)
+                target = DocStatus.SUCCESS if relation_count > 0 else DocStatus.DELETED
                 self._set_doc_upload_status(doc_id, target)
                 return
             if status in (DocStatus.FAILED, DocStatus.CANCELED):
-                target = DocStatus.SUCCESS if self._doc_relation_count(doc_id) > 0 else DocStatus.DELETED
+                relation_count = self._doc_relation_count(doc_id)
+                target = DocStatus.SUCCESS if relation_count > 0 else DocStatus.DELETED
                 self._set_doc_upload_status(doc_id, target)
                 return
 
@@ -1275,11 +1282,14 @@ class DocManager:
                     'status': DocStatus.CANCELED.value,
                     'error_code': None,
                 })
+                self._purge_deleted_kb_doc_data(request.kb_id, doc_id, remove_relation=True)
                 continue
             with self._db_manager.get_session() as session:
                 Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
+                Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
                 row = session.query(Doc).filter(Doc.doc_id == doc_id).first()
-                if self._doc_relation_count(doc_id) <= 1:
+                relation_count = session.query(Rel).filter(Rel.doc_id == doc_id).count()
+                if relation_count <= 1:
                     row.upload_status = DocStatus.DELETING.value
                 row.updated_at = datetime.now()
                 session.add(row)
@@ -1596,11 +1606,16 @@ class DocManager:
             raise DocServiceError('E_NOT_FOUND', f'doc not found: {doc_id}', {'doc_id': doc_id})
 
         doc['metadata'] = from_json(doc.get('meta'))
-        snapshots = self.list_docs(page=1, page_size=2000)['items']
+        with self._db_manager.get_session() as session:
+            Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
+            rel_rows = session.query(Rel).filter(Rel.doc_id == doc_id).order_by(Rel.updated_at.desc()).all()
         matched_items = []
-        for item in snapshots:
-            if item['doc']['doc_id'] == doc_id:
-                matched_items.append(item)
+        for rel_row in rel_rows:
+            relation = _orm_to_dict(rel_row)
+            matched_items.append({
+                'relation': relation,
+                'snapshot': self._get_latest_parse_snapshot(doc_id, relation['kb_id']),
+            })
         relation = matched_items[0].get('relation') if matched_items else None
         snapshot = matched_items[0].get('snapshot') if matched_items else None
         latest_task = None

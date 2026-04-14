@@ -96,8 +96,7 @@ class DocServer(ModuleBase):
             return None
 
         def _sync_dataset_for_kb(self, kb_id: str, algo_id: str, disk_files: list, disk_set: set):
-            """Sync one KB: diff disk vs documents table → upload new / delete stale via unified pipeline."""
-            from .utils import gen_doc_id
+            '''Sync one KB: diff disk vs documents table -> upload new / delete stale via unified pipeline.'''
             # For retry: exclude FAILED/CANCELED so they get re-uploaded
             synced_docs = self._manager._list_kb_docs_by_path(kb_id, exclude_failed=True)
             # For stale cleanup: include FAILED/CANCELED so removed files get cleaned up
@@ -128,7 +127,7 @@ class DocServer(ModuleBase):
                 LOG.info(f'[Scan] kb={kb_id} sync done: added={len(new_paths)}, deleted={len(stale_ids)}')
 
         def _sync_dataset(self):
-            """One-shot scan: list dir → sync all active KB+algo pairs."""
+            '''One-shot scan: list dir -> sync all active KB+algo pairs.'''
             from .utils import list_dataset_files
             disk_files = list_dataset_files(self._storage_dir)
             disk_set = set(disk_files)
@@ -151,7 +150,7 @@ class DocServer(ModuleBase):
                     LOG.error(f'[Scan] sync failed for kb={kb_id}, algo={algo_id}: {exc}')
 
         def _scan_worker(self):
-            """Daemon thread: periodically scan dataset directory."""
+            '''Daemon thread: periodically scan dataset directory.'''
             while self._scan_continue:
                 try:
                     self._sync_dataset()
@@ -167,13 +166,13 @@ class DocServer(ModuleBase):
             self._scan_thread.start()
 
         def enable_scanning(self):
-            """Start scanning after all KB registrations and parser algo registrations
+            '''Start scanning after all KB registrations and parser algo registrations
             are complete.  Safe to call multiple times (idempotent).
 
             This is the intended way for ``Document._Manager`` to trigger the first
             scan: it ensures ``_owned_kbs`` is fully populated and all algorithms
             have been registered with the parser before any file-level sync happens.
-            """
+            '''
             self._lazy_init()
             if not self._enable_scan:
                 return
@@ -183,13 +182,13 @@ class DocServer(ModuleBase):
             self._start_scan_monitoring()
 
         def ensure_kb_registered(self, kb_id: str, algo_id: Optional[str] = None):
-            """Lightweight KB registration: ensure KB + algo binding rows exist in DB.
+            '''Lightweight KB registration: ensure KB + algo binding rows exist in DB.
 
             Unlike ``create_kb_by_id`` this does NOT validate algorithm existence
             against the parser, so it can be called before the algorithm is registered
             (e.g. during ``add_kb_group`` which creates a DocImpl that will register
             its algorithm later during ``_lazy_init``).
-            """
+            '''
             self._lazy_init()
             algo_id = algo_id or kb_id
             self._manager._ensure_kb(kb_id, display_name=kb_id)
@@ -938,7 +937,9 @@ class DocServer(ModuleBase):
         return self._dispatch('delete_kbs_impl', kb_ids)
 
     def ensure_kb_registered(self, kb_id: str, algo_id: Optional[str] = None):
+        '''Ensure the knowledge base row and algorithm binding exist in the doc service.'''
         return self._dispatch('ensure_kb_registered', kb_id, algo_id)
 
     def enable_scanning(self):
+        '''Trigger dataset scanning for a local doc service after registrations are ready.'''
         return self._dispatch('enable_scanning')

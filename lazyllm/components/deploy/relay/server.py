@@ -60,12 +60,6 @@ parser.add_argument('--security_key', type=str, default=None, help='security key
 parser.add_argument('--defined_pos', type=str, default=None, help='user defined positional')
 args = parser.parse_args()
 
-if args.pythonpath:
-    pythonpath = os.path.abspath(args.pythonpath)
-    if pythonpath in sys.path:
-        sys.path.remove(pythonpath)
-    sys.path.insert(0, pythonpath)
-
 func = load_obj(args.function)
 if args.before_function:
     before_func = load_obj(args.before_function)

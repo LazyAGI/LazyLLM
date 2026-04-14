@@ -15,7 +15,7 @@ from .store.document_store import _DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .utils import RAG_DEFAULT_GROUP_NAME, gen_docid, is_sparse, _get_default_db_config
-from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
+from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 from .data_type import DataType
 from .parsing_service import _Processor, DocumentProcessor
 from .embed_wrapper import _EmbedWrapper
@@ -301,9 +301,10 @@ class DocImpl:
 
     def _add_doc_to_store(self, input_files: List[str], ids: List[str],
                           metadatas: List[Dict[str, Any]]) -> Set[str]:
-        """Add documents to store. Returns the set of doc_ids that were successfully added."""
+        '''Add documents to store. Returns the set of doc_ids that were successfully added.'''
         success_ids: Set[str] = set()
         for filepath, doc_id, metadata in zip(input_files, ids, metadatas):
+            filepath = os.path.abspath(filepath)
             try:
                 self._processor.add_doc([filepath], [doc_id], [metadata] if metadata is not None else None)
                 success_ids.add(doc_id)
@@ -316,7 +317,8 @@ class DocImpl:
         return list_dataset_files(self._dataset_path)
 
     def _list_local_files(self) -> Tuple[List[str], List[str], List[Dict[str, Any]]]:
-        paths = list(self._doc_files) if self._doc_files is not None else self._list_dataset_files()
+        paths = ([os.path.abspath(path) for path in self._doc_files]
+                 if self._doc_files is not None else self._list_dataset_files())
         ids = [gen_docid(path) for path in paths]
         return ids, paths, [{} for _ in paths]
 
@@ -362,6 +364,14 @@ class DocImpl:
         self._local_monitor_thread = threading.Thread(target=self._monitor_local_dataset_worker)
         self._local_monitor_thread.daemon = True
         self._local_monitor_thread.start()
+
+    def stop_local_monitoring(self):
+        '''Stop the dataset monitoring thread and wait briefly for it to exit.'''
+        self._local_monitor_continue = False
+        thread = self._local_monitor_thread
+        if thread and thread.is_alive():
+            thread.join(timeout=self._local_monitor_interval + 1)
+        self._local_monitor_thread = None
 
     def _delete_doc_from_store(self, doc_ids: List[str] = None) -> None:
         self._processor.delete_doc(doc_ids=doc_ids)

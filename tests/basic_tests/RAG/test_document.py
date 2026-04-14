@@ -114,6 +114,29 @@ class TestDocImpl(unittest.TestCase):
             assert nodes[0].global_metadata[RAG_DOC_PATH] == file_path
             assert not hasattr(doc_impl, '_dlm')
 
+    def test_dataset_path_file_is_normalized_to_absolute(self):
+        self.mock_embed.return_value = [0.1, 0.2, 0.3]
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            try:
+                os.chdir(temp_dir)
+                with open('test.txt', 'w') as file:
+                    file.write('local dataset file')
+
+                doc_impl = DocImpl(embed=self.mock_embed, dataset_path='test.txt', enable_path_monitoring=False)
+                doc_impl._reader = MagicMock()
+                doc_impl._reader.load_data.side_effect = (
+                    lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
+                )
+                doc_impl._lazy_init()
+
+                nodes = doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
+                assert len(nodes) == 1
+                assert nodes[0].global_metadata[RAG_DOC_ID] == gen_docid(os.path.abspath('test.txt'))
+                assert nodes[0].global_metadata[RAG_DOC_PATH] == os.path.abspath('test.txt')
+            finally:
+                os.chdir(cwd)
+
     def test_dataset_path_monitor_adds_and_removes_files(self):
         self.mock_embed.return_value = [0.1, 0.2, 0.3]
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -150,9 +173,37 @@ class TestDocImpl(unittest.TestCase):
                 os.remove(file_a)
                 wait_for_doc_ids({gen_docid(file_b)})
             finally:
-                doc_impl._local_monitor_continue = False
-                if doc_impl._local_monitor_thread:
-                    doc_impl._local_monitor_thread.join(timeout=1)
+                doc_impl.stop_local_monitoring()
+
+    def test_stop_local_monitoring_stops_thread(self):
+        self.mock_embed.return_value = [0.1, 0.2, 0.3]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_a = os.path.join(temp_dir, 'a.txt')
+            with open(file_a, 'w') as file:
+                file.write('a')
+
+            doc_impl = DocImpl(embed=self.mock_embed, dataset_path=temp_dir, enable_path_monitoring=True)
+            doc_impl._reader = MagicMock()
+            doc_impl._reader.load_data.side_effect = (
+                lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
+            )
+            doc_impl._local_monitor_interval = 0.1
+            doc_impl._lazy_init()
+
+            try:
+                deadline = time.time() + 3
+                while time.time() < deadline:
+                    thread = doc_impl._local_monitor_thread
+                    if thread and thread.is_alive():
+                        break
+                    time.sleep(0.05)
+                else:
+                    raise AssertionError('Expected local monitoring thread to start')
+            finally:
+                doc_impl.stop_local_monitoring()
+
+            assert doc_impl._local_monitor_continue is False
+            assert doc_impl._local_monitor_thread is None
 
     def test_doc_impl_can_be_pickled_before_lazy_init(self):
         doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
@@ -414,7 +465,7 @@ class TestDocument(unittest.TestCase):
         assert all(n.number in [1, 2, 3, 4, 5] for n in window)
 
     def test_local_failed_insert_not_tracked(self):
-        """Regression: _add_doc_to_store failures must not be tracked in _tracked_docs."""
+        '''Regression: _add_doc_to_store failures must not be tracked in _tracked_docs.'''
         with tempfile.TemporaryDirectory() as temp_dir:
             file_a = os.path.join(temp_dir, 'a.txt')
             file_b = os.path.join(temp_dir, 'b.txt')
@@ -428,7 +479,6 @@ class TestDocument(unittest.TestCase):
             doc_impl = DocImpl(embed=mock_embed, dataset_path=temp_dir, enable_path_monitoring=False)
 
             call_count = [0]
-            original_add = doc_impl._processor.add_doc if hasattr(doc_impl, '_processor') and doc_impl._processor else None
 
             def mock_add_doc(files, ids, metadatas=None):
                 call_count[0] += 1
@@ -443,8 +493,8 @@ class TestDocument(unittest.TestCase):
                 return {LAZY_ROOT_NAME: [node], LAZY_IMAGE_GROUP: []}
 
             doc_impl._reader = MagicMock()
-            doc_impl._reader.load_data.side_effect = (
-                lambda input_files, metadatas, split_nodes_by_type=True: mock_add_doc(input_files, [f'id_{i}' for i in range(len(input_files))], metadatas)
+            doc_impl._reader.load_data.side_effect = lambda input_files, metadatas, split_nodes_by_type=True: (
+                mock_add_doc(input_files, [f'id_{i}' for i in range(len(input_files))], metadatas)
             )
             doc_impl._lazy_init()
 
@@ -452,10 +502,10 @@ class TestDocument(unittest.TestCase):
             assert len(doc_impl._tracked_docs) == 1
 
     def test_persistent_store_auto_upgrade_nonexisting_dir(self):
-        """Regression: auto-upgrade must trigger for non-existing dataset_path (future dir).
+        '''Regression: auto-upgrade must trigger for non-existing dataset_path (future dir).
 
         Instantiates Document._Manager and verifies _spawn_doc_server is True.
-        """
+        '''
         nonexisting = os.path.join(tempfile.gettempdir(), f'lazyllm_nonexist_{os.getpid()}')
         assert not os.path.exists(nonexisting), 'Test path should not exist'
         milvus_conf = {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}}
@@ -471,7 +521,7 @@ class TestDocument(unittest.TestCase):
         mgr.stop()
 
     def test_persistent_store_no_upgrade_for_single_file(self):
-        """Regression: auto-upgrade must NOT trigger when dataset_path is an existing file."""
+        '''Regression: auto-upgrade must NOT trigger when dataset_path is an existing file.'''
         with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as f:
             f.write(b'test')
             single_file = f.name
@@ -490,7 +540,7 @@ class TestDocument(unittest.TestCase):
             os.unlink(single_file)
 
     def test_persistent_store_existing_dir_auto_upgrade(self):
-        """Regression: auto-upgrade must trigger for existing directory + persistent store."""
+        '''Regression: auto-upgrade must trigger for existing directory + persistent store.'''
         dataset_path = self._build_dataset()
         milvus_conf = {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}}
 
@@ -504,7 +554,7 @@ class TestDocument(unittest.TestCase):
         mgr.stop()
 
     def test_map_store_no_auto_upgrade(self):
-        """Map store should never trigger auto-upgrade regardless of dataset_path."""
+        '''Map store should never trigger auto-upgrade regardless of dataset_path.'''
         dataset_path = self._build_dataset()
         map_conf = {'type': 'map'}
 
@@ -516,11 +566,11 @@ class TestDocument(unittest.TestCase):
         mgr.stop()
 
     def test_create_kb_group_before_start_registers_in_doc_server(self):
-        """Regression: create_kb_group() before start() must still register KB in DocServer DB.
+        '''Regression: create_kb_group() before start() must still register KB in DocServer DB.
 
-        Lifecycle: Document(manager=True) → create_kb_group('foo') → start()
-        After start(), 'foo' must appear in DocServer's active KB list for scan.
-        """
+        Lifecycle: Document(manager=True) -> create_kb_group('foo') -> start()
+        After start(), 'foo' must appear in DocServer active KB list for scan.
+        '''
         dataset_path = self._build_dataset()
         doc = Document(dataset_path, manager=True)
         try:
@@ -543,13 +593,12 @@ class TestDocument(unittest.TestCase):
             doc.stop()
 
     def test_pre_start_group_parser_algo_registered(self):
-        """P1 Regression: create_kb_group before start() must register algorithm with parser.
+        '''P1 Regression: create_kb_group before start() must register algorithm with parser.
 
-        Lifecycle: Document(manager=True) → create_kb_group('foo') → start()
-        After start(), the DocImpl for 'foo' must have been initialized (i.e. _lazy_init
-        called) so that register_algorithm was invoked on the parser.  Without this,
-        scan will report 'Invalid algo_id foo' because the parser does not know 'foo'.
-        """
+        Lifecycle: Document(manager=True) -> create_kb_group('foo') -> start()
+        After start(), the DocImpl for 'foo' must have been initialized so that
+        register_algorithm was invoked on the parser.
+        '''
         dataset_path = self._build_dataset()
         doc = Document(dataset_path, manager=True)
         try:
@@ -573,12 +622,11 @@ class TestDocument(unittest.TestCase):
             doc.stop()
 
     def test_scan_isolation_between_document_instances(self):
-        """P2 Regression: scan must only process KBs owned by the current Document instance.
+        '''P2 Regression: scan must only process KBs owned by the current Document instance.
 
         DocServer._Impl._sync_dataset filters kb_algo_pairs by _owned_kbs.
-        This test creates a DocServer._Impl directly (bypassing ServerModule) and
-        verifies that _sync_dataset only processes KBs registered via ensure_kb_registered.
-        """
+        This test verifies that only registered KBs are processed.
+        '''
         import os
         import tempfile
         from lazyllm.tools.rag.doc_service.doc_server import DocServer as _DocServer
@@ -627,7 +675,6 @@ class TestDocument(unittest.TestCase):
 
                 # Track which KBs _sync_dataset_for_kb is called for
                 synced_kbs = []
-                original_sync_for_kb = impl._sync_dataset_for_kb
 
                 def tracking_sync(kb_id, algo_id, disk_files, disk_set):
                     synced_kbs.append(kb_id)
@@ -645,12 +692,11 @@ class TestDocument(unittest.TestCase):
             ParserClient.health = original_health
 
     def test_first_scan_deferred_until_enable_scanning(self):
-        """P1 Regression: the very first scan must NOT run during DocServer._lazy_init.
+        '''P1 Regression: the very first scan must NOT run during DocServer._lazy_init.
 
-        DocServer._lazy_init() used to eagerly call _sync_dataset(), which ran before
-        _owned_kbs was populated and before parser algorithms were registered.  Now
-        scanning is deferred until enable_scanning() is called explicitly.
-        """
+        DocServer._lazy_init() used to eagerly call _sync_dataset() before KB setup was complete.
+        Now scanning is deferred until enable_scanning() is called explicitly.
+        '''
         import os
         import tempfile
         from lazyllm.tools.rag.doc_service.doc_server import DocServer as _DocServer

@@ -13,8 +13,11 @@ type_mapping = {
 }
 
 class DirectoryReader:
+    '''Read local files with the configured reader registry and return document nodes.'''
+
     def __init__(self, input_files: Optional[List[str]], local_readers: Optional[Dict] = None,
                  global_readers: Optional[Dict] = None) -> None:
+        '''Initialize a directory-backed document reader with local and global reader registries.'''
         self._input_files = input_files
         self._local_readers, self._global_readers = local_readers, global_readers
 
@@ -24,6 +27,7 @@ class DirectoryReader:
 
     def load_data(self, input_files: Optional[List[str]] = None, metadatas: Optional[Dict] = None,
                   *, split_nodes_by_type: bool = False) -> List[DocNode]:
+        '''Load documents from files and optionally split the result by node type.'''
         self._lazy_init()
         input_files = input_files or self._input_files
         nodes: Union[List[DocNode], Dict[str, List[DocNode]]] = defaultdict(list) if split_nodes_by_type else []
