@@ -220,6 +220,14 @@ class TaskCancelRequest(BaseModel):
 
 
 class TaskCallbackPayload(BaseModel):
+    '''Parser -> DocService callback payload.
+
+    ``status`` is the document-level state after this callback (what
+    ``parse_state.status`` should transition to); ``task_status`` is the outcome
+    of the individual task execution (SUCCESS / FAILED / CANCELED). They can
+    diverge during cancel flows where the task is CANCELED but the doc may
+    remain in SUCCESS on a previous version.
+    '''
     callback_id: Optional[str] = None
     task_id: Optional[str] = None
     event_type: Optional[CallbackEventType] = None

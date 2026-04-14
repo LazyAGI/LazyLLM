@@ -85,7 +85,7 @@ def _wait_algo_ready(parser_url: str, algo_id: str, timeout: float = 20.0):
     raise RuntimeError(f'algorithm is not ready: {algo_id}')
 
 
-def _register_demo_algorithm(parser_url: str, algo_id: str, store_dir: str):
+def _register_demo_algorithm(parser_url: str, algo_id: str, store_dir: str, algo_ready_timeout: float = 60.0):
     # Step 2: register a real Document algorithm on the parsing service.
     document = Document(
         dataset_path=None,
@@ -105,7 +105,7 @@ def _register_demo_algorithm(parser_url: str, algo_id: str, store_dir: str):
     document.activate_group('CoarseChunk', embed_keys=['vec_dense'])
     document.activate_group('line', embed_keys=['vec_dense'])
     document.start()
-    _wait_algo_ready(parser_url, algo_id)
+    _wait_algo_ready(parser_url, algo_id, timeout=algo_ready_timeout)
     return document
 
 
@@ -125,6 +125,10 @@ def main():
     parser.add_argument('--parser-url', type=str, default=None, help='Existing parsing service base URL.')
     parser.add_argument('--algo-id', type=str, default=REAL_ALGO_ID, help='Algorithm ID for the local demo setup.')
     parser.add_argument('--wait', action='store_true', help='Keep the example running for manual inspection.')
+    parser.add_argument(
+        '--algo-ready-timeout', type=float, default=60.0,
+        help='Seconds to wait for the demo algorithm to become visible on the parser (default: 60).',
+    )
     parser.add_argument(
         '--export-openapi',
         type=str,
@@ -149,10 +153,13 @@ def main():
         if parser_url:
             parser_url = parser_url.rstrip('/')
             _wait_http_ok(f'{parser_url}/health')
-            _wait_algo_ready(parser_url, args.algo_id)
+            _wait_algo_ready(parser_url, args.algo_id, timeout=args.algo_ready_timeout)
         else:
             parser_server, parser_url = _start_local_parser(args.parser_port, paths['parser_db'])
-            document = _register_demo_algorithm(parser_url, args.algo_id, paths['store_dir'])
+            document = _register_demo_algorithm(
+                parser_url, args.algo_id, paths['store_dir'],
+                algo_ready_timeout=args.algo_ready_timeout,
+            )
 
         # Step 3: start DocServer and point it to the parsing service.
         server = DocServer(

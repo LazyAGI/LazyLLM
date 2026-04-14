@@ -107,6 +107,23 @@ class DocManager:
         self._ensure_kb('__default__', display_name='__default__')
         self._ensure_kb_algorithm('__default__', '__default__')
 
+    @staticmethod
+    def _update_kb_row_fields(row, now: datetime, display_name: Optional[str] = None,
+                              description: Optional[str] = None, owner_id: Optional[str] = None,
+                              meta: Optional[Dict[str, Any]] = None, update_fields: Optional[Set[str]] = None):
+        update_fields = update_fields or set()
+        if 'display_name' in update_fields:
+            row.display_name = display_name
+        if 'description' in update_fields:
+            row.description = description
+        if 'owner_id' in update_fields:
+            row.owner_id = owner_id
+        if 'meta' in update_fields:
+            row.meta = to_json(meta)
+        if row.status == KBStatus.DELETED.value:
+            row.status = KBStatus.ACTIVE.value
+        row.updated_at = now
+
     def _ensure_kb(self, kb_id: str, display_name: Optional[str] = None, description: Optional[str] = None,
                    owner_id: Optional[str] = None, meta: Optional[Dict[str, Any]] = None,
                    update_fields: Optional[Set[str]] = None):
@@ -119,20 +136,23 @@ class DocManager:
                          status=KBStatus.ACTIVE.value, owner_id=owner_id, meta=to_json(meta),
                          created_at=now, updated_at=now)
             else:
-                if update_fields is None:
-                    update_fields = set()
-                if 'display_name' in update_fields:
-                    row.display_name = display_name
-                if 'description' in update_fields:
-                    row.description = description
-                if 'owner_id' in update_fields:
-                    row.owner_id = owner_id
-                if 'meta' in update_fields:
-                    row.meta = to_json(meta)
-                if row.status == KBStatus.DELETED.value:
-                    row.status = KBStatus.ACTIVE.value
-                row.updated_at = now
+                self._update_kb_row_fields(
+                    row, now, display_name=display_name, description=description,
+                    owner_id=owner_id, meta=meta, update_fields=update_fields,
+                )
             session.add(row)
+            try:
+                session.flush()
+            except IntegrityError:
+                session.rollback()
+                row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
+                if row is None:
+                    raise
+                self._update_kb_row_fields(
+                    row, now, display_name=display_name, description=description,
+                    owner_id=owner_id, meta=meta, update_fields=update_fields,
+                )
+                session.add(row)
 
     def _ensure_kb_algorithm(self, kb_id: str, algo_id: str):
         now = datetime.now()
@@ -148,6 +168,19 @@ class DocManager:
             else:
                 row.updated_at = now
             session.add(row)
+            try:
+                session.flush()
+            except IntegrityError:
+                session.rollback()
+                row = session.query(Rel).filter(Rel.kb_id == kb_id).first()
+                if row is None:
+                    raise
+                if row.algo_id != algo_id:
+                    raise DocServiceError('E_STATE_CONFLICT', f'kb {kb_id} is already bound to algorithm {row.algo_id}',
+                                          {'kb_id': kb_id, 'bound_algo_id': row.algo_id,
+                                           'requested_algo_id': algo_id})
+                row.updated_at = now
+                session.add(row)
 
     def _get_kb(self, kb_id: str):
         with self._db_manager.get_session() as session:

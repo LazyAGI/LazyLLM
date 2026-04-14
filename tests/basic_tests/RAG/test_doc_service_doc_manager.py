@@ -3,10 +3,12 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from datetime import datetime
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from lazyllm.tools.rag.doc_service.base import (
     AddFileItem,
@@ -14,6 +16,7 @@ from lazyllm.tools.rag.doc_service.base import (
     DeleteRequest,
     DocServiceError,
     DocStatus,
+    KBStatus,
     ReparseRequest,
     SourceType,
     TaskCallbackRequest,
@@ -779,6 +782,92 @@ def test_ensure_kb_registers_in_active_pairs(manager_harness):
     assert ('custom_group', 'custom_group') in pair_set, (
         'KB registered via _ensure_kb + _ensure_kb_algorithm must appear in active pairs for scan'
     )
+
+
+def test_ensure_kb_handles_flush_conflict(manager_harness, monkeypatch):
+    mgr = manager_harness.manager
+    Kb = mgr._db_manager.get_table_orm_class('lazyllm_knowledge_bases')
+    original_get_session = mgr._db_manager.get_session
+    state = {'done': False}
+
+    @contextmanager
+    def conflict_session():
+        with original_get_session() as session:
+            original_flush = session.flush
+
+            def flush(*args, **kwargs):
+                if (
+                    not state['done']
+                    and any(isinstance(obj, Kb) and obj.kb_id == 'conflict_group' for obj in session.new)
+                ):
+                    state['done'] = True
+                    with original_get_session() as other:
+                        other.add(Kb(
+                            kb_id='conflict_group',
+                            display_name='conflict_group',
+                            description=None,
+                            doc_count=0,
+                            status=KBStatus.ACTIVE.value,
+                            owner_id=None,
+                            meta=None,
+                            created_at=datetime.now(),
+                            updated_at=datetime.now(),
+                        ))
+                    raise IntegrityError('INSERT', None, Exception('duplicate kb'))
+                return original_flush(*args, **kwargs)
+
+            session.flush = flush
+            yield session
+
+    monkeypatch.setattr(mgr._db_manager, 'get_session', conflict_session)
+
+    mgr._ensure_kb('conflict_group', display_name='conflict_group')
+
+    kb = mgr._get_kb('conflict_group')
+    assert kb is not None
+    assert kb['kb_id'] == 'conflict_group'
+
+
+def test_ensure_kb_algorithm_handles_flush_conflict(manager_harness, monkeypatch):
+    mgr = manager_harness.manager
+    Rel = mgr._db_manager.get_table_orm_class('lazyllm_kb_algorithm')
+    original_get_session = mgr._db_manager.get_session
+    state = {'done': False}
+
+    mgr._ensure_kb('algo_conflict_group', display_name='algo_conflict_group')
+
+    @contextmanager
+    def conflict_session():
+        with original_get_session() as session:
+            original_flush = session.flush
+
+            def flush(*args, **kwargs):
+                if (
+                    not state['done']
+                    and any(isinstance(obj, Rel) and obj.kb_id == 'algo_conflict_group' for obj in session.new)
+                ):
+                    state['done'] = True
+                    with original_get_session() as other:
+                        other.add(Rel(
+                            kb_id='algo_conflict_group',
+                            algo_id='__default__',
+                            created_at=datetime.now(),
+                            updated_at=datetime.now(),
+                        ))
+                    raise IntegrityError('INSERT', None, Exception('duplicate kb algo'))
+                return original_flush(*args, **kwargs)
+
+            session.flush = flush
+            yield session
+
+    monkeypatch.setattr(mgr._db_manager, 'get_session', conflict_session)
+
+    mgr._ensure_kb_algorithm('algo_conflict_group', '__default__')
+
+    binding = mgr._get_kb_algorithm('algo_conflict_group')
+    assert binding is not None
+    assert binding['kb_id'] == 'algo_conflict_group'
+    assert binding['algo_id'] == '__default__'
 
 
 def test_scan_syncs_non_default_kb(manager_harness):
