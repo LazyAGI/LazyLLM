@@ -489,3 +489,72 @@ class TestCommentableFilter:
         cm = _build_commentable_lines([])
         kept, dropped = _filter_commentable([], cm)
         assert kept == [] and dropped == 0
+
+    # --- precise content-based parsing (non-empty content) ---
+
+    def test_build_commentable_with_content_excludes_deleted_lines(self):
+        # hunk: -del1, +add1, ' ctx' → new-file lines: add1=10, ctx=11; del1 has no new-file line
+        content = '-del1\n+add1\n ctx'
+        hunks = [('f.py', 10, 0, content)]
+        cm = _build_commentable_lines(hunks)
+        assert cm['f.py'] == {10, 11}
+        assert 9 not in cm['f.py']   # before hunk
+        assert 12 not in cm['f.py']  # beyond content
+
+    def test_build_commentable_with_content_pure_deletion(self):
+        # pure-delete hunk: all '-' lines → no new-file lines at all
+        content = '-gone1\n-gone2\n-gone3'
+        hunks = [('f.py', 5, 0, content)]
+        cm = _build_commentable_lines(hunks)
+        assert cm['f.py'] == set()
+
+    def test_build_commentable_with_content_mixed_hunk(self):
+        # Simulates @@ -16,6 +16,8 @@
+        # ' R1', ' R2', ' R3', '+R4A', ' R4', ' FINAL', '+UPLOAD'
+        content = " R1 = 'r1'\n R2 = 'r2'\n R3 = 'r3'\n+R4A = 'r4a'\n R4 = 'r4'\n FINAL = 'final'\n+UPLOAD = 'upload'"
+        hunks = [('f.py', 16, 0, content)]
+        cm = _build_commentable_lines(hunks)
+        # context lines: 16,17,18,20,21; added lines: 19,22
+        assert cm['f.py'] == {16, 17, 18, 19, 20, 21, 22}
+
+    def test_filter_drops_deleted_line_number_with_content(self):
+        # '-' line at new_start should NOT be commentable
+        content = '-deleted\n+added\n ctx'
+        hunks = [('f.py', 10, 0, content)]
+        cm = _build_commentable_lines(hunks)
+        # 'deleted' is a '-' line → no new-file number; 'added'→10, 'ctx'→11
+        comments = [
+            {'path': 'f.py', 'line': 10},   # valid (added line)
+            {'path': 'f.py', 'line': 11},   # valid (context line)
+        ]
+        kept, dropped = _filter_commentable(comments, cm)
+        assert len(kept) == 2
+        assert dropped == 0
+
+    def test_deleted_and_added_at_same_position(self):
+        # '-' and '+' at the same visual position: the new-file line number belongs
+        # to the '+' line, not the '-' line.  Both share "line 10" visually, but
+        # only the '+' line exists in the new file.
+        # diff: ' ctx'=10, '-old'=no new-no, '+new'=11, ' ctx2'=12
+        content = ' ctx\n-old_line\n+new_line\n ctx2'
+        hunks = [('f.py', 10, 0, content)]
+        cm = _build_commentable_lines(hunks)
+        # ctx→10, new_line→11, ctx2→12; old_line has no new-file number
+        assert cm['f.py'] == {10, 11, 12}
+        # line 11 is the '+new_line', not '-old_line'
+        kept, dropped = _filter_commentable([{'path': 'f.py', 'line': 11}], cm)
+        assert len(kept) == 1 and dropped == 0
+
+    def test_filter_drops_line_beyond_content_with_content(self):
+        content = '+add1\n ctx'   # new-file lines 5, 6
+        hunks = [('f.py', 5, 0, content)]
+        cm = _build_commentable_lines(hunks)
+        comments = [
+            {'path': 'f.py', 'line': 7},   # beyond content
+            {'path': 'f.py', 'line': 4},   # before hunk
+            {'path': 'f.py', 'line': 5},   # valid
+        ]
+        kept, dropped = _filter_commentable(comments, cm)
+        assert len(kept) == 1
+        assert kept[0]['line'] == 5
+        assert dropped == 2

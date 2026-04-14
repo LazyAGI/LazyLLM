@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import lazyllm
 
@@ -12,20 +12,31 @@ _BATCH_INTERVAL = 5.0     # seconds between batches to avoid secondary rate limi
 _RATE_LIMIT_BACKOFF = [60, 120, 300]  # retry waits (seconds) on 403
 
 
-def _build_commentable_lines(hunks: List[Tuple[str, int, int, str]]) -> Dict[str, set]:
-    # Build a mapping of path -> set of new-file line numbers that are valid for GitHub
-    # review comments (i.e. lines that appear in the PR diff).
-    # GitHub only accepts line numbers that fall within a hunk's new-file range.
-    commentable: Dict[str, set] = {}
-    for path, new_start, new_count, _ in hunks:
+def _build_commentable_lines(hunks: List[Tuple[str, int, int, str]]) -> Dict[str, Set[int]]:
+    # Build a mapping of path -> set of new-file line numbers that GitHub will accept
+    # for RIGHT-side review comments.  Only lines that actually appear in the new file
+    # (i.e. context lines ' ' and added lines '+') are valid; deleted lines '-' are NOT
+    # present in the new file and GitHub rejects them with 422.
+    # When content is available, parse it precisely; otherwise fall back to new_count range.
+    commentable: Dict[str, Set[int]] = {}
+    for path, new_start, new_count, content in hunks:
         s = commentable.setdefault(path, set())
-        s.update(range(new_start, new_start + new_count))
+        lines = content.splitlines() if content else []
+        if lines:
+            new_no = new_start
+            for raw_line in lines:
+                if raw_line.startswith('-'):
+                    continue
+                s.add(new_no)
+                new_no += 1
+        else:
+            s.update(range(new_start, new_start + new_count))
     return commentable
 
 
 def _filter_commentable(
     comments: List[Dict[str, Any]],
-    commentable: Dict[str, set],
+    commentable: Dict[str, Set[int]],
 ) -> Tuple[List[Dict[str, Any]], int]:
     # Drop comments whose (path, line) is not in the PR diff.
     # Returns (kept, dropped_count).
@@ -38,8 +49,9 @@ def _filter_commentable(
             continue
         allowed = commentable.get(path)
         if allowed is None or int(line) not in allowed:
-            lazyllm.LOG.info(
-                f'[FILTER] dropping comment: {path}:{line} not in PR diff range'
+            lazyllm.LOG.error(
+                f'[FILTER] dropping comment: {path}:{line} not in PR diff — '
+                f'line does not correspond to any added/context line in the diff'
             )
             dropped += 1
         else:
