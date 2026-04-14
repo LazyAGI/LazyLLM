@@ -24,13 +24,6 @@ public:
             static_cast<int>(overlap),
             encoding_name) {}
 
-    int chunk_size() const { return _chunk_size; }
-    void set_chunk_size(int value) { _chunk_size = value; }
-
-    int overlap() const { return _overlap; }
-    void set_overlap(int value) { _overlap = value; }
-
-
     std::vector<std::string> merge_chunks_impl(py::list splits, int chunk_size) const {
         std::vector<lazyllm::Chunk> owned;
         owned.reserve(py::len(splits));

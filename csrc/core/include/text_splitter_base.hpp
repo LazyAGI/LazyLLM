@@ -31,6 +31,12 @@ public:
         const std::string_view& text,
         const std::string_view& separator);
 
+    unsigned chunk_size() const { return _chunk_size; }
+    void set_chunk_size(unsigned value) { _chunk_size = value; }
+
+    unsigned overlap() const { return _overlap; }
+    void set_overlap(unsigned value) { _overlap = value; }
+
 protected:
     virtual std::vector<ChunkView> split_recursive(const std::string_view& view, const int chunk_size) const;
     virtual std::vector<std::string> merge_chunks(std::vector<Chunk> splits, int chunk_size) const;
