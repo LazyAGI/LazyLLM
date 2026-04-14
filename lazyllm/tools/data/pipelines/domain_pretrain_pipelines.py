@@ -5,7 +5,7 @@ from lazyllm.tools.data.operators.token_chunker import TokenChunker
 from lazyllm.tools.data.prompts.domain_finetune import DOMAIN_PRESETS
 
 DOMAIN_PRETRAIN_FEATURES = (
-    'field_normalization', 
+    'field_normalization',
     'text_normalization',
     'sensitive_info_cleaning',
     'language_filter',
@@ -113,8 +113,6 @@ def build_domain_pretrain_pipeline(
             fallback_fields=opts.get('fallback_fields'),
             drop_original=opts.get('drop_original_fields', False),
         )
-
-        
         ppl.text_normalizer = domain_pretrain.text_normalizer(
             input_key=content_key,
             unicode_form='NFKC',
@@ -155,8 +153,6 @@ def build_domain_pretrain_pipeline(
                 min_score=opts.get('min_relevance_score', 0.1),
                 language=language,
             )
-
-
         ppl.ngram_filter = domain_pretrain.NGramRepetitionFilter(
             input_key=content_key,
             n=opts.get('ngram_n', 10),

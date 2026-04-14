@@ -394,6 +394,12 @@ def sentence_count_filter(data, input_key='content', min_sentences=3, max_senten
         sentences = [s.strip() for s in sentences if s.strip()]
         num_sentences = len(sentences)
     elif language in ['en', 'english']:
+        nltk_data_dir = _setup_nltk_data_dir()
+        try:
+            nltk.data.find('tokenizers/punkt_tab')
+        except LookupError:
+            LOG.info('Downloading NLTK punkt_tab...')
+            nltk.download('punkt_tab', quiet=True, download_dir=nltk_data_dir)
         sentences = nltk.sent_tokenize(text)
         num_sentences = len(sentences)
     else:
@@ -580,6 +586,12 @@ class StopWordFilter(Filter):
         except LookupError:
             LOG.info('Downloading NLTK stopwords...')
             nltk.download('stopwords', quiet=True, download_dir=nltk_data_dir)
+        if self.use_tokenizer and self.language in ['en', 'english']:
+            try:
+                nltk.data.find('tokenizers/punkt_tab')
+            except LookupError:
+                LOG.info('Downloading NLTK punkt_tab tokenizer...')
+                nltk.download('punkt_tab', quiet=True, download_dir=nltk_data_dir)
 
         if self.language in ['en', 'english']:
             self.stopwords = set(nltk.corpus.stopwords.words('english'))

@@ -6,7 +6,11 @@ from .base_prompt import PromptABC
 DOMAIN_PRESETS: Dict[str, Dict[str, Any]] = {
     'finance': {
         'instruction_zh': '你是一位专业的金融分析师。请根据给定的上下文，提供准确、专业且合规的金融分析或解答。',
-        'instruction_en': 'You are a professional financial analyst. Please provide accurate, professional and compliant financial analysis or answers based on the given context.',
+        'instruction_en': (
+            'You are a professional financial analyst. Please provide accurate, '
+            'professional and compliant financial analysis or answers based on '
+            'the given context.'
+        ),
         'filters': [
             {'type': 'word_count', 'min_words': 20, 'max_words': 5000},
             {'type': 'char_count', 'min_chars': 50, 'max_chars': 50000},
@@ -26,7 +30,11 @@ DOMAIN_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     'medical': {
         'instruction_zh': '你是一位医疗信息助手。请注意：提供的信息仅供参考，不构成医疗建议、诊断或治疗。如有医疗问题，请咨询专业医生。',
-        'instruction_en': 'You are a medical information assistant. Please note: The information provided is for reference only and does not constitute medical advice, diagnosis or treatment. Please consult a professional doctor for medical issues.',
+        'instruction_en': (
+            'You are a medical information assistant. Please note: The information '
+            'provided is for reference only and does not constitute medical advice, '
+            'diagnosis or treatment. Please consult a professional doctor for medical issues.'
+        ),
         'filters': [
             {'type': 'word_count', 'min_words': 30, 'max_words': 10000},
             {'type': 'char_count', 'min_chars': 100, 'max_chars': 100000},
@@ -46,7 +54,11 @@ DOMAIN_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     'legal': {
         'instruction_zh': '你是一位法律信息助手。请注意：提供的信息仅供参考，不构成法律建议或意见。如有具体法律问题，请咨询专业律师。',
-        'instruction_en': 'You are a legal information assistant. Please note: The information provided is for reference only and does not constitute legal advice or opinion. Please consult a professional lawyer for specific legal issues.',
+        'instruction_en': (
+            'You are a legal information assistant. Please note: The information '
+            'provided is for reference only and does not constitute legal advice or '
+            'opinion. Please consult a professional lawyer for specific legal issues.'
+        ),
         'filters': [
             {'type': 'word_count', 'min_words': 40, 'max_words': 15000},
             {'type': 'char_count', 'min_chars': 150, 'max_chars': 150000},
@@ -66,7 +78,11 @@ DOMAIN_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     'education': {
         'instruction_zh': '你是一位专业的教育专家。请针对以下问题提供清晰、准确且有建设性的教育指导、解释或解答。',
-        'instruction_en': 'You are a professional education expert. Please provide clear, accurate and constructive educational guidance, explanations or answers to the following question.',
+        'instruction_en': (
+            'You are a professional education expert. Please provide clear, accurate '
+            'and constructive educational guidance, explanations or answers to the '
+            'following question.'
+        ),
         'filters': [
             {'type': 'word_count', 'min_words': 10, 'max_words': 8000},
             {'type': 'char_count', 'min_chars': 30, 'max_chars': 80000},
@@ -85,7 +101,10 @@ DOMAIN_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     'customer_service': {
         'instruction_zh': '你是一位专业的客服人员。请以友善、专业的态度回答客户的问题，提供准确、有帮助的信息。',
-        'instruction_en': 'You are a professional customer service representative. Please provide helpful, polite and accurate responses to customer inquiries.',
+        'instruction_en': (
+            'You are a professional customer service representative. Please provide '
+            'helpful, polite and accurate responses to customer inquiries.'
+        ),
         'filters': [
             {'type': 'word_count', 'min_words': 5, 'max_words': 3000},
             {'type': 'char_count', 'min_chars': 10, 'max_chars': 30000},
@@ -112,23 +131,33 @@ DOMAIN_PRESETS: Dict[str, Dict[str, Any]] = {
 
 
 DOMAIN_INSTRUCTION_EN: Dict[str, str] = {
-    'finance': 'You are a professional financial analyst. Please provide accurate and professional financial analysis or answers based on the given context.',
-    'medical': 'You are a medical information assistant. The information provided is for reference only and does not constitute medical advice. Please consult a professional doctor for medical issues.',
-    'legal': 'You are a legal information assistant. The information provided is for reference only and does not constitute legal advice. Please consult a professional lawyer for specific legal issues.',
-    'education': 'You are a professional education expert. Please provide clear, accurate and constructive educational guidance or answers.',
-    'customer_service': 'You are a professional customer service representative. Please provide helpful, polite and accurate responses to customer inquiries.',
+    'finance': (
+        'You are a professional financial analyst. Please provide accurate and '
+        'professional financial analysis or answers based on the given context.'
+    ),
+    'medical': (
+        'You are a medical information assistant. The information provided is for '
+        'reference only and does not constitute medical advice. Please consult a '
+        'professional doctor for medical issues.'
+    ),
+    'legal': (
+        'You are a legal information assistant. The information provided is for '
+        'reference only and does not constitute legal advice. Please consult a '
+        'professional lawyer for specific legal issues.'
+    ),
+    'education': (
+        'You are a professional education expert. Please provide clear, accurate and '
+        'constructive educational guidance or answers.'
+    ),
+    'customer_service': (
+        'You are a professional customer service representative. Please provide '
+        'helpful, polite and accurate responses to customer inquiries.'
+    ),
     'general': 'You are a helpful assistant. Please answer the following question.',
 }
 
 
 class DomainFinetuneExtractionPrompt(PromptABC):
-    """
-    垂直领域文本 → 训练样本（QA / 指令对）提取的 Prompt 模板。
-
-    - build_system_prompt：描述通用角色与任务
-    - build_prompt：根据语言、提取类型和文本内容构造 user prompt
-    """
-
     def __init__(self, lang: str = 'zh', extract_format: str = 'qa', num_samples: int = 3):
         self.lang = lang
         self.extract_format = extract_format
@@ -207,13 +236,6 @@ class DomainFinetuneExtractionPrompt(PromptABC):
 
 
 class DomainFinetuneFieldMappingPrompt(PromptABC):
-    """
-    未知结构字段 → {instruction, input, output} 的 Prompt 模板。
-
-    - build_system_prompt：描述角色（数据工程师）和总体任务
-    - build_prompt：接收过滤后的记录 dict，生成 user prompt
-    """
-
     def __init__(self, lang: str = 'zh'):
         self.lang = lang
 
@@ -271,4 +293,3 @@ __all__ = [
     'DomainFinetuneExtractionPrompt',
     'DomainFinetuneFieldMappingPrompt',
 ]
-

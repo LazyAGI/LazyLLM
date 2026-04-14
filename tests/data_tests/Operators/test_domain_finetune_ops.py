@@ -39,7 +39,6 @@ class TestDomainFinetuneOperators:
         if os.path.exists(self.root_dir):
             shutil.rmtree(self.root_dir)
 
-
     def test_rename_key_remove_input(self):
         op = domain_finetune.rename_key(
             input_key='raw', output_key='cleaned_content', remove_input=True,
@@ -97,7 +96,6 @@ class TestDomainFinetuneOperators:
         r2 = op([{'question': '', 'context': ctx}])[0]
         assert r2['question'] == f'Context: {ctx}'
 
-
     def test_dataset_format_normalizer_alpaca_and_qa(self):
         op = domain_finetune.DatasetFormatNormalizer(
             output_key='content', text_key='_filter_text',
@@ -143,7 +141,6 @@ class TestDomainFinetuneOperators:
         r = op([data])[0]
         assert r['_filter_text']
 
-
     def test_hash_deduplicator(self):
         op = domain_finetune.HashDeduplicator(
             input_key='content', _save_data=False,
@@ -164,7 +161,6 @@ class TestDomainFinetuneOperators:
         out = op(rows)
         assert len(out) == 1
         assert out[0]['input'].startswith('hiqq') and long_a in out[0]['output']
-
 
     def test_domain_format_alpaca_string_and_dict(self):
         op = domain_finetune.DomainFormatAlpaca(
@@ -202,7 +198,6 @@ class TestDomainFinetuneOperators:
         text = r['ft']['text']
         assert '<|im_start|>system' in text and '<|im_end|>' in text
 
-
     def test_train_val_test_splitter(self):
         op = domain_finetune.TrainValTestSplitter(
             train_ratio=0.8, validation_ratio=0.1, test_ratio=0.1, seed=0,
@@ -217,7 +212,6 @@ class TestDomainFinetuneOperators:
         op = domain_finetune.TrainValTestSplitter(_save_data=False)
         out = op([])
         assert out == {'train': [], 'validation': [], 'test': []}
-
 
     def test_llm_data_extractor_qa_parse(self):
         ans = '答案内容' * 5
@@ -255,7 +249,6 @@ class TestDomainFinetuneOperators:
         assert r['content']['output'] == 'outvaluelongenough'
         assert '_filter_text' in r
 
-
     def test_output_content_filter_forward(self):
         op = domain_finetune.OutputContentFilter(
             input_key='content', min_output_chars=10,
@@ -279,7 +272,6 @@ class TestDomainFinetuneOperators:
             'content': {'input': '短', 'output': '输出足够长'},
         })
         assert kept is not None
-
 
     def test_sample_expander(self):
         op = domain_finetune.SampleExpander(

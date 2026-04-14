@@ -47,7 +47,6 @@ def _assistant_content_str(result: Any) -> str:
 
 
 def _truncate_conclusion_garbage_suffix(text: str) -> str:
-    """Drop trailing hallucinated text after valid JSON (chat tokens, spam, other languages)."""
     if not text:
         return text
     t = text
@@ -77,7 +76,6 @@ def _truncate_conclusion_garbage_suffix(text: str) -> str:
 
 
 def _loads_json_lenient(raw: str) -> Optional[Any]:
-    """Try strict JSON, then JSON5 (trailing commas, etc.)."""
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -88,7 +86,6 @@ def _loads_json_lenient(raw: str) -> Optional[Any]:
 
 
 def _repair_split_r_attributes(text: str) -> str:
-    """Merge invalid patterns like \"R\":\"a\";key=value\" into one R string (common LLM mistake)."""
     if not text or '"R"' not in text:
         return text
     t = text
@@ -111,7 +108,7 @@ def _repair_split_r_attributes(text: str) -> str:
             val = vm2.group(1).strip()
             consumed = vm2.end()
         merged = f'"R":"{m.group(1)};{m.group(2)}={val}"'
-        t = t[: m.start()] + merged + t[m.end() + consumed :]
+        t = t[:m.start()] + merged + t[m.end() + consumed:]
     return t
 
 
@@ -124,7 +121,6 @@ def _normalize_to_conclusion_list(parsed: Any) -> Optional[List[Any]]:
 
 
 def _find_matching_array_end(text: str, start: int) -> Optional[int]:
-    """Match '[' at start with the matching ']', ignoring `[]` inside JSON strings."""
     if start >= len(text) or text[start] != '[':
         return None
     depth = 0
@@ -155,7 +151,6 @@ def _find_matching_array_end(text: str, start: int) -> Optional[int]:
 
 
 def _parse_embedded_json_array(cleaned: str) -> Optional[List[Any]]:
-    """Extract first top-level [...] slice and parse as array only."""
     start = cleaned.find('[')
     if start < 0:
         return None
@@ -191,7 +186,6 @@ def _extract_json_array_from_text(text: str) -> Optional[List[Any]]:
 
 
 def _parse_optional_answer_variants(raw: Any, max_variants: int) -> List[str]:
-    """Parse RAGAnswerVariants LLM output into string variants (tolerant JSON / repair)."""
     cap = max(1, int(max_variants))
     if raw is None:
         return []
@@ -215,18 +209,11 @@ def _parse_optional_answer_variants(raw: Any, max_variants: int) -> List[str]:
 
 
 def _dict_with_conclusions_list(obj: dict) -> Optional[List[Any]]:
-    """Legacy: accept {\"conclusions\": [ ... ]}."""
     cons = obj.get('conclusions')
     return cons if isinstance(cons, list) else None
 
 
-def _parse_raw_conclusion_to_list(raw: Any, max_per_task: int) -> List[Any]:
-    """Normalize raw_conclusion to a list (canonical: top-level JSON array from the LLM).
-
-    Preferred: a list of dicts each containing 'conclusion' and 'R'. Legacy shapes
-    (single dict, 'conclusions' wrapper, or string with embedded array) are still
-    accepted; see RAGFactsConclusionPrompt for the strict output contract.
-    """
+def _parse_raw_conclusion_to_list(raw: Any, max_per_task: int) -> List[Any]:  # noqa: C901
     cap = max_per_task
     if raw is None:
         return []
@@ -281,7 +268,6 @@ def _parse_raw_conclusion_to_list(raw: Any, max_per_task: int) -> List[Any]:
 
 
 class AgenticRAGGetIdentifier(agenticrag):
-
     def __init__(self, llm=None, input_key: str = 'prompts', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key

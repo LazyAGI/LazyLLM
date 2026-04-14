@@ -80,20 +80,40 @@ def build_source_to_content_pipeline(
     return ppl
 
 
-
-
 _FILTER_BUILDERS = {
     'word_count': lambda c, ik, lang: filter.word_count_filter(
-        input_key=ik, min_words=c.get('min_words', 10), max_words=c.get('max_words', 10000), language=lang),
+        input_key=ik,
+        min_words=c.get('min_words', 10),
+        max_words=c.get('max_words', 10000),
+        language=lang,
+    ),
     'char_count': lambda c, ik, lang: filter.char_count_filter(
-        input_key=ik, min_chars=c.get('min_chars', 100), max_chars=c.get('max_chars', 100000)),
+        input_key=ik,
+        min_chars=c.get('min_chars', 100),
+        max_chars=c.get('max_chars', 100000),
+    ),
     'sentence_count': lambda c, ik, lang: filter.sentence_count_filter(
-        input_key=ik, min_sentences=c.get('min_sentences', 3), max_sentences=c.get('max_sentences', 1000), language=lang),
+        input_key=ik,
+        min_sentences=c.get('min_sentences', 3),
+        max_sentences=c.get('max_sentences', 1000),
+        language=lang,
+    ),
     'target_language': lambda c, ik, lang: filter.TargetLanguageFilter(
-        input_key=ik, target_language=c.get('target_language', 'zho_Hans'), threshold=c.get('threshold', 0.6)),
-    'stop_word': lambda c, ik, lang: filter.StopWordFilter(input_key=ik, max_ratio=c.get('max_ratio', 0.5), language=lang),
+        input_key=ik,
+        target_language=c.get('target_language', 'zho_Hans'),
+        threshold=c.get('threshold', 0.6),
+    ),
+    'stop_word': lambda c, ik, lang: filter.StopWordFilter(
+        input_key=ik,
+        max_ratio=c.get('max_ratio', 0.5),
+        language=lang,
+    ),
     'unique_word': lambda c, ik, lang: filter.unique_word_filter(
-        input_key=ik, min_ratio=c.get('min_ratio', 0.1), use_tokenizer=True, language=lang),
+        input_key=ik,
+        min_ratio=c.get('min_ratio', 0.1),
+        use_tokenizer=True,
+        language=lang,
+    ),
     'null_content': lambda c, ik, lang: filter.null_content_filter(input_key=ik),
     'output_min_length': lambda c, ik, lang: domain_finetune.OutputContentFilter(
         input_key=ik,
@@ -127,8 +147,6 @@ def build_quality_filter_pipeline(
             else:
                 LOG.warning(f'Unknown filter type: {ft}, skipping...')
     return ppl
-
-
 
 def build_llm_extraction_pipeline(
     input_key: str = 'content',
@@ -207,7 +225,7 @@ def build_data_augmentation_pipeline(
     return ppl
 
 
-def build_domain_finetune_pipeline(
+def build_domain_finetune_pipeline(  # noqa: C901
     domain: str = 'general',
     input_key: str = 'content',
     output_key: str = 'formatted_text',
@@ -299,7 +317,10 @@ def build_domain_finetune_pipeline(
             )
             current_key, filter_key = cleaned_key, cleaned_key
         else:
-            LOG.warning('Normalization is enabled, skipping cleaning step (content is dict, string cleaning will discard all samples).')
+            LOG.warning(
+                'Normalization is enabled, skipping cleaning step '
+                '(content is dict, string cleaning will discard all samples).'
+            )
 
         ppl.filtering = build_quality_filter_pipeline(
             input_key=filter_key,
