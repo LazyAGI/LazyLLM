@@ -29,15 +29,17 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
         pybind11::headers
         Python3::Python
     )
-    gtest_add_tests(
-        TARGET ${test_name}
-        TEST_LIST discovered_tests
-    )
-
-    # Attach runtime env per discovered case so each test gets the same loader path.
-    if (LAZYLLM_TEST_RUNTIME_ENV AND discovered_tests)
-        set_tests_properties(${discovered_tests} PROPERTIES
-            ENVIRONMENT "${LAZYLLM_TEST_RUNTIME_ENV}"
+    if (LAZYLLM_TEST_RUNTIME_ENV)
+        gtest_discover_tests(
+            ${test_name}
+            TEST_LIST discovered_tests
+            PROPERTIES
+                ENVIRONMENT "${LAZYLLM_TEST_RUNTIME_ENV}"
+        )
+    else ()
+        gtest_discover_tests(
+            ${test_name}
+            TEST_LIST discovered_tests
         )
     endif ()
 endforeach ()
