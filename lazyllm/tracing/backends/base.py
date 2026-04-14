@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 class TracingBackend(ABC):
@@ -16,4 +16,13 @@ class TracingBackend(ABC):
         Called once at flush time (finish_span) to produce all attributes
         that should be written to the underlying OTel span.
         '''
+        pass
+
+    @abstractmethod
+    def metadata_attributes(self, trace_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def observation_type_attributes(self, span_kind: str, semantic_type: Optional[str],
+                                    trace_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         pass

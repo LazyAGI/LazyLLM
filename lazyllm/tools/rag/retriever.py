@@ -29,6 +29,8 @@ class _PostProcess(object):
 
 
 class _RetrieverBase(ModuleBase):
+    __semantic_type__ = 'retriever'
+
     class Priority(str, Enum):
         ignore = 'ignore'
         low = 'low'
@@ -85,6 +87,28 @@ class Retriever(_RetrieverBase, _PostProcess):
 
     weight = property(lambda self: self._weight)
     priority = property(lambda self: self._priority)
+
+    @property
+    def __trace_kwargs__(self):
+        doc_ids = []
+        for d in getattr(self, '_docs', []):
+            doc_ids.append(getattr(d, '_module_id', None) or str(type(d).__name__))
+        return {
+            'doc_ids': doc_ids,
+            'group_name': self._group_name,
+            'similarity': self._similarity,
+            'similarity_cut_off': self._similarity_cut_off,
+            'index': self._index,
+            'topk': self._topk,
+            'embed_keys': self._embed_keys,
+            'target': self._target,
+            'mode': self._mode,
+            'output_format': self._output_format,
+            'join': self._join,
+            'weight': self._weight,
+            'priority': str(self._priority) if self._priority else None,
+        }
+
 
     @once_wrapper
     def _lazy_init(self):
