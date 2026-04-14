@@ -184,6 +184,10 @@ class _ReviewCheckpoint:
         return bool(self.get(self._STAGE_DONE_PREFIX + stage.value))
 
     def should_use_cache(self, stage: ReviewStage) -> bool:
+        # UPLOAD is a side-effectful stage (GitHub API call): never skip it based on
+        # the absence of an invalidation marker alone — require an explicit done flag.
+        if stage == ReviewStage.UPLOAD:
+            return self.is_stage_done(ReviewStage.UPLOAD)
         if self._resume_from is None:
             inv = self._invalidated_stage()
             if inv is None:
