@@ -53,6 +53,8 @@ class TestRetriever(object):
         result = _PostProcess()._post_process([parent])
         assert result[0] is parent
         assert [node.uid for node in parent.tree_nodes] == [child1.uid, child2.uid]
+        assert 'children' not in parent.metadata
+        assert parent.metadata['tree_node_uids'] == [child1.uid, child2.uid]
 
 class TestTempRetriever():
     def test_temp_retriever(self):

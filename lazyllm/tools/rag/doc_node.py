@@ -75,6 +75,7 @@ class DocNode(DocNodeCore):
         self._parent: Optional[Union[str, 'DocNode']] = parent
         self._children: Dict[str, List['DocNode']] = defaultdict(list)
         self._children_loaded = False
+        self._directory_tree_nodes: List['DocNode'] = []
         self._store = store
         self._node_groups: Dict[str, Dict] = node_groups or {}
         self._lock = threading.Lock()
@@ -238,6 +239,34 @@ class DocNode(DocNodeCore):
         assert not self.parent, 'Only root node can set docpath'
         self.global_metadata[RAG_DOC_PATH] = str(path)
 
+    @property
+    def tree_nodes(self) -> List['DocNode']:
+        def _is_node_list(v: Any) -> bool:
+            return isinstance(v, list) and len(v) > 0 and all(hasattr(n, 'uid') for n in v)
+
+        cache = getattr(self, '_directory_tree_nodes', [])
+        if _is_node_list(cache):
+            return cache
+
+        raw = self.metadata.get('tree_node_uids', [])
+        if _is_node_list(raw):
+            self._directory_tree_nodes = raw
+            return raw
+
+        if not isinstance(raw, list):
+            return []
+        uids = [uid for uid in raw if isinstance(uid, str)]
+        if not uids:
+            return []
+
+        store = getattr(self, '_store', None)
+        if store is None:
+            return []
+
+        nodes = store.get_nodes(uids=uids, kb_id=self.global_metadata.get(RAG_KB_ID))
+        self._directory_tree_nodes = nodes
+        return nodes
+
     def get_children_str(self) -> str:
         return str(
             {key: [node._uid for node in nodes] for key, nodes in self.children.items()}
@@ -318,6 +347,7 @@ class DocNode(DocNodeCore):
             )
             node._children = copy.copy(self._children)
             node._children_loaded = self._children_loaded
+            node._directory_tree_nodes = copy.copy(self._directory_tree_nodes)
             node.embedding_state = set(self.embedding_state)
             node.relevance_score = self.relevance_score
             node.similarity_score = self.similarity_score

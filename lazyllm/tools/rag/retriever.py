@@ -25,12 +25,20 @@ class _PostProcess(object):
             return
 
         tree_node_uids = node.metadata.get('tree_node_uids')
-        store = getattr(node, '_store', None)
-        if store is None:
-            return
+        tree_nodes = []
+        if isinstance(tree_node_uids, list) and all(hasattr(n, 'uid') for n in tree_node_uids):
+            tree_nodes = tree_node_uids
+        else:
+            store = getattr(node, '_store', None)
+            if store is None or not isinstance(tree_node_uids, list):
+                return
+            uids = [uid for uid in tree_node_uids if isinstance(uid, str)]
+            if not uids:
+                return
+            tree_nodes = store.get_nodes(uids=uids, kb_id=node.global_metadata.get(RAG_KB_ID))
 
-        node.metadata['tree_node_uids'] = store.get_nodes(
-            uids=tree_node_uids, kb_id=node.global_metadata.get(RAG_KB_ID))
+        # Keep metadata['tree_node_uids'] as uid list; cache resolved DocNode objects out-of-band.
+        node._directory_tree_nodes = tree_nodes
 
     def _post_process(self, nodes):
         # Refill metadata tree nodes, from uid to DocNode

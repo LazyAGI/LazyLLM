@@ -67,16 +67,12 @@ class TreeBuilderParser(NodeTransform):
 
         root = DocNode(text='root', metadata={'text_level': 0})
         stack = [root]
-        root_children: List[DocNode] = []
-
         def _append_tree_uid(parent: DocNode, child: DocNode) -> None:
             uids = parent.metadata.get('tree_node_uids', [])
             if not isinstance(uids, list):
                 uids = []
             uids.append(child.uid)
             parent.metadata['tree_node_uids'] = uids
-            if parent is root:
-                root_children.append(child)
 
         for node in nodes:
             level = self._get_level(node)
@@ -109,4 +105,4 @@ class TreeBuilderParser(NodeTransform):
                 _append_tree_uid(stack[0], node)
                 stack.append(node)
 
-        return root_children
+        return [root, *nodes]
