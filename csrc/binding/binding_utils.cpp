@@ -75,13 +75,9 @@ lazyllm::MetadataVType PyToMetadataValue(const py::handle& value) {
         std::unordered_map<std::string, std::string> out;
         out.reserve(d.size());
         for (auto item : d) {
-            if (!py::isinstance<py::str>(item.first) || !py::isinstance<py::str>(item.second)) {
-                throw py::type_error(
-                    "Unsupported metadata dict value type. "
-                    "Only dict[str, str] is allowed."
-                );
-            }
-            out.emplace(py::cast<std::string>(item.first), py::cast<std::string>(item.second));
+            const std::string key = py::str(item.first).cast<std::string>();
+            const std::string val = py::str(item.second).cast<std::string>();
+            out.emplace(key, val);
         }
         return out;
     }
@@ -121,15 +117,12 @@ lazyllm::MetadataVType PyToMetadataValue(const py::handle& value) {
             for (py::handle item : seq) out.push_back(py::cast<double>(item));
             return out;
         }
-        throw py::type_error(
-            "Unsupported metadata sequence element type. "
-            "Only str/int/float (and homogeneous lists of them) are allowed."
-        );
+        std::vector<std::string> out;
+        out.reserve(seq.size());
+        for (py::handle item : seq) out.push_back(py::str(item).cast<std::string>());
+        return out;
     }
-    throw py::type_error(
-        "Unsupported metadata value type. "
-        "Only None/str/int/float/dict[str,str] and list[str]/list[int]/list[float] are allowed."
-    );
+    return py::str(value).cast<std::string>();
 }
 
 py::object MetadataValueToPy(const lazyllm::MetadataVType& value) {

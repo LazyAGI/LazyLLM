@@ -54,11 +54,6 @@ class DocNodeCore:
 
         return '\n'.join([f'{key}: {self._metadata[key]}' for key in metadata_keys])
 
-    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
-        metadata_str = self.get_metadata_str(metadata_mode).strip()
-        if not metadata_str:
-            return self.text if self.text else ''
-        return f'{metadata_str}\n\n{self.text}'.strip()
 
 @reset_on_pickle(('_lock', threading.Lock))
 class DocNode(DocNodeCore):
@@ -124,6 +119,12 @@ class DocNode(DocNodeCore):
             return '\n'.join(self._content)
         else:
             raise TypeError(f'content type "{type(self._content)}" is neither a str nor a list')
+
+    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
+        metadata_str = self.get_metadata_str(metadata_mode).strip()
+        if not metadata_str:
+            return self.text if self.text else ''
+        return f'{metadata_str}\n\n{self.text}'.strip()
 
     @property
     def content_hash(self) -> str:

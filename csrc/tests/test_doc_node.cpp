@@ -6,7 +6,7 @@
 
 TEST(doc_node_core, constructor_sets_text) {
     lazyllm::DocNodeCore node("hello", {}, "fixed-uid");
-    EXPECT_EQ(node.get_text(lazyllm::MetadataMode::NONE), "hello");
+    EXPECT_EQ(node._text, "hello");
     EXPECT_EQ(node._uid, "fixed-uid");
 }
 
@@ -28,6 +28,5 @@ TEST(doc_node_core, metadata_string_and_text) {
     EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::LLM), "alpha: A");
     EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::EMBED), "beta: B");
     EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::NONE), "");
-    EXPECT_EQ(node.get_text(lazyllm::MetadataMode::NONE), "body");
-    EXPECT_EQ(node.get_text(lazyllm::MetadataMode::ALL), "alpha: A\nbeta: B\n\nbody");
+    EXPECT_EQ(node._text, "body");
 }

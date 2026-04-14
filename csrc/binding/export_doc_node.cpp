@@ -25,15 +25,6 @@ struct PyDocNodeCore : lazyllm::DocNodeCore {
             mode
         );
     }
-
-    std::string get_text(lazyllm::MetadataMode mode) const override {
-        PYBIND11_OVERRIDE(
-            std::string,
-            lazyllm::DocNodeCore,
-            get_text,
-            mode
-        );
-    }
 };
 
 lazyllm::DocNodeCore::Metadata MetadataFromPy(const py::object& obj) {
@@ -191,8 +182,5 @@ void exportDocNode(py::module& m) {
         )
         .def("get_metadata_str", [](const lazyllm::DocNodeCore& node, const py::object& mode) {
             return node.get_metadata_string(ParseMode(mode, lazyllm::MetadataMode::ALL));
-        }, py::arg("mode") = py::none())
-        .def("get_text", [](const lazyllm::DocNodeCore& node, const py::object& metadata_mode) {
-            return node.get_text(ParseMode(metadata_mode, lazyllm::MetadataMode::NONE));
-        }, py::arg("metadata_mode") = py::none());
+        }, py::arg("mode") = py::none());
 }

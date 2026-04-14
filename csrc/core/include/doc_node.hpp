@@ -55,12 +55,6 @@ struct DocNodeCore {
         return JoinLines(kv_strings);
     }
 
-    virtual std::string get_text(MetadataMode mode = MetadataMode::NONE) const {
-        if (mode == MetadataMode::NONE) return _text;
-        const auto& metadata_string = get_metadata_string(mode);
-        if (metadata_string.empty()) return _text;
-        return metadata_string + "\n\n" + _text;
-    }
 };
 
 } // namespace lazyllm
