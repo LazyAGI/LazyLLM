@@ -31,7 +31,6 @@ public:
             value = lazyllm::pybind_utils::PyToMetadataValue(src);
             return true;
         } catch (const pybind11::error_already_set&) {
-            PyErr_Clear();
             return false;
         } catch (...) {
             return false;
