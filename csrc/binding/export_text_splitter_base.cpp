@@ -19,10 +19,7 @@ public:
         unsigned chunk_size,
         unsigned overlap,
         const std::string& encoding_name = "gpt2")
-        : lazyllm::TextSplitterBase(
-            static_cast<int>(chunk_size),
-            static_cast<int>(overlap),
-            encoding_name) {}
+        : lazyllm::TextSplitterBase(chunk_size, overlap, encoding_name) {}
 
     std::vector<std::string> merge_chunks_impl(py::list splits, int chunk_size) const {
         std::vector<lazyllm::Chunk> owned;
