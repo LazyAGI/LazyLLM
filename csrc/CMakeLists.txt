@@ -85,10 +85,12 @@ endif()
 
 # Install
 install(TARGETS ${INTERFACE_TARGET_NAME}
+    ARCHIVE DESTINATION lazyllm COMPONENT lazyllm_cpp
     LIBRARY DESTINATION lazyllm COMPONENT lazyllm_cpp
     RUNTIME DESTINATION lazyllm COMPONENT lazyllm_cpp
 )
 install(TARGETS tiktoken utf8proc
+    ARCHIVE DESTINATION lazyllm/cpp_lib COMPONENT lazyllm_cpp
     LIBRARY DESTINATION lazyllm/cpp_lib COMPONENT lazyllm_cpp
     RUNTIME DESTINATION lazyllm/cpp_lib COMPONENT lazyllm_cpp
 )
