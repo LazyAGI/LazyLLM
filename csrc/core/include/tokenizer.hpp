@@ -50,7 +50,7 @@ class TiktokenTokenizer final : public Tokenizer {
 public:
     TiktokenTokenizer() = delete;
     explicit TiktokenTokenizer(LanguageModel model)
-        : _encoding(load_encoding(model)) {}
+        : _encoding(GptEncoding::get_encoding(model)) {}
 
     explicit TiktokenTokenizer(std::string_view encoding_name)
         : TiktokenTokenizer(parse_tiktoken_model(encoding_name)) {}
@@ -96,28 +96,6 @@ private:
             case LanguageModel::QWEN_BASE: return "qwen.tiktoken";
         }
         throw std::runtime_error("Unknown language model");
-    }
-
-    static std::shared_ptr<GptEncoding> load_encoding(LanguageModel model) {
-        try {
-            return GptEncoding::get_encoding(model);
-        } catch (const std::exception&) {
-            const std::filesystem::path repo_root =
-                std::filesystem::path(__FILE__).parent_path().parent_path().parent_path().parent_path();
-            const std::string file_name = resource_name(model);
-            const std::vector<std::filesystem::path> candidates = {
-                repo_root / "build" / "tokenizers" / file_name,
-                repo_root / "tokenizers" / file_name,
-                std::filesystem::current_path() / "build" / "tokenizers" / file_name,
-                std::filesystem::current_path() / "tokenizers" / file_name
-            };
-            for (const auto& path : candidates) {
-                if (!std::filesystem::exists(path)) continue;
-                FilePathResourceReader reader(path);
-                return GptEncoding::get_encoding(model, &reader);
-            }
-            throw;
-        }
     }
 
     static bool has_prefix(std::string_view value, std::string_view prefix) {
