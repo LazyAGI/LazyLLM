@@ -220,7 +220,7 @@ class DatasetFormatNormalizer(domain_finetune):
                 parts.append(str(v))
         return ' '.join(parts)
 
-    def forward(self, data: dict, **kwargs) -> dict:
+    def forward(self, data: dict, **kwargs) -> dict:  # noqa: C901
         assert isinstance(data, dict)
         data = self._apply_field_mapping(data)
 
@@ -434,7 +434,10 @@ class DomainFormatAlpaca(domain_finetune):
                     self.instruction,
                 )
                 user_turns = [m['content'] for m in messages if isinstance(m, dict) and m.get('role') == 'user']
-                assistant_turns = [m['content'] for m in messages if isinstance(m, dict) and m.get('role') == 'assistant']
+                assistant_turns = [
+                    m['content'] for m in messages
+                    if isinstance(m, dict) and m.get('role') == 'assistant'
+                ]
                 instruction_text = system
                 input_text = user_turns[-1] if user_turns else ''
                 output_text = assistant_turns[-1] if assistant_turns else ''

@@ -37,8 +37,6 @@ def _zh_pretrain_body(num_paragraphs: int = 10):
         )
     return '\n'.join(parts)
 
-
-
 def _en_text_pt_non_empty_body(num_paragraphs: int = 28):
     base_terms = [
         'qzvra', 'plnko', 'trvex', 'mylor', 'snkud', 'brvot', 'clqen',

@@ -35,7 +35,6 @@ def _unwrap_first_list(result: Any) -> Any:
 
 
 def _normalize_content_identifier_value(val: Any) -> str:
-    """Coerce the content_identifier field to a single string; invalid nesting yields ''."""
     if val is None:
         return ''
     if isinstance(val, str):
@@ -83,7 +82,6 @@ def _assistant_content_str(result: Any) -> str:
 
 
 def _strip_optional_json_lang_prefix(piece: str) -> str:
-    """Remove leading ``json`` language tag after a ``` fence opener."""
     t = piece.lstrip('\n\r ')
     if len(t) >= 4 and t[:4].lower() == 'json' and (len(t) == 4 or t[4] in '\n\r \t'):
         return t[4:].lstrip('\n\r ')
@@ -91,7 +89,6 @@ def _strip_optional_json_lang_prefix(piece: str) -> str:
 
 
 def _chunks_from_triple_backtick_split(s: str) -> List[str]:
-    """Split on ``` fences. Regex ``*?`` cannot handle nested ```json inside a broken JSON string."""
     parts = s.split('```')
     if len(parts) < 2:
         return []
@@ -104,8 +101,7 @@ def _chunks_from_triple_backtick_split(s: str) -> List[str]:
     return chunks
 
 
-def _parse_backward_json_object(text: str) -> Optional[dict]:
-    """Parse {{identifier, relation}} from raw LLM output (markdown, mixed text, duplicate JSON blocks)."""
+def _parse_backward_json_object(text: str) -> Optional[dict]:  # noqa: C901
     if not text or not isinstance(text, str):
         return None
     s = text.strip()
@@ -148,7 +144,7 @@ def _parse_backward_json_object(text: str) -> Optional[dict]:
             elif c == '}':
                 depth -= 1
                 if depth == 0:
-                    sub = chunk[start : i + 1]
+                    sub = chunk[start:i + 1]
                     for fn in (json.loads, json5.loads if json5 else None, json_repair.loads):
                         if fn is None:
                             continue
@@ -176,7 +172,6 @@ def _parse_backward_json_object(text: str) -> Optional[dict]:
 
 
 def _parse_depth_identifier_llm_result(result: Any) -> str:
-    """Parse JsonFormatter output into a single identifier string with predictable fallbacks."""
     result = _unwrap_first_list(result)
     if result is None:
         return ''
@@ -453,7 +448,6 @@ class DepthQAGVerifyQuestion(agenticrag):
                 score = 0
             data['llm_score'] = score
 
-            # filter_threshold=None 表示不过滤；否则 score >= filter_threshold 时过滤
             if self.filter_threshold is not None and score >= self.filter_threshold:
                 data.pop('llm_answer', None)
                 data.pop('llm_score', None)

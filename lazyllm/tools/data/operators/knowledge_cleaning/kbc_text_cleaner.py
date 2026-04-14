@@ -8,12 +8,6 @@ from ...prompts.kbcleaning import DocRefinementPrompt
 
 
 def _text_from_json_formatter_response(response: Any) -> str:
-    """Extract the ``text`` field from JsonFormatter output.
-
-    Contract (see DocRefinementPrompt): a single JSON object ``{\"text\": \"...\"}``.
-    JsonFormatter may return a dict, a list when multiple JSON objects appear in the
-    reply, or an empty string when parsing fails.
-    """
     if isinstance(response, dict):
         if 'text' not in response:
             LOG.warning(
