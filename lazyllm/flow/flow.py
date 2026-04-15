@@ -22,7 +22,7 @@ import concurrent.futures
 from collections import deque
 import uuid
 from ..hook import LazyLLMHook, prepare_hooks, register_hooks, resolve_builtin_hooks, run_hooks
-from ..tracing.runtime import start_span, set_span_output, set_span_error, finish_span
+from ..tracing.runtime import start_span, set_span_output, set_span_error, set_span_attributes, finish_span
 from itertools import repeat
 
 
@@ -360,6 +360,14 @@ def save_pipeline_result(flag: bool = True):
     finally:
         _set_current_save_flag(old_flag)
 
+class _IterationTarget:
+    """Lightweight proxy providing span naming for loop iterations."""
+
+    def __init__(self, flow, idx):
+        self._flow_id = getattr(flow, '_flow_id', None)
+        self.__span_name__ = f'{flow.__class__.__name__}[iteration_{idx}]'
+
+
 # input -> module1 -> module2 -> ... -> moduleN -> output
 #                                               \> post-action
 # TODO(wangzhihong): support mult-input and output
@@ -413,17 +421,38 @@ class Pipeline(LazyLLMFlowsBase):
         if bind_flag:
             lazyllm.LOG.debug(f'add {self.id()} to bind_args')
             locals['bind_args'][self.id()] = bind_args_source
-        for _ in range(self._loop_count):
-            for it in self._items:
-                output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
-                kw.clear()
-                bind_args_source[self.id(it)] = output
-            exp = output
-            if not self._judge_on_full_input:
-                assert isinstance(output, tuple) and len(output) >= 2
-                exp = output[0]
-                output = output[1:]
-            if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
+        is_loop = self._loop_count > 1
+        for iteration_idx in range(self._loop_count):
+            iter_span = (start_span(span_kind='flow',
+                                    target=_IterationTarget(self, iteration_idx),
+                                    args=(output,), kwargs=kw)
+                         if is_loop else None)
+            stopped = False
+            try:
+                for it in self._items:
+                    output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
+                    kw.clear()
+                    bind_args_source[self.id(it)] = output
+                exp = output
+                if not self._judge_on_full_input:
+                    assert isinstance(output, tuple) and len(output) >= 2
+                    exp = output[0]
+                    output = output[1:]
+                stopped = callable(self._stop_condition) and self.invoke(self._stop_condition, exp)
+                set_span_output(iter_span, output)
+            except Exception as e:
+                set_span_error(iter_span, e)
+                raise
+            finally:
+                if iter_span:
+                    set_span_attributes(iter_span, {
+                        'lazyllm.loop.iteration': iteration_idx,
+                        'lazyllm.loop.max_count': self._loop_count,
+                        'lazyllm.loop.stopped': stopped,
+                    })
+                    finish_span(iter_span)
+            if stopped:
+                break
         if bind_flag:
             lazyllm.LOG.debug(f'delete {self.id()} form bind_args')
             locals['bind_args'].pop(self.id(), None)
