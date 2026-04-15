@@ -167,11 +167,23 @@ def review(
 5. 跨文件一致性规则单独提取。
 6. 结果写入 `spec.json` 和 checkpoint。
 
-### 3.4 PR 摘要（1× 文本 LLM）
+### 3.4 框架约定提取 `analyze_framework_conventions`
+
+从历史 PR 的 bot-reply 对话中提取框架约定（不盲信用户拒绝）：
+
+1. 构建回复链：利用 `in_reply_to_id` 将评论组织为对话链。
+2. 筛选高可信对话（仅以下两种模式）：
+   - **三方验证**：bot 评论 → 任意用户回复 → 同一 bot 账号再次回复（bot 自己认可了框架机制）。
+   - **Maintainer 修正**：bot 评论 → maintainer 回复（通过 `author_association` 字段判断 OWNER/MEMBER/COLLABORATOR）。
+3. 对筛选出的高可信对话调用 LLM 判断是否揭示了框架约定（verdict = `framework_convention`）。
+4. 提取结果追加到 `agent_instructions`，供 R1–R4 各轮使用。
+5. 结果缓存在 `spec.json` 的 `framework_conventions` 键中。
+
+### 3.5 PR 摘要（1× 文本 LLM）
 
 输入 `pr_body[:800]` + `diff_text[:5000]`，输出一段自然语言摘要，用于为后续各轮提供 PR 意图背景。
 
-### 3.5 R2 Agent 工具集 `_build_scoped_agent_tools_with_cache`
+### 3.6 R2 Agent 工具集 `_build_scoped_agent_tools_with_cache`
 
 限定在 `clone_dir` 内，提供以下只读工具：
 
@@ -185,7 +197,7 @@ def review(
 | `shell_scoped` | 执行只读 shell 命令 |
 | `analyze_symbol` | 分析符号定义与用法（内部可再调 LLM，结果带进程内缓存） |
 
-### 3.6 上下文裁剪工具
+### 3.7 上下文裁剪工具
 
 - **`_extract_arch_for_file(arch_doc, file_path, max_chars=3000)`**：按 `[Section]` 分段解析；`_ARCH_ALWAYS_INJECT` 关键节加权；Public API Catalog 按文件路径范围（`_candidate_scopes`）预过滤。
 - **`_lookup_relevant_rules(review_spec, diff_content, max_detail)`**：从 `diff_content` 前 200 行提取关键词匹配规则；完整规则卡最多 `max_detail` 条。
@@ -251,14 +263,22 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 
 #### Chunk 模式（大文件）
 
-1. **相关小文件合并**：分析大文件 diff 中的 `import` 语句，找到相关小文件附加到 `symbol_context`（上限 `_R2_RELATED_DIFF_BUDGET`）。
-2. **Agent 上下文收集**：`compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)` 压缩 diff 后，用 `ReactAgent` 探索仓库上下文（工具集见 3.5 节），`force_summarize=True`，`keep_full_turns=2`，带超时控制。
-3. **分块抽取**：将文件 diff 切成若干 chunk，每 chunk 调用 `_r2_extract_issues()`（1× JSON LLM）：
-   - `_filter_symbol_context_for_chunk()`：从 chunk 中提取标识符，过滤 Agent 上下文至相关行（截断至 3000 字符）。
+1. **相关小文件合并**：分析大文件 diff 中的 `import` 语句，找到相关小文件附加到上下文（上限 `_R2_RELATED_DIFF_BUDGET`）。
+2. **Agent 上下文收集（阶段A — 纯探索 subagent）**：`compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)` 压缩 diff 后，用 `ReactAgent` 探索仓库上下文（工具集见 3.6 节），`force_summarize=True`，`keep_full_turns=2`，带超时控制。
+   - 阶段A prompt 注入 `agent_instructions`（框架约定），使 agent 在探索时理解框架机制。
+   - 阶段A输出结构化 JSON：`explored_symbols`、`related_files`（含行范围）、`base_classes`、`framework_notes`。
+   - **不接收 R1 issues**，避免确认偏差，保持纯信息收集职责。
+3. **Rich Context 构建（确定性中间步骤）**：`_r2_build_rich_context()` 根据阶段A的 JSON 输出：
+   - 读取 `related_files[].lines` 标出的代码片段。
+   - 为每个相关文件和基类文件提取 `_extract_file_skeleton()`（类签名、函数签名）。
+   - 附加 `framework_notes`。
+   - 总量控制在 `_R2_RICH_CONTEXT_BUDGET=8000` 字符内。
+4. **分块抽取（阶段B）**：将文件 diff 切成若干 chunk，每 chunk 调用 `_r2_extract_issues()`（1× JSON LLM）：
+   - 输入包含 rich context（代码片段 + 文件骨架 + 框架发现）、`review_spec`、`agent_instructions`。
    - 对每条 R1 issue 作 **KEEP / MODIFY / DISCARD** 三选一决策。
    - 发现仅凭跨文件上下文才能察觉的**新 issue**。
    - 记录被 DISCARD 的 R1 `path:line` 键（进入 `discarded_r1_keys`）。
-4. 每文件 chunk 数受 `max_chunks_per_file` 约束（最大硬上限 `R2_MAX_CHUNKS_HARD=8`）。
+5. 每文件 chunk 数受 `max_chunks_per_file` 约束（最大硬上限 `R2_MAX_CHUNKS_HARD=8`）。
 
 #### Group 模式（小文件）
 
@@ -423,7 +443,7 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 | 阶段 | 关键上下文分配 |
 |------|---------------|
 | R1 hunk | hunk 截断至 ~80 行；arch 3000 字符；review_spec/pr_summary 各 600 字符 |
-| R2 chunk（Agent） | diff 压缩至 `_R2_AGENT_DIFF_BUDGET`；shared_context 4000；arch 6000；R1 list 8000；symbol_context 3000 |
+| R2 chunk（Agent） | diff 压缩至 `_R2_AGENT_DIFF_BUDGET`；shared_context 4000；arch 6000；R1 list 8000；rich_context 8000；review_spec 1200 |
 | R2 group | arch 4000；shared_context 4000；files_block 40000；r1_json 4000 |
 | R3 batch | arch 38000；prev_json 16000；budget_files = 剩余预算 |
 | R4a（文档） | arch 12000；diff 剩余预算 |
@@ -538,7 +558,7 @@ CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4A → R4 → R
 | 架构 outline | `snapshot[:4000]`，快照预算 6000 字符 | 部分快照内容未进入 outline 生成 |
 | PR 摘要 | `body[:800]`、`diff[:5000]` | 大 PR 尾部变更在预摘要中不可见 |
 | R1 规则注入 | `review_spec`/`pr_summary` 各 600 字符 | 与 R3 全量规则注入不对称 |
-| R2 chunk Agent | 对极长 diff 文件可能未覆盖尾部 | `_filter_symbol_context_for_chunk` 基于标识符启发式 |
+| R2 chunk Agent | 阶段A输出 JSON 解析失败时 fallback 为原始文本 | `_r2_build_rich_context` 有 fallback 逻辑 |
 | R2 group | `files_block[:40000]`；无 Agent 探索 | 复杂跨文件语义依赖由 Agent 模式补充 |
 | 规则匹配 | `_lookup_relevant_rules` 仅用 diff 前 200 行提关键词 | 关键词集中在尾部时匹配可能偏差 |
 | R5 去重 | 确定性步骤仅折叠相同 category；跨 category 同位置重复依赖 LLM | LLM fallback 时退化为 severity 排序 |

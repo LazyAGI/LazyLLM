@@ -167,11 +167,23 @@ Extracts rule cards from the most recent `max_history_prs` merged PR comments:
 5. Cross-file consistency rules extracted separately.
 6. Results written to `spec.json` and checkpoint.
 
-### 3.4 PR Summary (1× text LLM)
+### 3.4 Framework Convention Extraction: `analyze_framework_conventions`
+
+Extracts framework conventions from historical PR bot-reply conversations (does not blindly trust user rejections):
+
+1. Build reply chains: organizes comments into conversation chains using `in_reply_to_id`.
+2. Filter high-confidence conversations (only two patterns):
+   - **Three-way verification**: bot comment → any user reply → same bot account replies again (bot acknowledges the framework mechanism).
+   - **Maintainer correction**: bot comment → maintainer reply (determined via `author_association` field: OWNER/MEMBER/COLLABORATOR).
+3. For each high-confidence conversation, call LLM to determine if it reveals a framework convention (verdict = `framework_convention`).
+4. Extracted conventions are appended to `agent_instructions` for use across R1–R4.
+5. Results cached under the `framework_conventions` key in `spec.json`.
+
+### 3.5 PR Summary (1× text LLM)
 
 Input: `pr_body[:800]` + `diff_text[:5000]`. Output: a natural-language summary providing intent context for all subsequent rounds.
 
-### 3.5 R2 Agent Toolset: `_build_scoped_agent_tools_with_cache`
+### 3.6 R2 Agent Toolset: `_build_scoped_agent_tools_with_cache`
 
 Scoped to `clone_dir`; provides the following read-only tools:
 
@@ -185,7 +197,7 @@ Scoped to `clone_dir`; provides the following read-only tools:
 | `shell_scoped` | Execute read-only shell commands |
 | `analyze_symbol` | Analyze symbol definition and usage (may call LLM internally; results are in-process cached) |
 
-### 3.6 Context Trimming Utilities
+### 3.7 Context Trimming Utilities
 
 - **`_extract_arch_for_file(arch_doc, file_path, max_chars=3000)`**: parses `[Section]` segments; weights `_ARCH_ALWAYS_INJECT` sections higher; pre-filters Public API Catalog by file path scope (`_candidate_scopes`).
 - **`_lookup_relevant_rules(review_spec, diff_content, max_detail)`**: extracts keywords from the first 200 lines of `diff_content` to match rules; at most `max_detail` full rule cards returned.
@@ -251,14 +263,22 @@ Files are sorted **descending** by effective diff lines, so the most important f
 
 #### Chunk Mode (large files)
 
-1. **Related small file merging**: analyzes `import` statements in the large file diff; appends related small files to `symbol_context` (bounded by `_R2_RELATED_DIFF_BUDGET`).
-2. **Agent context collection**: compress diff via `compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)`, then use `ReactAgent` to explore repository context (see toolset in §3.5), with `force_summarize=True`, `keep_full_turns=2`, and timeout control.
-3. **Chunked extraction**: split file diff into chunks; for each chunk call `_r2_extract_issues()` (1× JSON LLM):
-   - `_filter_symbol_context_for_chunk()`: extract identifiers from the chunk, filter Agent context to relevant lines (truncated to 3000 chars).
+1. **Related small file merging**: analyzes `import` statements in the large file diff; appends related small files to context (bounded by `_R2_RELATED_DIFF_BUDGET`).
+2. **Agent context collection (Phase A — pure exploration subagent)**: compress diff via `compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)`, then use `ReactAgent` to explore repository context (see toolset in §3.6), with `force_summarize=True`, `keep_full_turns=2`, and timeout control.
+   - Phase A prompt includes `agent_instructions` (framework conventions) so the agent understands framework mechanisms during exploration.
+   - Phase A outputs structured JSON: `explored_symbols`, `related_files` (with line ranges), `base_classes`, `framework_notes`.
+   - **Does not receive R1 issues** to avoid confirmation bias; maintains pure information-collection responsibility.
+3. **Rich Context construction (deterministic intermediate step)**: `_r2_build_rich_context()` processes Phase A's JSON output:
+   - Reads code snippets from `related_files[].lines`.
+   - Extracts `_extract_file_skeleton()` (class signatures, function signatures) for each related file and base class file.
+   - Appends `framework_notes`.
+   - Total bounded by `_R2_RICH_CONTEXT_BUDGET=8000` chars.
+4. **Chunked extraction (Phase B)**: split file diff into chunks; for each chunk call `_r2_extract_issues()` (1× JSON LLM):
+   - Input includes rich context (code snippets + file skeletons + framework notes), `review_spec`, `agent_instructions`.
    - Make a **KEEP / MODIFY / DISCARD** decision for each R1 issue.
    - Discover **new issues** only detectable with cross-file context.
    - Record DISCARDed R1 `path:line` keys (into `discarded_r1_keys`).
-4. Per-file chunk count bounded by `max_chunks_per_file` (hard cap: `R2_MAX_CHUNKS_HARD=8`).
+5. Per-file chunk count bounded by `max_chunks_per_file` (hard cap: `R2_MAX_CHUNKS_HARD=8`).
 
 #### Group Mode (small files)
 
@@ -423,7 +443,7 @@ Runs **before** the five LLM rounds; consumes no LLM calls.
 | Stage | Key Context Allocations |
 |-------|------------------------|
 | R1 hunk | hunk truncated to ~80 lines; arch 3000 chars; review_spec/pr_summary 600 chars each |
-| R2 chunk (Agent) | diff compressed to `_R2_AGENT_DIFF_BUDGET`; shared_context 4000; arch 6000; R1 list 8000; symbol_context 3000 |
+| R2 chunk (Agent) | diff compressed to `_R2_AGENT_DIFF_BUDGET`; shared_context 4000; arch 6000; R1 list 8000; rich_context 8000; review_spec 1200 |
 | R2 group | arch 4000; shared_context 4000; files_block 40000; r1_json 4000 |
 | R3 batch | arch 38000; prev_json 16000; budget_files = remaining budget |
 | R4a (doc) | arch 12000; diff uses remaining budget |
@@ -538,7 +558,7 @@ CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4 → FINAL →
 | Arch outline | `snapshot[:4000]`; snapshot budget 6000 chars | Some snapshot content may not reach outline generation |
 | PR summary | `body[:800]`, `diff[:5000]` | Changes near the end of large PRs may be invisible in the summary |
 | R1 spec injection | `review_spec`/`pr_summary` capped at 600 chars | Asymmetric compared to R3's full spec injection |
-| R2 chunk Agent | May not cover the tail of extremely long file diffs | `_filter_symbol_context_for_chunk` is identifier-based heuristic |
+| R2 chunk Agent | Phase A JSON parse failure falls back to raw text | `_r2_build_rich_context` has fallback logic |
 | R2 group | `files_block[:40000]`; no Agent exploration | Complex cross-file semantic dependencies covered by chunk mode instead |
 | Rule matching | `_lookup_relevant_rules` only uses the first 200 lines of diff for keywords | Keywords concentrated in the tail may be missed |
 | R5 dedup | Deterministic pass only collapses same-category entries; cross-category same-location duplicates rely on LLM | Degrades to severity-sorted output on LLM fallback |

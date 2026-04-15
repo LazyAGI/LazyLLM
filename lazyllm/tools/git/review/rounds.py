@@ -1046,6 +1046,7 @@ def _r2_unit_agent_review(
     use_cache: bool,
     agent_instructions: str,
     max_chunks: int,
+    review_spec: str = '',
 ) -> None:
     files = unit['files']
     anchor = unit['anchor']
@@ -1073,7 +1074,8 @@ def _r2_unit_agent_review(
     primary = anchor or files[0]
     agent_diff = compress_diff_for_agent_heuristic(unit_diff, _R2_AGENT_DIFF_BUDGET)
     try:
-        symbol_context = _r2_build_file_context(llm, primary, agent_diff, clone_dir, tools, language)
+        symbol_context = _r2_build_file_context(llm, primary, agent_diff, clone_dir, tools, language,
+                                                agent_instructions=agent_instructions)
     except Exception as e:
         if 'timed out' in str(e):
             raise
@@ -1102,7 +1104,7 @@ def _r2_unit_agent_review(
             llm, primary, annotated_chunk, hunk_range,
             filtered_ctx, shared_context, r1_issues, arch_doc, pr_summary,
             language, agent_instructions, file_skeleton=skeleton,
-            all_paths=files,
+            all_paths=files, review_spec=review_spec,
         )
         items.extend(new_items)
         discarded.update(new_disc)
@@ -1115,11 +1117,14 @@ def _r2_unit_agent_review(
 
 
 _R2_CONTEXT_COLLECT_PROMPT_TMPL = '''\
-You are a code analysis assistant. Your ONLY task is to collect context about the symbols changed \
-in the diff below. Do NOT produce review comments yet.
+You are a code analysis assistant. Your ONLY task is to explore the repository and identify files/symbols \
+relevant to the diff below. Do NOT produce review comments or judgments.
 
 ## File Being Analyzed
 {path}
+
+## Framework Conventions (from project analysis)
+{agent_instructions}
 
 ## Diff Chunk
 ```diff
@@ -1137,14 +1142,23 @@ Step 2: For each symbol found, call grep_callers("<name>") to find call sites ou
 Step 3: If a symbol inherits from a base class, call analyze_symbol("<base_class>", "<base_file>").
 Step 4: STOP. Do not search docs or make additional calls.
 
-## Output Format (STRICT)
-Output ONLY the following compact block. Total output MUST be under 600 characters.
-Do NOT use prose. Use the exact keys below:
-
-explored: [sym1, sym2, ...]
-callers: [file:line, ...]
-base_changes: [desc, ...]
-risk: [one-line finding, ...]
+## Output Format (STRICT — must be valid JSON)
+Output a JSON object with these fields:
+```
+{{"explored_symbols": ["sym1", "sym2"],
+  "related_files": [
+    {{"path": "relative/path.py", "reason": "one-line reason", "lines": [start, end]}}
+  ],
+  "base_classes": [
+    {{"symbol": "BaseClassName", "file": "relative/path.py"}}
+  ],
+  "framework_notes": ["one-line finding about framework mechanism"]
+}}
+```
+- "related_files": files you read that are relevant; "lines" = [start_line, end_line] of the key section
+- "base_classes": base classes of modified symbols (for skeleton extraction)
+- "framework_notes": any non-obvious framework behavior discovered (lazy-loading, registry, etc.)
+Keep total output concise. At most 5 related_files and 3 framework_notes.
 
 {lang_instruction}
 '''
@@ -1162,13 +1176,16 @@ You are a senior code reviewer performing a second-pass context-enriched analysi
 ## Project Architecture (brief)
 {arch_doc}
 
+## Project Review Standards
+{review_spec}
+
 ## Cross-File Shared Context
 {shared_context}
 
 ## File Skeleton (imports, globals, class/function signatures of the whole file)
 {file_skeleton}
 
-## Symbol Context (collected by agent exploration)
+## Cross-File Context (collected by agent exploration)
 {symbol_context}
 
 ## Round 1 Issues to Verify
@@ -1249,11 +1266,87 @@ def _make_traced_tool(tool: Any, step_counter: List[int], path: str) -> Any:
         lazyllm.LOG.warning(f'Tool {tool.__name__!r} has no docstring; ReactAgent will fail to init')
     return traced
 
+_R2_RICH_CONTEXT_BUDGET = 8000
+
+def _r2_parse_exploration_json(raw: str) -> dict:
+    try:
+        text = _extract_json_text(raw)
+        if text:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    try:
+        parsed = _parse_json_with_repair(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    return {}
+
+def _r2_read_lines(clone_dir: str, rel_path: str, start: int, end: int) -> str:
+    abs_path = os.path.join(clone_dir, rel_path)
+    try:
+        with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+        start_idx = max(0, start - 1)
+        end_idx = min(len(lines), end)
+        numbered = []
+        for i, line in enumerate(lines[start_idx:end_idx], start=start_idx + 1):
+            numbered.append(f'{i:>6}| {line}')
+        return ''.join(numbered)
+    except OSError:
+        return ''
+
+def _r2_build_rich_context(clone_dir: str, raw_agent_output: str, primary_path: str) -> str:
+    exploration = _r2_parse_exploration_json(raw_agent_output)
+    if not exploration:
+        # fallback: return raw output truncated (backward compat for non-JSON agent output)
+        return raw_agent_output[:_R2_RICH_CONTEXT_BUDGET] if raw_agent_output else ''
+
+    parts: List[str] = []
+    seen_skeletons: set = set()
+
+    for item in exploration.get('related_files', [])[:5]:
+        path = item.get('path', '')
+        if not path:
+            continue
+        lines = item.get('lines', [1, 50])
+        start = lines[0] if len(lines) > 0 else 1
+        end = lines[1] if len(lines) > 1 else start + 50
+        content = _r2_read_lines(clone_dir, path, start, end)
+        if content:
+            parts.append(f'# {path}:{start}-{end} ({item.get("reason", "")})\n{content}')
+        if path not in seen_skeletons:
+            skeleton = _extract_file_skeleton(clone_dir, path)
+            if skeleton:
+                parts.append(f'# {path} (file skeleton)\n{skeleton}')
+            seen_skeletons.add(path)
+
+    for bc in exploration.get('base_classes', []):
+        bc_path = bc.get('file', '')
+        if bc_path and bc_path not in seen_skeletons:
+            skeleton = _extract_file_skeleton(clone_dir, bc_path)
+            if skeleton:
+                parts.append(f'# {bc_path} (base class {bc.get("symbol", "")} skeleton)\n{skeleton}')
+            seen_skeletons.add(bc_path)
+
+    framework_notes = exploration.get('framework_notes', [])
+    if framework_notes:
+        parts.append('# Framework Notes\n' + '\n'.join(f'- {n}' for n in framework_notes[:3]))
+
+    result = '\n\n'.join(parts)
+    return result[:_R2_RICH_CONTEXT_BUDGET] if result else raw_agent_output[:_R2_RICH_CONTEXT_BUDGET]
+
 def _r2_build_file_context(
-    llm: Any, path: str, diff_chunk: str, clone_dir: str, tools: List[Any], language: str = 'cn',
+    llm: Any, path: str, diff_chunk: str, clone_dir: str, tools: List[Any],
+    language: str = 'cn', agent_instructions: str = '',
 ) -> str:
     prompt = _R2_CONTEXT_COLLECT_PROMPT_TMPL.format(
-        path=path, diff_chunk=diff_chunk[:8000], lang_instruction=_language_instruction(language),
+        path=path, diff_chunk=diff_chunk[:8000],
+        agent_instructions=agent_instructions or '(not available)',
+        lang_instruction=_language_instruction(language),
     )
     step_counter = [0]
     traced_tools = [_make_traced_tool(t, step_counter, path) for t in tools]
@@ -1261,7 +1354,10 @@ def _r2_build_file_context(
         agent = ReactAgent(
             llm, tools=traced_tools, max_retries=_R2_FILE_AGENT_RETRIES,
             workspace=clone_dir, force_summarize=True,
-            force_summarize_context=f'Exploring context for {path}:\n{diff_chunk[:1200]}',
+            force_summarize_context=(
+                f'Exploring context for {path}:\n{diff_chunk[:800]}\n\n'
+                f'Key framework conventions:\n{agent_instructions[:400]}'
+            ),
             keep_full_turns=2,
         )
     except Exception as e:
@@ -1277,7 +1373,8 @@ def _r2_build_file_context(
         except TimeoutError:
             raise RuntimeError(f'Round 2 context collection timed out for {path} after {_R2_FILE_TIMEOUT_SECS}s')
     lazyllm.LOG.info(f'  [Agent] Done {path}')
-    return raw if isinstance(raw, str) else str(raw)
+    raw_str = raw if isinstance(raw, str) else str(raw)
+    return _r2_build_rich_context(clone_dir, raw_str, path)
 
 def _r2_parse_item(item: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Optional[int]]]:
     if not isinstance(item, dict) or item.get('problem') is None:
@@ -1299,6 +1396,7 @@ def _r2_extract_issues(
     shared_context: str, r1_issues: List[Dict[str, Any]], arch_doc: str,
     pr_summary: str, language: str = 'cn', agent_instructions: str = '',
     file_skeleton: str = '', all_paths: Optional[List[str]] = None,
+    review_spec: str = '',
 ) -> Tuple[List[Dict[str, Any]], set]:
     arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=_R2_ARCH_BUDGET)
     r1_indexed = [{**c, 'r1_idx': i, 'problem': (c.get('problem') or '')[:120]} for i, c in enumerate(r1_issues)]
@@ -1306,11 +1404,13 @@ def _r2_extract_issues(
     if len(r1_text) > _R2_R1_BUDGET:
         r1_text = r1_text[:_R2_R1_BUDGET] + '\n...(truncated)'
     paths_str = ', '.join(f'`{p}`' for p in (all_paths or [path]))
+    spec_snippet = _sample_text(review_spec, 1200) if review_spec else '(not available)'
     prompt = _R2_ISSUE_EXTRACT_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         pr_summary=(pr_summary or '')[:_R2_SUMMARY_BUDGET],
         agent_instructions=agent_instructions or '(not available)',
         arch_doc=arch_snippet,
+        review_spec=spec_snippet,
         shared_context=shared_context or '(none)',
         file_skeleton=file_skeleton[:3000] if file_skeleton else '(not available)',
         symbol_context=symbol_context[:3000] if symbol_context else '(none)',
@@ -1366,6 +1466,7 @@ def _r2_process_file_chunk(
     agent_instructions: str = '',
     max_chunks: int = 3,
     related_diff_snippet: str = '',
+    review_spec: str = '',
 ) -> None:
     safe_path = re.sub(r'[^a-zA-Z0-9_]', '_', path)
     r2_key = f'r2_file_{safe_path}'
@@ -1382,7 +1483,8 @@ def _r2_process_file_chunk(
 
     agent_diff = compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)
     try:
-        symbol_context = _r2_build_file_context(llm, path, agent_diff, clone_dir, tools, language)
+        symbol_context = _r2_build_file_context(llm, path, agent_diff, clone_dir, tools, language,
+                                                agent_instructions=agent_instructions)
     except Exception as e:
         if 'timed out' in str(e):
             raise
@@ -1410,7 +1512,7 @@ def _r2_process_file_chunk(
             items, discarded = _r2_extract_issues(
                 llm, path, annotated_chunk, hunk_range, chunk_ctx, shared_context,
                 r1_issues, arch_doc, pr_summary, language, agent_instructions,
-                all_paths=[path],
+                all_paths=[path], review_spec=review_spec,
             )
             merged.extend(items)
             merged_disc.update(discarded)
@@ -1439,6 +1541,7 @@ def _round2_agent_review(
     strategy: Optional[Any] = None,
     owner_repo: str = '',
     arch_cache_path: Optional[str] = None,
+    review_spec: str = '',
 ) -> Tuple[List[Dict[str, Any]], set, Dict[str, int]]:
     # returns (r2_issues, discarded_r1_line_keys, metrics_dict)
     r2_metrics: Dict[str, int] = {
@@ -1497,7 +1600,7 @@ def _round2_agent_review(
             llm, unit, r1_by_file, shared_context, arch_doc, pr_summary,
             clone_dir, symbol_cache, tools, language, ckpt, all_results, all_discarded,
             use_cache=use_cache, agent_instructions=agent_instructions,
-            max_chunks=max_chunks,
+            max_chunks=max_chunks, review_spec=review_spec,
         )
         if unit['anchor']:
             r2_metrics['r2_files_chunk'] += 1
@@ -2444,6 +2547,7 @@ def _run_five_rounds(  # noqa: C901
         clone_dir=clone_dir, language=language, ckpt=ckpt,
         agent_instructions=agent_instructions, strategy=strategy,
         owner_repo=owner_repo, arch_cache_path=arch_cache_path,
+        review_spec=review_spec,
     )
     ckpt.mark_stage_done(ReviewStage.R2)
 

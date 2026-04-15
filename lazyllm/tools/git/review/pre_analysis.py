@@ -645,11 +645,14 @@ for an architecture document with {max_sections} sections.
 For each section output a JSON object with:
 - "title": section name (e.g. "Module Responsibilities")
 - "focus": one sentence describing what to cover
-- "search_hints": list of 2-3 regex patterns for search_in_files to find relevant code
+- "search_hints": list of 2-3 regex patterns for search_in_files to find relevant code \
+(infer patterns from the actual project code visible in the snapshot — do NOT hardcode project-specific names)
 
 The FIRST section MUST be:
-{{"title": "Module Hierarchy", "focus": "模块分层结构：底层基础模块、中间层、上层业务模块，以及明确禁止的依赖方向（底层不得感知上层）", \
-"search_hints": ["^from lazyllm", "^import lazyllm", "from \\."]}}
+{{"title": "Module Hierarchy",
+ "focus": "Module layering: core/base modules, mid-layer, top-level business modules, \
+and forbidden dependency directions",
+ "search_hints": ["<generate 2-3 regex patterns based on the project import style visible in the snapshot>"]}}
 
 The SECOND section MUST be:
 {{"title": "Environment & Dependencies",
@@ -659,15 +662,16 @@ which dependencies are optional/extras vs hard requirements, and the naming conv
 
 The THIRD section MUST be:
 {{"title": "Module Ownership Rules",
- "focus": "每个模块/子包的职责边界：哪类代码必须放在哪个模块（如配置项必须在功能模块内定义而非顶层 configs.py，\
-tracing 相关代码必须在 tracing/ 下），以及跨模块引用的允许方向",
- "search_hints": ["^class.*Config", "lazyllm\\.config\\.add", "from lazyllm\\.configs"]}}
+ "focus": "Per-module/sub-package responsibility boundaries: which code must live in which module \
+(e.g. config definitions inside feature modules, not top-level), and allowed cross-module reference directions",
+ "search_hints": ["<generate 2-3 regex patterns for config/ownership patterns visible in the snapshot>"]}}
 
 {gotchas_instruction}
 
 The LAST section MUST be:
-{{"title": "Key Utilities & Usage Notes", "focus": "关键辅助函数、数据结构的典型用法和注意事项", \
-"search_hints": ["def _[a-z]", "class.*Dict", "ArgsDict|LazyLLMCMD"]}}
+{{"title": "Key Utilities & Usage Notes",
+ "focus": "Key helper functions, data structures, their typical usage and caveats",
+ "search_hints": ["<generate 2-3 regex patterns for utility classes/functions visible in the snapshot>"]}}
 
 ''' + JSON_OUTPUT_INSTRUCTION + '''
 
@@ -679,13 +683,17 @@ The LAST section MUST be:
 _ARCH_GOTCHAS_INSTRUCTION = '''\
 The SECOND-TO-LAST section MUST be:
 {{"title": "Non-Obvious Behaviors & Gotchas", \
-"focus": "初始值、全局状态、线程安全约定、注册系统行为、容易被误解的设计决策（如某字段永不为 None 的保证）", \
-"search_hints": ["__global_attrs__", "ThreadSafeDict", "once_wrapper", "LazyLLMRegisterMeta"]}}'''
+"focus": "Initial values, global state, thread-safety conventions, registry/factory behavior, \
+lazy-loading / deferred-init patterns, private-attribute cross-module access conventions, \
+easily misunderstood design decisions", \
+"search_hints": ["<generate 2-3 regex patterns for non-obvious state management, lazy-init, \
+or deferred-import patterns visible in the snapshot>"]}}'''
 
 _ARCH_HAS_AGENT_INSTRUCTION = '''\
 NOTE: This project already has an AGENTS.md (or equivalent) covering conventions and gotchas. \
-Focus sections on module structure, class hierarchies, cross-module dependency rules, and design \
-patterns instead. Do NOT generate a "Gotchas" section — that is already covered by AGENTS.md.'''
+Still include a "Non-Obvious Behaviors & Gotchas" section as the SECOND-TO-LAST section, but \
+focus ONLY on framework mechanisms NOT already covered by AGENTS.md (e.g. lazy-loading wrappers, \
+registry metaclasses, implicit state initialization). Do NOT duplicate content from AGENTS.md.'''
 
 def _arch_generate_outline(
     llm: Any, snapshot: str, agent_instructions: str = '',
@@ -1733,6 +1741,223 @@ def _collect_rules_for_pr(
     all_rules.extend(rules)
     prog.update(f'[{idx}/{total}] PR #{pr_num} — {len(comments)} comments → {len(rules)} rules extracted')
 
+_MAINTAINER_ASSOCIATIONS = {'OWNER', 'MEMBER', 'COLLABORATOR'}
+
+_VALIDATE_CONVENTION_PROMPT = '''\
+You are analyzing a code review conversation to determine if it reveals a framework convention.
+
+## Conversation Pattern: {pattern}
+
+### Bot's Original Comment
+{bot_comment}
+
+### Response
+{reply_text}
+
+{ack_section}
+
+## Task
+Determine if this conversation reveals a genuine framework convention that the automated reviewer \
+should learn. Output a JSON object:
+- "verdict": "framework_convention" | "design_tradeoff" | "not_generalizable" | "author_wrong"
+- "reasoning": one sentence
+- If verdict is "framework_convention":
+  - "trigger_pattern": the code pattern that triggered the false alarm
+  - "actual_behavior": what actually happens in the framework
+  - "do_not_flag": one sentence guideline for the reviewer
+
+Only output "framework_convention" if the conversation clearly demonstrates the reviewer \
+misunderstood a reusable framework mechanism.
+''' + JSON_OUTPUT_INSTRUCTION
+
+def _build_reply_chains(comments: list) -> List[List[dict]]:
+    by_id = {}
+    children: Dict[Any, list] = {}
+    roots = []
+    for c in comments:
+        cid = c.get('id') if isinstance(c, dict) else getattr(c, 'id', None)
+        if cid is not None:
+            by_id[cid] = c
+    for c in comments:
+        raw = (c.get('raw') if isinstance(c, dict) else getattr(c, 'raw', {})) or {}
+        parent_id = raw.get('in_reply_to_id')
+        cid = c.get('id') if isinstance(c, dict) else getattr(c, 'id', None)
+        if parent_id and parent_id in by_id:
+            children.setdefault(parent_id, []).append(c)
+        else:
+            roots.append(c)
+    chains = []
+    for root in roots:
+        rid = root.get('id') if isinstance(root, dict) else getattr(root, 'id', None)
+        chain = [root]
+        queue = list(children.get(rid, []))
+        while queue:
+            node = queue.pop(0)
+            chain.append(node)
+            nid = node.get('id') if isinstance(node, dict) else getattr(node, 'id', None)
+            queue.extend(children.get(nid, []))
+        if len(chain) >= 2:
+            chains.append(chain)
+    return chains
+
+def _get_comment_field(c: Any, field: str) -> str:
+    return ((c.get(field) if isinstance(c, dict) else getattr(c, field, '')) or '').strip()
+
+def _filter_high_confidence_chains(chains: List[List[Any]], pr_author: str = '') -> List[Dict[str, str]]:
+    results = []
+    for chain in chains:
+        root = chain[0]
+        root_user = _get_comment_field(root, 'user')
+        if not _BOT_USER_PATTERNS.search(root_user):
+            continue
+        bot_user = root_user
+        root_body = _get_comment_field(root, 'body')
+        if not root_body:
+            continue
+        found = False
+        for reply in chain[1:]:
+            reply_user = _get_comment_field(reply, 'user')
+            reply_body = _get_comment_field(reply, 'body')
+            if not reply_body:
+                continue
+            # pattern 1: same bot account replies (three-way)
+            if reply_user == bot_user:
+                human_replies = [
+                    c for c in chain[1:]
+                    if _get_comment_field(c, 'user') != bot_user
+                    and not _BOT_USER_PATTERNS.search(_get_comment_field(c, 'user'))
+                    and _get_comment_field(c, 'body')
+                ]
+                if human_replies:
+                    results.append({
+                        'bot_comment': root_body[:600],
+                        'reply_text': _get_comment_field(human_replies[0], 'body')[:600],
+                        'bot_acknowledgment': reply_body[:400],
+                        'pattern': 'three_way',
+                    })
+                    found = True
+                break
+            # pattern 2: maintainer direct reply
+            raw = (reply.get('raw') if isinstance(reply, dict) else getattr(reply, 'raw', {})) or {}
+            assoc = (raw.get('author_association') or '').upper()
+            is_maintainer = assoc in _MAINTAINER_ASSOCIATIONS or reply_user == pr_author
+            if is_maintainer and not _BOT_USER_PATTERNS.search(reply_user):
+                results.append({
+                    'bot_comment': root_body[:600],
+                    'reply_text': reply_body[:600],
+                    'bot_acknowledgment': '',
+                    'pattern': 'maintainer_direct',
+                })
+                found = True
+                break
+        if found and len(results) >= 20:
+            break
+    return results
+
+def _resolve_pr_author(pr: Any) -> str:
+    pr_user = (pr.get('user') if isinstance(pr, dict) else getattr(pr, 'user', None))
+    if isinstance(pr_user, dict):
+        return pr_user.get('login', '')
+    return pr_user if isinstance(pr_user, str) else ''
+
+def _validate_conventions_batch(llm: Any, high_conf: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+    conventions = []
+    for pair in high_conf[:10]:
+        ack_section = ''
+        if pair.get('bot_acknowledgment'):
+            ack_section = f'### Bot Acknowledgment\n{pair["bot_acknowledgment"]}'
+        prompt = _VALIDATE_CONVENTION_PROMPT.format(
+            pattern=pair['pattern'],
+            bot_comment=pair['bot_comment'],
+            reply_text=pair['reply_text'],
+            ack_section=ack_section,
+        )
+        result = _safe_llm_call(llm, prompt)
+        if isinstance(result, list):
+            result = result[0] if result else {}
+        if isinstance(result, dict) and result.get('verdict') == 'framework_convention':
+            conventions.append(result)
+    return conventions
+
+def _collect_framework_conventions_for_pr(  # noqa: C901
+    backend: LazyLLMGitBase, llm: Any, pr: Any,
+    idx: int, total: int, cache_path: Optional[str],
+    prog: Any, all_conventions: List[Dict[str, Any]],
+) -> None:
+    pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
+    if pr_num is None:
+        return
+    conv_cache_key = f'conv_pr_{pr_num}_conventions'
+    cached_str = _load_cache(cache_path, conv_cache_key)
+    if cached_str:
+        try:
+            convs = json.loads(cached_str)
+            all_conventions.extend(convs)
+            return
+        except (json.JSONDecodeError, TypeError):
+            pass
+    try:
+        res = backend.list_review_comments(pr_num)
+    except Exception:
+        return
+    if not res.get('success'):
+        return
+    raw_comments = res.get('comments') or []
+    if not raw_comments:
+        return
+    chains = _build_reply_chains(raw_comments)
+    pr_author = _resolve_pr_author(pr)
+    high_conf = _filter_high_confidence_chains(chains, pr_author)
+    if not high_conf:
+        _save_cache(cache_path, conv_cache_key, '[]')
+        return
+    conventions = _validate_conventions_batch(llm, high_conf)
+    _save_cache(cache_path, conv_cache_key, json.dumps(conventions, ensure_ascii=False))
+    all_conventions.extend(conventions)
+    if conventions:
+        prog.update(f'[{idx}/{total}] PR #{pr_num} — {len(high_conf)} chains → {len(conventions)} conventions')
+
+def analyze_framework_conventions(
+    backend: LazyLLMGitBase, llm: Any, cache_path: Optional[str] = None, max_prs: int = 50,
+) -> str:
+    cached = _load_cache(cache_path, 'framework_conventions')
+    if cached:
+        return cached
+    merged: List[Any] = []
+    fetch_size = max_prs
+    while len(merged) < max_prs:
+        pr_list_res = backend.list_pull_requests(state='closed', max_results=fetch_size)
+        if not pr_list_res.get('success'):
+            return ''
+        prs = pr_list_res.get('list') or []
+        if not prs:
+            break
+        merged = [p for p in prs if _is_merged_pr(p)]
+        if len(merged) >= max_prs or len(prs) < fetch_size:
+            break
+        fetch_size = min(fetch_size * 2, 1000)
+    target = merged[:max_prs]
+    if not target:
+        return ''
+    prog = _Progress('Conventions: extracting from bot-reply chains', len(target))
+    all_conventions: List[Dict[str, Any]] = []
+    for idx, pr in enumerate(target, 1):
+        _collect_framework_conventions_for_pr(backend, llm, pr, idx, len(target), cache_path, prog, all_conventions)
+    prog.done(f'{len(all_conventions)} framework conventions from {len(target)} PRs')
+    if not all_conventions:
+        _save_cache(cache_path, 'framework_conventions', '')
+        return ''
+    lines = []
+    for c in all_conventions:
+        trigger = c.get('trigger_pattern', '')
+        behavior = c.get('actual_behavior', '')
+        guideline = c.get('do_not_flag', '')
+        if guideline:
+            lines.append(f'- Pattern: {trigger} → {behavior}. Rule: {guideline}')
+    result = '\n'.join(lines) if lines else ''
+    _save_cache(cache_path, 'framework_conventions', result)
+    return result
+
 def analyze_historical_reviews(
     backend: LazyLLMGitBase, llm: Any, cache_path: Optional[str] = None, max_prs: int = 200
 ) -> str:
@@ -1980,4 +2205,14 @@ def _run_pre_analysis(
         _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
 
     review_spec = _run_spec_analysis(backend_inst, llm, review_spec_cache_path, max_history_prs, ckpt)
+
+    try:
+        conventions = analyze_framework_conventions(backend_inst, llm, review_spec_cache_path, max_prs=max_history_prs)
+        if conventions:
+            agent_instructions = (agent_instructions + '\n\n## Framework Conventions (from historical reviews)\n'
+                                  + conventions)[:_AGENT_INSTRUCTIONS_MAX_CHARS]
+            _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
+    except Exception as e:
+        lazyllm.LOG.warning(f'Framework convention extraction failed (non-fatal): {e}')
+
     return arch_doc, review_spec, clone_dir, agent_instructions
