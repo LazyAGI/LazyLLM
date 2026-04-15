@@ -98,28 +98,38 @@ class GitLab(LazyLLMGitBase):
         return {'success': True, 'pr': pr}
 
     def list_pull_requests(self, state: str = 'open', head: Optional[str] = None,
-                           base: Optional[str] = None) -> Dict[str, Any]:
+                           base: Optional[str] = None, max_results: int = 100) -> Dict[str, Any]:
         state_map = {'open': 'opened', 'closed': 'closed', 'all': 'all'}
-        params = {'state': state_map.get(state, state)}
+        params: Dict[str, Any] = {'state': state_map.get(state, state), 'per_page': min(100, max_results), 'page': 1}
         if base is not None:
             params['target_branch'] = base
         if head is not None:
             params['source_branch'] = head
-        r = self._req('GET', '/merge_requests', params=params)
-        if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
         out = []
-        for data in r.json():
-            out.append(PrInfo(
-                number=data['iid'],
-                title=data['title'],
-                state=data.get('state', 'opened'),
-                body=data.get('description') or '',
-                source_branch=data.get('source_branch', ''),
-                target_branch=data.get('target_branch', ''),
-                html_url=data.get('web_url', ''),
-                raw=data,
-            ))
+        while len(out) < max_results:
+            r = self._req('GET', '/merge_requests', params=params)
+            if r.status_code != 200:
+                return {'success': False, 'message': r.text or r.reason}
+            page_data = r.json()
+            if not page_data:
+                break
+            for data in page_data:
+                out.append(PrInfo(
+                    number=data['iid'],
+                    title=data['title'],
+                    state=data.get('state', 'opened'),
+                    body=data.get('description') or '',
+                    source_branch=data.get('source_branch', ''),
+                    target_branch=data.get('target_branch', ''),
+                    html_url=data.get('web_url', ''),
+                    raw=data,
+                ))
+                if len(out) >= max_results:
+                    break
+            next_page = r.headers.get('x-next-page', '')
+            if not next_page:
+                break
+            params = {'page': int(next_page), 'per_page': params['per_page']}
         return {'success': True, 'list': out}
 
     def get_pr_diff(self, number: int) -> Dict[str, Any]:
@@ -178,11 +188,25 @@ class GitLab(LazyLLMGitBase):
         return {'success': True, 'comment_id': cid, 'message': 'created'}
 
     def submit_review(self, number: int, event: str, body: str = '',
-                      comment_ids: Optional[List[Any]] = None) -> Dict[str, Any]:
+                      comments: Optional[List[Dict[str, Any]]] = None,
+                      commit_id: Optional[str] = None) -> Dict[str, Any]:
         if event.upper() == 'APPROVE':
             return self.approve_pull_request(number)
         if body:
             self._req('POST', f'/merge_requests/{number}/notes', json={'body': body})
+        if comments:
+            for c in comments:
+                if not isinstance(c, dict) or not c.get('body'):
+                    continue
+                # GitLab needs precise position; fallback to MR note if not provided.
+                path = c.get('path', '')
+                line = c.get('line')
+                if path and line is not None and commit_id:
+                    self.create_review_comment(
+                        number=number, body=c['body'], path=path, line=int(line), commit_id=commit_id
+                    )
+                else:
+                    self._req('POST', f'/merge_requests/{number}/notes', json={'body': c['body']})
         return {'success': True, 'message': 'submitted'}
 
     def approve_pull_request(self, number: int, sha: Optional[str] = None) -> Dict[str, Any]:
