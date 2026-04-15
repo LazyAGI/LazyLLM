@@ -2,7 +2,7 @@ import re
 from typing import Any, List, Optional, Callable
 
 from .base import NodeTransform, RuleSet
-from ..doc_node import DocNode, RichDocNode
+from ..doc_node import DocNode, RichDocNode, TreeDocNode
 
 def _default_get_level(node: DocNode) -> int:
     try:
@@ -62,23 +62,18 @@ class TreeBuilderParser(NodeTransform):
         if not nodes:
             return []
 
-        for node in nodes:
-            node.metadata.pop('tree_node_uids', None)
-
-        root = DocNode(text='root', metadata={'text_level': 0})
+        root = TreeDocNode(text='root', metadata={'text_level': 0})
         stack = [root]
-        def _append_tree_uid(parent: DocNode, child: DocNode) -> None:
-            uids = parent.metadata.get('tree_node_uids', [])
-            if not isinstance(uids, list):
-                uids = []
-            uids.append(child.uid)
-            parent.metadata['tree_node_uids'] = uids
+        normalized_nodes: List[TreeDocNode] = []
 
         for node in nodes:
+            normalized_nodes.append(TreeDocNode.from_doc_node(node))
+
+        for node in normalized_nodes:
             level = self._get_level(node)
 
             if level == 0:
-                _append_tree_uid(stack[-1], node)
+                stack[-1].add_child(node)
                 continue
 
             target_parent_index = -1
@@ -96,13 +91,13 @@ class TreeBuilderParser(NodeTransform):
                 while len(stack) - 1 > target_parent_index:
                     stack.pop()
 
-                _append_tree_uid(stack[-1], node)
+                stack[-1].add_child(node)
                 stack.append(node)
             else:
                 while len(stack) > 1:
                     stack.pop()
 
-                _append_tree_uid(stack[0], node)
+                stack[0].add_child(node)
                 stack.append(node)
 
-        return [root, *nodes]
+        return root.direct_children_in_tree

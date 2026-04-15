@@ -79,7 +79,6 @@ class DocNode(DocNodeCore):
         self._parent: Optional[Union[str, 'DocNode']] = parent
         self._children: Dict[str, List['DocNode']] = defaultdict(list)
         self._children_loaded = False
-        self._directory_tree_nodes: List['DocNode'] = []
         self._store = store
         self._node_groups: Dict[str, Dict] = node_groups or {}
         self._lock = threading.Lock()
@@ -239,34 +238,6 @@ class DocNode(DocNodeCore):
         assert not self.parent, 'Only root node can set docpath'
         self.global_metadata[RAG_DOC_PATH] = str(path)
 
-    @property
-    def tree_nodes(self) -> List['DocNode']:
-        def _is_node_list(v: Any) -> bool:
-            return isinstance(v, list) and len(v) > 0 and all(hasattr(n, 'uid') for n in v)
-
-        cache = getattr(self, '_directory_tree_nodes', [])
-        if _is_node_list(cache):
-            return cache
-
-        raw = self.metadata.get('tree_node_uids', [])
-        if _is_node_list(raw):
-            self._directory_tree_nodes = raw
-            return raw
-
-        if not isinstance(raw, list):
-            return []
-        uids = [uid for uid in raw if isinstance(uid, str)]
-        if not uids:
-            return []
-
-        store = getattr(self, '_store', None)
-        if store is None:
-            return []
-
-        nodes = store.get_nodes(uids=uids, kb_id=self.global_metadata.get(RAG_KB_ID))
-        self._directory_tree_nodes = nodes
-        return nodes
-
     def get_children_str(self) -> str:
         return str(
             {key: [node._uid for node in nodes] for key, nodes in self.children.items()}
@@ -282,8 +253,6 @@ class DocNode(DocNodeCore):
         )
 
     def __repr__(self) -> str:
-        if config.cpp_switch:
-            return '<Node>'
         return str(self) if config['mode'] == Mode.Debug else f'<Node id={self._uid}>'
 
     def __eq__(self, other):
@@ -333,31 +302,11 @@ class DocNode(DocNodeCore):
 
     def copy(self, global_metadata: dict = None, metadata: dict = None,
              preserve_uid: bool = False) -> 'DocNode':
-        if config.cpp_switch:
-            node = DocNode(
-                uid=self.uid if preserve_uid else None,
-                content=copy.deepcopy(self._content),
-                group=self._group,
-                embedding=copy.deepcopy(self._embedding),
-                parent=self._parent,
-                store=self._store,
-                node_groups=self._node_groups,
-                metadata=dict(self._metadata or {}),
-                global_metadata=dict(self._global_metadata or {}),
-            )
-            node._children = copy.copy(self._children)
-            node._children_loaded = self._children_loaded
-            node._directory_tree_nodes = copy.copy(self._directory_tree_nodes)
-            node.embedding_state = set(self.embedding_state)
-            node.relevance_score = self.relevance_score
-            node.similarity_score = self.similarity_score
-            node._content_hash = self._content_hash
-        else:
-            node = copy.copy(self)
-            if not preserve_uid:
-                node._uid = str(uuid.uuid4())
-            node._metadata = dict(self._metadata or {})
-            node._global_metadata = dict(self._global_metadata or {})
+        node = copy.copy(self)
+        if not preserve_uid:
+            node._uid = str(uuid.uuid4())
+        node._metadata = dict(self._metadata or {})
+        node._global_metadata = dict(self._global_metadata or {})
 
         node._copy_source = {'uid': self.uid, RAG_KB_ID: self.global_metadata.get(RAG_KB_ID),
                              RAG_DOC_ID: self.global_metadata.get(RAG_DOC_ID)}
@@ -513,3 +462,21 @@ class RichDocNode(DocNode):
             return node
 
         return [_deserialize_node(content) for content in json.loads(nodes_content)]
+
+
+class TreeDocNode(DocNode):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.direct_children_in_tree: List[DocNode] = []
+
+    @classmethod
+    def from_doc_node(cls, node: DocNode) -> 'TreeDocNode':
+        if isinstance(node, cls):
+            return node
+        tree_node = node.copy(preserve_uid=True)
+        tree_node.__class__ = cls
+        tree_node.direct_children_in_tree = []
+        return tree_node
+
+    def add_child(self, child: 'TreeDocNode') -> None:
+        self.direct_children_in_tree.append(child)

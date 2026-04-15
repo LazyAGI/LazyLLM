@@ -6,7 +6,6 @@ from enum import Enum
 from .document import Document, UrlDocument, DocImpl
 from .store import LAZY_ROOT_NAME
 from .similarity import registered_similarities
-from .global_metadata import RAG_KB_ID
 import functools
 import lazyllm
 
@@ -20,31 +19,7 @@ class _PostProcess(object):
             'Only content output can be joined')
         self._join = join
 
-    def _metadata_tree_nodes_refill(self, node: DocNode) -> None:
-        if 'tree_node_uids' not in node.metadata:
-            return
-
-        tree_node_uids = node.metadata.get('tree_node_uids')
-        tree_nodes = []
-        if isinstance(tree_node_uids, list) and all(hasattr(n, 'uid') for n in tree_node_uids):
-            tree_nodes = tree_node_uids
-        else:
-            store = getattr(node, '_store', None)
-            if store is None or not isinstance(tree_node_uids, list):
-                return
-            uids = [uid for uid in tree_node_uids if isinstance(uid, str)]
-            if not uids:
-                return
-            tree_nodes = store.get_nodes(uids=uids, kb_id=node.global_metadata.get(RAG_KB_ID))
-
-        # Keep metadata['tree_node_uids'] as uid list; cache resolved DocNode objects out-of-band.
-        node._directory_tree_nodes = tree_nodes
-
     def _post_process(self, nodes):
-        # Refill metadata tree nodes, from uid to DocNode
-        for node in nodes:
-            self._metadata_tree_nodes_refill(node)
-
         if self._output_format == 'content':
             nodes = [node.get_content() for node in nodes]
             if isinstance(self._join, str): nodes = self._join.join(nodes)
