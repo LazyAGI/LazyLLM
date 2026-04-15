@@ -31,14 +31,24 @@ def _is_local_map_store(store_conf: Optional[Dict]) -> bool:
 
 
 def _is_persistent_store(store_conf: Optional[Dict]) -> bool:
-    # The vector store type defaults to 'map' (in-memory) when 'type' is unset.
-    # A config that ONLY sets metadata_store / kwargs without a top-level vector
-    # store 'type' still uses the default map store and is NOT persistent. Only
-    # treat it as persistent when 'type' is explicitly set to something other
-    # than 'map'.
+    # The vector store type defaults to 'map' (in-memory) when neither a
+    # top-level 'type' nor a split 'vector_store'/'segment_store' backend is
+    # provided. ``_DocumentStore._normalize_store_config`` accepts both shapes:
+    #   - {'type': 'milvus', ...}                          (single-store form)
+    #   - {'vector_store': {'type': 'milvus', ...},        (split form)
+    #      'segment_store': {'type': 'elasticsearch', ...}}
+    # A config that ONLY sets ``metadata_store`` (no vector/segment backend)
+    # still uses the in-memory map store and is NOT persistent.
     if not isinstance(store_conf, dict):
         return False
-    return store_conf.get('type', 'map') != 'map'
+    top_type = store_conf.get('type')
+    if top_type is not None:
+        return top_type != 'map'
+    for key in ('vector_store', 'segment_store'):
+        sub = store_conf.get(key)
+        if isinstance(sub, dict) and sub.get('type', 'map') != 'map':
+            return True
+    return False
 
 
 class CallableDict(dict):

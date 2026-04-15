@@ -633,6 +633,26 @@ class TestDocument(unittest.TestCase):
         assert mgr._spawn_doc_server is False, 'Map store should never auto-upgrade'
         mgr.stop()
 
+    def test_split_vector_store_form_triggers_auto_upgrade(self):
+        '''Regression: store_conf using the split form
+        ``{'vector_store': {'type': <persistent>}, 'segment_store': {...}}``
+        without a top-level ``type`` is still a persistent store and must
+        auto-upgrade to DocServer.
+        '''
+        dataset_path = self._build_dataset()
+        split_conf = {
+            'vector_store': {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}},
+            'segment_store': {'type': 'map'},
+        }
+        mgr = Document._Manager(
+            dataset_path=dataset_path, embed=None, manager=False, server=False,
+            name='__default__', launcher=None, store_conf=split_conf, doc_fields=None,
+        )
+        assert mgr._spawn_doc_server is True, (
+            'Split-form store_conf with persistent vector_store should auto-upgrade'
+        )
+        mgr.stop()
+
     def test_metadata_store_only_no_auto_upgrade(self):
         '''Regression: store_conf with only metadata_store (no top-level vector "type") uses
         the default in-memory map store and must NOT auto-upgrade to DocServer.
