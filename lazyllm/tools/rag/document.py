@@ -296,12 +296,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 'Only map store is supported for Document with temp-files')
 
         name = name or RAG_DEFAULT_GROUP_NAME
-        # Expose the schema extractor on the outer Document too. Downstream
-        # helpers like ``SqlCall.create_from_document`` reach for
-        # ``document._schema_extractor`` directly (pre-PR contract); keeping
-        # the attribute here preserves that public shape without depending on
-        # the private ``_manager`` layout.
-        self._schema_extractor = schema_extractor
 
         if isinstance(manager, Document._Manager):
             assert not server, 'Server infomation is already set to by manager'
@@ -467,6 +461,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @property
     def _impl(self) -> DocImpl: return self._manager.get_doc_by_kb_group(self._curr_group)
+
+    @property
+    def _schema_extractor(self):
+        # Compatibility shim: ``SqlCall.create_from_document`` (and other
+        # pre-PR callers) read ``document._schema_extractor`` directly. The
+        # value lives on ``Document._Manager`` after the doc_service refactor,
+        # so delegate without re-binding (a direct setattr would re-register
+        # the extractor as a Document submodule and pull it into Document.stop()
+        # even when it was never started -- triggering 'Cannot stop an
+        # unstarted task').
+        return getattr(self._manager, '_schema_extractor', None)
 
     @property
     def manager(self): return self._manager._processor or self._manager
