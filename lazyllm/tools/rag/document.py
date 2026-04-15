@@ -296,6 +296,12 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 'Only map store is supported for Document with temp-files')
 
         name = name or RAG_DEFAULT_GROUP_NAME
+        # Expose the schema extractor on the outer Document too. Downstream
+        # helpers like ``SqlCall.create_from_document`` reach for
+        # ``document._schema_extractor`` directly (pre-PR contract); keeping
+        # the attribute here preserves that public shape without depending on
+        # the private ``_manager`` layout.
+        self._schema_extractor = schema_extractor
 
         if isinstance(manager, Document._Manager):
             assert not server, 'Server infomation is already set to by manager'

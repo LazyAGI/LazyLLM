@@ -11,9 +11,10 @@ def light_reduce(cls):
         # satisfied. Without this, the second pickle raises
         # "TrainableModule shoule be deployed before used" for what is really a
         # remote-handle forwarded through multiple hops.
-        flag = getattr(inst, '_lazyllm__get_deploy_tasks_once_flag', None)
-        if flag is not None:
-            flag.set(True, ignore_reset=True)
+        #
+        # Touching ``_get_deploy_tasks.flag`` via the once_wrapper descriptor
+        # lazily creates the flag attribute on the instance; then we set it.
+        inst._get_deploy_tasks.flag.set(True, ignore_reset=True)
         return inst
 
     def _impl(self):
