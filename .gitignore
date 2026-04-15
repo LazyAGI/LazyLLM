@@ -66,3 +66,6 @@ build*
 lazyllm_cpp.egg-info/
 !build*.sh
 lazyllm/cpp_lib/
+
+# Agents related
+AGENTS.md
