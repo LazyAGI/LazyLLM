@@ -31,7 +31,14 @@ def _is_local_map_store(store_conf: Optional[Dict]) -> bool:
 
 
 def _is_persistent_store(store_conf: Optional[Dict]) -> bool:
-    return store_conf is not None and not _is_local_map_store(store_conf)
+    # The vector store type defaults to 'map' (in-memory) when 'type' is unset.
+    # A config that ONLY sets metadata_store / kwargs without a top-level vector
+    # store 'type' still uses the default map store and is NOT persistent. Only
+    # treat it as persistent when 'type' is explicitly set to something other
+    # than 'map'.
+    if not isinstance(store_conf, dict):
+        return False
+    return store_conf.get('type', 'map') != 'map'
 
 
 class CallableDict(dict):

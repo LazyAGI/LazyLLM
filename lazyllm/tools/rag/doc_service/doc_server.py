@@ -761,7 +761,15 @@ class DocServer(ModuleBase):
                 enable_scan=enable_scan,
                 scan_interval=scan_interval,
             )
-            self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher, pythonpath=pythonpath)
+            # DocServer is a lightweight HTTP front-end for doc CRUD; never needs
+            # GPU. Default to EmptyLauncher when the caller did not pass one so we
+            # don't inherit LAZYLLM_DEFAULT_LAUNCHER (e.g. 'sco' in CI) and try
+            # to submit srun jobs for what should be a local Python subprocess.
+            import lazyllm as _lazyllm
+            effective_launcher = launcher if launcher is not None else _lazyllm.launchers.empty(sync=False)
+            self._impl = ServerModule(
+                self._raw_impl, port=port, launcher=effective_launcher, pythonpath=pythonpath,
+            )
 
     @staticmethod
     def _register_openapi_routes(openapi_app: 'fastapi.FastAPI', impl: 'DocServer._Impl'):

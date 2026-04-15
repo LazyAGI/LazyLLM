@@ -633,6 +633,31 @@ class TestDocument(unittest.TestCase):
         assert mgr._spawn_doc_server is False, 'Map store should never auto-upgrade'
         mgr.stop()
 
+    def test_metadata_store_only_no_auto_upgrade(self):
+        '''Regression: store_conf with only metadata_store (no top-level vector "type") uses
+        the default in-memory map store and must NOT auto-upgrade to DocServer.
+
+        This matches advanced/test_schema_extractor.py::test_document_for_sqlcall, which
+        passes ``store_conf={'metadata_store': sqlite_cfg}`` and never opted into
+        DocServer; auto-upgrading would force pickling of the schema_extractor's
+        TrainableModule before deploy and break the test.
+        '''
+        dataset_path = self._build_dataset()
+        metadata_only = {'metadata_store': {
+            'db_type': 'sqlite', 'user': None, 'password': None,
+            'host': None, 'port': None, 'db_name': '/tmp/lazyllm_test_meta.db',
+        }}
+
+        mgr = Document._Manager(
+            dataset_path=dataset_path, embed=None, manager=False, server=False,
+            name='__default__', launcher=None, store_conf=metadata_only, doc_fields=None,
+        )
+        assert mgr._spawn_doc_server is False, (
+            'metadata_store-only config should keep default map vector store '
+            'and not trigger DocServer auto-upgrade'
+        )
+        mgr.stop()
+
     def test_create_kb_group_before_start_registers_in_doc_server(self):
         '''Regression: create_kb_group() before start() must still register KB in DocServer DB.
 

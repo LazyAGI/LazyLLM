@@ -6,8 +6,10 @@ import traceback
 import threading
 
 from datetime import datetime
+from typing import Optional
 from uuid import uuid4
 from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapper, load_obj
+from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from ..utils import BaseResponse, _get_default_db_config
 from .base import (
     FINISHED_TASK_QUEUE_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO,
@@ -726,7 +728,7 @@ class DocumentProcessorWorker(ModuleBase):
                  task_poller=None, lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
                  high_priority_task_types: list[str] = None, high_priority_only: bool = False,
                  poll_mode: str = 'thread', callback_task_statuses: list[str] = None,
-                 callback_task_types: list[str] = None):
+                 callback_task_types: list[str] = None, launcher: Optional[Launcher] = None):
         super().__init__()
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         self._num_workers = num_workers
@@ -742,7 +744,17 @@ class DocumentProcessorWorker(ModuleBase):
             callback_task_statuses=callback_task_statuses,
             callback_task_types=callback_task_types,
         )
-        self._worker_impl = ServerModule(worker_impl, port=self._port, num_replicas=self._num_workers)
+        # Workers are lightweight orchestration subprocesses (task queue polling,
+        # callbacks); they never need GPU. Default to EmptyLauncher so they stay
+        # on the same host even when the process-wide LAZYLLM_DEFAULT_LAUNCHER is
+        # 'sco' (CI) -- otherwise worker.start() tries to srun and hangs waiting
+        # for a slurm node. Callers can still override via the ``launcher`` arg.
+        import lazyllm as _lazyllm
+        effective_launcher = launcher if launcher is not None else _lazyllm.launchers.empty(sync=False)
+        self._worker_impl = ServerModule(
+            worker_impl, port=self._port, num_replicas=self._num_workers,
+            launcher=effective_launcher,
+        )
         LOG.info(f'[DocumentProcessorWorker] Worker initialized with {num_workers} workers')
 
     def _dispatch(self, method: str, *args, **kwargs):

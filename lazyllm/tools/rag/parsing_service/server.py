@@ -45,7 +45,8 @@ class DocumentProcessor(ModuleBase):
                      lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
                      high_priority_task_types: Optional[List[str]] = None,
                      high_priority_workers: int = 1, callback_task_statuses: Optional[List[str]] = None,
-                     callback_task_types: Optional[List[str]] = None):
+                     callback_task_types: Optional[List[str]] = None,
+                     worker_launcher: Optional[Launcher] = None):
             self._db_config = db_config
             self._num_workers = num_workers
             self._post_func = post_func
@@ -65,6 +66,11 @@ class DocumentProcessor(ModuleBase):
             self._callback_task_statuses = callback_task_statuses
             self._callback_task_types = callback_task_types
             self._callback_retry_attempts: Dict[int, int] = {}
+            # Launcher used for internal Worker subprocesses. When the outer
+            # DocumentProcessor is constructed with launcher=empty(...) we want
+            # its workers to stay local too, instead of falling back to the
+            # process-wide default (which is 'sco' in CI and tries srun).
+            self._worker_launcher = worker_launcher
 
             self._db_manager = None
             self._waiting_task_queue = None
@@ -117,6 +123,7 @@ class DocumentProcessor(ModuleBase):
                         high_priority_only=True,
                         callback_task_statuses=self._callback_task_statuses,
                         callback_task_types=self._callback_task_types,
+                        launcher=self._worker_launcher,
                     )
                     self._high_priority_workers_module.start()
                 if normal_workers > 0:
@@ -128,6 +135,7 @@ class DocumentProcessor(ModuleBase):
                         high_priority_task_types=high_priority_types,
                         callback_task_statuses=self._callback_task_statuses,
                         callback_task_types=self._callback_task_types,
+                        launcher=self._worker_launcher,
                     )
                     self._workers.start()
             LOG.info('[DocumentProcessor] Lazy initialization completed!')
@@ -827,6 +835,13 @@ class DocumentProcessor(ModuleBase):
         self._raw_impl = None  # save the reference of the original Impl object
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         if not url:
+            # DocumentProcessor and its Workers are lightweight orchestration
+            # (task queue polling, callbacks) with no GPU needs; default to a
+            # local EmptyLauncher so they don't inherit LAZYLLM_DEFAULT_LAUNCHER
+            # (e.g. 'sco' in CI) and try to srun for no reason. Callers can
+            # still override by passing ``launcher=...`` explicitly.
+            import lazyllm as _lazyllm
+            effective_launcher = launcher if launcher is not None else _lazyllm.launchers.empty(sync=False)
             # create the Impl object (lazy loading, no threads created)
             self._raw_impl = DocumentProcessor._Impl(
                 num_workers=num_workers,
@@ -840,8 +855,11 @@ class DocumentProcessor(ModuleBase):
                 callback_url=callback_url,
                 callback_task_statuses=callback_task_statuses,
                 callback_task_types=callback_task_types,
+                worker_launcher=effective_launcher,
             )
-            self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher, pythonpath=pythonpath)
+            self._impl = ServerModule(
+                self._raw_impl, port=port, launcher=effective_launcher, pythonpath=pythonpath,
+            )
         else:
             self._impl = UrlModule(url=ensure_call_endpoint(url))
 
