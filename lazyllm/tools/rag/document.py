@@ -466,12 +466,15 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def _schema_extractor(self):
         # Compatibility shim: ``SqlCall.create_from_document`` (and other
         # pre-PR callers) read ``document._schema_extractor`` directly. The
-        # value lives on ``Document._Manager`` after the doc_service refactor,
-        # so delegate without re-binding (a direct setattr would re-register
-        # the extractor as a Document submodule and pull it into Document.stop()
-        # even when it was never started -- triggering 'Cannot stop an
-        # unstarted task').
-        return getattr(self._manager, '_schema_extractor', None)
+        # per-group value lives on the active DocImpl after the doc_service
+        # refactor (set either at construction or by
+        # ``Document._Manager.add_kb_group`` when sharing a manager across
+        # multiple KBs); reading from the manager would lose the per-group
+        # extractor in shared-manager flows. A direct setattr instead would
+        # also re-enroll the extractor as a Document submodule and trip
+        # 'Cannot stop an unstarted task' inside Document.stop().
+        impl = self._manager.get_doc_by_kb_group(self._curr_group)
+        return getattr(impl, '_schema_extractor', None)
 
     @property
     def manager(self): return self._manager._processor or self._manager
