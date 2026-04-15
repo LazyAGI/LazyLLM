@@ -51,12 +51,80 @@ def _is_persistent_store(store_conf: Optional[Dict]) -> bool:
     return False
 
 
-def _iter_milvus_uris(store_conf: Optional[Dict]):
-    '''Yield every Milvus ``uri`` referenced by ``store_conf`` so we can reject
-    embedded-file URIs up-front when the caller also asked for a DocServer
-    subprocess. ``_DocumentStore`` supports both the single-store form
-    (top-level ``type: milvus``) and the split form (``vector_store`` /
-    ``segment_store`` / ``indices`` sub-configs), so walk all of them.'''
+_REMOTE_STORE_SCHEMES = frozenset({'http', 'https', 'tcp', 'grpc', 'unix'})
+
+
+def _endpoint_scheme(value):
+    '''Return the normalized lower-case URL scheme of ``value`` (empty string
+    if ``value`` has no scheme). Handles ChromaStore's ``chroma+http`` /
+    ``chroma+https`` aliases by stripping the ``chroma+`` prefix.'''
+    if not isinstance(value, str) or not value:
+        return ''
+    from urllib.parse import urlparse
+    scheme = urlparse(value).scheme.lower()
+    if scheme.startswith('chroma+'):
+        scheme = scheme.split('+', 1)[1]
+    return scheme
+
+
+def _store_config_embedded_reason(cfg: Dict) -> Optional[str]:
+    '''Return a short description if ``cfg`` (a single store config with
+    ``type`` + ``kwargs``) is an embedded (filesystem-bound) backend; else
+    ``None``. Factored out so the outer walk stays simple.
+
+    ``type`` OR the legacy ``backend`` key identifies the backend -- the
+    latter is used by ``_DocumentStore``'s legacy
+    ``indices.smart_embedding_index`` form (see ``get_milvus_index_conf``
+    in ``tests/advanced_tests/RAG/test_milvus_filter.py``), which would
+    otherwise slip past the reject because its sub-config has no ``type``.
+
+    Recognized endpoint fields (mirror what the store classes accept):
+    - Milvus: ``kwargs.uri`` (http/https/tcp/grpc/unix → remote; else embedded)
+    - Chroma: ``kwargs.uri`` (file:// or no scheme → embedded; http/https,
+              ``chroma+http(s)`` → remote), ``kwargs.dir`` (always embedded),
+              ``kwargs.host`` (always remote -- networked mode).
+    - ES / OpenSearch: ``kwargs.uris`` / ``kwargs.hosts`` (remote lists;
+              no embedded mode, so never flagged).
+    '''
+    store_type = cfg.get('type') or cfg.get('backend')
+    if not store_type or store_type == 'map':
+        return None
+    kwargs = cfg.get('kwargs') or {}
+    # Priority: explicit URI-style fields first. If found, trust the caller's
+    # intent for this store; don't also flag ``dir``.
+    for field in ('uri', 'url', 'endpoint'):
+        value = kwargs.get(field)
+        if isinstance(value, str) and value:
+            if _endpoint_scheme(value) not in _REMOTE_STORE_SCHEMES:
+                return f'{store_type}: {field}={value!r}'
+            return None
+    # Chroma-style ``dir``-only embedded config.
+    dir_value = kwargs.get('dir')
+    if isinstance(dir_value, str) and dir_value:
+        return f'{store_type}: dir={dir_value!r}'
+    # Otherwise: host-based remote, ES/OS uris list, or no endpoint info.
+    return None
+
+
+def _iter_embedded_store_endpoints(store_conf: Optional[Dict]):
+    '''Walk ``store_conf`` and yield a short description of every vector /
+    segment store whose effective endpoint is a local filesystem path
+    (i.e. an "embedded" backend such as milvus_lite or ChromaStore's
+    ``PersistentClient``) rather than a network service.
+
+    These embedded backends are single-process: combining them with the
+    DocServer + Worker subprocess architecture (``manager=True`` /
+    ``manager=DocServer(...)`` / ``manager=DocumentProcessor(...)``) races
+    the main process and Workers for the same on-disk state and
+    intermittently fails (e.g. ``Open milvus.db failed, the file has been
+    opened by another program``). Service-mode RAG must use remote
+    endpoints (``http(s)/tcp/grpc/unix://``).
+
+    ``_DocumentStore._normalize_store_config`` supports both the single-store
+    form (top-level ``type``) and the split form (``vector_store`` +
+    ``segment_store``), and callers can also pass ``indices``; walk all of
+    them so nested configs are covered.
+    '''
     if not isinstance(store_conf, dict):
         return
     pending = [store_conf]
@@ -64,10 +132,9 @@ def _iter_milvus_uris(store_conf: Optional[Dict]):
         cfg = pending.pop()
         if not isinstance(cfg, dict):
             continue
-        if cfg.get('type') == 'milvus':
-            uri = (cfg.get('kwargs') or {}).get('uri')
-            if uri:
-                yield uri
+        reason = _store_config_embedded_reason(cfg)
+        if reason is not None:
+            yield reason
         for key in ('vector_store', 'segment_store', 'metadata_store'):
             sub = cfg.get(key)
             if isinstance(sub, dict):
@@ -76,26 +143,7 @@ def _iter_milvus_uris(store_conf: Optional[Dict]):
         if isinstance(indices, dict):
             for _idx in indices.values():
                 if isinstance(_idx, dict):
-                    kw = _idx.get('kwargs') or {}
-                    if _idx.get('backend') == 'milvus' and kw.get('uri'):
-                        yield kw['uri']
-
-
-_REMOTE_MILVUS_SCHEMES = frozenset({'http', 'https', 'tcp', 'grpc'})
-
-
-def _is_embedded_milvus_uri(uri: str) -> bool:
-    '''milvus_lite treats any URI without a network scheme as a local
-    embedded database file. Those files can only be opened by one process
-    at a time; they are incompatible with the DocServer + Worker subprocess
-    architecture which would race the main process for the same ``.db``
-    file. Remote Milvus schemes supported by ``MilvusStore.__init__`` are
-    whitelisted (http/https plus pymilvus' tcp/grpc).'''
-    if not isinstance(uri, str) or not uri:
-        return False
-    from urllib.parse import urlparse
-    scheme = urlparse(uri).scheme.lower()
-    return scheme not in _REMOTE_MILVUS_SCHEMES
+                    pending.append(_idx)
 
 
 class CallableDict(dict):
@@ -161,30 +209,36 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                     f'Persistent store detected (type={store_conf.get("type")}), '
                     f'auto-enabling DocServer for production-grade file tracking and scan.')
                 spawn_doc_server = True
-            # Reject the unsupported combination "service-mode RAG" + embedded
-            # milvus_lite. milvus_lite is a single-process SQLite-backed store
-            # keyed by a local file; the DocServer + Worker subprocess
-            # architecture (spawned for ``manager=True``, connected via
-            # ``DocServer(...)``, or bound via ``processor=DocumentProcessor(...)``)
-            # would race the main process for the same ``.db`` lockfile and
-            # intermittently fail with ``Open milvus.db failed, the file has
-            # been opened by another program``. ``processor`` is covered too
-            # because ``Document.__init__`` rewrites ``manager=DocumentProcessor``
-            # into ``manager=False, processor=<DocumentProcessor>`` before
-            # reaching ``_Manager``, which would otherwise skip this guard.
+            # Reject the unsupported combination "service-mode RAG" + any
+            # embedded (filesystem-bound) vector/segment store. Embedded
+            # backends such as milvus_lite and ChromaStore's PersistentClient
+            # are single-process stores keyed by a local directory / file;
+            # the DocServer + Worker subprocess architecture (spawned for
+            # ``manager=True``, connected via ``DocServer(...)``, or bound via
+            # ``processor=DocumentProcessor(...)``) races the main process
+            # and Workers for the same on-disk state and intermittently
+            # fails (e.g. ``Open milvus.db failed, the file has been opened
+            # by another program``). ``processor is not None`` is covered
+            # too because ``Document.__init__`` rewrites
+            # ``manager=DocumentProcessor(...)`` into
+            # ``manager=False, processor=<...>`` before reaching ``_Manager``,
+            # which would otherwise skip the earlier branches.
             if spawn_doc_server or connect_doc_server or processor is not None:
-                embedded = [u for u in _iter_milvus_uris(store_conf) if _is_embedded_milvus_uri(u)]
+                embedded = list(_iter_embedded_store_endpoints(store_conf))
                 if embedded:
                     raise ValueError(
                         'Document with `manager=True` / `manager=DocServer(...)` / '
                         '`manager=DocumentProcessor(...)` does not support embedded '
-                        'milvus_lite (local file uri). milvus_lite is single-process '
-                        'and the service-mode subprocesses would contend for the same '
-                        'database file. Point the milvus config at a deployed Milvus '
-                        'standalone instead, e.g. '
-                        "`{'type': 'milvus', 'kwargs': {'uri': "
-                        "os.getenv('MILVUS_URI', 'http://<host>:19530'), ...}}`. "
-                        f'Offending uri(s): {embedded!r}.'
+                        '(filesystem-bound) vector stores. Embedded backends such '
+                        'as milvus_lite or ChromaStore PersistentClient are '
+                        'single-process and would be raced by the service-mode '
+                        'subprocesses. Point the store config at a remote service '
+                        '(http/https/tcp/grpc/unix scheme), e.g. Milvus: '
+                        "{'type': 'milvus', 'kwargs': {'uri': "
+                        "os.getenv('MILVUS_URI', 'http://<host>:19530')}} "
+                        'or Chroma: '
+                        "{'type': 'chroma', 'kwargs': {'uri': 'http://<host>:8000'}}. "
+                        f'Offending store(s): {embedded!r}.'
                     )
             self._launcher: Launcher = launcher if launcher else (
                 lazyllm.launchers.empty(sync=False) if spawn_doc_server else lazyllm.launchers.remote(sync=False)

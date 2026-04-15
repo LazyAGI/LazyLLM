@@ -633,26 +633,27 @@ class TestDocument(unittest.TestCase):
         assert mgr._spawn_doc_server is False, 'Map store should never auto-upgrade'
         mgr.stop()
 
-    def test_manager_with_embedded_milvus_uri_is_rejected(self):
-        '''Regression: ``manager=True`` (DocServer + Worker subprocesses) combined
-        with an embedded milvus_lite local .db is rejected at construction time.
-        milvus_lite is a single-writer SQLite-based store; service-mode would
-        race the main process and Workers for the same .db file and fail with
-        "Open milvus.db failed, the file has been opened by another program".
+    def test_manager_with_embedded_milvus_is_rejected(self):
+        '''Regression: ``manager=True`` combined with an embedded milvus_lite
+        local .db is rejected at construction time. milvus_lite is a
+        single-writer SQLite-based store; the DocServer + Worker
+        subprocesses would race the main process for the same .db file
+        and fail with "Open milvus.db failed, the file has been opened by
+        another program".
         '''
         dataset_path = self._build_dataset()
         embedded_conf = {
             'type': 'milvus',
             'kwargs': {'uri': '/tmp/lazyllm_embedded_milvus.db'},
         }
-        with self.assertRaisesRegex(ValueError, 'embedded milvus_lite'):
+        with self.assertRaisesRegex(ValueError, 'embedded'):
             Document._Manager(
                 dataset_path=dataset_path, embed=None, manager=True, server=False,
                 name='__default__', launcher=None, store_conf=embedded_conf,
                 doc_fields=None,
             )
         # Split form is also rejected.
-        with self.assertRaisesRegex(ValueError, 'embedded milvus_lite'):
+        with self.assertRaisesRegex(ValueError, 'embedded'):
             Document._Manager(
                 dataset_path=dataset_path, embed=None, manager=True, server=False,
                 name='__default__', launcher=None,
@@ -660,23 +661,72 @@ class TestDocument(unittest.TestCase):
                 doc_fields=None,
             )
 
-    def test_manager_with_remote_milvus_uri_is_accepted(self):
-        '''Regression: ``manager=True`` + remote Milvus (http:// uri) is
-        allowed. Embedded-only rejection must not trip on deployed Milvus
-        standalone URIs that the service-mode architecture supports.
-        '''
+    def test_manager_with_legacy_index_embedded_milvus_is_rejected(self):
+        '''Regression (P1 from subagent review): the legacy
+        ``indices.smart_embedding_index`` config form keys the backend as
+        ``backend`` instead of ``type``. An embedded milvus_lite hidden in
+        that form must still be rejected so it doesn't silently race the
+        service-mode subprocesses.'''
         dataset_path = self._build_dataset()
-        remote_conf = {
-            'type': 'milvus',
-            'kwargs': {'uri': 'http://milvus.internal.example:19530'},
+        legacy_index_conf = {
+            'type': 'map',
+            'indices': {
+                'smart_embedding_index': {
+                    'backend': 'milvus',
+                    'kwargs': {'uri': '/tmp/lazyllm_legacy_index_milvus.db'},
+                },
+            },
         }
-        mgr = Document._Manager(
-            dataset_path=dataset_path, embed=None, manager=True, server=False,
-            name='__default__', launcher=None, store_conf=remote_conf,
-            doc_fields=None,
-        )
-        assert mgr._spawn_doc_server is True
-        mgr.stop()
+        with self.assertRaisesRegex(ValueError, 'embedded'):
+            Document._Manager(
+                dataset_path=dataset_path, embed=None, manager=True, server=False,
+                name='__default__', launcher=None, store_conf=legacy_index_conf,
+                doc_fields=None,
+            )
+
+    def test_manager_with_embedded_chroma_is_rejected(self):
+        '''Regression: the same rejection applies to ChromaStore's
+        PersistentClient mode (``kwargs.dir`` or file-scheme ``kwargs.uri``)
+        since it's likewise single-process and filesystem-bound.'''
+        dataset_path = self._build_dataset()
+        # Chroma accepts both `dir` and a path-shaped `uri`; both forms are
+        # embedded and must be rejected.
+        for kw in (
+            {'dir': '/tmp/lazyllm_embedded_chroma'},
+            {'uri': '/tmp/lazyllm_embedded_chroma'},
+            {'uri': 'file:///tmp/lazyllm_embedded_chroma'},
+        ):
+            with self.assertRaisesRegex(ValueError, 'embedded'):
+                Document._Manager(
+                    dataset_path=dataset_path, embed=None, manager=True, server=False,
+                    name='__default__', launcher=None,
+                    store_conf={'type': 'chroma', 'kwargs': kw},
+                    doc_fields=None,
+                )
+
+    def test_manager_with_remote_vector_store_is_accepted(self):
+        '''Regression: service mode + remote vector store is allowed. The
+        guard must not false-reject deployed Milvus / Chroma / opaque
+        remote schemes (tcp, grpc, unix, chroma+http) that the store
+        classes support.'''
+        dataset_path = self._build_dataset()
+        remote_configs = [
+            {'type': 'milvus', 'kwargs': {'uri': 'http://milvus.internal.example:19530'}},
+            {'type': 'milvus', 'kwargs': {'uri': 'tcp://milvus.internal.example:19530'}},
+            {'type': 'milvus', 'kwargs': {'uri': 'grpc://milvus.internal.example:19530'}},
+            {'type': 'milvus', 'kwargs': {'uri': 'unix:///var/run/milvus.sock'}},
+            {'type': 'chroma', 'kwargs': {'uri': 'http://chroma.internal.example:8000'}},
+            {'type': 'chroma', 'kwargs': {'uri': 'chroma+https://chroma.internal.example:8000'}},
+            {'type': 'chroma', 'kwargs': {'host': 'chroma.internal.example', 'port': 8000}},
+        ]
+        for conf in remote_configs:
+            mgr = Document._Manager(
+                dataset_path=dataset_path, embed=None, manager=True, server=False,
+                name='__default__', launcher=None, store_conf=conf,
+                doc_fields=None,
+            )
+            assert mgr._spawn_doc_server is True, f'failed for {conf!r}'
+            mgr.stop()
 
     def test_split_vector_store_form_triggers_auto_upgrade(self):
         '''Regression: store_conf using the split form
