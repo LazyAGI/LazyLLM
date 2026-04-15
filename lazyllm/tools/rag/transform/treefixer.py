@@ -66,7 +66,6 @@ class TreeFixerParser(NodeTransform):
         for node in nodes:
             tree_node = _as_tree_node(node)
             children = self._resolve_tree_nodes(tree_node)
-            tree_node._direct_children_in_tree = []
             result.append(tree_node)
             if children:
                 result.extend(self._flatten_nodes(children))
@@ -74,7 +73,7 @@ class TreeFixerParser(NodeTransform):
 
     def _resolve_tree_nodes(self, node: DocNode) -> List[DocNode]:
         if isinstance(node, TreeDocNode):
-            return list(node.tree_nodes)
+            return list(node.direct_children_in_tree)
         return []
 
     def _extract_numbering(self, node: DocNode) -> Tuple[Optional[str], Optional[Any]]:
@@ -283,4 +282,4 @@ class TreeFixerParser(NodeTransform):
             return
         tree_parent = TreeDocNode.from_doc_node(parent)
         tree_child = TreeDocNode.from_doc_node(child)
-        tree_parent._direct_children_in_tree.append(tree_child)
+        tree_parent.add_child(tree_child)
