@@ -164,6 +164,9 @@ class _TracingRuntime:
             return getattr(target, 'name', None) or getattr(target, '_module_name', None) or target.__class__.__name__
         if span_kind == 'callable':
             return getattr(target, '__name__', None) or target.__class__.__name__
+        override = getattr(target, '__span_name__', None)
+        if override:
+            return override
         return target.__class__.__name__
 
     @staticmethod
