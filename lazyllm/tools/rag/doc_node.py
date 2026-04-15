@@ -58,6 +58,16 @@ class DocNodeCore:
 
         return '\n'.join([f'{key}: {self._metadata[key]}' for key in metadata_keys])
 
+    def __copy__(self):
+        node = self.__class__.__new__(self.__class__)
+        node.__dict__.update(self.__dict__.copy())
+        return node
+
+    def __deepcopy__(self, memo):
+        node = self.__class__.__new__(self.__class__)
+        node.__dict__.update(copy.deepcopy(self.__dict__, memo))
+        return node
+
 
 @reset_on_pickle(('_lock', threading.Lock))
 class DocNode(DocNodeCore):
@@ -480,3 +490,7 @@ class TreeDocNode(DocNode):
 
     def add_child(self, child: 'TreeDocNode') -> None:
         self.direct_children_in_tree.append(child)
+
+    @property
+    def metadata(self) -> Dict:
+        return {**self._metadata, 'direct_children_in_tree': self.direct_children_in_tree}

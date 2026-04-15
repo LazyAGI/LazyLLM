@@ -51,6 +51,27 @@ lazyllm::MetadataMode ParseMode(const py::object& mode, lazyllm::MetadataMode de
     return pyu::ParseMetadataMode(mode);
 }
 
+py::object CloneDocNodeCore(py::object self_obj) {
+    auto self = self_obj.cast<std::shared_ptr<lazyllm::DocNodeCore>>();
+    auto copy = std::make_shared<PyDocNodeCore>(
+        self->_text, self->_metadata, self->_uid
+    );
+    copy->_excluded_embed_metadata_keys = self->_excluded_embed_metadata_keys;
+    copy->_excluded_llm_metadata_keys = self->_excluded_llm_metadata_keys;
+    py::object copy_obj = py::cast(copy);
+    if (py::hasattr(self_obj, "__dict__")) {
+        py::dict src_dict = self_obj.attr("__dict__");
+        py::dict dst_dict = copy_obj.attr("__dict__");
+        for (auto item : src_dict) {
+            dst_dict[item.first] = item.second;
+        }
+    }
+    if (py::hasattr(self_obj, "__class__")) {
+        copy_obj.attr("__class__") = self_obj.attr("__class__");
+    }
+    return copy_obj;
+}
+
 } // namespace
 
 void exportDocNode(py::module& m) {
@@ -147,7 +168,7 @@ void exportDocNode(py::module& m) {
             py::arg("metadata") = py::none(),
             py::arg("uid") = py::none()
         )
-        .def_readonly("_uid", &lazyllm::DocNodeCore::_uid)
+        .def_readwrite("_uid", &lazyllm::DocNodeCore::_uid)
         .def_readwrite("_text", &lazyllm::DocNodeCore::_text)
         .def_property_readonly("uid",
             [](const lazyllm::DocNodeCore& node) -> const std::string& {
@@ -187,5 +208,11 @@ void exportDocNode(py::module& m) {
         )
         .def("get_metadata_str", [](const lazyllm::DocNodeCore& node, const py::object& mode) {
             return node.get_metadata_string(ParseMode(mode, lazyllm::MetadataMode::ALL));
-        }, py::arg("mode") = py::none());
+        }, py::arg("mode") = py::none())
+        .def("__copy__", [](py::object self_obj) {
+            return CloneDocNodeCore(self_obj);
+        })
+        .def("__deepcopy__", [](py::object self_obj, const py::dict&) {
+            return CloneDocNodeCore(self_obj);
+        }, py::arg("memo"));
 }
