@@ -428,7 +428,7 @@ Runs **before** the five LLM rounds; consumes no LLM calls.
 | R3 batch | arch 38000; prev_json 16000; budget_files = remaining budget |
 | R4a (doc) | arch 12000; diff uses remaining budget |
 | R4b (architect) | arch 42000; pr_design_doc 12000; diff uses remaining budget |
-| R4v (verification) | per-batch issues JSON; ReactAgent with same tools as R2 |
+| R4v (verification) | per-batch issues JSON; ReactAgent with same tools as R2; `clone_dir` scoped |
 | R5 | long content compressed first; 1× JSON LLM |
 
 ### 5.3 Long-Text Sampling: `_sample_text`
@@ -471,7 +471,7 @@ CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4 → FINAL →
 
 - `resume_from=ReviewStage.X`: writes `_invalidated_from`; does not delete old fields; `get(key)` returns `None` for any key whose stage index ≥ invalidation start.
 - `clear_checkpoint=True`: deletes the checkpoint file and entire `pr_dir` (takes priority over `resume_from`).
-- `mark_stage_done(FINAL)` clears `_invalidated_from`; downstream cache keys become accessible again after a full successful run.
+- `mark_stage_done(UPLOAD)` clears `_invalidated_from`; downstream cache keys become accessible again after a full successful run.
 - `get('clone_dir')`: returns `None` if the directory no longer exists (already cleaned up), triggering re-clone.
 
 ### 7.4 Directory State After Successful Run
@@ -486,7 +486,7 @@ CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4 → FINAL →
 - **`_fetch_existing_pr_comments`**: fetches `list_review_comments`; normalizes `body` / `path` / `line` for R5 dedup.
 - **`_build_commentable_lines`**: parses diff hunks to build a valid line-number set (avoids GitHub 422 errors).
 - **`_filter_commentable`**: filters out line numbers not in the diff range; issues without `path` / `line` (e.g. meta warnings) are not posted as line comments.
-- **`_post_review_comments`**: prefers **`submit_review`** (`commit_id=head_sha`, `event=COMMENT`, with `review_body` + line comments); falls back to per-comment **`create_review_comment`**; posts in batches of 30; completed batches are recorded in the checkpoint for resume support.
+- **`_post_review_comments`**: uses **`submit_review`** (`commit_id=head_sha`, `event=COMMENT`, with `review_body` + line comments); retries on 403 rate-limit with back-off (`[60, 120, 300]` seconds); posts in batches of 30 (`_BATCH_SIZE`); completed batches are recorded in the checkpoint for resume support.
 
 ---
 

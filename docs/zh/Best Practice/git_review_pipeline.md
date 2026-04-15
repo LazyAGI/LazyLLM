@@ -428,6 +428,7 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 | R3 batch | arch 38000；prev_json 16000；budget_files = 剩余预算 |
 | R4a（文档） | arch 12000；diff 剩余预算 |
 | R4b（架构师） | arch 42000；pr_design_doc 12000；diff 剩余预算 |
+| R4v（验证） | 每批 issue JSON；ReactAgent 使用与 R2 相同工具集；限定在 `clone_dir` 范围内 |
 | R5 | 超长内容先压缩；1× JSON LLM |
 
 ### 5.3 长文本采样 `_sample_text`
@@ -470,7 +471,7 @@ CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4A → R4 → R
 
 - `resume_from=ReviewStage.X`：写入 `_invalidated_from`，不物理删除历史字段；`get(key)` 对 stage index ≥ invalidation 起点的键返回 `None`。
 - `clear_checkpoint=True`：删除 checkpoint 文件和整个 `pr_dir`（优先级高于 `resume_from`）。
-- `mark_stage_done(FINAL)` 时清除 `_invalidated_from`，完整跑通后下游缓存恢复可用。
+- `mark_stage_done(UPLOAD)` 时清除 `_invalidated_from`，完整跑通后下游缓存恢复可用。
 - `get('clone_dir')`：若目录不存在（已清理），返回 `None`，触发重新 clone。
 
 ### 7.4 成功结束后的目录状态
@@ -485,7 +486,7 @@ CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4A → R4 → R
 - **`_fetch_existing_pr_comments`**：拉取 `list_review_comments`，规范化 `body` / `path` / `line`，供 R5 去重。
 - **`_build_commentable_lines`**：解析 diff hunks 构建合法行号集合（避免 GitHub 422 错误）。
 - **`_filter_commentable`**：过滤不在 diff range 内的行号；无 `path` / `line` 的 issue（如 meta warning）不作为行评发出。
-- **`_post_review_comments`**：优先 **`submit_review`**（`commit_id=head_sha`，`event=COMMENT`，附 `review_body` + 行评）；失败则逐条 **`create_review_comment`**；分批（30 条/批）发布，已成功批次记录在 checkpoint，支持断点续传。
+- **`_post_review_comments`**：使用 **`submit_review`**（`commit_id=head_sha`，`event=COMMENT`，附 `review_body` + 行评）；遇 403 限流时按退避策略重试（`[60, 120, 300]` 秒）；分批（30 条/批）发布，已成功批次记录在 checkpoint，支持断点续传。
 
 ---
 
