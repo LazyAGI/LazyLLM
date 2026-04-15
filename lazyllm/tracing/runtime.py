@@ -1,4 +1,5 @@
 import atexit
+import contextvars
 import json
 import threading
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from .backends import get_tracing_backend
 
 
 _TRACE_SERVICE_NAME = 'lazyllm'
+_in_reconstructed_thread = contextvars.ContextVar('_lazyllm_tracing_reconstructed', default=False)
 _TRACE_CONTEXT_DEFAULTS = {
     'enabled': None,
     'trace_id': None,
@@ -241,6 +243,24 @@ class _TracingRuntime:
         span_name = self._target_name(target, span_kind)
         current = self._trace_api.get_current_span()
         is_root_span = not current.get_span_context().is_valid
+
+        parent_context = None
+        if is_root_span and trace_ctx.get('trace_id') and trace_ctx.get('parent_span_id'):
+            try:
+                parent_sc = opentelemetry.trace.SpanContext(
+                    trace_id=int(trace_ctx['trace_id'], 16),
+                    span_id=int(trace_ctx['parent_span_id'], 16),
+                    is_remote=False,
+                    trace_flags=opentelemetry.trace.TraceFlags(0x01),
+                )
+                parent_context = opentelemetry.trace.set_span_in_context(
+                    opentelemetry.trace.NonRecordingSpan(parent_sc)
+                )
+                is_root_span = False
+                _in_reconstructed_thread.set(True)
+            except Exception:
+                pass
+
         attributes = self._base_attributes(
             span_kind=span_kind,
             span_name=span_name,
@@ -252,11 +272,15 @@ class _TracingRuntime:
             kwargs=kwargs,
         )
 
-        span_cm = self._tracer.start_as_current_span(span_name, attributes=attributes)
+        span_cm = self._tracer.start_as_current_span(
+            span_name, attributes=attributes, context=parent_context
+        )
         span = span_cm.__enter__()
         span_context = span.get_span_context()
-        trace_ctx['trace_id'] = f'{span_context.trace_id:032x}'
-        set_trace_context(trace_ctx)
+        if not _in_reconstructed_thread.get(False):
+            trace_ctx['trace_id'] = f'{span_context.trace_id:032x}'
+            trace_ctx['parent_span_id'] = f'{span_context.span_id:016x}'
+            set_trace_context(trace_ctx)
         if is_root_span:
             self._backend.set_root_span_name(span, span_name)
         return TraceSpanHandle(span=span, span_cm=span_cm, is_root_span=is_root_span)
