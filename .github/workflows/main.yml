@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - cyb/ci-fix
     tags:
       - "v*.*.*a*"
       - "v*.*.*b*"
@@ -92,7 +91,7 @@ jobs:
     if: github.ref_type != 'tag'
     needs: [lint, doc_check]
     runs-on: tps_sco_nv
-    # environment: protected
+    environment: protected
     steps:
       - run: echo "run on branch"
 
