@@ -48,7 +48,13 @@ class _FakeManager:
     def __init__(self):
         self.run_calls = []
         self.upload_request = None
+        self.reparse_request = None
+        self.patch_request = None
         self.chunk_kwargs = None
+        # For the legacy compat shim's override path: list of (path -> doc_id)
+        # the manager pretends already exist in the kb. Tests can set this
+        # before calling upload_files_legacy(override=True).
+        self.existing_docs_by_path = {}
         self.cancel_response = BaseResponse(
             code=200, msg='success', data={'task_id': 'task-1', 'cancel_status': True, 'status': 'CANCELED'}
         )
@@ -67,6 +73,17 @@ class _FakeManager:
             {'doc_id': item.doc_id or 'generated-doc', 'task_id': f'task-{idx}'}
             for idx, item in enumerate(request.items)
         ]
+
+    def _list_kb_docs_by_path(self, kb_id, exclude_failed=True):
+        return dict(self.existing_docs_by_path)
+
+    def reparse(self, request):
+        self.reparse_request = request
+        return [f'reparse-task-{i}' for i in range(len(request.doc_ids))]
+
+    def patch_metadata(self, request):
+        self.patch_request = request
+        return BaseResponse(code=200, msg='success', data={})
 
     def cancel_task(self, task_id: str):
         if isinstance(self.cancel_response, Exception):
@@ -92,6 +109,15 @@ def server_impl():
         impl = DocServer._Impl(storage_dir=temp_dir, parser_url='http://parser.test')
         impl._manager = _FakeManager()
         impl._lazy_init = lambda: None
+        # Capture sync metadata writes that the legacy override path performs,
+        # without needing a real sqlite DB attached to the fake manager.
+        synced = []
+
+        def fake_apply(pairs):
+            for did, m in pairs:
+                synced.append((did, m))
+        impl._legacy_apply_metadata_to_existing_docs = fake_apply
+        impl._manager.synced_meta_writes = synced
         yield impl
 
 
@@ -483,3 +509,112 @@ def test_legacy_upload_files_propagates_per_item_failure(server_impl):
     assert doc_ids == ['d1', 'd2']
     assert results[0] == 'ok'
     assert results[1] == 'PARSER_SUBMIT_FAILED'
+
+
+def test_legacy_upload_routes_existing_paths_to_reparse_when_override(server_impl):
+    '''Regression (codex P1): when ``override=true`` and the file path already
+    has a doc in the kb, route to ``DocManager.reparse`` (and patch_metadata
+    if metadata is provided) instead of ``upload``. Without this, the legacy
+    "replace + reparse" workflow returns 409 from
+    ``_assert_action_allowed(..., 'upload')``.'''
+    fake = server_impl._manager
+    storage = server_impl._storage_dir
+    # Pretend dup.txt is already a doc in this kb
+    existing_path = os.path.join(storage, 'dup.txt')
+    fake.existing_docs_by_path = {existing_path: 'preexisting-doc-id'}
+
+    # Mix: dup.txt (existing) + brand-new.txt (new)
+    files = [_UploadFile('dup.txt', b'updated'), _UploadFile('brand-new.txt', b'fresh')]
+    metas = [{'tag': 'updated'}, {'tag': 'new'}]
+
+    response = asyncio.run(server_impl.upload_files_legacy(
+        files=files,
+        override=True,
+        metadatas=json.dumps(metas),
+        group_name=None,
+        user_path=None,
+    ))
+    body = _decode_response(response)
+    doc_ids, results = body['data']
+
+    # dup.txt -> reparse path; should reuse the existing doc id
+    assert doc_ids[0] == 'preexisting-doc-id'
+    # reparse was called with the existing doc id; metadata was merged
+    # synchronously into the doc row via the legacy helper (NOT through
+    # DocManager.patch_metadata, which would enqueue a racy task).
+    assert fake.reparse_request is not None
+    assert fake.reparse_request.doc_ids == ['preexisting-doc-id']
+    assert fake.patch_request is None, 'patch_metadata must NOT enqueue a racy task'
+    assert fake.synced_meta_writes == [('preexisting-doc-id', {'tag': 'updated'})]
+    # brand-new.txt -> upload path
+    assert fake.upload_request is not None
+    assert len(fake.upload_request.items) == 1
+    assert fake.upload_request.items[0].file_path.endswith('brand-new.txt')
+    assert fake.upload_request.items[0].metadata == {'tag': 'new'}
+    # Both items report 'ok' in the legacy results slot
+    assert results == ['ok', 'ok']
+
+
+def test_legacy_upload_no_override_does_not_reparse_existing(server_impl):
+    '''Regression: without ``override=true`` the shim must NOT inspect existing
+    docs and must not call reparse, even if a doc already exists at the same
+    path. The unique-path persist already handles collision avoidance.'''
+    fake = server_impl._manager
+    fake.existing_docs_by_path = {os.path.join(server_impl._storage_dir, 'a.txt'): 'preexisting'}
+
+    asyncio.run(server_impl.upload_files_legacy(
+        files=[_UploadFile('a.txt', b'x')],
+        override=False, metadatas=None, group_name=None, user_path=None,
+    ))
+    assert fake.reparse_request is None
+    assert fake.patch_request is None
+    assert fake.upload_request is not None
+
+
+def test_legacy_upload_failed_doc_retried_via_upload_not_reparse(server_impl):
+    '''Regression (codex P2): legacy override=True must NOT route FAILED/CANCELED
+    docs through reparse. Those states are valid upload retry candidates and
+    the upload path applies the caller's fresh ``metadatas``; the reparse path
+    would silently keep stale metadata. ``_list_kb_docs_by_path(exclude_failed=True)``
+    keeps them out of the reparse pool.'''
+    fake = server_impl._manager
+    # The fake's _list_kb_docs_by_path ignores exclude_failed (returns whatever
+    # is set), so simulate the exclude by leaving FAILED docs out of
+    # existing_docs_by_path. The test asserts the shim reads the correct kwarg.
+    captured = {}
+
+    def fake_list(kb_id, exclude_failed=True):
+        captured['exclude_failed'] = exclude_failed
+        return {}
+    fake._list_kb_docs_by_path = fake_list
+
+    asyncio.run(server_impl.upload_files_legacy(
+        files=[_UploadFile('a.txt', b'x')],
+        override=True, metadatas=None, group_name=None, user_path=None,
+    ))
+    assert captured['exclude_failed'] is True
+
+
+def test_legacy_upload_reparse_validates_before_new_uploads(server_impl):
+    '''Regression (codex P1): reparse runs before upload so a validation
+    failure on an existing doc (e.g. WORKING/DELETING -> 409) does not leave
+    a partially-committed batch where new files were already enqueued.'''
+    fake = server_impl._manager
+    storage = server_impl._storage_dir
+    existing_path = os.path.join(storage, 'existing.txt')
+    fake.existing_docs_by_path = {existing_path: 'preexisting-doc-id'}
+
+    def boom_reparse(request):
+        raise RuntimeError('simulated WORKING-state rejection')
+    fake.reparse = boom_reparse
+
+    files = [_UploadFile('existing.txt', b'updated'), _UploadFile('new.txt', b'fresh')]
+    with pytest.raises(RuntimeError, match='WORKING-state rejection'):
+        asyncio.run(server_impl.upload_files_legacy(
+            files=files, override=True, metadatas=None,
+            group_name=None, user_path=None,
+        ))
+    # upload must NOT have been called -- the reparse failure short-circuits
+    assert fake.upload_request is None, (
+        'new-file upload must not commit when the reparse phase fails'
+    )
