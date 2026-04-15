@@ -784,6 +784,17 @@ def _build_scoped_agent_tools(  # noqa: C901
         lazyllm.LOG.info(f'  [Agent] Read {path}{line_info}')
         return read_file(abs_path, start_line=start_line, end_line=end_line, root=clone_dir)
 
+    def read_file_skeleton_scoped(path: str) -> dict:
+        '''Get the structural skeleton of a file: imports, class definitions, function signatures.
+        Use this FIRST to understand file structure before reading specific sections.
+
+        Args:
+            path (str): Relative or absolute path to the file.
+        '''
+        lazyllm.LOG.info(f'  [Agent] Skeleton {path}')
+        skeleton = _extract_file_skeleton(clone_dir, path)
+        return {'status': 'ok', 'path': path, 'skeleton': skeleton or '(empty or not found)'}
+
     def search_scoped(pattern: str, glob: Optional[str] = None, max_results: int = 40) -> dict:
         '''Search files in the repository for a regex pattern.
 
@@ -860,7 +871,10 @@ def _build_scoped_agent_tools(  # noqa: C901
         answer = _deepwiki_ask_cached(owner_repo, question, max_chars=2000)
         return answer or '(no answer from DeepWiki)'
 
-    tools = [read_file_scoped, read_files_batch, grep_callers, search_scoped, list_dir_scoped, shell_scoped]
+    tools = [
+        read_file_scoped, read_file_skeleton_scoped, read_files_batch,
+        grep_callers, search_scoped, list_dir_scoped, shell_scoped,
+    ]
     if owner_repo:
         tools.append(ask_deepwiki)
     return tools

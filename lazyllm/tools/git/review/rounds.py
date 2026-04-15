@@ -625,7 +625,7 @@ _R2_SUMMARY_BUDGET = 600
 _R2_SHARED_CTX_BUDGET = 4000
 _R2_EXTRACT_DIFF_CHUNK = SINGLE_CALL_CONTEXT_BUDGET - 26000
 _R2_AGENT_DIFF_BUDGET = SINGLE_CALL_CONTEXT_BUDGET - 14000
-_R2_FILE_AGENT_RETRIES = 5
+_R2_FILE_AGENT_RETRIES = 8
 _R2_FILE_TIMEOUT_SECS = 300
 
 def _parse_agent_review_output(raw: str) -> List[Dict[str, Any]]:
@@ -876,6 +876,18 @@ STRICT RULES:
 '''
 
 
+def _trim_r1_for_group(all_r1: List[Dict[str, Any]], budget: int = 4000) -> str:
+    trimmed: List[Dict[str, Any]] = []
+    chars = 0
+    for item in all_r1:
+        s = json.dumps(item, ensure_ascii=False)
+        if chars + len(s) > budget:
+            break
+        trimmed.append(item)
+        chars += len(s)
+    return json.dumps(trimmed, ensure_ascii=False, indent=2) if trimmed else '[]'
+
+
 def _r2_group_review(
     llm: Any,
     group_paths: List[str],
@@ -906,17 +918,21 @@ def _r2_group_review(
         all_r1.extend(r1_by_file.get(path, []))
 
     files_block = '\n\n'.join(files_block_parts)
+    if len(files_block) > 40000:
+        sub_groups = _r2_split_group_if_needed(group_paths, file_diffs, budget=40000)
+        if len(sub_groups) > 1:
+            lazyllm.LOG.info(
+                f'  [R2-group] Split {len(group_paths)} files into {len(sub_groups)} sub-groups'
+            )
+            for sg in sub_groups:
+                _r2_group_review(
+                    llm, sg, file_diffs, r1_by_file, shared_context, arch_doc,
+                    pr_summary, language, ckpt, all_results, all_discarded,
+                    use_cache=use_cache, agent_instructions=agent_instructions,
+                )
+            return
     # Truncate the list before serialising so the JSON passed to the LLM is always valid.
-    r1_budget = 4000
-    r1_trimmed: List[Dict[str, Any]] = []
-    r1_chars = 0
-    for item in all_r1:
-        s = json.dumps(item, ensure_ascii=False)
-        if r1_chars + len(s) > r1_budget:
-            break
-        r1_trimmed.append(item)
-        r1_chars += len(s)
-    round1_json = json.dumps(r1_trimmed, ensure_ascii=False, indent=2) if r1_trimmed else '[]'
+    round1_json = _trim_r1_for_group(all_r1)
     arch_snippet = clip_text(arch_doc or '', 4000)
     density_rule = issue_density_rule(files_block)
 
@@ -925,9 +941,9 @@ def _r2_group_review(
         pr_summary=pr_summary[:600] if pr_summary else '(not available)',
         agent_instructions=agent_instructions[:400] if agent_instructions else '',
         arch_doc=arch_snippet,
-        shared_context=shared_context[:_R2_SHARED_CTX_BUDGET],
+        shared_context=_r2_trim_shared_context(shared_context, _R2_SHARED_CTX_BUDGET),
         round1_json=round1_json,
-        files_block=files_block[:40000],
+        files_block=files_block,
         density_rule=density_rule,
     )
 
@@ -1083,17 +1099,18 @@ def _r2_unit_agent_review(
         symbol_context = ''
 
     # chunk-based issue extraction over the combined unit diff
-    # Process ALL chunks (no hard truncation) up to R2_MAX_CHUNKS_HARD to cover the full file.
-    all_chunks = _split_file_diff_into_chunks(unit_diff, _R2_EXTRACT_DIFF_CHUNK)
+    skeleton = _extract_file_skeleton(clone_dir, anchor) if anchor else ''
+    if skeleton:
+        lazyllm.LOG.info(f'  [R2] File skeleton extracted for {anchor} ({len(skeleton)} chars)')
+    # dynamic diff budget based on actual context sizes
+    diff_cap = _r2_diff_budget(symbol_context, skeleton)
+    all_chunks = _split_file_diff_into_chunks(unit_diff, diff_cap)
     if len(all_chunks) > R2_MAX_CHUNKS_HARD:
         lazyllm.LOG.warning(
             f'Round 2: {anchor or files} has {len(all_chunks)} chunks, '
             f'capping at {R2_MAX_CHUNKS_HARD} (R2_MAX_CHUNKS_HARD)'
         )
         all_chunks = all_chunks[:R2_MAX_CHUNKS_HARD]
-    skeleton = _extract_file_skeleton(clone_dir, anchor) if anchor else ''
-    if skeleton:
-        lazyllm.LOG.info(f'  [R2] File skeleton extracted for {anchor} ({len(skeleton)} chars)')
     r1_issues = [c for f in files for c in r1_by_file.get(f, [])]
     items: List[Dict[str, Any]] = []
     discarded: set = set()
@@ -1117,8 +1134,8 @@ def _r2_unit_agent_review(
 
 
 _R2_CONTEXT_COLLECT_PROMPT_TMPL = '''\
-You are a code analysis assistant. Your ONLY task is to explore the repository and identify files/symbols \
-relevant to the diff below. Do NOT produce review comments or judgments.
+You are a code analysis assistant. Your ONLY task is to explore the repository and \
+identify files/symbols relevant to the diff below. Do NOT produce review comments or judgments.
 
 ## File Being Analyzed
 {path}
@@ -1131,16 +1148,28 @@ relevant to the diff below. Do NOT produce review comments or judgments.
 {diff_chunk}
 ```
 
-## Exploration Plan — follow these steps IN ORDER, stop early if context is sufficient:
+## Your Goal
+Understand the code context around the diff changes. Focus on:
+1. What do the modified symbols do? (definition, signature, dependencies)
+2. Who calls them? How would callers be affected by the changes?
+3. Are there base classes or interfaces that impose contracts?
+4. Are there framework-specific mechanisms (lazy-loading, registry, etc.)?
 
-Step 0: Call read_file_scoped("AGENTS.md"). If not found, try "CLAUDE.md", then ".cursorrules".
-        If found, note any "Known Gotchas", "Non-Obvious Behaviors", type/initialization conventions,
-        or framework-specific rules. These OVERRIDE any assumptions you might make about framework
-        behavior. Only proceed to Step 1 after completing Step 0.
-Step 1: For each class or function modified in the diff, call analyze_symbol("<name>", "{path}").
-Step 2: For each symbol found, call grep_callers("<name>") to find call sites outside this file.
-Step 3: If a symbol inherits from a base class, call analyze_symbol("<base_class>", "<base_file>").
-Step 4: STOP. Do not search docs or make additional calls.
+## Available Tools & When to Use Them
+- read_file_skeleton_scoped: Start here to understand file structure before reading details
+- analyze_symbol: Analyze definition, signature, and dependencies of a symbol
+- grep_callers: Find call sites to understand impact on callers
+- read_file_scoped: Read actual code (use line ranges for large files)
+- search_scoped: Find related patterns across the repo
+You may call multiple tools in a single round for parallel execution.
+
+## Strategy Hints
+- Read AGENTS.md first if it exists (project conventions)
+- For large files, read the skeleton first, then zoom into relevant sections
+- Follow the import chain if a symbol comes from another module
+- If grep_callers reveals a caller that is a public API or entry point,
+  consider calling analyze_symbol on that caller (up to 2 levels of tracing)
+- Stop when you have enough context to understand the change's impact
 
 ## Output Format (STRICT — must be valid JSON)
 Output a JSON object with these fields:
@@ -1238,11 +1267,11 @@ If no issues found: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
 _r2_agent_instance_counter = [0]
 
 
-def _make_traced_tool(tool: Any, step_counter: List[int], path: str) -> Any:
+def _make_traced_tool(tool: Any, step_counter: List[int], path: str,
+                      log_list: Optional[List[str]] = None) -> Any:
     import inspect
     sig = inspect.signature(tool)
     params = list(sig.parameters.keys())
-    # use a unique suffix per agent instance to avoid duplicate class registration in LazyLLM
     _r2_agent_instance_counter[0] += 1
     unique_name = f'{tool.__name__}_r2_{_r2_agent_instance_counter[0]}'
 
@@ -1256,8 +1285,20 @@ def _make_traced_tool(tool: Any, step_counter: List[int], path: str) -> Any:
             if len(v_str) > 60:
                 v_str = v_str[:57] + '...'
             arg_parts.append(f'{k}={v_str}' if k != params[0] else v_str)
-        lazyllm.LOG.info(f'  [R2 Step {step_counter[0]}] {tool.__name__}({", ".join(arg_parts)})')
-        return tool(*args, **kwargs)
+        call_desc = f'{tool.__name__}({", ".join(arg_parts)})'
+        lazyllm.LOG.info(f'  [R2 Step {step_counter[0]}] {call_desc}')
+        result = tool(*args, **kwargs)
+        if log_list is not None:
+            status = 'ok'
+            if isinstance(result, dict):
+                if result.get('status') == 'error' or result.get('error'):
+                    status = 'error'
+                elif not result.get('status'):
+                    status = 'empty' if not result else 'ok'
+            elif isinstance(result, str) and ('not found' in result or not result):
+                status = 'empty'
+            log_list.append(f'- {call_desc} -> {status}')
+        return result
 
     traced.__name__ = unique_name
     traced.__doc__ = tool.__doc__
@@ -1266,7 +1307,105 @@ def _make_traced_tool(tool: Any, step_counter: List[int], path: str) -> Any:
         lazyllm.LOG.warning(f'Tool {tool.__name__!r} has no docstring; ReactAgent will fail to init')
     return traced
 
-_R2_RICH_CONTEXT_BUDGET = 8000
+_R2_RICH_CONTEXT_BUDGET = 12000
+_R2_SYMBOL_CONTEXT_MAX = 12000
+_R2_FILE_SKELETON_MAX = 8000
+_R2_FIXED_OVERHEAD = 26000
+
+
+def _r2_diff_budget(symbol_context: str, file_skeleton: str) -> int:
+    sym_actual = min(len(symbol_context), _R2_SYMBOL_CONTEXT_MAX)
+    skel_actual = min(len(file_skeleton), _R2_FILE_SKELETON_MAX)
+    return SINGLE_CALL_CONTEXT_BUDGET - _R2_FIXED_OVERHEAD - sym_actual - skel_actual
+
+
+def _r2_trim_rich_context(context: str, budget: int) -> str:
+    if len(context) <= budget:
+        return context
+    sections = re.split(r'\n(?=# )', context)
+    tier1 = [s for s in sections if 'Framework Notes' in s or 'Exploration Log' in s]
+    tier2 = [s for s in sections if 'skeleton' in s.split('\n')[0] and s not in tier1]
+    tier3 = [s for s in sections if s not in tier1 and s not in tier2]
+    result_parts: List[str] = []
+    used = 0
+    for section in tier1 + tier2 + tier3:
+        if used + len(section) + 2 <= budget:
+            result_parts.append(section)
+            used += len(section) + 2
+        else:
+            remaining = budget - used - 2
+            if remaining > 300:
+                result_parts.append(section[:remaining] + '\n...(trimmed)')
+            break
+    return '\n'.join(result_parts)
+
+
+def _r2_trim_skeleton(skeleton: str, diff_chunk: str, budget: int) -> str:
+    if len(skeleton) <= budget:
+        return skeleton
+    diff_symbols = set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{2,})\b', diff_chunk))
+    lines = skeleton.splitlines()
+    kept = [ln for ln in lines
+            if ln.strip().startswith(('import ', 'from '))
+            or ln.strip().startswith('class ')
+            or any(s in ln for s in diff_symbols)]
+    result = '\n'.join(kept)
+    if len(result) <= budget:
+        return result
+    kept_no_import = [ln for ln in kept if not ln.strip().startswith(('import ', 'from '))]
+    result = '\n'.join(kept_no_import)
+    if len(result) <= budget:
+        return result
+    kept_core = [ln for ln in kept_no_import
+                 if ln.strip().startswith('class ') or any(s in ln for s in diff_symbols)]
+    return '\n'.join(kept_core)[:budget]
+
+
+def _r2_trim_shared_context(context: str, budget: int) -> str:
+    if len(context) <= budget:
+        return context
+    sections = re.split(r'\n(?=\[)', context)
+    priority = {'Changed Interfaces': 0, 'Shared Symbols': 1, 'Intra-PR': 2}
+
+    def _sort_key(s: str) -> int:
+        for k, v in priority.items():
+            if k in s:
+                return v
+        return 9
+
+    sections.sort(key=_sort_key)
+    result_parts: List[str] = []
+    used = 0
+    for section in sections:
+        if used + len(section) + 1 <= budget:
+            result_parts.append(section)
+            used += len(section) + 1
+        else:
+            remaining = budget - used - 1
+            if remaining > 200:
+                result_parts.append(section[:remaining] + '\n...(trimmed)')
+            break
+    return '\n'.join(result_parts)
+
+
+def _r2_split_group_if_needed(
+    group_paths: List[str], file_diffs: Dict[str, str], budget: int = 40000,
+) -> List[List[str]]:
+    sub_groups: List[List[str]] = []
+    current_group: List[str] = []
+    current_size = 0
+    for path in group_paths:
+        fdiff = file_diffs.get(path, '')
+        if current_size + len(fdiff) > budget and current_group:
+            sub_groups.append(current_group)
+            current_group = []
+            current_size = 0
+        current_group.append(path)
+        current_size += len(fdiff)
+    if current_group:
+        sub_groups.append(current_group)
+    return sub_groups
+
 
 def _r2_parse_exploration_json(raw: str) -> dict:
     try:
@@ -1299,15 +1438,26 @@ def _r2_read_lines(clone_dir: str, rel_path: str, start: int, end: int) -> str:
     except OSError:
         return ''
 
-def _r2_build_rich_context(clone_dir: str, raw_agent_output: str, primary_path: str) -> str:
-    exploration = _r2_parse_exploration_json(raw_agent_output)
-    if not exploration:
-        # fallback: return raw output truncated (backward compat for non-JSON agent output)
-        return raw_agent_output[:_R2_RICH_CONTEXT_BUDGET] if raw_agent_output else ''
+def _r2_grep_relevant_lines(clone_dir: str, rel_path: str, symbols: set, context: int = 10) -> str:
+    abs_path = os.path.join(clone_dir, rel_path)
+    try:
+        with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.readlines()
+    except OSError:
+        return ''
+    hit_indices: set = set()
+    for i, line in enumerate(lines):
+        if any(s in line for s in symbols):
+            for j in range(max(0, i - context), min(len(lines), i + context + 1)):
+                hit_indices.add(j)
+    if not hit_indices:
+        return ''
+    return ''.join(f'{i + 1:>6}| {lines[i]}' for i in sorted(hit_indices))
 
+def _r2_collect_related_file_parts(
+    clone_dir: str, exploration: dict, diff_symbols: set, seen_skeletons: set,
+) -> List[str]:
     parts: List[str] = []
-    seen_skeletons: set = set()
-
     for item in exploration.get('related_files', [])[:5]:
         path = item.get('path', '')
         if not path:
@@ -1315,7 +1465,10 @@ def _r2_build_rich_context(clone_dir: str, raw_agent_output: str, primary_path: 
         lines = item.get('lines', [1, 50])
         start = lines[0] if len(lines) > 0 else 1
         end = lines[1] if len(lines) > 1 else start + 50
-        content = _r2_read_lines(clone_dir, path, start, end)
+        if (end - start) > 200 and diff_symbols:
+            content = _r2_grep_relevant_lines(clone_dir, path, diff_symbols)
+        else:
+            content = _r2_read_lines(clone_dir, path, start, end)
         if content:
             parts.append(f'# {path}:{start}-{end} ({item.get("reason", "")})\n{content}')
         if path not in seen_skeletons:
@@ -1323,7 +1476,6 @@ def _r2_build_rich_context(clone_dir: str, raw_agent_output: str, primary_path: 
             if skeleton:
                 parts.append(f'# {path} (file skeleton)\n{skeleton}')
             seen_skeletons.add(path)
-
     for bc in exploration.get('base_classes', []):
         bc_path = bc.get('file', '')
         if bc_path and bc_path not in seen_skeletons:
@@ -1331,13 +1483,29 @@ def _r2_build_rich_context(clone_dir: str, raw_agent_output: str, primary_path: 
             if skeleton:
                 parts.append(f'# {bc_path} (base class {bc.get("symbol", "")} skeleton)\n{skeleton}')
             seen_skeletons.add(bc_path)
+    return parts
+
+
+def _r2_build_rich_context(clone_dir: str, raw_agent_output: str, primary_path: str,
+                           exploration_log: Optional[List[str]] = None,
+                           primary_diff: str = '') -> str:
+    exploration = _r2_parse_exploration_json(raw_agent_output)
+    if not exploration:
+        return raw_agent_output[:_R2_RICH_CONTEXT_BUDGET] if raw_agent_output else ''
+
+    seen_skeletons: set = set()
+    diff_symbols = set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{2,})\b', primary_diff)) if primary_diff else set()
+    parts = _r2_collect_related_file_parts(clone_dir, exploration, diff_symbols, seen_skeletons)
 
     framework_notes = exploration.get('framework_notes', [])
     if framework_notes:
         parts.append('# Framework Notes\n' + '\n'.join(f'- {n}' for n in framework_notes[:3]))
 
+    if exploration_log:
+        parts.append('# Exploration Log\n' + '\n'.join(exploration_log[-20:]))
+
     result = '\n\n'.join(parts)
-    return result[:_R2_RICH_CONTEXT_BUDGET] if result else raw_agent_output[:_R2_RICH_CONTEXT_BUDGET]
+    return _r2_trim_rich_context(result, _R2_RICH_CONTEXT_BUDGET)
 
 def _r2_build_file_context(
     llm: Any, path: str, diff_chunk: str, clone_dir: str, tools: List[Any],
@@ -1349,7 +1517,8 @@ def _r2_build_file_context(
         lang_instruction=_language_instruction(language),
     )
     step_counter = [0]
-    traced_tools = [_make_traced_tool(t, step_counter, path) for t in tools]
+    exploration_log: List[str] = []
+    traced_tools = [_make_traced_tool(t, step_counter, path, exploration_log) for t in tools]
     try:
         agent = ReactAgent(
             llm, tools=traced_tools, max_retries=_R2_FILE_AGENT_RETRIES,
@@ -1374,7 +1543,7 @@ def _r2_build_file_context(
             raise RuntimeError(f'Round 2 context collection timed out for {path} after {_R2_FILE_TIMEOUT_SECS}s')
     lazyllm.LOG.info(f'  [Agent] Done {path}')
     raw_str = raw if isinstance(raw, str) else str(raw)
-    return _r2_build_rich_context(clone_dir, raw_str, path)
+    return _r2_build_rich_context(clone_dir, raw_str, path, exploration_log=exploration_log)
 
 def _r2_parse_item(item: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Optional[int]]]:
     if not isinstance(item, dict) or item.get('problem') is None:
@@ -1405,15 +1574,18 @@ def _r2_extract_issues(
         r1_text = r1_text[:_R2_R1_BUDGET] + '\n...(truncated)'
     paths_str = ', '.join(f'`{p}`' for p in (all_paths or [path]))
     spec_snippet = _sample_text(review_spec, 1200) if review_spec else '(not available)'
+    sym_trimmed = _r2_trim_rich_context(symbol_context, _R2_SYMBOL_CONTEXT_MAX) if symbol_context else ''
+    skel_trimmed = _r2_trim_skeleton(file_skeleton, diff_chunk, _R2_FILE_SKELETON_MAX) if file_skeleton else ''
+    shared_trimmed = _r2_trim_shared_context(shared_context, _R2_SHARED_CTX_BUDGET) if shared_context else ''
     prompt = _R2_ISSUE_EXTRACT_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         pr_summary=(pr_summary or '')[:_R2_SUMMARY_BUDGET],
         agent_instructions=agent_instructions or '(not available)',
         arch_doc=arch_snippet,
         review_spec=spec_snippet,
-        shared_context=shared_context or '(none)',
-        file_skeleton=file_skeleton[:3000] if file_skeleton else '(not available)',
-        symbol_context=symbol_context[:3000] if symbol_context else '(none)',
+        shared_context=shared_trimmed or '(none)',
+        file_skeleton=skel_trimmed or '(not available)',
+        symbol_context=sym_trimmed or '(none)',
         round1_json=r1_text, path=path, hunk_range=hunk_range, diff_text=diff_chunk,
         density_rule=issue_density_rule(diff_chunk),
         all_paths=paths_str,
@@ -1440,10 +1612,9 @@ def _r2_dedupe_issues_by_line(issues: List[Dict[str, Any]]) -> List[Dict[str, An
     return [it for it in issues if (k := f'{it.get("path")}:{it.get("line")}') not in seen and not seen.add(k)]
 
 def _filter_symbol_context_for_chunk(symbol_context: str, diff_chunk: str) -> str:
-    # extract identifiers from the diff chunk to filter symbol_context lines
     chunk_symbols = set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{2,})\b', diff_chunk))
     if not chunk_symbols:
-        return symbol_context[:3000]
+        return _r2_trim_rich_context(symbol_context, _R2_SYMBOL_CONTEXT_MAX)
     lines = symbol_context.splitlines()
     relevant: List[str] = []
     prev_matched = False
@@ -1453,7 +1624,8 @@ def _filter_symbol_context_for_chunk(symbol_context: str, diff_chunk: str) -> st
             relevant.append(line)
         prev_matched = matched
     filtered = '\n'.join(relevant)
-    return filtered[:3000] if filtered else symbol_context[:3000]
+    return _r2_trim_rich_context(filtered, _R2_SYMBOL_CONTEXT_MAX) if filtered \
+        else _r2_trim_rich_context(symbol_context, _R2_SYMBOL_CONTEXT_MAX)
 
 
 def _r2_process_file_chunk(
@@ -1498,7 +1670,9 @@ def _r2_process_file_chunk(
 
     merged: List[Dict[str, Any]] = []
     merged_disc: set = set()
-    chunks = _split_file_diff_into_chunks(fdiff, _R2_EXTRACT_DIFF_CHUNK)
+    skeleton = _extract_file_skeleton(clone_dir, path)
+    diff_cap = _r2_diff_budget(symbol_context, skeleton)
+    chunks = _split_file_diff_into_chunks(fdiff, diff_cap)
     # enforce per-file chunk cap
     if max_chunks and len(chunks) > max_chunks:
         lazyllm.LOG.warning(

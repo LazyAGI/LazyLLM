@@ -264,17 +264,24 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 #### Chunk 模式（大文件）
 
 1. **相关小文件合并**：分析大文件 diff 中的 `import` 语句，找到相关小文件附加到上下文（上限 `_R2_RELATED_DIFF_BUDGET`）。
-2. **Agent 上下文收集（阶段A — 纯探索 subagent）**：`compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)` 压缩 diff 后，用 `ReactAgent` 探索仓库上下文（工具集见 3.6 节），`force_summarize=True`，`keep_full_turns=2`，带超时控制。
+2. **Agent 上下文收集（阶段A — 目标驱动自由探索）**：`compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)` 压缩 diff 后，用 `ReactAgent`（`max_retries=8`）探索仓库上下文，`force_summarize=True`，`keep_full_turns=2`，带超时控制。
    - 阶段A prompt 注入 `agent_instructions`（框架约定），使 agent 在探索时理解框架机制。
+   - 探索策略为**目标驱动**（非线性步骤），agent 可根据中间发现动态调整方向，支持 2 层符号追踪。
+   - 工具集包含 `read_file_skeleton_scoped`（骨架优先策略）、`analyze_symbol`、`grep_callers`、`read_file_scoped`、`search_scoped` 等，支持单轮内并行调用。
    - 阶段A输出结构化 JSON：`explored_symbols`、`related_files`（含行范围）、`base_classes`、`framework_notes`。
    - **不接收 R1 issues**，避免确认偏差，保持纯信息收集职责。
+   - 工具调用过程记录为**探索日志**（`exploration_log`），传递给阶段B。
 3. **Rich Context 构建（确定性中间步骤）**：`_r2_build_rich_context()` 根据阶段A的 JSON 输出：
-   - 读取 `related_files[].lines` 标出的代码片段。
+   - 读取 `related_files[].lines` 标出的代码片段（大范围 >200 行时使用 Grep 导航式读取，只读命中行上下文）。
    - 为每个相关文件和基类文件提取 `_extract_file_skeleton()`（类签名、函数签名）。
-   - 附加 `framework_notes`。
-   - 总量控制在 `_R2_RICH_CONTEXT_BUDGET=8000` 字符内。
-4. **分块抽取（阶段B）**：将文件 diff 切成若干 chunk，每 chunk 调用 `_r2_extract_issues()`（1× JSON LLM）：
-   - 输入包含 rich context（代码片段 + 文件骨架 + 框架发现）、`review_spec`、`agent_instructions`。
+   - 附加 `framework_notes` 和 `exploration_log`。
+   - 超预算时使用 `_r2_trim_rich_context()` 按段落优先级压缩（Framework Notes > skeleton > 代码片段），不做硬截断。
+   - 总量上限 `_R2_RICH_CONTEXT_BUDGET=12000` 字符。
+4. **分块抽取（阶段B）**：diff 预算根据 `symbol_context` 和 `file_skeleton` 实际大小**动态计算**（`_r2_diff_budget()`），超预算自动分页。每 chunk 调用 `_r2_extract_issues()`（1× JSON LLM）：
+   - `symbol_context` 使用 `_r2_trim_rich_context()` 结构化压缩（上限 12000）。
+   - `file_skeleton` 使用 `_r2_trim_skeleton()` 按 diff 相关性三遍渐进式压缩（上限 8000）。
+   - `shared_context` 使用 `_r2_trim_shared_context()` 按段落优先级压缩（上限 4000）。
+   - 输入包含 rich context、`review_spec`、`agent_instructions`。
    - 对每条 R1 issue 作 **KEEP / MODIFY / DISCARD** 三选一决策。
    - 发现仅凭跨文件上下文才能察觉的**新 issue**。
    - 记录被 DISCARD 的 R1 `path:line` 键（进入 `discarded_r1_keys`）。
@@ -284,6 +291,7 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 
 1. `_r2_group_files(small_files)`：按**目录**分组，每组最多 5 个文件。
 2. 每组 **1× JSON LLM**（非 Agent）：将同组文件 diff 一起分析，关注**跨文件一致性**。
+3. 当 `files_block` 超过 40000 字符时，自动拆分为多个子 group 分别处理（`_r2_split_group_if_needed`），不做硬截断。
 
 #### R2 新增检查项（需跨文件上下文才能发现）
 
@@ -443,8 +451,8 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 | 阶段 | 关键上下文分配 |
 |------|---------------|
 | R1 hunk | hunk 截断至 ~80 行；arch 3000 字符；review_spec/pr_summary 各 600 字符 |
-| R2 chunk（Agent） | diff 压缩至 `_R2_AGENT_DIFF_BUDGET`；shared_context 4000；arch 6000；R1 list 8000；rich_context 8000；review_spec 1200 |
-| R2 group | arch 4000；shared_context 4000；files_block 40000；r1_json 4000 |
+| R2 chunk（Agent） | diff 预算动态计算（`_r2_diff_budget`）；symbol_context 上限 12000（结构化压缩）；file_skeleton 上限 8000（相关性压缩）；shared_context 4000（优先级压缩）；arch 6000；R1 list 8000；review_spec 1200 |
+| R2 group | arch 4000；shared_context 4000（优先级压缩）；files_block 40000（超预算自动分页）；r1_json 4000 |
 | R3 batch | arch 38000；prev_json 16000；budget_files = 剩余预算 |
 | R4a（文档） | arch 12000；diff 剩余预算 |
 | R4b（架构师） | arch 42000；pr_design_doc 12000；diff 剩余预算 |
@@ -467,7 +475,7 @@ _classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
 |------|------|
 | **JSON LLM** | R1 hunk 分析、R2 chunk 抽取、R2 group 联合、R3 全局分析、R4b 架构师评审、R5 合并去重、架构 outline 生成、规则提取、Public API Catalog 构建 |
 | **文本 LLM** | arch 各节内容填充、PR 摘要、R4a PR 设计文档；R4 `prefer_combined=True` 时的单次合并尝试 |
-| **ReactAgent** | R2 chunk 模式的上下文收集（工具：scoped 读写/搜索/shell + `analyze_symbol`）；R4v 架构 issue 验证（相同工具集，按文件批量分组） |
+| **ReactAgent** | R2 chunk 模式的上下文收集（工具：scoped 读写/搜索/shell + `analyze_symbol` + `read_file_skeleton_scoped`）；R4v 架构 issue 验证（相同工具集，按文件批量分组） |
 | **重试机制** | `_llm_call_with_retry()`：JSON 解析失败/限流时自动重试 + `json_repair` 兜底 |
 
 ---
@@ -558,8 +566,8 @@ CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4A → R4 → R
 | 架构 outline | `snapshot[:4000]`，快照预算 6000 字符 | 部分快照内容未进入 outline 生成 |
 | PR 摘要 | `body[:800]`、`diff[:5000]` | 大 PR 尾部变更在预摘要中不可见 |
 | R1 规则注入 | `review_spec`/`pr_summary` 各 600 字符 | 与 R3 全量规则注入不对称 |
-| R2 chunk Agent | 阶段A输出 JSON 解析失败时 fallback 为原始文本 | `_r2_build_rich_context` 有 fallback 逻辑 |
-| R2 group | `files_block[:40000]`；无 Agent 探索 | 复杂跨文件语义依赖由 Agent 模式补充 |
+| R2 chunk Agent | 阶段A输出 JSON 解析失败时 fallback 为原始文本；探索日志最多保留 20 条 | `_r2_build_rich_context` 有 fallback 逻辑 |
+| R2 group | 超 40000 字符自动拆分子 group；无 Agent 探索 | 复杂跨文件语义依赖由 Agent 模式补充 |
 | 规则匹配 | `_lookup_relevant_rules` 仅用 diff 前 200 行提关键词 | 关键词集中在尾部时匹配可能偏差 |
 | R5 去重 | 确定性步骤仅折叠相同 category；跨 category 同位置重复依赖 LLM | LLM fallback 时退化为 severity 排序 |
 | BudgetManager | 已提供类与调用预算追踪，各轮尚未全面切换 | 与旧 `clip_*` 并存 |

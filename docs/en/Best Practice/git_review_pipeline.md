@@ -264,17 +264,24 @@ Files are sorted **descending** by effective diff lines, so the most important f
 #### Chunk Mode (large files)
 
 1. **Related small file merging**: analyzes `import` statements in the large file diff; appends related small files to context (bounded by `_R2_RELATED_DIFF_BUDGET`).
-2. **Agent context collection (Phase A — pure exploration subagent)**: compress diff via `compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)`, then use `ReactAgent` to explore repository context (see toolset in §3.6), with `force_summarize=True`, `keep_full_turns=2`, and timeout control.
+2. **Agent context collection (Phase A — goal-driven free exploration)**: compress diff via `compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)`, then use `ReactAgent` (`max_retries=8`) to explore repository context, with `force_summarize=True`, `keep_full_turns=2`, and timeout control.
    - Phase A prompt includes `agent_instructions` (framework conventions) so the agent understands framework mechanisms during exploration.
+   - Exploration strategy is **goal-driven** (not linear steps); the agent dynamically adjusts direction based on intermediate findings, supporting 2-level symbol tracing.
+   - Toolset includes `read_file_skeleton_scoped` (skeleton-first strategy), `analyze_symbol`, `grep_callers`, `read_file_scoped`, `search_scoped`, etc., with parallel tool calls within a single round.
    - Phase A outputs structured JSON: `explored_symbols`, `related_files` (with line ranges), `base_classes`, `framework_notes`.
    - **Does not receive R1 issues** to avoid confirmation bias; maintains pure information-collection responsibility.
+   - Tool call history is recorded as **exploration log** (`exploration_log`), passed to Phase B.
 3. **Rich Context construction (deterministic intermediate step)**: `_r2_build_rich_context()` processes Phase A's JSON output:
-   - Reads code snippets from `related_files[].lines`.
+   - Reads code snippets from `related_files[].lines` (for large ranges >200 lines, uses Grep-navigated reading — only reads lines matching diff symbols with surrounding context).
    - Extracts `_extract_file_skeleton()` (class signatures, function signatures) for each related file and base class file.
-   - Appends `framework_notes`.
-   - Total bounded by `_R2_RICH_CONTEXT_BUDGET=8000` chars.
-4. **Chunked extraction (Phase B)**: split file diff into chunks; for each chunk call `_r2_extract_issues()` (1× JSON LLM):
-   - Input includes rich context (code snippets + file skeletons + framework notes), `review_spec`, `agent_instructions`.
+   - Appends `framework_notes` and `exploration_log`.
+   - When over budget, uses `_r2_trim_rich_context()` for priority-based structural compression (Framework Notes > skeleton > code snippets), no hard truncation.
+   - Total bounded by `_R2_RICH_CONTEXT_BUDGET=12000` chars.
+4. **Chunked extraction (Phase B)**: diff budget is **dynamically calculated** based on actual `symbol_context` and `file_skeleton` sizes (`_r2_diff_budget()`); auto-paginated when over budget. For each chunk, call `_r2_extract_issues()` (1× JSON LLM):
+   - `symbol_context` uses `_r2_trim_rich_context()` structural compression (max 12000).
+   - `file_skeleton` uses `_r2_trim_skeleton()` with 3-pass progressive narrowing by diff relevance (max 8000).
+   - `shared_context` uses `_r2_trim_shared_context()` priority-based compression (max 4000).
+   - Input includes rich context, `review_spec`, `agent_instructions`.
    - Make a **KEEP / MODIFY / DISCARD** decision for each R1 issue.
    - Discover **new issues** only detectable with cross-file context.
    - Record DISCARDed R1 `path:line` keys (into `discarded_r1_keys`).
@@ -284,6 +291,7 @@ Files are sorted **descending** by effective diff lines, so the most important f
 
 1. `_r2_group_files(small_files)`: group by **directory**, at most 5 files per group.
 2. Each group: **1× JSON LLM** (no Agent) — analyze all files in the group together, focusing on **cross-file consistency**.
+3. When `files_block` exceeds 40000 chars, automatically split into sub-groups for separate processing (`_r2_split_group_if_needed`), no hard truncation.
 
 #### R2 New Check Items (require cross-file context)
 
@@ -443,8 +451,8 @@ Runs **before** the five LLM rounds; consumes no LLM calls.
 | Stage | Key Context Allocations |
 |-------|------------------------|
 | R1 hunk | hunk truncated to ~80 lines; arch 3000 chars; review_spec/pr_summary 600 chars each |
-| R2 chunk (Agent) | diff compressed to `_R2_AGENT_DIFF_BUDGET`; shared_context 4000; arch 6000; R1 list 8000; rich_context 8000; review_spec 1200 |
-| R2 group | arch 4000; shared_context 4000; files_block 40000; r1_json 4000 |
+| R2 chunk (Agent) | diff budget dynamically calculated (`_r2_diff_budget`); symbol_context max 12000 (structural compression); file_skeleton max 8000 (relevance compression); shared_context 4000 (priority compression); arch 6000; R1 list 8000; review_spec 1200 |
+| R2 group | arch 4000; shared_context 4000 (priority compression); files_block 40000 (auto-paginated when over budget); r1_json 4000 |
 | R3 batch | arch 38000; prev_json 16000; budget_files = remaining budget |
 | R4a (doc) | arch 12000; diff uses remaining budget |
 | R4b (architect) | arch 42000; pr_design_doc 12000; diff uses remaining budget |
@@ -467,7 +475,7 @@ For long texts (e.g. `arch_doc`), applies **head + middle + tail** three-segment
 |------|----------|
 | **JSON LLM** | R1 hunk analysis, R2 chunk extraction, R2 group joint analysis, R3 global analysis, R4b architect review, R5 merge/dedup, arch outline generation, rule extraction, Public API Catalog construction |
 | **Text LLM** | Arch section content fill, PR summary, R4a design doc; combined attempt when `prefer_combined=True` |
-| **ReactAgent** | R2 chunk mode context collection (tools: scoped read/search/shell + `analyze_symbol`); R4v architect issue verification (same toolset, batch-grouped by file) |
+| **ReactAgent** | R2 chunk mode context collection (tools: scoped read/search/shell + `analyze_symbol` + `read_file_skeleton_scoped`); R4v architect issue verification (same toolset, batch-grouped by file) |
 | **Retry** | `_llm_call_with_retry()`: auto-retry on JSON parse failure / rate limiting + `json_repair` fallback |
 
 ---
@@ -558,8 +566,8 @@ CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4 → FINAL →
 | Arch outline | `snapshot[:4000]`; snapshot budget 6000 chars | Some snapshot content may not reach outline generation |
 | PR summary | `body[:800]`, `diff[:5000]` | Changes near the end of large PRs may be invisible in the summary |
 | R1 spec injection | `review_spec`/`pr_summary` capped at 600 chars | Asymmetric compared to R3's full spec injection |
-| R2 chunk Agent | Phase A JSON parse failure falls back to raw text | `_r2_build_rich_context` has fallback logic |
-| R2 group | `files_block[:40000]`; no Agent exploration | Complex cross-file semantic dependencies covered by chunk mode instead |
+| R2 chunk Agent | Phase A JSON parse failure falls back to raw text; exploration log capped at 20 entries | `_r2_build_rich_context` has fallback logic |
+| R2 group | Auto-split into sub-groups when >40000 chars; no Agent exploration | Complex cross-file semantic dependencies covered by chunk mode instead |
 | Rule matching | `_lookup_relevant_rules` only uses the first 200 lines of diff for keywords | Keywords concentrated in the tail may be missed |
 | R5 dedup | Deterministic pass only collapses same-category entries; cross-category same-location duplicates rely on LLM | Degrades to severity-sorted output on LLM fallback |
 | BudgetManager | Class and call budget tracking exist; full migration not yet complete | Coexists with legacy `clip_*` approaches |
