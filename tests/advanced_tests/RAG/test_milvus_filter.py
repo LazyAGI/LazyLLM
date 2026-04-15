@@ -7,6 +7,8 @@ import io
 import json
 import shutil
 
+import pytest
+
 from lazyllm import config
 from lazyllm import TrainableModule
 from lazyllm.launcher import cleanup
@@ -116,6 +118,9 @@ def do_upload(manager_url: str, group: str):
     assert response.status_code == 200
 
 
+@pytest.mark.skip(reason='For local test')
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestMilvusFilter(unittest.TestCase):
     def setUp(self):
         self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_example_ut'))
