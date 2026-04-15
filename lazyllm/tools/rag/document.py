@@ -51,6 +51,53 @@ def _is_persistent_store(store_conf: Optional[Dict]) -> bool:
     return False
 
 
+def _iter_milvus_uris(store_conf: Optional[Dict]):
+    '''Yield every Milvus ``uri`` referenced by ``store_conf`` so we can reject
+    embedded-file URIs up-front when the caller also asked for a DocServer
+    subprocess. ``_DocumentStore`` supports both the single-store form
+    (top-level ``type: milvus``) and the split form (``vector_store`` /
+    ``segment_store`` / ``indices`` sub-configs), so walk all of them.'''
+    if not isinstance(store_conf, dict):
+        return
+    pending = [store_conf]
+    while pending:
+        cfg = pending.pop()
+        if not isinstance(cfg, dict):
+            continue
+        if cfg.get('type') == 'milvus':
+            uri = (cfg.get('kwargs') or {}).get('uri')
+            if uri:
+                yield uri
+        for key in ('vector_store', 'segment_store', 'metadata_store'):
+            sub = cfg.get(key)
+            if isinstance(sub, dict):
+                pending.append(sub)
+        indices = cfg.get('indices')
+        if isinstance(indices, dict):
+            for _idx in indices.values():
+                if isinstance(_idx, dict):
+                    kw = _idx.get('kwargs') or {}
+                    if _idx.get('backend') == 'milvus' and kw.get('uri'):
+                        yield kw['uri']
+
+
+_REMOTE_MILVUS_SCHEMES = frozenset({'http', 'https', 'tcp', 'grpc'})
+
+
+def _is_embedded_milvus_uri(uri: str) -> bool:
+    '''milvus_lite treats any URI without a network scheme as a local
+    embedded database file. Those files can only be opened by one process
+    at a time; they are incompatible with the DocServer + Worker subprocess
+    architecture which would race the main process for the same ``.db``
+    file. Remote Milvus schemes supported by ``MilvusStore.__init__`` are
+    whitelisted (http/https plus pymilvus' tcp/grpc).'''
+    if not isinstance(uri, str) or not uri:
+        return False
+    from urllib.parse import urlparse
+    scheme = urlparse(uri).scheme.lower()
+    return scheme not in _REMOTE_MILVUS_SCHEMES
+
+
 class CallableDict(dict):
     def __call__(self, cls, *args, **kw):
         return self[cls](*args, **kw)
@@ -114,6 +161,31 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                     f'Persistent store detected (type={store_conf.get("type")}), '
                     f'auto-enabling DocServer for production-grade file tracking and scan.')
                 spawn_doc_server = True
+            # Reject the unsupported combination "service-mode RAG" + embedded
+            # milvus_lite. milvus_lite is a single-process SQLite-backed store
+            # keyed by a local file; the DocServer + Worker subprocess
+            # architecture (spawned for ``manager=True``, connected via
+            # ``DocServer(...)``, or bound via ``processor=DocumentProcessor(...)``)
+            # would race the main process for the same ``.db`` lockfile and
+            # intermittently fail with ``Open milvus.db failed, the file has
+            # been opened by another program``. ``processor`` is covered too
+            # because ``Document.__init__`` rewrites ``manager=DocumentProcessor``
+            # into ``manager=False, processor=<DocumentProcessor>`` before
+            # reaching ``_Manager``, which would otherwise skip this guard.
+            if spawn_doc_server or connect_doc_server or processor is not None:
+                embedded = [u for u in _iter_milvus_uris(store_conf) if _is_embedded_milvus_uri(u)]
+                if embedded:
+                    raise ValueError(
+                        'Document with `manager=True` / `manager=DocServer(...)` / '
+                        '`manager=DocumentProcessor(...)` does not support embedded '
+                        'milvus_lite (local file uri). milvus_lite is single-process '
+                        'and the service-mode subprocesses would contend for the same '
+                        'database file. Point the milvus config at a deployed Milvus '
+                        'standalone instead, e.g. '
+                        "`{'type': 'milvus', 'kwargs': {'uri': "
+                        "os.getenv('MILVUS_URI', 'http://<host>:19530'), ...}}`. "
+                        f'Offending uri(s): {embedded!r}.'
+                    )
             self._launcher: Launcher = launcher if launcher else (
                 lazyllm.launchers.empty(sync=False) if spawn_doc_server else lazyllm.launchers.remote(sync=False)
             )

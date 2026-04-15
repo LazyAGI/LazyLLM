@@ -633,6 +633,51 @@ class TestDocument(unittest.TestCase):
         assert mgr._spawn_doc_server is False, 'Map store should never auto-upgrade'
         mgr.stop()
 
+    def test_manager_with_embedded_milvus_uri_is_rejected(self):
+        '''Regression: ``manager=True`` (DocServer + Worker subprocesses) combined
+        with an embedded milvus_lite local .db is rejected at construction time.
+        milvus_lite is a single-writer SQLite-based store; service-mode would
+        race the main process and Workers for the same .db file and fail with
+        "Open milvus.db failed, the file has been opened by another program".
+        '''
+        dataset_path = self._build_dataset()
+        embedded_conf = {
+            'type': 'milvus',
+            'kwargs': {'uri': '/tmp/lazyllm_embedded_milvus.db'},
+        }
+        with self.assertRaisesRegex(ValueError, 'embedded milvus_lite'):
+            Document._Manager(
+                dataset_path=dataset_path, embed=None, manager=True, server=False,
+                name='__default__', launcher=None, store_conf=embedded_conf,
+                doc_fields=None,
+            )
+        # Split form is also rejected.
+        with self.assertRaisesRegex(ValueError, 'embedded milvus_lite'):
+            Document._Manager(
+                dataset_path=dataset_path, embed=None, manager=True, server=False,
+                name='__default__', launcher=None,
+                store_conf={'vector_store': embedded_conf},
+                doc_fields=None,
+            )
+
+    def test_manager_with_remote_milvus_uri_is_accepted(self):
+        '''Regression: ``manager=True`` + remote Milvus (http:// uri) is
+        allowed. Embedded-only rejection must not trip on deployed Milvus
+        standalone URIs that the service-mode architecture supports.
+        '''
+        dataset_path = self._build_dataset()
+        remote_conf = {
+            'type': 'milvus',
+            'kwargs': {'uri': 'http://milvus.internal.example:19530'},
+        }
+        mgr = Document._Manager(
+            dataset_path=dataset_path, embed=None, manager=True, server=False,
+            name='__default__', launcher=None, store_conf=remote_conf,
+            doc_fields=None,
+        )
+        assert mgr._spawn_doc_server is True
+        mgr.stop()
+
     def test_split_vector_store_form_triggers_auto_upgrade(self):
         '''Regression: store_conf using the split form
         ``{'vector_store': {'type': <persistent>}, 'segment_store': {...}}``
