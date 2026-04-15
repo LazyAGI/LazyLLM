@@ -21,7 +21,7 @@ from typing import Union, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
-from ..hook import LazyLLMHook
+from ..hook import LazyLLMHook, prepare_hooks, register_hooks, resolve_builtin_hooks, run_hooks
 from itertools import repeat
 
 
@@ -157,10 +157,12 @@ class FlowBase(SessionConfigableBase, metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
+            if hasattr(value, '_module_id') and hasattr(value, 'name') and value.name is None:
+                value.name = name
             if len(_get_flow_stack()) > 1 and not self._auto_registered:
                 super(__class__, self).__setattr__('_auto_registered', True)
-                locals = self._curr_frame.f_locals.copy()
-                for key, item in locals.items():
+                frame_locals = self._curr_frame.f_locals.copy()
+                for key, item in frame_locals.items():
                     if item == self and (parent := _get_flow_stack()[-2]) != item:
                         if key not in parent._item_names and parent._defined_at_the_same_scope(self):
                             parent._add(key, self)
@@ -224,36 +226,48 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                                         id=id, name=name, group_id=group_id)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
-        self._hooks = set()
+        self._hooks = []
+        register_hooks(self, resolve_builtin_hooks(self))
 
     def __call__(self, *args, **kw):
-        hook_objs = []
-        for hook_type in self._hooks:
-            if isinstance(hook_type, LazyLLMHook):
-                hook_objs.append(hook_type)
-            else:
-                hook_objs.append(hook_type(self))
-            hook_objs[-1].pre_hook(*args, **kw)
-        with globals.stack_enter(self.identities):
-            output = self._run(args[0] if len(args) == 1 else package(args), **kw)
-        if self.post_action is not None: self.invoke(self.post_action, output)
-        if self._sync: self.wait()
-        r = self._post_process(output)
-        for hook_obj in hook_objs[::-1]:
-            hook_obj.post_hook(r)
-        for hook_obj in hook_objs:
-            hook_obj.report()
-        return r
+        hook_objs = prepare_hooks(self, self._hooks, *args, **kw)
+
+        try:
+            with globals.stack_enter(self.identities):
+                output = self._run(args[0] if len(args) == 1 else package(args), **kw)
+            if self.post_action is not None: self.invoke(self.post_action, output)
+            if self._sync: self.wait()
+            r = self._post_process(output)
+        except Exception as e:
+            LOG.error(f'Flow `{self.__class__.__name__}` raised {type(e).__name__}: {e}')
+            try:
+                run_hooks(hook_objs, 'on_error', e)
+            except Exception:
+                LOG.warning('Flow on_error hook failed', exc_info=True)
+            raise
+        else:
+            run_hooks(hook_objs, 'post_hook', r)
+            return r
+        finally:
+            try:
+                run_hooks(hook_objs, 'finalize')
+            except Exception:
+                LOG.warning('Flow finalize hook failed', exc_info=True)
 
     def register_hook(self, hook_type: LazyLLMHook):
-        self._hooks.add(hook_type)
+        if not (isinstance(hook_type, LazyLLMHook)
+                or (isinstance(hook_type, type) and issubclass(hook_type, LazyLLMHook))):
+            raise TypeError(f'Invalid hook type: {type(hook_type)}, '
+                            'must be subclass or instance of LazyLLMHook')
+        if hook_type not in self._hooks:
+            self._hooks.append(hook_type)
 
     def unregister_hook(self, hook_type: LazyLLMHook):
         if hook_type in self._hooks:
             self._hooks.remove(hook_type)
 
     def clear_hooks(self):
-        self._hooks = set()
+        self._hooks = []
 
     def _post_process(self, output):
         return output

@@ -28,6 +28,9 @@ package_name_map = {
     'ahocorasick': 'pyahocorasick',
     'psycopg2': 'psycopg2-binary',
     'yaml': 'pyyaml',
+    'opentelemetry': 'opentelemetry-api',
+    'opentelemetry.sdk': 'opentelemetry-sdk',
+    'opentelemetry.exporter': 'opentelemetry-exporter-otlp-proto-http',
 }
 
 package_name_map_reverse = {v: k for k, v in package_name_map.items()}
@@ -43,6 +46,11 @@ def get_pip_install_cmd(packages_to_install: List[str]):
     for name in packages_to_install:
         if name in package_name_map:
             name = package_name_map[name]
+        else:
+            for prefix in sorted(package_name_map, key=len, reverse=True):
+                if name.startswith(prefix + '.'):
+                    name = package_name_map[prefix]
+                    break
         install_parts.append(name + requirements.get(name, ''))
     if len(install_parts) > 0:
         return 'pip install ' + ', '.join(install_parts)

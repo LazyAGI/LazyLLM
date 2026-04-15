@@ -30,11 +30,23 @@ class GitHub(LazyLLMGitBase):
         self._require_repo()
         return f'{self._api_base}/repos/{self._owner}/{self._repo_name}{_sanitize_path(path)}'
 
+    def _check_401(self, r: 'requests.Response') -> None:
+        if r.status_code == 401:
+            raise RuntimeError(
+                'GitHub API returned 401 Unauthorized. '
+                'Please authenticate by running: gh auth login'
+            )
+
+    def _fail(self, r: 'requests.Response') -> Dict[str, Any]:
+        self._check_401(r)
+        return {'success': False, 'message': r.text or r.reason}
+
     def _get_current_user(self) -> str:
         if self._current_user_login is not None:
             return self._current_user_login
         r = self._session.get(f'{self._api_base}/user')
         if r.status_code != 200:
+            self._check_401(r)
             raise RuntimeError(f'Failed to get current user: {r.text or r.reason}')
         data = r.json()
         self._current_user_login = data.get('login', '')
@@ -53,7 +65,7 @@ class GitHub(LazyLLMGitBase):
         }
         r = self._req('POST', '/pulls', json=payload)
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._fail(r)
         data = r.json()
         return {
             'success': True,
@@ -75,19 +87,19 @@ class GitHub(LazyLLMGitBase):
             return {'success': True, 'message': 'nothing to update'}
         r = self._req('PATCH', f'/pulls/{number}', json=payload)
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._fail(r)
         return {'success': True, 'message': 'updated'}
 
     def add_pr_labels(self, number: int, labels: List[str]) -> Dict[str, Any]:
         r = self._req('POST', f'/issues/{number}/labels', json=labels)
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._fail(r)
         return {'success': True, 'message': 'labels added'}
 
     def get_pull_request(self, number: int) -> Dict[str, Any]:
         r = self._req('GET', f'/pulls/{number}')
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._fail(r)
         data = r.json()
         pr = PrInfo(
             number=data['number'],
@@ -102,50 +114,116 @@ class GitHub(LazyLLMGitBase):
         return {'success': True, 'pr': pr}
 
     def list_pull_requests(self, state: str = 'open', head: Optional[str] = None,
-                           base: Optional[str] = None) -> Dict[str, Any]:
-        params = {'state': state}
+                           base: Optional[str] = None, max_results: int = 100) -> Dict[str, Any]:
+        params: Dict[str, Any] = {'state': state, 'per_page': min(100, max_results)}
         if head is not None:
             params['head'] = head
         if base is not None:
             params['base'] = base
-        r = self._req('GET', '/pulls', params=params)
-        if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
         out = []
-        for data in r.json():
-            out.append(PrInfo(
-                number=data['number'],
-                title=data['title'],
-                state=data.get('state', 'open'),
-                body=data.get('body') or '',
-                source_branch=data.get('head', {}).get('ref', ''),
-                target_branch=data.get('base', {}).get('ref', ''),
-                html_url=data.get('html_url', ''),
-                raw=data,
-            ))
+        url: Optional[str] = self._url('/pulls')
+        while url and len(out) < max_results:
+            r = self._session.get(url, params=params)
+            params = {}  # only pass params on first request; subsequent URLs are fully formed
+            if r.status_code != 200:
+                return self._fail(r)
+            for data in r.json():
+                out.append(PrInfo(
+                    number=data['number'],
+                    title=data['title'],
+                    state=data.get('state', 'open'),
+                    body=data.get('body') or '',
+                    source_branch=data.get('head', {}).get('ref', ''),
+                    target_branch=data.get('base', {}).get('ref', ''),
+                    html_url=data.get('html_url', ''),
+                    raw=data,
+                ))
+                if len(out) >= max_results:
+                    break
+            link = r.headers.get('Link', '')
+            next_url = None
+            for part in link.split(','):
+                part = part.strip()
+                if 'rel="next"' in part:
+                    next_url = part.split(';')[0].strip().strip('<>')
+                    break
+            url = next_url
         return {'success': True, 'list': out}
 
     def get_pr_diff(self, number: int) -> Dict[str, Any]:
-        r = self._req('GET', f'/pulls/{number}', headers={'Accept': 'application/vnd.github.v3.diff'})
-        if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
-        return {'success': True, 'diff': r.text}
+        # GitHub's diff endpoint truncates at ~3000 lines for large PRs.
+        # Use /files (paginated) to fetch each file's patch and assemble a proper unified diff.
+        self._require_repo()
+        files = []
+        url: Optional[str] = self._url(f'/pulls/{number}/files')
+        params: Dict[str, Any] = {'per_page': 100}
+        while url:
+            r = self._session.get(url, params=params)
+            params = {}
+            if r.status_code != 200:
+                return self._fail(r)
+            files.extend(r.json())
+            link = r.headers.get('Link', '')
+            url = None
+            for part in link.split(','):
+                part = part.strip()
+                if 'rel="next"' in part:
+                    url = part.split(';')[0].strip().strip('<>')
+                    break
+        # Assemble unified diff from per-file patches
+        diff_parts = []
+        for f in files:
+            filename = f.get('filename', '')
+            prev = f.get('previous_filename', filename)
+            patch = f.get('patch', '')
+            status = f.get('status', '')
+            if status == 'removed':
+                diff_parts.append(f'diff --git a/{prev} b/{filename}')
+                diff_parts.append(f'--- a/{prev}')
+                diff_parts.append('+++ /dev/null')
+            elif status == 'added':
+                diff_parts.append(f'diff --git a/{filename} b/{filename}')
+                diff_parts.append('--- /dev/null')
+                diff_parts.append(f'+++ b/{filename}')
+            elif status == 'renamed':
+                diff_parts.append(f'diff --git a/{prev} b/{filename}')
+                diff_parts.append(f'--- a/{prev}')
+                diff_parts.append(f'+++ b/{filename}')
+            else:
+                diff_parts.append(f'diff --git a/{filename} b/{filename}')
+                diff_parts.append(f'--- a/{filename}')
+                diff_parts.append(f'+++ b/{filename}')
+            if patch:
+                diff_parts.append(patch)
+        return {'success': True, 'diff': '\n'.join(diff_parts) + '\n'}
 
     def list_review_comments(self, number: int) -> Dict[str, Any]:
-        r = self._req('GET', f'/pulls/{number}/comments')
-        if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+        self._require_repo()
         out = []
-        for c in r.json():
-            out.append(ReviewCommentInfo(
-                id=c['id'],
-                body=c.get('body', ''),
-                path=c.get('path', ''),
-                line=c.get('line'),
-                side=c.get('side', 'RIGHT'),
-                user=c.get('user', {}).get('login', ''),
-                raw=c,
-            ))
+        url: Optional[str] = self._url(f'/pulls/{number}/comments')
+        params: Dict[str, Any] = {'per_page': 100}
+        while url:
+            r = self._session.get(url, params=params)
+            params = {}
+            if r.status_code != 200:
+                return self._fail(r)
+            for c in r.json():
+                out.append(ReviewCommentInfo(
+                    id=c['id'],
+                    body=c.get('body', ''),
+                    path=c.get('path', ''),
+                    line=c.get('line'),
+                    side=c.get('side', 'RIGHT'),
+                    user=c.get('user', {}).get('login', ''),
+                    raw=c,
+                ))
+            link = r.headers.get('Link', '')
+            url = None
+            for part in link.split(','):
+                part = part.strip()
+                if 'rel="next"' in part:
+                    url = part.split(';')[0].strip().strip('<>')
+                    break
         return {'success': True, 'comments': out}
 
     def create_review_comment(self, number: int, body: str, path: str,
@@ -168,27 +246,44 @@ class GitHub(LazyLLMGitBase):
             payload['start_side'] = start_side
         r = self._req('POST', f'/pulls/{number}/comments', json=payload)
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._fail(r)
         data = r.json()
         return {'success': True, 'comment_id': data['id'], 'message': 'created'}
 
     def add_issue_comment(self, number: int, body: str) -> Dict[str, Any]:
         r = self._req('POST', f'/issues/{number}/comments', json={'body': body})
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
+            return self._fail(r)
         return {'success': True, 'message': 'created', 'url': r.json().get('html_url', '')}
 
     def submit_review(self, number: int, event: str, body: str = '',
-                      comment_ids: Optional[List[Any]] = None) -> Dict[str, Any]:
-        payload = {'event': event}
+                      comments: Optional[List[Dict[str, Any]]] = None,
+                      commit_id: Optional[str] = None) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {'event': event}
         if body:
             payload['body'] = body
-        if comment_ids is not None:
-            payload['comments'] = comment_ids
+        if commit_id:
+            payload['commit_id'] = commit_id
+        if comments:
+            valid_comments = [
+                {
+                    'path': c['path'],
+                    'line': int(c['line']),
+                    'body': c['body'],
+                    'side': c.get('side', 'RIGHT'),
+                }
+                for c in comments if c.get('path') and c.get('line') and c.get('body')
+            ]
+            if valid_comments:
+                payload['comments'] = valid_comments
         r = self._req('POST', f'/pulls/{number}/reviews', json=payload)
         if r.status_code not in (200, 201):
-            return {'success': False, 'message': r.text or r.reason}
-        return {'success': True, 'message': 'submitted'}
+            import lazyllm
+            lazyllm.LOG.warning(f'submit_review HTTP {r.status_code}: {r.text[:400]}')
+            self._check_401(r)
+            return {'success': False, 'message': r.text or r.reason, 'status_code': r.status_code}
+        data = r.json()
+        return {'success': True, 'review_id': data.get('id'), 'message': 'submitted'}
 
     def approve_pull_request(self, number: int) -> Dict[str, Any]:
         return self.submit_review(number, 'APPROVE')
@@ -205,7 +300,7 @@ class GitHub(LazyLLMGitBase):
             payload['commit_message'] = commit_message
         r = self._req('PUT', f'/pulls/{number}/merge', json=payload)
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._fail(r)
         data = r.json()
         return {'success': True, 'sha': data.get('sha'), 'message': 'merged'}
 
@@ -213,7 +308,7 @@ class GitHub(LazyLLMGitBase):
         self._require_repo()
         r = self._req('GET', '/stargazers', params={'page': page, 'per_page': per_page})
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._fail(r)
         return {'success': True, 'list': r.json()}
 
     def reply_to_review_comment(self, number: int, comment_id: Any, body: str,
@@ -240,7 +335,7 @@ class GitHub(LazyLLMGitBase):
                 f'{self._api_base}/users/{self._user}' if self._user else f'{self._api_base}/user'
             )
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._fail(r)
         return {'success': True, 'user': r.json()}
 
     def list_user_starred_repos(self, username: Optional[str] = None,
@@ -251,5 +346,5 @@ class GitHub(LazyLLMGitBase):
             url = f'{self._api_base}/user/starred' if not self._user else f'{self._api_base}/users/{self._user}/starred'
         r = self._session.get(url, params={'page': page, 'per_page': per_page})
         if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
+            return self._fail(r)
         return {'success': True, 'list': r.json()}

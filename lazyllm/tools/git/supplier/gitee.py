@@ -106,27 +106,37 @@ class Gitee(LazyLLMGitBase):
         return {'success': True, 'pr': pr}
 
     def list_pull_requests(self, state: str = 'open', head: Optional[str] = None,
-                           base: Optional[str] = None) -> Dict[str, Any]:
-        params = {'state': state}
+                           base: Optional[str] = None, max_results: int = 100) -> Dict[str, Any]:
+        per_page = min(100, max_results)
+        params: Dict[str, Any] = {'state': state, 'per_page': per_page, 'page': 1}
         if head is not None:
             params['head'] = head
         if base is not None:
             params['base'] = base
-        r = self._req('GET', '/pulls', params=params)
-        if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
         out = []
-        for data in r.json():
-            out.append(PrInfo(
-                number=data.get('number', data.get('id')),
-                title=data.get('title', ''),
-                state=data.get('state', 'open'),
-                body=data.get('body', data.get('description', '')) or '',
-                source_branch=_head_base_ref(data, 'head'),
-                target_branch=_head_base_ref(data, 'base'),
-                html_url=data.get('html_url', data.get('url', '')),
-                raw=data,
-            ))
+        while len(out) < max_results:
+            r = self._req('GET', '/pulls', params=params)
+            if r.status_code != 200:
+                return {'success': False, 'message': r.text or r.reason}
+            page_data = r.json()
+            if not page_data:
+                break
+            for data in page_data:
+                out.append(PrInfo(
+                    number=data.get('number', data.get('id')),
+                    title=data.get('title', ''),
+                    state=data.get('state', 'open'),
+                    body=data.get('body', data.get('description', '')) or '',
+                    source_branch=_head_base_ref(data, 'head'),
+                    target_branch=_head_base_ref(data, 'base'),
+                    html_url=data.get('html_url', data.get('url', '')),
+                    raw=data,
+                ))
+                if len(out) >= max_results:
+                    break
+            if len(page_data) < per_page:
+                break
+            params = dict(params, page=params['page'] + 1)
         return {'success': True, 'list': out}
 
     def get_pr_diff(self, number: int) -> Dict[str, Any]:
@@ -178,10 +188,21 @@ class Gitee(LazyLLMGitBase):
         return {'success': True, 'comment_id': data.get('id'), 'message': 'created'}
 
     def submit_review(self, number: int, event: str, body: str = '',
-                      comment_ids: Optional[List[Any]] = None) -> Dict[str, Any]:
+                      comments: Optional[List[Dict[str, Any]]] = None,
+                      commit_id: Optional[str] = None) -> Dict[str, Any]:
         payload = {'body': body, 'event': event.upper() == 'APPROVE' and 'approve' or event}
-        if comment_ids is not None:
-            payload['comments'] = comment_ids
+        if comments:
+            # Gitee may not support GitHub-like batch inline comments; fallback to creating comments one-by-one.
+            for c in comments:
+                if not isinstance(c, dict) or not c.get('body'):
+                    continue
+                self.create_review_comment(
+                    number=number,
+                    body=c['body'],
+                    path=c.get('path', ''),
+                    line=c.get('line'),
+                    commit_id=commit_id,
+                )
         r = self._req('POST', f'/pulls/{number}/review', json=payload)
         if r.status_code not in (200, 201):
             return {'success': False, 'message': r.text or r.reason}
