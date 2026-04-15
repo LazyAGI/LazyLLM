@@ -261,9 +261,13 @@ class DocServer(ModuleBase):
             payload['explicit_fields'] = sorted(field for field in request.model_fields_set if field != 'kb_id')
             return payload
 
-        def _gen_unique_upload_path(self, filename: str, reserved_paths: Optional[set] = None):
+        def _gen_unique_upload_path(
+            self, filename: str, reserved_paths: Optional[set] = None,
+            *, base_dir: Optional[str] = None,
+        ):
             safe_name = os.path.basename(filename) or 'upload.bin'
-            file_path = os.path.join(self._storage_dir, safe_name)
+            target_dir = base_dir or self._storage_dir
+            file_path = os.path.join(target_dir, safe_name)
             reserved_paths = reserved_paths or set()
             if file_path not in reserved_paths and not os.path.exists(file_path):
                 return file_path
@@ -271,11 +275,11 @@ class DocServer(ModuleBase):
             suffix = os.path.splitext(safe_name)[1]
             prefix = safe_name[:-len(suffix)] if suffix else safe_name
             for idx in range(1, 10000):
-                candidate = os.path.join(self._storage_dir, f'{prefix}-{idx}{suffix}')
+                candidate = os.path.join(target_dir, f'{prefix}-{idx}{suffix}')
                 if candidate not in reserved_paths and not os.path.exists(candidate):
                     return candidate
             digest = hashlib.sha256(safe_name.encode()).hexdigest()[:8]
-            return os.path.join(self._storage_dir, f'{prefix}-{digest}{suffix}')
+            return os.path.join(target_dir, f'{prefix}-{digest}{suffix}')
 
         @staticmethod
         async def _save_upload_file(upload_file: 'fastapi.UploadFile', file_path: str):
@@ -287,13 +291,37 @@ class DocServer(ModuleBase):
                     fh.write(chunk)
             await upload_file.close()
 
-        async def _persist_uploads(self, files: List['fastapi.UploadFile']):
+        async def _persist_uploads(
+            self, files: List['fastapi.UploadFile'], *,
+            override: bool = False, sub_dir: str = '',
+        ):
             saved_paths = []
             file_identities = []
             reserved_paths: Set[str] = set()
+            target_dir = os.path.join(self._storage_dir, sub_dir) if sub_dir else self._storage_dir
+            if sub_dir:
+                os.makedirs(target_dir, exist_ok=True)
             for upload_file in files:
                 filename = getattr(upload_file, 'filename', None) or 'upload.bin'
-                file_path = self._gen_unique_upload_path(filename, reserved_paths)
+                if override:
+                    # Legacy /upload_files behavior: write to
+                    # ``storage_dir[/sub_dir]/<name>``, overwriting any
+                    # existing file. ``DocManager.upload()`` derives
+                    # ``doc_id`` from ``file_path``, so this lets a
+                    # re-upload replace the existing document instead of
+                    # creating a new one.
+                    safe_name = os.path.basename(filename) or 'upload.bin'
+                    file_path = os.path.join(target_dir, safe_name)
+                    if file_path in reserved_paths:
+                        # Two uploads in the same request collided on the same name;
+                        # keep the unique-path fallback so we don't lose one of them.
+                        file_path = self._gen_unique_upload_path(
+                            filename, reserved_paths, base_dir=target_dir,
+                        )
+                else:
+                    file_path = self._gen_unique_upload_path(
+                        filename, reserved_paths, base_dir=target_dir,
+                    )
                 await self._save_upload_file(upload_file, file_path)
                 reserved_paths.add(file_path)
                 saved_paths.append(file_path)
@@ -374,6 +402,233 @@ class DocServer(ModuleBase):
         def upload_request(self, request: UploadRequest):
             self._lazy_init()
             return self._run_upload(request)
+
+        # Reserved metadata keys that the legacy /upload_files rejected; if a
+        # client smuggles them into ``metadatas`` they would silently overwrite
+        # internal docid/path tracking via ``parsing_service/impl.py``'s
+        # ``setdefault`` calls and break later filter/delete/reparse flows.
+        _LEGACY_RESERVED_META_KEYS = frozenset({'docid', 'doc_id', 'lazyllm_doc_path'})
+
+        @classmethod
+        def _parse_legacy_metadatas(cls, metadatas: Optional[str], expected_len: int) -> List[Dict[str, Any]]:
+            '''Validate and parse the legacy ``metadatas`` query param.
+
+            Returns the parsed list (empty when ``metadatas`` is falsy). Raises
+            HTTPException(400) on JSON / shape / length / reserved-key issues so
+            the caller doesn't have to repeat each guard inline.
+            '''
+            if not metadatas:
+                return []
+            try:
+                parsed = json.loads(metadatas) or []
+            except (ValueError, TypeError) as exc:
+                raise fastapi.HTTPException(
+                    status_code=400, detail=f'metadatas must be valid JSON: {exc}',
+                )
+            if not isinstance(parsed, list):
+                raise fastapi.HTTPException(
+                    status_code=400, detail='metadatas must be a JSON array',
+                )
+            # Legacy contract: rejects arrays with the wrong length or non-dict
+            # entries with 400, instead of silently dropping/padding (which
+            # would attach the wrong metadata to uploads) or letting AddFileItem
+            # raise a 500.
+            if len(parsed) != expected_len:
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail=f'metadatas length {len(parsed)} does not match files length {expected_len}',
+                )
+            for entry in parsed:
+                if not isinstance(entry, dict):
+                    raise fastapi.HTTPException(
+                        status_code=400, detail='each metadatas entry must be a JSON object',
+                    )
+                bad = cls._LEGACY_RESERVED_META_KEYS.intersection(entry.keys())
+                if bad:
+                    raise fastapi.HTTPException(
+                        status_code=400,
+                        detail=f'metadatas contains reserved keys: {sorted(bad)}',
+                    )
+            return parsed
+
+        @staticmethod
+        def _normalize_legacy_user_path(user_path: Optional[str]) -> str:
+            '''Validate and normalize the legacy ``user_path`` query param.
+
+            Rejects absolute paths or any value that climbs out of
+            ``storage_dir`` (``..``, ``../x``, ``..\\x`` on Windows). Returns
+            the relative subdirectory string ('' when no user_path).
+            '''
+            if not user_path:
+                return ''
+            if os.path.isabs(user_path):
+                raise fastapi.HTTPException(
+                    status_code=400, detail=f'invalid user_path: {user_path!r}',
+                )
+            normalized = os.path.normpath(user_path)
+            climbed_out = (
+                normalized in ('.', '..')
+                or normalized.startswith('../')
+                or normalized.startswith('..' + os.sep)
+                or os.path.isabs(normalized)
+            )
+            if climbed_out:
+                raise fastapi.HTTPException(
+                    status_code=400, detail=f'invalid user_path: {user_path!r}',
+                )
+            sub_dir = normalized.strip('/').strip(os.sep)
+            if not sub_dir:
+                raise fastapi.HTTPException(
+                    status_code=400, detail=f'invalid user_path: {user_path!r}',
+                )
+            return sub_dir
+
+        async def _legacy_upload(
+            self,
+            files: List['fastapi.UploadFile'],
+            override: bool,
+            metadatas: Optional[str],
+            group_name: Optional[str],
+            user_path: Optional[str],
+            *,
+            response_shape: str = 'ids_and_results',  # 'ids_and_results' or 'ids_only'
+        ):
+            '''Shared implementation for legacy DocManager-style upload endpoints.
+
+            Kept so DocWebModule and external callers from before the doc_service
+            refactor (which used /upload_files and /add_files_to_group on the old
+            ``ServerModule(DocManager(...))``) keep working against the new
+            DocServer. New callers should target the /v1/docs/* surface instead.
+
+            Compatibility behaviors preserved here:
+            - ``override=True`` writes files at deterministic paths
+              (``storage_dir/<user_path>/<filename>``) so DocManager.upload
+              derives the same ``doc_id`` and reparses the existing document
+              rather than creating a duplicate.
+            - ``user_path`` namespaces uploads under a subdirectory, so two
+              callers can post the same filename without colliding.
+            - ``algo_id`` mirrors the kb-binding convention used by
+              ``DocServer._Impl.ensure_kb_registered`` (``algo_id == kb_id``)
+              so non-default groups don't get rejected by the algorithm
+              validator.
+            - ``metadatas`` rejects reserved internal keys (``docid``,
+              ``doc_id``, ``lazyllm_doc_path``) instead of silently shadowing
+              them downstream, and 400s on length / element-type mismatch
+              instead of mis-attaching metadata or 500-ing inside AddFileItem.
+            - Response body matches the legacy shape: ``data=[ids, results]``
+              for ``/upload_files``; flat ``data=ids`` for ``/add_files_to_group``.
+              ``results`` propagates per-item ``error_code`` (or ``'ok'``) from
+              ``DocManager.upload``, so synchronous failures (e.g. parser
+              outage -> ``PARSER_SUBMIT_FAILED``) don't masquerade as success.
+
+            Known compat gaps (not exercised by the migrated tests; documented
+            so future maintainers know what to harden if re-enabled):
+            - ``override=True`` re-upload of an already-SUCCESS doc routes
+              through ``DocManager.upload`` and surfaces the new 409 from
+              ``_assert_action_allowed`` instead of legacy "replace and
+              reparse". Workaround: callers should ``/v1/docs/reparse`` for
+              true updates.
+            - The file is written before the doc-service validation runs;
+              a 4xx from ``upload()`` after override leaves the new bytes on
+              disk. New code should prefer the staged ``/v1/docs/upload``.
+            - Validation errors raise ``HTTPException`` and surface FastAPI's
+              ``{"detail": ...}`` body, not the standard ``{code,msg,data}``
+              envelope.
+            '''
+            self._lazy_init()
+            if not files:
+                raise fastapi.HTTPException(status_code=400, detail='files is required')
+            kb_id = group_name or '__default__'
+            # Match Document._Manager / ensure_kb_registered: each kb is bound
+            # to an algorithm of the same name. Hard-coding '__default__' here
+            # would 400 every non-default-group upload at validation time.
+            algo_id = kb_id
+            parsed_metadatas = self._parse_legacy_metadatas(metadatas, len(files))
+            sub_dir = self._normalize_legacy_user_path(user_path)
+            saved_paths, file_identities = await self._persist_uploads(
+                files, override=override, sub_dir=sub_dir,
+            )
+            items = [
+                AddFileItem(
+                    file_path=path,
+                    metadata=parsed_metadatas[idx] if idx < len(parsed_metadatas) else {},
+                )
+                for idx, path in enumerate(saved_paths)
+            ]
+            upload_request = UploadRequest(
+                items=items,
+                kb_id=kb_id,
+                algo_id=algo_id,
+                source_type=SourceType.API,
+            )
+            upload_payload = self._build_upload_payload(upload_request, file_identities)
+
+            # Translate the new ``upload`` result back to the legacy response
+            # body shape so DocWebModule and external clients that index
+            # ``response.json()['data'][0]`` (or expect a flat doc-id list)
+            # keep working. Two legacy shapes:
+            #   /upload_files          -> data = [doc_ids, results]
+            #   /add_files_to_group    -> data = doc_ids  (flat list)
+            def _do_upload():
+                upload_result = self._manager.run_idempotent(
+                    '/v1/docs/upload', upload_request.idempotency_key, upload_payload,
+                    lambda: self._manager.upload(upload_request),
+                )
+                # ``upload_result`` is either a list of {'doc_id', 'task_id'} dicts
+                # (fresh execution) or the cached idempotent result. Defensively
+                # unwrap the dict-with-items form too.
+                if isinstance(upload_result, dict) and 'items' in upload_result:
+                    upload_items = upload_result['items']
+                else:
+                    upload_items = upload_result
+                doc_ids = [it.get('doc_id') for it in (upload_items or [])]
+                if response_shape == 'ids_and_results':
+                    # Propagate per-item status from DocManager.upload so callers
+                    # of /upload_files see synchronous failures (e.g. parser
+                    # outage -> accepted=False / error_code=PARSER_SUBMIT_FAILED)
+                    # instead of a misleading ``'ok'`` for every file.
+                    results = [
+                        'ok' if it.get('accepted', True) else (
+                            it.get('error_code') or it.get('error_msg') or 'failed'
+                        )
+                        for it in (upload_items or [])
+                    ]
+                    return [doc_ids, results]
+                return doc_ids
+            return self._run(_do_upload)
+
+        @app.post('/upload_files')
+        async def upload_files_legacy(
+            self,
+            files: List['fastapi.UploadFile'] = fastapi.File(...),  # noqa: B008
+            # Match legacy DocManager default: ``False`` keeps the unique-path
+            # fallback so a re-upload without ``?override=true`` does not
+            # silently replace an existing document.
+            override: bool = fastapi.Query(False),  # noqa: B008
+            metadatas: Optional[str] = fastapi.Query(None),  # noqa: B008
+            group_name: Optional[str] = fastapi.Query(None),  # noqa: B008
+            user_path: Optional[str] = fastapi.Query(None),  # noqa: B008
+        ):
+            return await self._legacy_upload(
+                files, override, metadatas, group_name, user_path,
+                response_shape='ids_and_results',
+            )
+
+        @app.post('/add_files_to_group')
+        async def add_files_to_group_legacy(
+            self,
+            files: List['fastapi.UploadFile'] = fastapi.File(...),  # noqa: B008
+            group_name: str = fastapi.Query(...),  # noqa: B008
+            # Same legacy default as /upload_files; explicit opt-in required
+            # to overwrite.
+            override: bool = fastapi.Query(False),  # noqa: B008
+            metadatas: Optional[str] = fastapi.Query(None),  # noqa: B008
+            user_path: Optional[str] = fastapi.Query(None),  # noqa: B008
+        ):
+            return await self._legacy_upload(
+                files, override, metadatas, group_name, user_path,
+                response_shape='ids_only',
+            )
 
         @app.post('/v1/docs/upload')
         async def upload(

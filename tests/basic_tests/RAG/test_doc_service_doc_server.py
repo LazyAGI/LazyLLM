@@ -246,3 +246,240 @@ def test_upload_http_saves_unique_files_and_only_first_doc_id(server_impl):
     assert upload_request.items[0].file_path != upload_request.items[1].file_path
     assert os.path.exists(upload_request.items[0].file_path)
     assert os.path.exists(upload_request.items[1].file_path)
+
+
+def test_upload_files_legacy_returns_legacy_response_shape(server_impl):
+    '''Regression: legacy /upload_files must accept JSON ``metadatas``, route
+    to the new UploadRequest with per-item metadata, and return the legacy
+    ``data=[doc_ids, results]`` body shape so DocWebModule and external
+    callers (examples/rag_milvus_store flow) keep working.'''
+    files = [
+        _UploadFile('a.txt', b'one'),
+        _UploadFile('b.txt', b'two'),
+    ]
+    metas = [{'comment': 'comment1'}, {'signature': 'signature2'}]
+
+    response = asyncio.run(server_impl.upload_files_legacy(
+        files=files,
+        override=True,
+        metadatas=json.dumps(metas),
+        group_name=None,
+        user_path=None,
+    ))
+    body = _decode_response(response)
+    upload_request = server_impl._manager.upload_request
+
+    assert body['code'] == 200
+    assert upload_request.kb_id == '__default__'
+    assert upload_request.algo_id == '__default__'
+    assert upload_request.source_type == SourceType.API
+    assert [item.metadata for item in upload_request.items] == metas
+    # Legacy response shape: data = [doc_ids, results]
+    assert isinstance(body['data'], list) and len(body['data']) == 2
+    doc_ids, results = body['data']
+    assert isinstance(doc_ids, list) and len(doc_ids) == len(files)
+    assert isinstance(results, list) and len(results) == len(files)
+
+
+def test_add_files_to_group_legacy_returns_flat_id_list(server_impl):
+    '''Regression: /add_files_to_group must return flat doc_id list (legacy
+    contract), not the new ``{items: ...}`` shape.'''
+    files = [_UploadFile('c.txt', b'three'), _UploadFile('d.txt', b'four')]
+    metas = [{'department': 'dpt_123'}, {'department': 'dpt_456'}]
+
+    response = asyncio.run(server_impl.add_files_to_group_legacy(
+        files=files,
+        group_name='law_kg',
+        override=True,
+        metadatas=json.dumps(metas),
+        user_path=None,
+    ))
+    body = _decode_response(response)
+    upload_request = server_impl._manager.upload_request
+
+    assert body['code'] == 200
+    assert upload_request.kb_id == 'law_kg'
+    assert [item.metadata for item in upload_request.items] == metas
+    # Legacy response shape: data = doc_ids (flat list of strings)
+    assert isinstance(body['data'], list)
+    assert len(body['data']) == len(files)
+    assert all(isinstance(x, str) for x in body['data'])
+
+
+def test_legacy_upload_rejects_metadatas_length_mismatch(server_impl):
+    '''Regression: legacy contract returns 400 when ``metadatas`` length differs
+    from ``files`` instead of silently dropping/padding entries (which would
+    attach the wrong metadata to uploads).'''
+    files = [_UploadFile('a.txt', b'x'), _UploadFile('b.txt', b'y')]
+    with pytest.raises(fastapi.HTTPException) as exc_info:
+        asyncio.run(server_impl.upload_files_legacy(
+            files=files,
+            override=True,
+            metadatas=json.dumps([{'k': 'v'}]),  # only 1 entry for 2 files
+            group_name=None,
+            user_path=None,
+        ))
+    assert exc_info.value.status_code == 400
+    assert 'length' in str(exc_info.value.detail).lower()
+
+
+def test_legacy_upload_rejects_non_dict_metadata_entry(server_impl):
+    '''Regression: legacy returned 400 for malformed metadata entries instead
+    of letting AddFileItem(metadata=non_dict) raise a 500.'''
+    files = [_UploadFile('a.txt', b'x')]
+    with pytest.raises(fastapi.HTTPException) as exc_info:
+        asyncio.run(server_impl.upload_files_legacy(
+            files=files,
+            override=True,
+            metadatas=json.dumps(['not-a-dict']),
+            group_name=None,
+            user_path=None,
+        ))
+    assert exc_info.value.status_code == 400
+
+
+def test_legacy_upload_override_writes_to_deterministic_path(server_impl):
+    '''Regression: ``/upload_files?override=true`` must overwrite the existing
+    file at ``storage_dir/<name>`` so DocManager.upload reuses the same doc_id
+    instead of creating a duplicate. _gen_unique_upload_path would otherwise
+    pick ``name-1``, ``name-2``, etc. on each re-upload.'''
+    storage_dir = server_impl._storage_dir
+    files1 = [_UploadFile('dup.txt', b'first content')]
+    asyncio.run(server_impl.upload_files_legacy(
+        files=files1, override=True, metadatas=None, group_name=None, user_path=None,
+    ))
+    first_path = server_impl._manager.upload_request.items[0].file_path
+
+    files2 = [_UploadFile('dup.txt', b'second content')]
+    asyncio.run(server_impl.upload_files_legacy(
+        files=files2, override=True, metadatas=None, group_name=None, user_path=None,
+    ))
+    second_path = server_impl._manager.upload_request.items[0].file_path
+
+    assert first_path == os.path.join(storage_dir, 'dup.txt')
+    assert second_path == first_path, (
+        'override=True must overwrite the same path so DocManager keeps a single doc_id'
+    )
+    with open(second_path, 'rb') as fh:
+        assert fh.read() == b'second content'
+
+
+def test_legacy_upload_without_override_keeps_unique_paths(server_impl):
+    '''Regression: ``override=False`` must fall back to the unique-path logic so
+    we do not silently clobber an existing file on disk.'''
+    storage_dir = server_impl._storage_dir
+    asyncio.run(server_impl.upload_files_legacy(
+        files=[_UploadFile('keep.txt', b'first')],
+        override=False, metadatas=None, group_name=None, user_path=None,
+    ))
+    asyncio.run(server_impl.upload_files_legacy(
+        files=[_UploadFile('keep.txt', b'second')],
+        override=False, metadatas=None, group_name=None, user_path=None,
+    ))
+
+    second_path = server_impl._manager.upload_request.items[0].file_path
+    assert second_path != os.path.join(storage_dir, 'keep.txt'), (
+        'override=False must not overwrite; expected unique fallback path'
+    )
+    assert second_path.startswith(os.path.join(storage_dir, 'keep'))
+
+
+def test_legacy_upload_uses_kb_id_as_algo_id(server_impl):
+    '''Regression: ``algo_id`` must mirror the kb-binding convention so a
+    ``/add_files_to_group?group_name=law_kg`` upload doesn't get rejected by
+    the algorithm validator (Document._Manager binds algo_id == kb_id via
+    ensure_kb_registered).
+    '''
+    asyncio.run(server_impl.add_files_to_group_legacy(
+        files=[_UploadFile('a.txt', b'x')],
+        group_name='law_kg', override=True, metadatas=None, user_path=None,
+    ))
+    upload_request = server_impl._manager.upload_request
+    assert upload_request.kb_id == 'law_kg'
+    assert upload_request.algo_id == 'law_kg', (
+        'algo_id must default to kb_id, not __default__, to match '
+        'ensure_kb_registered binding'
+    )
+
+
+def test_legacy_upload_user_path_namespaces_files(server_impl):
+    '''Regression: ``user_path`` must namespace uploads under a subdirectory so
+    two callers can upload the same filename without colliding (legacy contract
+    that DocWebModule and external clients depend on).'''
+    asyncio.run(server_impl.upload_files_legacy(
+        files=[_UploadFile('report.pdf', b'team_a')],
+        override=True, metadatas=None, group_name=None, user_path='team_a',
+    ))
+    path_a = server_impl._manager.upload_request.items[0].file_path
+
+    asyncio.run(server_impl.upload_files_legacy(
+        files=[_UploadFile('report.pdf', b'team_b')],
+        override=True, metadatas=None, group_name=None, user_path='team_b',
+    ))
+    path_b = server_impl._manager.upload_request.items[0].file_path
+
+    assert path_a != path_b
+    assert os.path.basename(os.path.dirname(path_a)) == 'team_a'
+    assert os.path.basename(os.path.dirname(path_b)) == 'team_b'
+    with open(path_a, 'rb') as fh:
+        assert fh.read() == b'team_a'
+    with open(path_b, 'rb') as fh:
+        assert fh.read() == b'team_b'
+
+
+def test_legacy_upload_rejects_traversal_user_path(server_impl):
+    '''Regression: malicious ``user_path`` (../, absolute) must be rejected to
+    prevent escaping ``storage_dir``.'''
+    for bad in ('../escape', '/etc/passwd', '..'):
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            asyncio.run(server_impl.upload_files_legacy(
+                files=[_UploadFile('a.txt', b'x')],
+                override=True, metadatas=None, group_name=None, user_path=bad,
+            ))
+        assert exc_info.value.status_code == 400
+
+
+def test_legacy_upload_rejects_reserved_metadata_keys(server_impl):
+    '''Regression: reserved internal keys (docid, doc_id, lazyllm_doc_path) must
+    be rejected with 400 instead of silently shadowing internal tracking via
+    parsing_service/impl.py's setdefault().'''
+    for bad_key in ('docid', 'doc_id', 'lazyllm_doc_path'):
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            asyncio.run(server_impl.upload_files_legacy(
+                files=[_UploadFile('a.txt', b'x')],
+                override=True,
+                metadatas=json.dumps([{bad_key: 'attacker_value'}]),
+                group_name=None,
+                user_path=None,
+            ))
+        assert exc_info.value.status_code == 400, f'{bad_key} should be rejected'
+        assert bad_key in str(exc_info.value.detail)
+
+
+def test_legacy_upload_files_propagates_per_item_failure(server_impl):
+    '''Regression: when DocManager.upload returns items with ``accepted=False``
+    (e.g. parser outage -> error_code=PARSER_SUBMIT_FAILED), the legacy
+    /upload_files response must surface that error in the ``results`` slot
+    instead of always saying ``'ok'``. Without this, a parser outage looks
+    like a successful upload to legacy clients.'''
+    fake = server_impl._manager
+
+    def upload_with_failure(request):
+        return [
+            {'doc_id': 'd1', 'task_id': 't1', 'accepted': True, 'error_code': None},
+            {'doc_id': 'd2', 'task_id': 't2', 'accepted': False,
+             'error_code': 'PARSER_SUBMIT_FAILED', 'error_msg': 'parser is down'},
+        ]
+    fake.upload = upload_with_failure
+
+    files = [_UploadFile('a.txt', b'one'), _UploadFile('b.txt', b'two')]
+    response = asyncio.run(server_impl.upload_files_legacy(
+        files=files, override=True, metadatas=None, group_name=None, user_path=None,
+    ))
+    body = _decode_response(response)
+
+    assert body['code'] == 200
+    doc_ids, results = body['data']
+    assert doc_ids == ['d1', 'd2']
+    assert results[0] == 'ok'
+    assert results[1] == 'PARSER_SUBMIT_FAILED'
