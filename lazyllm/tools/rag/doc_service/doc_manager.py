@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-import inspect
 import json
 import os
 from typing import Any, Dict, List, Optional, Set
@@ -9,6 +8,7 @@ from uuid import uuid4
 
 import sqlalchemy
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import aliased
 
 from lazyllm import LOG
 
@@ -256,50 +256,44 @@ class DocManager:
             return
         raise DocServiceError('E_INVALID_PARAM', f'invalid algo_id: {algo_id}', {'algo_id': algo_id})
 
-    def _refresh_kb_doc_count_in_session(self, session, kb_id: str):
-        Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
-        Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
-        kb_row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
-        if kb_row is None:
-            return
-        kb_row.doc_count = session.query(Rel).filter(Rel.kb_id == kb_id).count()
-        if kb_row.status == KBStatus.DELETING.value and kb_row.doc_count == 0:
-            kb_row.status = KBStatus.DELETED.value
-        kb_row.updated_at = datetime.now()
-        session.add(kb_row)
+    def _refresh_kb_doc_count(self, kb_id: str, session=None):
+        with self._db_manager.get_session(session) as sess:
+            Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
+            Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
+            kb_row = sess.query(Kb).filter(Kb.kb_id == kb_id).first()
+            if kb_row is None:
+                return
+            kb_row.doc_count = sess.query(Rel).filter(Rel.kb_id == kb_id).count()
+            if kb_row.status == KBStatus.DELETING.value and kb_row.doc_count == 0:
+                kb_row.status = KBStatus.DELETED.value
+            kb_row.updated_at = datetime.now()
+            sess.add(kb_row)
 
-    def _ensure_kb_document_in_session(self, session, kb_id: str, doc_id: str):
-        now = datetime.now()
-        Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
-        row = session.query(Rel).filter(Rel.kb_id == kb_id, Rel.doc_id == doc_id).first()
-        if row is None:
-            session.add(Rel(kb_id=kb_id, doc_id=doc_id, created_at=now, updated_at=now))
-            return True
-        row.updated_at = now
-        session.add(row)
-        return False
-
-    def _ensure_kb_document(self, kb_id: str, doc_id: str):
-        with self._db_manager.get_session() as session:
-            created = self._ensure_kb_document_in_session(session, kb_id, doc_id)
+    def _ensure_kb_document(self, kb_id: str, doc_id: str, session=None):
+        with self._db_manager.get_session(session) as sess:
+            now = datetime.now()
+            Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
+            row = sess.query(Rel).filter(Rel.kb_id == kb_id, Rel.doc_id == doc_id).first()
+            if row is None:
+                sess.add(Rel(kb_id=kb_id, doc_id=doc_id, created_at=now, updated_at=now))
+                created = True
+            else:
+                row.updated_at = now
+                sess.add(row)
+                created = False
             if created:
-                self._refresh_kb_doc_count_in_session(session, kb_id)
-        return created
+                self._refresh_kb_doc_count(kb_id, session=sess)
+            return created
 
-    def _remove_kb_document_in_session(self, session, kb_id: str, doc_id: str):
-        Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
-        row = session.query(Rel).filter(Rel.kb_id == kb_id, Rel.doc_id == doc_id).first()
-        if row is None:
-            return False
-        session.delete(row)
-        return True
-
-    def _remove_kb_document(self, kb_id: str, doc_id: str):
-        with self._db_manager.get_session() as session:
-            removed = self._remove_kb_document_in_session(session, kb_id, doc_id)
-            if removed:
-                self._refresh_kb_doc_count_in_session(session, kb_id)
-        return removed
+    def _remove_kb_document(self, kb_id: str, doc_id: str, session=None):
+        with self._db_manager.get_session(session) as sess:
+            Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
+            row = sess.query(Rel).filter(Rel.kb_id == kb_id, Rel.doc_id == doc_id).first()
+            if row is None:
+                return False
+            sess.delete(row)
+            self._refresh_kb_doc_count(kb_id, session=sess)
+            return True
 
     def _load_idempotency_record(self, endpoint: str, idempotency_key: str):
         with self._db_manager.get_session() as session:
@@ -457,10 +451,6 @@ class DocManager:
             task['message'] = from_json(task.get('message'))
             return task
 
-    def _refresh_kb_doc_count(self, kb_id: str):
-        with self._db_manager.get_session() as session:
-            self._refresh_kb_doc_count_in_session(session, kb_id)
-
     def _list_kb_doc_ids(self, kb_id: str) -> List[str]:
         with self._db_manager.get_session() as session:
             Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
@@ -472,10 +462,10 @@ class DocManager:
             Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
             return session.query(Rel).filter(Rel.kb_id == kb_id, Rel.doc_id == doc_id).first() is not None
 
-    def _doc_relation_count(self, doc_id: str):
-        with self._db_manager.get_session() as session:
+    def _doc_relation_count(self, doc_id: str, session=None):
+        with self._db_manager.get_session(session) as sess:
             Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
-            return session.query(Rel).filter(Rel.doc_id == doc_id).count()
+            return sess.query(Rel).filter(Rel.doc_id == doc_id).count()
 
     def _get_doc(self, doc_id: str):
         with self._db_manager.get_session() as session:
@@ -513,76 +503,6 @@ class DocManager:
             )
             return {row.path: row.doc_id for row in rows if row.path}
 
-    def _upsert_doc_in_session(
-        self,
-        session,
-        doc_id: str,
-        filename: str,
-        path: str,
-        metadata: Dict[str, Any],
-        source_type: SourceType,
-        upload_status: DocStatus = DocStatus.SUCCESS,
-        allowed_path_doc_ids: Optional[Set[str]] = None,
-    ):
-        now = datetime.now()
-        file_type = os.path.splitext(path)[1].lstrip('.').lower() or None
-        size_bytes = os.path.getsize(path) if os.path.exists(path) else None
-        content_hash = sha256_file(path) if os.path.exists(path) else None
-        allowed_path_doc_ids = allowed_path_doc_ids or set()
-        Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
-        PathLock = self._db_manager.get_table_orm_class(DOC_PATH_LOCKS_TABLE_INFO['name'])
-        session.add(PathLock(path=path, created_at=now))
-        session.flush()
-        try:
-            row = session.query(Doc).filter(Doc.doc_id == doc_id).first()
-            path_rows = session.query(Doc).filter(Doc.path == path).all()
-            conflict = next(
-                (
-                    item for item in path_rows
-                    if item.doc_id != doc_id and item.doc_id not in allowed_path_doc_ids
-                ),
-                None,
-            )
-            if conflict is not None:
-                raise DocServiceError(
-                    'E_STATE_CONFLICT',
-                    f'doc path already exists: {path}',
-                    {'doc_id': conflict.doc_id, 'path': path},
-                )
-            if row is None:
-                row = Doc(
-                    doc_id=doc_id,
-                    filename=filename,
-                    path=path,
-                    meta=to_json(metadata),
-                    upload_status=upload_status.value,
-                    source_type=source_type.value,
-                    file_type=file_type,
-                    content_hash=content_hash,
-                    size_bytes=size_bytes,
-                    created_at=now,
-                    updated_at=now,
-                )
-            else:
-                row.filename = filename
-                row.path = path
-                row.meta = to_json(metadata)
-                row.upload_status = upload_status.value
-                row.source_type = source_type.value
-                row.file_type = file_type
-                row.content_hash = content_hash
-                row.size_bytes = size_bytes
-                row.updated_at = now
-            session.add(row)
-            session.flush()
-            return row
-        finally:
-            try:
-                session.query(PathLock).filter(PathLock.path == path).delete()
-                session.flush()
-            except Exception:
-                pass
-
     def _upsert_doc(
         self,
         doc_id: str,
@@ -592,14 +512,68 @@ class DocManager:
         source_type: SourceType,
         upload_status: DocStatus = DocStatus.SUCCESS,
         allowed_path_doc_ids: Optional[Set[str]] = None,
+        session=None,
     ):
         try:
-            with self._db_manager.get_session() as session:
-                row = self._upsert_doc_in_session(
-                    session, doc_id, filename, path, metadata, source_type,
-                    upload_status=upload_status, allowed_path_doc_ids=allowed_path_doc_ids,
-                )
-                return _orm_to_dict(row)
+            with self._db_manager.get_session(session) as sess:
+                now = datetime.now()
+                file_type = os.path.splitext(path)[1].lstrip('.').lower() or None
+                size_bytes = os.path.getsize(path) if os.path.exists(path) else None
+                content_hash = sha256_file(path) if os.path.exists(path) else None
+                allowed_path_doc_ids = allowed_path_doc_ids or set()
+                Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
+                PathLock = self._db_manager.get_table_orm_class(DOC_PATH_LOCKS_TABLE_INFO['name'])
+                sess.add(PathLock(path=path, created_at=now))
+                sess.flush()
+                try:
+                    row = sess.query(Doc).filter(Doc.doc_id == doc_id).first()
+                    path_rows = sess.query(Doc).filter(Doc.path == path).all()
+                    conflict = next(
+                        (
+                            item for item in path_rows
+                            if item.doc_id != doc_id and item.doc_id not in allowed_path_doc_ids
+                        ),
+                        None,
+                    )
+                    if conflict is not None:
+                        raise DocServiceError(
+                            'E_STATE_CONFLICT',
+                            f'doc path already exists: {path}',
+                            {'doc_id': conflict.doc_id, 'path': path},
+                        )
+                    if row is None:
+                        row = Doc(
+                            doc_id=doc_id,
+                            filename=filename,
+                            path=path,
+                            meta=to_json(metadata),
+                            upload_status=upload_status.value,
+                            source_type=source_type.value,
+                            file_type=file_type,
+                            content_hash=content_hash,
+                            size_bytes=size_bytes,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    else:
+                        row.filename = filename
+                        row.path = path
+                        row.meta = to_json(metadata)
+                        row.upload_status = upload_status.value
+                        row.source_type = source_type.value
+                        row.file_type = file_type
+                        row.content_hash = content_hash
+                        row.size_bytes = size_bytes
+                        row.updated_at = now
+                    sess.add(row)
+                    sess.flush()
+                    return _orm_to_dict(row)
+                finally:
+                    try:
+                        sess.query(PathLock).filter(PathLock.path == path).delete()
+                        sess.flush()
+                    except Exception:
+                        pass
         except IntegrityError as exc:
             existing = self._get_doc_by_path(path)
             if (
@@ -625,40 +599,24 @@ class DocManager:
         upload_status: DocStatus = DocStatus.SUCCESS,
         allowed_path_doc_ids: Optional[Set[str]] = None,
     ):
-        try:
-            with self._db_manager.get_session() as session:
-                row = self._upsert_doc_in_session(
-                    session, doc_id, filename, path, metadata, source_type,
-                    upload_status=upload_status, allowed_path_doc_ids=allowed_path_doc_ids,
-                )
-                created = self._ensure_kb_document_in_session(session, kb_id, doc_id)
-                if created:
-                    self._refresh_kb_doc_count_in_session(session, kb_id)
-                return _orm_to_dict(row)
-        except IntegrityError as exc:
-            existing = self._get_doc_by_path(path)
-            if (
-                existing is not None
-                and existing.get('doc_id') != doc_id
-                and existing.get('doc_id') not in (allowed_path_doc_ids or set())
-            ):
-                raise DocServiceError(
-                    'E_STATE_CONFLICT',
-                    f'doc path already exists: {path}',
-                    {'doc_id': existing['doc_id'], 'path': path},
-                ) from exc
-            raise
-
-    def _set_doc_upload_status(self, doc_id: str, status: DocStatus):
         with self._db_manager.get_session() as session:
+            doc_dict = self._upsert_doc(
+                doc_id, filename, path, metadata, source_type,
+                upload_status=upload_status, allowed_path_doc_ids=allowed_path_doc_ids,
+                session=session,
+            )
+            self._ensure_kb_document(kb_id, doc_id, session=session)
+            return doc_dict
+
+    def _set_doc_upload_status(self, doc_id: str, status: DocStatus, session=None) -> None:
+        with self._db_manager.get_session(session) as sess:
             Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
-            row = session.query(Doc).filter(Doc.doc_id == doc_id).first()
+            row = sess.query(Doc).filter(Doc.doc_id == doc_id).first()
             if row is None:
-                return None
+                return
             row.upload_status = status.value
             row.updated_at = datetime.now()
-            session.add(row)
-        return self._get_doc(doc_id)
+            sess.add(row)
 
     def _get_parse_snapshot(self, doc_id: str, kb_id: str, algo_id: str):
         with self._db_manager.get_session() as session:
@@ -681,34 +639,28 @@ class DocManager:
             )
             return _orm_to_dict(row) if row else None
 
-    def _delete_parse_snapshots(self, doc_id: str, kb_id: str):
-        with self._db_manager.get_session() as session:
+    def _delete_parse_snapshots(self, doc_id: str, kb_id: str, session=None):
+        with self._db_manager.get_session(session) as sess:
             State = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
-            session.query(State).filter(State.doc_id == doc_id, State.kb_id == kb_id).delete()
+            sess.query(State).filter(State.doc_id == doc_id, State.kb_id == kb_id).delete()
 
-    def _delete_doc_if_orphaned_in_session(self, session, doc_id: str) -> bool:
-        Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
-        Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
-        session.flush()
-        if session.query(Rel).filter(Rel.doc_id == doc_id).count() > 0:
-            return False
-        row = session.query(Doc).filter(Doc.doc_id == doc_id).first()
-        if row is None:
-            return False
-        session.delete(row)
-        return True
-
-    def _delete_doc_if_orphaned(self, doc_id: str) -> bool:
-        with self._db_manager.get_session() as session:
-            return self._delete_doc_if_orphaned_in_session(session, doc_id)
+    def _delete_doc_if_orphaned(self, doc_id: str, session=None) -> bool:
+        with self._db_manager.get_session(session) as sess:
+            Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
+            Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
+            sess.flush()
+            if sess.query(Rel).filter(Rel.doc_id == doc_id).count() > 0:
+                return False
+            row = sess.query(Doc).filter(Doc.doc_id == doc_id).first()
+            if row is None:
+                return False
+            sess.delete(row)
+            return True
 
     def _remove_kb_document_and_delete_orphan(self, kb_id: str, doc_id: str) -> bool:
         with self._db_manager.get_session() as session:
-            removed = self._remove_kb_document_in_session(session, kb_id, doc_id)
-            doc_deleted = self._delete_doc_if_orphaned_in_session(session, doc_id)
-            if removed:
-                self._refresh_kb_doc_count_in_session(session, kb_id)
-            return doc_deleted
+            self._remove_kb_document(kb_id, doc_id, session=session)
+            return self._delete_doc_if_orphaned(doc_id, session=session)
 
     def _purge_deleted_kb_doc_data(self, kb_id: str, doc_id: str, remove_relation: bool = False):
         doc_deleted = False
@@ -893,29 +845,6 @@ class DocManager:
                 {f'duplicate_{field_name}s': duplicated_list},
             )
 
-    # Kwargs that older parser client stubs may not accept; safe to drop silently.
-    _LEGACY_OPTIONAL_PARSER_KWARGS = ('callback_url',)
-
-    def _call_parser_client(self, method, *args, **kwargs):
-        legacy_fields = [f for f in self._LEGACY_OPTIONAL_PARSER_KWARGS if f in kwargs]
-        if not legacy_fields:
-            return method(*args, **kwargs)
-        try:
-            sig = inspect.signature(method)
-        except (TypeError, ValueError):
-            return method(*args, **kwargs)
-        if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-            return method(*args, **kwargs)
-        supported = {
-            name for name, p in sig.parameters.items()
-            if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
-        }
-        filtered = dict(kwargs)
-        for field in legacy_fields:
-            if field not in supported:
-                filtered.pop(field, None)
-        return method(*args, **filtered)
-
     def _create_parser_task(self, task_id: str, doc_id: str, kb_id: str, algo_id: str, task_type: TaskType,
                             file_path: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
                             reparse_group: Optional[str] = None, parser_kb_id: Optional[str] = None,
@@ -923,27 +852,23 @@ class DocManager:
         if task_type in (TaskType.DOC_ADD, TaskType.DOC_TRANSFER):
             if not file_path:
                 raise RuntimeError(f'file_path is required for task_type {task_type.value}')
-            task_resp = self._call_parser_client(
-                self._parser_client.add_doc,
+            task_resp = self._parser_client.add_doc(
                 task_id, algo_id, parser_kb_id or kb_id, doc_id, file_path, metadata,
                 callback_url=self._callback_url, transfer_params=transfer_params,
             )
         elif task_type == TaskType.DOC_REPARSE:
             if not file_path:
                 raise RuntimeError('file_path is required for reparse task')
-            task_resp = self._call_parser_client(
-                self._parser_client.add_doc,
+            task_resp = self._parser_client.add_doc(
                 task_id, algo_id, kb_id, doc_id, file_path, metadata,
                 reparse_group=reparse_group or 'all', callback_url=self._callback_url,
             )
         elif task_type == TaskType.DOC_UPDATE_META:
-            task_resp = self._call_parser_client(
-                self._parser_client.update_meta,
+            task_resp = self._parser_client.update_meta(
                 task_id, algo_id, kb_id, doc_id, metadata, file_path, callback_url=self._callback_url,
             )
         elif task_type == TaskType.DOC_DELETE:
-            task_resp = self._call_parser_client(
-                self._parser_client.delete_doc,
+            task_resp = self._parser_client.delete_doc(
                 task_id, algo_id, kb_id, doc_id, callback_url=self._callback_url,
             )
         else:
@@ -1456,9 +1381,14 @@ class DocManager:
             'items': updated,
         }
 
-    def _sync_doc_upload_status(self, doc_id: str):
-        target = DocStatus.SUCCESS if self._doc_relation_count(doc_id) > 0 else DocStatus.DELETED
-        self._set_doc_upload_status(doc_id, target)
+    def _sync_doc_upload_status(self, doc_id: str, session=None):
+        with self._db_manager.get_session(session) as sess:
+            target = (
+                DocStatus.SUCCESS
+                if self._doc_relation_count(doc_id, session=sess) > 0
+                else DocStatus.DELETED
+            )
+            self._set_doc_upload_status(doc_id, target, session=sess)
 
     @staticmethod
     def _build_snapshot_update(snapshot: Optional[Dict[str, Any]], **overrides):
@@ -1565,9 +1495,10 @@ class DocManager:
                 source_kb_id = task_message.get('source_kb_id')
                 source_doc_id = task_message.get('source_doc_id') or doc_id
                 if source_kb_id and source_kb_id != kb_id:
-                    self._remove_kb_document(source_kb_id, source_doc_id)
-                    self._delete_parse_snapshots(source_doc_id, source_kb_id)
-                    self._sync_doc_upload_status(source_doc_id)
+                    with self._db_manager.get_session() as session:
+                        self._remove_kb_document(source_kb_id, source_doc_id, session=session)
+                        self._delete_parse_snapshots(source_doc_id, source_kb_id, session=session)
+                        self._sync_doc_upload_status(source_doc_id, session=session)
 
             self._update_task_record(
                 callback.task_id,
@@ -1620,12 +1551,38 @@ class DocManager:
         page: int = 1,
         page_size: int = 20,
     ):
-        page = max(page, 1)
-        page_size = max(1, page_size)
         with self._db_manager.get_session() as session:
             Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
             Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
-            query = session.query(Doc, Rel).join(Rel, Doc.doc_id == Rel.doc_id)
+            State = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
+
+            if algo_id:
+                SnapshotAlias = aliased(State)
+                snapshot_join_cond = sqlalchemy.and_(
+                    SnapshotAlias.doc_id == Doc.doc_id,
+                    SnapshotAlias.kb_id == Rel.kb_id,
+                    SnapshotAlias.algo_id == algo_id,
+                )
+            else:
+                rn_col = sqlalchemy.func.row_number().over(
+                    partition_by=(State.doc_id, State.kb_id),
+                    order_by=(State.updated_at.desc(), State.created_at.desc()),
+                ).label('_rn')
+                ranked_sq = session.query(State, rn_col).subquery('ranked_snapshot')
+                latest_sq = (
+                    session.query(ranked_sq).filter(ranked_sq.c._rn == 1).subquery('latest_snapshot')
+                )
+                SnapshotAlias = aliased(State, latest_sq)
+                snapshot_join_cond = sqlalchemy.and_(
+                    SnapshotAlias.doc_id == Doc.doc_id,
+                    SnapshotAlias.kb_id == Rel.kb_id,
+                )
+
+            query = (
+                session.query(Doc, Rel, SnapshotAlias)
+                .join(Rel, Doc.doc_id == Rel.doc_id)
+                .outerjoin(SnapshotAlias, snapshot_join_cond)
+            )
 
             if kb_id:
                 query = query.filter(Rel.kb_id == kb_id)
@@ -1633,25 +1590,26 @@ class DocManager:
                 like_expr = f'%{keyword}%'
                 query = query.filter((Doc.filename.like(like_expr)) | (Doc.path.like(like_expr)))
             if not include_deleted_or_canceled:
-                query = query.filter(~Doc.upload_status.in_([DocStatus.DELETED.value, DocStatus.CANCELED.value]))
-
-            rows = query.order_by(Rel.updated_at.desc(), Doc.updated_at.desc()).all()
-            items = []
-            for doc_row, rel_row in rows:
-                doc = _orm_to_dict(doc_row)
-                relation = _orm_to_dict(rel_row)
-                snapshot = (
-                    self._get_parse_snapshot(doc['doc_id'], relation['kb_id'], algo_id)
-                    if algo_id else
-                    self._get_latest_parse_snapshot(doc['doc_id'], relation['kb_id'])
+                query = query.filter(
+                    ~Doc.upload_status.in_([DocStatus.DELETED.value, DocStatus.CANCELED.value])
                 )
-                if status and (snapshot is None or snapshot.get('status') not in status):
-                    continue
+            if status:
+                query = query.filter(SnapshotAlias.status.in_(status))
+
+            query = query.order_by(Rel.updated_at.desc(), Doc.updated_at.desc())
+            result = self._db_manager.paginate(query, page=page, page_size=page_size)
+
+            items = []
+            for doc_row, rel_row, snap_row in result['items']:
+                doc = _orm_to_dict(doc_row)
                 doc['metadata'] = from_json(doc.get('meta'))
-                items.append({'doc': doc, 'relation': relation, 'snapshot': snapshot})
-            total = len(items)
-            page_items = items[(page - 1) * page_size:page * page_size]
-            return {'items': page_items, 'total': total, 'page': page, 'page_size': page_size}
+                items.append({
+                    'doc': doc,
+                    'relation': _orm_to_dict(rel_row),
+                    'snapshot': _orm_to_dict(snap_row) if snap_row is not None else None,
+                })
+            result['items'] = items
+            return result
 
     def get_doc_detail(self, doc_id: str):
         doc = self._get_doc(doc_id)
@@ -1690,31 +1648,20 @@ class DocManager:
                 return parser_list_tasks(status=status, page=page, page_size=page_size)
             except Exception as exc:
                 LOG.warning(f'[DocService] Fallback to local task list: {exc}')
-        page = max(page, 1)
-        page_size = max(page_size, 1)
         with self._db_manager.get_session() as session:
             Task = self._db_manager.get_table_orm_class(DOC_SERVICE_TASKS_TABLE_INFO['name'])
             query = session.query(Task)
             if status:
                 query = query.filter(Task.status.in_(status))
-            total = query.count()
-            rows = (
-                query.order_by(Task.created_at.desc())
-                .offset((page - 1) * page_size)
-                .limit(page_size)
-                .all()
-            )
+            query = query.order_by(Task.created_at.desc())
+            result = self._db_manager.paginate(query, page=page, page_size=page_size)
             items = []
-            for row in rows:
+            for row in result['items']:
                 task = _orm_to_dict(row)
                 task['message'] = from_json(task.get('message'))
                 items.append(task)
-        return BaseResponse(code=200, msg='success', data={
-            'items': items,
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-        })
+            result['items'] = items
+        return BaseResponse(code=200, msg='success', data=result)
 
     def get_task(self, task_id: str):
         parser_get_task = getattr(self._parser_client, 'get_task', None)
@@ -1872,8 +1819,6 @@ class DocManager:
         status: Optional[List[str]] = None,
         owner_id: Optional[str] = None,
     ):
-        page = max(page, 1)
-        page_size = max(page_size, 1)
         with self._db_manager.get_session() as session:
             Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
             Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
@@ -1892,15 +1837,10 @@ class DocManager:
                 query = query.filter(Kb.status.in_(status))
             if owner_id:
                 query = query.filter(Kb.owner_id == owner_id)
-            total = query.count()
-            rows = (
-                query.order_by(Kb.updated_at.desc(), Kb.created_at.desc())
-                .offset((page - 1) * page_size)
-                .limit(page_size)
-                .all()
-            )
-            items = [self._build_kb_data(kb_row, algo_row) for kb_row, algo_row in rows]
-            return {'items': items, 'total': total, 'page': page, 'page_size': page_size}
+            query = query.order_by(Kb.updated_at.desc(), Kb.created_at.desc())
+            result = self._db_manager.paginate(query, page=page, page_size=page_size)
+            result['items'] = [self._build_kb_data(kb_row, algo_row) for kb_row, algo_row in result['items']]
+            return result
 
     def get_kb(self, kb_id: str):
         with self._db_manager.get_session() as session:

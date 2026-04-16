@@ -4,7 +4,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -893,3 +893,497 @@ def test_scan_syncs_non_default_kb(manager_harness):
     # Now scan should see the file as synced
     synced = mgr._list_kb_docs_by_path('my_group', exclude_failed=True)
     assert file_path in synced, 'After scan upload, file must appear in synced docs'
+
+
+# ======================================================================
+# list_docs large-dataset + pagination regression suite
+#
+# These tests are a baseline for the list_docs SQL rewrite: they encode
+# the observable contract so the old Python-loop implementation and the
+# new SQL-side JOIN + window-function implementation must both satisfy
+# them. They deliberately avoid touching file system / upload pipeline
+# to keep the large-dataset setups fast — rows are inserted directly
+# via ORM.
+# ======================================================================
+
+
+def _bulk_insert_docs(
+    manager,
+    *,
+    kb_id,
+    doc_ids,
+    snapshots=None,
+    upload_status=DocStatus.SUCCESS,
+    filename_prefix='bulk',
+    base_time=None,
+):
+    '''Directly insert Doc / Rel / optional State rows via ORM.
+
+    ``snapshots`` is a list of ``(algo_id, status_value, updated_offset_seconds)``
+    tuples applied to every doc. Setting different ``updated_offset_seconds``
+    values lets tests assert ordering behaviour (latest-snapshot selection).
+    '''
+    base_time = base_time or datetime(2025, 1, 1, 12, 0, 0)
+    with manager._db_manager.get_session() as session:
+        Doc = manager._db_manager.get_table_orm_class('lazyllm_documents')
+        Rel = manager._db_manager.get_table_orm_class('lazyllm_kb_documents')
+        State = manager._db_manager.get_table_orm_class('lazyllm_doc_parse_state')
+        for i, doc_id in enumerate(doc_ids):
+            doc_ts = base_time + timedelta(seconds=i)
+            session.add(Doc(
+                doc_id=doc_id,
+                filename=f'{filename_prefix}_{i:05d}.txt',
+                path=f'/tmp/{filename_prefix}/{doc_id}.txt',
+                meta='{}',
+                upload_status=upload_status.value,
+                source_type=SourceType.API.value,
+                file_type='txt',
+                content_hash=None,
+                size_bytes=10,
+                created_at=doc_ts,
+                updated_at=doc_ts,
+            ))
+            session.add(Rel(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                created_at=doc_ts,
+                updated_at=doc_ts,
+            ))
+            if snapshots:
+                for algo_id, status_value, offset_sec in snapshots:
+                    state_ts = doc_ts + timedelta(seconds=offset_sec)
+                    session.add(State(
+                        doc_id=doc_id,
+                        kb_id=kb_id,
+                        algo_id=algo_id,
+                        status=status_value,
+                        priority=0,
+                        retry_count=0,
+                        max_retry=3,
+                        created_at=state_ts,
+                        updated_at=state_ts,
+                    ))
+
+
+def _collect_all_pages(manager, *, page_size, max_pages=200, **list_kwargs):
+    '''Iterate every page; return (flat_items, unique_totals_seen).'''
+    all_items = []
+    totals_seen = set()
+    for page in range(1, max_pages + 1):
+        resp = manager.list_docs(page=page, page_size=page_size, **list_kwargs)
+        totals_seen.add(resp['total'])
+        all_items.extend(resp['items'])
+        if len(resp['items']) < page_size:
+            break
+    else:
+        raise AssertionError(f'exceeded max_pages={max_pages}, something is wrong')
+    return all_items, totals_seen
+
+
+def test_list_docs_large_dataset_total_matches_pagination_sum(manager_harness):
+    '''Across every page, total must be stable and sum-of-items must equal total.'''
+    kb_id = 'kb_bulk_sum'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    doc_ids = [f'bulk-{i:04d}' for i in range(250)]
+    _bulk_insert_docs(
+        manager_harness.manager,
+        kb_id=kb_id,
+        doc_ids=doc_ids,
+        snapshots=[('__default__', DocStatus.SUCCESS.value, 0)],
+    )
+
+    items, totals = _collect_all_pages(manager_harness.manager, page_size=30, kb_id=kb_id)
+    assert totals == {250}, f'inconsistent totals across pages: {totals}'
+    assert len(items) == 250
+    assert len({it['doc']['doc_id'] for it in items}) == 250, 'duplicate doc_ids across pages'
+
+
+def test_list_docs_pagination_boundary_last_partial_and_beyond(manager_harness):
+    '''Last page can be partial; pages beyond the last return empty items but same total.'''
+    kb_id = 'kb_bnd'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    _bulk_insert_docs(
+        manager_harness.manager,
+        kb_id=kb_id,
+        doc_ids=[f'bnd-{i:04d}' for i in range(105)],
+    )
+
+    last_page = manager_harness.manager.list_docs(kb_id=kb_id, page=6, page_size=20)
+    assert last_page['total'] == 105
+    assert len(last_page['items']) == 5
+
+    beyond = manager_harness.manager.list_docs(kb_id=kb_id, page=10, page_size=20)
+    assert beyond['total'] == 105
+    assert beyond['items'] == []
+
+
+def test_list_docs_status_filter_is_consistent_across_pages(manager_harness):
+    '''total must reflect post-status-filter count and be identical on every page.
+
+    This is the explicit regression for the review comment:
+        "status filter in Python => total counts and DB pagination inconsistent"
+    '''
+    kb_id = 'kb_status_filter'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    base_time = datetime(2025, 1, 1, 12, 0, 0)
+    status_cycle = [
+        DocStatus.SUCCESS.value,
+        DocStatus.FAILED.value,
+        DocStatus.WORKING.value,
+        DocStatus.DELETED.value,
+    ]
+    with manager_harness.manager._db_manager.get_session() as session:
+        Doc = manager_harness.manager._db_manager.get_table_orm_class('lazyllm_documents')
+        Rel = manager_harness.manager._db_manager.get_table_orm_class('lazyllm_kb_documents')
+        State = manager_harness.manager._db_manager.get_table_orm_class('lazyllm_doc_parse_state')
+        for i in range(200):
+            doc_id = f'stat-{i:04d}'
+            ts = base_time + timedelta(seconds=i)
+            session.add(Doc(
+                doc_id=doc_id, filename=f'stat_{i}.txt', path=f'/tmp/stat/{doc_id}.txt',
+                meta='{}', upload_status=DocStatus.SUCCESS.value,
+                source_type=SourceType.API.value, file_type='txt', size_bytes=10,
+                created_at=ts, updated_at=ts,
+            ))
+            session.add(Rel(kb_id=kb_id, doc_id=doc_id, created_at=ts, updated_at=ts))
+            session.add(State(
+                doc_id=doc_id, kb_id=kb_id, algo_id='__default__',
+                status=status_cycle[i % 4], priority=0, retry_count=0, max_retry=3,
+                created_at=ts, updated_at=ts,
+            ))
+
+    items, totals = _collect_all_pages(
+        manager_harness.manager,
+        page_size=15,
+        kb_id=kb_id,
+        status=[DocStatus.SUCCESS.value],
+    )
+    assert totals == {50}, f'total drifted across pages: {totals}'
+    assert len(items) == 50
+    assert all(it['snapshot']['status'] == DocStatus.SUCCESS.value for it in items)
+
+
+def test_list_docs_status_filter_excludes_rows_without_snapshot(manager_harness):
+    '''If a row has no parse_state at all, any status filter should exclude it.
+
+    Also pins down the LEFT JOIN contract: with no status filter, rows without
+    a snapshot must still appear, carrying ``snapshot = None``.
+    '''
+    kb_id = 'kb_no_snap'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    _bulk_insert_docs(
+        manager_harness.manager, kb_id=kb_id,
+        doc_ids=[f'with-snap-{i:03d}' for i in range(50)],
+        snapshots=[('__default__', DocStatus.SUCCESS.value, 0)],
+        base_time=datetime(2025, 1, 1, 10, 0, 0),
+        filename_prefix='withsnap',
+    )
+    _bulk_insert_docs(
+        manager_harness.manager, kb_id=kb_id,
+        doc_ids=[f'no-snap-{i:03d}' for i in range(50)],
+        snapshots=None,
+        base_time=datetime(2025, 1, 1, 14, 0, 0),
+        filename_prefix='nosnap',
+    )
+
+    # No status filter => all 100 docs show up (LEFT JOIN).
+    resp_all = manager_harness.manager.list_docs(kb_id=kb_id, page=1, page_size=500)
+    assert resp_all['total'] == 100
+    null_snap = [it for it in resp_all['items'] if it['snapshot'] is None]
+    with_snap = [it for it in resp_all['items'] if it['snapshot'] is not None]
+    assert len(null_snap) == 50
+    assert len(with_snap) == 50
+    assert all(it['doc']['doc_id'].startswith('no-snap-') for it in null_snap)
+    assert all(it['doc']['doc_id'].startswith('with-snap-') for it in with_snap)
+
+    # Status filter => only rows with a matching snapshot (50).
+    resp_filtered = manager_harness.manager.list_docs(
+        kb_id=kb_id, status=[DocStatus.SUCCESS.value], page=1, page_size=500,
+    )
+    assert resp_filtered['total'] == 50
+    assert all(it['doc']['doc_id'].startswith('with-snap-') for it in resp_filtered['items'])
+
+
+def test_list_docs_latest_snapshot_when_algo_id_not_specified(manager_harness):
+    '''When algo_id is None, snapshot should be the most recent among algos (by updated_at).'''
+    kb_id = 'kb_latest'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    _bulk_insert_docs(
+        manager_harness.manager,
+        kb_id=kb_id,
+        doc_ids=[f'multi-algo-{i:03d}' for i in range(10)],
+        snapshots=[
+            ('algo-A', DocStatus.FAILED.value, 0),
+            ('algo-B', DocStatus.WORKING.value, 60),
+            ('algo-C', DocStatus.SUCCESS.value, 120),  # newest
+        ],
+    )
+
+    resp_default = manager_harness.manager.list_docs(kb_id=kb_id, page=1, page_size=50)
+    assert resp_default['total'] == 10
+    for item in resp_default['items']:
+        assert item['snapshot']['algo_id'] == 'algo-C'
+        assert item['snapshot']['status'] == DocStatus.SUCCESS.value
+
+    resp_explicit = manager_harness.manager.list_docs(
+        kb_id=kb_id, algo_id='algo-A', page=1, page_size=50,
+    )
+    assert resp_explicit['total'] == 10
+    for item in resp_explicit['items']:
+        assert item['snapshot']['algo_id'] == 'algo-A'
+        assert item['snapshot']['status'] == DocStatus.FAILED.value
+
+
+def test_list_docs_kb_id_filter_isolates_results(manager_harness):
+    for kb_id in ('kb-a', 'kb-b', 'kb-c'):
+        manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+        _bulk_insert_docs(
+            manager_harness.manager,
+            kb_id=kb_id,
+            doc_ids=[f'{kb_id}-{i:03d}' for i in range(40)],
+            filename_prefix=kb_id,
+        )
+
+    resp = manager_harness.manager.list_docs(kb_id='kb-b', page=1, page_size=500)
+    assert resp['total'] == 40
+    assert all(it['relation']['kb_id'] == 'kb-b' for it in resp['items'])
+    assert all(it['doc']['doc_id'].startswith('kb-b-') for it in resp['items'])
+
+
+def test_list_docs_keyword_filter_matches_filename(manager_harness):
+    kb_id = 'kb_keyword'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    _bulk_insert_docs(
+        manager_harness.manager, kb_id=kb_id,
+        doc_ids=[f'report-{i:03d}' for i in range(50)],
+        filename_prefix='report',
+        base_time=datetime(2025, 1, 1, 10, 0, 0),
+    )
+    _bulk_insert_docs(
+        manager_harness.manager, kb_id=kb_id,
+        doc_ids=[f'invoice-{i:03d}' for i in range(50)],
+        filename_prefix='invoice',
+        base_time=datetime(2025, 1, 1, 12, 0, 0),
+    )
+
+    resp = manager_harness.manager.list_docs(
+        kb_id=kb_id, keyword='invoice', page=1, page_size=500,
+    )
+    assert resp['total'] == 50
+    assert all('invoice' in it['doc']['filename'] for it in resp['items'])
+
+
+def test_list_docs_include_deleted_or_canceled_flag(manager_harness):
+    kb_id = 'kb_upload_status'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    base_time = datetime(2025, 1, 1, 10, 0, 0)
+    upload_statuses = [
+        DocStatus.SUCCESS.value,
+        DocStatus.DELETED.value,
+        DocStatus.CANCELED.value,
+        DocStatus.WORKING.value,
+    ]
+    with manager_harness.manager._db_manager.get_session() as session:
+        Doc = manager_harness.manager._db_manager.get_table_orm_class('lazyllm_documents')
+        Rel = manager_harness.manager._db_manager.get_table_orm_class('lazyllm_kb_documents')
+        for i in range(200):
+            doc_id = f'ups-{i:04d}'
+            ts = base_time + timedelta(seconds=i)
+            session.add(Doc(
+                doc_id=doc_id, filename=f'ups_{i}.txt', path=f'/tmp/ups/{doc_id}.txt',
+                meta='{}', upload_status=upload_statuses[i % 4],
+                source_type=SourceType.API.value, file_type='txt', size_bytes=10,
+                created_at=ts, updated_at=ts,
+            ))
+            session.add(Rel(kb_id=kb_id, doc_id=doc_id, created_at=ts, updated_at=ts))
+
+    resp_all = manager_harness.manager.list_docs(
+        kb_id=kb_id, include_deleted_or_canceled=True, page=1, page_size=500,
+    )
+    assert resp_all['total'] == 200
+
+    resp_filtered = manager_harness.manager.list_docs(
+        kb_id=kb_id, include_deleted_or_canceled=False, page=1, page_size=500,
+    )
+    assert resp_filtered['total'] == 100
+    excluded = {DocStatus.DELETED.value, DocStatus.CANCELED.value}
+    assert all(it['doc']['upload_status'] not in excluded for it in resp_filtered['items'])
+
+
+def test_list_docs_ordering_by_relation_updated_at_desc(manager_harness):
+    '''Order contract: Rel.updated_at DESC primary, Doc.updated_at DESC as tiebreak.
+
+    Asserts on the observable timestamps rather than doc_id lex-order so a
+    rewrite that swaps storage/partitioning but preserves the ordering contract
+    still passes.
+    '''
+    kb_id = 'kb_order'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    _bulk_insert_docs(
+        manager_harness.manager, kb_id=kb_id,
+        doc_ids=[f'order-{i:04d}' for i in range(100)],
+        base_time=datetime(2025, 1, 1, 10, 0, 0),
+    )
+    resp = manager_harness.manager.list_docs(kb_id=kb_id, page=1, page_size=100)
+    rel_times = [it['relation']['updated_at'] for it in resp['items']]
+    assert rel_times == sorted(rel_times, reverse=True), \
+        'Rel.updated_at must be non-increasing across returned rows'
+    # Secondary tie-break: within equal Rel.updated_at, Doc.updated_at DESC.
+    # The helper writes Rel.updated_at == Doc.updated_at for every row, so
+    # Doc.updated_at must also be non-increasing on the returned projection.
+    doc_times = [it['doc']['updated_at'] for it in resp['items']]
+    assert doc_times == sorted(doc_times, reverse=True), \
+        'Doc.updated_at must be non-increasing (secondary tie-break)'
+
+
+def test_list_docs_latest_snapshot_tie_break_uses_created_at(manager_harness):
+    '''When multiple snapshots share the same ``updated_at``, the tie-break
+    falls through to ``created_at`` (newer wins). This matches the current
+    ``_get_latest_parse_snapshot`` ORDER BY contract and must be preserved by
+    any SQL rewrite that computes "latest per (doc_id, kb_id)".
+    '''
+    kb_id = 'kb_tie'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    same_instant = datetime(2025, 1, 1, 12, 0, 0)
+    doc_ts = same_instant
+    with manager_harness.manager._db_manager.get_session() as session:
+        Doc = manager_harness.manager._db_manager.get_table_orm_class('lazyllm_documents')
+        Rel = manager_harness.manager._db_manager.get_table_orm_class('lazyllm_kb_documents')
+        State = manager_harness.manager._db_manager.get_table_orm_class('lazyllm_doc_parse_state')
+        session.add(Doc(
+            doc_id='tie-doc', filename='tie.txt', path='/tmp/tie.txt', meta='{}',
+            upload_status=DocStatus.SUCCESS.value, source_type=SourceType.API.value,
+            file_type='txt', size_bytes=10, created_at=doc_ts, updated_at=doc_ts,
+        ))
+        session.add(Rel(kb_id=kb_id, doc_id='tie-doc', created_at=doc_ts, updated_at=doc_ts))
+        # Two snapshots share updated_at; created_at differs.
+        session.add(State(
+            doc_id='tie-doc', kb_id=kb_id, algo_id='algo-older',
+            status=DocStatus.FAILED.value, priority=0, retry_count=0, max_retry=3,
+            created_at=same_instant - timedelta(minutes=5),
+            updated_at=same_instant,
+        ))
+        session.add(State(
+            doc_id='tie-doc', kb_id=kb_id, algo_id='algo-newer',
+            status=DocStatus.SUCCESS.value, priority=0, retry_count=0, max_retry=3,
+            created_at=same_instant - timedelta(minutes=1),  # newer created_at
+            updated_at=same_instant,
+        ))
+
+    resp = manager_harness.manager.list_docs(kb_id=kb_id, page=1, page_size=10)
+    assert resp['total'] == 1
+    snap = resp['items'][0]['snapshot']
+    assert snap is not None
+    assert snap['algo_id'] == 'algo-newer', \
+        f'tie-break must prefer newer created_at; got algo_id={snap["algo_id"]}'
+    assert snap['status'] == DocStatus.SUCCESS.value
+
+
+def test_list_docs_status_filter_uses_latest_snapshot_not_any(manager_harness):
+    '''Critical rewrite pitfall: when ``algo_id`` is None and multiple snapshots
+    exist per (doc_id, kb_id), the ``status`` filter must apply to the **latest**
+    snapshot only — NOT "any snapshot matches".
+
+    Setup: each doc has algo-A=SUCCESS (old) and algo-B=FAILED (new/latest).
+    Query ``status=['SUCCESS']`` with no ``algo_id``:
+    - Latest snapshot is FAILED → row is excluded.
+    - If the rewrite filters inside the partition before picking the latest,
+      SUCCESS snapshots would match and the row would erroneously appear.
+    '''
+    kb_id = 'kb_filter_latest'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    _bulk_insert_docs(
+        manager_harness.manager, kb_id=kb_id,
+        doc_ids=[f'latest-{i:03d}' for i in range(20)],
+        snapshots=[
+            ('algo-A', DocStatus.SUCCESS.value, 0),
+            ('algo-B', DocStatus.FAILED.value, 60),  # newer → becomes "latest"
+        ],
+    )
+
+    resp_success = manager_harness.manager.list_docs(
+        kb_id=kb_id, status=[DocStatus.SUCCESS.value], page=1, page_size=100,
+    )
+    assert resp_success['total'] == 0, \
+        'status filter without algo_id must match only the latest snapshot'
+    assert resp_success['items'] == []
+
+    resp_failed = manager_harness.manager.list_docs(
+        kb_id=kb_id, status=[DocStatus.FAILED.value], page=1, page_size=100,
+    )
+    assert resp_failed['total'] == 20
+    for item in resp_failed['items']:
+        assert item['snapshot']['algo_id'] == 'algo-B'
+        assert item['snapshot']['status'] == DocStatus.FAILED.value
+
+
+def test_list_docs_status_and_algo_id_combined(manager_harness):
+    '''status × algo_id must be combined: the status filter applies to the
+    explicitly requested algo's snapshot only.
+    '''
+    kb_id = 'kb_combo'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    _bulk_insert_docs(
+        manager_harness.manager, kb_id=kb_id,
+        doc_ids=[f'combo-{i:03d}' for i in range(30)],
+        snapshots=[
+            ('algo-A', DocStatus.SUCCESS.value, 0),
+            ('algo-B', DocStatus.FAILED.value, 60),
+        ],
+    )
+
+    # algo_id='algo-A' + status=['FAILED'] → expect 0 (algo-A is SUCCESS everywhere)
+    resp = manager_harness.manager.list_docs(
+        kb_id=kb_id, algo_id='algo-A',
+        status=[DocStatus.FAILED.value], page=1, page_size=100,
+    )
+    assert resp['total'] == 0
+    assert resp['items'] == []
+
+    # algo_id='algo-A' + status=['SUCCESS'] → expect all 30
+    resp = manager_harness.manager.list_docs(
+        kb_id=kb_id, algo_id='algo-A',
+        status=[DocStatus.SUCCESS.value], page=1, page_size=100,
+    )
+    assert resp['total'] == 30
+    assert all(it['snapshot']['algo_id'] == 'algo-A' for it in resp['items'])
+
+
+def test_list_docs_empty_result_returns_well_formed_page(manager_harness):
+    '''Query with no matches must return items=[], total=0, with page/page_size echoed.'''
+    kb_id = 'kb_empty'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    _bulk_insert_docs(
+        manager_harness.manager, kb_id=kb_id,
+        doc_ids=[f'empty-{i:03d}' for i in range(5)],
+        snapshots=[('__default__', DocStatus.SUCCESS.value, 0)],
+    )
+
+    # Nonexistent kb_id
+    resp_nokb = manager_harness.manager.list_docs(kb_id='kb-does-not-exist', page=1, page_size=20)
+    assert resp_nokb == {'items': [], 'total': 0, 'page': 1, 'page_size': 20}
+
+    # Status that no snapshot has
+    resp_nostatus = manager_harness.manager.list_docs(
+        kb_id=kb_id, status=[DocStatus.CANCELED.value], page=1, page_size=20,
+    )
+    assert resp_nostatus == {'items': [], 'total': 0, 'page': 1, 'page_size': 20}
+
+
+def test_list_docs_page_and_size_are_clamped(manager_harness):
+    '''page<1 → clamped to 1; page_size<1 → clamped to 1. Behavior contract.'''
+    kb_id = 'kb_clamp'
+    manager_harness.manager.create_kb(kb_id, algo_id='__default__')
+    _bulk_insert_docs(
+        manager_harness.manager, kb_id=kb_id,
+        doc_ids=[f'clamp-{i:03d}' for i in range(5)],
+    )
+    resp = manager_harness.manager.list_docs(kb_id=kb_id, page=0, page_size=0)
+    assert resp['page'] == 1
+    assert resp['page_size'] == 1
+    assert resp['total'] == 5
+    assert len(resp['items']) == 1
+
+    resp_neg = manager_harness.manager.list_docs(kb_id=kb_id, page=-5, page_size=-1)
+    assert resp_neg['page'] == 1
+    assert resp_neg['page_size'] == 1

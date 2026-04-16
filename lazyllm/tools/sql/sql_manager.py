@@ -275,16 +275,27 @@ class SqlManager(DBManager):
         self._Session = None
 
     @contextmanager
-    def get_session(self):
+    def get_session(self, session=None):
+        if session is not None:
+            yield session
+            return
         session = self.Session()
         try:
             yield session
             session.commit()
-        except Exception as e:
+        except Exception:
             session.rollback()
-            raise e
+            raise
         finally:
             session.close()
+
+    @staticmethod
+    def paginate(query, *, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+        page = max(page, 1)
+        page_size = max(page_size, 1)
+        total = query.count()
+        rows = query.offset((page - 1) * page_size).limit(page_size).all()
+        return {'items': rows, 'total': total, 'page': page, 'page_size': page_size}
 
     def check_connection(self) -> DBResult:
         try:
