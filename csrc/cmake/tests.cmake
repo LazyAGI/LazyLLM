@@ -38,5 +38,13 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
             target_link_options(${test_name} PRIVATE -Wl,--disable-new-dtags)
         endif ()
     endif ()
-    gtest_discover_tests(${test_name})
+    if (WIN32)
+        # Avoid STATUS_DLL_NOT_FOUND during gtest test-list discovery on Windows:
+        # test executables may depend on DLLs whose paths are not in PATH at build time.
+        # PRE_TEST mode defers discovery until ctest runs, by which point the runtime
+        # environment (PATH, copied DLLs, etc.) is already set up.
+        gtest_discover_tests(${test_name} DISCOVERY_MODE PRE_TEST)
+    else ()
+        gtest_discover_tests(${test_name})
+    endif ()
 endforeach ()
