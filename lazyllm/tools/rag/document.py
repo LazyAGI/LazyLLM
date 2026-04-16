@@ -93,7 +93,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      processor: Optional[DocumentProcessor] = None, display_name: Optional[str] = '',
                      description: Optional[str] = 'algorithm description',
                      schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
-                     create_ui: bool = False, enable_path_monitoring: Optional[bool] = None):
+                     create_ui: bool = False):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
             self._dataset_path = self._resolve_dataset_path(dataset_path)
@@ -127,20 +127,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._description = description
             name = name or RAG_DEFAULT_GROUP_NAME
             if not display_name: display_name = name
-            if enable_path_monitoring is None:
-                # Background directory polling is off by default: service modes let
-                # DocServer own scanning, and map-store + dataset_path is a "toy" mode
-                # whose store resets with the process (nothing to sync against). The
-                # initial one-time ingest inside DocImpl._lazy_init still runs, so
-                # beginners doing `Document(dataset_path=...)` still get their files
-                # loaded — only the 10s polling loop is suppressed. Users who really
-                # want polling can pass `enable_path_monitoring=True` explicitly.
-                enable_path_monitoring = False
-            self._enable_path_monitoring = enable_path_monitoring
             doc_processor = self._doc_processor or processor
             self._kbs = CallableDict({name: DocImpl(
-                embed=self._embed, dataset_path=self._doc_impl_dataset_path,
-                enable_path_monitoring=enable_path_monitoring, doc_files=doc_files,
+                embed=self._embed, dataset_path=self._doc_impl_dataset_path, doc_files=doc_files,
                 global_metadata_desc=doc_fields, store=store_conf, processor=doc_processor,
                 algo_name=name, display_name=display_name, description=description,
                 schema_extractor=schema_extractor)})
@@ -230,7 +219,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 setattr(self, f'_schema_extractor_{name}', schema_extractor)
             impl = DocImpl(
                 dataset_path=self._doc_impl_dataset_path, embed=embed, kb_group_name=name,
-                enable_path_monitoring=self._enable_path_monitoring, global_metadata_desc=doc_fields,
+                global_metadata_desc=doc_fields,
                 store=store_conf or self._store_conf, processor=self._doc_processor or self._processor,
                 algo_name=name, display_name=name, description=self._description,
                 schema_extractor=schema_extractor,
@@ -245,8 +234,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             return self._iter_kbs()[name]
 
         def stop(self):
-            for impl in self._iter_kbs().values():
-                impl.stop_local_monitoring()
             if hasattr(self, '_docweb'):
                 self._docweb.stop()
             self._launcher.cleanup()
@@ -308,6 +295,11 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             warnings.warn('`create_ui=True` (and the legacy `manager="ui"` alias) is deprecated and will be removed'
                           ' in a future release. Prefer `manager=True` and interact with DocServer via its HTTP API'
                           ' / SDK instead.', DeprecationWarning, stacklevel=2)
+        if enable_path_monitoring is not None:
+            warnings.warn('`enable_path_monitoring` is deprecated: DocImpl no longer polls the dataset '
+                          'directory. Persistent-store setups auto-upgrade to DocServer which owns scanning; '
+                          'map-store setups get a one-time ingest at `_lazy_init`. The parameter is accepted '
+                          'for backward compatibility but has no effect.', DeprecationWarning, stacklevel=2)
         if isinstance(dataset_path, (tuple, list)):
             doc_fields = dataset_path
             dataset_path = None
@@ -339,9 +331,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
                                               doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
                                               display_name=display_name, description=description,
-                                              schema_extractor=schema_extractor,
-                                              create_ui=create_ui,
-                                              enable_path_monitoring=enable_path_monitoring)
+                                              schema_extractor=schema_extractor, create_ui=create_ui)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
         self._graph_document: weakref.ref = None

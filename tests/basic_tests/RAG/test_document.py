@@ -10,8 +10,6 @@ from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransf
 import os
 import shutil
 import tempfile
-import threading
-import time
 import unittest
 import uuid
 from unittest.mock import MagicMock
@@ -105,7 +103,7 @@ class TestDocImpl(unittest.TestCase):
             with open(file_path, 'w') as file:
                 file.write('local dataset path')
 
-            doc_impl = DocImpl(embed=self.mock_embed, dataset_path=temp_dir, enable_path_monitoring=False)
+            doc_impl = DocImpl(embed=self.mock_embed, dataset_path=temp_dir)
             doc_impl._reader = MagicMock()
             doc_impl._reader.load_data.side_effect = (
                 lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
@@ -127,7 +125,7 @@ class TestDocImpl(unittest.TestCase):
                 with open('test.txt', 'w') as file:
                     file.write('local dataset file')
 
-                doc_impl = DocImpl(embed=self.mock_embed, dataset_path='test.txt', enable_path_monitoring=False)
+                doc_impl = DocImpl(embed=self.mock_embed, dataset_path='test.txt')
                 doc_impl._reader = MagicMock()
                 doc_impl._reader.load_data.side_effect = (
                     lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
@@ -165,94 +163,45 @@ class TestDocImpl(unittest.TestCase):
             finally:
                 lazyllm.config._impl['data_path'] = original_data_path
 
-    def test_dataset_path_monitor_adds_and_removes_files(self):
-        self.mock_embed.return_value = [0.1, 0.2, 0.3]
-        with tempfile.TemporaryDirectory() as temp_dir:
-            file_a = os.path.join(temp_dir, 'a.txt')
-            with open(file_a, 'w') as file:
-                file.write('a')
-
-            doc_impl = DocImpl(embed=self.mock_embed, dataset_path=temp_dir, enable_path_monitoring=True)
-            doc_impl._reader = MagicMock()
-            doc_impl._reader.load_data.side_effect = (
-                lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
-            )
-            doc_impl._local_monitor_interval = 0.1
-            doc_impl._lazy_init()
-
-            def wait_for_doc_ids(expected_ids):
-                deadline = time.time() + 3
-                while time.time() < deadline:
-                    nodes = doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
-                    current_ids = {node.global_metadata[RAG_DOC_ID] for node in nodes}
-                    if current_ids == expected_ids:
-                        return
-                    time.sleep(0.1)
-                raise AssertionError(f'Expected doc ids {expected_ids}, got {current_ids}')
-
-            try:
-                wait_for_doc_ids({gen_docid(file_a)})
-
-                file_b = os.path.join(temp_dir, 'b.txt')
-                with open(file_b, 'w') as file:
-                    file.write('b')
-                wait_for_doc_ids({gen_docid(file_a), gen_docid(file_b)})
-
-                os.remove(file_a)
-                wait_for_doc_ids({gen_docid(file_b)})
-            finally:
-                doc_impl.stop_local_monitoring()
-
-    def test_stop_local_monitoring_stops_thread(self):
-        self.mock_embed.return_value = [0.1, 0.2, 0.3]
-        with tempfile.TemporaryDirectory() as temp_dir:
-            file_a = os.path.join(temp_dir, 'a.txt')
-            with open(file_a, 'w') as file:
-                file.write('a')
-
-            doc_impl = DocImpl(embed=self.mock_embed, dataset_path=temp_dir, enable_path_monitoring=True)
-            doc_impl._reader = MagicMock()
-            doc_impl._reader.load_data.side_effect = (
-                lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
-            )
-            doc_impl._local_monitor_interval = 0.1
-            doc_impl._lazy_init()
-
-            try:
-                deadline = time.time() + 3
-                while time.time() < deadline:
-                    thread = doc_impl._local_monitor_thread
-                    if thread and thread.is_alive():
-                        break
-                    time.sleep(0.05)
-                else:
-                    raise AssertionError('Expected local monitoring thread to start')
-            finally:
-                doc_impl.stop_local_monitoring()
-
-            assert doc_impl._local_monitor_continue is False
-            assert doc_impl._local_monitor_thread is None
-
     def test_doc_impl_can_be_pickled_before_lazy_init(self):
         doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
         serialized = cloudpickle.dumps(doc_impl)
         restored = cloudpickle.loads(serialized)
+        # Basic round-trip sanity: lazy_init flag resets, dataset wiring survives.
+        assert restored._doc_files == doc_impl._doc_files
+        assert restored._lazy_init.flag is not doc_impl._lazy_init.flag
 
-        assert restored._local_monitor_lock is not None
-        assert restored._local_monitor_thread is None
-        assert restored._local_monitor_continue is False
+    def test_ingest_local_dataset_per_file_failure_is_isolated(self):
+        '''Regression: a failure on one file in _ingest_local_dataset must not abort ingest
+        of the other files. _add_doc_to_store wraps each call in its own try/except.'''
+        mock_embed = MagicMock()
+        mock_embed.return_value = [0.1, 0.2, 0.3]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for name in ('a.txt', 'b.txt'):
+                with open(os.path.join(temp_dir, name), 'w') as f:
+                    f.write(name)
+            doc_impl = DocImpl(embed=mock_embed, dataset_path=temp_dir)
+            call_count = [0]
 
-    def test_doc_impl_resets_local_monitor_state_on_pickle(self):
-        doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
-        doc_impl._local_monitor_thread = threading.Thread(target=lambda: None)
-        doc_impl._local_monitor_continue = True
+            def flaky_add_doc(files, ids, metadatas=None):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    raise RuntimeError('simulated first-file failure')
+                # second file: return a valid root node so it lands in the store
+                node = DocNode(group=LAZY_ROOT_NAME, text=os.path.basename(files[0]))
+                node._global_metadata = {RAG_DOC_ID: ids[0], RAG_DOC_PATH: files[0]}
+                return {LAZY_ROOT_NAME: [node], LAZY_IMAGE_GROUP: []}
 
-        serialized = cloudpickle.dumps(doc_impl)
-        restored = cloudpickle.loads(serialized)
-
-        assert restored._local_monitor_lock is not None
-        assert restored._local_monitor_thread is None
-        assert restored._local_monitor_continue is False
+            doc_impl._reader = MagicMock()
+            doc_impl._reader.load_data.side_effect = (
+                lambda input_files, metadatas, split_nodes_by_type=True:
+                flaky_add_doc(input_files, [gen_docid(f) for f in input_files], metadatas)
+            )
+            doc_impl._lazy_init()
+            # One failed, one succeeded — the survivor must be in the store.
+            nodes = doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
+            assert len(nodes) == 1
+            assert call_count[0] == 2  # both files attempted, not aborted after first error
 
 
 class _DummyLLM(LLMBase):
@@ -347,20 +296,25 @@ class TestDocument(unittest.TestCase):
         Document(dataset_path)
         Document(dataset_path + os.sep)
 
-    def test_dataset_path_skips_background_monitor_by_default(self):
-        # Post-PR #1069: map-store + dataset_path is "toy mode" — initial ingest in
-        # DocImpl._lazy_init still runs, but the 10s polling loop is off by default.
-        # Users wanting change detection should use a persistent store (auto-upgrade
-        # to DocServer) or pass `enable_path_monitoring=True` explicitly.
+    def test_dataset_path_does_one_time_ingest_without_monitor(self):
+        # Post-PR #1069: map-store + dataset_path is "toy mode" — DocImpl does a single
+        # ingest inside `_lazy_init` and the background polling machinery is gone entirely.
+        # Users wanting change detection should use a persistent store (auto-upgrade to
+        # DocServer owns the scan).
         doc = Document(self._build_dataset())
-        assert doc._manager._enable_path_monitoring is False
         assert doc._impl._dataset_path == doc._manager._origin_path
+        assert not hasattr(doc._impl, '_local_monitor_thread')
 
-    def test_enable_path_monitoring_honors_explicit_opt_in(self):
-        doc = Document(self._build_dataset(), enable_path_monitoring=True)
-        assert doc._manager._enable_path_monitoring is True
-        assert doc._impl._enable_path_monitoring is True
-        doc.stop()
+    def test_enable_path_monitoring_kwarg_is_a_deprecated_noop(self):
+        import warnings as _warnings
+        with _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter('always')
+            doc = Document(self._build_dataset(), enable_path_monitoring=True)
+            try:
+                assert any(issubclass(w.category, DeprecationWarning)
+                           and 'enable_path_monitoring' in str(w.message) for w in caught)
+            finally:
+                doc.stop()
 
     def test_register_with_pattern(self):
         Document.create_node_group('AdaptiveChunk1', transform=[
@@ -467,7 +421,6 @@ class TestDocument(unittest.TestCase):
         try:
             doc.start()
             assert hasattr(doc._manager, '_docweb')
-            assert doc._manager._enable_path_monitoring is False
         finally:
             doc.stop()
 
@@ -500,8 +453,6 @@ class TestDocument(unittest.TestCase):
         # must be ingested via explicit API calls (upload / add_files) in this mode.
         doc = Document(name='dp_standalone', manager=processor, store_conf=milvus_store)
         try:
-            assert doc._manager._enable_path_monitoring is False
-            assert doc._impl._enable_path_monitoring is False
             assert doc._impl._dataset_path is None
         finally:
             doc.stop()
@@ -544,43 +495,6 @@ class TestDocument(unittest.TestCase):
         assert len(window) == 5
         assert window == sorted(window, key=lambda n: n.number)
         assert all(n.number in [1, 2, 3, 4, 5] for n in window)
-
-    def test_local_failed_insert_not_tracked(self):
-        '''Regression: _add_doc_to_store failures must not be tracked in _tracked_docs.'''
-        with tempfile.TemporaryDirectory() as temp_dir:
-            file_a = os.path.join(temp_dir, 'a.txt')
-            file_b = os.path.join(temp_dir, 'b.txt')
-            with open(file_a, 'w') as f:
-                f.write('a')
-            with open(file_b, 'w') as f:
-                f.write('b')
-
-            mock_embed = MagicMock()
-            mock_embed.return_value = [0.1, 0.2, 0.3]
-            doc_impl = DocImpl(embed=mock_embed, dataset_path=temp_dir, enable_path_monitoring=False)
-
-            call_count = [0]
-
-            def mock_add_doc(files, ids, metadatas=None):
-                call_count[0] += 1
-                if call_count[0] == 2:
-                    raise RuntimeError('Simulated add failure')
-                from lazyllm.tools.rag.doc_node import DocNode
-                from lazyllm.tools.rag.store import LAZY_ROOT_NAME
-                from lazyllm.tools.rag.store.store_base import LAZY_IMAGE_GROUP
-                from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_DOC_PATH
-                node = DocNode(group=LAZY_ROOT_NAME, text='test')
-                node._global_metadata = {RAG_DOC_ID: ids[0], RAG_DOC_PATH: files[0]}
-                return {LAZY_ROOT_NAME: [node], LAZY_IMAGE_GROUP: []}
-
-            doc_impl._reader = MagicMock()
-            doc_impl._reader.load_data.side_effect = lambda input_files, metadatas, split_nodes_by_type=True: (
-                mock_add_doc(input_files, [f'id_{i}' for i in range(len(input_files))], metadatas)
-            )
-            doc_impl._lazy_init()
-
-            # Only 1 out of 2 files should be tracked (the other failed)
-            assert len(doc_impl._tracked_docs) == 1
 
     def test_persistent_store_auto_upgrade_nonexisting_dir(self):
         '''Regression: auto-upgrade must trigger for non-existing dataset_path (future dir).

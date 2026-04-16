@@ -1,10 +1,8 @@
 import os
-import threading
-import time
 from enum import Enum
 from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
-from lazyllm import LOG, once_wrapper, reset_on_pickle, config
+from lazyllm import LOG, once_wrapper, config
 from lazyllm.module import LLMBase
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
@@ -63,15 +61,12 @@ class BuiltinGroups(object):
                      lambda x: x._content, LAZY_IMAGE_GROUP, True)
 
 
-@reset_on_pickle(('_local_monitor_lock', threading.Lock), ('_local_monitor_thread', None),
-                 ('_local_monitor_continue', bool))
 class DocImpl:
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
 
     def __init__(self, embed: Dict[str, Callable], dataset_path: Optional[str] = None,
-                 enable_path_monitoring: bool = False,
                  doc_files: Optional[List[str]] = None, kb_group_name: Optional[str] = None,
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  store: Optional[Union[Dict, LazyLLMStoreBase]] = None,
@@ -82,19 +77,8 @@ class DocImpl:
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or RAG_DEFAULT_GROUP_NAME
         self._dataset_path = dataset_path
-        self._enable_path_monitoring = bool(enable_path_monitoring and dataset_path and doc_files is None)
         self._doc_files = doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
-        self._local_monitor_thread: Optional[threading.Thread] = None
-        self._local_monitor_continue = False
-        self._local_monitor_interval = 10
-        self._local_monitor_lock = threading.Lock()
-        # path -> doc_id, tracks files added to store. Kept in-memory on purpose:
-        # Document rejects `manager=DocumentProcessor(...) + dataset_path`, and persistent
-        # store + dataset_path auto-upgrades to DocServer, so _sync_local_dataset() only
-        # runs for the map-store path — where restart clears both the store and this dict.
-        # Persistent-store deduplication lives in DocServer's `lazyllm_documents` SQL table.
-        self._tracked_docs: Dict[str, str] = {}
         self.node_groups: Dict[str, Dict] = {
             LAZY_ROOT_NAME: dict(parent=None, display_name='Original Source', group_type=NodeGroupType.ORIGINAL),
             LAZY_IMAGE_GROUP: dict(parent=None, display_name='Image Node', group_type=NodeGroupType.OTHER)
@@ -201,14 +185,13 @@ class DocImpl:
             self._processor = _Processor(self._algo_name, self._store, self._reader, self.node_groups,
                                          self._schema_extractor, self._display_name, self._description)
 
-        # `cloud` is True iff both dataset_path and doc_files are absent. In the non-cloud
-        # path DocImpl owns the initial ingest — always map-store in practice (persistent
-        # store + dataset_path is handled by DocServer; DocumentProcessor + dataset_path is
-        # rejected at Document.__init__).
+        # `cloud` is True iff both dataset_path and doc_files are absent. Otherwise do a
+        # one-time ingest: DocImpl only owns the scan in map-store flows now (persistent
+        # store + dataset_path auto-upgrades to DocServer; DocumentProcessor + dataset_path
+        # is rejected at Document.__init__), so re-scan on every process start is harmless
+        # and matches the empty map store. No background monitor is started.
         if not cloud:
-            self._sync_local_dataset()
-        if self._dataset_path and self._enable_path_monitoring:
-            self._start_local_monitoring()
+            self._ingest_local_dataset()
 
     def _resolve_index_pending_registrations(self):
         for index_type, index_cls, index_args, index_kwargs in self._index_pending_registrations:
@@ -346,61 +329,15 @@ class DocImpl:
                 return os.path.abspath(candidate)
         return os.path.abspath(path)
 
-    def _sync_local_dataset(self):
-        # Invariant (post-PR #1069): reachable only in map-store / doc_files flows —
-        # persistent stores go through DocServer's SQL-backed `_sync_dataset`. An empty
-        # `_tracked_docs` on process start matches an empty in-memory map store, so
-        # full re-ingest is correct. The background monitor loop is off by default now
-        # (toy mode); this method primarily serves the one-time ingest in `_lazy_init`.
-        with self._local_monitor_lock:
-            ids, paths, metadatas = self._list_local_files()
-            current_docs = dict(zip(paths, ids))
-
-            # Delete stale docs (in tracked but no longer on disk)
-            stale_ids = [did for p, did in self._tracked_docs.items() if p not in current_docs]
-            if stale_ids:
-                self._delete_doc_from_store(doc_ids=stale_ids)
-                stale_set = set(stale_ids)
-                self._tracked_docs = {p: d for p, d in self._tracked_docs.items() if d not in stale_set}
-
-            # Add pending docs (on disk but not yet tracked)
-            pending = [(p, current_docs[p]) for p in paths if p not in self._tracked_docs]
-            if pending:
-                pp, pi = zip(*pending)
-                pm = [{} for _ in pp]
-                success_ids = self._add_doc_to_store(list(pp), list(pi), pm)
-                # Only track files that were successfully added
-                for p, did in pending:
-                    if did in success_ids:
-                        self._tracked_docs[p] = did
-
-    def _monitor_local_dataset_worker(self):
-        while self._local_monitor_continue:
-            try:
-                current_paths = set(self._list_dataset_files())
-                with self._local_monitor_lock:
-                    tracked_snapshot = set(self._tracked_docs.keys())
-                if current_paths != tracked_snapshot:
-                    self._sync_local_dataset()
-            except Exception as exc:  # pragma: no cover - defensive
-                LOG.error(f'Failed to sync local dataset `{self._dataset_path}`: {exc}')
-            time.sleep(self._local_monitor_interval)
-
-    def _start_local_monitoring(self):
-        if self._local_monitor_thread and self._local_monitor_thread.is_alive():
-            return
-        self._local_monitor_continue = True
-        self._local_monitor_thread = threading.Thread(target=self._monitor_local_dataset_worker)
-        self._local_monitor_thread.daemon = True
-        self._local_monitor_thread.start()
-
-    def stop_local_monitoring(self):
-        '''Stop the dataset monitoring thread and wait briefly for it to exit.'''
-        self._local_monitor_continue = False
-        thread = self._local_monitor_thread
-        if thread and thread.is_alive():
-            thread.join(timeout=self._local_monitor_interval + 1)
-        self._local_monitor_thread = None
+    def _ingest_local_dataset(self):
+        '''One-time ingest at `_lazy_init`: load every file in `dataset_path` /
+        `doc_files` into the store. No background polling / diff tracking —
+        directory change detection now lives in DocServer's SQL-backed scan
+        (persistent stores auto-upgrade to it).
+        '''
+        ids, paths, metadatas = self._list_local_files()
+        if paths:
+            self._add_doc_to_store(paths, ids, metadatas)
 
     def _delete_doc_from_store(self, doc_ids: List[str] = None) -> None:
         self._processor.delete_doc(doc_ids=doc_ids)
