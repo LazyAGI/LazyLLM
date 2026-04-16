@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 
 def _normalize_tags(tags: Any) -> List[str]:
@@ -20,6 +20,7 @@ class LazyTraceContext:
     session_id: Optional[str] = None
     user_id: Optional[str] = None
     request_tags: List[str] = field(default_factory=list)
+    module_trace: Optional[Dict[str, Any]] = None
     sampled: Optional[bool] = None
     debug_capture_payload: Optional[bool] = None
 

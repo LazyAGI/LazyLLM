@@ -18,7 +18,7 @@ _SUBMOD_MAP = {
         'DEFAULT_MODULE_TRACE_CONFIG',
         'get_default_module_trace_config',
         'set_default_module_trace_config',
-        'resolve_default_module_trace',
+        'resolve_module_trace',
     ],
     'hook': [
         'LazyTracingHook',
