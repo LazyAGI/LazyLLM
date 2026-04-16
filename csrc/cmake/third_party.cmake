@@ -44,10 +44,19 @@ find_package(utf8proc QUIET)
 if (NOT TARGET utf8proc)
     # We only need utf8proc for in-tree usage; avoid exporting/installing it.
     set(UTF8PROC_INSTALL OFF CACHE BOOL "" FORCE)
+    # On Windows keep utf8proc static so test executables can run during the
+    # build without having to resolve DLL paths for gtest_discover_tests.
+    if (WIN32)
+        set(_LAZYLLM_SAVED_BUILD_SHARED_LIBS_UTF8 ${BUILD_SHARED_LIBS})
+        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    endif()
     FetchContent_Declare(
         utf8proc
         GIT_REPOSITORY https://github.com/JuliaStrings/utf8proc.git
         GIT_TAG v2.9.0
     )
     FetchContent_MakeAvailable(utf8proc)
+    if (WIN32 AND DEFINED _LAZYLLM_SAVED_BUILD_SHARED_LIBS_UTF8)
+        set(BUILD_SHARED_LIBS ${_LAZYLLM_SAVED_BUILD_SHARED_LIBS_UTF8} CACHE BOOL "" FORCE)
+    endif()
 endif()
