@@ -347,9 +347,11 @@ class DocImpl:
         return os.path.abspath(path)
 
     def _sync_local_dataset(self):
-        # Invariant (post-PR #1069): reachable only in map-store flows — persistent stores
-        # go through DocServer's SQL-backed `_sync_dataset`. An empty `_tracked_docs` on
-        # process start matches an empty in-memory map store, so full re-ingest is correct.
+        # Invariant (post-PR #1069): reachable only in map-store / doc_files flows —
+        # persistent stores go through DocServer's SQL-backed `_sync_dataset`. An empty
+        # `_tracked_docs` on process start matches an empty in-memory map store, so
+        # full re-ingest is correct. The background monitor loop is off by default now
+        # (toy mode); this method primarily serves the one-time ingest in `_lazy_init`.
         with self._local_monitor_lock:
             ids, paths, metadatas = self._list_local_files()
             current_docs = dict(zip(paths, ids))

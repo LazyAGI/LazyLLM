@@ -128,7 +128,14 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             name = name or RAG_DEFAULT_GROUP_NAME
             if not display_name: display_name = name
             if enable_path_monitoring is None:
-                enable_path_monitoring = not (spawn_doc_server or connect_doc_server or processor)
+                # Background directory polling is off by default: service modes let
+                # DocServer own scanning, and map-store + dataset_path is a "toy" mode
+                # whose store resets with the process (nothing to sync against). The
+                # initial one-time ingest inside DocImpl._lazy_init still runs, so
+                # beginners doing `Document(dataset_path=...)` still get their files
+                # loaded — only the 10s polling loop is suppressed. Users who really
+                # want polling can pass `enable_path_monitoring=True` explicitly.
+                enable_path_monitoring = False
             self._enable_path_monitoring = enable_path_monitoring
             doc_processor = self._doc_processor or processor
             self._kbs = CallableDict({name: DocImpl(

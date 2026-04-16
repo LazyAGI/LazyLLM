@@ -347,10 +347,20 @@ class TestDocument(unittest.TestCase):
         Document(dataset_path)
         Document(dataset_path + os.sep)
 
-    def test_dataset_path_enables_monitoring_by_default_without_manager(self):
+    def test_dataset_path_skips_background_monitor_by_default(self):
+        # Post-PR #1069: map-store + dataset_path is "toy mode" — initial ingest in
+        # DocImpl._lazy_init still runs, but the 10s polling loop is off by default.
+        # Users wanting change detection should use a persistent store (auto-upgrade
+        # to DocServer) or pass `enable_path_monitoring=True` explicitly.
         doc = Document(self._build_dataset())
-        assert doc._manager._enable_path_monitoring is True
+        assert doc._manager._enable_path_monitoring is False
         assert doc._impl._dataset_path == doc._manager._origin_path
+
+    def test_enable_path_monitoring_honors_explicit_opt_in(self):
+        doc = Document(self._build_dataset(), enable_path_monitoring=True)
+        assert doc._manager._enable_path_monitoring is True
+        assert doc._impl._enable_path_monitoring is True
+        doc.stop()
 
     def test_register_with_pattern(self):
         Document.create_node_group('AdaptiveChunk1', transform=[
