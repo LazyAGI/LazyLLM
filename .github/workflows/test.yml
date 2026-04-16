@@ -1,9 +1,8 @@
 name: test
 
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - "*"
 
 jobs:
   cpp_ext_test:
