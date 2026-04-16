@@ -259,6 +259,28 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         else:
             return super().__new__(cls)
 
+    @staticmethod
+    def _coerce_document_processor_manager(manager, store_conf, dataset_path):
+        '''Validate the ``manager=DocumentProcessor(...)`` combination.
+
+        Returns ``(processor, manager)``: when ``manager`` is a ``DocumentProcessor``
+        the returned ``processor`` is the original instance and ``manager`` becomes
+        ``False``; otherwise ``processor`` is ``None`` and ``manager`` passes through.
+        '''
+        if not isinstance(manager, DocumentProcessor):
+            return None, manager
+        if store_conf is None:
+            raise ValueError('`store_conf` is required when `manager` is a DocumentProcessor')
+        if is_local_map_store(store_conf):
+            raise ValueError('`manager=DocumentProcessor(...)` does not support pure local map store')
+        if dataset_path is not None:
+            raise ValueError(
+                '`manager=DocumentProcessor(...)` does not accept a local `dataset_path`: the external'
+                ' parsing service does not own directory scanning / lifecycle management. Use'
+                ' `manager=True` or `manager=DocServer(...)` for scan-based ingestion, or drop'
+                ' `dataset_path` and upload documents via explicit API calls.')
+        return manager, False
+
     def __init__(self, dataset_path: Optional[str] = None, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                  create_ui: bool = False,
                  manager: Union[bool, str, DocServer, 'Document._Manager', DocumentProcessor] = False,
@@ -305,15 +327,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._manager = manager
             self._curr_group = name
         else:
-            if isinstance(manager, DocumentProcessor):
-                if store_conf is None:
-                    raise ValueError('`store_conf` is required when `manager` is a DocumentProcessor')
-                if is_local_map_store(store_conf):
-                    raise ValueError('`manager=DocumentProcessor(...)` does not support pure local map store')
-                processor, cloud = manager, True
-                manager = False
-            else:
-                cloud, processor = False, None
+            processor, manager = self._coerce_document_processor_manager(manager, store_conf, dataset_path)
+            cloud = processor is not None
             self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
                                               doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
                                               display_name=display_name, description=description,

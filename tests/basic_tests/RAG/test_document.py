@@ -475,21 +475,24 @@ class TestDocument(unittest.TestCase):
     def test_document_processor_manager_constraints(self):
         dataset_path = self._build_dataset()
         processor = document_module.DocumentProcessor(url='http://127.0.0.1:9966')
+        milvus_store = {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}}
 
         with self.assertRaisesRegex(ValueError, 'store_conf'):
             Document(dataset_path, manager=processor)
         with self.assertRaisesRegex(ValueError, 'pure local map store'):
             Document(dataset_path, manager=processor, store_conf={'type': 'map'})
+        # dataset_path + DocumentProcessor is rejected: external parser has no
+        # directory-scan lifecycle, so pairing with a local path is ambiguous.
+        with self.assertRaisesRegex(ValueError, 'does not accept a local `dataset_path`'):
+            Document(dataset_path, manager=processor, store_conf=milvus_store)
 
-        doc = Document(
-            dataset_path,
-            manager=processor,
-            store_conf={'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}},
-        )
+        # Valid: standalone DocumentProcessor mode without dataset_path. Documents
+        # must be ingested via explicit API calls (upload / add_files) in this mode.
+        doc = Document(name='dp_standalone', manager=processor, store_conf=milvus_store)
         try:
             assert doc._manager._enable_path_monitoring is False
             assert doc._impl._enable_path_monitoring is False
-            assert doc._impl._dataset_path == doc._manager._origin_path
+            assert doc._impl._dataset_path is None
         finally:
             doc.stop()
 

@@ -89,7 +89,12 @@ class DocImpl:
         self._local_monitor_continue = False
         self._local_monitor_interval = 10
         self._local_monitor_lock = threading.Lock()
-        self._tracked_docs: Dict[str, str] = {}  # path -> doc_id, tracks files added to store
+        # path -> doc_id, tracks files added to store. Kept in-memory on purpose:
+        # Document rejects `manager=DocumentProcessor(...) + dataset_path`, and persistent
+        # store + dataset_path auto-upgrades to DocServer, so _sync_local_dataset() only
+        # runs for the map-store path — where restart clears both the store and this dict.
+        # Persistent-store deduplication lives in DocServer's `lazyllm_documents` SQL table.
+        self._tracked_docs: Dict[str, str] = {}
         self.node_groups: Dict[str, Dict] = {
             LAZY_ROOT_NAME: dict(parent=None, display_name='Original Source', group_type=NodeGroupType.ORIGINAL),
             LAZY_IMAGE_GROUP: dict(parent=None, display_name='Image Node', group_type=NodeGroupType.OTHER)
@@ -196,7 +201,10 @@ class DocImpl:
             self._processor = _Processor(self._algo_name, self._store, self._reader, self.node_groups,
                                          self._schema_extractor, self._display_name, self._description)
 
-        # init files when `cloud` is False
+        # `cloud` is True iff both dataset_path and doc_files are absent. In the non-cloud
+        # path DocImpl owns the initial ingest — always map-store in practice (persistent
+        # store + dataset_path is handled by DocServer; DocumentProcessor + dataset_path is
+        # rejected at Document.__init__).
         if not cloud:
             self._sync_local_dataset()
         if self._dataset_path and self._enable_path_monitoring:
@@ -339,6 +347,9 @@ class DocImpl:
         return os.path.abspath(path)
 
     def _sync_local_dataset(self):
+        # Invariant (post-PR #1069): reachable only in map-store flows — persistent stores
+        # go through DocServer's SQL-backed `_sync_dataset`. An empty `_tracked_docs` on
+        # process start matches an empty in-memory map store, so full re-ingest is correct.
         with self._local_monitor_lock:
             ids, paths, metadatas = self._list_local_files()
             current_docs = dict(zip(paths, ids))
