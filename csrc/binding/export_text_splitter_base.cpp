@@ -45,7 +45,7 @@ public:
 } // namespace
 
 void exportTextSplitterBase(py::module& m) {
-    auto cls = py::class_<TextSplitterBaseCPPImpl>(m, "_TextSplitterBaseCPPImpl", py::dynamic_attr())
+    auto cls = py::class_<TextSplitterBaseCPPImpl, lazyllm::TextSplitterBase>(m, "_TextSplitterBaseCPPImpl", py::dynamic_attr())
         .def(py::init<unsigned, unsigned, const std::string&>(),
             py::arg("chunk_size") = 1024,
             py::arg("overlap") = 200,
