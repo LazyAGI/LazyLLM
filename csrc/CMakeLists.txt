@@ -15,6 +15,7 @@ endfunction()
 
 # Third party libs
 include(cmake/third_party.cmake)
+include(cmake/download_tokenizers.cmake)
 
 # Config lazyllm_core lib with pure cpp code.
 file(GLOB_RECURSE LAZYLLM_CORE_SOURCES CONFIGURE_DEPENDS
@@ -24,6 +25,7 @@ target_include_directories(lazyllm_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/core/
 target_link_libraries(lazyllm_core PUBLIC xxhash)
 target_link_libraries(lazyllm_core PUBLIC tiktoken)
 target_link_libraries(lazyllm_core PUBLIC utf8proc)
+target_link_libraries(lazyllm_core PUBLIC ${CMAKE_DL_LIBS})
 lazyllm_enable_strict_warnings(lazyllm_core)
 
 # Config lazyllm_cpp lib with binding informations.
@@ -94,6 +96,7 @@ install(TARGETS tiktoken utf8proc
     LIBRARY DESTINATION lazyllm/cpp_lib COMPONENT lazyllm_cpp
     RUNTIME DESTINATION lazyllm/cpp_lib COMPONENT lazyllm_cpp
 )
+install(DIRECTORY ${CMAKE_BINARY_DIR}/tokenizers DESTINATION lazyllm COMPONENT lazyllm_cpp)
 
 
 # TESTS

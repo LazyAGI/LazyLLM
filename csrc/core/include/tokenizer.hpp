@@ -15,6 +15,14 @@
 #include <emdedded_resource_reader.h>
 #include <modelparams.h>
 
+#ifdef __linux__
+#include <dlfcn.h>
+#include <limits.h>
+#include <unistd.h>
+#elif defined(_WIN32)
+#include <windows.h>
+#endif
+
 class Tokenizer {
 public:
     virtual ~Tokenizer() = default;
@@ -50,7 +58,7 @@ class TiktokenTokenizer final : public Tokenizer {
 public:
     TiktokenTokenizer() = delete;
     explicit TiktokenTokenizer(LanguageModel model)
-        : _encoding(GptEncoding::get_encoding(model)) {}
+        : _reader(resource_name(model)), _encoding(GptEncoding::get_encoding(model, &_reader)) {}
 
     explicit TiktokenTokenizer(std::string_view encoding_name)
         : TiktokenTokenizer(parse_tiktoken_model(encoding_name)) {}
@@ -66,24 +74,59 @@ public:
     }
 
 private:
-    class FilePathResourceReader final : public IResourceReader {
+    class LazyllmResourceReader final : public IResourceReader {
     public:
-        explicit FilePathResourceReader(std::filesystem::path resource_path)
-            : resource_path_(std::move(resource_path)) {}
+        explicit LazyllmResourceReader(const std::string& resource_name) : resource_name_(resource_name) {}
 
         std::vector<std::string> readLines() override {
-            std::ifstream file(resource_path_);
-            if (!file.is_open()) {
-                throw std::runtime_error("Embedded resource '" + resource_path_.string() + "' not found.");
+            for (const auto& dir : candidate_dirs()) {
+                if (dir.empty()) continue;
+                auto path = dir / "tokenizers" / resource_name_;
+                std::ifstream file(path);
+                if (file.is_open()) {
+                    std::string line;
+                    std::vector<std::string> lines;
+                    while (std::getline(file, line)) lines.push_back(line);
+                    return lines;
+                }
             }
-            std::string line;
-            std::vector<std::string> lines;
-            while (std::getline(file, line)) lines.push_back(line);
-            return lines;
+            throw std::runtime_error("Tokenizer resource '" + resource_name_ + "' not found in any search path.");
         }
 
     private:
-        std::filesystem::path resource_path_;
+        static std::vector<std::filesystem::path> candidate_dirs() {
+            std::vector<std::filesystem::path> dirs;
+            if (const char* env = std::getenv("LAZYLLM_TOKENIZER_PATH")) {
+                dirs.emplace_back(env);
+            }
+            dirs.emplace_back(get_module_dir());
+            dirs.emplace_back(get_exe_parent_path());
+            return dirs;
+        }
+
+        static std::filesystem::path get_module_dir() {
+#ifdef __linux__
+            Dl_info info;
+            if (dladdr(reinterpret_cast<void*>(&get_module_dir), &info)) {
+                return std::filesystem::path(info.dli_fname).parent_path();
+            }
+#endif
+            return {};
+        }
+
+        static std::filesystem::path get_exe_parent_path() {
+#ifdef _WIN32
+            wchar_t result[MAX_PATH] = {0};
+            GetModuleFileNameW(nullptr, result, MAX_PATH);
+            return std::filesystem::path(result).parent_path();
+#else
+            char result[PATH_MAX];
+            ssize_t count = readlink("/proc/self/exe", result, PATH_MAX);
+            return std::filesystem::path(std::string(result, count > 0 ? count : 0)).parent_path();
+#endif
+        }
+
+        std::string resource_name_;
     };
 
     static std::string resource_name(LanguageModel model) {
@@ -131,5 +174,6 @@ private:
     }
 
 private:
+    LazyllmResourceReader _reader;
     std::shared_ptr<GptEncoding> _encoding;
 };
