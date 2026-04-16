@@ -76,6 +76,7 @@ std::vector<std::string_view> UnicodeProcessor::split_to_chars() const {
     int32_t state = 0;
 
     for_each_utf8_unit([&](size_t offset, size_t byte_len, int32_t codepoint) {
+        (void)byte_len;
         if (cluster_start == std::string_view::npos) {
             cluster_start = offset;
         } else if (utf8proc_grapheme_break_stateful(prev, codepoint, &state)) {

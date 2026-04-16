@@ -15,8 +15,10 @@
 #include <emdedded_resource_reader.h>
 #include <modelparams.h>
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
 #include <dlfcn.h>
+#endif
+#ifdef __linux__
 #include <limits.h>
 #include <unistd.h>
 #elif defined(_WIN32)
@@ -59,6 +61,62 @@ public:
     }
 };
 
+inline std::string sanitize_utf8(const std::string& input) {
+    std::string output;
+    output.reserve(input.size());
+    const auto* data = reinterpret_cast<const unsigned char*>(input.data());
+    const size_t n = input.size();
+    size_t i = 0;
+    while (i < n) {
+        int len = 0;
+        unsigned char c = data[i];
+        if (c < 0x80) len = 1;
+        else if ((c & 0xE0) == 0xC0) len = 2;
+        else if ((c & 0xF0) == 0xE0) len = 3;
+        else if ((c & 0xF8) == 0xF0) len = 4;
+        else {
+            output.append("\xEF\xBF\xBD"); // U+FFFD replacement character
+            ++i;
+            continue;
+        }
+        if (i + static_cast<size_t>(len) > n) {
+            output.append("\xEF\xBF\xBD");
+            ++i;
+            continue;
+        }
+        bool valid = true;
+        for (int j = 1; j < len; ++j) {
+            if ((data[i + j] & 0xC0) != 0x80) {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid) {
+            output.append("\xEF\xBF\xBD");
+            ++i;
+            continue;
+        }
+        if (len == 2) {
+            uint32_t cp = ((c & 0x1F) << 6) | (data[i + 1] & 0x3F);
+            if (cp < 0x80) valid = false;
+        } else if (len == 3) {
+            uint32_t cp = ((c & 0x0F) << 12) | ((data[i + 1] & 0x3F) << 6) | (data[i + 2] & 0x3F);
+            if (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF)) valid = false;
+        } else if (len == 4) {
+            uint32_t cp = ((c & 0x07) << 18) | ((data[i + 1] & 0x3F) << 12) | ((data[i + 2] & 0x3F) << 6) | (data[i + 3] & 0x3F);
+            if (cp < 0x10000 || cp > 0x10FFFF) valid = false;
+        }
+        if (!valid) {
+            output.append("\xEF\xBF\xBD");
+            ++i;
+            continue;
+        }
+        output.append(input.substr(i, static_cast<size_t>(len)));
+        i += static_cast<size_t>(len);
+    }
+    return output;
+}
+
 class TiktokenTokenizer final : public Tokenizer {
 public:
     TiktokenTokenizer() = delete;
@@ -75,7 +133,7 @@ public:
     }
 
     std::string decode(const std::vector<int>& token_ids) const override {
-        return _encoding->decode(token_ids);
+        return sanitize_utf8(_encoding->decode(token_ids));
     }
 
 private:
@@ -119,7 +177,7 @@ private:
         }
 
         static std::filesystem::path get_module_dir() {
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
             Dl_info info;
             if (dladdr(reinterpret_cast<void*>(&get_module_dir), &info)) {
                 return std::filesystem::path(info.dli_fname).parent_path();
