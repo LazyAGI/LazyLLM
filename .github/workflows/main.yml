@@ -828,7 +828,7 @@ jobs:
       - name: Install C++ extension artifacts into workspace
         run: |
           cmake --install build --prefix . --component lazyllm_cpp
-          ls -al lazyllm | rg "lazyllm_cpp|cpp_lib" || true
+          ls -al lazyllm | grep -E "lazyllm_cpp|cpp_lib" || true
 
       - name: Compute pytest marker
         run: |

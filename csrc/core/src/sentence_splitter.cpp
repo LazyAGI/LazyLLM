@@ -23,13 +23,13 @@ std::string join_views(
 
 namespace lazyllm {
 
-std::vector<std::string> SentenceSplitter::merge_chunks(std::vector<Chunk> chunks, int chunk_size) const {
+std::vector<std::string> SentenceSplitter::merge_chunks(const std::vector<Chunk>& chunks, unsigned chunk_size) const {
     std::vector<std::string> out;
 
     auto iLeft = chunks.begin();
     auto iRight = chunks.begin();
     auto iEnd = chunks.end();
-    int window_token_sum = 0;
+    size_t window_token_sum = 0;
     size_t string_size = 0;
 
     while (iRight != iEnd) {

@@ -38,8 +38,5 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
             target_link_options(${test_name} PRIVATE -Wl,--disable-new-dtags)
         endif ()
     endif ()
-    gtest_discover_tests(
-        ${test_name}
-        TEST_LIST discovered_tests
-    )
+    gtest_discover_tests(${test_name})
 endforeach ()

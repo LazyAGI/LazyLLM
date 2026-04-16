@@ -1,11 +1,10 @@
 #pragma once
 
-#include <algorithm>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <utility>
+#include <tuple>
 #include <vector>
 
 #include "tokenizer.hpp"
@@ -40,7 +39,7 @@ public:
 
 protected:
     virtual std::vector<ChunkView> split_recursive(std::string_view view, const int chunk_size) const;
-    virtual std::vector<std::string> merge_chunks(std::vector<Chunk> splits, int chunk_size) const;
+    virtual std::vector<std::string> merge_chunks(const std::vector<Chunk>& splits, unsigned chunk_size) const;
 
 private:
     std::tuple<std::vector<std::string_view>, bool> split_by_functions(std::string_view text) const;

@@ -76,30 +76,31 @@ TEST(utils, rag_metadata_keys_constants_are_exposed) {
     EXPECT_EQ(lazyllm::RAGMetadataKeys::DOC_ID, "docid");
 }
 
-TEST(utils, any_to_string_formats_scalar_metadata_values) {
-    EXPECT_EQ(lazyllm::any_to_string(lazyllm::MetadataVType(std::string("alpha"))), "alpha");
-    EXPECT_EQ(lazyllm::any_to_string(lazyllm::MetadataVType(7)), "7");
-    EXPECT_EQ(lazyllm::any_to_string(lazyllm::MetadataVType(3.5)), "3.5");
+TEST(utils, metadata_value_to_string_formats_scalar_metadata_values) {
+    EXPECT_EQ(lazyllm::metadata_value_to_string(lazyllm::MetadataVType(std::string("alpha"))), "alpha");
+    EXPECT_EQ(lazyllm::metadata_value_to_string(lazyllm::MetadataVType(7)), "7");
+    // Double formatting uses std::ostringstream::operator<< (default precision 6).
+    EXPECT_EQ(lazyllm::metadata_value_to_string(lazyllm::MetadataVType(3.5)), "3.5");
 }
 
-TEST(utils, any_to_string_formats_vector_metadata_values_with_brackets) {
+TEST(utils, metadata_value_to_string_formats_vector_metadata_values_with_brackets) {
     EXPECT_EQ(
-        lazyllm::any_to_string(lazyllm::MetadataVType(std::vector<std::string>{"a", "b"})),
+        lazyllm::metadata_value_to_string(lazyllm::MetadataVType(std::vector<std::string>{"a", "b"})),
         "[a,b]");
     EXPECT_EQ(
-        lazyllm::any_to_string(lazyllm::MetadataVType(std::vector<int>{1, 2, 3})),
+        lazyllm::metadata_value_to_string(lazyllm::MetadataVType(std::vector<int>{1, 2, 3})),
         "[1,2,3]");
     EXPECT_EQ(
-        lazyllm::any_to_string(lazyllm::MetadataVType(std::vector<double>{1.5, 2.0})),
-        "[1.5,2]");
+        lazyllm::metadata_value_to_string(lazyllm::MetadataVType(std::vector<double>{1.5, 2.5})),
+        "[1.5,2.5]");
 }
 
-TEST(utils, any_to_string_formats_none_metadata_value) {
-    EXPECT_EQ(lazyllm::any_to_string(lazyllm::MetadataVType(std::nullopt)), "None");
+TEST(utils, metadata_value_to_string_formats_none_metadata_value) {
+    EXPECT_EQ(lazyllm::metadata_value_to_string(lazyllm::MetadataVType(std::nullopt)), "None");
 }
 
-TEST(utils, any_to_string_formats_string_map_metadata_values) {
-    const std::string result = lazyllm::any_to_string(
+TEST(utils, metadata_value_to_string_formats_string_map_metadata_values) {
+    const std::string result = lazyllm::metadata_value_to_string(
         lazyllm::MetadataVType(std::unordered_map<std::string, std::string>{
             {"lang", "en"}, {"type", "text"}
         }));

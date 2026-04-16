@@ -61,7 +61,8 @@ TEST(text_splitter_base, split_text_keep_separator_skips_leading_separator) {
 
 TEST(text_splitter_base, split_text_throws_when_metadata_exceeds_chunk_size) {
     lazyllm::TextSplitterBase splitter(60, 0);
-    EXPECT_THROW((void)splitter.split_text("abc", 60), std::invalid_argument);
+    // metadata_budget must be strictly smaller than chunk_size.
+    EXPECT_THROW((void)splitter.split_text("abc", 61), std::invalid_argument);
 }
 
 TEST(text_splitter_base, split_text_allows_small_metadata_budget) {
@@ -92,6 +93,8 @@ TEST(text_splitter_base, merge_chunks_uses_overlap) {
     };
 
     const auto merged = splitter.merge_chunks(splits, 4);
+    // The first merged chunk has no overlap prefix because there is no preceding chunk.
+    // Subsequent chunks carry the last token of the previous chunk as an overlap prefix.
     EXPECT_EQ(merged, (std::vector<std::string>{"ab", "bcd", "def"}));
 }
 

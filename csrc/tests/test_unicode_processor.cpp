@@ -52,3 +52,11 @@ TEST(unicode_processor, split_by_sentence_endings_for_ascii) {
     const auto chunks = processor.split_by_sentence_endings();
     EXPECT_EQ(chunks, (std::vector<std::string_view>{"Hello, world!", "This is a test."}));
 }
+
+TEST(unicode_processor, split_by_sentence_endings_for_cjk) {
+    const std::string text = "你好。世界！这是测试。";
+    const lazyllm::UnicodeProcessor processor(text);
+
+    const auto chunks = processor.split_by_sentence_endings();
+    EXPECT_EQ(chunks, (std::vector<std::string_view>{"你好。", "世界！", "这是测试。"}));
+}

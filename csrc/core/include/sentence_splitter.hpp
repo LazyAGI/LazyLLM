@@ -16,7 +16,7 @@ public:
         : TextSplitterBase(chunk_size, chunk_overlap, encoding_name) {}
 
 protected:
-    std::vector<std::string> merge_chunks(std::vector<Chunk> splits, int chunk_size) const override;
+    std::vector<std::string> merge_chunks(const std::vector<Chunk>& splits, unsigned chunk_size) const override;
 };
 
 } // namespace lazyllm

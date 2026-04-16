@@ -1,33 +1,37 @@
 #include "unicode_processor.hpp"
+
+#include <utf8proc.h>
+
 namespace lazyllm {
 
 const std::array<char32_t, 6> UnicodeProcessor::kSentenceEndingCodepoints = {
-    U'.',
     U'!',
+    U'.',
     U'?',
     U'\u3002', // CJK full stop
-    U'\uFF1F', // fullwidth question mark
     U'\uFF01', // fullwidth exclamation mark
+    U'\uFF1F', // fullwidth question mark
 };
 
 const std::array<char32_t, 10> UnicodeProcessor::kSubSentencePunctuationCodepoints = {
+    U'!',
     U',',
     U'.',
     U';',
-    U'!',
     U'?',
+    U'\u3002', // CJK full stop
+    U'\uFF01', // fullwidth exclamation mark
     U'\uFF0C', // fullwidth comma
     U'\uFF1B', // fullwidth semicolon
-    U'\u3002', // CJK full stop
     U'\uFF1F', // fullwidth question mark
-    U'\uFF01', // fullwidth exclamation mark
 };
 
-void UnicodeProcessor::for_each_utf8_unit(const Utf8Visitor& visitor) const {
+template <typename Visitor>
+void UnicodeProcessor::for_each_utf8_unit(Visitor&& visitor) const {
     size_t i = 0;
     auto text_size = _text.size();
     while (i < text_size) {
-        utf8proc_int32_t codepoint = -1;
+        int32_t codepoint = -1;
         const utf8proc_ssize_t n = utf8proc_iterate(
             reinterpret_cast<const utf8proc_uint8_t*>(_text.data() + i),
             static_cast<utf8proc_ssize_t>(text_size - i),
@@ -68,10 +72,10 @@ std::vector<std::string_view> UnicodeProcessor::split_to_chars() const {
     out.reserve(_text.size()); // Grapheme count <= byte length
 
     size_t cluster_start = std::string_view::npos;
-    utf8proc_int32_t prev = -1;
-    utf8proc_int32_t state = 0;
+    int32_t prev = -1;
+    int32_t state = 0;
 
-    for_each_utf8_unit([&](size_t offset, size_t byte_len, utf8proc_int32_t codepoint) {
+    for_each_utf8_unit([&](size_t offset, size_t byte_len, int32_t codepoint) {
         if (cluster_start == std::string_view::npos) {
             cluster_start = offset;
         } else if (utf8proc_grapheme_break_stateful(prev, codepoint, &state)) {

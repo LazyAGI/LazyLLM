@@ -139,8 +139,9 @@ std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separat
  *  @todo Replace eager string materialization once tokenizer encode/decode supports
  *  end-to-end zero-copy string_view operations.
  */
-std::vector<std::string> TextSplitterBase::merge_chunks(std::vector<Chunk> splits, int chunk_size) const
+std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<Chunk>& splits_in, unsigned chunk_size) const
 {
+    std::vector<Chunk> splits = splits_in;
     if (splits.empty()) return {};
 
     if (splits.size() == 1) return {splits.front().text};

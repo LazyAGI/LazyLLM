@@ -4,16 +4,18 @@
 
 namespace lazyllm::pybind_utils {
 
+namespace {
+template <typename T> struct dependent_false : std::false_type {};
+} // namespace
+
 std::string DumpJson(const py::object& obj) {
-    py::object json = py::module_::import("json");
-    py::object dumps = json.attr("dumps");
+    static py::object dumps = py::module_::import("json").attr("dumps");
     py::object dumped = dumps(obj, py::arg("ensure_ascii") = false);
     return dumped.cast<std::string>();
 }
 
 py::object LoadJson(const std::string& text) {
-    py::object json = py::module_::import("json");
-    py::object loads = json.attr("loads");
+    static py::object loads = py::module_::import("json").attr("loads");
     return loads(py::str(text));
 }
 
@@ -116,13 +118,16 @@ py::object MetadataValueToPy(const lazyllm::MetadataVType& value) {
     return std::visit([](const auto& v) -> py::object {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, std::string>) return py::str(v);
-        if constexpr (std::is_same_v<T, int>) return py::int_(v);
-        if constexpr (std::is_same_v<T, double>) return py::float_(v);
-        if constexpr (std::is_same_v<T, std::vector<std::string>>) return py::cast(v);
-        if constexpr (std::is_same_v<T, std::vector<int>>) return py::cast(v);
-        if constexpr (std::is_same_v<T, std::vector<double>>) return py::cast(v);
-        if constexpr (std::is_same_v<T, std::unordered_map<std::string, std::string>>) return py::cast(v);
-        return py::none();
+        else if constexpr (std::is_same_v<T, int>) return py::int_(v);
+        else if constexpr (std::is_same_v<T, double>) return py::float_(v);
+        else if constexpr (std::is_same_v<T, std::vector<std::string>>) return py::cast(v);
+        else if constexpr (std::is_same_v<T, std::vector<int>>) return py::cast(v);
+        else if constexpr (std::is_same_v<T, std::vector<double>>) return py::cast(v);
+        else if constexpr (std::is_same_v<T, std::unordered_map<std::string, std::string>>) return py::cast(v);
+        else {
+            static_assert(dependent_false<T>::value, "MetadataValueToPy: unhandled MetadataVType alternative");
+            return py::none();
+        }
     }, *value);
 }
 

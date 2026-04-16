@@ -90,7 +90,7 @@ install(TARGETS ${INTERFACE_TARGET_NAME}
     LIBRARY DESTINATION lazyllm COMPONENT lazyllm_cpp
     RUNTIME DESTINATION lazyllm COMPONENT lazyllm_cpp
 )
-install(TARGETS tiktoken utf8proc
+install(TARGETS xxhash tiktoken utf8proc
     ARCHIVE DESTINATION lazyllm/cpp_lib COMPONENT lazyllm_cpp
     LIBRARY DESTINATION lazyllm/cpp_lib COMPONENT lazyllm_cpp
     RUNTIME DESTINATION lazyllm/cpp_lib COMPONENT lazyllm_cpp

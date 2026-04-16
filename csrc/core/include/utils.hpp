@@ -154,7 +154,7 @@ using MetadataVariantType = std::variant<
     std::unordered_map<std::string, std::string>
 >;
 using MetadataVType = std::optional<MetadataVariantType>;
-std::string any_to_string(const MetadataVType& value);
+std::string metadata_value_to_string(const MetadataVType& value);
 
 inline bool is_adjacent(const std::string_view& left, const std::string_view& right) {
     return left.data() + left.size() == right.data();
@@ -173,6 +173,7 @@ struct Chunk {
 
     Chunk& operator+=(const Chunk& r) {
         text += r.text;
+        // A merged chunk is considered a sentence only when both parts are sentences.
         is_sentence = is_sentence && r.is_sentence;
         token_size += r.token_size;
         return *this;

@@ -6,7 +6,7 @@
 
 namespace lazyllm {
 
-std::string any_to_string(const MetadataVType& value) {
+std::string metadata_value_to_string(const MetadataVType& value) {
     if (!value.has_value()) return "None";
     return std::visit([](const auto& v) -> std::string {
         using T = std::decay_t<decltype(v)>;

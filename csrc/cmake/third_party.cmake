@@ -7,14 +7,14 @@ find_package(Python3 COMPONENTS Interpreter Development Development.Module REQUI
 find_package(pybind11 CONFIG REQUIRED)
 
 find_package(xxHash QUIET)
-if (NOT TARGET xxhash)
+if (NOT TARGET xxhash AND NOT TARGET xxHash::xxHash)
     FetchContent_Declare(
         xxhash
         GIT_REPOSITORY https://github.com/Cyan4973/xxHash.git
         GIT_TAG v0.8.2
+        SOURCE_SUBDIR cmake_unofficial
     )
-    FetchContent_Populate(xxhash)
-    add_subdirectory(${xxhash_SOURCE_DIR}/cmake_unofficial ${xxhash_BINARY_DIR})
+    FetchContent_MakeAvailable(xxhash)
 endif()
 
 find_package(cpp_tiktoken QUIET)

@@ -150,12 +150,12 @@ private:
 
         // Model-name aliases used by Python tiktoken.encoding_for_model.
         if (name == "gpt-3.5-turbo" || has_prefix(name, "gpt-3.5-turbo-")) return LanguageModel::CL100K_BASE;
-        if (name == "gpt-4" || has_prefix(name, "gpt-4-")) return LanguageModel::CL100K_BASE;
         if (name == "text-embedding-ada-002") return LanguageModel::CL100K_BASE;
         if (name == "text-embedding-3-small" || name == "text-embedding-3-large") return LanguageModel::CL100K_BASE;
         if (name == "gpt-4o" || has_prefix(name, "gpt-4o-")) return LanguageModel::O200K_BASE;
         if (name == "gpt-4.1" || has_prefix(name, "gpt-4.1-")) return LanguageModel::O200K_BASE;
         if (name == "gpt-4.5" || has_prefix(name, "gpt-4.5-")) return LanguageModel::O200K_BASE;
+        if (name == "gpt-4" || has_prefix(name, "gpt-4-")) return LanguageModel::CL100K_BASE;
         if (name == "o1" || has_prefix(name, "o1-")) return LanguageModel::O200K_BASE;
         if (name == "o3" || has_prefix(name, "o3-")) return LanguageModel::O200K_BASE;
         if (name == "o4-mini" || has_prefix(name, "o4-mini-")) return LanguageModel::O200K_BASE;

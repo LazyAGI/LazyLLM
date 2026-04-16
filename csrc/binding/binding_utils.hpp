@@ -36,7 +36,9 @@ public:
         }
     }
 
-    static handle cast(const lazyllm::MetadataVType& src, return_value_policy, handle) {
+    static handle cast(const lazyllm::MetadataVType& src,
+                       return_value_policy /* policy */,
+                       handle /* parent */) {
         pybind11::object obj = lazyllm::pybind_utils::MetadataValueToPy(src);
         return obj.release();
     }

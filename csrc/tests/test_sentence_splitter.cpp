@@ -93,4 +93,9 @@ TEST(sentence_splitter, split_text_splits_large_text_with_byte_tokenizer) {
     const auto chunks = splitter.split_text(text, 0);
     ASSERT_FALSE(chunks.empty());
     for (const auto& chunk : chunks) EXPECT_LE(chunk.size(), 60u);
+
+    // Verify all chunks concatenated equal the original input (no overlap).
+    std::string rejoined;
+    for (const auto& chunk : chunks) rejoined += chunk;
+    EXPECT_EQ(rejoined, text);
 }

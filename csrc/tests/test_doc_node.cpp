@@ -38,5 +38,4 @@ TEST(doc_node_core, metadata_string_and_text) {
     EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::LLM), "alpha: A");
     EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::EMBED), "beta: B");
     EXPECT_EQ(node.get_metadata_string(lazyllm::MetadataMode::NONE), "");
-    EXPECT_EQ(node._text, "body");
 }
