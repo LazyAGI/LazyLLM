@@ -62,20 +62,3 @@ def resolve_default_module_trace(*, module_name=None, module_class=None) -> bool
                     return _module_trace_config['by_class'][class_name]
         return _module_trace_config['default']
 
-
-def resolve_module_trace(*, module_name=None, module_class=None,
-                         runtime_override=None) -> bool:
-    """Resolve whether a module should be traced, using a 4-level priority chain:
-
-    1. runtime_override["by_name"][module_name]
-    2. DEFAULT_MODULE_TRACE_CONFIG["by_name"]
-    3. DEFAULT_MODULE_TRACE_CONFIG["by_class"]
-    4. DEFAULT_MODULE_TRACE_CONFIG["default"]
-    """
-    if runtime_override and isinstance(runtime_override, dict):
-        if module_name:
-            by_name = runtime_override.get('by_name')
-            if isinstance(by_name, dict) and module_name in by_name:
-                return bool(by_name[module_name])
-
-    return resolve_default_module_trace(module_name=module_name, module_class=module_class)
