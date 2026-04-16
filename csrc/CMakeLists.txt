@@ -42,7 +42,6 @@ lazyllm_enable_strict_warnings(${INTERFACE_TARGET_NAME})
 
 # Runtime loader configuration per platform.
 set(_lazyllm_cpp_rpath "")
-set(LAZYLLM_TEST_RUNTIME_ENV "" CACHE INTERNAL "Runtime env for LazyLLM C++ tests" FORCE)
 if (WIN32)
     # Windows has no ELF rpath; loader resolution is driven by PATH and DLL search order.
     # Keep test runtime env empty by default.
@@ -66,8 +65,8 @@ else ()
         get_filename_component(LIBSTDCPP_DIR "${LIBSTDCPP_PATH}" DIRECTORY)
         if (LIBSTDCPP_DIR)
             list(APPEND _lazyllm_cpp_rpath "${LIBSTDCPP_DIR}")
-            set(LAZYLLM_TEST_RUNTIME_ENV "LD_LIBRARY_PATH=${LIBSTDCPP_DIR}:$ENV{LD_LIBRARY_PATH}"
-                CACHE INTERNAL "Runtime env for LazyLLM C++ tests" FORCE)
+            set(LAZYLLM_LIBSTDCPP_DIR "${LIBSTDCPP_DIR}"
+                CACHE INTERNAL "libstdc++ directory for C++ tests" FORCE)
         endif ()
     endif ()
 endif ()

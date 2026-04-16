@@ -29,17 +29,17 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
         pybind11::headers
         Python3::Python
     )
-    if (LAZYLLM_TEST_RUNTIME_ENV)
-        gtest_discover_tests(
-            ${test_name}
-            TEST_LIST discovered_tests
-            PROPERTIES
-                ENVIRONMENT "${LAZYLLM_TEST_RUNTIME_ENV}"
+    # Ensure tests use the same libstdc++ as the compiler, avoiding conda-incompatible versions.
+    if (LAZYLLM_LIBSTDCPP_DIR)
+        set_target_properties(${test_name} PROPERTIES
+            BUILD_RPATH "${LAZYLLM_LIBSTDCPP_DIR}"
         )
-    else ()
-        gtest_discover_tests(
-            ${test_name}
-            TEST_LIST discovered_tests
-        )
+        if (NOT WIN32 AND NOT APPLE)
+            target_link_options(${test_name} PRIVATE -Wl,--disable-new-dtags)
+        endif ()
     endif ()
+    gtest_discover_tests(
+        ${test_name}
+        TEST_LIST discovered_tests
+    )
 endforeach ()
