@@ -1,5 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..span import LazySpan
 
 
 class TracingBackend(ABC):
@@ -10,35 +13,15 @@ class TracingBackend(ABC):
         pass
 
     @abstractmethod
-    def context_attributes(self, trace_ctx: Dict[str, Any], *, is_root_span: bool) -> Dict[str, Any]:
+    def map_span_attributes(self, span: 'LazySpan') -> Dict[str, Any]:
+        """Map a LazySpan to backend-specific OTel span attributes.
+
+        Called once at flush time (finish_span) to produce all attributes
+        that should be written to the underlying OTel span.
+        """
         pass
 
     @abstractmethod
-    def input_attributes(self, args: tuple[Any, ...], kwargs: Dict[str, Any], *,
-                         capture_payload: bool, is_root_span: bool) -> Dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def set_root_span_name(self, span: Any, span_name: str):
-        pass
-
-    @abstractmethod
-    def output_attributes(self, text: str, *, is_root_span: bool) -> Dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def error_attributes(self, exc: Exception) -> Dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def metadata_attributes(self, trace_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def observation_type_attributes(self, span_kind: str, semantic_type: Optional[str],
-                                    trace_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def usage_attributes(self, usage: Dict[str, Any]) -> Dict[str, Any]:
+    def map_root_span_attributes(self, span: 'LazySpan') -> Dict[str, Any]:
+        """Extra attributes only for root spans (trace-level metadata)."""
         pass

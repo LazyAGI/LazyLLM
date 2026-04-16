@@ -2,65 +2,40 @@ import atexit
 import contextvars
 import json
 import threading
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Optional
 
 from lazyllm.common import LOG, globals
 from lazyllm.configs import config
 from lazyllm.thirdparty import opentelemetry
 from .backends import get_tracing_backend
+from .context import LazyTraceContext
+from .span import LazySpan
 
 
 _TRACE_SERVICE_NAME = 'lazyllm'
 _in_reconstructed_thread = contextvars.ContextVar('_lazyllm_tracing_reconstructed', default=False)
-_TRACE_CONTEXT_DEFAULTS = {
-    'enabled': None,
-    'trace_id': None,
-    'session_id': None,
-    'user_id': None,
-    'request_tags': None,
-    'sampled': None,
-    'parent_span_id': None,
-    'debug_capture_payload': None,
-}
 
 
 class TracingSetupError(RuntimeError):
     pass
 
 
-def _normalize_tags(tags: Any) -> list[str]:
-    if tags is None:
-        return []
-    if isinstance(tags, str):
-        return [tags]
-    if isinstance(tags, Iterable):
-        return [str(tag) for tag in tags if tag is not None]
-    return [str(tags)]
+def get_trace_context() -> LazyTraceContext:
+    return LazyTraceContext.from_dict(globals.get('trace', {}))
 
 
-def _normalize_trace_context(trace: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    data = dict(trace) if isinstance(trace, dict) else {}
-    for key, default in _TRACE_CONTEXT_DEFAULTS.items():
-        data.setdefault(key, default)
-    data['request_tags'] = _normalize_tags(data.get('request_tags'))
-    return data
+def set_trace_context(ctx) -> LazyTraceContext:
+    if isinstance(ctx, LazyTraceContext):
+        tc = ctx
+    else:
+        tc = LazyTraceContext.from_dict(ctx if isinstance(ctx, dict) else {})
+    globals['trace'] = tc.to_dict()
+    return tc
 
 
-def get_trace_context() -> Dict[str, Any]:
-    return _normalize_trace_context(globals.get('trace', {}))
-
-
-def set_trace_context(trace: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    normalized = _normalize_trace_context(trace)
-    globals['trace'] = normalized
-    return normalized
-
-
-def _capture_payload_enabled(trace_ctx: Dict[str, Any]) -> bool:
-    debug_capture_payload = trace_ctx.get('debug_capture_payload')
-    if debug_capture_payload is not None:
-        return bool(debug_capture_payload)
+def _capture_payload_enabled(ctx: LazyTraceContext) -> bool:
+    if ctx.debug_capture_payload is not None:
+        return bool(ctx.debug_capture_payload)
     return bool(config['trace_content_enabled'])
 
 
@@ -75,13 +50,6 @@ def _stringify_payload(value: Any, *, limit: int = 8192) -> str:
     if len(text) > limit:
         return text[:limit] + '...<truncated>'
     return text
-
-
-@dataclass
-class TraceSpanHandle:
-    span: Any
-    span_cm: Any
-    is_root_span: bool
 
 
 class _TracingRuntime:
@@ -151,10 +119,10 @@ class _TracingRuntime:
             atexit.register(self.shutdown)
             return True
 
-    def _trace_enabled(self, trace_ctx: Dict[str, Any]) -> bool:
-        if trace_ctx.get('enabled') is not None:
-            return bool(trace_ctx['enabled']) and trace_ctx.get('sampled') is not False
-        if trace_ctx.get('sampled') is False:
+    def _trace_enabled(self, ctx: LazyTraceContext) -> bool:
+        if ctx.enabled is not None:
+            return bool(ctx.enabled) and ctx.sampled is not False
+        if ctx.sampled is False:
             return False
         return bool(config['trace_enabled'])
 
@@ -177,82 +145,51 @@ class _TracingRuntime:
             return None
         return getattr(target, '_flow_id', None)
 
-    def _base_attributes(
-        self,
-        *,
-        span_kind: str,
-        span_name: str,
-        is_root_span: bool,
-        trace_ctx: Dict[str, Any],
-        target: Any,
-        capture_payload: bool,
-        args: tuple[Any, ...],
-        kwargs: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        attrs = {
-            'lazyllm.span.kind': span_kind,
-            'lazyllm.entity.name': span_name,
-            'lazyllm.entity.class': target.__class__.__name__,
-            'lazyllm.entity.id': self._target_id(target, span_kind) or '',
-            'lazyllm.status': 'ok',
-        }
+    def _populate_identity(self, span: LazySpan, target: Any) -> None:
+        """Fill identity and config fields of LazySpan from the target object."""
+        span.component_class = target.__class__.__name__
+        span.component_id = self._target_id(target, span.span_kind)
 
-        trace_kwargs = {}
         try:
             if hasattr(target, '__trace_kwargs__'):
                 trace_kwargs = target.__trace_kwargs__
                 if isinstance(trace_kwargs, dict):
-                    for k, v in trace_kwargs.items():
-                        attrs[f'lazyllm.entity.config.{k}'] = _stringify_payload(v) if isinstance(v, (dict, list)) else str(v)
-                    attrs.update(self._backend.metadata_attributes(trace_kwargs))
+                    span.config = dict(trace_kwargs)
         except Exception:
             pass
 
         semantic_type = getattr(target, '__semantic_type__', None)
-        if semantic_type is None and span_kind == 'flow':
+        if semantic_type is None and span.span_kind == 'flow':
             semantic_type = 'workflow_control'
-        if semantic_type:
-            attrs['lazyllm.semantic_type'] = semantic_type
-        attrs.update(self._backend.observation_type_attributes(
-            span_kind=span_kind, semantic_type=semantic_type, trace_kwargs=trace_kwargs,
-        ))
-
-        if trace_ctx.get('trace_id'):
-            attrs['lazyllm.request.trace_id'] = str(trace_ctx['trace_id'])
-        if trace_ctx.get('parent_span_id'):
-            attrs['lazyllm.request.parent_span_id'] = str(trace_ctx['parent_span_id'])
-        attrs.update(self._backend.context_attributes(trace_ctx, is_root_span=is_root_span))
-        for key, value in self._backend.input_attributes(
-            args, kwargs, capture_payload=capture_payload, is_root_span=is_root_span
-        ).items():
-            attrs[key] = _stringify_payload(value) if isinstance(value, dict) else value
-        return attrs
+        span.semantic_type = semantic_type
 
     def start_span(
         self,
         *,
         span_kind: str,
         target: Any,
-        args: tuple[Any, ...],
+        args: tuple,
         kwargs: Dict[str, Any],
-    ) -> Optional[TraceSpanHandle]:
-        trace_ctx = get_trace_context()
-        if not self._trace_enabled(trace_ctx):
+    ) -> Optional[LazySpan]:
+        ctx = get_trace_context()
+        if not self._trace_enabled(ctx):
             return None
         if not self._ensure_runtime():
             return None
 
-        capture_payload = _capture_payload_enabled(trace_ctx)
+        capture_payload = _capture_payload_enabled(ctx)
         span_name = self._target_name(target, span_kind)
+        pre_parent_span_id = ctx.parent_span_id
+
         current = self._trace_api.get_current_span()
         is_root_span = not current.get_span_context().is_valid
 
         parent_context = None
-        if is_root_span and trace_ctx.get('trace_id') and trace_ctx.get('parent_span_id'):
+        if is_root_span and ctx.trace_id and ctx.parent_span_id:
             try:
                 parent_sc = opentelemetry.trace.SpanContext(
-                    trace_id=int(trace_ctx['trace_id'], 16),
-                    span_id=int(trace_ctx['parent_span_id'], 16),
+                    trace_id=int(ctx.trace_id, 16),
+                    span_id=int(ctx.parent_span_id, 16),
                     is_remote=False,
                     trace_flags=opentelemetry.trace.TraceFlags(0x01),
                 )
@@ -264,81 +201,117 @@ class _TracingRuntime:
             except Exception:
                 pass
 
-        attributes = self._base_attributes(
-            span_kind=span_kind,
-            span_name=span_name,
-            is_root_span=is_root_span,
-            trace_ctx=trace_ctx,
-            target=target,
-            capture_payload=capture_payload,
-            args=args,
-            kwargs=kwargs,
-        )
+        # Create OTel span (timing + nesting only, no attributes yet)
+        span_cm = self._tracer.start_as_current_span(span_name, context=parent_context)
+        otel_span = span_cm.__enter__()
+        span_context = otel_span.get_span_context()
 
-        span_cm = self._tracer.start_as_current_span(
-            span_name, attributes=attributes, context=parent_context
-        )
-        span = span_cm.__enter__()
-        span_context = span.get_span_context()
         if not _in_reconstructed_thread.get(False):
-            trace_ctx['trace_id'] = f'{span_context.trace_id:032x}'
-            trace_ctx['parent_span_id'] = f'{span_context.span_id:016x}'
-            set_trace_context(trace_ctx)
+            ctx.trace_id = f'{span_context.trace_id:032x}'
+            ctx.parent_span_id = f'{span_context.span_id:016x}'
+            set_trace_context(ctx)
+
+        lazy_span = LazySpan(
+            name=span_name,
+            span_kind=span_kind,
+            is_root_span=is_root_span,
+            trace_id=f'{span_context.trace_id:032x}',
+            span_id=f'{span_context.span_id:016x}',
+            parent_span_id=pre_parent_span_id,
+            capture_payload=capture_payload,
+            _otel_span=otel_span,
+            _otel_span_cm=span_cm,
+        )
+
+        self._populate_identity(lazy_span, target)
+
+        if capture_payload:
+            lazy_span.input = {'args': args, 'kwargs': kwargs}
+
         if is_root_span:
-            self._backend.set_root_span_name(span, span_name)
-        return TraceSpanHandle(span=span, span_cm=span_cm, is_root_span=is_root_span)
+            lazy_span.session_id = ctx.session_id
+            lazy_span.user_id = ctx.user_id
+            lazy_span.request_tags = list(ctx.request_tags) if ctx.request_tags else []
 
-    def set_output(self, handle: Optional[TraceSpanHandle], output: Any):
-        if handle is None:
-            return
-        span = handle.span
-        trace_ctx = get_trace_context()
-        capture_payload = _capture_payload_enabled(trace_ctx)
-        span.set_attribute('lazyllm.status', 'ok')
-        if not capture_payload:
-            return
-        text = _stringify_payload(output)
-        for key, value in self._backend.output_attributes(text, is_root_span=handle.is_root_span).items():
-            span.set_attribute(key, value)
+        return lazy_span
 
-    def set_usage(self, handle: Optional[TraceSpanHandle], usage: Dict[str, Any]):
-        if handle is None:
+    def set_output(self, span: Optional[LazySpan], output: Any):
+        if span is None:
             return
-        span = handle.span
-        prompt = usage.get('prompt_tokens')
-        completion = usage.get('completion_tokens')
-        if prompt is not None and prompt >= 0:
-            span.set_attribute('gen_ai.usage.input_tokens', int(prompt))
-        if completion is not None and completion >= 0:
-            span.set_attribute('gen_ai.usage.output_tokens', int(completion))
-        if prompt is not None and prompt >= 0 and completion is not None and completion >= 0:
-            span.set_attribute('gen_ai.usage.total_tokens', int(prompt + completion))
+        span.status = 'ok'
+        if span.capture_payload:
+            span.output = output
+
+    def set_usage(self, span: Optional[LazySpan], usage: Dict[str, Any]):
+        if span is None:
+            return
+        span.usage = usage
+
+    def set_attributes(self, span: Optional[LazySpan], attrs: Dict[str, Any]):
+        if span is None or not attrs:
+            return
+        span.output_attrs.update(attrs)
+
+    def set_error(self, span: Optional[LazySpan], exc: Exception):
+        if span is None:
+            return
+        span.status = 'error'
+        span.error = exc
+
+    def _build_lazyllm_attributes(self, span: LazySpan) -> Dict[str, Any]:
+        """Build lazyllm.* namespace attributes from LazySpan fields."""
+        attrs: Dict[str, Any] = {
+            'lazyllm.span.kind': span.span_kind,
+            'lazyllm.entity.name': span.name,
+            'lazyllm.entity.class': span.component_class,
+            'lazyllm.entity.id': span.component_id or '',
+            'lazyllm.status': span.status,
+        }
+
+        if span.config:
+            for k, v in span.config.items():
+                attrs[f'lazyllm.entity.config.{k}'] = (
+                    _stringify_payload(v) if isinstance(v, (dict, list)) else str(v))
+
+        if span.semantic_type:
+            attrs['lazyllm.semantic_type'] = span.semantic_type
+
+        if span.trace_id:
+            attrs['lazyllm.request.trace_id'] = span.trace_id
+        if span.parent_span_id:
+            attrs['lazyllm.request.parent_span_id'] = span.parent_span_id
+
+        if span.output_attrs:
+            for k, v in span.output_attrs.items():
+                attrs[k] = v
+
+        return attrs
+
+    def finish_span(self, span: Optional[LazySpan]):
+        if span is None:
+            return
+        otel_span = span._otel_span
+
+        # 1) lazyllm.* attributes
+        for k, v in self._build_lazyllm_attributes(span).items():
+            otel_span.set_attribute(k, v)
+
+        # 2) Backend-specific attributes
         if self._backend:
-            for key, value in self._backend.usage_attributes(usage).items():
-                span.set_attribute(key, value)
+            for k, v in self._backend.map_span_attributes(span).items():
+                otel_span.set_attribute(k, v)
+            if span.is_root_span:
+                for k, v in self._backend.map_root_span_attributes(span).items():
+                    otel_span.set_attribute(k, v)
 
-    def set_attributes(self, handle: Optional[TraceSpanHandle], attrs: Dict[str, Any]):
-        if handle is None or not attrs:
-            return
-        span = handle.span
-        for key, value in attrs.items():
-            span.set_attribute(key, value)
+        # 3) Error handling
+        if span.error:
+            status_cls, status_code = self._status
+            otel_span.set_status(status_cls(status_code.ERROR, str(span.error)))
+            otel_span.record_exception(span.error)
 
-    def set_error(self, handle: Optional[TraceSpanHandle], exc: Exception):
-        if handle is None:
-            return
-        span = handle.span
-        status_cls, status_code = self._status
-        span.set_status(status_cls(status_code.ERROR, str(exc)))
-        span.set_attribute('lazyllm.status', 'error')
-        for key, value in self._backend.error_attributes(exc).items():
-            span.set_attribute(key, value)
-        span.record_exception(exc)
-
-    def finish_span(self, handle: Optional[TraceSpanHandle]):
-        if handle is None:
-            return
-        handle.span_cm.__exit__(None, None, None)
+        # 4) Close OTel span
+        span._otel_span_cm.__exit__(None, None, None)
 
     def shutdown(self):
         if self._provider is None:
@@ -357,7 +330,7 @@ def tracing_available() -> bool:
     return _runtime.available()
 
 
-def start_span(*, span_kind: str, target: Any, args: tuple[Any, ...], kwargs: Dict[str, Any]):
+def start_span(*, span_kind: str, target: Any, args: tuple, kwargs: Dict[str, Any]):
     return _runtime.start_span(span_kind=span_kind, target=target, args=args, kwargs=kwargs)
 
 

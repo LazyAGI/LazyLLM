@@ -95,6 +95,7 @@ __all__ = [
 
     # tracing
     'TracingSetupError',
+    'LazyTraceContext',
     'get_trace_context',
     'set_trace_context',
 

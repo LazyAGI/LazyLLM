@@ -1,16 +1,15 @@
 from importlib import import_module
 
-# Optional third-party dependencies
-from lazyllm.thirdparty import opentelemetry  # noqa: F401
-
-# Required internal modules
 _SUBMOD_MAP = {
+    'context': [
+        'LazyTraceContext',
+    ],
+    'span': [
+        'LazySpan',
+        'LazyTrace',
+    ],
     'runtime': [
         'TracingSetupError',
-        'start_span',
-        'set_span_output',
-        'set_span_error',
-        'finish_span',
         'get_trace_context',
         'set_trace_context',
         'tracing_available',
