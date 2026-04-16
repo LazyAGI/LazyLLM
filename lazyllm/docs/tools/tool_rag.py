@@ -6,6 +6,12 @@ add_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.impo
 add_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools'))
 add_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools'))
 
+
+def _add_bilingual_docs(doc_map):
+    for obj_name, (zh_doc, en_doc) in doc_map.items():
+        add_chinese_doc(obj_name, zh_doc)
+        add_english_doc(obj_name, en_doc)
+
 add_english_doc('Document', '''\
 Initialize a document management module with optional embedding, storage, and user interface.
 
@@ -14,17 +20,18 @@ The ``Document`` module provides a unified interface for managing document datas
 Args:
     dataset_path (Optional[str]): Path to the dataset directory. If not found, the system will attempt to locate it in ``lazyllm.config["data_path"]``.
     embed (Optional[Union[Callable, Dict[str, Callable]]]): Embedding function or mapping of embedding functions. When a dictionary is provided, keys are embedding names and values are embedding models.
-    manager (Union[bool, str], optional): Whether to enable the document manager. If ``True``, launches a manager service. If ``'ui'``, also enables the document management web UI. Defaults to ``False``.
+    create_ui (bool, optional): Whether to create the document-management UI. It requires an available ``DocServer`` and can be combined with ``manager=True`` or ``manager=DocServer(...)``.
+    manager (Union[bool, str, DocServer, DocumentProcessor], optional): Document manager mode. ``True`` launches a local ``DocServer`` together with a local parsing service. ``DocServer(...)`` connects an existing document-management service. ``DocumentProcessor(...)`` connects a parsing service only and requires a non-map ``store_conf``. ``'ui'`` is accepted as a compatibility alias for ``manager=True, create_ui=True``.
     server (Union[bool, int], optional): Whether to run a server interface for knowledge bases. ``True`` enables a default server, an integer specifies a custom port, and ``False`` disables it. Defaults to ``False``.
     name (Optional[str]): Name identifier for this document collection. Defaults to the system default name.
     launcher (Optional[Launcher]): Launcher instance for managing server processes. Defaults to a remote asynchronous launcher.
-    store_conf (Optional[Dict]): Storage configuration. Defaults to in-memory MapStore.
-    doc_fields (Optional[Dict[str, DocField]]): Metadata field configuration for storing and retrieving document attributes.
-    cloud (bool): Whether the dataset is stored in the cloud. Defaults to ``False``.
     doc_files (Optional[List[str]]): Temporary document files. When used, ``dataset_path`` must be ``None``. Only MapStore is supported in this mode.
-    processor (Optional[DocumentProcessor]): Document processing service.
+    doc_fields (Optional[Dict[str, DocField]]): Metadata field configuration for storing and retrieving document attributes.
+    store_conf (Optional[Dict]): Storage configuration. Defaults to in-memory MapStore.
     display_name (Optional[str]): Human-readable display name for this document module. Defaults to the collection name.
     description (Optional[str]): Description of the document collection. Defaults to ``"algorithm description"``.
+    schema_extractor (Optional[Union[LLMBase, SchemaExtractor]]): Optional schema extractor used for metadata schema analysis and registration.
+    enable_path_monitoring (Optional[bool]): Whether to watch the local dataset path for file additions and removals. Defaults to enabled only for local documents without ``DocServer``/``DocumentProcessor`` manager mode.
 ''')
 
 add_chinese_doc('Document', '''\
@@ -35,18 +42,528 @@ add_chinese_doc('Document', '''\
 Args:
     dataset_path (Optional[str]): 数据集目录路径。如果路径不存在，系统会尝试在 ``lazyllm.config["data_path"]`` 中查找。
     embed (Optional[Union[Callable, Dict[str, Callable]]]): 文档向量化函数或函数字典。若为字典，键为 embedding 名称，值为对应的模型。
-    manager (Union[bool, str], optional): 是否启用文档管理服务。``True`` 表示启动管理服务；``'ui'`` 表示同时启动 Web 管理界面；默认 ``False``。
+    create_ui (bool, optional): 是否创建文档管理 UI。该能力要求当前存在可用的 ``DocServer``，可与 ``manager=True`` 或 ``manager=DocServer(...)`` 组合使用。
+    manager (Union[bool, str, DocServer, DocumentProcessor], optional): 文档管理模式。``True`` 表示启动本地 ``DocServer`` 及其 parsing service；``DocServer(...)`` 表示连接已有文档管理服务；``DocumentProcessor(...)`` 表示仅连接解析服务，此时必须提供非 map 的 ``store_conf``；``'ui'`` 仅作为 ``manager=True, create_ui=True`` 的兼容写法保留。
     server (Union[bool, int], optional): 是否为知识库运行服务接口。``True`` 表示启动默认服务；整型数值表示自定义端口；``False`` 表示关闭。默认为 ``False``。
     name (Optional[str]): 文档集合的名称标识符。默认为系统默认名称。
     launcher (Optional[Launcher]): 启动器实例，用于管理服务进程。默认使用远程异步启动器。
-    store_conf (Optional[Dict]): 存储配置。默认使用内存中的 MapStore。
-    doc_fields (Optional[Dict[str, DocField]]): 元数据字段配置，用于存储和检索文档属性。
-    cloud (bool): 是否为云端数据集。默认为 ``False``。
     doc_files (Optional[List[str]]): 临时文档文件列表。当使用此参数时，``dataset_path`` 必须为 ``None``，且仅支持 MapStore。
-    processor (Optional[DocumentProcessor]): 文档处理服务。
+    doc_fields (Optional[Dict[str, DocField]]): 元数据字段配置，用于存储和检索文档属性。
+    store_conf (Optional[Dict]): 存储配置。默认使用内存中的 MapStore。
     display_name (Optional[str]): 文档模块的可读显示名称。默认为集合名称。
     description (Optional[str]): 文档集合的描述。默认为 ``"algorithm description"``。
+    schema_extractor (Optional[Union[LLMBase, SchemaExtractor]]): 可选 schema extractor，用于元数据 schema 分析与注册。
+    enable_path_monitoring (Optional[bool]): 是否监控本地数据目录的文件新增和删除。仅在未接入 ``DocServer`` / ``DocumentProcessor`` 的本地模式下默认开启。
 ''')
+
+add_english_doc('DocServer', '''\
+Primary entry point of the document service.
+
+``DocServer`` manages document upload/add/reparse/delete flows, task tracking, knowledge-base management,
+chunk inspection, and cross-kb transfer. It is the recommended replacement for the legacy ``DocManager`` /
+``DocListManager`` APIs.
+
+Args:
+    port (Optional[int]): Local service port when starting an in-process server.
+    url (Optional[str]): Existing doc_service URL. When provided, the instance works as a remote client.
+    parser_url (Optional[str]): Parsing service URL used by the local doc_service instance.
+    db_config (Optional[Dict[str, Any]]): Metadata database configuration for doc_service.
+    parser_db_config (Optional[Dict[str, Any]]): Parsing task database configuration for the parsing service.
+    parser_poll_interval (float): Poll interval used by local parser coordination.
+    storage_dir (Optional[str]): Local storage directory for uploaded files.
+    callback_url (Optional[str]): Callback URL used to receive parsing task updates.
+    launcher: Launcher used to start local services.
+''')
+
+add_chinese_doc('DocServer', '''\
+文档服务的主入口。
+
+``DocServer`` 负责文档上传/添加/重解析/删除、任务跟踪、知识库管理、chunk 查看，以及跨知识库文档转移。
+它是 legacy ``DocManager`` / ``DocListManager`` API 的推荐替代方案。
+
+Args:
+    port (Optional[int]): 本地启动服务时使用的端口。
+    url (Optional[str]): 已存在的 doc_service 地址；提供后当前实例作为远程客户端使用。
+    parser_url (Optional[str]): 本地 doc_service 使用的 parsing service 地址。
+    db_config (Optional[Dict[str, Any]]): doc_service 元数据数据库配置。
+    parser_db_config (Optional[Dict[str, Any]]): parsing service 任务数据库配置。
+    parser_poll_interval (float): 本地解析协调使用的轮询间隔。
+    storage_dir (Optional[str]): 上传文件保存目录。
+    callback_url (Optional[str]): 接收解析任务回调的地址。
+    launcher: 本地服务启动器。
+''')
+
+add_english_doc('DocServer.add', '''\
+Add existing local files through the ``/v1/docs/add`` endpoint.
+
+Use this method when the file paths are already accessible on the DocServer host. The request body is an
+``AddRequest`` containing ``kb_id``, ``algo_id``, and ``items``. Each item can provide ``file_path``,
+optional ``doc_id``, and optional ``metadata``.
+
+**Returns:**
+    Standard API response. ``data["items"]`` contains the accepted ``doc_id`` and asynchronous ``task_id``.
+''')
+
+add_chinese_doc('DocServer.add', '''\
+通过 ``/v1/docs/add`` 接口添加服务端可直接访问的本地文件。
+
+当文件路径已经对 DocServer 所在机器可见时，使用该方法。请求体为 ``AddRequest``，包含 ``kb_id``、``algo_id``
+和 ``items``。每个 item 可提供 ``file_path``，以及可选的 ``doc_id``、``metadata``。
+
+**Returns:**
+    标准 API 响应。``data["items"]`` 中包含接受后的 ``doc_id`` 和异步 ``task_id``。
+''')
+
+add_english_doc('DocServer.upload', '''\
+Upload files into DocServer-managed storage through the ``/v1/docs/upload`` flow.
+
+Use this method when you want DocServer to manage uploaded copies of the source files. The request body is an
+``UploadRequest`` with ``kb_id``, ``algo_id``, and ``items``. Each item uses ``file_path`` as the local source
+path and can optionally include ``doc_id`` or ``metadata``.
+
+**Returns:**
+    Standard API response. ``data["items"]`` contains the accepted ``doc_id`` and asynchronous ``task_id``.
+''')
+
+add_chinese_doc('DocServer.upload', '''\
+通过 ``/v1/docs/upload`` 流程将文件上传到 DocServer 管理的存储目录。
+
+当你希望由 DocServer 保存上传副本时，使用该方法。请求体为 ``UploadRequest``，包含 ``kb_id``、``algo_id``
+和 ``items``。每个 item 使用 ``file_path`` 作为本地源路径，也可以附带可选的 ``doc_id``、``metadata``。
+
+**Returns:**
+    标准 API 响应。``data["items"]`` 中包含接受后的 ``doc_id`` 和异步 ``task_id``。
+''')
+
+add_english_doc('DocServer.reparse', '''\
+Reparse existing documents through the ``/v1/docs/reparse`` endpoint.
+
+The request body is a ``ReparseRequest`` with ``kb_id``, ``algo_id``, and ``doc_ids``. Use it after metadata
+or parsing configuration changes when you want to enqueue new parse tasks for existing documents.
+''')
+
+add_chinese_doc('DocServer.reparse', '''\
+通过 ``/v1/docs/reparse`` 接口重新解析已有文档。
+
+请求体为 ``ReparseRequest``，包含 ``kb_id``、``algo_id`` 和 ``doc_ids``。当元数据或解析配置变更后，
+需要为已有文档重新入队解析任务时，可使用该方法。
+''')
+
+add_english_doc('DocServer.delete', '''\
+Delete documents from a knowledge base through the ``/v1/docs/delete`` endpoint.
+
+The request body is a ``DeleteRequest`` with ``kb_id``, ``algo_id``, and ``doc_ids``. Deletion is asynchronous,
+so the returned ``task_id`` should be tracked through the task APIs when you need final status.
+''')
+
+add_chinese_doc('DocServer.delete', '''\
+通过 ``/v1/docs/delete`` 接口从知识库中删除文档。
+
+请求体为 ``DeleteRequest``，包含 ``kb_id``、``algo_id`` 和 ``doc_ids``。删除是异步操作，因此如果需要最终状态，
+应继续通过任务接口跟踪返回的 ``task_id``。
+''')
+
+add_english_doc('DocServer.patch_metadata', '''\
+Patch document metadata through the ``/v1/docs/metadata/patch`` endpoint.
+
+The request body is a ``MetadataPatchRequest`` with ``kb_id``, ``algo_id``, and ``items``. Each item targets one
+document and carries a partial metadata patch in ``patch``.
+''')
+
+add_chinese_doc('DocServer.patch_metadata', '''\
+通过 ``/v1/docs/metadata/patch`` 接口更新文档元数据。
+
+请求体为 ``MetadataPatchRequest``，包含 ``kb_id``、``algo_id`` 和 ``items``。每个 item 指向一个文档，
+并在 ``patch`` 中携带需要合并的局部元数据。
+''')
+
+add_english_doc('DocServer.get_task', '''\
+Get one task record through the ``/v1/tasks/{task_id}`` endpoint.
+
+Args:
+    task_id (str): Task ID returned by add, upload, reparse, delete, transfer, or metadata patch operations.
+
+**Returns:**
+    Standard API response with the current task status and task payload.
+''')
+
+add_chinese_doc('DocServer.get_task', '''\
+通过 ``/v1/tasks/{task_id}`` 接口获取单个任务记录。
+
+Args:
+    task_id (str): add、upload、reparse、delete、transfer 或 metadata patch 等操作返回的任务 ID。
+
+**Returns:**
+    包含当前任务状态和任务负载的标准 API 响应。
+''')
+
+add_english_doc('DocServer.cancel_task', '''\
+Cancel a waiting task through the ``/v1/tasks/cancel`` endpoint.
+
+Args:
+    task_id (str): Task ID to cancel.
+
+**Returns:**
+    Standard API response indicating whether the task was canceled successfully.
+''')
+
+add_chinese_doc('DocServer.cancel_task', '''\
+通过 ``/v1/tasks/cancel`` 接口取消一个处于等待中的任务。
+
+Args:
+    task_id (str): 要取消的任务 ID。
+
+**Returns:**
+    表示任务是否取消成功的标准 API 响应。
+''')
+
+add_english_doc('DocServer.list_chunks', '''\
+List parsed chunks for a document through the ``/v1/chunks`` endpoint.
+
+Args:
+    kb_id (str): Knowledge-base ID.
+    doc_id (str): Source document ID.
+    group (str): Node group name to inspect.
+    algo_id (str): Algorithm ID.
+    page (int): 1-based page number.
+    page_size (int): Number of chunks per page.
+    offset (Optional[int]): Explicit offset. When omitted, the service derives it from ``page`` and ``page_size``.
+
+Returns:
+    Paginated chunk data including ``items`` and ``total``.
+''')
+
+add_chinese_doc('DocServer.list_chunks', '''\
+通过 ``/v1/chunks`` 接口分页查看文档的解析 chunk。
+
+Args:
+    kb_id (str): 知识库 ID。
+    doc_id (str): 文档 ID。
+    group (str): 要查看的节点组名。
+    algo_id (str): 算法 ID。
+    page (int): 从 1 开始的页码。
+    page_size (int): 每页 chunk 数量。
+    offset (Optional[int]): 显式偏移量；未传时服务端会根据 ``page`` 和 ``page_size`` 推导。
+
+Returns:
+    包含 ``items`` 与 ``total`` 的分页结果。
+''')
+
+add_english_doc('DocServer.transfer', '''\
+Transfer parsed documents between knowledge bases under the same algorithm.
+
+The request body is a ``TransferRequest``. Each transfer item must provide a unique ``target_doc_id`` in the target
+knowledge base. Transfer across different algorithms is not supported. Optional ``target_filename`` and
+``target_file_path`` can override the destination file name/path recorded for the transferred document.
+''')
+
+add_chinese_doc('DocServer.transfer', '''\
+在同一算法下的不同知识库之间转移已解析文档。
+
+请求体为 ``TransferRequest``。每个转移项都必须在目标知识库中提供唯一的 ``target_doc_id``。
+当前不支持跨算法 transfer。可选字段 ``target_filename`` 与 ``target_file_path`` 用于覆盖目标文档记录的文件名或文件路径。
+''')
+
+_add_bilingual_docs({
+    'rag.doc_service.base.DocServiceError': (
+        'Doc service 使用的结构化业务异常。',
+        'Structured business exception used by doc_service.'
+    ),
+    'rag.doc_service.base.AddFileItem.validate_file_path': (
+        '校验单个文件项中的 ``file_path`` 字段。',
+        'Validate the ``file_path`` field of one file item.'
+    ),
+    'rag.doc_service.base.DocItemsRequest.validate_items': (
+        '校验文档 item 列表不能为空。',
+        'Validate that the document item list is not empty.'
+    ),
+    'rag.doc_service.base.TransferItem.normalize_source_fields': (
+        '将旧版 source 字段归一化到当前 transfer item schema。',
+        'Normalize legacy source fields into the current transfer-item schema.'
+    ),
+    'rag.doc_service.base.TransferRequest.validate_items': (
+        '校验 transfer 请求中的 item 列表及其基本约束。',
+        'Validate transfer request items and their basic constraints.'
+    ),
+    'rag.doc_service.base.MetadataPatchRequest.validate_items': (
+        '校验 metadata patch 请求中的 item 列表。',
+        'Validate metadata patch request items.'
+    ),
+    'rag.doc_service.base.KbDeleteBatchRequest.validate_kb_ids': (
+        '校验批量删除知识库请求中的 ``kb_ids``。',
+        'Validate ``kb_ids`` in a batch knowledge-base delete request.'
+    ),
+    'rag.doc_service.base.TaskBatchRequest.validate_task_ids': (
+        '校验批量任务查询请求中的 ``task_ids``。',
+        'Validate ``task_ids`` in a batch task query request.'
+    ),
+    'rag.doc_service.base.KbBatchQueryRequest.validate_kb_ids': (
+        '校验批量知识库查询请求中的 ``kb_ids``。',
+        'Validate ``kb_ids`` in a batch knowledge-base query request.'
+    ),
+    'rag.parsing_service.base.AddDocRequest.normalize_deprecated_fields': (
+        '将旧版 add-doc 字段归一化到当前请求格式。',
+        'Normalize deprecated add-doc fields into the current request format.'
+    ),
+    'rag.parsing_service.base.UpdateMetaRequest.normalize_deprecated_fields': (
+        '将旧版 update-meta 字段归一化到当前请求格式。',
+        'Normalize deprecated update-meta fields into the current request format.'
+    ),
+    'rag.parsing_service.base.DeleteDocRequest.normalize_legacy_fields': (
+        '将旧版 delete-doc 字段归一化到当前请求格式。',
+        'Normalize legacy delete-doc fields into the current request format.'
+    ),
+    'rag.parsing_service.server.DocumentProcessor.set_callback_url': (
+        '更新 parsing service 发送任务回调时使用的 callback URL。',
+        'Update the callback URL used by the parsing service for task callbacks.'
+    ),
+    'rag.transform.base.NodeTransform.transform': (
+        '将单个文档节点转换为零个或多个输出节点。',
+        'Transform one document node into zero or more output nodes.'
+    ),
+    'rag.doc_service.doc_manager.DocManager': (
+        'Doc service 的核心业务实现，负责文档、任务、知识库以及 parser 协调。',
+        'Core doc_service implementation for document, task, knowledge-base, and parser coordination.'
+    ),
+    'rag.doc_service.parser_client.ParserClient': (
+        '用于访问 parsing service HTTP 接口的轻量客户端。',
+        'Lightweight client for parsing-service HTTP endpoints.'
+    ),
+})
+
+_add_bilingual_docs({
+    f'rag.doc_service.doc_manager.DocManager.{name}': docs
+    for name, docs in {
+        'set_callback_url': (
+            '设置运行时任务回调 URL。',
+            'Set the runtime task callback URL.'
+        ),
+        'run_idempotent': (
+            '在幂等键保护下执行一次 doc service 变更操作。',
+            'Execute one doc_service mutation under idempotency-key protection.'
+        ),
+        'upload': (
+            '接收上传文件并为其创建异步解析任务。',
+            'Accept uploaded files and create asynchronous parse tasks for them.'
+        ),
+        'add_files': (
+            '登记服务端可见文件并为其创建异步解析任务。',
+            'Register server-visible files and create asynchronous parse tasks for them.'
+        ),
+        'reparse': (
+            '为已有文档重新入队解析任务。',
+            'Enqueue new parse tasks for existing documents.'
+        ),
+        'delete': (
+            '从知识库中删除文档并创建异步删除任务。',
+            'Delete documents from a knowledge base and create asynchronous delete tasks.'
+        ),
+        'transfer': (
+            '在同一算法下跨知识库转移文档。',
+            'Transfer documents between knowledge bases under the same algorithm.'
+        ),
+        'patch_metadata': (
+            '对已有文档执行局部 metadata 更新。',
+            'Apply partial metadata updates to existing documents.'
+        ),
+        'on_task_callback': (
+            '处理 parser service 回调的任务状态更新。',
+            'Handle task-state callbacks sent by the parsing service.'
+        ),
+        'list_docs': (
+            '分页列出知识库中的文档。',
+            'List documents in a knowledge base with pagination.'
+        ),
+        'get_doc_detail': (
+            '查询单个文档的详细信息。',
+            'Return detailed information for one document.'
+        ),
+        'list_tasks': (
+            '按状态分页列出任务记录。',
+            'List task records by status with pagination.'
+        ),
+        'get_task': (
+            '按任务 ID 获取单个任务记录。',
+            'Get one task record by task ID.'
+        ),
+        'get_tasks_batch': (
+            '批量获取多个任务记录。',
+            'Fetch multiple task records in one batch.'
+        ),
+        'cancel_task': (
+            '取消一个尚未执行完成的任务。',
+            'Cancel a task that has not finished executing.'
+        ),
+        'list_algorithms': (
+            '列出 parsing service 提供的算法。',
+            'List algorithms exposed by the parsing service.'
+        ),
+        'get_algo_groups': (
+            '获取指定算法的节点组信息。',
+            'Get node-group information for one algorithm.'
+        ),
+        'list_algorithms_compat': (
+            '以兼容旧客户端的格式返回算法列表。',
+            'Return the algorithm list in a legacy-compatible format.'
+        ),
+        'get_algorithm_info': (
+            '获取指定算法的详细信息。',
+            'Get detailed information for one algorithm.'
+        ),
+        'list_chunks': (
+            '分页查看指定文档的解析 chunk。',
+            'List parsed chunks for one document with pagination.'
+        ),
+        'health': (
+            '执行 doc service 健康检查。',
+            'Run a health check for doc_service.'
+        ),
+        'list_kbs': (
+            '分页列出知识库。',
+            'List knowledge bases with pagination.'
+        ),
+        'get_kb': (
+            '获取单个知识库的信息。',
+            'Get information for one knowledge base.'
+        ),
+        'batch_get_kbs': (
+            '批量获取多个知识库的信息。',
+            'Fetch information for multiple knowledge bases in one batch.'
+        ),
+        'create_kb': (
+            '创建新的知识库。',
+            'Create a new knowledge base.'
+        ),
+        'update_kb': (
+            '更新已有知识库的元信息。',
+            'Update metadata of an existing knowledge base.'
+        ),
+        'delete_kb': (
+            '删除一个知识库。',
+            'Delete one knowledge base.'
+        ),
+        'delete_kbs': (
+            '批量删除多个知识库。',
+            'Delete multiple knowledge bases in one batch.'
+        ),
+    }.items()
+})
+
+_add_bilingual_docs({
+    f'rag.doc_service.parser_client.ParserClient.{name}': docs
+    for name, docs in {
+        'health': (
+            '检查 parsing service 是否可用。',
+            'Check whether the parsing service is healthy.'
+        ),
+        'add_doc': (
+            '向 parsing service 提交新增文档任务。',
+            'Submit an add-document task to the parsing service.'
+        ),
+        'update_meta': (
+            '向 parsing service 提交 metadata 更新任务。',
+            'Submit a metadata-update task to the parsing service.'
+        ),
+        'delete_doc': (
+            '向 parsing service 提交删除文档任务。',
+            'Submit a delete-document task to the parsing service.'
+        ),
+        'cancel_task': (
+            '请求 parsing service 取消一个任务。',
+            'Ask the parsing service to cancel a task.'
+        ),
+        'list_algorithms': (
+            '获取 parsing service 当前暴露的算法列表。',
+            'Get the list of algorithms currently exposed by the parsing service.'
+        ),
+        'get_algorithm_groups': (
+            '获取指定算法的节点组信息。',
+            'Get node-group information for one algorithm.'
+        ),
+        'list_doc_chunks': (
+            '获取指定文档在某个节点组下的 chunk 列表。',
+            'Get parsed chunks for one document under a specific node group.'
+        ),
+    }.items()
+})
+
+_add_bilingual_docs({
+    f'rag.doc_service.doc_server.DocServer.{name}': docs
+    for name, docs in {
+        'build_openapi_app': (
+            '构建用于导出 OpenAPI 的 FastAPI 应用对象。',
+            'Build the FastAPI application used for OpenAPI export.'
+        ),
+        'build_openapi_schema': (
+            '生成 doc service 的 OpenAPI schema。',
+            'Generate the OpenAPI schema for doc_service.'
+        ),
+        'export_openapi': (
+            '将 doc service 的 OpenAPI schema 导出到文件。',
+            'Export the doc_service OpenAPI schema to a file.'
+        ),
+        'list_docs': (
+            '分页列出知识库中的文档。',
+            'List documents in a knowledge base with pagination.'
+        ),
+        'get_doc': (
+            '获取单个文档的详细信息。',
+            'Get detailed information for one document.'
+        ),
+        'list_tasks': (
+            '分页列出任务记录。',
+            'List task records with pagination.'
+        ),
+        'get_tasks_batch': (
+            '批量获取多个任务记录。',
+            'Fetch multiple task records in one batch.'
+        ),
+        'get_task_info': (
+            '获取单个任务记录。',
+            'Get one task record.'
+        ),
+        'set_runtime_callback_url': (
+            '更新运行时任务回调 URL。',
+            'Update the runtime task callback URL.'
+        ),
+        'list_kbs': (
+            '分页列出知识库。',
+            'List knowledge bases with pagination.'
+        ),
+        'get_kb': (
+            '获取单个知识库的信息。',
+            'Get information for one knowledge base.'
+        ),
+        'list_algorithms': (
+            '列出可用算法。',
+            'List available algorithms.'
+        ),
+        'get_algorithm_info': (
+            '获取指定算法的详细信息。',
+            'Get detailed information for one algorithm.'
+        ),
+        'create_kb': (
+            '创建新的知识库。',
+            'Create a new knowledge base.'
+        ),
+        'update_kb': (
+            '更新知识库的元信息。',
+            'Update knowledge-base metadata.'
+        ),
+        'batch_get_kbs': (
+            '批量获取多个知识库的信息。',
+            'Fetch information for multiple knowledge bases in one batch.'
+        ),
+        'delete_kb': (
+            '删除一个知识库。',
+            'Delete one knowledge base.'
+        ),
+        'delete_kbs': (
+            '批量删除多个知识库。',
+            'Delete multiple knowledge bases in one batch.'
+        ),
+    }.items()
+})
 
 add_example('Document', '''\
 >>> import lazyllm
@@ -507,8 +1024,8 @@ add_example('Document.register_global_reader', '''
 ...         data = f.read()
 ...     return [DocNode(text=data)]
 ...
->>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
->>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc1 = Document(dataset_path="your_files_path")
+>>> doc2 = Document(dataset_path="your_files_path")
 >>> files = ["your_yml_files"]
 >>> docs1 = doc1._impl._reader.load_data(input_files=files)
 >>> docs2 = doc2._impl._reader.load_data(input_files=files)
@@ -552,8 +1069,8 @@ add_example('Document.add_reader', '''
 ...     print("Call the function processYml.")
 ...     return [DocNode(text=data)]
 ...
->>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
->>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc1 = Document(dataset_path="your_files_path")
+>>> doc2 = Document(dataset_path="your_files_path")
 >>> doc1.add_reader("**/*.yml", YmlReader)
 >>> print(doc1._impl._local_file_reader)
 {'**/*.yml': <class '__main__.YmlReader'>}
@@ -992,7 +1509,7 @@ add_example('rag.readers.ReaderBase', '''
 ...         return [DocNode(text=data)]
 ...
 >>> files = ["your_yml_files"]
->>> doc = Document(dataset_path="your_files_path", create_ui=False)
+>>> doc = Document(dataset_path="your_files_path")
 >>> reader = doc._impl._reader.load_data(input_files=files)
 # Call the class YmlReader.
 ''')
@@ -1419,7 +1936,7 @@ add_chinese_doc('rag.doc_to_db.SchemaExtractor.register_schema_set_to_kb', '''
 将算法/知识库绑定到指定 schema 集合；若提供 schema_set 会先注册；可选 force_refresh 覆盖已有绑定并清理旧数据。
 
 Args:
-    algo_id (str, optional): 算法/Document 名称，默认 DocListManager.DEFAULT_GROUP_NAME。
+    algo_id (str, optional): 算法/Document 名称，默认 `__default__`。
     kb_id (str, optional): 知识库 ID，默认 DEFAULT_KB_ID。
     schema_set_id (str, optional): 已有 schema 集合 ID。
     schema_set (Type[BaseModel], optional): 新 schema，传入则会注册后绑定。
@@ -1433,7 +1950,7 @@ add_english_doc('rag.doc_to_db.SchemaExtractor.register_schema_set_to_kb', '''
 Bind an algo/kb pair to a schema set; optionally register a provided schema_set first; with force_refresh you can override an existing binding and purge old records.
 
 Args:
-    algo_id (str, optional): Algorithm/Document name, defaults to DocListManager.DEFAULT_GROUP_NAME.
+    algo_id (str, optional): Algorithm/Document name, defaults to `__default__`.
     kb_id (str, optional): Knowledge base id, defaults to DEFAULT_KB_ID.
     schema_set_id (str, optional): Existing schema set id to bind.
     schema_set (Type[BaseModel], optional): Schema to register and bind if no id is provided.
@@ -1470,7 +1987,7 @@ add_chinese_doc('rag.doc_to_db.SchemaExtractor.extract_and_store', '''
 
 Args:
     data (Union[str, List[DocNode]]): 文本或 DocNode 列表（需同一文档）。
-    algo_id (str, optional): 算法/Document 名称，默认 DocListManager.DEFAULT_GROUP_NAME。
+    algo_id (str, optional): 算法/Document 名称，默认 `__default__`。
     schema_set_id (str, optional): 指定使用的 schema 集合 ID。
     schema_set (Type[BaseModel], optional): 动态注册并使用的 schema。
 
@@ -1483,7 +2000,7 @@ Extract content according to the bound schema and persist it; will register the 
 
 Args:
     data (Union[str, List[DocNode]]): Text or list of DocNodes from a single document.
-    algo_id (str, optional): Algorithm/Document name, defaults to DocListManager.DEFAULT_GROUP_NAME.
+    algo_id (str, optional): Algorithm/Document name, defaults to `__default__`.
     schema_set_id (str, optional): Schema set id to use.
     schema_set (Type[BaseModel], optional): Schema to register and use if no id is provided.
 
@@ -5588,1524 +6105,6 @@ Args:
 
 # ---------------------------------------------------------------------------- #
 
-# rag/doc_manager.py
-
-add_chinese_doc('rag.DocManager', """
-DocManager类管理文档列表及相关操作，并通过API提供文档上传、删除、分组等功能。
-
-Args:
-    dlm (DocListManager): 文档列表管理器，用于处理具体的文档操作。
-
-""")
-
-add_chinese_doc('rag.DocManager.document', """
-提供默认文档页面的重定向接口。
-
-**Returns:**\n
-- RedirectResponse: 重定向到 `/docs` 页面。
-""")
-
-add_chinese_doc('rag.DocManager.list_kb_groups', """
-列出所有文档分组的接口。
-
-**Returns:**\n
-- BaseResponse: 包含所有文档分组的数据。
-""")
-
-add_chinese_doc('rag.DocManager.upload_files', """
-上传文件并更新其状态的接口。可以同时上传多个文件。
-
-Args:
-    files (List[UploadFile]): 上传的文件列表。
-    override (bool): 是否覆盖已存在的文件。默认为False。
-    metadatas (Optional[str]): 文件的元数据，JSON格式。
-    user_path (Optional[str]): 用户自定义的文件上传路径。
-
-**Returns:**\n
-- BaseResponse: 上传结果和文件ID。
-""")
-
-add_chinese_doc('rag.DocManager.add_files', """
-批量添加文件。
-
-Args:
-    files (List[UploadFile]): 上传的文件列表。
-    group_name (str): 目标知识库分组名称，为空时不添加到分组。
-    metadatas (Optional[str]): 文件的元数据，JSON格式。
-
-**Returns:**\n
-- BaseResponse:返回所有输入文件对应的唯一文件ID列表，包括新增和已存在的文件。若出现异常，则返回错误码和异常信息。
-""")
-
-add_chinese_doc('rag.DocManager.list_files', """
-列出已上传文件的接口。
-
-Args:
-    limit (Optional[int]): 返回的文件数量限制。默认为None。
-    details (bool): 是否返回详细信息。默认为True。
-    alive (Optional[bool]): 如果为True，只返回未删除的文件。默认为None。
-
-**Returns:**\n
-- BaseResponse: 文件列表数据。
-""")
-
-add_chinese_doc('rag.DocManager.list_files_in_group', """
-列出指定分组中文件的接口。
-
-Args:
-    group_name (Optional[str]): 文件分组名称。
-    limit (Optional[int]): 返回的文件数量限制。默认为None。
-    alive (Optional[bool]): 是否只返回未删除的文件。
-
-**Returns:**\n
-- BaseResponse: 分组文件列表。
-""")
-
-add_chinese_doc('rag.DocManager.add_files_to_group_by_id', """
-通过文件ID将文件添加到指定分组的接口。
-
-Args:
-    request (FileGroupRequest): 包含文件ID和分组名称的请求。
-
-**Returns:**\n
-- BaseResponse: 操作结果。
-""")
-
-add_chinese_doc('rag.DocManager.add_files_to_group', """
-将文件上传后直接添加到指定分组的接口。
-
-Args:
-    files (List[UploadFile]): 上传的文件列表。
-    group_name (str): 要添加到的分组名称。
-    override (bool): 是否覆盖已存在的文件。默认为False。
-    metadatas (Optional[str]): 文件元数据，JSON格式。
-    user_path (Optional[str]): 用户自定义的文件上传路径。
-
-**Returns:**\n
-- BaseResponse: 操作结果和文件ID。
-""")
-
-add_chinese_doc('rag.DocManager.delete_files', """
-删除指定文件的接口。
-
-Args:
-    request (FileGroupRequest): 包含文件ID和分组名称的请求。
-
-**Returns:**\n
-- BaseResponse: 删除操作结果。
-""")
-
-add_chinese_doc('rag.DocManager.delete_files_from_group', """
-删除指定分组中的文件的接口。
-
-Args:
-    request (FileGroupRequest): 包含文件ID列表和分组名称的请求参数。
-
-**Returns:**\n
-- BaseResponse: 删除操作结果。
-""")
-
-add_chinese_doc('rag.DocManager.add_metadata', """
-为指定文档添加或更新元数据的接口。
-
-Args:
-    add_metadata_request (AddMetadataRequest): 包含文档ID列表和键值对元数据的请求。
-
-**Returns:**\n
-- BaseResponse: 操作结果信息。
-""")
-
-add_chinese_doc('rag.DocManager.delete_metadata_item', """
-删除指定文档的元数据字段或字段值的接口。
-
-Args:
-    del_metadata_request (DeleteMetadataRequest): 包含文档ID列表、字段名和键值对删除条件的请求。
-
-**Returns:**\n
-- BaseResponse: 操作结果信息。
-""")
-
-add_chinese_doc('rag.DocManager.update_or_create_metadata_keys', """
-更新或创建文档元数据字段的接口。
-
-Args:
-    update_metadata_request (UpdateMetadataRequest): 包含文档ID列表和需更新或新增的键值对元数据。
-
-**Returns:**\n
-- BaseResponse: 操作结果信息。
-""")
-
-add_chinese_doc('rag.DocManager.reset_metadata', """
-重置指定文档的所有元数据字段。
-
-Args:
-    reset_metadata_request (ResetMetadataRequest): 包含文档ID列表和新的元数据字典。
-
-**Returns:**\n
-- BaseResponse: 操作结果信息。
-""")
-
-add_chinese_doc('rag.DocManager.query_metadata', """
-查询指定文档的元数据。
-
-Args:
-    query_metadata_request (QueryMetadataRequest): 请求参数，包含文档ID和可选的字段名。
-
-**Returns:**\n
-- BaseResponse: 若指定了 key 且存在，返回对应字段值；否则返回整个 metadata；key 不存在时报错。
-""")
-
-add_english_doc('rag.DocManager', """
-The `DocManager` class manages document lists and related operations, providing APIs for uploading, deleting, and grouping documents.
-
-Args:
-    dlm (DocListManager): Document list manager responsible for handling document-related operations.
-""")
-
-add_english_doc('rag.DocManager.document', """
-An endpoint to redirect to the default documentation page.
-
-**Returns:**\n
-- RedirectResponse: Redirects to the `/docs` page.
-""")
-
-add_english_doc('rag.DocManager.list_kb_groups', """
-An endpoint to list all document groups.
-
-**Returns:**\n
-- BaseResponse: Contains the data of all document groups.
-""")
-
-add_english_doc('rag.DocManager.upload_files', """
-An endpoint to upload files and update their status. Multiple files can be uploaded at once.
-
-Args:
-    files (List[UploadFile]): List of files to upload.
-    override (bool): Whether to overwrite existing files. Default is False.
-    metadatas (Optional[str]): Metadata for the files in JSON format.
-    user_path (Optional[str]): User-defined path for file uploads.
-
-**Returns:**\n
-- BaseResponse: Upload results and file IDs.
-""")
-
-add_english_doc('rag.DocManager.add_files', """
-Batch add files.
-
-Args:
-    files (List[UploadFile]): List of uploaded files.
-    group_name (str): Target knowledge base group name; if empty, files are not added to any group.
-    metadatas (Optional[str]): Metadata of the files in JSON format.
-
-**Returns:**\n
-- BaseResponse: Returns a list of unique file IDs corresponding to all input files, including newly added and existing ones. In case of exceptions, returns error codes and exception information.
-""")
-
-add_english_doc('rag.DocManager.list_files', """
-An endpoint to list uploaded files.
-
-Args:
-    limit (Optional[int]): Limit on the number of files returned. Default is None.
-    details (bool): Whether to return detailed information. Default is True.
-    alive (Optional[bool]): If True, only returns non-deleted files. Default is None.
-
-**Returns:**\n
-- BaseResponse: File list data.
-""")
-
-add_english_doc('rag.DocManager.list_files_in_group', """
-An endpoint to list files in a specific group.
-
-Args:
-    group_name (Optional[str]): The name of the file group.
-    limit (Optional[int]): Limit on the number of files returned. Default is None.
-    alive (Optional[bool]): Whether to return only non-deleted files.
-
-**Returns:**\n
-- BaseResponse: List of files in the group.
-""")
-
-add_english_doc('rag.DocManager.add_files_to_group_by_id', """
-An endpoint to add files to a specific group by file IDs.
-
-Args:
-    request (FileGroupRequest): Request containing file IDs and group name.
-
-**Returns:**\n
-- BaseResponse: Operation result.
-""")
-
-add_english_doc('rag.DocManager.add_files_to_group', """
-An endpoint to upload files and directly add them to a specified group.
-
-Args:
-    files (List[UploadFile]): List of files to upload.
-    group_name (str): Name of the group to add the files to.
-    override (bool): Whether to overwrite existing files. Default is False.
-    metadatas (Optional[str]): Metadata for the files in JSON format.
-    user_path (Optional[str]): User-defined path for file uploads.
-
-**Returns:**\n
-- BaseResponse: Operation result and file IDs.
-""")
-
-add_english_doc('rag.DocManager.delete_files', """
-An endpoint to delete specified files.
-
-Args:
-    request (FileGroupRequest): Request containing file IDs and group name.
-
-**Returns:**\n
-- BaseResponse: Deletion operation result.
-""")
-
-add_english_doc('rag.DocManager.delete_files_from_group', """
-An endpoint to delete specified files in a group.
-
-Args:
-    request (FileGroupRequest): Request containing a list of file IDs and the group name.
-
-**Returns:**\n
-- BaseResponse: Deletion operation result.
-""")
-
-add_english_doc('rag.DocManager.add_metadata', """
-An endpoint to add or update metadata for specified documents.
-
-Args:
-    add_metadata_request (AddMetadataRequest): Request containing list of document IDs and key-value metadata.
-
-**Returns:**\n
-- BaseResponse: Operation result information.
-""")
-
-add_english_doc('rag.DocManager.delete_metadata_item', """
-An endpoint to delete metadata fields or field values from specified documents.
-
-Args:
-    del_metadata_request (DeleteMetadataRequest): Request containing list of document IDs, field names, and/or deletion rules.
-
-**Returns:**\n
-- BaseResponse: Deletion operation result.
-""")
-
-add_english_doc('rag.DocManager.update_or_create_metadata_keys', """
-An endpoint to update or create metadata fields for specified documents.
-
-Args:
-    update_metadata_request (UpdateMetadataRequest): Request containing a list of document IDs and metadata key-value pairs to update or create.
-
-**Returns:**\n
-- BaseResponse: Deletion operation result.
-""")
-
-add_english_doc('rag.DocManager.reset_metadata', """
-An endpoint to reset all metadata fields of specified documents.
-
-Args:
-    reset_metadata_request (ResetMetadataRequest): Request containing a list of document IDs and the new metadata dictionary to apply.
-
-**Returns:**\n
-- BaseResponse: Deletion operation result.
-""")
-
-add_english_doc('rag.DocManager.query_metadata', """
-An endpoint to query metadata of a specific document.
-
-Args:
-    query_metadata_request (QueryMetadataRequest): Request containing the document ID and an optional metadata field name.
-
-**Returns:**\n
-- BaseResponse: Returns the field value if key is specified and exists; otherwise returns full metadata. If the key does not exist, returns an error.
-""")
-
-add_chinese_doc('rag.DocManager.reparse_files', '''\
-重新解析指定的文件。
-
-Args:
-    file_ids (List[str]): 需要重新解析的文件ID列表。
-    group_name (Optional[str]): 文件组名称，默认为None。
-
-**Returns:**\n
-- BaseResponse: 包含以下字段的响应对象：
-    - code (int): 状态码，200表示成功。
-    - msg (str): 错误信息（如果有）。
-    - data: None。
-''')
-
-add_english_doc('rag.DocManager.reparse_files', '''\
-Reparse specified files.
-
-Args:
-    file_ids (List[str]): List of file IDs to reparse.
-    group_name (Optional[str]): Group name for the files, defaults to None.
-
-**Returns:**\n
-- BaseResponse: Response object containing:
-    - code (int): Status code, 200 for success.
-    - msg (str): Error message if any.
-    - data: None.
-''')
-
-# ---------------------------------------------------------------------------- #
-
-# rag/data_loaders.py
-
-add_english_doc('rag.data_loaders.DirectoryReader', '''\
-A directory reader class for loading and processing documents from file directories.
-
-This class provides functionality to read documents from specified directories and convert them into document nodes. It supports both local and global file readers, and can handle different types of documents including images.
-
-Args:
-    input_files (Optional[List[str]]): A list of file paths to read. If None, files will be loaded when calling load_data method.
-    local_readers (Optional[Dict]): A dictionary of local file readers specific to this instance. Keys are file patterns, values are reader functions.
-    global_readers (Optional[Dict]): A dictionary of global file readers shared across all instances. Keys are file patterns, values are reader functions.
-''')
-
-add_chinese_doc('rag.data_loaders.DirectoryReader', '''\
-用于从文件目录加载和处理文档的目录读取器类。
-
-此类提供从指定目录读取文档并将其转换为文档节点的功能。它支持本地和全局文件读取器，并且可以处理不同类型的文档，包括图像。
-
-Args:
-    input_files (Optional[List[str]]): 要读取的文件路径列表。如果为None，文件将在调用load_data方法时加载。
-    local_readers (Optional[Dict]): 特定于此实例的本地文件读取器字典。键是文件模式，值是读取器函数。
-    global_readers (Optional[Dict]): 在所有实例间共享的全局文件读取器字典。键是文件模式，值是读取器函数。
-''')
-
-add_example('rag.data_loaders.DirectoryReader', '''\
->>> from lazyllm.tools.rag.data_loaders import DirectoryReader
->>> from lazyllm.tools.rag.readers import DocxReader, PDFReader
->>> local_readers = {
-...     "**/*.docx": DocxReader,
-...     "**/*.pdf": PDFReader
->>> }
->>> reader = DirectoryReader(
-...     input_files=["path/to/documents"],
-...     local_readers=local_readers,
-...     global_readers={}
->>> )
->>> documents = reader.load_data()
->>> print(f"加载了 {len(documents)} 个文档")
-''')
-
-add_english_doc('rag.data_loaders.DirectoryReader.load_data', '''\
-Load and process documents from the specified input files.
-
-This method reads documents from the input files using the configured file readers (both local and global), processes them into document nodes, and optionally separates image nodes from text nodes.
-
-Args:
-    input_files (Optional[List[str]]): A list of file paths to read. If None, uses the files specified during initialization.
-    metadatas (Optional[Dict]): Additional metadata to associate with the loaded documents.
-    split_nodes_by_type (bool): Whether to separate image and other nodes from text nodes. If True, returns a tuple of (text_nodes, image_nodes). If False, returns all nodes together.
-
-**Returns:**\n
-- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: If split_nodes_by_type is False, returns a list of all document nodes. If True, returns a tuple containing text nodes and image nodes separately.
-''')
-
-add_chinese_doc('rag.data_loaders.DirectoryReader.load_data', '''\
-从指定的输入文件加载和处理文档。
-
-此方法使用配置的文件读取器（本地和全局）从输入文件读取文档，将它们处理成文档节点，并可选地将图像节点与文本节点分离。
-
-Args:
-    input_files (Optional[List[str]]): 要读取的文件路径列表。如果为None，使用初始化时指定的文件。
-    metadatas (Optional[Dict]): 与加载文档关联的额外元数据。
-    split_nodes_by_type (bool): 是否将图像等其他节点与文本节点分离。如果为True，返回(text_nodes, image_nodes)的元组。如果为False，一起返回所有节点。
-
-**Returns:**\n
-- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: 如果split_nodes_by_type为False，返回所有文档节点的列表。如果为True，返回包含文本节点和图像节点的元组。
-''')
-
-# ---------------------------------------------------------------------------- #
-
-# rag/utils.py
-add_chinese_doc('rag.utils.DocListManager', """\
-抽象基类，用于管理文档列表和监控文档目录变化。
-
-Args:
-    path:要监控的文档目录路径。
-    name:管理器名称。
-    enable_path_monitoring:启用路径监控。
-
-""")
-
-add_chinese_doc('rag.utils.DocListManager.init_tables', """\
-确保数据库表默认分组存在。
-""")
-
-add_chinese_doc('rag.utils.DocListManager.delete_files', """\
-将与文件关联的知识库条目设为删除中，并由各知识库进行异步删除解析结果及关联记录。
-
-Args:
-    file_ids (list of str): 要删除的文件ID列表
-""")
-
-add_chinese_doc('rag.utils.DocListManager.table_inited', """\
-检查数据库中的 `documents` 表是否已初始化。此方法在访问数据库时确保线程安全。
-判断数据库中是否存在 `documents` 表。
-
-**Returns:**\n
-- bool: 如果 `documents` 表存在，返回 `True`；否则返回 `False`。
-
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保对数据库的安全访问。
-    - 通过 `self._db_path` 连接 SQLite 数据库，并使用 `check_same_thread` 配置选项。
-    - 执行 SQL 查询：`SELECT name FROM sqlite_master WHERE type='table' AND name='documents'` 来检查表是否存在。
-""")
-
-add_chinese_doc('rag.utils.DocListManager.validate_paths', '''\
-验证一组文件路径，以确保它们可以被正常处理。
-此方法检查提供的路径是否是新的、已处理的或当前正在处理的，并确保处理文档时不会发生冲突。
-
-Args:
-    paths (List[str]): 要验证的文件路径列表。
-
-**Returns:**\n
-- Tuple[bool, str, List[bool]]: 返回一个元组，包括：
-    - `bool`: 如果所有路径有效，则返回 `True`；否则返回 `False`。
-    - `str`: 表示成功或失败原因的消息。
-    - `List[bool]`: 一个布尔值列表，每个元素对应一个路径是否为新路径（`True` 表示新路径，`False` 表示已存在）。
-
-说明:
-    - 如果任何文档仍在处理中或需要重新解析，该方法会返回 `False`，并附带相应的错误消息。
-    - 方法通过数据库会话和线程安全锁 (`self._db_lock`) 检索文档状态信息。
-    - 不安全状态包括 `working` 和 `waiting`。
-
-''')
-
-add_chinese_doc('rag.utils.DocListManager.update_need_reparsing', '''\
-更新 `KBGroupDocuments` 表中某个文档的 `need_reparse` 状态。
-此方法设置指定文档的 `need_reparse` 标志，并可选限定到特定分组。
-
-Args:
-    doc_id (str): 要更新的文档ID。
-    need_reparse (bool): `need_reparse` 标志的新值。
-
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
-    - 方法会立刻将更改提交到数据库。
-''')
-
-add_chinese_doc('rag.utils.DocListManager.list_files', """\
-从 `documents` 表中列出文件，并支持过滤、限制返回结果以及返回详细信息。
-此方法根据指定的条件，从数据库中检索文件ID或详细文件信息。
-
-Args:
-    limit (Optional[int]): 返回的最大文件数量。如果为 `None`，则返回所有匹配的文件。
-    details (bool): 是否返回详细的文件信息（`True`）或仅返回文件ID（`False`）。
-    status (Union[str, List[str]]): 要包含的状态或状态列表，默认为所有状态。
-    exclude_status (Optional[Union[str, List[str]]]): 要排除的状态或状态列表，默认为 `None`。
-
-**Returns:**\n
-- List: 如果 `details=False`，则返回文件ID列表；如果 `details=True`，则返回详细文件行的列表。
-
-说明:
-    - 该方法根据 `status` 和 `exclude_status` 条件动态构造查询。
-    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
-    - 如果指定了 `limit`，查询会附加 `LIMIT` 子句。
-""")
-
-add_chinese_doc('rag.utils.DocListManager.get_docs', '''\
-从数据库中检索类型为 `KBDocument` 的文档对象，基于提供的文档 ID 列表。
-
-Args:
-    doc_ids (List[str]): 要获取的文档 ID 列表。
-
-**Returns:**\n
-- List[KBDocument]: 与提供的文档 ID 对应的 `KBDocument` 对象列表。如果没有找到文档，将返回空列表。
-
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问的安全性。
-    - 查询使用 SQL 的 `IN` 子句，通过 `doc_id` 字段进行过滤。
-    - 如果 `doc_ids` 为空，函数将直接返回空列表，而不会查询数据库。
-''')
-
-add_chinese_doc('rag.utils.DocListManager.set_docs_new_meta', """\
-批量更新文档的元数据。
-
-Args:
-    doc_meta (Dict[str, dict]): 文档ID到新元数据的映射字典。
-
-""")
-
-add_chinese_doc('rag.utils.DocListManager.fetch_docs_changed_meta', '''\
-获取指定组中元数据已更改的文档，并将其 `new_meta` 字段重置为 `None`。
-此方法检索元数据已更改（即 `new_meta` 不为 `None`）的所有文档，基于提供的组名。检索后，会将这些文档的 `new_meta` 字段重置为 `None`。
-
-Args:
-    group (str): 用于过滤文档的组名。
-
-**Returns:**\n
-- List[DocMetaChangedRow]: 包含文档 `doc_id` 和 `new_meta` 字段的行列表，表示元数据已更改的文档。
-
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
-    - 方法通过 SQL `JOIN` 操作连接 `KBDocument` 和 `KBGroupDocuments` 表以检索相关行。
-    - 在获取数据后，将受影响行的 `new_meta` 字段更新为 `None`，并将更改提交到数据库。
-''')
-
-add_chinese_doc('rag.utils.DocListManager.add_kb_group', """\
-添加一个新的知识库分组。
-
-Args:
-    name (str): 要添加的分组名称。
-""")
-
-add_chinese_doc('rag.utils.DocListManager.list_kb_group_files', '''\
-列出指定知识库组中的文件。
-
-Args:
-    group (str): 用于过滤文件的 KB 组名。默认为 `None`。
-    limit (Optional[int]): 返回的最大文件数量。如果为 `None`，则返回所有匹配的文件。
-    details (bool): 返回详细的文件信息或仅返回文件 ID 和路径。
-    status (Union[str, List[str]]): 包含在结果中的 KB 组状态或状态列表。默认为所有状态。
-    exclude_status (Optional[Union[str, List[str]]): 从结果中排除的 KB 组状态或状态列表。默认为 `None`。
-    upload_status (Union[str, List[str]]): 包含在结果中的文档上传状态或状态列表。默认为所有状态。
-    exclude_upload_status (Optional[Union[str, List[str]]): 从结果中排除的文档上传状态或状态列表。默认为 `None`。
-    need_reparse (Optional[bool]): 过滤需要重新解析的文件或不需要重新解析的文件。默认为 `None`。
-
-**Returns:**\n
-- List: 如果 `details=False`，返回包含 `(doc_id, path)` 的元组列表。
-          如果 `details=True`，返回包含附加元数据的详细行列表。
-
-说明:
-    - 方法根据提供的过滤条件动态构建 SQL 查询。
-    - 使用线程安全锁 (`self._db_lock`) 确保多线程环境下的数据库访问安全。
-    - 如果 `status` 或 `upload_status` 参数为列表，则会使用 SQL 的 `IN` 子句进行处理。
-''')
-
-add_chinese_doc('rag.utils.DocListManager.list_all_kb_group', """\
-列出所有知识库分组的名称。
-
-**Returns:**\n
-- list: 知识库分组名称列表。
-""")
-
-add_chinese_doc('rag.utils.DocListManager.add_files', '''\
-批量向文档列表中添加文件，可选附加元数据、状态，并支持分批处理。
-此方法将文件列表添加到数据库中，并为每个文件设置可选的元数据和初始状态。文件会以批量方式处理以提高效率。在文件添加完成后，它们会自动关联到默认的知识库 (KB) 组。
-
-Args:
-    files (List[str]): 添加的文件路径列表。
-    metadatas (Optional[List[Dict[str, Any]]]): 与文件对应的元数据字典列表。默认为 `None`。
-    status (Optional[str]): 添加文件的初始状态。默认为 `Status.waiting`。
-    batch_size (int): 每批处理的文件数量。默认为 64。
-
-**Returns:**\n
-- List[DocPartRow]: 包含已添加文件及其相关信息的 `DocPartRow` 对象列表。
-
-说明:
-    - 方法首先通过辅助函数 `_add_doc_records` 创建文档记录。
-    - 文件添加后，会自动关联到默认的知识库组 (`DocListManager.DEFAULT_GROUP_NAME`)。
-    - 批量处理确保在添加大量文件时具有良好的可扩展性。
-''')
-
-add_chinese_doc('rag.utils.DocListManager.delete_unreferenced_doc', '''\
-删除数据库中标记为 "删除中" 且不再被引用的文档。
-此方法从数据库中删除满足以下条件的文档：
-    1. 文档状态为 `DocListManager.Status.deleting`。
-    2. 文档的引用计数 (`count`) 为 0。
-''')
-
-add_chinese_doc('rag.utils.DocListManager.get_docs_need_reparse', '''\
-获取需要重新解析 (`need_reparse=True`)的指定组中的文档。
-此方法检索标记为需要重新解析 (`need_reparse=True`) 的文档，基于提供的组名。仅包含状态为 `success` 或 `failed` 的文档。
-
-Args:
-    group (str): 用于过滤文档的组名。
-
-**Returns:**\n
-- List[KBDocument]: 需要重新解析的 `KBDocument` 对象列表。
-
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保多线程环境下的数据库访问安全。
-    - 查询通过 SQL `JOIN` 操作连接 `KBDocument` 和 `KBGroupDocuments` 表，并基于组名和重新解析状态进行过滤。
-    - 仅状态为 `success` 或 `failed` 且 `need_reparse=True` 的文档会被检索出来。
-''')
-
-add_chinese_doc('rag.utils.DocListManager.get_existing_paths_by_pattern', '''\
-根据给定的模式，检索符合条件的文档路径。
-此方法从数据库中获取所有符合提供的 SQL `LIKE` 模式的文档路径。
-
-Args:
-    pattern (str): 用于过滤文档路径的 SQL `LIKE` 模式。例如，`%example%` 匹配包含单词 "example" 的路径。
-
-**Returns:**\n
-- List[str]: 符合给定模式的文档路径列表。如果没有匹配的路径，则返回空列表。
-
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保多线程环境下的数据库访问安全。
-    - SQL 查询中的 `LIKE` 操作符用于对文档路径进行模式匹配。
-''')
-
-add_chinese_doc('rag.utils.DocListManager.update_file_message', """\
-更新指定文件的消息。
-
-Args:
-    fileid (str): 文件ID。
-    **kw: 需要更新的其他键值对。
-""")
-
-add_chinese_doc('rag.utils.DocListManager.update_file_status', """\
-更新指定文件的状态。
-
-Args:
-    file_ids (list of str): 更新状态的文件ID列表。
-    status (str): 目标状态。
-    cond_status_list(Union[None, List[str]]):限制只更新处于这些状态的文档
-""")
-
-add_chinese_doc('rag.utils.DocListManager.add_files_to_kb_group', """\
-将文件添加到指定的知识库分组中。
-
-Args:
-    file_ids (list of str): 要添加的文件ID列表。
-    group (str): 要添加的分组名称。
-""")
-
-add_chinese_doc('rag.utils.DocListManager.delete_files_from_kb_group', """\
-从指定的知识库分组中删除文件。
-
-Args:
-    file_ids (list of str): 要删除的文件ID列表。
-    group (str): 分组名称。
-""")
-
-add_chinese_doc('rag.utils.DocListManager.get_file_status', """\
-获取指定文件的状态。
-
-Args:
-    fileid (str): 文件ID。
-
-**Returns:**\n
-- tr: 文件的当前状态。
-""")
-
-add_chinese_doc('rag.utils.DocListManager.update_kb_group', """\
-更新指定知识库分组中的内容。
-
-Args:
-    cond_file_ids (list of str, optional): 过滤使用的文件ID列表，默认为None。
-    cond_group (str, optional): 过滤使用的知识库分组名称，默认为None。
-    cond_status_list (list of str, optional): 过滤使用的状态列表，默认为None。
-    new_status (str, optional): 新状态, 默认为None。
-    new_need_reparse (bool, optinoal): 新的是否需重解析标志。
-
-**Returns:**\n
-- list: 得到更新的列表list of (doc_id, group_name)
-""")
-
-add_chinese_doc('rag.utils.DocListManager.release', """\
-释放当前管理器的资源。
-
-""")
-
-add_chinese_doc('rag.utils.DocListManager.enable_path_monitoring', '''\
-启用或禁用文档管理器的路径监控功能。
-此方法用于启用或禁用文档管理器的路径监控功能。当启用时，会启动一个监控线程处理与路径相关的操作；当禁用时，会停止该线程并等待它终止。
-
-Args:
-    val (bool): 启用或禁用路径监控。
-
-说明:
-    - 如果 `val` 为 `True`，路径监控功能会通过将 `_monitor_continue` 设置为 `True` 并启动 `_monitor_thread` 来启用。
-    - 如果 `val` 为 `False`，路径监控功能会通过将 `_monitor_continue` 设置为 `False` 并等待 `_monitor_thread` 终止来禁用。
-    - 方法在管理监控线程时确保线程操作是安全的。
-''')
-
-add_english_doc('rag.utils.DocListManager', """\
-Abstract base class for managing document lists and monitoring changes in a document directory.
-
-Args:
-    path: Path of the document directory to monitor.
-    name: Name of the manager.
-    enable_path_monitoring: Whether to enable path monitoring.
-""")
-
-add_english_doc('rag.utils.DocListManager.init_tables', """\
-Ensure that the default group exists in the database tables.
-""")
-
-add_english_doc('rag.utils.DocListManager.delete_files', """\
-Set the knowledge base entries associated with the document to "deleting," and have each knowledge base asynchronously delete parsed results and associated records.
-
-Args:
-    file_ids (list of str): List of file IDs to delete.
-""")
-
-add_english_doc('rag.utils.DocListManager.table_inited', """\
-Checks if the database table `documents` is initialized. This method ensures thread-safety when accessing the database.
-Determines whether the `documents` table exists in the database.
-
-**Returns:**\n
-- bool: `True` if the `documents` table exists, `False` otherwise.
-
-Notes:
-    - Uses a thread-safe lock (`self._db_lock`) to ensure safe access to the database.
-    - Establishes a connection to the SQLite database at `self._db_path` with the `check_same_thread` option.
-    - Executes the SQL query: `SELECT name FROM sqlite_master WHERE type='table' AND name='documents'` to check for the table.
-""")
-
-add_english_doc('rag.utils.DocListManager.validate_paths', '''\
-Validates a list of file paths to ensure they are ready for processing.
-This method checks whether the provided paths are new, already processed, or currently being processed. It ensures there are no conflicts in processing the documents.
-
-Args:
-    paths (List[str]): A list of file paths to validate.
-
-**Returns:**\n
-- Tuple[bool, str, List[bool]]: A tuple containing:
-        - `bool`: `True` if all paths are valid, `False` otherwise.
-        - `str`: A message indicating success or the reason for failure.
-        - `List[bool]`: A list where each element corresponds to whether a path is new (`True`) or already exists (`False`).
-Notes:
-    - If any document is still being processed or needs reparsing, the method returns `False` with an appropriate error message.
-    - The method uses a database session and thread-safe lock (`self._db_lock`) to retrieve document status information.
-    - Unsafe statuses include `working` and `waiting`.
-
-''')
-
-
-add_english_doc('rag.utils.DocListManager.update_need_reparsing', '''\
-Updates the `need_reparse` status of a document in the `KBGroupDocuments` table.
-This method sets the `need_reparse` flag for a specific document, optionally scoped to a given group.
-
-Args:
-    doc_id (str): The ID of the document to update.
-    need_reparse (bool): The new value for the `need_reparse` flag.
-
-Notes:
-    - Uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - The method commits the change to the database immediately.
-''')
-
-add_english_doc('rag.utils.DocListManager.list_files', """\
-Lists files from the `documents` table with optional filtering, limiting, and returning details.
-This method retrieves file IDs or detailed file information from the database, based on the specified filtering conditions.
-
-Args:
-    limit (Optional[int]): Maximum number of files to return. If `None`, all matching files will be returned.
-    details (bool): Whether to return detailed file information (`True`) or just file IDs (`False`).
-    status (Union[str, List[str]]): The status or list of statuses to include in the results. Defaults to all statuses.
-    exclude_status (Optional[Union[str, List[str]]]): The status or list of statuses to exclude from the results. Defaults to `None`.
-
-**Returns:**\n
-- List: A list of file IDs if `details=False`, or a list of detailed file rows if `details=True`.
-
-Notes:
-    - The method constructs a query dynamically based on the provided `status` and `exclude_status` conditions.
-    - A thread-safe lock (`self._db_lock`) ensures safe database access.
-    - The `LIMIT` clause is applied if `limit` is specified.
-""")
-
-add_english_doc('rag.utils.DocListManager.get_docs', '''\
-This method retrieves document objects of type `KBDocument` from the database for the provided list of document IDs.
-
-Args:
-    doc_ids (List[str]): A list of document IDs to fetch.
-
-**Returns:**\n
-- List[KBDocument]: A list of `KBDocument` objects corresponding to the provided document IDs. If no documents are found, an empty list is returned.
-
-Notes:
-    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - It performs a SQL join between `KBDocument` and `KBGroupDocuments` to retrieve the relevant rows.
-    - After fetching, it updates the `new_meta` field of the affected rows to `None` and commits the changes to the database.
-''')
-
-add_english_doc('rag.utils.DocListManager.set_docs_new_meta', """\
-Batch update metadata for documents.
-
-Args:
-    doc_meta (Dict[str, dict]): A dictionary mapping document IDs to their new metadata.
-""")
-
-add_english_doc('rag.utils.DocListManager.fetch_docs_changed_meta', '''\
-List files in a specific knowledge base (KB) group with optional filters, limiting, and details.
-This method retrieves files from the `kb_group_documents` table, optionally filtering by group, document status, upload status, and whether reparsing is needed.
-
-Args:
-    group (str): The name of the group to filter documents by.
-
-**Returns:**\n
-- List[DocMetaChangedRow]: A list of rows, where each row contains the `doc_id` and the `new_meta` field of documents with changed metadata.
-
-Notes:
-    - This method constructs a SQL query dynamically based on the provided filters.
-    - Uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - If `status` or `upload_status` are provided as lists, they are processed with SQL `IN` clauses.
-''')
-
-add_english_doc('rag.DocListManager.list_all_kb_group', """\
-Lists all the knowledge base group names.
-
-**Returns:**\n
-- list: List of knowledge base group names.
-""")
-
-add_english_doc('rag.DocListManager.add_kb_group', """\
-Adds a new knowledge base group.
-
-Args:
-    name (str): Name of the group to add.
-""")
-
-add_english_doc('rag.utils.DocListManager.list_kb_group_files', '''\
-List files in a specific knowledge base group .
-
-Args:
-    group (str): The name of the KB group to filter files by. Defaults to `None` .
-    limit (Optional[int]): Maximum number of files to return. If `None`, returns all matching files.
-    details (bool): Whether to return detailed file information or only file IDs and paths.
-    status (Union[str, List[str]]): The KB group status or list of statuses to include in the results. Defaults to all statuses.
-    exclude_status (Optional[Union[str, List[str]]): The KB group status or list of statuses to exclude from the results. Defaults to `None`.
-    upload_status (Union[str, List[str]]): The document upload status or list of statuses to include in the results. Defaults to all statuses.
-    exclude_upload_status (Optional[Union[str, List[str]]): The document upload status or list of statuses to exclude from the results. Defaults to `None`.
-    need_reparse (Optional[bool]): Whether to filter files that need reparsing or not . Defaults to `None` .
-
-**Returns:**\n
-- List: If `details=False`, returns a list of tuples containing `(doc_id, path)`.
-          If `details=True`, returns a list of detailed rows with additional metadata.
-Notes:
-    - The method first creates document records using the `_add_doc_records` helper function.
-    - After the files are added, they are automatically linked to the default KB group (`DocListManager.DEFAULT_GROUP_NAME`).
-    - Batch processing ensures scalability when adding a large number of files.
-''')
-
-add_english_doc('rag.utils.DocListManager.add_files', '''\
-Add multiple files to the document list with optional metadata, status, and batch processing.
-This method adds a list of files to the database and sets optional metadata and initial status for each file. The files are processed in batches for efficiency. After the files are added, they are automatically associated with the default knowledge base (KB) group.
-
-Args:
-    files (List[str]): A list of file paths to add to the database.
-    metadatas (Optional[List[Dict[str, Any]]]): A list of metadata dictionaries corresponding to the files. If `None`, no metadata will be associated. Defaults to `None`.
-    status (Optional[str]): The initial status for the added files. Defaults to `Status.waiting`.
-    batch_size (int): The number of files to process in each batch. Defaults to 64.
-
-**Returns:**\n
-- List[DocPartRow]: A list of `DocPartRow` objects representing the added files and their associated information.
-
-Notes:
-- The method first creates document records using the helper function _add_doc_records.
-- After the files are added, they are automatically linked to the default knowledge base group (DocListManager.DEFAULT_GROUP_NAME).
-- Batch processing ensures good scalability when adding a large number of files.
-
-
-''')
-
-add_english_doc('rag.utils.DocListManager.delete_unreferenced_doc', '''\
-Delete documents marked as "deleting" and no longer referenced in the database.
-This method removes documents from the database that meet the following conditions:
-    1. Their status is set to `DocListManager.Status.deleting`.
-    2. Their reference count (`count`) is 0.
-''')
-
-add_english_doc('rag.utils.DocListManager.get_docs_need_reparse', '''\
-Retrieve documents that require reparsing for a specific group.
-This method fetches documents that are marked as needing reparsing (`need_reparse=True`) for the given group. Only documents with a status of `success` or `failed` are included in the results.
-
-Args:
-    group (str): The name of the group to filter documents by.
-
-**Returns:**\n
-- List[KBDocument]: A list of `KBDocument` objects that need reparsing.
-
-Notes:
-    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - The query performs a SQL `JOIN` between `KBDocument` and `KBGroupDocuments` to filter by group and reparse status.
-    - Documents with `need_reparse=True` and a status of `success` or `failed` are considered for reparsing.
-''')
-
-add_english_doc('rag.utils.DocListManager.get_existing_paths_by_pattern', '''\
-Retrieve existing document paths that match a given pattern.
-This method fetches all document paths from the database that match the provided SQL `LIKE` pattern.
-
-Args:
-    pattern (str): The SQL `LIKE` pattern to filter document paths. For example, `%example%` matches paths containing the word "example".
-
-**Returns:**\n
-- List[str]: A list of document paths that match the given pattern. If no paths match, an empty list is returned.
-
-Notes:
-    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - The `LIKE` operator in the SQL query is used to perform pattern matching on document paths.
-''')
-
-add_english_doc('rag.DocListManager.update_file_message', """\
-Updates the message for a specified file.
-
-Args:
-    fileid (str): File ID.
-    **kw: Additional key-value pairs to update.
-""")
-
-add_english_doc('rag.DocListManager.update_file_status', """\
-Update the status of specified files.
-
-Args:
-    file_ids (list of str): List of file IDs whose status needs to be updated.
-    status (str): Target status to set.
-    cond_status_list (Union[None, List[str]]): Optional. Only update files currently in these statuses.
-""")
-
-add_english_doc('rag.DocListManager.add_files_to_kb_group', """\
-Adds files to the specified knowledge base group.
-
-Args:
-    file_ids (list of str): List of file IDs to add.
-    group (str): Name of the group to add the files to.
-""")
-
-add_english_doc('rag.DocListManager.delete_files_from_kb_group', """\
-Deletes files from the specified knowledge base group.
-
-Args:
-    file_ids (list of str): List of file IDs to delete.
-    group (str): Name of the group.
-""")
-
-add_english_doc('rag.DocListManager.get_file_status', """\
-Retrieves the status of a specified file.
-
-Args:
-    fileid (str): File ID.
-
-**Returns:**\n
-- str: The current status of the file.
-""")
-
-add_english_doc('rag.DocListManager.update_kb_group', """\
-Updates the record of kb_group_document.
-
-Args:
-    cond_file_ids (list of str, optional): a list of file IDs to filter by, default None.
-    cond_group (str, optional): a kb_group name to filter by, default None.
-    cond_status_list (list of str, optional): a list of statuses to filter by, default None.
-    new_status (str, optional): the new status to update to, default None
-    new_need_reparse (bool, optinoal): the new need_reparse flag to update to, default None
-
-**Returns:**\n
-- list: updated records, list of (doc_id, group_name)
-""")
-
-add_english_doc('rag.DocListManager.release', """\
-Releases the resources of the current manager.
-""")
-
-add_english_doc('rag.utils.DocListManager.enable_path_monitoring', '''\
-Enable or disable path monitoring for the document manager.
-This method enables or disables the path monitoring functionality in the document manager. When enabled, a monitoring thread starts to handle path-related operations. When disabled, the thread stops and joins (waits for it to terminate).
-
-Args:
-    val (bool): Whether to enable or disable path monitoring.
-
-Notes:
-    - If `val` is `True`, path monitoring is enabled by setting `_monitor_continue` to `True` and starting the `_monitor_thread`.
-    - If `val` is `False`, path monitoring is disabled by setting `_monitor_continue` to `False` and joining the `_monitor_thread` if it is running.
-    - This method ensures thread-safe operation when managing the monitoring thread.
-''')
-
-add_example('rag.utils.DocListManager', '''
->>> import lazyllm
->>> from lazyllm.rag.utils import DocListManager
->>> manager = DocListManager(path='your_file_path/', name="test_manager", enable_path_monitoring=False)
->>> added_docs = manager.add_files([test_file_list])
->>> manager.enable_path_monitoring(True)
->>> deleted = manager.delete_files([delete_file_list])
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager', '''\
-基于 SQLite 的文档管理器，用于本地文件的持久化存储、状态管理与元信息追踪。
-
-该类继承自 DocListManager，利用 SQLite 数据库存储文档记录。适用于管理具有唯一标识符的本地文档资源，并提供便捷的插入、查询、更新与状态过滤接口，支持可选的路径监控功能。
-
-Args:
-    path (str): 数据库存储路径。
-    name (str): 数据库文件名（不包含路径）。
-    enable_path_monitoring (bool): 是否启用对文件路径的变动监控，默认为 True。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager', '''\
-SQLite-based document manager for persistent local file storage, status tracking, and metadata management.
-
-This class inherits from DocListManager and uses a SQLite backend to store document records. It is suitable for managing locally identified documents with support for inserting, querying, updating, and filtering based on status. Optional file path monitoring is also supported.
-
-Args:
-    path (str): Directory path to store the database.
-    name (str): Name of the SQLite database file (without path).
-    enable_path_monitoring (bool): Whether to enable path monitoring. Defaults to True.
-''')
-
-add_example('rag.utils.SqliteDocListManager', '''\
->>> from lazyllm.tools.rag.utils import SqliteDocListManager
->>> manager = SqliteDocListManager(path="./data", name="docs.sqlite")
->>> manager.insert({"uid": "doc_001", "name": "example.txt", "status": "ready"})
->>> print(manager.get("doc_001"))
->>> files = manager.list_files(limit=5, details=True)
->>> print(files)
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.table_inited', '''\
-检查数据库中是否已存在名为 "documents" 的表。
-
-该方法通过查询 sqlite_master 元信息表，判断数据表是否已初始化。
-
-**Returns:**\n
-- bool: 如果 "documents" 表存在，返回 True；否则返回 False。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.table_inited', '''\
-Checks whether the "documents" table has been initialized in the database.
-
-The method queries the sqlite_master metadata table to verify if the "documents" table exists.
-
-**Returns:**\n
-- bool: True if the "documents" table exists, False otherwise.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.get_status_cond_and_params', '''\
-生成用于文档状态筛选的 SQL 条件语句及其参数列表。
-
-根据传入的包含状态和排除状态，构造 WHERE 子句中使用的 SQL 表达式。支持字段名前缀，用于联表查询等场景。
-
-Args:
-    status (str 或 list of str): 要包含的文档状态。若为 "all"，不添加包含条件。
-    exclude_status (str 或 list of str, optional): 要排除的文档状态。不能为 "all"。
-    prefix (str, optional): 字段名前缀（如联表查询中的别名），将应用于字段名。
-
-**Returns:**\n
-- Tuple[str, list]: 包含 SQL 条件语句和对应参数的元组。
-''')
-
-
-add_english_doc('rag.utils.SqliteDocListManager.get_status_cond_and_params', '''\
-Generates SQL condition expressions and parameter values for filtering documents by status.
-
-Builds WHERE clause components using the given inclusion and exclusion statuses. Supports field name prefixing for use in joined queries.
-
-Args:
-    status (str or list of str): Document status(es) to include. If set to "all", no inclusion condition will be applied.
-    exclude_status (str or list of str, optional): Status(es) to exclude. Must not be "all".
-    prefix (str, optional): Optional field prefix (e.g., table alias) to prepend to the status field.
-
-**Returns:**\n
-- Tuple[str, list]: A tuple containing the SQL condition string and its corresponding parameter values.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.validate_paths', '''\
-验证输入路径所对应的文档是否可以安全添加到数据库。
-
-该方法会检查每个路径是否对应已有文档，若已存在，需判断其状态是否允许重解析。
-若文档正在解析或等待解析，或上次重解析未完成，则视为不可用。
-
-Args:
-    paths (List[str]): 文件路径列表。
-
-**Returns:**\n
-- Tuple[bool, str, List[bool]]:
-    - bool: 是否所有路径都验证通过。
-    - str: 成功或失败的描述信息。
-    - List[bool]: 与输入路径一一对应的布尔列表，表示该路径是否为新文档（True 为新文档，False 为已存在）。
-        若验证失败，返回值为 None。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.validate_paths', '''\
-Validates whether the documents corresponding to the given paths can be safely added to the database.
-
-The method checks if the document already exists. If it exists, it verifies whether the document is currently
-being parsed, waiting to be parsed, or was not successfully re-parsed last time.
-
-Args:
-    paths (List[str]): A list of file paths to validate.
-
-**Returns:**\n
-- Tuple[bool, str, List[bool]]:
-    - bool: Whether all paths passed validation.
-    - str: Description message of the validation result.
-    - List[bool]: A boolean list corresponding to input paths, indicating whether each path is new (True) or already exists (False).
-      If validation fails, this value is None.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.update_need_reparsing', '''\
-更新指定文档的重解析标志位。
-
-该方法用于设置某个文档是否需要重新解析。可以选择性地指定知识库分组进行精确匹配。
-
-Args:
-    doc_id (str): 文档的唯一标识符。
-    need_reparse (bool): 是否需要重新解析文档。
-    group_name (Optional[str]): 可选，所属的知识库分组名称。如果提供，将仅更新指定分组中的文档。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.update_need_reparsing', '''\
-Updates the re-parsing flag for a specific document.
-
-This method sets whether a document should be re-parsed. If a group name is provided, the update is scoped to that group only.
-
-Args:
-    doc_id (str): The unique identifier of the document.
-    need_reparse (bool): Whether the document needs to be re-parsed.
-    group_name (Optional[str]): Optional. The knowledge base group name to filter by. If provided, only documents in the specified group will be updated.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.list_files', """\
-列出文档数据库中符合状态条件的文件，并根据参数选择返回完整记录或仅返回文件路径。
-
-Args:
-    limit (Optional[int]): 要返回的记录数上限，若为 None 则返回所有符合条件的记录。
-    details (bool): 是否返回完整的数据库行信息，若为 False 则仅返回文档路径（ID）。
-    status (Union[str, List[str]]): 要包含在结果中的状态值，默认为包含所有状态。
-    exclude_status (Optional[Union[str, List[str]]]): 要从结果中排除的状态值。
-
-**Returns:**\n
-- list: 文件记录列表或文档路径列表，具体取决于 `details` 参数。
-""")
-
-add_english_doc('rag.utils.SqliteDocListManager.list_files', """\
-Lists files in the document database based on status filters and returns either full records or file paths.
-
-Args:
-    limit (Optional[int]): The maximum number of records to return. If None, all matching records are returned.
-    details (bool): Whether to return full database rows or just file paths (document IDs).
-    status (Union[str, List[str]]): Status values to include in the result. Defaults to including all.
-    exclude_status (Optional[Union[str, List[str]]]): Status values to exclude from the result.
-
-**Returns:**\n
-- list: A list of file records or document paths depending on the `details` flag.
-""")
-
-add_chinese_doc('rag.utils.SqliteDocListManager.get_docs', '''\
-根据给定的文档ID列表，从数据库中获取对应的文档对象列表。
-
-Args:
-    doc_ids (List[str]): 需要查询的文档ID列表。
-
-**Returns:**\n
-- List[KBDocument]: 匹配的文档对象列表。如果没有匹配项，返回空列表。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.get_docs', '''\
-Fetches document objects from the database corresponding to the given list of document IDs.
-
-Args:
-    doc_ids (List[str]): A list of document IDs to query.
-
-**Returns:**\n
-- List[KBDocument]: A list of matching document objects. Returns an empty list if no matches found.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.set_docs_new_meta', '''\
-批量更新文档的元数据（meta），同时更新对应知识库分组中文档的 new_meta 字段（非等待状态的文档）。
-
-Args:
-    doc_meta (Dict[str, dict]): 字典，键为文档ID，值为对应的新元数据字典。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.set_docs_new_meta', '''\
-Batch updates the metadata (meta) of documents, and simultaneously updates the new_meta field of documents in knowledge base groups for documents that are not in waiting status.
-
-Args:
-    doc_meta (Dict[str, dict]): A dictionary mapping document IDs to their new metadata dictionaries.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.fetch_docs_changed_meta', '''\
-获取指定知识库分组中元数据发生变化的文档列表，并将对应的 new_meta 字段清空。
-
-Args:
-    group (str): 知识库分组名称。
-
-**Returns:**\n
-- List[DocMetaChangedRow]: 包含文档ID及其对应新元数据的列表。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.fetch_docs_changed_meta', '''\
-Fetches the list of documents within a specified knowledge base group that have updated metadata, and resets the new_meta field for those documents.
-
-Args:
-    group (str): Name of the knowledge base group.
-
-**Returns:**\n
-- List[DocMetaChangedRow]: A list containing document IDs and their updated metadata.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.list_all_kb_group', '''\
-列出数据库中所有的知识库分组名称。
-
-**Returns:**\n
-- List[str]: 知识库分组名称列表。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.list_all_kb_group', '''\
-Lists all knowledge base group names stored in the database.
-
-**Returns:**\n
-- List[str]: A list of knowledge base group names.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.add_kb_group', '''\
-向数据库中添加一个新的知识库分组名称，若已存在则忽略。
-
-Args:
-    name (str): 要添加的知识库分组名称。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.add_kb_group', '''\
-Adds a new knowledge base group name to the database; ignores if the group already exists.
-
-Args:
-    name (str): The name of the knowledge base group to add.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.list_kb_group_files', '''\
-列出指定知识库分组中的文件信息，可根据多种条件进行过滤。
-
-Args:
-    group (str, optional): 知识库分组名称，若为 None 则不按分组过滤。
-    limit (int, optional): 限制返回的文件数量。
-    details (bool): 是否返回详细的文件信息。
-    status (str or List[str], optional): 过滤知识库分组中文件的状态。
-    exclude_status (str or List[str], optional): 排除指定状态的文件。
-    upload_status (str or List[str], optional): 过滤文件上传状态。
-    exclude_upload_status (str or List[str], optional): 排除指定的上传状态。
-    need_reparse (bool, optional): 是否只返回需要重新解析的文件。
-
-**Returns:**\n
-- list:
-    - 如果 details 为 False，返回列表，每个元素为 (doc_id, path) 元组。
-    - 如果 details 为 True，返回包含文件详细信息的元组列表，包括文档ID、路径、状态、元数据，
-      知识库分组名、分组内状态及日志。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.list_kb_group_files', '''\
-Lists files in a specified knowledge base group, with support for multiple filters.
-
-Args:
-    group (str, optional): Knowledge base group name to filter by. If None, no group filtering is applied.
-    limit (int, optional): Limit on the number of files to return.
-    details (bool): Whether to return detailed file information.
-    status (str or List[str], optional): Filter files by group document status.
-    exclude_status (str or List[str], optional): Exclude files with these group document statuses.
-    upload_status (str or List[str], optional): Filter files by upload document status.
-    exclude_upload_status (str or List[str], optional): Exclude files with these upload document statuses.
-    need_reparse (bool, optional): If set, only returns files marked as needing reparse.
-
-**Returns:**\n
-- list:
-    - If details is False, returns a list of tuples (doc_id, path).
-    - If details is True, returns a list of tuples containing detailed file information:
-      document ID, path, status, metadata, group name, group status, and group log.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.delete_unreferenced_doc', '''\
-删除数据库中标记为删除且未被任何知识库分组引用的文档记录。
-
-该方法会查找状态为“deleting”且引用计数为0的文档，删除这些文档记录，并记录删除操作日志。
-
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.delete_unreferenced_doc', '''\
-Deletes documents from the database that are marked for deletion and are no longer referenced by any knowledge base group.
-
-This method queries documents with status "deleting" and a reference count of zero, deletes them from the database,
-and adds operation logs for these deletions.
-
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.get_docs_need_reparse', '''\
-获取指定知识库分组中需要重新解析的文档列表。
-
-仅返回状态为“success”或“failed”的文档，且其对应的知识库分组记录标记为需要重新解析。
-
-Args:
-    group (str): 知识库分组名称。
-
-**Returns:**\n
-- List[KBDocument]: 需要重新解析的文档列表。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.get_docs_need_reparse', '''\
-Retrieves the list of documents that require re-parsing within a specified knowledge base group.
-
-Only documents with status "success" or "failed" and marked as needing reparse in the group are returned.
-
-Args:
-    group (str): Name of the knowledge base group.
-
-**Returns:**\n
-- List[KBDocument]: List of documents that need to be re-parsed.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.get_existing_paths_by_pattern', '''\
-根据路径匹配模式获取已存在的文档路径列表。
-
-Args:
-    pattern (str): 路径匹配模式，支持SQL的LIKE通配符。
-
-**Returns:**\n
-- List[str]: 匹配到的已存在文档路径列表。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.get_existing_paths_by_pattern', '''\
-Retrieves a list of existing document paths that match a given pattern.
-
-Args:
-    pattern (str): Path matching pattern, supports SQL LIKE wildcards.
-
-**Returns:**\n
-- List[str]: List of existing document paths matching the pattern.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.update_file_message', '''\
-更新指定文件的字段信息。
-
-Args:
-    fileid (str): 文件的唯一标识符（doc_id）。
-    **kw: 需要更新的字段及其对应的值，键值对形式传入。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.update_file_message', '''\
-Updates fields of the specified file record.
-
-Args:
-    fileid (str): Unique identifier of the file (doc_id).
-    **kw: Key-value pairs of fields to update and their new values.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.update_file_status', '''\
-更新多个文件的状态，支持根据当前状态进行条件过滤。
-
-Args:
-    file_ids (List[str]): 需要更新状态的文件ID列表。
-    status (str): 要设置的新状态。
-    cond_status_list (Union[None, List[str]], optional): 仅更新当前状态在此列表中的文件，默认为 None，表示不筛选。
-
-**Returns:**\n
-- List[DocPartRow]: 返回更新后的文件ID和路径列表。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.update_file_status', '''\
-Updates the status of multiple files, optionally filtered by current status.
-
-Args:
-    file_ids (List[str]): List of file IDs to update.
-    status (str): New status to set.
-    cond_status_list (Union[None, List[str]], optional): List of statuses to filter files that can be updated. Defaults to None.
-
-**Returns:**\n
-- List[DocPartRow]: List of updated file IDs and their paths.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.add_files_to_kb_group', '''\
-将多个文件添加到指定的知识库分组中。
-
-该方法会将文件状态设置为等待处理（waiting），
-若添加成功，则对应文档的计数（count）加一。
-
-Args:
-    file_ids (List[str]): 需要添加的文件ID列表。
-    group (str): 知识库分组名称。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.add_files_to_kb_group', '''\
-Adds multiple files to the specified knowledge base group.
-
-This method sets the file status to waiting.
-If successfully added, increments the document's count.
-
-Args:
-    file_ids (List[str]): List of file IDs to add.
-    group (str): Name of the knowledge base group.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.delete_files_from_kb_group', '''\
-从指定的知识库分组中删除多个文件。
-
-删除成功后，对应文档的计数（count）减少，但不会低于0。
-若文档不存在，会记录警告日志。
-
-Args:
-    file_ids (List[str]): 需要删除的文件ID列表。
-    group (str): 知识库分组名称。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.delete_files_from_kb_group', '''\
-Deletes multiple files from the specified knowledge base group.
-
-After deletion, decrements the document's count but not below zero.
-If the document is not found, logs a warning.
-
-Args:
-    file_ids (List[str]): List of file IDs to delete.
-    group (str): Name of the knowledge base group.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.get_file_status', '''\
-获取指定文件的状态。
-
-Args:
-    fileid (str): 文件的唯一标识符。
-
-**Returns:**\n
-- Optional[Tuple]: 返回包含状态的元组，若文件不存在则返回 None。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.get_file_status', '''\
-Gets the status of a specified file.
-
-Args:
-    fileid (str): Unique identifier of the file.
-
-**Returns:**\n
-- Optional[Tuple]: A tuple containing the status, or None if the file does not exist.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.update_kb_group', '''\
-更新知识库分组中指定文件的状态和重解析需求。
-
-根据给定的文件ID列表、分组名及状态列表，批量更新对应文件在知识库分组中的状态及是否需要重解析标志。
-
-Args:
-    cond_file_ids (List[str]): 需要更新的文件ID列表。
-    cond_group (Optional[str]): 分组名称，若指定则只更新该分组内的文件。
-    cond_status_list (Optional[List[str]]): 仅更新状态匹配此列表的文件。
-    new_status (Optional[str]): 新的文件状态。
-    new_need_reparse (Optional[bool]): 新的重解析需求标志。
-
-**Returns:**\n
-- List[Tuple]: 返回更新后文件的doc_id、group_name及状态列表。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.update_kb_group', '''\
-Updates the status and reparse need flag of specified files in a knowledge base group.
-
-Batch updates files' status and need_reparse flag within a knowledge base group based on file IDs, group name, and optional status filter.
-
-Args:
-    cond_file_ids (List[str]): List of file IDs to update.
-    cond_group (Optional[str]): Group name to filter files, if specified only updates files in this group.
-    cond_status_list (Optional[List[str]]): Only update files whose status is in this list.
-    new_status (Optional[str]): New status to set.
-    new_need_reparse (Optional[bool]): New flag indicating if reparse is needed.
-
-**Returns:**\n
-- List[Tuple]: List of tuples of updated files containing doc_id, group_name, and status.
-''')
-
-add_chinese_doc('rag.utils.SqliteDocListManager.release', '''\
-清空数据库中的所有文档、分组及相关操作日志数据。
-
-该操作会删除 documents、document_groups、kb_group_documents 和 operation_logs 表中的所有记录。
-''')
-
-add_english_doc('rag.utils.SqliteDocListManager.release', '''\
-Clears all documents, groups, and operation logs from the database.
-
-This operation deletes all records from documents, document_groups, kb_group_documents, and operation_logs tables.
-''')
-
-# ---------------------------------------------------------------------------- #
-
 add_chinese_doc('WebModule', '''\
 WebModule是LazyLLM为开发者提供的基于Web的交互界面。在初始化并启动一个WebModule之后，开发者可以从页面上看到WebModule背后的模块结构，并将Chatbot组件的输入传输给自己开发的模块进行处理。
 模块返回的结果和日志会直接显示在网页的“处理日志”和Chatbot组件上。除此之外，WebModule支持在网页上动态加入Checkbox或Text组件用于向模块发送额外的参数。
@@ -8583,7 +7582,7 @@ add_chinese_doc('rag.doc_impl.DocImpl', '''\
 
 Args:
     embed (Dict[str, Callable]): 嵌入函数字典。
-    dlm (Optional[DocListManager]): 文档列表管理器，默认为None。
+    dataset_path (Optional[str]): 数据集目录路径，默认为None。
     doc_files (Optional[str]): 文档文件路径，默认为None。
     kb_group_name (Optional[str]): 知识库组名称，默认为默认组名。
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据描述。
@@ -8599,7 +7598,7 @@ Document implementation class for managing core document processing, storage, an
 
 Args:
     embed (Dict[str, Callable]): Dictionary of embedding functions.
-    dlm (Optional[DocListManager]): Document list manager, defaults to None.
+    dataset_path (Optional[str]): Dataset directory path, defaults to None.
     doc_files (Optional[str]): Document files path, defaults to None.
     kb_group_name (Optional[str]): Knowledge base group name, defaults to default group name.
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): Global metadata description.
@@ -8722,14 +7721,6 @@ Add a local file reader.
 Args:
     pattern (str): File pattern.
     func (Optional[Callable]): Reader function.
-''')
-
-add_chinese_doc('rag.doc_impl.DocImpl.worker', '''\
-后台工作线程，处理文档的解析、删除、添加等操作。
-''')
-
-add_english_doc('rag.doc_impl.DocImpl.worker', '''\
-Background worker thread for handling document parsing, deletion, addition, and other operations.
 ''')
 
 add_chinese_doc('rag.doc_impl.DocImpl.activate_group', '''\

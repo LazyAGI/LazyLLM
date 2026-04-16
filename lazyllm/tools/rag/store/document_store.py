@@ -1,4 +1,6 @@
+import hashlib
 import os
+import re
 import traceback
 import lazyllm
 from collections import defaultdict
@@ -20,6 +22,9 @@ from ..similarity import registered_similarities
 
 
 class _DocumentStore(object):
+    _COLLECTION_NAME_PATTERN = re.compile(r'[^a-z0-9_]+')
+    _COLLECTION_NAME_MAX_LEN = 255
+
     def __init__(self, algo_name: str, store: Union[Dict, LazyLLMStoreBase],
                  group_embed_keys: Optional[Dict[str, Set[str]]] = None, embed: Optional[Dict[str, Callable]] = None,
                  embed_dims: Optional[Dict[str, int]] = None, embed_datatypes: Optional[Dict[str, DataType]] = None,
@@ -153,6 +158,11 @@ class _DocumentStore(object):
     def is_group_empty(self, group: str) -> bool:
         return not self.impl.get(self._gen_collection_name(group), {}, limit=10)
 
+    def _upsert_segments(self, group: str, segments: List[dict]) -> None:
+        collection_name = self._gen_collection_name(group)
+        if not self.impl.upsert(collection_name, segments):
+            raise RuntimeError(f'[_DocumentStore - {self._algo_name}] Failed to upsert segments for group {group}')
+
     def update_nodes(self, nodes: List[DocNode], copy: bool = False):   # noqa: C901
         if not nodes:
             return
@@ -171,7 +181,7 @@ class _DocumentStore(object):
                     LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
                     continue
                 for i in range(0, len(segments), INSERT_BATCH_SIZE):
-                    self.impl.upsert(self._gen_collection_name(group), segments[i:i + INSERT_BATCH_SIZE])
+                    self._upsert_segments(group, segments[i:i + INSERT_BATCH_SIZE])
             # update indices
             for index in self._indices.values():
                 index.update(nodes)
@@ -213,11 +223,13 @@ class _DocumentStore(object):
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                   group: Optional[str] = None, kb_id: Optional[str] = None,
                   limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
-                  numbers: Optional[Set] = None, **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
+                  numbers: Optional[Set] = None, sort_by_number: bool = False,
+                  **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
         try:
             result = self.get_segments(uids=uids, doc_ids=doc_ids, group=group,
                                        kb_id=kb_id, numbers=numbers, limit=limit,
-                                       offset=offset, return_total=return_total, **kwargs)
+                                       offset=offset, return_total=return_total,
+                                       sort_by_number=sort_by_number, **kwargs)
             if return_total:
                 segments, total = result
                 return [self._deserialize_node(segment) for segment in segments], total
@@ -229,7 +241,8 @@ class _DocumentStore(object):
     def get_segments(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                      group: Optional[str] = None, kb_id: Optional[str] = None,
                      limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
-                     numbers: Optional[Set] = None, **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
+                     numbers: Optional[Set] = None, sort_by_number: bool = False,
+                     **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
         # get a set of segments by uids
         # get the segments of the whole file -- doc ids only
         # get the segments of a certain group for one file -- doc ids and group (kb_id is optional)
@@ -240,12 +253,28 @@ class _DocumentStore(object):
             limit, offset = self._normalize_pagination(limit, offset)
             criteria = self._build_get_criteria(uids, doc_ids, kb_id, numbers, kwargs.get('parent'))
             groups = self._resolve_groups(group)
+            if self._can_use_native_segment_pagination(groups, sort_by_number):
+                result = self.impl.get(
+                    self._gen_collection_name(groups[0]),
+                    criteria,
+                    limit=limit,
+                    offset=offset,
+                    return_total=return_total,
+                    sort_by_number=sort_by_number,
+                    **kwargs,
+                )
+                if return_total:
+                    segments, total = result if isinstance(result, tuple) else (result, len(result))
+                    return segments, total
+                return result[0] if isinstance(result, tuple) else result
             segments = []
             for group in groups:
                 if not self.is_group_active(group):
                     LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
                     continue
                 segments.extend(self.impl.get(self._gen_collection_name(group), criteria, **kwargs))
+            if sort_by_number:
+                segments = self._sort_segments_by_number(segments)
             total = len(segments)
             segments = self._slice_segments(segments, limit, offset)
             return (segments, total) if return_total else segments
@@ -264,7 +293,7 @@ class _DocumentStore(object):
             segment['global_meta'].update(metadata)
             group_segments[segment.get('group')].append(segment)
         for group, segments in group_segments.items():
-            self.impl.upsert(self._gen_collection_name(group), segments)
+            self._upsert_segments(group, segments)
         LOG.info(f'[_DocumentStore] Updated metadata for doc_id: {doc_id} in dataset: {kb_id}')
         return
 
@@ -283,10 +312,20 @@ class _DocumentStore(object):
             return segments[offset:end]
         return segments
 
+    @staticmethod
+    def _sort_segments_by_number(segments: List[dict]) -> List[dict]:
+        return sorted(segments, key=lambda segment: (segment.get('number', 0), segment.get('uid', '')))
+
     def _resolve_groups(self, group: Optional[str]) -> List[str]:
         if not group:
             return sorted(self._activated_groups)
         return [group]
+
+    def _can_use_native_segment_pagination(self, groups: List[str], sort_by_number: bool) -> bool:
+        if len(groups) != 1 or not sort_by_number:
+            return False
+        store = getattr(self.impl, 'segment_store', self.impl)
+        return store.__class__.__name__ in {'MapStore', 'OpenSearchStore', 'ElasticSearchStore'}
 
     def _build_get_criteria(self, uids: Optional[List[str]], doc_ids: Optional[Set],
                             kb_id: Optional[str], numbers: Optional[Set] = None,
@@ -440,4 +479,16 @@ class _DocumentStore(object):
         return node.with_sim_score(score) if score else node
 
     def _gen_collection_name(self, group: str) -> str:
-        return f'col_{self._algo_name}_{group}'.lower()
+        raw_name = f'col_{self._algo_name}_{group}'.lower()
+        normalized = self._COLLECTION_NAME_PATTERN.sub('_', raw_name).strip('_')
+        if not normalized:
+            normalized = 'col'
+        if normalized[0].isdigit():
+            normalized = f'col_{normalized}'
+        if normalized == raw_name and len(normalized) <= self._COLLECTION_NAME_MAX_LEN:
+            return normalized
+
+        digest = hashlib.sha1(raw_name.encode()).hexdigest()[:12]
+        max_prefix_len = self._COLLECTION_NAME_MAX_LEN - len(digest) - 1
+        prefix = normalized[:max_prefix_len].rstrip('_') or 'col'
+        return f'{prefix}_{digest}'

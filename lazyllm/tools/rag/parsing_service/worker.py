@@ -6,8 +6,10 @@ import traceback
 import threading
 
 from datetime import datetime
+from typing import Optional
 from uuid import uuid4
 from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapper, load_obj
+from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from ..utils import BaseResponse, _get_default_db_config
 from .base import (
     FINISHED_TASK_QUEUE_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO,
@@ -26,7 +28,8 @@ class DocumentProcessorWorker(ModuleBase):
     class _Impl():
         def __init__(self, db_config: dict = None, task_poller=None, lease_duration: float = 300.0,
                      lease_renew_interval: float = 60.0, high_priority_task_types: list[str] = None,
-                     high_priority_only: bool = False, poll_mode: str = 'direct'):
+                     high_priority_only: bool = False, poll_mode: str = 'thread',
+                     callback_task_statuses: list[str] = None, callback_task_types: list[str] = None):
             self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
             self._shutdown = False
             self._processors: dict[str, _Processor] = {}  # algo_id -> _Processor
@@ -49,6 +52,10 @@ class DocumentProcessorWorker(ModuleBase):
             self._lease_renew_interval = lease_renew_interval
             self._high_priority_task_types = set(high_priority_task_types or [])
             self._high_priority_only = high_priority_only
+            self._callback_task_statuses = {TaskStatus(status).value for status in callback_task_statuses} \
+                if callback_task_statuses else None
+            self._callback_task_types = {TaskType(task_type).value for task_type in callback_task_types} \
+                if callback_task_types else None
 
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
@@ -126,6 +133,8 @@ class DocumentProcessorWorker(ModuleBase):
                 return
             task_id = self._in_progress_task.get('task_id')
             task_type = self._in_progress_task.get('task_type')
+            callback_url = self._in_progress_task.get('callback_url')
+            task_context_json = self._in_progress_task.get('task_context_json')
             if task_id and task_type:
                 self._enqueue_finished_task(
                     task_id=task_id,
@@ -133,6 +142,8 @@ class DocumentProcessorWorker(ModuleBase):
                     task_status=TaskStatus.FAILED,
                     error_code='PRESTOP',
                     error_msg=reason,
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
                 )
                 deleted = self._waiting_task_queue.delete(
                     filter_by={'task_id': task_id, 'worker_id': self._worker_id}
@@ -250,6 +261,7 @@ class DocumentProcessorWorker(ModuleBase):
 
         def _exec_transfer_task(self, processor: _Processor, task_id: str, payload: dict):
             try:
+                self._validate_transfer_payload(payload)
                 file_infos = payload.get('file_infos')
                 kb_id = payload.get('kb_id', None)
                 input_files = []
@@ -297,8 +309,85 @@ class DocumentProcessorWorker(ModuleBase):
                 LOG.error(f'{self._log_prefix(task_id)} Execute update meta task failed: {e}')
                 raise e
 
+        @staticmethod
+        def _resolve_callback_url(payload: dict):
+            return payload.get('callback_url') or payload.get('feedback_url')
+
+        @staticmethod
+        def _build_task_context(task_type: str, payload: dict) -> dict:
+            items = []
+            if task_type in (TaskType.DOC_ADD.value, TaskType.DOC_REPARSE.value, TaskType.DOC_UPDATE_META.value):
+                file_infos = payload.get('file_infos') or []
+                items = [{
+                    'doc_id': file_info.get('doc_id'),
+                    'file_path': file_info.get('file_path'),
+                    'metadata': file_info.get('metadata'),
+                    'reparse_group': file_info.get('reparse_group'),
+                } for file_info in file_infos]
+            elif task_type == TaskType.DOC_DELETE.value:
+                items = [{'doc_id': doc_id} for doc_id in (payload.get('doc_ids') or [])]
+            elif task_type == TaskType.DOC_TRANSFER.value:
+                file_infos = payload.get('file_infos') or []
+                items = [{
+                    'doc_id': file_info.get('doc_id'),
+                    'file_path': file_info.get('file_path'),
+                    'metadata': file_info.get('metadata'),
+                    'target_doc_id': (file_info.get('transfer_params') or {}).get('target_doc_id'),
+                    'target_kb_id': (file_info.get('transfer_params') or {}).get('target_kb_id'),
+                    'transfer_mode': (file_info.get('transfer_params') or {}).get('mode'),
+                } for file_info in file_infos]
+            if not items:
+                items = [{}]
+            return {
+                'task_type': task_type,
+                'kb_id': payload.get('kb_id'),
+                'algo_id': payload.get('algo_id'),
+                'items': items,
+            }
+
         def _resolve_task_type(self, request: AddDocRequest) -> str:
             return _resolve_add_doc_task_type(request)
+
+        @staticmethod
+        def _validate_transfer_payload(payload: dict):  # noqa: C901
+            file_infos = payload.get('file_infos')
+            if not isinstance(file_infos, list) or not file_infos:
+                raise ValueError('file_infos is required for task_type DOC_TRANSFER')
+            transfer_mode = None
+            target_kb_id = None
+            target_algo_id = None
+            target_doc_ids = set()
+            request_algo_id = payload.get('algo_id')
+            for idx, file_info in enumerate(file_infos):
+                transfer_params = file_info.get('transfer_params')
+                if not isinstance(transfer_params, dict) or not transfer_params:
+                    raise ValueError(f'transfer_params is required for task_type DOC_TRANSFER at index {idx}')
+                current_mode = transfer_params.get('mode')
+                current_target_kb_id = transfer_params.get('target_kb_id')
+                current_target_algo_id = transfer_params.get('target_algo_id')
+                current_target_doc_id = transfer_params.get('target_doc_id')
+                if current_mode not in ('cp', 'mv'):
+                    raise ValueError('transfer_params.mode must be one of [cp, mv]')
+                if not current_target_kb_id:
+                    raise ValueError('transfer_params.target_kb_id is required for task_type DOC_TRANSFER')
+                if not current_target_algo_id:
+                    raise ValueError('transfer_params.target_algo_id is required for task_type DOC_TRANSFER')
+                if not current_target_doc_id:
+                    raise ValueError('transfer_params.target_doc_id is required for task_type DOC_TRANSFER')
+                if transfer_mode is not None and transfer_mode != current_mode:
+                    raise ValueError('transfer_params.mode must be the same for all files')
+                if target_kb_id is not None and target_kb_id != current_target_kb_id:
+                    raise ValueError('transfer_params.target_kb_id must be the same for all files')
+                if target_algo_id is not None and target_algo_id != current_target_algo_id:
+                    raise ValueError('transfer_params.target_algo_id must be the same for all files')
+                if request_algo_id is not None and current_target_algo_id != request_algo_id:
+                    raise ValueError('transfer_params.target_algo_id must match request.algo_id')
+                if current_target_doc_id in target_doc_ids:
+                    raise ValueError('transfer_params.target_doc_id must be unique for all files')
+                transfer_mode = current_mode
+                target_kb_id = current_target_kb_id
+                target_algo_id = current_target_algo_id
+                target_doc_ids.add(current_target_doc_id)
 
         def _validate_task_payload(self, task_type: str, payload: dict):
             if not isinstance(payload, dict):
@@ -316,6 +405,8 @@ class DocumentProcessorWorker(ModuleBase):
                 doc_ids = payload.get('doc_ids')
                 if not isinstance(doc_ids, list) or not doc_ids:
                     raise ValueError('doc_ids is required for task_type DOC_DELETE')
+            if task_type == TaskType.DOC_TRANSFER.value:
+                self._validate_transfer_payload(payload)
 
         def _summarize_task_payload(self, task_type: str, payload: dict) -> str:
             summary = {
@@ -380,20 +471,27 @@ class DocumentProcessorWorker(ModuleBase):
         def _parse_task_payload(self, task: dict):
             task_type = task.get('task_type')
             if task_type == TaskType.DOC_DELETE.value:
-                task_info = DeleteDocRequest(**task)
+                task_info = DeleteDocRequest.model_validate(task)
             elif task_type == TaskType.DOC_UPDATE_META.value:
-                task_info = UpdateMetaRequest(**task)
+                task_info = UpdateMetaRequest.model_validate(task)
             else:
-                task_info = AddDocRequest(**task)
+                task_info = AddDocRequest.model_validate(task)
                 task_type = task_type or self._resolve_task_type(task_info)
             task_id = task_info.task_id
-            payload = task_info.model_dump()
+            payload = task_info.model_dump(mode='json')
             self._validate_task_payload(task_type, payload)
             return task_id, task_type, payload
 
         def _run_task(self, task_id: str, task_type: str, payload: dict, from_queue: bool):  # noqa: C901
+            callback_url = self._resolve_callback_url(payload)
+            task_context_json = json.dumps(self._build_task_context(task_type, payload), ensure_ascii=False)
             try:
-                self._in_progress_task = {'task_id': task_id, 'task_type': task_type}
+                self._in_progress_task = {
+                    'task_id': task_id,
+                    'task_type': task_type,
+                    'callback_url': callback_url,
+                    'task_context_json': task_context_json,
+                }
                 if from_queue:
                     self._start_lease_renewal(task_id)
                 algo_id = payload.get('algo_id')
@@ -402,6 +500,13 @@ class DocumentProcessorWorker(ModuleBase):
 
                 LOG.info(f'{self._log_prefix(task_id)} Start processing task: '
                          f'{self._summarize_task_payload(task_type, payload)}')
+                self._enqueue_finished_task(
+                    task_id=task_id,
+                    task_type=task_type,
+                    task_status=TaskStatus.WORKING,
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
+                )
 
                 processor = self._get_or_create_processor(algo_id)
                 if task_type == TaskType.DOC_ADD.value:
@@ -417,8 +522,15 @@ class DocumentProcessorWorker(ModuleBase):
                 else:
                     raise ValueError(f'{self._log_prefix(task_id)} Unknown task type: {task_type}')
 
-                self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FINISHED,
-                                            error_code='200', error_msg='success')
+                self._enqueue_finished_task(
+                    task_id=task_id,
+                    task_type=task_type,
+                    task_status=TaskStatus.SUCCESS,
+                    error_code='200',
+                    error_msg='success',
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
+                )
                 if from_queue:
                     deleted = self._waiting_task_queue.delete(
                         filter_by={'task_id': task_id, 'worker_id': self._worker_id}
@@ -428,8 +540,15 @@ class DocumentProcessorWorker(ModuleBase):
             except Exception as e:
                 LOG.error(f'{self._log_prefix(task_id)} Failed to run task: {e}, {traceback.format_exc()}')
                 if task_id and task_type:
-                    self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FAILED,
-                                                error_code=type(e).__name__, error_msg=str(e))
+                    self._enqueue_finished_task(
+                        task_id=task_id,
+                        task_type=task_type,
+                        task_status=TaskStatus.FAILED,
+                        error_code=type(e).__name__,
+                        error_msg=str(e),
+                        callback_url=callback_url,
+                        task_context_json=task_context_json,
+                    )
                     if from_queue:
                         deleted = self._waiting_task_queue.delete(
                             filter_by={'task_id': task_id, 'worker_id': self._worker_id}
@@ -471,19 +590,28 @@ class DocumentProcessorWorker(ModuleBase):
             )
 
         def _enqueue_finished_task(self, task_id: str, task_type: str, task_status: TaskStatus,
-                                   error_code: str = None, error_msg: str = None):
+                                   error_code: str = None, error_msg: str = None,
+                                   callback_url: str = None, task_context_json: str = None):
             try:
                 self._lazy_init()
+                if self._callback_task_statuses and task_status.value not in self._callback_task_statuses:
+                    return
+                if self._callback_task_types and task_type not in self._callback_task_types:
+                    return
                 self._finished_task_queue.enqueue(
                     task_id=task_id,
                     task_type=task_type,
                     task_status=task_status.value,
                     finished_at=datetime.now(),
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
                     error_code=error_code if error_code else '200',
                     error_msg=error_msg if error_msg else 'success'
                 )
-                if task_status == TaskStatus.FINISHED:
-                    LOG.info(f'{self._log_prefix(task_id)} Task finished successfully')
+                if task_status == TaskStatus.WORKING:
+                    LOG.info(f'{self._log_prefix(task_id)} Task started')
+                elif task_status == TaskStatus.SUCCESS:
+                    LOG.info(f'{self._log_prefix(task_id)} Task completed successfully')
                 else:
                     LOG.error(f'{self._log_prefix(task_id)} Task completed with status {task_status}: {error_msg}')
             except Exception as e:
@@ -498,8 +626,18 @@ class DocumentProcessorWorker(ModuleBase):
                     time.sleep(WORKER_ERROR_RETRY_INTERVAL)
                     continue
                 if task_data:
+                    payload = None
+                    callback_url = None
+                    task_context_json = None
                     try:
                         payload = json.loads(task_data.get('message'))
+                        callback_url = self._resolve_callback_url(payload) if isinstance(payload, dict) else None
+                        if isinstance(payload, dict):
+                            task_context_json = json.dumps(
+                                self._build_task_context(task_data['task_type'], payload),
+                                ensure_ascii=False,
+                            )
+                        self._validate_task_payload(task_data['task_type'], payload)
                     except Exception as e:
                         task_id = task_data.get('task_id')
                         task_type = task_data.get('task_type')
@@ -513,6 +651,8 @@ class DocumentProcessorWorker(ModuleBase):
                                     task_status=TaskStatus.FAILED,
                                     error_code=type(e).__name__,
                                     error_msg=str(e),
+                                    callback_url=callback_url,
+                                    task_context_json=task_context_json,
                                 )
                                 deleted = self._waiting_task_queue.delete(
                                     filter_by={'task_id': task_id, 'worker_id': self._worker_id}
@@ -587,7 +727,8 @@ class DocumentProcessorWorker(ModuleBase):
     def __init__(self, db_config: dict = None, num_workers: int = 1, port: int = None,
                  task_poller=None, lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
                  high_priority_task_types: list[str] = None, high_priority_only: bool = False,
-                 poll_mode: str = 'direct'):
+                 poll_mode: str = 'thread', callback_task_statuses: list[str] = None,
+                 callback_task_types: list[str] = None, launcher: Optional[Launcher] = None):
         super().__init__()
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         self._num_workers = num_workers
@@ -600,8 +741,20 @@ class DocumentProcessorWorker(ModuleBase):
             high_priority_task_types=high_priority_task_types,
             high_priority_only=high_priority_only,
             poll_mode=poll_mode,
+            callback_task_statuses=callback_task_statuses,
+            callback_task_types=callback_task_types,
         )
-        self._worker_impl = ServerModule(worker_impl, port=self._port, num_replicas=self._num_workers)
+        # Workers are lightweight orchestration subprocesses (task queue polling,
+        # callbacks); they never need GPU. Default to EmptyLauncher so they stay
+        # on the same host even when the process-wide LAZYLLM_DEFAULT_LAUNCHER is
+        # 'sco' (CI) -- otherwise worker.start() tries to srun and hangs waiting
+        # for a slurm node. Callers can still override via the ``launcher`` arg.
+        import lazyllm as _lazyllm
+        effective_launcher = launcher if launcher is not None else _lazyllm.launchers.empty(sync=False)
+        self._worker_impl = ServerModule(
+            worker_impl, port=self._port, num_replicas=self._num_workers,
+            launcher=effective_launcher,
+        )
         LOG.info(f'[DocumentProcessorWorker] Worker initialized with {num_workers} workers')
 
     def _dispatch(self, method: str, *args, **kwargs):
@@ -617,6 +770,12 @@ class DocumentProcessorWorker(ModuleBase):
         self._dispatch('start')
         LOG.info('[DocumentProcessorWorker] Worker started')
         return result
+
+    def wait(self):
+        impl = self._worker_impl
+        if isinstance(impl, ServerModule):
+            return impl.wait()
+        LOG.warning('[DocumentProcessorWorker] wait() is no-op in local mode')
 
     def stop(self):
         LOG.info('[DocumentProcessorWorker] Stopping worker...')

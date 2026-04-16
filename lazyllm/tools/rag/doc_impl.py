@@ -1,10 +1,8 @@
-import json
-import threading
-import time
+import os
 from enum import Enum
 from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
-from lazyllm import LOG, once_wrapper
+from lazyllm import LOG, once_wrapper, config
 from lazyllm.module import LLMBase
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
@@ -14,14 +12,13 @@ from .store.store_base import DEFAULT_KB_ID
 from .store.document_store import _DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, is_sparse, _get_default_db_config
+from .utils import RAG_DEFAULT_GROUP_NAME, gen_docid, is_sparse, _get_default_db_config
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 from .data_type import DataType
 from .parsing_service import _Processor, DocumentProcessor
 from .embed_wrapper import _EmbedWrapper
 from .doc_to_db import SchemaExtractor
 from dataclasses import dataclass
-from itertools import repeat
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -69,8 +66,8 @@ class DocImpl:
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
 
-    def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
-                 doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
+    def __init__(self, embed: Dict[str, Callable], dataset_path: Optional[str] = None,
+                 doc_files: Optional[List[str]] = None, kb_group_name: Optional[str] = None,
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  store: Optional[Union[Dict, LazyLLMStoreBase]] = None,
                  processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None,
@@ -78,8 +75,9 @@ class DocImpl:
                  schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
-        self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
-        self._dlm, self._doc_files = dlm, doc_files
+        self._kb_group_name = kb_group_name or RAG_DEFAULT_GROUP_NAME
+        self._dataset_path = dataset_path
+        self._doc_files = doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {
             LAZY_ROOT_NAME: dict(parent=None, display_name='Original Source', group_type=NodeGroupType.ORIGINAL),
@@ -173,30 +171,27 @@ class DocImpl:
         self._init_node_groups()
         self._create_schema_extractor()
         self._create_store()
-        cloud = not (self._dlm or self._doc_files is not None)
+        cloud = not (self._dataset_path or self._doc_files is not None)
 
         self._resolve_index_pending_registrations()
         if self._processor:
-            assert cloud and isinstance(self._processor, DocumentProcessor)
+            if not isinstance(self._processor, DocumentProcessor):
+                raise TypeError(
+                    f'processor must be a DocumentProcessor instance, got {type(self._processor).__name__!r}'
+                )
             self._processor.register_algorithm(self._algo_name, self._store, self._reader, self.node_groups,
                                                self._schema_extractor, self._display_name, self._description)
         else:
             self._processor = _Processor(self._algo_name, self._store, self._reader, self.node_groups,
                                          self._schema_extractor, self._display_name, self._description)
 
-        # init files when `cloud` is False
-        if not cloud and self._store.is_group_empty(LAZY_ROOT_NAME):
-            ids, pathes, metadatas = self._list_files(upload_status=DocListManager.Status.success)
-            self._processor.add_doc(pathes, ids, metadatas)
-            if pathes and self._dlm:
-                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
-                                          new_status=DocListManager.Status.success)
-        if self._dlm:
-            self._init_monitor_event = threading.Event()
-            self._daemon = threading.Thread(target=self.worker)
-            self._daemon.daemon = True
-            self._daemon.start()
-            self._init_monitor_event.wait()
+        # `cloud` is True iff both dataset_path and doc_files are absent. Otherwise do a
+        # one-time ingest: DocImpl only owns the scan in map-store flows now (persistent
+        # store + dataset_path auto-upgrades to DocServer; DocumentProcessor + dataset_path
+        # is rejected at Document.__init__), so re-scan on every process start is harmless
+        # and matches the empty map store. No background monitor is started.
+        if not cloud:
+            self._ingest_local_dataset()
 
     def _resolve_index_pending_registrations(self):
         for index_type, index_cls, index_args, index_kwargs in self._index_pending_registrations:
@@ -298,93 +293,51 @@ class DocImpl:
         self._local_file_reader[pattern] = func
         self._reader._lazy_init.flag.reset()
 
-    def _add_doc_to_store_with_status(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]],
-                                      cond_status_list: Optional[List[str]] = None):
-        success_ids, failed_ids = [], []
-        for filepath, doc_id, metadata in zip(input_files, ids or repeat(None), metadatas or repeat(None)):
+    def _add_doc_to_store(self, input_files: List[str], ids: List[str],
+                          metadatas: List[Dict[str, Any]]) -> Set[str]:
+        '''Add documents to store. Returns the set of doc_ids that were successfully added.'''
+        success_ids: Set[str] = set()
+        for filepath, doc_id, metadata in zip(input_files, ids, metadatas):
+            filepath = os.path.abspath(filepath)
             try:
-                self._add_doc_to_store(input_files=[filepath], ids=[doc_id] if doc_id is not None else None,
-                                       metadatas=[metadata] if metadata is not None else None)
-                success_ids.append(doc_id)
+                self._processor.add_doc([filepath], [doc_id], [metadata] if metadata is not None else None)
+                success_ids.add(doc_id)
             except Exception as e:
                 LOG.error(f'Error adding document {doc_id} ({filepath}) to store: {e}')
-                failed_ids.append(doc_id)
+        return success_ids
 
-        if success_ids:
-            self._dlm.update_kb_group(cond_file_ids=success_ids, cond_group=self._kb_group_name,
-                                      cond_status_list=cond_status_list, new_status=DocListManager.Status.success)
-        if failed_ids:
-            self._dlm.update_kb_group(cond_file_ids=failed_ids, cond_group=self._kb_group_name,
-                                      cond_status_list=cond_status_list, new_status=DocListManager.Status.failed)
+    def _list_dataset_files(self) -> List[str]:
+        from .doc_service.utils import list_dataset_files
+        return list_dataset_files(self._dataset_path)
 
-    def _batch_call(self, func: Callable, *args, batch_size: int = 10, **kwargs):
-        batch_count = next((len(arg) for arg in args if isinstance(arg, (tuple, list))), 0)
-        for i in range(0, batch_count, batch_size):
-            func(*[arg[i:i + batch_size] if isinstance(arg, (list, tuple)) else arg for arg in args], **kwargs)
+    def _list_local_files(self) -> Tuple[List[str], List[str], List[Dict[str, Any]]]:
+        paths = ([self._resolve_doc_file_path(path) for path in self._doc_files]
+                 if self._doc_files is not None else self._list_dataset_files())
+        ids = [gen_docid(path) for path in paths]
+        return ids, paths, [{} for _ in paths]
 
-    def worker(self):
-        is_first_run = True
-        while True:
-            # Apply meta changes
-            rows = self._dlm.fetch_docs_changed_meta(self._kb_group_name)
-            for row in rows:
-                new_meta_dict = json.loads(row[1]) if row[1] else {}
-                self._processor.update_doc_meta(doc_id=row[0], metadata=new_meta_dict)
+    @staticmethod
+    def _resolve_doc_file_path(path: str) -> str:
+        # Normalize absolute paths too, matching the prior os.path.abspath(...)
+        # behavior so gen_docid produces a stable id regardless of whether the
+        # caller used "/abs/./x" vs "/abs/x" or mixed separators on Windows.
+        if os.path.isabs(path):
+            return os.path.abspath(path)
+        if config['data_path']:
+            candidate = os.path.join(config['data_path'], path)
+            if os.path.exists(candidate):
+                return os.path.abspath(candidate)
+        return os.path.abspath(path)
 
-            # Step 1: do doc-parsing, highest priority
-            docs = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
-            if docs:
-                filepaths = [doc.path for doc in docs]
-                ids = [doc.doc_id for doc in docs]
-                metadatas = [json.loads(doc.meta) if doc.meta else None for doc in docs]
-                # update status and need_reparse
-                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
-                                          new_status=DocListManager.Status.working, new_need_reparse=False)
-                self._delete_doc_from_store(doc_ids=ids)
-                self._batch_call(self._add_doc_to_store_with_status, filepaths, ids, metadatas, batch_size=10)
-
-            # Step 2: After doc is deleted from related kb_group, delete doc from db
-            if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
-                self._dlm.delete_unreferenced_doc()
-
-            # Step 3: do doc-deleting
-            ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
-            if files:
-                self._delete_doc_from_store(doc_ids=ids)
-                self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
-
-            # Step 4: do doc-adding
-            ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
-                                                     upload_status=DocListManager.Status.success)
-            if files:
-                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
-                                          new_status=DocListManager.Status.working)
-                self._batch_call(self._add_doc_to_store_with_status,
-                                 files, ids, metadatas, cond_status_list=[DocListManager.Status.working])
-
-            if is_first_run:
-                self._init_monitor_event.set()
-            is_first_run = False
-            time.sleep(10)
-
-    def _list_files(
-            self, status: Union[str, List[str]] = DocListManager.Status.all,
-            upload_status: Union[str, List[str]] = DocListManager.Status.all
-    ) -> Tuple[List[str], List[str], List[Dict]]:
-        if self._doc_files is not None: return None, self._doc_files, None
-        if not self._dlm: return [], [], []
-        ids, paths, metadatas = [], [], []
-        for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status,
-                                                 upload_status=upload_status, details=True):
-            ids.append(row[0])
-            paths.append(row[1])
-            metadatas.append(json.loads(row[3]) if row[3] else {})
-        return ids, paths, metadatas
-
-    def _add_doc_to_store(self, input_files: List[str], ids: Optional[List[str]] = None,
-                          metadatas: Optional[List[Dict[str, Any]]] = None):
-        if not input_files: return
-        self._processor.add_doc(input_files, ids, metadatas)
+    def _ingest_local_dataset(self):
+        '''One-time ingest at `_lazy_init`: load every file in `dataset_path` /
+        `doc_files` into the store. No background polling / diff tracking —
+        directory change detection now lives in DocServer's SQL-backed scan
+        (persistent stores auto-upgrade to it).
+        '''
+        ids, paths, metadatas = self._list_local_files()
+        if paths:
+            self._add_doc_to_store(paths, ids, metadatas)
 
     def _delete_doc_from_store(self, doc_ids: List[str] = None) -> None:
         self._processor.delete_doc(doc_ids=doc_ids)
@@ -551,11 +504,15 @@ class DocImpl:
         return set_id
 
     def _get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                   group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
-                   ) -> List[DocNode]:
+                   group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None,
+                   limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
+                   sort_by_number: bool = False) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
         self._lazy_init()
-        return self._store.get_nodes(uids=uids, doc_ids=doc_ids, group=group,
-                                     kb_id=kb_id, numbers=numbers, display=True)
+        return self._store.get_nodes(
+            uids=uids, doc_ids=doc_ids, group=group, kb_id=kb_id, numbers=numbers,
+            limit=limit, offset=offset, return_total=return_total,
+            sort_by_number=sort_by_number, display=True,
+        )
 
     def _get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
                           merge: bool = False) -> Union[List[DocNode], DocNode]:

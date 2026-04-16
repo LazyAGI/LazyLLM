@@ -13,12 +13,12 @@ from string import Template
 
 from lazyllm import LOG, ThreadPoolExecutor, once_wrapper
 from lazyllm.components import JsonFormatter
-from lazyllm.module import LLMBase
+from lazyllm.module import LLMBase, ModuleBase
 
 from ...sql.sql_manager import DBStatus, SqlManager
 from ..doc_node import DocNode
 from ..global_metadata import RAG_DOC_ID, RAG_KB_ID
-from ..utils import DocListManager, _orm_to_dict
+from ..utils import _orm_to_dict
 from ..store.store_base import DEFAULT_KB_ID
 from .model import (
     TABLE_SCHEMA_SET_INFO, Table_ALGO_KB_SCHEMA, ExtractionMode,
@@ -33,7 +33,7 @@ from .utils import _col_type_name
 ONE_DOC_LENGTH_LIMIT = 102400
 
 
-class SchemaExtractor:
+class SchemaExtractor(ModuleBase):
     '''Schema aware extractor that materializes BaseModel schemas into database tables.'''
 
     TABLE_PREFIX = 'lazyllm_schema'
@@ -68,6 +68,7 @@ class SchemaExtractor:
     def __init__(self, db_config: Dict[str, Any], llm: LLMBase, *, table_prefix: Optional[str] = None,
                  force_refresh: bool = False, extraction_mode: ExtractionMode = ExtractionMode.TEXT,
                  max_len: int = ONE_DOC_LENGTH_LIMIT, num_workers: int = 4):
+        super().__init__()
         if not isinstance(llm, LLMBase):
             raise TypeError('llm must be an instance of LLMBase')
         self._llm = llm
@@ -293,7 +294,7 @@ class SchemaExtractor:
                 return True
         return schema_set_id in self._schema_registry
 
-    def register_schema_set_to_kb(self, algo_id: Optional[str] = DocListManager.DEFAULT_GROUP_NAME,
+    def register_schema_set_to_kb(self, algo_id: Optional[str] = DEFAULT_KB_ID,
                                   kb_id: Optional[str] = DEFAULT_KB_ID, schema_set_id: Optional[str] = None,
                                   schema_set: Type[BaseModel] = None, force_refresh: bool = False) -> str:
         '''
@@ -555,7 +556,7 @@ class SchemaExtractor:
         return kb_id, doc_id, _orm_to_dict(bound)
 
     def extract_and_store(self, data: Union[str, List[DocNode]],  # noqa: C901
-                          algo_id: str = DocListManager.DEFAULT_GROUP_NAME,
+                          algo_id: str = DEFAULT_KB_ID,
                           schema_set_id: str = None, schema_set: Type[BaseModel] = None) -> ExtractResult:
         '''Persist extracted fields for a document'''
         self._lazy_init()
@@ -724,8 +725,8 @@ class SchemaExtractor:
             results.append(ExtractResult(data=row_data, metadata=meta))
         return results
 
-    def __call__(self, data: Union[str, List[DocNode]],
-                 algo_id: str = DocListManager.DEFAULT_GROUP_NAME) -> ExtractResult:
+    def forward(self, data: Union[str, List[DocNode]],
+                algo_id: str = DEFAULT_KB_ID) -> ExtractResult:
         # NOTE: data should be from single file source (kb_id, doc_id should be the same)
         self._lazy_init()
         res = self.extract_and_store(data=data, algo_id=algo_id)
@@ -760,13 +761,12 @@ class SchemaExtractor:
         attrs: Dict[str, Any] = {
             '__tablename__': table_name,
             '__table_args__': (
-                sqlalchemy.PrimaryKeyConstraint(self.SYS_KB_ID, self.SYS_DOC_ID, name=f'pk_{table_name}_kb_doc'),
                 sqlalchemy.Index(f'idx_{table_name}_kb', self.SYS_KB_ID),
                 {'extend_existing': True},
             ),
         }
-        attrs[self.SYS_KB_ID] = sqlalchemy.Column(sqlalchemy.String(128), nullable=False)
-        attrs[self.SYS_DOC_ID] = sqlalchemy.Column(sqlalchemy.String(128), nullable=False)
+        attrs[self.SYS_KB_ID] = sqlalchemy.Column(sqlalchemy.String(128), primary_key=True, nullable=False)
+        attrs[self.SYS_DOC_ID] = sqlalchemy.Column(sqlalchemy.String(128), primary_key=True, nullable=False)
         attrs[self.SYS_ALGO_ID] = sqlalchemy.Column(sqlalchemy.String(128), nullable=False)
         attrs['extract_meta'] = sqlalchemy.Column(sqlalchemy.JSON, nullable=True)
 

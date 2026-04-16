@@ -1177,6 +1177,23 @@ class TestTextSplitterBase:
         metadata_size = splitter._get_metadata_size(node)
         assert metadata_size == 0
 
+    def test_get_metadata_size_respects_excluded_metadata_keys(self):
+        splitter = _TextSplitterBase(chunk_size=200, overlap=10)
+        node = DocNode(
+            text='Hello, world! This is a test.',
+            metadata={
+                'file_name': 'test.pdf',
+                'title': 'Section 1',
+                'lines': [{'content': 'x' * 2000, 'page': 1}],
+            },
+        )
+        node.excluded_embed_metadata_keys = ['lines']
+        node.excluded_llm_metadata_keys = ['lines']
+
+        metadata_size = splitter._get_metadata_size(node)
+
+        assert metadata_size < 200
+
     def test_transform_returns_chunks(self, doc_node):
         splitter = _TextSplitterBase(chunk_size=20, overlap=10)
         chunks = splitter([doc_node])

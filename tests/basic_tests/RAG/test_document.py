@@ -1,4 +1,5 @@
 import lazyllm
+import cloudpickle
 from lazyllm.tools.rag.doc_impl import DocImpl
 from lazyllm.tools.rag.store.store_base import LAZY_IMAGE_GROUP
 from lazyllm.tools.rag.transform import SentenceSplitter
@@ -6,20 +7,19 @@ from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
-from lazyllm.tools.rag.doc_manager import DocManager
-from lazyllm.tools.rag.utils import DocListManager, gen_docid
-from lazyllm.launcher import cleanup
-from lazyllm import config
-from unittest.mock import MagicMock
-import unittest
-import httpx
 import os
 import shutil
-import io
-import re
-import json
-import time
 import tempfile
+import unittest
+import uuid
+from unittest.mock import MagicMock
+
+import lazyllm.tools.rag.document as document_module
+from lazyllm.launcher import cleanup
+from lazyllm.module import LLMBase
+from lazyllm.tools.rag.doc_to_db import SchemaExtractor
+from lazyllm.tools.rag.utils import gen_docid
+from pydantic import BaseModel, Field
 
 
 class TestDocImpl(unittest.TestCase):
@@ -40,6 +40,14 @@ class TestDocImpl(unittest.TestCase):
     def tearDown(self):
         self.tmp_file_a.close()
         self.tmp_file_b.close()
+
+    def _build_root_nodes(self, input_files):
+        root_nodes = []
+        for path in input_files:
+            node = DocNode(group=LAZY_ROOT_NAME, text=os.path.basename(path))
+            node._global_metadata = {RAG_DOC_ID: gen_docid(path), RAG_DOC_PATH: path}
+            root_nodes.append(node)
+        return {LAZY_ROOT_NAME: root_nodes, LAZY_IMAGE_GROUP: []}
 
     def test_create_node_group_default(self):
         self.doc_impl._create_builtin_node_group('MyChunk', transform=lambda x: ','.split(x))
@@ -85,19 +93,178 @@ class TestDocImpl(unittest.TestCase):
         new_doc = DocNode(text='new dummy text', group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_ID: gen_docid(self.tmp_file_b.name), RAG_DOC_PATH: self.tmp_file_b.name}
         self.mock_directory_reader.load_data.return_value = {LAZY_ROOT_NAME: [new_doc], LAZY_IMAGE_GROUP: []}
-        self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
+        self.doc_impl._processor.add_doc([self.tmp_file_b.name])
         assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 2
+
+    def test_dataset_path_sync_without_doc_list_manager(self):
+        self.mock_embed.return_value = [0.1, 0.2, 0.3]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = os.path.join(temp_dir, 'test.txt')
+            with open(file_path, 'w') as file:
+                file.write('local dataset path')
+
+            doc_impl = DocImpl(embed=self.mock_embed, dataset_path=temp_dir)
+            doc_impl._reader = MagicMock()
+            doc_impl._reader.load_data.side_effect = (
+                lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
+            )
+            doc_impl._lazy_init()
+
+            nodes = doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
+            assert len(nodes) == 1
+            assert nodes[0].global_metadata[RAG_DOC_ID] == gen_docid(file_path)
+            assert nodes[0].global_metadata[RAG_DOC_PATH] == file_path
+            assert not hasattr(doc_impl, '_dlm')
+
+    def test_dataset_path_file_is_normalized_to_absolute(self):
+        self.mock_embed.return_value = [0.1, 0.2, 0.3]
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            try:
+                os.chdir(temp_dir)
+                with open('test.txt', 'w') as file:
+                    file.write('local dataset file')
+
+                doc_impl = DocImpl(embed=self.mock_embed, dataset_path='test.txt')
+                doc_impl._reader = MagicMock()
+                doc_impl._reader.load_data.side_effect = (
+                    lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
+                )
+                doc_impl._lazy_init()
+
+                nodes = doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
+                assert len(nodes) == 1
+                assert nodes[0].global_metadata[RAG_DOC_ID] == gen_docid(os.path.abspath('test.txt'))
+                assert nodes[0].global_metadata[RAG_DOC_PATH] == os.path.abspath('test.txt')
+            finally:
+                os.chdir(cwd)
+
+    def test_doc_files_resolve_relative_paths_via_data_path(self):
+        self.mock_embed.return_value = [0.1, 0.2, 0.3]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = os.path.join(temp_dir, 'test.txt')
+            with open(file_path, 'w') as file:
+                file.write('local dataset file')
+
+            original_data_path = lazyllm.config._impl['data_path']
+            lazyllm.config._impl['data_path'] = temp_dir
+            try:
+                doc_impl = DocImpl(embed=self.mock_embed, doc_files=['test.txt'])
+                doc_impl._reader = MagicMock()
+                doc_impl._reader.load_data.side_effect = (
+                    lambda input_files, metadatas, split_nodes_by_type=True: self._build_root_nodes(input_files)
+                )
+                doc_impl._lazy_init()
+
+                nodes = doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
+                assert len(nodes) == 1
+                assert nodes[0].global_metadata[RAG_DOC_ID] == gen_docid(file_path)
+                assert nodes[0].global_metadata[RAG_DOC_PATH] == file_path
+            finally:
+                lazyllm.config._impl['data_path'] = original_data_path
+
+    def test_doc_impl_can_be_pickled_before_lazy_init(self):
+        doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
+        serialized = cloudpickle.dumps(doc_impl)
+        restored = cloudpickle.loads(serialized)
+        # Basic round-trip sanity: lazy_init flag resets, dataset wiring survives.
+        assert restored._doc_files == doc_impl._doc_files
+        assert restored._lazy_init.flag is not doc_impl._lazy_init.flag
+
+    def test_ingest_local_dataset_per_file_failure_is_isolated(self):
+        '''Regression: a failure on one file in _ingest_local_dataset must not abort ingest
+        of the other files. _add_doc_to_store wraps each call in its own try/except.'''
+        mock_embed = MagicMock()
+        mock_embed.return_value = [0.1, 0.2, 0.3]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for name in ('a.txt', 'b.txt'):
+                with open(os.path.join(temp_dir, name), 'w') as f:
+                    f.write(name)
+            doc_impl = DocImpl(embed=mock_embed, dataset_path=temp_dir)
+            call_count = [0]
+
+            def flaky_add_doc(files, ids, metadatas=None):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    raise RuntimeError('simulated first-file failure')
+                # second file: return a valid root node so it lands in the store
+                node = DocNode(group=LAZY_ROOT_NAME, text=os.path.basename(files[0]))
+                node._global_metadata = {RAG_DOC_ID: ids[0], RAG_DOC_PATH: files[0]}
+                return {LAZY_ROOT_NAME: [node], LAZY_IMAGE_GROUP: []}
+
+            doc_impl._reader = MagicMock()
+            doc_impl._reader.load_data.side_effect = (
+                lambda input_files, metadatas, split_nodes_by_type=True:
+                flaky_add_doc(input_files, [gen_docid(f) for f in input_files], metadatas)
+            )
+            doc_impl._lazy_init()
+            # One failed, one succeeded — the survivor must be in the store.
+            nodes = doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
+            assert len(nodes) == 1
+            assert call_count[0] == 2  # both files attempted, not aborted after first error
+
+
+class _DummyLLM(LLMBase):
+    def forward(self, *args, **kwargs):
+        return ''
+
+
+class TestSchemaExtractorRegression(unittest.TestCase):
+    def test_ensure_table_handles_existing_composite_primary_key(self):
+        fd, db_path = tempfile.mkstemp(suffix='.db')
+        os.close(fd)
+        extractor = None
+        try:
+            extractor = SchemaExtractor(
+                db_config={'db_type': 'sqlite', 'user': None, 'password': None, 'host': None, 'port': None,
+                           'db_name': db_path},
+                llm=_DummyLLM(),
+            )
+
+            class SchemaSet(BaseModel):
+                company: str = Field(default='unknown')
+
+            schema_set_id = uuid.uuid4().hex
+            extractor.register_schema_set(SchemaSet, schema_set_id=schema_set_id)
+            table_name = extractor._ensure_table(schema_set_id, SchemaSet)
+            extractor._table_cache.pop(table_name, None)
+            extractor._ensure_table(schema_set_id, SchemaSet)
+        finally:
+            # Dispose the sqlite engine so Windows can remove the temp file.
+            if extractor is not None and extractor._sql_manager is not None:
+                extractor._sql_manager.dispose()
+            if os.path.exists(db_path):
+                os.remove(db_path)
 
 class TestDocument(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cleanup()
 
+    def setUp(self):
+        self._temp_dirs = []
+
+    def tearDown(self):
+        for temp_dir in self._temp_dirs:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def _build_dataset(self, text: str = None) -> str:
+        temp_dir = tempfile.mkdtemp(prefix='lazyllm_document_')
+        self._temp_dirs.append(temp_dir)
+        file_path = os.path.join(temp_dir, 'rag.txt')
+        with open(file_path, 'w', encoding='utf-8') as file:
+            file.write(text or '\n'.join(
+                f'第{i}段：何为天道？人法地，地法天，天法道，道法自然。什么是道？道可道，非常道。'
+                for i in range(1, 241)
+            ))
+        return temp_dir
+
     def test_register_global_and_local(self):
         Document.create_node_group('Chunk1', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
         Document.create_node_group('Chunk2', transform=TransformArgs(
             f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
-        doc1, doc2 = Document('rag_master'), Document('rag_master')
+        dataset_path = self._build_dataset()
+        doc1, doc2 = Document(dataset_path), Document(dataset_path)
         doc2.create_node_group('Chunk2', transform=dict(
             f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=10)))
         doc2.create_node_group('Chunk3', trans_node=True,
@@ -125,8 +292,29 @@ class TestDocument(unittest.TestCase):
         assert isinstance(r[0], DocNode)
 
     def test_create_document(self):
-        Document('rag_master')
-        Document('rag_master/')
+        dataset_path = self._build_dataset()
+        Document(dataset_path)
+        Document(dataset_path + os.sep)
+
+    def test_dataset_path_does_one_time_ingest_without_monitor(self):
+        # Post-PR #1069: map-store + dataset_path is "toy mode" — DocImpl does a single
+        # ingest inside `_lazy_init` and the background polling machinery is gone entirely.
+        # Users wanting change detection should use a persistent store (auto-upgrade to
+        # DocServer owns the scan).
+        doc = Document(self._build_dataset())
+        assert doc._impl._dataset_path == doc._manager._origin_path
+        assert not hasattr(doc._impl, '_local_monitor_thread')
+
+    def test_enable_path_monitoring_kwarg_is_a_deprecated_noop(self):
+        import warnings as _warnings
+        with _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter('always')
+            doc = Document(self._build_dataset(), enable_path_monitoring=True)
+            try:
+                assert any(issubclass(w.category, DeprecationWarning)
+                           and 'enable_path_monitoring' in str(w.message) for w in caught)
+            finally:
+                doc.stop()
 
     def test_register_with_pattern(self):
         Document.create_node_group('AdaptiveChunk1', transform=[
@@ -136,7 +324,7 @@ class TestDocument(unittest.TestCase):
             dict(f=SentenceSplitter, pattern=(lambda x: x.endswith('.txt')),
                  kwargs=dict(chunk_size=512, chunk_overlap=50)),
             TransformArgs(f=SentenceSplitter, pattern=None, kwargs=dict(chunk_size=256, chunk_overlap=25))]))
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         doc._impl._lazy_init()
         retriever = Retriever(doc, 'AdaptiveChunk1', similarity='bm25', topk=2)
         retriever('什么是道')
@@ -144,7 +332,7 @@ class TestDocument(unittest.TestCase):
         retriever('什么是道')
 
     def test_create_node_group_with_ref(self):
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         # Create parent node group
         doc.create_node_group('parent_chunk', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
         # Create ref node group under parent
@@ -169,7 +357,7 @@ class TestDocument(unittest.TestCase):
         assert 'doc_test_ref' in ref_nodes[0].text
 
     def test_create_node_group_with_invalid_ref(self):
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         # Create two independent node groups
         doc.create_node_group('group_a', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
         doc.create_node_group('group_b', transform=SentenceSplitter, chunk_size=256, chunk_overlap=25)
@@ -190,7 +378,7 @@ class TestDocument(unittest.TestCase):
         # root --- CoarseChunk <           /- chunk21
         #      \                \- chunk2 <
         #       \- FineChunk               \- chunk22
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         doc.create_node_group('chunk1', parent=Document.CoarseChunk,
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
         doc.create_node_group('chunk11', parent='chunk1',
@@ -215,22 +403,62 @@ class TestDocument(unittest.TestCase):
             _test_impl(group, target)
 
     def test_doc_web_module(self):
-        import time
-        import requests
-        doc = Document('rag_master', manager='ui')
-        doc.create_kb_group(name='test_group')
-        doc2 = Document('rag_master', manager=doc.manager, name='test_group2')
-        doc.start()
-        time.sleep(4)
-        url = doc._manager._docweb.url
-        response = requests.get(url)
-        assert response.status_code == 200
-        assert doc2._curr_group == 'test_group2'
-        assert doc2.manager == doc.manager
-        doc.stop()
+        dataset_path = self._build_dataset()
+        doc = Document(dataset_path, manager=True, create_ui=True)
+        try:
+            doc.start()
+            doc.create_kb_group(name='test_group')
+            doc2 = Document(dataset_path, manager=doc.manager, name='test_group2')
+            assert hasattr(doc._manager, '_docweb')
+            assert doc2._curr_group == 'test_group2'
+            assert doc2.manager == doc.manager
+        finally:
+            doc.stop()
+
+    def test_manager_ui_remains_compatible(self):
+        dataset_path = self._build_dataset()
+        doc = Document(dataset_path, manager='ui')
+        try:
+            doc.start()
+            assert hasattr(doc._manager, '_docweb')
+        finally:
+            doc.stop()
+
+    def test_local_doc_server_defaults_to_empty_launcher(self):
+        doc = Document(self._build_dataset(), manager=True)
+        try:
+            assert type(doc._manager._launcher) is lazyllm.launchers.empty
+        finally:
+            doc.stop()
+
+    def test_create_ui_requires_doc_server(self):
+        with self.assertRaisesRegex(ValueError, 'requires an available DocServer'):
+            Document(self._build_dataset(), create_ui=True)
+
+    def test_document_processor_manager_constraints(self):
+        dataset_path = self._build_dataset()
+        processor = document_module.DocumentProcessor(url='http://127.0.0.1:9966')
+        milvus_store = {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}}
+
+        with self.assertRaisesRegex(ValueError, 'store_conf'):
+            Document(dataset_path, manager=processor)
+        with self.assertRaisesRegex(ValueError, 'pure local map store'):
+            Document(dataset_path, manager=processor, store_conf={'type': 'map'})
+        # dataset_path + DocumentProcessor is rejected: external parser has no
+        # directory-scan lifecycle, so pairing with a local path is ambiguous.
+        with self.assertRaisesRegex(ValueError, 'does not accept a local `dataset_path`'):
+            Document(dataset_path, manager=processor, store_conf=milvus_store)
+
+        # Valid: standalone DocumentProcessor mode without dataset_path. Documents
+        # must be ingested via explicit API calls (upload / add_files) in this mode.
+        doc = Document(name='dp_standalone', manager=processor, store_conf=milvus_store)
+        try:
+            assert doc._impl._dataset_path is None
+        finally:
+            doc.stop()
 
     def test_get_nodes(self):
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         doc.create_node_group('chunk1', parent=Document.CoarseChunk,
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
         doc.activate_groups(groups=['chunk1'])
@@ -240,7 +468,7 @@ class TestDocument(unittest.TestCase):
             assert n.number == 2
 
     def test_get_window_nodes(self):
-        doc = Document('rag_master')
+        doc = Document(self._build_dataset())
         doc.create_node_group('chunk1', parent=Document.CoarseChunk,
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
         doc.activate_groups(groups=['chunk1'])
@@ -268,113 +496,403 @@ class TestDocument(unittest.TestCase):
         assert window == sorted(window, key=lambda n: n.number)
         assert all(n.number in [1, 2, 3, 4, 5] for n in window)
 
-class TmpDir:
-    def __init__(self):
-        self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_document_ut'))
-        self.rag_dir = os.path.join(self.root_dir, 'rag_master')
-        os.makedirs(self.rag_dir, exist_ok=True)
+    def test_persistent_store_auto_upgrade_nonexisting_dir(self):
+        '''Regression: auto-upgrade must trigger for non-existing dataset_path (future dir).
 
-    def __del__(self):
-        shutil.rmtree(self.root_dir)
+        Instantiates Document._Manager and verifies _spawn_doc_server is True.
+        '''
+        nonexisting = os.path.join(tempfile.gettempdir(), f'lazyllm_nonexist_{os.getpid()}')
+        assert not os.path.exists(nonexisting), 'Test path should not exist'
+        milvus_conf = {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}}
 
-class TestDocumentServer(unittest.TestCase):
-    def setUp(self):
-        self.dir = TmpDir()
-        self.dlm = DocListManager(path=self.dir.rag_dir, name=None, enable_path_monitoring=False)
+        mgr = Document._Manager(
+            dataset_path=nonexisting, embed=None, manager=False, server=False,
+            name='__default__', launcher=None, store_conf=milvus_conf, doc_fields=None,
+        )
+        # Auto-upgrade should have set _spawn_doc_server = True
+        assert mgr._spawn_doc_server is True, (
+            'Persistent store + non-existing dir should auto-upgrade to DocServer'
+        )
+        mgr.stop()
 
-        self.doc_impl = DocImpl(embed=MagicMock(), dlm=self.dlm)
-        self.doc_impl._lazy_init()
+    def test_persistent_store_no_upgrade_for_single_file(self):
+        '''Regression: auto-upgrade must NOT trigger when dataset_path is an existing file.'''
+        with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as f:
+            f.write(b'test')
+            single_file = f.name
+        try:
+            milvus_conf = {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}}
+            mgr = Document._Manager(
+                dataset_path=single_file, embed=None, manager=False, server=False,
+                name='__default__', launcher=None, store_conf=milvus_conf, doc_fields=None,
+            )
+            # Single file should NOT trigger auto-upgrade
+            assert mgr._spawn_doc_server is False, (
+                'Persistent store + single file should NOT auto-upgrade to DocServer'
+            )
+            mgr.stop()
+        finally:
+            os.unlink(single_file)
 
-        doc_manager = DocManager(self.dlm)
-        self.server = lazyllm.ServerModule(doc_manager)
+    def test_persistent_store_existing_dir_auto_upgrade(self):
+        '''Regression: auto-upgrade must trigger for existing directory + persistent store.'''
+        dataset_path = self._build_dataset()
+        milvus_conf = {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}}
 
-        self.server.start()
+        mgr = Document._Manager(
+            dataset_path=dataset_path, embed=None, manager=False, server=False,
+            name='__default__', launcher=None, store_conf=milvus_conf, doc_fields=None,
+        )
+        assert mgr._spawn_doc_server is True, (
+            'Persistent store + existing dir should auto-upgrade to DocServer'
+        )
+        mgr.stop()
 
-        url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
-        self.doc_server_addr = re.findall(url_pattern, self.server._url)[0]
-        self.time_sleep = 30
+    def test_map_store_no_auto_upgrade(self):
+        '''Map store should never trigger auto-upgrade regardless of dataset_path.'''
+        dataset_path = self._build_dataset()
+        map_conf = {'type': 'map'}
 
-    def test_delete_files_in_store(self):
-        files = [('files', ('test1.txt', io.BytesIO(b'John\'s house is in Beijing'), 'text/palin')),
-                 ('files', ('test2.txt', io.BytesIO(b'John\'s house is in Shanghai'), 'text/plain'))]
-        metadatas = [{'comment': 'comment1'}, {'signature': 'signature2'}]
-        params = dict(override='true', metadatas=json.dumps(metadatas))
+        mgr = Document._Manager(
+            dataset_path=dataset_path, embed=None, manager=False, server=False,
+            name='__default__', launcher=None, store_conf=map_conf, doc_fields=None,
+        )
+        assert mgr._spawn_doc_server is False, 'Map store should never auto-upgrade'
+        mgr.stop()
 
-        url = f'{self.doc_server_addr}/upload_files'
-        response = httpx.post(url, params=params, files=files, timeout=10)
-        assert response.status_code == 200 and response.json().get('code') == 200, response.json()
-        ids = response.json().get('data')[0]
-        lazyllm.LOG.info(f'debug!!! ids -> {ids}')
-        assert len(ids) == 2
+    def test_manager_with_embedded_milvus_is_rejected(self):
+        '''Regression: ``manager=True`` combined with an embedded milvus_lite
+        local .db is rejected at construction time. milvus_lite is a
+        single-writer SQLite-based store; the DocServer + Worker
+        subprocesses would race the main process for the same .db file
+        and fail with "Open milvus.db failed, the file has been opened by
+        another program".
+        '''
+        dataset_path = self._build_dataset()
+        embedded_conf = {
+            'type': 'milvus',
+            'kwargs': {'uri': '/tmp/lazyllm_embedded_milvus.db'},
+        }
+        with self.assertRaisesRegex(ValueError, 'embedded'):
+            Document._Manager(
+                dataset_path=dataset_path, embed=None, manager=True, server=False,
+                name='__default__', launcher=None, store_conf=embedded_conf,
+                doc_fields=None,
+            )
+        # Split form is also rejected.
+        with self.assertRaisesRegex(ValueError, 'embedded'):
+            Document._Manager(
+                dataset_path=dataset_path, embed=None, manager=True, server=False,
+                name='__default__', launcher=None,
+                store_conf={'vector_store': embedded_conf},
+                doc_fields=None,
+            )
 
-        time.sleep(self.time_sleep)  # waiting for worker thread to update newly uploaded files
+    def test_manager_with_legacy_index_embedded_milvus_is_rejected(self):
+        '''Regression (P1 from subagent review): the legacy
+        ``indices.smart_embedding_index`` config form keys the backend as
+        ``backend`` instead of ``type``. An embedded milvus_lite hidden in
+        that form must still be rejected so it doesn't silently race the
+        service-mode subprocesses.'''
+        dataset_path = self._build_dataset()
+        legacy_index_conf = {
+            'type': 'map',
+            'indices': {
+                'smart_embedding_index': {
+                    'backend': 'milvus',
+                    'kwargs': {'uri': '/tmp/lazyllm_legacy_index_milvus.db'},
+                },
+            },
+        }
+        with self.assertRaisesRegex(ValueError, 'embedded'):
+            Document._Manager(
+                dataset_path=dataset_path, embed=None, manager=True, server=False,
+                name='__default__', launcher=None, store_conf=legacy_index_conf,
+                doc_fields=None,
+            )
 
-        # make sure that ids are written into the store
-        nodes = self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
-        doc_ids = []
-        doc_file_paths = []
-        doc_metadatas = []
-        test1_docid = None
-        test2_docid = None
-        for node in nodes:
-            doc_ids.append(node.global_metadata[RAG_DOC_ID])
-            doc_file_paths.append(node.global_metadata.get(RAG_DOC_PATH, ''))
-            doc_metadatas.append(node.global_metadata)
-            if 'test1' in node.global_metadata.get(RAG_DOC_PATH, ''):
-                test1_docid = node.global_metadata[RAG_DOC_ID]
-            elif 'test2' in node.global_metadata.get(RAG_DOC_PATH, ''):
-                test2_docid = node.global_metadata[RAG_DOC_ID]
-        lazyllm.LOG.info(f'debug!!! doc_ids -> {doc_ids}\n')
-        lazyllm.LOG.info(f'debug!!! doc_file_paths -> {doc_file_paths}\n')
-        lazyllm.LOG.info(f'debug!!! doc_metadatas -> {doc_metadatas}\n')
-        assert test1_docid and test2_docid
-        assert set(doc_ids) == set(ids)
+    def test_manager_with_embedded_chroma_is_rejected(self):
+        '''Regression: the same rejection applies to ChromaStore's
+        PersistentClient mode (``kwargs.dir`` or file-scheme ``kwargs.uri``)
+        since it's likewise single-process and filesystem-bound.'''
+        dataset_path = self._build_dataset()
+        # Chroma accepts both `dir` and a path-shaped `uri`; both forms are
+        # embedded and must be rejected.
+        for kw in (
+            {'dir': '/tmp/lazyllm_embedded_chroma'},
+            {'uri': '/tmp/lazyllm_embedded_chroma'},
+            {'uri': 'file:///tmp/lazyllm_embedded_chroma'},
+        ):
+            with self.assertRaisesRegex(ValueError, 'embedded'):
+                Document._Manager(
+                    dataset_path=dataset_path, embed=None, manager=True, server=False,
+                    name='__default__', launcher=None,
+                    store_conf={'type': 'chroma', 'kwargs': kw},
+                    doc_fields=None,
+                )
 
-        url = f'{self.doc_server_addr}/delete_files'
-        response = httpx.post(url, json=dict(file_ids=[test1_docid]))
-        assert response.status_code == 200 and response.json().get('code') == 200
+    def test_manager_with_remote_vector_store_is_accepted(self):
+        '''Regression: service mode + remote vector store is allowed. The
+        guard must not false-reject deployed Milvus / Chroma / opaque
+        remote schemes (tcp, grpc, unix, chroma+http) that the store
+        classes support.'''
+        dataset_path = self._build_dataset()
+        remote_configs = [
+            {'type': 'milvus', 'kwargs': {'uri': 'http://milvus.internal.example:19530'}},
+            {'type': 'milvus', 'kwargs': {'uri': 'tcp://milvus.internal.example:19530'}},
+            {'type': 'milvus', 'kwargs': {'uri': 'grpc://milvus.internal.example:19530'}},
+            {'type': 'milvus', 'kwargs': {'uri': 'unix:///var/run/milvus.sock'}},
+            {'type': 'chroma', 'kwargs': {'uri': 'http://chroma.internal.example:8000'}},
+            {'type': 'chroma', 'kwargs': {'uri': 'chroma+https://chroma.internal.example:8000'}},
+            {'type': 'chroma', 'kwargs': {'host': 'chroma.internal.example', 'port': 8000}},
+        ]
+        for conf in remote_configs:
+            mgr = Document._Manager(
+                dataset_path=dataset_path, embed=None, manager=True, server=False,
+                name='__default__', launcher=None, store_conf=conf,
+                doc_fields=None,
+            )
+            assert mgr._spawn_doc_server is True, f'failed for {conf!r}'
+            mgr.stop()
 
-        time.sleep(self.time_sleep)  # waiting for worker thread to delete files
+    def test_split_vector_store_form_triggers_auto_upgrade(self):
+        '''Regression: store_conf using the split form
+        ``{'vector_store': {'type': <persistent>}, 'segment_store': {...}}``
+        without a top-level ``type`` is still a persistent store and must
+        auto-upgrade to DocServer.
+        '''
+        dataset_path = self._build_dataset()
+        split_conf = {
+            'vector_store': {'type': 'milvus', 'kwargs': {'uri': 'http://localhost:19530'}},
+            'segment_store': {'type': 'map'},
+        }
+        mgr = Document._Manager(
+            dataset_path=dataset_path, embed=None, manager=False, server=False,
+            name='__default__', launcher=None, store_conf=split_conf, doc_fields=None,
+        )
+        assert mgr._spawn_doc_server is True, (
+            'Split-form store_conf with persistent vector_store should auto-upgrade'
+        )
+        mgr.stop()
 
-        nodes = self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
-        assert len(nodes) == 1
-        assert nodes[0].global_metadata[RAG_DOC_ID] == test2_docid
-        cur_meta_dict = nodes[0].global_metadata
+    def test_metadata_store_only_no_auto_upgrade(self):
+        '''Regression: store_conf with only metadata_store (no top-level vector "type") uses
+        the default in-memory map store and must NOT auto-upgrade to DocServer.
 
-        url = f'{self.doc_server_addr}/add_metadata'
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={'title': 'title2'}))
-        assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(self.time_sleep)
-        lazyllm.LOG.info(f'debug!!! cur_meta_dict -> {cur_meta_dict}\n')
-        assert cur_meta_dict['title'] == 'title2'
+        This matches advanced/test_schema_extractor.py::test_document_for_sqlcall, which
+        passes ``store_conf={'metadata_store': sqlite_cfg}`` and never opted into
+        DocServer; auto-upgrading would force pickling of the schema_extractor's
+        TrainableModule before deploy and break the test.
+        '''
+        dataset_path = self._build_dataset()
+        metadata_only = {'metadata_store': {
+            'db_type': 'sqlite', 'user': None, 'password': None,
+            'host': None, 'port': None, 'db_name': '/tmp/lazyllm_test_meta.db',
+        }}
 
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={'title': 'TITLE2'}))
-        assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(self.time_sleep)
-        lazyllm.LOG.info(f'debug!!! cur_meta_dict -> {cur_meta_dict}\n')
-        assert cur_meta_dict['title'] == ['title2', 'TITLE2']
+        mgr = Document._Manager(
+            dataset_path=dataset_path, embed=None, manager=False, server=False,
+            name='__default__', launcher=None, store_conf=metadata_only, doc_fields=None,
+        )
+        assert mgr._spawn_doc_server is False, (
+            'metadata_store-only config should keep default map vector store '
+            'and not trigger DocServer auto-upgrade'
+        )
+        mgr.stop()
 
-        url = f'{self.doc_server_addr}/delete_metadata_item'
+    def test_create_kb_group_before_start_registers_in_doc_server(self):
+        '''Regression: create_kb_group() before start() must still register KB in DocServer DB.
 
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={'title': 'TITLE2'}))
-        assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(self.time_sleep)
-        assert cur_meta_dict['title'] == ['title2']
+        Lifecycle: Document(manager=True) -> create_kb_group('foo') -> start()
+        After start(), 'foo' must appear in DocServer active KB list for scan.
+        '''
+        dataset_path = self._build_dataset()
+        doc = Document(dataset_path, manager=True)
+        try:
+            doc.create_kb_group(name='pre_start_group')
+            doc.start()
 
-        url = f'{self.doc_server_addr}/reset_metadata'
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid],
-                                             new_meta={'author': 'author2', 'signature': 'signature_new'}))
-        assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(self.time_sleep)
-        assert cur_meta_dict['signature'] == 'signature_new' and cur_meta_dict['author'] == 'author2'
+            # Access the inner DocServer._Impl manager to check DB state
+            doc_server = doc._manager._manager
+            raw_impl = getattr(doc_server, '_raw_impl', doc_server)
+            impl = getattr(raw_impl, '_impl', raw_impl)
+            if hasattr(impl, '_lazy_init'):
+                impl._lazy_init()
+            inner_manager = impl._manager
+            pairs = inner_manager._list_active_kb_algo_pairs()
+            kb_ids = {kb_id for kb_id, _ in pairs}
+            assert 'pre_start_group' in kb_ids, (
+                f'KB "pre_start_group" created before start() must be in active pairs, got: {kb_ids}'
+            )
+        finally:
+            doc.stop()
 
-        url = f'{self.doc_server_addr}/query_metadata'
-        response = httpx.post(url, json=dict(doc_id=test2_docid))
+    def test_pre_start_group_parser_algo_registered(self):
+        '''P1 Regression: create_kb_group before start() must register algorithm with parser.
 
-        # make sure that only one file is left
-        response = httpx.get(f'{self.doc_server_addr}/list_files')
-        assert response.status_code == 200 and len(response.json().get('data')) == 1
+        Lifecycle: Document(manager=True) -> create_kb_group('foo') -> start()
+        After start(), the DocImpl for 'foo' must have been initialized so that
+        register_algorithm was invoked on the parser.
+        '''
+        dataset_path = self._build_dataset()
+        doc = Document(dataset_path, manager=True)
+        try:
+            doc.create_kb_group(name='foo')
+            doc.start()
 
-    def tearDown(self):
-        # Must clean up the server as all uploaded files will be deleted as they are in tmp dir
-        self.dlm.release()
+            from lazyllm import ServerModule
+            kbs = (doc._manager._kbs._impl._m
+                   if isinstance(doc._manager._kbs, ServerModule)
+                   else doc._manager._kbs)
+            # The default group must be initialized
+            assert kbs[doc._curr_group]._lazy_init.flag, (
+                'Default DocImpl must be initialized after start()'
+            )
+            # The pre-start group must also be initialized (algorithm registered)
+            assert kbs['foo']._lazy_init.flag, (
+                'DocImpl for pre-start group "foo" must be initialized after start() '
+                'so its algorithm is registered with the parser (not just in the DB)'
+            )
+        finally:
+            doc.stop()
+
+    def test_scan_isolation_between_document_instances(self):
+        '''P2 Regression: scan must only process KBs owned by the current Document instance.
+
+        DocServer._Impl._sync_dataset filters kb_algo_pairs by _owned_kbs.
+        This test verifies that only registered KBs are processed.
+        '''
+        import os
+        import tempfile
+        from lazyllm.tools.rag.doc_service.doc_server import DocServer as _DocServer
+        from lazyllm.tools.rag.doc_service.parser_client import ParserClient
+        from lazyllm.tools.rag.utils import BaseResponse
+
+        dataset_path = self._build_dataset()
+
+        # Create a DocServer._Impl directly (no ServerModule indirection) with mocked parser
+        original_health = ParserClient.health
+        ParserClient.health = lambda self: BaseResponse(code=200, msg='success', data={'ok': True})
+        try:
+            with tempfile.TemporaryDirectory(prefix='lazyllm_scan_iso_') as db_dir:
+                db_config = {
+                    'db_type': 'sqlite', 'user': None, 'password': None,
+                    'host': None, 'port': None,
+                    'db_name': os.path.join(db_dir, 'scan_iso.db'),
+                }
+                impl = _DocServer._Impl(
+                    storage_dir=dataset_path,
+                    db_config=db_config,
+                    parser_url='http://mock-parser.test',
+                    enable_scan=False,  # don't start scan thread
+                )
+                try:
+                    impl._lazy_init()
+
+                    # Register KBs from "instance 1"
+                    impl.ensure_kb_registered('kb_inst1_a')
+                    impl.ensure_kb_registered('kb_inst1_b')
+
+                    # Simulate KBs from "instance 2" by inserting directly into DB
+                    impl._manager._ensure_kb('kb_inst2_x', display_name='kb_inst2_x')
+                    impl._manager._ensure_kb_algorithm('kb_inst2_x', 'kb_inst2_x')
+
+                    # All KBs exist in DB
+                    all_pairs = impl._manager._list_active_kb_algo_pairs()
+                    all_kb_ids = {kb for kb, _ in all_pairs}
+                    assert 'kb_inst1_a' in all_kb_ids
+                    assert 'kb_inst1_b' in all_kb_ids
+                    assert 'kb_inst2_x' in all_kb_ids
+
+                    # _owned_kbs should only contain instance 1's KBs
+                    assert impl._owned_kbs == {'kb_inst1_a', 'kb_inst1_b'}, (
+                        f'_owned_kbs should only contain registered KBs, got: {impl._owned_kbs}'
+                    )
+
+                    # Track which KBs _sync_dataset_for_kb is called for
+                    synced_kbs = []
+
+                    def tracking_sync(kb_id, algo_id, disk_files, disk_set):
+                        synced_kbs.append(kb_id)
+
+                    impl._sync_dataset_for_kb = tracking_sync
+                    impl._sync_dataset()
+
+                    # Only instance 1's KBs should be synced
+                    assert 'kb_inst1_a' in synced_kbs, 'owned KB kb_inst1_a must be synced'
+                    assert 'kb_inst1_b' in synced_kbs, 'owned KB kb_inst1_b must be synced'
+                    assert 'kb_inst2_x' not in synced_kbs, (
+                        'non-owned KB kb_inst2_x must NOT be synced by this instance'
+                    )
+                finally:
+                    # Release sqlite engine so Windows can remove the tempdir.
+                    impl.stop()
+        finally:
+            ParserClient.health = original_health
+
+    def test_first_scan_deferred_until_enable_scanning(self):
+        '''P1 Regression: the very first scan must NOT run during DocServer._lazy_init.
+
+        DocServer._lazy_init() used to eagerly call _sync_dataset() before KB setup was complete.
+        Now scanning is deferred until enable_scanning() is called explicitly.
+        '''
+        import os
+        import tempfile
+        from lazyllm.tools.rag.doc_service.doc_server import DocServer as _DocServer
+        from lazyllm.tools.rag.doc_service.parser_client import ParserClient
+        from lazyllm.tools.rag.utils import BaseResponse
+
+        dataset_path = self._build_dataset()
+
+        original_health = ParserClient.health
+        ParserClient.health = lambda self: BaseResponse(code=200, msg='success', data={'ok': True})
+        try:
+            with tempfile.TemporaryDirectory(prefix='lazyllm_deferred_scan_') as db_dir:
+                db_config = {
+                    'db_type': 'sqlite', 'user': None, 'password': None,
+                    'host': None, 'port': None,
+                    'db_name': os.path.join(db_dir, 'deferred.db'),
+                }
+                # Track all _sync_dataset_for_kb calls
+                sync_log = []
+                orig_sync_for_kb = _DocServer._Impl._sync_dataset_for_kb
+
+                def tracking_sync_for_kb(self_inner, kb_id, algo_id, disk_files, disk_set):
+                    sync_log.append(kb_id)
+
+                _DocServer._Impl._sync_dataset_for_kb = tracking_sync_for_kb
+                impl = None
+                try:
+                    impl = _DocServer._Impl(
+                        storage_dir=dataset_path,
+                        db_config=db_config,
+                        parser_url='http://mock-parser.test',
+                        enable_scan=True,  # scanning is ENABLED but deferred
+                    )
+
+                    # _lazy_init must NOT trigger _sync_dataset
+                    impl._lazy_init()
+                    assert sync_log == [], (
+                        f'_lazy_init must NOT call _sync_dataset, but synced: {sync_log}'
+                    )
+
+                    # Simulate the Document._Manager startup sequence:
+                    # 1. Register KB
+                    impl.ensure_kb_registered('my_group')
+                    assert sync_log == [], (
+                        f'ensure_kb_registered must NOT trigger scan, but synced: {sync_log}'
+                    )
+
+                    # 2. Now explicitly enable scanning
+                    impl.enable_scanning()
+                    assert sync_log == ['my_group'], (
+                        f'enable_scanning must trigger first scan for owned KBs only, '
+                        f'got: {sync_log}'
+                    )
+                finally:
+                    _DocServer._Impl._sync_dataset_for_kb = orig_sync_for_kb
+                    # Release sqlite engine so Windows can remove the tempdir.
+                    if impl is not None:
+                        impl.stop()
+        finally:
+            ParserClient.health = original_health
