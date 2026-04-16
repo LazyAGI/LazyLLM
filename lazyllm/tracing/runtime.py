@@ -52,7 +52,7 @@ def _stringify_payload(value: Any, *, limit: int = 8192) -> str:
     return text
 
 
-class _TracingRuntime:
+class TracingRuntime:
     def __init__(self):
         self._lock = threading.RLock()
         self._initialized = False
@@ -323,7 +323,7 @@ class _TracingRuntime:
             pass
 
 
-_runtime = _TracingRuntime()
+_runtime = TracingRuntime()
 
 
 def tracing_available() -> bool:

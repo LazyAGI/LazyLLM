@@ -58,7 +58,6 @@ def resolve_tracing_hooks(obj):
         return []
     if hasattr(obj, '_module_id'):
         if not resolve_module_trace(
-            module_id=getattr(obj, '_module_id', None),
             module_name=getattr(obj, 'name', None) or getattr(obj, '_module_name', None),
             module_class=obj.__class__,
             runtime_override=trace_cfg.get('module_trace'),
