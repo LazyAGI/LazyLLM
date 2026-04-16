@@ -1,4 +1,5 @@
 import os
+import warnings
 from typing import Callable, Optional, Dict, Union, List, Type, Set, Tuple
 from functools import cached_property
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 from lazyllm.common.bind import _MetaBind
 
+from ._store_config import is_local_map_store, is_persistent_store, iter_embedded_store_endpoints
 from .doc_service import DocServer
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
@@ -26,126 +28,6 @@ import weakref
 _LOCAL_PYTHONPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 
-def _is_local_map_store(store_conf: Optional[Dict]) -> bool:
-    return isinstance(store_conf, dict) and store_conf.get('type') == 'map'
-
-
-def _is_persistent_store(store_conf: Optional[Dict]) -> bool:
-    # The vector store type defaults to 'map' (in-memory) when neither a
-    # top-level 'type' nor a split 'vector_store'/'segment_store' backend is
-    # provided. ``_DocumentStore._normalize_store_config`` accepts both shapes:
-    #   - {'type': 'milvus', ...}                          (single-store form)
-    #   - {'vector_store': {'type': 'milvus', ...},        (split form)
-    #      'segment_store': {'type': 'elasticsearch', ...}}
-    # A config that ONLY sets ``metadata_store`` (no vector/segment backend)
-    # still uses the in-memory map store and is NOT persistent.
-    if not isinstance(store_conf, dict):
-        return False
-    top_type = store_conf.get('type')
-    if top_type is not None:
-        return top_type != 'map'
-    for key in ('vector_store', 'segment_store'):
-        sub = store_conf.get(key)
-        if isinstance(sub, dict) and sub.get('type', 'map') != 'map':
-            return True
-    return False
-
-
-_REMOTE_STORE_SCHEMES = frozenset({'http', 'https', 'tcp', 'grpc', 'unix'})
-
-
-def _endpoint_scheme(value):
-    '''Return the normalized lower-case URL scheme of ``value`` (empty string
-    if ``value`` has no scheme). Handles ChromaStore's ``chroma+http`` /
-    ``chroma+https`` aliases by stripping the ``chroma+`` prefix.'''
-    if not isinstance(value, str) or not value:
-        return ''
-    from urllib.parse import urlparse
-    scheme = urlparse(value).scheme.lower()
-    if scheme.startswith('chroma+'):
-        scheme = scheme.split('+', 1)[1]
-    return scheme
-
-
-def _store_config_embedded_reason(cfg: Dict) -> Optional[str]:
-    '''Return a short description if ``cfg`` (a single store config with
-    ``type`` + ``kwargs``) is an embedded (filesystem-bound) backend; else
-    ``None``. Factored out so the outer walk stays simple.
-
-    ``type`` OR the legacy ``backend`` key identifies the backend -- the
-    latter is used by ``_DocumentStore``'s legacy
-    ``indices.smart_embedding_index`` form (see ``get_milvus_index_conf``
-    in ``tests/advanced_tests/RAG/test_milvus_filter.py``), which would
-    otherwise slip past the reject because its sub-config has no ``type``.
-
-    Recognized endpoint fields (mirror what the store classes accept):
-    - Milvus: ``kwargs.uri`` (http/https/tcp/grpc/unix → remote; else embedded)
-    - Chroma: ``kwargs.uri`` (file:// or no scheme → embedded; http/https,
-              ``chroma+http(s)`` → remote), ``kwargs.dir`` (always embedded),
-              ``kwargs.host`` (always remote -- networked mode).
-    - ES / OpenSearch: ``kwargs.uris`` / ``kwargs.hosts`` (remote lists;
-              no embedded mode, so never flagged).
-    '''
-    store_type = cfg.get('type') or cfg.get('backend')
-    if not store_type or store_type == 'map':
-        return None
-    kwargs = cfg.get('kwargs') or {}
-    # Priority: explicit URI-style fields first. If found, trust the caller's
-    # intent for this store; don't also flag ``dir``.
-    for field in ('uri', 'url', 'endpoint'):
-        value = kwargs.get(field)
-        if isinstance(value, str) and value:
-            if _endpoint_scheme(value) not in _REMOTE_STORE_SCHEMES:
-                return f'{store_type}: {field}={value!r}'
-            return None
-    # Chroma-style ``dir``-only embedded config.
-    dir_value = kwargs.get('dir')
-    if isinstance(dir_value, str) and dir_value:
-        return f'{store_type}: dir={dir_value!r}'
-    # Otherwise: host-based remote, ES/OS uris list, or no endpoint info.
-    return None
-
-
-def _iter_embedded_store_endpoints(store_conf: Optional[Dict]):
-    '''Walk ``store_conf`` and yield a short description of every vector /
-    segment store whose effective endpoint is a local filesystem path
-    (i.e. an "embedded" backend such as milvus_lite or ChromaStore's
-    ``PersistentClient``) rather than a network service.
-
-    These embedded backends are single-process: combining them with the
-    DocServer + Worker subprocess architecture (``manager=True`` /
-    ``manager=DocServer(...)`` / ``manager=DocumentProcessor(...)``) races
-    the main process and Workers for the same on-disk state and
-    intermittently fails (e.g. ``Open milvus.db failed, the file has been
-    opened by another program``). Service-mode RAG must use remote
-    endpoints (``http(s)/tcp/grpc/unix://``).
-
-    ``_DocumentStore._normalize_store_config`` supports both the single-store
-    form (top-level ``type``) and the split form (``vector_store`` +
-    ``segment_store``), and callers can also pass ``indices``; walk all of
-    them so nested configs are covered.
-    '''
-    if not isinstance(store_conf, dict):
-        return
-    pending = [store_conf]
-    while pending:
-        cfg = pending.pop()
-        if not isinstance(cfg, dict):
-            continue
-        reason = _store_config_embedded_reason(cfg)
-        if reason is not None:
-            yield reason
-        for key in ('vector_store', 'segment_store', 'metadata_store'):
-            sub = cfg.get(key)
-            if isinstance(sub, dict):
-                pending.append(sub)
-        indices = cfg.get('indices')
-        if isinstance(indices, dict):
-            for _idx in indices.values():
-                if isinstance(_idx, dict):
-                    pending.append(_idx)
-
-
 class CallableDict(dict):
     def __call__(self, cls, *args, **kw):
         return self[cls](*args, **kw)
@@ -159,92 +41,76 @@ class _MetaDocument(_MetaBind):
 
 class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     class _Manager(ModuleBase):
-        def __init__(  # noqa: C901
-            self,
-            dataset_path: Optional[str],
-            embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-            manager: Union[bool, str, DocServer] = False,
-            server: Union[bool, int] = False,
-            name: Optional[str] = None,
-            launcher: Optional[Launcher] = None,
-            store_conf: Optional[Dict] = None,
-            doc_fields: Optional[Dict[str, DocField]] = None,
-            cloud: bool = False,
-            doc_files: Optional[List[str]] = None,
-            processor: Optional[DocumentProcessor] = None,
-            display_name: Optional[str] = '',
-            description: Optional[str] = 'algorithm description',
-            schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
-            create_ui: bool = False,
-            enable_path_monitoring: Optional[bool] = None,
-        ):
+        @staticmethod
+        def _resolve_dataset_path(dataset_path: Optional[str]) -> Optional[str]:
+            if not dataset_path:
+                return dataset_path
+            if os.path.exists(dataset_path):
+                return os.path.join(os.getcwd(), dataset_path)
+            default_path = os.path.join(lazyllm.config['data_path'], dataset_path)
+            return default_path if os.path.exists(default_path) else dataset_path
+
+        @staticmethod
+        def _decide_service_mode(manager, store_conf, processor, dataset_path) -> Tuple[bool, bool]:
+            '''Returns ``(spawn_doc_server, connect_doc_server)``.'''
+            if isinstance(manager, str) and manager != 'ui':
+                raise ValueError(f'Unsupported manager value: {manager}')
+            spawn = bool(manager) and not isinstance(manager, DocServer)
+            connect = isinstance(manager, DocServer)
+            if (not spawn and not connect and not processor and is_persistent_store(store_conf)
+                    and dataset_path and not os.path.isfile(dataset_path)):
+                lazyllm.LOG.info(f'Persistent store detected (type={store_conf.get("type")}),'
+                                 f' auto-enabling DocServer for production-grade file tracking and scan.')
+                spawn = True
+            return spawn, connect
+
+        @staticmethod
+        def _reject_embedded_store_with_service_mode(store_conf, *, spawn, connect, processor):
+            '''Service-mode RAG + an embedded single-process backend races the subprocesses on
+            shared on-disk state; force the user to point at a networked endpoint instead.'''
+            if not (spawn or connect or processor is not None):
+                return
+            embedded = list(iter_embedded_store_endpoints(store_conf))
+            if not embedded:
+                return
+            raise ValueError(
+                'Document with `manager=True` / `manager=DocServer(...)` / `manager=DocumentProcessor(...)`'
+                ' does not support embedded (filesystem-bound) vector stores. Point the store config at a'
+                ' remote service (http/https/tcp/grpc/unix scheme), e.g.'
+                " Milvus: {'type': 'milvus', 'kwargs': {'uri': os.getenv('MILVUS_URI', 'http://<host>:19530')}}"
+                " or Chroma: {'type': 'chroma', 'kwargs': {'uri': 'http://<host>:8000'}}."
+                f' Offending store(s): {embedded!r}.')
+
+        def _iter_kbs(self):
+            return self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs
+
+        def __init__(self, dataset_path: Optional[str],
+                     embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
+                     manager: Union[bool, str, DocServer] = False, server: Union[bool, int] = False,
+                     name: Optional[str] = None, launcher: Optional[Launcher] = None,
+                     store_conf: Optional[Dict] = None, doc_fields: Optional[Dict[str, DocField]] = None,
+                     cloud: bool = False, doc_files: Optional[List[str]] = None,
+                     processor: Optional[DocumentProcessor] = None, display_name: Optional[str] = '',
+                     description: Optional[str] = 'algorithm description',
+                     schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
+                     create_ui: bool = False, enable_path_monitoring: Optional[bool] = None):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
-
-            if dataset_path and not os.path.exists(dataset_path):
-                defatult_path = os.path.join(lazyllm.config['data_path'], dataset_path)
-                if os.path.exists(defatult_path):
-                    dataset_path = defatult_path
-            elif dataset_path:
-                dataset_path = os.path.join(os.getcwd(), dataset_path)
-
-            self._dataset_path = dataset_path
+            self._dataset_path = self._resolve_dataset_path(dataset_path)
             self._embed = self._get_embeds(embed)
             self._processor = processor
             self._create_ui = create_ui
             self._spawn_doc_server = False
             self._doc_processor_started = False
-            compat_ui_manager = manager == 'ui'
-            if not compat_ui_manager and isinstance(manager, str):
-                raise ValueError(f'Unsupported manager value: {manager}')
-            spawn_doc_server = bool(manager) and not isinstance(manager, DocServer)
-            connect_doc_server = isinstance(manager, DocServer)
-            # Auto-upgrade: persistent store + dataset_path → must use DocServer for production-grade
-            # file tracking. Skip when: explicit processor provided, or dataset_path is an existing single file.
-            # Non-existing paths are treated as future directories (will be created by DocServer).
-            if (not spawn_doc_server and not connect_doc_server and not processor
-                    and _is_persistent_store(store_conf) and dataset_path
-                    and not os.path.isfile(dataset_path)):
-                lazyllm.LOG.info(
-                    f'Persistent store detected (type={store_conf.get("type")}), '
-                    f'auto-enabling DocServer for production-grade file tracking and scan.')
-                spawn_doc_server = True
-            # Reject the unsupported combination "service-mode RAG" + any
-            # embedded (filesystem-bound) vector/segment store. Embedded
-            # backends such as milvus_lite and ChromaStore's PersistentClient
-            # are single-process stores keyed by a local directory / file;
-            # the DocServer + Worker subprocess architecture (spawned for
-            # ``manager=True``, connected via ``DocServer(...)``, or bound via
-            # ``processor=DocumentProcessor(...)``) races the main process
-            # and Workers for the same on-disk state and intermittently
-            # fails (e.g. ``Open milvus.db failed, the file has been opened
-            # by another program``). ``processor is not None`` is covered
-            # too because ``Document.__init__`` rewrites
-            # ``manager=DocumentProcessor(...)`` into
-            # ``manager=False, processor=<...>`` before reaching ``_Manager``,
-            # which would otherwise skip the earlier branches.
-            if spawn_doc_server or connect_doc_server or processor is not None:
-                embedded = list(_iter_embedded_store_endpoints(store_conf))
-                if embedded:
-                    raise ValueError(
-                        'Document with `manager=True` / `manager=DocServer(...)` / '
-                        '`manager=DocumentProcessor(...)` does not support embedded '
-                        '(filesystem-bound) vector stores. Embedded backends such '
-                        'as milvus_lite or ChromaStore PersistentClient are '
-                        'single-process and would be raced by the service-mode '
-                        'subprocesses. Point the store config at a remote service '
-                        '(http/https/tcp/grpc/unix scheme), e.g. Milvus: '
-                        "{'type': 'milvus', 'kwargs': {'uri': "
-                        "os.getenv('MILVUS_URI', 'http://<host>:19530')}} "
-                        'or Chroma: '
-                        "{'type': 'chroma', 'kwargs': {'uri': 'http://<host>:8000'}}. "
-                        f'Offending store(s): {embedded!r}.'
-                    )
+
+            spawn_doc_server, connect_doc_server = self._decide_service_mode(
+                manager, store_conf, processor, self._dataset_path)
+            self._reject_embedded_store_with_service_mode(
+                store_conf, spawn=spawn_doc_server, connect=connect_doc_server, processor=processor)
+
             self._launcher: Launcher = launcher if launcher else (
-                lazyllm.launchers.empty(sync=False) if spawn_doc_server else lazyllm.launchers.remote(sync=False)
-            )
-            doc_impl_dataset_path = dataset_path if not (spawn_doc_server or connect_doc_server) else None
-            self._doc_impl_dataset_path = doc_impl_dataset_path
+                lazyllm.launchers.empty(sync=False) if spawn_doc_server else lazyllm.launchers.remote(sync=False))
+            self._doc_impl_dataset_path = self._dataset_path if not (spawn_doc_server or connect_doc_server) else None
             self._doc_processor = None
             if spawn_doc_server:
                 self._spawn_doc_server = True
@@ -252,9 +118,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 self._submodules.remove(self._doc_processor)
             elif connect_doc_server:
                 self._manager = manager
-                parser_url = getattr(getattr(manager, '_raw_impl', None), '_parser_url', None)
-                if parser_url is None:
-                    parser_url = manager.parser_url
+                parser_url = getattr(getattr(manager, '_raw_impl', None), '_parser_url', None) or manager.parser_url
                 if parser_url:
                     self._doc_processor = DocumentProcessor(url=parser_url)
             self._schema_extractor = schema_extractor
@@ -264,21 +128,20 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             name = name or RAG_DEFAULT_GROUP_NAME
             if not display_name: display_name = name
             if enable_path_monitoring is None:
-                enable_path_monitoring = False if (spawn_doc_server or connect_doc_server or processor) else True
+                enable_path_monitoring = not (spawn_doc_server or connect_doc_server or processor)
             self._enable_path_monitoring = enable_path_monitoring
             doc_processor = self._doc_processor or processor
             self._kbs = CallableDict({name: DocImpl(
-                embed=self._embed,
-                dataset_path=self._doc_impl_dataset_path,
-                enable_path_monitoring=enable_path_monitoring,
-                doc_files=doc_files,
-                global_metadata_desc=doc_fields,
-                store=store_conf, processor=doc_processor, algo_name=name, display_name=display_name,
-                description=description, schema_extractor=schema_extractor)})
+                embed=self._embed, dataset_path=self._doc_impl_dataset_path,
+                enable_path_monitoring=enable_path_monitoring, doc_files=doc_files,
+                global_metadata_desc=doc_fields, store=store_conf, processor=doc_processor,
+                algo_name=name, display_name=display_name, description=description,
+                schema_extractor=schema_extractor)})
 
             if create_ui and not self._spawn_doc_server:
                 self.ensure_doc_web()
-            if server: self._kbs = ServerModule(self._kbs, port=(None if isinstance(server, bool) else int(server)))
+            if server:
+                self._kbs = ServerModule(self._kbs, port=(None if isinstance(server, bool) else int(server)))
             self._global_metadata_desc = doc_fields
 
         @property
@@ -318,11 +181,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             if self._spawn_doc_server:
                 self._ensure_doc_processor_started()
                 if not hasattr(self, '_manager'):
-                    # Create DocServer with scanning DISABLED initially.
-                    # Scanning is deferred until after all KB registrations and
-                    # parser algorithm registrations are complete, so the very
-                    # first scan sees a fully populated _owned_kbs set and can
-                    # route requests to algorithms that exist on the parser.
+                    # Start DocServer with scanning disabled; enable only after
+                    # all KBs + parser algorithms are registered so the first
+                    # scan sees a consistent routing table.
                     self._manager = DocServer(
                         launcher=self._launcher,
                         storage_dir=self._dataset_path,
@@ -331,16 +192,11 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                         enable_scan=bool(self._dataset_path),
                     )
                     self._manager.start()
-                    # Back-fill KB registrations for groups created before DocServer existed
-                    kbs = self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs
+                    kbs = self._iter_kbs()
                     for kb_name in kbs:
                         self._manager.ensure_kb_registered(kb_name)
-                    # Force-init all DocImpl instances so their algorithms get registered
-                    # with the parser service (not just recorded in the doc-service DB).
                     for impl in kbs.values():
                         impl._lazy_init()
-                    # NOW start scanning — _owned_kbs is populated and all parser
-                    # algorithms are registered, so the first scan is consistent.
                     self._manager.enable_scanning()
                 if self._create_ui and not hasattr(self, '_docweb'):
                     self.ensure_doc_web()
@@ -372,20 +228,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 algo_name=name, display_name=name, description=self._description,
                 schema_extractor=schema_extractor,
             )
-            (self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs)[name] = impl
-            # Register KB in DocServer DB so scan can discover this group
+            self._iter_kbs()[name] = impl
+            # Register KB with DocServer if it's already running so the next scan cycle picks it up.
             if hasattr(self, '_manager') and isinstance(self._manager, DocServer):
                 self._manager.ensure_kb_registered(name)
-                # If DocServer is already running, init DocImpl now so its algorithm
-                # gets registered with the parser before the next scan cycle.
                 impl._lazy_init()
 
         def get_doc_by_kb_group(self, name):
-            return self._kbs._impl._m[name] if isinstance(self._kbs, ServerModule) else self._kbs[name]
+            return self._iter_kbs()[name]
 
         def stop(self):
-            kbs = self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs
-            for impl in kbs.values():
+            for impl in self._iter_kbs().values():
                 impl.stop_local_monitoring()
             if hasattr(self, '_docweb'):
                 self._docweb.stop()
@@ -422,6 +275,10 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 raise ValueError(f'Unsupported manager value: {manager}')
             create_ui = True
             manager = True
+        if create_ui:
+            warnings.warn('`create_ui=True` (and the legacy `manager="ui"` alias) is deprecated and will be removed'
+                          ' in a future release. Prefer `manager=True` and interact with DocServer via its HTTP API'
+                          ' / SDK instead.', DeprecationWarning, stacklevel=2)
         if isinstance(dataset_path, (tuple, list)):
             doc_fields = dataset_path
             dataset_path = None
@@ -434,8 +291,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         name = name or RAG_DEFAULT_GROUP_NAME
 
         if isinstance(manager, Document._Manager):
-            assert not server, 'Server infomation is already set to by manager'
-            assert not launcher, 'Launcher infomation is already set to by manager'
+            assert not server, 'Server information is already set by manager'
+            assert not launcher, 'Launcher information is already set by manager'
             assert not manager._cloud, 'manager is not allowed to share in cloud mode'
             assert manager._doc_files is None, 'manager is not allowed to share with temp files'
             if dataset_path != manager._dataset_path and dataset_path != manager._origin_path:
@@ -451,7 +308,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             if isinstance(manager, DocumentProcessor):
                 if store_conf is None:
                     raise ValueError('`store_conf` is required when `manager` is a DocumentProcessor')
-                if _is_local_map_store(store_conf):
+                if is_local_map_store(store_conf):
                     raise ValueError('`manager=DocumentProcessor(...)` does not support pure local map store')
                 processor, cloud = manager, True
                 manager = False
@@ -468,44 +325,28 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         self._graph_document: weakref.ref = None
 
     @staticmethod
-    def list_all_files_in_directory(
-        dataset_path: str, skip_hidden_path: bool = True, recursive: bool = True
-    ) -> List[str]:
-        files_list = []
-
+    def list_all_files_in_directory(dataset_path: str, skip_hidden_path: bool = True,
+                                    recursive: bool = True) -> List[str]:
         if not os.path.exists(dataset_path):
-            return files_list
-
+            return []
         if not os.path.isdir(dataset_path):
-            return [dataset_path] if os.path.isfile(dataset_path) else files_list
-
+            return [dataset_path] if os.path.isfile(dataset_path) else []
+        files_list = []
         if recursive:
             for root, dirs, files in os.walk(os.path.abspath(dataset_path)):
-                # Skip hidden directories
                 if skip_hidden_path:
-                    path_parts = root.split(os.sep)
-                    if any(part.startswith('.') for part in path_parts if part):
+                    if any(part.startswith('.') for part in root.split(os.sep) if part):
                         continue
-                    # Filter out hidden directories
                     dirs[:] = [d for d in dirs if not d.startswith('.')]
-
-                # Skip hidden files
-                if skip_hidden_path:
-                    files = [file_path for file_path in files if not file_path.startswith('.')]
-
-                files = [os.path.join(root, file_path) for file_path in files]
-                files_list.extend(files)
+                    files = [f for f in files if not f.startswith('.')]
+                files_list.extend(os.path.join(root, f) for f in files)
         else:
-            items = os.listdir(dataset_path)
-            for item in items:
-                item_path = os.path.join(dataset_path, item)
-                # Skip hidden files/directories
+            for item in os.listdir(dataset_path):
                 if skip_hidden_path and item.startswith('.'):
                     continue
-                # Only add files, not directories
+                item_path = os.path.join(dataset_path, item)
                 if os.path.isfile(item_path):
                     files_list.append(item_path)
-
         return files_list
 
     def _list_all_files_in_dataset(self, skip_hidden_path: bool = True) -> List[str]:
@@ -516,51 +357,27 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         assert isinstance(self._manager._kbs, ServerModule), 'Document is not a service, please set `manager` to `True`'
         return self._manager._kbs._url
 
-    def connect_sql_manager(
-        self,
-        sql_manager: SqlManager,
-        schma: Optional[DocInfoSchema] = None,
-        force_refresh: bool = True,
-    ):
-        def format_schema_to_dict(schema: DocInfoSchema):
+    def connect_sql_manager(self, sql_manager: SqlManager, schma: Optional[DocInfoSchema] = None,
+                            force_refresh: bool = True):
+        def schema_as_dicts(schema: DocInfoSchema):
             if schema is None:
                 return None, None
-            desc_dict = {ele['key']: ele['desc'] for ele in schema}
-            type_dict = {ele['key']: ele['type'] for ele in schema}
-            return desc_dict, type_dict
+            return ({e['key']: e['desc'] for e in schema}, {e['key']: e['type'] for e in schema})
 
-        def compare_schema(old_schema: DocInfoSchema, new_schema: DocInfoSchema):
-            old_desc_dict, old_type_dict = format_schema_to_dict(old_schema)
-            new_desc_dict, new_type_dict = format_schema_to_dict(new_schema)
-            return old_desc_dict == new_desc_dict and old_type_dict == new_type_dict
-
-        # 1. Check valid arguments
         if sql_manager.check_connection().status != DBStatus.SUCCESS:
             raise RuntimeError(f'Failed to connect to sql manager: {sql_manager._gen_conn_url()}')
-        pre_doc_table_schema = None
-        if self._doc_to_db_processor:
-            pre_doc_table_schema = self._doc_to_db_processor.doc_info_schema
-        assert pre_doc_table_schema or schma, 'doc_table_schma must be given'
 
-        schema_equal = compare_schema(pre_doc_table_schema, schma)
-        assert (
-            schema_equal or force_refresh is True
-        ), 'When changing doc_table_schema, force_refresh should be set to True'
+        pre_schema = self._doc_to_db_processor.doc_info_schema if self._doc_to_db_processor else None
+        assert pre_schema or schma, 'doc_table_schma must be given'
+        schema_equal = schema_as_dicts(pre_schema) == schema_as_dicts(schma)
+        assert schema_equal or force_refresh is True, \
+            'When changing doc_table_schema, force_refresh should be set to True'
 
-        # 2. Init handler if needed
-        need_init_processor = False
-        if self._doc_to_db_processor is None:
-            need_init_processor = True
-        else:
-            # avoid reinit for the same db
-            if sql_manager != self._doc_to_db_processor.sql_manager:
-                need_init_processor = True
-        if need_init_processor:
+        if self._doc_to_db_processor is None or sql_manager != self._doc_to_db_processor.sql_manager:
             self._doc_to_db_processor = DocToDbProcessor(sql_manager)
 
-        # 3. Reset doc_table_schema if needed
         if schma and not schema_equal:
-            # This api call will clear existing db table 'lazyllm_doc_elements'
+            # Clears existing lazyllm_doc_elements table.
             self._doc_to_db_processor._reset_doc_info_schema(schma)
 
     def get_sql_manager(self):
@@ -600,15 +417,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @property
     def _schema_extractor(self):
-        # Compatibility shim: ``SqlCall.create_from_document`` (and other
-        # pre-PR callers) read ``document._schema_extractor`` directly. The
-        # per-group value lives on the active DocImpl after the doc_service
-        # refactor (set either at construction or by
-        # ``Document._Manager.add_kb_group`` when sharing a manager across
-        # multiple KBs); reading from the manager would lose the per-group
-        # extractor in shared-manager flows. A direct setattr instead would
-        # also re-enroll the extractor as a Document submodule and trip
-        # 'Cannot stop an unstarted task' inside Document.stop().
+        # Compat shim for pre-refactor callers (e.g. ``SqlCall.create_from_document``);
+        # read through the active DocImpl so shared-manager KBs keep per-group values.
         impl = self._manager.get_doc_by_kb_group(self._curr_group)
         return getattr(impl, '_schema_extractor', None)
 
