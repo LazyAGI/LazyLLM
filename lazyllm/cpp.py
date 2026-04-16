@@ -135,6 +135,7 @@ def _scan_proxy_members(py_cls: type, impl_cls: type):
 
 
 def cpp_class(py_class: Optional[_C] = None, *, cpp_class_name: Optional[str] = None):
+    # When cpp_class_name is omitted, the C++ export name defaults to the Python class name.
     def _decorate(cls: _C) -> _C:
         if not isinstance(cls, type):
             raise TypeError(f'@cpp_class can only decorate classes, got: {type(cls).__name__}')
@@ -243,6 +244,8 @@ def cpp_proxy(
     method_fallbacks: Optional[Dict[str, Tuple[str, ...]]] = None,
     cpp_class_name: Optional[str] = None,
 ):
+    # When cpp_class_name is omitted, the C++ impl name defaults to {cls.__name__}CPPImpl,
+    # which differs from @cpp_class where the default is simply cls.__name__.
     def _decorate(cls: _C) -> _C:
         if not isinstance(cls, type):
             raise TypeError(f'@cpp_proxy can only decorate classes, got: {type(cls).__name__}')

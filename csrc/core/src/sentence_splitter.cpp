@@ -3,12 +3,12 @@
 #include <cctype>
 #include <stdexcept>
 
-namespace lazyllm {
+namespace {
 
 std::string join_views(
     size_t string_size,
-    std::vector<Chunk>::const_iterator begin,
-    const std::vector<Chunk>::const_iterator& end
+    std::vector<lazyllm::Chunk>::const_iterator begin,
+    const std::vector<lazyllm::Chunk>::const_iterator& end
 ) {
     std::string out;
     out.reserve(string_size);
@@ -18,6 +18,10 @@ std::string join_views(
     }
     return out;
 }
+
+} // namespace
+
+namespace lazyllm {
 
 std::vector<std::string> SentenceSplitter::merge_chunks(std::vector<Chunk> chunks, int chunk_size) const {
     std::vector<std::string> out;
@@ -44,7 +48,7 @@ std::vector<std::string> SentenceSplitter::merge_chunks(std::vector<Chunk> chunk
             throw std::runtime_error("Chunk token_size exceeds chunk_size; cannot make progress.");
         }
 
-        // Merge chunks witin window.
+        // Merge chunks within window.
         out.push_back(join_views(string_size, iLeft, iRight));
 
         // Shrink left edge to select overlap of next merge.

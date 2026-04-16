@@ -18,7 +18,7 @@ std::string any_to_string(const MetadataVType& value) {
         else if constexpr (std::is_same_v<T, std::vector<double>>) return VectorToString(v);
         else if constexpr (std::is_same_v<T, std::unordered_map<std::string, std::string>>) return MapToString(v);
         else throw std::runtime_error(std::string("Unsupported Metadata value type: ") + typeid(T).name());
-    }, *value);
+    }, value.value());
 }
 
 } // namespace lazyllm

@@ -1,9 +1,7 @@
 #pragma once
 
-#include <memory>
 #include <set>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -35,18 +33,19 @@ struct DocNodeCore {
 
     DocNodeCore(const DocNodeCore&) = default;
     DocNodeCore& operator=(const DocNodeCore&) = default;
+    DocNodeCore(DocNodeCore&&) = default;
+    DocNodeCore& operator=(DocNodeCore&&) = default;
     virtual ~DocNodeCore() = default;
 
     virtual std::string get_metadata_string(MetadataMode mode = MetadataMode::ALL) const {
         if (mode == MetadataMode::NONE) return "";
 
         std::set<std::string> valid_keys;
-        for (const auto& [key, _] : _metadata) valid_keys.insert(key);
-
-        if (mode == MetadataMode::LLM)
-            valid_keys = SetDiff(valid_keys, _excluded_llm_metadata_keys);
-        else if (mode == MetadataMode::EMBED)
-            valid_keys = SetDiff(valid_keys, _excluded_embed_metadata_keys);
+        for (const auto& [key, _] : _metadata) {
+            if (mode == MetadataMode::LLM && _excluded_llm_metadata_keys.count(key)) continue;
+            if (mode == MetadataMode::EMBED && _excluded_embed_metadata_keys.count(key)) continue;
+            valid_keys.insert(key);
+        }
 
         std::vector<std::string> kv_strings;
         for (const std::string& key : valid_keys)

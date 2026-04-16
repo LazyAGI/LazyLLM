@@ -2,8 +2,6 @@
 
 #include "doc_node.hpp"
 
-#include <memory>
-
 namespace py = pybind11;
 
 PYBIND11_MODULE(lazyllm_cpp, m) {

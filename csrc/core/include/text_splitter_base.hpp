@@ -1,17 +1,11 @@
 #pragma once
 
 #include <algorithm>
-#include <any>
-#include <cctype>
-#include <cstdlib>
-#include <functional>
 #include <memory>
-#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "tokenizer.hpp"

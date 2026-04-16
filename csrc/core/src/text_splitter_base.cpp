@@ -46,7 +46,7 @@ std::vector<std::string> TextSplitterBase::split_text(std::string_view view, int
         splits.push_back(Chunk{std::string(split.view), split.is_sentence, split.token_size});
     }
     return merge_chunks(std::move(splits), effective_chunk_size);
-}
+} // namespace lazyllm
 
 std::vector<ChunkView> TextSplitterBase::split_recursive(std::string_view view, const int chunk_size) const
 {
@@ -77,7 +77,7 @@ std::vector<ChunkView> TextSplitterBase::split_recursive(std::string_view view, 
         }
     }
     return splits;
-}
+} // namespace lazyllm
 
 std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_functions(std::string_view text) const
 {
@@ -94,7 +94,7 @@ std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_funct
     if (views.size() > 1) return {views, false};
 
     return {UnicodeProcessor(text).split_to_chars(), false};
-}
+} // namespace lazyllm
 
 std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separator(
     std::string_view text, std::string_view separator)
@@ -121,7 +121,7 @@ std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separat
         start = idx + sep_len;
     }
     return result;
-}
+} // namespace lazyllm
 
 /**
  *  @brief Build final chunks from token-sized split units while preserving overlap semantics.
@@ -201,6 +201,6 @@ std::vector<std::string> TextSplitterBase::merge_chunks(std::vector<Chunk> split
     reversed_result.emplace_back(end_split.text);
     std::reverse(reversed_result.begin(), reversed_result.end());
     return reversed_result;
-}
+} // namespace lazyllm
 
-}
+} // namespace lazyllm

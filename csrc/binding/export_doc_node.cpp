@@ -14,6 +14,12 @@ namespace {
 
 namespace pyu = lazyllm::pybind_utils;
 
+py::dict MetadataToPyDict(const lazyllm::DocNodeCore::Metadata& self) {
+    py::dict out;
+    for (const auto& [k, v] : self) out[py::str(k)] = py::cast(v);
+    return out;
+}
+
 struct PyDocNodeCore : lazyllm::DocNodeCore {
     using lazyllm::DocNodeCore::DocNodeCore;
 
@@ -115,9 +121,7 @@ void exportDocNode(py::module& m) {
         )
         .def("copy",
             [](const lazyllm::DocNodeCore::Metadata& self) {
-                py::dict out;
-                for (const auto& [k, v] : self) out[py::str(k)] = py::cast(v);
-                return out;
+                return MetadataToPyDict(self);
             }
         )
         .def("update",
@@ -131,27 +135,25 @@ void exportDocNode(py::module& m) {
             py::arg("other")
         )
         .def("__eq__",
-            [](const lazyllm::DocNodeCore::Metadata& self, const py::object& other) {
-                py::dict out;
-                for (const auto& [k, v] : self) out[py::str(k)] = py::cast(v);
-                const int cmp = PyObject_RichCompareBool(out.ptr(), other.ptr(), Py_EQ);
-                if (cmp < 0) throw py::error_already_set();
-                return cmp == 1;
+            [](const lazyllm::DocNodeCore::Metadata& self, const py::object& other) -> py::object {
+                const int cmp = PyObject_RichCompareBool(MetadataToPyDict(self).ptr(), other.ptr(), Py_EQ);
+                if (cmp < 0) {
+                    PyErr_Clear();
+                    Py_INCREF(Py_NotImplemented);
+                    return py::reinterpret_steal<py::object>(Py_NotImplemented);
+                }
+                return py::bool_(cmp == 1);
             },
             py::is_operator()
         )
         .def("__repr__",
             [](const lazyllm::DocNodeCore::Metadata& self) {
-                py::dict out;
-                for (const auto& [k, v] : self) out[py::str(k)] = py::cast(v);
-                return py::repr(out).cast<std::string>();
+                return py::repr(MetadataToPyDict(self)).cast<std::string>();
             }
         )
         .def("__deepcopy__",
             [](const lazyllm::DocNodeCore::Metadata& self, const py::dict&) {
-                py::dict out;
-                for (const auto& [k, v] : self) out[py::str(k)] = py::cast(v);
-                return out;
+                return MetadataToPyDict(self);
             },
             py::arg("memo")
         );

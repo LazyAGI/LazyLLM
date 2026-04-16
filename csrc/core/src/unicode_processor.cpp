@@ -87,6 +87,8 @@ std::vector<std::string_view> UnicodeProcessor::split_to_chars() const {
     return out;
 }
 
+// Sentence-ending punctuation is included at the end of each chunk.
+// Any trailing text after the last sentence-ending punctuation is returned as the final chunk.
 std::vector<std::string_view> UnicodeProcessor::split_by_sentence_endings() const {
     if (_text.empty()) return {};
 

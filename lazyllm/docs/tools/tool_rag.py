@@ -5296,7 +5296,7 @@ add_english_doc('rag.transform.base.NodeTransform.transform', '''
 [Deprecated] Alias method of `forward()`.
 
 Args:
-    node (DocNode): Input document node.
+    documents (Union[DocNode, List[DocNode]]): Input document node(s).
     **kwargs: Implementation-specific parameters.
 ''')
 
@@ -5304,7 +5304,7 @@ add_chinese_doc('rag.transform.base.NodeTransform.transform', '''
 [已废弃] `forward()` 的别名方法。
 
 Args:
-    node (DocNode): 输入文档节点。
+    documents (Union[DocNode, List[DocNode]]): 输入文档节点。
     **kwargs: 实现相关的参数。
 ''')
 
