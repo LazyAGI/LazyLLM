@@ -1,0 +1,36 @@
+from dataclasses import asdict, dataclass, field, fields
+from typing import Any, Iterable, List, Optional
+
+
+def _normalize_tags(tags: Any) -> List[str]:
+    if tags is None:
+        return []
+    if isinstance(tags, str):
+        return [tags]
+    if isinstance(tags, Iterable):
+        return [str(tag) for tag in tags if tag is not None]
+    return [str(tags)]
+
+
+@dataclass
+class LazyTraceContext:
+    enabled: Optional[bool] = None
+    trace_id: Optional[str] = None
+    parent_span_id: Optional[str] = None
+    session_id: Optional[str] = None
+    user_id: Optional[str] = None
+    request_tags: List[str] = field(default_factory=list)
+    sampled: Optional[bool] = None
+    debug_capture_payload: Optional[bool] = None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'LazyTraceContext':
+        if not isinstance(data, dict):
+            return cls()
+        known = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in known}
+        filtered['request_tags'] = _normalize_tags(filtered.get('request_tags'))
+        return cls(**filtered)
