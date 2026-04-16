@@ -38,14 +38,13 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
             target_link_options(${test_name} PRIVATE -Wl,--disable-new-dtags)
         endif ()
     endif ()
-    if (WIN32 AND TARGET utf8proc)
-        # gtest_discover_tests runs the test executable at build time to enumerate tests.
-        # On Windows the test EXE needs utf8proc.dll next to it; copy it post-build.
-        add_custom_command(TARGET ${test_name} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:utf8proc>
-            $<TARGET_FILE_DIR:${test_name}>
-        )
+    if (WIN32)
+        # gtest_discover_tests runs the test executable at build time, which fails on
+        # Windows when required DLLs are not yet in PATH. Use gtest_add_tests instead:
+        # it scans the source files for TEST/TEST_F macros and registers tests without
+        # executing the binary.
+        gtest_add_tests(TARGET ${test_name})
+    else ()
+        gtest_discover_tests(${test_name})
     endif ()
-    gtest_discover_tests(${test_name})
 endforeach ()
