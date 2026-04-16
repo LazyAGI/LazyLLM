@@ -81,23 +81,15 @@ def sqlite_sql_manager():
     tmp = tempfile.TemporaryDirectory(prefix='lazyllm_sqlmgr_test_')
     try:
         db_path = os.path.join(tmp.name, 'test.db')
-        tables_info = {
-            'tables': [
-                {
-                    'name': 'session_items',
-                    'comment': 'Scratch table for session tests',
-                    'columns': [
-                        {'name': 'id', 'data_type': 'integer',
-                         'is_primary_key': True, 'nullable': False},
-                        {'name': 'value', 'data_type': 'string', 'nullable': False},
-                    ],
-                }
-            ]
-        }
-        mgr = SqlManager(
-            db_type='sqlite', user=None, password=None, host=None, port=None,
-            db_name=db_path, tables_info_dict=tables_info,
-        )
+        tables_info = {'tables': [{
+            'name': 'session_items', 'comment': 'Scratch table for session tests',
+            'columns': [
+                {'name': 'id', 'data_type': 'integer', 'is_primary_key': True, 'nullable': False},
+                {'name': 'value', 'data_type': 'string', 'nullable': False},
+            ],
+        }]}
+        mgr = SqlManager(db_type='sqlite', user=None, password=None, host=None, port=None,
+                         db_name=db_path, tables_info_dict=tables_info)
         try:
             yield mgr
         finally:

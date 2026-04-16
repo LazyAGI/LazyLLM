@@ -503,17 +503,9 @@ class DocManager:
             )
             return {row.path: row.doc_id for row in rows if row.path}
 
-    def _upsert_doc(
-        self,
-        doc_id: str,
-        filename: str,
-        path: str,
-        metadata: Dict[str, Any],
-        source_type: SourceType,
-        upload_status: DocStatus = DocStatus.SUCCESS,
-        allowed_path_doc_ids: Optional[Set[str]] = None,
-        session=None,
-    ):
+    def _upsert_doc(self, doc_id: str, filename: str, path: str, metadata: Dict[str, Any],
+                    source_type: SourceType, upload_status: DocStatus = DocStatus.SUCCESS,
+                    allowed_path_doc_ids: Optional[Set[str]] = None, session=None):
         try:
             with self._db_manager.get_session(session) as sess:
                 now = datetime.now()
@@ -529,41 +521,22 @@ class DocManager:
                     row = sess.query(Doc).filter(Doc.doc_id == doc_id).first()
                     path_rows = sess.query(Doc).filter(Doc.path == path).all()
                     conflict = next(
-                        (
-                            item for item in path_rows
-                            if item.doc_id != doc_id and item.doc_id not in allowed_path_doc_ids
-                        ),
+                        (r for r in path_rows if r.doc_id != doc_id and r.doc_id not in allowed_path_doc_ids),
                         None,
                     )
                     if conflict is not None:
-                        raise DocServiceError(
-                            'E_STATE_CONFLICT',
-                            f'doc path already exists: {path}',
-                            {'doc_id': conflict.doc_id, 'path': path},
-                        )
+                        raise DocServiceError('E_STATE_CONFLICT', f'doc path already exists: {path}',
+                                              {'doc_id': conflict.doc_id, 'path': path})
                     if row is None:
-                        row = Doc(
-                            doc_id=doc_id,
-                            filename=filename,
-                            path=path,
-                            meta=to_json(metadata),
-                            upload_status=upload_status.value,
-                            source_type=source_type.value,
-                            file_type=file_type,
-                            content_hash=content_hash,
-                            size_bytes=size_bytes,
-                            created_at=now,
-                            updated_at=now,
-                        )
+                        row = Doc(doc_id=doc_id, filename=filename, path=path, meta=to_json(metadata),
+                                  upload_status=upload_status.value, source_type=source_type.value,
+                                  file_type=file_type, content_hash=content_hash, size_bytes=size_bytes,
+                                  created_at=now, updated_at=now)
                     else:
-                        row.filename = filename
-                        row.path = path
-                        row.meta = to_json(metadata)
+                        row.filename, row.path, row.meta = filename, path, to_json(metadata)
                         row.upload_status = upload_status.value
                         row.source_type = source_type.value
-                        row.file_type = file_type
-                        row.content_hash = content_hash
-                        row.size_bytes = size_bytes
+                        row.file_type, row.content_hash, row.size_bytes = file_type, content_hash, size_bytes
                         row.updated_at = now
                     sess.add(row)
                     sess.flush()
@@ -576,35 +549,20 @@ class DocManager:
                         pass
         except IntegrityError as exc:
             existing = self._get_doc_by_path(path)
-            if (
-                existing is not None
-                and existing.get('doc_id') != doc_id
-                and existing.get('doc_id') not in (allowed_path_doc_ids or set())
-            ):
-                raise DocServiceError(
-                    'E_STATE_CONFLICT',
-                    f'doc path already exists: {path}',
-                    {'doc_id': existing['doc_id'], 'path': path},
-                ) from exc
+            if (existing is not None and existing.get('doc_id') != doc_id
+                    and existing.get('doc_id') not in (allowed_path_doc_ids or set())):
+                raise DocServiceError('E_STATE_CONFLICT', f'doc path already exists: {path}',
+                                      {'doc_id': existing['doc_id'], 'path': path}) from exc
             raise
 
-    def _upsert_doc_and_bind(
-        self,
-        kb_id: str,
-        doc_id: str,
-        filename: str,
-        path: str,
-        metadata: Dict[str, Any],
-        source_type: SourceType,
-        upload_status: DocStatus = DocStatus.SUCCESS,
-        allowed_path_doc_ids: Optional[Set[str]] = None,
-    ):
+    def _upsert_doc_and_bind(self, kb_id: str, doc_id: str, filename: str, path: str,
+                             metadata: Dict[str, Any], source_type: SourceType,
+                             upload_status: DocStatus = DocStatus.SUCCESS,
+                             allowed_path_doc_ids: Optional[Set[str]] = None):
         with self._db_manager.get_session() as session:
-            doc_dict = self._upsert_doc(
-                doc_id, filename, path, metadata, source_type,
-                upload_status=upload_status, allowed_path_doc_ids=allowed_path_doc_ids,
-                session=session,
-            )
+            doc_dict = self._upsert_doc(doc_id, filename, path, metadata, source_type,
+                                        upload_status=upload_status,
+                                        allowed_path_doc_ids=allowed_path_doc_ids, session=session)
             self._ensure_kb_document(kb_id, doc_id, session=session)
             return doc_dict
 
@@ -1541,16 +1499,9 @@ class DocManager:
             self._forget_callback_record(callback.callback_id, callback.task_id)
             raise
 
-    def list_docs(
-        self,
-        status: Optional[List[str]] = None,
-        kb_id: Optional[str] = None,
-        algo_id: Optional[str] = None,
-        keyword: Optional[str] = None,
-        include_deleted_or_canceled: bool = True,
-        page: int = 1,
-        page_size: int = 20,
-    ):
+    def list_docs(self, status: Optional[List[str]] = None, kb_id: Optional[str] = None,
+                  algo_id: Optional[str] = None, keyword: Optional[str] = None,
+                  include_deleted_or_canceled: bool = True, page: int = 1, page_size: int = 20):
         with self._db_manager.get_session() as session:
             Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
             Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
@@ -1559,30 +1510,20 @@ class DocManager:
             if algo_id:
                 SnapshotAlias = aliased(State)
                 snapshot_join_cond = sqlalchemy.and_(
-                    SnapshotAlias.doc_id == Doc.doc_id,
-                    SnapshotAlias.kb_id == Rel.kb_id,
-                    SnapshotAlias.algo_id == algo_id,
-                )
+                    SnapshotAlias.doc_id == Doc.doc_id, SnapshotAlias.kb_id == Rel.kb_id,
+                    SnapshotAlias.algo_id == algo_id)
             else:
                 rn_col = sqlalchemy.func.row_number().over(
                     partition_by=(State.doc_id, State.kb_id),
-                    order_by=(State.updated_at.desc(), State.created_at.desc()),
-                ).label('_rn')
+                    order_by=(State.updated_at.desc(), State.created_at.desc())).label('_rn')
                 ranked_sq = session.query(State, rn_col).subquery('ranked_snapshot')
-                latest_sq = (
-                    session.query(ranked_sq).filter(ranked_sq.c._rn == 1).subquery('latest_snapshot')
-                )
+                latest_sq = session.query(ranked_sq).filter(ranked_sq.c._rn == 1).subquery('latest_snapshot')
                 SnapshotAlias = aliased(State, latest_sq)
                 snapshot_join_cond = sqlalchemy.and_(
-                    SnapshotAlias.doc_id == Doc.doc_id,
-                    SnapshotAlias.kb_id == Rel.kb_id,
-                )
+                    SnapshotAlias.doc_id == Doc.doc_id, SnapshotAlias.kb_id == Rel.kb_id)
 
-            query = (
-                session.query(Doc, Rel, SnapshotAlias)
-                .join(Rel, Doc.doc_id == Rel.doc_id)
-                .outerjoin(SnapshotAlias, snapshot_join_cond)
-            )
+            query = (session.query(Doc, Rel, SnapshotAlias).join(Rel, Doc.doc_id == Rel.doc_id)
+                     .outerjoin(SnapshotAlias, snapshot_join_cond))
 
             if kb_id:
                 query = query.filter(Rel.kb_id == kb_id)
@@ -1590,9 +1531,7 @@ class DocManager:
                 like_expr = f'%{keyword}%'
                 query = query.filter((Doc.filename.like(like_expr)) | (Doc.path.like(like_expr)))
             if not include_deleted_or_canceled:
-                query = query.filter(
-                    ~Doc.upload_status.in_([DocStatus.DELETED.value, DocStatus.CANCELED.value])
-                )
+                query = query.filter(~Doc.upload_status.in_([DocStatus.DELETED.value, DocStatus.CANCELED.value]))
             if status:
                 query = query.filter(SnapshotAlias.status.in_(status))
 
@@ -1603,11 +1542,8 @@ class DocManager:
             for doc_row, rel_row, snap_row in result['items']:
                 doc = _orm_to_dict(doc_row)
                 doc['metadata'] = from_json(doc.get('meta'))
-                items.append({
-                    'doc': doc,
-                    'relation': _orm_to_dict(rel_row),
-                    'snapshot': _orm_to_dict(snap_row) if snap_row is not None else None,
-                })
+                items.append({'doc': doc, 'relation': _orm_to_dict(rel_row),
+                              'snapshot': _orm_to_dict(snap_row) if snap_row is not None else None})
             result['items'] = items
             return result
 
@@ -1811,14 +1747,8 @@ class DocManager:
             },
         }
 
-    def list_kbs(
-        self,
-        page: int = 1,
-        page_size: int = 20,
-        keyword: Optional[str] = None,
-        status: Optional[List[str]] = None,
-        owner_id: Optional[str] = None,
-    ):
+    def list_kbs(self, page: int = 1, page_size: int = 20, keyword: Optional[str] = None,
+                 status: Optional[List[str]] = None, owner_id: Optional[str] = None):
         with self._db_manager.get_session() as session:
             Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
             Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
@@ -1826,13 +1756,8 @@ class DocManager:
             query = query.filter(Kb.kb_id != '__default__')
             if keyword:
                 like_expr = f'%{keyword}%'
-                query = query.filter(
-                    sqlalchemy.or_(
-                        Kb.kb_id.like(like_expr),
-                        Kb.display_name.like(like_expr),
-                        Kb.description.like(like_expr),
-                    )
-                )
+                query = query.filter(sqlalchemy.or_(
+                    Kb.kb_id.like(like_expr), Kb.display_name.like(like_expr), Kb.description.like(like_expr)))
             if status:
                 query = query.filter(Kb.status.in_(status))
             if owner_id:
