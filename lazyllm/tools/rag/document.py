@@ -286,15 +286,13 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
                  enable_path_monitoring: Optional[bool] = None):
         super().__init__()
-        if isinstance(manager, str):
-            if manager != 'ui':
-                raise ValueError(f'Unsupported manager value: {manager}')
-            create_ui = True
-            manager = True
         if create_ui:
             warnings.warn('`create_ui=True` (and the legacy `manager="ui"` alias) is deprecated and will be removed'
                           ' in a future release. Prefer `manager=True` and interact with DocServer via its HTTP API'
                           ' / SDK instead.', DeprecationWarning, stacklevel=2)
+        if isinstance(manager, str):
+            if manager != 'ui': raise ValueError(f'Unsupported manager value: {manager}')
+            create_ui = manager = True
         if enable_path_monitoring is not None:
             warnings.warn('`enable_path_monitoring` is deprecated: DocImpl no longer polls the dataset '
                           'directory. Persistent-store setups auto-upgrade to DocServer which owns scanning; '
