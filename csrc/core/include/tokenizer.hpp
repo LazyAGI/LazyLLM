@@ -20,7 +20,12 @@
 #include <limits.h>
 #include <unistd.h>
 #elif defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
 #endif
 
 class Tokenizer {
@@ -96,9 +101,18 @@ private:
     private:
         static std::vector<std::filesystem::path> candidate_dirs() {
             std::vector<std::filesystem::path> dirs;
+#ifdef _WIN32
+            char* env = nullptr;
+            size_t env_len = 0;
+            if (_dupenv_s(&env, &env_len, "LAZYLLM_TOKENIZER_PATH") == 0 && env) {
+                dirs.emplace_back(env);
+                free(env);
+            }
+#else
             if (const char* env = std::getenv("LAZYLLM_TOKENIZER_PATH")) {
                 dirs.emplace_back(env);
             }
+#endif
             dirs.emplace_back(get_module_dir());
             dirs.emplace_back(get_exe_parent_path());
             return dirs;
@@ -119,6 +133,13 @@ private:
             wchar_t result[MAX_PATH] = {0};
             GetModuleFileNameW(nullptr, result, MAX_PATH);
             return std::filesystem::path(result).parent_path();
+#elif defined(__APPLE__)
+            char result[PATH_MAX];
+            uint32_t size = sizeof(result);
+            if (_NSGetExecutablePath(result, &size) == 0) {
+                return std::filesystem::path(result).parent_path();
+            }
+            return {};
 #else
             char result[PATH_MAX];
             ssize_t count = readlink("/proc/self/exe", result, PATH_MAX);

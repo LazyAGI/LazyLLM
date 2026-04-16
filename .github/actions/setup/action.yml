@@ -27,7 +27,7 @@ runs:
       shell: bash
       run: |
         ls dist && pip install dist/lazyllm*.whl
-        lazyllm install rag
+        lazyllm install rag-advanced
         lazyllm install test
 
     - name: Restore pytest cache

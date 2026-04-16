@@ -146,7 +146,7 @@ std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<Chunk>
 
     if (splits.size() == 1) return {splits.front().text};
 
-    if (splits.back().token_size == chunk_size && _overlap > 0) {
+    if (static_cast<unsigned>(splits.back().token_size) == chunk_size && _overlap > 0) {
         Chunk end_split = splits.back();
         splits.pop_back();
 
@@ -169,7 +169,8 @@ std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<Chunk>
     reversed_result.reserve(splits.size());
     for (int idx = static_cast<int>(splits.size()) - 2; idx >= 0; --idx) {
         const Chunk& start_split = splits[static_cast<size_t>(idx)];
-        if (start_split.token_size <= _overlap && end_split.token_size <= chunk_size - _overlap) {
+        if (static_cast<unsigned>(start_split.token_size) <= _overlap &&
+            static_cast<unsigned>(end_split.token_size) <= chunk_size - _overlap) {
             end_split = Chunk{
                 start_split.text + end_split.text,
                 start_split.is_sentence && end_split.is_sentence,
@@ -178,7 +179,7 @@ std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<Chunk>
             continue;
         }
 
-        if (end_split.token_size > chunk_size) {
+        if (static_cast<unsigned>(end_split.token_size) > chunk_size) {
             throw std::runtime_error("split token size is greater than chunk size.");
         }
 

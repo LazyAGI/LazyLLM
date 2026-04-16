@@ -33,7 +33,7 @@ std::vector<std::string> SentenceSplitter::merge_chunks(const std::vector<Chunk>
     size_t string_size = 0;
 
     while (iRight != iEnd) {
-        if (iRight->token_size > chunk_size)
+        if (static_cast<unsigned>(iRight->token_size) > chunk_size)
             throw std::runtime_error("Chunk size is too big.");
 
         // Grow right edge to the largest window under chunk_size.
