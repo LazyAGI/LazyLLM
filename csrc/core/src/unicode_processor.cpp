@@ -153,4 +153,27 @@ std::vector<std::string_view> UnicodeProcessor::split_by_punctuation() const {
     return out;
 }
 
+std::vector<std::string_view> UnicodeProcessor::split_to_n_parts(size_t n) const {
+    if (_text.empty() || n == 0) return {};
+    auto chars = split_to_chars();
+    if (chars.empty()) return {_text};
+    if (n >= chars.size()) return chars;
+
+    std::vector<std::string_view> out;
+    out.reserve(n);
+    const size_t total = chars.size();
+    const size_t base = total / n;
+    const size_t rem = total % n;
+    size_t idx = 0;
+    for (size_t i = 0; i < n; ++i) {
+        const size_t count = base + (i < rem ? 1 : 0);
+        if (count == 0) continue;
+        const size_t start_offset = chars[idx].data() - _text.data();
+        const size_t end_offset = chars[idx + count - 1].data() - _text.data() + chars[idx + count - 1].size();
+        out.emplace_back(_text.substr(start_offset, end_offset - start_offset));
+        idx += count;
+    }
+    return out;
+}
+
 } // namespace lazyllm

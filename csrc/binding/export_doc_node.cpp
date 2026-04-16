@@ -84,7 +84,8 @@ void exportDocNode(py::module& m) {
     auto metadata_cls = py::bind_map<lazyllm::DocNodeCore::Metadata>(m, "MetadataMap");
     metadata_cls
         .def("get",
-            [](const lazyllm::DocNodeCore::Metadata& self, const std::string& key, const py::object& default_value) {
+            [](const lazyllm::DocNodeCore::Metadata& self, const std::string& key, const py::object& default_value
+            ) -> py::object {
                 auto it = self.find(key);
                 if (it == self.end()) return default_value;
                 return py::cast(it->second);
@@ -92,7 +93,7 @@ void exportDocNode(py::module& m) {
             py::arg("key"), py::arg("default") = py::none()
         )
         .def("pop",
-            [](lazyllm::DocNodeCore::Metadata& self, const std::string& key) {
+            [](lazyllm::DocNodeCore::Metadata& self, const std::string& key) -> py::object {
                 auto it = self.find(key);
                 if (it == self.end()) throw py::key_error(key);
                 py::object value = py::cast(it->second);
@@ -102,7 +103,8 @@ void exportDocNode(py::module& m) {
             py::arg("key")
         )
         .def("pop",
-            [](lazyllm::DocNodeCore::Metadata& self, const std::string& key, const py::object& default_value) {
+            [](lazyllm::DocNodeCore::Metadata& self, const std::string& key, const py::object& default_value
+            ) -> py::object {
                 auto it = self.find(key);
                 if (it == self.end()) return default_value;
                 py::object value = py::cast(it->second);

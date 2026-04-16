@@ -17,6 +17,7 @@ public:
     std::vector<std::string_view> split_to_chars() const;
     std::vector<std::string_view> split_by_sentence_endings() const;
     std::vector<std::string_view> split_by_punctuation() const;
+    std::vector<std::string_view> split_to_n_parts(size_t n) const;
 
 private:
     using Utf8Visitor = std::function<void(size_t offset, size_t byte_len, utf8proc_int32_t codepoint)>;

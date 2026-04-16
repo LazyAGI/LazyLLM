@@ -21,6 +21,7 @@ namespace lazyllm {
 
 class TextSplitterBase {
 public:
+    virtual ~TextSplitterBase() = default;
     TextSplitterBase(unsigned chunk_size, unsigned overlap, const std::string& encoding_name = "gpt2") :
         _chunk_size(chunk_size),
         _overlap(overlap),

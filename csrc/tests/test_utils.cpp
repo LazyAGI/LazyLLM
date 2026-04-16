@@ -99,10 +99,12 @@ TEST(utils, any_to_string_formats_none_metadata_value) {
 }
 
 TEST(utils, any_to_string_formats_string_map_metadata_values) {
-    EXPECT_EQ(
-        lazyllm::any_to_string(lazyllm::MetadataVType(std::unordered_map<std::string, std::string>{
+    const std::string result = lazyllm::any_to_string(
+        lazyllm::MetadataVType(std::unordered_map<std::string, std::string>{
             {"lang", "en"}, {"type", "text"}
-        })),
-        "{lang:en,type:text}"
-    );
+        }));
+    EXPECT_NE(result.find("lang:en"), std::string::npos);
+    EXPECT_NE(result.find("type:text"), std::string::npos);
+    EXPECT_EQ(result.front(), '{');
+    EXPECT_EQ(result.back(), '}');
 }

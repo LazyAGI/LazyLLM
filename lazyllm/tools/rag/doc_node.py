@@ -48,11 +48,11 @@ class DocNodeCore:
 
         metadata_keys = set(self._metadata.keys())
         if mode == MetadataMode.LLM:
-            for key in self.excluded_llm_metadata_keys:
+            for key in self._excluded_llm_metadata_keys:
                 if key in metadata_keys:
                     metadata_keys.remove(key)
         elif mode == MetadataMode.EMBED:
-            for key in self.excluded_embed_metadata_keys:
+            for key in self._excluded_embed_metadata_keys:
                 if key in metadata_keys:
                     metadata_keys.remove(key)
 
@@ -281,7 +281,7 @@ class DocNode(DocNodeCore):
 
     def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
-        assert len(embed_keys) > 0, 'The ebmed_keys to be checked must be passed in.'
+        assert len(embed_keys) > 0, 'The embed_keys to be checked must be passed in.'
         if self.embedding is None: return embed_keys
         return [k for k in embed_keys if k not in self.embedding]
 

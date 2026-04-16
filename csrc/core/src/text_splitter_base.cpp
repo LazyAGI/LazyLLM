@@ -54,6 +54,17 @@ std::vector<ChunkView> TextSplitterBase::split_recursive(std::string_view view, 
     if (token_size <= chunk_size) return {ChunkView{view, true, token_size}};
 
     auto [views, is_sentence] = split_by_functions(view);
+    if (views.size() == 1) {
+        int num_splits = (token_size + chunk_size - 1) / chunk_size;
+        auto forced_views = UnicodeProcessor(view).split_to_n_parts(static_cast<size_t>(num_splits));
+        std::vector<ChunkView> splits;
+        splits.reserve(forced_views.size());
+        for (const auto& v : forced_views) {
+            splits.push_back({v, is_sentence, get_token_size(v)});
+        }
+        return splits;
+    }
+
     std::vector<ChunkView> splits;
     for (const auto& segment_view : views) {
         const int seg_token_size = get_token_size(segment_view);
