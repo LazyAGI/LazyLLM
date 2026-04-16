@@ -7916,6 +7916,78 @@ Notes:
     - 当提供formatter时，get_content()在向量化模式下使用它进行输出格式化，仅向量化指定的字段，使用换行符连接。
 ''')
 
+add_english_doc('rag.doc_node.TreeDocNode', '''\
+A document node representing a tree structure with explicit direct children links.
+
+TreeDocNode extends DocNode to support tree-like document hierarchies by maintaining a list of direct children. It is commonly used when the parent-child relationships in a document need to be explicitly tracked and navigated.
+
+Args:
+    *args: Positional arguments passed to DocNode.__init__.
+    **kwargs: Keyword arguments passed to DocNode.__init__ (e.g., uid, content, group, embedding, parent, metadata, global_metadata, text).
+
+Notes:
+    - Direct children are stored in `direct_children_in_tree` and can be manipulated via `add_child`.
+    - The `from_doc_node` class method can convert an existing DocNode into a TreeDocNode without losing data.
+''')
+
+add_chinese_doc('rag.doc_node.TreeDocNode', '''\
+表示带有显式直接子节点链接的树结构的文档节点。
+
+TreeDocNode继承自DocNode，通过维护直接子节点列表来支持树状文档层次结构。通常用于需要显式跟踪和导航文档父子关系的场景。
+
+Args:
+    *args: 传递给 DocNode.__init__ 的位置参数。
+    **kwargs: 传递给 DocNode.__init__ 的关键字参数（例如 uid、content、group、embedding、parent、metadata、global_metadata、text）。
+
+Notes:
+    - 直接子节点存储在 `direct_children_in_tree` 中，可通过 `add_child` 方法进行操作。
+    - `from_doc_node` 类方法可以将现有的 DocNode 转换为 TreeDocNode，而不会丢失数据。
+''')
+
+add_english_doc('rag.doc_node.TreeDocNode.from_doc_node', '''\
+Convert an existing DocNode into a TreeDocNode.
+
+If the input node is already a TreeDocNode, it is returned unchanged. Otherwise, a shallow copy is made, its class is switched to TreeDocNode, and `direct_children_in_tree` is initialized to an empty list.
+
+Args:
+    node (DocNode): The document node to convert.
+
+Returns:
+    TreeDocNode: The resulting tree document node.
+''')
+
+add_chinese_doc('rag.doc_node.TreeDocNode.from_doc_node', '''\
+将现有的 DocNode 转换为 TreeDocNode。
+
+如果输入节点已经是 TreeDocNode，则原样返回。否则，将创建一个浅拷贝，切换其类为 TreeDocNode，并将 `direct_children_in_tree` 初始化为空列表。
+
+Args:
+    node (DocNode): 要转换的文档节点。
+
+Returns:
+    TreeDocNode: 转换后的树文档节点。
+''')
+
+add_english_doc('rag.doc_node.TreeDocNode.add_child', '''\
+Add a direct child node to this tree node.
+
+Args:
+    child (TreeDocNode): The child node to append.
+
+Returns:
+    None
+''')
+
+add_chinese_doc('rag.doc_node.TreeDocNode.add_child', '''\
+向当前树节点添加一个直接子节点。
+
+Args:
+    child (TreeDocNode): 要添加的子节点。
+
+Returns:
+    None
+''')
+
 add_english_doc('rag.rerank.ModuleReranker', '''\
 A reranker that uses trainable modules to reorder documents based on relevance to a query.
 
