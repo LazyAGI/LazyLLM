@@ -1,6 +1,6 @@
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import EMBED_DEFAULT_KEY
-from lazyllm.tools.rag.doc_node import DocNode, TreeDocNode
+from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag import (Document, Retriever, TempDocRetriever, ContextRetriever,
                                WeightedRetriever, PriorityRetriever)
 from lazyllm.launcher import cleanup

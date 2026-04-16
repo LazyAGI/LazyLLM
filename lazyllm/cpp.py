@@ -48,9 +48,9 @@ def _build_valid_kwargs(impl_cls: type, kwargs: Dict[str, Any]) -> Dict[str, Any
 
         expected_type = param.annotation
         if expected_type is not inspect._empty \
-            and isinstance(expected_type, type) \
-            and type(value) is not expected_type:
-                continue
+           and isinstance(expected_type, type) \
+           and type(value) is not expected_type:
+            continue
         valid_params[name] = value
 
     return valid_params
