@@ -107,11 +107,7 @@ class Retriever(_RetrieverBase, _PostProcess):
 
     @property
     def __trace_kwargs__(self):
-        doc_ids = []
-        for d in getattr(self, '_docs', []):
-            doc_ids.append(getattr(d, '_module_id', None) or str(type(d).__name__))
         return {
-            'doc_ids': doc_ids,
             'group_name': self._group_name,
             'similarity': self._similarity,
             'similarity_cut_off': self._similarity_cut_off,

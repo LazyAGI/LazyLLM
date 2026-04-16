@@ -1,7 +1,7 @@
 from ..common import LOG, globals
 from ..configs import config
 from ..hook import LazyLLMHook, register_builtin_hook_provider
-from .configs import resolve_default_module_trace
+from .configs import resolve_module_trace
 from .runtime import finish_span, set_span_attributes, set_span_error, set_span_output, set_span_usage, start_span
 
 
@@ -57,9 +57,11 @@ def resolve_tracing_hooks(obj):
     if not trace_enabled or trace_cfg.get('sampled') is False:
         return []
     if hasattr(obj, '_module_id'):
-        if not resolve_default_module_trace(
+        if not resolve_module_trace(
+            module_id=getattr(obj, '_module_id', None),
             module_name=getattr(obj, 'name', None) or getattr(obj, '_module_name', None),
             module_class=obj.__class__,
+            runtime_override=trace_cfg.get('module_trace'),
         ):
             return []
     return [LazyTracingHook]
