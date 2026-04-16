@@ -32,6 +32,11 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
+      - name: Build and run C++ tests
+        run: |
+          pip install pybind11
+          bash csrc/scripts/build_test.sh
+
       - name: Install test requirements
         run: |
           pip install -r tests/requirements.txt
@@ -40,11 +45,6 @@ jobs:
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
             pip install -r tests/requirements_mac.txt
           fi
-
-      - name: Build and run C++ tests
-        run: |
-          pip install pybind11
-          bash csrc/scripts/build_test.sh
 
       - name: Install C++ extension artifacts into workspace
         run: |

@@ -38,13 +38,14 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
             target_link_options(${test_name} PRIVATE -Wl,--disable-new-dtags)
         endif ()
     endif ()
-    if (WIN32)
-        # Avoid STATUS_DLL_NOT_FOUND during gtest test-list discovery on Windows:
-        # test executables may depend on DLLs whose paths are not in PATH at build time.
-        # PRE_TEST mode defers discovery until ctest runs, by which point the runtime
-        # environment (PATH, copied DLLs, etc.) is already set up.
-        gtest_discover_tests(${test_name} DISCOVERY_MODE PRE_TEST)
-    else ()
-        gtest_discover_tests(${test_name})
+    if (WIN32 AND TARGET utf8proc)
+        # gtest_discover_tests runs the test executable at build time to enumerate tests.
+        # On Windows the test EXE needs utf8proc.dll next to it; copy it post-build.
+        add_custom_command(TARGET ${test_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:utf8proc>
+            $<TARGET_FILE_DIR:${test_name}>
+        )
     endif ()
+    gtest_discover_tests(${test_name})
 endforeach ()
