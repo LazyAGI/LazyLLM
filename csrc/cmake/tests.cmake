@@ -39,12 +39,28 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
         endif ()
     endif ()
     if (WIN32)
-        # gtest_discover_tests runs the test executable at build time, which fails on
-        # Windows when required DLLs are not yet in PATH. Use gtest_add_tests instead:
-        # it scans the source files for TEST/TEST_F macros and registers tests without
-        # executing the binary.
-        gtest_add_tests(TARGET ${test_name})
-    else ()
-        gtest_discover_tests(${test_name})
+        # gtest_discover_tests runs the test executable at build time to enumerate tests.
+        # On Windows the EXE needs all runtime DLLs next to it. Copy them post-build
+        # BEFORE the gtest discovery step runs.
+        set(_lazyllm_test_dlls "")
+        if (TARGET utf8proc)
+            list(APPEND _lazyllm_test_dlls "$<TARGET_FILE:utf8proc>")
+        endif ()
+        if (TARGET tiktoken)
+            list(APPEND _lazyllm_test_dlls "$<TARGET_FILE:tiktoken>")
+        endif ()
+        if (TARGET pcre2-8)
+            list(APPEND _lazyllm_test_dlls "$<TARGET_FILE:pcre2-8>")
+        endif ()
+        if (TARGET pcre2-8-shared)
+            list(APPEND _lazyllm_test_dlls "$<TARGET_FILE:pcre2-8-shared>")
+        endif ()
+        if (_lazyllm_test_dlls)
+            add_custom_command(TARGET ${test_name} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_lazyllm_test_dlls} "$<TARGET_FILE_DIR:${test_name}>"
+                COMMAND_EXPAND_LISTS
+            )
+        endif ()
     endif ()
+    gtest_discover_tests(${test_name})
 endforeach ()
