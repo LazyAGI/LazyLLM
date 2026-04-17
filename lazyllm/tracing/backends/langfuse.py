@@ -1,13 +1,10 @@
 import base64
 import json
 import os
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional
 
 from lazyllm.thirdparty import opentelemetry
 from .base import TracingBackend
-
-if TYPE_CHECKING:
-    from ..span import LazySpan
 
 
 _SEMANTIC_TO_LANGFUSE_TYPE = {
@@ -22,19 +19,6 @@ _SEMANTIC_TO_LANGFUSE_TYPE = {
     'workflow_control': 'chain',
     'custom':           'span',
 }
-
-
-def _stringify_payload(value: Any, *, limit: int = 8192) -> str:
-    try:
-        if isinstance(value, str):
-            text = value
-        else:
-            text = json.dumps(value, ensure_ascii=False, default=str)
-    except Exception:
-        text = repr(value)
-    if len(text) > limit:
-        return text[:limit] + '...<truncated>'
-    return text
 
 
 class LangfuseBackend(TracingBackend):
@@ -63,58 +47,53 @@ class LangfuseBackend(TracingBackend):
             headers={'Authorization': f'Basic {auth}'},
         )
 
-    def map_span_attributes(self, span: 'LazySpan') -> Dict[str, Any]:
+    def map_attributes(self, otel_attrs: Dict[str, Any]) -> Dict[str, Any]:
         attrs: Dict[str, Any] = {}
+        is_root_span = bool(otel_attrs.get('lazyllm.span.is_root'))
 
         # --- observation type from semantic_type ---
-        langfuse_type = _SEMANTIC_TO_LANGFUSE_TYPE.get(span.semantic_type)
+        semantic_type = otel_attrs.get('lazyllm.semantic_type')
+        langfuse_type = _SEMANTIC_TO_LANGFUSE_TYPE.get(semantic_type)
         if langfuse_type:
             attrs['langfuse.observation.type'] = langfuse_type
-        if span.semantic_type == 'llm' and span.config.get('model'):
-            attrs['gen_ai.request.model'] = str(span.config['model'])
+        model = otel_attrs.get('gen_ai.request.model') or otel_attrs.get('lazyllm.entity.config.model')
+        if semantic_type == 'llm' and model:
+            attrs['gen_ai.request.model'] = str(model)
 
         # --- input / output ---
-        if span.capture_payload and span.input is not None:
-            attrs['langfuse.observation.input'] = _stringify_payload(span.input)
-        if span.capture_payload and span.output is not None:
-            attrs['langfuse.observation.output'] = _stringify_payload(span.output)
+        if 'lazyllm.io.input' in otel_attrs:
+            attrs['langfuse.observation.input'] = otel_attrs['lazyllm.io.input']
+        if 'lazyllm.io.output' in otel_attrs:
+            attrs['langfuse.observation.output'] = otel_attrs['lazyllm.io.output']
 
         # --- error ---
-        if span.error is not None:
-            attrs['langfuse.observation.status_message'] = str(span.error)
+        if 'lazyllm.error.message' in otel_attrs:
+            attrs['langfuse.observation.status_message'] = str(otel_attrs['lazyllm.error.message'])
 
         # --- usage ---
-        if span.usage:
-            prompt = span.usage.get('prompt_tokens')
-            completion = span.usage.get('completion_tokens')
-            if prompt is not None and prompt >= 0:
-                attrs['gen_ai.usage.input_tokens'] = int(prompt)
-            if completion is not None and completion >= 0:
-                attrs['gen_ai.usage.output_tokens'] = int(completion)
-            if (prompt is not None and prompt >= 0
-                    and completion is not None and completion >= 0):
-                attrs['gen_ai.usage.total_tokens'] = int(prompt + completion)
+        for key in ('gen_ai.usage.input_tokens', 'gen_ai.usage.output_tokens',
+                    'gen_ai.usage.total_tokens'):
+            if key in otel_attrs:
+                attrs[key] = otel_attrs[key]
 
-        # --- context (session / user / tags) --- only on root spans
-        # (handled by map_root_span_attributes)
+        # --- trace-level context --- only on root spans
+        if is_root_span:
+            trace_name = otel_attrs.get('lazyllm.trace.name')
+            if trace_name:
+                attrs['langfuse.trace.name'] = trace_name
 
-        return attrs
+            if 'session.id' in otel_attrs:
+                attrs['session.id'] = otel_attrs['session.id']
+            if 'user.id' in otel_attrs:
+                attrs['user.id'] = otel_attrs['user.id']
 
-    def map_root_span_attributes(self, span: 'LazySpan') -> Dict[str, Any]:
-        attrs: Dict[str, Any] = {}
+            tags = otel_attrs.get('lazyllm.trace.tags')
+            if tags:
+                attrs['langfuse.trace.tags'] = json.dumps(tags, ensure_ascii=False)
 
-        attrs['langfuse.trace.name'] = span.name
-
-        if span.session_id:
-            attrs['session.id'] = span.session_id
-        if span.user_id:
-            attrs['user.id'] = span.user_id
-        if span.request_tags:
-            attrs['langfuse.trace.tags'] = json.dumps(span.request_tags, ensure_ascii=False)
-
-        if span.capture_payload and span.input is not None:
-            attrs['langfuse.trace.input'] = _stringify_payload(span.input)
-        if span.capture_payload and span.output is not None:
-            attrs['langfuse.trace.output'] = _stringify_payload(span.output)
+            if 'lazyllm.io.input' in otel_attrs:
+                attrs['langfuse.trace.input'] = otel_attrs['lazyllm.io.input']
+            if 'lazyllm.io.output' in otel_attrs:
+                attrs['langfuse.trace.output'] = otel_attrs['lazyllm.io.output']
 
         return attrs
