@@ -335,18 +335,19 @@ class TracingRuntime:
         if span.semantic_type == 'llm' and span.config.get('model'):
             attrs['gen_ai.request.model'] = str(span.config['model'])
 
-        if trace is not None and span.is_root_span:
+        if span.is_root_span:
             attrs['lazyllm.trace.name'] = span.name
-            if trace.session_id:
-                attrs['session.id'] = trace.session_id
-            if trace.user_id:
-                attrs['user.id'] = trace.user_id
-            if trace.request_tags:
-                attrs['lazyllm.trace.tags'] = list(trace.request_tags)
-            if trace.metadata:
-                for k, v in trace.metadata.items():
-                    attrs[f'lazyllm.trace.metadata.{k}'] = (
-                        _stringify_payload(v) if isinstance(v, (dict, list)) else v)
+            if span.session_id:
+                attrs['session.id'] = span.session_id
+            if span.user_id:
+                attrs['user.id'] = span.user_id
+            if span.request_tags:
+                attrs['lazyllm.trace.tags'] = list(span.request_tags)
+
+        if trace is not None and span.is_root_span and trace.metadata:
+            for k, v in trace.metadata.items():
+                attrs[f'lazyllm.trace.metadata.{k}'] = (
+                    _stringify_payload(v) if isinstance(v, (dict, list)) else v)
 
         if span.output_attrs:
             for k, v in span.output_attrs.items():

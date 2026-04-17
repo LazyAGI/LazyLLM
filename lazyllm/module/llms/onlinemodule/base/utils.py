@@ -1,5 +1,6 @@
 from ....module import ModuleBase
 from lazyllm import config, LazyLLMRegisterMetaClass, globals
+from lazyllm.tracing.runtime import current_trace
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Optional, Union, List
 import random
@@ -85,6 +86,65 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     @property
     def series(self):
         return self.__class__._model_series
+
+    def _collect_trace_kwargs(self, **overrides):
+        metadata = {}
+
+        for key, attrs in (
+            ('model', ('_model_name', '_embed_model_name', 'base_model', '_base_model')),
+            ('base_url', ('_base_url', '_embed_url')),
+            ('stream', ('_stream',)),
+            ('skip_auth', ('_skip_auth',)),
+            ('batch_size', ('_batch_size',)),
+            ('num_worker', ('_num_worker',)),
+            ('timeout', ('_timeout',)),
+        ):
+            for attr in attrs:
+                try:
+                    value = getattr(self, attr, None)
+                except Exception:
+                    value = None
+                if value is not None and value != '':
+                    metadata[key] = value
+                    break
+
+        try:
+            metadata['type'] = self.type
+        except Exception:
+            pass
+
+        try:
+            if self.series:
+                metadata['series'] = self.series
+        except Exception:
+            pass
+
+        metadata['class'] = self.__class__.__name__
+
+        static_params = getattr(self, '_static_params', None)
+        if static_params:
+            metadata['static_params'] = dict(static_params)
+
+        for key, value in overrides.items():
+            if value is not None and value != '':
+                metadata[key] = value
+
+        return metadata
+
+    @property
+    def __trace_kwargs__(self):
+        return self._collect_trace_kwargs()
+
+    def _build_trace_metadata(self, **overrides):
+        return self._collect_trace_kwargs(**overrides)
+
+    def _record_trace_metadata(self, **overrides):
+        trace = current_trace()
+        if trace is None:
+            return
+        metadata = self._build_trace_metadata(**overrides)
+        if metadata:
+            trace.update_metadata(metadata)
 
     def _materialize_lazy_api_key(self) -> str:
         return self._default_api_key()
