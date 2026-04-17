@@ -265,10 +265,12 @@ class GitHub(LazyLLMGitBase):
             r = self._session.get(url, params=params)
             params = {}
             if r.status_code != 200:
+                if out:
+                    return {'success': True, 'comments': out, 'partial': True}
                 return self._fail(r)
             for c in r.json():
                 out.append({
-                    'id': c['id'],
+                    'id': c.get('id'),
                     'body': c.get('body', ''),
                     'user': c.get('user', {}).get('login', ''),
                     'raw': c,

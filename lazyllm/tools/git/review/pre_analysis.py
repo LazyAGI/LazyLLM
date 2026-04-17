@@ -1,4 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import collections
 import json
 import os
 import re
@@ -48,7 +49,7 @@ _CONTEXT_LINES = 50
 # DeepWiki integration
 _DEEPWIKI_MCP_URL = 'https://mcp.deepwiki.com/mcp'
 _DEEPWIKI_STALE_DAYS = 90  # treat index as stale if older than this many days
-_DEEPWIKI_SUMMARY_BUDGET = 4000  # max chars injected into snapshot
+_DEEPWIKI_SUMMARY_BUDGET = 20000  # max chars injected into snapshot
 
 _FRAMEWORK_GOTCHAS_NOTICE = '''\
 ### Framework-Specific Gotchas (auto-generated)
@@ -82,9 +83,45 @@ def _parse_owner_repo(clone_url: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+def _compress_markdown_by_sections(text: str, budget: int) -> str:
+    if len(text) <= budget:
+        return text
+    heading_re = re.compile(r'^(#{1,4})\s+(.+)', re.MULTILINE)
+    sections: List[Tuple[str, int, int]] = []
+    for m in heading_re.finditer(text):
+        sections.append((m.group(0), m.start(), len(m.group(1))))
+    if not sections:
+        return text[:budget]
+    # split into (heading, body) pairs
+    parts: List[Tuple[str, str, int]] = []
+    for i, (heading, start, level) in enumerate(sections):
+        body_start = start + len(heading)
+        body_end = sections[i + 1][1] if i + 1 < len(sections) else len(text)
+        parts.append((heading, text[body_start:body_end].strip(), level))
+    # phase 1: keep all headings + first paragraph of each section
+    result_parts = []
+    total = 0
+    for heading, body, _level in parts:
+        first_para = body.split('\n\n')[0] if body else ''
+        chunk = f'{heading}\n{first_para}\n' if first_para else f'{heading}\n'
+        result_parts.append((chunk, body, first_para))
+        total += len(chunk)
+    if total <= budget:
+        # phase 2: progressively add more body content
+        for i, (chunk, body, first_para) in enumerate(result_parts):
+            remaining = body[len(first_para):].strip()
+            if remaining and total + len(remaining) + 2 <= budget:
+                result_parts[i] = (f'{chunk}{remaining}\n', body, first_para)
+                total += len(remaining) + 2
+            elif remaining:
+                space = budget - total
+                if space > 100:
+                    result_parts[i] = (f'{chunk}{remaining[:space]}\n', body, first_para)
+                    total += space + 1
+                break
+    return ''.join(chunk for chunk, _, _ in result_parts)[:budget]
+
 def _fetch_deepwiki_summary(owner_repo: str) -> str:
-    # Query DeepWiki MCP for pre-indexed architecture summary of a public repo.
-    # Returns empty string if unavailable or on any error.
     try:
         from mcp import ClientSession
         from mcp.client.streamable_http import streamablehttp_client
@@ -108,7 +145,7 @@ def _fetch_deepwiki_summary(owner_repo: str) -> str:
                     text = '\n'.join(
                         c.text for c in result.content if hasattr(c, 'text') and c.text
                     )
-                    return text[:_DEEPWIKI_SUMMARY_BUDGET]
+                    return _compress_markdown_by_sections(text, _DEEPWIKI_SUMMARY_BUDGET)
         except Exception as e:
             lazyllm.LOG.info(f'DeepWiki query failed for {owner_repo}: {e}')
             return ''
@@ -1572,6 +1609,8 @@ _MAX_COMMENTS_PER_USER = 15
 _COMMENT_COMPRESS_THRESHOLD = 150
 # max rules kept in final spec
 _SPEC_MAX_RULES = 50
+# bump this when extraction logic changes to invalidate per-PR caches
+_SPEC_CACHE_VERSION = 2
 
 def _is_merged_pr(pr: Any) -> bool:
     raw = getattr(pr, 'raw', None) or (pr if isinstance(pr, dict) else {})
@@ -1698,7 +1737,7 @@ def _extract_rules_from_pr_comments(
     if not comments:
         return []
     comments_text = _compress_comments_for_pr(llm, comments)
-    prompt = _EXTRACT_RULES_PROMPT.format(pr_num=pr_num).replace('{{comments_text}}', comments_text)
+    prompt = _EXTRACT_RULES_PROMPT.replace('{pr_num}', str(pr_num)).replace('{{comments_text}}', comments_text)
     try:
         result = _safe_llm_call(llm, prompt)
         return [r for r in (result if isinstance(result, list) else []) if isinstance(r, dict)]
@@ -1834,9 +1873,9 @@ def _build_reply_chains(comments: list) -> List[List[dict]]:
     for root in roots:
         rid = root.get('id') if isinstance(root, dict) else getattr(root, 'id', None)
         chain = [root]
-        queue = list(children.get(rid, []))
+        queue = collections.deque(children.get(rid, []))
         while queue:
-            node = queue.pop(0)
+            node = queue.popleft()
             chain.append(node)
             nid = node.get('id') if isinstance(node, dict) else getattr(node, 'id', None)
             queue.extend(children.get(nid, []))
@@ -1912,12 +1951,16 @@ def _validate_conventions_batch(llm: Any, high_conf: List[Dict[str, str]]) -> Li
         ack_section = ''
         if pair.get('bot_acknowledgment'):
             ack_section = f'### Bot Acknowledgment\n{pair["bot_acknowledgment"]}'
-        prompt = _VALIDATE_CONVENTION_PROMPT.format(
-            pattern=pair['pattern'],
-            bot_comment=pair['bot_comment'],
-            reply_text=pair['reply_text'],
-            ack_section=ack_section,
-        )
+        try:
+            prompt = _VALIDATE_CONVENTION_PROMPT.format(
+                pattern=pair.get('pattern', ''),
+                bot_comment=pair.get('bot_comment', ''),
+                reply_text=pair.get('reply_text', ''),
+                ack_section=ack_section,
+            )
+        except KeyError as e:
+            lazyllm.LOG.warning(f'Convention validation skipped — missing key: {e}')
+            continue
         result = _safe_llm_call(llm, prompt)
         if isinstance(result, list):
             result = result[0] if result else {}
@@ -1934,14 +1977,18 @@ def _collect_framework_conventions_for_pr(  # noqa: C901
     if pr_num is None:
         return
     conv_cache_key = f'conv_pr_{pr_num}_conventions'
-    cached_str = _load_cache(cache_path, conv_cache_key)
-    if cached_str:
-        try:
-            convs = json.loads(cached_str)
-            all_conventions.extend(convs)
-            return
-        except (json.JSONDecodeError, TypeError):
-            pass
+    conv_ver_key = f'conv_pr_{pr_num}_ver'
+    cached_ver_str = _load_cache(cache_path, conv_ver_key)
+    cached_ver = int(cached_ver_str) if cached_ver_str and cached_ver_str.isdigit() else 0
+    if cached_ver >= _SPEC_CACHE_VERSION:
+        cached_str = _load_cache(cache_path, conv_cache_key)
+        if cached_str:
+            try:
+                convs = json.loads(cached_str)
+                all_conventions.extend(convs)
+                return
+            except (json.JSONDecodeError, TypeError):
+                pass
     try:
         res = backend.list_review_comments(pr_num)
     except Exception:
@@ -1955,10 +2002,13 @@ def _collect_framework_conventions_for_pr(  # noqa: C901
     pr_author = _resolve_pr_author(pr)
     high_conf = _filter_high_confidence_chains(chains, pr_author)
     if not high_conf:
-        _save_cache(cache_path, conv_cache_key, '[]')
+        _save_cache_multi(cache_path, {conv_cache_key: '[]', conv_ver_key: str(_SPEC_CACHE_VERSION)})
         return
     conventions = _validate_conventions_batch(llm, high_conf)
-    _save_cache(cache_path, conv_cache_key, json.dumps(conventions, ensure_ascii=False))
+    _save_cache_multi(cache_path, {
+        conv_cache_key: json.dumps(conventions, ensure_ascii=False),
+        conv_ver_key: str(_SPEC_CACHE_VERSION),
+    })
     all_conventions.extend(conventions)
     if conventions:
         prog.update(f'[{idx}/{total}] PR #{pr_num} — {len(high_conf)} chains → {len(conventions)} conventions')
@@ -1988,9 +2038,12 @@ def _format_conventions_result(all_conventions: List[Dict[str, Any]]) -> str:
 def analyze_framework_conventions(
     backend: LazyLLMGitBase, llm: Any, cache_path: Optional[str] = None, max_prs: int = 50,
 ) -> str:
-    cached = _load_cache(cache_path, 'framework_conventions')
-    if cached:
-        return cached
+    cached_ver_str = _load_cache(cache_path, 'framework_conventions_ver')
+    cached_ver = int(cached_ver_str) if cached_ver_str and cached_ver_str.isdigit() else 0
+    if cached_ver >= _SPEC_CACHE_VERSION:
+        cached = _load_cache(cache_path, 'framework_conventions')
+        if cached:
+            return cached
     merged: List[Any] = []
     fetch_size = max_prs
     while len(merged) < max_prs:
@@ -2013,10 +2066,14 @@ def analyze_framework_conventions(
         _collect_framework_conventions_for_pr(backend, llm, pr, idx, len(target), cache_path, prog, all_conventions)
     prog.done(f'{len(all_conventions)} conventions from {len(target)} PRs')
     if not all_conventions:
-        _save_cache(cache_path, 'framework_conventions', '')
+        _save_cache_multi(cache_path, {
+            'framework_conventions': '', 'framework_conventions_ver': str(_SPEC_CACHE_VERSION),
+        })
         return ''
     result = _format_conventions_result(all_conventions)
-    _save_cache(cache_path, 'framework_conventions', result)
+    _save_cache_multi(cache_path, {
+        'framework_conventions': result, 'framework_conventions_ver': str(_SPEC_CACHE_VERSION),
+    })
     return result
 
 def _merge_conventions_into_spec(review_spec: str, conventions: str) -> str:
@@ -2035,7 +2092,9 @@ def analyze_historical_reviews(
     cached = _load_cache(cache_path, 'review_spec')
     cached_max_prs_str = _load_cache(cache_path, 'review_spec_max_prs')
     cached_max_prs = int(cached_max_prs_str) if cached_max_prs_str and cached_max_prs_str.isdigit() else 0
-    if cached and cached_max_prs >= max_prs:
+    cached_ver_str = _load_cache(cache_path, 'spec_cache_version')
+    cached_ver = int(cached_ver_str) if cached_ver_str and cached_ver_str.isdigit() else 0
+    if cached and not cached.startswith('(') and cached_max_prs >= max_prs and cached_ver >= _SPEC_CACHE_VERSION:
         return cached
 
     merged: List[Any] = []
@@ -2056,7 +2115,10 @@ def analyze_historical_reviews(
 
     _empty = '(no historical review comments found)'
     if not target:
-        _save_cache_multi(cache_path, {'review_spec': _empty, 'review_spec_max_prs': str(max_prs)})
+        _save_cache_multi(cache_path, {
+            'review_spec': _empty, 'review_spec_max_prs': str(max_prs),
+            'spec_cache_version': str(_SPEC_CACHE_VERSION),
+        })
         return _empty
 
     prog = _Progress('Spec: extracting rules from historical PRs', total)
@@ -2066,7 +2128,10 @@ def analyze_historical_reviews(
     prog.done(f'{len(all_rules)} raw rules from {total} PRs, merging...')
 
     if not all_rules:
-        _save_cache_multi(cache_path, {'review_spec': _empty, 'review_spec_max_prs': str(max_prs)})
+        _save_cache_multi(cache_path, {
+            'review_spec': _empty, 'review_spec_max_prs': str(max_prs),
+            'spec_cache_version': str(_SPEC_CACHE_VERSION),
+        })
         return _empty
 
     merged_rules = _merge_rule_cards(llm, all_rules)
@@ -2082,7 +2147,10 @@ def analyze_historical_reviews(
     review_spec = json.dumps(
         {'summaries': summaries, 'categories': categories, 'details': details}, ensure_ascii=False,
     ) or '(review spec analysis unavailable)'
-    _save_cache_multi(cache_path, {'review_spec': review_spec, 'review_spec_max_prs': str(max_prs)})
+    _save_cache_multi(cache_path, {
+        'review_spec': review_spec, 'review_spec_max_prs': str(max_prs),
+        'spec_cache_version': str(_SPEC_CACHE_VERSION),
+    })
     return review_spec
 
 def _sample_diff_for_rules(diff_content: str, total_lines: int = 300) -> str:
@@ -2232,24 +2300,31 @@ def _run_spec_analysis(
     review_spec_cache_path: str, max_history_prs: int, ckpt: Any,
 ) -> str:
     review_spec = ckpt.get('review_spec') or ''
-    if not review_spec:
-        try:
-            review_spec = analyze_historical_reviews(backend_inst, llm, review_spec_cache_path, max_history_prs)
-            ckpt.save('review_spec', review_spec)
-            ckpt.mark_stage_done(ReviewStage.SPEC)
-            if review_spec and review_spec_cache_path:
-                if review_spec.startswith('('):
-                    lazyllm.LOG.warning(f'Review spec not generated: {review_spec}')
-                else:
-                    lazyllm.LOG.success(f'Review spec saved to: {review_spec_cache_path}')
-        except Exception as e:
-            if 'no review comments' in str(e).lower() or 'not found' in str(e).lower():
-                lazyllm.LOG.warning(f'Historical review analysis: {e}')
-            else:
-                raise
-    else:
+    cached_ver = int(ckpt.get('spec_cache_version') or 0)
+    need_refresh = (
+        not review_spec
+        or review_spec.startswith('(')
+        or cached_ver < _SPEC_CACHE_VERSION
+    )
+    if not need_refresh:
         _save_cache(review_spec_cache_path, 'review_spec', review_spec)
         _Progress('Pre-analysis: review spec').done('loaded from checkpoint')
+        return review_spec
+    try:
+        review_spec = analyze_historical_reviews(backend_inst, llm, review_spec_cache_path, max_history_prs)
+        ckpt.save('review_spec', review_spec)
+        ckpt.save('spec_cache_version', str(_SPEC_CACHE_VERSION))
+        ckpt.mark_stage_done(ReviewStage.SPEC)
+        if review_spec and review_spec_cache_path:
+            if review_spec.startswith('('):
+                lazyllm.LOG.warning(f'Review spec not generated: {review_spec}')
+            else:
+                lazyllm.LOG.success(f'Review spec saved to: {review_spec_cache_path}')
+    except Exception as e:
+        if 'no review comments' in str(e).lower() or 'not found' in str(e).lower():
+            lazyllm.LOG.warning(f'Historical review analysis: {e}')
+        else:
+            raise
     return review_spec
 
 def _run_pre_analysis(

@@ -187,7 +187,7 @@ class GitCode(LazyLLMGitBase):
 
     def list_issue_comments(self, number: int) -> Dict[str, Any]:
         self._require_repo()
-        r = self._req_repo('GET', f'/pulls/{number}/comments')
+        r = self._req_repo('GET', f'/issues/{number}/comments')
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
         out = []

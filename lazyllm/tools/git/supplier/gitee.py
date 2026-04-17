@@ -174,7 +174,7 @@ class Gitee(LazyLLMGitBase):
         return {'success': True, 'comments': out}
 
     def list_issue_comments(self, number: int) -> Dict[str, Any]:
-        r = self._req('GET', f'/pulls/{number}/comments')
+        r = self._req('GET', f'/issues/{number}/comments')
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
         out = []

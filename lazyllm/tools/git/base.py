@@ -154,8 +154,9 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
     def list_review_comments(self, number: int) -> Dict[str, Any]:
         raise NotImplementedError
 
+    @abstractmethod
     def list_issue_comments(self, number: int) -> Dict[str, Any]:
-        return {'success': False, 'message': 'not implemented'}
+        raise NotImplementedError
 
     @abstractmethod
     def create_review_comment(self, number: int, body: str, path: str,

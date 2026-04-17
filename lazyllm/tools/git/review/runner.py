@@ -5,6 +5,8 @@ import os
 import shutil
 from typing import Any, Dict, List, Optional
 
+import lazyllm
+
 from ..client import Git
 from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
@@ -29,7 +31,7 @@ class _DiffStats:
 
 @dataclasses.dataclass
 class _ReviewStrategy:
-    enable_r3: bool
+    enable_r3: bool             # always True for now; kept for future per-strategy toggle
     large_file_threshold: int   # files with more diff lines than this -> chunk mode
     max_files_for_r3: int       # total files R3 will process; excess -> R1 passthrough
     max_chunks_per_file: int    # per-file chunk cap in chunk mode
@@ -167,6 +169,17 @@ def review(  # noqa: C901
     head_sha = _get_head_sha_from_pr(pr)
     if not head_sha and post_to_github:
         raise RuntimeError('Cannot get PR head sha; cannot post line-level comments')
+
+    # diff staleness check: if head_sha changed since last run, invalidate diff and all review stages
+    cached_head_sha = ckpt.get('head_sha')
+    if cached_head_sha and head_sha and cached_head_sha != head_sha:
+        lazyllm.LOG.warning(
+            f'PR head SHA changed ({cached_head_sha[:8]} → {head_sha[:8]}), '
+            f'invalidating diff and all review stages'
+        )
+        ckpt._mark_invalidated_from(ReviewStage.CLONE)
+    if head_sha:
+        ckpt.save('head_sha', head_sha)
 
     # diff: load from checkpoint if available, otherwise fetch and cache
     truncated_diff = False
@@ -308,7 +321,7 @@ def review(  # noqa: C901
         'r3_files_skipped': r3_metrics.get('r3_files_skipped', 0),
         'r3_chunks_total': r3_metrics.get('r3_chunks_total', 0),
         'truncated_diff_flag': truncated_diff,
-        'truncated_hunks_flag': False,
+        'truncated_hunks_flag': False,  # hunks are processed in sliding windows; per-hunk truncation is not applied
         'lint_issues_count': len(lint_issues),
     }
 

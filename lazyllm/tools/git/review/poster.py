@@ -71,7 +71,7 @@ def _comment_body_text(c: Dict[str, Any], model_name: str) -> str:
         'provide concrete technical reasoning or counterexamples. Newly introduced architecture issues must '
         'be fixed before merging; pre-existing ones must be tracked via an issue (new or linked). Responses '
         'without concrete actions are incomplete, and consensus-based arguments (e.g., “others are doing this”) '
-        f'alone are not sufficient.*\n\n **{severity_tag} {category_tag}** {c.get("problem", "")}\n\n'
+        f'alone are not sufficient.*\n\n**{severity_tag} {category_tag}** {c.get("problem", "")}\n\n'
         f'**Suggestion:** {_suggestion_prefix(c.get("suggestion", ""))}{c.get("suggestion", "")}\n\n'
         f'---\nauto reviewed by BOT ({model_name})')
 

@@ -102,14 +102,13 @@ class _ReviewCheckpoint:
             except (json.JSONDecodeError, OSError):
                 self._data = {}
         old_ver = self._data.get(self._PIPELINE_VERSION_KEY, 0)
-        if old_ver < self._PIPELINE_VERSION and any(
-            k for k in self._data if k.startswith(('r2_file_', 'r2_disc_', 'r4', '_stage_done_r4'))
-        ):
+        if old_ver < self._PIPELINE_VERSION:
             lazyllm.LOG.warning(
                 f'Checkpoint pipeline version {old_ver} < {self._PIPELINE_VERSION}, invalidating all stages'
             )
             self._data = {}
         self._data[self._PIPELINE_VERSION_KEY] = self._PIPELINE_VERSION
+        self._flush()
         if resume_from is not None:
             self._mark_invalidated_from(resume_from)
 
@@ -132,6 +131,7 @@ class _ReviewCheckpoint:
         if not _ReviewCheckpoint._KEY_TO_STAGE:
             _ReviewCheckpoint._KEY_TO_STAGE = {
                 'clone_dir': ReviewStage.CLONE,
+                'head_sha': ReviewStage.CLONE,
                 'arch_doc': ReviewStage.ARCH,
                 'review_spec': ReviewStage.SPEC,
                 'pr_summary': ReviewStage.PR_SUMMARY,
@@ -248,7 +248,7 @@ class _ReviewCheckpoint:
     def default_path(pr_number: int, repo: str) -> str:
         return os.path.join(_ReviewCheckpoint.pr_dir(pr_number, repo), 'checkpoint.json')
 
-    # kept for backward compatibility
+    # deprecated: use global_cache_dir() directly; will be removed in a future version
     @staticmethod
     def review_cache_dir() -> str:
         return _ReviewCheckpoint.global_cache_dir()

@@ -141,7 +141,8 @@ class GitLab(LazyLLMGitBase):
         return {'success': True, 'diff': '\n'.join(diffs)}
 
     def list_review_comments(self, number: int) -> Dict[str, Any]:
-        r = self._req('GET', f'/merge_requests/{number}/discussions')
+        r = self._req('GET', f'/merge_requests/{number}/discussions',
+                      params={'sort': 'asc', 'order_by': 'created_at'})
         if r.status_code != 200:
             return {'success': False, 'message': r.text or r.reason}
         out = []
@@ -151,7 +152,7 @@ class GitLab(LazyLLMGitBase):
                     continue
                 pos = note.get('position', {})
                 out.append(ReviewCommentInfo(
-                    id=note['id'],
+                    id=note.get('id'),
                     body=note.get('body', ''),
                     path=pos.get('new_path') or pos.get('old_path', ''),
                     line=pos.get('new_line') or pos.get('old_line'),
@@ -162,19 +163,30 @@ class GitLab(LazyLLMGitBase):
         return {'success': True, 'comments': out}
 
     def list_issue_comments(self, number: int) -> Dict[str, Any]:
-        r = self._req('GET', f'/merge_requests/{number}/notes')
-        if r.status_code != 200:
-            return {'success': False, 'message': r.text or r.reason}
         out = []
-        for note in r.json():
-            if note.get('system'):
-                continue
-            out.append({
-                'id': note['id'],
-                'body': note.get('body', ''),
-                'user': note.get('author', {}).get('username', ''),
-                'raw': note,
-            })
+        page = 1
+        while True:
+            r = self._req('GET', f'/merge_requests/{number}/notes',
+                          params={'per_page': 100, 'page': page, 'sort': 'asc', 'order_by': 'created_at'})
+            if r.status_code != 200:
+                if out:
+                    return {'success': True, 'comments': out, 'partial': True}
+                return {'success': False, 'message': r.text or r.reason}
+            notes = r.json()
+            if not notes:
+                break
+            for note in notes:
+                if note.get('system'):
+                    continue
+                out.append({
+                    'id': note.get('id'),
+                    'body': note.get('body', ''),
+                    'user': note.get('author', {}).get('username', ''),
+                    'raw': note,
+                })
+            if len(notes) < 100:
+                break
+            page += 1
         return {'success': True, 'comments': out}
 
     def create_review_comment(self, number: int, body: str, path: str,
