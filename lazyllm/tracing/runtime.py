@@ -288,10 +288,11 @@ class TracingRuntime:
         span.status = 'error'
         span.error = exc
 
-    def _build_lazyllm_attributes(self, span: LazySpan) -> Dict[str, Any]:
-        """Build lazyllm.* namespace attributes from LazySpan fields."""
+    def _build_otel_attributes(self, span: LazySpan, trace: Optional[LazyTrace] = None) -> Dict[str, Any]:
+        """Build the generic OTel attribute set for a span."""
         attrs: Dict[str, Any] = {
             'lazyllm.span.kind': span.span_kind,
+            'lazyllm.span.is_root': span.is_root_span,
             'lazyllm.entity.name': span.name,
             'lazyllm.entity.class': span.component_class,
             'lazyllm.entity.id': span.component_id or '',
@@ -311,6 +312,42 @@ class TracingRuntime:
         if span.parent_span_id:
             attrs['lazyllm.request.parent_span_id'] = span.parent_span_id
 
+        if span.capture_payload:
+            if span.input is not None:
+                attrs['lazyllm.io.input'] = _stringify_payload(span.input)
+            if span.output is not None:
+                attrs['lazyllm.io.output'] = _stringify_payload(span.output)
+
+        if span.error is not None:
+            attrs['lazyllm.error.message'] = str(span.error)
+
+        if span.usage:
+            prompt = span.usage.get('prompt_tokens')
+            completion = span.usage.get('completion_tokens')
+            if prompt is not None and prompt >= 0:
+                attrs['gen_ai.usage.input_tokens'] = int(prompt)
+            if completion is not None and completion >= 0:
+                attrs['gen_ai.usage.output_tokens'] = int(completion)
+            if (prompt is not None and prompt >= 0
+                    and completion is not None and completion >= 0):
+                attrs['gen_ai.usage.total_tokens'] = int(prompt + completion)
+
+        if span.semantic_type == 'llm' and span.config.get('model'):
+            attrs['gen_ai.request.model'] = str(span.config['model'])
+
+        if trace is not None and span.is_root_span:
+            attrs['lazyllm.trace.name'] = span.name
+            if trace.session_id:
+                attrs['session.id'] = trace.session_id
+            if trace.user_id:
+                attrs['user.id'] = trace.user_id
+            if trace.request_tags:
+                attrs['lazyllm.trace.tags'] = list(trace.request_tags)
+            if trace.metadata:
+                for k, v in trace.metadata.items():
+                    attrs[f'lazyllm.trace.metadata.{k}'] = (
+                        _stringify_payload(v) if isinstance(v, (dict, list)) else v)
+
         if span.output_attrs:
             for k, v in span.output_attrs.items():
                 attrs[k] = v
@@ -324,36 +361,27 @@ class TracingRuntime:
 
         active_trace = _current_trace.get()
         trace_matches = active_trace is not None and active_trace.trace_id == span.trace_id
+        otel_attrs = self._build_otel_attributes(span, trace=active_trace if trace_matches else None)
 
         # 1) lazyllm.* attributes
-        for k, v in self._build_lazyllm_attributes(span).items():
+        for k, v in otel_attrs.items():
             otel_span.set_attribute(k, v)
 
-        # 2) Trace-level metadata is only written on the root span so backend views
-        #    see it as request-level rather than per-span.
-        if trace_matches and span.is_root_span and active_trace.metadata:
-            for k, v in active_trace.metadata.items():
-                otel_span.set_attribute(f'lazyllm.trace.metadata.{k}', _stringify_payload(v)
-                                        if isinstance(v, (dict, list)) else v)
-
-        # 3) Backend-specific attributes
+        # 2) Backend-specific attributes
         if self._backend:
-            for k, v in self._backend.map_span_attributes(span).items():
+            for k, v in self._backend.map_attributes(otel_attrs).items():
                 otel_span.set_attribute(k, v)
-            if span.is_root_span:
-                for k, v in self._backend.map_root_span_attributes(span).items():
-                    otel_span.set_attribute(k, v)
 
-        # 4) Error handling
+        # 3) Error handling
         if span.error:
             status_cls, status_code = self._status
             otel_span.set_status(status_cls(status_code.ERROR, str(span.error)))
             otel_span.record_exception(span.error)
 
-        # 5) Close OTel span
+        # 4) Close OTel span
         span._otel_span_cm.__exit__(None, None, None)
 
-        # 6) LazyTrace bookkeeping: aggregate outcome; if this span owns the trace,
+        # 5) LazyTrace bookkeeping: aggregate outcome; if this span owns the trace,
         #    finalize it and clear the ContextVar so the next request starts fresh.
         if trace_matches:
             active_trace._record_span_end(span)
