@@ -98,6 +98,7 @@ __all__ = [
     'LazyTraceContext',
     'get_trace_context',
     'set_trace_context',
+    'enable_trace',
 
     # tools
     'Document',

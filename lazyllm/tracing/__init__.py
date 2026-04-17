@@ -13,6 +13,7 @@ _SUBMOD_MAP = {
         'get_trace_context',
         'set_trace_context',
         'tracing_available',
+        'enable_trace',
     ],
     'configs': [
         'DEFAULT_MODULE_TRACE_CONFIG',
