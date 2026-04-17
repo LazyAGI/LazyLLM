@@ -55,12 +55,17 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
         if (TARGET pcre2-8-shared)
             list(APPEND _lazyllm_test_dlls "$<TARGET_FILE:pcre2-8-shared>")
         endif ()
-        if (_lazyllm_test_dlls)
-            add_custom_command(TARGET ${test_name} POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_lazyllm_test_dlls} "$<TARGET_FILE_DIR:${test_name}>"
-                COMMAND_EXPAND_LISTS
-            )
+        if (TARGET gtest)
+            list(APPEND _lazyllm_test_dlls "$<TARGET_FILE:gtest>")
         endif ()
+        if (TARGET gtest_main)
+            list(APPEND _lazyllm_test_dlls "$<TARGET_FILE:gtest_main>")
+        endif ()
+        list(APPEND _lazyllm_test_dlls "$<TARGET_FILE:Python3::Python>")
+        add_custom_command(TARGET ${test_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_lazyllm_test_dlls} "$<TARGET_FILE_DIR:${test_name}>"
+            COMMAND_EXPAND_LISTS
+        )
     endif ()
     gtest_discover_tests(${test_name})
 endforeach ()

@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+if (MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 function(lazyllm_enable_strict_warnings target_name)
     if (MSVC)
         target_compile_options(${target_name} PRIVATE /W4 /WX)
