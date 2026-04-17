@@ -2149,18 +2149,22 @@ def _filter_high_confidence_chains(  # noqa: C901
         if not root_body:
             continue
         found = False
-        for reply in chain[1:]:
+        # collect all participants for multi-pattern matching
+        chain_replies = chain[1:]
+        for idx_r, reply in enumerate(chain_replies):
             reply_user = _get_comment_field(reply, 'user')
             reply_body = _get_comment_field(reply, 'body')
             if not reply_body:
                 continue
-            # pattern 1: same bot account replies (three-way)
+            # skip replies from other known bot accounts (not the root bot)
+            if reply_user != bot_user and _BOT_USER_PATTERNS.search(reply_user):
+                continue
+            # pattern 1: bot replies again (three-way) — look for a human reply before this bot reply
             if reply_user == bot_user:
                 human_replies = [
-                    c for c in chain[1:]
+                    c for c in chain_replies[:idx_r]
                     if _get_comment_field(c, 'user') != bot_user
-                    and not _is_bot_comment(
-                        _get_comment_field(c, 'user'), _get_comment_field(c, 'body'))
+                    and not _BOT_USER_PATTERNS.search(_get_comment_field(c, 'user'))
                     and _get_comment_field(c, 'body')
                 ]
                 if human_replies:
@@ -2172,13 +2176,11 @@ def _filter_high_confidence_chains(  # noqa: C901
                     })
                     found = True
                 break
-            # pattern 2: maintainer direct reply (must be a real human, not a bot)
-            if _is_bot_comment(reply_user, reply_body):
-                continue
+            # pattern 2: maintainer direct reply (NOT pr_author — author needs bot confirmation)
             raw = (reply.get('raw') if isinstance(reply, dict) else getattr(reply, 'raw', {})) or {}
             assoc = (raw.get('author_association') or '').upper()
-            is_maintainer = assoc in _MAINTAINER_ASSOCIATIONS or reply_user == pr_author
-            if is_maintainer:
+            is_maintainer = assoc in _MAINTAINER_ASSOCIATIONS and reply_user != pr_author
+            if is_maintainer and not _is_bot_comment(reply_user, reply_body):
                 results.append({
                     'bot_comment': root_body[:600],
                     'reply_text': reply_body[:600],
@@ -2186,6 +2188,23 @@ def _filter_high_confidence_chains(  # noqa: C901
                     'pattern': 'maintainer_direct',
                 })
                 found = True
+                break
+            # pattern 3: pr_author replies — only valid if bot confirms later
+            if reply_user == pr_author:
+                bot_confirm = next(
+                    (_get_comment_field(c, 'body') for c in chain_replies[idx_r + 1:]
+                     if _get_comment_field(c, 'user') == bot_user
+                     and _get_comment_field(c, 'body')),
+                    None,
+                )
+                if bot_confirm:
+                    results.append({
+                        'bot_comment': root_body[:600],
+                        'reply_text': reply_body[:600],
+                        'bot_acknowledgment': bot_confirm[:400],
+                        'pattern': 'three_way',
+                    })
+                    found = True
                 break
         if found and len(results) >= 20:
             break
