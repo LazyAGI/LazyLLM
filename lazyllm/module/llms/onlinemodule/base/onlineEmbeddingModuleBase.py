@@ -51,6 +51,7 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
 
         if runtime_model is not None:
             kwargs['model'] = runtime_model
+        self._record_trace_metadata(model=runtime_model, base_url=runtime_url)
         data = self._encapsulated_data(input, **kwargs)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         if isinstance(data, list):

@@ -8,6 +8,7 @@ from .base import TracingBackend
 
 
 _SEMANTIC_TO_LANGFUSE_TYPE = {
+    'agent':            'chain',
     'llm':              'generation',
     'retriever':        'retriever',
     'embedding':        'embedding',
@@ -91,5 +92,10 @@ class LangfuseBackend(TracingBackend):
                 attrs['langfuse.trace.input'] = otel_attrs['lazyllm.io.input']
             if 'lazyllm.io.output' in otel_attrs:
                 attrs['langfuse.trace.output'] = otel_attrs['lazyllm.io.output']
+
+            for key, value in otel_attrs.items():
+                prefix = 'lazyllm.trace.metadata.'
+                if key.startswith(prefix):
+                    attrs[f'langfuse.trace.metadata.{key[len(prefix):]}'] = value
 
         return attrs
