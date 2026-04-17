@@ -38,10 +38,12 @@ foreach (test_src ${LAZYLLM_TEST_SOURCES})
             target_link_options(${test_name} PRIVATE -Wl,--disable-new-dtags)
         endif ()
     endif ()
+    # gtest_discover_tests runs the test executable at build time to enumerate tests.
+    # Ensure the tokenizers directory and any required runtime DLLs are next to the test binary.
+    add_custom_command(TARGET ${test_name} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_BINARY_DIR}/tokenizers" "$<TARGET_FILE_DIR:${test_name}>/tokenizers"
+    )
     if (WIN32)
-        # gtest_discover_tests runs the test executable at build time to enumerate tests.
-        # On Windows the EXE needs all runtime DLLs next to it. Copy them post-build
-        # BEFORE the gtest discovery step runs.
         set(_lazyllm_test_dlls "")
         if (TARGET utf8proc)
             list(APPEND _lazyllm_test_dlls "$<TARGET_FILE:utf8proc>")
