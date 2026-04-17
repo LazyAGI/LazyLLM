@@ -307,45 +307,70 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self.for_each(filter, lambda x: x.job.wait())
         return self
 
-    # bind_args: dict(input=input, args=dict(key=value))
-    def invoke(self, it, __input, *, bind_args_source=None, **kw):
+    def _prepare_invoke_item(self, it, __input, bind_args_source, kw):
         if isinstance(it, bind):
             if isinstance(self, Pipeline):
                 it._args = [self.output(a) if a in self._items else a for a in it._args]
                 it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
             kw['_bind_args_source'] = bind_args_source
+        hook_objs = []
+        if not isinstance(it, LazyLLMFlowsBase) and not hasattr(it, '_module_id'):
+            hook_objs = prepare_hooks(it, resolve_builtin_hooks(it), __input, **kw)
+        return hook_objs
 
-        hook_objs = (prepare_hooks(it, resolve_builtin_hooks(it), __input, **kw)
-                     if not isinstance(it, LazyLLMFlowsBase) and not hasattr(it, '_module_id')
-                     else [])
+    @staticmethod
+    def _invoke_item_call(it, __input, kw):
+        if not isinstance(it, LazyLLMFlowsBase) and isinstance(__input, (package, kwargs)):
+            return it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
+        return it(__input, **kw)
+
+    def _invoke_error_position(self, it):
         try:
-            if not isinstance(it, LazyLLMFlowsBase) and isinstance(__input, (package, kwargs)):
-                output = it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
-            else:
-                output = it(__input, **kw)
+            return self._item_pos[self._items.index(it)]
+        except Exception:
+            return None
+
+    @staticmethod
+    def _invoke_error_kwargs(kw):
+        if '_bind_args_source' not in kw:
+            return kw
+        bind_args_source = kw.get('_bind_args_source') or {}
+        return bind_args_source.pop('kwargs', None)
+
+    def _build_invoke_error_message(self, it, pos, __input, kw, error):
+        return (
+            f'Flow defined at {self._defined_pos or "Unknown position"} encountered an error:\n'
+            f'invoking `{it}`({pos or "Position not found"}) with input `{__input}` and kw `{kw}` failed. '
+            + 'Details: `{type}: {value}`'.format(
+                type=type(error).__name__,
+                value=str(error).replace('\n', '\\n'),
+            )
+        )
+
+    @staticmethod
+    def _run_invoke_error_hooks(hook_objs, error):
+        try:
+            run_hooks(hook_objs, 'on_error', error)
+        except Exception:
+            LOG.warning('Flow invoke on_error hook failed', exc_info=True)
+
+    # bind_args: dict(input=input, args=dict(key=value))
+    def invoke(self, it, __input, *, bind_args_source=None, **kw):
+        hook_objs = self._prepare_invoke_item(it, __input, bind_args_source, kw)
+        try:
+            output = self._invoke_item_call(it, __input, kw)
         except HandledException as e:
-            try:
-                run_hooks(hook_objs, 'on_error', e)
-            except Exception:
-                LOG.warning('Flow invoke on_error hook failed', exc_info=True)
+            self._run_invoke_error_hooks(hook_objs, e)
             raise e
         except Exception as e:
-            try:
-                pos = self._item_pos[self._items.index(it)]
-            except Exception:
-                pos = None
-            if '_bind_args_source' in kw: kw = (kw.get('_bind_args_source') or {}).pop('kwargs', None)
-            err_msg = (f'Flow defined at {self._defined_pos or "Unknown position"} encountered an error:\n'
-                       f'invoking `{it}`({pos or "Position not found"}) with input `{__input}` and kw `{kw}` failed. '
-                       + 'Details: `{type}: {value}`'.format(type=type(e).__name__, value=str(e).replace('\n', '\\n')))
+            pos = self._invoke_error_position(it)
+            invoke_kw = self._invoke_error_kwargs(kw)
+            err_msg = self._build_invoke_error_message(it, pos, __input, invoke_kw, e)
             LOG.error(err_msg)
             LOG.debug(f'Error type: {type(e).__name__}, Error message: {str(e)}\n'
                       f'Traceback: {"".join(traceback.format_exception(*sys.exc_info()))}')
             err = _change_exception_type(e, FlowException)
-            try:
-                run_hooks(hook_objs, 'on_error', err)
-            except Exception:
-                LOG.warning('Flow invoke on_error hook failed', exc_info=True)
+            self._run_invoke_error_hooks(hook_objs, err)
             raise err from None
         else:
             run_hooks(hook_objs, 'post_hook', output)
@@ -382,7 +407,7 @@ def save_pipeline_result(flag: bool = True):
         _set_current_save_flag(old_flag)
 
 class _IterationTarget:
-    """Lightweight proxy providing span naming for loop iterations."""
+    '''Lightweight proxy providing span naming for loop iterations.'''
 
     def __init__(self, flow, idx):
         self._flow_id = getattr(flow, '_flow_id', None)

@@ -1,5 +1,6 @@
 import atexit
 import contextvars
+import functools
 import json
 import threading
 from typing import Any, Dict, Optional
@@ -19,7 +20,7 @@ _current_trace: 'contextvars.ContextVar[Optional[LazyTrace]]' = contextvars.Cont
 
 
 def current_trace() -> Optional[LazyTrace]:
-    """Return the ``LazyTrace`` bound to the current execution context, if any."""
+    '''Return the ``LazyTrace`` bound to the current execution context, if any.'''
     return _current_trace.get()
 
 
@@ -153,7 +154,7 @@ class TracingRuntime:
         return getattr(target, '_flow_id', None)
 
     def _populate_identity(self, span: LazySpan, target: Any) -> None:
-        """Fill identity and config fields of LazySpan from the target object."""
+        '''Fill identity and config fields of LazySpan from the target object.'''
         span.component_class = target.__class__.__name__
         span.component_id = self._target_id(target, span.span_kind)
 
@@ -288,8 +289,55 @@ class TracingRuntime:
         span.status = 'error'
         span.error = exc
 
+    @staticmethod
+    def _set_stringified_attrs(attrs: Dict[str, Any], prefix: str, values: Dict[str, Any]) -> None:
+        for key, value in values.items():
+            attrs[f'{prefix}{key}'] = (
+                _stringify_payload(value) if isinstance(value, (dict, list)) else str(value)
+            )
+
+    @staticmethod
+    def _set_usage_attrs(attrs: Dict[str, Any], usage: Dict[str, Any]) -> None:
+        prompt = usage.get('prompt_tokens')
+        completion = usage.get('completion_tokens')
+        if prompt is not None and prompt >= 0:
+            attrs['gen_ai.usage.input_tokens'] = int(prompt)
+        if completion is not None and completion >= 0:
+            attrs['gen_ai.usage.output_tokens'] = int(completion)
+        if prompt is not None and prompt >= 0 and completion is not None and completion >= 0:
+            attrs['gen_ai.usage.total_tokens'] = int(prompt + completion)
+
+    @staticmethod
+    def _set_root_span_attrs(attrs: Dict[str, Any], span: LazySpan) -> None:
+        if not span.is_root_span:
+            return
+        attrs['lazyllm.trace.name'] = span.name
+        if span.session_id:
+            attrs['session.id'] = span.session_id
+        if span.user_id:
+            attrs['user.id'] = span.user_id
+        if span.request_tags:
+            attrs['lazyllm.trace.tags'] = list(span.request_tags)
+
+    def _set_trace_metadata_attrs(self, attrs: Dict[str, Any], span: LazySpan, trace: Optional[LazyTrace]) -> None:
+        if trace is None or not span.is_root_span or not trace.metadata:
+            return
+        for key, value in trace.metadata.items():
+            attrs[f'lazyllm.trace.metadata.{key}'] = (
+                _stringify_payload(value) if isinstance(value, (dict, list)) else value
+            )
+
+    @staticmethod
+    def _set_io_attrs(attrs: Dict[str, Any], span: LazySpan) -> None:
+        if not span.capture_payload:
+            return
+        if span.input is not None:
+            attrs['lazyllm.io.input'] = _stringify_payload(span.input)
+        if span.output is not None:
+            attrs['lazyllm.io.output'] = _stringify_payload(span.output)
+
     def _build_otel_attributes(self, span: LazySpan, trace: Optional[LazyTrace] = None) -> Dict[str, Any]:
-        """Build the generic OTel attribute set for a span."""
+        '''Build the generic OTel attribute set for a span.'''
         attrs: Dict[str, Any] = {
             'lazyllm.span.kind': span.span_kind,
             'lazyllm.span.is_root': span.is_root_span,
@@ -300,9 +348,7 @@ class TracingRuntime:
         }
 
         if span.config:
-            for k, v in span.config.items():
-                attrs[f'lazyllm.entity.config.{k}'] = (
-                    _stringify_payload(v) if isinstance(v, (dict, list)) else str(v))
+            self._set_stringified_attrs(attrs, 'lazyllm.entity.config.', span.config)
 
         if span.semantic_type:
             attrs['lazyllm.semantic_type'] = span.semantic_type
@@ -312,46 +358,22 @@ class TracingRuntime:
         if span.parent_span_id:
             attrs['lazyllm.request.parent_span_id'] = span.parent_span_id
 
-        if span.capture_payload:
-            if span.input is not None:
-                attrs['lazyllm.io.input'] = _stringify_payload(span.input)
-            if span.output is not None:
-                attrs['lazyllm.io.output'] = _stringify_payload(span.output)
+        self._set_io_attrs(attrs, span)
 
         if span.error is not None:
             attrs['lazyllm.error.message'] = str(span.error)
 
         if span.usage:
-            prompt = span.usage.get('prompt_tokens')
-            completion = span.usage.get('completion_tokens')
-            if prompt is not None and prompt >= 0:
-                attrs['gen_ai.usage.input_tokens'] = int(prompt)
-            if completion is not None and completion >= 0:
-                attrs['gen_ai.usage.output_tokens'] = int(completion)
-            if (prompt is not None and prompt >= 0
-                    and completion is not None and completion >= 0):
-                attrs['gen_ai.usage.total_tokens'] = int(prompt + completion)
+            self._set_usage_attrs(attrs, span.usage)
 
         if span.semantic_type == 'llm' and span.config.get('model'):
             attrs['gen_ai.request.model'] = str(span.config['model'])
 
-        if span.is_root_span:
-            attrs['lazyllm.trace.name'] = span.name
-            if span.session_id:
-                attrs['session.id'] = span.session_id
-            if span.user_id:
-                attrs['user.id'] = span.user_id
-            if span.request_tags:
-                attrs['lazyllm.trace.tags'] = list(span.request_tags)
-
-        if trace is not None and span.is_root_span and trace.metadata:
-            for k, v in trace.metadata.items():
-                attrs[f'lazyllm.trace.metadata.{k}'] = (
-                    _stringify_payload(v) if isinstance(v, (dict, list)) else v)
+        self._set_root_span_attrs(attrs, span)
+        self._set_trace_metadata_attrs(attrs, span, trace)
 
         if span.output_attrs:
-            for k, v in span.output_attrs.items():
-                attrs[k] = v
+            attrs.update(span.output_attrs)
 
         return attrs
 
@@ -430,22 +452,19 @@ def set_span_error(handle, exc: Exception):
 def finish_span(handle):
     _runtime.finish_span(handle)
 
-
-import functools
-
 def enable_trace(func=None, *args, **kwargs):
-    """
+    '''
     Explicitly enable and configure tracing for a pipeline or function.
     Can be used as a wrapper or a decorator.
 
     Usage as a wrapper:
-        enable_trace(pipeline, input_data, trace_id="123", session_id="abc")
+        enable_trace(pipeline, input_data, trace_id='123', session_id='abc')
 
     Usage as a decorator:
-        @enable_trace(session_id="abc")
+        @enable_trace(session_id='abc')
         def my_flow(query):
             ...
-    """
+    '''
     if func is None:
         def decorator(f):
             @functools.wraps(f)
@@ -469,16 +488,16 @@ def enable_trace(func=None, *args, **kwargs):
     # Clear inherited trace linkage unless explicitly provided, enforcing a new root trace.
     new_ctx_data['trace_id'] = trace_id
     new_ctx_data['parent_span_id'] = parent_span_id
-    
+
     if session_id is not None:
         new_ctx_data['session_id'] = session_id
     if user_id is not None:
         new_ctx_data['user_id'] = user_id
-        
+
     # Request-specific fields should not be inherited implicitly.
     new_ctx_data['request_tags'] = request_tags if request_tags is not None else []
     new_ctx_data['module_trace'] = module_trace if module_trace is not None else None
-    
+
     new_ctx_data['enabled'] = True
 
     new_ctx = LazyTraceContext.from_dict(new_ctx_data)

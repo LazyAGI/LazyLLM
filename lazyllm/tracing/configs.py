@@ -64,11 +64,11 @@ def resolve_default_module_trace(*, module_name=None, module_class=None) -> bool
 
 
 def resolve_runtime_module_trace_disabled(override, *, module_name=None, module_class=None) -> bool:
-    """Decide if the runtime override (`globals['trace']['module_trace']`) disables the target.
+    '''Decide if the runtime override (`globals['trace']['module_trace']`) disables the target.
 
     Runtime override is single-directional: only explicit False in `by_name` / `by_class`
     turns tracing off. It never re-enables a module that the registry/default has disabled.
-    """
+    '''
     if not isinstance(override, dict):
         return False
 
@@ -85,4 +85,3 @@ def resolve_runtime_module_trace_disabled(override, *, module_name=None, module_
                 return True
 
     return False
-
