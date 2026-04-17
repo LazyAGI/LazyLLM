@@ -122,7 +122,6 @@ class Retriever(_RetrieverBase, _PostProcess):
             'priority': str(self._priority) if self._priority else None,
         }
 
-
     @once_wrapper
     def _lazy_init(self):
         docs = []

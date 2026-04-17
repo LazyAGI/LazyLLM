@@ -53,7 +53,7 @@ class LazySpan:
 
 @dataclass
 class LazyTrace:
-    """Per-request trace-level semantic object.
+    '''Per-request trace-level semantic object.
 
     Lives in a ContextVar (not in ``globals['trace']``) because it is heavy and not
     meant to be serialized across processes. Cross-thread/process propagation is done
@@ -64,7 +64,7 @@ class LazyTrace:
     - single source of truth for trace-level fields (session/user/tags/metadata)
     - validate identifiers and field types at construction/update time
     - aggregate per-span outcomes into a trace-level status/latency
-    """
+    '''
 
     trace_id: str
     root_span_id: Optional[str] = None

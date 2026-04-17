@@ -87,10 +87,17 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def series(self):
         return self.__class__._model_series
 
-    def _collect_trace_kwargs(self, **overrides):
-        metadata = {}
+    @staticmethod
+    def _trace_attr_value(obj, attr):
+        try:
+            value = getattr(obj, attr, None)
+        except Exception:
+            return None
+        return value if value is not None and value != '' else None
 
-        for key, attrs in (
+    def _collect_basic_trace_kwargs(self):
+        metadata = {}
+        attr_groups = (
             ('model', ('_model_name', '_embed_model_name', 'base_model', '_base_model')),
             ('base_url', ('_base_url', '_embed_url')),
             ('stream', ('_stream',)),
@@ -98,37 +105,37 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             ('batch_size', ('_batch_size',)),
             ('num_worker', ('_num_worker',)),
             ('timeout', ('_timeout',)),
-        ):
+        )
+        for key, attrs in attr_groups:
             for attr in attrs:
-                try:
-                    value = getattr(self, attr, None)
-                except Exception:
-                    value = None
-                if value is not None and value != '':
+                value = self._trace_attr_value(self, attr)
+                if value is not None:
                     metadata[key] = value
                     break
+        return metadata
 
+    def _collect_identity_trace_kwargs(self):
+        metadata = {'class': self.__class__.__name__}
         try:
             metadata['type'] = self.type
         except Exception:
             pass
-
         try:
             if self.series:
                 metadata['series'] = self.series
         except Exception:
             pass
+        return metadata
 
-        metadata['class'] = self.__class__.__name__
-
+    def _collect_trace_kwargs(self, **overrides):
+        metadata = self._collect_basic_trace_kwargs()
+        metadata.update(self._collect_identity_trace_kwargs())
         static_params = getattr(self, '_static_params', None)
         if static_params:
             metadata['static_params'] = dict(static_params)
-
         for key, value in overrides.items():
             if value is not None and value != '':
                 metadata[key] = value
-
         return metadata
 
     @property

@@ -8,18 +8,54 @@ from .base import TracingBackend
 
 
 _SEMANTIC_TO_LANGFUSE_TYPE = {
-    'agent':            'chain',
-    'llm':              'generation',
-    'retriever':        'retriever',
-    'embedding':        'embedding',
-    'tool':             'tool',
-    'rerank':           'span',
+    'agent': 'chain',
+    'llm': 'generation',
+    'retriever': 'retriever',
+    'embedding': 'embedding',
+    'tool': 'tool',
+    'rerank': 'span',
     'workflow_control': 'chain',
 }
 
 
 class LangfuseBackend(TracingBackend):
     name = 'langfuse'
+
+    @staticmethod
+    def _copy_usage_attrs(attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
+        for key in (
+            'gen_ai.usage.input_tokens',
+            'gen_ai.usage.output_tokens',
+            'gen_ai.usage.total_tokens',
+        ):
+            if key in otel_attrs:
+                attrs[key] = otel_attrs[key]
+
+    @staticmethod
+    def _copy_trace_attrs(attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
+        trace_name = otel_attrs.get('lazyllm.trace.name')
+        if trace_name:
+            attrs['langfuse.trace.name'] = trace_name
+        if 'session.id' in otel_attrs:
+            attrs['session.id'] = otel_attrs['session.id']
+        if 'user.id' in otel_attrs:
+            attrs['user.id'] = otel_attrs['user.id']
+
+        tags = otel_attrs.get('lazyllm.trace.tags')
+        if tags:
+            attrs['langfuse.trace.tags'] = json.dumps(tags, ensure_ascii=False)
+
+        if 'lazyllm.io.input' in otel_attrs:
+            attrs['langfuse.trace.input'] = otel_attrs['lazyllm.io.input']
+        if 'lazyllm.io.output' in otel_attrs:
+            attrs['langfuse.trace.output'] = otel_attrs['lazyllm.io.output']
+
+    @staticmethod
+    def _copy_trace_metadata(attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
+        prefix = 'lazyllm.trace.metadata.'
+        for key, value in otel_attrs.items():
+            if key.startswith(prefix):
+                attrs[f'langfuse.trace.metadata.{key[len(prefix):]}'] = value
 
     def _config(self) -> Dict[str, Optional[str]]:
         return {
@@ -48,54 +84,27 @@ class LangfuseBackend(TracingBackend):
         attrs: Dict[str, Any] = {}
         is_root_span = bool(otel_attrs.get('lazyllm.span.is_root'))
 
-        # --- observation type from semantic_type ---
         semantic_type = otel_attrs.get('lazyllm.semantic_type')
         langfuse_type = _SEMANTIC_TO_LANGFUSE_TYPE.get(semantic_type)
         if langfuse_type:
             attrs['langfuse.observation.type'] = langfuse_type
+
         model = otel_attrs.get('gen_ai.request.model') or otel_attrs.get('lazyllm.entity.config.model')
         if semantic_type == 'llm' and model:
             attrs['gen_ai.request.model'] = str(model)
 
-        # --- input / output ---
         if 'lazyllm.io.input' in otel_attrs:
             attrs['langfuse.observation.input'] = otel_attrs['lazyllm.io.input']
         if 'lazyllm.io.output' in otel_attrs:
             attrs['langfuse.observation.output'] = otel_attrs['lazyllm.io.output']
 
-        # --- error ---
         if 'lazyllm.error.message' in otel_attrs:
             attrs['langfuse.observation.status_message'] = str(otel_attrs['lazyllm.error.message'])
 
-        # --- usage ---
-        for key in ('gen_ai.usage.input_tokens', 'gen_ai.usage.output_tokens',
-                    'gen_ai.usage.total_tokens'):
-            if key in otel_attrs:
-                attrs[key] = otel_attrs[key]
+        self._copy_usage_attrs(attrs, otel_attrs)
 
-        # --- trace-level context --- only on root spans
         if is_root_span:
-            trace_name = otel_attrs.get('lazyllm.trace.name')
-            if trace_name:
-                attrs['langfuse.trace.name'] = trace_name
-
-            if 'session.id' in otel_attrs:
-                attrs['session.id'] = otel_attrs['session.id']
-            if 'user.id' in otel_attrs:
-                attrs['user.id'] = otel_attrs['user.id']
-
-            tags = otel_attrs.get('lazyllm.trace.tags')
-            if tags:
-                attrs['langfuse.trace.tags'] = json.dumps(tags, ensure_ascii=False)
-
-            if 'lazyllm.io.input' in otel_attrs:
-                attrs['langfuse.trace.input'] = otel_attrs['lazyllm.io.input']
-            if 'lazyllm.io.output' in otel_attrs:
-                attrs['langfuse.trace.output'] = otel_attrs['lazyllm.io.output']
-
-            for key, value in otel_attrs.items():
-                prefix = 'lazyllm.trace.metadata.'
-                if key.startswith(prefix):
-                    attrs[f'langfuse.trace.metadata.{key[len(prefix):]}'] = value
+            self._copy_trace_attrs(attrs, otel_attrs)
+            self._copy_trace_metadata(attrs, otel_attrs)
 
         return attrs
