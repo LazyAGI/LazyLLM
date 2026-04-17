@@ -9,11 +9,18 @@ from lazyllm.configs import config
 from lazyllm.thirdparty import opentelemetry
 from .backends import get_tracing_backend
 from .context import LazyTraceContext
-from .span import LazySpan
+from .span import LazySpan, LazyTrace
 
 
 _TRACE_SERVICE_NAME = 'lazyllm'
 _in_reconstructed_thread = contextvars.ContextVar('_lazyllm_tracing_reconstructed', default=False)
+_current_trace: 'contextvars.ContextVar[Optional[LazyTrace]]' = contextvars.ContextVar(
+    '_lazyllm_current_trace', default=None)
+
+
+def current_trace() -> Optional[LazyTrace]:
+    """Return the ``LazyTrace`` bound to the current execution context, if any."""
+    return _current_trace.get()
 
 
 class TracingSetupError(RuntimeError):
@@ -205,18 +212,20 @@ class TracingRuntime:
         span_cm = self._tracer.start_as_current_span(span_name, context=parent_context)
         otel_span = span_cm.__enter__()
         span_context = otel_span.get_span_context()
+        trace_id_hex = f'{span_context.trace_id:032x}'
+        span_id_hex = f'{span_context.span_id:016x}'
 
         if not _in_reconstructed_thread.get(False):
-            ctx.trace_id = f'{span_context.trace_id:032x}'
-            ctx.parent_span_id = f'{span_context.span_id:016x}'
+            ctx.trace_id = trace_id_hex
+            ctx.parent_span_id = span_id_hex
             set_trace_context(ctx)
 
         lazy_span = LazySpan(
             name=span_name,
             span_kind=span_kind,
             is_root_span=is_root_span,
-            trace_id=f'{span_context.trace_id:032x}',
-            span_id=f'{span_context.span_id:016x}',
+            trace_id=trace_id_hex,
+            span_id=span_id_hex,
             parent_span_id=pre_parent_span_id,
             capture_payload=capture_payload,
             _otel_span=otel_span,
@@ -228,10 +237,31 @@ class TracingRuntime:
         if capture_payload:
             lazy_span.input = {'args': args, 'kwargs': kwargs}
 
+        # --- LazyTrace lifecycle ---
+        # The first span in the current context (or a span that lands on a new
+        # trace_id due to e.g. an explicit reset) creates and owns a LazyTrace.
+        # Nested spans reuse it; cross-thread reconstructed slices build a local
+        # LazyTrace anchored on the propagated trace_id.
+        active_trace = _current_trace.get()
+        if active_trace is None or active_trace.trace_id != trace_id_hex or not active_trace.is_active:
+            new_trace = LazyTrace(
+                trace_id=trace_id_hex,
+                root_span_id=span_id_hex if is_root_span else None,
+                session_id=ctx.session_id,
+                user_id=ctx.user_id,
+                request_tags=list(ctx.request_tags) if ctx.request_tags else [],
+                is_reconstructed=_in_reconstructed_thread.get(False),
+            )
+            _current_trace.set(new_trace)
+            lazy_span._owns_lazy_trace = True
+            active_trace = new_trace
+
+        active_trace._record_span_start(lazy_span)
+
         if is_root_span:
-            lazy_span.session_id = ctx.session_id
-            lazy_span.user_id = ctx.user_id
-            lazy_span.request_tags = list(ctx.request_tags) if ctx.request_tags else []
+            lazy_span.session_id = active_trace.session_id
+            lazy_span.user_id = active_trace.user_id
+            lazy_span.request_tags = list(active_trace.request_tags)
 
         return lazy_span
 
@@ -292,11 +322,21 @@ class TracingRuntime:
             return
         otel_span = span._otel_span
 
+        active_trace = _current_trace.get()
+        trace_matches = active_trace is not None and active_trace.trace_id == span.trace_id
+
         # 1) lazyllm.* attributes
         for k, v in self._build_lazyllm_attributes(span).items():
             otel_span.set_attribute(k, v)
 
-        # 2) Backend-specific attributes
+        # 2) Trace-level metadata is only written on the root span so backend views
+        #    see it as request-level rather than per-span.
+        if trace_matches and span.is_root_span and active_trace.metadata:
+            for k, v in active_trace.metadata.items():
+                otel_span.set_attribute(f'lazyllm.trace.metadata.{k}', _stringify_payload(v)
+                                        if isinstance(v, (dict, list)) else v)
+
+        # 3) Backend-specific attributes
         if self._backend:
             for k, v in self._backend.map_span_attributes(span).items():
                 otel_span.set_attribute(k, v)
@@ -304,14 +344,22 @@ class TracingRuntime:
                 for k, v in self._backend.map_root_span_attributes(span).items():
                     otel_span.set_attribute(k, v)
 
-        # 3) Error handling
+        # 4) Error handling
         if span.error:
             status_cls, status_code = self._status
             otel_span.set_status(status_cls(status_code.ERROR, str(span.error)))
             otel_span.record_exception(span.error)
 
-        # 4) Close OTel span
+        # 5) Close OTel span
         span._otel_span_cm.__exit__(None, None, None)
+
+        # 6) LazyTrace bookkeeping: aggregate outcome; if this span owns the trace,
+        #    finalize it and clear the ContextVar so the next request starts fresh.
+        if trace_matches:
+            active_trace._record_span_end(span)
+            if span._owns_lazy_trace:
+                active_trace.finish()
+                _current_trace.set(None)
 
     def shutdown(self):
         if self._provider is None:
