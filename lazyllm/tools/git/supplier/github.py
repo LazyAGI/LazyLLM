@@ -256,6 +256,32 @@ class GitHub(LazyLLMGitBase):
             return self._fail(r)
         return {'success': True, 'message': 'created', 'url': r.json().get('html_url', '')}
 
+    def list_issue_comments(self, number: int) -> Dict[str, Any]:
+        self._require_repo()
+        out = []
+        url: Optional[str] = self._url(f'/issues/{number}/comments')
+        params: Dict[str, Any] = {'per_page': 100}
+        while url:
+            r = self._session.get(url, params=params)
+            params = {}
+            if r.status_code != 200:
+                return self._fail(r)
+            for c in r.json():
+                out.append({
+                    'id': c['id'],
+                    'body': c.get('body', ''),
+                    'user': c.get('user', {}).get('login', ''),
+                    'raw': c,
+                })
+            link = r.headers.get('Link', '')
+            url = None
+            for part in link.split(','):
+                part = part.strip()
+                if 'rel="next"' in part:
+                    url = part.split(';')[0].strip().strip('<>')
+                    break
+        return {'success': True, 'comments': out}
+
     def submit_review(self, number: int, event: str, body: str = '',
                       comments: Optional[List[Dict[str, Any]]] = None,
                       commit_id: Optional[str] = None) -> Dict[str, Any]:

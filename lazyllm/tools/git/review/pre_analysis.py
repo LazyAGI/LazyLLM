@@ -1616,11 +1616,14 @@ Your task:
 1. Merge duplicate or highly similar rules into one (keep the most informative example and detect patterns).
 2. Remove rules that are too vague, trivial, or project-unspecific.
 3. Re-assign clean rule_ids using standard prefixes: ERR, STY, DSN, PERF, SEC, XFILE (e.g. ERR001, STY002).
-4. Sort by severity (P0 first), then by frequency/importance.
-5. Keep at most {max_rules} rules total.
+4. Assign a "category" to each rule from: error_handling, style, design, performance, security, \
+cross_file, concurrency, dependency, maintainability, type_safety.
+5. Sort by severity (P0 first), then by frequency/importance.
+6. Keep at most {max_rules} rules total.
 
 For each final rule, output a JSON object with:
 - "rule_id": clean id like "ERR001" (no PR prefix)
+- "category": one of the categories above
 - "title", "severity", "detect" (list), "bad_example", "good_example", "fix"
 
 ''' + JSON_OUTPUT_INSTRUCTION + '''
@@ -1632,6 +1635,7 @@ For each final rule, output a JSON object with:
 
 _RULE_CARD_TEMPLATE = '''\
 [Rule ID] {rule_id}
+[Category] {category}
 [Title] {title}
 [Severity] {severity}
 
@@ -1652,6 +1656,7 @@ def _format_rule_card(rule: Dict[str, Any]) -> str:
     detect_bullets = '\n'.join(f'- {d}' for d in detect) if detect else '- (see bad example)'
     return _RULE_CARD_TEMPLATE.format(
         rule_id=rule.get('rule_id', 'RULE000'),
+        category=rule.get('category', 'other'),
         title=rule.get('title', ''),
         severity=rule.get('severity', 'P2'),
         detect_bullets=detect_bullets,
@@ -1713,6 +1718,30 @@ def _merge_rule_cards(llm: Any, all_rules: List[Dict[str, Any]]) -> List[Dict[st
 def _get_attr(obj: Any, attr: str) -> str:
     return (obj.get(attr) if isinstance(obj, dict) else getattr(obj, attr, '')) or ''
 
+def _fetch_all_pr_comments(backend: LazyLLMGitBase, pr_num: int) -> List[Dict[str, Any]]:
+    comments: List[Dict[str, Any]] = []
+    try:
+        res = backend.list_review_comments(pr_num)
+        if res.get('success'):
+            for c in (res.get('comments') or []):
+                body = _get_attr(c, 'body').strip()
+                user = _get_attr(c, 'user')
+                if body and not _BOT_USER_PATTERNS.search(user):
+                    comments.append({'user': user, 'body': body})
+    except Exception as e:
+        lazyllm.LOG.warning(f'PR #{pr_num} review comments fetch error: {e}')
+    try:
+        res2 = backend.list_issue_comments(pr_num)
+        if res2.get('success'):
+            for c in (res2.get('comments') or []):
+                body = (c.get('body') or '').strip()
+                user = (c.get('user') or '').strip()
+                if body and not _BOT_USER_PATTERNS.search(user):
+                    comments.append({'user': user, 'body': body})
+    except Exception as e:
+        lazyllm.LOG.warning(f'PR #{pr_num} issue comments fetch error: {e}')
+    return comments
+
 def _collect_rules_for_pr(
     backend: LazyLLMGitBase, llm: Any, pr: Any,
     idx: int, total: int, cache_path: Optional[str],
@@ -1732,20 +1761,7 @@ def _collect_rules_for_pr(
             return
         except (json.JSONDecodeError, TypeError):
             pass
-    try:
-        res = backend.list_review_comments(pr_num)
-    except Exception as e:
-        lazyllm.LOG.warning(f'PR #{pr_num} comments fetch error (skipped): {e}')
-        prog.update(f'[{idx}/{total}] PR #{pr_num} (network error, skipped)')
-        return
-    if not res.get('success'):
-        prog.update(f'[{idx}/{total}] PR #{pr_num} (fetch failed)')
-        return
-    comments = [
-        {'user': _get_attr(c, 'user'), 'body': _get_attr(c, 'body')}
-        for c in (res.get('comments') or [])
-        if _get_attr(c, 'body').strip() and not _BOT_USER_PATTERNS.search(_get_attr(c, 'user'))
-    ]
+    comments = _fetch_all_pr_comments(backend, pr_num)
     if not comments:
         prog.update(f'[{idx}/{total}] PR #{pr_num} — 0 human comments → skipped')
         return
@@ -1758,7 +1774,8 @@ def _collect_rules_for_pr(
 _MAINTAINER_ASSOCIATIONS = {'OWNER', 'MEMBER', 'COLLABORATOR'}
 
 _VALIDATE_CONVENTION_PROMPT = '''\
-You are analyzing a code review conversation to determine if it reveals a framework convention.
+You are analyzing a code review conversation to determine if it reveals a framework convention \
+or a recurring AI reviewer false-positive pattern.
 
 ## Conversation Pattern: {pattern}
 
@@ -1771,17 +1788,30 @@ You are analyzing a code review conversation to determine if it reveals a framew
 {ack_section}
 
 ## Task
-Determine if this conversation reveals a genuine framework convention that the automated reviewer \
-should learn. Output a JSON object:
-- "verdict": "framework_convention" | "design_tradeoff" | "not_generalizable" | "author_wrong"
+Determine what this conversation reveals. Output a JSON object:
+- "verdict": one of:
+  - "framework_convention": the reviewer misunderstood a reusable framework mechanism
+  - "ai_false_positive": the reviewer flagged something that is correct/intentional in this repo \
+due to uncommon project conventions, domain-specific patterns, or codebase-specific idioms \
+(e.g. unusual metaclass usage, custom descriptor protocols, non-standard naming that is intentional, \
+deliberate defensive patterns, project-specific error handling strategies)
+  - "design_tradeoff": a legitimate design discussion, not a clear mistake
+  - "not_generalizable": too specific to this PR, not a recurring pattern
+  - "author_wrong": the bot was correct, the author/maintainer was wrong
 - "reasoning": one sentence
 - If verdict is "framework_convention":
   - "trigger_pattern": the code pattern that triggered the false alarm
   - "actual_behavior": what actually happens in the framework
   - "do_not_flag": one sentence guideline for the reviewer
+- If verdict is "ai_false_positive":
+  - "trigger_pattern": the code pattern the AI incorrectly flagged
+  - "why_correct": why this pattern is correct/intentional in this repo
+  - "category": one of "metaclass_magic", "defensive_pattern", "naming_convention", \
+"error_handling", "dynamic_dispatch", "test_pattern", "config_pattern", "other"
+  - "do_not_flag": one sentence guideline for the reviewer
 
-Only output "framework_convention" if the conversation clearly demonstrates the reviewer \
-misunderstood a reusable framework mechanism.
+Output "framework_convention" for reusable framework mechanisms. \
+Output "ai_false_positive" for project-specific patterns the AI should learn to skip.
 ''' + JSON_OUTPUT_INSTRUCTION
 
 def _build_reply_chains(comments: list) -> List[List[dict]]:
@@ -1874,6 +1904,8 @@ def _resolve_pr_author(pr: Any) -> str:
         return pr_user.get('login', '')
     return pr_user if isinstance(pr_user, str) else ''
 
+_ACCEPTED_VERDICTS = {'framework_convention', 'ai_false_positive'}
+
 def _validate_conventions_batch(llm: Any, high_conf: List[Dict[str, str]]) -> List[Dict[str, Any]]:
     conventions = []
     for pair in high_conf[:10]:
@@ -1889,7 +1921,7 @@ def _validate_conventions_batch(llm: Any, high_conf: List[Dict[str, str]]) -> Li
         result = _safe_llm_call(llm, prompt)
         if isinstance(result, list):
             result = result[0] if result else {}
-        if isinstance(result, dict) and result.get('verdict') == 'framework_convention':
+        if isinstance(result, dict) and result.get('verdict') in _ACCEPTED_VERDICTS:
             conventions.append(result)
     return conventions
 
@@ -1931,6 +1963,28 @@ def _collect_framework_conventions_for_pr(  # noqa: C901
     if conventions:
         prog.update(f'[{idx}/{total}] PR #{pr_num} — {len(high_conf)} chains → {len(conventions)} conventions')
 
+def _format_conventions_result(all_conventions: List[Dict[str, Any]]) -> str:
+    conv_lines = []
+    fp_lines = []
+    for c in all_conventions:
+        trigger = c.get('trigger_pattern', '')
+        guideline = c.get('do_not_flag', '')
+        if not guideline:
+            continue
+        if c.get('verdict') == 'ai_false_positive':
+            why = c.get('why_correct', '')
+            cat = c.get('category', 'other')
+            fp_lines.append(f'- [{cat}] Pattern: {trigger} → {why}. Rule: {guideline}')
+        else:
+            behavior = c.get('actual_behavior', '')
+            conv_lines.append(f'- Pattern: {trigger} → {behavior}. Rule: {guideline}')
+    parts = []
+    if conv_lines:
+        parts.append('### Framework Conventions\n' + '\n'.join(conv_lines))
+    if fp_lines:
+        parts.append('### AI Common False Positives in This Repo\n' + '\n'.join(fp_lines))
+    return '\n\n'.join(parts) if parts else ''
+
 def analyze_framework_conventions(
     backend: LazyLLMGitBase, llm: Any, cache_path: Optional[str] = None, max_prs: int = 50,
 ) -> str:
@@ -1957,20 +2011,23 @@ def analyze_framework_conventions(
     all_conventions: List[Dict[str, Any]] = []
     for idx, pr in enumerate(target, 1):
         _collect_framework_conventions_for_pr(backend, llm, pr, idx, len(target), cache_path, prog, all_conventions)
-    prog.done(f'{len(all_conventions)} framework conventions from {len(target)} PRs')
+    prog.done(f'{len(all_conventions)} conventions from {len(target)} PRs')
     if not all_conventions:
         _save_cache(cache_path, 'framework_conventions', '')
         return ''
-    lines = []
-    for c in all_conventions:
-        trigger = c.get('trigger_pattern', '')
-        behavior = c.get('actual_behavior', '')
-        guideline = c.get('do_not_flag', '')
-        if guideline:
-            lines.append(f'- Pattern: {trigger} → {behavior}. Rule: {guideline}')
-    result = '\n'.join(lines) if lines else ''
+    result = _format_conventions_result(all_conventions)
     _save_cache(cache_path, 'framework_conventions', result)
     return result
+
+def _merge_conventions_into_spec(review_spec: str, conventions: str) -> str:
+    if not conventions:
+        return review_spec
+    try:
+        spec_obj = json.loads(review_spec) if review_spec and not review_spec.startswith('(') else {}
+    except (json.JSONDecodeError, ValueError):
+        spec_obj = {}
+    spec_obj['conventions'] = conventions
+    return json.dumps(spec_obj, ensure_ascii=False)
 
 def analyze_historical_reviews(
     backend: LazyLLMGitBase, llm: Any, cache_path: Optional[str] = None, max_prs: int = 200
@@ -2013,10 +2070,18 @@ def analyze_historical_reviews(
         return _empty
 
     merged_rules = _merge_rule_cards(llm, all_rules)
-    summaries = [{'rule_id': r.get('rule_id', ''), 'title': r.get('title', '')} for r in merged_rules]
+    categories: Dict[str, List[Dict[str, Any]]] = {}
+    for r in merged_rules:
+        cat = r.get('category', 'other')
+        categories.setdefault(cat, []).append(r)
+    summaries = [
+        {'rule_id': r.get('rule_id', ''), 'title': r.get('title', ''), 'category': r.get('category', 'other')}
+        for r in merged_rules
+    ]
     details = {r.get('rule_id', f'R{i:03d}'): r for i, r in enumerate(merged_rules)}
-    review_spec = json.dumps({'summaries': summaries, 'details': details}, ensure_ascii=False) or \
-        '(review spec analysis unavailable)'
+    review_spec = json.dumps(
+        {'summaries': summaries, 'categories': categories, 'details': details}, ensure_ascii=False,
+    ) or '(review spec analysis unavailable)'
     _save_cache_multi(cache_path, {'review_spec': review_spec, 'review_spec_max_prs': str(max_prs)})
     return review_spec
 
@@ -2066,11 +2131,24 @@ def _lookup_relevant_rules(review_spec: str, diff_content: str, max_detail: int 
         if any(kw in title.lower() for kw in keywords if len(kw) > 3):
             matched_ids.append(rule_id)
         else:
-            unmatched_titles.append(f'[{rule_id}] {title}')
+            cat = s.get('category', '')
+            unmatched_titles.append(f'[{rule_id}] ({cat}) {title}' if cat else f'[{rule_id}] {title}')
 
-    parts = [_format_rule_card(details[rid]) for rid in matched_ids[:max_detail] if details.get(rid)]
+    matched_by_cat: Dict[str, List[str]] = {}
+    for rid in matched_ids[:max_detail]:
+        rule = details.get(rid)
+        if not rule:
+            continue
+        cat = rule.get('category', 'other')
+        matched_by_cat.setdefault(cat, []).append(_format_rule_card(rule))
+    parts = []
+    for cat, cards in sorted(matched_by_cat.items()):
+        parts.append(f'## {cat}\n' + '\n\n'.join(cards))
     if unmatched_titles:
         parts.append('## Other rules (title only)\n' + '\n'.join(unmatched_titles))
+    conventions = spec_obj.get('conventions', '')
+    if conventions:
+        parts.append('## Conventions & AI False Positives\n' + conventions)
     return '\n\n'.join(parts) if parts else '(no matching rules found)'
 
 _PRE_ROUND_PROMPT_TMPL = '''\
@@ -2223,9 +2301,11 @@ def _run_pre_analysis(
     try:
         conventions = analyze_framework_conventions(backend_inst, llm, review_spec_cache_path, max_prs=max_history_prs)
         if conventions:
-            agent_instructions = (agent_instructions + '\n\n## Framework Conventions (from historical reviews)\n'
+            agent_instructions = (agent_instructions + '\n\n## Conventions (from historical reviews)\n'
                                   + conventions)[:_AGENT_INSTRUCTIONS_MAX_CHARS]
             _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
+            review_spec = _merge_conventions_into_spec(review_spec, conventions)
+            ckpt.save('review_spec', review_spec)
     except Exception as e:
         lazyllm.LOG.warning(f'Framework convention extraction failed (non-fatal): {e}')
 

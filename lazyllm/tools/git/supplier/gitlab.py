@@ -161,6 +161,22 @@ class GitLab(LazyLLMGitBase):
                 ))
         return {'success': True, 'comments': out}
 
+    def list_issue_comments(self, number: int) -> Dict[str, Any]:
+        r = self._req('GET', f'/merge_requests/{number}/notes')
+        if r.status_code != 200:
+            return {'success': False, 'message': r.text or r.reason}
+        out = []
+        for note in r.json():
+            if note.get('system'):
+                continue
+            out.append({
+                'id': note['id'],
+                'body': note.get('body', ''),
+                'user': note.get('author', {}).get('username', ''),
+                'raw': note,
+            })
+        return {'success': True, 'comments': out}
+
     def create_review_comment(self, number: int, body: str, path: str,
                               line: Optional[int] = None, side: str = 'RIGHT',
                               commit_id: Optional[str] = None,
