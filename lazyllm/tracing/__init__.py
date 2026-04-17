@@ -14,12 +14,14 @@ _SUBMOD_MAP = {
         'set_trace_context',
         'tracing_available',
         'enable_trace',
+        'current_trace',
     ],
     'configs': [
         'DEFAULT_MODULE_TRACE_CONFIG',
         'get_default_module_trace_config',
         'set_default_module_trace_config',
         'resolve_default_module_trace',
+        'resolve_runtime_module_trace_disabled',
     ],
     'hook': [
         'LazyTracingHook',

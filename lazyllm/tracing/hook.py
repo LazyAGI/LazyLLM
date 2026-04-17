@@ -1,7 +1,7 @@
 from ..common import LOG, globals
 from ..configs import config
 from ..hook import LazyLLMHook, register_builtin_hook_provider
-from .configs import resolve_default_module_trace
+from .configs import resolve_default_module_trace, resolve_runtime_module_trace_disabled
 from .runtime import finish_span, set_span_attributes, set_span_error, set_span_output, set_span_usage, start_span
 
 
@@ -25,16 +25,15 @@ class LazyTracingHook(LazyLLMHook):
         if not trace_enabled or trace_cfg.get('sampled') is False:
             return
 
-        # Check runtime override (only supports disabling, not enabling)
-        if hasattr(self._obj, '_module_id'):
-            runtime_override = trace_cfg.get('module_trace')
-            if runtime_override and isinstance(runtime_override, dict):
-                by_name = runtime_override.get('by_name')
-                if isinstance(by_name, dict):
-                    module_name = getattr(self._obj, 'name', None) or getattr(self._obj, '_module_name', None)
-                    if module_name and by_name.get(module_name) is False:
-                        return
-                
+        # Runtime override is single-directional (disable-only): registry/default decides
+        # whether tracing is on; globals['trace']['module_trace'] can only turn it off.
+        if hasattr(self._obj, '_module_id') and resolve_runtime_module_trace_disabled(
+            trace_cfg.get('module_trace'),
+            module_name=getattr(self._obj, 'name', None) or getattr(self._obj, '_module_name', None),
+            module_class=self._obj.__class__,
+        ):
+            return
+
         self._span = start_span(span_kind=self._span_kind, target=self._obj, args=args, kwargs=kwargs)
 
     def post_hook(self, output):
