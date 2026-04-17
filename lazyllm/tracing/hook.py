@@ -15,7 +15,11 @@ class LazyTracingHook(LazyLLMHook):
 
     @property
     def _span_kind(self):
-        return 'flow' if hasattr(self._obj, '_flow_id') else 'module'
+        if hasattr(self._obj, '_flow_id'):
+            return 'flow'
+        if hasattr(self._obj, '_module_id'):
+            return 'module'
+        return 'callable'
 
     def pre_hook(self, *args, **kwargs):
         trace_cfg = globals.get('trace', {})
