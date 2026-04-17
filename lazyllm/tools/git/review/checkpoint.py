@@ -14,11 +14,9 @@ class ReviewStage(enum.Enum):
     SPEC = 'spec'
     PR_SUMMARY = 'pr_summary'
     R1 = 'r1'
+    R2A = 'r2a'
     R2 = 'r2'
     R3 = 'r3'
-    R4A = 'r4a'
-    R4 = 'r4'
-    R4V = 'r4v'
     FINAL = 'final'
     UPLOAD = 'upload'
 
@@ -38,8 +36,9 @@ class ReviewStage(enum.Enum):
 
 _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
-    ReviewStage.PR_SUMMARY, ReviewStage.R1, ReviewStage.R2,
-    ReviewStage.R3, ReviewStage.R4A, ReviewStage.R4, ReviewStage.R4V, ReviewStage.FINAL, ReviewStage.UPLOAD,
+    ReviewStage.PR_SUMMARY, ReviewStage.R1,
+    ReviewStage.R2A, ReviewStage.R2,
+    ReviewStage.R3, ReviewStage.FINAL, ReviewStage.UPLOAD,
 ]
 
 
@@ -84,13 +83,12 @@ def _save_cache_multi(cache_path: Optional[str], entries: Dict[str, Any]) -> Non
 
 
 class _ReviewCheckpoint:
-    _KEYS = ('arch_doc', 'review_spec', 'r2_shared_context', 'r1', 'r2', 'r3', 'pr_design_doc', 'r4', 'r4v', 'final')
-    # internal key prefix for stage completion markers
+    _KEYS = ('arch_doc', 'review_spec', 'r3_shared_context', 'r1', 'pr_design_doc', 'r2', 'r3', 'final')
     _STAGE_DONE_PREFIX = '_stage_done_'
-    # internal key recording the invalidation boundary (stage value string)
     _INVALIDATED_FROM_KEY = '_invalidated_from'
-    # mapping from checkpoint key to the ReviewStage it belongs to
     _KEY_TO_STAGE: Dict[str, 'ReviewStage'] = {}
+    _PIPELINE_VERSION_KEY = '_pipeline_version'
+    _PIPELINE_VERSION = 3
 
     def __init__(self, path: str, resume_from: Optional[ReviewStage] = None) -> None:
         self._path = path
@@ -103,6 +101,15 @@ class _ReviewCheckpoint:
                 lazyllm.LOG.info(f'Loaded checkpoint from {path}')
             except (json.JSONDecodeError, OSError):
                 self._data = {}
+        old_ver = self._data.get(self._PIPELINE_VERSION_KEY, 0)
+        if old_ver < self._PIPELINE_VERSION and any(
+            k for k in self._data if k.startswith(('r2_file_', 'r2_disc_', 'r4', '_stage_done_r4'))
+        ):
+            lazyllm.LOG.warning(
+                f'Checkpoint pipeline version {old_ver} < {self._PIPELINE_VERSION}, invalidating all stages'
+            )
+            self._data = {}
+        self._data[self._PIPELINE_VERSION_KEY] = self._PIPELINE_VERSION
         if resume_from is not None:
             self._mark_invalidated_from(resume_from)
 
@@ -129,13 +136,11 @@ class _ReviewCheckpoint:
                 'review_spec': ReviewStage.SPEC,
                 'pr_summary': ReviewStage.PR_SUMMARY,
                 'r1': ReviewStage.R1,
+                'pr_design_doc': ReviewStage.R2A,
                 'r2': ReviewStage.R2,
                 'r3': ReviewStage.R3,
-                'pr_design_doc': ReviewStage.R4A,
-                'r4': ReviewStage.R4,
-                'r4v': ReviewStage.R4V,
+                'r3_shared_context': ReviewStage.R3,
                 'final': ReviewStage.FINAL,
-                'r2_shared_context': ReviewStage.R2,
                 'diff_text': ReviewStage.CLONE,
                 'final_comments': ReviewStage.UPLOAD,
             }
@@ -145,8 +150,8 @@ class _ReviewCheckpoint:
             return ReviewStage.R1
         if key.startswith('r1_window_'):
             return ReviewStage.R1
-        if key.startswith('r2_file_'):
-            return ReviewStage.R2
+        if key.startswith('r3_file_') or key.startswith('r3_disc_') or key.startswith('r3_group_'):
+            return ReviewStage.R3
         if key.startswith(self._STAGE_DONE_PREFIX):
             stage_val = key[len(self._STAGE_DONE_PREFIX):]
             try:

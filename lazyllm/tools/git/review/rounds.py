@@ -16,12 +16,11 @@ from .utils import (
     _truncate_hunk_content, _annotate_diff_with_line_numbers, _annotate_full_diff,
     _extract_json_text, _parse_json_with_repair,
     _parse_unified_diff, _normalize_comment_item,
-    JSON_START_MARKER, JSON_END_MARKER, JSON_OUTPUT_INSTRUCTION, JSON_OBJ_OUTPUT_INSTRUCTION,
+    JSON_OUTPUT_INSTRUCTION, JSON_OBJ_OUTPUT_INSTRUCTION,
 )
 from .pre_analysis import (
     _read_file_context, _get_symbol_index,
     _build_scoped_agent_tools_with_cache,
-    _lookup_relevant_rules,
     _extract_arch_for_file,
     _extract_abstract_method_names,
     _find_subclass_implementations,
@@ -30,9 +29,9 @@ from .pre_analysis import (
 from .constants import (
     SINGLE_CALL_CONTEXT_BUDGET, R1_DIFF_BUDGET,
     R1_WINDOW_MAX_HUNKS, R1_WINDOW_MAX_DIFF_CHARS,
-    R2_UNIT_DIFF_BUDGET, R2_MAX_CHUNKS_HARD,
+    R3_UNIT_DIFF_BUDGET, R3_MAX_CHUNKS_HARD,
     max_issues_for_diff, cap_issues_by_severity, clip_text, clip_diff_by_hunk_budget,
-    compress_diff_for_agent_heuristic, effective_diff_line_count, issue_density_rule,
+    compress_diff_for_agent_heuristic, issue_density_rule,
 )
 from .checkpoint import ReviewStage
 from lazyllm.tools.agent import ReactAgent
@@ -58,8 +57,6 @@ def _sample_text(text: str, max_chars: int) -> str:
 
 # Unique delimiters that won't appear inside diff/code content in the response.
 # Defined in utils.py and imported above as JSON_START_MARKER / JSON_END_MARKER / JSON_OUTPUT_INSTRUCTION.
-_JSON_START = JSON_START_MARKER
-_JSON_END = JSON_END_MARKER
 _JSON_OUTPUT_INSTRUCTION = JSON_OUTPUT_INSTRUCTION
 _JSON_OBJ_OUTPUT_INSTRUCTION = JSON_OBJ_OUTPUT_INSTRUCTION
 
@@ -84,8 +81,21 @@ _R1_STRICT_RULES = '''\
 STRICT RULES — violations will be rejected:
 1. Only report issues caused by the diff itself (added/modified/deleted lines). \
 If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
-2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
-missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
+2. Do NOT report lint/style tool errors that automated tools already catch: \
+unused imports (F401), line-too-long, complexity metrics, missing blank lines, \
+trailing whitespace, etc. \
+HOWEVER, if the diff deletes or rewrites a function/class and you can see in the file context \
+that a helper function, constant, or variable was ONLY used by the old code and is now orphaned, \
+DO report it (bug_category: maintainability, severity: normal). \
+The distinction: "unused import" = lint tool's job; \
+"orphaned helper after refactoring" = reviewer's job. \
+CAVEAT — do NOT report a symbol as orphaned if any of these dynamic-reference patterns apply: \
+(a) its class uses a metaclass or __init_subclass__ (auto-registration upon definition), \
+(b) it appears in __all__, a registry dict, a @register decorator, or plugin entry-points, \
+(c) the module defines __getattr__ (dynamic attribute dispatch), \
+(d) its name follows a convention pattern (*_handler, *_impl, *_hook, *_plugin) suggesting dynamic dispatch. \
+If any pattern applies, do NOT report it; if uncertain, add \
+"(may be dynamically referenced)" and cap severity at "normal".
 3. Do NOT flag defensive programming as a bug. Patterns like `max(n, 1)`, `or default`, \
 `if x is None: x = []`, guard clauses, and similar constructs are intentional safety measures — \
 report them only if they introduce a concrete logical error (e.g. masking a real zero that matters).
@@ -112,8 +122,22 @@ _SHARED_STRICT_RULES_PREFIX = '''\
 STRICT RULES — violations will be rejected:
 1. Only report issues caused by the diff itself (added/modified/deleted lines). \
 If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
-2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
-missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
+2. Do NOT report lint/style tool errors that automated tools already catch: \
+unused imports (F401), line-too-long, complexity metrics, missing blank lines, \
+trailing whitespace, etc. \
+HOWEVER, DO report dead code left behind by THIS diff's refactoring: \
+if the diff deletes or rewrites a function/class, and a helper function, constant, \
+or prompt template that was ONLY used by the old code is still present, that IS a valid issue \
+(bug_category: maintainability). The distinction: "unused import" = lint tool's job; \
+"orphaned function after refactoring" = reviewer's job. \
+CAVEAT — do NOT report a symbol as orphaned if any of these dynamic-reference patterns apply: \
+(a) its class uses a metaclass or __init_subclass__ (auto-registration upon definition), \
+(b) it appears in __all__, a registry dict, a @register decorator, or plugin entry-points, \
+(c) the module defines __getattr__ (dynamic attribute dispatch), \
+(d) its name follows a convention pattern (*_handler, *_impl, *_hook, *_plugin) suggesting dynamic dispatch, \
+(e) the Project Agent Instructions (AGENTS.md) describe a dynamic dispatch mechanism that covers this symbol. \
+If any pattern applies, do NOT report it; if uncertain, add \
+"(may be dynamically referenced)" and cap severity at "normal".
 3. Do NOT flag defensive programming as a bug. Patterns like `max(n, 1)`, `or default`, \
 `if x is None: x = []`, guard clauses, and similar constructs are intentional safety measures — \
 report them only if they introduce a concrete logical error (e.g. masking a real zero that matters).
@@ -179,7 +203,14 @@ You are a meticulous code reviewer. Your goal is maximum recall — report every
 {arch_doc}
 
 ## Project Review Standards
-{review_spec}'''
+{review_spec}
+
+## File Structure
+{file_skeleton}
+
+## Code Profile & Review Focus
+{code_profile}
+{review_focus_block}'''
 
 _R1_SIMPLICITY_SECTION = '''
 ## Simplicity Check (added lines only)
@@ -190,6 +221,93 @@ Focus ONLY on lines starting with "+" in the diff. Examples:
 - Loops replaceable with list/dict comprehensions or generator expressions
 - Unnecessary intermediate variables or redundant assignments
 For these issues use bug_category="style" and severity="normal".'''
+
+_R1_MANDATORY_CHECKS = '''
+## Mandatory Checks (apply to ALL code)
+For every hunk, you MUST check the following. Report as issues if violated:
+1. Exception handling: Are exceptions caught at the right granularity? Are error messages informative? \
+Are exceptions from multiple operations collected and re-raised together when appropriate?
+2. Resource management: Are file handles, connections, locks, and other resources properly released \
+in all code paths (including exceptions)? Use context managers (with/try-finally) where applicable.
+3. Logging: Are log levels appropriate (ERROR for failures, WARNING for degraded states, INFO for \
+key operations, DEBUG for details)? Do log messages include enough context to diagnose issues?
+4. Obvious performance: Are there O(n^2) loops, repeated expensive computations, or unnecessary \
+memory allocations that could be trivially optimized?
+5. Concurrency safety (when review_focus indicates concurrent code): Are shared mutable states \
+protected? Are there potential race conditions, deadlocks, or atomicity violations?'''
+
+_CODE_TAG_PROMPT_TMPL = '''\
+Analyze the file structure and diff below. Output ONLY a JSON object — no commentary.
+
+## File skeleton
+{skeleton}
+
+## Diff excerpt (first hunk)
+{diff_excerpt}
+
+## Output schema
+{{"module_type": "data_pipeline|api_handler|model_layer|utility|config|test|cli|other",
+  "concurrency_model": "single_thread|multi_thread|multi_process|async|distributed|none",
+  "io_profile": "io_intensive|compute_intensive|mixed|minimal",
+  "external_systems": ["database","http_api","file_system","message_queue",...],
+  "stateful": true/false,
+  "scope_hints": [{{"scope":"class/def name","traits":["trait1","trait2"]}}],
+  "review_focus": ["up to {max_focus} one-sentence review priorities for this file"]}}
+
+Rules for review_focus:
+- If concurrency_model != "none": include a check for race conditions / deadlocks / data consistency
+- If stateful: include a check for state initialization, cleanup, and consistency
+- If external_systems contains "database": include transaction boundary / connection leak check
+- If external_systems contains "file_system": include file handle release / path traversal check
+- If io_profile == "io_intensive": include timeout / retry / resource release check
+- Tailor each item to the SPECIFIC classes/functions visible in the skeleton and diff
+''' + _JSON_OBJ_OUTPUT_INSTRUCTION
+
+
+def _extract_code_tags(
+    llm: Any, skeleton: str, diff_excerpt: str, max_focus: int = 5,
+) -> Dict[str, Any]:
+    prompt = _CODE_TAG_PROMPT_TMPL.format(
+        skeleton=skeleton[:2000] if skeleton else '(not available)',
+        diff_excerpt=diff_excerpt[:1500] if diff_excerpt else '(not available)',
+        max_focus=max_focus,
+    )
+    raw = _safe_llm_call_text(llm, prompt)
+    if not raw:
+        return {}
+    parsed = _parse_json_with_repair(_extract_json_text(raw))
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _format_code_profile(tags: Dict[str, Any]) -> str:
+    if not tags:
+        return '(not available)'
+    parts = []
+    if tags.get('module_type'):
+        parts.append(f'Module: {tags["module_type"]}')
+    if tags.get('concurrency_model') and tags['concurrency_model'] != 'none':
+        parts.append(f'Concurrency: {tags["concurrency_model"]}')
+    if tags.get('io_profile') and tags['io_profile'] != 'minimal':
+        parts.append(f'IO: {tags["io_profile"]}')
+    ext = tags.get('external_systems')
+    if ext:
+        parts.append(f'External: {", ".join(ext) if isinstance(ext, list) else ext}')
+    if tags.get('stateful'):
+        parts.append('Stateful: yes')
+    hints = tags.get('scope_hints')
+    if hints and isinstance(hints, list):
+        for h in hints[:3]:
+            if isinstance(h, dict):
+                parts.append(f'  {h.get("scope", "?")}: {", ".join(h.get("traits", []))}')
+    return ' | '.join(parts[:4]) + ('\n' + '\n'.join(parts[4:]) if len(parts) > 4 else '')
+
+
+def _format_review_focus(tags: Dict[str, Any]) -> str:
+    focus = tags.get('review_focus')
+    if not focus or not isinstance(focus, list):
+        return ''
+    lines = [f'{i + 1}. {f}' for i, f in enumerate(focus[:5]) if isinstance(f, str)]
+    return 'Review focus for this file (prioritize these checks):\n' + '\n'.join(lines) if lines else ''
 
 _ROUND1_PROMPT_TMPL = _R1_COMMON_HEADER + '''
 
@@ -212,7 +330,7 @@ When reporting "line", always use the RIGHT-SIDE number M (the new-file line num
 
 ''' + _R1_ISSUE_FIELDS + '''
 
-''' + _R1_CATEGORIES_BLOCK + _R1_SIMPLICITY_SECTION + '''
+''' + _R1_CATEGORIES_BLOCK + _R1_SIMPLICITY_SECTION + _R1_MANDATORY_CHECKS + '''
 
 ''' + _JSON_OUTPUT_INSTRUCTION + '''
 If no issues: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
@@ -244,7 +362,7 @@ When reporting "line", always use the RIGHT-SIDE number M (the new-file line num
 
 ''' + _R1_ISSUE_FIELDS_BATCH + '''
 
-''' + _R1_CATEGORIES_BLOCK + _R1_SIMPLICITY_SECTION + '''
+''' + _R1_CATEGORIES_BLOCK + _R1_SIMPLICITY_SECTION + _R1_MANDATORY_CHECKS + '''
 
 ''' + _JSON_OUTPUT_INSTRUCTION + '''
 If no issues: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
@@ -257,15 +375,17 @@ If no issues: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
 # max total diff chars for a batched R1 call (leaves room for context + prompt overhead)
 
 _R1_LARGE_HUNK_OVERLAP = 30   # overlap lines between windows to avoid missing cross-boundary issues
-# Fixed overhead for non-diff slots in the R1 prompt (arch + spec + summary + file_context + template)
-_R1_PROMPT_OVERHEAD = 25000
+# Fixed overhead for non-diff slots in the R1 prompt (arch + spec + summary + file_context + template + skeleton + tags)
+_R1_PROMPT_OVERHEAD = 28000
 
 
 def _r1_diff_budget(arch_snippet: str, spec_snippet: str, summary_snippet: str,
-                    agent_instructions: str, file_context: str) -> int:
-    # Compute how many chars are left for diff content after all other R1 prompt slots.
+                    agent_instructions: str, file_context: str,
+                    file_skeleton: str = '', code_profile: str = '', review_focus: str = '') -> int:
     overhead = (len(arch_snippet or '') + len(spec_snippet or '') + len(summary_snippet or '')
-                + len(agent_instructions or '') + len(file_context or '') + _R1_PROMPT_OVERHEAD)
+                + len(agent_instructions or '') + len(file_context or '')
+                + len(file_skeleton or '') + len(code_profile or '') + len(review_focus or '')
+                + _R1_PROMPT_OVERHEAD)
     return max(8000, SINGLE_CALL_CONTEXT_BUDGET - overhead)
 
 
@@ -274,18 +394,21 @@ def _analyze_single_hunk(
     arch_snippet: str, spec_snippet: str, summary_snippet: str,
     clone_dir: Optional[str] = None, language: str = 'cn',
     symbol_index: Optional[Dict[str, str]] = None, agent_instructions: str = '',
+    file_skeleton: str = '', code_tags: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     file_context = _read_file_context(clone_dir, path, new_start, new_start + new_count) if clone_dir else ''
-    diff_budget = _r1_diff_budget(arch_snippet, spec_snippet, summary_snippet, agent_instructions, file_context)
-    # Estimate window size in lines from budget (avg ~50 chars/line for diff)
+    code_profile = _format_code_profile(code_tags) if code_tags else '(not available)'
+    review_focus_block = _format_review_focus(code_tags) if code_tags else ''
+    diff_budget = _r1_diff_budget(arch_snippet, spec_snippet, summary_snippet, agent_instructions,
+                                  file_context, file_skeleton, code_profile, review_focus_block)
     window_lines = max(80, diff_budget // 50)
     lines = content.splitlines(keepends=True)
-    # For large hunks, split into overlapping windows and merge results.
     if len(lines) > window_lines:
         return _analyze_large_hunk(
             llm, path, new_start, new_count, lines, window_lines,
             arch_snippet, spec_snippet, summary_snippet,
             clone_dir, language, symbol_index, agent_instructions,
+            file_skeleton=file_skeleton, code_tags=code_tags,
         )
     content = _truncate_hunk_content(content, window_lines)
     actual_count = sum(1 for ln in content.splitlines() if not ln.startswith('-'))
@@ -299,6 +422,8 @@ def _analyze_single_hunk(
         lang_instruction=_language_instruction(language),
         pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
         arch_doc=effective_arch, review_spec=spec_snippet,
+        file_skeleton=file_skeleton or '(not available)',
+        code_profile=code_profile, review_focus_block=review_focus_block,
         file_context=file_context or '(not available)',
         path=path, start=new_start, end=new_start + actual_count, content=annotated_content,
         density_rule=issue_density_rule(annotated_content),
@@ -314,27 +439,27 @@ def _analyze_large_hunk(
     arch_snippet: str, spec_snippet: str, summary_snippet: str,
     clone_dir: Optional[str], language: str,
     symbol_index: Optional[Dict[str, str]], agent_instructions: str,
+    file_skeleton: str = '', code_tags: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    # Split a large hunk into overlapping windows and merge deduplicated results.
     step = max(1, window_lines - _R1_LARGE_HUNK_OVERLAP)
     all_items: List[Dict[str, Any]] = []
     seen_keys: set = set()
     total = len(lines)
+    code_profile = _format_code_profile(code_tags) if code_tags else '(not available)'
+    review_focus_block = _format_review_focus(code_tags) if code_tags else ''
     win_idx = 0
     while win_idx * step < total:
         start_offset = win_idx * step
         end_offset = min(start_offset + window_lines, total)
         win_lines = lines[start_offset:end_offset]
         win_content = ''.join(win_lines)
-        # Compute the actual new-file line numbers for this window.
-        # New-file line numbers advance for every non-removed line ('+' or context ' ').
         new_file_before = sum(1 for ln in lines[:start_offset] if not ln.startswith('-'))
         win_start = new_start + new_file_before
         win_count = sum(1 for ln in win_lines if not ln.startswith('-'))
         win_content_trunc = _truncate_hunk_content(win_content, window_lines)
         file_context = _read_file_context(clone_dir, path, win_start, win_start + win_count) if clone_dir else ''
-        # Re-compute budget now that we have the actual file_context size
-        actual_budget = _r1_diff_budget(arch_snippet, spec_snippet, summary_snippet, agent_instructions, file_context)
+        actual_budget = _r1_diff_budget(arch_snippet, spec_snippet, summary_snippet, agent_instructions,
+                                        file_context, file_skeleton, code_profile, review_focus_block)
         actual_window = max(80, actual_budget // 50)
         if actual_window < window_lines:
             win_content_trunc = _truncate_hunk_content(win_content, actual_window)
@@ -348,6 +473,8 @@ def _analyze_large_hunk(
             lang_instruction=_language_instruction(language),
             pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
             arch_doc=effective_arch, review_spec=spec_snippet,
+            file_skeleton=file_skeleton or '(not available)',
+            code_profile=code_profile, review_focus_block=review_focus_block,
             file_context=file_context or '(not available)',
             path=path, start=win_start, end=win_start + win_count, content=win_annotated,
             density_rule=issue_density_rule(win_annotated),
@@ -388,12 +515,12 @@ def _analyze_hunk_batch(
     arch_snippet: str, spec_snippet: str, summary_snippet: str,
     clone_dir: Optional[str] = None, language: str = 'cn',
     symbol_index: Optional[Dict[str, str]] = None, agent_instructions: str = '',
+    file_skeleton: str = '', code_tags: Optional[Dict[str, Any]] = None,
 ) -> Dict[int, List[Dict[str, Any]]]:
     min_start = min(s for s, _, _ in hunks) if hunks else 1
     max_end = max(s + c for s, c, _ in hunks) if hunks else 1
     file_context = _read_file_context(clone_dir, path, min_start, max_end) if clone_dir else ''
     all_content = '\n'.join(cnt for _, _, cnt in hunks)
-    # if diff touches abstract method signatures, inject subclass implementations into context
     abstract_methods = _extract_abstract_method_names(all_content)
     if abstract_methods and clone_dir:
         subclass_sigs = _find_subclass_implementations(clone_dir, abstract_methods)
@@ -408,8 +535,12 @@ def _analyze_hunk_batch(
         sym_notes = _lookup_relevant_symbols(all_content, symbol_index)
         if sym_notes:
             effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
+    code_profile = _format_code_profile(code_tags) if code_tags else '(not available)'
+    review_focus_block = _format_review_focus(code_tags) if code_tags else ''
     hunk_budget = max(500, _r1_diff_budget(arch_snippet, spec_snippet, summary_snippet,
-                                           agent_instructions, file_context) // max(1, len(hunks)))
+                                           agent_instructions, file_context,
+                                           file_skeleton, code_profile, review_focus_block
+                                           ) // max(1, len(hunks)))
     hunk_budget_lines = max(80, hunk_budget // 50)
     hunk_blocks = [
         f'<hunk path="{path}" start={s} end={s + c}>\n'
@@ -420,6 +551,8 @@ def _analyze_hunk_batch(
         lang_instruction=_language_instruction(language),
         pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
         arch_doc=effective_arch, review_spec=spec_snippet,
+        file_skeleton=file_skeleton or '(not available)',
+        code_profile=code_profile, review_focus_block=review_focus_block,
         file_context=file_context or '(not available)',
         path=path, hunks_content='\n\n'.join(hunk_blocks), density_rule=issue_density_rule('\n'.join(hunk_blocks)),
     )
@@ -457,6 +590,7 @@ def _r1_run_batch(
     clone_dir: Optional[str], language: str, symbol_index: Optional[Dict[str, str]],
     lock: threading.Lock, results_by_idx: Dict[int, List[Dict[str, Any]]],
     ckpt: Optional[Any], prog: Any, cache_key_fn: Any, agent_instructions: str = '',
+    file_skeleton: str = '', code_tags: Optional[Dict[str, Any]] = None,
 ) -> None:
     if len(batch_idxs) == 1:
         idx = batch_idxs[0]
@@ -465,6 +599,7 @@ def _r1_run_batch(
             llm, path, new_start, new_count, content,
             arch_snippet, spec_snippet, summary_snippet,
             clone_dir, language, symbol_index, agent_instructions,
+            file_skeleton=file_skeleton, code_tags=code_tags,
         )
         with lock:
             results_by_idx[idx] = items
@@ -477,6 +612,7 @@ def _r1_run_batch(
             llm, path, batch_hunks,
             arch_snippet, spec_snippet, summary_snippet,
             clone_dir, language, symbol_index, agent_instructions,
+            file_skeleton=file_skeleton, code_tags=code_tags,
         )
         with lock:
             for idx in batch_idxs:
@@ -500,11 +636,17 @@ def _r1_task_batch(
     pr_file_summary: str = '',
 ) -> None:
     arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=3000)
-    # Inject PR file summary into arch_snippet so it flows through the existing call chain
-    # without requiring changes to _r1_run_batch / _analyze_single_hunk signatures.
     if pr_file_summary:
         arch_snippet = f'{arch_snippet}\n\n## PR Changed Files\n{pr_file_summary}' if arch_snippet else \
             f'## PR Changed Files\n{pr_file_summary}'
+    # per-file skeleton + code tags (shared across all hunks in this file)
+    file_skeleton = _extract_file_skeleton(clone_dir, path) if clone_dir else ''
+    first_hunk_content = hunks[idxs[0]][3] if idxs else ''
+    code_tags: Dict[str, Any] = {}
+    try:
+        code_tags = _extract_code_tags(llm, file_skeleton, first_hunk_content[:1500])
+    except Exception as e:
+        lazyllm.LOG.warning(f'Round 1: code tag extraction failed for {path}: {e}')
     uncached_idxs: List[int] = []
     for idx in idxs:
         _, new_start, new_count, _ = hunks[idx]
@@ -525,6 +667,7 @@ def _r1_task_batch(
             arch_snippet, spec_snippet, summary_snippet,
             clone_dir, language, symbol_index,
             lock, results_by_idx, ckpt, prog, _r1_cache_key, agent_instructions,
+            file_skeleton=file_skeleton, code_tags=code_tags,
         )
 
 def _round1_hunk_analysis(
@@ -582,78 +725,13 @@ def _round1_hunk_analysis(
     return all_comments
 
 
-_ROUND2_FILE_PROMPT_TMPL = '''\
-You are a senior code reviewer. Find NEW cross-context issues in the file below.
-{lang_instruction}
-Repo cloned to: {clone_dir}
-
-## PR Summary (brief)
-{pr_summary}
-
-## Architecture (brief)
-{arch_doc}
-
-## Shared Context (pre-analyzed across all changed files — do NOT re-explore these)
-{shared_context}
-
-## Round-1 issues already found in this file (do NOT repeat)
-{round1_json}
-
-## Diff for {path} (lines {hunk_range})
-{diff_text}
-
-Use tools (search_in_files, read_file, list_dir, shell_tool) to explore callers/base classes.
-Focus: interface inconsistencies, abstraction violations, missing symmetric updates, wrong arg types.
-Also check: if the diff introduces a new class or interface, verify it follows the project's existing
-protocol/abstraction patterns (e.g. does it accept a narrow interface instead of a whole object?
-does it belong in the correct module per Module Ownership Rules in the architecture doc?
-is a new hard dependency that should be optional/extra?).
-Limit tool calls to at most 3. Once you have enough information, stop calling tools immediately.
-
-IMPORTANT: Your final response MUST wrap the JSON array with these exact delimiters:
-''' + _JSON_START + '''
-[ ... your issues ... ]
-''' + _JSON_END + '''
-Each item: path, line, severity, bug_category, problem, suggestion.
-line must be a new-file line visible in the diff. If no new issues: \
-output ''' + _JSON_START + '''\n[]\n''' + _JSON_END + '''
-'''
-
-_R2_R1_BUDGET = 8000
-_R2_ARCH_BUDGET = 6000
-_R2_SUMMARY_BUDGET = 600
-_R2_SHARED_CTX_BUDGET = 4000
-_R2_EXTRACT_DIFF_CHUNK = SINGLE_CALL_CONTEXT_BUDGET - 26000
-_R2_AGENT_DIFF_BUDGET = SINGLE_CALL_CONTEXT_BUDGET - 14000
-_R2_FILE_AGENT_RETRIES = 8
-_R2_FILE_TIMEOUT_SECS = 300
-
-def _parse_agent_review_output(raw: str) -> List[Dict[str, Any]]:
-    json_text = _extract_json_text(raw)
-    parsed = _parse_json_with_repair(json_text)
-    if parsed is None:
-        return []
-    items = parsed if isinstance(parsed, list) else ([parsed] if isinstance(parsed, dict) else [])
-    result: List[Dict[str, Any]] = []
-    for item in items:
-        if not isinstance(item, dict) or item.get('problem') is None:
-            continue
-        try:
-            line = int(item.get('line', 0))
-        except (TypeError, ValueError):
-            continue
-        if line <= 0 or not item.get('path'):
-            continue
-        category = item.get('bug_category') or 'design'
-        severity = item.get('severity') or 'normal'
-        result.append({
-            'path': item['path'], 'line': line,
-            'severity': severity if severity in _VALID_SEVERITIES else 'normal',
-            'bug_category': category if category in _VALID_CATEGORIES else 'design',
-            'problem': item.get('problem') or '',
-            'suggestion': item.get('suggestion') or '',
-        })
-    return result
+_R3_R1_BUDGET = 8000
+_R3_ARCH_BUDGET = 6000
+_R3_SUMMARY_BUDGET = 600
+_R3_SHARED_CTX_BUDGET = 4000
+_R3_AGENT_DIFF_BUDGET = SINGLE_CALL_CONTEXT_BUDGET - 14000
+_R3_FILE_AGENT_RETRIES = 8
+_R3_FILE_TIMEOUT_SECS = 300
 
 def _split_file_diff_into_chunks(diff_text: str, max_chars: int) -> List[Tuple[str, str]]:
     if len(diff_text) <= max_chars:
@@ -701,7 +779,7 @@ def _split_file_diff_into_chunks(diff_text: str, max_chars: int) -> List[Tuple[s
     _flush(chunk_start_line, chunk_end_line, current)
     return chunks or [('all hunks', diff_text[:max_chars])]
 
-def _r2_parse_diff_imports(diff_text: str) -> Tuple[Dict[str, set], Dict[str, str], Dict[str, str]]:
+def _r3_parse_diff_imports(diff_text: str) -> Tuple[Dict[str, set], Dict[str, str], Dict[str, str]]:
     file_imports: Dict[str, set] = {}
     old_sigs: Dict[str, str] = {}
     new_sigs: Dict[str, str] = {}
@@ -725,12 +803,12 @@ def _r2_parse_diff_imports(diff_text: str) -> Tuple[Dict[str, set], Dict[str, st
                 old_sigs[m.group(1)] = f'def {m.group(1)}({m.group(2)[:80]})'
     return file_imports, old_sigs, new_sigs
 
-def _r2_build_shared_context(diff_text: str) -> str:
+def _r3_build_shared_context(diff_text: str) -> str:
     changed_files = list({path for path, _, _, _ in _parse_unified_diff(diff_text)})
     if len(changed_files) < 2:
         return ''
 
-    file_imports, old_sigs, new_sigs = _r2_parse_diff_imports(diff_text)
+    file_imports, old_sigs, new_sigs = _r3_parse_diff_imports(diff_text)
     changed_interfaces = {sym: [old_sigs[sym], new_sigs[sym]] for sym in new_sigs
                           if sym in old_sigs and old_sigs[sym] != new_sigs[sym]}
 
@@ -759,37 +837,12 @@ def _r2_build_shared_context(diff_text: str) -> str:
         '[Intra-PR Dependencies]\n' + ('\n'.join(intra_deps[:10]) if intra_deps else '(none)'),
         '[Changed Interfaces]\n' + iface_lines,
     ]
-    result = '\n\n'.join(parts)[:_R2_SHARED_CTX_BUDGET]
-    lazyllm.LOG.info(f'Round 2 shared context built (static): {len(result)} chars')
+    result = '\n\n'.join(parts)[:_R3_SHARED_CTX_BUDGET]
+    lazyllm.LOG.info(f'Round 3 shared context built (static): {len(result)} chars')
     return result
 
 # Budget for related small-file diffs appended to large-file symbol_context
-_R2_RELATED_DIFF_BUDGET = 4000
-
-
-def _classify_files_for_r2(
-    file_diffs: Dict[str, str],
-    large_file_threshold: int,
-    max_files: int,
-) -> Tuple[List[str], List[str], List[str]]:
-    # Returns (large_files, small_files, skipped_files)
-    # Files are sorted by diff size descending so largest get priority within the cap.
-    def _diff_lines(d: str) -> int:
-        return effective_diff_line_count(d)
-
-    sorted_files = sorted(file_diffs.keys(), key=lambda p: _diff_lines(file_diffs[p]), reverse=True)
-    large: List[str] = []
-    small: List[str] = []
-    skipped: List[str] = []
-    for path in sorted_files:
-        if len(large) + len(small) >= max_files:
-            skipped.append(path)
-        elif _diff_lines(file_diffs[path]) > large_file_threshold:
-            large.append(path)
-        else:
-            small.append(path)
-    return large, small, skipped
-
+_R3_RELATED_DIFF_BUDGET = 4000
 
 def _find_related_small_files(
     large_diff: str,
@@ -812,21 +865,7 @@ def _find_related_small_files(
             related.append(path)
     return related
 
-
-def _r2_group_files(small_files: List[str], max_per_group: int = 5) -> List[List[str]]:
-    # Group small files by their immediate parent directory.
-    dir_map: Dict[str, List[str]] = {}
-    for path in small_files:
-        d = os.path.dirname(path) or '.'
-        dir_map.setdefault(d, []).append(path)
-    groups: List[List[str]] = []
-    for files in dir_map.values():
-        for i in range(0, len(files), max_per_group):
-            groups.append(files[i:i + max_per_group])
-    return groups
-
-
-_ROUND2_GROUP_PROMPT_TMPL = '''\
+_ROUND3_GROUP_PROMPT_TMPL = '''\
 You are a senior code reviewer performing a second-pass context-enriched analysis on a GROUP of related files.
 {lang_instruction}
 
@@ -888,7 +927,7 @@ def _trim_r1_for_group(all_r1: List[Dict[str, Any]], budget: int = 4000) -> str:
     return json.dumps(trimmed, ensure_ascii=False, indent=2) if trimmed else '[]'
 
 
-def _r2_group_review(
+def _r3_group_review(
     llm: Any,
     group_paths: List[str],
     file_diffs: Dict[str, str],
@@ -903,11 +942,11 @@ def _r2_group_review(
     use_cache: bool = True,
     agent_instructions: str = '',
 ) -> None:
-    group_key = 'r2_group_' + re.sub(r'[^a-zA-Z0-9]', '_', '_'.join(sorted(group_paths)))[:80]
+    group_key = 'r3_group_' + re.sub(r'[^a-zA-Z0-9]', '_', '_'.join(sorted(group_paths)))[:80]
     cached = ckpt.get(group_key) if ckpt else None
     if cached is not None and use_cache:
         all_results.extend(cached)
-        lazyllm.LOG.info(f'  [R2-group] {group_paths} loaded from cache ({len(cached)} issues)')
+        lazyllm.LOG.info(f'  [R3-group] {group_paths} loaded from cache ({len(cached)} issues)')
         return
 
     files_block_parts: List[str] = []
@@ -919,13 +958,13 @@ def _r2_group_review(
 
     files_block = '\n\n'.join(files_block_parts)
     if len(files_block) > 40000:
-        sub_groups = _r2_split_group_if_needed(group_paths, file_diffs, budget=40000)
+        sub_groups = _r3_split_group_if_needed(group_paths, file_diffs, budget=40000)
         if len(sub_groups) > 1:
             lazyllm.LOG.info(
-                f'  [R2-group] Split {len(group_paths)} files into {len(sub_groups)} sub-groups'
+                f'  [R3-group] Split {len(group_paths)} files into {len(sub_groups)} sub-groups'
             )
             for sg in sub_groups:
-                _r2_group_review(
+                _r3_group_review(
                     llm, sg, file_diffs, r1_by_file, shared_context, arch_doc,
                     pr_summary, language, ckpt, all_results, all_discarded,
                     use_cache=use_cache, agent_instructions=agent_instructions,
@@ -936,12 +975,12 @@ def _r2_group_review(
     arch_snippet = clip_text(arch_doc or '', 4000)
     density_rule = issue_density_rule(files_block)
 
-    prompt = _ROUND2_GROUP_PROMPT_TMPL.format(
+    prompt = _ROUND3_GROUP_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         pr_summary=pr_summary[:600] if pr_summary else '(not available)',
         agent_instructions=agent_instructions[:400] if agent_instructions else '',
         arch_doc=arch_snippet,
-        shared_context=_r2_trim_shared_context(shared_context, _R2_SHARED_CTX_BUDGET),
+        shared_context=_r3_trim_shared_context(shared_context, _R3_SHARED_CTX_BUDGET),
         round1_json=round1_json,
         files_block=files_block,
         density_rule=density_rule,
@@ -957,7 +996,7 @@ def _r2_group_review(
                 if norm:
                     items.append(norm)
     except Exception as e:
-        lazyllm.LOG.warning(f'Round 2 group review parse failed for {group_paths}: {e}')
+        lazyllm.LOG.warning(f'Round 3 group review parse failed for {group_paths}: {e}')
 
     if ckpt:
         ckpt.save(group_key, items)
@@ -980,11 +1019,11 @@ def _build_pr_file_summary(hunks: List[Tuple[str, int, int, str]], max_chars: in
     return result[:max_chars] if len(result) > max_chars else result
 
 
-def _build_r2_review_units(
+def _build_review_units(
     file_diffs: Dict[str, str],
     large_file_threshold: int,
     max_files: int,
-    unit_diff_budget: int = R2_UNIT_DIFF_BUDGET,
+    unit_diff_budget: int = R3_UNIT_DIFF_BUDGET,
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     # Returns (units, skipped_files).
     # Each unit: {'anchor': path_or_None, 'files': [path, ...], 'diff': combined_diff_str}
@@ -1045,7 +1084,7 @@ def _build_r2_review_units(
     return units, list(skipped)
 
 
-def _r2_unit_agent_review(
+def _r3_unit_agent_verify(
     llm: Any,
     unit: Dict[str, Any],
     r1_by_file: Dict[str, List[Dict[str, Any]]],
@@ -1071,53 +1110,53 @@ def _r2_unit_agent_review(
     # checkpoint key: anchor file or sorted group files
     if anchor:
         safe = re.sub(r'[^a-zA-Z0-9_]', '_', anchor)
-        r2_key = f'r2_file_{safe}'
-        r2_disc_key = f'r2_disc_{safe}'
+        r3_key = f'r3_file_{safe}'
+        r3_disc_key = f'r3_disc_{safe}'
     else:
         safe = re.sub(r'[^a-zA-Z0-9]', '_', '_'.join(sorted(files)))[:80]
-        r2_key = f'r2_group_{safe}'
-        r2_disc_key = f'r2_disc_group_{safe}'
+        r3_key = f'r3_group_{safe}'
+        r3_disc_key = f'r3_disc_group_{safe}'
 
-    cached = ckpt.get(r2_key) if ckpt else None
+    cached = ckpt.get(r3_key) if ckpt else None
     if cached is not None and use_cache:
         all_results.extend(cached)
-        cached_disc = (ckpt.get(r2_disc_key) if ckpt else None) or []
+        cached_disc = (ckpt.get(r3_disc_key) if ckpt else None) or []
         all_discarded.update(cached_disc)
-        lazyllm.LOG.info(f'  [R2] {files} loaded from cache ({len(cached)} issues)')
+        lazyllm.LOG.info(f'  [R3] {files} loaded from cache ({len(cached)} issues)')
         return
 
     # collect agent context using the primary file (anchor or first file)
     primary = anchor or files[0]
-    agent_diff = compress_diff_for_agent_heuristic(unit_diff, _R2_AGENT_DIFF_BUDGET)
+    agent_diff = compress_diff_for_agent_heuristic(unit_diff, _R3_AGENT_DIFF_BUDGET)
     try:
-        symbol_context = _r2_build_file_context(llm, primary, agent_diff, clone_dir, tools, language,
+        symbol_context = _r3_build_file_context(llm, primary, agent_diff, clone_dir, tools, language,
                                                 agent_instructions=agent_instructions)
     except Exception as e:
         if 'timed out' in str(e):
             raise
-        lazyllm.LOG.warning(f'Round 2 unit context failed for {files}: {e}')
+        lazyllm.LOG.warning(f'Round 3 unit context failed for {files}: {e}')
         symbol_context = ''
 
     # chunk-based issue extraction over the combined unit diff
     skeleton = _extract_file_skeleton(clone_dir, anchor) if anchor else ''
     if skeleton:
-        lazyllm.LOG.info(f'  [R2] File skeleton extracted for {anchor} ({len(skeleton)} chars)')
+        lazyllm.LOG.info(f'  [R3] File skeleton extracted for {anchor} ({len(skeleton)} chars)')
     # dynamic diff budget based on actual context sizes
-    diff_cap = _r2_diff_budget(symbol_context, skeleton)
+    diff_cap = _r3_diff_budget(symbol_context, skeleton)
     all_chunks = _split_file_diff_into_chunks(unit_diff, diff_cap)
-    if len(all_chunks) > R2_MAX_CHUNKS_HARD:
+    if len(all_chunks) > R3_MAX_CHUNKS_HARD:
         lazyllm.LOG.warning(
-            f'Round 2: {anchor or files} has {len(all_chunks)} chunks, '
-            f'capping at {R2_MAX_CHUNKS_HARD} (R2_MAX_CHUNKS_HARD)'
+            f'Round 3: {anchor or files} has {len(all_chunks)} chunks, '
+            f'capping at {R3_MAX_CHUNKS_HARD} (R3_MAX_CHUNKS_HARD)'
         )
-        all_chunks = all_chunks[:R2_MAX_CHUNKS_HARD]
+        all_chunks = all_chunks[:R3_MAX_CHUNKS_HARD]
     r1_issues = [c for f in files for c in r1_by_file.get(f, [])]
     items: List[Dict[str, Any]] = []
     discarded: set = set()
     for hunk_range, diff_chunk in all_chunks:
         filtered_ctx = _filter_symbol_context_for_chunk(symbol_context, diff_chunk)
         annotated_chunk = _annotate_full_diff(diff_chunk)
-        new_items, new_disc = _r2_extract_issues(
+        new_items, new_disc = _r3_extract_issues(
             llm, primary, annotated_chunk, hunk_range,
             filtered_ctx, shared_context, r1_issues, arch_doc, pr_summary,
             language, agent_instructions, file_skeleton=skeleton,
@@ -1127,13 +1166,13 @@ def _r2_unit_agent_review(
         discarded.update(new_disc)
 
     if ckpt:
-        ckpt.save(r2_key, items)
-        ckpt.save(r2_disc_key, list(discarded))
+        ckpt.save(r3_key, items)
+        ckpt.save(r3_disc_key, list(discarded))
     all_results.extend(items)
     all_discarded.update(discarded)
 
 
-_R2_CONTEXT_COLLECT_PROMPT_TMPL = '''\
+_R3_CONTEXT_COLLECT_PROMPT_TMPL = '''\
 You are a code analysis assistant. Your ONLY task is to explore the repository and \
 identify files/symbols relevant to the diff below. Do NOT produce review comments or judgments.
 
@@ -1153,7 +1192,10 @@ Understand the code context around the diff changes. Focus on:
 1. What do the modified symbols do? (definition, signature, dependencies)
 2. Who calls them? How would callers be affected by the changes?
 3. Are there base classes or interfaces that impose contracts?
-4. Are there framework-specific mechanisms (lazy-loading, registry, etc.)?
+4. Are there framework-specific mechanisms (lazy-loading, registry, metaclass auto-registration, \
+__init_subclass__, __getattr__ dispatch, decorator-based registration, etc.)?
+5. If the diff deletes/renames symbols, are there orphaned helpers? But also check: \
+could the symbol be dynamically referenced via registry, __all__, getattr, or plugin entry-points?
 
 ## Available Tools & When to Use Them
 - read_file_skeleton_scoped: Start here to understand file structure before reading details
@@ -1164,11 +1206,15 @@ Understand the code context around the diff changes. Focus on:
 You may call multiple tools in a single round for parallel execution.
 
 ## Strategy Hints
-- Read AGENTS.md first if it exists (project conventions)
+- Read AGENTS.md first if it exists (project conventions and dynamic dispatch mechanisms)
 - For large files, read the skeleton first, then zoom into relevant sections
 - Follow the import chain if a symbol comes from another module
 - If grep_callers reveals a caller that is a public API or entry point,
   consider calling analyze_symbol on that caller (up to 2 levels of tracing)
+- When checking if a symbol is orphaned, also grep for its name as a STRING — \
+  registry dicts, __all__, @register decorators, and getattr() reference symbols by name, not by call
+- Check if the module or its base class uses a metaclass or __init_subclass__ — \
+  if so, subclass definitions are auto-registered and are NOT dead code
 - Stop when you have enough context to understand the change's impact
 
 ## Output Format (STRICT — must be valid JSON)
@@ -1192,8 +1238,8 @@ Keep total output concise. At most 5 related_files and 3 framework_notes.
 {lang_instruction}
 '''
 
-_R2_ISSUE_EXTRACT_PROMPT_TMPL = '''\
-You are a senior code reviewer performing a second-pass context-enriched analysis.
+_R3_ISSUE_EXTRACT_PROMPT_TMPL = '''\
+You are a senior code reviewer performing a unified verification pass.
 {lang_instruction}
 
 ## PR Summary
@@ -1217,12 +1263,12 @@ You are a senior code reviewer performing a second-pass context-enriched analysi
 ## Cross-File Context (collected by agent exploration)
 {symbol_context}
 
-## Round 1 Issues to Verify
-The following issues were found in Round 1 with limited context. For each one, decide:
+## Previous Issues to Verify (from R1 diff review + R2 architecture review)
+The following issues were found in earlier rounds with limited context. For each one, decide:
 - KEEP: valid issue (you may improve the description). Include it in output with "r1_idx" field set.
 - MODIFY: partially correct — fix the problem/suggestion and include with "r1_idx" field set.
 - DISCARD: invalid (e.g. misunderstood framework/library behavior, incorrect assumption about types or \
-initialization). Do NOT include in output. These will be removed from the final report.
+initialization, or the project already follows this pattern elsewhere). Do NOT include in output.
 
 {round1_json}
 
@@ -1240,22 +1286,39 @@ When reporting "line", always use the RIGHT-SIDE number M (the new-file line num
 ```
 
 ## Task
-1. Process every Round 1 issue above (KEEP / MODIFY / DISCARD).
+1. Process every previous issue above (KEEP / MODIFY / DISCARD). Use the agent-collected context \
+and file skeleton to verify each claim before deciding.
 2. Find NEW issues that require cross-file or cross-function context to detect:
    - Interface inconsistencies (method signatures changed but callers not updated)
    - Abstraction violations (bypassing base class contracts)
    - Design breakage (changes that violate existing patterns)
    - Missing updates to related code (e.g. updated one method but not its symmetric counterpart)
    - Dependency violations (lower-layer module importing upper-layer module)
+   - Architecture issues: verify the project already follows the pattern elsewhere before reporting
+   - Refactoring leftovers: if the diff deletes/rewrites a function or class, use grep_callers \
+or search_scoped to check whether helper functions, constants, or prompt templates that were \
+ONLY used by the old code are still defined but now orphaned. Also check: if a concept was \
+renamed (e.g. old_name → new_name), are there checkpoint keys, log messages, or string \
+literals that still use the old name?
 
-For EVERY issue in the output (kept/modified R1 + new), output a JSON object with:
+IMPORTANT — before reporting any symbol as "orphaned" or "dead code", you MUST rule out \
+dynamic references. Use your tools to check:
+  (a) Does the symbol's class use a metaclass or __init_subclass__? → auto-registered, NOT orphaned.
+  (b) grep for the symbol name as a STRING (not just as a function call) — registry dicts, \
+__all__ lists, decorator @register, and getattr() calls reference symbols by string name.
+  (c) Does the containing module define __getattr__? → any symbol could be accessed dynamically.
+  (d) Does the Project Agent Instructions section describe a dynamic dispatch mechanism \
+(e.g. "classes inheriting from XBase are auto-registered") that covers this symbol?
+  If ANY of the above apply, the symbol is NOT orphaned — do not report it.
+
+For EVERY issue in the output (kept/modified previous + new), output a JSON object with:
 - "path": file path (must be one of: {all_paths})
 - "line": integer — the RIGHT-SIDE (new-file) line number from the annotated diff above
 - "severity": "critical" | "medium" | "normal"
 - "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability
 - "problem": clear description of the issue
 - "suggestion": how to fix it (wrap code snippets with markdown code fences)
-- "r1_idx": integer index from the Round 1 list above (only for kept/modified R1 issues; omit for new issues)
+- "r1_idx": integer index from the previous issues list above (only for kept/modified issues; omit for new)
 
 ''' + _JSON_OUTPUT_INSTRUCTION + '''
 If no issues found: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
@@ -1264,7 +1327,7 @@ If no issues found: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
 8. {density_rule}
 '''
 
-_r2_agent_instance_counter = [0]
+_r3_agent_instance_counter = [0]
 
 
 def _make_traced_tool(tool: Any, step_counter: List[int], path: str,
@@ -1272,8 +1335,8 @@ def _make_traced_tool(tool: Any, step_counter: List[int], path: str,
     import inspect
     sig = inspect.signature(tool)
     params = list(sig.parameters.keys())
-    _r2_agent_instance_counter[0] += 1
-    unique_name = f'{tool.__name__}_r2_{_r2_agent_instance_counter[0]}'
+    _r3_agent_instance_counter[0] += 1
+    unique_name = f'{tool.__name__}_r3_{_r3_agent_instance_counter[0]}'
 
     def traced(*args, **kwargs):
         step_counter[0] += 1
@@ -1307,19 +1370,19 @@ def _make_traced_tool(tool: Any, step_counter: List[int], path: str,
         lazyllm.LOG.warning(f'Tool {tool.__name__!r} has no docstring; ReactAgent will fail to init')
     return traced
 
-_R2_RICH_CONTEXT_BUDGET = 12000
-_R2_SYMBOL_CONTEXT_MAX = 12000
-_R2_FILE_SKELETON_MAX = 8000
-_R2_FIXED_OVERHEAD = 26000
+_R3_RICH_CONTEXT_BUDGET = 12000
+_R3_SYMBOL_CONTEXT_MAX = 12000
+_R3_FILE_SKELETON_MAX = 8000
+_R3_FIXED_OVERHEAD = 26000
 
 
-def _r2_diff_budget(symbol_context: str, file_skeleton: str) -> int:
-    sym_actual = min(len(symbol_context), _R2_SYMBOL_CONTEXT_MAX)
-    skel_actual = min(len(file_skeleton), _R2_FILE_SKELETON_MAX)
-    return SINGLE_CALL_CONTEXT_BUDGET - _R2_FIXED_OVERHEAD - sym_actual - skel_actual
+def _r3_diff_budget(symbol_context: str, file_skeleton: str) -> int:
+    sym_actual = min(len(symbol_context), _R3_SYMBOL_CONTEXT_MAX)
+    skel_actual = min(len(file_skeleton), _R3_FILE_SKELETON_MAX)
+    return SINGLE_CALL_CONTEXT_BUDGET - _R3_FIXED_OVERHEAD - sym_actual - skel_actual
 
 
-def _r2_trim_rich_context(context: str, budget: int) -> str:
+def _r3_trim_rich_context(context: str, budget: int) -> str:
     if len(context) <= budget:
         return context
     sections = re.split(r'\n(?=# )', context)
@@ -1340,7 +1403,7 @@ def _r2_trim_rich_context(context: str, budget: int) -> str:
     return '\n'.join(result_parts)
 
 
-def _r2_trim_skeleton(skeleton: str, diff_chunk: str, budget: int) -> str:
+def _r3_trim_skeleton(skeleton: str, diff_chunk: str, budget: int) -> str:
     if len(skeleton) <= budget:
         return skeleton
     diff_symbols = set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{2,})\b', diff_chunk))
@@ -1361,7 +1424,7 @@ def _r2_trim_skeleton(skeleton: str, diff_chunk: str, budget: int) -> str:
     return '\n'.join(kept_core)[:budget]
 
 
-def _r2_trim_shared_context(context: str, budget: int) -> str:
+def _r3_trim_shared_context(context: str, budget: int) -> str:
     if len(context) <= budget:
         return context
     sections = re.split(r'\n(?=\[)', context)
@@ -1388,7 +1451,7 @@ def _r2_trim_shared_context(context: str, budget: int) -> str:
     return '\n'.join(result_parts)
 
 
-def _r2_split_group_if_needed(
+def _r3_split_group_if_needed(
     group_paths: List[str], file_diffs: Dict[str, str], budget: int = 40000,
 ) -> List[List[str]]:
     sub_groups: List[List[str]] = []
@@ -1407,7 +1470,7 @@ def _r2_split_group_if_needed(
     return sub_groups
 
 
-def _r2_parse_exploration_json(raw: str) -> dict:
+def _r3_parse_exploration_json(raw: str) -> dict:
     try:
         text = _extract_json_text(raw)
         if text:
@@ -1424,7 +1487,7 @@ def _r2_parse_exploration_json(raw: str) -> dict:
         pass
     return {}
 
-def _r2_read_lines(clone_dir: str, rel_path: str, start: int, end: int) -> str:
+def _r3_read_lines(clone_dir: str, rel_path: str, start: int, end: int) -> str:
     abs_path = os.path.join(clone_dir, rel_path)
     try:
         with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
@@ -1438,7 +1501,7 @@ def _r2_read_lines(clone_dir: str, rel_path: str, start: int, end: int) -> str:
     except OSError:
         return ''
 
-def _r2_grep_relevant_lines(clone_dir: str, rel_path: str, symbols: set, context: int = 10) -> str:
+def _r3_grep_relevant_lines(clone_dir: str, rel_path: str, symbols: set, context: int = 10) -> str:
     abs_path = os.path.join(clone_dir, rel_path)
     try:
         with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
@@ -1454,7 +1517,7 @@ def _r2_grep_relevant_lines(clone_dir: str, rel_path: str, symbols: set, context
         return ''
     return ''.join(f'{i + 1:>6}| {lines[i]}' for i in sorted(hit_indices))
 
-def _r2_collect_related_file_parts(
+def _r3_collect_related_file_parts(
     clone_dir: str, exploration: dict, diff_symbols: set, seen_skeletons: set,
 ) -> List[str]:
     parts: List[str] = []
@@ -1466,9 +1529,9 @@ def _r2_collect_related_file_parts(
         start = lines[0] if len(lines) > 0 else 1
         end = lines[1] if len(lines) > 1 else start + 50
         if (end - start) > 200 and diff_symbols:
-            content = _r2_grep_relevant_lines(clone_dir, path, diff_symbols)
+            content = _r3_grep_relevant_lines(clone_dir, path, diff_symbols)
         else:
-            content = _r2_read_lines(clone_dir, path, start, end)
+            content = _r3_read_lines(clone_dir, path, start, end)
         if content:
             parts.append(f'# {path}:{start}-{end} ({item.get("reason", "")})\n{content}')
         if path not in seen_skeletons:
@@ -1486,16 +1549,16 @@ def _r2_collect_related_file_parts(
     return parts
 
 
-def _r2_build_rich_context(clone_dir: str, raw_agent_output: str, primary_path: str,
+def _r3_build_rich_context(clone_dir: str, raw_agent_output: str, primary_path: str,
                            exploration_log: Optional[List[str]] = None,
                            primary_diff: str = '') -> str:
-    exploration = _r2_parse_exploration_json(raw_agent_output)
+    exploration = _r3_parse_exploration_json(raw_agent_output)
     if not exploration:
-        return raw_agent_output[:_R2_RICH_CONTEXT_BUDGET] if raw_agent_output else ''
+        return raw_agent_output[:_R3_RICH_CONTEXT_BUDGET] if raw_agent_output else ''
 
     seen_skeletons: set = set()
     diff_symbols = set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{2,})\b', primary_diff)) if primary_diff else set()
-    parts = _r2_collect_related_file_parts(clone_dir, exploration, diff_symbols, seen_skeletons)
+    parts = _r3_collect_related_file_parts(clone_dir, exploration, diff_symbols, seen_skeletons)
 
     framework_notes = exploration.get('framework_notes', [])
     if framework_notes:
@@ -1505,13 +1568,13 @@ def _r2_build_rich_context(clone_dir: str, raw_agent_output: str, primary_path: 
         parts.append('# Exploration Log\n' + '\n'.join(exploration_log[-20:]))
 
     result = '\n\n'.join(parts)
-    return _r2_trim_rich_context(result, _R2_RICH_CONTEXT_BUDGET)
+    return _r3_trim_rich_context(result, _R3_RICH_CONTEXT_BUDGET)
 
-def _r2_build_file_context(
+def _r3_build_file_context(
     llm: Any, path: str, diff_chunk: str, clone_dir: str, tools: List[Any],
     language: str = 'cn', agent_instructions: str = '',
 ) -> str:
-    prompt = _R2_CONTEXT_COLLECT_PROMPT_TMPL.format(
+    prompt = _R3_CONTEXT_COLLECT_PROMPT_TMPL.format(
         path=path, diff_chunk=diff_chunk[:8000],
         agent_instructions=agent_instructions or '(not available)',
         lang_instruction=_language_instruction(language),
@@ -1521,7 +1584,7 @@ def _r2_build_file_context(
     traced_tools = [_make_traced_tool(t, step_counter, path, exploration_log) for t in tools]
     try:
         agent = ReactAgent(
-            llm, tools=traced_tools, max_retries=_R2_FILE_AGENT_RETRIES,
+            llm, tools=traced_tools, max_retries=_R3_FILE_AGENT_RETRIES,
             workspace=clone_dir, force_summarize=True,
             force_summarize_context=(
                 f'Exploring context for {path}:\n{diff_chunk[:800]}\n\n'
@@ -1538,14 +1601,14 @@ def _r2_build_file_context(
     with ThreadPoolExecutor(max_workers=1) as ex:
         fut = ex.submit(agent, prompt)
         try:
-            raw = fut.result(timeout=_R2_FILE_TIMEOUT_SECS)
+            raw = fut.result(timeout=_R3_FILE_TIMEOUT_SECS)
         except TimeoutError:
-            raise RuntimeError(f'Round 2 context collection timed out for {path} after {_R2_FILE_TIMEOUT_SECS}s')
+            raise RuntimeError(f'Round 3 context collection timed out for {path} after {_R3_FILE_TIMEOUT_SECS}s')
     lazyllm.LOG.info(f'  [Agent] Done {path}')
     raw_str = raw if isinstance(raw, str) else str(raw)
-    return _r2_build_rich_context(clone_dir, raw_str, path, exploration_log=exploration_log)
+    return _r3_build_rich_context(clone_dir, raw_str, path, exploration_log=exploration_log)
 
-def _r2_parse_item(item: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Optional[int]]]:
+def _r3_parse_item(item: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Optional[int]]]:
     if not isinstance(item, dict) or item.get('problem') is None:
         return None
     if not item.get('path'):
@@ -1560,26 +1623,26 @@ def _r2_parse_item(item: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Optio
         r1_idx = None
     return normalized, r1_idx
 
-def _r2_extract_issues(
+def _r3_extract_issues(
     llm: Any, path: str, diff_chunk: str, hunk_range: str, symbol_context: str,
     shared_context: str, r1_issues: List[Dict[str, Any]], arch_doc: str,
     pr_summary: str, language: str = 'cn', agent_instructions: str = '',
     file_skeleton: str = '', all_paths: Optional[List[str]] = None,
     review_spec: str = '',
 ) -> Tuple[List[Dict[str, Any]], set]:
-    arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=_R2_ARCH_BUDGET)
+    arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=_R3_ARCH_BUDGET)
     r1_indexed = [{**c, 'r1_idx': i, 'problem': (c.get('problem') or '')[:120]} for i, c in enumerate(r1_issues)]
     r1_text = json.dumps(r1_indexed, ensure_ascii=False, indent=2) if r1_indexed else '(none)'
-    if len(r1_text) > _R2_R1_BUDGET:
-        r1_text = r1_text[:_R2_R1_BUDGET] + '\n...(truncated)'
+    if len(r1_text) > _R3_R1_BUDGET:
+        r1_text = r1_text[:_R3_R1_BUDGET] + '\n...(truncated)'
     paths_str = ', '.join(f'`{p}`' for p in (all_paths or [path]))
     spec_snippet = _sample_text(review_spec, 1200) if review_spec else '(not available)'
-    sym_trimmed = _r2_trim_rich_context(symbol_context, _R2_SYMBOL_CONTEXT_MAX) if symbol_context else ''
-    skel_trimmed = _r2_trim_skeleton(file_skeleton, diff_chunk, _R2_FILE_SKELETON_MAX) if file_skeleton else ''
-    shared_trimmed = _r2_trim_shared_context(shared_context, _R2_SHARED_CTX_BUDGET) if shared_context else ''
-    prompt = _R2_ISSUE_EXTRACT_PROMPT_TMPL.format(
+    sym_trimmed = _r3_trim_rich_context(symbol_context, _R3_SYMBOL_CONTEXT_MAX) if symbol_context else ''
+    skel_trimmed = _r3_trim_skeleton(file_skeleton, diff_chunk, _R3_FILE_SKELETON_MAX) if file_skeleton else ''
+    shared_trimmed = _r3_trim_shared_context(shared_context, _R3_SHARED_CTX_BUDGET) if shared_context else ''
+    prompt = _R3_ISSUE_EXTRACT_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
-        pr_summary=(pr_summary or '')[:_R2_SUMMARY_BUDGET],
+        pr_summary=(pr_summary or '')[:_R3_SUMMARY_BUDGET],
         agent_instructions=agent_instructions or '(not available)',
         arch_doc=arch_snippet,
         review_spec=spec_snippet,
@@ -1594,7 +1657,7 @@ def _r2_extract_issues(
     result: List[Dict[str, Any]] = []
     kept_r1_idxs: set = set()
     for item in (items if isinstance(items, list) else []):
-        parsed = _r2_parse_item(item)
+        parsed = _r3_parse_item(item)
         if parsed is None:
             continue
         entry, r1_idx = parsed
@@ -1607,14 +1670,14 @@ def _r2_extract_issues(
     }
     return result, discarded_keys
 
-def _r2_dedupe_issues_by_line(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _r3_dedupe_issues_by_line(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     seen: set = set()
     return [it for it in issues if (k := f'{it.get("path")}:{it.get("line")}') not in seen and not seen.add(k)]
 
 def _filter_symbol_context_for_chunk(symbol_context: str, diff_chunk: str) -> str:
     chunk_symbols = set(re.findall(r'\b([A-Za-z_][A-Za-z0-9_]{2,})\b', diff_chunk))
     if not chunk_symbols:
-        return _r2_trim_rich_context(symbol_context, _R2_SYMBOL_CONTEXT_MAX)
+        return _r3_trim_rich_context(symbol_context, _R3_SYMBOL_CONTEXT_MAX)
     lines = symbol_context.splitlines()
     relevant: List[str] = []
     prev_matched = False
@@ -1624,87 +1687,14 @@ def _filter_symbol_context_for_chunk(symbol_context: str, diff_chunk: str) -> st
             relevant.append(line)
         prev_matched = matched
     filtered = '\n'.join(relevant)
-    return _r2_trim_rich_context(filtered, _R2_SYMBOL_CONTEXT_MAX) if filtered \
-        else _r2_trim_rich_context(symbol_context, _R2_SYMBOL_CONTEXT_MAX)
+    return _r3_trim_rich_context(filtered, _R3_SYMBOL_CONTEXT_MAX) if filtered \
+        else _r3_trim_rich_context(symbol_context, _R3_SYMBOL_CONTEXT_MAX)
 
 
-def _r2_process_file_chunk(
-    llm: Any, path: str, fdiff: str, r1_issues: List[Dict[str, Any]],
-    shared_context: str, arch_doc: str, pr_summary: str,
-    clone_dir: str, symbol_cache: Dict[str, Any], tools: List[Any],
-    language: str, ckpt: Optional[Any], all_results: List[Dict[str, Any]],
-    all_discarded: set,
-    use_cache: bool = True,
-    agent_instructions: str = '',
-    max_chunks: int = 3,
-    related_diff_snippet: str = '',
-    review_spec: str = '',
-) -> None:
-    safe_path = re.sub(r'[^a-zA-Z0-9_]', '_', path)
-    r2_key = f'r2_file_{safe_path}'
-    r2_disc_key = f'r2_disc_{safe_path}'
-    cached_items = ckpt.get(r2_key) if ckpt else None
-    if cached_items is not None and use_cache:
-        all_results.extend(cached_items)
-        cached_disc = (ckpt.get(r2_disc_key) if ckpt else None) or []
-        all_discarded.update(cached_disc)
-        lazyllm.LOG.info(f'  [R2] {path} loaded from cache ({len(cached_items)} issues)')
-        return
-    if cached_items is None and not use_cache:
-        lazyllm.LOG.warning(f'Round 2: no cache for {path}, re-computing')
-
-    agent_diff = compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)
-    try:
-        symbol_context = _r2_build_file_context(llm, path, agent_diff, clone_dir, tools, language,
-                                                agent_instructions=agent_instructions)
-    except Exception as e:
-        if 'timed out' in str(e):
-            raise
-        lazyllm.LOG.warning(f'Round 2 context collection failed for {path}: {e}')
-        symbol_context = ''
-
-    # append related small-file diffs to symbol_context so LLM sees caller changes
-    if related_diff_snippet:
-        combined = symbol_context + '\n\n[Related File Diffs]\n' + related_diff_snippet
-        symbol_context = combined[:len(symbol_context) + _R2_RELATED_DIFF_BUDGET]
-
-    merged: List[Dict[str, Any]] = []
-    merged_disc: set = set()
-    skeleton = _extract_file_skeleton(clone_dir, path)
-    diff_cap = _r2_diff_budget(symbol_context, skeleton)
-    chunks = _split_file_diff_into_chunks(fdiff, diff_cap)
-    # enforce per-file chunk cap
-    if max_chunks and len(chunks) > max_chunks:
-        lazyllm.LOG.warning(
-            f'Round 2: {path} has {len(chunks)} chunks, capping at {max_chunks}'
-        )
-        chunks = chunks[:max_chunks]
-    for hunk_range, diff_chunk in chunks:
-        try:
-            chunk_ctx = _filter_symbol_context_for_chunk(symbol_context, diff_chunk)
-            annotated_chunk = _annotate_full_diff(diff_chunk)
-            items, discarded = _r2_extract_issues(
-                llm, path, annotated_chunk, hunk_range, chunk_ctx, shared_context,
-                r1_issues, arch_doc, pr_summary, language, agent_instructions,
-                all_paths=[path], review_spec=review_spec,
-            )
-            merged.extend(items)
-            merged_disc.update(discarded)
-        except Exception as e:
-            lazyllm.LOG.warning(f'Round 2 issue extraction failed for {path} ({hunk_range}): {e}')
-
-    merged = _r2_dedupe_issues_by_line(merged)
-    cap_n = max_issues_for_diff(fdiff)
-    merged = cap_issues_by_severity(merged, cap_n)
-    if ckpt:
-        ckpt.save(r2_key, merged)
-        ckpt.save(r2_disc_key, list(merged_disc))
-    all_results.extend(merged)
-    all_discarded.update(merged_disc)
-
-def _round2_agent_review(
+def _round3_agent_verify(
     llm: Any,
     round1: List[Dict[str, Any]],
+    round2: List[Dict[str, Any]],
     diff_text: str,
     arch_doc: str,
     pr_summary: str = '',
@@ -1717,225 +1707,74 @@ def _round2_agent_review(
     arch_cache_path: Optional[str] = None,
     review_spec: str = '',
 ) -> Tuple[List[Dict[str, Any]], set, Dict[str, int]]:
-    # returns (r2_issues, discarded_r1_line_keys, metrics_dict)
-    r2_metrics: Dict[str, int] = {
-        'r2_files_chunk': 0, 'r2_files_group': 0,
-        'r2_files_skipped': 0, 'r2_chunks_total': 0,
+    r3_metrics: Dict[str, int] = {
+        'r3_files_chunk': 0, 'r3_files_group': 0,
+        'r3_files_skipped': 0, 'r3_chunks_total': 0,
     }
 
-    if strategy is not None and not strategy.enable_r2:
-        lazyllm.LOG.warning('Round 2 agent: skipped by strategy (enable_r2=False)')
-        return [], set(), r2_metrics
+    if strategy is not None and not strategy.enable_r3:
+        lazyllm.LOG.warning('Round 3 agent: skipped by strategy (enable_r3=False)')
+        return [], set(), r3_metrics
 
     if clone_dir is None or not os.path.isdir(clone_dir):
-        lazyllm.LOG.warning('Round 2 agent: clone_dir not available, skipping agent review')
-        return [], set(), r2_metrics
+        lazyllm.LOG.warning('Round 3 agent: clone_dir not available, skipping agent verify')
+        return [], set(), r3_metrics
 
-    max_files = strategy.max_files_for_r2 if strategy else 20
+    max_files = strategy.max_files_for_r3 if strategy else 20
     large_threshold = strategy.large_file_threshold if strategy else 200
     max_chunks = strategy.max_chunks_per_file if strategy else 3
 
-    shared_context = (ckpt.get('r2_shared_context') if ckpt else None) or ''
+    shared_context = (ckpt.get('r3_shared_context') if ckpt else None) or ''
     if not shared_context:
-        shared_context = _r2_build_shared_context(diff_text)
+        shared_context = _r3_build_shared_context(diff_text)
         if ckpt and shared_context:
-            ckpt.save('r2_shared_context', shared_context)
+            ckpt.save('r3_shared_context', shared_context)
 
     file_diffs: Dict[str, str] = {}
     for path, new_start, new_count, content in _parse_unified_diff(diff_text):
         hunk_header = f'@@ -{new_start},{new_count} +{new_start},{new_count} @@\n'
         file_diffs[path] = file_diffs.get(path, '') + hunk_header + content + '\n'
 
-    r1_by_file: Dict[str, List[Dict[str, Any]]] = {
-        p: [c for c in round1 if c.get('path') == p]
-        for p in {c.get('path') or '' for c in round1}
-    }
+    all_prev_issues = list(round1) + list(round2)
+    r1_by_file: Dict[str, List[Dict[str, Any]]] = {}
+    for c in all_prev_issues:
+        p = c.get('path') or ''
+        r1_by_file.setdefault(p, []).append(c)
 
-    # build unified review units: anchor files absorb related small files,
-    # remaining small files are grouped by directory; all units use Agent
-    units, skipped_files = _build_r2_review_units(file_diffs, large_threshold, max_files)
-    r2_metrics['r2_files_skipped'] = len(skipped_files)
+    units, skipped_files = _build_review_units(file_diffs, large_threshold, max_files)
+    r3_metrics['r3_files_skipped'] = len(skipped_files)
     if skipped_files:
         lazyllm.LOG.warning(
-            f'Round 2: {len(skipped_files)} files skipped due to max_files_for_r2={max_files}: '
+            f'Round 3: {len(skipped_files)} files skipped due to max_files_for_r3={max_files}: '
             + ', '.join(skipped_files[:5])
         )
 
     symbol_cache: Dict[str, Any] = {}
     tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
 
-    prog = _Progress('Round 2: unified agent review', len(units))
+    prog = _Progress('Round 3: unified agent verify', len(units))
     all_results: List[Dict[str, Any]] = []
     all_discarded: set = set()
-    use_cache = ckpt.should_use_cache(ReviewStage.R2) if ckpt else True
+    use_cache = ckpt.should_use_cache(ReviewStage.R3) if ckpt else True
 
     for unit in units:
-        _r2_unit_agent_review(
+        _r3_unit_agent_verify(
             llm, unit, r1_by_file, shared_context, arch_doc, pr_summary,
             clone_dir, symbol_cache, tools, language, ckpt, all_results, all_discarded,
             use_cache=use_cache, agent_instructions=agent_instructions,
             max_chunks=max_chunks, review_spec=review_spec,
         )
         if unit['anchor']:
-            r2_metrics['r2_files_chunk'] += 1
+            r3_metrics['r3_files_chunk'] += 1
             prog.update(f'{unit["anchor"]} [anchor+{len(unit["files"]) - 1} related]')
         else:
-            r2_metrics['r2_files_group'] += len(unit['files'])
+            r3_metrics['r3_files_group'] += len(unit['files'])
             prog.update(f'group {unit["files"]} [{len(unit["files"])} files]')
 
-    prog.done(f'{len(all_results)} issues from agent; {len(all_discarded)} r1 issues discarded')
-    return all_results, all_discarded, r2_metrics
+    prog.done(f'{len(all_results)} issues from agent; {len(all_discarded)} prev issues discarded')
+    return all_results, all_discarded, r3_metrics
 
-_ROUND3_BATCH_PROMPT_TMPL = '''\
-You are a software architect performing a global architecture review on MULTIPLE files in one batch.
-{lang_instruction}
-
-## PR Summary
-{pr_summary}
-
-## Project Agent Instructions
-{agent_instructions}
-
-## Project Architecture
-{arch_doc}
-
-## Project Review Standards
-{review_spec}
-
-## Files and diffs (batch)
-Each diff line is annotated with [old_lineno|new_lineno]:
-  [N|M]  context line, [--|M] + added line (new-file line M), [N|--] - removed line.
-When reporting "line", always use the RIGHT-SIDE number M (the new-file line number).
-
-{files_block}
-
-## Task
-Analyze ALL diffs above from a global architecture perspective. Focus on issues that span multiple files or
-require understanding the overall system design:
-1. Module boundary violations — does this change blur responsibilities between modules?
-2. Duplicate logic — is similar logic already implemented elsewhere?
-3. Coupling increase — does this change create tight coupling between previously independent components?
-4. Design pattern violations — does this break existing patterns (registry, factory, observer, etc.)?
-5. Violations of project review standards listed above
-6. Dependency inversion violations — does a lower-layer module now import an upper-layer module?
-
-Report ONLY issues NOT already covered in "Issues Found So Far".
-Each item MUST include:
-- "path": one of the file paths from this batch (exact match)
-- "line": integer — the RIGHT-SIDE (new-file) line number from the annotated diff above
-- "severity", "bug_category" (prefer design|maintainability), "problem", "suggestion"
-
-In the suggestion field, wrap code snippets with markdown code fences using the correct language tag. \
-When showing old vs new code, use a unified diff block (```diff\\n- old lines\\n+ new lines\\n```).
-
-''' + _JSON_OUTPUT_INSTRUCTION + '''
-If no issues found: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
-
-STRICT RULES — violations will be rejected:
-1. Only report issues caused by the diff itself (added/modified/deleted lines). \
-If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
-2. Do NOT report lint/style tool errors: unused imports, line-too-long, complexity metrics, \
-missing blank lines, variable naming conventions, etc. Focus on logic, design, and correctness.
-3. {density_rule}
-'''
-
-def _line_ranges_for_file_path(diff_text: str, path: str) -> List[Tuple[int, int]]:
-    out: List[Tuple[int, int]] = []
-    for p, ns, nc, _ in _parse_unified_diff(diff_text):
-        if p == path and nc > 0:
-            out.append((ns, ns + nc))
-    return out
-
-def _round3_issue_line_valid(diff_text: str, path: str, line: int) -> bool:
-    return any(a <= line < b for a, b in _line_ranges_for_file_path(diff_text, path))
-
-
-def _round3_pack_file_batches(file_diffs: Dict[str, str], budget_chars: int) -> List[List[Tuple[str, str]]]:
-    batches: List[List[Tuple[str, str]]] = []
-    cur: List[Tuple[str, str]] = []
-    cur_sz = 0
-    for path, fd in sorted(file_diffs.items()):
-        need = len(fd) + len(path) + 120
-        if cur and cur_sz + need > budget_chars:
-            batches.append(cur)
-            cur, cur_sz = [(path, fd)], need
-        else:
-            cur.append((path, fd))
-            cur_sz += need
-    if cur:
-        batches.append(cur)
-    return batches
-
-
-def _round3_build_prev_json(prev_issues: List[Dict[str, Any]], max_chars: int = 16000) -> str:
-    prev_json = '\n'.join(
-        f'{c.get("path")}:{c.get("line")} [{c.get("severity")}] {(c.get("problem") or "")[:100]}'
-        for c in prev_issues
-    )
-    return (prev_json[:max_chars] + '\n...(truncated)' if len(prev_json) > max_chars else prev_json) or '(none)'
-
-def _round3_global_analysis(
-    llm: Any, diff_text: str, review_spec: str,
-    pr_summary: str = '', language: str = 'cn', arch_doc: str = '', agent_instructions: str = '',
-) -> List[Dict[str, Any]]:
-    file_diffs: Dict[str, str] = {}
-    for path, new_start, new_count, content in _parse_unified_diff(diff_text):
-        hunk_header = f'@@ -{new_start},{new_count} +{new_start},{new_count} @@\n'
-        file_diffs[path] = file_diffs.get(path, '') + hunk_header + content
-
-    arch_use = clip_text(arch_doc or '', 38000)
-    pr_snip = pr_summary[:800] if pr_summary else '(not available)'
-    spec_global = _lookup_relevant_rules(review_spec, diff_text, max_detail=12) if review_spec else '(not available)'
-    budget_files = max(12000, SINGLE_CALL_CONTEXT_BUDGET - len(arch_use) - len(spec_global) - len(pr_snip) - 14000)
-    batches = _round3_pack_file_batches(file_diffs, budget_files)
-
-    prog = _Progress('Round 3: global architecture analysis', len(batches))
-    result: List[Dict[str, Any]] = []
-    for batch in batches:
-        paths_in = [p for p, _ in batch]
-        batch_diff_joined = ''.join(fdiff + '\n' for _, fdiff in batch)
-        batch_review_spec = (
-            _lookup_relevant_rules(review_spec, batch_diff_joined[:12000], max_detail=12)
-            if review_spec
-            else '(not available)'
-        )
-        prompt = _ROUND3_BATCH_PROMPT_TMPL.format(
-            lang_instruction=_language_instruction(language),
-            pr_summary=pr_snip, agent_instructions=agent_instructions or '(not available)',
-            arch_doc=arch_use,
-            review_spec=batch_review_spec,
-            files_block='\n\n'.join(
-                f'## File: {path}\n```diff\n{_annotate_full_diff(fdiff)}\n```'
-                for path, fdiff in batch
-            ),
-            density_rule=issue_density_rule('\n'.join(fdiff for _, fdiff in batch)),
-        )
-        items = _safe_llm_call(llm, prompt)
-        batch_out: List[Dict[str, Any]] = []
-        for item in (items if isinstance(items, list) else []):
-            if isinstance(item, list):
-                # LLM occasionally wraps the array in an extra list; flatten one level
-                sub_items = item
-            else:
-                sub_items = [item]
-            for it in sub_items:
-                normalized = _normalize_comment_item(it, default_path='', default_category='design')
-                if normalized is None:
-                    continue
-                pth = str(normalized.get('path') or '')
-                try:
-                    line = int(normalized.get('line') or 0)
-                except (TypeError, ValueError):
-                    continue
-                if pth not in paths_in or not _round3_issue_line_valid(diff_text, pth, line):
-                    continue
-                batch_out.append(normalized)
-        result.extend(cap_issues_by_severity(batch_out, max_issues_for_diff(batch_diff_joined)))
-        prog.update(','.join(paths_in[:3]) + ('...' if len(paths_in) > 3 else ''))
-    prog.done(f'{len(result)} issues found')
-    return result
-
-_ROUND4_DOC_PROMPT_TMPL = '''\
+_ROUND2_DOC_PROMPT_TMPL = '''\
 Based on the following information, generate a complete PR design document.
 {lang_instruction}
 
@@ -2000,7 +1839,7 @@ Notes:
 - Output plain text with the section headers above. No extra markdown.
 '''
 
-def _round4_generate_pr_doc(
+def _round2_generate_pr_doc(
     llm: Any,
     diff_text: str,
     arch_doc: str,
@@ -2008,10 +1847,10 @@ def _round4_generate_pr_doc(
     language: str = 'cn',
     agent_instructions: str = '',
 ) -> str:
-    prog = _Progress('Round 4a: generating PR design document')
+    prog = _Progress('Round 2a: generating PR design document')
     diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 22000)
     arch_use = clip_text(arch_doc or '', 12000) if arch_doc else '(not available)'
-    prompt = _ROUND4_DOC_PROMPT_TMPL.format(
+    prompt = _ROUND2_DOC_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         arch_doc=arch_use,
         pr_summary=pr_summary[:800] if pr_summary else '(not available)',
@@ -2021,7 +1860,7 @@ def _round4_generate_pr_doc(
     prog.done(f'{len(result)} chars')
     return result
 
-_ROUND4_ARCHITECT_PROMPT_TMPL = '''\
+_ROUND2_ARCHITECT_PROMPT_TMPL = '''\
 You are a principal software architect performing a holistic design review.
 {lang_instruction}
 
@@ -2036,6 +1875,9 @@ or would they ask for a redesign?"
 
 ## Project Architecture
 {arch_doc}
+
+## Project Review Standards
+{review_spec}
 
 ## Reuse Check
 The [Public API Catalog] section in the architecture above lists public functions/classes
@@ -2058,6 +1900,22 @@ When reporting "line", always use the RIGHT-SIDE number M (the new-file line num
 ```diff
 {diff_text}
 ```
+
+## Global Cross-File Checklist
+Analyze ALL diffs from a global architecture perspective. Focus on issues that span multiple files:
+1. Module boundary violations — does this change blur responsibilities between modules?
+2. Duplicated logic across files — is the same pattern reimplemented in multiple places?
+3. Coupling increase — does this change make previously independent modules depend on each other?
+4. Design pattern violations — does this change break established patterns in the codebase?
+5. Review standard violations — does this change violate any project review standards listed above?
+6. Dependency inversion — does a lower-layer module now import from a higher-layer module?
+7. Refactoring completeness — if this diff renames, deletes, or rewrites functions/classes/constants:
+   a. Are there helper functions, private constants, or prompt templates that were ONLY used by \
+the old code and are now orphaned (defined but never called/referenced)?
+   b. If a concept was renamed (e.g. "round2" → "round3"), do ALL occurrences follow suit — \
+function names, variable names, dict/checkpoint keys, log messages, string literals, comments? \
+Report any location that still uses the old name.
+   c. Are there __init__.py exports or public API surfaces that still reference deleted/renamed symbols?
 
 ## Evaluation Dimensions
 
@@ -2159,18 +2017,20 @@ new violation. Pre-existing patterns are out of scope for this review.
 8. {density_rule}
 '''
 
-def _round4_architect_review(
+def _round2_architect_review(
     llm: Any, diff_text: str, arch_doc: str,
-    pr_summary: str = '', language: str = 'cn', agent_instructions: str = '', pr_design_doc: str = '',
+    pr_summary: str = '', language: str = 'cn', agent_instructions: str = '',
+    pr_design_doc: str = '', review_spec: str = '',
 ) -> List[Dict[str, Any]]:
-    prog = _Progress('Round 4: architect design review')
+    prog = _Progress('Round 2: architect design review')
     diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 38000)
     arch_use = clip_text(arch_doc or '', 42000) if arch_doc else '(not available)'
     annotated_diff = _annotate_full_diff(diff_use)
-    prompt = _ROUND4_ARCHITECT_PROMPT_TMPL.format(
+    prompt = _ROUND2_ARCHITECT_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         agent_instructions=agent_instructions or '(not available)',
-        arch_doc=arch_use, pr_summary=pr_summary[:800] if pr_summary else '(not available)',
+        arch_doc=arch_use, review_spec=review_spec[:4000] if review_spec else '(not available)',
+        pr_summary=pr_summary[:800] if pr_summary else '(not available)',
         pr_design_doc=clip_text(pr_design_doc, 12000) if pr_design_doc else '(not available)',
         diff_text=annotated_diff, density_rule=issue_density_rule(diff_use),
     )
@@ -2181,251 +2041,6 @@ def _round4_architect_review(
     prog.done(f'{len(result)} architect issues found')
     return result
 
-# ── Round 4 Verification (R4V): ReactAgent-based batch verification ──────────
-
-_LOW_CONFIDENCE_PATTERNS = re.compile(
-    r'\b(consider|might want to|could potentially|it would be nice|perhaps)\b', re.I
-)
-_SEV_ORDER = {'critical': 0, 'medium': 1, 'normal': 2}
-_R4V_BATCH_CAP = 5
-_R4V_TIMEOUT_SECS = 120
-_R4V_MAX_RETRIES = 6
-
-_R4V_VERIFY_PROMPT_TMPL = '''\
-You are an architecture verification expert.
-{lang_instruction}
-
-Below are {n} candidate architecture issues for file `{path}`.
-For EACH issue, use the provided tools to verify the claim, then output a verdict.
-
-## Verification Steps (for each issue)
-1. Read the relevant code section cited by the issue (use read_file or grep_symbol)
-2. Check if the project already follows the same pattern elsewhere (convention check)
-3. Search for existing utilities/abstractions the issue claims are missing
-4. Determine if the claimed problem is CONCRETE (will cause real pain) or THEORETICAL
-
-## Output
-Return a JSON array with one entry per input issue (in the same order).
-Each entry must have:
-- "index": integer — the 0-based index of the input issue
-- "verdict": "KEEP" | "DROP" | "MODIFY"
-  - KEEP: issue is valid and well-described
-  - DROP: issue is a misjudgment (cite evidence)
-  - MODIFY: partially correct — provide corrected description
-- "evidence": one sentence explaining your finding
-- "modified_issue": null (for KEEP/DROP) or the updated issue JSON object (for MODIFY)
-
-''' + _JSON_OUTPUT_INSTRUCTION + '''
-
-## Candidate Issues
-{issues_json}
-'''
-
-
-def _r4v_prefilter(issues: List[Dict[str, Any]]) -> tuple:
-    confident, dropped = [], []
-    for issue in issues:
-        suggestion = issue.get('suggestion', '') or ''
-        if issue.get('severity') == 'normal' and _LOW_CONFIDENCE_PATTERNS.search(suggestion):
-            dropped.append(issue)
-        else:
-            confident.append(issue)
-    return confident, dropped
-
-
-def _chunk_list(lst: list, max_size: int):
-    for i in range(0, len(lst), max_size):
-        yield lst[i:i + max_size]
-
-
-def _r4v_verify_batch(
-    llm: Any, batch: List[Dict[str, Any]], path: str,
-    clone_dir: str, tools: List[Any], arch_doc: str, language: str = 'cn',
-) -> List[Dict[str, Any]]:
-    issues_json = json.dumps(
-        [{**iss, 'index': i} for i, iss in enumerate(batch)], ensure_ascii=False, indent=2
-    )
-    prompt = _R4V_VERIFY_PROMPT_TMPL.format(
-        lang_instruction=_language_instruction(language),
-        n=len(batch), path=path, issues_json=issues_json,
-    )
-    step_counter = [0]
-    traced_tools = [_make_traced_tool(t, step_counter, path) for t in tools]
-    try:
-        agent = ReactAgent(
-            llm, tools=traced_tools, max_retries=_R4V_MAX_RETRIES,
-            workspace=clone_dir, force_summarize=True,
-            force_summarize_context=f'Verifying {len(batch)} architecture issues for {path}',
-            keep_full_turns=2,
-        )
-    except Exception as e:
-        lazyllm.LOG.warning(f'  [R4V] ReactAgent init failed for {path}: {e}; keeping all issues')
-        return batch
-    for tool in agent._tools_manager.all_tools:
-        tool.execute_in_sandbox = False
-    lazyllm.LOG.info(f'  [R4V] Verifying {len(batch)} issues for {path} ...')
-    with ThreadPoolExecutor(max_workers=1) as ex:
-        fut = ex.submit(agent, prompt)
-        try:
-            raw = fut.result(timeout=_R4V_TIMEOUT_SECS)
-        except TimeoutError:
-            lazyllm.LOG.warning(f'  [R4V] Verification timed out for {path}; keeping all issues')
-            return batch
-    verdicts = _parse_json_with_repair(_extract_json_text(raw if isinstance(raw, str) else str(raw)))
-    if not isinstance(verdicts, list):
-        lazyllm.LOG.warning(f'  [R4V] Could not parse verdicts for {path}; keeping all issues')
-        return batch
-
-    verdict_map = {int(v['index']): v for v in verdicts if isinstance(v, dict) and 'index' in v}
-    result: List[Dict[str, Any]] = []
-    for i, issue in enumerate(batch):
-        v = verdict_map.get(i)
-        if v is None:
-            result.append(issue)
-            continue
-        verdict = (v.get('verdict') or 'KEEP').upper()
-        if verdict == 'DROP':
-            lazyllm.LOG.info(f'  [R4V] Dropped issue #{i} for {path}: {v.get("evidence", "")}')
-        elif verdict == 'MODIFY' and isinstance(v.get('modified_issue'), dict):
-            modified = _normalize_comment_item(v['modified_issue'], default_path=path, default_category='design')
-            result.append(modified if modified else issue)
-        else:
-            result.append(issue)
-    return result
-
-
-def _round4_verify_issues(
-    llm: Any,
-    r4_issues: List[Dict[str, Any]],
-    clone_dir: str,
-    tools: List[Any],
-    arch_doc: str,
-    language: str = 'cn',
-) -> List[Dict[str, Any]]:
-    if not r4_issues or not clone_dir or not os.path.isdir(clone_dir):
-        return r4_issues
-
-    prog = _Progress('Round 4v: architect issue verification')
-    confident, dropped = _r4v_prefilter(r4_issues)
-    if dropped:
-        lazyllm.LOG.info(f'  [R4V] Pre-filter dropped {len(dropped)} low-confidence issues')
-
-    if not confident:
-        prog.done('all issues pre-filtered')
-        return []
-
-    from collections import defaultdict as _dd
-    by_file: Dict[str, List[Dict[str, Any]]] = _dd(list)
-    for issue in confident:
-        by_file[issue.get('path', '')].append(issue)
-
-    verified: List[Dict[str, Any]] = []
-    for path, file_issues in by_file.items():
-        sorted_issues = sorted(file_issues, key=lambda x: _SEV_ORDER.get(x.get('severity', ''), 9))
-        for batch in _chunk_list(sorted_issues, _R4V_BATCH_CAP):
-            try:
-                result = _r4v_verify_batch(llm, list(batch), path, clone_dir, tools, arch_doc, language)
-                verified.extend(result)
-            except Exception as e:
-                lazyllm.LOG.warning(f'  [R4V] Batch verification failed for {path}: {e}; keeping issues')
-                verified.extend(batch)
-
-    prog.done(f'{len(verified)} issues after verification (dropped {len(r4_issues) - len(verified)})')
-    return verified
-
-
-_ROUND4_COMBINED_PROMPT_TMPL = '''\
-You are a principal software architect. Output ONE JSON object with exactly two keys:
-- "pr_design_doc": string — complete PR design document with sections 【1. 背景与问题定义】 through 【9. 可扩展性分析】
-  (same structure as a standalone 9-section design doc). Reconstruct design intent, not only what changed.
-- "issues": array — holistic design review using: module responsibility, layering & dependencies, API design,
-  consistency, abstraction & reuse, complexity, extensibility, replaceability, testability, overall verdict;
-  plus Reuse Check: if diff reimplements [Public API Catalog] symbols, report (maintainability, medium).
-
-{lang_instruction}
-
-## Project Agent Instructions
-{agent_instructions}
-
-## Project Architecture
-{arch_doc}
-
-## PR Summary
-{pr_summary}
-
-## Full Diff
-Each diff line is annotated with [old_lineno|new_lineno]:
-  [N|M]  context line, [--|M] + added line (new-file line M), [N|--] - removed line.
-When reporting "line" in issues, always use the RIGHT-SIDE number M (the new-file line number).
-
-```diff
-{diff_text}
-```
-
-Output shape — wrap with delimiters:
-''' + _JSON_OBJ_OUTPUT_INSTRUCTION + '''
-Inner shape: {{"pr_design_doc": "<text>", "issues": \
-[{{"path","line","severity","bug_category","problem","suggestion"}}, ...]}}
-
-''' + _SHARED_STRICT_RULES_PREFIX + '''
-6. Design-focused bug_category: design or maintainability.
-7. {density_rule}
-'''
-
-def _parse_llm_json_object(raw: str) -> Optional[Dict[str, Any]]:
-    if not raw:
-        return None
-    t = raw.strip()
-    parsed = _parse_json_with_repair(t)
-    if isinstance(parsed, dict):
-        return parsed
-    parsed = _parse_json_with_repair(_extract_json_text(t))
-    if isinstance(parsed, dict):
-        return parsed
-    return None
-
-def _round4_combined_review(
-    llm: Any, diff_text: str, arch_doc: str,
-    pr_summary: str = '', language: str = 'cn', agent_instructions: str = '',
-    prefer_combined: bool = False,
-) -> Tuple[str, List[Dict[str, Any]]]:
-    # default: two-step path (R4a doc → R4b issues) for reliability
-    # prefer_combined=True: attempt single-call JSON first, fall back to two-step on parse failure
-    if prefer_combined:
-        prog = _Progress('Round 4: design doc + architect review (combined)')
-        diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 42000)
-        arch_use = clip_text(arch_doc or '', 40000) if arch_doc else '(not available)'
-        annotated_diff = _annotate_full_diff(diff_use)
-        prompt = _ROUND4_COMBINED_PROMPT_TMPL.format(
-            lang_instruction=_language_instruction(language),
-            agent_instructions=agent_instructions or '(not available)',
-            arch_doc=arch_use, pr_summary=pr_summary[:900] if pr_summary else '(not available)',
-            diff_text=annotated_diff, density_rule=issue_density_rule(diff_use),
-        )
-        raw = _safe_llm_call_text(llm, prompt)
-        obj = _parse_llm_json_object(raw or '')
-        if obj and isinstance(obj.get('pr_design_doc'), str) and isinstance(obj.get('issues'), list):
-            doc_out = obj.get('pr_design_doc') or ''
-            issues_out = [
-                n for item in obj['issues']
-                if isinstance(item, dict)
-                and (n := _normalize_comment_item(item, default_path='', default_category='design')) is not None
-            ]
-            issues_out = cap_issues_by_severity(issues_out, max_issues_for_diff(diff_use))
-            prog.done(f'doc {len(doc_out)} chars; {len(issues_out)} issues')
-            return doc_out, issues_out
-        lazyllm.LOG.warning('Round 4: combined JSON parse failed, falling back to two-step')
-        prog.done('combined failed, switching to two-step')
-
-    # two-step path: R4a generates design doc, R4b uses it as input for architect issues
-    doc_out = _round4_generate_pr_doc(
-        llm, diff_text, arch_doc, pr_summary=pr_summary, language=language, agent_instructions=agent_instructions,
-    )
-    issues_out = _round4_architect_review(
-        llm, diff_text, arch_doc, pr_summary=pr_summary,
-        language=language, agent_instructions=agent_instructions, pr_design_doc=doc_out,
-    )
-    return doc_out, issues_out
 
 _COMPRESS_COMMENTS_PROMPT_TMPL = '''\
 Summarize each of the following code review comments into ONE concise sentence (max 20 words).
@@ -2491,12 +2106,12 @@ def _compress_new_issues(llm: Any, issues: List[Dict[str, Any]]) -> List[Dict[st
         }
     return _compress_items(llm, issues, _NEW_ISSUE_COMPRESS_THRESHOLD, body_fn, extra_fn)
 
-_ROUND5_PROMPT_TMPL = '''\
+_ROUND4_DEDUP_PROMPT_TMPL = '''\
 You are a senior code reviewer performing final consolidation of review findings.
 {lang_instruction}
 
 ## New Issues Found (3 rounds)
-Each item has: idx (unique id), path, line, severity, bug_category, source (r1/r2/r3), \
+Each item has: idx (unique id), path, line, severity, bug_category, source (r1/r2/r3/lint), \
 summary (one-sentence problem description).
 {new_issues_json}
 
@@ -2505,11 +2120,11 @@ Each item has: idx, path, line, summary.
 {existing_json}
 
 ## Task
-Note: r1 issues that were already superseded by r2 (same path+line covered by r2) or explicitly
-discarded during R2 analysis have been pre-removed before this step,
-so r2 > r1 priority only resolves residual conflicts where both sources independently flagged the same location.
+Note: r1 issues that were already superseded by r3 (same path+line covered by r3) or explicitly
+discarded during R3 agent verification have been pre-removed before this step,
+so r3 > r1 priority only resolves residual conflicts where both sources independently flagged the same location.
 1. Remove exact or near-duplicate new issues (keep the one with highest severity or most detail; record its idx)
-   - When a r2 issue and a r1 issue describe the same location (same path+line), prefer the r2 version \
+   - When a r3 issue and a r1 issue describe the same location (same path+line), prefer the r3 version \
 (it has more cross-file context); discard the r1 duplicate.
 2. Merge new issues that describe the same root cause at the same location (keep one idx)
 3. Remove any new issue whose problem is already covered by an existing PR comment \
@@ -2551,9 +2166,9 @@ def _merge_similar_issues(group: List[Dict[str, Any]], threshold: float) -> List
 
 def _deterministic_dedup(issues: List[Dict[str, Any]], cross_category: bool = True) -> List[Dict[str, Any]]:
     # group by (path, line, bug_category); within each group keep highest-severity item
-    # source priority: r2 > r1 > r3 > r4 (more context = more reliable)
+    # source priority: r3 > r1 > r2 > lint (more context = more reliable)
     _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
-    _src_order = {'r2': 0, 'r1': 1, 'r3': 2, 'r4': 3}
+    _src_order = {'r3': 0, 'r1': 1, 'r2': 2, 'lint': 3}
     groups: Dict[tuple, List[Dict[str, Any]]] = {}
     for c in issues:
         key = (c.get('path', ''), int(c.get('line') or 0), c.get('bug_category', ''))
@@ -2578,13 +2193,13 @@ def _deterministic_dedup(issues: List[Dict[str, Any]], cross_category: bool = Tr
     return result
 
 
-def _round5_merge_and_deduplicate(
+def _round4_merge_and_deduplicate(
     llm: Any, all_comments: List[Dict[str, Any]],
     existing_comments: Optional[List[Dict[str, Any]]] = None, language: str = 'cn',
 ) -> List[Dict[str, Any]]:
     if not all_comments:
         return []
-    prog = _Progress('Round 5: merge & deduplicate')
+    prog = _Progress('Round 4: merge & deduplicate')
     # Accept both line-level (line > 0) and file-level (line is None/0) issues.
     # File-level issues must still participate in dedup against existing comments.
     valid = [c for c in all_comments if c.get('path')]
@@ -2594,12 +2209,12 @@ def _round5_merge_and_deduplicate(
 
     # deterministic dedup before LLM: collapse exact (path, line, category) duplicates
     deduped = _deterministic_dedup(valid)
-    lazyllm.LOG.info(f'Round 5: deterministic dedup {len(valid)} -> {len(deduped)} issues')
+    lazyllm.LOG.info(f'Round 4: deterministic dedup {len(valid)} -> {len(deduped)} issues')
 
     compressed_new = _compress_new_issues(llm, deduped)
     existing_json = json.dumps(_compress_existing_comments(llm, existing_comments), ensure_ascii=False, indent=2) \
         if existing_comments else '(none)'
-    prompt = _ROUND5_PROMPT_TMPL.format(
+    prompt = _ROUND4_DEDUP_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         new_issues_json=json.dumps(compressed_new, ensure_ascii=False, indent=2),
         existing_json=existing_json,
@@ -2632,7 +2247,7 @@ def _round5_merge_and_deduplicate(
     discarded_idxs = set(idx_map.keys()) - kept_idxs
     if discarded_idxs:
         lazyllm.LOG.info(
-            f'Round 5: LLM discarded {len(discarded_idxs)} issues: '
+            f'Round 4: LLM discarded {len(discarded_idxs)} issues: '
             + ', '.join(
                 f'#{i} {idx_map[i].get("path", "?")}:{idx_map[i].get("line", "?")} '
                 f'[{idx_map[i].get("severity","?")}][{idx_map[i].get("bug_category","?")}]'
@@ -2641,12 +2256,12 @@ def _round5_merge_and_deduplicate(
         )
     if not result:
         _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
-        result = [{**c, '_review_version': 2}
+        result = [{**c, '_review_version': 3}
                   for c in sorted(deduped, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2))]
     prog.done(f'{len(result)} final issues')
     return result
 
-def _run_five_rounds(  # noqa: C901
+def _run_four_rounds(  # noqa: C901
     llm: Any,
     hunks: List[Tuple[str, int, int, str]],
     diff_text: str,
@@ -2664,9 +2279,8 @@ def _run_five_rounds(  # noqa: C901
     arch_cache_path: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     from .constants import BudgetManager, TOTAL_CALL_BUDGET
-    _budget = BudgetManager(total_calls=TOTAL_CALL_BUDGET)  # noqa: F841 — reserved for future call tracking
+    _budget = BudgetManager(total_calls=TOTAL_CALL_BUDGET)  # noqa: F841
 
-    # split hunks into windows to avoid R1 truncation on large PRs
     def _rebuild_diff_from_hunks(win_hunks: List[Tuple[str, int, int, str]]) -> str:
         by_path: Dict[str, List[str]] = {}
         for path, _s, _c, content in win_hunks:
@@ -2690,6 +2304,7 @@ def _run_five_rounds(  # noqa: C901
             windows.append((cur, _rebuild_diff_from_hunks(cur)))
         return windows
 
+    # ── R1: hunk-level diff review ──
     windows = _split_into_windows(hunks)
     if len(windows) > 1:
         lazyllm.LOG.info(f'Round 1: processing {len(hunks)} hunks in {len(windows)} windows')
@@ -2716,119 +2331,91 @@ def _run_five_rounds(  # noqa: C901
     r1 = r1_all
     ckpt.mark_stage_done(ReviewStage.R1)
 
-    r2, discarded_r1_keys, r2_metrics = _round2_agent_review(
-        llm, r1, diff_text, arch_doc, pr_summary=pr_summary,
+    # ── R2a: PR design document ──
+    use_r2a_cache = ckpt.should_use_cache(ReviewStage.R2A)
+    pr_design_doc = ckpt.get('pr_design_doc')
+    if pr_design_doc is None:
+        if not use_r2a_cache:
+            lazyllm.LOG.warning('Round 2a: no cache found, re-computing')
+        pr_design_doc = _round2_generate_pr_doc(
+            llm, diff_text, arch_doc, pr_summary=pr_summary,
+            language=language, agent_instructions=agent_instructions,
+        )
+        ckpt.save('pr_design_doc', pr_design_doc)
+        ckpt.mark_stage_done(ReviewStage.R2A)
+    else:
+        _Progress('Round 2a: generating PR design document').done(
+            f'loaded from checkpoint ({len(pr_design_doc)} chars)'
+        )
+
+    # ── R2: architect design review (merged global + architecture) ──
+    use_r2_cache = ckpt.should_use_cache(ReviewStage.R2)
+    r2 = ckpt.get('r2')
+    if r2 is None:
+        if not use_r2_cache:
+            lazyllm.LOG.warning('Round 2: no cache found, re-computing')
+        r2 = _round2_architect_review(
+            llm, diff_text, arch_doc, pr_summary=pr_summary,
+            language=language, agent_instructions=agent_instructions,
+            pr_design_doc=pr_design_doc, review_spec=review_spec,
+        )
+        ckpt.save('r2', r2)
+        ckpt.mark_stage_done(ReviewStage.R2)
+    else:
+        _Progress('Round 2: architect design review').done(
+            f'loaded from checkpoint ({len(r2)} issues)'
+        )
+
+    # ── R3: unified agent verification (merged old R2 agent + R4V) ──
+    r3, discarded_prev_keys, r3_metrics = _round3_agent_verify(
+        llm, r1, r2, diff_text, arch_doc, pr_summary=pr_summary,
         clone_dir=clone_dir, language=language, ckpt=ckpt,
         agent_instructions=agent_instructions, strategy=strategy,
         owner_repo=owner_repo, arch_cache_path=arch_cache_path,
         review_spec=review_spec,
     )
-    ckpt.mark_stage_done(ReviewStage.R2)
+    ckpt.mark_stage_done(ReviewStage.R3)
 
-    use_r3_cache = ckpt.should_use_cache(ReviewStage.R3)
-    r3 = ckpt.get('r3')
-    if r3 is None:
-        if not use_r3_cache:
-            lazyllm.LOG.warning('Round 3: no cache found, re-computing')
-        r3 = _round3_global_analysis(
-            llm, diff_text, review_spec, pr_summary=pr_summary, language=language,
-            arch_doc=arch_doc, agent_instructions=agent_instructions,
-        )
-        ckpt.save('r3', r3)
-        ckpt.mark_stage_done(ReviewStage.R3)
-    else:
-        _Progress('Round 3: global analysis').done(f'loaded from checkpoint ({len(r3)} issues)')
-
-    use_r4a_cache = ckpt.should_use_cache(ReviewStage.R4A)
-    pr_design_doc = ckpt.get('pr_design_doc')
-    if pr_design_doc is None:
-        if not use_r4a_cache:
-            lazyllm.LOG.warning('Round 4a: no cache found, re-computing')
-        pr_design_doc = _round4_generate_pr_doc(
-            llm, diff_text, arch_doc, pr_summary=pr_summary,
-            language=language, agent_instructions=agent_instructions,
-        )
-        ckpt.save('pr_design_doc', pr_design_doc)
-        ckpt.mark_stage_done(ReviewStage.R4A)
-    else:
-        _Progress('Round 4a: generating PR design document').done(
-            f'loaded from checkpoint ({len(pr_design_doc)} chars)'
-        )
-
-    use_r4_cache = ckpt.should_use_cache(ReviewStage.R4)
-    r4 = ckpt.get('r4')
-    if r4 is None:
-        if not use_r4_cache:
-            lazyllm.LOG.warning('Round 4: no cache found, re-computing')
-        r4 = _round4_architect_review(
-            llm, diff_text, arch_doc, pr_summary=pr_summary,
-            language=language, agent_instructions=agent_instructions, pr_design_doc=pr_design_doc,
-        )
-        ckpt.save('r4', r4)
-        ckpt.mark_stage_done(ReviewStage.R4)
-    else:
-        _Progress('Round 4: architect design review').done(
-            f'loaded from checkpoint ({len(r4)} issues)'
-        )
-
-    use_r4v_cache = ckpt.should_use_cache(ReviewStage.R4V)
-    r4v = ckpt.get('r4v')
-    if r4v is None:
-        if not use_r4v_cache:
-            lazyllm.LOG.warning('Round 4v: no cache found, re-computing')
-        if clone_dir and os.path.isdir(clone_dir):
-            symbol_cache_r4v: Dict[str, Any] = {}
-            tools_r4v = _build_scoped_agent_tools_with_cache(
-                clone_dir, llm, symbol_cache_r4v, owner_repo, arch_cache_path
-            )
-            r4v = _round4_verify_issues(llm, r4, clone_dir, tools_r4v, arch_doc, language)
-        else:
-            lazyllm.LOG.warning('Round 4v: clone_dir not available, skipping verification')
-            r4v = r4
-        ckpt.save('r4v', r4v)
-        ckpt.mark_stage_done(ReviewStage.R4V)
-    else:
-        _Progress('Round 4v: architect issue verification').done(
-            f'loaded from checkpoint ({len(r4v)} issues)'
-        )
-
+    # ── R4: merge & deduplicate (formerly R5) ──
     use_final_cache = ckpt.should_use_cache(ReviewStage.FINAL)
     final = ckpt.get('final')
-    # discard old-format final (produced before R4 architect round was added)
     if final is not None and isinstance(final, list) and not any(
-        c.get('_review_version') == 2 for c in final[:1]
+        c.get('_review_version') == 3 for c in final[:1]
     ):
-        lazyllm.LOG.info('Round 5: discarding old-format final checkpoint, re-computing')
+        lazyllm.LOG.info('Round 4: discarding old-format final checkpoint, re-computing')
         final = None
     if final is None:
         if not use_final_cache:
-            lazyllm.LOG.warning('Round 5: no cache found, re-computing')
+            lazyllm.LOG.warning('Round 4: no cache found, re-computing')
 
         def _tag(issues: List[Dict[str, Any]], src: str) -> List[Dict[str, Any]]:
             return [{**c, 'source': src} for c in issues]
 
-        r2_covered_files = {c.get('path') for c in r2 if c.get('path')}
+        r3_covered_files = {c.get('path') for c in r3 if c.get('path')}
         r1_passthrough = [
             c for c in r1
-            if c.get('path') not in r2_covered_files
-            or f'{c.get("path")}:{c.get("line")}' not in discarded_r1_keys
+            if c.get('path') not in r3_covered_files
+            or f'{c.get("path")}:{c.get("line")}' not in discarded_prev_keys
         ]
-        r2_covered_keys = {f'{c.get("path")}:{c.get("line")}' for c in r2}
+        r3_covered_keys = {f'{c.get("path")}:{c.get("line")}' for c in r3}
         r1_passthrough = [
             c for c in r1_passthrough
-            if c.get('path') not in r2_covered_files
-            or f'{c.get("path")}:{c.get("line")}' not in r2_covered_keys
+            if c.get('path') not in r3_covered_files
+            or f'{c.get("path")}:{c.get("line")}' not in r3_covered_keys
         ]
-        # inject lint issues directly into R5 (bypass R1-R4)
+        # R2 architect issues for files not covered by R3 pass through directly
+        r2_passthrough = [
+            c for c in r2
+            if c.get('path') not in r3_covered_files
+        ]
         lint_tagged = _tag(lint_issues or [], 'lint')
-        final = _round5_merge_and_deduplicate(
+        final = _round4_merge_and_deduplicate(
             llm,
-            _tag(r1_passthrough, 'r1') + _tag(r2, 'r2')
-            + _tag(r3, 'r3') + _tag(r4v, 'r4') + lint_tagged,
+            _tag(r1_passthrough, 'r1') + _tag(r2_passthrough, 'r2') + _tag(r3, 'r3') + lint_tagged,
             existing_comments=existing_comments, language=language,
         )
         ckpt.save('final', final)
         ckpt.mark_stage_done(ReviewStage.FINAL)
     else:
-        _Progress('Round 5: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')
-    return final, r2_metrics
+        _Progress('Round 4: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')
+    return final, r3_metrics

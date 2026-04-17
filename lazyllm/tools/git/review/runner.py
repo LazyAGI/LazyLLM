@@ -8,14 +8,14 @@ from typing import Any, Dict, List, Optional
 from ..client import Git
 from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
-from .rounds import _run_five_rounds
+from .rounds import _run_four_rounds
 from .poster import _fetch_existing_pr_comments, _post_review_comments, _build_commentable_lines, _filter_commentable
 from .utils import (
     _get_default_llm, _ensure_non_streaming_llm, _get_model_name,
     _get_head_sha_from_pr, _parse_unified_diff, _Progress,
     _category_stats, _build_review_body,
 )
-from .constants import R2_MAX_FILES, R2_MAX_CHUNKS_PER_FILE
+from .constants import R3_MAX_FILES, R3_MAX_CHUNKS_PER_FILE
 
 
 @dataclasses.dataclass
@@ -29,9 +29,9 @@ class _DiffStats:
 
 @dataclasses.dataclass
 class _ReviewStrategy:
-    enable_r2: bool
-    large_file_threshold: int   # files with more diff lines than this → chunk mode
-    max_files_for_r2: int       # total files R2 will process; excess → R1 passthrough
+    enable_r3: bool
+    large_file_threshold: int   # files with more diff lines than this -> chunk mode
+    max_files_for_r3: int       # total files R3 will process; excess -> R1 passthrough
     max_chunks_per_file: int    # per-file chunk cap in chunk mode
 
 
@@ -55,31 +55,25 @@ def _compute_diff_stats(
 
 
 def _decide_review_strategy(stats: _DiffStats) -> _ReviewStrategy:
-    # R2 is always enabled — large PRs get tighter limits so the most important files
-    # (largest diff, sorted first by _classify_files_for_r2) are still deeply reviewed
-    # while excess files fall back to R1 passthrough.
     if stats.diff_lines_total > 3000 or stats.file_count > 50:
-        # very large PR: tight limits, only top files get chunk-mode agent review
         return _ReviewStrategy(
-            enable_r2=True,
+            enable_r3=True,
             large_file_threshold=100,
-            max_files_for_r2=10,
+            max_files_for_r3=10,
             max_chunks_per_file=2,
         )
     if stats.diff_lines_total > 1000 or stats.file_count > 20:
-        # large PR: moderate limits
         return _ReviewStrategy(
-            enable_r2=True,
+            enable_r3=True,
             large_file_threshold=150,
-            max_files_for_r2=15,
+            max_files_for_r3=15,
             max_chunks_per_file=2,
         )
-    # normal PR: full limits
     return _ReviewStrategy(
-        enable_r2=True,
+        enable_r3=True,
         large_file_threshold=200,
-        max_files_for_r2=R2_MAX_FILES,
-        max_chunks_per_file=R2_MAX_CHUNKS_PER_FILE,
+        max_files_for_r3=R3_MAX_FILES,
+        max_chunks_per_file=R3_MAX_CHUNKS_PER_FILE,
     )
 
 
@@ -252,10 +246,10 @@ def review(  # noqa: C901
     cached_final = ckpt.get('final_comments')
     if cached_final is not None:
         final_comments = cached_final
-        r2_metrics: Dict[str, Any] = {}
+        r3_metrics: Dict[str, Any] = {}
         _Progress('All review rounds').done('loaded from checkpoint')
     else:
-        final_comments, r2_metrics = _run_five_rounds(
+        final_comments, r3_metrics = _run_four_rounds(
             llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
             clone_dir=clone_dir, existing_comments=existing_comments, language=language,
             agent_instructions=agent_instructions, strategy=strategy,
@@ -308,13 +302,13 @@ def review(  # noqa: C901
     prog_main.done(summary)
 
     metrics = {
-        'r2_mode': 'skip' if not strategy.enable_r2 else 'mixed',
-        'r2_files_chunk': r2_metrics.get('r2_files_chunk', 0),
-        'r2_files_group': r2_metrics.get('r2_files_group', 0),
-        'r2_files_skipped': r2_metrics.get('r2_files_skipped', 0),
-        'r2_chunks_total': r2_metrics.get('r2_chunks_total', 0),
+        'r3_mode': 'skip' if not strategy.enable_r3 else 'mixed',
+        'r3_files_chunk': r3_metrics.get('r3_files_chunk', 0),
+        'r3_files_group': r3_metrics.get('r3_files_group', 0),
+        'r3_files_skipped': r3_metrics.get('r3_files_skipped', 0),
+        'r3_chunks_total': r3_metrics.get('r3_chunks_total', 0),
         'truncated_diff_flag': truncated_diff,
-        'truncated_hunks_flag': False,  # hunks are now processed in windows, no truncation
+        'truncated_hunks_flag': False,
         'lint_issues_count': len(lint_issues),
     }
 
