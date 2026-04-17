@@ -13,11 +13,7 @@ _SEMANTIC_TO_LANGFUSE_TYPE = {
     'embedding':        'embedding',
     'tool':             'tool',
     'rerank':           'span',
-    'rewrite':          'span',
-    'fusion':           'span',
-    'context_builder':  'span',
     'workflow_control': 'chain',
-    'custom':           'span',
 }
 
 

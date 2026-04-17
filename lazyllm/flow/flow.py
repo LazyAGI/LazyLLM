@@ -315,19 +315,21 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
             kw['_bind_args_source'] = bind_args_source
 
-        _callable_span = (start_span(span_kind='callable', target=it, args=(__input,), kwargs=kw)
-                          if not isinstance(it, LazyLLMFlowsBase) and not hasattr(it, '_module_id')
-                          else None)
+        hook_objs = (prepare_hooks(it, resolve_builtin_hooks(it), __input, **kw)
+                     if not isinstance(it, LazyLLMFlowsBase) and not hasattr(it, '_module_id')
+                     else [])
         try:
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(__input, (package, kwargs)):
                 output = it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
             else:
                 output = it(__input, **kw)
         except HandledException as e:
-            set_span_error(_callable_span, e)
+            try:
+                run_hooks(hook_objs, 'on_error', e)
+            except Exception:
+                LOG.warning('Flow invoke on_error hook failed', exc_info=True)
             raise e
         except Exception as e:
-            set_span_error(_callable_span, e)
             try:
                 pos = self._item_pos[self._items.index(it)]
             except Exception:
@@ -339,12 +341,20 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             LOG.error(err_msg)
             LOG.debug(f'Error type: {type(e).__name__}, Error message: {str(e)}\n'
                       f'Traceback: {"".join(traceback.format_exception(*sys.exc_info()))}')
-            raise _change_exception_type(e, FlowException) from None
+            err = _change_exception_type(e, FlowException)
+            try:
+                run_hooks(hook_objs, 'on_error', err)
+            except Exception:
+                LOG.warning('Flow invoke on_error hook failed', exc_info=True)
+            raise err from None
         else:
-            set_span_output(_callable_span, output)
+            run_hooks(hook_objs, 'post_hook', output)
             return output
         finally:
-            finish_span(_callable_span)
+            try:
+                run_hooks(hook_objs, 'finalize')
+            except Exception:
+                LOG.warning('Flow invoke finalize hook failed', exc_info=True)
 
     def bind(self, *args, **kw):
         return bind(self, *args, **kw)
