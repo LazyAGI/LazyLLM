@@ -6,5 +6,5 @@ cmake -S csrc -B build \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -DBUILD_TESTS=ON
-cmake --build build
+cmake --build build --config Debug
 ctest --test-dir build --rerun-failed --output-on-failure
