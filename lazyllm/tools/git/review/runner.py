@@ -253,7 +253,6 @@ def review(  # noqa: C901
             from .lint_runner import _run_lint_analysis
             lint_issues = _run_lint_analysis(diff_text, clone_dir)
         except Exception as e:
-            import lazyllm
             lazyllm.LOG.warning(f'Lint analysis failed: {e}')
 
     cached_final = ckpt.get('final_comments')
@@ -291,8 +290,7 @@ def review(  # noqa: C901
             commentable = _build_commentable_lines(hunks)
             postable, n_dropped = _filter_commentable(final_comments, commentable)
             if n_dropped:
-                import lazyllm as _lazyllm
-                _lazyllm.LOG.warning(
+                lazyllm.LOG.warning(
                     f'{n_dropped} comment(s) dropped: line not in PR diff range '
                     f'(would cause GitHub 422)'
                 )
@@ -302,8 +300,7 @@ def review(  # noqa: C901
             if upload_all_ok:
                 ckpt.mark_stage_done(ReviewStage.UPLOAD)
             else:
-                import lazyllm as _lazyllm
-                _lazyllm.LOG.warning('Some upload batches failed; re-run with --resume_from=upload to retry')
+                lazyllm.LOG.warning('Some upload batches failed; re-run with --resume_from=upload to retry')
 
     n = len(final_comments)
     stats = _category_stats(final_comments)

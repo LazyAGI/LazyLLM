@@ -25,6 +25,7 @@ from .pre_analysis import (
     _extract_abstract_method_names,
     _find_subclass_implementations,
     _extract_file_skeleton,
+    _lookup_relevant_rules,
 )
 from .constants import (
     SINGLE_CALL_CONTEXT_BUDGET, R1_DIFF_BUDGET,
@@ -684,7 +685,8 @@ def _round1_hunk_analysis(
     agent_instructions: str = '',
     pr_file_summary: str = '',
 ) -> List[Dict[str, Any]]:
-    spec_snippet = _sample_text(review_spec, 600) if review_spec else '(not available)'
+    all_diff = '\n'.join(h[3] for h in hunks) if hunks else ''
+    spec_snippet = _lookup_relevant_rules(review_spec, all_diff, max_detail=8) if review_spec else '(not available)'
     summary_snippet = pr_summary[:600] if pr_summary else '(not available)'
     prog = _Progress('Round 1: hunk analysis', len(hunks))
     lock = threading.Lock()
@@ -1636,7 +1638,7 @@ def _r3_extract_issues(
     if len(r1_text) > _R3_R1_BUDGET:
         r1_text = r1_text[:_R3_R1_BUDGET] + '\n...(truncated)'
     paths_str = ', '.join(f'`{p}`' for p in (all_paths or [path]))
-    spec_snippet = _sample_text(review_spec, 1200) if review_spec else '(not available)'
+    spec_snippet = _lookup_relevant_rules(review_spec, diff_chunk, max_detail=10) if review_spec else '(not available)'
     sym_trimmed = _r3_trim_rich_context(symbol_context, _R3_SYMBOL_CONTEXT_MAX) if symbol_context else ''
     skel_trimmed = _r3_trim_skeleton(file_skeleton, diff_chunk, _R3_FILE_SKELETON_MAX) if file_skeleton else ''
     shared_trimmed = _r3_trim_shared_context(shared_context, _R3_SHARED_CTX_BUDGET) if shared_context else ''

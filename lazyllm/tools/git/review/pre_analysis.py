@@ -1610,7 +1610,7 @@ _COMMENT_COMPRESS_THRESHOLD = 150
 # max rules kept in final spec
 _SPEC_MAX_RULES = 50
 # bump this when extraction logic changes to invalidate per-PR caches
-_SPEC_CACHE_VERSION = 2
+_SPEC_CACHE_VERSION = 3
 
 def _is_merged_pr(pr: Any) -> bool:
     raw = getattr(pr, 'raw', None) or (pr if isinstance(pr, dict) else {})
@@ -1622,24 +1622,48 @@ def _is_merged_pr(pr: Any) -> bool:
     return False
 
 _EXTRACT_RULES_PROMPT = '''\
-You are a code review expert. The following are HUMAN review comments from a single pull request.
-Extract concrete, actionable review rules from these comments.
+You are a code review expert. The following are review comments from a single pull request.
+Comments are prefixed with [MAINTAINER] (repo owner/member/collaborator) or [CONTRIBUTOR].
+Extract REPOSITORY-LEVEL norms and review standards — not PR-specific bug fixes.
+
+For each rule, ask yourself:
+- Would a maintainer give this same feedback on a DIFFERENT PR touching different code?
+- Is this about HOW things should be done in this repo, not WHAT was wrong in this specific PR?
+- Does this reflect a technology choice, design pattern preference, or coding convention?
+
+Prioritize [MAINTAINER] comments — they represent the repo's official review standards.
 
 For each rule found, output a JSON object with these fields:
-- "rule_id": string like "PR{pr_num}_ERR001", "PR{pr_num}_STY002" (ERR=error/exception, STY=style, DSN=design, \
-PERF=performance, SEC=security, XFILE=cross-file consistency)
+- "rule_id": string like "PR{pr_num}_ERR001", "PR{pr_num}_STY002" \
+(ERR=error/exception, STY=style, DSN=design, PERF=performance, SEC=security, \
+XFILE=cross-file consistency, PREF=development preference, CONV=repo convention)
 - "title": short title (max 8 words)
 - "severity": "P0" | "P1" | "P2"  (P0=must fix, P1=should fix, P2=nice to have)
+- "scope": "repo_wide" | "pr_specific"
+- "rationale": one sentence explaining WHY this is a repo-level norm (or "" if pr_specific)
 - "detect": list of strings describing how to detect this issue (patterns, keywords, conditions)
 - "bad_example": short code snippet showing the bad pattern (or "" if not applicable)
 - "good_example": short code snippet showing the correct pattern (or "" if not applicable)
 - "fix": one-sentence fix suggestion
+
+Examples of repo-level norms (scope=repo_wide):
+- "Prefer X over Y for this type of task" (PREF)
+- "In scenario A, must use module B" (CONV)
+- "No shortcut implementations allowed" (DSN)
+- "Must use explicit dependency injection" (DSN)
+- "Must register config via config.add()" (CONV)
+- "Prefer readability over performance" (PREF)
 
 Pay special attention to cross-file consistency issues (use rule_id prefix "PR{pr_num}_XFILE"):
 - Interface changed but callers not updated
 - Symmetric methods (encode/decode, open/close) only one side updated
 - Registry/factory pattern: new entry added but docs/tests not updated
 - Abstract method added to base class but not implemented in subclasses
+
+Discard and do NOT extract:
+- One-off bug fixes that won't recur in other PRs
+- Typo corrections
+- PR-specific logic errors tied to a single function
 
 ''' + JSON_OUTPUT_INSTRUCTION + '''
 If no clear rules can be extracted: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
@@ -1654,15 +1678,26 @@ You are a code review expert. Below are rule cards extracted from multiple pull 
 Your task:
 1. Merge duplicate or highly similar rules into one (keep the most informative example and detect patterns).
 2. Remove rules that are too vague, trivial, or project-unspecific.
-3. Re-assign clean rule_ids using standard prefixes: ERR, STY, DSN, PERF, SEC, XFILE (e.g. ERR001, STY002).
+3. Re-assign clean rule_ids using standard prefixes: ERR, STY, DSN, PERF, SEC, XFILE, PREF, CONV \
+(e.g. ERR001, STY002, PREF001, CONV001).
 4. Assign a "category" to each rule from: error_handling, style, design, performance, security, \
-cross_file, concurrency, dependency, maintainability, type_safety.
+cross_file, concurrency, dependency, maintainability, type_safety, preference, convention.
 5. Sort by severity (P0 first), then by frequency/importance.
 6. Keep at most {max_rules} rules total.
+7. GENERALIZE: Lift PR-specific patterns to repo-level norms. If multiple PRs show the same \
+preference (e.g. "use module X"), merge into one repo-level rule with scope "repo_wide".
+8. FILTER: Remove rules that are only applicable to one specific PR or one specific function. \
+Keep only rules that a maintainer would enforce on ANY future PR.
+9. PRIORITIZE: Rules from [MAINTAINER] comments outweigh [CONTRIBUTOR] comments. \
+Rules with higher source_count (appeared in more PRs) get higher severity.
+10. For rules with scope "repo_wide", preserve the "rationale" field explaining WHY.
 
 For each final rule, output a JSON object with:
 - "rule_id": clean id like "ERR001" (no PR prefix)
 - "category": one of the categories above
+- "scope": "repo_wide" | "pr_specific"
+- "rationale": why this is a repo-level norm (for repo_wide rules)
+- "source_count": how many PRs this rule appeared in (integer, from input or estimated)
 - "title", "severity", "detect" (list), "bad_example", "good_example", "fix"
 
 ''' + JSON_OUTPUT_INSTRUCTION + '''
@@ -1677,6 +1712,7 @@ _RULE_CARD_TEMPLATE = '''\
 [Category] {category}
 [Title] {title}
 [Severity] {severity}
+[Scope] {scope}
 
 [Detect]
 {detect_bullets}
@@ -1688,31 +1724,109 @@ _RULE_CARD_TEMPLATE = '''\
 {good_example}
 
 [Auto Fix Suggestion]
-- {fix}'''
+- {fix}
+{rationale_line}'''
 
 def _format_rule_card(rule: Dict[str, Any]) -> str:
     detect = rule.get('detect') or []
     detect_bullets = '\n'.join(f'- {d}' for d in detect) if detect else '- (see bad example)'
+    rationale = rule.get('rationale', '')
+    rationale_line = f'\n[Rationale] {rationale}' if rationale else ''
     return _RULE_CARD_TEMPLATE.format(
         rule_id=rule.get('rule_id', 'RULE000'),
         category=rule.get('category', 'other'),
         title=rule.get('title', ''),
         severity=rule.get('severity', 'P2'),
+        scope=rule.get('scope', 'repo_wide'),
         detect_bullets=detect_bullets,
         bad_example=rule.get('bad_example') or '(n/a)',
         good_example=rule.get('good_example') or '(n/a)',
         fix=rule.get('fix') or '',
+        rationale_line=rationale_line,
     )
 
+_MAINTAINER_COMPRESS_THRESHOLD = 300
+_BOT_TEMPLATE_MIN_COMMENTS = 3
+_BOT_TEMPLATE_MIN_PREFIX_LEN = 20
+_BOT_TEMPLATE_MIN_SUFFIX_LEN = 15
+
+def _detect_bot_templates(  # noqa: C901
+    comments: List[Dict[str, Any]],
+    cache_path: Optional[str] = None,
+) -> Dict[str, Tuple[str, str]]:
+    by_user: Dict[str, List[int]] = {}
+    for i, c in enumerate(comments):
+        by_user.setdefault(c.get('user', ''), []).append(i)
+    templates: Dict[str, Tuple[str, str]] = {}
+    for user, indices in by_user.items():
+        if not user:
+            continue
+        cache_key = f'bot_template_{user}'
+        cached = _load_cache(cache_path, cache_key) if cache_path else None
+        if cached:
+            try:
+                t = json.loads(cached)
+                if isinstance(t, list) and len(t) == 2:
+                    templates[user] = (t[0], t[1])
+                    continue
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if len(indices) < _BOT_TEMPLATE_MIN_COMMENTS:
+            continue
+        bodies = [comments[i]['body'] for i in indices]
+        prefix = os.path.commonprefix(bodies)
+        nl = prefix.rfind('\n')
+        if nl > 0:
+            prefix = prefix[:nl + 1]
+        reversed_bodies = [b[::-1] for b in bodies]
+        suffix_rev = os.path.commonprefix(reversed_bodies)
+        nl = suffix_rev.rfind('\n')
+        if nl > 0:
+            suffix_rev = suffix_rev[:nl + 1]
+        suffix = suffix_rev[::-1]
+        strip_prefix = prefix if len(prefix.strip()) >= _BOT_TEMPLATE_MIN_PREFIX_LEN else ''
+        strip_suffix = suffix if len(suffix.strip()) >= _BOT_TEMPLATE_MIN_SUFFIX_LEN else ''
+        if strip_prefix or strip_suffix:
+            templates[user] = (strip_prefix, strip_suffix)
+            if cache_path:
+                _save_cache(cache_path, cache_key, json.dumps([strip_prefix, strip_suffix]))
+    return templates
+
+def _strip_bot_templates(
+    comments: List[Dict[str, Any]],
+    templates: Dict[str, Tuple[str, str]],
+) -> List[Dict[str, Any]]:
+    if not templates:
+        return comments
+    for c in comments:
+        user = c.get('user', '')
+        t = templates.get(user)
+        if not t:
+            continue
+        prefix, suffix = t
+        body = c['body']
+        if prefix and body.startswith(prefix):
+            body = body[len(prefix):]
+        if suffix and body.endswith(suffix):
+            body = body[:-len(suffix)]
+        c['body'] = body.strip()
+    return [c for c in comments if c.get('body')]
+
 def _compress_comments_for_pr(llm: Any, comments: List[Dict[str, Any]]) -> str:
-    indexed = [{'idx': i, 'body': c['body']} for i, c in enumerate(comments)]
-    long_items = [it for it in indexed if len(it['body']) > _COMMENT_COMPRESS_THRESHOLD]
+    indexed = [{'idx': i, 'body': c['body'], 'is_maintainer': c.get('is_maintainer', False)}
+               for i, c in enumerate(comments)]
+    long_items = [
+        it for it in indexed
+        if len(it['body']) > (_MAINTAINER_COMPRESS_THRESHOLD if it['is_maintainer'] else _COMMENT_COMPRESS_THRESHOLD)
+    ]
     summaries: Dict[int, str] = {}
     if long_items:
         batch_input = [{'idx': it['idx'], 'body': it['body'][:800]} for it in long_items]
         compress_prompt = (
             'Summarize each review comment into ONE sentence (max 20 words). '
-            'Preserve: what is wrong and why.\n'
+            'Preserve: (1) what is wrong and why, (2) what the reviewer PREFERS or REQUIRES as a general practice. '
+            'If the comment expresses a repo-level preference (e.g. "we always use X", "please use Y instead"), '
+            'preserve the preference verbatim even if it makes the summary slightly longer.\n'
             'Output a JSON array, each item: {"idx": <same>, "summary": "<one sentence>"}.\n'
             + JSON_OUTPUT_INSTRUCTION + '\n\n'
             + json.dumps(batch_input, ensure_ascii=False, indent=2)
@@ -1726,33 +1840,125 @@ def _compress_comments_for_pr(llm: Any, comments: List[Dict[str, Any]]) -> str:
             raise RuntimeError(f'Comment compression failed: {e}') from e
     lines = []
     for item in indexed:
-        body = summaries.get(item['idx']) or item['body'][:_COMMENT_COMPRESS_THRESHOLD]
+        threshold = _MAINTAINER_COMPRESS_THRESHOLD if item['is_maintainer'] else _COMMENT_COMPRESS_THRESHOLD
+        body = summaries.get(item['idx']) or item['body'][:threshold]
         user = comments[item['idx']].get('user', '')
-        lines.append(f'[{user}]: {body}' if user else body)
+        role = '[MAINTAINER]' if item['is_maintainer'] else '[CONTRIBUTOR]'
+        lines.append(f'{role} [{user}]: {body}' if user else f'{role} {body}')
     return '\n'.join(lines)
+
+_COMMENTS_CHUNK_SIZE = 8000
+_MAX_MAINTAINER_COMMENTS = 20
+
+def _truncate_comments_per_user(comments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_user: Dict[str, List[int]] = {}
+    for i, c in enumerate(comments):
+        by_user.setdefault(c.get('user', ''), []).append(i)
+    keep: set = set()
+    for _user, indices in by_user.items():
+        is_maint = any(comments[i].get('is_maintainer') for i in indices)
+        limit = _MAX_MAINTAINER_COMMENTS if is_maint else _MAX_COMMENTS_PER_USER
+        for i in indices[:limit]:
+            keep.add(i)
+    return [comments[i] for i in sorted(keep)]
 
 def _extract_rules_from_pr_comments(
     llm: Any, pr_num: int, comments: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     if not comments:
         return []
+    comments = _truncate_comments_per_user(comments)
     comments_text = _compress_comments_for_pr(llm, comments)
-    prompt = _EXTRACT_RULES_PROMPT.replace('{pr_num}', str(pr_num)).replace('{{comments_text}}', comments_text)
+    # split into chunks if too large
+    if len(comments_text) <= _COMMENTS_CHUNK_SIZE:
+        chunks = [comments_text]
+    else:
+        lines = comments_text.split('\n')
+        chunks, current = [], ''
+        for line in lines:
+            if current and len(current) + len(line) + 1 > _COMMENTS_CHUNK_SIZE:
+                chunks.append(current)
+                current = line
+            else:
+                current = current + '\n' + line if current else line
+        if current:
+            chunks.append(current)
+    all_rules: List[Dict[str, Any]] = []
+    for chunk in chunks:
+        prompt = _EXTRACT_RULES_PROMPT.replace('{pr_num}', str(pr_num)).replace('{{comments_text}}', chunk)
+        try:
+            result = _safe_llm_call(llm, prompt)
+            all_rules.extend(r for r in (result if isinstance(result, list) else []) if isinstance(r, dict))
+        except Exception as e:
+            raise RuntimeError(f'Rule extraction for PR #{pr_num} failed: {e}') from e
+    return all_rules
+
+_MERGE_CHUNK_SIZE = 40
+_MERGE_CHUNK_OUTPUT = 15
+
+def _normalize_title(title: str) -> str:
+    return re.sub(r'[^a-z0-9 ]', '', title.lower()).strip()
+
+def _deterministic_pre_dedup(rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for r in rules:
+        key = (_normalize_title(r.get('title', '')), r.get('category', 'other'))
+        groups.setdefault(str(key), []).append(r)
+    deduped = []
+    for group in groups.values():
+        base = dict(group[0])
+        base['source_count'] = base.get('source_count', 0) or len(group)
+        all_detect = []
+        for r in group:
+            all_detect.extend(r.get('detect') or [])
+        base['detect'] = list(dict.fromkeys(all_detect))[:10]
+        for field in ('bad_example', 'good_example', 'rationale'):
+            longest = max((r.get(field) or '' for r in group), key=len, default='')
+            if longest:
+                base[field] = longest
+        deduped.append(base)
+    return deduped
+
+def _llm_merge_chunk(llm: Any, chunk: List[Dict[str, Any]], max_output: int) -> List[Dict[str, Any]]:
+    rules_json = json.dumps(chunk, ensure_ascii=False, indent=2)
+    budget = max(8000, SINGLE_CALL_CONTEXT_BUDGET - 6000)
+    if len(rules_json) > budget:
+        rules_json = rules_json[:budget]
     try:
-        result = _safe_llm_call(llm, prompt)
+        result = _safe_llm_call(llm, _MERGE_RULES_PROMPT.format(
+            rules_json=rules_json, max_rules=max_output))
         return [r for r in (result if isinstance(result, list) else []) if isinstance(r, dict)]
     except Exception as e:
-        raise RuntimeError(f'Rule extraction for PR #{pr_num} failed: {e}') from e
+        lazyllm.LOG.warning(f'Chunk merge failed: {e}')
+        return chunk[:max_output]
 
 def _merge_rule_cards(llm: Any, all_rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     if not all_rules:
         return []
-    rules_json = json.dumps(all_rules, ensure_ascii=False, indent=2)[:max(8000, SINGLE_CALL_CONTEXT_BUDGET - 6000)]
-    try:
-        result = _safe_llm_call(llm, _MERGE_RULES_PROMPT.format(rules_json=rules_json, max_rules=_SPEC_MAX_RULES))
-        return [r for r in (result if isinstance(result, list) else []) if isinstance(r, dict)]
-    except Exception as e:
-        raise RuntimeError(f'Rule merge failed: {e}') from e
+    deduped = _deterministic_pre_dedup(all_rules)
+    if len(deduped) <= _MERGE_CHUNK_SIZE:
+        return _llm_merge_chunk(llm, deduped, _SPEC_MAX_RULES)
+    # split into chunks by category, then merge each chunk
+    by_cat: Dict[str, List[Dict[str, Any]]] = {}
+    for r in deduped:
+        by_cat.setdefault(r.get('category', 'other'), []).append(r)
+    chunks: List[List[Dict[str, Any]]] = []
+    current_chunk: List[Dict[str, Any]] = []
+    for cat_rules in by_cat.values():
+        cat_rules.sort(key=lambda r: {'P0': 0, 'P1': 1}.get(r.get('severity', 'P2'), 2))
+        for r in cat_rules:
+            current_chunk.append(r)
+            if len(current_chunk) >= _MERGE_CHUNK_SIZE:
+                chunks.append(current_chunk)
+                current_chunk = []
+    if current_chunk:
+        chunks.append(current_chunk)
+    intermediate: List[Dict[str, Any]] = []
+    for chunk in chunks:
+        intermediate.extend(_llm_merge_chunk(llm, chunk, _MERGE_CHUNK_OUTPUT))
+    if len(intermediate) <= _SPEC_MAX_RULES:
+        return intermediate
+    return _llm_merge_chunk(llm, intermediate, _SPEC_MAX_RULES)
 
 def _get_attr(obj: Any, attr: str) -> str:
     return (obj.get(attr) if isinstance(obj, dict) else getattr(obj, attr, '')) or ''
@@ -1766,7 +1972,10 @@ def _fetch_all_pr_comments(backend: LazyLLMGitBase, pr_num: int) -> List[Dict[st
                 body = _get_attr(c, 'body').strip()
                 user = _get_attr(c, 'user')
                 if body and not _BOT_USER_PATTERNS.search(user):
-                    comments.append({'user': user, 'body': body})
+                    raw = (c.get('raw') if isinstance(c, dict) else getattr(c, 'raw', {})) or {}
+                    assoc = (raw.get('author_association') or '').upper()
+                    is_maint = assoc in _MAINTAINER_ASSOCIATIONS
+                    comments.append({'user': user, 'body': body, 'is_maintainer': is_maint})
     except Exception as e:
         lazyllm.LOG.warning(f'PR #{pr_num} review comments fetch error: {e}')
     try:
@@ -1776,7 +1985,10 @@ def _fetch_all_pr_comments(backend: LazyLLMGitBase, pr_num: int) -> List[Dict[st
                 body = (c.get('body') or '').strip()
                 user = (c.get('user') or '').strip()
                 if body and not _BOT_USER_PATTERNS.search(user):
-                    comments.append({'user': user, 'body': body})
+                    raw = (c if isinstance(c, dict) else {})
+                    assoc = (raw.get('author_association') or '').upper()
+                    is_maint = assoc in _MAINTAINER_ASSOCIATIONS
+                    comments.append({'user': user, 'body': body, 'is_maintainer': is_maint})
     except Exception as e:
         lazyllm.LOG.warning(f'PR #{pr_num} issue comments fetch error: {e}')
     return comments
@@ -1785,6 +1997,7 @@ def _collect_rules_for_pr(
     backend: LazyLLMGitBase, llm: Any, pr: Any,
     idx: int, total: int, cache_path: Optional[str],
     prog: Any, all_rules: List[Dict[str, Any]],
+    bot_templates: Optional[Dict[str, Tuple[str, str]]] = None,
 ) -> None:
     pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
     if pr_num is None:
@@ -1803,6 +2016,11 @@ def _collect_rules_for_pr(
     comments = _fetch_all_pr_comments(backend, pr_num)
     if not comments:
         prog.update(f'[{idx}/{total}] PR #{pr_num} — 0 human comments → skipped')
+        return
+    if bot_templates:
+        comments = _strip_bot_templates(comments, bot_templates)
+    if not comments:
+        prog.update(f'[{idx}/{total}] PR #{pr_num} — 0 comments after template strip → skipped')
         return
     rules = _extract_rules_from_pr_comments(llm, pr_num, comments)
     if rules:
@@ -1886,7 +2104,10 @@ def _build_reply_chains(comments: list) -> List[List[dict]]:
 def _get_comment_field(c: Any, field: str) -> str:
     return ((c.get(field) if isinstance(c, dict) else getattr(c, field, '')) or '').strip()
 
-def _filter_high_confidence_chains(chains: List[List[Any]], pr_author: str = '') -> List[Dict[str, str]]:
+def _filter_high_confidence_chains(  # noqa: C901
+    chains: List[List[Any]], pr_author: str = '',
+    bot_templates: Optional[Dict[str, Tuple[str, str]]] = None,
+) -> List[Dict[str, str]]:
     results = []
     for chain in chains:
         root = chain[0]
@@ -1895,6 +2116,17 @@ def _filter_high_confidence_chains(chains: List[List[Any]], pr_author: str = '')
             continue
         bot_user = root_user
         root_body = _get_comment_field(root, 'body')
+        if not root_body:
+            continue
+        if bot_templates:
+            t = bot_templates.get(bot_user)
+            if t:
+                prefix, suffix = t
+                if prefix and root_body.startswith(prefix):
+                    root_body = root_body[len(prefix):]
+                if suffix and root_body.endswith(suffix):
+                    root_body = root_body[:-len(suffix)]
+                root_body = root_body.strip()
         if not root_body:
             continue
         found = False
@@ -1972,6 +2204,7 @@ def _collect_framework_conventions_for_pr(  # noqa: C901
     backend: LazyLLMGitBase, llm: Any, pr: Any,
     idx: int, total: int, cache_path: Optional[str],
     prog: Any, all_conventions: List[Dict[str, Any]],
+    bot_templates: Optional[Dict[str, Tuple[str, str]]] = None,
 ) -> None:
     pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
     if pr_num is None:
@@ -2000,7 +2233,7 @@ def _collect_framework_conventions_for_pr(  # noqa: C901
         return
     chains = _build_reply_chains(raw_comments)
     pr_author = _resolve_pr_author(pr)
-    high_conf = _filter_high_confidence_chains(chains, pr_author)
+    high_conf = _filter_high_confidence_chains(chains, pr_author, bot_templates=bot_templates)
     if not high_conf:
         _save_cache_multi(cache_path, {conv_cache_key: '[]', conv_ver_key: str(_SPEC_CACHE_VERSION)})
         return
@@ -2062,8 +2295,16 @@ def analyze_framework_conventions(
         return ''
     prog = _Progress('Conventions: extracting from bot-reply chains', len(target))
     all_conventions: List[Dict[str, Any]] = []
+    # reuse bot templates from cache (populated by analyze_historical_reviews)
+    sample_comments: List[Dict[str, Any]] = []
+    for pr in target[:min(5, len(target))]:
+        pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
+        if pr_num is not None:
+            sample_comments.extend(_fetch_all_pr_comments(backend, pr_num))
+    bot_templates = _detect_bot_templates(sample_comments, cache_path) if sample_comments else {}
     for idx, pr in enumerate(target, 1):
-        _collect_framework_conventions_for_pr(backend, llm, pr, idx, len(target), cache_path, prog, all_conventions)
+        _collect_framework_conventions_for_pr(backend, llm, pr, idx, len(target), cache_path, prog,
+                                              all_conventions, bot_templates=bot_templates)
     prog.done(f'{len(all_conventions)} conventions from {len(target)} PRs')
     if not all_conventions:
         _save_cache_multi(cache_path, {
@@ -2086,7 +2327,7 @@ def _merge_conventions_into_spec(review_spec: str, conventions: str) -> str:
     spec_obj['conventions'] = conventions
     return json.dumps(spec_obj, ensure_ascii=False)
 
-def analyze_historical_reviews(
+def analyze_historical_reviews(  # noqa: C901
     backend: LazyLLMGitBase, llm: Any, cache_path: Optional[str] = None, max_prs: int = 200
 ) -> str:
     cached = _load_cache(cache_path, 'review_spec')
@@ -2123,8 +2364,17 @@ def analyze_historical_reviews(
 
     prog = _Progress('Spec: extracting rules from historical PRs', total)
     all_rules: List[Dict[str, Any]] = []
+    # detect bot comment templates from first few PRs for stripping
+    _TEMPLATE_SAMPLE_SIZE = min(5, total)
+    sample_comments: List[Dict[str, Any]] = []
+    for pr in target[:_TEMPLATE_SAMPLE_SIZE]:
+        pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
+        if pr_num is not None:
+            sample_comments.extend(_fetch_all_pr_comments(backend, pr_num))
+    bot_templates = _detect_bot_templates(sample_comments, cache_path) if sample_comments else {}
     for idx, pr in enumerate(target, 1):
-        _collect_rules_for_pr(backend, llm, pr, idx, total, cache_path, prog, all_rules)
+        _collect_rules_for_pr(backend, llm, pr, idx, total, cache_path, prog, all_rules,
+                              bot_templates=bot_templates)
     prog.done(f'{len(all_rules)} raw rules from {total} PRs, merging...')
 
     if not all_rules:
@@ -2144,8 +2394,28 @@ def analyze_historical_reviews(
         for r in merged_rules
     ]
     details = {r.get('rule_id', f'R{i:03d}'): r for i, r in enumerate(merged_rules)}
+    # build repo_norms from repo_wide rules
+    repo_wide = [r for r in merged_rules if r.get('scope') == 'repo_wide']
+    preferences, mandatory, forbidden = [], [], []
+    for r in repo_wide:
+        entry = {
+            'norm': r.get('title', ''),
+            'rationale': r.get('rationale', ''),
+            'source_count': r.get('source_count', 1),
+            'rule_id': r.get('rule_id', ''),
+        }
+        fix = (r.get('fix') or '').lower()
+        title = (r.get('title') or '').lower()
+        if any(kw in title or kw in fix for kw in ('must', 'require', 'always', 'mandatory')):
+            mandatory.append(entry)
+        elif any(kw in title or kw in fix for kw in ('never', 'forbid', 'prohibit', 'do not', 'disallow')):
+            forbidden.append(entry)
+        else:
+            preferences.append(entry)
+    repo_norms = {'preferences': preferences, 'mandatory': mandatory, 'forbidden': forbidden}
     review_spec = json.dumps(
-        {'summaries': summaries, 'categories': categories, 'details': details}, ensure_ascii=False,
+        {'summaries': summaries, 'categories': categories, 'details': details, 'repo_norms': repo_norms},
+        ensure_ascii=False,
     ) or '(review spec analysis unavailable)'
     _save_cache_multi(cache_path, {
         'review_spec': review_spec, 'review_spec_max_prs': str(max_prs),
@@ -2217,6 +2487,16 @@ def _lookup_relevant_rules(review_spec: str, diff_content: str, max_detail: int 
     conventions = spec_obj.get('conventions', '')
     if conventions:
         parts.append('## Conventions & AI False Positives\n' + conventions)
+    repo_norms = spec_obj.get('repo_norms', {})
+    norm_lines = []
+    for entry in repo_norms.get('mandatory', []):
+        norm_lines.append(f'- [MUST] {entry.get("norm", "")}')
+    for entry in repo_norms.get('forbidden', []):
+        norm_lines.append(f'- [NEVER] {entry.get("norm", "")}')
+    for entry in repo_norms.get('preferences', []):
+        norm_lines.append(f'- [PREFER] {entry.get("norm", "")}')
+    if norm_lines:
+        parts.append('## Repo-Level Norms\n' + '\n'.join(norm_lines))
     return '\n\n'.join(parts) if parts else '(no matching rules found)'
 
 _PRE_ROUND_PROMPT_TMPL = '''\
