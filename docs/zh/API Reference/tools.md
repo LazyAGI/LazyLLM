@@ -535,5 +535,5 @@
     exclude-members:
 
 ::: lazyllm.tools.rag.QueryEnhACProcessor
-    members:
+    members: __call__, get_matches, update_data_source, update_discriminator
     exclude-members:

@@ -118,7 +118,8 @@ class _LLMFilter:
 
 
 def _is_bert_deploy(module: TrainableModule) -> bool:
-    return module._deploy_type is lazyllm.deploy.BertDeploy
+    deploy_type = getattr(module, '_deploy_type', None)
+    return deploy_type is not None and deploy_type is lazyllm.deploy.BertDeploy
 
 
 class _BERTFilter:
@@ -269,10 +270,10 @@ class QueryEnhACProcessor:
                 automaton.add_word(str(word), (cluster_id, str(word)))
             automaton.make_automaton()
             self.automaton = automaton
+            LOG.info(f'AC automaton built, vocabulary size: {len(self.word_to_cluster)}')
         else:
             self.automaton = None
-
-        LOG.info(f'AC automaton built, vocabulary size: {len(self.word_to_cluster)}')
+            LOG.debug('AC automaton: vocabulary is empty, automaton not built')
 
     def update_data_source(self, data_source):
         self._data_source = data_source
@@ -366,4 +367,13 @@ class QueryEnhACProcessor:
     def __call__(self, queries: Union[str, List[str]]) -> Union[str, List[str]]:
         if isinstance(queries, str):
             return self._enhance_single(queries)
-        return [self._enhance_single(q) for q in queries]
+        if isinstance(queries, list):
+            for i, q in enumerate(queries):
+                if not isinstance(q, str):
+                    raise TypeError(
+                        f'QueryEnhACProcessor: queries[{i}] must be str, got {type(q).__name__}'
+                    )
+            return [self._enhance_single(q) for q in queries]
+        raise TypeError(
+            f'QueryEnhACProcessor: queries must be str or List[str], got {type(queries).__name__}'
+        )

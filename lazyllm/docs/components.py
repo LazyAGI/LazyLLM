@@ -1786,7 +1786,7 @@ add_chinese_doc('deploy.BertDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，用于部署 HuggingFace 风格的**序列分类**（sequence classification）模型。服务通过 ``RelayServer`` 提供 HTTP ``/generate`` 接口，无独立 CLI；用法与 ``StableDiffusionDeploy`` 类似：对实例调用 ``__call__(finetuned_model, base_model)`` 得到可启动的 Relay 服务。
 
 Args:
-    launcher (Optional[lazyllm.launcher]): 启动器实例，默认为 ``None``。
+    launcher (Optional[LazyLLMLaunchersBase]): 启动器实例，默认为 ``None``。
     log_path (Optional[str]): 日志文件路径，默认为 ``None``。
     trust_remote_code (bool): 加载 tokenizer / 模型时是否 ``trust_remote_code``，默认为 ``True``。
     port (Optional[int]): 服务监听端口，默认为 ``None`` 时由框架分配。
@@ -1807,7 +1807,7 @@ add_english_doc('deploy.BertDeploy', '''\
 This class is a subclass of ``LazyLLMDeployBase``, used to deploy HuggingFace-style **sequence classification** models. The service exposes an HTTP ``/generate`` endpoint via ``RelayServer`` (no standalone CLI). Usage mirrors ``StableDiffusionDeploy``: calling the instance ``__call__(finetuned_model, base_model)`` returns a launchable Relay service.
 
 Args:
-    launcher (Optional[lazyllm.launcher]): Launcher instance, defaults to ``None``.
+    launcher (Optional[LazyLLMLaunchersBase]): Launcher instance, defaults to ``None``.
     log_path (Optional[str]): Log file path, defaults to ``None``.
     trust_remote_code (bool): Whether to pass ``trust_remote_code`` when loading tokenizer/model, defaults to ``True``.
     port (Optional[int]): Listen port; ``None`` lets the framework assign one.
@@ -1829,7 +1829,12 @@ add_example('deploy.BertDeploy', '''\
 >>> m = lazyllm.TrainableModule('xlm-roberta-base', use_model_map=False).deploy_method(
 ...     lazyllm.deploy.BertDeploy, port=36001, max_length=128,
 ... ).start()
->>> out = m('This is a test.', text_b='')
+>>> # Two-sequence input: candidate span + surrounding context.
+>>> pair_out = m('candidate_span', text_b='This is the surrounding context.')
+>>> print(pair_out)
+>>> # Single-sequence input: either omit ``text_b`` or pass an empty string.
+>>> single_out = m('This is a single sequence.')
+>>> print(single_out)
 ''')
 
 add_chinese_doc('deploy.relay.base.FastapiApp.get', """\

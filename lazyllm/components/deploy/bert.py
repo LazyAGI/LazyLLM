@@ -6,6 +6,7 @@ from lazyllm import LOG, LazyLLMLaunchersBase
 from lazyllm.thirdparty import torch, transformers as tf
 
 from .base import LazyLLMDeployBase
+from .relay import RelayServer
 
 
 class _BertSequenceClassificationService:
@@ -47,9 +48,6 @@ class _BertSequenceClassificationService:
 
     def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
         lazyllm.call_once(self._init_flag, self._load_model)
-        # TrainableModule may assign the whole JSON body to ``text_a``; flatten once.
-        if isinstance(data.get('text_a'), dict):
-            data = {**data, **data['text_a']}
         ta, tb = data.get('text_a'), data.get('text_b')
         text_a = ta.strip() if isinstance(ta, str) else ''
         text_b = tb.strip() if isinstance(tb, str) else ''
@@ -147,8 +145,7 @@ class BertDeploy(LazyLLMDeployBase):
                 os.path.isdir(finetuned_model)
                 and any(
                     f.endswith(('.bin', '.safetensors', '.pt'))
-                    for _, _, filenames in os.walk(finetuned_model)
-                    for f in filenames
+                    for f in os.listdir(finetuned_model)
                 )
             )
             if valid_local:
@@ -160,6 +157,10 @@ class BertDeploy(LazyLLMDeployBase):
                 )
                 model_path = base_model
             else:
+                LOG.info(
+                    f'Bert deploy: finetuned_model({finetuned_model}) is not a valid local '
+                    f'checkpoint and no base_model provided; treating it as a remote model id.'
+                )
                 model_path = finetuned_model
 
         if not model_path:
@@ -171,7 +172,7 @@ class BertDeploy(LazyLLMDeployBase):
             max_length=self._max_length,
             device=self._device,
         )
-        return lazyllm.deploy.RelayServer(
+        return RelayServer(
             port=self._port,
             func=func,
             launcher=self._launcher,

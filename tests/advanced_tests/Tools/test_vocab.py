@@ -111,7 +111,8 @@ class TestQueryEnhACProcessor(object):
         model, _ = _mock_llm_discriminator([True])
         proc = QueryEnhACProcessor(data_source=ds, discriminator=model)
         out = proc(f'使用{token}测试')
-        assert token in out
+        # Only one word in the cluster (no synonyms yet) → original query unchanged.
+        assert out == f'使用{token}测试'
         rows.append({'cluster_id': 'k', 'word': 'callable_alias'})
         proc.update_data_source(ds)
         out2 = proc(f'使用{token}测试')
@@ -217,7 +218,9 @@ def _mock_bert_module_chain(*call_returns):
         only = call_returns[0]
         if isinstance(only, list):
             terminal.side_effect = only
-        elif isinstance(only, BaseException):
+        elif isinstance(only, BaseException) or (
+            isinstance(only, type) and issubclass(only, BaseException)
+        ):
             terminal.side_effect = only
         else:
             terminal.return_value = only
@@ -249,6 +252,9 @@ class TestBERTFilter(object):
         out = f('querytext', matches)
         assert len(out) == 1 and out[0]['word'] == 'a'
         assert terminal.call_count == 2
+        # Verify ``text_b`` keyword argument is forwarded to the underlying module.
+        for call in terminal.call_args_list:
+            assert 'text_b' in call.kwargs, f'text_b missing from BERT call kwargs: {call}'
 
     @pytest.mark.run_on_change('lazyllm/tools/rag/query_enh_ac.py')
     def test_inference_failure_drops_match_after_retries(self):
