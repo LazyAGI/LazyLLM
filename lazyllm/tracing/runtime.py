@@ -352,3 +352,77 @@ def set_span_error(handle, exc: Exception):
 
 def finish_span(handle):
     _runtime.finish_span(handle)
+
+
+import functools
+
+def enable_trace(func=None, *args, **kwargs):
+    """
+    Explicitly enable and configure tracing for a pipeline or function.
+    Can be used as a wrapper or a decorator.
+
+    Usage as a wrapper:
+        enable_trace(pipeline, input_data, trace_id="123", session_id="abc")
+
+    Usage as a decorator:
+        @enable_trace(session_id="abc")
+        def my_flow(query):
+            ...
+    """
+    if func is None:
+        def decorator(f):
+            @functools.wraps(f)
+            def wrapper(*inner_args, **inner_kwargs):
+                # Trace kwargs are captured in the outer `kwargs` closure
+                merged_kwargs = {**inner_kwargs, **kwargs}
+                return enable_trace(f, *inner_args, **merged_kwargs)
+            return wrapper
+        return decorator
+
+    trace_id = kwargs.pop('trace_id', None)
+    parent_span_id = kwargs.pop('parent_span_id', None)
+    session_id = kwargs.pop('session_id', None)
+    user_id = kwargs.pop('user_id', None)
+    request_tags = kwargs.pop('request_tags', None)
+    module_trace = kwargs.pop('module_trace', None)
+
+    old_ctx = get_trace_context()
+    new_ctx_data = old_ctx.to_dict()
+
+    # Clear inherited trace linkage unless explicitly provided, enforcing a new root trace.
+    new_ctx_data['trace_id'] = trace_id
+    new_ctx_data['parent_span_id'] = parent_span_id
+    
+    if session_id is not None:
+        new_ctx_data['session_id'] = session_id
+    if user_id is not None:
+        new_ctx_data['user_id'] = user_id
+        
+    # Request-specific fields should not be inherited implicitly.
+    new_ctx_data['request_tags'] = request_tags if request_tags is not None else []
+    new_ctx_data['module_trace'] = module_trace if module_trace is not None else None
+    
+    new_ctx_data['enabled'] = True
+
+    new_ctx = LazyTraceContext.from_dict(new_ctx_data)
+    set_trace_context(new_ctx)
+
+    is_lazyllm_component = hasattr(func, '_module_id') or hasattr(func, '_flow_id')
+
+    span = None
+    if not is_lazyllm_component:
+        span = start_span(span_kind='callable', target=func, args=args, kwargs=kwargs)
+
+    try:
+        result = func(*args, **kwargs)
+        if span:
+            set_span_output(span, result)
+        return result
+    except Exception as e:
+        if span:
+            set_span_error(span, e)
+        raise
+    finally:
+        if span:
+            finish_span(span)
+        set_trace_context(old_ctx)
