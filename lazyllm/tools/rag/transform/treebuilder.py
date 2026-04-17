@@ -2,7 +2,7 @@ import re
 from typing import Any, List, Optional, Callable
 
 from .base import NodeTransform, RuleSet
-from ..doc_node import DocNode, RichDocNode
+from ..doc_node import DocNode, RichDocNode, TreeDocNode
 
 def _default_get_level(node: DocNode) -> int:
     try:
@@ -62,20 +62,18 @@ class TreeBuilderParser(NodeTransform):
         if not nodes:
             return []
 
-        for node in nodes:
-            if 'children' in node.metadata:
-                node.metadata.pop('children')
-
-        root = DocNode(text='root', metadata={'text_level': 0})
+        root = TreeDocNode(text='root', metadata={'text_level': 0})
         stack = [root]
+        normalized_nodes: List[TreeDocNode] = []
 
         for node in nodes:
+            normalized_nodes.append(TreeDocNode.from_doc_node(node))
+
+        for node in normalized_nodes:
             level = self._get_level(node)
 
             if level == 0:
-                if 'children' not in stack[-1].metadata:
-                    stack[-1].metadata['children'] = []
-                stack[-1].metadata['children'].append(node)
+                stack[-1].add_child(node)
                 continue
 
             target_parent_index = -1
@@ -93,17 +91,13 @@ class TreeBuilderParser(NodeTransform):
                 while len(stack) - 1 > target_parent_index:
                     stack.pop()
 
-                if 'children' not in stack[-1].metadata:
-                    stack[-1].metadata['children'] = []
-                stack[-1].metadata['children'].append(node)
+                stack[-1].add_child(node)
                 stack.append(node)
             else:
                 while len(stack) > 1:
                     stack.pop()
 
-                if 'children' not in stack[0].metadata:
-                    stack[0].metadata['children'] = []
-                stack[0].metadata['children'].append(node)
+                stack[0].add_child(node)
                 stack.append(node)
 
-        return root.metadata.get('children', [])
+        return root.direct_children_in_tree

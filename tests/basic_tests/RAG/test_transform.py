@@ -1639,7 +1639,7 @@ class TestTreeBuilderParser:
             DocNode(text='Level 2', metadata={'level': 2}),
         ]
         result = parser.forward(RichDocNode(nodes=nodes))
-        assert len(result) >= 1
+        assert len(result) == len(nodes)
 
 
 class TestTreeFixerParser:

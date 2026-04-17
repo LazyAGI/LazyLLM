@@ -422,8 +422,8 @@ class _DocumentStore(object):
             doc_id=node.global_metadata.get(RAG_DOC_ID),
             group=node._group,
             content=node.text,
-            meta=node.metadata,
-            global_meta=node.global_metadata,
+            meta=dict(node.metadata),
+            global_meta=dict(node.global_metadata),
             number=node.metadata.get('lazyllm_store_num', 0),
             kb_id=node.global_metadata.get(RAG_KB_ID, DEFAULT_KB_ID),
             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
@@ -474,6 +474,7 @@ class _DocumentStore(object):
             node = DocNode(**common_parm, content=data.get('content', ''))
         node.excluded_embed_metadata_keys = data.get('excluded_embed_metadata_keys', [])
         node.excluded_llm_metadata_keys = data.get('excluded_llm_metadata_keys', [])
+        node._copy_source = data.get('copy_source', None)
         if 'embedding' in data:
             node.embedding = {k: v for k, v in data.get('embedding', {}).items()}
         return node.with_sim_score(score) if score else node

@@ -1,6 +1,10 @@
 #include "lazyllm.hpp"
 #include <iostream>
 
+#ifdef _WIN32
+#define strdup _strdup
+#endif
+
 namespace py = pybind11;
 
 void addDocStr(py::object obj, std::string docs) {
@@ -28,6 +32,6 @@ void addDocStr(py::object obj, std::string docs) {
     }
 }
 
-void exportDoc(py::module& m) {
+void exportAddDocStr(py::module& m) {
     m.def("add_doc", &addDocStr, "Add docstring to a function or method", py::arg("obj"), py::arg("docs"));
 }

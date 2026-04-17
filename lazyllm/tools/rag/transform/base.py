@@ -15,6 +15,7 @@ import os
 import threading
 from lazyllm.thirdparty import tiktoken
 from lazyllm import config, ModuleBase
+from lazyllm.cpp import cpp_proxy
 from pathlib import Path
 import inspect
 from lazyllm.thirdparty import nltk
@@ -76,7 +77,7 @@ class NodeTransform(ModuleBase):
             )
         return current
 
-    def batch_forward(
+    def batch_forward(  # noqa: C901
         self, documents: Union[DocNode, List[DocNode]], node_group: str, ref_path: List[str] = None, **kwargs
     ) -> List[DocNode]:
         documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
@@ -214,6 +215,7 @@ _tiktoken_env_lock = threading.Lock()
 
 _UNSET = object()
 
+@cpp_proxy(method_fallbacks={'split_text': ('_split', '_merge', '_get_splits_by_fns')})
 class _TextSplitterBase(NodeTransform):
     _default_params = {}
     _default_params_lock = threading.RLock()

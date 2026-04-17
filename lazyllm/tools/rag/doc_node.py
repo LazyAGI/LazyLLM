@@ -3,6 +3,7 @@ from enum import Enum, auto
 from collections import defaultdict
 from lazyllm.thirdparty import PIL
 from lazyllm import JsonFormatter, config, reset_on_pickle, Mode, LOG
+from lazyllm.cpp import cpp_class
 from lazyllm.components.utils.file_operate import _image_to_base64
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import uuid
@@ -22,8 +23,54 @@ class MetadataMode(str, Enum):
     NONE = auto()
 
 
+@cpp_class
+class DocNodeCore:
+    def __init__(
+        self, text: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None, uid: Optional[str] = None
+    ):
+        self._uid: str = uid or str(uuid.uuid4())
+        self._text: str = text or ''
+        self._metadata: Dict[str, Any] = metadata or {}
+
+        # Metadata keys that are excluded from text for the embed model.
+        self._excluded_embed_metadata_keys: List[str] = []
+        # Metadata keys that are excluded from text for the LLM.
+        self._excluded_llm_metadata_keys: List[str] = []
+
+    @property
+    def uid(self) -> str:
+        return self._uid
+
+    def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
+        '''Metadata info string.'''
+        if mode == MetadataMode.NONE:
+            return ''
+
+        metadata_keys = set(self._metadata.keys())
+        if mode == MetadataMode.LLM:
+            for key in self._excluded_llm_metadata_keys:
+                if key in metadata_keys:
+                    metadata_keys.remove(key)
+        elif mode == MetadataMode.EMBED:
+            for key in self._excluded_embed_metadata_keys:
+                if key in metadata_keys:
+                    metadata_keys.remove(key)
+
+        return '\n'.join([f'{key}: {self._metadata[key]}' for key in metadata_keys])
+
+    def __copy__(self):
+        node = self.__class__.__new__(self.__class__)
+        node.__dict__.update(self.__dict__.copy())
+        return node
+
+    def __deepcopy__(self, memo):
+        node = self.__class__.__new__(self.__class__)
+        node.__dict__.update(copy.deepcopy(self.__dict__, memo))
+        return node
+
+
 @reset_on_pickle(('_lock', threading.Lock))
-class DocNode:
+class DocNode(DocNodeCore):
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
                  parent: Optional[Union[str, 'DocNode']] = None, store=None,
@@ -32,18 +79,13 @@ class DocNode:
         if text and content:
             raise ValueError('`text` and `content` cannot be set at the same time.')
         if not content and not text: content = ''
-        self._uid: str = uid if uid else str(uuid.uuid4())
         self._content: Optional[Union[str, List[Any]]] = content if content is not None else text
+        text_for_base = self._content if isinstance(self._content, str) else (text or '')
+        super().__init__(text=text_for_base, metadata=metadata, uid=uid)
         self._group: Optional[str] = group
         self._embedding: Optional[Dict[str, List[float]]] = embedding or {}
-        # metadata: the chunk's meta
-        self._metadata: Dict[str, Any] = metadata or {}
         # Global metadata: the file's global metadata (higher level)
         self._global_metadata = global_metadata or {}
-        # Metadata keys that are excluded from text for the embed model.
-        self._excluded_embed_metadata_keys: List[str] = []
-        # Metadata keys that are excluded from text for the LLM.
-        self._excluded_llm_metadata_keys: List[str] = []
         # NOTE: node in parent should be id when stored in db (use store to recover): parent: 'uid'
         self._parent: Optional[Union[str, 'DocNode']] = parent
         self._children: Dict[str, List['DocNode']] = defaultdict(list)
@@ -51,15 +93,11 @@ class DocNode:
         self._store = store
         self._node_groups: Dict[str, Dict] = node_groups or {}
         self._lock = threading.Lock()
-        self._embedding_state = set()
+        self.embedding_state = set()
         self.relevance_score = None
         self.similarity_score = None
         self._content_hash: Optional[str] = None
         self._copy_source: Optional[dict] = None
-
-    @property
-    def uid(self) -> str:
-        return self._uid
 
     @property
     def group(self) -> str:
@@ -92,6 +130,12 @@ class DocNode:
             return '\n'.join(self._content)
         else:
             raise TypeError(f'content type "{type(self._content)}" is neither a str nor a list')
+
+    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
+        metadata_str = self.get_metadata_str(metadata_mode).strip()
+        if not metadata_str:
+            return self.text if self.text else ''
+        return f'{metadata_str}\n\n{self.text}'.strip()
 
     @property
     def content_hash(self) -> str:
@@ -238,7 +282,7 @@ class DocNode:
 
     def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
-        assert len(embed_keys) > 0, 'The ebmed_keys to be checked must be passed in.'
+        assert len(embed_keys) > 0, 'The embed_keys to be checked must be passed in.'
         if self.embedding is None: return embed_keys
         return [k for k in embed_keys if k not in self.embedding]
 
@@ -257,35 +301,12 @@ class DocNode:
         while True:
             with self._lock:
                 if not self.has_missing_embedding(embed_key):
-                    self._embedding_state.discard(embed_key)
+                    self.embedding_state.discard(embed_key)
                     break
             time.sleep(1)
 
     def get_content(self) -> str:
         return self.get_text(MetadataMode.LLM)
-
-    def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
-        '''Metadata info string.'''
-        if mode == MetadataMode.NONE:
-            return ''
-
-        metadata_keys = set(self.metadata.keys())
-        if mode == MetadataMode.LLM:
-            for key in self.excluded_llm_metadata_keys:
-                if key in metadata_keys:
-                    metadata_keys.remove(key)
-        elif mode == MetadataMode.EMBED:
-            for key in self.excluded_embed_metadata_keys:
-                if key in metadata_keys:
-                    metadata_keys.remove(key)
-
-        return '\n'.join([f'{key}: {self.metadata[key]}' for key in metadata_keys])
-
-    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
-        metadata_str = self.get_metadata_str(metadata_mode).strip()
-        if not metadata_str:
-            return self.text if self.text else ''
-        return f'{metadata_str}\n\n{self.text}'.strip()
 
     def to_dict(self) -> Dict:
         return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)
@@ -293,12 +314,13 @@ class DocNode:
     def copy(self, global_metadata: dict = None, metadata: dict = None,
              preserve_uid: bool = False) -> 'DocNode':
         node = copy.copy(self)
-        node._copy_source = {'uid': self.uid, RAG_KB_ID: self.global_metadata.get(RAG_KB_ID),
-                             RAG_DOC_ID: self.global_metadata.get(RAG_DOC_ID)}
         if not preserve_uid:
             node._uid = str(uuid.uuid4())
         node._metadata = dict(self._metadata or {})
         node._global_metadata = dict(self._global_metadata or {})
+
+        node._copy_source = {'uid': self.uid, RAG_KB_ID: self.global_metadata.get(RAG_KB_ID),
+                             RAG_DOC_ID: self.global_metadata.get(RAG_DOC_ID)}
         if metadata:
             node._metadata.update(metadata)
         if global_metadata:
@@ -367,7 +389,7 @@ class ImageDocNode(DocNode):
     def image_path(self):
         return self._image_path
 
-    def get_text(self) -> str:  # Disable access to self._content
+    def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:  # Disable access to self._content
         return self._image_path
 
     @property
@@ -430,8 +452,8 @@ class RichDocNode(DocNode):
         def _serialize_node(node: DocNode) -> str:
             formatted_node = {
                 'content': node.text,
-                'metadata': node.metadata,
-                'global_metadata': node.global_metadata,
+                'metadata': dict(node.metadata),
+                'global_metadata': dict(node.global_metadata),
                 'excluded_embed_metadata_keys': node.excluded_embed_metadata_keys,
                 'excluded_llm_metadata_keys': node.excluded_llm_metadata_keys,
             }
@@ -451,3 +473,25 @@ class RichDocNode(DocNode):
             return node
 
         return [_deserialize_node(content) for content in json.loads(nodes_content)]
+
+
+class TreeDocNode(DocNode):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.direct_children_in_tree: List[DocNode] = []
+
+    @classmethod
+    def from_doc_node(cls, node: DocNode) -> 'TreeDocNode':
+        if isinstance(node, cls):
+            return node
+        tree_node = node.copy(preserve_uid=True)
+        tree_node.__class__ = cls
+        tree_node.direct_children_in_tree = []
+        return tree_node
+
+    def add_child(self, child: 'TreeDocNode') -> None:
+        self.direct_children_in_tree.append(child)
+
+    @property
+    def metadata(self) -> Dict:
+        return {**self._metadata, 'direct_children_in_tree': self.direct_children_in_tree}

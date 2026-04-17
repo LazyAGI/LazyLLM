@@ -1,7 +1,7 @@
 import re
 from typing import List, Optional, Tuple, Any
 
-from ..doc_node import DocNode, RichDocNode
+from ..doc_node import DocNode, RichDocNode, TreeDocNode
 from .base import NodeTransform, RuleSet, _Context
 
 
@@ -59,14 +59,22 @@ class TreeFixerParser(NodeTransform):
         return self._result
 
     def _flatten_nodes(self, nodes: List[DocNode]) -> List[DocNode]:
+        def _as_tree_node(node: DocNode) -> TreeDocNode:
+            return TreeDocNode.from_doc_node(node)
+
         result = []
         for node in nodes:
-            children = node.metadata.pop('children', [])
-            node.metadata['children'] = []
-            result.append(node)
+            tree_node = _as_tree_node(node)
+            children = self._resolve_tree_nodes(tree_node)
+            result.append(tree_node)
             if children:
                 result.extend(self._flatten_nodes(children))
         return result
+
+    def _resolve_tree_nodes(self, node: DocNode) -> List[DocNode]:
+        if isinstance(node, TreeDocNode):
+            return list(node.direct_children_in_tree)
+        return []
 
     def _extract_numbering(self, node: DocNode) -> Tuple[Optional[str], Optional[Any]]:
         if not node or not node.text:
@@ -149,7 +157,7 @@ class TreeFixerParser(NodeTransform):
             orig = node.metadata.get('text_level', 1)
             if orig >= 1:
                 node.metadata['text_level'] = level
-            children = node.metadata.get('children', [])
+            children = self._resolve_tree_nodes(node)
             if children:
                 self._update_text_levels(children, level + 1)
 
@@ -272,8 +280,6 @@ class TreeFixerParser(NodeTransform):
     def _add_child(self, parent: DocNode, child: DocNode) -> None:
         if parent is None or child is None:
             return
-        if not getattr(parent, 'metadata', None) or parent.metadata is None:
-            parent.metadata = {}
-        if 'children' not in parent.metadata:
-            parent.metadata['children'] = []
-        parent.metadata['children'].append(child)
+        tree_parent = TreeDocNode.from_doc_node(parent)
+        tree_child = TreeDocNode.from_doc_node(child)
+        tree_parent.add_child(tree_child)
