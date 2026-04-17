@@ -1,75 +1,47 @@
-import copy
 from itertools import groupby
 import json
 import os
 import requests
 import re
 import random
-from typing import Tuple, List, Dict, Union, Any, Optional, TypedDict
+from typing import Tuple, List, Dict, Union, Any, Optional
 from urllib.parse import urljoin
 import time
 from operator import itemgetter as itemget
 
 import lazyllm
 from lazyllm import globals, pipeline
-from lazyllm.components.prompter import PrompterBase
-from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ....servermodule import LLMBase
-from .utils import LazyLLMOnlineBase
-
-class StaticParams(TypedDict, total=False):
-    temperature: float
-    top_p: float
-    top_k: int
-    max_tokens: int
-    frequency_penalty: float  # Note some online api use 'repetition_penalty'
-
+from ....servermodule import LLMBase, StaticParams
+from .utils import LazyLLMOnlineBase, resolve_online_params
 
 class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_PREFIX = []
     NO_PROXY = True
     __lazyllm_registry_key__ = LLMType.CHAT
+    _message_format = 'openai'
 
     def __init__(self, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
                  static_params: Optional[StaticParams] = None, type: Optional[str] = None, **kwargs):
         if any([model_name.startswith(prefix) for prefix in self.VLM_MODEL_PREFIX]):
-            if type is None: type = 'VLM'
-            else: assert type == 'VLM', f'model_name {model_name} is a VLM model, but type is {type}'
+            if type is None: type = LLMType.VLM
+            else: assert type == LLMType.VLM, f'model_name {model_name} is a VLM model, but type is {type}'
         super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
-        LLMBase.__init__(self, stream=stream, type=type)
+        LLMBase.__init__(self, stream=stream, type=type, static_params=static_params)
         self.__base_url = base_url
         self._model_name = model_name
         self.trainable_models = self.TRAINABLE_MODEL_LIST
         self._is_trained = False
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
-        self._static_params = static_params or {}
-
-    @property
-    def static_params(self) -> StaticParams:
-        return self._static_params
-
-    @static_params.setter
-    def static_params(self, value: StaticParams):
-        if not isinstance(value, dict):
-            raise TypeError('static_params must be a dict (TypedDict)')
-        self._static_params = value
 
     def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
         super().prompt('' if prompt is None else prompt, history=history)
         self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
-
-    def share(self, prompt: Optional[Union[str, dict, PrompterBase]] = None, format: Optional[FormatterBase] = None,
-              stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None,
-              copy_static_params: bool = False):
-        new = super().share(prompt, format, stream, history)
-        if copy_static_params: new._static_params = copy.deepcopy(self._static_params)
-        return new
 
     def _get_system_prompt(self):
         raise NotImplementedError('_get_system_prompt is not implemented.')
@@ -98,6 +70,9 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def _convert_msg_format(self, msg: Dict[str, Any]):
         return msg
+
+    def _prepare_request_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return data
 
     def _str_to_json(self, msg: str, stream_output: bool):
         if isinstance(msg, bytes):
@@ -150,17 +125,17 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         return src[-1]
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
-                tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None,
-                url: str = None, model: str = None, **kw):
-        '''LLM inference interface'''
-        # TODO(dengyuang): if current forward set stream_output = False but self._stream = True, will use stream = True
-        stream_output = stream_output or self._stream
+                tools: List[Dict[str, Any]] = None, stream_output: bool = None, stream: bool = None,
+                lazyllm_files=None, url: str = None, model: str = None, **kw):
+        stream_output = stream_output if stream_output is not None else stream
+        stream_output = stream_output if stream_output is not None else self._stream
         __input, files = self._get_files(__input, lazyllm_files)
-        runtime_base_url = url or kw.pop('base_url', None)
-        runtime_url = self._get_chat_url(runtime_base_url) if runtime_base_url else self._chat_url
-        runtime_model = model or kw.pop('model_name', None) or self._model_name
+        model, _, url, kw = resolve_online_params(model, None, url, kw,
+                                                  model_aliases='model_name', url_aliases='base_url')
+        runtime_url = self._get_chat_url(url) if url else self._chat_url
+        runtime_model = model or self._model_name
 
-        params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
+        params = {'input': __input, 'history': llm_chat_history, 'format': self._message_format}
         if tools: params['tools'] = tools
         data = self._prompt.generate_prompt(**params)
         data.update(self._static_params, **dict(model=runtime_model, stream=bool(stream_output)))
@@ -175,6 +150,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                     if msg.get('role') == 'user' and isinstance(msg.get('content'), str):
                         msg['content'] = self._format_vl_chat_query(msg['content'])
 
+        data = self._prepare_request_data(data)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
                            proxies=proxies) as r:
@@ -262,9 +238,6 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                                   you can ignore this warning.')
 
         def _create_for_finetuning_job():
-            '''
-            create for finetuning job to finish
-            '''
             file_id = self._upload_train_file(train_file=self._train_file)
             lazyllm.LOG.info(f'{os.path.basename(self._train_file)} upload success! file id is {file_id}')
             (fine_tuning_job_id, status) = self._create_finetuning_job(self._model_name,
@@ -337,7 +310,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         return output
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'OnlineChat', name=self._module_name, url=self._base_url,
+        return lazyllm.make_repr('Module', 'OnlineChat', name=self.name, url=self._base_url,
                                  stream=bool(self._stream), return_trace=self._return_trace)
 
 OnlineChatModuleBase = LazyLLMOnlineChatModuleBase

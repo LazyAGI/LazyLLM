@@ -6,16 +6,23 @@ from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (  # noqa: NI
     merge_para_with_text as pipeline_merge_para_with_text,
     get_title_level,
 )
-from mineru.backend.vlm import (  # noqa: NID002
-    vlm_middle_json_mkcontent,
-)
-from mineru.backend.vlm.vlm_middle_json_mkcontent import (  # noqa: NID002
-    merge_para_with_text as vlm_merge_para_with_text,
-)
 from mineru.utils.enum_class import (  # noqa: NID002
     BlockType,
     ContentType,
 )
+
+try:
+    from mineru.backend.vlm import (  # noqa: NID002
+        vlm_middle_json_mkcontent,
+    )
+    from mineru.backend.vlm.vlm_middle_json_mkcontent import (  # noqa: NID002
+        merge_para_with_text as vlm_merge_para_with_text,
+    )
+    HAS_VLM_BACKEND = True
+except Exception:  # pragma: no cover - optional dependency path
+    vlm_middle_json_mkcontent = None
+    vlm_merge_para_with_text = None
+    HAS_VLM_BACKEND = False
 
 
 # patches to mineru (to output bbox)
@@ -243,4 +250,5 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_s
     para_content['page_height'] = page_height
     return para_content
 
-vlm_middle_json_mkcontent.make_blocks_to_content_list = vlm_make_blocks_to_content_list
+if HAS_VLM_BACKEND:
+    vlm_middle_json_mkcontent.make_blocks_to_content_list = vlm_make_blocks_to_content_list

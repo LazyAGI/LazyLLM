@@ -123,6 +123,22 @@ class OneDriveFS(LazyLLMFSBase):
     def rmdir(self, path: str) -> None:
         self.rm_file(path)
 
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        parts2 = self._parse_path(path2)
+        parent_id = parts2[-2] if len(parts2) >= 2 else 'root'
+        payload: Dict[str, Any] = {'parentReference': {'id': parent_id}}
+        if parts2:
+            payload['name'] = parts2[-1]
+        self._request('POST', self._make_item_url(path1) + '/copy', json=payload)
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        parts2 = self._parse_path(path2)
+        parent_id = parts2[-2] if len(parts2) >= 2 else 'root'
+        payload: Dict[str, Any] = {'parentReference': {'id': parent_id}}
+        if parts2:
+            payload['name'] = parts2[-1]
+        self._patch(self._make_item_url(path1), json=payload)
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         url = self._make_item_url(path)
         if not url:

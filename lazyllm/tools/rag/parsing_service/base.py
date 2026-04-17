@@ -42,9 +42,18 @@ class AddDocRequest(BaseModel):
     kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
+    callback_url: Optional[str] = None
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_deprecated_fields(cls, data):
+        if isinstance(data, dict) and not data.get('db_info'):
+            data = dict(data)
+            data['db_info'] = None
+        return data
 
 
 class UpdateMetaRequest(BaseModel):
@@ -53,8 +62,18 @@ class UpdateMetaRequest(BaseModel):
     kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
+    callback_url: Optional[str] = None
     # NOTE: (db_info) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
+    feedback_url: Optional[str] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_deprecated_fields(cls, data):
+        if isinstance(data, dict) and not data.get('db_info'):
+            data = dict(data)
+            data['db_info'] = None
+        return data
 
 
 class DeleteDocRequest(BaseModel):
@@ -63,15 +82,21 @@ class DeleteDocRequest(BaseModel):
     kb_id: Optional[str] = None
     doc_ids: List[str]
     priority: Optional[int] = 0
+    callback_url: Optional[str] = None
     # NOTE: (db_info) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
+    feedback_url: Optional[str] = None
 
     @model_validator(mode='before')
     @classmethod
-    def _compat_dataset_id(cls, data):
-        if isinstance(data, dict) and not data.get('kb_id') and data.get('dataset_id'):
-            data = dict(data)
+    def normalize_legacy_fields(cls, data):
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        if not data.get('kb_id') and data.get('dataset_id'):
             data['kb_id'] = data['dataset_id']
+        if not data.get('db_info'):
+            data['db_info'] = None
         return data
 
 
@@ -82,9 +107,8 @@ class CancelTaskRequest(BaseModel):
 class TaskStatus(str, Enum):
     WAITING = 'WAITING'
     WORKING = 'WORKING'
-    CANCEL_REQUESTED = 'CANCEL_REQUESTED'
     CANCELED = 'CANCELED'
-    FINISHED = 'FINISHED'
+    SUCCESS = 'SUCCESS'
     FAILED = 'FAILED'
 
 
@@ -183,9 +207,12 @@ WAITING_TASK_QUEUE_TABLE_INFO = {
 }
 
 # Finished task queue table
+# NOTE: callback-related columns were appended after the initial queue schema. Existing deployments may still
+# use an older table layout, but queue initialization already auto-adds any missing nullable columns in place
+# via ``_SQLBasedQueue._ensure_columns_exist()``, so startup remains backward compatible without extra migration code.
 FINISHED_TASK_QUEUE_TABLE_INFO = {
     'name': 'lazyllm_finished_task_queue',
-    'comment': 'Finished task queue table',
+    'comment': 'Finished task queue table; legacy tables are extended in place with new columns at startup',
     'columns': [
         {'name': 'id', 'data_type': 'integer', 'nullable': False, 'is_primary_key': True,
          'comment': 'Auto increment ID'},
@@ -194,9 +221,13 @@ FINISHED_TASK_QUEUE_TABLE_INFO = {
         {'name': 'task_type', 'data_type': 'string', 'nullable': False,
          'comment': 'Task type: DOC_ADD, DOC_DELETE, DOC_UPDATE_META, DOC_REPARSE'},
         {'name': 'task_status', 'data_type': 'string', 'nullable': False,
-         'comment': 'Task status: WAITING, WORKING, CANCEL_REQUESTED, CANCELED, FINISHED, FAILED'},
+         'comment': 'Task status: WAITING, WORKING, CANCELED, SUCCESS, FAILED'},
         {'name': 'finished_at', 'data_type': 'datetime', 'nullable': False,
          'comment': 'Finish time (set when processing completes)', 'default': datetime.now},
+        {'name': 'callback_url', 'data_type': 'string', 'nullable': True,
+         'comment': 'Callback target url for built-in HTTP callback'},
+        {'name': 'task_context_json', 'data_type': 'string', 'nullable': True,
+         'comment': 'Serialized callback context used to build callback payload'},
         {'name': 'error_code', 'data_type': 'string', 'nullable': True, 'default': '200',
          'comment': 'Error code (varchar64)'},
         {'name': 'error_msg', 'data_type': 'string', 'nullable': True, 'default': 'success',

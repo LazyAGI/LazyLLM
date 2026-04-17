@@ -1,6 +1,5 @@
 import requests
-import lazyllm
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
@@ -17,9 +16,11 @@ class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2',
                         'Qwen/Qwen3-VL-30B-A3B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking']
 
-    def __init__(self, base_url: str = 'https://api.siliconflow.cn/v1/', model: str = 'Qwen/QwQ-32B',
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        super().__init__(api_key=api_key or lazyllm.config['siliconflow_api_key'], base_url=base_url, model_name=model,
+        base_url = base_url or 'https://api.siliconflow.cn/v1/'
+        model = model or 'Qwen/QwQ-32B'
+        super().__init__(api_key=api_key or self._default_api_key(), base_url=base_url, model_name=model,
                          stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         if stream:
@@ -40,17 +41,21 @@ class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
 
 
 class SiliconFlowEmbed(LazyLLMOnlineEmbedModuleBase):
-    def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/embeddings',
-                 embed_model_name: str = 'BAAI/bge-large-zh-v1.5', api_key: str = None,
+    def __init__(self, embed_url: Optional[str] = None, embed_model_name: Optional[str] = None,
+                 api_key: str = None,
                  batch_size: int = 16, **kw):
-        super().__init__(embed_url, api_key or lazyllm.config['siliconflow_api_key'],
+        embed_url = embed_url or 'https://api.siliconflow.cn/v1/embeddings'
+        embed_model_name = embed_model_name or 'BAAI/bge-large-zh-v1.5'
+        super().__init__(embed_url, api_key or self._default_api_key(),
                          embed_model_name, batch_size=batch_size, **kw)
 
 
 class SiliconFlowRerank(LazyLLMOnlineRerankModuleBase):
-    def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/rerank',
-                 embed_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
-        super().__init__(embed_url, api_key or lazyllm.config['siliconflow_api_key'], embed_model_name, **kw)
+    def __init__(self, embed_url: Optional[str] = None, embed_model_name: Optional[str] = None,
+                 api_key: str = None, **kw):
+        embed_url = embed_url or 'https://api.siliconflow.cn/v1/rerank'
+        embed_model_name = embed_model_name or 'BAAI/bge-reranker-v2-m3'
+        super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name, **kw)
 
     def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict:
         json_data = {
@@ -73,9 +78,10 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
     IMAGE_EDITING_MODEL_NAME = 'Qwen/Qwen-Image-Edit-2509'
 
     def __init__(self, api_key: str = None, model: str = None,
-                 url: str = 'https://api.siliconflow.cn/v1/',
+                 url: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
-        super().__init__(api_key=api_key or lazyllm.config['siliconflow_api_key'],
+        url = url or 'https://api.siliconflow.cn/v1/'
+        super().__init__(api_key=api_key or self._default_api_key(),
                          model=model or SiliconFlowText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
 
@@ -133,9 +139,10 @@ class SiliconFlowTTS(LazyLLMOnlineTTSModuleBase):
     MODEL_NAME = 'fnlp/MOSS-TTSD-v0.5'
 
     def __init__(self, api_key: str = None, model_name: str = None,
-                 base_url: str = 'https://api.siliconflow.cn/v1/',
+                 base_url: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
-        super().__init__(api_key=api_key or lazyllm.config['siliconflow_api_key'],
+        base_url = base_url or 'https://api.siliconflow.cn/v1/'
+        super().__init__(api_key=api_key or self._default_api_key(),
                          model_name=model_name or SiliconFlowTTS.MODEL_NAME,
                          return_trace=return_trace, base_url=base_url, **kwargs)
         self._endpoint = 'audio/speech'

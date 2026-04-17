@@ -72,7 +72,6 @@ class SqlManager(DBManager):
         self._orm_cache = {}
         self._engine = None
         self._Session = None
-        self._Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         if tables_info_dict:
             self._init_tables_by_info(tables_info_dict)
 
@@ -160,29 +159,71 @@ class SqlManager(DBManager):
         return kwargs
 
     @staticmethod
+    def _default_engine_kwargs() -> dict:
+        return {
+            'pool_size': 10,
+            'max_overflow': 20,
+            'pool_pre_ping': True,
+            'pool_recycle': 3600,
+        }
+
+    @staticmethod
     def _get_operational_error_code(error: OperationalError):
         args = getattr(getattr(error, 'orig', None), 'args', ())
         return args[0] if args else None
 
+    @staticmethod
+    def _get_operational_error_pgcode(error: OperationalError):
+        orig = getattr(error, 'orig', None)
+        return getattr(orig, 'pgcode', None) or getattr(orig, 'sqlstate', None)
+
+    def _is_database_not_found_error(self, error: OperationalError) -> bool:
+        if self._db_type in ('mysql', 'mysql+pymysql', 'tidb'):
+            return self._get_operational_error_code(error) == 1049
+        if self._db_type == 'postgresql':
+            if self._get_operational_error_pgcode(error) == '3D000':
+                return True
+            error_msg = str(getattr(error, 'orig', error)).lower()
+            return 'does not exist' in error_msg and 'database' in error_msg
+        return False
+
     def _ensure_database_exists(self, conn_url: str):
-        if self._db_type not in ('mysql', 'mysql+pymysql', 'tidb'):
+        if self._db_type not in ('mysql', 'mysql+pymysql', 'tidb', 'postgresql'):
             return
-        probe_engine = sqlalchemy.create_engine(conn_url, **self._mysql_engine_kwargs())
+        engine_kwargs = self._mysql_engine_kwargs() if self._db_type in ('mysql', 'mysql+pymysql', 'tidb') \
+            else self._default_engine_kwargs()
+        probe_engine = sqlalchemy.create_engine(conn_url, **engine_kwargs)
         try:
             with probe_engine.connect():
                 return
         except OperationalError as e:
-            if self._get_operational_error_code(e) != 1049:
+            if not self._is_database_not_found_error(e):
                 raise
         finally:
             probe_engine.dispose()
 
-        admin_engine = sqlalchemy.create_engine(self._gen_conn_url(''), **self._mysql_engine_kwargs())
+        if self._db_type == 'postgresql':
+            admin_engine = sqlalchemy.create_engine(
+                self._gen_conn_url('postgres'),
+                isolation_level='AUTOCOMMIT',
+                **self._default_engine_kwargs()
+            )
+        else:
+            admin_engine = sqlalchemy.create_engine(self._gen_conn_url(''), **self._mysql_engine_kwargs())
         try:
-            escaped_db_name = self._db_name.replace('`', '``')
             with admin_engine.connect() as conn:
-                conn.execute(sqlalchemy.text(f'CREATE DATABASE IF NOT EXISTS `{escaped_db_name}`'))
-                conn.commit()
+                if self._db_type == 'postgresql':
+                    exists = conn.execute(
+                        sqlalchemy.text('SELECT 1 FROM pg_database WHERE datname = :db_name'),
+                        {'db_name': self._db_name}
+                    ).scalar()
+                    if not exists:
+                        escaped_db_name = self._db_name.replace('"', '""')
+                        conn.execute(sqlalchemy.text(f'CREATE DATABASE "{escaped_db_name}"'))
+                else:
+                    escaped_db_name = self._db_name.replace('`', '``')
+                    conn.execute(sqlalchemy.text(f'CREATE DATABASE IF NOT EXISTS `{escaped_db_name}`'))
+                    conn.commit()
         finally:
             admin_engine.dispose()
 
@@ -205,14 +246,11 @@ class SqlManager(DBManager):
             elif self._db_type in ('mysql', 'mysql+pymysql', 'tidb'):
                 self._ensure_database_exists(conn_url)
                 self._engine = sqlalchemy.create_engine(conn_url, **self._mysql_engine_kwargs())
+            elif self._db_type == 'postgresql':
+                self._ensure_database_exists(conn_url)
+                self._engine = sqlalchemy.create_engine(conn_url, **self._default_engine_kwargs())
             else:
-                self._engine = sqlalchemy.create_engine(
-                    conn_url,
-                    pool_size=10,
-                    max_overflow=20,
-                    pool_pre_ping=True,
-                    pool_recycle=3600
-                )
+                self._engine = sqlalchemy.create_engine(conn_url, **self._default_engine_kwargs())
         return self._engine
 
     @property
@@ -221,17 +259,43 @@ class SqlManager(DBManager):
             self._Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         return self._Session
 
+    def dispose(self):
+        '''Release the underlying engine's connection pool.
+
+        Needed so callers (e.g. DocServer._Impl.stop) can close sqlite file handles
+        before removing the containing directory; on Windows this is required, because
+        open handles block ``TemporaryDirectory`` cleanup.
+        '''
+        if self._engine is not None:
+            try:
+                self._engine.dispose()
+            except Exception:
+                pass
+            self._engine = None
+        self._Session = None
+
     @contextmanager
-    def get_session(self):
+    def get_session(self, session=None):
+        if session is not None:
+            yield session
+            return
         session = self.Session()
         try:
             yield session
             session.commit()
-        except Exception as e:
+        except Exception:
             session.rollback()
-            raise e
+            raise
         finally:
             session.close()
+
+    @staticmethod
+    def paginate(query, *, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+        page = max(page, 1)
+        page_size = max(page_size, 1)
+        total = query.count()
+        rows = query.offset((page - 1) * page_size).limit(page_size).all()
+        return {'items': rows, 'total': total, 'page': page, 'page_size': page_size}
 
     def check_connection(self) -> DBResult:
         try:

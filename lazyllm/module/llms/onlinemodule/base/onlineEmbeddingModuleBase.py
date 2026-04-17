@@ -3,7 +3,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from lazyllm import LOG
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from .utils import LazyLLMOnlineBase
+from .utils import LazyLLMOnlineBase, resolve_online_params
 from lazyllm.components.utils.downloader import ModelManager
 
 
@@ -41,8 +41,12 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
 
     def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs
                 ) -> Union[List[float], List[List[float]]]:
-        runtime_url = url or kwargs.pop('base_url', kwargs.pop('embed_url', None)) or self._embed_url
-        runtime_model = model or kwargs.pop('model_name', kwargs.pop('embed_model_name', None)) or self._embed_model_name
+        model, _, url, kwargs = resolve_online_params(
+            model, None, url, kwargs,
+            model_aliases=('model_name', 'embed_model_name', 'embed_name'),
+            url_aliases=('base_url', 'embed_url'))
+        runtime_url = url or self._embed_url
+        runtime_model = model or self._embed_model_name
 
         if runtime_model is not None:
             kwargs['model'] = runtime_model

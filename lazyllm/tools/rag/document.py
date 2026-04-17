@@ -1,5 +1,6 @@
 import os
-from typing import Callable, Optional, Dict, Union, List, Type, Set
+import warnings
+from typing import Callable, Optional, Dict, Union, List, Type, Set, Tuple
 from functools import cached_property
 from pydantic import BaseModel
 import lazyllm
@@ -9,19 +10,22 @@ from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 from lazyllm.common.bind import _MetaBind
 
-from .doc_manager import DocManager
+from ._store_config import is_local_map_store, is_persistent_store, iter_embedded_store_endpoints
+from .doc_service import DocServer
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files, SchemaExtractor
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .store.store_base import DEFAULT_KB_ID
 from .index_base import IndexBase
-from .utils import DocListManager, ensure_call_endpoint
+from .utils import RAG_DEFAULT_GROUP_NAME, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
 import copy
 import functools
 import weakref
+
+_LOCAL_PYTHONPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 
 class CallableDict(dict):
@@ -37,40 +41,103 @@ class _MetaDocument(_MetaBind):
 
 class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     class _Manager(ModuleBase):
-        def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                     manager: Union[bool, str] = False, server: Union[bool, int] = False, name: Optional[str] = None,
-                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
-                     doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
-                     doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
-                     display_name: Optional[str] = '', description: Optional[str] = 'algorithm description',
-                     schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
+        @staticmethod
+        def _resolve_dataset_path(dataset_path: Optional[str]) -> Optional[str]:
+            if not dataset_path:
+                return dataset_path
+            if os.path.exists(dataset_path):
+                return os.path.join(os.getcwd(), dataset_path)
+            default_path = os.path.join(lazyllm.config['data_path'], dataset_path)
+            return default_path if os.path.exists(default_path) else dataset_path
+
+        @staticmethod
+        def _decide_service_mode(manager, store_conf, processor, dataset_path) -> Tuple[bool, bool]:
+            '''Returns ``(spawn_doc_server, connect_doc_server)``.'''
+            if isinstance(manager, str) and manager != 'ui':
+                raise ValueError(f'Unsupported manager value: {manager}')
+            spawn = bool(manager) and not isinstance(manager, DocServer)
+            connect = isinstance(manager, DocServer)
+            if (not spawn and not connect and not processor and is_persistent_store(store_conf)
+                    and dataset_path and not os.path.isfile(dataset_path)):
+                lazyllm.LOG.info(f'Persistent store detected (type={store_conf.get("type")}),'
+                                 f' auto-enabling DocServer for production-grade file tracking and scan.')
+                spawn = True
+            return spawn, connect
+
+        @staticmethod
+        def _reject_embedded_store_with_service_mode(store_conf, *, spawn, connect, processor):
+            '''Service-mode RAG + an embedded single-process backend races the subprocesses on
+            shared on-disk state; force the user to point at a networked endpoint instead.'''
+            if not (spawn or connect or processor is not None):
+                return
+            embedded = list(iter_embedded_store_endpoints(store_conf))
+            if not embedded:
+                return
+            raise ValueError(
+                'Document with `manager=True` / `manager=DocServer(...)` / `manager=DocumentProcessor(...)`'
+                ' does not support embedded (filesystem-bound) vector stores. Point the store config at a'
+                ' remote service (http/https/tcp/grpc/unix scheme), e.g.'
+                " Milvus: {'type': 'milvus', 'kwargs': {'uri': os.getenv('MILVUS_URI', 'http://<host>:19530')}}"
+                " or Chroma: {'type': 'chroma', 'kwargs': {'uri': 'http://<host>:8000'}}."
+                f' Offending store(s): {embedded!r}.')
+
+        def _iter_kbs(self):
+            return self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs
+
+        def __init__(self, dataset_path: Optional[str],
+                     embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
+                     manager: Union[bool, str, DocServer] = False, server: Union[bool, int] = False,
+                     name: Optional[str] = None, launcher: Optional[Launcher] = None,
+                     store_conf: Optional[Dict] = None, doc_fields: Optional[Dict[str, DocField]] = None,
+                     cloud: bool = False, doc_files: Optional[List[str]] = None,
+                     processor: Optional[DocumentProcessor] = None, display_name: Optional[str] = '',
+                     description: Optional[str] = 'algorithm description',
+                     schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
+                     create_ui: bool = False):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
-
-            if dataset_path and not os.path.exists(dataset_path):
-                defatult_path = os.path.join(lazyllm.config['data_path'], dataset_path)
-                if os.path.exists(defatult_path):
-                    dataset_path = defatult_path
-            elif dataset_path:
-                dataset_path = os.path.join(os.getcwd(), dataset_path)
-
-            self._launcher: Launcher = launcher if launcher else lazyllm.launchers.remote(sync=False)
-            self._dataset_path = dataset_path
+            self._dataset_path = self._resolve_dataset_path(dataset_path)
             self._embed = self._get_embeds(embed)
             self._processor = processor
-            name = name or DocListManager.DEFAULT_GROUP_NAME
+            self._create_ui = create_ui
+            self._spawn_doc_server = False
+            self._doc_processor_started = False
+
+            spawn_doc_server, connect_doc_server = self._decide_service_mode(
+                manager, store_conf, processor, self._dataset_path)
+            self._reject_embedded_store_with_service_mode(
+                store_conf, spawn=spawn_doc_server, connect=connect_doc_server, processor=processor)
+
+            self._launcher: Launcher = launcher if launcher else (
+                lazyllm.launchers.empty(sync=False) if spawn_doc_server else lazyllm.launchers.remote(sync=False))
+            self._doc_impl_dataset_path = self._dataset_path if not (spawn_doc_server or connect_doc_server) else None
+            self._doc_processor = None
+            if spawn_doc_server:
+                self._spawn_doc_server = True
+                self._doc_processor = DocumentProcessor(launcher=self._launcher, pythonpath=_LOCAL_PYTHONPATH)
+                self._submodules.remove(self._doc_processor)
+            elif connect_doc_server:
+                self._manager = manager
+                parser_url = getattr(getattr(manager, '_raw_impl', None), '_parser_url', None) or manager.parser_url
+                if parser_url:
+                    self._doc_processor = DocumentProcessor(url=parser_url)
+            self._schema_extractor = schema_extractor
+            self._store_conf = store_conf
+            self._display_name = display_name
+            self._description = description
+            name = name or RAG_DEFAULT_GROUP_NAME
             if not display_name: display_name = name
-
-            self._dlm = None if (self._cloud or self._doc_files is not None) else DocListManager(
-                dataset_path, name, enable_path_monitoring=False if manager else True)
+            doc_processor = self._doc_processor or processor
             self._kbs = CallableDict({name: DocImpl(
-                embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
-                store=store_conf, processor=processor, algo_name=name, display_name=display_name,
-                description=description, schema_extractor=schema_extractor)})
+                embed=self._embed, dataset_path=self._doc_impl_dataset_path, doc_files=doc_files,
+                global_metadata_desc=doc_fields, store=store_conf, processor=doc_processor,
+                algo_name=name, display_name=display_name, description=description,
+                schema_extractor=schema_extractor)})
 
-            if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
-            if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
-            if server: self._kbs = ServerModule(self._kbs, port=(None if isinstance(server, bool) else int(server)))
+            if create_ui and not self._spawn_doc_server:
+                self.ensure_doc_web()
+            if server:
+                self._kbs = ServerModule(self._kbs, port=(None if isinstance(server, bool) else int(server)))
             self._global_metadata_desc = doc_fields
 
         @property
@@ -88,27 +155,83 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             if hasattr(self, '_docweb'): return self._docweb.url
             return None
 
+        def ensure_doc_web(self):
+            if hasattr(self, '_docweb'):
+                return self._docweb
+            if self._spawn_doc_server and not hasattr(self, '_manager'):
+                raise ValueError('`create_ui=True` with `manager=True` requires `Document.start()` before using the UI')
+            if not hasattr(self, '_manager') or not isinstance(self._manager, DocServer):
+                raise ValueError(
+                    '`create_ui=True` requires an available DocServer. '
+                    'Set `manager=True` or pass `manager=DocServer(...)`.'
+                )
+            self._docweb = DocWebModule(doc_server=self._manager)
+            return self._docweb
+
+        def _ensure_doc_processor_started(self):
+            if self._doc_processor and not self._doc_processor_started:
+                self._doc_processor.start()
+                self._doc_processor_started = True
+
+        def _ensure_managed_services_started(self):
+            if self._spawn_doc_server:
+                self._ensure_doc_processor_started()
+                if not hasattr(self, '_manager'):
+                    # Start DocServer with scanning disabled; enable only after
+                    # all KBs + parser algorithms are registered so the first
+                    # scan sees a consistent routing table.
+                    self._manager = DocServer(
+                        launcher=self._launcher,
+                        storage_dir=self._dataset_path,
+                        parser_url=self._doc_processor.url,
+                        pythonpath=_LOCAL_PYTHONPATH,
+                        enable_scan=bool(self._dataset_path),
+                    )
+                    self._manager.start()
+                    kbs = self._iter_kbs()
+                    for kb_name in kbs:
+                        self._manager.ensure_kb_registered(kb_name)
+                    for impl in kbs.values():
+                        impl._lazy_init()
+                    self._manager.enable_scanning()
+                if self._create_ui and not hasattr(self, '_docweb'):
+                    self.ensure_doc_web()
+                    self._docweb.start()
+
+        def _get_deploy_tasks(self):
+            if self._spawn_doc_server and not hasattr(self, '_manager'):
+                return lazyllm.pipeline(self._ensure_managed_services_started)
+            return None
+
         def _get_embeds(self, embed):
             embeds = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
-            for embed in embeds.values():
-                if isinstance(embed, ModuleBase):
-                    self._submodules.append(embed)
+            for index, module in enumerate(embeds.values()):
+                if isinstance(module, ModuleBase):
+                    setattr(self, f'_embed_module_{index}', module)
             return embeds
 
         def add_kb_group(self, name, doc_fields: Optional[Dict[str, DocField]] = None,
-                         store_conf: Optional[Dict] = None,
-                         embed: Optional[Union[Callable, Dict[str, Callable]]] = None):
+                         store_conf: Optional[Dict] = None, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
+                         schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
             embed = self._get_embeds(embed) if embed else self._embed
-            if isinstance(self._kbs, ServerModule):
-                self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=embed, kb_group_name=name,
-                                                   global_metadata_desc=doc_fields, store=store_conf)
-            else:
-                self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
-                                          global_metadata_desc=doc_fields, store=store_conf)
-            self._dlm.add_kb_group(name=name)
+            schema_extractor = schema_extractor or self._schema_extractor
+            if isinstance(schema_extractor, ModuleBase):
+                setattr(self, f'_schema_extractor_{name}', schema_extractor)
+            impl = DocImpl(
+                dataset_path=self._doc_impl_dataset_path, embed=embed, kb_group_name=name,
+                global_metadata_desc=doc_fields,
+                store=store_conf or self._store_conf, processor=self._doc_processor or self._processor,
+                algo_name=name, display_name=name, description=self._description,
+                schema_extractor=schema_extractor,
+            )
+            self._iter_kbs()[name] = impl
+            # Register KB with DocServer if it's already running so the next scan cycle picks it up.
+            if hasattr(self, '_manager') and isinstance(self._manager, DocServer):
+                self._manager.ensure_kb_registered(name)
+                impl._lazy_init()
 
         def get_doc_by_kb_group(self, name):
-            return self._kbs._impl._m[name] if isinstance(self._kbs, ServerModule) else self._kbs[name]
+            return self._iter_kbs()[name]
 
         def stop(self):
             if hasattr(self, '_docweb'):
@@ -130,17 +253,51 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         else:
             return super().__new__(cls)
 
+    @staticmethod
+    def _coerce_document_processor_manager(manager, store_conf, dataset_path):
+        '''Validate the ``manager=DocumentProcessor(...)`` combination.
+
+        Returns ``(processor, manager)``: when ``manager`` is a ``DocumentProcessor``
+        the returned ``processor`` is the original instance and ``manager`` becomes
+        ``False``; otherwise ``processor`` is ``None`` and ``manager`` passes through.
+        '''
+        if not isinstance(manager, DocumentProcessor):
+            return None, manager
+        if store_conf is None:
+            raise ValueError('`store_conf` is required when `manager` is a DocumentProcessor')
+        if is_local_map_store(store_conf):
+            raise ValueError('`manager=DocumentProcessor(...)` does not support pure local map store')
+        if dataset_path is not None:
+            raise ValueError(
+                '`manager=DocumentProcessor(...)` does not accept a local `dataset_path`: the external'
+                ' parsing service does not own directory scanning / lifecycle management. Use'
+                ' `manager=True` or `manager=DocServer(...)` for scan-based ingestion, or drop'
+                ' `dataset_path` and upload documents via explicit API calls.')
+        return manager, False
+
     def __init__(self, dataset_path: Optional[str] = None, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                 create_ui: bool = False, manager: Union[bool, str, 'Document._Manager', DocumentProcessor] = False,
-                 server: Union[bool, int] = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
-                 doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
+                 create_ui: bool = False,
+                 manager: Union[bool, str, DocServer, 'Document._Manager', DocumentProcessor] = False,
+                 server: Union[bool, int] = False, name: Optional[str] = None,
+                 launcher: Optional[Launcher] = None, doc_files: Optional[List[str]] = None,
+                 doc_fields: Dict[str, DocField] = None,
                  store_conf: Optional[Dict] = None, display_name: Optional[str] = '',
                  description: Optional[str] = 'algorithm description',
-                 schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
+                 schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None,
+                 enable_path_monitoring: Optional[bool] = None):
         super().__init__()
         if create_ui:
-            lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
-            manager = create_ui
+            warnings.warn('`create_ui=True` (and the legacy `manager="ui"` alias) is deprecated and will be removed'
+                          ' in a future release. Prefer `manager=True` and interact with DocServer via its HTTP API'
+                          ' / SDK instead.', DeprecationWarning, stacklevel=2)
+        if isinstance(manager, str):
+            if manager != 'ui': raise ValueError(f'Unsupported manager value: {manager}')
+            create_ui = manager = True
+        if enable_path_monitoring is not None:
+            warnings.warn('`enable_path_monitoring` is deprecated: DocImpl no longer polls the dataset '
+                          'directory. Persistent-store setups auto-upgrade to DocServer which owns scanning; '
+                          'map-store setups get a one-time ingest at `_lazy_init`. The parameter is accepted '
+                          'for backward compatibility but has no effect.', DeprecationWarning, stacklevel=2)
         if isinstance(dataset_path, (tuple, list)):
             doc_fields = dataset_path
             dataset_path = None
@@ -150,77 +307,56 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             assert store_conf is None or store_conf['type'] == 'map', (
                 'Only map store is supported for Document with temp-files')
 
-        name = name or DocListManager.DEFAULT_GROUP_NAME
-        self._schema_extractor: SchemaExtractor = schema_extractor
+        name = name or RAG_DEFAULT_GROUP_NAME
 
         if isinstance(manager, Document._Manager):
-            assert not server, 'Server infomation is already set to by manager'
-            assert not launcher, 'Launcher infomation is already set to by manager'
+            assert not server, 'Server information is already set by manager'
+            assert not launcher, 'Launcher information is already set by manager'
             assert not manager._cloud, 'manager is not allowed to share in cloud mode'
             assert manager._doc_files is None, 'manager is not allowed to share with temp files'
             if dataset_path != manager._dataset_path and dataset_path != manager._origin_path:
                 raise RuntimeError(f'Document path mismatch, expected `{manager._dataset_path}`'
                                    f'while received `{dataset_path}`')
-            manager.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf, embed=embed)
+            manager.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf, embed=embed,
+                                 schema_extractor=schema_extractor)
+            if create_ui:
+                manager.ensure_doc_web()
             self._manager = manager
             self._curr_group = name
         else:
-            if isinstance(manager, DocumentProcessor):
-                processor, cloud = manager, True
-                processor.start()
-                manager = False
-                assert name, '`Name` of Document is necessary when using cloud service'
-                assert store_conf.get('type') != 'map', 'Cloud manager is not supported when using map store'
-                assert not dataset_path, 'Cloud manager is not supported with local dataset path'
-            else:
-                cloud, processor = False, None
+            processor, manager = self._coerce_document_processor_manager(manager, store_conf, dataset_path)
+            cloud = processor is not None
             self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
                                               doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
                                               display_name=display_name, description=description,
-                                              schema_extractor=self._schema_extractor)
+                                              schema_extractor=schema_extractor, create_ui=create_ui)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
         self._graph_document: weakref.ref = None
 
     @staticmethod
-    def list_all_files_in_directory(
-        dataset_path: str, skip_hidden_path: bool = True, recursive: bool = True
-    ) -> List[str]:
-        files_list = []
-
+    def list_all_files_in_directory(dataset_path: str, skip_hidden_path: bool = True,
+                                    recursive: bool = True) -> List[str]:
         if not os.path.exists(dataset_path):
-            return files_list
-
+            return []
         if not os.path.isdir(dataset_path):
-            return [dataset_path] if os.path.isfile(dataset_path) else files_list
-
+            return [dataset_path] if os.path.isfile(dataset_path) else []
+        files_list = []
         if recursive:
             for root, dirs, files in os.walk(os.path.abspath(dataset_path)):
-                # Skip hidden directories
                 if skip_hidden_path:
-                    path_parts = root.split(os.sep)
-                    if any(part.startswith('.') for part in path_parts if part):
+                    if any(part.startswith('.') for part in root.split(os.sep) if part):
                         continue
-                    # Filter out hidden directories
                     dirs[:] = [d for d in dirs if not d.startswith('.')]
-
-                # Skip hidden files
-                if skip_hidden_path:
-                    files = [file_path for file_path in files if not file_path.startswith('.')]
-
-                files = [os.path.join(root, file_path) for file_path in files]
-                files_list.extend(files)
+                    files = [f for f in files if not f.startswith('.')]
+                files_list.extend(os.path.join(root, f) for f in files)
         else:
-            items = os.listdir(dataset_path)
-            for item in items:
-                item_path = os.path.join(dataset_path, item)
-                # Skip hidden files/directories
+            for item in os.listdir(dataset_path):
                 if skip_hidden_path and item.startswith('.'):
                     continue
-                # Only add files, not directories
+                item_path = os.path.join(dataset_path, item)
                 if os.path.isfile(item_path):
                     files_list.append(item_path)
-
         return files_list
 
     def _list_all_files_in_dataset(self, skip_hidden_path: bool = True) -> List[str]:
@@ -231,51 +367,27 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         assert isinstance(self._manager._kbs, ServerModule), 'Document is not a service, please set `manager` to `True`'
         return self._manager._kbs._url
 
-    def connect_sql_manager(
-        self,
-        sql_manager: SqlManager,
-        schma: Optional[DocInfoSchema] = None,
-        force_refresh: bool = True,
-    ):
-        def format_schema_to_dict(schema: DocInfoSchema):
+    def connect_sql_manager(self, sql_manager: SqlManager, schma: Optional[DocInfoSchema] = None,
+                            force_refresh: bool = True):
+        def schema_as_dicts(schema: DocInfoSchema):
             if schema is None:
                 return None, None
-            desc_dict = {ele['key']: ele['desc'] for ele in schema}
-            type_dict = {ele['key']: ele['type'] for ele in schema}
-            return desc_dict, type_dict
+            return ({e['key']: e['desc'] for e in schema}, {e['key']: e['type'] for e in schema})
 
-        def compare_schema(old_schema: DocInfoSchema, new_schema: DocInfoSchema):
-            old_desc_dict, old_type_dict = format_schema_to_dict(old_schema)
-            new_desc_dict, new_type_dict = format_schema_to_dict(new_schema)
-            return old_desc_dict == new_desc_dict and old_type_dict == new_type_dict
-
-        # 1. Check valid arguments
         if sql_manager.check_connection().status != DBStatus.SUCCESS:
             raise RuntimeError(f'Failed to connect to sql manager: {sql_manager._gen_conn_url()}')
-        pre_doc_table_schema = None
-        if self._doc_to_db_processor:
-            pre_doc_table_schema = self._doc_to_db_processor.doc_info_schema
-        assert pre_doc_table_schema or schma, 'doc_table_schma must be given'
 
-        schema_equal = compare_schema(pre_doc_table_schema, schma)
-        assert (
-            schema_equal or force_refresh is True
-        ), 'When changing doc_table_schema, force_refresh should be set to True'
+        pre_schema = self._doc_to_db_processor.doc_info_schema if self._doc_to_db_processor else None
+        assert pre_schema or schma, 'doc_table_schma must be given'
+        schema_equal = schema_as_dicts(pre_schema) == schema_as_dicts(schma)
+        assert schema_equal or force_refresh is True, \
+            'When changing doc_table_schema, force_refresh should be set to True'
 
-        # 2. Init handler if needed
-        need_init_processor = False
-        if self._doc_to_db_processor is None:
-            need_init_processor = True
-        else:
-            # avoid reinit for the same db
-            if sql_manager != self._doc_to_db_processor.sql_manager:
-                need_init_processor = True
-        if need_init_processor:
+        if self._doc_to_db_processor is None or sql_manager != self._doc_to_db_processor.sql_manager:
             self._doc_to_db_processor = DocToDbProcessor(sql_manager)
 
-        # 3. Reset doc_table_schema if needed
         if schma and not schema_equal:
-            # This api call will clear existing db table 'lazyllm_doc_elements'
+            # Clears existing lazyllm_doc_elements table.
             self._doc_to_db_processor._reset_doc_info_schema(schma)
 
     def get_sql_manager(self):
@@ -312,6 +424,13 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @property
     def _impl(self) -> DocImpl: return self._manager.get_doc_by_kb_group(self._curr_group)
+
+    @property
+    def _schema_extractor(self):
+        # Compat shim for pre-refactor callers (e.g. ``SqlCall.create_from_document``);
+        # read through the active DocImpl so shared-manager KBs keep per-group values.
+        impl = self._manager.get_doc_by_kb_group(self._curr_group)
+        return getattr(impl, '_schema_extractor', None)
 
     @property
     def manager(self): return self._manager._processor or self._manager
@@ -368,6 +487,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def _forward(self, func_name: str, *args, **kw):
         return self._manager(self._curr_group, func_name, *args, **kw)
 
+    def start(self):
+        return super().start()
+
     def find_parent(self, target) -> Callable:
         return functools.partial(self._forward, 'find_parent', group=target)
 
@@ -394,9 +516,12 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         return self._forward('_register_schema_set', schema_set, kb_id, force_refresh)
 
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
-                  ) -> List[DocNode]:
-        return self._forward('_get_nodes', uids, doc_ids, group, kb_id, numbers)
+                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None,
+                  limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
+                  sort_by_number: bool = False) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
+        return self._forward(
+            '_get_nodes', uids, doc_ids, group, kb_id, numbers, limit, offset, return_total, sort_by_number,
+        )
 
     def get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
                          merge: bool = False) -> Union[List[DocNode], DocNode]:
@@ -414,7 +539,7 @@ class UrlDocument(ModuleBase):
         super().__init__()
         self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
         self._manager = lazyllm.UrlModule(url=ensure_call_endpoint(url))
-        self._curr_group = name or DocListManager.DEFAULT_GROUP_NAME
+        self._curr_group = name or RAG_DEFAULT_GROUP_NAME
 
     def _forward(self, func_name: str, *args, **kwargs):
         args = (self._curr_group, func_name, *args)
@@ -427,9 +552,12 @@ class UrlDocument(ModuleBase):
         return self._forward('retrieve', *args, **kw)
 
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
-                  ) -> List[DocNode]:
-        return self._forward('_get_nodes', uids, doc_ids, group, kb_id, numbers)
+                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None,
+                  limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
+                  sort_by_number: bool = False) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
+        return self._forward(
+            '_get_nodes', uids, doc_ids, group, kb_id, numbers, limit, offset, return_total, sort_by_number,
+        )
 
     def get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
                          merge: bool = False) -> Union[List[DocNode], DocNode]:

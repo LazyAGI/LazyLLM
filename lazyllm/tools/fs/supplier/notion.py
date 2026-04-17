@@ -95,6 +95,12 @@ class NotionFS(LazyLLMFSBase):
         except Exception:
             self._patch(f'{self._base_url}/pages/{block_id}', json={'archived': True})
 
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        raise NotImplementedError('NotionFS: Notion official API does not support copy')
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        raise NotImplementedError('NotionFS: Notion official API does not support move')
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)
         block_id = parts[-1] if parts else path

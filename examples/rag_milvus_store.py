@@ -21,10 +21,17 @@ class TmpDir:
 
 tmp_dir = TmpDir()
 
+# ``manager=True`` spawns DocServer + Worker subprocesses that share the
+# vector store with the main process. milvus_lite (an embedded local
+# ``.db`` file) is single-writer and cannot be shared across processes,
+# so service-mode RAG requires a deployed Milvus standalone. Set
+# ``MILVUS_URI`` in the environment to your Milvus server; there is no
+# safe local default because embedded milvus_lite is explicitly rejected
+# by ``Document`` when combined with ``manager=True``.
 milvus_store_conf = {
     'type': 'milvus',
     'kwargs': {
-        'uri': tmp_dir.store_file,
+        'uri': os.getenv('MILVUS_URI', 'http://10.119.26.205:19530'),
         'index_kwargs': {
             'index_type': 'HNSW',
             'metric_type': 'COSINE',

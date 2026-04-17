@@ -823,7 +823,7 @@ ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程
 Args:
     llm: 大语言模型实例，用于生成推理和工具调用决策
     tools (List[str]): 可用工具列表，可以是工具函数或工具名称
-    max_retries (int): 最大重试次数，当工具调用失败时自动重试，默认为5
+    max_retries (int): 工具调用循环的最大轮次，超出后若 `force_summarize=True` 则触发强制总结，否则抛出异常，默认为5
     return_trace (bool): 是否返回完整的执行轨迹，用于调试和分析，默认为False
     prompt (str): 自定义提示词模板，如果为None则使用内置模板
     stream (bool): 是否启用流式输出，用于实时显示生成过程，默认为False
@@ -831,22 +831,30 @@ Args:
     skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
     desc (str): Agent 能力描述，可为空。
     workspace (str): Agent 默认工作目录，默认是 `config['home']/agent_workspace`。
+    force_summarize (bool): 是否在达到 max_retries 仍未输出最终答案时，强制追加一次 LLM 调用以获取总结输出。
+        为 True 时触发强制总结；为 False（默认）时直接抛出 ValueError。
+    force_summarize_context (str): 强制总结时注入的额外上下文（如原始任务描述），默认为空字符串。
+    keep_full_turns (int): 保留最近 N 轮完整工具结果不截断，其余旧结果压缩至 200 字符，默认为 0（全部压缩）。
 ''')
 
 add_english_doc('ReactAgent', '''\
-ReactAgent follows the process of `Thought->Action->Observation->Thought...->Finish` step by step through LLM and tool calls to display the steps to solve user questions and the final answer to the user.
+ReactAgent follows the `Thought->Action->Observation->Thought...->Finish` loop to solve user tasks step by step through LLM reasoning and tool calls, then delivers a final answer.
 
 Args:
-    llm: Large language model instance for generating reasoning and tool calling decisions
-    tools (List[str]): List of available tools, can be tool functions or tool names
-    max_retries (int): Maximum retry count, automatically retries when tool calling fails, defaults to 5
-    return_trace (bool): Whether to return complete execution trace for debugging and analysis, defaults to False
-    prompt (str): Custom prompt template, uses built-in template if None
-    stream (bool): Whether to enable streaming output for real-time generation display, defaults to False
-    return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
-    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
-    desc (str): Optional agent capability description.
-    workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
+    llm: The large language model instance used for reasoning and tool-call decisions.
+    tools (List[str]): List of available tools, either as callable functions or tool name strings.
+    max_retries (int): Maximum number of tool-call loop iterations. When exceeded, the force-summarize fallback is triggered (if enabled) or an exception is raised. Defaults to 5.
+    return_trace (bool): Whether to return the full execution trace for debugging and analysis. Defaults to False.
+    prompt (str): Custom prompt template. If None, the built-in ReAct instruction template is used.
+    stream (bool): Whether to enable streaming output for real-time display. Defaults to False.
+    return_last_tool_calls (bool): If True, returns the last tool-call trace when the model finishes with pending tool calls.
+    skills (bool | str | List[str]): Skills configuration. True enables Skills with automatic selection; a str/list enables the specified skills.
+    desc (str): Description of the agent capabilities. Can be empty.
+    workspace (str): Default working directory for the agent. Defaults to `config['home']/agent_workspace`.
+    force_summarize (bool): When True, if the agent has not produced a final answer after max_retries iterations, one additional LLM call is made with the full conversation history plus a force-summarize instruction, asking the model to stop tool calls and output its final answer immediately. If False (default), a ValueError is raised instead.
+        Useful when the task involves many tool-call steps and the LLM struggles to stop on its own.
+    force_summarize_context (str): Extra context injected into the force-summarize prompt (e.g. the original task description). Defaults to empty string.
+    keep_full_turns (int): Number of most-recent tool results to keep intact during history compaction. Older results are truncated to 200 chars. Defaults to 0 (all results compacted).
 
 ''')
 
@@ -1573,11 +1581,51 @@ Args:
 """)
 
 add_chinese_doc("SqlManager.get_session", """\
-这是一个上下文管理器，它创建并返回一个数据库连接Session，并在完成时自动提交或回滚更改并在使用完成后自动关闭会话。
+一个数据库会话上下文管理器。
+
+默认（``session=None``）会创建一个新的 SQLAlchemy 会话并在上下文退出时自动提交；若上下文内部抛出异常则会自动回滚；无论是否成功，会话最终都会被关闭。
+
+当传入一个外部 ``session`` 时，本上下文是透明的：会话被原样 yield，提交/回滚/关闭由最初打开它的 ``get_session`` 负责。上下文内部抛出的异常仍会向上传播，由外层 ``get_session`` 触发回滚，因此辅助方法可以通过可选的 ``session=None`` 参数参与调用方驱动的多步事务，而无需关心自己是否拥有该会话。
+
+Args:
+    session (Optional[Session]): 外部已打开的 SQLAlchemy 会话。为 ``None`` 时创建并自管理一个新会话，否则透传使用。
 """)
 
 add_english_doc("SqlManager.get_session", """\
-This is a context manager that creates and returns a database session, yields it for use, and then automatically commits or rolls back changes and closes the session when done.
+A database session context manager.
+
+When called with the default ``session=None`` it opens a new SQLAlchemy session, commits on success, rolls back on exception, and unconditionally closes the session on exit.
+
+When an external ``session`` is passed in, this context manager is transparent: the session is yielded as-is without commit / rollback / close — ownership stays with whoever originally opened it. Exceptions raised inside the ``with`` block still propagate and trigger rollback at the owning ``get_session`` up the call chain. This allows helper methods to participate in a caller-driven transaction via an optional ``session=None`` parameter without having to know whether they own the session.
+
+Args:
+    session (Optional[Session]): An already-open SQLAlchemy session from an outer scope. When ``None``, a new session is opened and managed by this context; otherwise the passed session is yielded as-is.
+""")
+
+add_chinese_doc("SqlManager.paginate", """\
+对一个 SQLAlchemy ``Query`` 应用基于 page 的分页。
+
+会先将 ``page`` 与 ``page_size`` 截断到不小于 1，再对传入的查询做一次 ``COUNT`` 拿到不分页的总数，然后用 ``OFFSET``/``LIMIT`` 取当前页。返回形如 ``{'items', 'total', 'page', 'page_size'}`` 的字典。
+
+返回的 ``items`` 是原始 SQLAlchemy 行对象——不做任何业务转换。调用方自行负责把行转换成所需格式（例如通过 ``_orm_to_dict``），因此本工具可以被任意列表接口复用。
+
+Args:
+    query (Query): 已经应用好所需 ``filter``/``order_by`` 的 SQLAlchemy ``Query``。
+    page (int): 页码，从 1 开始；小于 1 时会被截断为 1。
+    page_size (int): 每页条数；小于 1 时会被截断为 1。
+""")
+
+add_english_doc("SqlManager.paginate", """\
+Apply page-based pagination to a SQLAlchemy ``Query``.
+
+Clamps ``page`` and ``page_size`` to at least ``1``, issues a ``COUNT`` against the unpaginated query to obtain the total row count, then fetches the current page using ``OFFSET`` / ``LIMIT``. Returns a dict shaped ``{'items', 'total', 'page', 'page_size'}``.
+
+The returned ``items`` are raw SQLAlchemy row results — no business conversion is performed. Callers are responsible for converting rows to their desired shape (for example via ``_orm_to_dict``), so this helper stays domain-agnostic and reusable across any listing endpoint.
+
+Args:
+    query (Query): A SQLAlchemy ``Query`` with the desired ``filter`` / ``order_by`` already applied.
+    page (int): 1-based page number; values below 1 are clamped to 1.
+    page_size (int): Number of rows per page; values below 1 are clamped to 1.
 """)
 
 add_chinese_doc("SqlManager.check_connection", """\

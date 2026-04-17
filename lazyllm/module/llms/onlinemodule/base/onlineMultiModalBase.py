@@ -1,7 +1,7 @@
 from typing import List, Dict, Union, Optional
 import lazyllm
 from ....servermodule import LLMBase
-from .utils import LazyLLMOnlineBase
+from .utils import LazyLLMOnlineBase, resolve_online_params
 import base64
 from pathlib import Path
 import requests
@@ -29,23 +29,18 @@ class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
         return 'MultiModal'
 
     def _forward(self, input: Union[Dict, str] = None, files: List[str] = None, **kwargs):
-        '''Forward method to be implemented by subclasses'''
         raise NotImplementedError(f'Subclass {self.__class__.__name__} must implement this method')
 
     def forward(self, input: Union[Dict, str] = None, *, lazyllm_files=None,
                 url: str = None, model: str = None, **kwargs):
-        '''Main forward method with file handling'''
-        try:
-            input, files = self._get_files(input, lazyllm_files)
-            runtime_url = url or kwargs.pop('base_url', None) or self._base_url
-            runtime_model = model or kwargs.pop('model_name', None) or self._model_name
-            call_params = {'input': input, **kwargs}
-            if files: call_params['files'] = files
-            return self._forward(**call_params, model=runtime_model, url=runtime_url)
-
-        except Exception as e:
-            lazyllm.LOG.error(f'Error in {self.__class__.__name__}.forward: {str(e)}')
-            raise
+        input, files = self._get_files(input, lazyllm_files or kwargs.pop('files', None))
+        model, _, url, kwargs = resolve_online_params(model, None, url, kwargs,
+                                                      model_aliases='model_name', url_aliases='base_url')
+        runtime_url = url or self._base_url
+        runtime_model = model or self._model_name
+        call_params = {'input': input, **kwargs}
+        if files: call_params['files'] = files
+        return self._forward(**call_params, model=runtime_model, url=runtime_url)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'OnlineMultiModalModule',

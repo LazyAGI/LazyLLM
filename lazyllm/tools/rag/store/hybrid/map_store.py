@@ -179,24 +179,48 @@ class MapStore(LazyLLMStoreBase):
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
+        limit = kwargs.get('limit')
+        offset = max(kwargs.get('offset', 0) or 0, 0)
+        return_total = kwargs.get('return_total', False)
+        sort_by_number = kwargs.get('sort_by_number', False)
         if self._sqlite_first:
             with self._lock:
                 conn = self._open_conn()
                 cur = conn.cursor()
                 self._ensure_table(cur, collection_name)
                 where, args = self._build_where(criteria)
+                order_clause = ' ORDER BY number ASC, uid ASC' if sort_by_number else ''
+                page_clause = ''
+                page_args = ()
+                if limit is not None:
+                    page_clause = ' LIMIT ? OFFSET ?'
+                    page_args = (limit, offset)
+                elif offset > 0:
+                    page_clause = ' LIMIT -1 OFFSET ?'
+                    page_args = (offset,)
+                total = None
+                if return_total:
+                    cur.execute(f'SELECT COUNT(*) FROM {collection_name}{where}', args)
+                    total = cur.fetchone()[0]
                 cur.execute(f'''SELECT uid, doc_id, "group", content, meta, global_meta, type, number, kb_id,
                                 excluded_embed_metadata_keys, excluded_llm_metadata_keys, parent, answer, image_keys
-                                FROM {collection_name}{where}''', args)
+                                FROM {collection_name}{where}{order_clause}{page_clause}''', args + page_args)
                 rows = cur.fetchall()
                 res = []
                 for r in rows:
                     item = self._deserialize_data(r)
                     res.append(item)
-            return res
+            return (res, total) if return_total else res
         else:
             uids = self._get_uids_by_criteria(collection_name, criteria)
-            return [self._uid2data[uid] for uid in uids if uid in self._uid2data]
+            res = [self._uid2data[uid] for uid in uids if uid in self._uid2data]
+            if sort_by_number:
+                res = sorted(res, key=lambda item: (item.get('number', 0), item.get('uid', '')))
+            total = len(res)
+            if offset > 0 or limit is not None:
+                end = None if limit is None else offset + limit
+                res = res[offset:end]
+            return (res, total) if return_total else res
 
     def _build_where(self, criteria: dict):
         if not criteria:

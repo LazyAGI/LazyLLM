@@ -1,12 +1,11 @@
 from copy import copy as copy_obj
-from enum import Enum
 from dataclasses import dataclass, field
 from typing import (
     Any, List, Union, Optional, Tuple, AbstractSet,
     Collection, Literal, Callable, Dict, Iterator
 )
 from lazyllm import LOG
-from ..doc_node import DocNode, RichDocNode
+from ..doc_node import DocNode, RichDocNode, MetadataMode
 from ....common.deprecated import deprecated
 from lazyllm import ThreadPoolExecutor
 from itertools import chain
@@ -21,12 +20,6 @@ from pathlib import Path
 import inspect
 from lazyllm.thirdparty import nltk
 from lazyllm.thirdparty import transformers
-
-class MetadataMode(str, Enum):
-    ALL = 'ALL'
-    EMBED = 'EMBED'
-    LLM = 'LLM'
-    NONE = 'NONE'
 
 @dataclass
 class _Split:

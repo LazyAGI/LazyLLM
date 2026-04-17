@@ -5,16 +5,15 @@ from lazyllm import ThreadPoolExecutor
 
 import lazyllm
 from lazyllm import FlatList, Option, kwargs, globals, locals, colored_text, redis_client
-from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
+from lazyllm.common import _register_trim_module, HandledException, _change_exception_type, SessionConfigableBase
 from ..components.formatter.formatterbase import file_content_hash, transform_path
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
-from ..hook import LazyLLMHook, LazyLLMFuncHook
+from ..hook import LazyLLMHook, LazyLLMFuncHook, prepare_hooks, register_hooks, resolve_builtin_hooks, run_hooks
 from lazyllm import FileSystemQueue, LOG
 from contextlib import contextmanager
 from typing import Optional, Union, Dict, List, Callable
-import copy
 from collections import defaultdict
 import sqlite3
 import pickle
@@ -262,7 +261,7 @@ module_cache = ModuleCache()
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
 # example: ActionModule.submodules:: isinstance(x, ModuleBase) will add submodule.
-class ModuleBase(metaclass=_MetaBind):
+class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
     builder_keys = []  # keys in builder support Option by default
 
     def __new__(cls, *args, **kw):
@@ -281,18 +280,19 @@ class ModuleBase(metaclass=_MetaBind):
                     f'{k} cannot accept Option'
         return object.__new__(cls)
 
-    def __init__(self, *, return_trace=False):
+    def __init__(self, *, return_trace=False, id: Optional[str] = None, name: Optional[str] = None,
+                 group_id: Optional[str] = None):
+        super().__init__(id=id, name=name, group_id=group_id)
         self._submodules = []
         self._evalset = None
         self._return_trace = return_trace
         self.mode_list = ('train', 'server', 'eval')
-        self._set_mid()
         self._used_by_moduleid = None
-        self._module_name = None
         self._options = []
         self.eval_result = None
         self._use_cache: Union[bool, str] = False
-        self._hooks = set()
+        self._hooks = []
+        register_hooks(self, resolve_builtin_hooks(self))
 
     def __setattr__(self, name: str, value):
         if isinstance(value, ModuleBase):
@@ -326,14 +326,8 @@ class ModuleBase(metaclass=_MetaBind):
         raise AttributeError(f'{self.__class__} object has no attribute {key}')
 
     def __call__(self, *args, **kw):
-        hook_objs = []
-        for hook_type in self._hooks:
-            if isinstance(hook_type, LazyLLMHook):
-                hook_objs.append(copy.deepcopy(hook_type))
-            elif isinstance(hook_type, type):
-                assert issubclass(hook_type, LazyLLMHook), f'{hook_type} is not a subclass of LazyLLMHook'
-                hook_objs.append(hook_type(self))
-            hook_objs[-1].pre_hook(*args, **kw)
+        hook_objs = prepare_hooks(self, self._hooks, *args, **kw)
+
         try:
             kw.update(locals['global_parameters'].get(self._module_id, dict()))
             if (files := locals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
@@ -343,18 +337,31 @@ class ModuleBase(metaclass=_MetaBind):
                  if args and isinstance(args[0], kwargs) else self._call_impl(*args, **kw))
             if self._return_trace:
                 lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
-        except HandledException as e: raise e
+        except HandledException as e:
+            LOG.error(f'Module `{self.__class__.__name__}` raised {type(e).__name__}: {e}')
+            try:
+                run_hooks(hook_objs, 'on_error', e)
+            except Exception:
+                LOG.warning('Module on_error hook failed', exc_info=True)
+            raise
         except Exception as e:
-            LOG.error(f'An error occured in {self.__class__}' + (f' with name {self.name}' if self.name else
+            LOG.error(f'An error occurred in {self.__class__}' + (f' with name {self.name}' if self.name else
                       '') + f'. Args: `{args}`, Kwargs: `{kw}`')
-            raise _change_exception_type(e, ModuleExecutionError) from None
-
-        for hook_obj in hook_objs[::-1]:
-            hook_obj.post_hook(r)
-        for hook_obj in hook_objs:
-            hook_obj.report()
-        self._clear_usage()
-        return r
+            err = _change_exception_type(e, ModuleExecutionError)
+            try:
+                run_hooks(hook_objs, 'on_error', err)
+            except Exception:
+                LOG.warning('Module on_error hook failed', exc_info=True)
+            raise err from None
+        else:
+            run_hooks(hook_objs, 'post_hook', r)
+            self._clear_usage()
+            return r
+        finally:
+            try:
+                run_hooks(hook_objs, 'finalize')
+            except Exception:
+                LOG.warning('Module finalize hook failed', exc_info=True)
 
     def _call_impl(self, *args, **kw):
         if self._use_cache and 'R' in lazyllm.config['cache_mode']:
@@ -362,7 +369,8 @@ class ModuleBase(metaclass=_MetaBind):
                 return module_cache.get(self.__cache_hash__, args, kw)
             except CacheNotFoundError:
                 self._cache_miss_handler()
-        r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
+        with globals.stack_enter(self.identities):
+            r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
         if self._use_cache and 'W' in lazyllm.config['cache_mode']:
             module_cache.set(self.__cache_hash__, args, kw, r)
         return r
@@ -395,30 +403,27 @@ class ModuleBase(metaclass=_MetaBind):
         if not isinstance(hook_type, LazyLLMHook):
             raise TypeError(f'Invalid hook type: {type(hook_type)}, '
                             'must be subclass or instance of LazyLLMHook, or callable function')
-        self._hooks.add(hook_type)
+        if hook_type not in self._hooks:
+            self._hooks.append(hook_type)
 
     def unregister_hook(self, hook_type: LazyLLMHook):
         if hook_type in self._hooks:
             self._hooks.remove(hook_type)
 
     def clear_hooks(self):
-        self._hooks = set()
+        self._hooks = []
 
     def _get_train_tasks(self): return None
     def _get_deploy_tasks(self): return None
     def _get_post_process_tasks(self): return None
 
     def _set_mid(self, mid=None):
-        self._module_id = mid if mid else str(uuid.uuid4().hex)
+        self._config_id = mid if mid else str(uuid.uuid4().hex)
         return self
 
     @property
-    def name(self):
-        return self._module_name
-
-    @name.setter
-    def name(self, name):
-        self._module_name = name
+    def _module_id(self):
+        return self._config_id
 
     @property
     def submodules(self):
@@ -554,7 +559,7 @@ class ActionModule(ModuleBase):
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Action', subs=[repr(self.action)],
-                                 name=self._module_name, return_trace=self._return_trace)
+                                 name=self.name, return_trace=self._return_trace)
 
 
 def flow_start(self):

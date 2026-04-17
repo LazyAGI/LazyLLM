@@ -194,6 +194,162 @@ Args:
     maxdepth (int, optional): Unused; kept for compatibility.
 ''')
 
+_add_fs_chinese('LazyLLMFSBase.exists', '''\
+判断路径是否存在。依赖子类实现的 info 或 ls；若底层无此能力则可能由基类/ fsspec 提供。
+
+Args:
+    path (str): 文件或目录路径。
+
+Returns:
+    bool: 存在为 True，否则 False。
+''')
+_add_fs_english('LazyLLMFSBase.exists', '''\
+Return whether the path exists. Depends on subclass info/ls or fsspec base behavior.
+
+Args:
+    path (str): File or directory path.
+
+Returns:
+    bool: True if exists, else False.
+''')
+
+_add_fs_chinese('LazyLLMFSBase.read_bytes', '''\
+将路径对应文件整体读入为字节。路径不存在时抛出 FileNotFoundError；内部使用 open(path, "rb") 读取。
+
+Args:
+    path (str): 文件路径。
+
+Returns:
+    bytes: 文件完整内容。
+''')
+_add_fs_english('LazyLLMFSBase.read_bytes', '''\
+Read the entire file at path as bytes. Raises FileNotFoundError if path does not exist; uses open(path, "rb") internally.
+
+Args:
+    path (str): File path.
+
+Returns:
+    bytes: Full file content.
+''')
+
+_add_fs_chinese('LazyLLMFSBase.read_file', '''\
+将路径对应文件按 UTF-8 解码为字符串。等价于 read_bytes(path).decode("utf-8")。
+
+Args:
+    path (str): 文件路径。
+
+Returns:
+    str: 文件文本内容。
+''')
+_add_fs_english('LazyLLMFSBase.read_file', '''\
+Read the file at path as UTF-8 string. Same as read_bytes(path).decode("utf-8").
+
+Args:
+    path (str): File path.
+
+Returns:
+    str: File text content.
+''')
+
+_add_fs_chinese('LazyLLMFSBase.write_file', '''\
+将字节数据完整写入指定路径。覆盖已存在文件；内部调用 _upload_data。
+
+Args:
+    path (str): 远程文件路径。
+    data (bytes): 要写入的完整内容。
+''')
+_add_fs_english('LazyLLMFSBase.write_file', '''\
+Write bytes to the given path, overwriting if exists. Uses _upload_data internally.
+
+Args:
+    path (str): Remote file path.
+    data (bytes): Full content to write.
+''')
+
+_add_fs_chinese('LazyLLMFSBase.copy', '''\
+复制文件或目录到目标路径。各子类调用对应平台的官方接口实现，基类默认抛出 NotImplementedError。
+
+各平台支持情况：
+
+- ObsidianFS：使用 shutil.copy2 / copytree，目录复制需 recursive=True。
+- S3FS：使用服务端 copy_object，目录需 recursive=True。
+- GoogleDriveFS：使用 files.copy API（仅支持文件，文件夹抛出 NotImplementedError）。
+- OneDriveFS：使用 Graph API /copy 接口（异步执行）。
+- FeishuFS：使用 Drive v1 /copy 接口（仅支持文件，文件夹抛出 NotImplementedError）。
+- FeishuWikiFS：使用 Wiki v2 /copy 接口，支持节点（含子节点）的复制。
+- ConfluenceFS：使用 REST API /copy 接口。
+- OnesFS / YuqueFS / NotionFS：官方接口不支持，抛出 NotImplementedError。
+
+Args:
+    path1 (str): 源路径（文件或目录）。
+    path2 (str): 目标路径。
+    recursive (bool): 源为目录时是否递归复制子项，默认 False。
+    **kwargs: 透传（当前未使用）。
+''')
+_add_fs_english('LazyLLMFSBase.copy', '''\
+Copy file or directory to the target path. Each subclass calls the provider's official API; the base class raises NotImplementedError.
+
+Platform support:
+
+- ObsidianFS: uses shutil.copy2 / copytree; directory copy requires recursive=True.
+- S3FS: uses server-side copy_object; directory copy requires recursive=True.
+- GoogleDriveFS: uses files.copy API (files only; raises NotImplementedError for folders).
+- OneDriveFS: uses Graph API /copy endpoint (async).
+- FeishuFS: uses Drive v1 /copy API (files only; raises NotImplementedError for folders).
+- FeishuWikiFS: uses Wiki v2 /copy API (supports nodes including children).
+- ConfluenceFS: uses REST API /copy endpoint.
+- OnesFS / YuqueFS / NotionFS: no official copy API; raises NotImplementedError.
+
+Args:
+    path1 (str): Source path (file or directory).
+    path2 (str): Destination path.
+    recursive (bool): If source is directory, whether to copy recursively; default False.
+    **kwargs: Passed through (currently unused).
+''')
+
+_add_fs_chinese('LazyLLMFSBase.move', '''\
+将文件或目录移动到目标路径。各子类调用对应平台的官方接口实现，基类默认抛出 NotImplementedError。
+
+各平台支持情况：
+
+- ObsidianFS：使用 shutil.move，目录移动需 recursive=True。
+- S3FS：服务端 copy_object + delete_object，目录需 recursive=True。
+- GoogleDriveFS：使用 files.update 的 addParents/removeParents（文件和文件夹均支持）。
+- OneDriveFS：使用 Graph API PATCH /items/{id} 更新 parentReference。
+- FeishuFS：使用 Drive v1 /move 接口（文件和文件夹均支持，文件夹异步执行）。
+- FeishuWikiFS：使用 Wiki v2 /move 接口，支持节点（含子节点）的移动。
+- ConfluenceFS：使用 REST API PUT /content/{id}/move 接口。
+- OnesFS：使用 /pages/{id}/update 接口更新 parent_uuid。
+- YuqueFS / NotionFS：官方接口不支持，抛出 NotImplementedError。
+
+Args:
+    path1 (str): 源路径（文件或目录）。
+    path2 (str): 目标路径。
+    recursive (bool): 源为目录时是否递归移动，默认 False。
+    **kwargs: 透传（当前未使用）。
+''')
+_add_fs_english('LazyLLMFSBase.move', '''\
+Move file or directory to the target path. Each subclass calls the provider's official API; the base class raises NotImplementedError.
+
+Platform support:
+
+- ObsidianFS: uses shutil.move; directory move requires recursive=True.
+- S3FS: server-side copy_object + delete_object; directory move requires recursive=True.
+- GoogleDriveFS: uses files.update with addParents/removeParents (supports files and folders).
+- OneDriveFS: uses Graph API PATCH /items/{id} to update parentReference.
+- FeishuFS: uses Drive v1 /move API (supports files and folders; folders are async).
+- FeishuWikiFS: uses Wiki v2 /move API (supports nodes including children).
+- ConfluenceFS: uses REST API PUT /content/{id}/move endpoint.
+- OnesFS: uses /pages/{id}/update endpoint to change parent_uuid.
+- YuqueFS / NotionFS: no official move API; raises NotImplementedError.
+
+Args:
+    path1 (str): Source path (file or directory).
+    path2 (str): Destination path.
+    recursive (bool): If source is directory, whether to move recursively; default False.
+    **kwargs: Passed through (currently unused).
+''')
+
 _add_fs_chinese('LazyLLMFSBase.put_file', '''\
 将本地文件上传到远程路径。
 

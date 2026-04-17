@@ -81,11 +81,11 @@
     members:
     exclude-members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultiModal
+::: lazyllm.module.OnlineEmbeddingModule
     members:
     exclude-members:
 
-::: lazyllm.module.OnlineEmbeddingModule
+::: lazyllm.module.OnlineMultiModalModule
     members:
     exclude-members:
 
@@ -144,7 +144,7 @@
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMMultiModal
+::: lazyllm.module.OnlineMultiModalModule
     options:
       members:
 

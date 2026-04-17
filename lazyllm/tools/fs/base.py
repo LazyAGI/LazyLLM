@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 import time
 import threading
+import io
 
 from lazyllm import thirdparty
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
@@ -19,11 +20,13 @@ class CloudFSBufferedFile(AbstractBufferedFile):
         return self.fs._download_range(self.path, start, end)
 
     def _initiate_upload(self) -> None:
-        pass
+        self.buffer = io.BytesIO()
 
     def _upload_chunk(self, final: bool = False) -> bool:
         if not final:
             return False
+        if 'a' in self.mode:
+            raise NotImplementedError('Append mode not supported')
         self.buffer.seek(0)
         data = self.buffer.read()
         self.fs._upload_data(self.path, data)
@@ -35,6 +38,8 @@ _CloudFSMeta = type('_CloudFSMeta', (LazyLLMRegisterMetaABCClass, type(AbstractF
 
 class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
+    __public_apis__ = ['ls', 'info', 'open', 'mkdir', 'rm',
+                       'exists', 'read_bytes', 'read_file', 'write_file', 'move', 'copy']
     protocol: str = 'cloudfs'
 
     def __init__(self, token: Any, base_url: Optional[str] = None, asynchronous: bool = False,
@@ -111,6 +116,24 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
             data = fh.read()
         with open(lpath, 'wb') as fh:
             fh.write(data)
+
+    def read_bytes(self, path: str) -> bytes:
+        if not self.exists(path):
+            raise FileNotFoundError(f'File {path} not found')
+        with self.open(path, 'rb') as fh:
+            return fh.read()
+
+    def read_file(self, path: str) -> str:
+        return self.read_bytes(path).decode('utf-8')
+
+    def write_file(self, path: str, data: bytes) -> None:
+        self._upload_data(path, data)
+
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        raise NotImplementedError(f'{self.__class__.__name__}.copy is not implemented')
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        raise NotImplementedError(f'{self.__class__.__name__}.move is not implemented')
 
     def _platform_supports_webhook(self) -> bool:
         return False

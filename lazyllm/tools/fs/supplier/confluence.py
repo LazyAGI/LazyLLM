@@ -127,6 +127,27 @@ class ConfluenceFS(LazyLLMFSBase):
         else:
             self._delete(f'{self._rest}/content/{parts[-1]}')
 
+    def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        parts1, parts2 = self._parse_path(path1), self._parse_path(path2)
+        if not parts1:
+            raise FileNotFoundError(path1)
+        page_id = parts1[-1]
+        parent_id = parts2[-2] if len(parts2) >= 2 else (parts2[-1] if parts2 else '')
+        payload: Dict[str, Any] = {}
+        if parent_id:
+            payload['destination'] = {'type': 'parent_page', 'value': parent_id}
+        if parts2:
+            payload['pageTitle'] = parts2[-1]
+        self._post(f'{self._rest}/content/{page_id}/copy', json=payload)
+
+    def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
+        parts1, parts2 = self._parse_path(path1), self._parse_path(path2)
+        page_id = parts1[-1] if parts1 else ''
+        target_id = parts2[-1] if parts2 else ''
+        if not page_id or not target_id:
+            raise ValueError(f'Invalid paths for Confluence move: {path1!r} → {path2!r}')
+        self._put(f'{self._rest}/content/{page_id}/move/append/{target_id}')
+
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)
         page_id = parts[-1] if parts else path

@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     # flake8: noqa: E401
     from .rag import (Document, GraphDocument, UrlGraphDocument, Reranker, Retriever, TempDocRetriever,
-                    GraphRetriever, SentenceSplitter, LLMParser)
+                    GraphRetriever, SentenceSplitter, LLMParser, DocServer)
     from .webpages import WebModule
     from .fs import (LazyLLMFSBase, CloudFSBufferedFile, CloudFS, CloudFsWatchdog,
                      FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS,
@@ -62,7 +62,8 @@ _SUBMOD_MAP = {
         'Retriever',
         'GraphRetriever',
         'LLMParser',
-        'SentenceSplitter'
+        'SentenceSplitter',
+        'DocServer',
     ],
     'webpages': ['WebModule'],
     'agent': [

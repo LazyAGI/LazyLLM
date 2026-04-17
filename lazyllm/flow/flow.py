@@ -4,6 +4,7 @@ from lazyllm import config
 from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind
 from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals, _get_callsite
 from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
+from lazyllm.common import SessionConfigableBase
 from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
@@ -20,7 +21,7 @@ from typing import Union, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
-from ..hook import LazyLLMHook
+from ..hook import LazyLLMHook, prepare_hooks, register_hooks, resolve_builtin_hooks, run_hooks
 from itertools import repeat
 
 
@@ -78,14 +79,15 @@ def _get_flow_stack():
 _register_trim_module({'lazyllm.flow.flow': ['__call__']}, continuous=True)
 _register_trim_module({'lazyllm.flow.flow': ['_run', 'invoke'], 'lazyllm.common.bind': ['__call__']})
 
-class FlowBase(metaclass=_MetaBind):
-    def __init__(self, *items, item_names=None, auto_capture=False) -> None:
+class FlowBase(SessionConfigableBase, metaclass=_MetaBind):
+    def __init__(self, *items, item_names=None, auto_capture=False, id: Optional[str] = None, name: Optional[str] = None,
+                 group_id: Optional[str] = None) -> None:
+        super().__init__(id=id, name=name, group_id=group_id)
         self._father = None
         self._items, self._item_names, self._item_ids, self._item_pos = [], [], [], []
         self._auto_capture = auto_capture
         self._capture = True
         self._curr_frame = None
-        self._flow_id = str(uuid.uuid4().hex)
         self._find_user_instantiation_frame()
 
         for k, v in zip(item_names if item_names else repeat(None), items):
@@ -95,6 +97,10 @@ class FlowBase(metaclass=_MetaBind):
         self._auto_registered = False
 
     def __post_init__(self): pass
+
+    @property
+    def _flow_id(self):
+        return self._config_id
 
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
@@ -151,10 +157,12 @@ class FlowBase(metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
+            if hasattr(value, '_module_id') and hasattr(value, 'name') and value.name is None:
+                value.name = name
             if len(_get_flow_stack()) > 1 and not self._auto_registered:
                 super(__class__, self).__setattr__('_auto_registered', True)
-                locals = self._curr_frame.f_locals.copy()
-                for key, item in locals.items():
+                frame_locals = self._curr_frame.f_locals.copy()
+                for key, item in frame_locals.items():
                     if item == self and (parent := _get_flow_stack()[-2]) != item:
                         if key not in parent._item_names and parent._defined_at_the_same_scope(self):
                             parent._add(key, self)
@@ -207,44 +215,59 @@ bind.__exit__ = _bind_exit
 # TODO(wangzhihong): support workflow launcher.
 # Disable item launchers if launcher is already set in workflow.
 class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, *args, post_action=None, auto_capture=False, **kw):
+    def __init__(self, *args, post_action=None, auto_capture=False, id: Optional[str] = None,
+                 name: Optional[str] = None, group_id: Optional[str] = None, **kw):
         assert len(args) == 0 or len(kw) == 0, f'Cannot provide args `{args}` and kwargs `{kw}` at the same time'
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
             assert len(args) == 1, 'args should be list of callable functions'
             args = args[0]
         args = list(args) + [v() if isinstance(v, type) else v for v in kw.values()]
-        super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
+        super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture,
+                                        id=id, name=name, group_id=group_id)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
-        self._hooks = set()
+        self._hooks = []
+        register_hooks(self, resolve_builtin_hooks(self))
 
     def __call__(self, *args, **kw):
-        hook_objs = []
-        for hook_type in self._hooks:
-            if isinstance(hook_type, LazyLLMHook):
-                hook_objs.append(hook_type)
-            else:
-                hook_objs.append(hook_type(self))
-            hook_objs[-1].pre_hook(*args, **kw)
-        output = self._run(args[0] if len(args) == 1 else package(args), **kw)
-        if self.post_action is not None: self.invoke(self.post_action, output)
-        if self._sync: self.wait()
-        r = self._post_process(output)
-        for hook_obj in hook_objs[::-1]:
-            hook_obj.post_hook(r)
-        for hook_obj in hook_objs:
-            hook_obj.report()
-        return r
+        hook_objs = prepare_hooks(self, self._hooks, *args, **kw)
+
+        try:
+            with globals.stack_enter(self.identities):
+                output = self._run(args[0] if len(args) == 1 else package(args), **kw)
+            if self.post_action is not None: self.invoke(self.post_action, output)
+            if self._sync: self.wait()
+            r = self._post_process(output)
+        except Exception as e:
+            LOG.error(f'Flow `{self.__class__.__name__}` raised {type(e).__name__}: {e}')
+            try:
+                run_hooks(hook_objs, 'on_error', e)
+            except Exception:
+                LOG.warning('Flow on_error hook failed', exc_info=True)
+            raise
+        else:
+            run_hooks(hook_objs, 'post_hook', r)
+            return r
+        finally:
+            try:
+                run_hooks(hook_objs, 'finalize')
+            except Exception:
+                LOG.warning('Flow finalize hook failed', exc_info=True)
 
     def register_hook(self, hook_type: LazyLLMHook):
-        self._hooks.add(hook_type)
+        if not (isinstance(hook_type, LazyLLMHook)
+                or (isinstance(hook_type, type) and issubclass(hook_type, LazyLLMHook))):
+            raise TypeError(f'Invalid hook type: {type(hook_type)}, '
+                            'must be subclass or instance of LazyLLMHook')
+        if hook_type not in self._hooks:
+            self._hooks.append(hook_type)
 
     def unregister_hook(self, hook_type: LazyLLMHook):
         if hook_type in self._hooks:
             self._hooks.remove(hook_type)
 
     def clear_hooks(self):
-        self._hooks = set()
+        self._hooks = []
 
     def _post_process(self, output):
         return output
