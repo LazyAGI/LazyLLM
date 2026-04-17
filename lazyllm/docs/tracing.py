@@ -8,64 +8,6 @@ import lazyllm
 add_chinese_doc_trace = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing)
 add_english_doc_trace = functools.partial(utils.add_english_doc, module=lazyllm.tracing)
 
-add_chinese_doc_trace('LazyTracingHook', '''\
-LazyLLM 内置的 tracing hook 实现。
-
-该 hook 会在目标对象执行前后自动创建、补充并结束 tracing span，是 module / flow /
-callable 接入 tracing runtime 的关键桥接层。
-''')
-
-add_english_doc_trace('LazyTracingHook', '''\
-Built-in tracing hook implementation for LazyLLM.
-
-This hook automatically creates, enriches, and finishes tracing spans around the execution of
-the target object, serving as the bridge between modules / flows / callables and the tracing
-runtime.
-''')
-
-add_chinese_doc_trace('LazyTracingHook.pre_hook', '''\
-在目标对象执行前启动 tracing span。
-
-该方法会检查 tracing 是否启用、运行时 module_trace 覆写是否禁用当前对象，然后在允许
-观测时创建 span。
-''')
-
-add_english_doc_trace('LazyTracingHook.pre_hook', '''\
-Start a tracing span before the target object runs.
-
-This method checks whether tracing is enabled and whether the runtime ``module_trace``
-override disables the current object, then creates a span when observation is allowed.
-''')
-
-add_chinese_doc_trace('LazyTracingHook.post_hook', '''\
-在目标对象执行成功后补充 tracing 输出信息。
-
-该方法会写入输出 payload、usage 信息以及对象自定义的 tracing 输出属性。
-''')
-
-add_english_doc_trace('LazyTracingHook.post_hook', '''\
-Enrich tracing output information after the target object finishes successfully.
-
-This method records the output payload, usage information, and any custom tracing output
-attributes exposed by the object.
-''')
-
-add_chinese_doc_trace('LazyTracingHook.on_error', '''\
-在目标对象执行异常时记录错误到当前 span。
-''')
-
-add_english_doc_trace('LazyTracingHook.on_error', '''\
-Record an execution error on the current span when the target object fails.
-''')
-
-add_chinese_doc_trace('LazyTracingHook.finalize', '''\
-结束当前 tracing span，并清理 hook 内部保存的临时状态。
-''')
-
-add_english_doc_trace('LazyTracingHook.finalize', '''\
-Finish the current tracing span and clear the temporary state stored inside the hook.
-''')
-
 add_chinese_doc_trace('resolve_tracing_hooks', '''\
 解析并返回当前对象应自动注册的 tracing hooks。
 
