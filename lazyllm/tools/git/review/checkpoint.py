@@ -14,11 +14,9 @@ class ReviewStage(enum.Enum):
     SPEC = 'spec'
     PR_SUMMARY = 'pr_summary'
     R1 = 'r1'
+    R2A = 'r2a'
     R2 = 'r2'
     R3 = 'r3'
-    R4A = 'r4a'
-    R4 = 'r4'
-    R4V = 'r4v'
     FINAL = 'final'
     UPLOAD = 'upload'
 
@@ -38,8 +36,9 @@ class ReviewStage(enum.Enum):
 
 _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
-    ReviewStage.PR_SUMMARY, ReviewStage.R1, ReviewStage.R2,
-    ReviewStage.R3, ReviewStage.R4A, ReviewStage.R4, ReviewStage.R4V, ReviewStage.FINAL, ReviewStage.UPLOAD,
+    ReviewStage.PR_SUMMARY, ReviewStage.R1,
+    ReviewStage.R2A, ReviewStage.R2,
+    ReviewStage.R3, ReviewStage.FINAL, ReviewStage.UPLOAD,
 ]
 
 
@@ -84,13 +83,16 @@ def _save_cache_multi(cache_path: Optional[str], entries: Dict[str, Any]) -> Non
 
 
 class _ReviewCheckpoint:
-    _KEYS = ('arch_doc', 'review_spec', 'r2_shared_context', 'r1', 'r2', 'r3', 'pr_design_doc', 'r4', 'r4v', 'final')
-    # internal key prefix for stage completion markers
+    _KEYS = ('arch_doc', 'review_spec', 'r3_shared_context', 'r1', 'pr_design_doc', 'r2', 'r3', 'final')
     _STAGE_DONE_PREFIX = '_stage_done_'
-    # internal key recording the invalidation boundary (stage value string)
     _INVALIDATED_FROM_KEY = '_invalidated_from'
-    # mapping from checkpoint key to the ReviewStage it belongs to
     _KEY_TO_STAGE: Dict[str, 'ReviewStage'] = {}
+    _PIPELINE_VERSION_KEY = '_pipeline_version'
+    # Bump _PIPELINE_VERSION to invalidate ALL cached stages across ALL PRs
+    _PIPELINE_VERSION = 3
+    _REVIEW_ROUND_VERSION_KEY = '_review_round_version'
+    # Bump _REVIEW_ROUND_VERSION to invalidate only the FINAL (R4) stage cache
+    _REVIEW_ROUND_VERSION = 4
 
     def __init__(self, path: str, resume_from: Optional[ReviewStage] = None) -> None:
         self._path = path
@@ -103,6 +105,14 @@ class _ReviewCheckpoint:
                 lazyllm.LOG.info(f'Loaded checkpoint from {path}')
             except (json.JSONDecodeError, OSError):
                 self._data = {}
+        old_ver = self._data.get(self._PIPELINE_VERSION_KEY, 0)
+        if old_ver < self._PIPELINE_VERSION:
+            lazyllm.LOG.warning(
+                f'Checkpoint pipeline version {old_ver} < {self._PIPELINE_VERSION}, invalidating all stages'
+            )
+            self._data = {}
+        self._data[self._PIPELINE_VERSION_KEY] = self._PIPELINE_VERSION
+        self._flush()
         if resume_from is not None:
             self._mark_invalidated_from(resume_from)
 
@@ -125,19 +135,20 @@ class _ReviewCheckpoint:
         if not _ReviewCheckpoint._KEY_TO_STAGE:
             _ReviewCheckpoint._KEY_TO_STAGE = {
                 'clone_dir': ReviewStage.CLONE,
+                'head_sha': ReviewStage.CLONE,
                 'arch_doc': ReviewStage.ARCH,
                 'review_spec': ReviewStage.SPEC,
                 'pr_summary': ReviewStage.PR_SUMMARY,
                 'r1': ReviewStage.R1,
+                'pr_design_doc': ReviewStage.R2A,
                 'r2': ReviewStage.R2,
                 'r3': ReviewStage.R3,
-                'pr_design_doc': ReviewStage.R4A,
-                'r4': ReviewStage.R4,
-                'r4v': ReviewStage.R4V,
+                'r3_shared_context': ReviewStage.R3,
                 'final': ReviewStage.FINAL,
-                'r2_shared_context': ReviewStage.R2,
+                '_review_round_version': ReviewStage.FINAL,
                 'diff_text': ReviewStage.CLONE,
                 'final_comments': ReviewStage.UPLOAD,
+                'upload_done_batches': ReviewStage.UPLOAD,
             }
         if key in _ReviewCheckpoint._KEY_TO_STAGE:
             return _ReviewCheckpoint._KEY_TO_STAGE[key]
@@ -145,8 +156,8 @@ class _ReviewCheckpoint:
             return ReviewStage.R1
         if key.startswith('r1_window_'):
             return ReviewStage.R1
-        if key.startswith('r2_file_'):
-            return ReviewStage.R2
+        if key.startswith('r3_file_') or key.startswith('r3_disc_') or key.startswith('r3_group_'):
+            return ReviewStage.R3
         if key.startswith(self._STAGE_DONE_PREFIX):
             stage_val = key[len(self._STAGE_DONE_PREFIX):]
             try:
@@ -208,6 +219,59 @@ class _ReviewCheckpoint:
         except OSError as e:
             lazyllm.LOG.warning(f'Failed to write checkpoint: {e}')
 
+    # stages whose data survives a head_sha rotation (repo-level, not PR-diff-level)
+    _STABLE_STAGES = frozenset({ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC})
+    # keys that belong to a stable stage but must still be purged on rotation
+    _PURGE_ON_ROTATE = frozenset({'diff_text', 'head_sha'})
+
+    def rotate_on_head_sha_change(self, new_sha: str) -> bool:
+        # If head_sha changed, backup checkpoint and purge all review-round data.
+        # Returns True if rotation happened, False otherwise.
+        # Keeps only repo-level keys (clone, arch, spec) and pipeline metadata.
+        old_sha = self._data.get('head_sha')
+        if not old_sha or old_sha == new_sha:
+            return False
+        # backup old checkpoint
+        if os.path.isfile(self._path):
+            backup = self._path.replace('.json', f'.{old_sha[:8]}.json')
+            try:
+                import shutil
+                shutil.copy2(self._path, backup)
+                lazyllm.LOG.info(f'Checkpoint backed up to {backup}')
+            except OSError as e:
+                lazyllm.LOG.warning(f'Failed to backup checkpoint: {e}')
+        # determine which keys to keep
+        keep: Dict[str, Any] = {}
+        for key, val in self._data.items():
+            # always keep pipeline metadata
+            if key in (self._PIPELINE_VERSION_KEY, self._INVALIDATED_FROM_KEY):
+                keep[key] = val
+                continue
+            # keep stage-done flags for stable stages only (except CLONE — diff needs re-fetch)
+            if key.startswith(self._STAGE_DONE_PREFIX):
+                stage_val = key[len(self._STAGE_DONE_PREFIX):]
+                try:
+                    s = ReviewStage(stage_val)
+                    if s in self._STABLE_STAGES and s != ReviewStage.CLONE:
+                        keep[key] = val
+                except ValueError:
+                    pass
+                continue
+            # keep data keys belonging to stable stages (except purge-on-rotate keys)
+            key_stage = self._stage_for_key(key)
+            if key_stage is not None and key_stage in self._STABLE_STAGES and key not in self._PURGE_ON_ROTATE:
+                keep[key] = val
+        keep['head_sha'] = new_sha
+        # remove invalidation marker — we've physically purged, no need for soft invalidation
+        keep.pop(self._INVALIDATED_FROM_KEY, None)
+        self._data = keep
+        self._flush()
+        lazyllm.LOG.warning(
+            f'head_sha changed ({old_sha[:8]} → {new_sha[:8]}): '
+            f'checkpoint rotated, kept {len(keep)} stable keys, purged review-round data'
+        )
+        return True
+
     def clear(self) -> None:
         self._data = {}
         try:
@@ -243,7 +307,7 @@ class _ReviewCheckpoint:
     def default_path(pr_number: int, repo: str) -> str:
         return os.path.join(_ReviewCheckpoint.pr_dir(pr_number, repo), 'checkpoint.json')
 
-    # kept for backward compatibility
+    # deprecated: use global_cache_dir() directly; will be removed in a future version
     @staticmethod
     def review_cache_dir() -> str:
         return _ReviewCheckpoint.global_cache_dir()

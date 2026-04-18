@@ -5,17 +5,19 @@ import os
 import shutil
 from typing import Any, Dict, List, Optional
 
+import lazyllm
+
 from ..client import Git
 from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
-from .rounds import _run_five_rounds
+from .rounds import _run_four_rounds
 from .poster import _fetch_existing_pr_comments, _post_review_comments, _build_commentable_lines, _filter_commentable
 from .utils import (
     _get_default_llm, _ensure_non_streaming_llm, _get_model_name,
     _get_head_sha_from_pr, _parse_unified_diff, _Progress,
     _category_stats, _build_review_body,
 )
-from .constants import R2_MAX_FILES, R2_MAX_CHUNKS_PER_FILE
+from .constants import R3_MAX_FILES, R3_MAX_CHUNKS_PER_FILE
 
 
 @dataclasses.dataclass
@@ -29,9 +31,9 @@ class _DiffStats:
 
 @dataclasses.dataclass
 class _ReviewStrategy:
-    enable_r2: bool
-    large_file_threshold: int   # files with more diff lines than this → chunk mode
-    max_files_for_r2: int       # total files R2 will process; excess → R1 passthrough
+    enable_r3: bool             # always True for now; kept for future per-strategy toggle
+    large_file_threshold: int   # files with more diff lines than this -> chunk mode
+    max_files_for_r3: int       # total files R3 will process; excess -> R1 passthrough
     max_chunks_per_file: int    # per-file chunk cap in chunk mode
 
 
@@ -55,31 +57,25 @@ def _compute_diff_stats(
 
 
 def _decide_review_strategy(stats: _DiffStats) -> _ReviewStrategy:
-    # R2 is always enabled — large PRs get tighter limits so the most important files
-    # (largest diff, sorted first by _classify_files_for_r2) are still deeply reviewed
-    # while excess files fall back to R1 passthrough.
     if stats.diff_lines_total > 3000 or stats.file_count > 50:
-        # very large PR: tight limits, only top files get chunk-mode agent review
         return _ReviewStrategy(
-            enable_r2=True,
+            enable_r3=True,
             large_file_threshold=100,
-            max_files_for_r2=10,
+            max_files_for_r3=10,
             max_chunks_per_file=2,
         )
     if stats.diff_lines_total > 1000 or stats.file_count > 20:
-        # large PR: moderate limits
         return _ReviewStrategy(
-            enable_r2=True,
+            enable_r3=True,
             large_file_threshold=150,
-            max_files_for_r2=15,
+            max_files_for_r3=15,
             max_chunks_per_file=2,
         )
-    # normal PR: full limits
     return _ReviewStrategy(
-        enable_r2=True,
+        enable_r3=True,
         large_file_threshold=200,
-        max_files_for_r2=R2_MAX_FILES,
-        max_chunks_per_file=R2_MAX_CHUNKS_PER_FILE,
+        max_files_for_r3=R3_MAX_FILES,
+        max_chunks_per_file=R3_MAX_CHUNKS_PER_FILE,
     )
 
 
@@ -143,6 +139,7 @@ def review(  # noqa: C901
     resume_from: Optional[ReviewStage] = None,
     language: str = 'cn',
     keep_clone: bool = False,
+    refresh_diff: bool = False,
 ) -> Dict[str, Any]:
     try:
         import lazyllm.tools.git.review as _self_mod
@@ -166,18 +163,45 @@ def review(  # noqa: C901
 
     backend_inst = Git(backend=backend, token=token, repo=repo, api_base=api_base)
 
+    # always need PR metadata for title/body
     pr_res = backend_inst.get_pull_request(pr_number)
     if not pr_res.get('success'):
         raise RuntimeError(f'Failed to get PR #{pr_number}: {pr_res.get("message", "unknown")}')
     pr = pr_res['pr']
-    head_sha = _get_head_sha_from_pr(pr)
-    if not head_sha and post_to_github:
-        raise RuntimeError('Cannot get PR head sha; cannot post line-level comments')
+
+    # head_sha: when refresh_diff=False, prefer cached sha to avoid rotating checkpoint
+    cached_head_sha = ckpt.get('head_sha')
+    live_head_sha = _get_head_sha_from_pr(pr)
+    if refresh_diff or not cached_head_sha:
+        # use live sha; rotate if changed
+        head_sha = live_head_sha
+        if not head_sha and post_to_github:
+            raise RuntimeError('Cannot get PR head sha; cannot post line-level comments')
+        if cached_head_sha and head_sha and cached_head_sha != head_sha:
+            ckpt.rotate_on_head_sha_change(head_sha)
+        if head_sha:
+            ckpt.save('head_sha', head_sha)
+    else:
+        head_sha = cached_head_sha
 
     # diff: load from checkpoint if available, otherwise fetch and cache
     truncated_diff = False
     diff_text = ckpt.get('diff_text')
     if diff_text is None:
+        if not refresh_diff and cached_head_sha:
+            # diff cache lost but head_sha is pinned — must refresh to stay consistent
+            lazyllm.LOG.warning(
+                'Diff cache missing but head_sha is pinned; auto-refreshing diff. '
+                'If PR has new pushes, use --refresh_diff to rotate checkpoint.'
+            )
+            live_sha = _get_head_sha_from_pr(pr)
+            if live_sha and cached_head_sha and live_sha != cached_head_sha:
+                lazyllm.LOG.warning(
+                    f'PR head changed ({cached_head_sha[:8]} → {live_sha[:8]}) since last run. '
+                    f'Rotating checkpoint to stay consistent.'
+                )
+                ckpt.rotate_on_head_sha_change(live_sha)
+                head_sha = live_sha
         diff_res = backend_inst.get_pr_diff(pr_number)
         if not diff_res.get('success'):
             raise RuntimeError(f'Failed to get PR #{pr_number} diff: {diff_res.get("message", "unknown")}')
@@ -185,6 +209,8 @@ def review(  # noqa: C901
         if max_diff_chars and len(diff_text) > max_diff_chars:
             diff_text, truncated_diff = _truncate_diff_at_file_boundary(diff_text, max_diff_chars)
         ckpt.save('diff_text', diff_text)
+        if head_sha:
+            ckpt.save('head_sha', head_sha)
     else:
         _Progress('Pre-round: fetching diff').done('loaded from checkpoint')
 
@@ -219,7 +245,7 @@ def review(  # noqa: C901
     arch_doc, review_spec, clone_dir, agent_instructions = _run_pre_analysis(
         llm, backend_inst, repo, pr, fetch_repo_code,
         arch_cache_path, review_spec_cache_path, max_history_prs, ckpt,
-        pr_dir=pr_dir,
+        pr_dir=pr_dir, head_sha=head_sha,
     )
 
     pr_summary = ckpt.get('pr_summary')
@@ -246,16 +272,15 @@ def review(  # noqa: C901
             from .lint_runner import _run_lint_analysis
             lint_issues = _run_lint_analysis(diff_text, clone_dir)
         except Exception as e:
-            import lazyllm
             lazyllm.LOG.warning(f'Lint analysis failed: {e}')
 
     cached_final = ckpt.get('final_comments')
     if cached_final is not None:
         final_comments = cached_final
-        r2_metrics: Dict[str, Any] = {}
+        r3_metrics: Dict[str, Any] = {}
         _Progress('All review rounds').done('loaded from checkpoint')
     else:
-        final_comments, r2_metrics = _run_five_rounds(
+        final_comments, r3_metrics = _run_four_rounds(
             llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
             clone_dir=clone_dir, existing_comments=existing_comments, language=language,
             agent_instructions=agent_instructions, strategy=strategy,
@@ -275,6 +300,10 @@ def review(  # noqa: C901
         if ckpt.should_use_cache(ReviewStage.UPLOAD):
             _Progress('Upload: posting review comments').done('loaded from checkpoint (already uploaded)')
         else:
+            # clear stale batch tracking — if we're here, UPLOAD is not done,
+            # so any previous batch markers are from an old run with different comments
+            if ckpt:
+                ckpt.save('upload_done_batches', [])
             review_body = _build_review_body(
                 pr_summary=pr_summary,
                 total=len(final_comments),
@@ -284,8 +313,7 @@ def review(  # noqa: C901
             commentable = _build_commentable_lines(hunks)
             postable, n_dropped = _filter_commentable(final_comments, commentable)
             if n_dropped:
-                import lazyllm as _lazyllm
-                _lazyllm.LOG.warning(
+                lazyllm.LOG.warning(
                     f'{n_dropped} comment(s) dropped: line not in PR diff range '
                     f'(would cause GitHub 422)'
                 )
@@ -295,8 +323,7 @@ def review(  # noqa: C901
             if upload_all_ok:
                 ckpt.mark_stage_done(ReviewStage.UPLOAD)
             else:
-                import lazyllm as _lazyllm
-                _lazyllm.LOG.warning('Some upload batches failed; re-run with --resume_from=upload to retry')
+                lazyllm.LOG.warning('Some upload batches failed; re-run with --resume_from=upload to retry')
 
     n = len(final_comments)
     stats = _category_stats(final_comments)
@@ -308,13 +335,13 @@ def review(  # noqa: C901
     prog_main.done(summary)
 
     metrics = {
-        'r2_mode': 'skip' if not strategy.enable_r2 else 'mixed',
-        'r2_files_chunk': r2_metrics.get('r2_files_chunk', 0),
-        'r2_files_group': r2_metrics.get('r2_files_group', 0),
-        'r2_files_skipped': r2_metrics.get('r2_files_skipped', 0),
-        'r2_chunks_total': r2_metrics.get('r2_chunks_total', 0),
+        'r3_mode': 'skip' if not strategy.enable_r3 else 'mixed',
+        'r3_files_chunk': r3_metrics.get('r3_files_chunk', 0),
+        'r3_files_group': r3_metrics.get('r3_files_group', 0),
+        'r3_files_skipped': r3_metrics.get('r3_files_skipped', 0),
+        'r3_chunks_total': r3_metrics.get('r3_chunks_total', 0),
         'truncated_diff_flag': truncated_diff,
-        'truncated_hunks_flag': False,  # hunks are now processed in windows, no truncation
+        'truncated_hunks_flag': False,  # hunks are processed in sliding windows; per-hunk truncation is not applied
         'lint_issues_count': len(lint_issues),
     }
 

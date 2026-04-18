@@ -455,6 +455,30 @@ _add_git_example('LazyLLMGitBase.list_review_comments', '''\
 >>> backend.list_review_comments(1)
 ''')
 
+_add_git_chinese('LazyLLMGitBase.list_issue_comments', '''\
+列出 PR/MR 对话区（issue 区）的全部评论（非行级评审评论）。
+
+Args:
+    number (int): PR/MR 编号。
+
+Returns:
+    dict: 包含 success、comments（dict 列表，每项含 id、body、user、raw）、message。
+    若分页中途失败但已有部分数据，返回 partial=True。
+''')
+_add_git_english('LazyLLMGitBase.list_issue_comments', '''\
+List all conversation-level comments on a PR/MR (issue comments, not line-level review comments).
+
+Args:
+    number (int): PR/MR number.
+
+Returns:
+    dict: success, comments (list of dicts with id, body, user, raw), message.
+    If pagination fails mid-way but partial data exists, returns partial=True.
+''')
+_add_git_example('LazyLLMGitBase.list_issue_comments', '''\
+>>> backend.list_issue_comments(1)
+''')
+
 _add_git_chinese('LazyLLMGitBase.create_review_comment', '''\
 在 PR/MR 上创建一条评审评论（可指定文件与行）。
 

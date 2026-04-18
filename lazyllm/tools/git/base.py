@@ -155,6 +155,10 @@ class LazyLLMGitBase(ModuleBase, ABC, metaclass=LazyLLMRegisterMetaABCClass):
         raise NotImplementedError
 
     @abstractmethod
+    def list_issue_comments(self, number: int) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
     def create_review_comment(self, number: int, body: str, path: str,
                               line: Optional[int] = None, side: str = 'RIGHT',
                               commit_id: Optional[str] = None) -> Dict[str, Any]:
