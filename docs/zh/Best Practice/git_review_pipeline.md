@@ -1,6 +1,6 @@
 # LazyLLM Git PR Review 完整流程说明
 
-本文档描述 `lazyllm.tools.git.review` 模块的完整 PR review 端到端流程。入口为 `runner.py` 中的 `review()` 函数，依次经过预分析（架构解析、历史规范提取）、五轮 LLM 分析（R1–R4v + R5 合并去重）、静态 Lint 融合，最终将结果发布到 GitHub。
+本文档描述 `lazyllm.tools.git.review` 模块的完整 PR review 端到端流程。入口为 `runner.py` 中的 `review()` 函数，依次经过预分析（架构解析、历史规范提取）、四轮 LLM 分析（R1 hunk 审查 → R2a PR 设计文档 → R2 架构师评审 → R3 Agent 验证 → R4 合并去重）、静态 Lint 融合，最终将结果发布到 GitHub / GitLab / Gitee / GitCode。
 
 源码目录：`lazyllm/tools/git/review/`（`runner.py`、`pre_analysis.py`、`rounds.py`、`constants.py`、`checkpoint.py`、`utils.py`、`poster.py`、`lint_runner.py`）。
 
@@ -13,565 +13,473 @@
 | 模块 | 职责 |
 |------|------|
 | `runner.py` | **主入口**：编排所有子模块；diff 拉取与截断；策略决策（`_ReviewStrategy`）；meta warning 生成；清理 clone 目录；发布评论 |
-| `pre_analysis.py` | 仓库 clone；架构文档生成（`analyze_repo_architecture`）；历史 review 规范提取（`analyze_historical_reviews`）；PR 摘要；R2 Agent 工具集构建 |
-| `rounds.py` | **五轮 review 核心**：R1 hunk 级分析、R2 自适应 Agent 分析、R3 全局架构分析、R4 设计文档 + 架构师评审 + R4v ReactAgent 验证、R5 合并去重 |
-| `lint_runner.py` | 静态 Lint 分析（不调用 LLM），结果直接注入 R5 |
-| `checkpoint.py` | 断点续传：PR 级 checkpoint；阶段枚举 `ReviewStage`；失效控制（`_invalidated_from`） |
+| `pre_analysis.py` | 仓库 clone；架构文档生成（`analyze_repo_architecture`）；历史 review 规范提取（`analyze_historical_reviews`）；PR 摘要；R3 Agent 工具集构建 |
+| `rounds.py` | **四轮 review 核心**：R1 hunk 级分析、R2a PR 设计文档、R2 架构师评审、R3 ReactAgent 验证、R4 合并去重 |
+| `lint_runner.py` | 静态 Lint 分析（不调用 LLM），结果直接注入 R4 |
+| `checkpoint.py` | 断点续传：PR 级 checkpoint；阶段枚举 `ReviewStage`；失效控制（`resume_from`） |
 | `constants.py` | 上下文预算常量；`BudgetManager`；issue 密度控制；diff 启发式压缩 |
 | `utils.py` | LLM 调用封装（重试/QPS）；diff 解析；JSON 解析与修复；进度报告 |
-| `poster.py` | 拉取已有 PR 评论；提交 GitHub review（批量 `submit_review` + 逐条 fallback） |
+| `poster.py` | 拉取已有 PR 评论；提交平台 review（批量 `submit_review` + 逐条 fallback） |
 
 ### 1.2 端到端流程图
 
-```mermaid
-flowchart TD
-    A["review(pr_number, ...)"] --> B[Checkpoint 初始化]
-    B --> C[获取 PR 信息 & diff]
-    C --> D["_compute_diff_stats + _decide_review_strategy"]
-    D --> E{diff 超出 max_diff_chars?}
-    E -->|是，按文件边界截断| F[生成 meta warning issue]
-    E -->|否| G[_run_pre_analysis]
-    F --> G
-    G -->|arch_doc + review_spec + clone_dir + agent_instructions| H["_pre_round_pr_summary → pr_summary"]
-    H --> I[_fetch_existing_pr_comments]
-    I --> J[_run_lint_analysis]
-    J -->|lint_issues| K["_run_five_rounds (R1→R2→R3→R4→R4v→R5)"]
-    K --> L[清理 clone 子目录]
-    L --> M{post_to_github?}
-    M -->|是| N[_post_review_comments → GitHub]
-    M -->|否| O[返回结果 + metrics]
-    N --> O
+```
+review(pr_number, ...)
+  └─ Checkpoint 初始化
+  └─ 获取 PR 信息 & diff
+  └─ _compute_diff_stats + _decide_review_strategy
+       ├─ diff 超出 max_diff_chars → 按文件边界截断 → 生成 meta warning issue
+       └─ _run_pre_analysis → arch_doc + review_spec + clone_dir + agent_instructions
+  └─ _pre_round_pr_summary → pr_summary
+  └─ _fetch_existing_pr_comments
+  └─ _run_lint_analysis → lint_issues
+  └─ _run_four_rounds (R1 → R2a → R2 → R3 → R4)
+  └─ 清理 clone 子目录
+  └─ _post_review_comments → 平台
 ```
 
 ### 1.3 阶段顺序总览
 
 | # | 阶段 | 主要产物 |
 |---|------|----------|
-| 0 | Checkpoint 初始化 | `pr_dir`、`checkpoint.json`、`resume_from → _invalidated_from` |
+| 0 | Checkpoint 初始化 | `pr_dir`、`checkpoint.json`、`resume_from` 软失效控制 |
 | 1 | Diff 拉取与截断 | `diff_text`（按文件边界截断至 `max_diff_chars`）、`hunks` |
-| 2 | 策略决策 | `_DiffStats`、`_ReviewStrategy`（R2 参数自适应） |
+| 2 | 策略决策 | `_DiffStats`、`_ReviewStrategy`（R3 参数自适应） |
 | 3 | Meta Warning | 截断时插入 `source='meta'` 的 issue |
 | 4 | 预分析 | `arch_doc`、`review_spec`、`clone_dir`、`agent_instructions` |
 | 5 | PR 摘要 | `pr_summary` |
-| 6 | 已有评论 | `existing_comments`（供 R5 去重） |
-| 7 | Lint 分析 | `lint_issues`（直接注入 R5，不过 LLM） |
+| 6 | 已有评论 | `existing_comments`（供 R4 去重） |
+| 7 | Lint 分析 | `lint_issues`（直接注入 R4，不过 LLM） |
 | 8 | Round 1 | hunk 级静态审查 issue 列表 |
-| 9 | Round 2 | 自适应 Agent/LLM 深度上下文审查（chunk 模式 + group 模式） |
-| 10 | Round 3 | 全局架构视角多文件批量分析 |
-| 11 | Round 4 | R4a PR 设计文档 → R4b 架构师评审 issue → R4v ReactAgent 验证 |
-| 12 | Round 5 | 确定性去重 + LLM 合并 + Lint 融合 → `final_comments` |
-| 13 | 发布 | 提交 GitHub review；更新 checkpoint `UPLOAD` 阶段 |
+| 9 | Round 2a | PR 设计文档（结构化，9 节） |
+| 10 | Round 2 | 架构师视角全局设计评审 issue 列表 |
+| 11 | Round 3 | ReactAgent 验证：验证 R1+R2 issue + 发现新跨文件问题 |
+| 12 | Round 4 | 确定性去重 + LLM 合并 + Lint 融合 → `final_comments` |
+| 13 | 发布 | 提交平台 review；更新 checkpoint `UPLOAD` 阶段 |
 | 14 | 清理 | 删除 `{pr_dir}/clone/`；保留 `checkpoint.json` |
 
 ---
 
-## 2. 入口 `review()`（`runner.py`）
+## 2. 入口与策略决策（`runner.py`）
 
-### 2.1 函数签名
+### 2.1 `review()` 函数签名
 
 ```python
 def review(
     pr_number: int,
-    repo: str = 'LazyAGI/LazyLLM',
-    token: Optional[str] = None,
-    backend: Optional[str] = None,
+    repo: str,
+    token: str,
     llm: Optional[Any] = None,
-    api_base: Optional[str] = None,
-    post_to_github: bool = True,
-    max_diff_chars: Optional[int] = 120000,
-    max_hunks: Optional[int] = 50,         # 保留字段，当前不截断 hunks
-    arch_cache_path: Optional[str] = None,
-    review_spec_cache_path: Optional[str] = None,
-    fetch_repo_code: bool = True,
-    max_history_prs: int = 20,
-    checkpoint_path: Optional[str] = None,
-    clear_checkpoint: bool = False,
-    resume_from: Optional[ReviewStage] = None,
     language: str = 'cn',
-    keep_clone: bool = False,
+    post_to_github: bool = True,
+    clone_target_dir: Optional[str] = None,
+    arch_cache_path: Optional[str] = None,
+    resume_from: Optional[str] = None,
+    clear_checkpoint: bool = False,
+    backend: str = 'github',
+    max_diff_chars: int = 120000,
 ) -> Dict[str, Any]
 ```
 
-### 2.2 Diff 截断策略
+- `language`：review 评论输出语言，`'cn'` 为简体中文，`'en'` 为英文。
+- `post_to_github`：`False` 时只返回结果字典，不发布评论，适合调试。
+- `arch_cache_path`：架构文档缓存目录，跨 PR 复用，避免重复 clone 分析。
+- `resume_from`：指定从某个 `ReviewStage` 重新开始（软失效，不删除 checkpoint）。
+- `clear_checkpoint`：强制清除 checkpoint，从头开始。
 
-当 `diff_text` 超过 `max_diff_chars`（默认 120000）时，`_truncate_diff_at_file_boundary()` 在 **`diff --git` 文件边界** 处截断（而非中途截断），并在末尾插入 `... [diff truncated: N file(s) omitted]` 标记，同时生成类型为 `meta` 的 warning issue 插入最终结果头部。
+### 2.2 策略决策（`_ReviewStrategy`）
 
-### 2.3 Review 策略自适应（`_ReviewStrategy`）
+根据 diff 规模自动调整 R3 的参数，避免大 PR 消耗过多 LLM 调用：
 
-根据 `_DiffStats`（总有效行数、文件数）自动选择 R2 参数：
+| PR 规模 | 判断条件 | `large_file_threshold` | `max_files_for_r3` | `max_chunks_per_file` |
+|---------|---------|----------------------|-------------------|----------------------|
+| 大 PR | >3000 行 或 >50 文件 | 100 字符 | 10 | 2 |
+| 中 PR | >1000 行 或 >20 文件 | 150 字符 | 15 | 2 |
+| 小 PR | 其余 | 200 字符（默认） | 20（默认） | 3（默认） |
 
-| PR 规模 | 触发条件 | `max_files_for_r2` | `large_file_threshold` | `max_chunks_per_file` |
-|---------|---------|---------------------|------------------------|----------------------|
-| 极大 | >3000 有效行 或 >50 文件 | 10 | 100 行 | 2 |
-| 大 | >1000 行 或 >20 文件 | 15 | 150 行 | 2 |
-| 普通 | 其余 | 20（`R2_MAX_FILES`） | 200 行 | 3（`R2_MAX_CHUNKS_PER_FILE`） |
+### 2.3 Diff 截断策略
 
-超出 `max_files_for_r2` 的文件直接 R1 透传（passthrough），不进入 R2 深度分析。
-
-### 2.4 返回值结构
-
-```python
-{
-    'summary': str,                  # 一句话摘要（issue 数、posted 数）
-    'comments': List[Dict],          # meta_warnings + R5 最终 issue 列表
-    'comments_posted': int,          # 成功发布到 GitHub 的评论数
-    'comment_stats': Dict,           # 按 bug_category 统计
-    'pr_summary': str,               # PR 变更摘要
-    'pr_design_doc': str,            # R4a 生成的 PR 设计文档
-    'original_review_code': str,     # review 模块自身源码快照（可复现）
-    'metrics': {
-        'r2_mode': 'mixed' | 'skip',
-        'r2_files_chunk': int,       # chunk 模式处理的文件数
-        'r2_files_group': int,       # group 模式处理的文件数
-        'r2_files_skipped': int,     # 超出 max_files_for_r2 而跳过的文件数
-        'r2_chunks_total': int,      # chunk 模式产生的总 chunk 数
-        'truncated_diff_flag': bool,
-        'truncated_hunks_flag': bool,  # 当前始终为 False（hunks 不再截断）
-        'lint_issues_count': int,
-    }
-}
-```
+当 diff 超过 `max_diff_chars`（默认 120000）时，按文件边界截断（不在 hunk 中间切断），并在结果中插入一条 `source='meta'` 的 warning issue，告知用户哪些文件被跳过。
 
 ---
 
 ## 3. 预分析（`pre_analysis.py`）
 
-### 3.1 编排 `_run_pre_analysis`
+预分析在所有 review 轮次之前运行，为后续 LLM 提供高质量的仓库上下文。它分为四个子阶段，均支持 checkpoint 缓存。
 
-- 默认 `arch_cache_path`：`~/.lazyllm/review/cache/{safe_repo}/arch.json`。
-- 默认 `review_spec_cache_path`：`~/.lazyllm/review/cache/{safe_repo}/spec.json`。
-- `fetch_repo_code=True` 且无缓存 `arch_doc`：完整执行 clone → `analyze_repo_architecture`。
-- `fetch_repo_code=True` 且已有缓存 `arch_doc`：从 checkpoint 恢复；若 `clone_dir` 不存在则重新 clone 供 R2 Agent 使用。
-- `fetch_repo_code=False`：不 clone；仍执行 `analyze_historical_reviews` 拉取规则（若无缓存）。
-- 返回：`(arch_doc, review_spec, clone_dir, agent_instructions)`。
+### 3.1 仓库 Clone（`_fetch_repo_code`）
 
-### 3.2 架构文档生成 `analyze_repo_architecture`
+- 使用 `git clone --single-branch --depth 1`（无 pin_sha 时）或完整 clone（有 pin_sha 时）将仓库拉取到本地。
+- 若目标目录已存在完整 clone，优先复用并尝试 `git pull` 更新，避免重复下载。
+- 若指定了 `pin_sha`（PR head commit），通过 `_pin_clone_to_sha` 将 clone 切换到精确 commit，确保 review 的代码与 PR 一致。
+- clone 目录保存在 `arch_cache_path/{owner_repo}/clone/` 下，跨 PR 复用。
 
-生成结构化架构文档，分 4 步：
+### 3.2 架构文档生成（`analyze_repo_architecture`）
 
-1. **快照收集**（无 LLM）：`_collect_structured_snapshot()`，预算 6000 字符，收集目录树、`__init__.py` 头部、依赖文件、`AGENTS.md` 等。
-2. **大纲生成**（1× JSON LLM）：输入 `snapshot[:4000]`，输出每节 `title` / `focus` / `search_hints`（13 个节）。
-3. **各节内容填充**（若干次 LLM）：摘要链 `prev_summaries` 受 `_ARCH_PREV_SUMMARY_BUDGET=1500` 约束，避免上下文爆炸。
-4. **Public API Catalog 构建**（1× JSON LLM + 正则扫描）：目录树 ≤4000 字符；结果合并进 `arch_doc` 的 `[Public API Catalog]` 节，供 R4 复用检查使用。
+架构文档是整个 review 流程的"地图"，让 LLM 在不读取全量代码的情况下理解仓库结构。
 
-最终落盘 `arch.json`，包含 `arch_doc`、`arch_index`、`arch_symbol_index` 等字段。
+**生成流程：**
 
-### 3.3 历史 review 规范提取 `analyze_historical_reviews`
+1. **文件树扫描**：遍历 clone 目录，跳过 `__pycache__`、`.git`、`node_modules` 等无关目录，生成文件树。
+2. **符号索引**（`_get_symbol_index`）：对每个 Python 文件提取类名、函数名、装饰器，构建 `{path: [symbols]}` 索引。
+3. **DeepWiki 集成**（可选）：若配置了 DeepWiki MCP，优先从 DeepWiki 拉取预索引的架构摘要，与本地分析合并，提升准确性。
+4. **LLM 架构分析**：将文件树 + 符号索引 + README 内容喂给 LLM，生成结构化架构文档，包含：
+   - 模块职责划分
+   - 核心类与继承关系
+   - 关键设计模式（registry、metaclass、lazy-loading 等）
+   - 模块间依赖关系
+5. **缓存**：架构文档缓存到 `arch_cache_path/{owner_repo}/arch_doc.json`，同一仓库的后续 PR 直接复用，无需重新分析。
 
-从最近 `max_history_prs` 个已合并 PR 的评论中提取规则卡片：
+**AGENTS.md 支持**：若仓库根目录存在 `AGENTS.md`，其内容作为 `agent_instructions` 注入所有 LLM prompt，让项目维护者可以自定义 review 规则（如"忽略 tests/ 目录的命名风格"）。
 
-1. 拉取 PR 评论，过滤 bot 评论。
-2. 超长评论先 LLM 压缩。
-3. 多 PR 评论合并后抽取结构化规则。
-4. 规则格式：`Rule ID`、`Title`、`Severity`、`Detect`（检测方式）、`Bad/Good Example`、`Auto Fix Suggestion`。
-5. 跨文件一致性规则单独提取。
-6. 结果写入 `spec.json` 和 checkpoint。
+### 3.3 历史 Review 规范提取（`analyze_historical_reviews`）
 
-### 3.4 框架约定提取 `analyze_framework_conventions`
+从仓库历史 PR 的 review 评论中提炼出项目特有的代码规范，形成 `review_spec`。
 
-从历史 PR 的 bot-reply 对话中提取框架约定（不盲信用户拒绝）：
+**工作原理：**
 
-1. 构建回复链：利用 `in_reply_to_id` 将评论组织为对话链。
-2. 筛选高可信对话（仅以下两种模式）：
-   - **三方验证**：bot 评论 → 任意用户回复 → 同一 bot 账号再次回复（bot 自己认可了框架机制）。
-   - **Maintainer 修正**：bot 评论 → maintainer 回复（通过 `author_association` 字段判断 OWNER/MEMBER/COLLABORATOR）。
-3. 对筛选出的高可信对话调用 LLM 判断是否揭示了框架约定（verdict = `framework_convention`）。
-4. 提取结果追加到 `agent_instructions`，供 R1–R4 各轮使用。
-5. 结果缓存在 `spec.json` 的 `framework_conventions` 键中。
+1. 拉取最近 N 条已合并 PR（默认 30 条）的 review 评论。
+2. 过滤掉机器人评论、过短评论（<20 字符）、纯表情评论。
+3. 将评论按文件类型分组，喂给 LLM 提炼规范：
+   - 项目特有的命名约定
+   - 禁止的模式（如"不允许直接 print，必须用 lazyllm.LOG"）
+   - 必须遵守的架构约束
+   - 测试要求
+4. 规范缓存到 `arch_cache_path/{owner_repo}/review_spec.json`，跨 PR 复用。
 
-### 3.5 PR 摘要（1× 文本 LLM）
+这一步使 review 能够"记住"项目历史上反复出现的问题，避免重复提出已知规范。
 
-输入 `pr_body[:800]` + `diff_text[:5000]`，输出一段自然语言摘要，用于为后续各轮提供 PR 意图背景。
+### 3.4 PR 摘要生成（`_pre_round_pr_summary`）
 
-### 3.6 R2 Agent 工具集 `_build_scoped_agent_tools_with_cache`
+在四轮 review 开始前，先用一次 LLM 调用生成 PR 摘要（`pr_summary`），包含：
+- PR 的核心目的（新功能 / bugfix / 重构）
+- 主要改动模块
+- 潜在影响范围
 
-限定在 `clone_dir` 内，提供以下只读工具：
+PR 摘要作为上下文注入 R2、R3 的 prompt，帮助 LLM 从"PR 意图"角度评审，而不是孤立地看每个 hunk。
+
+### 3.5 R3 Agent 工具集（`_build_scoped_agent_tools_with_cache`）
+
+为 R3 的 ReactAgent 构建一套文件系统工具，所有工具都限定在 clone 目录内：
 
 | 工具 | 功能 |
 |------|------|
-| `read_file_scoped` | 读取单个文件内容 |
-| `read_files_batch` | 批量读取多个文件 |
-| `grep_callers` | 搜索调用方 |
-| `search_scoped` | 在仓库中搜索关键词 |
-| `list_dir_scoped` | 列出目录内容 |
-| `shell_scoped` | 执行只读 shell 命令 |
-| `analyze_symbol` | 分析符号定义与用法（内部可再调 LLM，结果带进程内缓存） |
+| `read_file_lines` | 读取指定文件的指定行范围 |
+| `read_file_skeleton_scoped` | 读取文件骨架（类名、函数签名，不含实现） |
+| `grep_symbol` | 在仓库中搜索符号定义或引用 |
+| `list_directory` | 列出目录内容 |
 
-### 3.7 上下文裁剪工具
-
-- **`_extract_arch_for_file(arch_doc, file_path, max_chars=3000)`**：按 `[Section]` 分段解析；`_ARCH_ALWAYS_INJECT` 关键节加权；Public API Catalog 按文件路径范围（`_candidate_scopes`）预过滤。
-- **`_lookup_relevant_rules(review_spec, diff_content, max_detail)`**：从 `diff_content` 前 200 行提取关键词匹配规则；完整规则卡最多 `max_detail` 条。
+工具调用有步数上限（默认 15 步），防止 Agent 无限探索消耗预算。
 
 ---
 
-## 4. 五轮分析（`rounds.py`）
+## 4. 四轮分析（`rounds.py`）
 
-### 4.1 Round 1：hunk 级静态审查
-
-**目标**：最大召回率，逐块扫描所有可见的代码问题。
-
-**机制**：
-- **并发**：`ThreadPoolExecutor(max_workers=4)`，按文件分组，多 hunk 可并发。
-- **窗口分批**：同文件多 hunk 按 `R1_WINDOW_MAX_HUNKS=30` / `R1_WINDOW_MAX_DIFF_CHARS=60000` 分窗口，避免单次 prompt 超限。
-- **抽象方法子类检测**：diff 中含抽象方法变更时，自动注入子类实现签名到文件上下文，检测子类是否同步更新。
-- **简洁性检查**：额外检查 diff 新增行（`+` 行）的冗余/啰嗦问题，以 `bug_category="style"`、`severity="normal"` 输出。
-- **每次 LLM 调用输入**：截断后的 hunk 内容、`_read_file_context`（±50 行 + 类/函数 scope）、`_extract_arch_for_file(..., 3000)`、`review_spec`/`pr_summary` 片段（各前 600 字符）、可选 `symbol_index`、`agent_instructions`。
-- **输出控制**：全 PR 按 `max_issues_for_diff`（每 100 有效行最多 5 条）/ `cap_issues_by_severity` 限流。
-- **Checkpoint**：键 `r1_hunk_{safe_path}_{new_start}`，支持断点续跑。
-
-#### R1 检查项（10 类）
-
-| 类别（`bug_category`） | 检查内容 |
-|------------------------|---------|
-| `logic` | 边界条件、null 值处理、错误分支逻辑 |
-| `type` | 类型不匹配、隐式类型转换 |
-| `safety` | 注入攻击、权限提升、敏感数据泄露 |
-| `exception` | 缺少/错误的异常处理；多操作的错误应聚合后统一抛出而非逐个失败 |
-| `performance` | 冗余计算、大对象内存、低效循环 |
-| `concurrency` | 竞态条件、死锁风险 |
-| `design` | 错误抽象、不当继承、违反现有协议模式的新接口（如接受整个对象而非窄接口）、模块间不必要耦合 |
-| `style` | 命名/注释/格式规范；新增代码的冗余变量、可简化的条件、可用推导式替换的循环 |
-| `maintainability` | 重复代码、高耦合、代码/配置放在错误模块（违反模块所有权规则） |
-| `dependency` | 新增硬依赖但应为可选依赖（应放 `extras_require` 而非 `install_requires`） |
-
-#### R1 严格不报规则（7 条）
-
-1. 未变更的上下文行中已存在的问题（不属于本 diff 引入）。
-2. Lint/style 工具错误：未使用 import、行太长、复杂度指标、空行规范等。
-3. 防御性编程模式：`max(n, 1)`、`or default`、`if x is None: x = []`、guard clause 等（除非引入具体逻辑错误）。
-4. 无法确认现有代码库中存在兼容接口时，不报"重复代码/应复用 X"。
-5. 抽象方法/基类接口变更，未确认至少一个子类未更新时不报"破坏性变更"。
-6. 入口脚本（`server.py`、`main.py`、`__main__.py` 或含 `if __name__ == "__main__":` 块）中的顶层副作用。
-7. 每 100 有效 diff 行最多 5 条 issue，超出时按严重性保留最高优先级的。
+四轮分析是 review 的核心，每轮有明确的职责分工，形成"广度扫描 → 设计文档 → 架构评审 → 深度验证 → 合并去重"的递进结构。
 
 ---
 
-### 4.2 Round 2：自适应深度上下文分析
+### 4.1 Round 1：Hunk 级静态审查
 
-**目标**：利用仓库完整代码上下文，验证 R1 issue 有效性，并发现需要跨文件才能发现的问题。
+**目标**：对每个 diff hunk 进行细粒度的代码质量审查，发现具体的 bug、逻辑错误和安全问题。
 
-#### 文件分类
+**工作原理：**
 
-```
-_classify_files_for_r2(file_diffs, large_file_threshold, max_files_for_r2)
-  → large_files  (chunk 模式：diff 有效行 > large_file_threshold)
-  → small_files  (group 模式：diff 有效行 ≤ large_file_threshold)
-  → skipped_files (超出 max_files_for_r2，直接 R1 透传)
+1. 将 diff 按文件和 hunk 分割，每个 hunk 附带上下文（前后各 N 行）。
+2. 对每个 hunk 独立调用 LLM，prompt 包含：
+   - 完整 diff hunk（带行号标注）
+   - 文件级上下文（函数签名、类定义）
+   - 架构文档摘要（该文件相关部分）
+   - PR 摘要
+   - 历史 review 规范
+3. 并发处理多个 hunk（`ThreadPoolExecutor`），受 `TOTAL_CALL_BUDGET=60` 约束。
+
+**检查项（`_R1_STRICT_RULES` + `_R1_REVIEW_CHECKLIST`）：**
+
+- **Bug 类**：空指针/越界访问、条件判断错误、循环边界错误、资源泄漏（文件/连接未关闭）
+- **逻辑类**：函数行为与名称不符、返回值未检查、异常被静默吞掉
+- **安全类**：SQL 注入、路径遍历、硬编码密钥、不安全的反序列化
+- **并发类**：竞态条件、锁使用不当、共享状态未保护
+- **配置类**：配置项放错位置（应在 `configs.py` 而非 `tracing/`）、可选依赖被加入必选
+- **维护性**：重构后遗留的孤儿 helper/常量（原来只被删除代码使用的符号）
+
+**严格排除项**（避免噪音）：
+- 未改动行的已有代码问题
+- lint 工具已覆盖的问题（未使用 import、行长度、复杂度指标）
+- 纯风格问题（除非违反项目规范）
+
+**issue 密度控制**：每 100 行有效 diff 最多输出 5 个 issue，防止大 PR 产生过多噪音。
+
+**输出格式**（每个 issue）：
+
+```json
+{
+  "path": "lazyllm/tools/git/review/rounds.py",
+  "line": 42,
+  "severity": "critical|high|medium|normal",
+  "bug_category": "bug|security|performance|maintainability|design|style",
+  "title": "简短标题",
+  "description": "问题描述",
+  "suggestion": "修复建议（含代码示例）",
+  "source": "r1"
+}
 ```
 
-文件按有效 diff 行数**降序**排列，确保最重要的文件优先进入 chunk 模式。
-
-#### Chunk 模式（大文件）
-
-1. **相关小文件合并**：分析大文件 diff 中的 `import` 语句，找到相关小文件附加到上下文（上限 `_R2_RELATED_DIFF_BUDGET`）。
-2. **Agent 上下文收集（阶段A — 目标驱动自由探索）**：`compress_diff_for_agent_heuristic(fdiff, _R2_AGENT_DIFF_BUDGET)` 压缩 diff 后，用 `ReactAgent`（`max_retries=8`）探索仓库上下文，`force_summarize=True`，`keep_full_turns=2`，带超时控制。
-   - 阶段A prompt 注入 `agent_instructions`（框架约定），使 agent 在探索时理解框架机制。
-   - 探索策略为**目标驱动**（非线性步骤），agent 可根据中间发现动态调整方向，支持 2 层符号追踪。
-   - 工具集包含 `read_file_skeleton_scoped`（骨架优先策略）、`analyze_symbol`、`grep_callers`、`read_file_scoped`、`search_scoped` 等，支持单轮内并行调用。
-   - 阶段A输出结构化 JSON：`explored_symbols`、`related_files`（含行范围）、`base_classes`、`framework_notes`。
-   - **不接收 R1 issues**，避免确认偏差，保持纯信息收集职责。
-   - 工具调用过程记录为**探索日志**（`exploration_log`），传递给阶段B。
-3. **Rich Context 构建（确定性中间步骤）**：`_r2_build_rich_context()` 根据阶段A的 JSON 输出：
-   - 读取 `related_files[].lines` 标出的代码片段（大范围 >200 行时使用 Grep 导航式读取，只读命中行上下文）。
-   - 为每个相关文件和基类文件提取 `_extract_file_skeleton()`（类签名、函数签名）。
-   - 附加 `framework_notes` 和 `exploration_log`。
-   - 超预算时使用 `_r2_trim_rich_context()` 按段落优先级压缩（Framework Notes > skeleton > 代码片段），不做硬截断。
-   - 总量上限 `_R2_RICH_CONTEXT_BUDGET=12000` 字符。
-4. **分块抽取（阶段B）**：diff 预算根据 `symbol_context` 和 `file_skeleton` 实际大小**动态计算**（`_r2_diff_budget()`），超预算自动分页。每 chunk 调用 `_r2_extract_issues()`（1× JSON LLM）：
-   - `symbol_context` 使用 `_r2_trim_rich_context()` 结构化压缩（上限 12000）。
-   - `file_skeleton` 使用 `_r2_trim_skeleton()` 按 diff 相关性三遍渐进式压缩（上限 8000）。
-   - `shared_context` 使用 `_r2_trim_shared_context()` 按段落优先级压缩（上限 4000）。
-   - 输入包含 rich context、`review_spec`、`agent_instructions`。
-   - 对每条 R1 issue 作 **KEEP / MODIFY / DISCARD** 三选一决策。
-   - 发现仅凭跨文件上下文才能察觉的**新 issue**。
-   - 记录被 DISCARD 的 R1 `path:line` 键（进入 `discarded_r1_keys`）。
-5. 每文件 chunk 数受 `max_chunks_per_file` 约束（最大硬上限 `R2_MAX_CHUNKS_HARD=8`）。
-
-#### Group 模式（小文件）
-
-1. `_r2_group_files(small_files)`：按**目录**分组，每组最多 5 个文件。
-2. 每组 **1× JSON LLM**（非 Agent）：将同组文件 diff 一起分析，关注**跨文件一致性**。
-3. 当 `files_block` 超过 40000 字符时，自动拆分为多个子 group 分别处理（`_r2_split_group_if_needed`），不做硬截断。
-
-#### R2 新增检查项（需跨文件上下文才能发现）
-
-| 检查项 | 说明 |
-|--------|------|
-| 接口不一致 | 方法签名已变更但调用方未同步更新 |
-| 抽象违规 | 绕过基类契约，直接访问实现细节 |
-| 设计破坏 | 违反代码库现有模式的变更 |
-| 缺少对称更新 | 更新了一侧但遗漏了对称方法（如 encode/decode、serialize/deserialize） |
-| 依赖方向违规 | 低层模块导入了高层模块 |
-| 协议违规 | 新类/接口接受整个对象而非窄接口；违反模块所有权规则；新增应为可选的硬依赖 |
-
-#### R2 共享上下文
-
-`_r2_build_shared_context(diff_text)`：提取跨文件共享的符号、PR 内依赖关系、接口变更摘要等，上限 `_R2_SHARED_CTX_BUDGET=4000`，可跨 chunk 复用。
-
 ---
 
-### 4.3 Round 3：全局架构分析
+### 4.2 Round 2a：PR 设计文档生成
 
-**目标**：从系统架构师视角，分析多文件变更对整体架构的影响。
+**目标**：在架构师评审（R2）之前，先生成一份结构化的 PR 设计文档，作为 R2 的输入上下文。
 
-**机制**：
-- `_round3_pack_file_batches()`：按上下文预算（`SINGLE_CALL_CONTEXT_BUDGET - len(arch_use) - ...`）将文件分组成 batch，每 batch **1× JSON LLM**。
-- 输入：`arch_doc`（截断至 38k）、`_lookup_relevant_rules(review_spec, batch_diff[:12000], max_detail=12)`、`prev_json`（R1+R2 issue 摘要，每条 problem 前 100 字符，总长 16k）。
-- 输出校验：`path` 须在 batch 内，`line` 须落在 diff 新增行范围内（`_round3_issue_line_valid`）。
+**工作原理：**
 
-#### R3 检查项（6 类）
+对完整 diff + PR 标题/描述 + 架构文档，用一次 LLM 调用生成包含 9 个章节的设计文档：
 
-| 检查项 | 说明 |
-|--------|------|
-| 模块边界违规 | 变更是否模糊了模块间职责边界 |
-| 重复逻辑 | 类似逻辑是否已在其他地方实现 |
-| 耦合增加 | 是否在原本独立的组件间引入了紧耦合 |
-| 设计模式违规 | 是否破坏了现有模式（注册表、工厂、观察者等） |
-| 违反项目 review 标准 | 历史 PR 中提取的项目级规则卡片 |
-| 依赖反转违规 | 低层模块是否导入了高层模块 |
-
----
-
-### 4.4 Round 4：PR 设计文档 + 架构师评审
-
-**目标**：站在主架构师视角，评估整体设计质量，不重复前三轮的 bug 查找。
-
-**默认两步路径**（`prefer_combined=False`）：
-
-**R4a — PR 设计文档生成**（1× 文本 LLM）：
-- 输入：`arch_doc`（~12k）+ `pr_summary` + `diff_text`。
-- 输出结构化 PR 设计文档，包含以下 9 个节：
-  1. 背景与问题定义
-  2. 设计目标
-  3. 设计方案（核心思路、备选方案、架构合规性）
-  4. 模块影响分析
-  5. API 设计
-  6. 使用方式（Usage Example）
-  7. 兼容性与影响范围
-  8. 风险与注意事项
-  9. 可扩展性分析
-
-**R4b — 架构师视角 review**（1× JSON LLM）：
-- 输入：`arch_doc`（~42k）+ `pr_design_doc`（~12k）+ `diff_text`（标注行号）。
-- 聚焦 `bug_category: design | maintainability` 类问题。
-- Prompt 包含 `## Verification Constraints` 节，要求在上报任何 issue 前先验证：惯例一致性、依赖方向、设计意图、变更范围。
-
-**R4v — ReactAgent 验证**（ReactAgent，按文件批量）：
-- 输入：R4b 候选 issue 列表 + `clone_dir` + 与 R2 相同的 agent 工具集。
-- 三层合并策略，最小化模型调用次数：
-  1. **Pre-filter**（零 LLM 调用）：丢弃 `severity=normal` 且 `suggestion` 含模糊措辞（`consider`、`might want to`、`could potentially` 等）的 issue。
-  2. **文件分组**：按 `path` 分组，每个文件一次 ReactAgent session（共享读取上下文）。
-  3. **Batch cap**（`_R4V_BATCH_CAP=5`）：单文件 issue 超过 5 条时，按 severity 降序分批（critical → medium → normal）。
-- 每次 ReactAgent session 读取相关代码、检查项目惯例、搜索已有工具，输出 `KEEP / DROP / MODIFY` 裁决。
-- 典型节省：10–15 issue / 4–6 文件 → 3–5 次 ReactAgent 调用（节省 60–75%）。
-
-**可选合并路径**（`prefer_combined=True`）：1× 文本 LLM + JSON 解析，期望单个 JSON `{"pr_design_doc": ..., "issues": [...]}`；解析失败则 fallback 到两步路径。
-
-#### R4b 评估维度（10 个）
-
-| 维度 | 核心问题 |
-|------|----------|
-| 1. 模块职责 | 是否单一职责？是否上帝类/模块？逻辑是否应放在别处？ |
-| 2. 分层与依赖 | 层边界是否清晰？是否有循环依赖？依赖方向是否一致？ |
-| 3. API 设计 | 是否最小化暴露？参数是否自文档化？是否符合最小惊讶原则？是否有隐式约束？ |
-| 4. 一致性 | 接口模式/初始化约定/错误处理/命名是否与同模块保持一致？ |
-| 5. 抽象与复用 | 是否重复实现了 Public API Catalog 中已有的功能？抽象层级是否合适？ |
-| 6. 复杂度与简洁性 | 是否最简实现？是否有不必要的中间变量/包装类/间接层？ |
-| 7. 可扩展性 | 扩展点是否正确？是否有魔法字符串/数字应改为枚举或配置项？ |
-| 8. 可替换性与解耦 | 是否依赖具体类而非接口？是否有全局状态依赖？ |
-| 9. 可测试性 | 是否可单元测试？副作用是否与纯逻辑混在一起？ |
-| 10. 总体设计裁决 | 是否最优设计？最重要的架构改进点是什么？ |
-
----
-
-### 4.5 Round 5：Lint 融合 + 合并去重
-
-**目标**：将 R1–R4 的 issue 与 Lint 结果统一，去除重复，并与已有 PR 评论比对，输出最终高质量 issue 列表。
-
-**处理流程**：
-
-1. **来源汇聚**：`tag(r1_passthrough, 'r1') + tag(r2, 'r2') + tag(r3, 'r3') + tag(r4v, 'r4') + tag(lint_issues, 'lint')`。
-   - `r1_passthrough`：已被 R2 覆盖的文件的 R1 issue 会去除 `r2_covered_keys` 和 `discarded_r1_keys` 中的条目。
-
-2. **确定性去重** `_deterministic_dedup()`：
-   - 第一轮：按 `(path, line, bug_category)` 分组；组内按 **severity 优先**，同 severity 按 **source 优先级** `r2 > r1 > r3 > r4` 选一条。
-   - 第二轮：对同 `(path, line)` 不同 category 的条目，用 token 重叠度（阈值 0.6）合并相似 problem，附加各自的 suggestion。
-
-3. **超长内容压缩**：超长 issue/评论先批量 LLM 压成短句（`_compress_new_issues` / `_compress_existing_comments`）。
-
-4. **LLM 合并去重**（1× JSON LLM）：压缩后的新 issue 与已有 PR 评论对比：
-   - 去除精确/近似重复（同 path+line 时 r2 优先于 r1）；
-   - 合并同根因问题；
-   - 过滤已有 PR 评论已覆盖的问题；
-   - 按 critical → medium → normal 重排序。
-   - **Fallback**：若 LLM 返回空，按 severity 排序 deduped 列表直接输出。
-
-5. 每条最终 issue 携带 **`_review_version: 2`** 标记；旧格式 `final` checkpoint 触发整表重算。
-
----
-
-### 4.6 Lint 分析（`lint_runner.py`）
-
-在五轮 LLM 分析**之前**独立运行，不消耗 LLM 调用次数。
-
-| 工具 | 语言 | 错误级别推断 |
-|------|------|-------------|
-| `ruff` / `flake8` | Python | E9/F8/syntax → critical；W/C → medium |
-| `eslint` | JS/TS/JSX/TSX | 按规则严重性 |
-| `golint` | Go | 按规则严重性 |
-| `rubocop` | Ruby | 按规则严重性 |
-| `clippy` | Rust | 按规则严重性 |
-
-- 只保留 **diff 覆盖行** 上的 lint 结果（精确行级过滤）。
-- 若环境中缺少对应工具，输出 `WARNING` 并跳过（不影响其他轮次）。
-- 结果以 `{"source": "lint", ...}` 直接注入 R5。
-
----
-
-## 5. 全局预算管理
-
-### 5.1 关键常量（`constants.py`）
-
-| 常量 | 值 | 说明 |
-|------|-----|------|
-| `SINGLE_CALL_CONTEXT_BUDGET` | 120000 字符 | 单次 LLM 请求上下文上限 |
-| `R1_DIFF_BUDGET` | `SINGLE_CALL_CONTEXT_BUDGET - 25000` ≈ 95k | R1 同批 hunk diff 总长上限 |
-| `R1_WINDOW_MAX_HUNKS` | 30 | R1 单窗口最大 hunk 数 |
-| `R1_WINDOW_MAX_DIFF_CHARS` | 60000 | R1 单窗口最大 diff 字符数 |
-| `R2_MAX_FILES` | 20 | R2 最多处理的文件数（普通 PR） |
-| `R2_MAX_CHUNKS_PER_FILE` | 3 | R2 每文件最多 chunk 数（普通 PR） |
-| `R2_MAX_CHUNKS_HARD` | 8 | R2 每文件 chunk 数硬上限 |
-| `R2_UNIT_DIFF_BUDGET` | 40000 字符 | R2 单个 review 单元（大文件 + 相关小文件）的 diff 上限 |
-| `TOTAL_CALL_BUDGET` | 60 次 | 整个 review session 的 LLM 调用总预算 |
-| `ISSUE_DENSITY_LINE_BLOCK` | 100 行 | issue 密度控制块大小 |
-| `ISSUE_DENSITY_MAX_PER_BLOCK` | 5 条 | 每块最多 issue 数 |
-
-### 5.2 各阶段上下文用量
-
-| 阶段 | 关键上下文分配 |
-|------|---------------|
-| R1 hunk | hunk 截断至 ~80 行；arch 3000 字符；review_spec/pr_summary 各 600 字符 |
-| R2 chunk（Agent） | diff 预算动态计算（`_r2_diff_budget`）；symbol_context 上限 12000（结构化压缩）；file_skeleton 上限 8000（相关性压缩）；shared_context 4000（优先级压缩）；arch 6000；R1 list 8000；review_spec 1200 |
-| R2 group | arch 4000；shared_context 4000（优先级压缩）；files_block 40000（超预算自动分页）；r1_json 4000 |
-| R3 batch | arch 38000；prev_json 16000；budget_files = 剩余预算 |
-| R4a（文档） | arch 12000；diff 剩余预算 |
-| R4b（架构师） | arch 42000；pr_design_doc 12000；diff 剩余预算 |
-| R4v（验证） | 每批 issue JSON；ReactAgent 使用与 R2 相同工具集；限定在 `clone_dir` 范围内 |
-| R5 | 超长内容先压缩；1× JSON LLM |
-
-### 5.3 长文本采样 `_sample_text`
-
-对超长文本（如 `arch_doc`）采用 **head + middle + tail** 三段采样（各取 1/3），替代纯截头，确保长文档首、中、尾部信息均有覆盖。
-
-### 5.4 `BudgetManager`
-
-`BudgetManager(total=120000, total_calls=60)` 统一跟踪字符预算（`allocate`）和调用预算（`consume_call` / `remaining_calls`），支持按优先级分配多个命名槽位。当前各轮字符截断以 `clip_text` / 固定 slice 为主，`BudgetManager` 作为统一入口可逐步迁移。
-
----
-
-## 6. LLM 调用类型汇总
-
-| 类型 | 用途 |
+| 章节 | 内容 |
 |------|------|
-| **JSON LLM** | R1 hunk 分析、R2 chunk 抽取、R2 group 联合、R3 全局分析、R4b 架构师评审、R5 合并去重、架构 outline 生成、规则提取、Public API Catalog 构建 |
-| **文本 LLM** | arch 各节内容填充、PR 摘要、R4a PR 设计文档；R4 `prefer_combined=True` 时的单次合并尝试 |
-| **ReactAgent** | R2 chunk 模式的上下文收集（工具：scoped 读写/搜索/shell + `analyze_symbol` + `read_file_skeleton_scoped`）；R4v 架构 issue 验证（相同工具集，按文件批量分组） |
-| **重试机制** | `_llm_call_with_retry()`：JSON 解析失败/限流时自动重试 + `json_repair` 兜底 |
+| 1. Background & Problem Definition | PR 解决的问题；在现有架构中的位置；新功能/bugfix/重构 |
+| 2. Design Goals | 期望达到的效果；设计约束（性能/可扩展性/一致性） |
+| 3. Design Approach | 核心思路；为何这样设计；是否有备选方案；是否符合架构分层 |
+| 4. Module Impact Analysis | 修改/新增的模块；职责变化；新引入的依赖 |
+| 5. API Design | 新增/修改的接口；输入输出；与现有 API 风格一致性 |
+| 6. Usage Example | 典型调用示例；对用户使用方式的影响 |
+| 7. Compatibility & Impact Scope | 是否影响已有功能；是否为 breaking change |
+| 8. Risks & Edge Cases | 潜在问题；未覆盖场景；隐含假设 |
+| 9. Extensibility Analysis | 后续类似需求的扩展难度；设计演进空间 |
+
+设计文档保存在 checkpoint 中（`pr_design_doc`），也作为最终 review 结果的一部分返回。
 
 ---
 
-## 7. 缓存与断点续传（`checkpoint.py`）
+### 4.3 Round 2：架构师设计评审
 
-### 7.1 两层存储
+**目标**：从全局架构视角评审整个 PR，发现 R1 无法发现的设计层面问题。
 
-| 层级 | 路径 | 内容 |
-|------|------|------|
-| **PR 级 checkpoint** | `~/.lazyllm/review/cache/{safe_repo}/{pr_number}/checkpoint.json` | `diff_text`、`pr_summary`、`r1_hunk_*`、`r2_file_*`、`r2_disc_*`、`r2_group_*`、`r2_shared_context`、`r3`、`pr_design_doc`、`r4`、`r4v`、`final_comments`、`clone_dir`、`_stage_done_*`、`_invalidated_from` |
-| **仓库级 arch/spec 缓存** | `~/.lazyllm/review/cache/{safe_repo}/arch.json` / `spec.json` | `arch_doc`、`arch_section_*`、`public_api_catalog`、`agent_instructions`、`review_spec` 等 |
+**工作原理：**
 
-### 7.2 阶段顺序 `ReviewStage.ordered()`
+以完整 diff + PR 设计文档（R2a 产物）+ 架构文档 + PR 摘要为输入，用一次 LLM 调用进行全局评审。
+
+**11 个评估维度（`_ROUND2_ARCHITECT_PROMPT_TMPL`）：**
+
+1. **Module Responsibility**：新代码是否放在了正确的模块？是否有逻辑被分散到不该放的地方？是否应该放在另一个模块？
+
+2. **Layering & Dependencies**：是否遵守了现有的层次边界？是否引入了循环依赖？是否跨层直接访问（如 UI 层直接操作数据库）？
+
+3. **API Design**：新增接口是否简洁、稳定、易用？参数是否过多？是否暴露了不必要的内部细节？
+
+4. **Consistency（一致性）**：
+   - 同模块的类/函数是否遵循相同的接口模式？
+   - 若新增了与现有类同类型的类（如新的存储后端、新的模型供应商），是否共享公共基类或 Protocol？
+   - 相似类是否遵循相同的构造模式（`__init__` 参数顺序、factory/client 入口）？
+   - 相似类是否实现了相同的关键方法集合（参数名、顺序、返回类型一致）？
+   - 若项目使用 `__call__` + `forward` 等分发模式，新类是否遵循同样的模式？
+
+5. **Abstraction & Reuse（抽象与复用）**：
+   - 是否有逻辑在其他地方已经存在？
+   - **关键检查**：若系统此前只有一个概念的实现（如一个存储后端、一个模型供应商），而此 PR 新增了第二个，是否存在公共基类/Protocol/ABC？若不存在，这是设计问题——两个实现应统一在共同抽象下。
+   - 新抽象的层次是否合适（不过度泛化，也不过度具体）？
+
+6. **Complexity**：是否引入了不必要的复杂度？是否有可以用单行表达式替代的多步流程？
+
+7. **Extensibility**：未来类似需求是否容易扩展？是否有硬编码的假设会阻碍扩展？
+
+8. **Coupling**：模块间耦合是否增加？是否可以通过接口/事件/依赖注入降低耦合？
+
+9. **Testability**：新代码是否容易测试？是否有全局状态或硬依赖使测试困难？
+
+10. **Overall Design Verdict**：是否有更简单/更一致的替代设计？最重要的一个架构改进点是什么？
+
+11. **Naming & Semantic Clarity（命名与语义清晰度）**：
+    - 方法/函数名是否自解释且简洁？
+    - 方法名是否避免了冗余地包含类名（如应用 `ClassA.get_instance()` 而非 `ClassA.get_classA_instance()`）？
+    - 相似方法在兄弟类中的参数名是否一致？
+    - 若项目提供语法糖（`__or__`、`__ror__`、`__getitem__` 等运算符重载），其语义是否与主流惯例一致（bash 管道 `|`、Python 切片 `[]` 等）？若可能误导用户则标记。
+
+---
+
+### 4.4 Round 3：ReactAgent 深度验证
+
+**目标**：R1 和 R2 只能看到 diff 本身，R3 通过 ReactAgent 主动探索仓库，验证已有 issue 的准确性，并发现需要跨文件上下文才能发现的新问题。
+
+**工作原理（两阶段）：**
+
+#### 阶段一：Context Collect（上下文收集）
+
+对每个需要验证的 diff 文件，ReactAgent 使用工具集主动探索仓库：
+
+1. **读取文件骨架**：先用 `read_file_skeleton_scoped` 了解文件结构，再按需读取具体行。
+2. **符号追踪**：用 `grep_symbol` 找到被修改符号的所有调用方，评估影响范围。
+3. **基类/接口检查**：读取基类定义，确认子类是否满足接口契约。
+4. **框架机制识别**：检查是否使用了 metaclass、`__init_subclass__`、registry 等自动注册机制（避免将自动注册的子类误报为"死代码"）。
+5. **兄弟类探索**（新增）：当 diff 新增一个类时，搜索同基类或同目录下的兄弟类，对比其构造模式、关键方法签名、`__call__`/`forward` 分发模式。
+6. **运算符语义验证**（新增）：若 diff 修改了 `__or__`、`__getitem__` 等 dunder 方法，grep 其使用模式，验证语义是否与主流惯例一致。
+
+Context Collect 的输出是结构化 JSON：
+
+```json
+{
+  "explored_symbols": ["sym1", "sym2"],
+  "related_files": [
+    {"path": "relative/path.py", "reason": "one-line reason", "lines": [start, end]}
+  ],
+  "base_classes": [
+    {"symbol": "BaseClassName", "file": "relative/path.py"}
+  ],
+  "framework_notes": ["one-line finding about framework mechanism"],
+  "sibling_classes": [
+    {"symbol": "ClassName", "file": "relative/path.py", "key_methods": ["method1(args)", "method2(args)"]}
+  ]
+}
+```
+
+#### 阶段二：Issue Extract（问题提取）
+
+以 Context Collect 收集的上下文 + R1/R2 已有 issue 为输入，执行两类任务：
+
+**任务 1：验证已有 issue**
+- 确认 issue 是否真实存在（排除误报）
+- 补充跨文件证据（如"调用方 X 会受到影响"）
+- 若 issue 在仓库其他地方已有相同模式，标记为"项目一贯做法，非问题"
+
+**任务 2：发现新问题**（需要跨文件上下文才能发现）：
+- **调用方破坏**：修改了函数签名，但调用方未同步更新
+- **孤儿符号**：重构后遗留的 helper/常量，原来只被删除代码使用
+- **基类契约违反**：子类未实现基类的抽象方法，或覆盖了不应覆盖的方法
+- **基类抽象缺口**（新增）：若 diff 新增了某概念的第二个实现，但不存在公共基类，报告设计问题
+- **兄弟类一致性**（新增）：若兄弟类（同基类或同角色）的构造签名、关键方法签名、分发模式不一致，报告不一致
+- **命名清晰度**（新增）：若新方法/函数名冗余地包含父类/模块名，或不够自解释，报告命名问题
+- **语法糖语义**（新增）：若 diff 新增或修改了运算符重载（`__or__`、`__getitem__`、`__lshift__` 等），验证语义是否与主流语言/shell 惯例一致，若可能误导用户则报告
+
+**R3 的规模控制：**
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `R3_MAX_FILES` | 20 | 最多处理 20 个文件 |
+| `R3_MAX_CHUNKS_PER_FILE` | 3 | 每文件最多 3 个 chunk |
+| `R3_MAX_CHUNKS_HARD` | 8 | 每文件硬上限 8 个 chunk |
+| Agent 步数上限 | 15 步 | 每次 Context Collect 最多 15 次工具调用 |
+
+大文件（diff 超过 `large_file_threshold`）会被跳过 R3 处理，避免消耗过多预算。
+
+---
+
+### 4.5 Round 4：合并去重
+
+**目标**：将 R1、R2、R3 的 issue 列表 + lint_issues 合并为最终的、无重复的评论列表。
+
+**工作原理（三步）：**
+
+1. **确定性去重**：
+   - 相同 `(path, line, bug_category)` 的 issue 只保留 severity 最高的一条
+   - 已在 `existing_comments` 中存在的 issue 直接丢弃（避免重复评论）
+
+2. **LLM 语义合并**：
+   - 对同一文件内语义相近但行号不同的 issue，用 LLM 判断是否为同一问题的不同表述
+   - 若是，合并为一条，保留更详细的描述和建议
+
+3. **Lint 融合**：
+   - `lint_issues`（来自 `lint_runner.py`，不经过 LLM）直接追加到最终列表
+   - Lint issue 的 `source` 字段为 `'lint'`，在平台评论中有特殊标记
+
+**输出**：`final_comments` 列表，每条包含完整的 `path`、`line`、`severity`、`bug_category`、`title`、`description`、`suggestion`、`source` 字段。
+
+---
+
+## 5. 静态 Lint 分析（`lint_runner.py`）
+
+Lint 分析在四轮 LLM 分析之前独立运行，不消耗 LLM 调用预算。
+
+**工作原理：**
+
+1. 从 diff 中提取变更的文件和行号范围。
+2. 对 Python 文件运行 `ruff` / `flake8`，对 JS/TS 文件运行 `eslint`（若已安装）。
+3. 过滤出仅在 diff 变更行上出现的 lint 错误（不报告未改动行的已有问题）。
+4. 将结果转换为统一的 issue 格式（`source='lint'`），注入 R4。
+
+Lint issue 不经过 LLM 验证，直接进入最终结果，因此准确率高、无幻觉风险。
+
+---
+
+## 6. Checkpoint 系统（`checkpoint.py`）
+
+### 6.1 设计目标
+
+- **断点续传**：review 中途失败（网络超时、LLM 限流）后，从上次完成的阶段继续，不重复已完成的 LLM 调用。
+- **软失效**：`resume_from` 参数可指定从某个阶段重新开始，而不删除其他阶段的缓存。
+- **版本控制**：`_REVIEW_ROUND_VERSION` 递增时，自动失效 R4（合并去重）阶段的缓存，确保 prompt 变更后重新计算最终结果。
+
+### 6.2 阶段枚举（`ReviewStage`）
 
 ```
-CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2 → R3 → R4A → R4 → R4V → FINAL → UPLOAD
+CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2A → R2 → R3 → FINAL → UPLOAD
 ```
 
-### 7.3 失效控制
+每个阶段完成后调用 `ckpt.mark_stage_done(stage)`，重启时通过 `ckpt.should_use_cache(stage)` 判断是否跳过。
 
-- `resume_from=ReviewStage.X`：写入 `_invalidated_from`，不物理删除历史字段；`get(key)` 对 stage index ≥ invalidation 起点的键返回 `None`。
-- `clear_checkpoint=True`：删除 checkpoint 文件和整个 `pr_dir`（优先级高于 `resume_from`）。
-- `mark_stage_done(UPLOAD)` 时清除 `_invalidated_from`，完整跑通后下游缓存恢复可用。
-- `get('clone_dir')`：若目录不存在（已清理），返回 `None`，触发重新 clone。
+### 6.3 Head SHA 轮转
 
-### 7.4 成功结束后的目录状态
-
-- 删除：`{pr_dir}/clone/`（repo 源码）
-- 保留：`{pr_dir}/checkpoint.json`（可供下次断点续传）
+若 PR 在 review 过程中被 force-push（head SHA 变化），checkpoint 自动备份并清除所有 review 轮次数据（保留 clone、arch、spec），从 R1 重新开始。
 
 ---
 
-## 8. 评论发布（`poster.py`）
+## 7. 评论发布（`poster.py`）
 
-- **`_fetch_existing_pr_comments`**：拉取 `list_review_comments`，规范化 `body` / `path` / `line`，供 R5 去重。
-- **`_build_commentable_lines`**：解析 diff hunks 构建合法行号集合（避免 GitHub 422 错误）。
-- **`_filter_commentable`**：过滤不在 diff range 内的行号；无 `path` / `line` 的 issue（如 meta warning）不作为行评发出。
-- **`_post_review_comments`**：使用 **`submit_review`**（`commit_id=head_sha`，`event=COMMENT`，附 `review_body` + 行评）；遇 403 限流时按退避策略重试（`[60, 120, 300]` 秒）；分批（30 条/批）发布，已成功批次记录在 checkpoint，支持断点续传。
+### 7.1 发布策略
 
----
+1. **批量提交**：优先使用平台的 `submit_review` API 一次性提交所有评论（GitHub 的 Pull Request Review）。
+2. **逐条 fallback**：若批量提交失败（如评论行号不在 diff 范围内），逐条使用 `create_review_comment` 重试。
+3. **速率限制重试**：遇到 429 / 403 限流响应时，指数退避重试（最多 3 次）。
 
-## 9. 完整检查项速查表
+### 7.2 可评论行过滤（`_filter_commentable`）
 
-| 来源 | 类别 / 维度 | 典型发现 |
-|------|------------|---------|
-| **R1** | `logic` | 边界条件、null 值、错误分支 |
-| **R1** | `type` | 类型不匹配、隐式转换 |
-| **R1** | `safety` | 注入、权限提升、敏感数据泄露 |
-| **R1** | `exception` | 缺少/错误异常处理；错误未聚合 |
-| **R1** | `performance` | 冗余计算、大对象、低效循环 |
-| **R1** | `concurrency` | 竞态条件、死锁 |
-| **R1** | `design` | 错误抽象、违反现有协议模式、不必要耦合 |
-| **R1** | `style` | 命名/注释/冗余变量/可简化条件/可用推导式替换的循环 |
-| **R1** | `maintainability` | 重复代码、高耦合、代码放在错误模块 |
-| **R1** | `dependency` | 新增硬依赖应为可选依赖 |
-| **R2（新增）** | 接口不一致 | 签名变更但调用方未更新 |
-| **R2（新增）** | 抽象违规 | 绕过基类契约 |
-| **R2（新增）** | 设计破坏 | 违反现有代码库模式 |
-| **R2（新增）** | 缺少对称更新 | encode 改了但 decode 未改 |
-| **R2（新增）** | 依赖方向违规 | 低层模块导入高层模块 |
-| **R2（新增）** | 协议违规 | 新接口接受整对象而非窄接口；违反模块所有权 |
-| **R3** | 模块边界违规 | 职责模糊 |
-| **R3** | 重复逻辑 | 类似逻辑已在他处实现 |
-| **R3** | 耦合增加 | 原本独立组件现在紧耦合 |
-| **R3** | 设计模式违规 | 破坏注册表/工厂/观察者等模式 |
-| **R3** | 违反项目规范 | 历史 PR 提取的项目级规则 |
-| **R3** | 依赖反转违规 | 低层导入高层 |
-| **R4** | 模块职责 | 上帝类/模块、逻辑分散 |
-| **R4** | 分层与依赖 | 层边界、循环依赖 |
-| **R4** | API 设计 | 最小化暴露、最小惊讶原则、隐式约束 |
-| **R4** | 一致性 | 接口模式/初始化/错误处理/命名不一致 |
-| **R4** | 抽象与复用 | 重复实现已有 API Catalog 功能 |
-| **R4** | 复杂度与简洁性 | 不必要中间变量/包装类/间接层 |
-| **R4** | 可扩展性 | 魔法字符串/数字、硬编码实现 |
-| **R4** | 可替换性与解耦 | 依赖具体类、全局状态 |
-| **R4** | 可测试性 | 副作用混入纯逻辑、隐式状态 |
-| **R4** | 总体设计裁决 | 最重要架构改进点 |
-| **Lint** | 语法/风格 | ruff/flake8/eslint/golint/clippy 报告的 diff 行级错误 |
+平台只允许对 diff 中实际变更的行添加行级评论。`_build_commentable_lines` 解析 diff，构建 `{path: set(lines)}` 映射，过滤掉不在变更范围内的 issue（降级为 PR 级评论或丢弃）。
 
 ---
 
-## 10. 已知局限
+## 8. 预算与限流（`constants.py`）
 
-| 区域 | 现象 | 备注 |
+| 常量 | 默认值 | 说明 |
+|------|--------|------|
+| `SINGLE_CALL_CONTEXT_BUDGET` | 120000 字符 | 单次 LLM 调用的上下文上限 |
+| `R1_DIFF_BUDGET` | 95000 字符 | R1 中 diff 内容的上限（预留 25000 给系统 prompt + 架构文档） |
+| `TOTAL_CALL_BUDGET` | 60 次 | 整个 review 会话的 LLM 调用总上限 |
+| `ISSUE_DENSITY_LINE_BLOCK` | 100 行 | issue 密度控制的块大小 |
+| `ISSUE_DENSITY_MAX_PER_BLOCK` | 5 个 | 每 100 行最多输出 5 个 issue |
+| `R3_MAX_FILES` | 20 | R3 最多处理的文件数 |
+| `R3_MAX_CHUNKS_PER_FILE` | 3 | R3 每文件最多 chunk 数 |
+| `R3_MAX_CHUNKS_HARD` | 8 | R3 每文件硬上限 |
+
+`BudgetManager` 追踪已使用的 LLM 调用次数，各轮次在调用前检查剩余预算，超出时跳过非关键步骤。
+
+---
+
+## 9. Issue 字段规范
+
+所有轮次输出的 issue 遵循统一格式：
+
+| 字段 | 类型 | 说明 |
 |------|------|------|
-| diff 截断 | `max_diff_chars` 截断后，被截掉的文件完全不进入任何轮次 | 已有 meta warning 告知 reviewer |
-| 架构 outline | `snapshot[:4000]`，快照预算 6000 字符 | 部分快照内容未进入 outline 生成 |
-| PR 摘要 | `body[:800]`、`diff[:5000]` | 大 PR 尾部变更在预摘要中不可见 |
-| R1 规则注入 | `review_spec`/`pr_summary` 各 600 字符 | 与 R3 全量规则注入不对称 |
-| R2 chunk Agent | 阶段A输出 JSON 解析失败时 fallback 为原始文本；探索日志最多保留 20 条 | `_r2_build_rich_context` 有 fallback 逻辑 |
-| R2 group | 超 40000 字符自动拆分子 group；无 Agent 探索 | 复杂跨文件语义依赖由 Agent 模式补充 |
-| 规则匹配 | `_lookup_relevant_rules` 仅用 diff 前 200 行提关键词 | 关键词集中在尾部时匹配可能偏差 |
-| R5 去重 | 确定性步骤仅折叠相同 category；跨 category 同位置重复依赖 LLM | LLM fallback 时退化为 severity 排序 |
-| BudgetManager | 已提供类与调用预算追踪，各轮尚未全面切换 | 与旧 `clip_*` 并存 |
+| `path` | str | 相对于仓库根目录的文件路径 |
+| `line` | int | 问题所在行号（diff 中的新行号） |
+| `severity` | str | `critical` / `high` / `medium` / `normal` |
+| `bug_category` | str | `bug` / `security` / `performance` / `maintainability` / `design` / `style` |
+| `title` | str | 简短标题（≤80 字符） |
+| `description` | str | 问题详细描述 |
+| `suggestion` | str | 修复建议（含代码示例，使用 markdown 代码块） |
+| `source` | str | `r1` / `r2` / `r3` / `lint` / `meta` |
 
 ---
 
-*若后续调整 budget 常量、`ReviewStage.ordered()`、R2 策略、R4/R4v/R5 行为、检查项或增加新轮次，请同步更新本文档。*
+## 10. 已知限制
+
+| 限制 | 说明 |
+|------|------|
+| Diff 截断 | 超大 PR（>120K 字符）只审查前 N 个文件，被截断的文件通过 meta warning 告知 |
+| R3 文件上限 | 大 PR 下 R3 最多处理 10 个文件，其余文件只经过 R1/R2 |
+| 动态引用 | `grep_symbol` 无法追踪运行时动态生成的符号名（如 `getattr(obj, name)`） |
+| 跨仓库依赖 | 只分析当前仓库，外部依赖的接口变更无法检测 |
+| 语言支持 | 当前 Lint 分析主要支持 Python（ruff/flake8），JS/TS 需要本地安装 eslint |
+
+---
+
+*若后续调整 budget 常量、`ReviewStage.ordered()`、各轮 prompt、检查项或增加新轮次，请同步更新本文档。*
