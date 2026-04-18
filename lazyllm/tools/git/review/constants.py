@@ -26,7 +26,7 @@ R3_MAX_CHUNKS_HARD = 8
 # R3 unit diff budget: max combined diff chars per review unit (anchor + absorbed small files)
 R3_UNIT_DIFF_BUDGET = 40000
 
-# backward-compatible aliases
+# backward-compatible aliases (deprecated — use R3_* directly)
 R2_MAX_FILES = R3_MAX_FILES
 R2_MAX_CHUNKS_PER_FILE = R3_MAX_CHUNKS_PER_FILE
 R2_MAX_CHUNKS_HARD = R3_MAX_CHUNKS_HARD

@@ -209,7 +209,7 @@ class GitHub(LazyLLMGitBase):
                 return self._fail(r)
             for c in r.json():
                 out.append(ReviewCommentInfo(
-                    id=c['id'],
+                    id=c.get('id'),
                     body=c.get('body', ''),
                     path=c.get('path', ''),
                     line=c.get('line'),
@@ -257,7 +257,6 @@ class GitHub(LazyLLMGitBase):
         return {'success': True, 'message': 'created', 'url': r.json().get('html_url', '')}
 
     def list_issue_comments(self, number: int) -> Dict[str, Any]:
-        self._require_repo()
         out = []
         url: Optional[str] = self._url(f'/issues/{number}/comments')
         params: Dict[str, Any] = {'per_page': 100}

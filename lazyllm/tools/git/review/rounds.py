@@ -80,8 +80,9 @@ only used by an optional feature; should be in extras_require or optional-depend
 
 _R1_STRICT_RULES = '''\
 STRICT RULES — violations will be rejected:
-1. Only report issues caused by the diff itself (added/modified/deleted lines). \
-If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
+1. Only report issues INTRODUCED or WORSENED by the diff (added/modified/deleted lines). \
+Pre-existing code smells, refactoring opportunities, or style inconsistencies in unchanged code \
+are OUT OF SCOPE even if visible in context. If the issue would exist identically without this diff, discard it.
 2. Do NOT report lint/style tool errors that automated tools already catch: \
 unused imports (F401), line-too-long, complexity metrics, missing blank lines, \
 trailing whitespace, etc. \
@@ -116,13 +117,21 @@ server.py, worker.py, main.py, __main__.py, or if the diff contains an \
 you MUST cite the specific diff lines that prove the absence. If the diff does not \
 contain enough context to confirm, state "cannot verify from diff alone" and set \
 severity to at most "normal".
-8. {density_rule}'''
+8. Do NOT claim an API endpoint, field name, URL path, or protocol behavior is wrong \
+unless the diff itself contains contradictory evidence (e.g. a test assertion, a docstring, \
+or an error message that conflicts with the code). If you are unfamiliar with a third-party \
+API (e.g. GitCode, Gitee, GitLab), do NOT guess its conventions based on other platforms.
+9. When suggesting "add error handling" or "add exception protection", first verify whether \
+the called function already handles exceptions internally. If the callee wraps its body in \
+try/except or returns a safe default, the caller does NOT need redundant protection.
+10. {density_rule}'''
 
 # Rules 1-5 are shared across all rounds (density_rule is round-specific and injected separately)
 _SHARED_STRICT_RULES_PREFIX = '''\
 STRICT RULES — violations will be rejected:
-1. Only report issues caused by the diff itself (added/modified/deleted lines). \
-If a problem exists in unchanged context lines and is unrelated to the diff, discard it.
+1. Only report issues INTRODUCED or WORSENED by the diff (added/modified/deleted lines). \
+Pre-existing code smells, refactoring opportunities, or style inconsistencies in unchanged code \
+are OUT OF SCOPE even if visible in context. If the issue would exist identically without this diff, discard it.
 2. Do NOT report lint/style tool errors that automated tools already catch: \
 unused imports (F401), line-too-long, complexity metrics, missing blank lines, \
 trailing whitespace, etc. \
@@ -157,7 +166,14 @@ server.py, worker.py, main.py, __main__.py, or if the diff contains an \
 7. Before claiming something is "missing", "unused", "unreachable", or "always X", \
 you MUST cite the specific diff lines that prove the absence. If the diff does not \
 contain enough context to confirm, state "cannot verify from diff alone" and set \
-severity to at most "normal".'''
+severity to at most "normal".
+8. Do NOT claim an API endpoint, field name, URL path, or protocol behavior is wrong \
+unless the diff itself contains contradictory evidence (e.g. a test assertion, a docstring, \
+or an error message that conflicts with the code). If you are unfamiliar with a third-party \
+API (e.g. GitCode, Gitee, GitLab), do NOT guess its conventions based on other platforms.
+9. When suggesting "add error handling" or "add exception protection", first verify whether \
+the called function already handles exceptions internally. If the callee wraps its body in \
+try/except or returns a safe default, the caller does NOT need redundant protection.'''
 
 _R1_ISSUE_FIELDS = '''\
 For EVERY issue found, output a JSON object with:
@@ -911,9 +927,15 @@ For EVERY issue found, output a JSON object with:
 If no new issues: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
 
 STRICT RULES:
-1. Only report issues caused by the diff itself (added/modified/deleted lines).
+1. Only report issues INTRODUCED or WORSENED by the diff (added/modified/deleted lines). \
+Pre-existing code smells, refactoring opportunities, or style inconsistencies in unchanged code \
+are OUT OF SCOPE even if visible in context. If the issue would exist identically without this diff, discard it.
 2. Do NOT repeat issues already listed in Round-1 Issues above.
-3. {density_rule}
+3. Do NOT claim an API endpoint, field name, or URL path is wrong unless the diff itself \
+contains contradictory evidence. Do NOT guess third-party API conventions.
+4. When suggesting "add error handling", first verify whether the called function already \
+handles exceptions internally.
+5. {density_rule}
 '''
 
 
@@ -1198,6 +1220,10 @@ Understand the code context around the diff changes. Focus on:
 __init_subclass__, __getattr__ dispatch, decorator-based registration, etc.)?
 5. If the diff deletes/renames symbols, are there orphaned helpers? But also check: \
 could the symbol be dynamically referenced via registry, __all__, getattr, or plugin entry-points?
+6. Are there sibling classes (same base class or same role) in the codebase? If so, note their \
+construction pattern, key method signatures, and __call__/forward dispatch pattern.
+7. If the diff introduces a new class that parallels an existing one, identify the existing class \
+and compare their interfaces.
 
 ## Available Tools & When to Use Them
 - read_file_skeleton_scoped: Start here to understand file structure before reading details
@@ -1217,6 +1243,10 @@ You may call multiple tools in a single round for parallel execution.
   registry dicts, __all__, @register decorators, and getattr() reference symbols by name, not by call
 - Check if the module or its base class uses a metaclass or __init_subclass__ — \
   if so, subclass definitions are auto-registered and are NOT dead code
+- When the diff adds a new class, search for classes with the same base class or in the same \
+directory to identify siblings. Read their __init__ signature and key public methods.
+- If the diff modifies __or__, __getitem__, or other dunder methods, grep for their usage \
+patterns to understand the intended semantics.
 - Stop when you have enough context to understand the change's impact
 
 ## Output Format (STRICT — must be valid JSON)
@@ -1229,13 +1259,17 @@ Output a JSON object with these fields:
   "base_classes": [
     {{"symbol": "BaseClassName", "file": "relative/path.py"}}
   ],
-  "framework_notes": ["one-line finding about framework mechanism"]
+  "framework_notes": ["one-line finding about framework mechanism"],
+  "sibling_classes": [
+    {{"symbol": "ClassName", "file": "relative/path.py", "key_methods": ["method1(args)", "method2(args)"]}}
+  ]
 }}
 ```
 - "related_files": files you read that are relevant; "lines" = [start_line, end_line] of the key section
 - "base_classes": base classes of modified symbols (for skeleton extraction)
 - "framework_notes": any non-obvious framework behavior discovered (lazy-loading, registry, etc.)
-Keep total output concise. At most 5 related_files and 3 framework_notes.
+- "sibling_classes": classes with the same base or same role; include their key method signatures
+Keep total output concise. At most 5 related_files, 3 framework_notes, and 5 sibling_classes.
 
 {lang_instruction}
 '''
@@ -1290,6 +1324,12 @@ When reporting "line", always use the RIGHT-SIDE number M (the new-file line num
 ## Task
 1. Process every previous issue above (KEEP / MODIFY / DISCARD). Use the agent-collected context \
 and file skeleton to verify each claim before deciding.
+   - For "missing error handling" claims: use the cross-file context or file skeleton to check \
+whether the called function already wraps its body in try/except or returns a safe default. \
+If it does, DISCARD the issue — the caller does NOT need redundant protection.
+   - For "wrong API endpoint/field" claims: DISCARD unless the diff itself contains contradictory \
+evidence (e.g. a test, a docstring, or an error message that conflicts with the code). \
+Do NOT guess third-party API conventions based on other platforms.
 2. Find NEW issues that require cross-file or cross-function context to detect:
    - Interface inconsistencies (method signatures changed but callers not updated)
    - Abstraction violations (bypassing base class contracts)
@@ -1302,6 +1342,18 @@ or search_scoped to check whether helper functions, constants, or prompt templat
 ONLY used by the old code are still defined but now orphaned. Also check: if a concept was \
 renamed (e.g. old_name → new_name), are there checkpoint keys, log messages, or string \
 literals that still use the old name?
+   - Base class abstraction gap: if the diff adds a second implementation of a concept that \
+previously had only one, and no shared base class exists, report it \
+(severity: medium, bug_category: design)
+   - Sibling consistency: if sibling classes (same base or same role) have inconsistent \
+construction signatures, key method signatures, or dispatch patterns (__call__/forward), \
+report the inconsistency (severity: medium, bug_category: design)
+   - Naming clarity: if new method/function names redundantly include the parent class/module \
+name, or are not self-explanatory, report it (severity: normal, bug_category: style)
+   - Syntactic sugar semantics: if the diff adds or modifies operator overloads \
+(__or__, __getitem__, __lshift__, etc.), verify the semantics align with mainstream \
+language/shell conventions (e.g. | for pipe/compose, [] for indexing/slicing). \
+Report if the sugar could mislead users (severity: medium, bug_category: design)
 
 IMPORTANT — before reporting any symbol as "orphaned" or "dead code", you MUST rule out \
 dynamic references. Use your tools to check:
@@ -1726,7 +1778,8 @@ def _round3_agent_verify(
     large_threshold = strategy.large_file_threshold if strategy else 200
     max_chunks = strategy.max_chunks_per_file if strategy else 3
 
-    shared_context = (ckpt.get('r3_shared_context') if ckpt else None) or ''
+    use_cache = ckpt.should_use_cache(ReviewStage.R3) if ckpt else True
+    shared_context = (ckpt.get('r3_shared_context') if ckpt and use_cache else None) or ''
     if not shared_context:
         shared_context = _r3_build_shared_context(diff_text)
         if ckpt and shared_context:
@@ -1757,7 +1810,6 @@ def _round3_agent_verify(
     prog = _Progress('Round 3: unified agent verify', len(units))
     all_results: List[Dict[str, Any]] = []
     all_discarded: set = set()
-    use_cache = ckpt.should_use_cache(ReviewStage.R3) if ckpt else True
 
     for unit in units:
         _r3_unit_agent_verify(
@@ -1795,48 +1847,48 @@ Do NOT just describe "what code changed". Reconstruct the design intent of this 
 
 Output a structured document with the following sections:
 
-【1. 背景与问题定义】
-- 这个 PR 想解决什么问题？
-- 这个问题在现有架构中的位置是什么？
-- 是否是新需求 / bugfix / 重构？
+[1. Background & Problem Definition]
+- What problem does this PR aim to solve?
+- Where does this problem sit within the existing architecture?
+- Is this a new feature / bugfix / refactoring?
 
-【2. 设计目标】
-- 这个改动希望达到什么效果？
-- 是否有明确的设计约束（性能 / 可扩展性 / 一致性等）？
+[2. Design Goals]
+- What outcome is this change expected to achieve?
+- Are there explicit design constraints (performance / extensibility / consistency, etc.)?
 
-【3. 设计方案】
-- 核心思路是什么？
-- 为什么这样设计？（是否有备选方案）
-- 是否符合现有架构分层？
+[3. Design Approach]
+- What is the core idea?
+- Why this design? (Are there alternative approaches?)
+- Does it conform to the existing architectural layering?
 
-【4. 模块影响分析】
-- 修改/新增了哪些模块？
-- 每个模块职责是否发生变化？
-- 是否引入新的依赖关系？
+[4. Module Impact Analysis]
+- Which modules are modified or newly added?
+- Does the responsibility of any module change?
+- Are new dependencies introduced?
 
-【5. API 设计】
-- 新增/修改了哪些接口？
-- 输入输出是什么？
-- 是否与现有 API 风格一致？
+[5. API Design]
+- Which interfaces are added or modified?
+- What are the inputs and outputs?
+- Is the style consistent with existing APIs?
 
-【6. 使用方式（Usage Example）】
-- 给出典型使用示例（调用方式）
-- 是否对用户使用方式有影响？
+[6. Usage Example]
+- Provide a typical usage example (calling convention).
+- Does this change affect how users interact with the system?
 
-【7. 兼容性与影响范围】
-- 是否影响已有功能？
-- 是否是 breaking change？
+[7. Compatibility & Impact Scope]
+- Does this affect existing functionality?
+- Is this a breaking change?
 
-【8. 风险与边界】
-- 是否存在潜在问题或未覆盖场景？
-- 是否有隐含假设？
+[8. Risks & Edge Cases]
+- Are there potential issues or uncovered scenarios?
+- Are there implicit assumptions?
 
-【9. 可扩展性分析】
-- 后续类似需求是否容易扩展？
-- 当前设计是否容易演进？
+[9. Extensibility Analysis]
+- Will similar future requirements be easy to extend?
+- Is the current design easy to evolve?
 
 Notes:
-- If information is insufficient, make reasonable inferences and explicitly mark them as "假设".
+- If information is insufficient, make reasonable inferences and explicitly mark them as "assumption".
 - Do not omit implicit design decisions.
 - Output plain text with the section headers above. No extra markdown.
 '''
@@ -1947,6 +1999,15 @@ Report any location that still uses the old name.
 - Are error handling patterns consistent (exceptions vs return codes vs None)?
 - Are naming conventions consistent (verb_noun vs noun_verb, snake_case, etc.)?
 - If this module has a "register" or "factory" pattern, does the new code follow it?
+- If the diff adds a new class/module that serves the same role as an existing one \
+(e.g. a new storage backend, a new model provider, a new data source), do they share \
+a common base class or protocol? If not, flag it.
+- Do similar classes follow the same construction pattern (same __init__ parameter order \
+for shared params, same factory/client entry point)?
+- Do similar classes implement the same set of key methods with consistent signatures \
+(parameter names, order, return types)?
+- If the project uses __call__ + forward (or similar dispatch patterns), does the new class \
+follow the same pattern?
 
 ### 5. Abstraction & Reuse
 - Is there logic in this diff that already exists elsewhere in the codebase (per arch_doc)?
@@ -1954,6 +2015,10 @@ Report any location that still uses the old name.
 - Is there a base class or utility that should be used but isn't?
 - Does the new code introduce a parallel hierarchy that duplicates an existing one?
 - Could a 10-line function be replaced by a 1-line call to an existing utility?
+- CRITICAL: If the system previously had only ONE implementation of a concept \
+(e.g. one storage backend, one model provider) and this diff adds a SECOND one, \
+check whether a common base class / protocol / ABC exists. If not, this is a design \
+issue — the two implementations should be unified under a shared abstraction.
 
 ### 6. Complexity & Simplicity
 - Is the implementation the simplest possible solution to the problem?
@@ -1983,6 +2048,16 @@ Report any location that still uses the old name.
 ### 10. Overall Design Verdict
 - Is this the optimal design, or is there a simpler/more consistent alternative?
 - What is the single most important architectural change that would most improve this code?
+
+### 11. Naming & Semantic Clarity
+- Are method/function names self-explanatory and concise?
+- Do method names avoid redundantly including the class name? \
+(e.g. prefer `ClassA.get_instance()` over `ClassA.get_classA_instance()`)
+- Are parameter names consistent across similar methods in sibling classes?
+- If the project provides syntactic sugar (operator overloads like __or__, __ror__, \
+__getitem__, etc.), does the sugar's semantics align with mainstream conventions \
+(bash pipe |, Python slice [], etc.)? Flag if the sugar could confuse users familiar \
+with standard language/shell semantics.
 
 ## Critical Mindset
 Ask yourself for EVERY changed file:
@@ -2244,7 +2319,6 @@ def _round4_merge_and_deduplicate(
             'bug_category': category if category in _VALID_CATEGORIES else 'logic',
             'problem': item.get('problem') or '',
             'suggestion': original.get('suggestion') or '',
-            '_review_version': 2,
         })
     discarded_idxs = set(idx_map.keys()) - kept_idxs
     if discarded_idxs:
@@ -2258,8 +2332,7 @@ def _round4_merge_and_deduplicate(
         )
     if not result:
         _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
-        result = [{**c, '_review_version': 3}
-                  for c in sorted(deduped, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2))]
+        result = [c for c in sorted(deduped, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2))]
     prog.done(f'{len(result)} final issues')
     return result
 
@@ -2335,7 +2408,7 @@ def _run_four_rounds(  # noqa: C901
 
     # ── R2a: PR design document ──
     use_r2a_cache = ckpt.should_use_cache(ReviewStage.R2A)
-    pr_design_doc = ckpt.get('pr_design_doc')
+    pr_design_doc = ckpt.get('pr_design_doc') if use_r2a_cache else None
     if pr_design_doc is None:
         if not use_r2a_cache:
             lazyllm.LOG.warning('Round 2a: no cache found, re-computing')
@@ -2352,7 +2425,7 @@ def _run_four_rounds(  # noqa: C901
 
     # ── R2: architect design review (merged global + architecture) ──
     use_r2_cache = ckpt.should_use_cache(ReviewStage.R2)
-    r2 = ckpt.get('r2')
+    r2 = ckpt.get('r2') if use_r2_cache else None
     if r2 is None:
         if not use_r2_cache:
             lazyllm.LOG.warning('Round 2: no cache found, re-computing')
@@ -2380,12 +2453,15 @@ def _run_four_rounds(  # noqa: C901
 
     # ── R4: merge & deduplicate (formerly R5) ──
     use_final_cache = ckpt.should_use_cache(ReviewStage.FINAL)
-    final = ckpt.get('final')
-    if final is not None and isinstance(final, list) and not any(
-        c.get('_review_version') == 3 for c in final[:1]
-    ):
-        lazyllm.LOG.info('Round 4: discarding old-format final checkpoint, re-computing')
-        final = None
+    final = ckpt.get('final') if use_final_cache else None
+    if final is not None:
+        cached_rv = ckpt.get('_review_round_version')
+        if cached_rv != ckpt._REVIEW_ROUND_VERSION:
+            lazyllm.LOG.info(
+                f'Round 4: review_round_version mismatch '
+                f'(cached={cached_rv}, expected={ckpt._REVIEW_ROUND_VERSION}), re-computing'
+            )
+            final = None
     if final is None:
         if not use_final_cache:
             lazyllm.LOG.warning('Round 4: no cache found, re-computing')
@@ -2417,6 +2493,7 @@ def _run_four_rounds(  # noqa: C901
             existing_comments=existing_comments, language=language,
         )
         ckpt.save('final', final)
+        ckpt.save('_review_round_version', ckpt._REVIEW_ROUND_VERSION)
         ckpt.mark_stage_done(ReviewStage.FINAL)
     else:
         _Progress('Round 4: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')

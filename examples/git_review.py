@@ -17,6 +17,7 @@
 #   --max_history_prs  Max historical PRs to analyze for review spec (default: uses review() default of 20)
 #   --keep_clone    Keep cloned repo after review (flag, default: off)
 #   --clear_checkpoint  Clear checkpoint and start fresh (flag, default: off)
+#   --refresh_diff  Fetch latest PR head SHA and diff; rotate checkpoint if changed (flag, default: off)
 #   --resume_from   Resume from a specific stage: clone|arch|spec|pr_summary|r1|r2|r3|r4a|r4|final|upload
 #                   Stages before the specified one will load from cache (if available).
 #                   If a prior stage has no cache, a warning is printed and it re-computes.
@@ -61,6 +62,9 @@ def _parse_args():
                         help='Keep cloned repo directory after review')
     parser.add_argument('--clear_checkpoint', action='store_true',
                         help='Clear checkpoint and start fresh')
+    parser.add_argument('--refresh_diff', action='store_true',
+                        help='Fetch latest PR head SHA and diff; rotate checkpoint if changed. '
+                             'Without this flag, cached diff/SHA are reused as-is.')
     parser.add_argument('--resume_from', default=None,
                         choices=['clone', 'arch', 'spec', 'pr_summary',
                                  'r1', 'r2', 'r3', 'r4a', 'r4', 'final', 'upload'],
@@ -131,6 +135,7 @@ def main():  # noqa C901
             keep_clone=args.keep_clone,
             clear_checkpoint=args.clear_checkpoint,
             resume_from=resume_from,
+            refresh_diff=args.refresh_diff,
             **({'max_history_prs': args.max_history_prs} if args.max_history_prs is not None else {}),
         )
         print('--- Review result ---')

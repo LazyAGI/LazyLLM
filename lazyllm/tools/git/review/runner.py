@@ -139,6 +139,7 @@ def review(  # noqa: C901
     resume_from: Optional[ReviewStage] = None,
     language: str = 'cn',
     keep_clone: bool = False,
+    refresh_diff: bool = False,
 ) -> Dict[str, Any]:
     try:
         import lazyllm.tools.git.review as _self_mod
@@ -162,29 +163,45 @@ def review(  # noqa: C901
 
     backend_inst = Git(backend=backend, token=token, repo=repo, api_base=api_base)
 
+    # always need PR metadata for title/body
     pr_res = backend_inst.get_pull_request(pr_number)
     if not pr_res.get('success'):
         raise RuntimeError(f'Failed to get PR #{pr_number}: {pr_res.get("message", "unknown")}')
     pr = pr_res['pr']
-    head_sha = _get_head_sha_from_pr(pr)
-    if not head_sha and post_to_github:
-        raise RuntimeError('Cannot get PR head sha; cannot post line-level comments')
 
-    # diff staleness check: if head_sha changed since last run, invalidate diff and all review stages
+    # head_sha: when refresh_diff=False, prefer cached sha to avoid rotating checkpoint
     cached_head_sha = ckpt.get('head_sha')
-    if cached_head_sha and head_sha and cached_head_sha != head_sha:
-        lazyllm.LOG.warning(
-            f'PR head SHA changed ({cached_head_sha[:8]} → {head_sha[:8]}), '
-            f'invalidating diff and all review stages'
-        )
-        ckpt._mark_invalidated_from(ReviewStage.CLONE)
-    if head_sha:
-        ckpt.save('head_sha', head_sha)
+    live_head_sha = _get_head_sha_from_pr(pr)
+    if refresh_diff or not cached_head_sha:
+        # use live sha; rotate if changed
+        head_sha = live_head_sha
+        if not head_sha and post_to_github:
+            raise RuntimeError('Cannot get PR head sha; cannot post line-level comments')
+        if cached_head_sha and head_sha and cached_head_sha != head_sha:
+            ckpt.rotate_on_head_sha_change(head_sha)
+        if head_sha:
+            ckpt.save('head_sha', head_sha)
+    else:
+        head_sha = cached_head_sha
 
     # diff: load from checkpoint if available, otherwise fetch and cache
     truncated_diff = False
     diff_text = ckpt.get('diff_text')
     if diff_text is None:
+        if not refresh_diff and cached_head_sha:
+            # diff cache lost but head_sha is pinned — must refresh to stay consistent
+            lazyllm.LOG.warning(
+                'Diff cache missing but head_sha is pinned; auto-refreshing diff. '
+                'If PR has new pushes, use --refresh_diff to rotate checkpoint.'
+            )
+            live_sha = _get_head_sha_from_pr(pr)
+            if live_sha and cached_head_sha and live_sha != cached_head_sha:
+                lazyllm.LOG.warning(
+                    f'PR head changed ({cached_head_sha[:8]} → {live_sha[:8]}) since last run. '
+                    f'Rotating checkpoint to stay consistent.'
+                )
+                ckpt.rotate_on_head_sha_change(live_sha)
+                head_sha = live_sha
         diff_res = backend_inst.get_pr_diff(pr_number)
         if not diff_res.get('success'):
             raise RuntimeError(f'Failed to get PR #{pr_number} diff: {diff_res.get("message", "unknown")}')
@@ -192,6 +209,8 @@ def review(  # noqa: C901
         if max_diff_chars and len(diff_text) > max_diff_chars:
             diff_text, truncated_diff = _truncate_diff_at_file_boundary(diff_text, max_diff_chars)
         ckpt.save('diff_text', diff_text)
+        if head_sha:
+            ckpt.save('head_sha', head_sha)
     else:
         _Progress('Pre-round: fetching diff').done('loaded from checkpoint')
 
@@ -226,7 +245,7 @@ def review(  # noqa: C901
     arch_doc, review_spec, clone_dir, agent_instructions = _run_pre_analysis(
         llm, backend_inst, repo, pr, fetch_repo_code,
         arch_cache_path, review_spec_cache_path, max_history_prs, ckpt,
-        pr_dir=pr_dir,
+        pr_dir=pr_dir, head_sha=head_sha,
     )
 
     pr_summary = ckpt.get('pr_summary')
@@ -281,6 +300,10 @@ def review(  # noqa: C901
         if ckpt.should_use_cache(ReviewStage.UPLOAD):
             _Progress('Upload: posting review comments').done('loaded from checkpoint (already uploaded)')
         else:
+            # clear stale batch tracking — if we're here, UPLOAD is not done,
+            # so any previous batch markers are from an old run with different comments
+            if ckpt:
+                ckpt.save('upload_done_batches', [])
             review_body = _build_review_body(
                 pr_summary=pr_summary,
                 total=len(final_comments),

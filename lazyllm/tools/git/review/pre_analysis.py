@@ -352,19 +352,52 @@ def _try_pull_if_outdated(clone_dir: str, branch: str) -> bool:
         lazyllm.LOG.warning(f'Failed to pull latest changes: {e}')
         return False
 
-def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None) -> Tuple[str, str]:
+def _pin_clone_to_sha(clone_dir: str, pin_sha: str) -> None:
+    cur = subprocess.run(
+        ['git', '-C', clone_dir, 'rev-parse', 'HEAD'],
+        capture_output=True, text=True, timeout=10,
+    ).stdout.strip()
+    if cur.startswith(pin_sha[:8]) or pin_sha.startswith(cur[:8]):
+        return
+    try:
+        subprocess.run(
+            ['git', '-C', clone_dir, 'fetch', 'origin', pin_sha],
+            capture_output=True, text=True, timeout=120, env=_GIT_ENV,
+        )
+        subprocess.run(
+            ['git', '-C', clone_dir, 'checkout', pin_sha],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        lazyllm.LOG.info(f'Clone pinned to SHA {pin_sha[:8]}')
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        lazyllm.LOG.warning(f'Failed to pin clone to {pin_sha[:8]}: {e}')
+
+
+def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None,
+                     pin_sha: Optional[str] = None) -> Tuple[str, str]:
     import shutil
     clone_dir = work_dir or tempfile.mkdtemp(prefix='lazyllm_review_')
     if os.path.isdir(clone_dir):
         if _is_complete_clone(clone_dir):
-            lazyllm.LOG.info(f'Reusing existing clone at {clone_dir}, checking for updates...')
-            _try_pull_if_outdated(clone_dir, branch)
+            if pin_sha:
+                cur = subprocess.run(
+                    ['git', '-C', clone_dir, 'rev-parse', 'HEAD'],
+                    capture_output=True, text=True, timeout=10,
+                ).stdout.strip()
+                if cur.startswith(pin_sha[:8]) or pin_sha.startswith(cur[:8]):
+                    lazyllm.LOG.info(f'Clone already at pinned SHA {pin_sha[:8]}')
+                    return clone_dir, _collect_code_summary(clone_dir)
+            else:
+                lazyllm.LOG.info(f'Reusing existing clone at {clone_dir}, checking for updates...')
+                _try_pull_if_outdated(clone_dir, branch)
         else:
             shutil.rmtree(clone_dir, ignore_errors=True)
     try:
         if not _is_complete_clone(clone_dir):
+            depth_args = ['--depth', '1'] if not pin_sha else []
             subprocess.run(
-                ['git', 'clone', '--single-branch', '--branch', branch, '--depth', '1', '--', repo_url, clone_dir],
+                ['git', 'clone', '--single-branch', '--branch', branch, *depth_args,
+                 '--', repo_url, clone_dir],
                 capture_output=True, text=True, timeout=300, check=True, env=_GIT_ENV,
             )
     except subprocess.CalledProcessError as e:
@@ -372,13 +405,19 @@ def _fetch_repo_code(repo_url: str, branch: str, work_dir: Optional[str] = None)
     except subprocess.TimeoutExpired as e:
         raise RuntimeError('git clone timed out') from e
 
+    if pin_sha and _is_complete_clone(clone_dir):
+        _pin_clone_to_sha(clone_dir, pin_sha)
+
+    return clone_dir, _collect_code_summary(clone_dir)
+
+def _collect_code_summary(clone_dir: str) -> str:
     tree_lines = [
         os.path.join(os.path.relpath(root, clone_dir), fname) if os.path.relpath(root, clone_dir) != '.' else fname
         for root, dirs, files in os.walk(clone_dir)
         for _ in [dirs.__setitem__(slice(None), [d for d in dirs if d not in _SKIP_DIRS])]
         for fname in sorted(files) if not any(fname.endswith(ext) for ext in _SKIP_EXTS)
     ]
-    return clone_dir, '\n'.join(tree_lines)
+    return '\n'.join(tree_lines)
 
 def _find_enclosing_scope(lines: List[str], hunk_start: int) -> Tuple[Optional[int], Optional[str], Optional[str]]:
     for i in range(min(hunk_start - 1, len(lines) - 1), -1, -1):
@@ -1758,30 +1797,76 @@ _BOT_TEMPLATE_MIN_COMMENTS = 3
 _BOT_TEMPLATE_MIN_PREFIX_LEN = 20
 _BOT_TEMPLATE_MIN_SUFFIX_LEN = 15
 
-def _detect_bot_templates(  # noqa: C901
+def _strip_bot_templates(
     comments: List[Dict[str, Any]],
+    templates: Dict[str, List[Tuple[str, str]]],
+) -> List[Dict[str, Any]]:
+    if not templates:
+        return comments
+    for c in comments:
+        user = c.get('user', '')
+        tlist = templates.get(user)
+        if not tlist:
+            continue
+        c['is_maintainer'] = False
+        body = c['body']
+        for prefix, suffix in tlist:
+            if (prefix and body.startswith(prefix)) or (suffix and body.endswith(suffix)):
+                if prefix and body.startswith(prefix):
+                    body = body[len(prefix):]
+                if suffix and body.endswith(suffix):
+                    body = body[:-len(suffix)]
+                break
+        c['body'] = body.strip()
+    return [c for c in comments if c.get('body')]
+
+def _preload_bot_templates_from_cache(  # noqa: C901
+    cache_path: Optional[str], templates: Dict[str, List[Tuple[str, str]]],
+) -> None:
+    if not cache_path or not os.path.isfile(cache_path):
+        return
+    try:
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return
+    for key, val in data.items():
+        if not key.startswith('bot_template_'):
+            continue
+        user = key[len('bot_template_'):]
+        try:
+            t = json.loads(val) if isinstance(val, str) else val
+            if isinstance(t, list) and t:
+                if isinstance(t[0], list):
+                    for pair in t:
+                        if isinstance(pair, list) and len(pair) == 2:
+                            templates.setdefault(user, []).append((pair[0], pair[1]))
+                elif len(t) == 2 and isinstance(t[0], str):
+                    templates.setdefault(user, []).append((t[0], t[1]))
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+def _accumulate_and_detect_templates(
+    comments: List[Dict[str, Any]],
+    templates: Dict[str, List[Tuple[str, str]]],
     cache_path: Optional[str] = None,
-) -> Dict[str, Tuple[str, str]]:
-    by_user: Dict[str, List[int]] = {}
-    for i, c in enumerate(comments):
-        by_user.setdefault(c.get('user', ''), []).append(i)
-    templates: Dict[str, Tuple[str, str]] = {}
-    for user, indices in by_user.items():
-        if not user:
+) -> None:
+    by_user: Dict[str, List[str]] = {}
+    for c in comments:
+        user = c.get('user', '')
+        if user:
+            by_user.setdefault(user, []).append(c.get('body', ''))
+    for user, bodies in by_user.items():
+        if len(bodies) < _BOT_TEMPLATE_MIN_COMMENTS:
             continue
-        cache_key = f'bot_template_{user}'
-        cached = _load_cache(cache_path, cache_key) if cache_path else None
-        if cached:
-            try:
-                t = json.loads(cached)
-                if isinstance(t, list) and len(t) == 2:
-                    templates[user] = (t[0], t[1])
-                    continue
-            except (json.JSONDecodeError, TypeError):
-                pass
-        if len(indices) < _BOT_TEMPLATE_MIN_COMMENTS:
-            continue
-        bodies = [comments[i]['body'] for i in indices]
+        existing = templates.get(user, [])
+        if existing:
+            any_hit = any(
+                any((not pfx or b.startswith(pfx)) and (not sfx or b.endswith(sfx)) for b in bodies)
+                for pfx, sfx in existing
+            )
+            if any_hit:
+                continue
         prefix = os.path.commonprefix(bodies)
         nl = prefix.rfind('\n')
         if nl > 0:
@@ -1794,33 +1879,14 @@ def _detect_bot_templates(  # noqa: C901
         suffix = suffix_rev[::-1]
         strip_prefix = prefix if len(prefix.strip()) >= _BOT_TEMPLATE_MIN_PREFIX_LEN else ''
         strip_suffix = suffix if len(suffix.strip()) >= _BOT_TEMPLATE_MIN_SUFFIX_LEN else ''
-        if strip_prefix or strip_suffix:
-            templates[user] = (strip_prefix, strip_suffix)
-            if cache_path:
-                _save_cache(cache_path, cache_key, json.dumps([strip_prefix, strip_suffix]))
-    return templates
-
-def _strip_bot_templates(
-    comments: List[Dict[str, Any]],
-    templates: Dict[str, Tuple[str, str]],
-) -> List[Dict[str, Any]]:
-    if not templates:
-        return comments
-    for c in comments:
-        user = c.get('user', '')
-        t = templates.get(user)
-        if not t:
+        if not strip_prefix and not strip_suffix:
             continue
-        # user has a bot template → demote from maintainer regardless of author_association
-        c['is_maintainer'] = False
-        prefix, suffix = t
-        body = c['body']
-        if prefix and body.startswith(prefix):
-            body = body[len(prefix):]
-        if suffix and body.endswith(suffix):
-            body = body[:-len(suffix)]
-        c['body'] = body.strip()
-    return [c for c in comments if c.get('body')]
+        new_t = (strip_prefix, strip_suffix)
+        if new_t not in existing:
+            templates.setdefault(user, []).append(new_t)
+            if cache_path:
+                _save_cache(cache_path, f'bot_template_{user}',
+                            json.dumps(templates[user]))
 
 def _compress_comments_for_pr(llm: Any, comments: List[Dict[str, Any]]) -> str:
     indexed = [{'idx': i, 'body': c['body'], 'is_maintainer': c.get('is_maintainer', False)}
@@ -1981,13 +2047,17 @@ def _fetch_all_pr_comments(backend: LazyLLMGitBase, pr_num: int) -> List[Dict[st
             for c in (res.get('comments') or []):
                 body = _get_attr(c, 'body').strip()
                 user = _get_attr(c, 'user')
-                if body and not _BOT_USER_PATTERNS.search(user):
-                    raw = (c.get('raw') if isinstance(c, dict) else getattr(c, 'raw', {})) or {}
-                    assoc = (raw.get('author_association') or '').upper()
-                    is_maint = assoc in _MAINTAINER_ASSOCIATIONS
-                    if is_maint and _BOT_BODY_INDICATORS.search(body):
-                        is_maint = False
-                    comments.append({'user': user, 'body': body, 'is_maintainer': is_maint})
+                if not body:
+                    continue
+                raw = (c.get('raw') if isinstance(c, dict) else getattr(c, 'raw', {})) or {}
+                assoc = (raw.get('author_association') or '').upper()
+                is_bot = bool(_BOT_USER_PATTERNS.search(user)) or bool(_BOT_BODY_INDICATORS.search(body))
+                is_maint = assoc in _MAINTAINER_ASSOCIATIONS and not is_bot
+                cid = c.get('id') if isinstance(c, dict) else getattr(c, 'id', None)
+                comments.append({
+                    'user': user, 'body': body, 'is_maintainer': is_maint,
+                    'is_bot': is_bot, 'id': cid, 'raw': raw,
+                })
     except Exception as e:
         lazyllm.LOG.warning(f'PR #{pr_num} review comments fetch error: {e}')
     try:
@@ -1996,13 +2066,17 @@ def _fetch_all_pr_comments(backend: LazyLLMGitBase, pr_num: int) -> List[Dict[st
             for c in (res2.get('comments') or []):
                 body = (c.get('body') or '').strip()
                 user = (c.get('user') or '').strip()
-                if body and not _BOT_USER_PATTERNS.search(user):
-                    raw = (c if isinstance(c, dict) else {})
-                    assoc = (raw.get('author_association') or '').upper()
-                    is_maint = assoc in _MAINTAINER_ASSOCIATIONS
-                    if is_maint and _BOT_BODY_INDICATORS.search(body):
-                        is_maint = False
-                    comments.append({'user': user, 'body': body, 'is_maintainer': is_maint})
+                if not body:
+                    continue
+                raw = (c if isinstance(c, dict) else {})
+                assoc = (raw.get('author_association') or '').upper()
+                is_bot = bool(_BOT_USER_PATTERNS.search(user)) or bool(_BOT_BODY_INDICATORS.search(body))
+                is_maint = assoc in _MAINTAINER_ASSOCIATIONS and not is_bot
+                cid = c.get('id') if isinstance(c, dict) else getattr(c, 'id', None)
+                comments.append({
+                    'user': user, 'body': body, 'is_maintainer': is_maint,
+                    'is_bot': is_bot, 'id': cid, 'raw': raw,
+                })
     except Exception as e:
         lazyllm.LOG.warning(f'PR #{pr_num} issue comments fetch error: {e}')
     return comments
@@ -2011,7 +2085,7 @@ def _collect_rules_for_pr(
     backend: LazyLLMGitBase, llm: Any, pr: Any,
     idx: int, total: int, cache_path: Optional[str],
     prog: Any, all_rules: List[Dict[str, Any]],
-    bot_templates: Optional[Dict[str, Tuple[str, str]]] = None,
+    bot_templates: Optional[Dict[str, List[Tuple[str, str]]]] = None,
 ) -> None:
     pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
     if pr_num is None:
@@ -2125,88 +2199,86 @@ def _is_bot_comment(user: str, body: str) -> bool:
 
 def _filter_high_confidence_chains(  # noqa: C901
     chains: List[List[Any]], pr_author: str = '',
-    bot_templates: Optional[Dict[str, Tuple[str, str]]] = None,
+    bot_templates: Optional[Dict[str, List[Tuple[str, str]]]] = None,
 ) -> List[Dict[str, str]]:
     results = []
     for chain in chains:
-        root = chain[0]
-        root_user = _get_comment_field(root, 'user')
-        root_body = _get_comment_field(root, 'body')
-        if not root_body:
+        bot_indices = []
+        for i, c in enumerate(chain):
+            user = _get_comment_field(c, 'user')
+            body = _get_comment_field(c, 'body')
+            if body and _is_bot_comment(user, body):
+                bot_indices.append(i)
+        if not bot_indices:
             continue
-        if not _is_bot_comment(root_user, root_body):
-            continue
-        bot_user = root_user
-        if bot_templates:
-            t = bot_templates.get(bot_user)
-            if t:
-                prefix, suffix = t
-                if prefix and root_body.startswith(prefix):
-                    root_body = root_body[len(prefix):]
-                if suffix and root_body.endswith(suffix):
-                    root_body = root_body[:-len(suffix)]
-                root_body = root_body.strip()
-        if not root_body:
-            continue
-        found = False
-        # collect all participants for multi-pattern matching
-        chain_replies = chain[1:]
-        for idx_r, reply in enumerate(chain_replies):
-            reply_user = _get_comment_field(reply, 'user')
-            reply_body = _get_comment_field(reply, 'body')
-            if not reply_body:
+        for bi in bot_indices:
+            bot_c = chain[bi]
+            bot_user = _get_comment_field(bot_c, 'user')
+            bot_body = _get_comment_field(bot_c, 'body')
+            if bot_templates:
+                tlist = bot_templates.get(bot_user)
+                if tlist:
+                    for pfx, sfx in tlist:
+                        if (pfx and bot_body.startswith(pfx)) or (sfx and bot_body.endswith(sfx)):
+                            if pfx and bot_body.startswith(pfx):
+                                bot_body = bot_body[len(pfx):]
+                            if sfx and bot_body.endswith(sfx):
+                                bot_body = bot_body[:-len(sfx)]
+                            bot_body = bot_body.strip()
+                            break
+            if not bot_body:
                 continue
-            # skip replies from other known bot accounts (not the root bot)
-            if reply_user != bot_user and _BOT_USER_PATTERNS.search(reply_user):
-                continue
-            # pattern 1: bot replies again (three-way) — look for a human reply before this bot reply
-            if reply_user == bot_user:
-                human_replies = [
-                    c for c in chain_replies[:idx_r]
-                    if _get_comment_field(c, 'user') != bot_user
-                    and not _BOT_USER_PATTERNS.search(_get_comment_field(c, 'user'))
-                    and _get_comment_field(c, 'body')
-                ]
-                if human_replies:
+            after = chain[bi + 1:]
+            for idx_r, reply in enumerate(after):
+                ruser = _get_comment_field(reply, 'user')
+                rbody = _get_comment_field(reply, 'body')
+                if not rbody:
+                    continue
+                if ruser != bot_user and _BOT_USER_PATTERNS.search(ruser):
+                    continue
+                if ruser == bot_user:
+                    humans = [
+                        c for c in after[:idx_r]
+                        if _get_comment_field(c, 'user') != bot_user
+                        and not _BOT_USER_PATTERNS.search(_get_comment_field(c, 'user'))
+                        and _get_comment_field(c, 'body')
+                    ]
+                    if humans:
+                        results.append({
+                            'bot_comment': bot_body[:600],
+                            'reply_text': _get_comment_field(humans[0], 'body')[:600],
+                            'bot_acknowledgment': rbody[:400],
+                            'pattern': 'three_way',
+                        })
+                    break
+                raw = (reply.get('raw') if isinstance(reply, dict) else getattr(reply, 'raw', {})) or {}
+                assoc = (raw.get('author_association') or '').upper()
+                is_maint = assoc in _MAINTAINER_ASSOCIATIONS and ruser != pr_author
+                if is_maint and not _is_bot_comment(ruser, rbody):
                     results.append({
-                        'bot_comment': root_body[:600],
-                        'reply_text': _get_comment_field(human_replies[0], 'body')[:600],
-                        'bot_acknowledgment': reply_body[:400],
-                        'pattern': 'three_way',
+                        'bot_comment': bot_body[:600],
+                        'reply_text': rbody[:600],
+                        'bot_acknowledgment': '',
+                        'pattern': 'maintainer_direct',
                     })
-                    found = True
+                    break
+                if ruser == pr_author:
+                    confirm = next(
+                        (_get_comment_field(c, 'body') for c in after[idx_r + 1:]
+                         if _get_comment_field(c, 'user') == bot_user and _get_comment_field(c, 'body')),
+                        None,
+                    )
+                    if confirm:
+                        results.append({
+                            'bot_comment': bot_body[:600],
+                            'reply_text': rbody[:600],
+                            'bot_acknowledgment': confirm[:400],
+                            'pattern': 'three_way',
+                        })
+                    break
+            if len(results) >= 40:
                 break
-            # pattern 2: maintainer direct reply (NOT pr_author — author needs bot confirmation)
-            raw = (reply.get('raw') if isinstance(reply, dict) else getattr(reply, 'raw', {})) or {}
-            assoc = (raw.get('author_association') or '').upper()
-            is_maintainer = assoc in _MAINTAINER_ASSOCIATIONS and reply_user != pr_author
-            if is_maintainer and not _is_bot_comment(reply_user, reply_body):
-                results.append({
-                    'bot_comment': root_body[:600],
-                    'reply_text': reply_body[:600],
-                    'bot_acknowledgment': '',
-                    'pattern': 'maintainer_direct',
-                })
-                found = True
-                break
-            # pattern 3: pr_author replies — only valid if bot confirms later
-            if reply_user == pr_author:
-                bot_confirm = next(
-                    (_get_comment_field(c, 'body') for c in chain_replies[idx_r + 1:]
-                     if _get_comment_field(c, 'user') == bot_user
-                     and _get_comment_field(c, 'body')),
-                    None,
-                )
-                if bot_confirm:
-                    results.append({
-                        'bot_comment': root_body[:600],
-                        'reply_text': reply_body[:600],
-                        'bot_acknowledgment': bot_confirm[:400],
-                        'pattern': 'three_way',
-                    })
-                    found = True
-                break
-        if found and len(results) >= 20:
+        if len(results) >= 40:
             break
     return results
 
@@ -2245,7 +2317,8 @@ def _collect_framework_conventions_for_pr(  # noqa: C901
     backend: LazyLLMGitBase, llm: Any, pr: Any,
     idx: int, total: int, cache_path: Optional[str],
     prog: Any, all_conventions: List[Dict[str, Any]],
-    bot_templates: Optional[Dict[str, Tuple[str, str]]] = None,
+    bot_templates: Optional[Dict[str, List[Tuple[str, str]]]] = None,
+    prefetched_comments: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
     if pr_num is None:
@@ -2263,13 +2336,8 @@ def _collect_framework_conventions_for_pr(  # noqa: C901
                 return
             except (json.JSONDecodeError, TypeError):
                 pass
-    try:
-        res = backend.list_review_comments(pr_num)
-    except Exception:
-        return
-    if not res.get('success'):
-        return
-    raw_comments = res.get('comments') or []
+    # use prefetched comments (already includes both review + issue comments)
+    raw_comments = prefetched_comments if prefetched_comments is not None else _fetch_all_pr_comments(backend, pr_num)
     if not raw_comments:
         return
     chains = _build_reply_chains(raw_comments)
@@ -2336,16 +2404,18 @@ def analyze_framework_conventions(
         return ''
     prog = _Progress('Conventions: extracting from bot-reply chains', len(target))
     all_conventions: List[Dict[str, Any]] = []
-    # reuse bot templates from cache (populated by analyze_historical_reviews)
-    sample_comments: List[Dict[str, Any]] = []
-    for pr in target[:min(5, len(target))]:
-        pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
-        if pr_num is not None:
-            sample_comments.extend(_fetch_all_pr_comments(backend, pr_num))
-    bot_templates = _detect_bot_templates(sample_comments, cache_path) if sample_comments else {}
+    bot_templates: Dict[str, List[Tuple[str, str]]] = {}
+    _preload_bot_templates_from_cache(cache_path, bot_templates)
     for idx, pr in enumerate(target, 1):
+        pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
+        if pr_num is None:
+            continue
+        comments = _fetch_all_pr_comments(backend, pr_num)
+        if comments:
+            _accumulate_and_detect_templates(comments, bot_templates, cache_path)
         _collect_framework_conventions_for_pr(backend, llm, pr, idx, len(target), cache_path, prog,
-                                              all_conventions, bot_templates=bot_templates)
+                                              all_conventions, bot_templates=bot_templates,
+                                              prefetched_comments=comments)
     prog.done(f'{len(all_conventions)} conventions from {len(target)} PRs')
     if not all_conventions:
         _save_cache_multi(cache_path, {
@@ -2405,17 +2475,42 @@ def analyze_historical_reviews(  # noqa: C901
 
     prog = _Progress('Spec: extracting rules from historical PRs', total)
     all_rules: List[Dict[str, Any]] = []
-    # detect bot comment templates from first few PRs for stripping
-    _TEMPLATE_SAMPLE_SIZE = min(5, total)
-    sample_comments: List[Dict[str, Any]] = []
-    for pr in target[:_TEMPLATE_SAMPLE_SIZE]:
-        pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
-        if pr_num is not None:
-            sample_comments.extend(_fetch_all_pr_comments(backend, pr_num))
-    bot_templates = _detect_bot_templates(sample_comments, cache_path) if sample_comments else {}
+    # incremental bot template detection: accumulate comments across PRs
+    bot_templates: Dict[str, List[Tuple[str, str]]] = {}
+    # load any previously cached templates
+    _preload_bot_templates_from_cache(cache_path, bot_templates)
     for idx, pr in enumerate(target, 1):
-        _collect_rules_for_pr(backend, llm, pr, idx, total, cache_path, prog, all_rules,
-                              bot_templates=bot_templates)
+        pr_num = getattr(pr, 'number', None) or (pr.get('number') if isinstance(pr, dict) else None)
+        if pr_num is None:
+            prog.update(f'[{idx}/{total}] skipped (no number)')
+            continue
+        pr_cache_key = f'spec_pr_{pr_num}_v{_SPEC_CACHE_VERSION}_rules'
+        cached_rules_str = _load_cache(cache_path, pr_cache_key)
+        if cached_rules_str:
+            try:
+                rules = json.loads(cached_rules_str)
+                all_rules.extend(rules)
+                prog.update(f'[{idx}/{total}] PR #{pr_num} — {len(rules)} rules (cached)')
+                continue
+            except (json.JSONDecodeError, TypeError):
+                pass
+        comments = _fetch_all_pr_comments(backend, pr_num)
+        if not comments:
+            prog.update(f'[{idx}/{total}] PR #{pr_num} — 0 comments → skipped')
+            continue
+        # PR-level bot template detection (may update templates if bot upgraded)
+        _accumulate_and_detect_templates(comments, bot_templates, cache_path)
+        # filter out bot comments for rules extraction; keep only human comments
+        human_comments = [c for c in comments if not c.get('is_bot')]
+        human_comments = _strip_bot_templates(human_comments, bot_templates)
+        if not human_comments:
+            prog.update(f'[{idx}/{total}] PR #{pr_num} — 0 human comments after filtering → skipped')
+            continue
+        rules = _extract_rules_from_pr_comments(llm, pr_num, human_comments)
+        if rules:
+            _save_cache(cache_path, pr_cache_key, json.dumps(rules, ensure_ascii=False))
+        all_rules.extend(rules)
+        prog.update(f'[{idx}/{total}] PR #{pr_num} — {len(comments)} comments → {len(rules)} rules extracted')
     prog.done(f'{len(all_rules)} raw rules from {total} PRs, merging...')
 
     if not all_rules:
@@ -2583,14 +2678,16 @@ def _pre_round_pr_summary(
 
 def _run_arch_analysis(
     llm: Any, pr: Any, repo: str, arch_cache_path: str, ckpt: Any,
-    clone_target_dir: Optional[str] = None,
+    clone_target_dir: Optional[str] = None, head_sha: Optional[str] = None,
 ) -> Tuple[str, Optional[str], str]:
     arch_doc = ckpt.get('arch_doc') or ''
     prog = _Progress('Pre-analysis: fetch repo & analyze architecture')
     clone_url, branch = _resolve_clone_target(pr, repo)
     lazyllm.LOG.info(f'Cloning {clone_url} @ {branch}')
     try:
-        clone_dir, _ = _fetch_repo_code(clone_url, branch, work_dir=clone_target_dir)
+        clone_dir, _ = _fetch_repo_code(
+            clone_url, branch, work_dir=clone_target_dir,
+            pin_sha=head_sha)
     except Exception as e:
         raise RuntimeError(f'Failed to clone repo {clone_url} @ {branch}: {e}') from e
     ckpt.save('clone_dir', clone_dir)
@@ -2621,7 +2718,11 @@ def _run_spec_analysis(
     review_spec_cache_path: str, max_history_prs: int, ckpt: Any,
 ) -> str:
     review_spec = ckpt.get('review_spec') or ''
-    cached_ver = int(ckpt.get('spec_cache_version') or 0)
+    cached_ver_raw = ckpt.get('spec_cache_version')
+    try:
+        cached_ver = int(cached_ver_raw) if cached_ver_raw else 0
+    except (ValueError, TypeError):
+        cached_ver = 0
     need_refresh = (
         not review_spec
         or review_spec.startswith('(')
@@ -2652,6 +2753,7 @@ def _run_pre_analysis(
     llm: Any, backend_inst: LazyLLMGitBase, repo: str, pr: Any,
     fetch_repo_code: bool, arch_cache_path: Optional[str], review_spec_cache_path: Optional[str],
     max_history_prs: int, ckpt: Any, pr_dir: Optional[str] = None,
+    head_sha: Optional[str] = None,
 ) -> Tuple[str, str, Optional[str], str]:
     from .checkpoint import _ReviewCheckpoint
     repo_cache_dir = _ReviewCheckpoint.repo_cache_dir(repo)
@@ -2670,6 +2772,7 @@ def _run_pre_analysis(
         if not arch_doc:
             arch_doc, clone_dir, agent_instructions = _run_arch_analysis(
                 llm, pr, repo, arch_cache_path, ckpt, clone_target_dir,
+                head_sha=head_sha,
             )
         else:
             _save_cache(arch_cache_path, 'arch_doc', arch_doc)
@@ -2678,7 +2781,9 @@ def _run_pre_analysis(
                 try:
                     clone_url, branch = _resolve_clone_target(pr, repo)
                     lazyllm.LOG.info(f'Cloning {clone_url} @ {branch} for agent file access')
-                    clone_dir, _ = _fetch_repo_code(clone_url, branch, work_dir=clone_target_dir)
+                    clone_dir, _ = _fetch_repo_code(
+                        clone_url, branch, work_dir=clone_target_dir,
+                        pin_sha=head_sha)
                     ckpt.save('clone_dir', clone_dir)
                 except Exception as e:
                     raise RuntimeError(f'Clone for agent failed: {e}') from e

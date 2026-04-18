@@ -88,7 +88,11 @@ class _ReviewCheckpoint:
     _INVALIDATED_FROM_KEY = '_invalidated_from'
     _KEY_TO_STAGE: Dict[str, 'ReviewStage'] = {}
     _PIPELINE_VERSION_KEY = '_pipeline_version'
+    # Bump _PIPELINE_VERSION to invalidate ALL cached stages across ALL PRs
     _PIPELINE_VERSION = 3
+    _REVIEW_ROUND_VERSION_KEY = '_review_round_version'
+    # Bump _REVIEW_ROUND_VERSION to invalidate only the FINAL (R4) stage cache
+    _REVIEW_ROUND_VERSION = 4
 
     def __init__(self, path: str, resume_from: Optional[ReviewStage] = None) -> None:
         self._path = path
@@ -141,8 +145,10 @@ class _ReviewCheckpoint:
                 'r3': ReviewStage.R3,
                 'r3_shared_context': ReviewStage.R3,
                 'final': ReviewStage.FINAL,
+                '_review_round_version': ReviewStage.FINAL,
                 'diff_text': ReviewStage.CLONE,
                 'final_comments': ReviewStage.UPLOAD,
+                'upload_done_batches': ReviewStage.UPLOAD,
             }
         if key in _ReviewCheckpoint._KEY_TO_STAGE:
             return _ReviewCheckpoint._KEY_TO_STAGE[key]
@@ -212,6 +218,59 @@ class _ReviewCheckpoint:
                 json.dump(self._data, f, ensure_ascii=False, indent=2)
         except OSError as e:
             lazyllm.LOG.warning(f'Failed to write checkpoint: {e}')
+
+    # stages whose data survives a head_sha rotation (repo-level, not PR-diff-level)
+    _STABLE_STAGES = frozenset({ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC})
+    # keys that belong to a stable stage but must still be purged on rotation
+    _PURGE_ON_ROTATE = frozenset({'diff_text', 'head_sha'})
+
+    def rotate_on_head_sha_change(self, new_sha: str) -> bool:
+        # If head_sha changed, backup checkpoint and purge all review-round data.
+        # Returns True if rotation happened, False otherwise.
+        # Keeps only repo-level keys (clone, arch, spec) and pipeline metadata.
+        old_sha = self._data.get('head_sha')
+        if not old_sha or old_sha == new_sha:
+            return False
+        # backup old checkpoint
+        if os.path.isfile(self._path):
+            backup = self._path.replace('.json', f'.{old_sha[:8]}.json')
+            try:
+                import shutil
+                shutil.copy2(self._path, backup)
+                lazyllm.LOG.info(f'Checkpoint backed up to {backup}')
+            except OSError as e:
+                lazyllm.LOG.warning(f'Failed to backup checkpoint: {e}')
+        # determine which keys to keep
+        keep: Dict[str, Any] = {}
+        for key, val in self._data.items():
+            # always keep pipeline metadata
+            if key in (self._PIPELINE_VERSION_KEY, self._INVALIDATED_FROM_KEY):
+                keep[key] = val
+                continue
+            # keep stage-done flags for stable stages only (except CLONE — diff needs re-fetch)
+            if key.startswith(self._STAGE_DONE_PREFIX):
+                stage_val = key[len(self._STAGE_DONE_PREFIX):]
+                try:
+                    s = ReviewStage(stage_val)
+                    if s in self._STABLE_STAGES and s != ReviewStage.CLONE:
+                        keep[key] = val
+                except ValueError:
+                    pass
+                continue
+            # keep data keys belonging to stable stages (except purge-on-rotate keys)
+            key_stage = self._stage_for_key(key)
+            if key_stage is not None and key_stage in self._STABLE_STAGES and key not in self._PURGE_ON_ROTATE:
+                keep[key] = val
+        keep['head_sha'] = new_sha
+        # remove invalidation marker — we've physically purged, no need for soft invalidation
+        keep.pop(self._INVALIDATED_FROM_KEY, None)
+        self._data = keep
+        self._flush()
+        lazyllm.LOG.warning(
+            f'head_sha changed ({old_sha[:8]} → {new_sha[:8]}): '
+            f'checkpoint rotated, kept {len(keep)} stable keys, purged review-round data'
+        )
+        return True
 
     def clear(self) -> None:
         self._data = {}
