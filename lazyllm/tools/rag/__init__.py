@@ -23,6 +23,7 @@ from .data_type import DataType
 from .index_base import IndexBase
 from .store import LazyLLMStoreBase
 from .doc_to_db import SchemaExtractor
+from .query_enh_ac import QueryEnhACProcessor
 
 
 
@@ -79,5 +80,6 @@ __all__ = [
     'XMLSplitter',
     'GeneralCodeSplitter',
     'JSONLSplitter',
-    'SchemaExtractor'
+    'SchemaExtractor',
+    'QueryEnhACProcessor',
 ]

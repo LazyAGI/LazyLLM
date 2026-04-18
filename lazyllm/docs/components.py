@@ -1781,6 +1781,61 @@ Args:
     job (Optional[Any]): Job object, if None uses the current instance's job property.
 ''')
 
+# Deploy-BertDeploy
+add_chinese_doc('deploy.BertDeploy', '''\
+此类是 ``LazyLLMDeployBase`` 的子类，用于部署 HuggingFace 风格的**序列分类**（sequence classification）模型。服务通过 ``RelayServer`` 提供 HTTP ``/generate`` 接口，无独立 CLI；用法与 ``StableDiffusionDeploy`` 类似：对实例调用 ``__call__(finetuned_model, base_model)`` 得到可启动的 Relay 服务。
+
+Args:
+    launcher (Optional[LazyLLMLaunchersBase]): 启动器实例，默认为 ``None``。
+    log_path (Optional[str]): 日志文件路径，默认为 ``None``。
+    trust_remote_code (bool): 加载 tokenizer / 模型时是否 ``trust_remote_code``，默认为 ``True``。
+    port (Optional[int]): 服务监听端口，默认为 ``None`` 时由框架分配。
+    max_length (int): 编码时的最大序列长度，默认为 ``512``。
+    device (Optional[str]): 推理设备，例如 ``"cuda"``、``"cpu"``；默认为 ``None`` 时自动选择。
+    **kw: 未识别的关键字参数将被记录警告并忽略。
+
+Message Format:
+    与 ``TrainableModule`` 联用时，首参映射为 ``text_a``，``text_b`` 通过关键字传入。请求体为 JSON：
+    - text_a (str): 第一段文本（如候选词）
+    - text_b (str): 第二段文本（如上下文片段）；可为空，此时按单序列编码
+
+**Returns:**
+- 服务进程返回的 JSON 字符串，含 ``logits``、``probs``、``predicted_label`` 等字段。
+''')
+
+add_english_doc('deploy.BertDeploy', '''\
+This class is a subclass of ``LazyLLMDeployBase``, used to deploy HuggingFace-style **sequence classification** models. The service exposes an HTTP ``/generate`` endpoint via ``RelayServer`` (no standalone CLI). Usage mirrors ``StableDiffusionDeploy``: calling the instance ``__call__(finetuned_model, base_model)`` returns a launchable Relay service.
+
+Args:
+    launcher (Optional[LazyLLMLaunchersBase]): Launcher instance, defaults to ``None``.
+    log_path (Optional[str]): Log file path, defaults to ``None``.
+    trust_remote_code (bool): Whether to pass ``trust_remote_code`` when loading tokenizer/model, defaults to ``True``.
+    port (Optional[int]): Listen port; ``None`` lets the framework assign one.
+    max_length (int): Maximum sequence length for tokenization, default ``512``.
+    device (Optional[str]): Device for inference, e.g. ``"cuda"`` or ``"cpu"``; ``None`` selects automatically.
+    **kw: Unknown keyword arguments are logged as a warning and ignored.
+
+Message Format:
+    With ``TrainableModule``, the first positional argument maps to ``text_a`` and ``text_b`` is passed as a keyword. JSON body:
+    - text_a (str): First segment (e.g. span text).
+    - text_b (str): Second segment (e.g. context); may be empty for single-sequence encoding.
+
+**Returns:**
+- JSON string from the worker with fields such as ``logits``, ``probs``, and ``predicted_label``.
+''')
+
+add_example('deploy.BertDeploy', '''\
+>>> import lazyllm
+>>> m = lazyllm.TrainableModule('xlm-roberta-base', use_model_map=False).deploy_method(
+...     lazyllm.deploy.BertDeploy, port=36001, max_length=128,
+... ).start()
+>>> # Two-sequence input: candidate span + surrounding context.
+>>> pair_out = m('candidate_span', text_b='This is the surrounding context.')
+>>> print(pair_out)
+>>> # Single-sequence input: either omit ``text_b`` or pass an empty string.
+>>> single_out = m('This is a single sequence.')
+>>> print(single_out)
+''')
 
 add_chinese_doc('deploy.relay.base.FastapiApp.get', """\
 注册GET请求路由装饰器。
