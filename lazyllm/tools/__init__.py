@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         ReWOOAgent,
         ModuleTool,
         SkillManager,
+        install_skill,
     )
     from .sandbox import LazyLLMSandboxBase, DummySandbox, SandboxFusion
     from .classifier import IntentClassifier
@@ -78,6 +79,7 @@ _SUBMOD_MAP = {
         'PlanAndSolveAgent',
         'ReWOOAgent',
         'SkillManager',
+        'install_skill',
     ],
     'sandbox': [
         'LazyLLMSandboxBase',
