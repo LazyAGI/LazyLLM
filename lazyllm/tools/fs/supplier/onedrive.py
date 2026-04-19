@@ -20,6 +20,7 @@ _TOKEN_REFRESH_BUFFER = 300  # refresh 5 min before expiry
 
 
 class OneDriveFS(LazyLLMFSBase):
+    _fs_protocol_key = 'onedrive'
 
     def __init__(
         self,
@@ -31,7 +32,22 @@ class OneDriveFS(LazyLLMFSBase):
         use_listings_cache: bool = False,
         skip_instance_cache: bool = False,
         loop: Optional[Any] = None,
+        auth: str = 'static',
     ):
+        if auth == 'dynamic':
+            self._client_id = ''
+            self._client_secret = ''
+            self._tenant_id = tenant_id or 'common'
+            super().__init__(
+                token={},
+                base_url=base_url or _GRAPH_BASE,
+                asynchronous=asynchronous,
+                use_listings_cache=use_listings_cache,
+                skip_instance_cache=skip_instance_cache,
+                loop=loop,
+                auth='dynamic',
+            )
+            return
         client_id = client_id or config['onedrive_client_id'] or os.environ.get('AZURE_CLIENT_ID')
         client_secret = client_secret or config['onedrive_client_secret'] or os.environ.get('AZURE_CLIENT_SECRET')
         tenant_id = tenant_id or config['onedrive_tenant_id'] or os.environ.get('AZURE_TENANT_ID') or 'common'

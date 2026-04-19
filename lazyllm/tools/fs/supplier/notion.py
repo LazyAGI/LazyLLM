@@ -15,11 +15,16 @@ _NOTION_VERSION = '2022-06-28'
 
 
 class NotionFS(LazyLLMFSBase):
+    _fs_protocol_key = 'notion'
 
-    def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None, **storage_options):
-        token = (token or config['notion_token'] or os.environ.get('NOTION_TOKEN')
-                 or os.environ.get('NOTION_API_KEY') or '')
-        super().__init__(token=token, base_url=base_url or _API_BASE, **storage_options)
+    def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
+                 auth: str = 'static', **storage_options):
+        if auth == 'dynamic':
+            token = ''
+        else:
+            token = (token or config['notion_token'] or os.environ.get('NOTION_TOKEN')
+                     or os.environ.get('NOTION_API_KEY') or '')
+        super().__init__(token=token, base_url=base_url or _API_BASE, auth=auth, **storage_options)
 
     def _setup_auth(self) -> None:
         self._session.headers.update({

@@ -75,10 +75,10 @@ class ReactAgent(LazyLLMAgentBase):
                  skills: Optional[Union[bool, str, List[str]]] = None, desc: str = '',
                  workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
                  force_summarize: bool = False, force_summarize_context: str = '',
-                 keep_full_turns: int = 0):
+                 keep_full_turns: int = 0, fs=None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
-                         desc=desc, workspace=workspace, sandbox=sandbox)
+                         desc=desc, workspace=workspace, sandbox=sandbox, fs=fs)
         prompt = prompt or INSTRUCTION
         if self._return_last_tool_calls:
             prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'

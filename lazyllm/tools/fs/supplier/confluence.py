@@ -17,11 +17,17 @@ _CLOUD_BASE = 'https://api.atlassian.com/ex/confluence'
 
 
 class ConfluenceFS(LazyLLMFSBase):
+    _fs_protocol_key = 'confluence'
+
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  email: Optional[str] = None, cloud: bool = True,
-                 cloud_id: Optional[str] = None, **storage_options):
-        token = token or config['confluence_token'] or ''
-        email = email or config['confluence_email']
+                 cloud_id: Optional[str] = None, auth: str = 'static', **storage_options):
+        if auth == 'dynamic':
+            token = ''
+            email = None
+        else:
+            token = token or config['confluence_token'] or ''
+            email = email or config['confluence_email']
         cloud_id = cloud_id or config['confluence_cloud_id']
         self._email = email
         self._cloud = cloud
@@ -34,7 +40,7 @@ class ConfluenceFS(LazyLLMFSBase):
             resolved_base = ''
         else:
             resolved_base = _CLOUD_BASE
-        super().__init__(token=token, base_url=resolved_base, **storage_options)
+        super().__init__(token=token, base_url=resolved_base, auth=auth, **storage_options)
 
     def _setup_auth(self) -> None:
         if self._cloud and self._email:

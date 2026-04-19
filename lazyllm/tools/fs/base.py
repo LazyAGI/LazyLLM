@@ -43,9 +43,11 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
     protocol: str = 'cloudfs'
 
     def __init__(self, token: Any, base_url: Optional[str] = None, asynchronous: bool = False,
-                 use_listings_cache: bool = False, skip_instance_cache: bool = False, loop: Optional[Any] = None):
+                 use_listings_cache: bool = False, skip_instance_cache: bool = False, loop: Optional[Any] = None,
+                 auth: str = 'static'):
         super().__init__(asynchronous=asynchronous, use_listings_cache=use_listings_cache,
                          skip_instance_cache=skip_instance_cache, loop=loop)
+        self._dynamic_auth: bool = (auth == 'dynamic')
         # Long-lived credential (string or dict), semantics decided by subclasses.
         self._secret_key: Any = token
         # Expiration timestamp for short-lived access token; None means non-expiring.
@@ -54,7 +56,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         self._session = requests.Session()
         self._setup_auth()
         self._lock = threading.Lock()
-        if self.__class__._acquire_access_token is not __class__._acquire_access_token:
+        if not self._dynamic_auth and self.__class__._acquire_access_token is not __class__._acquire_access_token:
             self._ensure_token_initialized()
 
     @staticmethod
@@ -162,10 +164,27 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         self._token_expire_at = expires_at
 
     def _ensure_token(self) -> None:
+        if self._dynamic_auth:
+            token = self._dynamic_token
+            if not token:
+                raise ValueError(
+                    f'dynamic_fs_auth["{self.protocol}"] is not set in globals.config; '
+                    f'use dynamic_fs_config() or set globals.config["dynamic_fs_auth"] before calling FS methods'
+                )
+            self._apply_access_token(token)
+            return
         if not self._token_expire_at or time.time() < self._token_expire_at: return
         with self._lock:
             if time.time() < self._token_expire_at: return
             self._ensure_token_initialized()
+
+    @property
+    def _dynamic_token(self) -> str:
+        from lazyllm.common import globals as _globals
+        cfg = _globals['config'].get('dynamic_fs_auth') or {}
+        # prefer _fs_protocol_key (human-readable path prefix) over self.protocol (registry-derived)
+        key = getattr(self, '_fs_protocol_key', None) or self.protocol
+        return cfg.get(key, '')
 
     def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
         return '', None

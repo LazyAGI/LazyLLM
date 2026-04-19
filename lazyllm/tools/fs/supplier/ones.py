@@ -11,6 +11,7 @@ _CLOUD_BASE = 'https://ones.ai/project/api/project'
 
 
 class OnesFS(LazyLLMFSBase):
+    _fs_protocol_key = 'ones'
 
     def __init__(
         self,
@@ -21,7 +22,20 @@ class OnesFS(LazyLLMFSBase):
         use_listings_cache: bool = False,
         skip_instance_cache: bool = False,
         loop: Optional[Any] = None,
+        auth: str = 'static',
     ):
+        if auth == 'dynamic':
+            self._user_id = user_id or ''
+            super().__init__(
+                token='',
+                base_url=base_url or _CLOUD_BASE,
+                asynchronous=asynchronous,
+                use_listings_cache=use_listings_cache,
+                skip_instance_cache=skip_instance_cache,
+                loop=loop,
+                auth='dynamic',
+            )
+            return
         token = token or config['ones_token'] or ''
         if ':' in token and not user_id:
             uid, tok = token.split(':', 1)

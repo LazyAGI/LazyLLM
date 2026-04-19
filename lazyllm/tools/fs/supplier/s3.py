@@ -18,13 +18,23 @@ except ImportError:
 
 
 class S3FS(LazyLLMFSBase):
+    _fs_protocol_key = 's3'
 
     def __init__(self, token: str = '', base_url: Optional[str] = None,
                  access_key: Optional[str] = None,
                  secret_key: Optional[str] = None,
                  endpoint_url: Optional[str] = None,
                  region_name: Optional[str] = None,
+                 auth: str = 'static',
                  **storage_options):
+        if auth == 'dynamic':
+            self._access_key = ''
+            self._secret_key = ''
+            self._endpoint_url = endpoint_url or None
+            self._region_name = region_name or None
+            self._s3_client = None
+            super().__init__(token='', base_url=base_url, auth='dynamic', **storage_options)
+            return
         _ak = config['s3_access_key'] or os.environ.get('AWS_ACCESS_KEY_ID')
         access_key = access_key or token or _ak or ''
         secret_key = secret_key or config['s3_secret_key'] or os.environ.get('AWS_SECRET_ACCESS_KEY') or ''
