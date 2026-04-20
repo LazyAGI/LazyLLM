@@ -8,7 +8,7 @@ from lazyllm.common import SessionConfigableBase
 from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from enum import Enum
 from asyncio import events
 import types
@@ -626,9 +626,14 @@ class Parallel(LazyLLMFlowsBase):
                 barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
 
             with executor(max_workers=self._concurrent) as e:
-                futures = [e.submit(partial(self._worker, self.invoke, barrier, lazyllm.globals._sid,
-                                    lazyllm.locals._data, it, inp, **kw))
-                           for it, inp in zip(items, inputs)]
+                def _submit(it, inp):
+                    worker_call = partial(self._worker, self.invoke, barrier, lazyllm.globals._sid,
+                                          lazyllm.locals._data, it, inp, **kw)
+                    if self._multiprocessing:
+                        return e.submit(worker_call)
+                    return e.submit(copy_context().run, worker_call)
+
+                futures = [_submit(it, inp) for it, inp in zip(items, inputs)]
                 if (not_done := concurrent.futures.wait(futures).not_done):
                     error_msgs = []
                     for future in not_done:
@@ -954,7 +959,10 @@ class Graph(LazyLLMFlowsBase):
                     intermediate_results['values'][node.name] = (
                         arguments(__input, kw) if (__input and kw) else (kw or __input))
                 else:
-                    future = executor.submit(self.compute_node, globals._sid, node, intermediate_results, futures)
+                    future = executor.submit(
+                        copy_context().run,
+                        partial(self.compute_node, globals._sid, node, intermediate_results, futures),
+                    )
                     futures[node.name] = future
 
         return futures[Graph.end_node_name].result()
