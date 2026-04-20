@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import dataclass, field, fields
 from typing import Any, Dict, Iterable, List, Optional
 
 from lazyllm.common import LOG
@@ -27,7 +27,16 @@ class LazyTraceContext:
     debug_capture_payload: Optional[bool] = None
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        result: Dict[str, Any] = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if isinstance(value, list):
+                result[f.name] = list(value)
+            elif isinstance(value, dict):
+                result[f.name] = dict(value)
+            else:
+                result[f.name] = value
+        return result
 
     @classmethod
     def from_dict(cls, data: dict) -> 'LazyTraceContext':
