@@ -7,7 +7,7 @@ import time
 import threading
 import io
 
-from lazyllm import thirdparty
+from lazyllm import thirdparty, globals
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
 
 AbstractFileSystem = thirdparty.fsspec.spec.AbstractFileSystem
@@ -43,18 +43,22 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
     protocol: str = 'cloudfs'
 
     def __init__(self, token: Any, base_url: Optional[str] = None, asynchronous: bool = False,
-                 use_listings_cache: bool = False, skip_instance_cache: bool = False, loop: Optional[Any] = None):
+                 use_listings_cache: bool = False, skip_instance_cache: bool = False, loop: Optional[Any] = None,
+                 dynamic_auth: bool = False):
         super().__init__(asynchronous=asynchronous, use_listings_cache=use_listings_cache,
                          skip_instance_cache=skip_instance_cache, loop=loop)
+        self._dynamic_auth: bool = dynamic_auth
         # Long-lived credential (string or dict), semantics decided by subclasses.
         self._secret_key: Any = token
+        # Cached short-lived access token (static auth only); not used for dynamic auth.
+        self._access_token: str = ''
         # Expiration timestamp for short-lived access token; None means non-expiring.
         self._token_expire_at: Optional[float] = None
         self._base_url = (base_url or '').rstrip('/')
         self._session = requests.Session()
         self._setup_auth()
         self._lock = threading.Lock()
-        if self.__class__._acquire_access_token is not __class__._acquire_access_token:
+        if not self._dynamic_auth and self.__class__._acquire_access_token is not __class__._acquire_access_token:
             self._ensure_token_initialized()
 
     @staticmethod
@@ -62,7 +66,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         if isleaf:
             if not name.lower().endswith('fs'):
                 raise ValueError(f'Class name {name} must follow the schema of <SupplierType>FS, like <GoogleDriveFS>')
-            cls.protocol = name[:-3].lower()
+            cls.protocol = cls._fs_protocol_key = name[:-2].lower()
 
     def close(self) -> None:
         self._session.close()
@@ -162,19 +166,43 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         self._token_expire_at = expires_at
 
     def _ensure_token(self) -> None:
+        if self._dynamic_auth:
+            if not self._dynamic_token:
+                raise ValueError(
+                    f'dynamic_fs_auth["{self.protocol}"] is not set in globals.config; '
+                    f'use dynamic_fs_config() or set globals.config["dynamic_fs_auth"] before calling FS methods'
+                )
+            return
         if not self._token_expire_at or time.time() < self._token_expire_at: return
         with self._lock:
             if time.time() < self._token_expire_at: return
             self._ensure_token_initialized()
 
+    @property
+    def _dynamic_token(self) -> str:
+        mapping = globals.config['dynamic_fs_auth'] or {}
+        return mapping.get(self._fs_protocol_key, '')
+
     def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
         return '', None
 
     def _apply_access_token(self, token: str) -> None:
-        self._session.headers.update({'Authorization': f'Bearer {token}'})
+        self._access_token = token
+
+    def _get_auth_header(self) -> Optional[Dict[str, str]]:
+        if self._dynamic_auth:
+            return {'Authorization': f'Bearer {self._dynamic_token}'}
+        if self._access_token:
+            return {'Authorization': f'Bearer {self._access_token}'}
+        return None
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
         self._ensure_token()
+        auth_header = self._get_auth_header()
+        if auth_header:
+            existing = kwargs.get('headers') or {}
+            # auth_header takes highest priority — caller-supplied headers cannot override credentials
+            kwargs = {**kwargs, 'headers': {**existing, **auth_header}}
         resp = self._session.request(method, url, **kwargs)
         if not resp.ok:
             try:
@@ -220,3 +248,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         stripped = self._strip_protocol(path)
         parts = [p for p in stripped.split('/') if p]
         return tuple(parts)
+
+
+globals.config.add('dynamic_fs_auth', dict, None, 'DYNAMIC_FS_AUTH',
+                   description='Per-source dynamic FS auth: {source: token}.')

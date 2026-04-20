@@ -17,11 +17,20 @@ _CLOUD_BASE = 'https://api.atlassian.com/ex/confluence'
 
 
 class ConfluenceFS(LazyLLMFSBase):
+
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  email: Optional[str] = None, cloud: bool = True,
-                 cloud_id: Optional[str] = None, **storage_options):
-        token = token or config['confluence_token'] or ''
-        email = email or config['confluence_email']
+                 cloud_id: Optional[str] = None, dynamic_auth: bool = False, **storage_options):
+        if dynamic_auth:
+            if token:
+                raise ValueError('token must be None when dynamic_auth=True')
+            if email:
+                raise ValueError('email must be None when dynamic_auth=True')
+            token = ''
+            email = None
+        else:
+            token = token or config['confluence_token'] or ''
+            email = email or config['confluence_email']
         cloud_id = cloud_id or config['confluence_cloud_id']
         self._email = email
         self._cloud = cloud
@@ -34,24 +43,22 @@ class ConfluenceFS(LazyLLMFSBase):
             resolved_base = ''
         else:
             resolved_base = _CLOUD_BASE
-        super().__init__(token=token, base_url=resolved_base, **storage_options)
+        super().__init__(token=token, base_url=resolved_base, dynamic_auth=dynamic_auth, **storage_options)
 
     def _setup_auth(self) -> None:
+        self._session.headers.update({
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        })
+
+    def _get_auth_header(self) -> Optional[Dict[str, str]]:
+        if self._dynamic_auth:
+            token = self._dynamic_token
+            return {'Authorization': f'Bearer {token}'} if token else None
         if self._cloud and self._email:
-            cred = base64.b64encode(
-                f'{self._email}:{self._secret_key}'.encode()
-            ).decode()
-            self._session.headers.update({
-                'Authorization': f'Basic {cred}',
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            })
-        else:
-            self._session.headers.update({
-                'Authorization': f'Bearer {self._secret_key}',
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            })
+            cred = base64.b64encode(f'{self._email}:{self._secret_key}'.encode()).decode()
+            return {'Authorization': f'Basic {cred}'}
+        return {'Authorization': f'Bearer {self._secret_key}'} if self._secret_key else None
 
     @property
     def _rest(self) -> str:

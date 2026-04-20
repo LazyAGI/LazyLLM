@@ -5,7 +5,7 @@ if TYPE_CHECKING:
     from .rag import (Document, GraphDocument, UrlGraphDocument, Reranker, Retriever, TempDocRetriever,
                     GraphRetriever, SentenceSplitter, LLMParser, DocServer)
     from .webpages import WebModule
-    from .fs import (LazyLLMFSBase, CloudFSBufferedFile, CloudFS, CloudFsWatchdog,
+    from .fs import (LazyLLMFSBase, CloudFSBufferedFile, CloudFsWatchdog, FS, dynamic_fs_config,
                      FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS,
                      ObsidianFS)
     from .agent import (
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         ReWOOAgent,
         ModuleTool,
         SkillManager,
+        install_skill,
     )
     from .sandbox import LazyLLMSandboxBase, DummySandbox, SandboxFusion
     from .classifier import IntentClassifier
@@ -77,6 +78,7 @@ _SUBMOD_MAP = {
         'PlanAndSolveAgent',
         'ReWOOAgent',
         'SkillManager',
+        'install_skill',
     ],
     'sandbox': [
         'LazyLLMSandboxBase',
@@ -136,8 +138,9 @@ _SUBMOD_MAP = {
     'fs': [
         'LazyLLMFSBase',
         'CloudFSBufferedFile',
-        'CloudFS',
         'CloudFsWatchdog',
+        'FS',
+        'dynamic_fs_config',
         'FeishuFS',
         'ConfluenceFS',
         'NotionFS',

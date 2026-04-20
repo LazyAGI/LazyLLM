@@ -16,17 +16,24 @@ _NOTION_VERSION = '2022-06-28'
 
 class NotionFS(LazyLLMFSBase):
 
-    def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None, **storage_options):
-        token = (token or config['notion_token'] or os.environ.get('NOTION_TOKEN')
-                 or os.environ.get('NOTION_API_KEY') or '')
-        super().__init__(token=token, base_url=base_url or _API_BASE, **storage_options)
+    def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
+                 dynamic_auth: bool = False, **storage_options):
+        if dynamic_auth:
+            if token:
+                raise ValueError('token must be None when dynamic_auth=True')
+            token = ''
+        else:
+            token = (token or config['notion_token'] or os.environ.get('NOTION_TOKEN')
+                     or os.environ.get('NOTION_API_KEY') or '')
+        super().__init__(token=token, base_url=base_url or _API_BASE, dynamic_auth=dynamic_auth, **storage_options)
 
     def _setup_auth(self) -> None:
         self._session.headers.update({
-            'Authorization': f'Bearer {self._secret_key}',
             'Notion-Version': _NOTION_VERSION,
             'Content-Type': 'application/json',
         })
+        if not self._dynamic_auth:
+            self._apply_access_token(self._secret_key)
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         parts = self._parse_path(path)

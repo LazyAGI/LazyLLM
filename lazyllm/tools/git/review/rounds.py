@@ -1231,7 +1231,30 @@ and compare their interfaces.
 - grep_callers: Find call sites to understand impact on callers
 - read_file_scoped: Read actual code (use line ranges for large files)
 - search_scoped: Find related patterns across the repo
+- ask_deepwiki (if available): Background knowledge about repo architecture — see constraints below
 You may call multiple tools in a single round for parallel execution.
+
+## ask_deepwiki Usage Constraints (STRICT)
+ask_deepwiki data may be 1-3 months stale. Apply these rules without exception:
+
+ALLOWED — call ask_deepwiki ONLY for:
+  - Understanding overall module boundaries, layering, or responsibility division
+  - Learning design conventions or usage patterns of public/infrastructure modules
+  - Supplementing cross-module context not visible in the diff (e.g. "what does module X own?")
+  - Identifying potential architectural issues (wrong dependency direction, misuse of abstractions)
+
+FORBIDDEN — never call ask_deepwiki to:
+  - Verify whether new/modified code in the diff is correct
+  - Determine current function/interface behavior, parameters, or implementation details
+  - Draw definitive conclusions that depend on the latest code state
+
+When you receive a DeepWiki answer, you MUST:
+  1. Treat it as a hypothesis, not a fact (e.g. "based on background knowledge, this may violate...")
+  2. Cross-verify the claim using local tools (read_file_scoped, grep_callers, search_scoped)
+  3. Output a conservative judgment if local verification is inconclusive
+
+Priority: for cross-module calls, public module usage, or architecture consistency questions,
+consider ask_deepwiki BEFORE concluding from local code alone — but always verify locally.
 
 ## Strategy Hints
 - Read AGENTS.md first if it exists (project conventions and dynamic dispatch mechanisms)

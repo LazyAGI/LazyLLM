@@ -218,7 +218,29 @@ class FeishuFSBase(LazyLLMFSBase):
                  space_id: Optional[str] = None, user_refresh_token: Optional[str] = None,
                  oauth_port: int = 9981, oauth_scope: str = _DEFAULT_OAUTH_SCOPE,
                  asynchronous: bool = False, use_listings_cache: bool = False,
-                 skip_instance_cache: bool = False, loop: Optional[Any] = None):
+                 skip_instance_cache: bool = False, loop: Optional[Any] = None, dynamic_auth: bool = False):
+        if dynamic_auth:
+            if app_id:
+                raise ValueError('app_id must be None when dynamic_auth=True')
+            if app_secret:
+                raise ValueError('app_secret must be None when dynamic_auth=True')
+            if user_refresh_token:
+                raise ValueError('user_refresh_token must be None when dynamic_auth=True')
+            self._oauth_auto = False
+            self._user_refresh_token = ''
+            self._oauth_port = oauth_port
+            self._oauth_scope = oauth_scope
+            super().__init__(
+                token={},
+                base_url=base_url or _API_BASE,
+                asynchronous=asynchronous,
+                use_listings_cache=use_listings_cache,
+                skip_instance_cache=skip_instance_cache,
+                loop=loop,
+                dynamic_auth=True,
+            )
+            self._space_id = (space_id or '').strip() if space_id is not None else ''
+            return
         if not app_id or not app_secret:
             app_id, app_secret = config['feishu_app_id'] or app_id, config['feishu_app_secret']
         assert app_id and app_secret, 'feishu_app_id and feishu_app_secret are required'
@@ -279,7 +301,7 @@ class FeishuFSBase(LazyLLMFSBase):
         return _feishu_acquire_access_token(self._session, self._app_id, self._app_secret)
 
     def _apply_access_token(self, token: str) -> None:
-        self._session.headers.update({'Authorization': f'Bearer {token}'})
+        self._access_token = token
 
     def get_user_refresh_token(self) -> str:
         return self._user_refresh_token
@@ -618,13 +640,14 @@ class FeishuFS(FeishuFSBase):
                 space_id: Optional[str] = None, user_refresh_token: Optional[str] = None,
                 oauth_port: int = 9981, oauth_scope: str = _DEFAULT_OAUTH_SCOPE,
                 asynchronous: bool = False, use_listings_cache: bool = False,
-                skip_instance_cache: bool = False, loop: Optional[Any] = None) -> LazyLLMFSBase:
+                skip_instance_cache: bool = False, loop: Optional[Any] = None,
+                dynamic_auth: bool = False) -> LazyLLMFSBase:
         if space_id is not None and str(space_id).strip():
             return FeishuWikiFS(base_url=base_url, app_id=app_id, app_secret=app_secret, space_id=space_id,
                                 user_refresh_token=user_refresh_token, oauth_port=oauth_port,
                                 oauth_scope=oauth_scope, asynchronous=asynchronous,
                                 use_listings_cache=use_listings_cache,
-                                skip_instance_cache=skip_instance_cache, loop=loop)
+                                skip_instance_cache=skip_instance_cache, loop=loop, dynamic_auth=dynamic_auth)
         return super().__new__(cls)
 
     def _list_files_raw(self, folder_token: str = '') -> List[Dict[str, Any]]:
@@ -811,6 +834,8 @@ class FeishuWikiFile(CloudFSBufferedFile):
 
 class FeishuWikiFS(FeishuFSBase):
     __lazyllm_registry_disable__ = True
+    protocol = 'feishu'
+    _fs_protocol_key = 'feishu'
 
     def _create_docx_node(self, title: str, parent_token: str = '') -> str:
         url = f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes'

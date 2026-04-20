@@ -1,5 +1,5 @@
 import os
-from typing import Iterable, Optional, Union
+from typing import Any, Iterable, Optional, Union
 
 import lazyllm
 from lazyllm.module import ModuleBase
@@ -24,9 +24,17 @@ class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools=None, max_retries: int = 5, return_trace: bool = False,
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
-                 desc: str = '', workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None):
+                 desc: str = '', workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
+                 fs: Optional[Any] = None, skills_dir: Optional[str] = None):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
+        if not use_skills and (fs is not None or skills_dir is not None):
+            import warnings
+            warnings.warn(
+                'fs and skills_dir are ignored because skills is not enabled. '
+                'Pass skills=True (or a list of skill names) to enable skill loading.',
+                UserWarning, stacklevel=2,
+            )
         self._llm = llm
         self._tools = list(tools) if tools else []
         self._memory = memory
@@ -41,7 +49,7 @@ class LazyLLMAgentBase(ModuleBase):
         self._sandbox = sandbox or create_sandbox()
 
         if use_skills:
-            self._skill_manager = SkillManager(skills=self._skills)
+            self._skill_manager = SkillManager(dir=skills_dir, skills=self._skills, fs=fs)
             self._ensure_default_skill_tools()
         self._tools_manager = ToolManager(self._tools, return_trace=return_trace, sandbox=self._sandbox)
 

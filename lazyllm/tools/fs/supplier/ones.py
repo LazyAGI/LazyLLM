@@ -21,7 +21,22 @@ class OnesFS(LazyLLMFSBase):
         use_listings_cache: bool = False,
         skip_instance_cache: bool = False,
         loop: Optional[Any] = None,
+        dynamic_auth: bool = False,
     ):
+        if dynamic_auth:
+            if token:
+                raise ValueError('token must be None when dynamic_auth=True')
+            self._user_id = user_id or ''
+            super().__init__(
+                token='',
+                base_url=base_url or _CLOUD_BASE,
+                asynchronous=asynchronous,
+                use_listings_cache=use_listings_cache,
+                skip_instance_cache=skip_instance_cache,
+                loop=loop,
+                dynamic_auth=True,
+            )
+            return
         token = token or config['ones_token'] or ''
         if ':' in token and not user_id:
             uid, tok = token.split(':', 1)
@@ -39,13 +54,25 @@ class OnesFS(LazyLLMFSBase):
         )
 
     def _setup_auth(self) -> None:
-        headers: Dict[str, str] = {
-            'Ones-Auth-Token': self._secret_key,
-            'Content-Type': 'application/json',
-        }
+        self._session.headers.update({'Content-Type': 'application/json'})
+
+    def _get_auth_header(self) -> Optional[Dict[str, str]]:
+        if self._dynamic_auth:
+            raw = self._dynamic_token
+            if not raw:
+                return None
+            if ':' in raw:
+                uid, tok = raw.split(':', 1)
+            else:
+                uid, tok = self._user_id, raw
+            h = {'Ones-Auth-Token': tok}
+            if uid:
+                h['Ones-User-Id'] = uid
+            return h
+        h = {'Ones-Auth-Token': self._secret_key}
         if self._user_id:
-            headers['Ones-User-Id'] = self._user_id
-        self._session.headers.update(headers)
+            h['Ones-User-Id'] = self._user_id
+        return h if self._secret_key else None
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         parts = self._parse_path(path)

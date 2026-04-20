@@ -24,7 +24,16 @@ class S3FS(LazyLLMFSBase):
                  secret_key: Optional[str] = None,
                  endpoint_url: Optional[str] = None,
                  region_name: Optional[str] = None,
+                 dynamic_auth: bool = False,
                  **storage_options):
+        if dynamic_auth:
+            self._access_key = ''
+            self._secret_key = ''
+            self._endpoint_url = endpoint_url or None
+            self._region_name = region_name or None
+            self._s3_client = None
+            super().__init__(token='', base_url=base_url, dynamic_auth=True, **storage_options)
+            return
         _ak = config['s3_access_key'] or os.environ.get('AWS_ACCESS_KEY_ID')
         access_key = access_key or token or _ak or ''
         secret_key = secret_key or config['s3_secret_key'] or os.environ.get('AWS_SECRET_ACCESS_KEY') or ''

@@ -29,7 +29,19 @@ class GoogleDriveFS(LazyLLMFSBase):
         use_listings_cache: bool = False,
         skip_instance_cache: bool = False,
         loop: Optional[Any] = None,
+        dynamic_auth: bool = False,
     ):
+        if dynamic_auth:
+            super().__init__(
+                token={},
+                base_url=base_url or _API_BASE,
+                asynchronous=asynchronous,
+                use_listings_cache=use_listings_cache,
+                skip_instance_cache=skip_instance_cache,
+                loop=loop,
+                dynamic_auth=True,
+            )
+            return
         credentials = (credentials or config['googledrive_credentials']
                        or os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'))
         secret_payload: Optional[Dict] = None

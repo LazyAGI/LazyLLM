@@ -31,7 +31,26 @@ class OneDriveFS(LazyLLMFSBase):
         use_listings_cache: bool = False,
         skip_instance_cache: bool = False,
         loop: Optional[Any] = None,
+        dynamic_auth: bool = False,
     ):
+        if dynamic_auth:
+            if client_id:
+                raise ValueError('client_id must be None when dynamic_auth=True')
+            if client_secret:
+                raise ValueError('client_secret must be None when dynamic_auth=True')
+            self._client_id = ''
+            self._client_secret = ''
+            self._tenant_id = tenant_id or 'common'
+            super().__init__(
+                token='',
+                base_url=base_url or _GRAPH_BASE,
+                asynchronous=asynchronous,
+                use_listings_cache=use_listings_cache,
+                skip_instance_cache=skip_instance_cache,
+                loop=loop,
+                dynamic_auth=True,
+            )
+            return
         client_id = client_id or config['onedrive_client_id'] or os.environ.get('AZURE_CLIENT_ID')
         client_secret = client_secret or config['onedrive_client_secret'] or os.environ.get('AZURE_CLIENT_SECRET')
         tenant_id = tenant_id or config['onedrive_tenant_id'] or os.environ.get('AZURE_TENANT_ID') or 'common'
@@ -66,7 +85,7 @@ class OneDriveFS(LazyLLMFSBase):
         return token, expires_at
 
     def _apply_access_token(self, token: str) -> None:
-        self._session.headers.update({'Authorization': f'Bearer {token}'})
+        self._access_token = token
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         url = self._make_children_url(path)

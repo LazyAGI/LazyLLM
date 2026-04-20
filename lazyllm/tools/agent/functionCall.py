@@ -196,11 +196,12 @@ class FunctionCallAgent(LazyLLMAgentBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False,
                  return_last_tool_calls: bool = False,
                  skills: Union[bool, str, List[str], None] = None, desc: str = '',
-                 workspace: Optional[str] = None):
+                 workspace: Optional[str] = None, fs: Optional[Any] = None,
+                 skills_dir: Optional[str] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
-                         skills=skills, desc=desc, workspace=workspace)
+                         skills=skills, desc=desc, workspace=workspace, fs=fs, skills_dir=skills_dir)
         assert self._llm is not None, 'llm cannot be empty.'
         self._assert_tools()
         prompt = FC_PROMPT

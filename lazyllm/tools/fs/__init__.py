@@ -1,6 +1,7 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 from .base import LazyLLMFSBase, CloudFSBufferedFile
 from .watchdog import CloudFsWatchdog
+from .client import FS, dynamic_fs_config
 from .supplier.feishu import FeishuFS, FeishuWikiFS
 from .supplier.confluence import ConfluenceFS
 from .supplier.notion import NotionFS
@@ -15,8 +16,9 @@ from .supplier.obsidian import ObsidianFS
 __all__ = [
     'LazyLLMFSBase',
     'CloudFSBufferedFile',
-    'CloudFS',
     'CloudFsWatchdog',
+    'FS',
+    'dynamic_fs_config',
     'FeishuFS',
     'FeishuWikiFS',
     'ConfluenceFS',

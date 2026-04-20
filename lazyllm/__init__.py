@@ -99,6 +99,8 @@ __all__ = [
     'set_trace_context',
 
     # tools
+    'FS',
+    'dynamic_fs_config',
     'Document',
     'Retriever',
     'Reranker',
