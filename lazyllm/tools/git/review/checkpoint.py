@@ -298,13 +298,13 @@ class _ReviewCheckpoint:
         return d
 
     @staticmethod
-    def pr_dir(pr_number: int, repo: str) -> str:
+    def pr_dir(pr_number: Any, repo: str) -> str:
         d = os.path.join(_ReviewCheckpoint.repo_cache_dir(repo), str(pr_number))
         os.makedirs(d, exist_ok=True)
         return d
 
     @staticmethod
-    def default_path(pr_number: int, repo: str) -> str:
+    def default_path(pr_number: Any, repo: str) -> str:
         return os.path.join(_ReviewCheckpoint.pr_dir(pr_number, repo), 'checkpoint.json')
 
     # deprecated: use global_cache_dir() directly; will be removed in a future version

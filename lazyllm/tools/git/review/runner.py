@@ -12,6 +12,7 @@ from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
 from .rounds import _run_four_rounds
 from .poster import _fetch_existing_pr_comments, _post_review_comments, _build_commentable_lines, _filter_commentable
+from .output import write_review_json
 from .utils import (
     _get_default_llm, _ensure_non_streaming_llm, _get_model_name,
     _get_head_sha_from_pr, _parse_unified_diff, _Progress,
@@ -140,6 +141,10 @@ def review(  # noqa: C901
     language: str = 'cn',
     keep_clone: bool = False,
     refresh_diff: bool = False,
+    output_path: Optional[str] = None,
+    repo_path: Optional[str] = None,
+    base: Optional[str] = None,
+    include_uncommitted: bool = True,
 ) -> Dict[str, Any]:
     try:
         import lazyllm.tools.git.review as _self_mod
@@ -147,8 +152,23 @@ def review(  # noqa: C901
     except Exception:
         original_review_code = ''
 
-    pr_dir = _ReviewCheckpoint.pr_dir(pr_number, repo)
-    ckpt_path = checkpoint_path or _ReviewCheckpoint.default_path(pr_number, repo)
+    backend_inst = Git(backend=backend, token=token, repo=repo, api_base=api_base,
+                       repo_path=repo_path, base=base, include_uncommitted=include_uncommitted)
+
+    # local mode: resolve checkpoint key from branch name before building paths
+    from ..supplier.local import LocalGit
+    _local_repo_path: Optional[str] = None
+    _ckpt_key: Any = pr_number  # used as the "pr identifier" for checkpoint paths
+    if isinstance(backend_inst, LocalGit):
+        post_to_github = False
+        fetch_repo_code = False
+        _local_repo_path = backend_inst.local_repo_path
+        # derive repo name from git remote origin so arch/spec cache is shared with cloud mode
+        repo = backend_inst.get_origin_repo()
+        branch = backend_inst._current_branch().replace('/', '_')
+        _ckpt_key = f'local/{branch}'
+        pr_dir = _ReviewCheckpoint.pr_dir(_ckpt_key, repo)
+    ckpt_path = checkpoint_path or _ReviewCheckpoint.default_path(_ckpt_key, repo)
     if clear_checkpoint:
         # clear_checkpoint takes priority over resume_from
         ckpt = _ReviewCheckpoint(ckpt_path)
@@ -159,9 +179,8 @@ def review(  # noqa: C901
     else:
         ckpt = _ReviewCheckpoint(ckpt_path, resume_from=resume_from)
 
-    prog_main = _Progress(f'Review PR #{pr_number} @ {repo}')
-
-    backend_inst = Git(backend=backend, token=token, repo=repo, api_base=api_base)
+    prog_main = _Progress(f'Review PR #{pr_number} @ {repo}' if not _local_repo_path
+                          else f'Review local branch {_ckpt_key.split("/", 1)[-1]} @ {repo}')
 
     # always need PR metadata for title/body
     pr_res = backend_inst.get_pull_request(pr_number)
@@ -248,6 +267,10 @@ def review(  # noqa: C901
         pr_dir=pr_dir, head_sha=head_sha,
     )
 
+    # local mode: use the local repo path directly as clone_dir for file skeleton extraction
+    if _local_repo_path and os.path.isdir(_local_repo_path):
+        clone_dir = _local_repo_path
+
     pr_summary = ckpt.get('pr_summary')
     if pr_summary is None:
         pr_summary = _pre_round_pr_summary(
@@ -291,8 +314,9 @@ def review(  # noqa: C901
         ckpt.mark_stage_done(ReviewStage.FINAL)
 
     # clean up only the clone subdirectory (not the whole pr_dir which contains checkpoint)
+    # local mode: clone_dir IS the user's repo, never delete it
     clone_subdir = os.path.join(pr_dir, 'clone')
-    if not keep_clone and os.path.isdir(clone_subdir):
+    if not keep_clone and not _local_repo_path and os.path.isdir(clone_subdir):
         shutil.rmtree(clone_subdir, ignore_errors=True)
 
     posted = 0
@@ -345,13 +369,19 @@ def review(  # noqa: C901
         'lint_issues_count': len(lint_issues),
     }
 
-    return {
+    result = {
         'summary': summary,
         'comments': final_comments,
         'comments_posted': posted,
         'comment_stats': stats,
         'pr_summary': pr_summary,
+        'pr_info': {'source_branch': getattr(pr, 'source_branch', ''),
+                    'target_branch': getattr(pr, 'target_branch', '')},
         'pr_design_doc': ckpt.get('pr_design_doc') or '',
         'original_review_code': original_review_code,
         'metrics': metrics,
     }
+    if output_path:
+        write_review_json(result, output_path)
+        lazyllm.LOG.info(f'Review result written to {output_path}')
+    return result

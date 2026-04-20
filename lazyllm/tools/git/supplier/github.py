@@ -1,16 +1,54 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import os
+import time
 from typing import Any, Dict, List, Optional
 
 import requests
+from lazyllm import config
+from lazyllm.thirdparty import jwt
 
 from ..base import LazyLLMGitBase, PrInfo, ReviewCommentInfo, _sanitize_path
 
+config.add('github_app_private_key_path', str,
+           os.path.expanduser('~/.config/lazyllm/github-app-private-key.pem'),
+           'GITHUB_APP_PRIVATE_KEY_PATH',
+           description='Path to GitHub App private key PEM file for App authentication.')
+
+
+def _get_installation_token(app_id: str, private_key_pem: str, installation_id: int,
+                            api_base: str = 'https://api.github.com') -> str:
+    now = int(time.time())
+    payload = {'iat': now - 60, 'exp': now + 600, 'iss': str(app_id)}
+    j = jwt.encode(payload, private_key_pem, algorithm='RS256')
+    r = requests.post(
+        f'{api_base}/app/installations/{installation_id}/access_tokens',
+        headers={'Authorization': f'Bearer {j}', 'Accept': 'application/vnd.github.v3+json'},
+        timeout=30,
+    )
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f'Failed to get installation token: {r.status_code} {r.text}')
+    return r.json()['token']
+
 
 class GitHub(LazyLLMGitBase):
-    def __init__(self, token: str, repo: Optional[str] = None, user: Optional[str] = None,
-                 api_base: Optional[str] = None, return_trace: bool = False):
+    def __init__(self, token: Optional[str] = None, repo: Optional[str] = None, user: Optional[str] = None,
+                 api_base: Optional[str] = None, return_trace: bool = False,
+                 app_id: Optional[str] = None, installation_id: Optional[int] = None,
+                 private_key_pem: Optional[str] = None, private_key_path: Optional[str] = None):
+        if app_id and installation_id:
+            pem = private_key_pem
+            if not pem:
+                path = private_key_path or config['github_app_private_key_path']
+                with open(path, 'r') as f:
+                    pem = f.read()
+            resolved_token = _get_installation_token(app_id, pem, installation_id,
+                                                     api_base or 'https://api.github.com')
+        else:
+            if not token:
+                raise ValueError('Provide either token or (app_id + installation_id) for GitHub App auth.')
+            resolved_token = token
         super().__init__(
-            token=token,
+            token=resolved_token,
             repo=repo,
             api_base=api_base or 'https://api.github.com',
             user=user,
