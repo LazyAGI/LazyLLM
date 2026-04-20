@@ -4,6 +4,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from lazyllm.common import LOG
+
 _TRACE_ID_RE = re.compile(r'^[0-9a-f]{32}$')
 _SPAN_ID_RE = re.compile(r'^[0-9a-f]{16}$')
 
@@ -101,13 +103,15 @@ class LazyTrace:
     # ---- state ----
     @property
     def is_active(self) -> bool:
-        return self.end_time is None
+        with self._lock:
+            return self.end_time is None
 
     @property
     def latency_ms(self) -> Optional[float]:
-        if self.end_time is None:
-            return None
-        return (self.end_time - self.start_time) * 1000.0
+        with self._lock:
+            if self.end_time is None:
+                return None
+            return (self.end_time - self.start_time) * 1000.0
 
     @property
     def span_count(self) -> int:
@@ -151,5 +155,10 @@ class LazyTrace:
 
     def finish(self) -> None:
         with self._lock:
+            if self._span_count > 0:
+                LOG.warning(
+                    f'LazyTrace({self.trace_id}) finish() called with '
+                    f'{self._span_count} active span(s); closing anyway.'
+                )
             if self.end_time is None:
                 self.end_time = time.time()

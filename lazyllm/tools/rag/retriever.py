@@ -125,7 +125,7 @@ class Retriever(_RetrieverBase, _PostProcess):
             'target': self._target,
             'mode': self._mode,
             'output_format': self._output_format,
-            'join': self._join if self._join is False else True,
+            'join': self._join,
             'weight': self._weight,
             'priority': str(self._priority) if self._priority else None,
         }

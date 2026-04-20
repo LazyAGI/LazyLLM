@@ -5,8 +5,8 @@ from typing import Any, Dict, Iterable, List, Optional
 def _normalize_tags(tags: Any) -> List[str]:
     if tags is None:
         return []
-    if isinstance(tags, str):
-        return [tags]
+    if isinstance(tags, (str, bytes, bytearray)):
+        return [str(tags)]
     if isinstance(tags, Iterable):
         return [str(tag) for tag in tags if tag is not None]
     return [str(tags)]

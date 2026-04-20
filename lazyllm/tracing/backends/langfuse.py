@@ -3,6 +3,7 @@ import json
 import os
 from typing import Any, Dict, Optional
 
+from lazyllm.common import LOG
 from lazyllm.thirdparty import opentelemetry
 from .base import TracingBackend
 
@@ -20,6 +21,8 @@ _SEMANTIC_TO_LANGFUSE_TYPE = {
 
 class LangfuseBackend(TracingBackend):
     name = 'langfuse'
+
+    _warned_semantic_types: set = set()
 
     @staticmethod
     def _copy_usage_attrs(attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
@@ -82,14 +85,25 @@ class LangfuseBackend(TracingBackend):
 
     def map_attributes(self, otel_attrs: Dict[str, Any]) -> Dict[str, Any]:
         attrs: Dict[str, Any] = {}
-        is_root_span = bool(otel_attrs.get('lazyllm.span.is_root'))
+        is_root_span = otel_attrs.get('lazyllm.span.is_root') is True
 
         semantic_type = otel_attrs.get('lazyllm.semantic_type')
-        langfuse_type = _SEMANTIC_TO_LANGFUSE_TYPE.get(semantic_type)
-        if langfuse_type:
+        if semantic_type:
+            langfuse_type = _SEMANTIC_TO_LANGFUSE_TYPE.get(semantic_type)
+            if langfuse_type is None:
+                if semantic_type not in self._warned_semantic_types:
+                    LOG.warning(
+                        f'LangfuseBackend: unmapped semantic_type {semantic_type!r}; '
+                        f'falling back to "span".'
+                    )
+                    self._warned_semantic_types.add(semantic_type)
+                langfuse_type = 'span'
             attrs['langfuse.observation.type'] = langfuse_type
 
-        model = otel_attrs.get('gen_ai.request.model') or otel_attrs.get('lazyllm.entity.config.model')
+        model = otel_attrs.get(
+            'gen_ai.request.model',
+            otel_attrs.get('lazyllm.entity.config.model'),
+        )
         if semantic_type == 'llm' and model:
             attrs['gen_ai.request.model'] = str(model)
 
