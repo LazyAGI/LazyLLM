@@ -834,6 +834,8 @@ class FeishuWikiFile(CloudFSBufferedFile):
 
 class FeishuWikiFS(FeishuFSBase):
     __lazyllm_registry_disable__ = True
+    protocol = 'feishu'
+    _fs_protocol_key = 'feishu'
 
     def _create_docx_node(self, title: str, parent_token: str = '') -> str:
         url = f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes'

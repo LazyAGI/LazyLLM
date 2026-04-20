@@ -2,6 +2,7 @@
 import re
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
+from lazyllm import globals
 
 _PROTOCOL_RE = re.compile(r'^([a-zA-Z][a-zA-Z0-9+\-.]*)(@[^:/]+)?:/(.*)$')
 
@@ -89,10 +90,9 @@ FS = _FSRouter()
 
 @contextmanager
 def dynamic_fs_config(source_token_map: Dict[str, str]) -> Iterator[None]:
-    from lazyllm.common import globals as _globals
-    old = _globals['config'].get('dynamic_fs_auth')
-    _globals['config']['dynamic_fs_auth'] = source_token_map
+    old = globals.config['dynamic_fs_auth']
+    globals.config['dynamic_fs_auth'] = {**(old or {}), **source_token_map}
     try:
         yield
     finally:
-        _globals['config']['dynamic_fs_auth'] = old
+        globals.config['dynamic_fs_auth'] = old

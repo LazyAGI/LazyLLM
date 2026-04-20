@@ -7,7 +7,7 @@ import time
 import threading
 import io
 
-from lazyllm import thirdparty
+from lazyllm import thirdparty, globals
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
 
 AbstractFileSystem = thirdparty.fsspec.spec.AbstractFileSystem
@@ -61,6 +61,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     @staticmethod
     def __lazyllm_after_registry_hook__(cls, group_name: str, name: str, isleaf: bool):
+        print(cls, group_name, name, isleaf)
         if isleaf:
             if not name.lower().endswith('fs'):
                 raise ValueError(f'Class name {name} must follow the schema of <SupplierType>FS, like <GoogleDriveFS>')
@@ -180,11 +181,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     @property
     def _dynamic_token(self) -> str:
-        from lazyllm.common import globals as _globals
-        cfg = _globals['config'].get('dynamic_fs_auth') or {}
-        # _fs_protocol_key is set by __lazyllm_after_registry_hook__ and equals self.protocol
-        key = getattr(self, '_fs_protocol_key', None) or self.protocol
-        return cfg.get(key, '')
+        return  globals.config['dynamic_fs_auth'].get(self._fs_protocol_key, '')
 
     def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
         return '', None
@@ -239,3 +236,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         stripped = self._strip_protocol(path)
         parts = [p for p in stripped.split('/') if p]
         return tuple(parts)
+
+
+globals.config.add('dynamic_fs_auth', dict, None, 'DYNAMIC_FS_AUTH',
+                   description='Per-source dynamic FS auth: {source: token}.')
