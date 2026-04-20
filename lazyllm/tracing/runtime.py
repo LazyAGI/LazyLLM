@@ -186,10 +186,13 @@ class TracingRuntime:
 
         capture_payload = _capture_payload_enabled(ctx)
         span_name = self._target_name(target, span_kind)
-        pre_parent_span_id = ctx.parent_span_id
 
         current = self._trace_api.get_current_span()
-        is_root_span = not current.get_span_context().is_valid
+        current_sc = current.get_span_context()
+        is_root_span = not current_sc.is_valid
+        pre_parent_span_id = (
+            f'{current_sc.span_id:016x}' if current_sc.is_valid else ctx.parent_span_id
+        )
 
         parent_context = None
         is_reconstructed = False
