@@ -195,10 +195,10 @@ JSON_OUTPUT_INSTRUCTION = (
     f'{JSON_END_MARKER}'
 )
 JSON_OBJ_OUTPUT_INSTRUCTION = (
-    f'Wrap your JSON object with exactly these delimiters (no other text outside them):\n'
-    f'{JSON_START_MARKER}\n'
-    f'{{ ... }}\n'
-    f'{JSON_END_MARKER}'
+    'Wrap your JSON object with exactly these delimiters (no other text outside them):\n'
+    + JSON_START_MARKER + '\n'
+    '{{...}}\n'
+    + JSON_END_MARKER
 )
 
 
@@ -406,10 +406,12 @@ def _normalize_comment_item(
         # Allow a generous tolerance: LLM may reference lines slightly outside the hunk
         # (e.g. from file_context). Hard-reject only clearly out-of-range lines.
         hunk_size = max(end_line - new_start, 1)
-        tolerance = max(50, hunk_size // 2)
-        if not (new_start - tolerance <= line < end_line + tolerance):
+        tolerance = max(50, hunk_size // 4)
+        low = max(1, new_start - tolerance)
+        high = end_line + tolerance
+        if not (low <= line < high):
             lazyllm.LOG.info(
-                f'[NORMALIZE_SKIP] line={line} out of range [{new_start - tolerance}, {end_line + tolerance}): '
+                f'[NORMALIZE_SKIP] line={line} out of range [{low}, {high}): '
                 f'{str(item)[:200]}'
             )
             return None

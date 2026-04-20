@@ -9,6 +9,7 @@ from .supplier.github import GitHub
 from .supplier.gitlab import GitLab
 from .supplier.gitee import Gitee
 from .supplier.gitcode import GitCode
+from .supplier.local import LocalGit
 from .review import review, analyze_repo_architecture, analyze_historical_reviews
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     'GitLab',
     'Gitee',
     'GitCode',
+    'LocalGit',
     'review',
     'analyze_repo_architecture',
     'analyze_historical_reviews',

@@ -173,7 +173,20 @@ or an error message that conflicts with the code). If you are unfamiliar with a 
 API (e.g. GitCode, Gitee, GitLab), do NOT guess its conventions based on other platforms.
 9. When suggesting "add error handling" or "add exception protection", first verify whether \
 the called function already handles exceptions internally. If the callee wraps its body in \
-try/except or returns a safe default, the caller does NOT need redundant protection.'''
+try/except or returns a safe default, the caller does NOT need redundant protection.
+10. Do NOT claim `except Exception` swallows `KeyboardInterrupt`, `SystemExit`, or \
+`GeneratorExit`. In Python 3, these inherit from `BaseException`, NOT `Exception`, so \
+`except Exception` does NOT catch them. Only flag broad exception handling if the code \
+uses `except BaseException` or bare `except:`.
+11. Do NOT report issues that static analysis tools (pyflakes, mypy, pylint, isort) already \
+catch reliably: undefined names / NameError, circular imports, unresolved references, \
+unreachable code, type errors detectable from signatures alone. These are out of scope for \
+a diff-level review — they will be caught by CI.
+12. Do NOT report a design choice as a bug or inconsistency unless you can cite a concrete \
+runtime failure, data corruption, or explicit contract violation that the choice causes. \
+Structural preferences (e.g. two commands vs one flag, composition vs inheritance, \
+separate modules vs merged) are the author's prerogative and must not be flagged without \
+evidence of actual harm.'''
 
 _R1_ISSUE_FIELDS = '''\
 For EVERY issue found, output a JSON object with:
@@ -290,7 +303,7 @@ def _extract_code_tags(
         max_focus=max_focus,
     )
     raw = _safe_llm_call_text(llm, prompt)
-    if not raw:
+    if not raw or not raw.strip():
         return {}
     parsed = _parse_json_with_repair(_extract_json_text(raw))
     return parsed if isinstance(parsed, dict) else {}
@@ -414,6 +427,18 @@ def _analyze_single_hunk(
     file_skeleton: str = '', code_tags: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     file_context = _read_file_context(clone_dir, path, new_start, new_start + new_count) if clone_dir else ''
+    # derive the last line number visible to LLM from file_context header
+    # "full file, N lines" → N; "excerpt lines S–E of T" → E
+    context_end_line: Optional[int] = None
+    if file_context:
+        first_line = file_context.split('\n', 1)[0]
+        m = re.search(r'full file,\s*(\d+)\s*lines', first_line)
+        if m:
+            context_end_line = int(m.group(1))
+        else:
+            m = re.search(r'excerpt lines\s*\d+\s*[–-]\s*(\d+)', first_line)
+            if m:
+                context_end_line = int(m.group(1))
     code_profile = _format_code_profile(code_tags) if code_tags else '(not available)'
     review_focus_block = _format_review_focus(code_tags) if code_tags else ''
     diff_budget = _r1_diff_budget(arch_snippet, spec_snippet, summary_snippet, agent_instructions,
@@ -446,8 +471,9 @@ def _analyze_single_hunk(
         density_rule=issue_density_rule(annotated_content),
     )
     items = _safe_llm_call(llm, prompt)
+    effective_end = max(new_start + actual_count, context_end_line or 0)
     return [n for item in items if (n := _normalize_comment_item(
-        item, new_start=new_start, end_line=new_start + actual_count, default_path=path,
+        item, new_start=new_start, end_line=effective_end, default_path=path,
     )) is not None]
 
 
@@ -518,10 +544,12 @@ def _assign_batch_item(
     item: Dict[str, Any],
     hunks: List[Tuple[int, int, str]],
     path: str,
+    context_end_line: Optional[int] = None,
 ) -> Optional[Tuple[int, Dict[str, Any]]]:
     for new_start, new_count, _ in hunks:
+        effective_end = max(new_start + new_count, context_end_line or 0)
         normalized = _normalize_comment_item(
-            item, new_start=new_start, end_line=new_start + new_count, default_path=path,
+            item, new_start=new_start, end_line=effective_end, default_path=path,
         )
         if normalized is not None:
             return new_start, normalized
@@ -574,11 +602,22 @@ def _analyze_hunk_batch(
         path=path, hunks_content='\n\n'.join(hunk_blocks), density_rule=issue_density_rule('\n'.join(hunk_blocks)),
     )
     items = _safe_llm_call(llm, prompt)
+    # derive context_end_line from file_context header (same logic as _analyze_single_hunk)
+    context_end_line: Optional[int] = None
+    if file_context:
+        first_line = file_context.split('\n', 1)[0]
+        m = re.search(r'full file,\s*(\d+)\s*lines', first_line)
+        if m:
+            context_end_line = int(m.group(1))
+        else:
+            m = re.search(r'excerpt lines\s*\d+\s*[–-]\s*(\d+)', first_line)
+            if m:
+                context_end_line = int(m.group(1))
     results: Dict[int, List[Dict[str, Any]]] = {s: [] for s, _, _ in hunks}
     for item in (items if isinstance(items, list) else []):
         if not isinstance(item, dict) or item.get('problem') is None:
             continue
-        assigned = _assign_batch_item(item, hunks, path)
+        assigned = _assign_batch_item(item, hunks, path, context_end_line=context_end_line)
         if assigned is not None:
             results[assigned[0]].append(assigned[1])
     return results
@@ -660,10 +699,12 @@ def _r1_task_batch(
     file_skeleton = _extract_file_skeleton(clone_dir, path) if clone_dir else ''
     first_hunk_content = hunks[idxs[0]][3] if idxs else ''
     code_tags: Dict[str, Any] = {}
-    try:
-        code_tags = _extract_code_tags(llm, file_skeleton, first_hunk_content[:1500])
-    except Exception as e:
-        lazyllm.LOG.warning(f'Round 1: code tag extraction failed for {path}: {e}')
+    # skip code tag extraction for trivially short files to avoid wasted LLM calls
+    if file_skeleton and len(file_skeleton.strip()) >= 50:
+        try:
+            code_tags = _extract_code_tags(llm, file_skeleton, first_hunk_content[:1500])
+        except Exception as e:
+            lazyllm.LOG.warning(f'Round 1: code tag extraction failed for {path}: {e}')
     uncached_idxs: List[int] = []
     for idx in idxs:
         _, new_start, new_count, _ = hunks[idx]
@@ -1353,6 +1394,16 @@ If it does, DISCARD the issue — the caller does NOT need redundant protection.
    - For "wrong API endpoint/field" claims: DISCARD unless the diff itself contains contradictory \
 evidence (e.g. a test, a docstring, or an error message that conflicts with the code). \
 Do NOT guess third-party API conventions based on other platforms.
+   - For "variable may be uninitialized / NameError / circular import / unresolved reference" \
+claims: DISCARD. These are reliably caught by static analysis tools (pyflakes, mypy, pylint) \
+and are out of scope for diff-level review.
+   - For "`except Exception` swallows KeyboardInterrupt/SystemExit" claims: DISCARD. In Python 3, \
+`KeyboardInterrupt` and `SystemExit` inherit from `BaseException`, not `Exception`. \
+`except Exception` does NOT catch them. Only flag if the code uses bare `except:` or \
+`except BaseException`.
+   - For "design inconsistency / should use X pattern instead of Y" claims: DISCARD unless \
+you can cite a concrete runtime failure, data corruption, or explicit contract violation \
+that the choice causes. Structural preferences are the author's prerogative.
 2. Find NEW issues that require cross-file or cross-function context to detect:
    - Interface inconsistencies (method signatures changed but callers not updated)
    - Abstraction violations (bypassing base class contracts)

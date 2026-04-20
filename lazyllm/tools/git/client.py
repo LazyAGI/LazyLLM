@@ -138,7 +138,19 @@ config.add('git_backend', str, None, 'GIT_BACKEND',
 class Git:
     def __new__(cls, backend: Optional[str] = None, token: Optional[str] = None, repo: Optional[str] = None,
                 user: Optional[str] = None, api_base: Optional[str] = None, return_trace: bool = False,
+                app_id: Optional[str] = None, installation_id: Optional[int] = None,
+                private_key_pem: Optional[str] = None, private_key_path: Optional[str] = None,
+                repo_path: Optional[str] = None, base: Optional[str] = None,
+                include_uncommitted: bool = True,
                 ) -> LazyLLMGitBase:
+        if backend == 'local' or (repo_path is not None and not backend):
+            from .supplier.local import LocalGit
+            return LocalGit(
+                repo_path=repo_path or '.',
+                base=base or 'main',
+                include_uncommitted=include_uncommitted,
+                return_trace=return_trace,
+            )
         # 1. User passed backend -> use it
         # 2. If user passed repo, try to infer backend from URL
         if not backend and repo:
@@ -154,10 +166,17 @@ class Git:
         # 5. Default to github
         if not backend:
             backend = 'github'
-        # Resolve token (from arg, env, or gh) when backend is known
-        token = _resolve_token_for_backend(backend, token)
         # Normalize repo to owner/repo for backend APIs (full URL -> path only)
-        repo_path = _normalize_repo_to_path(repo) if repo else ''
-        return getattr(lazyllm.git, backend)(
-            token=token, repo=repo_path, user=user, api_base=api_base, return_trace=return_trace
-        )
+        repo_norm = _normalize_repo_to_path(repo) if repo else ''
+        kwargs = dict(repo=repo_norm, user=user, api_base=api_base, return_trace=return_trace)
+        if app_id and installation_id:
+            if backend != 'github':
+                raise ValueError(f'app_id/installation_id are only supported for GitHub, got backend={backend!r}')
+            kwargs.update(app_id=app_id, installation_id=installation_id)
+            if private_key_pem:
+                kwargs['private_key_pem'] = private_key_pem
+            if private_key_path:
+                kwargs['private_key_path'] = private_key_path
+        else:
+            kwargs['token'] = _resolve_token_for_backend(backend, token)
+        return getattr(lazyllm.git, backend)(**kwargs)
