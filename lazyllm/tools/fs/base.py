@@ -180,7 +180,8 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     @property
     def _dynamic_token(self) -> str:
-        return globals.config['dynamic_fs_auth'].get(self._fs_protocol_key, '')
+        mapping = globals.config['dynamic_fs_auth'] or {}
+        return mapping.get(self._fs_protocol_key, '')
 
     def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
         return '', None
@@ -200,7 +201,8 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         auth_header = self._get_auth_header()
         if auth_header:
             existing = kwargs.get('headers') or {}
-            kwargs = {**kwargs, 'headers': {**auth_header, **existing}}
+            # auth_header takes highest priority — caller-supplied headers cannot override credentials
+            kwargs = {**kwargs, 'headers': {**existing, **auth_header}}
         resp = self._session.request(method, url, **kwargs)
         if not resp.ok:
             try:

@@ -38,7 +38,11 @@ def _http_get(url: str, token: Optional[str] = None) -> bytes:
 
 
 def _write_file(dest_dir: str, rel_path: str, content: bytes) -> None:
-    full = os.path.join(dest_dir, rel_path)
+    # Guard against path traversal (e.g. rel_path = "../../evil")
+    dest_dir = os.path.realpath(dest_dir)
+    full = os.path.realpath(os.path.join(dest_dir, rel_path))
+    if not full.startswith(dest_dir + os.sep) and full != dest_dir:
+        raise ValueError(f'Path traversal detected: {rel_path!r} escapes dest_dir {dest_dir!r}')
     os.makedirs(os.path.dirname(full), exist_ok=True)
     with open(full, 'wb') as f:
         f.write(content)

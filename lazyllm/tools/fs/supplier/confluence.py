@@ -22,6 +22,10 @@ class ConfluenceFS(LazyLLMFSBase):
                  email: Optional[str] = None, cloud: bool = True,
                  cloud_id: Optional[str] = None, dynamic_auth: bool = False, **storage_options):
         if dynamic_auth:
+            if token:
+                raise ValueError('token must be None when dynamic_auth=True')
+            if email:
+                raise ValueError('email must be None when dynamic_auth=True')
             token = ''
             email = None
         else:

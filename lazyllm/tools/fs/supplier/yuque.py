@@ -18,6 +18,8 @@ class YuqueFS(LazyLLMFSBase):
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  dynamic_auth: bool = False, **storage_options):
         if dynamic_auth:
+            if token:
+                raise ValueError('token must be None when dynamic_auth=True')
             token = ''
         else:
             token = token or config['yuque_token'] or os.environ.get('YUQUE_TOKEN') or ''

@@ -1,5 +1,5 @@
 import os
-from typing import Iterable, Optional, Union
+from typing import Any, Iterable, Optional, Union
 
 import lazyllm
 from lazyllm.module import ModuleBase
@@ -25,9 +25,16 @@ class LazyLLMAgentBase(ModuleBase):
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
                  desc: str = '', workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
-                 fs=None, skills_dir: Optional[str] = None):
+                 fs: Optional[Any] = None, skills_dir: Optional[str] = None):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
+        if not use_skills and (fs is not None or skills_dir is not None):
+            import warnings
+            warnings.warn(
+                'fs and skills_dir are ignored because skills is not enabled. '
+                'Pass skills=True (or a list of skill names) to enable skill loading.',
+                UserWarning, stacklevel=2,
+            )
         self._llm = llm
         self._tools = list(tools) if tools else []
         self._memory = memory

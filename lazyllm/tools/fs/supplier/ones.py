@@ -24,6 +24,8 @@ class OnesFS(LazyLLMFSBase):
         dynamic_auth: bool = False,
     ):
         if dynamic_auth:
+            if token:
+                raise ValueError('token must be None when dynamic_auth=True')
             self._user_id = user_id or ''
             super().__init__(
                 token='',

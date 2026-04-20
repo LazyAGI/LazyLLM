@@ -941,19 +941,38 @@ def _build_scoped_agent_tools(  # noqa: C901
         return search_in_files(pattern, path=clone_dir, max_results=max_results, root=clone_dir)
 
     def ask_deepwiki(question: str) -> str:
-        '''Ask DeepWiki a question about this repository's architecture or design.
-        Use for high-level questions about module responsibilities, design patterns,
-        or cross-module relationships that are hard to answer from local code alone.
-        Returns a plain text answer.
+        '''Ask DeepWiki a background question about this repository's architecture or design.
+
+        IMPORTANT — data may be 1-3 months stale. Use ONLY as background knowledge, NOT as
+        source of truth for current code. Treat answers as "possibly outdated context" and
+        always cross-verify against the actual diff and local code.
+
+        USE for:
+        - Understanding overall system architecture (module boundaries, layering, responsibilities)
+        - Learning design conventions or usage patterns of public/infrastructure modules
+        - Identifying potential architectural issues (wrong dependency direction, misuse of abstractions)
+        - Supplementing cross-module context not visible in the diff
+
+        DO NOT USE for:
+        - Verifying whether new/modified code in the diff is correct
+        - Determining current function/interface behavior, parameters, or implementation details
+        - Drawing definitive conclusions that depend on the latest code state
+
+        When using the answer, treat it as a hypothesis ("based on background knowledge, this may
+        violate the existing design") rather than a fact. Always verify with local code tools.
 
         Args:
-            question (str): The question to ask about the repository.
+            question (str): Architecture or design question about the repository (not about specific
+                diff correctness). Prefer questions about module roles, design patterns, or
+                cross-module relationships.
         '''
         if not owner_repo:
             return '(DeepWiki not configured for this repo)'
         lazyllm.LOG.info(f'  [Agent] DeepWiki ask: {question!r}')
         answer = _deepwiki_ask_cached(owner_repo, question, max_chars=2000)
-        return answer or '(no answer from DeepWiki)'
+        if not answer:
+            return '(no answer from DeepWiki)'
+        return f'[DeepWiki background knowledge — may be 1-3 months stale, verify with local code]\n{answer}'
 
     tools = [
         read_file_scoped, read_file_skeleton_scoped, read_files_batch,
@@ -1308,7 +1327,12 @@ def _arch_fill_batch_llm(
         title, focus = sec.get('title', ''), sec.get('focus', '')
         question = f'Explain the "{title}" aspect of this project: {focus}'
         answer = _deepwiki_ask_cached(owner_repo, question, max_chars=1200)
-        return f'\n\nDeepWiki reference:\n{answer}' if answer else ''
+        if not answer:
+            return ''
+        return (
+            f'\n\nDeepWiki background reference (may be 1-3 months stale — use as context only, '
+            f'verify against local code):\n{answer}'
+        )
 
     sections_block = '\n---\n'.join(
         f'### Section: {sec.get("title", "")}\nFocus: {sec.get("focus", "")}'
@@ -1617,7 +1641,12 @@ def analyze_repo_architecture(
         lazyllm.LOG.info(f'Fetching DeepWiki summary for {owner_repo}...')
         deepwiki_text = _fetch_deepwiki_summary(owner_repo)
         if deepwiki_text:
-            snapshot = snapshot + f'\n\n## DeepWiki Pre-indexed Summary\n{deepwiki_text}'
+            stale_notice = (
+                '\n\n> NOTE: DeepWiki data may be 1-3 months stale. '
+                'Use as background context only; verify against local code before drawing conclusions.'
+            )
+            header = '\n\n## DeepWiki Pre-indexed Summary (background reference — may be stale)'
+            snapshot = snapshot + header + stale_notice + '\n' + deepwiki_text
             lazyllm.LOG.info(f'DeepWiki summary injected ({len(deepwiki_text)} chars)')
         else:
             lazyllm.LOG.info(f'DeepWiki: no summary available for {owner_repo}')

@@ -1,5 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import re
+import threading
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
 from lazyllm import globals
@@ -24,6 +25,7 @@ class _FSRouter:
 
     def __init__(self) -> None:
         self._instances: Dict[tuple, Any] = {}
+        self._lock = threading.Lock()
 
     def _parse(self, path: str):
         m = _PROTOCOL_RE.match(path)
@@ -37,17 +39,23 @@ class _FSRouter:
     def _get_or_create_fs(self, protocol: str, space_id: Optional[str]) -> Any:
         key = (protocol, space_id)
         if key not in self._instances:
-            cls = _lookup_fs_cls(protocol)
-            self._instances[key] = cls(space_id=space_id, dynamic_auth=True) if space_id else cls(dynamic_auth=True)
+            with self._lock:
+                if key not in self._instances:
+                    cls = _lookup_fs_cls(protocol)
+                    import inspect
+                    init_params = inspect.signature(cls.__init__).parameters
+                    kwargs: Dict[str, Any] = {'dynamic_auth': True}
+                    if space_id and 'space_id' in init_params:
+                        kwargs['space_id'] = space_id
+                    self._instances[key] = cls(**kwargs)
         return self._instances[key]
 
     def _dispatch(self, method: str, path: str, *args, **kwargs) -> Any:
         protocol, space_id, real_path = self._parse(path)
         if protocol == 'file':
-            if method == 'open':
-                mode = args[0] if args else kwargs.pop('mode', 'rb')
-                return open(real_path, mode)
-            raise ValueError(f'Local file system does not support {method!r} via FS router; use open() directly.')
+            import fsspec.implementations.local as _local_fs
+            fs = _local_fs.LocalFileSystem()
+            return getattr(fs, method)(real_path, *args, **kwargs)
         fs = self._get_or_create_fs(protocol, space_id)
         return getattr(fs, method)(real_path, *args, **kwargs)
 

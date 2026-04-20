@@ -34,11 +34,15 @@ class OneDriveFS(LazyLLMFSBase):
         dynamic_auth: bool = False,
     ):
         if dynamic_auth:
+            if client_id:
+                raise ValueError('client_id must be None when dynamic_auth=True')
+            if client_secret:
+                raise ValueError('client_secret must be None when dynamic_auth=True')
             self._client_id = ''
             self._client_secret = ''
             self._tenant_id = tenant_id or 'common'
             super().__init__(
-                token={},
+                token='',
                 base_url=base_url or _GRAPH_BASE,
                 asynchronous=asynchronous,
                 use_listings_cache=use_listings_cache,

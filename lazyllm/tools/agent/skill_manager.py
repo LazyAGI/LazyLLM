@@ -132,8 +132,9 @@ class SkillManager(ModuleBase):
         for d in dirs:
             if not d:
                 continue
-            # Keep cloud paths (protocol:/ prefix) as-is; expand local paths
-            path = d if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*:/', d) else os.path.abspath(os.path.expanduser(d))
+            # Keep cloud paths (protocol:/ prefix) as-is; expand local paths.
+            # Use the same regex as _extract_protocol for consistency.
+            path = d if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*(@[^:/]+)?:/', d) else os.path.abspath(os.path.expanduser(d))
             if path not in seen:
                 seen.add(path)
                 result.append(path)

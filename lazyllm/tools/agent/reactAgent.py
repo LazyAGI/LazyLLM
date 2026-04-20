@@ -75,7 +75,7 @@ class ReactAgent(LazyLLMAgentBase):
                  skills: Optional[Union[bool, str, List[str]]] = None, desc: str = '',
                  workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
                  force_summarize: bool = False, force_summarize_context: str = '',
-                 keep_full_turns: int = 0, fs=None, skills_dir: Optional[str] = None):
+                 keep_full_turns: int = 0, fs: Optional[Any] = None, skills_dir: Optional[str] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir)

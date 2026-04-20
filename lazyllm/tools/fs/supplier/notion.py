@@ -19,6 +19,8 @@ class NotionFS(LazyLLMFSBase):
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  dynamic_auth: bool = False, **storage_options):
         if dynamic_auth:
+            if token:
+                raise ValueError('token must be None when dynamic_auth=True')
             token = ''
         else:
             token = (token or config['notion_token'] or os.environ.get('NOTION_TOKEN')
@@ -30,7 +32,8 @@ class NotionFS(LazyLLMFSBase):
             'Notion-Version': _NOTION_VERSION,
             'Content-Type': 'application/json',
         })
-        self._access_token = self._secret_key
+        if not self._dynamic_auth:
+            self._apply_access_token(self._secret_key)
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         parts = self._parse_path(path)
