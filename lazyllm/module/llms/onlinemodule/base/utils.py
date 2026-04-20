@@ -1,5 +1,5 @@
 from ....module import ModuleBase
-from lazyllm import config, LazyLLMRegisterMetaClass, globals
+from lazyllm import config, LazyLLMRegisterMetaClass, globals, LOG
 from lazyllm.tracing.runtime import current_trace
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Optional, Union, List
@@ -91,7 +91,8 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def _trace_attr_value(obj, attr):
         try:
             value = getattr(obj, attr, None)
-        except Exception:
+        except Exception as exc:
+            LOG.warning(f'Reading attr {attr!r} on {type(obj).__name__} for trace metadata failed: {exc}')
             return None
         return value if value is not None and value != '' else None
 
@@ -118,13 +119,13 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         metadata = {'class': self.__class__.__name__}
         try:
             metadata['type'] = self.type
-        except Exception:
-            pass
+        except Exception as exc:
+            LOG.warning(f'Reading `type` on {type(self).__name__} for trace metadata failed: {exc}')
         try:
             if self.series:
                 metadata['series'] = self.series
-        except Exception:
-            pass
+        except Exception as exc:
+            LOG.warning(f'Reading `series` on {type(self).__name__} for trace metadata failed: {exc}')
         return metadata
 
     def _collect_trace_kwargs(self, **overrides):

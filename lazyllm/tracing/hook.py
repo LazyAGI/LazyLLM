@@ -55,7 +55,7 @@ class LazyTracingHook(LazyLLMHook):
                 if output_attrs:
                     set_span_attributes(self._span, output_attrs)
             except Exception as e:
-                LOG.debug(f'__trace_output_attrs__ failed for {self._obj.__class__.__name__}: {e}')
+                LOG.warning(f'__trace_output_attrs__ failed for {self._obj.__class__.__name__}: {e}')
 
     def on_error(self, exc):
         if self._span is None:

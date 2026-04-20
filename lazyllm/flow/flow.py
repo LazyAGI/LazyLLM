@@ -319,7 +319,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
     def _invoke_error_position(self, it):
         try:
             return self._item_pos[self._items.index(it)]
-        except Exception:
+        except (ValueError, IndexError, TypeError, AttributeError):
             return None
 
     @staticmethod

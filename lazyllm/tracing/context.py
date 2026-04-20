@@ -1,6 +1,8 @@
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, Iterable, List, Optional
 
+from lazyllm.common import LOG
+
 
 def _normalize_tags(tags: Any) -> List[str]:
     if tags is None:
@@ -30,6 +32,8 @@ class LazyTraceContext:
     @classmethod
     def from_dict(cls, data: dict) -> 'LazyTraceContext':
         if not isinstance(data, dict):
+            LOG.warning(f'LazyTraceContext.from_dict expected a dict, got {type(data).__name__}; '
+                        f'returning empty context.')
             return cls()
         known = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in data.items() if k in known}
