@@ -15,6 +15,12 @@ _SUBMOD_MAP = {
         'tracing_available',
         'enable_trace',
         'current_trace',
+        'start_span',
+        'set_span_output',
+        'set_span_attributes',
+        'set_span_error',
+        'set_span_usage',
+        'finish_span',
     ],
     'configs': [
         'DEFAULT_MODULE_TRACE_CONFIG',

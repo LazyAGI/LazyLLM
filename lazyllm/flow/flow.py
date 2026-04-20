@@ -468,6 +468,7 @@ class Pipeline(LazyLLMFlowsBase):
             lazyllm.LOG.debug(f'add {self.id()} to bind_args')
             locals['bind_args'][self.id()] = bind_args_source
         is_loop = self._loop_count > 1
+        iteration_idx = -1
         for iteration_idx in range(self._loop_count):
             iter_span = (start_span(span_kind='flow',
                                     target=_IterationTarget(self, iteration_idx),

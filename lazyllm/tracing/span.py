@@ -22,6 +22,7 @@ class LazySpan:
     span_id: Optional[str] = None
     parent_span_id: Optional[str] = None
     is_root_span: bool = False
+    is_reconstructed: bool = False
 
     # --- data ---
     input: Optional[Any] = None
