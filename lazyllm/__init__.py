@@ -25,7 +25,6 @@ if TYPE_CHECKING:
                         LLMParser)
 from .patch import patch_os_env
 from .docs import add_doc
-from .tools.fs.client import FS, dynamic_fs_config  # noqa F401
 config.done()
 
 patch_os_env(lambda key, value: refresh_config(key), refresh_config)
@@ -100,6 +99,8 @@ __all__ = [
     'set_trace_context',
 
     # tools
+    'FS',
+    'dynamic_fs_config',
     'Document',
     'Retriever',
     'Reranker',

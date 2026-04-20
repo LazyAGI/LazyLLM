@@ -1,6 +1,5 @@
 from importlib import import_module
 from typing import TYPE_CHECKING
-from .fs.client import FS, dynamic_fs_config
 if TYPE_CHECKING:
     # flake8: noqa: E401
     from .rag import (Document, GraphDocument, UrlGraphDocument, Reranker, Retriever, TempDocRetriever,

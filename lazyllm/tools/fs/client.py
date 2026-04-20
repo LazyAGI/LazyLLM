@@ -34,11 +34,11 @@ class _FSRouter:
         rest = '/' + m.group(3)
         return protocol, (at_id[1:] if at_id else None), rest
 
-    def _get_or_create_fs(self, protocol: str, space_id: Optional[str], **kwargs) -> Any:
+    def _get_or_create_fs(self, protocol: str, space_id: Optional[str]) -> Any:
         key = (protocol, space_id)
         if key not in self._instances:
             cls = _lookup_fs_cls(protocol)
-            self._instances[key] = cls(space_id=space_id, **kwargs) if space_id else cls(**kwargs)
+            self._instances[key] = cls(space_id=space_id, dynamic_auth=True) if space_id else cls(dynamic_auth=True)
         return self._instances[key]
 
     def _dispatch(self, method: str, path: str, *args, **kwargs) -> Any:
