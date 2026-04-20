@@ -104,7 +104,7 @@ class LazyTrace:
 
     _span_count: int = field(default=0, repr=False)
     _error_count: int = field(default=0, repr=False)
-    _lock: Any = field(default_factory=threading.RLock, repr=False, compare=False)
+    _lock: 'threading.RLock' = field(default_factory=threading.RLock, repr=False, compare=False)
 
     def __post_init__(self):
         if not isinstance(self.trace_id, str) or not _TRACE_ID_RE.match(self.trace_id):

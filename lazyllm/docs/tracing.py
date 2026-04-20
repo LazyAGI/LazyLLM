@@ -149,9 +149,10 @@ add_chinese_doc_trace('enable_trace', '''\
 Args:
     func: 目标函数、flow 或 module。若省略，则返回 decorator。
     *args: 传递给目标对象的位置参数。
-    **kwargs: tracing 配置与目标对象的关键字参数。支持 ``trace_id``、
-        ``parent_span_id``、``session_id``、``user_id``、``request_tags``、
-        ``module_trace`` 等 tracing 参数。
+    **kwargs: tracing 配置与目标对象的关键字参数。支持的 tracing 专用参数包括
+        ``trace_id``、``parent_span_id``、``session_id``、``user_id``、
+        ``request_tags``、``module_trace`` 等。**注意**: 这些 tracing 专用参数会在
+        构造上下文后被内部剥离，不会随剩余 ``kwargs`` 再传递给 ``func``。
 
 Returns:
     Any: 目标对象执行后的返回值；若用作 decorator 工厂，则返回 decorator。
@@ -173,8 +174,10 @@ Args:
     func: The target function, flow, or module. When omitted, a decorator is returned.
     *args: Positional arguments passed to the target object.
     **kwargs: Tracing configuration and keyword arguments for the target object. Supported
-        tracing keys include ``trace_id``, ``parent_span_id``, ``session_id``, ``user_id``,
-        ``request_tags``, and ``module_trace``.
+        tracing-specific keys include ``trace_id``, ``parent_span_id``, ``session_id``,
+        ``user_id``, ``request_tags``, and ``module_trace``. **Note**: these tracing-specific
+        keys are consumed while constructing the trace context and are *not* forwarded to
+        ``func`` together with the remaining ``kwargs``.
 
 Returns:
     Any: The result of the target call, or a decorator when used in decorator-factory mode.
@@ -377,10 +380,10 @@ Returns:
 
 # ============= TracingBackend
 
-add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.backends.base)
-add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tracing.backends.base)
+add_chinese_doc_backend_base = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.backends.base)
+add_english_doc_backend_base = functools.partial(utils.add_english_doc, module=lazyllm.tracing.backends.base)
 
-add_chinese_doc('TracingBackend', '''\
+add_chinese_doc_backend_base('TracingBackend', '''\
 追踪后端的抽象基类，定义了将 LazyLLM 追踪数据导出至外部可观测平台所需的接口。
 
 子类需要实现所有抽象方法，以适配具体的可观测后端（如 Langfuse、Jaeger 等）。
@@ -388,7 +391,7 @@ add_chinese_doc('TracingBackend', '''\
 **注意**: 此类是抽象基类，不能直接实例化。
 ''')
 
-add_english_doc('TracingBackend', '''\
+add_english_doc_backend_base('TracingBackend', '''\
 Abstract base class for tracing backends, defining the interface required to export
 LazyLLM tracing data to external observability platforms.
 
@@ -398,7 +401,7 @@ backend (e.g. Langfuse, Jaeger, etc.).
 **Note**: This class is an abstract base class and cannot be instantiated directly.
 ''')
 
-add_chinese_doc('TracingBackend.build_exporter', '''\
+add_chinese_doc_backend_base('TracingBackend.build_exporter', '''\
 构建并返回一个 OpenTelemetry SpanExporter 实例，用于将 Span 数据发送至目标后端。
 
 Returns:
@@ -408,7 +411,7 @@ Raises:
     RuntimeError: 当必要的后端配置缺失时抛出。
 ''')
 
-add_english_doc('TracingBackend.build_exporter', '''\
+add_english_doc_backend_base('TracingBackend.build_exporter', '''\
 Build and return an OpenTelemetry SpanExporter instance for sending span data to
 the target backend.
 
@@ -419,25 +422,38 @@ Raises:
     RuntimeError: If required backend configuration is missing.
 ''')
 
-add_chinese_doc('TracingBackend.map_attributes', '''\
-将 runtime 统一生成的通用 OTel 属性映射为后端专属的 Span 属性。
+add_chinese_doc_backend_base('TracingBackend.map_attributes', '''\
+将 runtime 统一生成的通用 OTel 属性映射为后端专属的附加 Span 属性。
+
+**契约说明**: 返回的字典仅应包含 backend 需要额外写入到 OTel span 的键值对；通用的 ``lazyllm.*``
+属性已由 runtime 在调用本方法之前写入 span，子类不需要原样回传。返回的属性会被直接
+``set_attribute`` 到底层 OTel span 上，后端若不需要额外映射可返回空字典。
 
 Args:
-    otel_attrs (Dict[str, Any]): runtime 在 ``finish_span`` 阶段构建出的通用 OTel 属性字典。
+    otel_attrs (Dict[str, Any]): runtime 在 ``finish_span`` 阶段构建出的通用 OTel 属性字典（只读）。
 
 Returns:
-    Dict[str, Any]: 后端特定的 Span 属性字典。
+    Dict[str, Any]: 需要附加到 OTel span 上的后端专属属性字典。
 ''')
 
-add_english_doc('TracingBackend.map_attributes', '''\
-Map the generic OTel attributes built by the runtime into backend-specific span attributes.
+add_english_doc_backend_base('TracingBackend.map_attributes', '''\
+Map the generic OTel attributes built by the runtime into backend-specific additional span
+attributes.
+
+**Contract**: The returned dict must contain only the key/value pairs that the backend wants
+to attach *in addition* to the generic ``lazyllm.*`` attributes. The runtime already writes
+those generic attributes onto the span before invoking this method, so subclasses do not
+need to echo them back. Returned attributes are written directly via ``set_attribute`` on
+the underlying OTel span. Backends that do not need any extra mapping should return an
+empty dict.
 
 Args:
     otel_attrs (Dict[str, Any]): The generic OTel attributes constructed by the runtime during
-        ``finish_span``.
+        ``finish_span`` (treated as read-only).
 
 Returns:
-    Dict[str, Any]: A dictionary of backend-specific span attributes.
+    Dict[str, Any]: Backend-specific span attributes that should be attached on top of the
+    generic attributes.
 ''')
 
 # ============= LangfuseBackend

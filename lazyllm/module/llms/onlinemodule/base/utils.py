@@ -87,12 +87,11 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def series(self):
         return self.__class__._model_series
 
-    @staticmethod
-    def _trace_attr_value(obj, attr):
+    def _trace_attr_value(self, attr):
         try:
-            value = getattr(obj, attr, None)
+            value = getattr(self, attr, None)
         except Exception as exc:
-            LOG.warning(f'Reading attr {attr!r} on {type(obj).__name__} for trace metadata failed: {exc}')
+            LOG.warning(f'Reading attr {attr!r} on {type(self).__name__} for trace metadata failed: {exc}')
             return None
         return value if value is not None and value != '' else None
 
@@ -109,7 +108,7 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         )
         for key, attrs in attr_groups:
             for attr in attrs:
-                value = self._trace_attr_value(self, attr)
+                value = self._trace_attr_value(attr)
                 if value is not None:
                     metadata[key] = value
                     break
@@ -143,14 +142,11 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def __trace_kwargs__(self):
         return self._collect_trace_kwargs()
 
-    def _build_trace_metadata(self, **overrides):
-        return self._collect_trace_kwargs(**overrides)
-
     def _record_trace_metadata(self, **overrides):
         trace = current_trace()
         if trace is None:
             return
-        metadata = self._build_trace_metadata(**overrides)
+        metadata = self._collect_trace_kwargs(**overrides)
         if metadata:
             trace.update_metadata(metadata)
 

@@ -50,20 +50,40 @@ def get_default_module_trace_config() -> dict:
         }
 
 
+_MISSING = object()
+
+
+def _module_class_names(module_class):
+    if module_class is None:
+        return ()
+    if isinstance(module_class, type):
+        return tuple(cls.__name__ for cls in module_class.mro())
+    return (str(module_class),)
+
+
+def _lookup_in_config(cfg, *, module_name, module_class, default=_MISSING):
+    if not isinstance(cfg, dict):
+        return default
+
+    by_name = cfg.get('by_name')
+    if module_name and isinstance(by_name, dict) and module_name in by_name:
+        return by_name[module_name]
+
+    by_class = cfg.get('by_class')
+    if isinstance(by_class, dict):
+        for class_name in _module_class_names(module_class):
+            if class_name in by_class:
+                return by_class[class_name]
+
+    return default
+
+
 def resolve_default_module_trace(*, module_name=None, module_class=None) -> bool:
     with _module_trace_config_lock:
-        by_name = _module_trace_config.get('by_name')
-        if module_name and isinstance(by_name, dict) and module_name in by_name:
-            return by_name[module_name]
-
-        by_class = _module_trace_config.get('by_class')
-        if module_class and isinstance(by_class, dict):
-            class_names = ([cls.__name__ for cls in module_class.mro()] if isinstance(module_class, type)
-                           else [str(module_class)])
-            for class_name in class_names:
-                if class_name in by_class:
-                    return by_class[class_name]
-
+        hit = _lookup_in_config(
+            _module_trace_config, module_name=module_name, module_class=module_class)
+        if hit is not _MISSING:
+            return hit
         return _module_trace_config.get('default', DEFAULT_MODULE_TRACE_CONFIG['default'])
 
 
@@ -73,19 +93,5 @@ def resolve_runtime_module_trace_disabled(override, *, module_name=None, module_
     Runtime override is single-directional: only explicit False in `by_name` / `by_class`
     turns tracing off. It never re-enables a module that the registry/default has disabled.
     '''
-    if not isinstance(override, dict):
-        return False
-
-    by_name = override.get('by_name')
-    if module_name and isinstance(by_name, dict) and by_name.get(module_name) is False:
-        return True
-
-    by_class = override.get('by_class')
-    if module_class and isinstance(by_class, dict):
-        class_names = ([cls.__name__ for cls in module_class.mro()] if isinstance(module_class, type)
-                       else [str(module_class)])
-        for class_name in class_names:
-            if by_class.get(class_name) is False:
-                return True
-
-    return False
+    hit = _lookup_in_config(override, module_name=module_name, module_class=module_class)
+    return hit is False

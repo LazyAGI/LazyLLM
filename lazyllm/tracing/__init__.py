@@ -39,6 +39,9 @@ _SUBMOD_MAP = {
     'backends.base': [
         'TracingBackend',
     ],
+    'semantics': [
+        'SemanticType',
+    ],
 }
 _SUBMOD_MAP_REVERSE = {sym: mod for mod, syms in _SUBMOD_MAP.items() for sym in syms}
 __all__ = [sym for syms in _SUBMOD_MAP.values() for sym in syms]

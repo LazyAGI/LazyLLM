@@ -46,7 +46,7 @@ class LazyTracingHook(LazyLLMHook):
         set_span_output(self._span, output)
         module_id = getattr(self._obj, '_module_id', None)
         if module_id:
-            usage = globals['usage'].get(module_id)
+            usage = (globals.get('usage') or {}).get(module_id)
             if usage:
                 set_span_usage(self._span, usage)
         if hasattr(self._obj, '__trace_output_attrs__'):
