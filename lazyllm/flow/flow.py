@@ -62,6 +62,8 @@ def _is_function(f):
 
 _thread_local = threading.local()
 _async_var = ContextVar('lazyllm.flow_stack')
+_switch_trace_matched_stack: ContextVar = ContextVar('lazyllm.switch.trace_matched_stack', default=None)
+_ifs_trace_matched_stack: ContextVar = ContextVar('lazyllm.ifs.trace_matched_stack', default=None)
 
 def _get_flow_stack():
     if events._get_running_loop() is not None:
@@ -712,9 +714,10 @@ class Switch(LazyLLMFlowsBase):
         return d
 
     def __trace_output_attrs__(self, output):
-        matched = getattr(self, '_trace_matched', None)
-        if matched:
-            self._trace_matched = None
+        stack = _switch_trace_matched_stack.get()
+        if stack:
+            matched = stack[-1]
+            _switch_trace_matched_stack.set(stack[:-1] or None)
             return {f'lazyllm.matched.{k}': v for k, v in matched.items()}
         return {}
 
@@ -737,7 +740,9 @@ class Switch(LazyLLMFlowsBase):
                 alias = self._item_names[idx] if self._item_names and idx < len(self._item_names) else None
                 actual = getattr(self._items[idx], '__name__', None) or type(self._items[idx]).__name__
                 branch = f'{alias} -> {actual}' if alias and alias != actual else actual
-                self._trace_matched = {'index': idx, 'condition': str(cond), 'branch': branch}
+                matched = {'index': idx, 'condition': str(cond), 'branch': branch}
+                current = _switch_trace_matched_stack.get() or []
+                _switch_trace_matched_stack.set(current + [matched])
                 return self.invoke(self._items[idx], __input, **kw)
 
     class Case:
@@ -777,13 +782,16 @@ class IFS(LazyLLMFlowsBase):
         chosen = tpath if flag else fpath
         branch_label = 'true_path' if flag else 'false_path'
         name = getattr(chosen, '__name__', None) or type(chosen).__name__
-        self._trace_matched = {'branch': branch_label, 'chosen_node': name, 'condition_result': bool(flag)}
+        matched = {'branch': branch_label, 'chosen_node': name, 'condition_result': bool(flag)}
+        current = _ifs_trace_matched_stack.get() or []
+        _ifs_trace_matched_stack.set(current + [matched])
         return self.invoke(chosen, __input, **kw)
 
     def __trace_output_attrs__(self, output):
-        matched = getattr(self, '_trace_matched', None)
-        if matched:
-            self._trace_matched = None
+        stack = _ifs_trace_matched_stack.get()
+        if stack:
+            matched = stack[-1]
+            _ifs_trace_matched_stack.set(stack[:-1] or None)
             return {f'lazyllm.matched.{k}': v for k, v in matched.items()}
         return {}
 

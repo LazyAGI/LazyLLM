@@ -162,8 +162,8 @@ class TracingRuntime:
                 trace_kwargs = target.__trace_kwargs__
                 if isinstance(trace_kwargs, dict):
                     span.config = dict(trace_kwargs)
-        except Exception:
-            pass
+        except Exception as exc:
+            LOG.warning(f'Failed to read __trace_kwargs__ on {target.__class__.__name__}: {exc}')
 
         semantic_type = getattr(target, '__semantic_type__', None)
         if semantic_type is None and span.span_kind == 'flow':
@@ -195,31 +195,33 @@ class TracingRuntime:
         is_reconstructed = False
         if is_root_span and ctx.trace_id and ctx.parent_span_id:
             try:
+                trace_flags_value = 0x00 if ctx.sampled is False else 0x01
                 parent_sc = opentelemetry.trace.SpanContext(
                     trace_id=int(ctx.trace_id, 16),
                     span_id=int(ctx.parent_span_id, 16),
                     is_remote=False,
-                    trace_flags=opentelemetry.trace.TraceFlags(0x01),
+                    trace_flags=opentelemetry.trace.TraceFlags(trace_flags_value),
                 )
                 parent_context = opentelemetry.trace.set_span_in_context(
                     opentelemetry.trace.NonRecordingSpan(parent_sc)
                 )
                 is_root_span = False
                 is_reconstructed = True
-            except Exception:
-                pass
+            except (ValueError, TypeError) as exc:
+                LOG.warning(
+                    f'Failed to reconstruct parent SpanContext '
+                    f'(trace_id={ctx.trace_id!r}, parent_span_id={ctx.parent_span_id!r}): {exc}'
+                )
 
-        # Create OTel span (timing + nesting only, no attributes yet)
         span_cm = self._tracer.start_as_current_span(span_name, context=parent_context)
         otel_span = span_cm.__enter__()
         span_context = otel_span.get_span_context()
         trace_id_hex = f'{span_context.trace_id:032x}'
         span_id_hex = f'{span_context.span_id:016x}'
 
-        if not is_reconstructed:
-            ctx.trace_id = trace_id_hex
-            ctx.parent_span_id = span_id_hex
-            set_trace_context(ctx)
+        ctx.trace_id = trace_id_hex
+        ctx.parent_span_id = span_id_hex
+        set_trace_context(ctx)
 
         lazy_span = LazySpan(
             name=span_name,
@@ -453,35 +455,23 @@ def set_span_error(handle, exc: Exception):
 def finish_span(handle):
     _runtime.finish_span(handle)
 
-def enable_trace(func=None, *args, **kwargs):
-    '''
-    Explicitly enable and configure tracing for a pipeline or function.
-    Can be used as a wrapper or a decorator.
+_TRACE_CONFIG_KEYS = (
+    'trace_id', 'parent_span_id', 'session_id', 'user_id', 'request_tags', 'module_trace',
+)
 
-    Usage as a wrapper:
-        enable_trace(pipeline, input_data, trace_id='123', session_id='abc')
 
-    Usage as a decorator:
-        @enable_trace(session_id='abc')
-        def my_flow(query):
-            ...
-    '''
-    if func is None:
-        def decorator(f):
-            @functools.wraps(f)
-            def wrapper(*inner_args, **inner_kwargs):
-                # Trace kwargs are captured in the outer `kwargs` closure
-                merged_kwargs = {**inner_kwargs, **kwargs}
-                return enable_trace(f, *inner_args, **merged_kwargs)
-            return wrapper
-        return decorator
+def _extract_trace_config(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    '''Strip tracing-only kwargs from ``kwargs`` so they never reach the target callable.'''
+    return {k: kwargs.pop(k) for k in list(kwargs) if k in _TRACE_CONFIG_KEYS}
 
-    trace_id = kwargs.pop('trace_id', None)
-    parent_span_id = kwargs.pop('parent_span_id', None)
-    session_id = kwargs.pop('session_id', None)
-    user_id = kwargs.pop('user_id', None)
-    request_tags = kwargs.pop('request_tags', None)
-    module_trace = kwargs.pop('module_trace', None)
+
+def _run_with_trace(func, args, kwargs, trace_config):
+    trace_id = trace_config.get('trace_id')
+    parent_span_id = trace_config.get('parent_span_id')
+    session_id = trace_config.get('session_id')
+    user_id = trace_config.get('user_id')
+    request_tags = trace_config.get('request_tags')
+    module_trace = trace_config.get('module_trace')
 
     old_ctx = get_trace_context()
     new_ctx_data = old_ctx.to_dict()
@@ -495,10 +485,8 @@ def enable_trace(func=None, *args, **kwargs):
     if user_id is not None:
         new_ctx_data['user_id'] = user_id
 
-    # Request-specific fields should not be inherited implicitly.
     new_ctx_data['request_tags'] = request_tags if request_tags is not None else []
-    new_ctx_data['module_trace'] = module_trace if module_trace is not None else None
-
+    new_ctx_data['module_trace'] = module_trace
     new_ctx_data['enabled'] = True
 
     new_ctx = LazyTraceContext.from_dict(new_ctx_data)
@@ -523,3 +511,40 @@ def enable_trace(func=None, *args, **kwargs):
         if span:
             finish_span(span)
         set_trace_context(old_ctx)
+
+
+def enable_trace(func=None, *args, **kwargs):
+    '''
+    Explicitly enable and configure tracing for a pipeline or function.
+    Can be used as a wrapper or a decorator.
+
+    Tracing-configuration kwargs (``trace_id``, ``parent_span_id``, ``session_id``,
+    ``user_id``, ``request_tags``, ``module_trace``) are consumed by ``enable_trace``
+    itself and are never forwarded to ``func``. If ``func`` needs a parameter with
+    the same name, pass it positionally or rename it on the callable.
+
+    Usage as a wrapper:
+        enable_trace(pipeline, input_data, trace_id='123', session_id='abc')
+
+    Usage as a decorator:
+        @enable_trace(session_id='abc')
+        def my_flow(query):
+            ...
+    '''
+    if func is None:
+        trace_config = _extract_trace_config(kwargs)
+        if kwargs:
+            raise TypeError(
+                f'enable_trace() got unexpected keyword arguments: {sorted(kwargs)}. '
+                f'Only tracing-configuration kwargs {list(_TRACE_CONFIG_KEYS)} are accepted here.'
+            )
+
+        def decorator(f):
+            @functools.wraps(f)
+            def wrapper(*inner_args, **inner_kwargs):
+                return _run_with_trace(f, inner_args, inner_kwargs, trace_config)
+            return wrapper
+        return decorator
+
+    trace_config = _extract_trace_config(kwargs)
+    return _run_with_trace(func, args, kwargs, trace_config)

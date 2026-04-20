@@ -139,10 +139,15 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         if tools: params['tools'] = tools
         data = self._prompt.generate_prompt(**params)
         data.update(self._static_params, **dict(model=runtime_model, stream=bool(stream_output)))
-        self._record_trace_metadata(model=runtime_model, base_url=runtime_url, stream=bool(stream_output))
 
         if len(kw) > 0: data.update(kw)
         if len(self._model_optional_params) > 0: data.update(self._model_optional_params)
+
+        self._record_trace_metadata(
+            model=data.get('model', runtime_model),
+            base_url=runtime_url,
+            stream=bool(stream_output),
+        )
 
         if self.type == 'VLM' and (files or self._vlm_force_format_input_with_files):
             data['messages'][-1]['content'] = self._format_input_with_files(data['messages'][-1]['content'], files)

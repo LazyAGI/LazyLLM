@@ -39,8 +39,7 @@ class Reranker(ModuleBase, _PostProcess):
 
     @property
     def __trace_kwargs__(self):
-        d = {'name': self._name, 'output_format': self._output_format,
-             'join': self._join if self._join is False else True}
+        d = {'name': self._name, 'output_format': self._output_format, 'join': self._join}
         d.update(self._kwargs)
         return d
 

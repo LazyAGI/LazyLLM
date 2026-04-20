@@ -52,15 +52,19 @@ def get_default_module_trace_config() -> dict:
 
 def resolve_default_module_trace(*, module_name=None, module_class=None) -> bool:
     with _module_trace_config_lock:
-        if module_name and module_name in _module_trace_config['by_name']:
-            return _module_trace_config['by_name'][module_name]
-        if module_class:
+        by_name = _module_trace_config.get('by_name')
+        if module_name and isinstance(by_name, dict) and module_name in by_name:
+            return by_name[module_name]
+
+        by_class = _module_trace_config.get('by_class')
+        if module_class and isinstance(by_class, dict):
             class_names = ([cls.__name__ for cls in module_class.mro()] if isinstance(module_class, type)
                            else [str(module_class)])
             for class_name in class_names:
-                if class_name in _module_trace_config['by_class']:
-                    return _module_trace_config['by_class'][class_name]
-        return _module_trace_config['default']
+                if class_name in by_class:
+                    return by_class[class_name]
+
+        return _module_trace_config.get('default', DEFAULT_MODULE_TRACE_CONFIG['default'])
 
 
 def resolve_runtime_module_trace_disabled(override, *, module_name=None, module_class=None) -> bool:
