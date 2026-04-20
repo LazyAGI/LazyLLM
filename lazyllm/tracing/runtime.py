@@ -14,7 +14,6 @@ from .span import LazySpan, LazyTrace
 
 
 _TRACE_SERVICE_NAME = 'lazyllm'
-_in_reconstructed_thread = contextvars.ContextVar('_lazyllm_tracing_reconstructed', default=False)
 _current_trace: 'contextvars.ContextVar[Optional[LazyTrace]]' = contextvars.ContextVar(
     '_lazyllm_current_trace', default=None)
 
@@ -193,6 +192,7 @@ class TracingRuntime:
         is_root_span = not current.get_span_context().is_valid
 
         parent_context = None
+        is_reconstructed = False
         if is_root_span and ctx.trace_id and ctx.parent_span_id:
             try:
                 parent_sc = opentelemetry.trace.SpanContext(
@@ -205,7 +205,7 @@ class TracingRuntime:
                     opentelemetry.trace.NonRecordingSpan(parent_sc)
                 )
                 is_root_span = False
-                _in_reconstructed_thread.set(True)
+                is_reconstructed = True
             except Exception:
                 pass
 
@@ -216,7 +216,7 @@ class TracingRuntime:
         trace_id_hex = f'{span_context.trace_id:032x}'
         span_id_hex = f'{span_context.span_id:016x}'
 
-        if not _in_reconstructed_thread.get(False):
+        if not is_reconstructed:
             ctx.trace_id = trace_id_hex
             ctx.parent_span_id = span_id_hex
             set_trace_context(ctx)
@@ -225,6 +225,7 @@ class TracingRuntime:
             name=span_name,
             span_kind=span_kind,
             is_root_span=is_root_span,
+            is_reconstructed=is_reconstructed,
             trace_id=trace_id_hex,
             span_id=span_id_hex,
             parent_span_id=pre_parent_span_id,
@@ -251,7 +252,7 @@ class TracingRuntime:
                 session_id=ctx.session_id,
                 user_id=ctx.user_id,
                 request_tags=list(ctx.request_tags) if ctx.request_tags else [],
-                is_reconstructed=_in_reconstructed_thread.get(False),
+                is_reconstructed=is_reconstructed,
             )
             _current_trace.set(new_trace)
             lazy_span._owns_lazy_trace = True
