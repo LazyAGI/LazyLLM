@@ -17,7 +17,6 @@ _CLOUD_BASE = 'https://api.atlassian.com/ex/confluence'
 
 
 class ConfluenceFS(LazyLLMFSBase):
-    _fs_protocol_key = 'confluence'
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  email: Optional[str] = None, cloud: bool = True,

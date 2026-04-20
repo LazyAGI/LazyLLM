@@ -64,7 +64,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
         if isleaf:
             if not name.lower().endswith('fs'):
                 raise ValueError(f'Class name {name} must follow the schema of <SupplierType>FS, like <GoogleDriveFS>')
-            cls.protocol = name[:-3].lower()
+            cls.protocol = cls._fs_protocol_key = name[:-2].lower()
 
     def close(self) -> None:
         self._session.close()
@@ -182,7 +182,7 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
     def _dynamic_token(self) -> str:
         from lazyllm.common import globals as _globals
         cfg = _globals['config'].get('dynamic_fs_auth') or {}
-        # prefer _fs_protocol_key (human-readable path prefix) over self.protocol (registry-derived)
+        # _fs_protocol_key is set by __lazyllm_after_registry_hook__ and equals self.protocol
         key = getattr(self, '_fs_protocol_key', None) or self.protocol
         return cfg.get(key, '')
 

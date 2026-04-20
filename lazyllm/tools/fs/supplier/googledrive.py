@@ -20,7 +20,6 @@ _SA_TOKEN_BUFFER = 300  # refresh 5 min before expiry
 
 
 class GoogleDriveFS(LazyLLMFSBase):
-    _fs_protocol_key = 'googledrive'
 
     def __init__(
         self,

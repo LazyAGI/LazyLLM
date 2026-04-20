@@ -11,7 +11,6 @@ _CLOUD_BASE = 'https://ones.ai/project/api/project'
 
 
 class OnesFS(LazyLLMFSBase):
-    _fs_protocol_key = 'ones'
 
     def __init__(
         self,

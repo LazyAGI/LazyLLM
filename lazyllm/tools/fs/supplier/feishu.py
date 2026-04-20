@@ -213,7 +213,6 @@ def _feishu_refresh_user_token(
 
 class FeishuFSBase(LazyLLMFSBase):
     __lazyllm_registry_disable__ = True
-    _fs_protocol_key = 'feishu'
 
     def __init__(self, base_url: Optional[str] = None, app_id: Optional[str] = None, app_secret: Optional[str] = None,
                  space_id: Optional[str] = None, user_refresh_token: Optional[str] = None,

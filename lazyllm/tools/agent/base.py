@@ -40,7 +40,6 @@ class LazyLLMAgentBase(ModuleBase):
         self._agent = None
         self._skill_manager = None
         self._sandbox = sandbox or create_sandbox()
-        self._fs = fs
 
         if use_skills:
             self._skill_manager = SkillManager(skills=self._skills, fs=fs)

@@ -12,7 +12,6 @@ config.add('obsidian_vault_path', str, None, 'OBSIDIAN_VAULT_PATH', description=
 
 
 class ObsidianFS(LazyLLMFSBase):
-    _fs_protocol_key = 'obsidian'
 
     def __init__(
         self,

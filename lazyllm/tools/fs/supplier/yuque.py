@@ -14,7 +14,6 @@ _API_BASE = 'https://www.yuque.com/api/v2'
 
 
 class YuqueFS(LazyLLMFSBase):
-    _fs_protocol_key = 'yuque'
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  auth: str = 'static', **storage_options):

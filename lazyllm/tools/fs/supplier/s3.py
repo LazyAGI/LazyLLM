@@ -18,7 +18,6 @@ except ImportError:
 
 
 class S3FS(LazyLLMFSBase):
-    _fs_protocol_key = 's3'
 
     def __init__(self, token: str = '', base_url: Optional[str] = None,
                  access_key: Optional[str] = None,

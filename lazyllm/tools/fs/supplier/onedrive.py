@@ -20,7 +20,6 @@ _TOKEN_REFRESH_BUFFER = 300  # refresh 5 min before expiry
 
 
 class OneDriveFS(LazyLLMFSBase):
-    _fs_protocol_key = 'onedrive'
 
     def __init__(
         self,

@@ -15,7 +15,6 @@ _NOTION_VERSION = '2022-06-28'
 
 
 class NotionFS(LazyLLMFSBase):
-    _fs_protocol_key = 'notion'
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  auth: str = 'static', **storage_options):

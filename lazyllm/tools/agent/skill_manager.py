@@ -5,7 +5,8 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import yaml
 
-from lazyllm import config, ModuleBase, thirdparty
+from lazyllm import config, ModuleBase
+from lazyllm.thirdparty import fsspec
 from .file_tool import read_file as _read_file
 from .shell_tool import shell_tool as _shell_tool
 
@@ -76,15 +77,11 @@ _META_REQUIRED_FIELDS = {
 }
 
 
-def _local_fs():
-    return thirdparty.fsspec.implementations.local.LocalFileSystem()
-
-
 class SkillManager(ModuleBase):
     def __init__(self, dir: Optional[str] = None, skills: Optional[Iterable[str]] = None,
                  max_skill_md_bytes: Optional[int] = None, fs=None):
         super().__init__(return_trace=False)
-        self._fs = fs or _local_fs()
+        self._fs = fs or fsspec.implementations.local.LocalFileSystem()
         self._is_local = fs is None
         self._skills_dir = self._parse_dirs(dir) if dir else (
             self._parse_dirs(config['skills_dir']) if self._is_local else []
