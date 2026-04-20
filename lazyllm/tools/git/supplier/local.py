@@ -21,6 +21,23 @@ def _git(args: List[str], cwd: str, timeout: int = 30) -> str:
 
 
 class LocalGit(LazyLLMGitBase):
+    # Git backend for local repositories. Produces a diff by running
+    #   git diff $(git merge-base <base> HEAD) [HEAD]
+    # so only changes introduced by the current branch are reviewed —
+    # commits already present on <base> are excluded.
+    #
+    # Unlike cloud backends (GitHub/GitLab/…), LocalGit:
+    #   - requires no token or network access
+    #   - does not support posting review comments back to a PR
+    #   - uses the local working tree as the "clone dir" for file-skeleton extraction
+    #
+    # Args:
+    #   repo_path:           path to the local git repository (default: current directory)
+    #   base:                branch/commit to diff against (default: 'main')
+    #   include_uncommitted: when True (default), staged and working-tree changes are
+    #                        included via `git diff <merge-base>`; when False, only
+    #                        committed changes are included via `git diff <merge-base> HEAD`
+    #   return_trace:        passed through to LazyLLMGitBase for debug tracing
     def __init__(self, repo_path: str = '.', base: str = 'main',
                  include_uncommitted: bool = True, return_trace: bool = False):
         super().__init__(token='', repo='', api_base='', return_trace=return_trace)
@@ -30,6 +47,7 @@ class LocalGit(LazyLLMGitBase):
 
     @property
     def local_repo_path(self) -> str:
+        # Absolute path to the local repository root.
         return self._repo_path
 
     def _merge_base(self) -> str:
