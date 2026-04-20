@@ -327,7 +327,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         if '_bind_args_source' not in kw:
             return kw
         bind_args_source = kw.get('_bind_args_source') or {}
-        return bind_args_source.pop('kwargs', None)
+        return bind_args_source.get('kwargs')
 
     def _build_invoke_error_message(self, it, pos, __input, kw, error):
         return (
@@ -548,7 +548,7 @@ class Parallel(LazyLLMFlowsBase):
 
     @property
     def __trace_kwargs__(self):
-        d = super().__trace_kwargs__
+        d = dict(super().__trace_kwargs__)
         d['scatter'] = self._scatter
         d['concurrent'] = self._concurrent
         d['aggregation'] = self._post_process_type.name.lower()
@@ -713,7 +713,7 @@ class Switch(LazyLLMFlowsBase):
 
     @property
     def __trace_kwargs__(self):
-        d = super().__trace_kwargs__
+        d = dict(super().__trace_kwargs__)
         d['conditions'] = [str(c) for c in self.conds]
         d['judge_on_full_input'] = self._judge_on_full_input
         return d
@@ -804,7 +804,7 @@ class Loop(Pipeline):
 
     @property
     def __trace_kwargs__(self):
-        d = super().__trace_kwargs__
+        d = dict(super().__trace_kwargs__)
         d['max_loop_count'] = self._loop_count if self._loop_count != sys.maxsize else 'unlimited'
         d['has_stop_condition'] = self._stop_condition is not None
         d['judge_on_full_input'] = self._judge_on_full_input

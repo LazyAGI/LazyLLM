@@ -8,6 +8,8 @@ from lazyllm.common import LOG
 
 _TRACE_ID_RE = re.compile(r'^[0-9a-f]{32}$')
 _SPAN_ID_RE = re.compile(r'^[0-9a-f]{16}$')
+_VALID_SPAN_KINDS = frozenset({'flow', 'module', 'callable'})
+_VALID_SPAN_STATUS = frozenset({'ok', 'error'})
 
 
 @dataclass
@@ -46,12 +48,28 @@ class LazySpan:
     user_id: Optional[str] = None
     request_tags: List[str] = field(default_factory=list)
 
-    # --- OTel handles (internal, not part of the semantic model) ---
-    _otel_span: Any = field(default=None, repr=False)
-    _otel_span_cm: Any = field(default=None, repr=False)
+    # Internal runtime handles; populated by TracingRuntime after __init__.
+    _otel_span: Any = field(default=None, init=False, repr=False, compare=False)
+    _otel_span_cm: Any = field(default=None, init=False, repr=False, compare=False)
+    _owns_lazy_trace: bool = field(default=False, init=False, repr=False, compare=False)
 
-    # --- LazyTrace linkage (internal, set by runtime when this span owns the trace) ---
-    _owns_lazy_trace: bool = field(default=False, repr=False)
+    def __post_init__(self):
+        if self.span_kind and self.span_kind not in _VALID_SPAN_KINDS:
+            raise ValueError(
+                f'LazySpan.span_kind must be one of {sorted(_VALID_SPAN_KINDS)}, got {self.span_kind!r}'
+            )
+        if self.status not in _VALID_SPAN_STATUS:
+            raise ValueError(
+                f'LazySpan.status must be one of {sorted(_VALID_SPAN_STATUS)}, got {self.status!r}'
+            )
+        if self.trace_id is not None and not _TRACE_ID_RE.match(self.trace_id):
+            raise ValueError(f'LazySpan.trace_id must be 32-char lowercase hex, got {self.trace_id!r}')
+        if self.span_id is not None and not _SPAN_ID_RE.match(self.span_id):
+            raise ValueError(f'LazySpan.span_id must be 16-char lowercase hex, got {self.span_id!r}')
+        if self.parent_span_id is not None and not _SPAN_ID_RE.match(self.parent_span_id):
+            raise ValueError(
+                f'LazySpan.parent_span_id must be 16-char lowercase hex, got {self.parent_span_id!r}'
+            )
 
 
 @dataclass

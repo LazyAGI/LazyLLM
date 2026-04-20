@@ -57,17 +57,22 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
             trace_meta['model'] = runtime_model
         if trace_meta:
             self._record_trace_metadata(**trace_meta)
-        data = self._encapsulated_data(input, **kwargs)
-        proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-        if isinstance(data, list):
-            return self.run_embed_batch(input, data, proxies, runtime_url, **kwargs)
-        else:
-            with requests.post(runtime_url, json=data, headers=self._header, proxies=proxies,
-                               timeout=self._timeout) as r:
-                if r.status_code == 200:
-                    return self._parse_response(r.json(), input=input)
-                else:
-                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        try:
+            data = self._encapsulated_data(input, **kwargs)
+            proxies = {'http': None, 'https': None} if self.NO_PROXY else None
+            if isinstance(data, list):
+                return self.run_embed_batch(input, data, proxies, runtime_url, **kwargs)
+            else:
+                with requests.post(runtime_url, json=data, headers=self._header, proxies=proxies,
+                                   timeout=self._timeout) as r:
+                    if r.status_code == 200:
+                        return self._parse_response(r.json(), input=input)
+                    else:
+                        raise requests.RequestException(
+                            '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        except Exception as exc:
+            self._record_trace_metadata(request_status='error', error_type=type(exc).__name__)
+            raise
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
         if isinstance(input, str):

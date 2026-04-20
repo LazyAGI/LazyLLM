@@ -235,9 +235,9 @@ class TracingRuntime:
             span_id=span_id_hex,
             parent_span_id=pre_parent_span_id,
             capture_payload=capture_payload,
-            _otel_span=otel_span,
-            _otel_span_cm=span_cm,
         )
+        lazy_span._otel_span = otel_span
+        lazy_span._otel_span_cm = span_cm
 
         self._populate_identity(lazy_span, target)
 
