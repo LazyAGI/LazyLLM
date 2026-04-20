@@ -41,10 +41,10 @@ class ReWOOAgent(LazyLLMAgentBase):
                  return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Union[bool, str, List[str], None] = None, desc: str = '',
                  workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
-                 fs=None):
+                 fs=None, skills_dir: Optional[str] = None):
         super().__init__(llm=llm, tools=tools, return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls, skills=skills, desc=desc,
-                         workspace=workspace, sandbox=sandbox, fs=fs)
+                         workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir)
         if llm is None and plan_llm is None and solve_llm is None:
             raise ValueError('Either specify llm, or provide plan_llm/solve_llm.')
         if llm is None:

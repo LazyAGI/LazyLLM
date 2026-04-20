@@ -25,7 +25,7 @@ class LazyLLMAgentBase(ModuleBase):
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
                  desc: str = '', workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
-                 fs=None):
+                 fs=None, skills_dir: Optional[str] = None):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
         self._llm = llm
@@ -42,7 +42,7 @@ class LazyLLMAgentBase(ModuleBase):
         self._sandbox = sandbox or create_sandbox()
 
         if use_skills:
-            self._skill_manager = SkillManager(skills=self._skills, fs=fs)
+            self._skill_manager = SkillManager(dir=skills_dir, skills=self._skills, fs=fs)
             self._ensure_default_skill_tools()
         self._tools_manager = ToolManager(self._tools, return_trace=return_trace, sandbox=self._sandbox)
 

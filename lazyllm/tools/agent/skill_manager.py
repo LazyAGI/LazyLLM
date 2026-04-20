@@ -181,14 +181,15 @@ class SkillManager(ModuleBase):
                 for entry in entries:
                     name = entry.get('name', '')
                     basename = name.rsplit('/', 1)[-1]
+                    full_path = name if '/' in name else self._fs_join(cur, basename)
                     etype = entry.get('type', 'file')
                     if etype not in ('directory', 'dir'):
                         # Local: match 'SKILL.md'; cloud: match any name starting with CLOUD_SKILL_PREFIX
                         if (self._is_local and basename == 'SKILL.md') or \
                                 (not self._is_local and basename.startswith(CLOUD_SKILL_PREFIX)):
-                            skill_node = name
+                            skill_node = full_path
                     elif etype in ('directory', 'dir'):
-                        subdirs.append(name)
+                        subdirs.append(full_path)
                 if skill_node:
                     yield cur, skill_node
                 else:
