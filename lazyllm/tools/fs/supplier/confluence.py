@@ -20,8 +20,8 @@ class ConfluenceFS(LazyLLMFSBase):
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  email: Optional[str] = None, cloud: bool = True,
-                 cloud_id: Optional[str] = None, auth: str = 'static', **storage_options):
-        if auth == 'dynamic':
+                 cloud_id: Optional[str] = None, dynamic_auth: bool = False, **storage_options):
+        if dynamic_auth:
             token = ''
             email = None
         else:
@@ -39,24 +39,22 @@ class ConfluenceFS(LazyLLMFSBase):
             resolved_base = ''
         else:
             resolved_base = _CLOUD_BASE
-        super().__init__(token=token, base_url=resolved_base, auth=auth, **storage_options)
+        super().__init__(token=token, base_url=resolved_base, dynamic_auth=dynamic_auth, **storage_options)
 
     def _setup_auth(self) -> None:
+        self._session.headers.update({
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        })
+
+    def _get_auth_header(self) -> Optional[Dict[str, str]]:
+        if self._dynamic_auth:
+            token = self._dynamic_token
+            return {'Authorization': f'Bearer {token}'} if token else None
         if self._cloud and self._email:
-            cred = base64.b64encode(
-                f'{self._email}:{self._secret_key}'.encode()
-            ).decode()
-            self._session.headers.update({
-                'Authorization': f'Basic {cred}',
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            })
-        else:
-            self._session.headers.update({
-                'Authorization': f'Bearer {self._secret_key}',
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-            })
+            cred = base64.b64encode(f'{self._email}:{self._secret_key}'.encode()).decode()
+            return {'Authorization': f'Basic {cred}'}
+        return {'Authorization': f'Bearer {self._secret_key}'} if self._secret_key else None
 
     @property
     def _rest(self) -> str:

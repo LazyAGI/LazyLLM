@@ -16,19 +16,22 @@ _API_BASE = 'https://www.yuque.com/api/v2'
 class YuqueFS(LazyLLMFSBase):
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
-                 auth: str = 'static', **storage_options):
-        if auth == 'dynamic':
+                 dynamic_auth: bool = False, **storage_options):
+        if dynamic_auth:
             token = ''
         else:
             token = token or config['yuque_token'] or os.environ.get('YUQUE_TOKEN') or ''
-        super().__init__(token=token, base_url=base_url or _API_BASE, auth=auth, **storage_options)
+        super().__init__(token=token, base_url=base_url or _API_BASE, dynamic_auth=dynamic_auth, **storage_options)
 
     def _setup_auth(self) -> None:
         self._session.headers.update({
-            'X-Auth-Token': self._secret_key,
             'Content-Type': 'application/json',
             'User-Agent': 'lazyllm-fs (https://github.com/LazyAGI/lazyllm)',
         })
+
+    def _get_auth_header(self) -> Optional[Dict[str, str]]:
+        token = self._dynamic_token if self._dynamic_auth else self._secret_key
+        return {'X-Auth-Token': token} if token else None
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         parts = self._parse_path(path)

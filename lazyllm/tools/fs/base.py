@@ -44,12 +44,14 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     def __init__(self, token: Any, base_url: Optional[str] = None, asynchronous: bool = False,
                  use_listings_cache: bool = False, skip_instance_cache: bool = False, loop: Optional[Any] = None,
-                 auth: str = 'static'):
+                 dynamic_auth: bool = False):
         super().__init__(asynchronous=asynchronous, use_listings_cache=use_listings_cache,
                          skip_instance_cache=skip_instance_cache, loop=loop)
-        self._dynamic_auth: bool = (auth == 'dynamic')
+        self._dynamic_auth: bool = dynamic_auth
         # Long-lived credential (string or dict), semantics decided by subclasses.
         self._secret_key: Any = token
+        # Cached short-lived access token (static auth only); not used for dynamic auth.
+        self._access_token: str = ''
         # Expiration timestamp for short-lived access token; None means non-expiring.
         self._token_expire_at: Optional[float] = None
         self._base_url = (base_url or '').rstrip('/')
@@ -61,7 +63,6 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     @staticmethod
     def __lazyllm_after_registry_hook__(cls, group_name: str, name: str, isleaf: bool):
-        print(cls, group_name, name, isleaf)
         if isleaf:
             if not name.lower().endswith('fs'):
                 raise ValueError(f'Class name {name} must follow the schema of <SupplierType>FS, like <GoogleDriveFS>')
@@ -166,13 +167,11 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     def _ensure_token(self) -> None:
         if self._dynamic_auth:
-            token = self._dynamic_token
-            if not token:
+            if not self._dynamic_token:
                 raise ValueError(
                     f'dynamic_fs_auth["{self.protocol}"] is not set in globals.config; '
                     f'use dynamic_fs_config() or set globals.config["dynamic_fs_auth"] before calling FS methods'
                 )
-            self._apply_access_token(token)
             return
         if not self._token_expire_at or time.time() < self._token_expire_at: return
         with self._lock:
@@ -181,16 +180,27 @@ class LazyLLMFSBase(AbstractFileSystem, metaclass=_CloudFSMeta):
 
     @property
     def _dynamic_token(self) -> str:
-        return  globals.config['dynamic_fs_auth'].get(self._fs_protocol_key, '')
+        return globals.config['dynamic_fs_auth'].get(self._fs_protocol_key, '')
 
     def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
         return '', None
 
     def _apply_access_token(self, token: str) -> None:
-        self._session.headers.update({'Authorization': f'Bearer {token}'})
+        self._access_token = token
+
+    def _get_auth_header(self) -> Optional[Dict[str, str]]:
+        if self._dynamic_auth:
+            return {'Authorization': f'Bearer {self._dynamic_token}'}
+        if self._access_token:
+            return {'Authorization': f'Bearer {self._access_token}'}
+        return None
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
         self._ensure_token()
+        auth_header = self._get_auth_header()
+        if auth_header:
+            existing = kwargs.get('headers') or {}
+            kwargs = {**kwargs, 'headers': {**auth_header, **existing}}
         resp = self._session.request(method, url, **kwargs)
         if not resp.ok:
             try:

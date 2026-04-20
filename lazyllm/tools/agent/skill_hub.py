@@ -101,7 +101,7 @@ def _install_from_agentskillhub(slug: str, dest_dir: str, token: Optional[str] =
 # --- GitHub ---
 
 def _install_from_github(spec: str, dest_dir: str, token: Optional[str] = None,
-                          branch: Optional[str] = None) -> str:
+                         branch: Optional[str] = None) -> str:
     # spec: owner/repo  or  owner/repo/path/to/skill
     parts = spec.strip('/').split('/', 2)
     if len(parts) < 2:

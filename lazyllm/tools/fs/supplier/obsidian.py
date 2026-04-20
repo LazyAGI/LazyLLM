@@ -21,7 +21,7 @@ class ObsidianFS(LazyLLMFSBase):
         use_listings_cache: bool = False,
         skip_instance_cache: bool = False,
         loop: Optional[Any] = None,
-        auth: str = 'static',
+        dynamic_auth: bool = False,
     ):
         token = token or config['obsidian_vault_path'] or ''
         vault = (token or '').strip() or '.'
@@ -33,7 +33,7 @@ class ObsidianFS(LazyLLMFSBase):
             use_listings_cache=use_listings_cache,
             skip_instance_cache=skip_instance_cache,
             loop=loop,
-            auth=auth,
+            dynamic_auth=dynamic_auth,
         )
 
     def _setup_auth(self) -> None:
