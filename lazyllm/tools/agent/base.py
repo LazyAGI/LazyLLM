@@ -3,7 +3,7 @@ from typing import Iterable, Optional, Union
 
 import lazyllm
 from lazyllm.module import ModuleBase
-from lazyllm import locals, once_wrapper
+from lazyllm import locals, once_wrapper, LOG
 from lazyllm.tracing.runtime import current_trace
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 from .toolsManager import ToolManager
@@ -106,7 +106,8 @@ class LazyLLMAgentBase(ModuleBase):
 
         try:
             trace_kwargs = getattr(llm, '__trace_kwargs__', None)
-        except Exception:
+        except Exception as exc:
+            LOG.warning(f'Reading __trace_kwargs__ on {type(llm).__name__} failed: {exc}')
             trace_kwargs = None
         if isinstance(trace_kwargs, dict):
             metadata.update({k: v for k, v in trace_kwargs.items() if v is not None and v != ''})
@@ -127,8 +128,9 @@ class LazyLLMAgentBase(ModuleBase):
                 continue
             try:
                 value = getattr(llm, attr, None) if attr != '__class__' else llm.__class__.__name__
-            except Exception:
-                value = None
+            except Exception as exc:
+                LOG.warning(f'Reading attr {attr!r} on {type(llm).__name__} failed: {exc}')
+                continue
             if value is not None and value != '':
                 metadata[meta_key] = value
 

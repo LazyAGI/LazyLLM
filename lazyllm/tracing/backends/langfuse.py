@@ -46,7 +46,15 @@ class LangfuseBackend(TracingBackend):
 
         tags = otel_attrs.get('lazyllm.trace.tags')
         if tags:
-            attrs['langfuse.trace.tags'] = json.dumps(tags, ensure_ascii=False)
+            try:
+                attrs['langfuse.trace.tags'] = json.dumps(tags, ensure_ascii=False)
+            except TypeError as exc:
+                LOG.warning(f'Failed to JSON-serialize lazyllm.trace.tags ({type(tags).__name__}): {exc}; '
+                            f'falling back to string coercion.')
+                attrs['langfuse.trace.tags'] = json.dumps(
+                    [str(t) for t in tags] if isinstance(tags, (list, tuple)) else str(tags),
+                    ensure_ascii=False,
+                )
 
         if 'lazyllm.io.input' in otel_attrs:
             attrs['langfuse.trace.input'] = otel_attrs['lazyllm.io.input']

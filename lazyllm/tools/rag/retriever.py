@@ -51,8 +51,15 @@ class _RetrieverBase(ModuleBase):
         attrs = {}
         if nodes and isinstance(nodes, list):
             attrs['lazyllm.output.doc_count'] = len(nodes)
-            scores = [float(n.similarity_score) for n in nodes
-                      if isinstance(n, DocNode) and n.similarity_score is not None]
+            scores = []
+            for n in nodes:
+                if not isinstance(n, DocNode) or n.similarity_score is None:
+                    continue
+                try:
+                    scores.append(float(n.similarity_score))
+                except (TypeError, ValueError) as exc:
+                    LOG.warning(f'Skipping non-numeric similarity_score '
+                                f'{n.similarity_score!r} on DocNode: {exc}')
             if scores:
                 attrs['lazyllm.output.similarity_scores'] = json.dumps(scores)
         return attrs
