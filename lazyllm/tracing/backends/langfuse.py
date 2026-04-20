@@ -5,17 +5,18 @@ from typing import Any, Dict, Optional
 
 from lazyllm.common import LOG
 from lazyllm.thirdparty import opentelemetry
+from ..semantics import SemanticType
 from .base import TracingBackend
 
 
 _SEMANTIC_TO_LANGFUSE_TYPE = {
-    'agent': 'chain',
-    'llm': 'generation',
-    'retriever': 'retriever',
-    'embedding': 'embedding',
-    'tool': 'tool',
-    'rerank': 'span',
-    'workflow_control': 'chain',
+    SemanticType.AGENT: 'chain',
+    SemanticType.LLM: 'generation',
+    SemanticType.RETRIEVER: 'retriever',
+    SemanticType.EMBEDDING: 'embedding',
+    SemanticType.TOOL: 'tool',
+    SemanticType.RERANK: 'span',
+    SemanticType.WORKFLOW_CONTROL: 'chain',
 }
 
 
@@ -112,7 +113,7 @@ class LangfuseBackend(TracingBackend):
             'gen_ai.request.model',
             otel_attrs.get('lazyllm.entity.config.model'),
         )
-        if semantic_type == 'llm' and model:
+        if semantic_type == SemanticType.LLM and model:
             attrs['gen_ai.request.model'] = str(model)
 
         if 'lazyllm.io.input' in otel_attrs:

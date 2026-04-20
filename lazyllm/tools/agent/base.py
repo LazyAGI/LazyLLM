@@ -50,6 +50,8 @@ class LazyLLMAgentBase(ModuleBase):
         self._agent = None
         self._skill_manager = None
         self._sandbox = sandbox or create_sandbox()
+        self._llm_metadata_cache: Optional[dict] = None
+        self._llm_metadata_cache_key: Optional[int] = None
 
         if use_skills:
             self._skill_manager = SkillManager(dir=skills_dir, skills=self._skills, fs=fs)
@@ -148,9 +150,12 @@ class LazyLLMAgentBase(ModuleBase):
         trace = current_trace()
         if trace is None:
             return
-        metadata = self._resolve_llm_metadata()
-        if metadata:
-            trace.update_metadata(metadata)
+        llm_key = id(self._llm) if self._llm is not None else None
+        if self._llm_metadata_cache is None or self._llm_metadata_cache_key != llm_key:
+            self._llm_metadata_cache = self._resolve_llm_metadata()
+            self._llm_metadata_cache_key = llm_key
+        if self._llm_metadata_cache:
+            trace.update_metadata(self._llm_metadata_cache)
 
     def _ensure_default_skill_tools(self):
         builtin_group = getattr(lazyllm, 'builtin_tools', None)

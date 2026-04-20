@@ -10,6 +10,7 @@ from lazyllm.configs import config
 from lazyllm.thirdparty import opentelemetry
 from .backends import get_tracing_backend
 from .context import LazyTraceContext
+from .semantics import SemanticType
 from .span import LazySpan, LazyTrace
 
 
@@ -167,7 +168,7 @@ class TracingRuntime:
 
         semantic_type = getattr(target, '__semantic_type__', None)
         if semantic_type is None and span.span_kind == 'flow':
-            semantic_type = 'workflow_control'
+            semantic_type = SemanticType.WORKFLOW_CONTROL
         span.semantic_type = semantic_type
 
     def start_span(
@@ -372,7 +373,7 @@ class TracingRuntime:
         if span.usage:
             self._set_usage_attrs(attrs, span.usage)
 
-        if span.semantic_type == 'llm' and span.config.get('model'):
+        if span.semantic_type == SemanticType.LLM and span.config.get('model'):
             attrs['gen_ai.request.model'] = str(span.config['model'])
 
         self._set_root_span_attrs(attrs, span)

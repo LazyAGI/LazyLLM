@@ -46,6 +46,8 @@ class _RetrieverBase(ModuleBase):
 
         def __repr__(self): return self.casefold()
 
+    _MAX_TRACED_SCORES = 50
+
     @staticmethod
     def _build_trace_output_attrs(nodes):
         attrs = {}
@@ -61,7 +63,8 @@ class _RetrieverBase(ModuleBase):
                     LOG.warning(f'Skipping non-numeric similarity_score '
                                 f'{n.similarity_score!r} on DocNode: {exc}')
             if scores:
-                attrs['lazyllm.output.similarity_scores'] = json.dumps(scores)
+                attrs['lazyllm.output.similarity_scores'] = json.dumps(
+                    scores[:_RetrieverBase._MAX_TRACED_SCORES])
         return attrs
 
     def __trace_output_attrs__(self, output):
