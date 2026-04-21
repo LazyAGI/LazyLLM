@@ -12,10 +12,10 @@ from lazyllm.components import AlpacaPrompter
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.module import LLMBase
 
-from ..doc_impl import _transmap
 from ..doc_node import DocNode, QADocNode
 from ..prompts import LLMTransformParserPrompts
 from .base import NodeTransform
+from .sentence import SentenceSplitter
 
 def _callable_sig(f: Optional[Callable], name_override: Optional[str] = None) -> str:
     if f is None:
@@ -211,3 +211,6 @@ class LLMParser(NodeTransform):
                 list(filter(None, map(str.strip, input.split('\n'))))[::2],
                 list(filter(None, map(str.strip, input.split('\n'))))[1::2])]
         return input
+
+
+_transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)

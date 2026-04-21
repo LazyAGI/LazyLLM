@@ -11,7 +11,6 @@ from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 from lazyllm.common.bind import _MetaBind
 
 from ._store_config import is_local_map_store, is_persistent_store, iter_embedded_store_endpoints
-from .doc_service import DocServer
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files, SchemaExtractor
@@ -20,6 +19,7 @@ from .store.store_base import DEFAULT_KB_ID
 from .index_base import IndexBase
 from .utils import RAG_DEFAULT_GROUP_NAME, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
+from .doc_service import DocServer
 from .web import DocWebModule
 import copy
 import functools

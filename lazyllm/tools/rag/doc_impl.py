@@ -7,8 +7,8 @@ from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
 from lazyllm import LOG, once_wrapper, config
 from lazyllm.module import LLMBase
-from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
-                        TransformArgs, TransformArgs as TArgs)
+from .transform import (NodeTransform, SentenceSplitter,
+                        TransformArgs, TransformArgs as TArgs, _transmap)
 from .index_base import IndexBase
 from .store import (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, LazyLLMStoreBase)
 from .store.store_base import DEFAULT_KB_ID
@@ -27,8 +27,6 @@ _VERSION_RE = re.compile(
     r'^([0-9]+!)?[0-9]+(\.[0-9]+)*([-_\.]?(a|b|rc|alpha|beta|preview)[0-9]*)?(\.post[0-9]+)?(\.dev[0-9]+)?$',
     re.IGNORECASE,
 )
-
-_transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
 
 def _callable_sig_for_doc_impl(t) -> str:
