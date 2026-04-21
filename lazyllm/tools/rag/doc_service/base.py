@@ -19,6 +19,13 @@ class DocStatus(str, Enum):
     DELETED = 'DELETED'
 
 
+class NodeGroupParseStatus(str, Enum):
+    PENDING = 'PENDING'
+    WORKING = 'WORKING'
+    SUCCESS = 'SUCCESS'
+    FAILED = 'FAILED'
+
+
 class KBStatus(str, Enum):
     ACTIVE = 'ACTIVE'
     DELETING = 'DELETING'
@@ -436,6 +443,29 @@ PARSE_STATE_TABLE_INFO = {
         {'name': 'queued_at', 'data_type': 'datetime', 'nullable': True, 'comment': 'Queued time'},
         {'name': 'started_at', 'data_type': 'datetime', 'nullable': True, 'comment': 'Started time'},
         {'name': 'finished_at', 'data_type': 'datetime', 'nullable': True, 'comment': 'Finished time'},
+        {'name': 'created_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
+         'comment': 'Created time'},
+        {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
+         'comment': 'Updated time'},
+    ],
+}
+
+DOC_NODE_GROUP_STATUS_TABLE_INFO = {
+    'name': 'lazyllm_doc_node_group_status',
+    'comment': 'Per-document per-node-group parse status table',
+    'columns': [
+        {'name': 'id', 'data_type': 'integer', 'nullable': False, 'is_primary_key': True,
+         'comment': 'Auto increment ID'},
+        {'name': 'doc_id', 'data_type': 'string', 'nullable': False, 'comment': 'Document ID'},
+        {'name': 'kb_id', 'data_type': 'string', 'nullable': False, 'comment': 'Knowledge base ID'},
+        {'name': 'algo_id', 'data_type': 'string', 'nullable': False, 'comment': 'Algorithm ID'},
+        {'name': 'node_group_id', 'data_type': 'string', 'nullable': False,
+         'comment': 'Node group ID (FK -> lazyllm_node_group.id)'},
+        {'name': 'file_path', 'data_type': 'string', 'nullable': True,
+         'comment': 'Document file path (cached for reparse without querying store)'},
+        {'name': 'status', 'data_type': 'string', 'nullable': False,
+         'comment': 'PENDING / WORKING / SUCCESS / FAILED'},
+        {'name': 'error_msg', 'data_type': 'string', 'nullable': True, 'comment': 'Error message on failure'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
          'comment': 'Created time'},
         {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,

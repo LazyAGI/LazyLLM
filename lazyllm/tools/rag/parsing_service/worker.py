@@ -13,7 +13,8 @@ from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from ..utils import BaseResponse, _get_default_db_config
 from .base import (
     FINISHED_TASK_QUEUE_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO,
-    TaskStatus, TaskType, ALGORITHM_TABLE_INFO, AddDocRequest, UpdateMetaRequest,
+    TaskStatus, TaskType, ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO,
+    AddDocRequest, UpdateMetaRequest,
     DeleteDocRequest, _calculate_task_score, _resolve_add_doc_task_type
 )
 from .impl import _Processor
@@ -73,8 +74,9 @@ class DocumentProcessorWorker(ModuleBase):
             )
             self._db_manager = SqlManager(
                 **self._db_config,
-                tables_info_dict={'tables': [ALGORITHM_TABLE_INFO]},
+                tables_info_dict={'tables': [ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO]},
             )
+            self._processor_cache_times: dict[str, datetime] = {}  # algo_id -> load time
 
             LOG.info(f'{self._log_prefix()} initialized')
 
@@ -185,31 +187,85 @@ class DocumentProcessorWorker(ModuleBase):
         def _get_or_create_processor(self, algo_id: str) -> _Processor:
             try:
                 self._lazy_init()
-                if algo_id in self._processors:
-                    LOG.debug(f'{self._log_prefix()} Using cached processor for {algo_id}')
-                    return self._processors[algo_id]
-
                 with self._db_manager.get_session() as session:
                     AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
                     algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == algo_id).first()
                     if algorithm is None:
                         raise ValueError(f'Algo id {algo_id} not found')
+                    algo_updated_at = algorithm.updated_at
+                    # Invalidate cache if algo was updated after last load
+                    cached_at = self._processor_cache_times.get(algo_id)
+                    if algo_id in self._processors and cached_at and algo_updated_at > cached_at:
+                        LOG.info(f'{self._log_prefix()} Algo {algo_id} updated, invalidating processor cache')
+                        del self._processors[algo_id]
+                        del self._processor_cache_times[algo_id]
+                    if algo_id in self._processors:
+                        LOG.debug(f'{self._log_prefix()} Using cached processor for {algo_id}')
+                        return self._processors[algo_id]
                     display_name = algorithm.display_name
                     description = algorithm.description
-                    info_pickle = algorithm.info_pickle
-                    info = load_obj(info_pickle)
+                    info = load_obj(algorithm.info_pickle)
                     store = info['store']
                     reader = info['reader']
-                    node_groups = info['node_groups']
-                    schema_extractor = info['schema_extractor']
+                    schema_extractor = info.get('schema_extractor')
+                    # Load node_groups from lazyllm_node_group
+                    ng_ids = json.loads(algorithm.node_group_ids or '[]')
+                    if ng_ids:
+                        NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                        ngs = {
+                            row.id: row for row in
+                            session.query(NodeGroupInfo).filter(NodeGroupInfo.id.in_(ng_ids)).all()
+                        }
+                        node_groups = {}
+                        for ng_id in ng_ids:
+                            row = ngs.get(ng_id)
+                            if row is None:
+                                LOG.warning(f'{self._log_prefix()} Node group id={ng_id} not found')
+                                continue
+                            node_groups[row.name] = load_obj(row.info_pickle)
+                    else:
+                        # Backward compat: node_groups embedded in info_pickle
+                        node_groups = info.get('node_groups', {})
+                    status_writer = self._make_status_writer(algo_id)
                     processor = _Processor(algo_id, store, reader, node_groups, schema_extractor,
-                                           display_name, description)
+                                           display_name, description, status_writer=status_writer)
                     self._processors[algo_id] = processor
+                    self._processor_cache_times[algo_id] = datetime.now()
                     LOG.info(f'{self._log_prefix()} Created processor for {algo_id}')
                 return self._processors[algo_id]
             except Exception as e:
                 LOG.warning(f'{self._log_prefix()} Failed to load algo: {e}')
                 raise e
+
+        def _make_status_writer(self, algo_id: str):
+            db_config = self._db_config
+
+            def writer(doc_ids, node_group_id: str, kb_id: str, status: str, error_msg=None):
+                try:
+                    from lazyllm.tools.rag.doc_service.base import DOC_NODE_GROUP_STATUS_TABLE_INFO
+                    from lazyllm.tools.sql import SqlManager as _SM
+                    db = _SM(**db_config, tables_info_dict={'tables': [DOC_NODE_GROUP_STATUS_TABLE_INFO]})
+                    now = datetime.now()
+                    with db.get_session() as session:
+                        NgStatus = db.get_table_orm_class('lazyllm_doc_node_group_status')
+                        for doc_id in (doc_ids if isinstance(doc_ids, list) else [doc_ids]):
+                            existing = session.query(NgStatus).filter(
+                                NgStatus.doc_id == doc_id, NgStatus.kb_id == kb_id,
+                                NgStatus.algo_id == algo_id, NgStatus.node_group_id == node_group_id,
+                            ).first()
+                            if existing:
+                                existing.status = status
+                                existing.error_msg = error_msg
+                                existing.updated_at = now
+                            else:
+                                session.add(NgStatus(
+                                    doc_id=doc_id, kb_id=kb_id, algo_id=algo_id,
+                                    node_group_id=node_group_id, status=status,
+                                    error_msg=error_msg, created_at=now, updated_at=now,
+                                ))
+                except Exception as e:
+                    LOG.warning(f'[Worker] status_writer failed: {e}')
+            return writer
 
         def _exec_add_task(self, processor: _Processor, task_id: str, payload: dict):
             try:

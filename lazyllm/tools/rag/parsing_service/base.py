@@ -247,10 +247,30 @@ ALGORITHM_TABLE_INFO = {
         {'name': 'description', 'data_type': 'string', 'nullable': False,
          'comment': 'Algorithm description'},
         {'name': 'info_pickle', 'data_type': 'string', 'nullable': False,
-         'comment': 'Algorithm info from pickle string'},
+         'comment': 'Pickled {store, reader, schema_extractor} (node_groups excluded)'},
+        {'name': 'node_group_ids', 'data_type': 'string', 'nullable': True,
+         'comment': 'JSON-encoded ordered list of node_group IDs, e.g. ["id1","id2"]'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,
          'comment': 'Creation time (auto-generated)', 'default': datetime.now},
         {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False,
          'comment': 'Last update time (set when updating)', 'default': datetime.now},
+    ]
+}
+
+# Node group registration table
+NODE_GROUP_TABLE_INFO = {
+    'name': 'lazyllm_node_group',
+    'comment': 'Node group registration table; each row is a uniquely-signed node group',
+    'columns': [
+        {'name': 'id', 'data_type': 'string', 'nullable': False, 'is_primary_key': True,
+         'comment': 'Node group UUID'},
+        {'name': 'name', 'data_type': 'string', 'nullable': False,
+         'comment': 'Node group name (may include version suffix, e.g. sentences@v1.0)'},
+        {'name': 'signature', 'data_type': 'string', 'nullable': False,
+         'comment': 'sha256[:16] of the node group config (reader + transform chain)'},
+        {'name': 'info_pickle', 'data_type': 'string', 'nullable': False,
+         'comment': 'Pickled node group config (transform, parent, ref, group_type, etc.)'},
+        {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,
+         'comment': 'Creation time (auto-generated)', 'default': datetime.now},
     ]
 }

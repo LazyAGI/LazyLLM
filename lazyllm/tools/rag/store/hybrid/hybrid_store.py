@@ -34,6 +34,13 @@ class HybridStore(LazyLLMStoreBase):
         return self.segment_store.delete(collection_name=collection_name, criteria=criteria, **kwargs) and \
             self.vector_store.delete(collection_name=collection_name, criteria=criteria, **kwargs)
 
+    def drop_collection(self, collection_name: str) -> bool:
+        ok = True
+        for store in (self.segment_store, self.vector_store):
+            if hasattr(store, 'drop_collection'):
+                ok = store.drop_collection(collection_name) and ok
+        return ok
+
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         res_segments = self.segment_store.get(collection_name=collection_name, criteria=criteria, **kwargs)

@@ -17,6 +17,7 @@ from ...sql import SqlManager
 from .base import (
     AddRequest, CALLBACK_RECORDS_TABLE_INFO, CallbackEventType, DOC_SERVICE_TASKS_TABLE_INFO,
     DOC_PATH_LOCKS_TABLE_INFO, DOCUMENTS_TABLE_INFO, DeleteRequest, DocServiceError, DocStatus,
+    DOC_NODE_GROUP_STATUS_TABLE_INFO, NodeGroupParseStatus,
     IDEMPOTENCY_RECORDS_TABLE_INFO, KB_ALGORITHM_TABLE_INFO, KB_DOCUMENTS_TABLE_INFO, KBS_TABLE_INFO,
     KBStatus, MetadataPatchRequest, PARSE_STATE_TABLE_INFO, ReparseRequest, SourceType,
     TaskCallbackRequest, TaskType, TransferRequest, UploadRequest,
@@ -46,6 +47,7 @@ class DocManager:
                     DOC_PATH_LOCKS_TABLE_INFO, DOCUMENTS_TABLE_INFO, KBS_TABLE_INFO, KB_DOCUMENTS_TABLE_INFO,
                     KB_ALGORITHM_TABLE_INFO, PARSE_STATE_TABLE_INFO, IDEMPOTENCY_RECORDS_TABLE_INFO,
                     CALLBACK_RECORDS_TABLE_INFO, DOC_SERVICE_TASKS_TABLE_INFO,
+                    DOC_NODE_GROUP_STATUS_TABLE_INFO,
                 ]
             },
         )
@@ -586,6 +588,68 @@ class DocManager:
             )
             return _orm_to_dict(row) if row else None
 
+    def _upsert_ng_status_pending(self, doc_id: str, kb_id: str, algo_id: str,
+                                  node_group_ids: List[str], file_path: Optional[str] = None):
+        if not node_group_ids:
+            return
+        now = datetime.now()
+        with self._db_manager.get_session() as session:
+            NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
+            for ng_id in node_group_ids:
+                existing = session.query(NgStatus).filter(
+                    NgStatus.doc_id == doc_id, NgStatus.kb_id == kb_id,
+                    NgStatus.algo_id == algo_id, NgStatus.node_group_id == ng_id,
+                ).first()
+                if existing:
+                    existing.status = NodeGroupParseStatus.PENDING.value
+                    existing.file_path = file_path or existing.file_path
+                    existing.updated_at = now
+                else:
+                    session.add(NgStatus(
+                        doc_id=doc_id, kb_id=kb_id, algo_id=algo_id,
+                        node_group_id=ng_id, file_path=file_path,
+                        status=NodeGroupParseStatus.PENDING.value,
+                        created_at=now, updated_at=now,
+                    ))
+
+    def _get_algo_node_group_ids(self, algo_id: str) -> List[str]:
+        try:
+            resp = self._parser_client.get_algorithm_groups(algo_id)
+            if resp and resp.code == 200 and resp.data:
+                import json as _json
+                ids = resp.data.get('node_group_ids') if isinstance(resp.data, dict) else None
+                if ids:
+                    return _json.loads(ids) if isinstance(ids, str) else ids
+        except Exception as e:
+            LOG.warning(f'[DocManager] Failed to get node_group_ids for algo {algo_id}: {e}')
+        return []
+
+    def reparse_for_node_group(self, kb_id: str, algo_id: str, node_group_id: str,
+                               priority: int = 0) -> List[str]:
+        with self._db_manager.get_session() as session:
+            NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
+            success_rows = session.query(NgStatus).filter(
+                NgStatus.kb_id == kb_id, NgStatus.algo_id == algo_id,
+                NgStatus.status == NodeGroupParseStatus.SUCCESS.value,
+            ).all()
+        task_ids = []
+        for row in success_rows:
+            if not row.file_path:
+                LOG.warning(f'[DocManager] No file_path for doc {row.doc_id}, skipping reparse')
+                continue
+            task_id = str(uuid4())
+            self._upsert_ng_status_pending(row.doc_id, kb_id, algo_id, [node_group_id], row.file_path)
+            try:
+                self._create_parser_task(
+                    task_id=task_id, doc_id=row.doc_id, kb_id=kb_id, algo_id=algo_id,
+                    task_type=TaskType.DOC_REPARSE, file_path=row.file_path,
+                    reparse_group=node_group_id,
+                )
+                task_ids.append(task_id)
+            except Exception as e:
+                LOG.warning(f'[DocManager] Failed to submit reparse task for doc {row.doc_id}: {e}')
+        return task_ids
+
     def _get_latest_parse_snapshot(self, doc_id: str, kb_id: str):
         with self._db_manager.get_session() as session:
             State = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
@@ -883,6 +947,11 @@ class DocManager:
                 file_path=file_path, metadata=metadata, reparse_group=reparse_group,
                 parser_kb_id=parser_kb_id, transfer_params=transfer_params,
             )
+            # Insert PENDING status for each node group when a new DOC_ADD task is submitted
+            if task_type == TaskType.DOC_ADD:
+                ng_ids = self._get_algo_node_group_ids(algo_id)
+                if ng_ids:
+                    self._upsert_ng_status_pending(doc_id, kb_id, algo_id, ng_ids, file_path)
         except Exception as exc:
             finished_at = datetime.now()
             error_msg = str(exc)

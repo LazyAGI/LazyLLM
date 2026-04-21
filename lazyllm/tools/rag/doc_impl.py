@@ -1,4 +1,7 @@
 import os
+import hashlib
+import json
+import re
 from enum import Enum
 from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
@@ -20,7 +23,30 @@ from .embed_wrapper import _EmbedWrapper
 from .doc_to_db import SchemaExtractor
 from dataclasses import dataclass
 
+_VERSION_RE = re.compile(
+    r'^([0-9]+!)?[0-9]+(\.[0-9]+)*([-_\.]?(a|b|rc|alpha|beta|preview)[0-9]*)?(\.post[0-9]+)?(\.dev[0-9]+)?$',
+    re.IGNORECASE,
+)
+
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
+
+
+def _compute_node_group_signature(name: str, transform, parent_sig: str, ref_sig: str,
+                                  group_type: 'NodeGroupType') -> str:
+    if isinstance(transform, (list, tuple)):
+        transform_sig = [t.signature() if isinstance(t, TransformArgs) else repr(t) for t in transform]
+    elif isinstance(transform, TransformArgs):
+        transform_sig = transform.signature()
+    else:
+        transform_sig = repr(transform)
+    payload = json.dumps({
+        'name': name,
+        'parent_sig': parent_sig,
+        'ref_sig': ref_sig,
+        'transform_sig': transform_sig,
+        'group_type': group_type.name if isinstance(group_type, NodeGroupType) else str(group_type),
+    }, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 class StorePlaceholder:
     pass
@@ -222,7 +248,19 @@ class DocImpl:
                                        num_workers=num_workers, kwargs=kwargs)
 
         if name in groups:
-            LOG.warning(f'Duplicate group name: {name}')
+            existing = groups[name]
+            existing_sig = existing.get('signature', '')
+            parent_sig = groups.get(parent, {}).get('signature', '') if parent != LAZY_ROOT_NAME else ''
+            ref_sig = groups.get(ref, {}).get('signature', '') if ref else ''
+            new_sig = _compute_node_group_signature(name, transforms, parent_sig, ref_sig, group_type)
+            if existing_sig and existing_sig != new_sig:
+                raise ValueError(
+                    f'Node group {name!r} already exists with a different signature '
+                    f'(existing={existing_sig}, new={new_sig}). '
+                    'Use a different name or version to create a distinct node group.'
+                )
+            LOG.info(f'Node group {name!r} already registered with same signature, skipping.')
+            return
         for t in (transforms if isinstance(transform, list) else [transforms]):
             if isinstance(t.f, str):
                 t.f = _transmap[t.f.lower()]
@@ -234,8 +272,11 @@ class DocImpl:
                     'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
             else:
                 assert callable(t.f), f'transform should be callable, but get {t.f}'
+        parent_sig = groups.get(parent, {}).get('signature', '') if parent != LAZY_ROOT_NAME else ''
+        ref_sig = groups.get(ref, {}).get('signature', '') if ref else ''
+        signature = _compute_node_group_signature(name, transforms, parent_sig, ref_sig, group_type)
         groups[name] = dict(transform=transforms, parent=parent, display_name=display_name or name,
-                            group_type=group_type, ref=ref)
+                            group_type=group_type, ref=ref, signature=signature)
 
     @classmethod
     def _create_builtin_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME,
@@ -257,8 +298,21 @@ class DocImpl:
 
     def create_node_group(self, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                           trans_node: Optional[bool] = None, num_workers: int = 0, display_name: Optional[str] = None,
-                          group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None, **kwargs) -> None:
-        assert not self._lazy_init.flag, 'Cannot add node group after document started'
+                          group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None,
+                          version: Optional[str] = None, **kwargs) -> None:
+        if version is not None:
+            if not _VERSION_RE.match(version):
+                raise ValueError(f'Invalid version {version!r}. Must follow PEP 440 (e.g. 1.0, 1.1.1, 1.1.1a0).')
+            name = f'{name}@v{version}'
+        if self._lazy_init.flag:
+            if isinstance(self._processor, DocumentProcessor):
+                self._processor.register_new_node_group(name, dict(
+                    transform=transform, parent=parent, trans_node=trans_node,
+                    num_workers=num_workers, display_name=display_name,
+                    group_type=group_type, ref=ref, kwargs=kwargs,
+                ))
+                return
+            raise AssertionError('Cannot add node group after document started in standalone mode')
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
                                         group_type=group_type, ref=ref, **kwargs)

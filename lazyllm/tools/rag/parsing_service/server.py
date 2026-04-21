@@ -17,7 +17,8 @@ import requests
 from lazyllm.thirdparty import fastapi
 
 from .base import (
-    ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
+    ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO,
+    WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
     TaskStatus, TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest,
     _calculate_task_score, _resolve_add_doc_task_type
 )
@@ -82,7 +83,9 @@ class DocumentProcessor(ModuleBase):
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
             LOG.info('[DocumentProcessor._Impl] Starting lazy initialization...')
-            self._db_manager = SqlManager(**self._db_config, tables_info_dict={'tables': [ALGORITHM_TABLE_INFO]})
+            self._db_manager = SqlManager(**self._db_config, tables_info_dict={
+                'tables': [ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO]
+            })
 
             self._waiting_task_queue = Queue(
                 table_name=WAITING_TASK_QUEUE_TABLE_INFO['name'],
@@ -335,41 +338,152 @@ class DocumentProcessor(ModuleBase):
                                display_name: Optional[str] = None, description: Optional[str] = None):
             # NOTE: name is the algorithm id, display_name is the algorithm display name
             self._lazy_init()
-            LOG.info((f'[DocumentProcessor] Get register algorithm request: name={name},'
-                      f'display_name={display_name}, description={description}'))
-            # write the processor to database
+            LOG.info(f'[DocumentProcessor] Register algorithm: name={name}, display_name={display_name}')
             try:
-                info_dict = {
-                    'store': store,
-                    'reader': reader,
-                    'node_groups': node_groups,
-                    'schema_extractor': schema_extractor,
-                }
+                # 1. Upsert each node group into lazyllm_node_group
+                node_group_ids = self._upsert_node_groups(node_groups, reader)
+                # 2. Persist {store, reader, schema_extractor} (no node_groups) into lazyllm_algorithm
+                info_dict = {'store': store, 'reader': reader, 'schema_extractor': schema_extractor}
                 info_pickle = dump_obj(info_dict)
+                ng_ids_json = json.dumps(node_group_ids)
                 with self._db_manager.get_session() as session:
                     AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
-                    existing_algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == name).first()
-                    if not existing_algorithm:
-                        # new algorithm
-                        new_algo_info = AlgoInfo(
-                            id=name,
-                            display_name=display_name,
-                            description=description,
-                            info_pickle=info_pickle,
-                            created_at=datetime.now(),
-                            updated_at=datetime.now(),
-                        )
-                        session.add(new_algo_info)
+                    existing = session.query(AlgoInfo).filter(AlgoInfo.id == name).first()
+                    if not existing:
+                        session.add(AlgoInfo(
+                            id=name, display_name=display_name, description=description,
+                            info_pickle=info_pickle, node_group_ids=ng_ids_json,
+                            created_at=datetime.now(), updated_at=datetime.now(),
+                        ))
                     else:
-                        # existing algorithm
-                        existing_algorithm.info_pickle = info_pickle
-                        existing_algorithm.display_name = display_name
-                        existing_algorithm.description = description
-                        existing_algorithm.updated_at = datetime.now()
-                LOG.info(f'[DocumentProcessor] Algorithm {name} {display_name} {description} registered!')
+                        existing_ids = json.loads(existing.node_group_ids or '[]')
+                        if existing_ids and existing_ids != node_group_ids:
+                            raise ValueError(
+                                f'Algorithm {name!r} already exists with different node_group_ids '
+                                f'(existing={existing_ids}, new={node_group_ids}). '
+                                'Use update_algorithm() to modify node groups.'
+                            )
+                        existing.info_pickle = info_pickle
+                        existing.display_name = display_name
+                        existing.description = description
+                        existing.node_group_ids = ng_ids_json
+                        existing.updated_at = datetime.now()
+                LOG.info(f'[DocumentProcessor] Algorithm {name!r} registered with {len(node_group_ids)} node groups.')
             except Exception as e:
                 LOG.error(f'[DocumentProcessor] Failed to register algorithm: {e}, {traceback.format_exc()}')
-                raise e
+                raise
+
+        def _upsert_node_groups(self, node_groups: Dict[str, Dict], reader: DirectoryReader) -> List[str]:
+            from uuid import uuid4
+            from ..doc_impl import _compute_node_group_signature
+            NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+            reader_sig = reader.signature() if reader is not None else ''
+            # Build signatures in topological order (parent before child)
+            name_to_id: Dict[str, str] = {}
+            name_to_sig: Dict[str, str] = {}
+            ordered_names = list(node_groups.keys())
+            for ng_name in ordered_names:
+                cfg = node_groups[ng_name]
+                parent = cfg.get('parent', 'root')
+                ref = cfg.get('ref')
+                parent_sig = name_to_sig.get(parent, reader_sig)
+                ref_sig = name_to_sig.get(ref, '') if ref else ''
+                transform = cfg.get('transform') or cfg.get('args')
+                from ..data_type import NodeGroupType
+                group_type = cfg.get('group_type', NodeGroupType.CHUNK)
+                sig = _compute_node_group_signature(ng_name, transform, parent_sig, ref_sig, group_type)
+                name_to_sig[ng_name] = sig
+                with self._db_manager.get_session() as session:
+                    existing = session.query(NodeGroupInfo).filter(NodeGroupInfo.name == ng_name).first()
+                    if existing:
+                        if existing.signature != sig:
+                            raise ValueError(
+                                f'Node group {ng_name!r} already registered with different signature '
+                                f'(existing={existing.signature}, new={sig}). '
+                                'Use a different name or version.'
+                            )
+                        name_to_id[ng_name] = existing.id
+                    else:
+                        ng_id = str(uuid4())
+                        session.add(NodeGroupInfo(
+                            id=ng_id, name=ng_name, signature=sig,
+                            info_pickle=dump_obj(cfg), created_at=datetime.now(),
+                        ))
+                        name_to_id[ng_name] = ng_id
+            return [name_to_id[n] for n in ordered_names]
+
+        def register_new_node_group(self, name: str, config: Dict) -> str:
+            self._lazy_init()
+            LOG.info(f'[DocumentProcessor] Register new node group: name={name}')
+            try:
+                from uuid import uuid4
+                from ..doc_impl import _compute_node_group_signature
+                from ..data_type import NodeGroupType
+                NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                transform = config.get('transform') or config.get('args')
+                group_type = config.get('group_type', NodeGroupType.CHUNK)
+                sig = _compute_node_group_signature(name, transform, '', '', group_type)
+                with self._db_manager.get_session() as session:
+                    existing = session.query(NodeGroupInfo).filter(NodeGroupInfo.name == name).first()
+                    if existing:
+                        if existing.signature != sig:
+                            raise ValueError(
+                                f'Node group {name!r} already registered with different signature '
+                                f'(existing={existing.signature}, new={sig}).'
+                            )
+                        LOG.info(f'[DocumentProcessor] Node group {name!r} already exists, reusing id={existing.id}')
+                        return existing.id
+                    ng_id = str(uuid4())
+                    session.add(NodeGroupInfo(
+                        id=ng_id, name=name, signature=sig,
+                        info_pickle=dump_obj(config), created_at=datetime.now(),
+                    ))
+                    LOG.info(f'[DocumentProcessor] Node group {name!r} registered with id={ng_id}')
+                    return ng_id
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to register node group: {e}, {traceback.format_exc()}')
+                raise
+
+        def update_algorithm(self, algo_id: str, add: Optional[List] = None,
+                             remove: Optional[List[str]] = None) -> None:
+            self._lazy_init()
+            LOG.info(f'[DocumentProcessor] Update algorithm {algo_id!r}: add={add}, remove={remove}')
+            try:
+                with self._db_manager.get_session() as session:
+                    AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
+                    algo = session.query(AlgoInfo).filter(AlgoInfo.id == algo_id).first()
+                    if not algo:
+                        raise ValueError(f"Algorithm '{algo_id}' not found.")
+                    ids = json.loads(algo.node_group_ids or '[]')
+                    NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                    for item in (add or []):
+                        if isinstance(item, str) and not item.startswith('{'):
+                            # treat as node_group_id or name
+                            ng = (
+                                session.query(NodeGroupInfo).filter(NodeGroupInfo.id == item).first()
+                                or session.query(NodeGroupInfo).filter(NodeGroupInfo.name == item).first()
+                            )
+                            if not ng:
+                                raise ValueError(f'Node group {item!r} not found. Register it first.')
+                            if ng.id not in ids:
+                                ids.append(ng.id)
+                        elif isinstance(item, dict):
+                            ng_id = self.register_new_node_group(item['name'], item)
+                            if ng_id not in ids:
+                                ids.append(ng_id)
+                    for ng_name_or_id in (remove or []):
+                        ng = (
+                            session.query(NodeGroupInfo).filter(NodeGroupInfo.id == ng_name_or_id).first()
+                            or session.query(NodeGroupInfo).filter(NodeGroupInfo.name == ng_name_or_id).first()
+                        )
+                        if ng and ng.id in ids:
+                            ids.remove(ng.id)
+                    algo.node_group_ids = json.dumps(ids)
+                    algo.updated_at = datetime.now()
+                LOG.info(f'[DocumentProcessor] Algorithm {algo_id!r} updated, node_group_ids={ids}')
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to update algorithm: {e}, {traceback.format_exc()}')
+                raise
 
         def drop_algorithm(self, name: str) -> None:
             try:
@@ -386,13 +500,61 @@ class DocumentProcessor(ModuleBase):
                 LOG.error(f'[DocumentProcessor] Failed to drop algorithm: {e}, {traceback.format_exc()}')
                 raise e
 
-        def _get_algo(self, algo_id: str) -> Dict[str, Any]:
+        def drop_node_group(self, name: str) -> None:
+            self._lazy_init()
+            LOG.info(f'[DocumentProcessor] Drop node group: name={name}')
+            try:
+                with self._db_manager.get_session() as session:
+                    NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                    ng = session.query(NodeGroupInfo).filter(NodeGroupInfo.name == name).first()
+                    if not ng:
+                        LOG.warning(f'[DocumentProcessor] Node group {name!r} not found')
+                        return
+                    AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
+                    referencing = [
+                        a.id for a in session.query(AlgoInfo).all()
+                        if ng.id in json.loads(a.node_group_ids or '[]')
+                    ]
+                    if referencing:
+                        raise ValueError(
+                            f"Node group '{name}' is referenced by algorithm(s): {referencing}. "
+                            'Delete those algorithms first.'
+                        )
+                    session.delete(ng)
+                    LOG.info(f'[DocumentProcessor] Node group {name!r} dropped.')
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to drop node group: {e}, {traceback.format_exc()}')
+                raise
+
+        def _get_algo(self, algo_id: str) -> Optional[Dict[str, Any]]:
             with self._db_manager.get_session() as session:
                 AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
                 algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == algo_id).first()
                 if algorithm is None:
                     return None
-                return _orm_to_dict(algorithm)
+                algo_dict = _orm_to_dict(algorithm)
+                # Load node_groups from lazyllm_node_group using node_group_ids
+                ng_ids = json.loads(algo_dict.get('node_group_ids') or '[]')
+                if ng_ids:
+                    NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                    ngs = {
+                        row.id: row for row in
+                        session.query(NodeGroupInfo).filter(NodeGroupInfo.id.in_(ng_ids)).all()
+                    }
+                    node_groups = {}
+                    for ng_id in ng_ids:
+                        row = ngs.get(ng_id)
+                        if row is None:
+                            LOG.warning(f'[DocumentProcessor] Node group id={ng_id} not found in DB')
+                            continue
+                        cfg = load_obj(row.info_pickle)
+                        node_groups[row.name] = cfg
+                    algo_dict['node_groups'] = node_groups
+                else:
+                    # Backward compat: node_groups embedded in info_pickle
+                    info = load_obj(algo_dict.get('info_pickle', ''))
+                    algo_dict['node_groups'] = info.get('node_groups', {}) if isinstance(info, dict) else {}
+                return algo_dict
 
         @app.get('/health')
         def get_health(self) -> None:

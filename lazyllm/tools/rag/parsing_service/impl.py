@@ -69,7 +69,8 @@ class _NodeGroupDependencyGraph:
 class _Processor:
     def __init__(self, algo_id: str, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
                  schema_extractor: Optional[SchemaExtractor] = None, display_name: Optional[str] = None,
-                 description: Optional[str] = None, max_workers: int = 4):
+                 description: Optional[str] = None, max_workers: int = 4,
+                 status_writer: Optional[Any] = None):
         self._algo_id = algo_id
         self._store = store
         self._reader = reader
@@ -78,6 +79,7 @@ class _Processor:
         self._display_name = display_name
         self._description = description
         self._max_workers = max_workers
+        self._status_writer = status_writer
         self._thread_pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=f'{self._algo_id}_processor')
         self._dependency_graph: Optional[_NodeGroupDependencyGraph] = None
 
@@ -88,6 +90,16 @@ class _Processor:
     @property
     def reader(self) -> DirectoryReader:
         return self._reader
+
+    def _write_status(self, doc_ids, group_name: str, kb_id: str, status: str, error_msg=None):
+        if not self._status_writer:
+            return
+        ng_cfg = self._node_groups.get(group_name, {})
+        ng_id = ng_cfg.get('id') or ng_cfg.get('node_group_id') or group_name
+        try:
+            self._status_writer(doc_ids, ng_id, kb_id, status, error_msg)
+        except Exception as e:
+            LOG.warning(f'[_Processor] status_writer failed for group={group_name}: {e}')
 
     @staticmethod
     def _prepare_doc_inputs(input_files: List[str], ids: Optional[List[str]] = None,
@@ -259,33 +271,48 @@ class _Processor:
                 raise ValueError(f'Node group {group_name} does not exist. Please check the group name '
                                  'or add a new one through `create_node_group`.')
             if group['parent'] == p_name:
-                source_nodes = self._store.get_nodes(doc_ids=ids, group=group_name, kb_id=kb_id)
-                nodes = []
-                uid_map = {}
-                for source_node in source_nodes:
-                    copied = self._clone_node_for_transfer(
-                        node=source_node,
-                        target_kb_id=target_kb_id,
-                        target_doc_id=doc_id_map[source_node.global_metadata[RAG_DOC_ID]][0],
-                        metadata=doc_id_map[source_node.global_metadata[RAG_DOC_ID]][1],
-                    )
-                    uid_map[source_node.uid] = copied.uid
-                    copied.parent = p_uid_map.get(source_node.parent, None) if source_node.parent else None
-                    nodes.append(copied)
-                self._store.update_nodes(nodes, copy=True)
-                if nodes:
-                    self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
-                                                  doc_id_map=doc_id_map, p_uid_map=uid_map,
-                                                  p_name=group_name)
+                target_doc_ids = [doc_id_map[d][0] for d in ids if d in doc_id_map]
+                self._write_status(target_doc_ids, group_name, target_kb_id, 'WORKING')
+                try:
+                    source_nodes = self._store.get_nodes(doc_ids=ids, group=group_name, kb_id=kb_id)
+                    nodes = []
+                    uid_map = {}
+                    for source_node in source_nodes:
+                        copied = self._clone_node_for_transfer(
+                            node=source_node,
+                            target_kb_id=target_kb_id,
+                            target_doc_id=doc_id_map[source_node.global_metadata[RAG_DOC_ID]][0],
+                            metadata=doc_id_map[source_node.global_metadata[RAG_DOC_ID]][1],
+                        )
+                        uid_map[source_node.uid] = copied.uid
+                        copied.parent = p_uid_map.get(source_node.parent, None) if source_node.parent else None
+                        nodes.append(copied)
+                    self._store.update_nodes(nodes, copy=True)
+                    self._write_status(target_doc_ids, group_name, target_kb_id, 'SUCCESS')
+                    if nodes:
+                        self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
+                                                      doc_id_map=doc_id_map, p_uid_map=uid_map,
+                                                      p_name=group_name)
+                except Exception as e:
+                    self._write_status(target_doc_ids, group_name, target_kb_id, 'FAILED', str(e))
+                    raise
 
     def _create_nodes_impl(self, p_nodes, group_name, ref_path=None):
         # NOTE transform.batch_forward will set children for p_nodes, but when calling
         # transform.batch_forward, p_nodes has been upsert in the store.
-        t = self._node_groups[group_name]['transform']
-        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
-        nodes = transform.batch_forward(p_nodes, group_name, ref_path=ref_path)
-        self._store.update_nodes(self._set_nodes_number(nodes))
-        return nodes
+        doc_ids = list({n.global_metadata.get(RAG_DOC_ID) for n in p_nodes if n.global_metadata.get(RAG_DOC_ID)})
+        kb_id = p_nodes[0].global_metadata.get(RAG_KB_ID, DEFAULT_KB_ID) if p_nodes else DEFAULT_KB_ID
+        self._write_status(doc_ids, group_name, kb_id, 'WORKING')
+        try:
+            t = self._node_groups[group_name]['transform']
+            transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
+            nodes = transform.batch_forward(p_nodes, group_name, ref_path=ref_path)
+            self._store.update_nodes(self._set_nodes_number(nodes))
+            self._write_status(doc_ids, group_name, kb_id, 'SUCCESS')
+            return nodes
+        except Exception as e:
+            self._write_status(doc_ids, group_name, kb_id, 'FAILED', str(e))
+            raise
 
     def _get_or_create_nodes(self, group_name, uids: Optional[List[str]] = None):
         nodes = self._store.get_nodes(uids=uids, group=group_name) if self._store.is_group_active(group_name) else []
@@ -305,6 +332,9 @@ class _Processor:
                       kb_id: str = None, **kwargs):
         doc_ids, metadatas, kb_id = self._prepare_doc_inputs(doc_paths, doc_ids, metadatas, kb_id)
         if group_name == 'all':
+            # Mark all node groups as WORKING before starting
+            for ng_name in self._node_groups:
+                self._write_status(doc_ids, ng_name, kb_id, 'WORKING')
             preloaded_root_nodes = self._reader.load_data(doc_paths, metadatas, split_nodes_by_type=True)
             self._store.remove_nodes(doc_ids=doc_ids, kb_id=kb_id)
             removed_flag = False
@@ -327,6 +357,7 @@ class _Processor:
 
     def _reparse_group_recursive(self, p_nodes: List[DocNode], cur_name: str, doc_ids: List[str], kb_id: str = None):
         kb_id = p_nodes[0].global_metadata.get(RAG_KB_ID, None) if kb_id is None else kb_id
+        self._write_status(doc_ids, cur_name, kb_id, 'WORKING')
         self._store.remove_nodes(group=cur_name, kb_id=kb_id, doc_ids=doc_ids)
 
         removed_flag = False
@@ -338,11 +369,16 @@ class _Processor:
             time.sleep(wait_time)
         if not removed_flag:
             raise Exception(f'Failed to remove nodes for docs {doc_ids} group {cur_name} from store')
-        t = self._node_groups[cur_name]['transform']
-        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, cur_name)
-        nodes = transform.batch_forward(p_nodes, cur_name)
-        # reparse need set global_metadata
-        self._store.update_nodes(self._set_nodes_number(nodes))
+        try:
+            t = self._node_groups[cur_name]['transform']
+            transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, cur_name)
+            nodes = transform.batch_forward(p_nodes, cur_name)
+            # reparse need set global_metadata
+            self._store.update_nodes(self._set_nodes_number(nodes))
+            self._write_status(doc_ids, cur_name, kb_id, 'SUCCESS')
+        except Exception as e:
+            self._write_status(doc_ids, cur_name, kb_id, 'FAILED', str(e))
+            raise
 
         for group_name in self._store.activated_groups():
             group = self._node_groups.get(group_name)
