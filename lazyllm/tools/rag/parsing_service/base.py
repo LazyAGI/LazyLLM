@@ -248,7 +248,7 @@ ALGORITHM_TABLE_INFO = {
          'comment': 'Algorithm description'},
         {'name': 'info_pickle', 'data_type': 'string', 'nullable': False,
          'comment': 'Pickled {store, reader, schema_extractor} (node_groups excluded)'},
-        {'name': 'node_group_ids', 'data_type': 'string', 'nullable': True,
+        {'name': 'node_group_ids', 'data_type': 'string', 'nullable': True, 'default': '[]',
          'comment': 'JSON-encoded ordered list of node_group IDs, e.g. ["id1","id2"]'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,
          'comment': 'Creation time (auto-generated)', 'default': datetime.now},
@@ -272,5 +272,7 @@ NODE_GROUP_TABLE_INFO = {
          'comment': 'Pickled node group config (transform, parent, ref, group_type, etc.)'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,
          'comment': 'Creation time (auto-generated)', 'default': datetime.now},
+        {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False,
+         'comment': 'Last update time (set when updating)', 'default': datetime.now},
     ]
 }

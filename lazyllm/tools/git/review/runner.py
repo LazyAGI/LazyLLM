@@ -167,7 +167,7 @@ def review(  # noqa: C901
         repo = backend_inst.get_origin_repo()
         branch = backend_inst._current_branch().replace('/', '_')
         _ckpt_key = f'local/{branch}'
-        pr_dir = _ReviewCheckpoint.pr_dir(_ckpt_key, repo)
+    pr_dir = _ReviewCheckpoint.pr_dir(_ckpt_key, repo)
     ckpt_path = checkpoint_path or _ReviewCheckpoint.default_path(_ckpt_key, repo)
     if clear_checkpoint:
         # clear_checkpoint takes priority over resume_from

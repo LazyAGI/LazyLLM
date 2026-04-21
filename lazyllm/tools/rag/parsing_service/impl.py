@@ -92,14 +92,14 @@ class _Processor:
         return self._reader
 
     def _write_status(self, doc_ids, group_name: str, kb_id: str, status: str, error_msg=None):
-        if not self._status_writer:
+        if self._status_writer is None:
             return
         ng_cfg = self._node_groups.get(group_name, {})
         ng_id = ng_cfg.get('id') or ng_cfg.get('node_group_id') or group_name
         try:
             self._status_writer(doc_ids, ng_id, kb_id, status, error_msg)
         except Exception as e:
-            LOG.warning(f'[_Processor] status_writer failed for group={group_name}: {e}')
+            LOG.error(f'[_Processor] status_writer failed for group={group_name}: {e}')
 
     @staticmethod
     def _prepare_doc_inputs(input_files: List[str], ids: Optional[List[str]] = None,
@@ -288,11 +288,11 @@ class _Processor:
                         copied.parent = p_uid_map.get(source_node.parent, None) if source_node.parent else None
                         nodes.append(copied)
                     self._store.update_nodes(nodes, copy=True)
-                    self._write_status(target_doc_ids, group_name, target_kb_id, 'SUCCESS')
                     if nodes:
                         self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
                                                       doc_id_map=doc_id_map, p_uid_map=uid_map,
                                                       p_name=group_name)
+                    self._write_status(target_doc_ids, group_name, target_kb_id, 'SUCCESS')
                 except Exception as e:
                     self._write_status(target_doc_ids, group_name, target_kb_id, 'FAILED', str(e))
                     raise
@@ -332,9 +332,6 @@ class _Processor:
                       kb_id: str = None, **kwargs):
         doc_ids, metadatas, kb_id = self._prepare_doc_inputs(doc_paths, doc_ids, metadatas, kb_id)
         if group_name == 'all':
-            # Mark all node groups as WORKING before starting
-            for ng_name in self._node_groups:
-                self._write_status(doc_ids, ng_name, kb_id, 'WORKING')
             preloaded_root_nodes = self._reader.load_data(doc_paths, metadatas, split_nodes_by_type=True)
             self._store.remove_nodes(doc_ids=doc_ids, kb_id=kb_id)
             removed_flag = False
@@ -370,14 +367,8 @@ class _Processor:
         if not removed_flag:
             raise Exception(f'Failed to remove nodes for docs {doc_ids} group {cur_name} from store')
         try:
-            t = self._node_groups[cur_name]['transform']
-            transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, cur_name)
-            nodes = transform.batch_forward(p_nodes, cur_name)
-            # reparse need set global_metadata
-            self._store.update_nodes(self._set_nodes_number(nodes))
-            self._write_status(doc_ids, cur_name, kb_id, 'SUCCESS')
-        except Exception as e:
-            self._write_status(doc_ids, cur_name, kb_id, 'FAILED', str(e))
+            nodes = self._create_nodes_impl(p_nodes, cur_name)
+        except Exception:
             raise
 
         for group_name in self._store.activated_groups():

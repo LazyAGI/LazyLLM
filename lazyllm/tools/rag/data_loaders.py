@@ -31,10 +31,11 @@ class DirectoryReader:
             return f'{reader.__module__}.{reader.__qualname__}'
         qualname = getattr(reader, '__qualname__', None)
         module = getattr(reader, '__module__', None)
-        if qualname and '<lambda>' not in qualname and '<locals>' not in qualname:
+        if qualname and '<lambda>' not in qualname:
             return f'{module}.{qualname}' if module else qualname
         try:
-            return '__lambda__::' + inspect.getsource(reader).strip()
+            src = inspect.getsource(reader).strip()
+            return '__lambda__::' + hashlib.sha256(src.encode()).hexdigest()[:16]
         except (OSError, TypeError):
             return repr(reader)
 
@@ -46,7 +47,8 @@ class DirectoryReader:
 
     @once_wrapper
     def _lazy_init(self):
-        self._reader = SimpleDirectoryReader(file_extractor={**self._global_readers, **self._local_readers})
+        self._reader = SimpleDirectoryReader(
+            file_extractor={**(self._global_readers or {}), **(self._local_readers or {})})
 
     def load_data(self, input_files: Optional[List[str]] = None, metadatas: Optional[Dict] = None,
                   *, split_nodes_by_type: bool = False) -> List[DocNode]:

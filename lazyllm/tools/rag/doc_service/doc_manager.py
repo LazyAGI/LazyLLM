@@ -595,15 +595,18 @@ class DocManager:
         now = datetime.now()
         with self._db_manager.get_session() as session:
             NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
+            existing_rows = session.query(NgStatus).filter(
+                NgStatus.doc_id == doc_id, NgStatus.kb_id == kb_id,
+                NgStatus.algo_id == algo_id,
+                NgStatus.node_group_id.in_(node_group_ids),
+            ).all()
+            existing_map = {row.node_group_id: row for row in existing_rows}
             for ng_id in node_group_ids:
-                existing = session.query(NgStatus).filter(
-                    NgStatus.doc_id == doc_id, NgStatus.kb_id == kb_id,
-                    NgStatus.algo_id == algo_id, NgStatus.node_group_id == ng_id,
-                ).first()
-                if existing:
-                    existing.status = NodeGroupParseStatus.PENDING.value
-                    existing.file_path = file_path or existing.file_path
-                    existing.updated_at = now
+                if ng_id in existing_map:
+                    row = existing_map[ng_id]
+                    row.status = NodeGroupParseStatus.PENDING.value
+                    row.file_path = file_path or row.file_path
+                    row.updated_at = now
                 else:
                     session.add(NgStatus(
                         doc_id=doc_id, kb_id=kb_id, algo_id=algo_id,
@@ -616,38 +619,39 @@ class DocManager:
         try:
             resp = self._parser_client.get_algorithm_groups(algo_id)
             if resp and resp.code == 200 and resp.data:
-                import json as _json
                 ids = resp.data.get('node_group_ids') if isinstance(resp.data, dict) else None
                 if ids:
-                    return _json.loads(ids) if isinstance(ids, str) else ids
+                    return json.loads(ids) if isinstance(ids, str) else ids
         except Exception as e:
-            LOG.warning(f'[DocManager] Failed to get node_group_ids for algo {algo_id}: {e}')
+            LOG.error(f'[DocManager] Failed to get node_group_ids for algo {algo_id}: {e}')
         return []
 
     def reparse_for_node_group(self, kb_id: str, algo_id: str, node_group_id: str,
                                priority: int = 0) -> List[str]:
         with self._db_manager.get_session() as session:
             NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
-            success_rows = session.query(NgStatus).filter(
+            rows = session.query(NgStatus).filter(
                 NgStatus.kb_id == kb_id, NgStatus.algo_id == algo_id,
                 NgStatus.status == NodeGroupParseStatus.SUCCESS.value,
-            ).all()
+            ).with_for_update().all()
+            # convert to plain dicts inside session to avoid DetachedInstanceError
+            success_rows = [{'doc_id': r.doc_id, 'file_path': r.file_path} for r in rows]
         task_ids = []
         for row in success_rows:
-            if not row.file_path:
-                LOG.warning(f'[DocManager] No file_path for doc {row.doc_id}, skipping reparse')
+            if not row['file_path']:
+                LOG.warning(f'[DocManager] No file_path for doc {row["doc_id"]}, skipping reparse')
                 continue
             task_id = str(uuid4())
-            self._upsert_ng_status_pending(row.doc_id, kb_id, algo_id, [node_group_id], row.file_path)
             try:
                 self._create_parser_task(
-                    task_id=task_id, doc_id=row.doc_id, kb_id=kb_id, algo_id=algo_id,
-                    task_type=TaskType.DOC_REPARSE, file_path=row.file_path,
+                    task_id=task_id, doc_id=row['doc_id'], kb_id=kb_id, algo_id=algo_id,
+                    task_type=TaskType.DOC_REPARSE, file_path=row['file_path'],
                     reparse_group=node_group_id,
                 )
+                self._upsert_ng_status_pending(row['doc_id'], kb_id, algo_id, [node_group_id], row['file_path'])
                 task_ids.append(task_id)
             except Exception as e:
-                LOG.warning(f'[DocManager] Failed to submit reparse task for doc {row.doc_id}: {e}')
+                LOG.error(f'[DocManager] Failed to submit reparse task for doc {row["doc_id"]}: {e}')
         return task_ids
 
     def _get_latest_parse_snapshot(self, doc_id: str, kb_id: str):

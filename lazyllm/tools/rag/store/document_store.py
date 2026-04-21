@@ -183,8 +183,8 @@ class _DocumentStore(object):
                 return collection_name in store._collection2uids
             if hasattr(store, '_client') and hasattr(store._client, 'indices'):
                 return store._client.indices.exists(index=collection_name)
-        except Exception:
-            pass
+        except Exception as e:
+            LOG.debug(f'[_DocumentStore] _collection_exists_in check failed for {collection_name!r}: {e}')
         return False
 
     def _exists_milvus(self, store, collection_name: str) -> bool:
@@ -197,8 +197,8 @@ class _DocumentStore(object):
             try:
                 store._client.get_collection(sub)
                 return True
-            except Exception:
-                pass
+            except Exception as e:
+                LOG.debug(f'[_DocumentStore] Chroma collection {sub!r} not found: {e}')
         return False
 
     def _exists_sqlite(self, uri: str, collection_name: str) -> bool:
@@ -262,19 +262,22 @@ class _DocumentStore(object):
                 self.impl.create_collection(collection_name)
             except Exception as e:
                 LOG.warning(f'[_DocumentStore] create_collection({collection_name}) failed: {e}')
+                return False
         return True
 
     def drop_collection(self, group_name: str) -> bool:
         collection_name = self._gen_collection_name(group_name)
+        ok = True
         if hasattr(self.impl, 'drop_collection'):
             try:
                 self.impl.drop_collection(collection_name)
                 LOG.info(f'[_DocumentStore] Dropped collection {collection_name} for group {group_name}')
             except Exception as e:
                 LOG.warning(f'[_DocumentStore] drop_collection({collection_name}) failed: {e}')
+                ok = False
         self._activated_groups.discard(group_name)
         self._group_embed_keys.pop(group_name, None)
-        return True
+        return ok
 
     def activated_groups(self) -> List[str]:
         return list(self._activated_groups)

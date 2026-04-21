@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Union, Set
 
+import lazyllm
 from lazyllm.common import override
 
 from ..store_base import LazyLLMStoreBase, StoreCapability
@@ -38,7 +39,13 @@ class HybridStore(LazyLLMStoreBase):
         ok = True
         for store in (self.segment_store, self.vector_store):
             if hasattr(store, 'drop_collection'):
-                ok = store.drop_collection(collection_name) and ok
+                result = store.drop_collection(collection_name)
+                ok = bool(result) and ok
+            else:
+                lazyllm.LOG.warning(
+                    f'[HybridStore] {type(store).__name__} does not implement '
+                    f'drop_collection; skipping for collection {collection_name!r}'
+                )
         return ok
 
     @override

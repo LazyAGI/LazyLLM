@@ -24,10 +24,11 @@ def _callable_sig(f: Optional[Callable], name_override: Optional[str] = None) ->
         return name_override
     qualname = getattr(f, '__qualname__', None)
     module = getattr(f, '__module__', None)
-    if qualname and '<lambda>' not in qualname and '<locals>' not in qualname:
+    if qualname and '<lambda>' not in qualname:
         return f'{module}.{qualname}' if module else qualname
     try:
-        return '__lambda__::' + inspect.getsource(f).strip()
+        src = inspect.getsource(f).strip()
+        return '__lambda__::' + hashlib.sha256(src.encode()).hexdigest()[:16]
     except (OSError, TypeError):
         raise ValueError(
             f'Cannot compute a stable signature for lambda/closure {f!r}. '
@@ -178,7 +179,7 @@ class LLMParser(NodeTransform):
                 prompts_sig = hashlib.sha256(
                     json.dumps(self._prompts.__dict__, sort_keys=True).encode()
                 ).hexdigest()[:16]
-            except Exception:
+            except TypeError:
                 prompts_sig = repr(self._prompts)
         return {
             'llm_sig': type(self._llm).__name__,

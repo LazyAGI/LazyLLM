@@ -446,6 +446,10 @@ _add_bilingual_docs({
             '批量删除多个知识库。',
             'Delete multiple knowledge bases in one batch.'
         ),
+        'reparse_for_node_group': (
+            '对指定节点组下所有已成功解析的文档重新提交解析任务。',
+            'Re-submit parse tasks for all successfully parsed documents under a given node group.'
+        ),
     }.items()
 })
 
@@ -3174,6 +3178,26 @@ Args:
 
 **Returns:**\n
 - List[dict]: List of search results.
+''')
+
+add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore.drop_collection', '''\
+删除指定集合，同时从分段存储和向量存储中移除对应数据。
+
+Args:
+    collection_name (str): 要删除的集合名称。
+
+**Returns:**\n
+- bool: 若两个底层存储均成功删除则返回 ``True``，任意一个失败则返回 ``False``。
+''')
+
+add_english_doc('rag.store.hybrid.hybrid_store.HybridStore.drop_collection', '''\
+Drop a collection from both the segment store and the vector store.
+
+Args:
+    collection_name (str): Name of the collection to drop.
+
+**Returns:**\n
+- bool: ``True`` if both underlying stores dropped the collection successfully, ``False`` otherwise.
 ''')
 
 add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore', '''\
@@ -8653,5 +8677,27 @@ add_example('rag.QueryEnhACProcessor', '''\
 >>> proc.update_data_source(vocab)
 >>> proc.update_discriminator(model)
 ''')
+
+add_chinese_doc('rag.data_loaders.DirectoryReader.signature', '''\
+计算当前读取器配置的指纹哈希，用于检测 reader 注册表变更。
+
+将本地和全局 reader 映射序列化为 JSON 后取 SHA-256 前 16 位十六进制字符串。
+当任意 reader 被替换或新增时，返回值会发生变化，可用于判断是否需要重新解析文档。
+
+**Returns:**\n
+- str: 16 位十六进制指纹字符串。
+''')
+
+add_english_doc('rag.data_loaders.DirectoryReader.signature', '''\
+Compute a fingerprint hash of the current reader configuration to detect registry changes.
+
+Serialises the local and global reader mappings to JSON and returns the first 16 hex characters
+of the SHA-256 digest. The value changes whenever any reader is replaced or added, making it
+suitable for deciding whether documents need to be re-parsed.
+
+**Returns:**\n
+- str: 16-character hexadecimal fingerprint string.
+''')
+
 
 

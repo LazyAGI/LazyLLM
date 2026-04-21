@@ -20,6 +20,7 @@ from .base import (
 from .impl import _Processor
 from .queue import _SQLBasedQueue as Queue
 from ...sql import SqlManager
+from ..doc_service.base import DOC_NODE_GROUP_STATUS_TABLE_INFO
 
 WORKER_ERROR_RETRY_INTERVAL = 5.0
 
@@ -34,6 +35,7 @@ class DocumentProcessorWorker(ModuleBase):
             self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
             self._shutdown = False
             self._processors: dict[str, _Processor] = {}  # algo_id -> _Processor
+            self._processors_lock = threading.Lock()
             self._waiting_task_queue = None
             self._finished_task_queue = None
             self._worker_thread = None
@@ -74,7 +76,8 @@ class DocumentProcessorWorker(ModuleBase):
             )
             self._db_manager = SqlManager(
                 **self._db_config,
-                tables_info_dict={'tables': [ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO]},
+                tables_info_dict={'tables': [ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO,
+                                             DOC_NODE_GROUP_STATUS_TABLE_INFO]},
             )
             self._processor_cache_times: dict[str, datetime] = {}  # algo_id -> load time
 
@@ -194,14 +197,15 @@ class DocumentProcessorWorker(ModuleBase):
                         raise ValueError(f'Algo id {algo_id} not found')
                     algo_updated_at = algorithm.updated_at
                     # Invalidate cache if algo was updated after last load
-                    cached_at = self._processor_cache_times.get(algo_id)
-                    if algo_id in self._processors and cached_at and algo_updated_at > cached_at:
-                        LOG.info(f'{self._log_prefix()} Algo {algo_id} updated, invalidating processor cache')
-                        del self._processors[algo_id]
-                        del self._processor_cache_times[algo_id]
-                    if algo_id in self._processors:
-                        LOG.debug(f'{self._log_prefix()} Using cached processor for {algo_id}')
-                        return self._processors[algo_id]
+                    with self._processors_lock:
+                        cached_at = self._processor_cache_times.get(algo_id)
+                        if algo_id in self._processors and cached_at and algo_updated_at > cached_at:
+                            LOG.info(f'{self._log_prefix()} Algo {algo_id} updated, invalidating processor cache')
+                            del self._processors[algo_id]
+                            del self._processor_cache_times[algo_id]
+                        if algo_id in self._processors:
+                            LOG.debug(f'{self._log_prefix()} Using cached processor for {algo_id}')
+                            return self._processors[algo_id]
                     display_name = algorithm.display_name
                     description = algorithm.description
                     info = load_obj(algorithm.info_pickle)
@@ -229,8 +233,9 @@ class DocumentProcessorWorker(ModuleBase):
                     status_writer = self._make_status_writer(algo_id)
                     processor = _Processor(algo_id, store, reader, node_groups, schema_extractor,
                                            display_name, description, status_writer=status_writer)
-                    self._processors[algo_id] = processor
-                    self._processor_cache_times[algo_id] = datetime.now()
+                    with self._processors_lock:
+                        self._processors[algo_id] = processor
+                        self._processor_cache_times[algo_id] = datetime.now()
                     LOG.info(f'{self._log_prefix()} Created processor for {algo_id}')
                 return self._processors[algo_id]
             except Exception as e:
@@ -238,16 +243,13 @@ class DocumentProcessorWorker(ModuleBase):
                 raise e
 
         def _make_status_writer(self, algo_id: str):
-            db_config = self._db_config
+            db_manager = self._db_manager
 
             def writer(doc_ids, node_group_id: str, kb_id: str, status: str, error_msg=None):
                 try:
-                    from lazyllm.tools.rag.doc_service.base import DOC_NODE_GROUP_STATUS_TABLE_INFO
-                    from lazyllm.tools.sql import SqlManager as _SM
-                    db = _SM(**db_config, tables_info_dict={'tables': [DOC_NODE_GROUP_STATUS_TABLE_INFO]})
                     now = datetime.now()
-                    with db.get_session() as session:
-                        NgStatus = db.get_table_orm_class('lazyllm_doc_node_group_status')
+                    with db_manager.get_session() as session:
+                        NgStatus = db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
                         for doc_id in (doc_ids if isinstance(doc_ids, list) else [doc_ids]):
                             existing = session.query(NgStatus).filter(
                                 NgStatus.doc_id == doc_id, NgStatus.kb_id == kb_id,

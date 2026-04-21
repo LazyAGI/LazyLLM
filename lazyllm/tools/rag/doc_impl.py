@@ -31,14 +31,37 @@ _VERSION_RE = re.compile(
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
 
+def _callable_sig_for_doc_impl(t) -> str:
+    import inspect as _inspect
+    qualname = getattr(t, '__qualname__', None)
+    module = getattr(t, '__module__', None)
+    if qualname and '<lambda>' not in qualname:
+        return f'{module}.{qualname}' if module else qualname
+    try:
+        src = _inspect.getsource(t).strip()
+        return '__lambda__::' + hashlib.sha256(src.encode()).hexdigest()[:16]
+    except (OSError, TypeError):
+        return repr(t)
+
+
 def _compute_node_group_signature(name: str, transform, parent_sig: str, ref_sig: str,
                                   group_type: 'NodeGroupType') -> str:
+    def _elem_sig(t) -> str:
+        if isinstance(t, TransformArgs):
+            return t.signature()
+        if isinstance(t, str):
+            cls = _transmap.get(t.lower())
+            return cls.__name__ if cls else t
+        if callable(t):
+            return _callable_sig_for_doc_impl(t)
+        return repr(t)
+
     if isinstance(transform, (list, tuple)):
-        transform_sig = [t.signature() if isinstance(t, TransformArgs) else repr(t) for t in transform]
+        transform_sig = [_elem_sig(t) for t in transform]
     elif isinstance(transform, TransformArgs):
         transform_sig = transform.signature()
     else:
-        transform_sig = repr(transform)
+        transform_sig = _elem_sig(transform)
     payload = json.dumps({
         'name': name,
         'parent_sig': parent_sig,
@@ -312,7 +335,7 @@ class DocImpl:
                     group_type=group_type, ref=ref, kwargs=kwargs,
                 ))
                 return
-            raise AssertionError('Cannot add node group after document started in standalone mode')
+            raise RuntimeError('Cannot add node group after document started in standalone mode')
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
                                         group_type=group_type, ref=ref, **kwargs)

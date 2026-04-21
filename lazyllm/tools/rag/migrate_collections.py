@@ -49,7 +49,7 @@ def _normalize(raw_name: str) -> str:
         normalized = 'col'
     if normalized[0].isdigit():
         normalized = f'col_{normalized}'
-    if normalized == raw_name and len(normalized) <= _COLLECTION_NAME_MAX_LEN:
+    if normalized == raw_name.lower() and len(normalized) <= _COLLECTION_NAME_MAX_LEN:
         return normalized
     digest = hashlib.sha1(raw_name.encode()).hexdigest()[:12]
     max_prefix_len = _COLLECTION_NAME_MAX_LEN - len(digest) - 1
@@ -79,45 +79,47 @@ def migrate_sqlite(db_path: str, algo_name: str, groups: List[str], dry_run: boo
         return 0
 
     cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    existing_tables = {row[0] for row in cur.fetchall()}
+    try:
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        existing_tables = {row[0] for row in cur.fetchall()}
 
-    renamed = 0
-    for group in groups:
-        old_name = old_collection_name(algo_name, group)
-        new_name = new_collection_name(group)
-        if old_name == new_name:
-            LOG.info(f'[SQLite] SKIP {old_name!r} (names are identical)')
-            continue
-        if old_name not in existing_tables:
-            LOG.info(f'[SQLite] SKIP {old_name!r} (table not found)')
-            continue
-        if new_name in existing_tables:
-            LOG.warning(f'[SQLite] {new_name!r} already exists — skipping rename of {old_name!r}')
-            continue
-        LOG.info(f'[SQLite] {"DRY " if dry_run else ""}RENAME table {old_name!r} -> {new_name!r}')
-        if not dry_run:
-            cur.execute(f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"')
-            # SQLite doesn't support RENAME INDEX; drop old and recreate standard ones
-            cur.execute(
-                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?",
-                (new_name,)
-            )
-            for (idx_name,) in cur.fetchall():
-                cur.execute(f'DROP INDEX IF EXISTS "{idx_name}"')
-            for col, suffix in [
-                ('parent', 'parent'), ('doc_id', 'docid'),
-                ('kb_id', 'kbid'), ('number', 'number'),
-            ]:
+        renamed = 0
+        for group in groups:
+            old_name = old_collection_name(algo_name, group)
+            new_name = new_collection_name(group)
+            if old_name == new_name:
+                LOG.info(f'[SQLite] SKIP {old_name!r} (names are identical)')
+                continue
+            if old_name not in existing_tables:
+                LOG.info(f'[SQLite] SKIP {old_name!r} (table not found)')
+                continue
+            if new_name in existing_tables:
+                LOG.warning(f'[SQLite] {new_name!r} already exists — skipping rename of {old_name!r}')
+                continue
+            LOG.info(f'[SQLite] {"DRY " if dry_run else ""}RENAME table {old_name!r} -> {new_name!r}')
+            if not dry_run:
+                cur.execute(f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"')
+                # SQLite doesn't support RENAME INDEX; drop old and recreate standard ones
                 cur.execute(
-                    f'CREATE INDEX IF NOT EXISTS "idx_{new_name}_{suffix}" '
-                    f'ON "{new_name}"({col})'
+                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?",
+                    (new_name,)
                 )
-            renamed += 1
+                for (idx_name,) in cur.fetchall():
+                    cur.execute(f'DROP INDEX IF EXISTS "{idx_name}"')
+                for col, suffix in [
+                    ('parent', 'parent'), ('doc_id', 'docid'),
+                    ('kb_id', 'kbid'), ('number', 'number'),
+                ]:
+                    cur.execute(
+                        f'CREATE INDEX IF NOT EXISTS "idx_{new_name}_{suffix}" '
+                        f'ON "{new_name}"({col})'
+                    )
+                renamed += 1
 
-    if not dry_run and renamed:
-        conn.commit()
-    conn.close()
+        if not dry_run and renamed:
+            conn.commit()
+    finally:
+        conn.close()
     LOG.info(f'[SQLite] Done: {renamed} table(s) renamed.')
     return renamed
 
@@ -201,7 +203,7 @@ def _milvus_rename_collection(client, pymilvus, old_name: str, new_name: str) ->
         return 1
     except Exception as e:
         LOG.error(f'[Milvus] Error renaming {old_name!r}: {e}')
-        traceback.print_exc()
+        LOG.error(traceback.format_exc())
         return 0
 
 
@@ -273,7 +275,7 @@ def _chroma_rename_collection(client, old_sub: str, new_sub: str) -> int:
         return 1
     except Exception as e:
         LOG.error(f'[Chroma] Error renaming {old_sub!r}: {e}')
-        traceback.print_exc()
+        LOG.error(traceback.format_exc())
         return 0
 
 
@@ -285,12 +287,15 @@ def check_sql_metadata(sql_db: str, algo_name: str) -> None:
     LOG.info(f'[SQL] Checking {sql_db}')
     try:
         conn = sqlite3.connect(sql_db, timeout=10.0)
+    except Exception as e:
+        LOG.error(f'[SQL] Error reading SQL DB: {e}')
+        return
+    try:
         cur = conn.cursor()
         cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = {row[0] for row in cur.fetchall()}
         if 'lazyllm_algorithm' not in tables:
             LOG.info('[SQL] lazyllm_algorithm table not found — nothing to check.')
-            conn.close()
             return
         cur.execute('SELECT id, display_name FROM lazyllm_algorithm WHERE id=?', (algo_name,))
         row = cur.fetchone()
@@ -302,9 +307,10 @@ def check_sql_metadata(sql_db: str, algo_name: str) -> None:
             cur.execute('SELECT COUNT(*) FROM lazyllm_node_group')
             count = cur.fetchone()[0]
             LOG.info(f'[SQL] lazyllm_node_group: {count} row(s) — already on new schema.')
-        conn.close()
     except Exception as e:
         LOG.error(f'[SQL] Error reading SQL DB: {e}')
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +321,10 @@ def discover_groups_from_sql(sql_db: str, algo_name: str) -> List[str]:
     groups: List[str] = []
     try:
         conn = sqlite3.connect(sql_db, timeout=10.0)
+    except Exception as e:
+        LOG.error(f'[SQL] Error discovering groups: {e}')
+        return groups
+    try:
         cur = conn.cursor()
         cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = {row[0] for row in cur.fetchall()}
@@ -335,9 +345,10 @@ def discover_groups_from_sql(sql_db: str, algo_name: str) -> List[str]:
                     LOG.info(f'[SQL] Discovered {len(groups)} group(s) from legacy info_pickle: {groups}')
                 except Exception as e:
                     LOG.warning(f'[SQL] Could not decode info_pickle: {e}')
-        conn.close()
     except Exception as e:
         LOG.error(f'[SQL] Error discovering groups: {e}')
+    finally:
+        conn.close()
     return groups
 
 
