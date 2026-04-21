@@ -389,7 +389,7 @@ class DocumentProcessor(ModuleBase):
                 parent_sig = name_to_sig.get(parent, reader_sig)
                 ref_sig = name_to_sig.get(ref, '') if ref else ''
                 transform = cfg.get('transform') or cfg.get('args')
-                from ..data_type import NodeGroupType
+                from ..doc_impl import NodeGroupType
                 group_type = cfg.get('group_type', NodeGroupType.CHUNK)
                 sig = _compute_node_group_signature(ng_name, transform, parent_sig, ref_sig, group_type)
                 name_to_sig[ng_name] = sig
@@ -407,7 +407,7 @@ class DocumentProcessor(ModuleBase):
                         ng_id = str(uuid4())
                         session.add(NodeGroupInfo(
                             id=ng_id, name=ng_name, signature=sig,
-                            info_pickle=dump_obj(cfg), created_at=datetime.now(),
+                            info_pickle=dump_obj(cfg), created_at=datetime.now(), updated_at=datetime.now(),
                         ))
                         name_to_id[ng_name] = ng_id
             return [name_to_id[n] for n in ordered_names]
@@ -418,7 +418,7 @@ class DocumentProcessor(ModuleBase):
             try:
                 from uuid import uuid4
                 from ..doc_impl import _compute_node_group_signature
-                from ..data_type import NodeGroupType
+                from ..doc_impl import NodeGroupType
                 NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
                 transform = config.get('transform') or config.get('args')
                 group_type = config.get('group_type', NodeGroupType.CHUNK)
@@ -436,7 +436,7 @@ class DocumentProcessor(ModuleBase):
                     ng_id = str(uuid4())
                     session.add(NodeGroupInfo(
                         id=ng_id, name=name, signature=sig,
-                        info_pickle=dump_obj(config), created_at=datetime.now(),
+                        info_pickle=dump_obj(config), created_at=datetime.now(), updated_at=datetime.now(),
                     ))
                     LOG.info(f'[DocumentProcessor] Node group {name!r} registered with id={ng_id}')
                     return ng_id
