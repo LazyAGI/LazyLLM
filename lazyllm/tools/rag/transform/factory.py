@@ -3,6 +3,7 @@ import fnmatch
 import hashlib
 import inspect
 import json
+import marshal
 
 from typing import Any, Dict, List, Union, Optional, Callable
 from dataclasses import dataclass, field
@@ -24,16 +25,13 @@ def _callable_sig(f: Optional[Callable], name_override: Optional[str] = None) ->
         return name_override
     qualname = getattr(f, '__qualname__', None)
     module = getattr(f, '__module__', None)
-    if qualname and '<lambda>' not in qualname:
+    if qualname and '<lambda>' not in qualname and '<locals>' not in qualname:
         return f'{module}.{qualname}' if module else qualname
-    try:
-        src = inspect.getsource(f).strip()
-        return '__lambda__::' + hashlib.sha256(src.encode()).hexdigest()[:16]
-    except (OSError, TypeError):
-        raise ValueError(
-            f'Cannot compute a stable signature for lambda/closure {f!r}. '
-            'Please pass a named function or set TransformArgs.name explicitly.'
-        )
+    code = getattr(f, '__code__', None)
+    if code is not None:
+        payload = code.co_code + marshal.dumps(code.co_consts)
+        return '__bytecode__::' + hashlib.sha256(payload).hexdigest()[:16]
+    return '__unstable__'
 
 @dataclass
 class TransformArgs():
@@ -69,6 +67,11 @@ class TransformArgs():
             cls = f
             type_name = f.__name__
         else:
+            if isinstance(f, NodeTransform):
+                sig_dict = {'type': type(f).__name__, **f.sig_fields()}
+                if self.pattern is not None:
+                    sig_dict['pattern'] = _callable_sig(self.pattern) if callable(self.pattern) else self.pattern
+                return hashlib.sha256(json.dumps(sig_dict, sort_keys=True).encode()).hexdigest()[:16]
             return hashlib.sha256(json.dumps({
                 'type': '__callable__',
                 'func': _callable_sig(f, self.name),
@@ -116,7 +119,15 @@ class AdaptiveTransform(NodeTransform):
                  num_workers: int = 0):
         super().__init__(num_workers=num_workers)
         if not isinstance(transforms, (tuple, list)): transforms = [transforms]
-        self._transformers = [(t.get('pattern'), make_transform(t)) for t in transforms]
+        self._raw_transforms = [t if isinstance(t, TransformArgs) else TransformArgs.from_dict(t) for t in transforms]
+        self._transformers = [(t.get('pattern'), make_transform(t)) for t in self._raw_transforms]
+
+    def sig_fields(self) -> Dict:
+        entries = []
+        for t in self._raw_transforms:
+            entry = {'sig': t.signature()}
+            entries.append(entry)
+        return {'transforms': entries}
 
     def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         if not isinstance(node, DocNode):

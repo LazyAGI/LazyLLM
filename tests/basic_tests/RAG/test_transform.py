@@ -1864,3 +1864,83 @@ class TestBatchForwardRefPath:
             kb_id=DEFAULT_KB_ID,
             preloaded_root_nodes=reader.load_data.return_value,
         )
+
+
+class TestCallableSig:
+    def test_named_function_is_stable(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        def my_func(x):
+            return x + 1
+
+        sig1 = _callable_sig(my_func)
+        sig2 = _callable_sig(my_func)
+        assert sig1 == sig2
+        # nested function uses bytecode path
+        assert sig1.startswith('__bytecode__::')
+
+    def test_top_level_named_function_uses_qualname(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+        from lazyllm.tools.rag.transform import SentenceSplitter
+
+        sig = _callable_sig(SentenceSplitter.forward)
+        assert sig.startswith('lazyllm.')
+        assert '.' in sig  # module.qualname format
+
+    def test_lambda_in_file_is_stable(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        f = lambda x: x.endswith('.txt')  # noqa: E731
+        sig1 = _callable_sig(f)
+        sig2 = _callable_sig(f)
+        assert sig1 == sig2
+        assert sig1.startswith('__bytecode__::')
+
+    def test_same_lambda_body_same_sig(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        f1 = lambda x: x.endswith('.txt')  # noqa: E731
+        f2 = lambda x: x.endswith('.txt')  # noqa: E731
+        assert _callable_sig(f1) == _callable_sig(f2)
+
+    def test_different_lambda_body_different_sig(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        f1 = lambda x: x.endswith('.txt')  # noqa: E731
+        f2 = lambda x: x.endswith('.md')   # noqa: E731
+        assert _callable_sig(f1) != _callable_sig(f2)
+
+    def test_none_returns_default(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        assert _callable_sig(None) == '__default__'
+
+    def test_name_override(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        f = lambda x: x  # noqa: E731
+        assert _callable_sig(f, name_override='my_name') == 'my_name'
+
+    def test_pipeline_instance_is_stable(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        pipeline = lazyllm.pipeline(SentenceSplitter(chunk_size=128, chunk_overlap=10))
+        sig1 = _callable_sig(pipeline)
+        sig2 = _callable_sig(pipeline)
+        assert sig1 == sig2
+        assert sig1 == '__unstable__'
+
+    def test_transform_args_signature_with_lambda_pattern(self):
+        ta1 = TransformArgs(f=SentenceSplitter, pattern=lambda x: x.endswith('.txt'),
+                            kwargs=dict(chunk_size=512))
+        ta2 = TransformArgs(f=SentenceSplitter, pattern=lambda x: x.endswith('.txt'),
+                            kwargs=dict(chunk_size=512))
+        assert ta1.signature() == ta2.signature()
+
+    def test_transform_args_signature_with_pipeline(self):
+        ta1 = TransformArgs(f=lazyllm.pipeline(SentenceSplitter(chunk_size=128, chunk_overlap=10)),
+                            trans_node=True)
+        ta2 = TransformArgs(f=lazyllm.pipeline(SentenceSplitter(chunk_size=128, chunk_overlap=10)),
+                            trans_node=True)
+        # both are __unstable__, so signatures are equal
+        assert ta1.signature() == ta2.signature()

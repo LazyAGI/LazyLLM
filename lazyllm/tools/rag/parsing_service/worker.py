@@ -60,6 +60,15 @@ class DocumentProcessorWorker(ModuleBase):
             self._callback_task_types = {TaskType(task_type).value for task_type in callback_task_types} \
                 if callback_task_types else None
 
+        def __getstate__(self):
+            state = self.__dict__.copy()
+            state['_processors_lock'] = None
+            return state
+
+        def __setstate__(self, state):
+            self.__dict__.update(state)
+            self._processors_lock = threading.Lock()
+
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
             self._waiting_task_queue = Queue(

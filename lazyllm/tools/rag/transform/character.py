@@ -4,6 +4,7 @@ import inspect
 
 from typing import Dict, List, Union, Tuple, Callable, Optional
 from .base import _TextSplitterBase, _TokenTextSplitter, _Split, _UNSET
+from .factory import _callable_sig
 
 class CharacterSplitter(_TextSplitterBase):
     def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
@@ -21,10 +22,12 @@ class CharacterSplitter(_TextSplitterBase):
         self._cached_default_split_fns = None
 
     def sig_fields(self) -> Dict:
+        fns_sig = [_callable_sig(fn) for fn in self._character_split_fns] if self._character_split_fns else []
         return {
             'chunk_size': self._chunk_size, 'overlap': self._overlap,
             'separator': self._separator, 'is_separator_regex': self._is_separator_regex,
             'keep_separator': self._keep_separator,
+            'split_fns': fns_sig,
         }
 
     def _split(self, text: str, chunk_size: int) -> List[_Split]:
