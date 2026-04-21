@@ -5,17 +5,17 @@ import inspect
 import json
 
 from typing import Any, Dict, List, Union, Optional, Callable
-
-from ..doc_node import DocNode, QADocNode
-from lazyllm import LOG
-from .base import NodeTransform
-
-from lazyllm.components import AlpacaPrompter
 from dataclasses import dataclass, field
 
-from lazyllm.module import LLMBase
+from lazyllm import LOG
+from lazyllm.components import AlpacaPrompter
 from lazyllm.components.formatter import encode_query_with_filepaths
+from lazyllm.module import LLMBase
+
+from ..doc_impl import _transmap
+from ..doc_node import DocNode, QADocNode
 from ..prompts import LLMTransformParserPrompts
+from .base import NodeTransform
 
 def _callable_sig(f: Optional[Callable], name_override: Optional[str] = None) -> str:
     if f is None:
@@ -62,7 +62,6 @@ class TransformArgs():
         kw = self.kwargs or {}
         cls = None
         if isinstance(f, str):
-            from ..doc_impl import _transmap
             cls = _transmap.get(f.lower())
             type_name = f
         elif inspect.isclass(f):
@@ -75,96 +74,15 @@ class TransformArgs():
                 'trans_node': self.trans_node,
             }, sort_keys=True).encode()).hexdigest()[:16]
 
-        sig_dict = _build_transform_sig(type_name, cls, kw)
+        instance = cls(**kw) if cls is not None else None
+        if instance is not None:
+            sig_dict = {'type': type_name, **instance.sig_fields()}
+        else:
+            sig_dict = {'type': type_name}
         if self.pattern is not None:
             sig_dict['pattern'] = _callable_sig(self.pattern) if callable(self.pattern) else self.pattern
         return hashlib.sha256(json.dumps(sig_dict, sort_keys=True).encode()).hexdigest()[:16]
 
-
-def _build_splitter_sig(type_name: str, cls, _get) -> Optional[Dict]:
-    from .sentence import SentenceSplitter
-    from .character import CharacterSplitter
-    from .recursive import RecursiveSplitter
-    from .markdown import MarkdownSplitter
-    from .code import (XMLSplitter, JSONSplitter, JSONLSplitter, YAMLSplitter,
-                       HTMLSplitter, GeneralCodeSplitter, CodeSplitter)
-
-    if cls is SentenceSplitter:
-        return {'type': type_name, 'chunk_size': _get('chunk_size'), 'chunk_overlap': _get('chunk_overlap')}
-    if cls is CharacterSplitter:
-        return {'type': type_name, 'chunk_size': _get('chunk_size'), 'overlap': _get('overlap'),
-                'separator': _get('separator'), 'is_separator_regex': _get('is_separator_regex'),
-                'keep_separator': _get('keep_separator')}
-    if cls is RecursiveSplitter:
-        return {'type': type_name, 'chunk_size': _get('chunk_size'), 'overlap': _get('overlap'),
-                'separators': _get('separators'), 'keep_separator': _get('keep_separator'),
-                'is_separator_regex': _get('is_separator_regex')}
-    if cls is MarkdownSplitter:
-        return {'type': type_name, 'chunk_size': _get('chunk_size'), 'overlap': _get('overlap'),
-                'keep_trace': _get('keep_trace'), 'keep_headers': _get('keep_headers'),
-                'keep_code_blocks': _get('keep_code_blocks'), 'keep_tables': _get('keep_tables'),
-                'keep_images': _get('keep_images')}
-    if cls is XMLSplitter:
-        return {'type': type_name, 'chunk_size': _get('chunk_size'),
-                'keep_trace': _get('keep_trace'), 'keep_tags': _get('keep_tags')}
-    if cls in (JSONSplitter, JSONLSplitter, YAMLSplitter):
-        return {'type': type_name, 'chunk_size': _get('chunk_size'), 'compact_output': _get('compact_output')}
-    if cls is HTMLSplitter:
-        return {'type': type_name, 'chunk_size': _get('chunk_size')}
-    if cls is GeneralCodeSplitter:
-        return {'type': type_name, 'chunk_size': _get('chunk_size'), 'filetype': _get('filetype')}
-    if cls is CodeSplitter:
-        return {'type': type_name, 'chunk_size': _get('chunk_size'), 'overlap': _get('overlap'),
-                'filetype': _get('filetype')}
-    return None
-
-
-def _build_transform_sig(type_name: str, cls, kw: Dict) -> Dict:
-    def _get(key, default=None):
-        return kw.get(key, default)
-
-    splitter_sig = _build_splitter_sig(type_name, cls, _get)
-    if splitter_sig is not None:
-        return splitter_sig
-
-    from .groupby import GroupNodeParser
-    from .treebuilder import TreeBuilderParser
-    from .treefixer import TreeFixerParser
-    from .layout import LayoutNodeParser
-
-    if cls is GroupNodeParser:
-        return {'type': type_name, 'max_length': _get('max_length'), 'merge_title': _get('merge_title')}
-    if cls is TreeBuilderParser:
-        return {'type': type_name,
-                'get_level_sig': _callable_sig(_get('get_level')),
-                'is_valid_child_sig': _callable_sig(_get('is_valid_child'))}
-    if cls is TreeFixerParser:
-        return {'type': type_name, 'patterns': _get('patterns'),
-                'skip_level_under': _get('skip_level_under'), 'extra_patterns': _get('extra_patterns')}
-    if cls is LayoutNodeParser:
-        return {'type': type_name,
-                'rules_sig': _callable_sig(_get('rules')),
-                'group_by_sig': _callable_sig(_get('group_by')),
-                'sort_by_sig': _callable_sig(_get('sort_by')),
-                'post_process_sig': _callable_sig(_get('post_process'))}
-    if cls is LLMParser:
-        llm = _get('llm')
-        llm_sig = type(llm).__name__ if llm is not None else '__none__'
-        prompts = _get('prompts')
-        if prompts is None:
-            prompts_sig = '__default__'
-        else:
-            try:
-                prompts_sig = hashlib.sha256(
-                    json.dumps(prompts.__dict__, sort_keys=True).encode()
-                ).hexdigest()[:16]
-            except Exception:
-                prompts_sig = repr(prompts)
-        return {'type': type_name, 'llm_sig': llm_sig,
-                'language': _get('language'), 'task_type': _get('task_type'), 'prompts_sig': prompts_sig}
-    # FuncNodeTransform or unknown
-    func = _get('func') or _get('f')
-    return {'type': type_name, 'func_sig': _callable_sig(func), 'trans_node': _get('trans_node')}
 
 def build_nodes_from_splits(
     text_splits: List[str], doc: DocNode, node_group: str
@@ -221,6 +139,9 @@ class FuncNodeTransform(NodeTransform):
         self._func, self._trans_node = func, trans_node
         self._need_ref = 'ref' in inspect.signature(func).parameters
 
+    def sig_fields(self) -> Dict:
+        return {'func_sig': _callable_sig(self._func), 'trans_node': self._trans_node}
+
     def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         if ref := kwargs.get('ref', None):
             assert self._need_ref, 'if node group has ref, the transform function must support ref parameter.'
@@ -248,6 +169,23 @@ class LLMParser(NodeTransform):
             prompt = dict(system=task_prompt, user='#input:\n{input}\n#output:\n')
         self._llm = llm.share(prompt=AlpacaPrompter(prompt), stream=False, format=self._format)
         self._task_type = task_type
+        self._language = language
+
+    def sig_fields(self) -> Dict:
+        prompts_sig = '__default__'
+        if self._prompts is not None:
+            try:
+                prompts_sig = hashlib.sha256(
+                    json.dumps(self._prompts.__dict__, sort_keys=True).encode()
+                ).hexdigest()[:16]
+            except Exception:
+                prompts_sig = repr(self._prompts)
+        return {
+            'llm_sig': type(self._llm).__name__,
+            'language': self._language,
+            'task_type': self._task_type,
+            'prompts_sig': prompts_sig,
+        }
 
     def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         if self._task_type == 'qa_img':
