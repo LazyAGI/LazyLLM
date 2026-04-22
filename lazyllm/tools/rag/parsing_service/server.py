@@ -7,7 +7,7 @@ import traceback
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from lazyllm import (
     LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app,
@@ -30,6 +30,7 @@ from ..store.document_store import _DocumentStore
 from ..store.utils import create_file_path
 from ..utils import BaseResponse, ensure_call_endpoint, _get_default_db_config, _orm_to_dict
 from ..doc_to_db import SchemaExtractor
+from ..doc_impl import _compute_node_group_signature, NodeGroupType
 from ...sql import SqlManager
 
 CALLBACK_RETRY_MIN_INTERVAL = 5.0
@@ -374,8 +375,6 @@ class DocumentProcessor(ModuleBase):
                 raise
 
         def _upsert_node_groups(self, node_groups: Dict[str, Dict], reader: DirectoryReader) -> List[str]:
-            from uuid import uuid4
-            from ..doc_impl import _compute_node_group_signature
             NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
             reader_sig = reader.signature() if reader is not None else ''
             # Build signatures in topological order (parent before child)
@@ -416,9 +415,6 @@ class DocumentProcessor(ModuleBase):
             self._lazy_init()
             LOG.info(f'[DocumentProcessor] Register new node group: name={name}')
             try:
-                from uuid import uuid4
-                from ..doc_impl import _compute_node_group_signature
-                from ..doc_impl import NodeGroupType
                 NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
                 transform = config.get('transform') or config.get('args')
                 group_type = config.get('group_type', NodeGroupType.CHUNK)
@@ -620,6 +616,23 @@ class DocumentProcessor(ModuleBase):
                 LOG.warning('[DocumentProcessor] No algorithm registered')
             return BaseResponse(code=200, msg='success', data=data)
 
+        @app.get('/algo/{algo_id}/groups')
+        def get_algo_groups(self, algo_id: str) -> None:
+            self._lazy_init()
+            if self._shutdown:
+                raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
+            try:
+                algorithm = self._get_algo(algo_id)
+                if algorithm is None:
+                    raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
+                node_group_ids = algorithm.get('node_group_ids', '[]')
+                return BaseResponse(code=200, msg='success', data={'node_group_ids': node_group_ids})
+            except fastapi.HTTPException:
+                raise
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to get algo groups: {e}, {traceback.format_exc()}')
+                raise fastapi.HTTPException(status_code=500, detail=f'Failed to get algo groups: {str(e)}')
+
         @app.get('/algo/{algo_id}/group/info')
         def get_algo_group_info(self, algo_id: str) -> None:
             self._lazy_init()
@@ -634,9 +647,6 @@ class DocumentProcessor(ModuleBase):
             except Exception as e:
                 LOG.error(f'[DocumentProcessor] Failed to get group info: {e}, {traceback.format_exc()}')
                 raise fastapi.HTTPException(status_code=500, detail=f'Failed to get group info: {str(e)}')
-
-        def get_group_info(self, algo_id: str) -> None:
-            return self.get_algo_group_info(algo_id)
 
         def _get_algo_group_info_data(self, algo_id: str):
             algorithm = self._get_algo(algo_id)

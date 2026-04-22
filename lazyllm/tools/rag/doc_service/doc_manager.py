@@ -589,7 +589,8 @@ class DocManager:
             return _orm_to_dict(row) if row else None
 
     def _upsert_ng_status_pending(self, doc_id: str, kb_id: str,
-                                  node_group_ids: List[str], file_path: Optional[str] = None):
+                                  node_group_ids: List[str], file_path: Optional[str] = None,
+                                  force: bool = False):
         if not node_group_ids:
             return
         now = datetime.now()
@@ -603,6 +604,8 @@ class DocManager:
             for ng_id in node_group_ids:
                 if ng_id in existing_map:
                     row = existing_map[ng_id]
+                    if not force and row.status == NodeGroupParseStatus.SUCCESS.value:
+                        continue
                     row.status = NodeGroupParseStatus.PENDING.value
                     row.file_path = file_path or row.file_path
                     row.updated_at = now
@@ -620,10 +623,15 @@ class DocManager:
             if resp and resp.code == 200 and resp.data:
                 ids = resp.data.get('node_group_ids') if isinstance(resp.data, dict) else None
                 if ids:
-                    return json.loads(ids) if isinstance(ids, str) else ids
+                    result = json.loads(ids) if isinstance(ids, str) else ids
+                    if not result:
+                        raise ValueError(f'algo {algo_id!r} has no node_group_ids registered')
+                    return result
+            raise ValueError(f'Failed to get node_group_ids for algo {algo_id!r}: resp={resp!r}')
+        except ValueError:
+            raise
         except Exception as e:
-            LOG.error(f'[DocManager] Failed to get node_group_ids for algo {algo_id}: {e}')
-        return []
+            raise RuntimeError(f'[DocManager] Failed to get node_group_ids for algo {algo_id}: {e}') from e
 
     def reparse_for_node_group(self, kb_id: str, algo_id: str, node_group_id: str,
                                priority: int = 0) -> List[str]:
@@ -637,21 +645,20 @@ class DocManager:
                 NgStatus.node_group_id == node_group_id,
                 NgStatus.status == NodeGroupParseStatus.SUCCESS.value,
             ).with_for_update().all()
-            # convert to plain dicts inside session to avoid DetachedInstanceError
             success_rows = [{'doc_id': r.doc_id, 'file_path': r.file_path} for r in rows]
         task_ids = []
         for row in success_rows:
             if not row['file_path']:
                 LOG.warning(f'[DocManager] No file_path for doc {row["doc_id"]}, skipping reparse')
                 continue
-            task_id = str(uuid4())
             try:
-                self._create_parser_task(
-                    task_id=task_id, doc_id=row['doc_id'], kb_id=kb_id, algo_id=algo_id,
-                    task_type=TaskType.DOC_REPARSE, file_path=row['file_path'],
+                self._upsert_ng_status_pending(row['doc_id'], kb_id, [node_group_id], row['file_path'], force=True)
+                task_id, _ = self._enqueue_task(
+                    row['doc_id'], kb_id, algo_id, TaskType.DOC_REPARSE,
+                    file_path=row['file_path'],
                     reparse_group=node_group_id,
+                    priority=priority,
                 )
-                self._upsert_ng_status_pending(row['doc_id'], kb_id, [node_group_id], row['file_path'])
                 task_ids.append(task_id)
             except Exception as e:
                 LOG.error(f'[DocManager] Failed to submit reparse task for doc {row["doc_id"]}: {e}')
@@ -957,8 +964,7 @@ class DocManager:
             # Insert PENDING status for each node group when a new DOC_ADD task is submitted
             if task_type == TaskType.DOC_ADD:
                 ng_ids = self._get_algo_node_group_ids(algo_id)
-                if ng_ids:
-                    self._upsert_ng_status_pending(doc_id, kb_id, ng_ids, file_path)
+                self._upsert_ng_status_pending(doc_id, kb_id, ng_ids, file_path)
         except Exception as exc:
             finished_at = datetime.now()
             error_msg = str(exc)
