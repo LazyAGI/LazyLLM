@@ -51,4 +51,18 @@ class RawSpanRecord:
             raise ValueError(f'invalid parent_span_id: {self.parent_span_id!r}')
 
 
-__all__ = ['RawSpanRecord', 'RawTraceRecord']
+@dataclass
+class RawTracePayload:
+    trace: RawTraceRecord
+    spans: List[RawSpanRecord] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        trace_id = self.trace.trace_id
+        for span in self.spans:
+            if span.trace_id != trace_id:
+                raise ValueError(
+                    f'RawTracePayload span trace_id mismatch: {span.trace_id!r} != {trace_id!r}'
+                )
+
+
+__all__ = ['RawSpanRecord', 'RawTracePayload', 'RawTraceRecord']

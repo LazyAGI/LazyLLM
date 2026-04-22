@@ -1,4 +1,4 @@
-from .raw import RawSpanRecord, RawTraceRecord
+from .raw import RawSpanRecord, RawTracePayload, RawTraceRecord
 from .structured import ExecutionStep, StructuredTrace
 from .views import (
     ExecutionStepView,
@@ -12,6 +12,7 @@ __all__ = [
     'ExecutionStepView',
     'RawDataView',
     'RawSpanRecord',
+    'RawTracePayload',
     'RawTraceRecord',
     'StructuredTrace',
     'TraceDetailMetadata',

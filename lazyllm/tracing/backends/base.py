@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
-from lazyllm.tracing.consume.datamodel.raw import RawSpanRecord, RawTraceRecord
+from lazyllm.tracing.consume.datamodel.raw import RawSpanRecord, RawTracePayload, RawTraceRecord
 
 
 class TracingBackend(ABC):
@@ -20,9 +20,11 @@ class ConsumeBackend(ABC):
     name: str
 
     @abstractmethod
-    def fetch_trace(self, trace_id: str) -> RawTraceRecord:
+    def fetch_trace_payload(self, trace_id: str) -> RawTracePayload:
         pass
 
-    @abstractmethod
     def fetch_spans(self, trace_id: str) -> List[RawSpanRecord]:
-        pass
+        return self.fetch_trace_payload(trace_id).spans
+
+    def fetch_trace(self, trace_id: str) -> RawTraceRecord:
+        return self.fetch_trace_payload(trace_id).trace

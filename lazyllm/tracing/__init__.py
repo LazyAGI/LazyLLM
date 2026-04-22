@@ -59,6 +59,11 @@ _SUBMOD_MAP = {
         'ExecutionStepView',
         'RawDataView',
     ],
+    'consume.datamodel.raw': [
+        'RawSpanRecord',
+        'RawTracePayload',
+        'RawTraceRecord',
+    ],
     'consume.errors': [
         'ConsumeError',
         'TraceNotFound',

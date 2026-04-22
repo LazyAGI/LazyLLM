@@ -8,7 +8,7 @@ import requests
 
 from lazyllm.common import LOG
 from lazyllm.thirdparty import opentelemetry
-from lazyllm.tracing.consume.datamodel.raw import RawSpanRecord, RawTraceRecord
+from lazyllm.tracing.consume.datamodel.raw import RawSpanRecord, RawTracePayload, RawTraceRecord
 from lazyllm.tracing.consume.errors import ConsumeBackendError, TraceNotFound
 from lazyllm.tracing.semantics import SemanticType, is_valid_span_id
 
@@ -130,6 +130,18 @@ class LangfuseConsumeBackend(ConsumeBackend):
     _CONNECT_TIMEOUT_S = 5.0
     _MAX_HTTP_ATTEMPTS = 3
     _OBSERVATIONS_PAGE_LIMIT = 1000
+    _PROMOTED_TRACE_FIELDS = frozenset({
+        'id',
+        'name',
+        'timestamp',
+        'tags',
+        'userId',
+        'sessionId',
+        'input',
+        'output',
+        'metadata',
+        'observations',
+    })
 
     def _iso_to_epoch(self, value: Optional[str]) -> Optional[float]:
         if not value or not isinstance(value, str):
@@ -144,6 +156,8 @@ class LangfuseConsumeBackend(ConsumeBackend):
             return None
 
     def _raw_span_from_obs(self, trace_id: str, obs: Dict[str, Any]) -> RawSpanRecord:
+        if 'id' not in obs:
+            raise ValueError('observation missing id')
         span_id = str(obs['id'])
         parent_raw = obs.get('parentObservationId')
         parent_span_id = str(parent_raw) if parent_raw is not None else None
@@ -156,7 +170,19 @@ class LangfuseConsumeBackend(ConsumeBackend):
         elif not isinstance(metadata, dict):
             metadata = {'_': metadata}
 
-        attributes: Dict[str, Any] = dict(metadata)
+        metadata_attrs = metadata.get('attributes')
+        if isinstance(metadata_attrs, dict):
+            attributes: Dict[str, Any] = dict(metadata_attrs)
+        else:
+            attributes = {
+                key: value for key, value in metadata.items()
+                if isinstance(key, str) and (
+                    key.startswith('lazyllm.')
+                    or key.startswith('gen_ai.')
+                    or key.startswith('langfuse.')
+                    or key in ('session.id', 'user.id')
+                )
+            }
         if obs.get('type') is not None:
             attributes.setdefault('langfuse.observation.type', obs['type'])
         if obs.get('model') is not None:
@@ -267,7 +293,7 @@ class LangfuseConsumeBackend(ConsumeBackend):
 
         raise ConsumeBackendError('Langfuse HTTP request exhausted retries')
 
-    def fetch_trace(self, trace_id: str) -> RawTraceRecord:
+    def _fetch_trace_body(self, trace_id: str) -> Dict[str, Any]:
         host, headers = self._require_connection()
         url = f'{host}/api/public/traces/{trace_id}'
         body = self._request_json(
@@ -275,6 +301,9 @@ class LangfuseConsumeBackend(ConsumeBackend):
         )
         if not isinstance(body, dict):
             raise ConsumeBackendError('Langfuse trace response is not a JSON object')
+        return body
+
+    def _raw_trace_from_body(self, trace_id: str, body: Dict[str, Any]) -> RawTraceRecord:
         metadata = body.get('metadata')
         if metadata is None:
             metadata = {}
@@ -284,6 +313,10 @@ class LangfuseConsumeBackend(ConsumeBackend):
         if not isinstance(tags, list):
             tags = []
         tid = body.get('id') or trace_id
+        trace_raw = {
+            key: value for key, value in body.items()
+            if key not in self._PROMOTED_TRACE_FIELDS
+        }
         try:
             return RawTraceRecord(
                 trace_id=str(tid),
@@ -297,10 +330,43 @@ class LangfuseConsumeBackend(ConsumeBackend):
                 start_time=self._iso_to_epoch(body.get('timestamp')),
                 end_time=None,
                 status=None,
-                raw=dict(body),
+                raw=trace_raw,
             )
         except ValueError as exc:
             raise ConsumeBackendError(f'invalid trace payload from Langfuse: {exc}') from exc
+
+    def _raw_spans_from_observations(
+        self,
+        trace_id: str,
+        observations: List[Any],
+    ) -> List[RawSpanRecord]:
+        out: List[RawSpanRecord] = []
+        for row in observations:
+            if not isinstance(row, dict):
+                continue
+            try:
+                out.append(self._raw_span_from_obs(trace_id, row))
+            except ValueError as exc:
+                raise ConsumeBackendError(f'invalid observation payload: {exc}') from exc
+        return out
+
+    def fetch_trace_payload(self, trace_id: str) -> RawTracePayload:
+        body = self._fetch_trace_body(trace_id)
+        trace = self._raw_trace_from_body(trace_id, body)
+
+        if 'observations' not in body:
+            return RawTracePayload(trace=trace, spans=self.fetch_spans(trace.trace_id))
+
+        observations = body.get('observations')
+        if not isinstance(observations, list):
+            raise ConsumeBackendError('Langfuse trace observations field is not a JSON array')
+        return RawTracePayload(
+            trace=trace,
+            spans=self._raw_spans_from_observations(trace.trace_id, observations),
+        )
+
+    def fetch_trace(self, trace_id: str) -> RawTraceRecord:
+        return self._raw_trace_from_body(trace_id, self._fetch_trace_body(trace_id))
 
     def fetch_spans(self, trace_id: str) -> List[RawSpanRecord]:
         host, headers = self._require_connection()
@@ -331,13 +397,7 @@ class LangfuseConsumeBackend(ConsumeBackend):
             meta = body.get('meta') if isinstance(body.get('meta'), dict) else {}
             total_pages = int(meta.get('totalPages', 1) or 1)
 
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                try:
-                    out.append(self._raw_span_from_obs(trace_id, row))
-                except ValueError as exc:
-                    raise ConsumeBackendError(f'invalid observation payload: {exc}') from exc
+            out.extend(self._raw_spans_from_observations(trace_id, rows))
 
             if not rows:
                 break
