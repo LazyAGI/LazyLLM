@@ -4,6 +4,7 @@ import random
 import threading
 import time
 import traceback
+import requests
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -13,7 +14,6 @@ from lazyllm import (
     LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app,
     LazyLLMLaunchersBase as Launcher, load_obj, once_wrapper, dump_obj
 )
-import requests
 from lazyllm.thirdparty import fastapi
 
 from .base import (
@@ -388,7 +388,6 @@ class DocumentProcessor(ModuleBase):
                 parent_sig = name_to_sig.get(parent, reader_sig)
                 ref_sig = name_to_sig.get(ref, '') if ref else ''
                 transform = cfg.get('transform') or cfg.get('args')
-                from ..doc_impl import NodeGroupType
                 group_type = cfg.get('group_type', NodeGroupType.CHUNK)
                 sig = _compute_node_group_signature(ng_name, transform, parent_sig, ref_sig, group_type)
                 name_to_sig[ng_name] = sig
