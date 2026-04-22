@@ -20,8 +20,10 @@ def _build_transfer_task(file_infos):
 class _DummyProcessor:
     def __init__(self):
         self.calls = []
+        self.node_group_ids = []
 
     def add_doc(self, **kwargs):
+        kwargs.pop('skip_ng_ids', None)
         self.calls.append(kwargs)
 
 
