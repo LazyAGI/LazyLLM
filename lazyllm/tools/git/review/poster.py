@@ -69,7 +69,8 @@ def _comment_body_text(c: Dict[str, Any], model_name: str) -> str:
     return (
         '*This suggestion is AI-assisted and has been manually reviewed for relevance. If you disagree, '
         'provide concrete technical reasoning or counterexamples. Newly introduced architecture issues must '
-        'be fixed before merging; pre-existing ones must be tracked via an issue (new or linked). Responses '
+        'be fixed before merging; pre-existing ones must be tracked via an issue (new or linked). '
+        'Style issues must also be fixed; missing test coverage must be added. Responses '
         'without concrete actions are incomplete, and consensus-based arguments (e.g., “others are doing this”) '
         f'alone are not sufficient.*\n\n**{severity_tag} {category_tag}** {c.get("problem", "")}\n\n'
         f'**Suggestion:** {_suggestion_prefix(c.get("suggestion", ""))}{c.get("suggestion", "")}\n\n'

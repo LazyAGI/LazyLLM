@@ -2,12 +2,12 @@
 
 This document describes the end-to-end PR review flow of the `lazyllm.tools.git.review` module.
 The entry point is the `review()` function in `runner.py`, which runs through pre-analysis
-(architecture parsing, historical spec extraction), four rounds of LLM analysis
-(R1 hunk review → R2a PR design doc → R2 architect review → R3 Agent verification → R4 merge & dedup),
-static lint integration, and finally publishes results to GitHub / GitLab / Gitee / GitCode.
+(architecture parsing, historical spec extraction), six rounds of LLM analysis
+(R1 hunk review → R2a PR design doc → R2 architect review → R3 Agent verification → RMod modification-necessity analysis → R4 merge & dedup),
+test coverage check (RCov), static lint integration, and finally publishes results to GitHub / GitLab / Gitee / GitCode.
 
 Source directory: `lazyllm/tools/git/review/`
-(`runner.py`, `pre_analysis.py`, `rounds.py`, `constants.py`, `checkpoint.py`, `utils.py`, `poster.py`, `lint_runner.py`).
+(`runner.py`, `pre_analysis.py`, `rounds.py`, `coverage_checker.py`, `constants.py`, `checkpoint.py`, `utils.py`, `poster.py`, `lint_runner.py`).
 
 ---
 
@@ -18,8 +18,9 @@ Source directory: `lazyllm/tools/git/review/`
 | Module | Responsibility |
 |--------|---------------|
 | `runner.py` | **Main entry point**: orchestrates all sub-modules; diff fetching & truncation; strategy decision (`_ReviewStrategy`); meta warning generation; clone cleanup; comment publishing |
-| `pre_analysis.py` | Repository clone; architecture doc generation (`analyze_repo_architecture`); historical review spec extraction (`analyze_historical_reviews`); PR summary; R3 Agent tool set construction |
-| `rounds.py` | **Four-round review core**: R1 hunk-level analysis, R2a PR design doc, R2 architect review, R3 ReactAgent verification, R4 merge & dedup |
+| `pre_analysis.py` | Repository clone; architecture doc generation (`analyze_repo_architecture`); local-repo arch analysis (local mode); historical review spec extraction (`analyze_historical_reviews`); PR summary; R3 Agent tool set construction |
+| `rounds.py` | **Review round core**: R1 hunk-level analysis, R2a PR design doc, R2 architect review, R3 ReactAgent verification, RMod modification-necessity analysis, R4 merge & dedup |
+| `coverage_checker.py` | **RCov**: test coverage check — identify testable symbols, group by dependency, grep test files, evaluate coverage gaps (LLM, parallel) |
 | `lint_runner.py` | Static lint analysis (no LLM calls), results injected directly into R4 |
 | `checkpoint.py` | Resume support: PR-level checkpoint; stage enum `ReviewStage`; soft invalidation (`resume_from`) |
 | `constants.py` | Context budget constants; `BudgetManager`; issue density control; diff heuristic compression |
@@ -38,7 +39,9 @@ review(pr_number, ...)
   └─ _pre_round_pr_summary → pr_summary
   └─ _fetch_existing_pr_comments
   └─ _run_lint_analysis → lint_issues
-  └─ _run_four_rounds (R1 → R2a → R2 → R3 → R4)
+  └─ _run_four_rounds (R1 → R2a → R2 → R3 → RMod → R4)
+  └─ _run_coverage_check (RCov, parallel, with dynamic timeout) → rcov_issues
+  └─ Merge: final_comments + rcov_issues → all_comments
   └─ Clean up clone subdirectory
   └─ _post_review_comments → platform
 ```
@@ -59,9 +62,11 @@ review(pr_number, ...)
 | 9 | Round 2a | PR design document (structured, 9 sections) |
 | 10 | Round 2 | Architect-perspective global design review issue list |
 | 11 | Round 3 | ReactAgent verification: validate R1+R2 issues + discover new cross-file issues |
-| 12 | Round 4 | Deterministic dedup + LLM merge + lint fusion → `final_comments` |
-| 13 | Publish | Submit platform review; update checkpoint `UPLOAD` stage |
-| 14 | Cleanup | Delete `{pr_dir}/clone/`; retain `checkpoint.json` |
+| 12 | RMod | ReactAgent modification-necessity analysis: flag unnecessary changes per file |
+| 13 | Round 4 | Deterministic dedup + LLM merge + lint fusion → `final_comments` |
+| 14 | RCov | Test coverage check: identify untested symbols, evaluate gaps → `rcov_issues` (bypasses R4 dedup) |
+| 15 | Publish | Submit platform review; update checkpoint `UPLOAD` stage |
+| 16 | Cleanup | Delete `{pr_dir}/clone/`; retain `checkpoint.json` |
 
 ---
 
@@ -124,6 +129,9 @@ subsequent LLM calls. It consists of four sub-stages, all of which support check
 - When `pin_sha` (the PR head commit) is specified, `_pin_clone_to_sha` switches the clone to
   the exact commit, ensuring the reviewed code matches the PR.
 - The clone directory is stored under `arch_cache_path/{owner_repo}/clone/` and reused across PRs.
+- **Local mode** (`review-local`): cloning is skipped. If `arch_doc` is empty, `analyze_repo_architecture`
+  is called directly on the local repo path via `_run_local_arch_analysis`, so architecture context
+  is still available without a network clone.
 
 ### 3.2 Architecture Document Generation (`analyze_repo_architecture`)
 
@@ -439,10 +447,34 @@ excessive budget.
 
 ---
 
-### 4.5 Round 4: Merge & Dedup
+### 4.5 RMod: Modification-Necessity Analysis (`_run_rmod_agent_round`)
 
-**Goal**: merge the issue lists from R1, R2, R3, and `lint_issues` into a final, deduplicated
-comment list.
+**Goal**: for each modified file, use a ReactAgent to judge whether the changes are architecturally
+justified — flagging unnecessary refactors, over-engineering, or changes that violate framework
+conventions.
+
+**How it works:**
+
+1. `_rmod_collect_file_diffs` extracts per-file diffs; `_rmod_new_file_paths` identifies newly
+   created files (correctly handles `--- /dev/null` → `+++ b/` ordering in unified diff format).
+2. For each file, a `ReactAgent` is launched with the same file-exploration tools as R3
+   (`read_file_scoped`, `search_scoped`, etc.). The agent is given the PR design doc, arch doc,
+   and framework conventions as context.
+3. The agent runs with a per-file timeout (`_RMOD_AGENT_TIMEOUT_SECS`). Files are processed in
+   parallel (up to `max_workers` threads).
+4. Issues are tagged `source='rmod'` and `bug_category='design'`.
+5. Results are saved to checkpoint (`ReviewStage.RMOD`) for resume support.
+
+**Key implementation notes:**
+- `execute_in_sandbox` is disabled on tools before agent creation (not via private `_tools_manager`).
+- `FuturesTimeoutError` (from `concurrent.futures`) is used instead of the built-in `TimeoutError`.
+
+---
+
+### 4.6 Round 4: Merge & Dedup
+
+**Goal**: merge the issue lists from R1, R2, R3, RMod, and `lint_issues` into a final, deduplicated
+comment list. RCov issues bypass this stage and are appended directly after R4.
 
 **How it works (three steps):**
 
@@ -464,7 +496,55 @@ comment list.
 
 ---
 
-## 5. Static Lint Analysis (`lint_runner.py`)
+## 5. RCov: Test Coverage Check (`coverage_checker.py`)
+
+RCov runs **after** R4 (independently, not merged through dedup) and checks whether new or
+modified public symbols have adequate test coverage.
+
+### 5.1 Three-Step Flow
+
+**Step 1 — Identify testable symbols** (`_rcov_identify_symbols`):
+- Clips the diff to `SINGLE_CALL_CONTEXT_BUDGET - 20000` chars.
+- Calls the LLM to extract a list of public functions/classes that need test coverage.
+- Filters out internal helpers (`is_internal=True`).
+
+**Step 1.5 — Group by dependency** (`_rcov_group_symbols`):
+- If more than one symbol is found, calls the LLM to group related symbols (e.g. a class and its
+  key methods) so they are evaluated together.
+- Falls back to one group per symbol if grouping fails.
+
+**Step 2 — Grep + evaluate** (`_rcov_evaluate_groups`):
+- `_find_test_files` scans `clone_dir` for test files (`test_*.py`, `*_test.py`, etc.).
+- For each group, `_build_grep_results` greps test files in parallel for each symbol name.
+  Symbol names are validated with `re.fullmatch` before being passed to `grep -F` to prevent
+  regex injection.
+- The LLM evaluates whether existing tests are sufficient; issues are tagged `source='rcov'`.
+- Groups are evaluated in parallel (up to 4 workers); each group has a per-call timeout of
+  `_RCOV_GROUP_TIMEOUT_SECS` (90s).
+
+### 5.2 Timeout Strategy
+
+The outer timeout in `runner.py` is derived dynamically from diff size:
+
+```
+timeout = clamp(3 × 90 + len(diff_text) // 10000 × 30, min=300, max=900)  # seconds
+```
+
+This avoids both premature timeouts on large diffs and indefinite blocking on small ones.
+The actual timeout value is logged at `INFO` level for observability.
+
+### 5.3 Checkpoint
+
+RCov results are saved under `ReviewStage.RMOD` checkpoint key (`rcov_issues`). On resume,
+the cached results are loaded and the LLM calls are skipped entirely.
+
+The output metrics include:
+- `rcov_issues_count`: number of issues found, or `None` if RCov was skipped (timeout / no clone).
+- `rcov_ran`: boolean indicating whether RCov actually executed.
+
+---
+
+## 6. Static Lint Analysis (`lint_runner.py`)
 
 Lint analysis runs independently before the four LLM rounds and consumes no LLM call budget.
 
@@ -481,9 +561,9 @@ precision with no hallucination risk.
 
 ---
 
-## 6. Checkpoint System (`checkpoint.py`)
+## 7. Checkpoint System (`checkpoint.py`)
 
-### 6.1 Design Goals
+### 7.1 Design Goals
 
 - **Resume support**: if the review fails mid-way (network timeout, LLM rate limit), it resumes
   from the last completed stage without repeating finished LLM calls.
@@ -492,16 +572,19 @@ precision with no hallucination risk.
 - **Version control**: when `_REVIEW_ROUND_VERSION` is incremented, the R4 (merge & dedup) cache
   is automatically invalidated, ensuring prompt changes trigger a recomputation of the final result.
 
-### 6.2 Stage Enum (`ReviewStage`)
+### 7.2 Stage Enum (`ReviewStage`)
 
 ```
-CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2A → R2 → R3 → FINAL → UPLOAD
+CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2A → R2 → R3 → RMOD → FINAL → UPLOAD
 ```
 
 After each stage completes, `ckpt.mark_stage_done(stage)` is called. On restart,
 `ckpt.should_use_cache(stage)` determines whether to skip the stage.
 
-### 6.3 Head SHA Rotation
+`_KEY_TO_STAGE` is a class-level dict (initialized at class definition time, not lazily) mapping
+checkpoint keys to their owning stage. This avoids TOCTOU races in concurrent scenarios.
+
+### 7.3 Head SHA Rotation
 
 If the PR is force-pushed during review (head SHA changes), the checkpoint is automatically
 backed up and all review-round data is purged (clone, arch, and spec are retained), restarting
@@ -509,9 +592,9 @@ from R1.
 
 ---
 
-## 7. Comment Publishing (`poster.py`)
+## 8. Comment Publishing (`poster.py`)
 
-### 7.1 Publishing Strategy
+### 8.1 Publishing Strategy
 
 1. **Batch submit**: prefer the platform's `submit_review` API to submit all comments at once
    (GitHub Pull Request Review).
@@ -520,15 +603,23 @@ from R1.
 3. **Rate limit retry**: on 429 / 403 rate-limit responses, retry with exponential backoff
    (up to 3 times).
 
-### 7.2 Commentable Line Filtering (`_filter_commentable`)
+### 8.2 Commentable Line Filtering (`_filter_commentable`)
 
 Platforms only allow line-level comments on lines that are actually changed in the diff.
 `_build_commentable_lines` parses the diff to build a `{path: set(lines)}` map, filtering out
 issues not in the changed range (downgraded to PR-level comments or discarded).
 
+### 8.3 Comment Body Policy
+
+Each comment body includes the following enforcement statement:
+
+> *Newly introduced architecture issues must be fixed before merging; pre-existing ones must be
+> tracked via an issue (new or linked). Style issues must also be fixed; missing test coverage
+> must be added.*
+
 ---
 
-## 8. Budget & Rate Limiting (`constants.py`)
+## 9. Budget & Rate Limiting (`constants.py`)
 
 | Constant | Default | Description |
 |----------|---------|-------------|
@@ -546,7 +637,7 @@ before calling, and skips non-critical steps when the budget is exhausted.
 
 ---
 
-## 9. Issue Field Specification
+## 10. Issue Field Specification
 
 All rounds output issues in a unified format:
 
@@ -559,16 +650,17 @@ All rounds output issues in a unified format:
 | `title` | str | Short title (≤80 chars) |
 | `description` | str | Detailed problem description |
 | `suggestion` | str | Fix suggestion (with code example using markdown code blocks) |
-| `source` | str | `r1` / `r2` / `r3` / `lint` / `meta` |
+| `source` | str | `r1` / `r2` / `r3` / `rmod` / `rcov` / `lint` / `meta` |
 
 ---
 
-## 10. Known Limitations
+## 11. Known Limitations
 
 | Limitation | Description |
 |------------|-------------|
 | Diff truncation | Very large PRs (>120K chars) only review the first N files; truncated files are reported via a meta warning |
 | R3 file cap | On large PRs, R3 processes at most 10 files; the rest only go through R1/R2 |
+| RCov clone dependency | RCov requires `clone_dir` to grep test files; in local mode without a clone, test file discovery falls back to the local repo path |
 | Dynamic references | `grep_symbol` cannot trace runtime-generated symbol names (e.g. `getattr(obj, name)`) |
 | Cross-repo dependencies | Only the current repository is analyzed; interface changes in external dependencies cannot be detected |
 | Language support | Lint analysis currently focuses on Python (ruff/flake8); JS/TS requires eslint to be installed locally |
