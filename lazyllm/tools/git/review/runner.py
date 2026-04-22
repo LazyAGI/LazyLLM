@@ -313,12 +313,29 @@ def review(  # noqa: C901
         ckpt.save('final_comments', final_comments)
         ckpt.mark_stage_done(ReviewStage.FINAL)
 
-    # run RCov test coverage check (independent of R4, results appended directly)
+    # run RCov test coverage check with checkpoint support
+    _rcov_ran = False
     rcov_issues: List[Dict[str, Any]] = []
-    if clone_dir and os.path.isdir(clone_dir):
+    if ckpt.should_use_cache(ReviewStage.RMOD):
+        rcov_issues = ckpt.get('rcov_issues') or []
+        lazyllm.LOG.info(f'RCov: loaded {len(rcov_issues)} issue(s) from checkpoint')
+    elif clone_dir and os.path.isdir(clone_dir):
+        import concurrent.futures as _cf
+        # Derive timeout from diff size: 3 serial+parallel LLM call slots × 90s base,
+        # plus 30s per 10k diff chars to account for longer prompts.
+        # Clamped to [300, 900] seconds.
+        _rcov_timeout = int(min(900, max(300, 3 * 90 + len(diff_text) // 10000 * 30)))
+        lazyllm.LOG.info(f'RCov timeout set to {_rcov_timeout}s (diff={len(diff_text)} chars)')
         try:
             from .coverage_checker import _run_coverage_check
-            rcov_issues = _run_coverage_check(llm, diff_text, pr_summary, clone_dir, language)
+            with _cf.ThreadPoolExecutor(max_workers=1) as _exe:
+                _fut = _exe.submit(_run_coverage_check, llm, diff_text, pr_summary, clone_dir, language)
+                rcov_issues = _fut.result(timeout=_rcov_timeout)
+            _rcov_ran = True
+            ckpt.save('rcov_issues', rcov_issues)
+            ckpt.mark_stage_done(ReviewStage.RMOD)
+        except _cf.TimeoutError:
+            lazyllm.LOG.warning(f'RCov analysis timed out after {_rcov_timeout}s, skipping')
         except Exception as e:
             lazyllm.LOG.warning(f'RCov analysis failed: {e}')
 
@@ -365,7 +382,7 @@ def review(  # noqa: C901
     stats = _category_stats(all_comments)
     summary = (
         f'PR #{pr_number} "{getattr(pr, "title", "")}" — '
-        f'{n} issue(s) found across 4 analysis rounds. '
+        f'{n} issue(s) found across review rounds (R1–R4, RCov, lint). '
         f'{posted} comment(s) posted to GitHub.'
     )
     prog_main.done(summary)
@@ -379,7 +396,8 @@ def review(  # noqa: C901
         'truncated_diff_flag': truncated_diff,
         'truncated_hunks_flag': False,  # hunks are processed in sliding windows; per-hunk truncation is not applied
         'lint_issues_count': len(lint_issues),
-        'rcov_issues_count': len(rcov_issues),
+        'rcov_issues_count': len(rcov_issues) if _rcov_ran else None,
+        'rcov_ran': _rcov_ran,
     }
 
     result = {

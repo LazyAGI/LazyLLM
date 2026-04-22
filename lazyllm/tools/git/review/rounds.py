@@ -5,7 +5,7 @@ import os
 import re
 import threading
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
@@ -2285,20 +2285,16 @@ def _rmod_file_diff(diff_text: str, file_path: str) -> str:
     result: List[str] = []
     in_file = False
     for line in lines:
+        if line.startswith('diff --git '):
+            if in_file:
+                break  # past the target file
+            continue
         if line.startswith('--- a/') or line.startswith('--- '):
-            # detect file boundary
             candidate = line[6:].strip() if line.startswith('--- a/') else line[4:].strip()
             in_file = (candidate == file_path or file_path.endswith(candidate)
                        or candidate.endswith(file_path))
         if in_file:
             result.append(line)
-            # stop at next file header (but keep current file's hunks)
-            if line.startswith('+++ ') and result and not result[-1].startswith('--- '):
-                continue
-        elif result:
-            # we've moved past the target file
-            if line.startswith('--- '):
-                break
     return ''.join(result) if result else diff_text
 
 
@@ -2326,6 +2322,9 @@ def _rmod_run_single_file(
     )
     step_counter = [0]
     exploration_log: List[str] = []
+    for tool in tools:
+        if hasattr(tool, 'execute_in_sandbox'):
+            tool.execute_in_sandbox = False
     traced_tools = [_make_traced_tool(t, step_counter, file_path, exploration_log) for t in tools]
     try:
         agent = ReactAgent(
@@ -2340,14 +2339,12 @@ def _rmod_run_single_file(
     except Exception as e:
         lazyllm.LOG.warning(f'  [RMod] ReactAgent init failed for {file_path}: {e}')
         return []
-    for tool in agent._tools_manager.all_tools:
-        tool.execute_in_sandbox = False
     lazyllm.LOG.info(f'  [RMod] Analyzing {file_path} ...')
     with ThreadPoolExecutor(max_workers=1) as ex:
         fut = ex.submit(agent, prompt)
         try:
             raw = fut.result(timeout=_RMOD_AGENT_TIMEOUT_SECS)
-        except TimeoutError:
+        except FuturesTimeoutError:
             lazyllm.LOG.warning(f'  [RMod] Timed out for {file_path}')
             return []
         except Exception as e:
@@ -2365,15 +2362,15 @@ def _rmod_run_single_file(
 
 def _rmod_new_file_paths(diff_text: str) -> set:
     new_paths: set = set()
-    pending_path: Optional[str] = None
+    is_new_file: bool = False
     for line in diff_text.splitlines():
-        if line.startswith('+++ b/'):
-            pending_path = line[6:].strip()
-        elif line.startswith('--- /dev/null') and pending_path:
-            new_paths.add(pending_path)
-            pending_path = None
+        if line.startswith('--- /dev/null'):
+            is_new_file = True
         elif line.startswith('--- '):
-            pending_path = None
+            is_new_file = False
+        elif line.startswith('+++ b/') and is_new_file:
+            new_paths.add(line[6:].strip())
+            is_new_file = False
     return new_paths
 
 
@@ -2764,8 +2761,8 @@ def _run_four_rounds(  # noqa: C901
     use_rmod_cache = ckpt.should_use_cache(ReviewStage.RMOD)
     rmod: List[Dict[str, Any]] = ckpt.get('rmod') if use_rmod_cache else None  # type: ignore[assignment]
     if rmod is None:
-        if not use_rmod_cache:
-            lazyllm.LOG.warning('RMod: no cache found, re-computing')
+        if use_rmod_cache:
+            lazyllm.LOG.warning('RMod: cache miss, re-computing')
         rmod = _run_rmod_agent_round(
             llm, diff_text, arch_doc, pr_design_doc=pr_design_doc,
             pr_summary=pr_summary, clone_dir=clone_dir, language=language,

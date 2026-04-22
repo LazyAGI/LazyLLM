@@ -3,8 +3,9 @@
 import glob
 import json
 import os
+import re
 import subprocess
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
@@ -15,6 +16,10 @@ from .utils import (
     JSON_OUTPUT_INSTRUCTION,
 )
 from .constants import clip_text, clip_diff_by_hunk_budget, SINGLE_CALL_CONTEXT_BUDGET
+
+# Per-group LLM call timeout (seconds). One group = 1 _safe_llm_call with up to 3 retries.
+# 90s covers a slow model response + retry delays (3+8+20s).
+_RCOV_GROUP_TIMEOUT_SECS = 90
 
 
 # ---------------------------------------------------------------------------
@@ -172,37 +177,56 @@ def _find_test_files(clone_dir: str) -> List[str]:
     return found
 
 
-def _grep_symbol_in_tests(symbol: str, test_files: List[str], clone_dir: str) -> str:
-    '''Grep for a symbol name across test files, return a summary string.'''
-    if not test_files or not symbol:
-        return '(no test files found)'
-
+def _grep_find_matching_files(symbol: str, test_files: List[str]) -> List[str]:
+    '''Find test files containing symbol, using grep with fallback to plain text search.'''
     try:
         result = subprocess.run(
-            ['grep', '-rn', '--include=*.py', '-l', symbol] + test_files,
+            ['grep', '-rn', '--include=*.py', '-l', '-F', symbol] + test_files,
             capture_output=True, text=True, timeout=10,
         )
-        matching_files = [f for f in result.stdout.strip().splitlines() if f]
+        return [f for f in result.stdout.strip().splitlines() if f]
     except (subprocess.TimeoutExpired, FileNotFoundError):
-        matching_files = [f for f in test_files
-                          if symbol in open(f, errors='ignore').read()]  # noqa: WPS515
+        matching: List[str] = []
+        for f in test_files:
+            try:
+                with open(f, errors='ignore') as fh:
+                    if any(symbol in line for line in fh):
+                        matching.append(f)
+            except OSError:
+                pass
+        return matching
 
-    if not matching_files:
-        return f'No test files contain "{symbol}"'
 
+def _grep_collect_sample_lines(symbol: str, matching_files: List[str], clone_dir: str) -> List[str]:
+    '''Collect up to 3 sample matching lines per file (first 3 files).'''
     sample_lines: List[str] = []
     for fpath in matching_files[:3]:
         rel = os.path.relpath(fpath, clone_dir)
         try:
             result = subprocess.run(
-                ['grep', '-n', symbol, fpath],
+                ['grep', '-n', '-F', symbol, fpath],
                 capture_output=True, text=True, timeout=5,
             )
             for line in result.stdout.strip().splitlines()[:3]:
                 sample_lines.append(f'  {rel}: {line}')
         except (subprocess.TimeoutExpired, FileNotFoundError):
             sample_lines.append(f'  {rel}: (found but could not read lines)')
+    return sample_lines
 
+
+def _grep_symbol_in_tests(symbol: str, test_files: List[str], clone_dir: str) -> str:
+    '''Grep for a symbol name across test files, return a summary string.'''
+    if not test_files or not symbol:
+        return '(no test files found)'
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_.]*', symbol):
+        lazyllm.LOG.warning(f'  [RCov] Skipping unsafe symbol name: {symbol!r}')
+        return '(skipped unsafe symbol name)'
+
+    matching_files = _grep_find_matching_files(symbol, test_files)
+    if not matching_files:
+        return f'No test files contain "{symbol}"'
+
+    sample_lines = _grep_collect_sample_lines(symbol, matching_files, clone_dir)
     files_str = ', '.join(os.path.relpath(f, clone_dir) for f in matching_files[:5])
     extra = f' (+{len(matching_files) - 5} more)' if len(matching_files) > 5 else ''
     header = f'Found in {len(matching_files)} test file(s): {files_str}{extra}'
@@ -213,6 +237,8 @@ def _build_grep_results(
     symbols: List[Dict[str, Any]], test_files: List[str], clone_dir: str,
 ) -> str:
     '''Build grep results string for a list of symbols (parallel grep).'''
+    if not symbols:
+        return '(no grep results)'
     parts: List[Tuple[str, str]] = []
 
     def _grep_one(sym_info: Dict[str, Any]) -> Tuple[str, str]:
@@ -230,8 +256,10 @@ def _build_grep_results(
             idx = futs[fut]
             try:
                 ordered[idx] = fut.result()
-            except Exception:
-                ordered[idx] = (f'### {symbols[idx].get("symbol", "")}', '(grep failed)')
+            except Exception as exc:
+                sym_name = symbols[idx].get('symbol', '')
+                lazyllm.LOG.warning(f'  [RCov] Grep failed for symbol "{sym_name}": {exc}')
+                ordered[idx] = (f'### {sym_name}', '(grep failed)')
 
     for i in range(len(symbols)):
         header, result = ordered.get(i, ('', ''))
@@ -244,51 +272,31 @@ def _build_grep_results(
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def _run_coverage_check(
-    llm: Any,
-    diff_text: str,
-    pr_summary: str,
-    clone_dir: Optional[str],
-    language: str = 'cn',
+def _rcov_identify_symbols(
+    llm: Any, diff_text: str, pr_summary: str, lang_instr: str,
 ) -> List[Dict[str, Any]]:
-    '''
-    RCov: three-step test coverage check.
-    Step 1 — identify testable symbols from diff (LLM), filter internal helpers.
-    Step 1.5 — dependency analysis: group related symbols (LLM).
-    Step 2 — grep test files + evaluate coverage per group (LLM, parallel).
-    Returns a list of issues with source='rcov'.
-    '''
-    prog = _Progress('RCov: test coverage check')
-
+    '''Step 1: identify testable symbols from diff, filter internal helpers.'''
     diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 20000)
-    lang_instr = _language_instruction(language)
-
-    # ── Step 1: identify testable symbols ──
     identify_prompt = _RCOV_IDENTIFY_PROMPT_TMPL.format(
         lang_instruction=lang_instr,
         pr_summary=(pr_summary or '')[:600],
         diff_text=diff_use,
     )
     symbols_raw = _safe_llm_call(llm, identify_prompt)
-    all_symbols: List[Dict[str, Any]] = [
+    all_symbols = [
         s for s in (symbols_raw if isinstance(symbols_raw, list) else [])
         if isinstance(s, dict) and s.get('symbol') and s.get('file')
     ]
-
-    # filter out internal helpers — they don't need direct tests
     symbols = [s for s in all_symbols if not s.get('is_internal', False)]
     n_filtered = len(all_symbols) - len(symbols)
+    lazyllm.LOG.info(f'  [RCov] {len(symbols)} testable symbols ({n_filtered} internal helpers filtered out)')
+    return symbols
 
-    if not symbols:
-        prog.done(f'no testable symbols identified (filtered {n_filtered} internal helpers)')
-        return []
 
-    lazyllm.LOG.info(
-        f'  [RCov] {len(symbols)} testable symbols '
-        f'({n_filtered} internal helpers filtered out)'
-    )
-
-    # ── Step 1.5: dependency analysis — group related symbols ──
+def _rcov_group_symbols(
+    llm: Any, symbols: List[Dict[str, Any]], lang_instr: str,
+) -> List[Dict[str, Any]]:
+    '''Step 1.5: dependency analysis — group related symbols via LLM.'''
     groups: List[Dict[str, Any]] = []
     if len(symbols) > 1:
         dep_prompt = _RCOV_DEPENDENCY_PROMPT_TMPL.format(
@@ -303,23 +311,21 @@ def _run_coverage_check(
         groups = [g for g in (groups_raw if isinstance(groups_raw, list) else [])
                   if isinstance(g, dict) and g.get('symbols')]
     if not groups:
-        # fallback: each symbol is its own group
         groups = [{'group_id': i, 'symbols': [s['symbol']], 'rationale': 'standalone symbol'}
                   for i, s in enumerate(symbols)]
-
     lazyllm.LOG.info(f'  [RCov] {len(groups)} symbol group(s) for coverage evaluation')
+    return groups
 
-    # ── Step 2: grep test files and evaluate coverage per group (parallel) ──
-    test_files: List[str] = []
-    if clone_dir and os.path.isdir(clone_dir):
-        test_files = _find_test_files(clone_dir)
-        lazyllm.LOG.info(f'  [RCov] Found {len(test_files)} test files')
 
+def _rcov_evaluate_groups(
+    llm: Any, groups: List[Dict[str, Any]], symbols: List[Dict[str, Any]],
+    test_files: List[str], clone_dir: Optional[str], pr_summary: str, lang_instr: str,
+) -> List[Dict[str, Any]]:
+    '''Step 2: grep test files and evaluate coverage per group (parallel).'''
     sym_by_name = {s['symbol']: s for s in symbols}
 
     def _evaluate_group(group: Dict[str, Any]) -> List[Dict[str, Any]]:
-        group_syms = [sym_by_name[name] for name in group.get('symbols', [])
-                      if name in sym_by_name]
+        group_syms = [sym_by_name[name] for name in group.get('symbols', []) if name in sym_by_name]
         if not group_syms:
             return []
         grep_results = _build_grep_results(group_syms, test_files, clone_dir or '')
@@ -343,16 +349,49 @@ def _run_coverage_check(
         return issues
 
     all_issues: List[Dict[str, Any]] = []
-    lock_list: List[Any] = []  # use list append for thread-safe accumulation
-
-    with ThreadPoolExecutor(max_workers=min(4, len(groups))) as ex:
+    n_workers = max(1, min(4, len(groups)))
+    with ThreadPoolExecutor(max_workers=n_workers) as ex:
         futs = {ex.submit(_evaluate_group, g): g for g in groups}
-        for fut in as_completed(futs):
+        for fut in as_completed(futs, timeout=_RCOV_GROUP_TIMEOUT_SECS * n_workers):
             try:
-                lock_list.extend(fut.result())
+                all_issues.extend(fut.result(timeout=_RCOV_GROUP_TIMEOUT_SECS))
+            except FuturesTimeoutError:
+                lazyllm.LOG.warning(f'  [RCov] Group evaluation timed out after {_RCOV_GROUP_TIMEOUT_SECS}s, skipping')
             except Exception as e:
                 lazyllm.LOG.warning(f'  [RCov] Group evaluation failed: {e}')
+    return all_issues
 
-    all_issues = lock_list
+
+def _run_coverage_check(
+    llm: Any,
+    diff_text: str,
+    pr_summary: str,
+    clone_dir: Optional[str],
+    language: str = 'cn',
+) -> List[Dict[str, Any]]:
+    '''
+    RCov: three-step test coverage check.
+    Step 1 — identify testable symbols from diff (LLM), filter internal helpers.
+    Step 1.5 — dependency analysis: group related symbols (LLM).
+    Step 2 — grep test files + evaluate coverage per group (LLM, parallel).
+    Returns a list of issues with source='rcov'.
+    '''
+    prog = _Progress('RCov: test coverage check')
+    lang_instr = _language_instruction(language)
+
+    symbols = _rcov_identify_symbols(llm, diff_text, pr_summary, lang_instr)
+    if not symbols:
+        prog.done('no testable symbols identified')
+        return []
+
+    groups = _rcov_group_symbols(llm, symbols, lang_instr)
+
+    test_files: List[str] = []
+    if clone_dir and os.path.isdir(clone_dir):
+        test_files = _find_test_files(clone_dir)
+        lazyllm.LOG.info(f'  [RCov] Found {len(test_files)} test files')
+
+    all_issues = _rcov_evaluate_groups(llm, groups, symbols, test_files, clone_dir, pr_summary, lang_instr)
+
     prog.done(f'{len(all_issues)} coverage issues found across {len(groups)} group(s)')
     return all_issues

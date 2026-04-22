@@ -84,10 +84,27 @@ def _save_cache_multi(cache_path: Optional[str], entries: Dict[str, Any]) -> Non
 
 
 class _ReviewCheckpoint:
-    _KEYS = ('arch_doc', 'review_spec', 'r3_shared_context', 'r1', 'pr_design_doc', 'r2', 'rmod', 'r3', 'final')
     _STAGE_DONE_PREFIX = '_stage_done_'
     _INVALIDATED_FROM_KEY = '_invalidated_from'
-    _KEY_TO_STAGE: Dict[str, 'ReviewStage'] = {}
+    _KEY_TO_STAGE: Dict[str, 'ReviewStage'] = {
+        'clone_dir': ReviewStage.CLONE,
+        'head_sha': ReviewStage.CLONE,
+        'diff_text': ReviewStage.CLONE,
+        'arch_doc': ReviewStage.ARCH,
+        'review_spec': ReviewStage.SPEC,
+        'pr_summary': ReviewStage.PR_SUMMARY,
+        'r1': ReviewStage.R1,
+        'pr_design_doc': ReviewStage.R2A,
+        'r2': ReviewStage.R2,
+        'rmod': ReviewStage.RMOD,
+        'rcov_issues': ReviewStage.RMOD,
+        'r3': ReviewStage.R3,
+        'r3_shared_context': ReviewStage.R3,
+        'final': ReviewStage.FINAL,
+        '_review_round_version': ReviewStage.FINAL,
+        'final_comments': ReviewStage.UPLOAD,
+        'upload_done_batches': ReviewStage.UPLOAD,
+    }
     _PIPELINE_VERSION_KEY = '_pipeline_version'
     # Bump _PIPELINE_VERSION to invalidate ALL cached stages across ALL PRs
     _PIPELINE_VERSION = 3
@@ -133,25 +150,6 @@ class _ReviewCheckpoint:
             return None
 
     def _stage_for_key(self, key: str) -> Optional[ReviewStage]:
-        if not _ReviewCheckpoint._KEY_TO_STAGE:
-            _ReviewCheckpoint._KEY_TO_STAGE = {
-                'clone_dir': ReviewStage.CLONE,
-                'head_sha': ReviewStage.CLONE,
-                'arch_doc': ReviewStage.ARCH,
-                'review_spec': ReviewStage.SPEC,
-                'pr_summary': ReviewStage.PR_SUMMARY,
-                'r1': ReviewStage.R1,
-                'pr_design_doc': ReviewStage.R2A,
-                'r2': ReviewStage.R2,
-                'rmod': ReviewStage.RMOD,
-                'r3': ReviewStage.R3,
-                'r3_shared_context': ReviewStage.R3,
-                'final': ReviewStage.FINAL,
-                '_review_round_version': ReviewStage.FINAL,
-                'diff_text': ReviewStage.CLONE,
-                'final_comments': ReviewStage.UPLOAD,
-                'upload_done_batches': ReviewStage.UPLOAD,
-            }
         if key in _ReviewCheckpoint._KEY_TO_STAGE:
             return _ReviewCheckpoint._KEY_TO_STAGE[key]
         if key.startswith('r1_hunk_'):
@@ -160,6 +158,9 @@ class _ReviewCheckpoint:
             return ReviewStage.R1
         if key.startswith('r3_file_') or key.startswith('r3_disc_') or key.startswith('r3_group_'):
             return ReviewStage.R3
+        # RMOD 阶段仅使用静态 key 'rmod'/'rcov_issues'，无动态前缀 key
+        if key.startswith('rmod_'):
+            return ReviewStage.RMOD
         if key.startswith(self._STAGE_DONE_PREFIX):
             stage_val = key[len(self._STAGE_DONE_PREFIX):]
             try:
