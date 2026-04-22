@@ -3,7 +3,6 @@ from .http_request import (
     post_sync,
     get_sync,
     post_async,
-    extract_content_from_zip,
 )
 from .http_executor_response import HttpExecutorResponse
 
@@ -13,5 +12,4 @@ __all__ = [
     'post_sync',
     'get_sync',
     'post_async',
-    'extract_content_from_zip',
 ]

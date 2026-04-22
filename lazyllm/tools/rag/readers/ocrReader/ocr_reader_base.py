@@ -1,7 +1,6 @@
 from typing import Optional, Callable, Set, List, Dict
 from pathlib import Path
 from enum import Enum
-from abc import ABC, abstractmethod
 
 from ..readerBase import _RichReader
 from ...doc_node import DocNode
@@ -18,7 +17,7 @@ class ServiceVariant(str, Enum):
         raise ValueError(f'Invalid service_variant: {value!r}, only support: {supported}')
 
 
-class _OcrReaderBase(_RichReader, ABC):
+class _OcrReaderBase(_RichReader):
     def __init__(self,
             url,
             api_key: Optional[str] = None,
@@ -33,12 +32,10 @@ class _OcrReaderBase(_RichReader, ABC):
         self._service_variant = ServiceVariant(service_variant)
         self._droped_types = droped_types if droped_types is not None else set()
 
-    @abstractmethod
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
         """Fetch raw response string from the OCR service."""
         raise NotImplementedError
 
-    @abstractmethod
     def _from_response(self, response: str, file: Path,
                        extra_info: Optional[Dict] = None) -> List[DocNode]:
         """Parse OCR service response into DocNodes."""
@@ -50,15 +47,13 @@ class _OcrReaderBase(_RichReader, ABC):
         return self._from_response(response_raw_text, file, extra_info)
 
 
-class _Adapter(ABC):
-    @abstractmethod
+class _Adapter:
     def _adapt_raw(self, raw: dict) -> List[Block]:
         """Adapt raw JSON response to intermediate block representation.
 
         Subclasses implement service-specific adaptation logic directly."""
         raise NotImplementedError
 
-    @abstractmethod
     def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
                                   extra_info: Optional[Dict] = None) -> List[DocNode]:
         """Build DocNodes from parsed intermediate blocks."""
