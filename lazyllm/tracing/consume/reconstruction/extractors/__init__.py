@@ -4,13 +4,13 @@ from lazyllm.common import LOG
 from lazyllm.tracing.semantics import SemanticType
 
 from ...datamodel.raw import RawSpanRecord
-from . import embedding, llm, rerank, retriever
+from .builtin import extract_embedding, extract_llm, extract_rerank, extract_retriever
 
 _REGISTRY = {
-    SemanticType.LLM: llm.extract,
-    SemanticType.RETRIEVER: retriever.extract,
-    SemanticType.EMBEDDING: embedding.extract,
-    SemanticType.RERANK: rerank.extract,
+    SemanticType.LLM: extract_llm,
+    SemanticType.RETRIEVER: extract_retriever,
+    SemanticType.EMBEDDING: extract_embedding,
+    SemanticType.RERANK: extract_rerank,
 }
 
 
