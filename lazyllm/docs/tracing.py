@@ -2,6 +2,10 @@
 from . import utils
 import functools
 import lazyllm
+import lazyllm.tracing.consume.configs
+import lazyllm.tracing.consume.datamodel.raw
+import lazyllm.tracing.consume.datamodel.structured
+import lazyllm.tracing.consume.errors
 
 # ============= Tracing helpers
 
@@ -615,6 +619,33 @@ Returns:
     TracingBackend: The backend instance for the given name.
 ''')
 
+add_chinese_doc_backend('get_consume_backend', '''\
+根据名称获取 tracing 消费后端实例。
+
+该函数会按需实例化消费后端，并复用已创建的 singleton 实例。若目标后端因依赖缺失或
+导入失败而不可用，错误信息会包含可用 backend 与导入失败原因，便于定位配置或依赖问题。
+
+Args:
+    name (str): 消费 backend 名称。
+
+Returns:
+    ConsumeBackend: 对应名称的消费 backend 实例。
+''')
+
+add_english_doc_backend('get_consume_backend', '''\
+Get a tracing consume backend instance by name.
+
+The function instantiates the consume backend on demand and reuses an existing singleton
+instance. If the requested backend is unavailable because an import failed, the error
+message includes available backends and the import failure reason.
+
+Args:
+    name (str): The consume backend name.
+
+Returns:
+    ConsumeBackend: The consume backend instance for the given name.
+''')
+
 # ============= TracingBackend
 
 add_chinese_doc_backend_base = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.backends.base)
@@ -693,6 +724,103 @@ Returns:
     generic attributes.
 ''')
 
+add_chinese_doc_backend_base('ConsumeBackend', '''\
+tracing 消费后端的抽象基类，定义从外部可观测系统读取 trace 原始数据的接口。
+
+消费后端负责把后端平台的 trace / span 数据转换为 ``RawTracePayload``。上层 API 会基于
+这些原始记录重建执行树并生成 ``StructuredTrace``。
+
+**注意**: 此类是抽象基类，不能直接实例化。
+''')
+
+add_english_doc_backend_base('ConsumeBackend', '''\
+Abstract base class for tracing consume backends.
+
+A consume backend reads trace data from an external observability system and converts the
+backend-specific payload into ``RawTracePayload``. Higher-level consume APIs rebuild the
+execution tree from those raw records and return ``StructuredTrace``.
+
+**Note**: This class is an abstract base class and cannot be instantiated directly.
+''')
+
+add_chinese_doc_backend_base('ConsumeBackend.fetch_trace_payload', '''\
+读取完整 trace 原始载荷。
+
+Args:
+    trace_id (str): trace ID。
+    timeout_seconds (float, optional): 本次读取请求的超时时间，单位秒。未传时由具体 backend
+        使用自身默认值。
+
+Returns:
+    RawTracePayload: 包含 trace 记录和 span 记录列表的原始载荷。
+''')
+
+add_english_doc_backend_base('ConsumeBackend.fetch_trace_payload', '''\
+Fetch the complete raw trace payload.
+
+Args:
+    trace_id (str): The trace ID.
+    timeout_seconds (float, optional): Request timeout in seconds for this fetch. If omitted,
+        the concrete backend uses its own default.
+
+Returns:
+    RawTracePayload: The raw payload containing the trace record and span records.
+''')
+
+add_chinese_doc_backend_base('ConsumeBackend.fetch_spans', '''\
+读取指定 trace 的原始 span 记录列表。
+
+默认实现会调用 ``fetch_trace_payload`` 并返回其中的 ``spans``。具体 backend 可以覆写该方法，
+以使用更高效的后端查询接口。
+
+Args:
+    trace_id (str): trace ID。
+    timeout_seconds (float, optional): 本次读取请求的超时时间，单位秒。
+
+Returns:
+    List[RawSpanRecord]: 原始 span 记录列表。
+''')
+
+add_english_doc_backend_base('ConsumeBackend.fetch_spans', '''\
+Fetch raw span records for a trace.
+
+The default implementation calls ``fetch_trace_payload`` and returns its ``spans`` field.
+Concrete backends may override this method to use a more efficient backend API.
+
+Args:
+    trace_id (str): The trace ID.
+    timeout_seconds (float, optional): Request timeout in seconds for this fetch.
+
+Returns:
+    List[RawSpanRecord]: Raw span records.
+''')
+
+add_chinese_doc_backend_base('ConsumeBackend.fetch_trace', '''\
+读取指定 trace 的原始 trace 记录。
+
+默认实现会调用 ``fetch_trace_payload`` 并返回其中的 ``trace``。
+
+Args:
+    trace_id (str): trace ID。
+    timeout_seconds (float, optional): 本次读取请求的超时时间，单位秒。
+
+Returns:
+    RawTraceRecord: 原始 trace 记录。
+''')
+
+add_english_doc_backend_base('ConsumeBackend.fetch_trace', '''\
+Fetch the raw trace record for a trace.
+
+The default implementation calls ``fetch_trace_payload`` and returns its ``trace`` field.
+
+Args:
+    trace_id (str): The trace ID.
+    timeout_seconds (float, optional): Request timeout in seconds for this fetch.
+
+Returns:
+    RawTraceRecord: The raw trace record.
+''')
+
 # ============= LangfuseBackend
 
 add_chinese_doc_lf = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.backends.langfuse)
@@ -717,4 +845,281 @@ Uses HTTP Basic Auth authentication. The following environment variables must be
 - ``LANGFUSE_HOST`` or ``LANGFUSE_BASE_URL``: Langfuse service URL
 - ``LANGFUSE_PUBLIC_KEY``: Langfuse public key
 - ``LANGFUSE_SECRET_KEY``: Langfuse secret key
+''')
+
+add_chinese_doc_lf('LangfuseConsumeBackend', '''\
+Langfuse tracing 消费后端实现，通过 Langfuse Public API 读取 trace 与 observation 数据。
+
+该 backend 会将 Langfuse trace 转换为 ``RawTraceRecord``，将 observations 转换为
+``RawSpanRecord``，并返回 ``RawTracePayload`` 供消费链路重建执行树。连接配置与
+``LangfuseBackend`` 相同：
+
+- ``LANGFUSE_HOST`` 或 ``LANGFUSE_BASE_URL``: Langfuse 服务地址
+- ``LANGFUSE_PUBLIC_KEY``: Langfuse 公钥
+- ``LANGFUSE_SECRET_KEY``: Langfuse 密钥
+''')
+
+add_english_doc_lf('LangfuseConsumeBackend', '''\
+Langfuse tracing consume backend implementation that reads trace and observation data
+through the Langfuse Public API.
+
+The backend converts a Langfuse trace into ``RawTraceRecord``, converts observations into
+``RawSpanRecord`` objects, and returns ``RawTracePayload`` for execution-tree reconstruction.
+It uses the same connection configuration as ``LangfuseBackend``:
+
+- ``LANGFUSE_HOST`` or ``LANGFUSE_BASE_URL``: Langfuse service URL
+- ``LANGFUSE_PUBLIC_KEY``: Langfuse public key
+- ``LANGFUSE_SECRET_KEY``: Langfuse secret key
+''')
+
+# ============= Consume configs
+
+add_chinese_doc_consume_cfg = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.consume.configs)
+add_english_doc_consume_cfg = functools.partial(utils.add_english_doc, module=lazyllm.tracing.consume.configs)
+
+add_chinese_doc_consume_cfg('read_consume_backend_name', '''\
+读取 tracing 消费链路默认 backend 名称。
+
+该值来自 LazyLLM 配置项 ``trace_consume_backend``，可通过环境变量
+``LAZYLLM_TRACE_CONSUME_BACKEND`` 覆写。消费链路 backend 配置与采集链路
+``LAZYLLM_TRACE_BACKEND`` 相互独立。
+
+Returns:
+    str: 当前消费链路默认 backend 名称。
+''')
+
+add_english_doc_consume_cfg('read_consume_backend_name', '''\
+Read the default tracing consume backend name.
+
+The value comes from the LazyLLM configuration key ``trace_consume_backend`` and can be
+overridden with the ``LAZYLLM_TRACE_CONSUME_BACKEND`` environment variable. Consume backend
+configuration is separate from the collect-side ``LAZYLLM_TRACE_BACKEND``.
+
+Returns:
+    str: The current default consume backend name.
+''')
+
+add_chinese_doc_consume_cfg('read_consume_timeout_seconds', '''\
+读取 tracing 消费链路请求超时时间。
+
+该值来自 LazyLLM 配置项 ``trace_consume_timeout``，可通过环境变量
+``LAZYLLM_TRACE_CONSUME_TIMEOUT`` 覆写。返回值会被限制为至少 1 秒。
+
+Returns:
+    float: 消费链路请求超时时间，单位秒。
+''')
+
+add_english_doc_consume_cfg('read_consume_timeout_seconds', '''\
+Read the tracing consume request timeout.
+
+The value comes from the LazyLLM configuration key ``trace_consume_timeout`` and can be
+overridden with the ``LAZYLLM_TRACE_CONSUME_TIMEOUT`` environment variable. The returned
+value is clamped to at least one second.
+
+Returns:
+    float: The consume request timeout in seconds.
+''')
+
+# ============= Consume API
+
+add_chinese_doc_consume_api = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.consume)
+add_english_doc_consume_api = functools.partial(utils.add_english_doc, module=lazyllm.tracing.consume)
+
+add_chinese_doc_consume_api('get_single_trace', '''\
+获取单条 trace 的结构化消费结果。
+
+该函数是消费链路的高层入口：先通过消费 backend 读取 ``RawTracePayload``，再重建执行树，
+最后返回符合消费接口结构的 ``StructuredTrace``。
+
+Args:
+    trace_id (str): trace ID。
+    backend (str, optional): 消费 backend 名称。未传时读取 ``LAZYLLM_TRACE_CONSUME_BACKEND``，
+        若环境变量未设置则默认使用 ``langfuse``。
+
+Returns:
+    StructuredTrace: 结构化 trace，包括 metadata 与 execution_tree。
+
+Raises:
+    ValueError: 当 ``trace_id`` 格式非法或 backend 不受支持时抛出。
+    TraceNotFound: 当后端确认 trace 不存在时抛出。
+    ConsumeBackendError: 当后端请求、鉴权或响应解析失败时抛出。
+''')
+
+add_english_doc_consume_api('get_single_trace', '''\
+Fetch one trace as a structured consume result.
+
+This is the high-level consume entry point. It reads ``RawTracePayload`` through the selected
+consume backend, rebuilds the execution tree, and returns ``StructuredTrace``.
+
+Args:
+    trace_id (str): The trace ID.
+    backend (str, optional): The consume backend name. If omitted, the value is read from
+        ``LAZYLLM_TRACE_CONSUME_BACKEND`` and defaults to ``langfuse``.
+
+Returns:
+    StructuredTrace: The structured trace, including metadata and execution_tree.
+
+Raises:
+    ValueError: If ``trace_id`` is invalid or the backend is unsupported.
+    TraceNotFound: If the backend confirms that the trace does not exist.
+    ConsumeBackendError: If backend requests, authentication, or response parsing fails.
+''')
+
+# ============= Consume raw datamodel
+
+add_chinese_doc_raw = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.consume.datamodel.raw)
+add_english_doc_raw = functools.partial(utils.add_english_doc, module=lazyllm.tracing.consume.datamodel.raw)
+
+add_chinese_doc_raw('RawTraceRecord', '''\
+后端读取层返回的原始 trace 记录。
+
+该对象只做跨 backend 的字段归一化，保留 trace 级信息，例如 ``trace_id``、``name``、
+``session_id``、``user_id``、``tags``、``metadata``、输入输出、时间与原始后端载荷。
+''')
+
+add_english_doc_raw('RawTraceRecord', '''\
+Raw trace record returned by the backend access layer.
+
+This object normalizes trace-level fields across backends while keeping backend payload data,
+including ``trace_id``, ``name``, ``session_id``, ``user_id``, ``tags``, ``metadata``,
+input/output, timestamps, and the raw backend payload.
+''')
+
+add_chinese_doc_raw('RawSpanRecord', '''\
+后端读取层返回的原始 span 记录。
+
+该对象用于描述单个 observation/span 的父子关系、名称、状态、输入输出、属性、metadata、
+错误信息与原始后端载荷。重建层会基于 ``span_id`` 和 ``parent_span_id`` 生成执行树。
+''')
+
+add_english_doc_raw('RawSpanRecord', '''\
+Raw span record returned by the backend access layer.
+
+This object describes a single observation/span, including parent-child IDs, name, status,
+input/output, attributes, metadata, error information, and the raw backend payload. The
+reconstruction layer builds the execution tree from ``span_id`` and ``parent_span_id``.
+''')
+
+add_chinese_doc_raw('RawTracePayload', '''\
+单条 trace 的原始消费载荷。
+
+该对象由一个 ``RawTraceRecord`` 和一组 ``RawSpanRecord`` 组成，是 backend 访问层与
+reconstruction 层之间的边界对象。
+''')
+
+add_english_doc_raw('RawTracePayload', '''\
+Raw consume payload for a single trace.
+
+The payload contains one ``RawTraceRecord`` and a list of ``RawSpanRecord`` objects. It is the
+boundary object between the backend access layer and the reconstruction layer.
+''')
+
+# ============= Consume structured datamodel
+
+add_chinese_doc_structured = functools.partial(
+    utils.add_chinese_doc, module=lazyllm.tracing.consume.datamodel.structured)
+add_english_doc_structured = functools.partial(
+    utils.add_english_doc, module=lazyllm.tracing.consume.datamodel.structured)
+
+add_chinese_doc_structured('RawData', '''\
+结构化执行节点中的原始输入输出。
+
+Fields:
+    input: 节点原始输入。
+    output: 节点原始输出。
+''')
+
+add_english_doc_structured('RawData', '''\
+Raw input/output data attached to a structured execution node.
+
+Fields:
+    input: The raw node input.
+    output: The raw node output.
+''')
+
+add_chinese_doc_structured('TraceMetadata', '''\
+结构化 trace 的 trace 级 metadata。
+
+包含名称、开始时间、结束时间、延迟、状态、错误信息、tags、session/user 信息以及额外
+metadata。该对象对应最终消费接口中的 ``metadata`` 字段。
+''')
+
+add_english_doc_structured('TraceMetadata', '''\
+Trace-level metadata for a structured trace.
+
+It contains name, start/end time, latency, status, error message, tags, session/user fields,
+and additional metadata. This object corresponds to the final consume API ``metadata`` field.
+''')
+
+add_chinese_doc_structured('ExecutionStep', '''\
+结构化执行树中的一个节点。
+
+节点包含步骤 ID、名称、节点类型、语义类型、状态、开始时间、延迟、原始输入输出、
+语义抽取数据、错误信息以及子节点列表。
+''')
+
+add_english_doc_structured('ExecutionStep', '''\
+A node in the structured execution tree.
+
+Each node contains step ID, name, node type, semantic type, status, start time, latency, raw
+input/output, extracted semantic data, error information, and child execution steps.
+''')
+
+add_chinese_doc_structured('StructuredTrace', '''\
+消费链路返回的结构化 trace。
+
+该对象是当前消费接口的最终结构，包含 ``trace_id``、trace 级 ``metadata``，以及根节点为
+``ExecutionStep`` 的 ``execution_tree``。
+''')
+
+add_english_doc_structured('StructuredTrace', '''\
+Structured trace returned by the consume pipeline.
+
+This object is the final structure exposed by the current consume API. It contains
+``trace_id``, trace-level ``metadata``, and an ``execution_tree`` rooted at ``ExecutionStep``.
+''')
+
+# ============= Consume errors
+
+add_chinese_doc_consume_errors = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.consume.errors)
+add_english_doc_consume_errors = functools.partial(utils.add_english_doc, module=lazyllm.tracing.consume.errors)
+
+add_chinese_doc_consume_errors('ConsumeError', '''\
+tracing 消费链路异常基类。
+
+消费链路中更具体的异常，如 ``TraceNotFound`` 和 ``ConsumeBackendError``，均继承自该类。
+''')
+
+add_english_doc_consume_errors('ConsumeError', '''\
+Base exception class for tracing consume errors.
+
+More specific consume exceptions, such as ``TraceNotFound`` and ``ConsumeBackendError``,
+inherit from this class.
+''')
+
+add_chinese_doc_consume_errors('TraceNotFound', '''\
+指定 trace 不存在时抛出的异常。
+
+Attributes:
+    trace_id (str): 未找到的 trace ID。
+''')
+
+add_english_doc_consume_errors('TraceNotFound', '''\
+Exception raised when a requested trace does not exist.
+
+Attributes:
+    trace_id (str): The trace ID that was not found.
+''')
+
+add_chinese_doc_consume_errors('ConsumeBackendError', '''\
+消费 backend 访问或解析失败时抛出的异常。
+
+常见原因包括连接配置缺失、认证失败、网络请求失败、后端返回非法 JSON 或后端响应结构不符合预期。
+''')
+
+add_english_doc_consume_errors('ConsumeBackendError', '''\
+Exception raised when a consume backend request or response parsing fails.
+
+Common causes include missing connection configuration, authentication failure, network
+errors, invalid JSON responses, or unexpected backend response shapes.
 ''')
