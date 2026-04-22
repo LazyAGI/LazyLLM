@@ -887,9 +887,7 @@ jobs:
           DATA_DIR="$GITHUB_WORKSPACE/.ci_data"
           rm -rf "$DATA_DIR"
           export GIT_TERMINAL_PROMPT=0
-          git clone --depth 1 \
-            -c "http.extraheader=Authorization: Bearer $GITHUB_TOKEN" \
-            https://github.com/LazyAGI/LazyLLM-Data.git "$DATA_DIR"
+          git clone --depth 1 https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git "$DATA_DIR"
 
           echo "LAZYLLM_DATA_PATH=$DATA_DIR" >> "$GITHUB_ENV"
         env:

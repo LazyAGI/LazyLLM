@@ -225,16 +225,19 @@ class _DocumentStore(object):
         return store_type, uri
 
     def _gen_collection_name_legacy(self, group: str) -> str:
-        raw_name = f'col_{self._algo_name}_{group}'.lower()
-        normalized = self._COLLECTION_NAME_PATTERN.sub('_', raw_name).strip('_')
+        return self._normalize_collection_raw_name(f'col_{self._algo_name}_{group}'.lower())
+
+    @staticmethod
+    def _normalize_collection_raw_name(raw_name: str) -> str:
+        normalized = _DocumentStore._COLLECTION_NAME_PATTERN.sub('_', raw_name).strip('_')
         if not normalized:
             normalized = 'col'
         if normalized[0].isdigit():
             normalized = f'col_{normalized}'
-        if normalized == raw_name and len(normalized) <= self._COLLECTION_NAME_MAX_LEN:
+        if normalized == raw_name and len(normalized) <= _DocumentStore._COLLECTION_NAME_MAX_LEN:
             return normalized
         digest = hashlib.sha1(raw_name.encode()).hexdigest()[:12]
-        max_prefix_len = self._COLLECTION_NAME_MAX_LEN - len(digest) - 1
+        max_prefix_len = _DocumentStore._COLLECTION_NAME_MAX_LEN - len(digest) - 1
         prefix = normalized[:max_prefix_len].rstrip('_') or 'col'
         return f'{prefix}_{digest}'
 
@@ -610,16 +613,4 @@ class _DocumentStore(object):
         return node.with_sim_score(score) if score else node
 
     def _gen_collection_name(self, group: str) -> str:
-        raw_name = f'col_{group}'.lower()
-        normalized = self._COLLECTION_NAME_PATTERN.sub('_', raw_name).strip('_')
-        if not normalized:
-            normalized = 'col'
-        if normalized[0].isdigit():
-            normalized = f'col_{normalized}'
-        if normalized == raw_name and len(normalized) <= self._COLLECTION_NAME_MAX_LEN:
-            return normalized
-
-        digest = hashlib.sha1(raw_name.encode()).hexdigest()[:12]
-        max_prefix_len = self._COLLECTION_NAME_MAX_LEN - len(digest) - 1
-        prefix = normalized[:max_prefix_len].rstrip('_') or 'col'
-        return f'{prefix}_{digest}'
+        return self._normalize_collection_raw_name(f'col_{group}'.lower())

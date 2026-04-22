@@ -69,8 +69,7 @@ class _NodeGroupDependencyGraph:
 class _Processor:
     def __init__(self, algo_id: str, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
                  schema_extractor: Optional[SchemaExtractor] = None, display_name: Optional[str] = None,
-                 description: Optional[str] = None, max_workers: int = 4,
-                 status_writer: Optional[Any] = None):
+                 description: Optional[str] = None, max_workers: int = 4):
         self._algo_id = algo_id
         self._store = store
         self._reader = reader
@@ -79,7 +78,6 @@ class _Processor:
         self._display_name = display_name
         self._description = description
         self._max_workers = max_workers
-        self._status_writer = status_writer
         self._thread_pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=f'{self._algo_id}_processor')
         self._dependency_graph: Optional[_NodeGroupDependencyGraph] = None
 
@@ -91,15 +89,9 @@ class _Processor:
     def reader(self) -> DirectoryReader:
         return self._reader
 
-    def _write_status(self, doc_ids, group_name: str, kb_id: str, status: str, error_msg=None):
-        if self._status_writer is None:
-            return
-        ng_cfg = self._node_groups.get(group_name, {})
-        ng_id = ng_cfg.get('id') or ng_cfg.get('node_group_id') or group_name
-        try:
-            self._status_writer(doc_ids, ng_id, kb_id, status, error_msg)
-        except Exception as e:
-            LOG.error(f'[_Processor] status_writer failed for group={group_name}: {e}')
+    @property
+    def node_group_ids(self) -> List[str]:
+        return [cfg.get('id') or name for name, cfg in self._node_groups.items()]
 
     @staticmethod
     def _prepare_doc_inputs(input_files: List[str], ids: Optional[List[str]] = None,
@@ -122,7 +114,8 @@ class _Processor:
                 metadatas: Optional[List[Dict[str, Any]]] = None, kb_id: Optional[str] = None,
                 transfer_mode: Optional[str] = None, target_kb_id: Optional[str] = None,
                 target_doc_ids: Optional[List[str]] = None,
-                preloaded_root_nodes: Optional[Dict[str, List[DocNode]]] = None):
+                preloaded_root_nodes: Optional[Dict[str, List[DocNode]]] = None,
+                skip_ng_ids: Optional[set] = None):
         ids = ids or []
         try:
             if not input_files: return
@@ -238,15 +231,15 @@ class _Processor:
             self._dependency_graph = _NodeGroupDependencyGraph(self._node_groups, self._store.activated_groups())
         return self._dependency_graph
 
-    def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
+    def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str, skip_ng_ids: Optional[set] = None):
         graph = self._get_dependency_graph()
         for group_name in graph.topological_order:
             group = self._node_groups.get(group_name)
 
             if group['parent'] == p_name:
                 ref_path = graph.get_shortest_path(group['parent'], group.get('ref')) if group.get('ref') else []
-                nodes = self._create_nodes_impl(p_nodes, group_name, ref_path=ref_path)
-                if nodes: self._create_nodes_recursive(nodes, group_name)
+                nodes = self._create_nodes_impl(p_nodes, group_name, ref_path=ref_path, skip_ng_ids=skip_ng_ids)
+                if nodes: self._create_nodes_recursive(nodes, group_name, skip_ng_ids=skip_ng_ids)
 
     def _clone_node_for_transfer(
         self, node: DocNode, target_kb_id: str, target_doc_id: str, metadata: Dict[str, Any]
@@ -264,7 +257,7 @@ class _Processor:
         return copied
 
     def _copy_segments_recursive(self, ids: List[str], kb_id: str, target_kb_id: str, doc_id_map: Dict[str, tuple],
-                                 p_uid_map: dict, p_name: str):
+                                 p_uid_map: dict, p_name: str, skip_ng_ids: Optional[set] = None):
         for group_name in self._store.activated_groups():
             group = self._node_groups.get(group_name)
             if group is None:
@@ -272,7 +265,16 @@ class _Processor:
                                  'or add a new one through `create_node_group`.')
             if group['parent'] == p_name:
                 target_doc_ids = [doc_id_map[d][0] for d in ids if d in doc_id_map]
-                self._write_status(target_doc_ids, group_name, target_kb_id, 'WORKING')
+                ng_cfg = self._node_groups.get(group_name, {})
+                ng_id = ng_cfg.get('id') or group_name
+                if skip_ng_ids and ng_id in skip_ng_ids:
+                    source_nodes = self._store.get_nodes(doc_ids=target_doc_ids, group=group_name, kb_id=target_kb_id)
+                    if source_nodes:
+                        uid_map = {n.uid: n.uid for n in source_nodes}
+                        self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
+                                                      doc_id_map=doc_id_map, p_uid_map=uid_map,
+                                                      p_name=group_name, skip_ng_ids=skip_ng_ids)
+                    continue
                 try:
                     source_nodes = self._store.get_nodes(doc_ids=ids, group=group_name, kb_id=kb_id)
                     nodes = []
@@ -291,27 +293,26 @@ class _Processor:
                     if nodes:
                         self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
                                                       doc_id_map=doc_id_map, p_uid_map=uid_map,
-                                                      p_name=group_name)
-                    self._write_status(target_doc_ids, group_name, target_kb_id, 'SUCCESS')
-                except Exception as e:
-                    self._write_status(target_doc_ids, group_name, target_kb_id, 'FAILED', str(e))
+                                                      p_name=group_name, skip_ng_ids=skip_ng_ids)
+                except Exception:
                     raise
 
-    def _create_nodes_impl(self, p_nodes, group_name, ref_path=None):
+    def _create_nodes_impl(self, p_nodes, group_name, ref_path=None, skip_ng_ids: Optional[set] = None):
         # NOTE transform.batch_forward will set children for p_nodes, but when calling
         # transform.batch_forward, p_nodes has been upsert in the store.
         doc_ids = list({n.global_metadata.get(RAG_DOC_ID) for n in p_nodes if n.global_metadata.get(RAG_DOC_ID)})
         kb_id = p_nodes[0].global_metadata.get(RAG_KB_ID, DEFAULT_KB_ID) if p_nodes else DEFAULT_KB_ID
-        self._write_status(doc_ids, group_name, kb_id, 'WORKING')
+        ng_cfg = self._node_groups.get(group_name, {})
+        ng_id = ng_cfg.get('id') or group_name
+        if skip_ng_ids and ng_id in skip_ng_ids:
+            return self._store.get_nodes(doc_ids=doc_ids, group=group_name, kb_id=kb_id)
         try:
             t = self._node_groups[group_name]['transform']
             transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
             nodes = transform.batch_forward(p_nodes, group_name, ref_path=ref_path)
             self._store.update_nodes(self._set_nodes_number(nodes))
-            self._write_status(doc_ids, group_name, kb_id, 'SUCCESS')
             return nodes
-        except Exception as e:
-            self._write_status(doc_ids, group_name, kb_id, 'FAILED', str(e))
+        except Exception:
             raise
 
     def _get_or_create_nodes(self, group_name, uids: Optional[List[str]] = None):
@@ -354,7 +355,6 @@ class _Processor:
 
     def _reparse_group_recursive(self, p_nodes: List[DocNode], cur_name: str, doc_ids: List[str], kb_id: str = None):
         kb_id = p_nodes[0].global_metadata.get(RAG_KB_ID, None) if kb_id is None else kb_id
-        self._write_status(doc_ids, cur_name, kb_id, 'WORKING')
         self._store.remove_nodes(group=cur_name, kb_id=kb_id, doc_ids=doc_ids)
 
         removed_flag = False

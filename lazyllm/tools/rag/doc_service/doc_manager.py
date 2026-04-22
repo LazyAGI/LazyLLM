@@ -588,7 +588,7 @@ class DocManager:
             )
             return _orm_to_dict(row) if row else None
 
-    def _upsert_ng_status_pending(self, doc_id: str, kb_id: str, algo_id: str,
+    def _upsert_ng_status_pending(self, doc_id: str, kb_id: str,
                                   node_group_ids: List[str], file_path: Optional[str] = None):
         if not node_group_ids:
             return
@@ -597,7 +597,6 @@ class DocManager:
             NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
             existing_rows = session.query(NgStatus).filter(
                 NgStatus.doc_id == doc_id, NgStatus.kb_id == kb_id,
-                NgStatus.algo_id == algo_id,
                 NgStatus.node_group_id.in_(node_group_ids),
             ).all()
             existing_map = {row.node_group_id: row for row in existing_rows}
@@ -609,7 +608,7 @@ class DocManager:
                     row.updated_at = now
                 else:
                     session.add(NgStatus(
-                        doc_id=doc_id, kb_id=kb_id, algo_id=algo_id,
+                        doc_id=doc_id, kb_id=kb_id,
                         node_group_id=ng_id, file_path=file_path,
                         status=NodeGroupParseStatus.PENDING.value,
                         created_at=now, updated_at=now,
@@ -628,10 +627,14 @@ class DocManager:
 
     def reparse_for_node_group(self, kb_id: str, algo_id: str, node_group_id: str,
                                priority: int = 0) -> List[str]:
+        ng_ids = self._get_algo_node_group_ids(algo_id)
+        if node_group_id not in ng_ids:
+            raise ValueError(f'node_group_id {node_group_id!r} not in algo {algo_id!r}')
         with self._db_manager.get_session() as session:
             NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
             rows = session.query(NgStatus).filter(
-                NgStatus.kb_id == kb_id, NgStatus.algo_id == algo_id,
+                NgStatus.kb_id == kb_id,
+                NgStatus.node_group_id == node_group_id,
                 NgStatus.status == NodeGroupParseStatus.SUCCESS.value,
             ).with_for_update().all()
             # convert to plain dicts inside session to avoid DetachedInstanceError
@@ -648,7 +651,7 @@ class DocManager:
                     task_type=TaskType.DOC_REPARSE, file_path=row['file_path'],
                     reparse_group=node_group_id,
                 )
-                self._upsert_ng_status_pending(row['doc_id'], kb_id, algo_id, [node_group_id], row['file_path'])
+                self._upsert_ng_status_pending(row['doc_id'], kb_id, [node_group_id], row['file_path'])
                 task_ids.append(task_id)
             except Exception as e:
                 LOG.error(f'[DocManager] Failed to submit reparse task for doc {row["doc_id"]}: {e}')
@@ -955,7 +958,7 @@ class DocManager:
             if task_type == TaskType.DOC_ADD:
                 ng_ids = self._get_algo_node_group_ids(algo_id)
                 if ng_ids:
-                    self._upsert_ng_status_pending(doc_id, kb_id, algo_id, ng_ids, file_path)
+                    self._upsert_ng_status_pending(doc_id, kb_id, ng_ids, file_path)
         except Exception as exc:
             finished_at = datetime.now()
             error_msg = str(exc)

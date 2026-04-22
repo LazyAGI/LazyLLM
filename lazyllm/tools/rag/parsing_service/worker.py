@@ -6,7 +6,7 @@ import traceback
 import threading
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import uuid4
 from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapper, load_obj
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
@@ -239,9 +239,8 @@ class DocumentProcessorWorker(ModuleBase):
                     else:
                         # Backward compat: node_groups embedded in info_pickle
                         node_groups = info.get('node_groups', {})
-                    status_writer = self._make_status_writer(algo_id)
                     processor = _Processor(algo_id, store, reader, node_groups, schema_extractor,
-                                           display_name, description, status_writer=status_writer)
+                                           display_name, description)
                     with self._processors_lock:
                         self._processors[algo_id] = processor
                         self._processor_cache_times[algo_id] = datetime.now()
@@ -251,18 +250,17 @@ class DocumentProcessorWorker(ModuleBase):
                 LOG.warning(f'{self._log_prefix()} Failed to load algo: {e}')
                 raise e
 
-        def _make_status_writer(self, algo_id: str):
-            db_manager = self._db_manager
-
-            def writer(doc_ids, node_group_id: str, kb_id: str, status: str, error_msg=None):
-                try:
-                    now = datetime.now()
-                    with db_manager.get_session() as session:
-                        NgStatus = db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
-                        for doc_id in (doc_ids if isinstance(doc_ids, list) else [doc_ids]):
+        def _write_ng_status_batch(self, doc_ids: List[str], ng_ids: List[str], kb_id: str,
+                                   status: str, error_msg: Optional[str] = None):
+            try:
+                now = datetime.now()
+                with self._db_manager.get_session() as session:
+                    NgStatus = self._db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
+                    for doc_id in doc_ids:
+                        for ng_id in ng_ids:
                             existing = session.query(NgStatus).filter(
                                 NgStatus.doc_id == doc_id, NgStatus.kb_id == kb_id,
-                                NgStatus.algo_id == algo_id, NgStatus.node_group_id == node_group_id,
+                                NgStatus.node_group_id == ng_id,
                             ).first()
                             if existing:
                                 existing.status = status
@@ -270,89 +268,154 @@ class DocumentProcessorWorker(ModuleBase):
                                 existing.updated_at = now
                             else:
                                 session.add(NgStatus(
-                                    doc_id=doc_id, kb_id=kb_id, algo_id=algo_id,
-                                    node_group_id=node_group_id, status=status,
-                                    error_msg=error_msg, created_at=now, updated_at=now,
+                                    doc_id=doc_id, kb_id=kb_id, node_group_id=ng_id,
+                                    status=status, error_msg=error_msg,
+                                    created_at=now, updated_at=now,
                                 ))
-                except Exception as e:
-                    LOG.warning(f'[Worker] status_writer failed: {e}')
-            return writer
+            except Exception as e:
+                LOG.error(f'[Worker] _write_ng_status_batch failed: {e}')
+
+        def _wait_and_decide_ng(self, doc_ids: List[str], ng_ids: List[str], kb_id: str) -> tuple:
+            import time as _time
+            skip_ng_ids: set = set()
+            exec_ng_ids: set = set()
+            for ng_id in ng_ids:
+                while True:
+                    with self._db_manager.get_session() as session:
+                        NgStatus = self._db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
+                        rows = session.query(NgStatus).filter(
+                            NgStatus.kb_id == kb_id, NgStatus.node_group_id == ng_id,
+                            NgStatus.doc_id.in_(doc_ids),
+                        ).all()
+                        status_map = {r.doc_id: r.status for r in rows}
+                    statuses = [status_map.get(d) for d in doc_ids]
+                    if any(s == 'WORKING' for s in statuses):
+                        _time.sleep(1)
+                        continue
+                    if all(s == 'SUCCESS' for s in statuses):
+                        skip_ng_ids.add(ng_id)
+                    else:
+                        exec_ng_ids.add(ng_id)
+                    break
+            return skip_ng_ids, exec_ng_ids
 
         def _exec_add_task(self, processor: _Processor, task_id: str, payload: dict):
+            file_infos = payload.get('file_infos')
+            kb_id = payload.get('kb_id', None)
+            input_files = []
+            ids = []
+            metadatas = []
+            for file_info in file_infos:
+                input_files.append(file_info.get('file_path'))
+                ids.append(file_info.get('doc_id'))
+                metadatas.append(file_info.get('metadata'))
+
+            ng_ids = processor.node_group_ids
+            if kb_id and ng_ids:
+                skip_ng_ids, exec_ng_ids = self._wait_and_decide_ng(ids, ng_ids, kb_id)
+                if not exec_ng_ids:
+                    LOG.info(f'{self._log_prefix(task_id)} All node-groups already SUCCESS, skipping')
+                    return
+                self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'WORKING')
+            else:
+                skip_ng_ids, exec_ng_ids = set(), set(ng_ids)
+
             try:
-                file_infos = payload.get('file_infos')
-                kb_id = payload.get('kb_id', None)
-                input_files = []
-                ids = []
-                metadatas = []
-
-                for file_info in file_infos:
-                    input_files.append(file_info.get('file_path'))
-                    ids.append(file_info.get('doc_id'))
-                    metadatas.append(file_info.get('metadata'))
-
-                processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas, kb_id=kb_id)
+                processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas, kb_id=kb_id,
+                                  skip_ng_ids=skip_ng_ids)
+                if kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'SUCCESS')
             except Exception as e:
                 LOG.error(f'{self._log_prefix(task_id)} Execute add task failed: {e}')
+                if kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'FAILED', str(e))
                 raise e
 
         def _exec_reparse_task(
             self, processor: _Processor, task_id: str, payload: dict
         ):
+            file_infos = payload.get('file_infos')
+            kb_id = payload.get('kb_id', None)
+            reparse_group = None
+            reparse_doc_ids = []
+            reparse_files = []
+            reparse_metadatas = []
+
+            first_reparse_group = None
+            for file_info in file_infos:
+                current_group = file_info.get('reparse_group')
+                if first_reparse_group is None:
+                    first_reparse_group = current_group
+                elif first_reparse_group != current_group:
+                    raise ValueError('All files must have the same reparse_group')
+                reparse_doc_ids.append(file_info.get('doc_id'))
+                reparse_files.append(file_info.get('file_path'))
+                reparse_metadatas.append(file_info.get('metadata'))
+
+            reparse_group = first_reparse_group
+            # reparse always re-executes; determine which ng_ids are affected
+            if kb_id:
+                if reparse_group == 'all' or reparse_group is None:
+                    exec_ng_ids = list(processor.node_group_ids)
+                else:
+                    exec_ng_ids = [reparse_group]
+                self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
+            else:
+                exec_ng_ids = []
+
             try:
-                file_infos = payload.get('file_infos')
-                kb_id = payload.get('kb_id', None)
-                reparse_group = None
-                reparse_doc_ids = []
-                reparse_files = []
-                reparse_metadatas = []
-
-                first_reparse_group = None
-                for file_info in file_infos:
-                    current_group = file_info.get('reparse_group')
-                    if first_reparse_group is None:
-                        first_reparse_group = current_group
-                    elif first_reparse_group != current_group:
-                        raise ValueError('All files must have the same reparse_group')
-                    reparse_doc_ids.append(file_info.get('doc_id'))
-                    reparse_files.append(file_info.get('file_path'))
-                    reparse_metadatas.append(file_info.get('metadata'))
-
-                reparse_group = first_reparse_group
                 processor.reparse(group_name=reparse_group, doc_ids=reparse_doc_ids,
                                   doc_paths=reparse_files, metadatas=reparse_metadatas,
                                   kb_id=kb_id)
+                if kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
             except Exception as e:
                 LOG.error(f'{self._log_prefix(task_id)} Execute reparse task failed: {e}')
+                if kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'FAILED', str(e))
                 raise e
 
         def _exec_transfer_task(self, processor: _Processor, task_id: str, payload: dict):
+            self._validate_transfer_payload(payload)
+            file_infos = payload.get('file_infos')
+            kb_id = payload.get('kb_id', None)
+            input_files = []
+            ids = []
+            metadatas = []
+            transfer_mode = None
+            target_kb_id = None
+            target_doc_ids = []
+
+            for file_info in file_infos:
+                input_files.append(file_info.get('file_path'))
+                ids.append(file_info.get('doc_id'))
+                metadatas.append(file_info.get('metadata'))
+                if transfer_mode is None:
+                    transfer_mode = file_info.get('transfer_params', {}).get('mode')
+                if target_kb_id is None:
+                    target_kb_id = file_info.get('transfer_params', {}).get('target_kb_id')
+                target_doc_ids.append(file_info.get('transfer_params', {}).get('target_doc_id'))
+
+            ng_ids = processor.node_group_ids
+            if target_kb_id and ng_ids:
+                skip_ng_ids, exec_ng_ids = self._wait_and_decide_ng(target_doc_ids, ng_ids, target_kb_id)
+                if not exec_ng_ids:
+                    LOG.info(f'{self._log_prefix(task_id)} All node-groups already SUCCESS for transfer, skipping')
+                    return
+                self._write_ng_status_batch(target_doc_ids, list(exec_ng_ids), target_kb_id, 'WORKING')
+            else:
+                skip_ng_ids, exec_ng_ids = set(), set(ng_ids)
+
             try:
-                self._validate_transfer_payload(payload)
-                file_infos = payload.get('file_infos')
-                kb_id = payload.get('kb_id', None)
-                input_files = []
-                ids = []
-                metadatas = []
-
-                transfer_mode = None
-                target_kb_id = None
-                target_doc_ids = []
-
-                for file_info in file_infos:
-                    input_files.append(file_info.get('file_path'))
-                    ids.append(file_info.get('doc_id'))
-                    metadatas.append(file_info.get('metadata'))
-                    if transfer_mode is None:
-                        transfer_mode = file_info.get('transfer_params', {}).get('mode')
-                    if target_kb_id is None:
-                        target_kb_id = file_info.get('transfer_params', {}).get('target_kb_id')
-                    target_doc_ids.append(file_info.get('transfer_params', {}).get('target_doc_id'))
                 processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas, kb_id=kb_id,
-                                  transfer_mode=transfer_mode, target_kb_id=target_kb_id, target_doc_ids=target_doc_ids)
-
+                                  transfer_mode=transfer_mode, target_kb_id=target_kb_id,
+                                  target_doc_ids=target_doc_ids, skip_ng_ids=skip_ng_ids)
+                if target_kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(target_doc_ids, list(exec_ng_ids), target_kb_id, 'SUCCESS')
             except Exception as e:
                 LOG.error(f'{self._log_prefix(task_id)} Execute transfer task failed: {e}')
+                if target_kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(target_doc_ids, list(exec_ng_ids), target_kb_id, 'FAILED', str(e))
                 raise e
 
         def _exec_delete_task(self, processor: _Processor, task_id: str, payload: dict):

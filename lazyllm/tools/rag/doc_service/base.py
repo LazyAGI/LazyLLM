@@ -458,7 +458,6 @@ DOC_NODE_GROUP_STATUS_TABLE_INFO = {
          'comment': 'Auto increment ID'},
         {'name': 'doc_id', 'data_type': 'string', 'nullable': False, 'comment': 'Document ID'},
         {'name': 'kb_id', 'data_type': 'string', 'nullable': False, 'comment': 'Knowledge base ID'},
-        {'name': 'algo_id', 'data_type': 'string', 'nullable': False, 'comment': 'Algorithm ID'},
         {'name': 'node_group_id', 'data_type': 'string', 'nullable': False,
          'comment': 'Node group ID (logical reference to node group definition)'},
         {'name': 'file_path', 'data_type': 'string', 'nullable': True,
