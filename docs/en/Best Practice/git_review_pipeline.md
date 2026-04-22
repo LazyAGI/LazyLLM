@@ -2,9 +2,11 @@
 
 This document describes the end-to-end PR review flow of the `lazyllm.tools.git.review` module.
 The entry point is the `review()` function in `runner.py`, which runs through pre-analysis
-(architecture parsing, historical spec extraction), six rounds of LLM analysis
-(R1 hunk review → R2a PR design doc → R2 architect review → R3 Agent verification → RMod modification-necessity analysis → R4 merge & dedup),
-test coverage check (RCov), static lint integration, and finally publishes results to GitHub / GitLab / Gitee / GitCode.
+(architecture parsing, historical spec extraction), six LLM stages
+(R1 hunk review → R2a PR design doc → R2 architect review → R3 Agent verification →
+RMod modification-necessity analysis → R4 merge & dedup),
+an independent test coverage check (RCov), static lint integration, and finally publishes
+results to GitHub / GitLab / Gitee / GitCode.
 
 Source directory: `lazyllm/tools/git/review/`
 (`runner.py`, `pre_analysis.py`, `rounds.py`, `coverage_checker.py`, `constants.py`, `checkpoint.py`, `utils.py`, `poster.py`, `lint_runner.py`).
@@ -491,6 +493,13 @@ comment list. RCov issues bypass this stage and are appended directly after R4.
    - `lint_issues` (from `lint_runner.py`, no LLM) are appended directly to the final list
    - Lint issues have `source='lint'` and are specially marked in platform comments
 
+> **Design note**: Because RCov bypasses R4 dedup, it is possible for an issue surfaced by
+> both an earlier round (R1–RMod) and RCov to appear twice in the final published comments.
+> This is intentional: RCov issues carry a distinct `source='rcov'` tag and different framing
+> (coverage gap vs. code defect), so merging them through R4 would risk losing the coverage
+> context. If duplicate suppression is needed in the future, a lightweight exact-title dedup
+> pass against `final_comments` should be added before appending `rcov_issues`.
+
 **Output**: `final_comments` list; each item contains the full `path`, `line`, `severity`,
 `bug_category`, `title`, `description`, `suggestion`, and `source` fields.
 
@@ -527,7 +536,7 @@ modified public symbols have adequate test coverage.
 The outer timeout in `runner.py` is derived dynamically from diff size:
 
 ```
-timeout = clamp(3 × 90 + len(diff_text) // 10000 × 30, min=300, max=900)  # seconds
+timeout = clamp((3 * 90) + (len(diff_text) // 10000) * 30, min=300, max=900)  # seconds
 ```
 
 This avoids both premature timeouts on large diffs and indefinite blocking on small ones.
@@ -535,8 +544,11 @@ The actual timeout value is logged at `INFO` level for observability.
 
 ### 5.3 Checkpoint
 
-RCov results are saved under `ReviewStage.RMOD` checkpoint key (`rcov_issues`). On resume,
-the cached results are loaded and the LLM calls are skipped entirely.
+RCov results are stored as the `rcov_issues` sub-key within the `ReviewStage.RCOV` checkpoint
+entry. On resume, if `ReviewStage.RCOV` is already marked done and `rcov_issues` is present
+in the checkpoint, the LLM calls are skipped entirely.
+**Note**: if RMod completes but RCov times out, a resume will NOT automatically re-run RCov
+alone — the user must pass `resume_from='RMOD'` to force re-execution of both stages.
 
 The output metrics include:
 - `rcov_issues_count`: number of issues found, or `None` if RCov was skipped (timeout / no clone).
@@ -546,7 +558,7 @@ The output metrics include:
 
 ## 6. Static Lint Analysis (`lint_runner.py`)
 
-Lint analysis runs independently before the four LLM rounds and consumes no LLM call budget.
+Lint analysis runs independently before the LLM review rounds and consumes no LLM call budget.
 
 **How it works:**
 

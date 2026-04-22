@@ -2291,8 +2291,8 @@ def _rmod_file_diff(diff_text: str, file_path: str) -> str:
             continue
         if line.startswith('--- a/') or line.startswith('--- '):
             candidate = line[6:].strip() if line.startswith('--- a/') else line[4:].strip()
-            in_file = (candidate == file_path or file_path.endswith(candidate)
-                       or candidate.endswith(file_path))
+            in_file = (candidate == file_path
+                       or os.path.realpath(candidate) == os.path.realpath(file_path))
         if in_file:
             result.append(line)
     return ''.join(result) if result else diff_text
@@ -2322,9 +2322,6 @@ def _rmod_run_single_file(
     )
     step_counter = [0]
     exploration_log: List[str] = []
-    for tool in tools:
-        if hasattr(tool, 'execute_in_sandbox'):
-            tool.execute_in_sandbox = False
     traced_tools = [_make_traced_tool(t, step_counter, file_path, exploration_log) for t in tools]
     try:
         agent = ReactAgent(
@@ -2345,7 +2342,7 @@ def _rmod_run_single_file(
         try:
             raw = fut.result(timeout=_RMOD_AGENT_TIMEOUT_SECS)
         except FuturesTimeoutError:
-            lazyllm.LOG.warning(f'  [RMod] Timed out for {file_path}')
+            lazyllm.LOG.warning(f'  [RMod] Timed out for {file_path} after {_RMOD_AGENT_TIMEOUT_SECS}s')
             return []
         except Exception as e:
             lazyllm.LOG.warning(f'  [RMod] Failed for {file_path}: {e}')
@@ -2378,9 +2375,11 @@ def _rmod_collect_file_diffs(diff_text: str) -> Dict[str, str]:
     new_paths = _rmod_new_file_paths(diff_text)
     hunks = _parse_unified_diff(diff_text)
     file_diffs: Dict[str, str] = {}
-    for path, _start, _count, _content in hunks:
-        if path not in new_paths and path not in file_diffs:
-            file_diffs[path] = _rmod_file_diff(diff_text, path)
+    for path, start, count, content in hunks:
+        if path not in new_paths:
+            if path not in file_diffs:
+                file_diffs[path] = f'--- a/{path}\n+++ b/{path}\n'
+            file_diffs[path] += f'@@ -{start},{count} +{start},{count} @@\n{content}\n'
     return file_diffs
 
 
@@ -2408,13 +2407,15 @@ def _run_rmod_agent_round(
 
     lazyllm.LOG.info(f'  [RMod] Analyzing {len(file_diffs)} modified file(s) in parallel')
 
-    symbol_cache: Dict[str, Any] = {}
-    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
-
     all_results: List[Dict[str, Any]] = []
     lock = threading.Lock()
 
     def _run_file(file_path: str, file_diff: str) -> None:
+        symbol_cache: Dict[str, Any] = {}
+        tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
+        for tool in tools:
+            if hasattr(tool, 'execute_in_sandbox'):
+                tool.execute_in_sandbox = False
         issues = _rmod_run_single_file(
             llm, file_path, file_diff, arch_doc, pr_design_doc, pr_summary,
             clone_dir, language, agent_instructions, tools,
@@ -2759,10 +2760,10 @@ def _run_four_rounds(  # noqa: C901
 
     # ── RMod: modification necessity analysis (parallel with R2, both depend on R2A) ──
     use_rmod_cache = ckpt.should_use_cache(ReviewStage.RMOD)
-    rmod: List[Dict[str, Any]] = ckpt.get('rmod') if use_rmod_cache else None  # type: ignore[assignment]
+    rmod = ckpt.get('rmod') if use_rmod_cache else None
     if rmod is None:
-        if use_rmod_cache:
-            lazyllm.LOG.warning('RMod: cache miss, re-computing')
+        if not use_rmod_cache:
+            lazyllm.LOG.warning('RMod: cache bypassed, re-computing')
         rmod = _run_rmod_agent_round(
             llm, diff_text, arch_doc, pr_design_doc=pr_design_doc,
             pr_summary=pr_summary, clone_dir=clone_dir, language=language,

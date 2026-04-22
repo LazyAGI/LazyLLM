@@ -17,6 +17,7 @@ class ReviewStage(enum.Enum):
     R2A = 'r2a'
     R2 = 'r2'
     RMOD = 'rmod'
+    RCOV = 'rcov'
     R3 = 'r3'
     FINAL = 'final'
     UPLOAD = 'upload'
@@ -39,7 +40,7 @@ _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
     ReviewStage.PR_SUMMARY, ReviewStage.R1,
     ReviewStage.R2A, ReviewStage.R2, ReviewStage.RMOD,
-    ReviewStage.R3, ReviewStage.FINAL, ReviewStage.UPLOAD,
+    ReviewStage.R3, ReviewStage.RCOV, ReviewStage.FINAL, ReviewStage.UPLOAD,
 ]
 
 
@@ -97,7 +98,7 @@ class _ReviewCheckpoint:
         'pr_design_doc': ReviewStage.R2A,
         'r2': ReviewStage.R2,
         'rmod': ReviewStage.RMOD,
-        'rcov_issues': ReviewStage.RMOD,
+        'rcov_issues': ReviewStage.RCOV,
         'r3': ReviewStage.R3,
         'r3_shared_context': ReviewStage.R3,
         'final': ReviewStage.FINAL,
@@ -158,7 +159,7 @@ class _ReviewCheckpoint:
             return ReviewStage.R1
         if key.startswith('r3_file_') or key.startswith('r3_disc_') or key.startswith('r3_group_'):
             return ReviewStage.R3
-        # RMOD 阶段仅使用静态 key 'rmod'/'rcov_issues'，无动态前缀 key
+        # Dynamic keys with 'rmod_' prefix are also mapped to RMOD stage (reserved for future per-file RMOD keys)
         if key.startswith('rmod_'):
             return ReviewStage.RMOD
         if key.startswith(self._STAGE_DONE_PREFIX):

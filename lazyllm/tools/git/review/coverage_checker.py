@@ -1,6 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 '''RCov: test coverage checker for new and modified functionality.'''
-import glob
 import json
 import os
 import re
@@ -160,20 +159,16 @@ Output a JSON array of issue objects. If coverage is adequate: output [].
 
 def _find_test_files(clone_dir: str) -> List[str]:
     '''Find all test files in the repository.'''
-    patterns = [
-        os.path.join(clone_dir, 'tests', '**', '*.py'),
-        os.path.join(clone_dir, 'test', '**', '*.py'),
-        os.path.join(clone_dir, '**', 'test_*.py'),
-        os.path.join(clone_dir, '**', '*_test.py'),
-    ]
+    skip_dirs = {'.git', '__pycache__', '.cache', 'node_modules', 'dist', 'build'}
     found: List[str] = []
-    seen: set = set()
-    for pattern in patterns:
-        for path in glob.glob(pattern, recursive=True):
-            abs_path = os.path.abspath(path)
-            if abs_path not in seen:
-                seen.add(abs_path)
-                found.append(abs_path)
+    base_dir = os.path.realpath(clone_dir)
+    for root, dirs, files in os.walk(base_dir):
+        dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith('.')]
+        for fname in files:
+            if fname.endswith('.py') and (fname.startswith('test_') or fname.endswith('_test.py')):
+                final_path = os.path.realpath(os.path.join(root, fname))
+                if final_path.startswith(base_dir):
+                    found.append(final_path)
     return found
 
 
@@ -185,7 +180,7 @@ def _grep_find_matching_files(symbol: str, test_files: List[str]) -> List[str]:
             capture_output=True, text=True, timeout=10,
         )
         return [f for f in result.stdout.strip().splitlines() if f]
-    except (subprocess.TimeoutExpired, FileNotFoundError):
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         matching: List[str] = []
         for f in test_files:
             try:
@@ -310,6 +305,12 @@ def _rcov_group_symbols(
         groups_raw = _safe_llm_call(llm, dep_prompt)
         groups = [g for g in (groups_raw if isinstance(groups_raw, list) else [])
                   if isinstance(g, dict) and g.get('symbols')]
+    if not groups and len(symbols) > 1:
+        lazyllm.LOG.warning(
+            '  [RCov] Dependency grouping LLM call failed or returned invalid data; '
+            'falling back to standalone symbol processing. '
+            f'This may result in {len(symbols)} separate LLM calls instead of fewer grouped calls.'
+        )
     if not groups:
         groups = [{'group_id': i, 'symbols': [s['symbol']], 'rationale': 'standalone symbol'}
                   for i, s in enumerate(symbols)]
@@ -352,13 +353,21 @@ def _rcov_evaluate_groups(
     n_workers = max(1, min(4, len(groups)))
     with ThreadPoolExecutor(max_workers=n_workers) as ex:
         futs = {ex.submit(_evaluate_group, g): g for g in groups}
-        for fut in as_completed(futs, timeout=_RCOV_GROUP_TIMEOUT_SECS * n_workers):
-            try:
-                all_issues.extend(fut.result(timeout=_RCOV_GROUP_TIMEOUT_SECS))
-            except FuturesTimeoutError:
-                lazyllm.LOG.warning(f'  [RCov] Group evaluation timed out after {_RCOV_GROUP_TIMEOUT_SECS}s, skipping')
-            except Exception as e:
-                lazyllm.LOG.warning(f'  [RCov] Group evaluation failed: {e}')
+        try:
+            for fut in as_completed(futs, timeout=_RCOV_GROUP_TIMEOUT_SECS * n_workers):
+                try:
+                    all_issues.extend(fut.result())
+                except Exception as e:
+                    lazyllm.LOG.error(
+                        f'  [RCov] Group evaluation failed unexpectedly: {e}', exc_info=True
+                    )
+        except FuturesTimeoutError:
+            lazyllm.LOG.warning(
+                f'  [RCov] Overall coverage evaluation timed out after '
+                f'{_RCOV_GROUP_TIMEOUT_SECS * n_workers}s, cancelling remaining groups'
+            )
+            for fut in futs:
+                fut.cancel()
     return all_issues
 
 

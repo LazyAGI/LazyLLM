@@ -2791,7 +2791,8 @@ def _resume_arch_from_checkpoint(
             lazyllm.LOG.info(f'Cloning {clone_url} @ {branch} for agent file access')
             clone_dir, _ = _fetch_repo_code(clone_url, branch, work_dir=clone_target_dir, pin_sha=head_sha)
             ckpt.save('clone_dir', clone_dir)
-        except Exception as e:
+        except (OSError, subprocess.CalledProcessError, ValueError) as e:
+            lazyllm.LOG.error(f'Clone for agent failed: {e}')
             raise RuntimeError(f'Clone for agent failed: {e}') from e
     else:
         lazyllm.LOG.info(f'Reusing cached clone at {clone_dir}')
@@ -2818,9 +2819,13 @@ def _run_local_arch_analysis(
             ckpt.save('arch_doc', arch_doc)
             prog.done('architecture doc ready')
         except Exception as e:
-            lazyllm.LOG.warning(f'Local arch analysis failed (non-fatal): {e}')
-            _save_cache(arch_cache_path, 'arch_doc', arch_doc)
-            prog.done('loaded from checkpoint')
+            lazyllm.LOG.error(
+                f'Local arch analysis failed, downstream LLM calls will use empty arch_doc: {e}',
+                exc_info=True,
+            )
+            if arch_doc:
+                _save_cache(arch_cache_path, 'arch_doc', arch_doc)
+            prog.done('skipped (local arch analysis failed, proceeding without arch context)')
     else:
         _save_cache(arch_cache_path, 'arch_doc', arch_doc)
         _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
@@ -2833,6 +2838,11 @@ def _run_pre_analysis(
     max_history_prs: int, ckpt: Any, pr_dir: Optional[str] = None,
     head_sha: Optional[str] = None, local_repo_path: Optional[str] = None,
 ) -> Tuple[str, str, Optional[str], str]:
+    if fetch_repo_code and local_repo_path:
+        raise ValueError(
+            '`local_repo_path` must not be set when `fetch_repo_code=True`; '
+            'use `head_sha` to pin the remote clone instead.'
+        )
     from .checkpoint import _ReviewCheckpoint
     repo_cache_dir = _ReviewCheckpoint.repo_cache_dir(repo)
     arch_cache_path = arch_cache_path or os.path.join(repo_cache_dir, 'arch.json')
