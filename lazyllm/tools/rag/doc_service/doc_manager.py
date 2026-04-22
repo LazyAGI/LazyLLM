@@ -167,32 +167,19 @@ class DocManager:
                 session.add(row)
 
     def _ensure_kb_algorithm(self, kb_id: str, algo_id: str):
+        '''Upsert a (kb_id, algo_id) binding. A kb can be bound to multiple algos.'''
         now = datetime.now()
         with self._db_manager.get_session() as session:
             Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
-            row = session.query(Rel).filter(Rel.kb_id == kb_id).first()
+            row = session.query(Rel).filter(Rel.kb_id == kb_id, Rel.algo_id == algo_id).first()
             if row is None:
-                row = Rel(kb_id=kb_id, algo_id=algo_id, created_at=now, updated_at=now)
-            elif row.algo_id != algo_id:
-                raise DocServiceError('E_STATE_CONFLICT', f'kb {kb_id} is already bound to algorithm {row.algo_id}',
-                                      {'kb_id': kb_id, 'bound_algo_id': row.algo_id,
-                                       'requested_algo_id': algo_id})
+                session.add(Rel(kb_id=kb_id, algo_id=algo_id, created_at=now, updated_at=now))
             else:
                 row.updated_at = now
-            session.add(row)
             try:
                 session.flush()
             except IntegrityError:
                 session.rollback()
-                row = session.query(Rel).filter(Rel.kb_id == kb_id).first()
-                if row is None:
-                    raise
-                if row.algo_id != algo_id:
-                    raise DocServiceError('E_STATE_CONFLICT', f'kb {kb_id} is already bound to algorithm {row.algo_id}',
-                                          {'kb_id': kb_id, 'bound_algo_id': row.algo_id,
-                                           'requested_algo_id': algo_id})
-                row.updated_at = now
-                session.add(row)
 
     def _get_kb(self, kb_id: str):
         with self._db_manager.get_session() as session:
@@ -200,14 +187,15 @@ class DocManager:
             row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
             return _orm_to_dict(row) if row else None
 
-    def _get_kb_algorithm(self, kb_id: str):
+    def _get_kb_algorithms(self, kb_id: str) -> List[str]:
+        '''Return all algo_ids bound to this kb.'''
         with self._db_manager.get_session() as session:
             Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
-            row = session.query(Rel).filter(Rel.kb_id == kb_id).first()
-            return _orm_to_dict(row) if row else None
+            rows = session.query(Rel).filter(Rel.kb_id == kb_id).all()
+            return [row.algo_id for row in rows]
 
     @staticmethod
-    def _build_kb_data(kb_row, algo_row=None):
+    def _build_kb_data(kb_row, algo_ids=None):
         return {
             'kb_id': kb_row.kb_id,
             'display_name': kb_row.display_name,
@@ -216,7 +204,7 @@ class DocManager:
             'status': kb_row.status,
             'owner_id': kb_row.owner_id,
             'meta': from_json(kb_row.meta),
-            'algo_id': algo_row.algo_id if algo_row is not None else None,
+            'algo_ids': algo_ids or [],
             'created_at': kb_row.created_at,
             'updated_at': kb_row.updated_at,
         }
@@ -242,15 +230,14 @@ class DocManager:
             raise DocServiceError('E_NOT_FOUND', f'kb not found: {kb_id}', {'kb_id': kb_id})
         if kb.get('status') != KBStatus.ACTIVE.value:
             raise DocServiceError('E_STATE_CONFLICT', f'kb is not active: {kb_id}', {'kb_id': kb_id})
-        binding = self._get_kb_algorithm(kb_id)
-        if binding is None:
+        algo_ids = self._get_kb_algorithms(kb_id)
+        if not algo_ids:
             raise DocServiceError('E_STATE_CONFLICT', f'kb has no algorithm binding: {kb_id}', {'kb_id': kb_id})
-        if binding['algo_id'] != algo_id:
+        if algo_id not in algo_ids:
             raise DocServiceError(
-                'E_INVALID_PARAM', f'kb {kb_id} is bound to algorithm {binding["algo_id"]}',
-                {'kb_id': kb_id, 'bound_algo_id': binding['algo_id'], 'requested_algo_id': algo_id}
+                'E_INVALID_PARAM', f'algo {algo_id} is not bound to kb {kb_id}',
+                {'kb_id': kb_id, 'algo_ids': algo_ids, 'requested_algo_id': algo_id}
             )
-        return binding
 
     def _ensure_algorithm_exists(self, algo_id: str):
         algorithms = self.list_algorithms()
@@ -710,13 +697,12 @@ class DocManager:
         kb = self._get_kb(kb_id)
         if kb is None:
             raise DocServiceError('E_NOT_FOUND', f'kb not found: {kb_id}', {'kb_id': kb_id})
-        binding = self._get_kb_algorithm(kb_id)
-        default_algo_id = binding['algo_id'] if binding is not None else '__default__'
+        binding = self._get_kb_algorithms(kb_id)
+        default_algo_id = binding[0] if binding else '__default__'
         items = []
         for doc_id in self._list_kb_doc_ids(kb_id):
             snapshot = (
-                self._get_parse_snapshot(doc_id, kb_id, default_algo_id)
-                or self._get_latest_parse_snapshot(doc_id, kb_id)
+                self._get_latest_parse_snapshot(doc_id, kb_id)
             )
             if snapshot is None or snapshot.get('status') == DocStatus.DELETED.value:
                 items.append({'action': 'purge_local', 'doc_id': doc_id})
@@ -736,11 +722,16 @@ class DocManager:
                     f'cannot delete kb while doc {doc_id} task is {status}',
                     {'kb_id': kb_id, 'doc_id': doc_id, 'status': status, 'task_type': task_type},
                 )
-            items.append({
-                'action': 'enqueue_delete',
-                'doc_id': doc_id,
-                'algo_id': snapshot.get('algo_id') or default_algo_id,
-            })
+            # enqueue a delete task for each algo bound to this kb
+            algo_id_for_doc = snapshot.get('algo_id') or default_algo_id
+            for algo_id in (binding or [default_algo_id]):
+                items.append({
+                    'action': 'enqueue_delete',
+                    'doc_id': doc_id,
+                    'algo_id': algo_id,
+                    # mark only the first task as the "primary" one that cleans up ng_status
+                    'primary': algo_id == algo_id_for_doc,
+                })
         return {'kb': kb, 'items': items}
 
     def _assert_action_allowed(self, doc_id: str, kb_id: str, algo_id: str, action: str):
@@ -1811,8 +1802,7 @@ class DocManager:
                  status: Optional[List[str]] = None, owner_id: Optional[str] = None):
         with self._db_manager.get_session() as session:
             Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
-            Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
-            query = session.query(Kb, Rel).outerjoin(Rel, Rel.kb_id == Kb.kb_id)
+            query = session.query(Kb)
             query = query.filter(Kb.kb_id != '__default__')
             if keyword:
                 like_expr = f'%{keyword}%'
@@ -1824,42 +1814,31 @@ class DocManager:
                 query = query.filter(Kb.owner_id == owner_id)
             query = query.order_by(Kb.updated_at.desc(), Kb.created_at.desc())
             result = self._db_manager.paginate(query, page=page, page_size=page_size)
-            result['items'] = [self._build_kb_data(kb_row, algo_row) for kb_row, algo_row in result['items']]
+            result['items'] = [
+                self._build_kb_data(kb_row, self._get_kb_algorithms(kb_row.kb_id))
+                for kb_row in result['items']
+            ]
             return result
 
     def get_kb(self, kb_id: str):
         with self._db_manager.get_session() as session:
             Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
-            Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
-            row = (
-                session.query(Kb, Rel)
-                .outerjoin(Rel, Rel.kb_id == Kb.kb_id)
-                .filter(Kb.kb_id == kb_id)
-                .first()
-            )
+            row = session.query(Kb).filter(Kb.kb_id == kb_id).first()
             if row is None:
                 raise DocServiceError('E_NOT_FOUND', f'kb not found: {kb_id}', {'kb_id': kb_id})
-            kb_row, algo_row = row
-            return self._build_kb_data(kb_row, algo_row)
+        return self._build_kb_data(row, self._get_kb_algorithms(kb_id))
 
     def batch_get_kbs(self, kb_ids: List[str]):
         if not kb_ids:
             raise DocServiceError('E_INVALID_PARAM', 'kb_ids is required', {'kb_ids': kb_ids})
         with self._db_manager.get_session() as session:
             Kb = self._db_manager.get_table_orm_class(KBS_TABLE_INFO['name'])
-            Rel = self._db_manager.get_table_orm_class(KB_ALGORITHM_TABLE_INFO['name'])
-            rows = (
-                session.query(Kb, Rel)
-                .outerjoin(Rel, Rel.kb_id == Kb.kb_id)
-                .filter(Kb.kb_id.in_(kb_ids))
-                .all()
-            )
-            row_map = {kb_row.kb_id: self._build_kb_data(kb_row, algo_row) for kb_row, algo_row in rows}
+            kb_rows = {row.kb_id: row for row in session.query(Kb).filter(Kb.kb_id.in_(kb_ids)).all()}
         items = []
         missing_kb_ids = []
         for kb_id in kb_ids:
-            if kb_id in row_map:
-                items.append(row_map[kb_id])
+            if kb_id in kb_rows:
+                items.append(self._build_kb_data(kb_rows[kb_id], self._get_kb_algorithms(kb_id)))
             else:
                 missing_kb_ids.append(kb_id)
         return {'items': items, 'missing_kb_ids': missing_kb_ids}
@@ -1892,14 +1871,7 @@ class DocManager:
                 raise DocServiceError('E_INVALID_PARAM', 'algo_id cannot be null', {'kb_id': kb_id})
             self._ensure_algorithm_exists(algo_id)
         if algo_id is not None:
-            binding = self._get_kb_algorithm(kb_id)
-            if binding is None:
-                self._ensure_kb_algorithm(kb_id, algo_id)
-            elif binding['algo_id'] != algo_id:
-                raise DocServiceError(
-                    'E_STATE_CONFLICT', f'kb {kb_id} is already bound to algorithm {binding["algo_id"]}',
-                    {'kb_id': kb_id, 'bound_algo_id': binding['algo_id'], 'requested_algo_id': algo_id}
-                )
+            self._ensure_kb_algorithm(kb_id, algo_id)
         self._ensure_kb(
             kb_id, display_name=display_name, description=description, owner_id=owner_id, meta=meta,
             update_fields=explicit_fields & {'display_name', 'description', 'owner_id', 'meta'},
