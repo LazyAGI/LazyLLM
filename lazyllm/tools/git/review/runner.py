@@ -264,7 +264,7 @@ def review(  # noqa: C901
     arch_doc, review_spec, clone_dir, agent_instructions = _run_pre_analysis(
         llm, backend_inst, repo, pr, fetch_repo_code,
         arch_cache_path, review_spec_cache_path, max_history_prs, ckpt,
-        pr_dir=pr_dir, head_sha=head_sha,
+        pr_dir=pr_dir, head_sha=head_sha, local_repo_path=_local_repo_path,
     )
 
     # local mode: use the local repo path directly as clone_dir for file skeleton extraction

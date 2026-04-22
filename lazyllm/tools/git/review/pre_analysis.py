@@ -2778,11 +2778,60 @@ def _run_spec_analysis(
             raise
     return review_spec
 
+def _resume_arch_from_checkpoint(
+    arch_doc: str, clone_dir: Optional[str], agent_instructions: str,
+    arch_cache_path: str, pr: Any, repo: str, clone_target_dir: Optional[str],
+    head_sha: Optional[str], ckpt: Any,
+) -> Tuple[str, Optional[str], str]:
+    _save_cache(arch_cache_path, 'arch_doc', arch_doc)
+    _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
+    if not clone_dir:
+        try:
+            clone_url, branch = _resolve_clone_target(pr, repo)
+            lazyllm.LOG.info(f'Cloning {clone_url} @ {branch} for agent file access')
+            clone_dir, _ = _fetch_repo_code(clone_url, branch, work_dir=clone_target_dir, pin_sha=head_sha)
+            ckpt.save('clone_dir', clone_dir)
+        except Exception as e:
+            raise RuntimeError(f'Clone for agent failed: {e}') from e
+    else:
+        lazyllm.LOG.info(f'Reusing cached clone at {clone_dir}')
+    if not agent_instructions and clone_dir:
+        agent_instructions = _read_agent_instructions(clone_dir)
+        if agent_instructions:
+            _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
+    return arch_doc, clone_dir, agent_instructions
+
+
+def _run_local_arch_analysis(
+    llm: Any, arch_doc: str, local_repo_path: Optional[str],
+    arch_cache_path: str, agent_instructions: str, repo: str, ckpt: Any,
+) -> Tuple[str, str]:
+    if not arch_doc and local_repo_path and os.path.isdir(local_repo_path):
+        agent_instructions = _read_agent_instructions(local_repo_path)
+        if agent_instructions:
+            _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
+        prog = _Progress('Pre-analysis: architecture')
+        try:
+            arch_doc = analyze_repo_architecture(
+                llm, local_repo_path, arch_cache_path, agent_instructions, base_repo=repo,
+            )
+            ckpt.save('arch_doc', arch_doc)
+            prog.done('architecture doc ready')
+        except Exception as e:
+            lazyllm.LOG.warning(f'Local arch analysis failed (non-fatal): {e}')
+            _save_cache(arch_cache_path, 'arch_doc', arch_doc)
+            prog.done('loaded from checkpoint')
+    else:
+        _save_cache(arch_cache_path, 'arch_doc', arch_doc)
+        _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
+    return arch_doc, agent_instructions
+
+
 def _run_pre_analysis(
     llm: Any, backend_inst: LazyLLMGitBase, repo: str, pr: Any,
     fetch_repo_code: bool, arch_cache_path: Optional[str], review_spec_cache_path: Optional[str],
     max_history_prs: int, ckpt: Any, pr_dir: Optional[str] = None,
-    head_sha: Optional[str] = None,
+    head_sha: Optional[str] = None, local_repo_path: Optional[str] = None,
 ) -> Tuple[str, str, Optional[str], str]:
     from .checkpoint import _ReviewCheckpoint
     repo_cache_dir = _ReviewCheckpoint.repo_cache_dir(repo)
@@ -2804,27 +2853,14 @@ def _run_pre_analysis(
                 head_sha=head_sha,
             )
         else:
-            _save_cache(arch_cache_path, 'arch_doc', arch_doc)
-            _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
-            if not clone_dir:
-                try:
-                    clone_url, branch = _resolve_clone_target(pr, repo)
-                    lazyllm.LOG.info(f'Cloning {clone_url} @ {branch} for agent file access')
-                    clone_dir, _ = _fetch_repo_code(
-                        clone_url, branch, work_dir=clone_target_dir,
-                        pin_sha=head_sha)
-                    ckpt.save('clone_dir', clone_dir)
-                except Exception as e:
-                    raise RuntimeError(f'Clone for agent failed: {e}') from e
-            else:
-                lazyllm.LOG.info(f'Reusing cached clone at {clone_dir}')
-            if not agent_instructions and clone_dir:
-                agent_instructions = _read_agent_instructions(clone_dir)
-                if agent_instructions:
-                    _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
+            arch_doc, clone_dir, agent_instructions = _resume_arch_from_checkpoint(
+                arch_doc, clone_dir, agent_instructions, arch_cache_path,
+                pr, repo, clone_target_dir, head_sha, ckpt,
+            )
     else:
-        _save_cache(arch_cache_path, 'arch_doc', arch_doc)
-        _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
+        arch_doc, agent_instructions = _run_local_arch_analysis(
+            llm, arch_doc, local_repo_path, arch_cache_path, agent_instructions, repo, ckpt,
+        )
 
     review_spec = _run_spec_analysis(backend_inst, llm, review_spec_cache_path, max_history_prs, ckpt)
 

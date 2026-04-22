@@ -1,5 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-"""RCov: test coverage checker for new and modified functionality."""
+'''RCov: test coverage checker for new and modified functionality.'''
 import glob
 import json
 import os
@@ -154,7 +154,7 @@ Output a JSON array of issue objects. If coverage is adequate: output [].
 # ---------------------------------------------------------------------------
 
 def _find_test_files(clone_dir: str) -> List[str]:
-    """Find all test files in the repository."""
+    '''Find all test files in the repository.'''
     patterns = [
         os.path.join(clone_dir, 'tests', '**', '*.py'),
         os.path.join(clone_dir, 'test', '**', '*.py'),
@@ -173,7 +173,7 @@ def _find_test_files(clone_dir: str) -> List[str]:
 
 
 def _grep_symbol_in_tests(symbol: str, test_files: List[str], clone_dir: str) -> str:
-    """Grep for a symbol name across test files, return a summary string."""
+    '''Grep for a symbol name across test files, return a summary string.'''
     if not test_files or not symbol:
         return '(no test files found)'
 
@@ -212,7 +212,7 @@ def _grep_symbol_in_tests(symbol: str, test_files: List[str], clone_dir: str) ->
 def _build_grep_results(
     symbols: List[Dict[str, Any]], test_files: List[str], clone_dir: str,
 ) -> str:
-    """Build grep results string for a list of symbols (parallel grep)."""
+    '''Build grep results string for a list of symbols (parallel grep).'''
     parts: List[Tuple[str, str]] = []
 
     def _grep_one(sym_info: Dict[str, Any]) -> Tuple[str, str]:
@@ -251,13 +251,13 @@ def _run_coverage_check(
     clone_dir: Optional[str],
     language: str = 'cn',
 ) -> List[Dict[str, Any]]:
-    """
+    '''
     RCov: three-step test coverage check.
     Step 1 — identify testable symbols from diff (LLM), filter internal helpers.
     Step 1.5 — dependency analysis: group related symbols (LLM).
     Step 2 — grep test files + evaluate coverage per group (LLM, parallel).
     Returns a list of issues with source='rcov'.
-    """
+    '''
     prog = _Progress('RCov: test coverage check')
 
     diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 20000)
