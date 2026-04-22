@@ -48,6 +48,20 @@ _SUBMOD_MAP = {
         '_VALID_SPAN_KINDS',
         '_VALID_SPAN_STATUS',
     ],
+    'consume.api': [
+        'get_single_trace',
+    ],
+    'consume.datamodel.views': [
+        'TraceDetailView',
+        'TraceDetailMetadata',
+        'ExecutionStepView',
+        'RawDataView',
+    ],
+    'consume.errors': [
+        'ConsumeError',
+        'TraceNotFound',
+        'ConsumeBackendError',
+    ],
 }
 _SUBMOD_MAP_REVERSE = {sym: mod for mod, syms in _SUBMOD_MAP.items() for sym in syms}
 __all__ = [sym for syms in _SUBMOD_MAP.values() for sym in syms]
