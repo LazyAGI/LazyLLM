@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 from ...datamodel.raw import RawSpanRecord
 from .utils import (
     as_bool,
-    as_float,
+    as_finite_float,
     as_int,
     config_value,
     doc_node_ids,
@@ -48,12 +48,12 @@ def extract_llm(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
         'series': config_value(span, 'series'),
         'class': config_value(span, 'class'),
         'temperature': _first_not_none(
-            as_float(config_value(span, 'temperature')),
-            as_float(find_first_key(static_params, 'temperature')),
+            as_finite_float(config_value(span, 'temperature')),
+            as_finite_float(find_first_key(static_params, 'temperature')),
         ),
         'top_p': _first_not_none(
-            as_float(config_value(span, 'top_p')),
-            as_float(find_first_key(static_params, 'top_p')),
+            as_finite_float(config_value(span, 'top_p')),
+            as_finite_float(find_first_key(static_params, 'top_p')),
         ),
         'max_tokens': _first_not_none(
             as_int(config_value(span, 'max_tokens')),
@@ -82,14 +82,14 @@ def extract_retriever(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
         'retrieve_scores': parse_scores(span.attributes.get('lazyllm.output.similarity_scores')),
         'group_name': config_value(span, 'group_name'),
         'similarity': config_value(span, 'similarity'),
-        'similarity_cut_off': _first_not_none(as_float(similarity_cut_off), similarity_cut_off),
+        'similarity_cut_off': as_finite_float(similarity_cut_off),
         'index': config_value(span, 'index'),
         'mode': config_value(span, 'mode'),
         'output_format': config_value(span, 'output_format'),
         'join': config_value(span, 'join'),
         'priority': config_value(span, 'priority'),
         'target': config_value(span, 'target'),
-        'weight': as_float(config_value(span, 'weight')),
+        'weight': as_finite_float(config_value(span, 'weight')),
         'embed_keys': config_value(span, 'embed_keys'),
         'returned_nodes': doc_node_summaries(output),
     }
@@ -107,7 +107,7 @@ def extract_embedding(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
         'base_url': config_value(span, 'base_url'),
         'batch_size': as_int(config_value(span, 'batch_size')),
         'num_worker': as_int(config_value(span, 'num_worker')),
-        'timeout': as_float(config_value(span, 'timeout')),
+        'timeout': as_finite_float(config_value(span, 'timeout')),
         'type': config_value(span, 'type'),
         'series': config_value(span, 'series'),
         'class': config_value(span, 'class'),

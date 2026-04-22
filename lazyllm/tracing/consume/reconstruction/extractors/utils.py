@@ -1,4 +1,5 @@
 import json
+import math
 import re
 from typing import Any, Dict, List, Optional
 
@@ -61,6 +62,13 @@ def as_float(value: Any) -> Optional[float]:
         return None
 
 
+def as_finite_float(value: Any) -> Optional[float]:
+    result = as_float(value)
+    if result is None or not math.isfinite(result):
+        return None
+    return result
+
+
 def as_bool(value: Any) -> Optional[bool]:
     if isinstance(value, bool):
         return value
@@ -83,7 +91,7 @@ def parse_scores(value: Any) -> Optional[List[float]]:
         return None
     out: List[float] = []
     for item in parsed:
-        score = as_float(item)
+        score = as_finite_float(item)
         if score is not None:
             out.append(score)
     return out or None
