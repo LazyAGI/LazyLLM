@@ -16,7 +16,6 @@ from ..base import ConsumeBackend, TracingBackend
 from .config import (
     build_basic_auth_header,
     build_otlp_traces_endpoint,
-    read_consume_timeout_seconds,
     read_langfuse_connection,
 )
 from .semantics import SEMANTIC_TO_LANGFUSE_OBSERVATION_TYPE
@@ -128,6 +127,7 @@ class LangfuseBackend(TracingBackend):
 class LangfuseConsumeBackend(ConsumeBackend):
     name = 'langfuse'
     _CONNECT_TIMEOUT_S = 5.0
+    _DEFAULT_READ_TIMEOUT_S = 30.0
     _MAX_HTTP_ATTEMPTS = 3
     _OBSERVATIONS_PAGE_LIMIT = 1000
     _PROMOTED_TRACE_FIELDS = frozenset({
@@ -222,6 +222,14 @@ class LangfuseConsumeBackend(ConsumeBackend):
         headers = {'Authorization': auth, 'Accept': 'application/json'}
         return host, headers
 
+    def _read_timeout_seconds(self, timeout_seconds: Optional[float]) -> float:
+        if timeout_seconds is None:
+            return self._DEFAULT_READ_TIMEOUT_S
+        try:
+            return max(1.0, float(timeout_seconds))
+        except (TypeError, ValueError):
+            return self._DEFAULT_READ_TIMEOUT_S
+
     def _request_json(
         self,
         method: str,
@@ -231,8 +239,9 @@ class LangfuseConsumeBackend(ConsumeBackend):
         trace_id: Optional[str] = None,
         trace_not_found_raises: bool = False,
         observations_404_empty: bool = False,
+        timeout_seconds: Optional[float] = None,
     ) -> Any:
-        timeouts = (self._CONNECT_TIMEOUT_S, read_consume_timeout_seconds())
+        timeouts = (self._CONNECT_TIMEOUT_S, self._read_timeout_seconds(timeout_seconds))
         for attempt in range(self._MAX_HTTP_ATTEMPTS):
             try:
                 resp = requests.request(method, url, headers=headers, timeout=timeouts)
@@ -293,11 +302,21 @@ class LangfuseConsumeBackend(ConsumeBackend):
 
         raise ConsumeBackendError('Langfuse HTTP request exhausted retries')
 
-    def _fetch_trace_body(self, trace_id: str) -> Dict[str, Any]:
+    def _fetch_trace_body(
+        self,
+        trace_id: str,
+        *,
+        timeout_seconds: Optional[float] = None,
+    ) -> Dict[str, Any]:
         host, headers = self._require_connection()
         url = f'{host}/api/public/traces/{trace_id}'
         body = self._request_json(
-            'GET', url, headers, trace_id=trace_id, trace_not_found_raises=True,
+            'GET',
+            url,
+            headers,
+            trace_id=trace_id,
+            trace_not_found_raises=True,
+            timeout_seconds=timeout_seconds,
         )
         if not isinstance(body, dict):
             raise ConsumeBackendError('Langfuse trace response is not a JSON object')
@@ -350,12 +369,20 @@ class LangfuseConsumeBackend(ConsumeBackend):
                 raise ConsumeBackendError(f'invalid observation payload: {exc}') from exc
         return out
 
-    def fetch_trace_payload(self, trace_id: str) -> RawTracePayload:
-        body = self._fetch_trace_body(trace_id)
+    def fetch_trace_payload(
+        self,
+        trace_id: str,
+        *,
+        timeout_seconds: Optional[float] = None,
+    ) -> RawTracePayload:
+        body = self._fetch_trace_body(trace_id, timeout_seconds=timeout_seconds)
         trace = self._raw_trace_from_body(trace_id, body)
 
         if 'observations' not in body:
-            return RawTracePayload(trace=trace, spans=self.fetch_spans(trace.trace_id))
+            return RawTracePayload(
+                trace=trace,
+                spans=self.fetch_spans(trace.trace_id, timeout_seconds=timeout_seconds),
+            )
 
         observations = body.get('observations')
         if not isinstance(observations, list):
@@ -365,10 +392,23 @@ class LangfuseConsumeBackend(ConsumeBackend):
             spans=self._raw_spans_from_observations(trace.trace_id, observations),
         )
 
-    def fetch_trace(self, trace_id: str) -> RawTraceRecord:
-        return self._raw_trace_from_body(trace_id, self._fetch_trace_body(trace_id))
+    def fetch_trace(
+        self,
+        trace_id: str,
+        *,
+        timeout_seconds: Optional[float] = None,
+    ) -> RawTraceRecord:
+        return self._raw_trace_from_body(
+            trace_id,
+            self._fetch_trace_body(trace_id, timeout_seconds=timeout_seconds),
+        )
 
-    def fetch_spans(self, trace_id: str) -> List[RawSpanRecord]:
+    def fetch_spans(
+        self,
+        trace_id: str,
+        *,
+        timeout_seconds: Optional[float] = None,
+    ) -> List[RawSpanRecord]:
         host, headers = self._require_connection()
 
         out: List[RawSpanRecord] = []
@@ -388,6 +428,7 @@ class LangfuseConsumeBackend(ConsumeBackend):
                 headers,
                 trace_id=trace_id,
                 observations_404_empty=True,
+                timeout_seconds=timeout_seconds,
             )
             if not isinstance(body, dict):
                 raise ConsumeBackendError('Langfuse observations response is not a JSON object')
