@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set
 
 from ..datamodel.raw import RawSpanRecord, RawTraceRecord
-from ..datamodel.structured import ExecutionStep, StructuredTrace
+from ..datamodel.structured import ExecutionStep, RawData, StructuredTrace, TraceMetadata
 from .extractors import extract_semantic
 
 
 _VALID_NODE_TYPES = frozenset({'flow', 'module', 'callable'})
-_TRUNCATED_SUFFIX = '...<truncated>'
 _VIRTUAL_ROOT_STEP_ID = '__root__'
 
 
@@ -16,33 +15,6 @@ def _latency_ms(start_time: Optional[float], end_time: Optional[float]) -> Optio
     if start_time is None or end_time is None:
         return None
     return max(0.0, (end_time - start_time) * 1000.0)
-
-
-def _contains_truncated(value: Any) -> bool:
-    if isinstance(value, str):
-        return value.endswith(_TRUNCATED_SUFFIX)
-    if isinstance(value, dict):
-        return any(_contains_truncated(v) for v in value.values())
-    if isinstance(value, (list, tuple, set)):
-        return any(_contains_truncated(v) for v in value)
-    return False
-
-
-def _span_truncated(span: RawSpanRecord) -> bool:
-    return (
-        _contains_truncated(span.input)
-        or _contains_truncated(span.output)
-        or _contains_truncated(span.attributes.get('lazyllm.io.input'))
-        or _contains_truncated(span.attributes.get('lazyllm.io.output'))
-    )
-
-
-def _trace_truncated(trace: RawTraceRecord) -> bool:
-    return (
-        _contains_truncated(trace.input)
-        or _contains_truncated(trace.output)
-        or _contains_truncated(trace.metadata)
-    )
 
 
 def _node_type(span: RawSpanRecord) -> str:
@@ -61,16 +33,11 @@ def _build_step(span: RawSpanRecord) -> ExecutionStep:
         node_type=_node_type(span),
         semantic_type=span.attributes.get('lazyllm.semantic_type'),
         status=span.status,
-        latency_ms=_latency_ms(span.start_time, span.end_time),
         start_time=span.start_time,
-        error_message=_error_message(span),
+        latency_ms=_latency_ms(span.start_time, span.end_time),
+        raw_data=RawData(input=span.input, output=span.output),
         semantic_data=extract_semantic(span),
-        raw_data={
-            'input': span.input,
-            'output': span.output,
-            'metadata': span.metadata,
-            'truncated': _span_truncated(span),
-        },
+        error_message=_error_message(span),
     )
 
 
@@ -148,16 +115,11 @@ def _virtual_root(
         node_type='flow',
         semantic_type=None,
         status=status,
-        latency_ms=latency_ms,
         start_time=start_time,
-        error_message=error_message,
+        latency_ms=latency_ms,
+        raw_data=RawData(input=trace.input, output=trace.output),
         semantic_data=None,
-        raw_data={
-            'input': trace.input,
-            'output': trace.output,
-            'metadata': trace.metadata,
-            'truncated': _trace_truncated(trace),
-        },
+        error_message=error_message,
         children=children,
     )
 
@@ -204,11 +166,8 @@ def rebuild(trace: RawTraceRecord, spans: List[RawSpanRecord]) -> StructuredTrac
             latency_ms=aggregate_latency_ms,
             error_message=error_message,
         )
-        root_step_id = None
-        has_orphans = True
     else:
         execution_tree = root_steps[0]
-        root_step_id = execution_tree.step_id
         if execution_tree.status == 'error' and execution_tree.error_message:
             error_message = execution_tree.error_message
         latency = execution_tree.latency_ms
@@ -218,16 +177,17 @@ def rebuild(trace: RawTraceRecord, spans: List[RawSpanRecord]) -> StructuredTrac
 
     return StructuredTrace(
         trace_id=trace.trace_id,
-        name=trace.name,
-        tags=list(trace.tags),
-        session_id=trace.session_id,
-        user_id=trace.user_id,
-        metadata=dict(trace.metadata),
-        start_time=start_time,
-        latency_ms=aggregate_latency_ms,
-        status=status,
-        error_message=error_message,
-        root_step_id=root_step_id,
+        metadata=TraceMetadata(
+            name=trace.name,
+            start_time=start_time,
+            end_time=None,
+            latency_ms=aggregate_latency_ms,
+            status=status,
+            error_message=error_message,
+            tags=list(trace.tags),
+            session_id=trace.session_id,
+            user_id=trace.user_id,
+            metadata=dict(trace.metadata),
+        ),
         execution_tree=execution_tree,
-        has_orphans=has_orphans,
     )

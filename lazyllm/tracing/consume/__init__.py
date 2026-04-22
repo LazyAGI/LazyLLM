@@ -1,14 +1,12 @@
 from .api import get_single_trace
 from .datamodel import (
     ExecutionStep,
-    ExecutionStepView,
-    RawDataView,
+    RawData,
     RawSpanRecord,
     RawTracePayload,
     RawTraceRecord,
     StructuredTrace,
-    TraceDetailMetadata,
-    TraceDetailView,
+    TraceMetadata,
 )
 from .errors import ConsumeBackendError, ConsumeError, TraceNotFound
 
@@ -16,14 +14,12 @@ __all__ = [
     'ConsumeBackendError',
     'ConsumeError',
     'ExecutionStep',
-    'ExecutionStepView',
-    'RawDataView',
+    'RawData',
     'RawSpanRecord',
     'RawTracePayload',
     'RawTraceRecord',
     'StructuredTrace',
-    'TraceDetailMetadata',
-    'TraceDetailView',
+    'TraceMetadata',
     'TraceNotFound',
     'get_single_trace',
 ]

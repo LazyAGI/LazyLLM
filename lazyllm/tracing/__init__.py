@@ -53,11 +53,11 @@ _SUBMOD_MAP = {
     'consume.api': [
         'get_single_trace',
     ],
-    'consume.datamodel.views': [
-        'TraceDetailView',
-        'TraceDetailMetadata',
-        'ExecutionStepView',
-        'RawDataView',
+    'consume.datamodel.structured': [
+        'ExecutionStep',
+        'RawData',
+        'StructuredTrace',
+        'TraceMetadata',
     ],
     'consume.datamodel.raw': [
         'RawSpanRecord',

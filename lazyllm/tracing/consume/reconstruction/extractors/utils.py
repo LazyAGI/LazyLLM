@@ -6,7 +6,9 @@ from ...datamodel.raw import RawSpanRecord
 
 
 _TRUNCATED_SUFFIX = '...<truncated>'
-_DOC_NODE_ID_RE = re.compile(r'DocNode\(id:\s*([^,\s)]+)')
+_DOC_NODE_ID_RE = re.compile(r'DocNode\(id\s*[:=]\s*([^,\s)]+)')
+_DOC_NODE_GROUP_RE = re.compile(r'\bgroup\s*[:=]\s*([^,\s)]+)')
+_DOC_NODE_CONTENT_RE = re.compile(r'\bcontent\s*[:=]\s*(.*?)(?:\)\s*parent:|\)\s*$)')
 
 
 def parse_jsonish(value: Any) -> Any:
@@ -37,6 +39,10 @@ def config_value(span: RawSpanRecord, key: str) -> Any:
     return parse_jsonish(span.attributes.get(f'lazyllm.entity.config.{key}'))
 
 
+def config_values(span: RawSpanRecord, *keys: str) -> Dict[str, Any]:
+    return {key: config_value(span, key) for key in keys}
+
+
 def as_int(value: Any) -> Optional[int]:
     if value is None or value == '':
         return None
@@ -53,6 +59,22 @@ def as_float(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def as_bool(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if value is None or value == '':
+        return None
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ('true', '1', 'yes', 'y'):
+            return True
+        if lowered in ('false', '0', 'no', 'n'):
+            return False
+        if lowered in ('none', 'null'):
+            return None
+    return bool(value)
 
 
 def parse_scores(value: Any) -> Optional[List[float]]:
@@ -110,6 +132,12 @@ def find_first_key(value: Any, *keys: str) -> Any:
     return None
 
 
+def kwargs_dict(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict) and isinstance(value.get('kwargs'), dict):
+        return value['kwargs']
+    return {}
+
+
 def args_list(value: Any) -> List[Any]:
     if isinstance(value, dict):
         args = value.get('args')
@@ -129,6 +157,17 @@ def query_from_input(value: Any) -> Any:
         found = find_first_key(item, 'query')
         if found not in (None, ''):
             return found
+    return None
+
+
+def input_filters(value: Any) -> Any:
+    return kwargs_dict(value).get('filters')
+
+
+def prompt_messages(value: Any) -> Any:
+    messages = find_first_key(value, 'messages', 'prompt_messages')
+    if isinstance(messages, list):
+        return messages
     return None
 
 
@@ -160,6 +199,37 @@ def output_dim(value: Any) -> Optional[int]:
     return None
 
 
+def input_count(value: Any) -> Optional[int]:
+    args = args_list(value)
+    if not args:
+        return sequence_len(value)
+    first = parse_jsonish(args[0])
+    if isinstance(first, (list, tuple)):
+        return len(first)
+    return len(args)
+
+
+def is_truncated(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.endswith(_TRUNCATED_SUFFIX)
+    if isinstance(value, dict):
+        return any(is_truncated(v) for v in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return any(is_truncated(v) for v in value)
+    return False
+
+
+def text_length(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return len(value)
+    try:
+        return len(json.dumps(value, ensure_ascii=False, default=str))
+    except TypeError:
+        return len(str(value))
+
+
 def sequence_len(value: Any) -> Optional[int]:
     parsed = parse_jsonish(value)
     if isinstance(parsed, (list, tuple)):
@@ -168,10 +238,47 @@ def sequence_len(value: Any) -> Optional[int]:
 
 
 def doc_node_ids(value: Any) -> Optional[List[str]]:
+    summaries = doc_node_summaries(value, content_limit=0)
+    if summaries:
+        return [item['id'] for item in summaries if item.get('id')] or None
+    return None
+
+
+def doc_node_summaries(
+    value: Any,
+    *,
+    limit: Optional[int] = None,
+    content_limit: int = 240,
+) -> Optional[List[Dict[str, Any]]]:
     parsed = parse_jsonish(value)
     items = parsed if isinstance(parsed, list) else [parsed]
-    out: List[str] = []
+    out: List[Dict[str, Any]] = []
     for item in items:
-        if isinstance(item, str):
-            out.extend(_DOC_NODE_ID_RE.findall(item))
+        if isinstance(item, dict):
+            doc_id = item.get('id') or item.get('node_id') or item.get('doc_id')
+            group = item.get('group') or item.get('group_name')
+            content = item.get('content') or item.get('text')
+        elif isinstance(item, str):
+            doc_id_match = _DOC_NODE_ID_RE.search(item)
+            if not doc_id_match:
+                continue
+            doc_id = doc_id_match.group(1)
+            group_match = _DOC_NODE_GROUP_RE.search(item)
+            content_match = _DOC_NODE_CONTENT_RE.search(item)
+            group = group_match.group(1) if group_match else None
+            content = content_match.group(1).strip() if content_match else None
+        else:
+            continue
+
+        summary: Dict[str, Any] = {'id': doc_id}
+        if group is not None:
+            summary['group'] = group
+        if content is not None and content_limit > 0:
+            text = str(content)
+            summary['content_preview'] = (
+                text[:content_limit] + _TRUNCATED_SUFFIX if len(text) > content_limit else text
+            )
+        out.append(summary)
+        if limit is not None and len(out) >= limit:
+            break
     return out or None
