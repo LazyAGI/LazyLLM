@@ -23,7 +23,6 @@ from collections import deque
 import uuid
 from ..hook import LazyLLMHook, execution_with_hooks, register_hooks, resolve_builtin_hooks
 from ..tracing.collect.output_attrs import push_ifs_matched_attrs, push_switch_matched_attrs
-from ..tracing.runtime import start_span, set_span_output, set_span_error, set_span_attributes, finish_span
 from itertools import repeat
 
 
