@@ -8,9 +8,9 @@ from typing import Any, Dict, Optional
 from lazyllm.common import LOG, globals
 from lazyllm.configs import config
 from lazyllm.thirdparty import opentelemetry
-from .backends import get_tracing_backend
+from ..backends import get_tracing_backend
 from .context import LazyTraceContext
-from .semantics import SemanticType
+from ..semantics import SemanticType
 from .span import LazySpan, LazyTrace
 
 

@@ -1,14 +1,14 @@
 from importlib import import_module
 
 _SUBMOD_MAP = {
-    'context': [
+    'collect.context': [
         'LazyTraceContext',
     ],
-    'span': [
+    'collect.span': [
         'LazySpan',
         'LazyTrace',
     ],
-    'runtime': [
+    'collect.runtime': [
         'TracingSetupError',
         'get_trace_context',
         'set_trace_context',
@@ -22,14 +22,14 @@ _SUBMOD_MAP = {
         'set_span_usage',
         'finish_span',
     ],
-    'configs': [
+    'collect.configs': [
         'DEFAULT_MODULE_TRACE_CONFIG',
         'get_default_module_trace_config',
         'set_default_module_trace_config',
         'resolve_default_module_trace',
         'resolve_runtime_module_trace_disabled',
     ],
-    'hook': [
+    'collect.hook': [
         'LazyTracingHook',
         'resolve_tracing_hooks',
     ],
@@ -41,6 +41,12 @@ _SUBMOD_MAP = {
     ],
     'semantics': [
         'SemanticType',
+        'is_valid_trace_id',
+        'is_valid_span_id',
+        '_TRACE_ID_RE',
+        '_SPAN_ID_RE',
+        '_VALID_SPAN_KINDS',
+        '_VALID_SPAN_STATUS',
     ],
 }
 _SUBMOD_MAP_REVERSE = {sym: mod for mod, syms in _SUBMOD_MAP.items() for sym in syms}

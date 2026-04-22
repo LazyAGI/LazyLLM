@@ -1,4 +1,3 @@
-import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -6,10 +5,12 @@ from typing import Any, Dict, List, Optional
 
 from lazyllm.common import LOG
 
-_TRACE_ID_RE = re.compile(r'^[0-9a-f]{32}$')
-_SPAN_ID_RE = re.compile(r'^[0-9a-f]{16}$')
-_VALID_SPAN_KINDS = frozenset({'flow', 'module', 'callable'})
-_VALID_SPAN_STATUS = frozenset({'ok', 'error'})
+from ..semantics import (
+    _SPAN_ID_RE,
+    _TRACE_ID_RE,
+    _VALID_SPAN_KINDS,
+    _VALID_SPAN_STATUS,
+)
 
 
 @dataclass
@@ -111,7 +112,7 @@ class LazyTrace:
             raise ValueError(f'LazyTrace.trace_id must be 32-char lowercase hex, got {self.trace_id!r}')
         if self.root_span_id is not None and not _SPAN_ID_RE.match(self.root_span_id):
             raise ValueError(f'LazyTrace.root_span_id must be 16-char lowercase hex, got {self.root_span_id!r}')
-        if self.status not in ('ok', 'error'):
+        if self.status not in _VALID_SPAN_STATUS:
             raise ValueError(f'LazyTrace.status must be ok|error, got {self.status!r}')
         if not isinstance(self.request_tags, list):
             raise TypeError(f'LazyTrace.request_tags must be list, got {type(self.request_tags).__name__}')

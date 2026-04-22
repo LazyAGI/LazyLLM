@@ -187,6 +187,6 @@ def run_hooks(hook_objs, phase: str, *phase_args):
 
 
 try:
-    from .tracing.hook import resolve_tracing_hooks  # noqa: F401, E402
+    from .tracing.collect.hook import resolve_tracing_hooks  # noqa: F401, E402
 except ImportError:
     pass

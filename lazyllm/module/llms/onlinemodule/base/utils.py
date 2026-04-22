@@ -1,6 +1,6 @@
 from ....module import ModuleBase
 from lazyllm import config, LazyLLMRegisterMetaClass, globals, LOG
-from lazyllm.tracing.runtime import current_trace
+from lazyllm.tracing.collect.runtime import current_trace
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Optional, Union, List
 import random

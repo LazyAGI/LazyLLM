@@ -1,23 +1,13 @@
-import base64
 import json
-import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from lazyllm.common import LOG
 from lazyllm.thirdparty import opentelemetry
-from ..semantics import SemanticType
-from .base import TracingBackend
+from lazyllm.tracing.semantics import SemanticType
 
-
-_SEMANTIC_TO_LANGFUSE_TYPE = {
-    SemanticType.AGENT: 'chain',
-    SemanticType.LLM: 'generation',
-    SemanticType.RETRIEVER: 'retriever',
-    SemanticType.EMBEDDING: 'embedding',
-    SemanticType.TOOL: 'tool',
-    SemanticType.RERANK: 'span',
-    SemanticType.WORKFLOW_CONTROL: 'chain',
-}
+from ..base import TracingBackend
+from .config import build_basic_auth_header, build_otlp_traces_endpoint, read_langfuse_connection
+from .semantics import SEMANTIC_TO_LANGFUSE_OBSERVATION_TYPE
 
 
 class LangfuseBackend(TracingBackend):
@@ -69,27 +59,20 @@ class LangfuseBackend(TracingBackend):
             if key.startswith(prefix):
                 attrs[f'langfuse.trace.metadata.{key[len(prefix):]}'] = value
 
-    def _config(self) -> Dict[str, Optional[str]]:
-        return {
-            'host': os.getenv('LANGFUSE_HOST') or os.getenv('LANGFUSE_BASE_URL'),
-            'public_key': os.getenv('LANGFUSE_PUBLIC_KEY'),
-            'secret_key': os.getenv('LANGFUSE_SECRET_KEY'),
-        }
-
     def build_exporter(self):
-        cfg = self._config()
+        cfg = read_langfuse_connection()
         missing = [name for name, value in cfg.items() if not value]
         if missing:
             raise RuntimeError('Missing Langfuse tracing config: ' + ', '.join(missing))
 
-        auth = base64.b64encode(f"{cfg['public_key']}:{cfg['secret_key']}".encode('utf-8')).decode('ascii')
-        endpoint = cfg['host'].rstrip('/') + '/api/public/otel/v1/traces'
+        auth = build_basic_auth_header(cfg['public_key'], cfg['secret_key'])
+        endpoint = build_otlp_traces_endpoint(cfg['host'])
 
         OTLPSpanExporter = opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter
 
         return OTLPSpanExporter(
             endpoint=endpoint,
-            headers={'Authorization': f'Basic {auth}'},
+            headers={'Authorization': auth},
         )
 
     def map_attributes(self, otel_attrs: Dict[str, Any]) -> Dict[str, Any]:
@@ -98,7 +81,7 @@ class LangfuseBackend(TracingBackend):
 
         semantic_type = otel_attrs.get('lazyllm.semantic_type')
         if semantic_type:
-            langfuse_type = _SEMANTIC_TO_LANGFUSE_TYPE.get(semantic_type)
+            langfuse_type = SEMANTIC_TO_LANGFUSE_OBSERVATION_TYPE.get(semantic_type)
             if langfuse_type is None:
                 if semantic_type not in self._warned_semantic_types:
                     LOG.warning(

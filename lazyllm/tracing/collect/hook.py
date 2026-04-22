@@ -1,6 +1,6 @@
-from ..common import LOG, globals
-from ..configs import config
-from ..hook import LazyLLMHook, register_builtin_hook_provider
+from ...common import LOG, globals
+from ...configs import config
+from ...hook import LazyLLMHook, register_builtin_hook_provider
 from .configs import resolve_default_module_trace, resolve_runtime_module_trace_disabled
 from .runtime import finish_span, set_span_attributes, set_span_error, set_span_output, set_span_usage, start_span
 

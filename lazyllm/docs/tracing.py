@@ -185,8 +185,8 @@ Returns:
 
 # ============= LazyTraceContext
 
-add_chinese_doc_ctx = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.context)
-add_english_doc_ctx = functools.partial(utils.add_english_doc, module=lazyllm.tracing.context)
+add_chinese_doc_ctx = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.collect.context)
+add_english_doc_ctx = functools.partial(utils.add_english_doc, module=lazyllm.tracing.collect.context)
 
 add_chinese_doc_ctx('LazyTraceContext', '''\
 轻量级 tracing 上下文对象。
@@ -246,8 +246,8 @@ Returns:
 
 # ============= Tracing configs
 
-add_chinese_doc_cfg = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.configs)
-add_english_doc_cfg = functools.partial(utils.add_english_doc, module=lazyllm.tracing.configs)
+add_chinese_doc_cfg = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.collect.configs)
+add_english_doc_cfg = functools.partial(utils.add_english_doc, module=lazyllm.tracing.collect.configs)
 
 add_chinese_doc_cfg('DEFAULT_MODULE_TRACE_CONFIG', '''\
 默认的 module tracing 配置。

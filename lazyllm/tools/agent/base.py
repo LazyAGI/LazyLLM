@@ -4,7 +4,7 @@ from typing import Iterable, Optional, Union
 import lazyllm
 from lazyllm.module import ModuleBase
 from lazyllm import locals, once_wrapper, LOG
-from lazyllm.tracing.runtime import current_trace
+from lazyllm.tracing.collect.runtime import current_trace
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager, SKILLS_PROMPT

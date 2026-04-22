@@ -22,7 +22,7 @@ import concurrent.futures
 from collections import deque
 import uuid
 from ..hook import LazyLLMHook, prepare_hooks, register_hooks, resolve_builtin_hooks, run_hooks
-from ..tracing.runtime import start_span, set_span_output, set_span_error, set_span_attributes, finish_span
+from ..tracing.collect.runtime import start_span, set_span_output, set_span_error, set_span_attributes, finish_span
 from itertools import repeat
 
 
