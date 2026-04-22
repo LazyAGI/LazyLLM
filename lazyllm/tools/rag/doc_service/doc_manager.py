@@ -649,6 +649,11 @@ class DocManager:
             State = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
             sess.query(State).filter(State.doc_id == doc_id, State.kb_id == kb_id).delete()
 
+    def _delete_ng_status(self, doc_id: str, kb_id: str, session=None):
+        with self._db_manager.get_session(session) as sess:
+            NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
+            sess.query(NgStatus).filter(NgStatus.doc_id == doc_id, NgStatus.kb_id == kb_id).delete()
+
     def _delete_doc_if_orphaned(self, doc_id: str, session=None) -> bool:
         with self._db_manager.get_session(session) as sess:
             Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
@@ -674,6 +679,7 @@ class DocManager:
         else:
             doc_deleted = self._delete_doc_if_orphaned(doc_id)
         self._delete_parse_snapshots(doc_id, kb_id)
+        self._delete_ng_status(doc_id, kb_id)
         if not doc_deleted:
             self._sync_doc_upload_status(doc_id)
 
@@ -1542,6 +1548,7 @@ class DocManager:
                     upload_status_handled = True
                 else:
                     self._remove_kb_document(kb_id, doc_id)
+                    self._delete_ng_status(doc_id, kb_id)
             if not upload_status_handled:
                 self._apply_doc_upload_status(doc_id, task_type, final_status)
             if task_type == TaskType.DOC_DELETE and final_status == DocStatus.DELETED and cleanup_policy == 'purge':
