@@ -5,11 +5,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Callable
 from typing_extensions import override
 
-import requests
-
 import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import bs4
+from lazyllm.tools.http_request import post_sync
 
 from ...doc_node import DocNode
 from .ocr_ir import (
@@ -18,34 +17,23 @@ from .ocr_ir import (
     FigureBlock, CodeBlock, ListBlock,
 )
 from .ocr_postprocessor import l1_normalize, l2_associate
-from .ocr_reader_base import _OcrReaderBase, ServiceVariant
+from .ocr_reader_base import _OcrReaderBase
 
 lazyllm.config.add('paddleocr_api_key', str, None, 'PADDLEOCR_API_KEY', description='The API key for PaddleOCR')
 
 
 class PaddleOCRPDFReader(_OcrReaderBase):
     def __init__(self,
-                 url: str = None,
-                 api_key: str = None,
-                 service_variant: ServiceVariant = 'online',
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  format_block_content: bool = True,
                  use_layout_detection: bool = True,
                  use_chart_recognition: bool = True,
-                 split_doc: bool = True,
                  drop_types: List[str] = None,
-                 post_func: Optional[Callable] = None,
-                 return_trace: bool = True,
-                 images_dir: str = None):
-        super().__init__(
-            url=url,
-            api_key=api_key,
-            service_variant=service_variant,
-            split_doc=split_doc,
-            post_func=post_func,
-            return_trace=return_trace,
-        )
-        api_key = api_key or lazyllm.config['paddleocr_api_key']
+                 images_dir: str = None,
+                 **kwargs):
+        super().__init__(**kwargs)
+        url = kwargs.get('url')
+        api_key = kwargs.get('api_key') or lazyllm.config['paddleocr_api_key']
         if not url and not api_key:
             raise ValueError('Either url or api_key must be provided')
 
@@ -107,8 +95,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             'prettifyMarkdown': True,
         }
 
-        response = requests.post(self._url, json=payload, headers=self._headers, timeout=600)
-        response.raise_for_status()
+        response = post_sync(self._url, json_payload=payload, headers=self._headers, timeout=600)
         return response.text
 
     @override

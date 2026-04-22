@@ -1,15 +1,15 @@
 import io
 import json
 import os
-import time
 import zipfile
+
+import requests
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 from typing_extensions import override
 
-import requests
-
 from lazyllm import LOG
+from lazyllm.tools.http_request import post_sync, get_sync, post_async
 
 from ...doc_node import DocNode
 from .ocr_ir import (
@@ -27,6 +27,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
             backend: str = 'hybrid-auto-engine',
             upload_mode: bool = False,
             timeout: Optional[int] = None,
+            image_cache_dir: str = None,
             droped_types: Set[str] = {'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
             **kwargs):
         super().__init__(droped_types=droped_types, **kwargs)
@@ -35,6 +36,11 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._apply_lazyllm_patch = apply_lazyllm_patch
         self._page_size = None
+        if image_cache_dir:
+            self._image_cache_dir = Path(image_cache_dir)
+            self._image_cache_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            self._image_cache_dir = None
 
     @override
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
@@ -56,12 +62,11 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         try:
             if not self._upload_mode:
                 payload['files'] = [str(file)]
-                response = requests.post(url, data=payload, timeout=self._timeout)
+                response = post_sync(url, payload=payload, timeout=self._timeout)
             else:
                 with open(file, 'rb') as f:
                     files = {'upload_files': (os.path.basename(file), f)}
-                    response = requests.post(url, data=payload, files=files, timeout=self._timeout)
-            response.raise_for_status()
+                    response = post_sync(url, payload=payload, files=files, timeout=self._timeout)
             return response.text
         except requests.exceptions.RequestException as e:
             LOG.error(f'[MineruPDFReader] POST request failed: {e}')
@@ -71,34 +76,6 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         if not self._url:
             raise ValueError('url is required for MineruPDFReader')
         base_url = self._url.rstrip('/')
-
-        # Try local mineru-api pattern first, then cloud pattern
-        task_id = self._submit_task(base_url, file, use_cache)
-        if not task_id:
-            raise RuntimeError('[MineruPDFReader] Failed to submit async task')
-
-        LOG.info(f'[MineruPDFReader] Task {task_id} submitted, polling...')
-        result = self._poll_task(base_url, task_id)
-        if not result:
-            raise RuntimeError(f'[MineruPDFReader] Task {task_id} failed or timed out')
-
-        # result may be a JSON string, a zip bytes, or a full_zip_url
-        if isinstance(result, str):
-            # full_zip_url from cloud API
-            if result.startswith('http'):
-                zip_resp = requests.get(result, timeout=self._timeout)
-                zip_resp.raise_for_status()
-                return self._extract_content_from_zip(zip_resp.content)
-            # Already JSON string
-            return result
-        if isinstance(result, bytes):
-            return self._extract_content_from_zip(result)
-        # dict or list - serialize to JSON string
-        return json.dumps(result)
-
-    def _submit_task(self, base_url: str, file: Path, use_cache: bool) -> Optional[str]:
-        # Local mineru-api style
-        submit_url = base_url + '/tasks'
         payload = {
             'return_md': True,
             'return_content_list': True,
@@ -106,104 +83,58 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
             'table_enable': True,
             'formula_enable': True,
         }
+
+        # Try local mineru-api pattern first, then cloud pattern
         try:
             if not self._upload_mode:
                 payload['files'] = [str(file)]
-                resp = requests.post(submit_url, data=payload, timeout=self._timeout)
+                result = post_async(
+                    submit_url=base_url + '/tasks',
+                    status_url=base_url + '/tasks/{task_id}',
+                    result_url=base_url + '/tasks/{task_id}/result',
+                    payload=payload,
+                    timeout=self._timeout,
+                )
             else:
                 with open(file, 'rb') as f:
                     files = {'files': (os.path.basename(file), f)}
-                    resp = requests.post(submit_url, data=payload, files=files, timeout=self._timeout)
-            if resp.status_code == 404:
-                return self._submit_task_cloud(base_url, file, use_cache)
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get('task_id')
-        except requests.exceptions.RequestException as e:
-            LOG.warning(f'[MineruPDFReader] Local async submit failed: {e}, trying cloud endpoint')
-            return self._submit_task_cloud(base_url, file, use_cache)
-
-    def _submit_task_cloud(self, base_url: str, file: Path, use_cache: bool) -> Optional[str]:
-        submit_url = base_url + '/api/v4/extract/task'
-        headers = {'Authorization': f'Bearer {self._api_key}'} if self._api_key else {}
-        try:
+                    result = post_async(
+                        submit_url=base_url + '/tasks',
+                        status_url=base_url + '/tasks/{task_id}',
+                        result_url=base_url + '/tasks/{task_id}/result',
+                        payload=payload,
+                        files=files,
+                        timeout=self._timeout,
+                    )
+        except (requests.exceptions.RequestException, RuntimeError, ValueError) as e:
+            LOG.warning(f'[MineruPDFReader] Local async failed: {e}, trying cloud endpoint')
             with open(file, 'rb') as f:
                 files = {'file': (os.path.basename(file), f)}
-                resp = requests.post(submit_url, files=files, headers=headers, timeout=self._timeout)
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get('data', {}).get('task_id')
-        except requests.exceptions.RequestException as e:
-            LOG.error(f'[MineruPDFReader] Cloud async submit failed: {e}')
-            return None
+                cloud_headers = {'Authorization': f'Bearer {self._api_key}'} if self._api_key else {}
+                result = post_async(
+                    submit_url=base_url + '/api/v4/extract/task',
+                    status_url=base_url + '/api/v4/extract/task/{task_id}',
+                    payload=payload,
+                    files=files,
+                    headers=cloud_headers,
+                    timeout=self._timeout,
+                    result_extractor=lambda resp: resp.json().get('data', {}).get('full_zip_url'),
+                )
 
-    def _poll_task(self, base_url: str, task_id: str, max_retries: int = 120, interval: int = 3):
-        # Try local status endpoint first
-        status_url = base_url + f'/tasks/{task_id}'
-        for _ in range(max_retries):
+        if isinstance(result, str) and result.startswith('http'):
+            zip_resp = get_sync(result, timeout=self._timeout)
+            return self._extract_content_from_zip(zip_resp.content)
+        if isinstance(result, bytes):
+            return self._extract_content_from_zip(result)
+        if isinstance(result, requests.Response):
+            content_type = result.headers.get('Content-Type', '')
+            if 'zip' in content_type:
+                return self._extract_content_from_zip(result.content)
             try:
-                resp = requests.get(status_url, timeout=self._timeout)
-                if resp.status_code == 404:
-                    return self._poll_task_cloud(base_url, task_id, max_retries, interval)
-                resp.raise_for_status()
-                data = resp.json()
-                status = data.get('status', data.get('state', ''))
-                if status in ('completed', 'done', 'success'):
-                    # Try to get result directly
-                    result_url = base_url + f'/tasks/{task_id}/result'
-                    result_resp = requests.get(result_url, timeout=self._timeout)
-                    result_resp.raise_for_status()
-                    content_type = result_resp.headers.get('Content-Type', '')
-                    if 'zip' in content_type:
-                        return result_resp.content
-                    try:
-                        return result_resp.json()
-                    except Exception:
-                        return result_resp.text
-                if status in ('failed', 'error', 'failure'):
-                    LOG.error(f'[MineruPDFReader] Task {task_id} failed: {data}')
-                    return None
-            except requests.exceptions.RequestException as e:
-                LOG.warning(f'[MineruPDFReader] Poll error: {e}')
-            time.sleep(interval)
-        LOG.error(f'[MineruPDFReader] Task {task_id} polling timed out')
-        return None
-
-    def _poll_task_cloud(self, base_url: str, task_id: str, max_retries: int = 120, interval: int = 3):
-        status_url = base_url + f'/api/v4/extract/task/{task_id}'
-        headers = {'Authorization': f'Bearer {self._api_key}'} if self._api_key else {}
-        for _ in range(max_retries):
-            try:
-                resp = requests.get(status_url, headers=headers, timeout=self._timeout)
-                resp.raise_for_status()
-                data = resp.json().get('data', {})
-                state = data.get('state', '')
-                if state == 'done':
-                    return data.get('full_zip_url')
-                if state == 'failed':
-                    LOG.error(f'[MineruPDFReader] Cloud task {task_id} failed: {data.get("err_msg")}')
-                    return None
-            except requests.exceptions.RequestException as e:
-                LOG.warning(f'[MineruPDFReader] Cloud poll error: {e}')
-            time.sleep(interval)
-        LOG.error(f'[MineruPDFReader] Cloud task {task_id} polling timed out')
-        return None
-
-    def _extract_content_from_zip(self, zip_bytes: bytes) -> str:
-        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-            # Prefer content_list.json
-            for name in zf.namelist():
-                if 'content_list.json' in name:
-                    return zf.read(name).decode('utf-8')
-            # Fallback to any json
-            for name in zf.namelist():
-                if name.endswith('.json'):
-                    return zf.read(name).decode('utf-8')
-            # Fallback to first md file
-            for name in zf.namelist():
-                if name.endswith('.md'):
-                    return json.dumps([{'type': 'text', 'text': zf.read(name).decode('utf-8')}])
-        raise ValueError('[MineruPDFReader] No parseable content found in zip response')
+                return json.dumps(result.json())
+            except Exception:
+                return result.text
+        return json.dumps(result)
 
     @override
     def _from_response(self, response_json: str, file: Path,
@@ -319,6 +250,31 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
             return val
         return None
 
+    def _extract_content_from_zip(self, zip_bytes: bytes) -> str:
+        """Extract zip to image_cache_dir and return content_list.json as string."""
+        if self._image_cache_dir:
+            extract_dir = self._image_cache_dir
+        else:
+            import tempfile
+            extract_dir = Path(tempfile.mkdtemp())
+
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            zf.extractall(extract_dir)
+
+        # Prefer *_content_list.json
+        for pattern in ('**/*_content_list.json', '**/content_list.json', '**/*.json', '**/*.md'):
+            candidates = list(extract_dir.glob(pattern))
+            if candidates:
+                candidate = candidates[0]
+                if candidate.suffix == '.json':
+                    with open(candidate, 'r', encoding='utf-8') as f:
+                        return json.dumps(json.load(f))
+                elif candidate.suffix == '.md':
+                    with open(candidate, 'r', encoding='utf-8') as f:
+                        return json.dumps([{'type': 'text', 'text': f.read()}])
+
+        raise ValueError('[MineruPDFReader] No parseable content found in zip response')
+
     def _parse_table_html(self, html_text: str) -> List[Cell]:
         cells: List[Cell] = []
         if not html_text:
@@ -366,7 +322,10 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
                 if b.cells:
                     metadata['cells'] = [c.__dict__ for c in b.cells]
             elif isinstance(b, FigureBlock):
-                metadata['image_path'] = str(b.image_path) if b.image_path else None
+                img_path = b.image_path
+                if img_path and self._image_cache_dir and not img_path.is_absolute():
+                    img_path = self._image_cache_dir / img_path
+                metadata['image_path'] = str(img_path) if img_path else None
                 metadata['image_caption'] = b.caption
             elif isinstance(b, FormulaBlock):
                 metadata['latex'] = b.latex
