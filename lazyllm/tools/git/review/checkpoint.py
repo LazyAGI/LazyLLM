@@ -16,6 +16,7 @@ class ReviewStage(enum.Enum):
     R1 = 'r1'
     R2A = 'r2a'
     R2 = 'r2'
+    RMOD = 'rmod'
     R3 = 'r3'
     FINAL = 'final'
     UPLOAD = 'upload'
@@ -37,7 +38,7 @@ class ReviewStage(enum.Enum):
 _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
     ReviewStage.PR_SUMMARY, ReviewStage.R1,
-    ReviewStage.R2A, ReviewStage.R2,
+    ReviewStage.R2A, ReviewStage.R2, ReviewStage.RMOD,
     ReviewStage.R3, ReviewStage.FINAL, ReviewStage.UPLOAD,
 ]
 
@@ -83,7 +84,7 @@ def _save_cache_multi(cache_path: Optional[str], entries: Dict[str, Any]) -> Non
 
 
 class _ReviewCheckpoint:
-    _KEYS = ('arch_doc', 'review_spec', 'r3_shared_context', 'r1', 'pr_design_doc', 'r2', 'r3', 'final')
+    _KEYS = ('arch_doc', 'review_spec', 'r3_shared_context', 'r1', 'pr_design_doc', 'r2', 'rmod', 'r3', 'final')
     _STAGE_DONE_PREFIX = '_stage_done_'
     _INVALIDATED_FROM_KEY = '_invalidated_from'
     _KEY_TO_STAGE: Dict[str, 'ReviewStage'] = {}
@@ -142,6 +143,7 @@ class _ReviewCheckpoint:
                 'r1': ReviewStage.R1,
                 'pr_design_doc': ReviewStage.R2A,
                 'r2': ReviewStage.R2,
+                'rmod': ReviewStage.RMOD,
                 'r3': ReviewStage.R3,
                 'r3_shared_context': ReviewStage.R3,
                 'final': ReviewStage.FINAL,

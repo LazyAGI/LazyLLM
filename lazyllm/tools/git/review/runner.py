@@ -313,6 +313,18 @@ def review(  # noqa: C901
         ckpt.save('final_comments', final_comments)
         ckpt.mark_stage_done(ReviewStage.FINAL)
 
+    # run RCov test coverage check (independent of R4, results appended directly)
+    rcov_issues: List[Dict[str, Any]] = []
+    if clone_dir and os.path.isdir(clone_dir):
+        try:
+            from .coverage_checker import _run_coverage_check
+            rcov_issues = _run_coverage_check(llm, diff_text, pr_summary, clone_dir, language)
+        except Exception as e:
+            lazyllm.LOG.warning(f'RCov analysis failed: {e}')
+
+    # merge: final_comments (through R4 dedup) + rcov_issues (bypass R4)
+    all_comments = final_comments + rcov_issues
+
     # clean up only the clone subdirectory (not the whole pr_dir which contains checkpoint)
     # local mode: clone_dir IS the user's repo, never delete it
     clone_subdir = os.path.join(pr_dir, 'clone')
@@ -330,12 +342,12 @@ def review(  # noqa: C901
                 ckpt.save('upload_done_batches', [])
             review_body = _build_review_body(
                 pr_summary=pr_summary,
-                total=len(final_comments),
-                stats=_category_stats(final_comments),
+                total=len(all_comments),
+                stats=_category_stats(all_comments),
                 model_name=model_name,
             )
             commentable = _build_commentable_lines(hunks)
-            postable, n_dropped = _filter_commentable(final_comments, commentable)
+            postable, n_dropped = _filter_commentable(all_comments, commentable)
             if n_dropped:
                 lazyllm.LOG.warning(
                     f'{n_dropped} comment(s) dropped: line not in PR diff range '
@@ -349,8 +361,8 @@ def review(  # noqa: C901
             else:
                 lazyllm.LOG.warning('Some upload batches failed; re-run with --resume_from=upload to retry')
 
-    n = len(final_comments)
-    stats = _category_stats(final_comments)
+    n = len(all_comments)
+    stats = _category_stats(all_comments)
     summary = (
         f'PR #{pr_number} "{getattr(pr, "title", "")}" — '
         f'{n} issue(s) found across 4 analysis rounds. '
@@ -367,11 +379,12 @@ def review(  # noqa: C901
         'truncated_diff_flag': truncated_diff,
         'truncated_hunks_flag': False,  # hunks are processed in sliding windows; per-hunk truncation is not applied
         'lint_issues_count': len(lint_issues),
+        'rcov_issues_count': len(rcov_issues),
     }
 
     result = {
         'summary': summary,
-        'comments': final_comments,
+        'comments': all_comments,
         'comments_posted': posted,
         'comment_stats': stats,
         'pr_summary': pr_summary,

@@ -2193,6 +2193,251 @@ def _round2_architect_review(
     return result
 
 
+# ── RMod: modification necessity analysis (ReactAgent, per-file parallel) ──
+
+_RMOD_AGENT_TIMEOUT_SECS = 180
+_RMOD_AGENT_RETRIES = 6
+_RMOD_MAX_PARALLEL_FILES = 4  # max concurrent agent workers
+
+_RMOD_PROMPT_TMPL = '''\
+You are a senior software architect. Your task is to evaluate whether modifications \
+to EXISTING modules in THIS FILE are appropriate, given the relationship between the \
+new and existing code.
+
+{lang_instruction}
+
+## PR Design Intent
+{pr_design_doc}
+
+## Project Architecture
+{arch_doc}
+
+## Project Agent Instructions
+{agent_instructions}
+
+## File Being Analyzed
+{file_path}
+
+## Diff for This File (annotated with line numbers)
+Each diff line is annotated with [old_lineno|new_lineno]:
+  [N|M]  context line, [--|M] + added line, [N|--] - removed line.
+{diff_text}
+
+## Your Task
+
+For each EXISTING module/class/function that is MODIFIED (not newly added) in this file's diff:
+
+### Step 1 — Classify the relationship type using tools
+Use read_file_scoped, analyze_symbol, grep_callers, search_scoped to determine:
+
+  TYPE_A (Independent): The existing module should NOT be aware of the new module.
+    Correct approach: minimal invasion — existing module must not gain knowledge of new module.
+    Violation: existing module now contains awareness of new module (e.g. `if new_feature: ...`,
+               importing new module, or adding new-module-specific parameters).
+
+  TYPE_B (Capability gap): New module depends on existing module, but existing module
+    lacks flexibility (hardcoded logic, closed design, no extension points).
+    Correct approach: enhance existing module via abstraction/interface/hooks/callbacks.
+    Violation: hack/workaround used instead of proper extension (e.g. modifying a high-level
+               orchestration function when only a low-level wrapper/helper needs changing).
+
+  TYPE_C (Migration): New module is gradually replacing part of the existing module.
+    Correct approach: keep existing module intact, introduce new module in parallel.
+    Violation: existing module behavior was broken or significantly altered during migration.
+
+  TYPE_D (Dependency complexity): New module introduces new dependencies into an already
+    complex dependency graph.
+    Correct approach: refactor dependency relationships to avoid unnecessary coupling.
+    Violation: new dependency directly injected into existing module, increasing coupling.
+
+  TYPE_E (Rapid requirement change): Existing module needs to adapt to fast-changing needs.
+    Correct approach: re-evaluate module design for flexibility, not patch-by-patch fixes.
+    Violation: patch-style fix applied instead of a design-level solution.
+
+### Step 2 — Evaluate whether the actual modification matches the relationship type
+Report an issue ONLY if:
+- The modification approach does NOT match the relationship type (see violations above), AND
+- You can name a SPECIFIC, CONCRETE alternative (e.g. "modify _FuncWrap instead of flow.invoke")
+
+### Step 3 — Check if the modification is aligned with the PR's stated goal
+If a modification is orthogonal to the PR's core goal (e.g. a rename or refactoring mixed
+into a feature PR), report it as a separate issue suggesting it be extracted to its own PR.
+
+## STRICT RULES
+- You MUST use tools to verify the relationship type before reporting any issue
+- Do NOT report newly added code — only modifications to pre-existing code
+- Do NOT apply "minimal invasion" as a universal rule — it only applies to TYPE_A
+- Do NOT report if the modification is the only reasonable approach
+- Do NOT report if the modification is a necessary and correct enhancement (TYPE_B correct case)
+- Only report if you can name the SPECIFIC problem and a CONCRETE alternative
+- Severity: medium if the mismatch involves >20 lines or breaks existing behavior, normal otherwise
+- bug_category: design
+
+## Output Format
+''' + JSON_OUTPUT_INSTRUCTION + '''
+Each issue must have: path, line (new-file line number), severity, bug_category, problem, suggestion.
+If no issues found: output an empty JSON array [].
+'''
+
+
+def _rmod_file_diff(diff_text: str, file_path: str) -> str:
+    lines = diff_text.splitlines(keepends=True)
+    result: List[str] = []
+    in_file = False
+    for line in lines:
+        if line.startswith('--- a/') or line.startswith('--- '):
+            # detect file boundary
+            candidate = line[6:].strip() if line.startswith('--- a/') else line[4:].strip()
+            in_file = (candidate == file_path or file_path.endswith(candidate)
+                       or candidate.endswith(file_path))
+        if in_file:
+            result.append(line)
+            # stop at next file header (but keep current file's hunks)
+            if line.startswith('+++ ') and result and not result[-1].startswith('--- '):
+                continue
+        elif result:
+            # we've moved past the target file
+            if line.startswith('--- '):
+                break
+    return ''.join(result) if result else diff_text
+
+
+def _rmod_run_single_file(
+    llm: Any,
+    file_path: str,
+    file_diff: str,
+    arch_doc: str,
+    pr_design_doc: str,
+    pr_summary: str,
+    clone_dir: str,
+    language: str,
+    agent_instructions: str,
+    tools: List[Any],
+) -> List[Dict[str, Any]]:
+    annotated = _annotate_full_diff(file_diff)
+    arch_use = clip_text(arch_doc or '', 12000) if arch_doc else '(not available)'
+    prompt = _RMOD_PROMPT_TMPL.format(
+        lang_instruction=_language_instruction(language),
+        pr_design_doc=clip_text(pr_design_doc, 8000) if pr_design_doc else '(not available)',
+        arch_doc=arch_use,
+        agent_instructions=agent_instructions or '(not available)',
+        file_path=file_path,
+        diff_text=annotated,
+    )
+    step_counter = [0]
+    exploration_log: List[str] = []
+    traced_tools = [_make_traced_tool(t, step_counter, file_path, exploration_log) for t in tools]
+    try:
+        agent = ReactAgent(
+            llm, tools=traced_tools, max_retries=_RMOD_AGENT_RETRIES,
+            workspace=clone_dir, force_summarize=True,
+            force_summarize_context=(
+                f'Analyzing modification necessity for {file_path}:\n{pr_summary[:400]}\n\n'
+                f'Key framework conventions:\n{agent_instructions[:300]}'
+            ),
+            keep_full_turns=2,
+        )
+    except Exception as e:
+        lazyllm.LOG.warning(f'  [RMod] ReactAgent init failed for {file_path}: {e}')
+        return []
+    for tool in agent._tools_manager.all_tools:
+        tool.execute_in_sandbox = False
+    lazyllm.LOG.info(f'  [RMod] Analyzing {file_path} ...')
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(agent, prompt)
+        try:
+            raw = fut.result(timeout=_RMOD_AGENT_TIMEOUT_SECS)
+        except TimeoutError:
+            lazyllm.LOG.warning(f'  [RMod] Timed out for {file_path}')
+            return []
+        except Exception as e:
+            lazyllm.LOG.warning(f'  [RMod] Failed for {file_path}: {e}')
+            return []
+    raw_str = raw if isinstance(raw, str) else str(raw)
+    json_text = _extract_json_text(raw_str)
+    items = _parse_json_with_repair(json_text) if json_text else []
+    issues = [n for item in (items if isinstance(items, list) else [])
+              if (n := _normalize_comment_item(item, default_path=file_path,
+                                               default_category='design')) is not None]
+    lazyllm.LOG.info(f'  [RMod] Done {file_path}: {len(issues)} issue(s)')
+    return issues
+
+
+def _rmod_new_file_paths(diff_text: str) -> set:
+    new_paths: set = set()
+    pending_path: Optional[str] = None
+    for line in diff_text.splitlines():
+        if line.startswith('+++ b/'):
+            pending_path = line[6:].strip()
+        elif line.startswith('--- /dev/null') and pending_path:
+            new_paths.add(pending_path)
+            pending_path = None
+        elif line.startswith('--- '):
+            pending_path = None
+    return new_paths
+
+
+def _rmod_collect_file_diffs(diff_text: str) -> Dict[str, str]:
+    new_paths = _rmod_new_file_paths(diff_text)
+    hunks = _parse_unified_diff(diff_text)
+    file_diffs: Dict[str, str] = {}
+    for path, _start, _count, _content in hunks:
+        if path not in new_paths and path not in file_diffs:
+            file_diffs[path] = _rmod_file_diff(diff_text, path)
+    return file_diffs
+
+
+def _run_rmod_agent_round(
+    llm: Any,
+    diff_text: str,
+    arch_doc: str,
+    pr_design_doc: str,
+    pr_summary: str = '',
+    clone_dir: Optional[str] = None,
+    language: str = 'cn',
+    agent_instructions: str = '',
+    owner_repo: str = '',
+    arch_cache_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    prog = _Progress('RMod: modification necessity analysis')
+    if not clone_dir or not os.path.isdir(clone_dir):
+        prog.done('skipped (no clone_dir)')
+        return []
+
+    file_diffs = _rmod_collect_file_diffs(diff_text)
+    if not file_diffs:
+        prog.done('no pre-existing modified files found')
+        return []
+
+    lazyllm.LOG.info(f'  [RMod] Analyzing {len(file_diffs)} modified file(s) in parallel')
+
+    symbol_cache: Dict[str, Any] = {}
+    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
+
+    all_results: List[Dict[str, Any]] = []
+    lock = threading.Lock()
+
+    def _run_file(file_path: str, file_diff: str) -> None:
+        issues = _rmod_run_single_file(
+            llm, file_path, file_diff, arch_doc, pr_design_doc, pr_summary,
+            clone_dir, language, agent_instructions, tools,
+        )
+        with lock:
+            all_results.extend(issues)
+
+    with ThreadPoolExecutor(max_workers=min(_RMOD_MAX_PARALLEL_FILES, len(file_diffs))) as ex:
+        futs = {ex.submit(_run_file, fp, fd): fp for fp, fd in file_diffs.items()}
+        for fut in as_completed(futs):
+            fp = futs[fut]
+            try:
+                fut.result()
+            except Exception as e:
+                lazyllm.LOG.warning(f'  [RMod] Unexpected error for {fp}: {e}')
+
+    prog.done(f'{len(all_results)} modification necessity issues found across {len(file_diffs)} file(s)')
+    return all_results
+
+
 _COMPRESS_COMMENTS_PROMPT_TMPL = '''\
 Summarize each of the following code review comments into ONE concise sentence (max 20 words).
 Preserve the key point: what file/line is affected and what the core problem is.
@@ -2319,7 +2564,7 @@ def _deterministic_dedup(issues: List[Dict[str, Any]], cross_category: bool = Tr
     # group by (path, line, bug_category); within each group keep highest-severity item
     # source priority: r3 > r1 > r2 > lint (more context = more reliable)
     _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
-    _src_order = {'r3': 0, 'r1': 1, 'r2': 2, 'lint': 3}
+    _src_order = {'r3': 0, 'r1': 1, 'r2': 2, 'rmod': 2, 'lint': 3}
     groups: Dict[tuple, List[Dict[str, Any]]] = {}
     for c in issues:
         key = (c.get('path', ''), int(c.get('line') or 0), c.get('bug_category', ''))
@@ -2515,6 +2760,25 @@ def _run_four_rounds(  # noqa: C901
             f'loaded from checkpoint ({len(r2)} issues)'
         )
 
+    # ── RMod: modification necessity analysis (parallel with R2, both depend on R2A) ──
+    use_rmod_cache = ckpt.should_use_cache(ReviewStage.RMOD)
+    rmod: List[Dict[str, Any]] = ckpt.get('rmod') if use_rmod_cache else None  # type: ignore[assignment]
+    if rmod is None:
+        if not use_rmod_cache:
+            lazyllm.LOG.warning('RMod: no cache found, re-computing')
+        rmod = _run_rmod_agent_round(
+            llm, diff_text, arch_doc, pr_design_doc=pr_design_doc,
+            pr_summary=pr_summary, clone_dir=clone_dir, language=language,
+            agent_instructions=agent_instructions, owner_repo=owner_repo,
+            arch_cache_path=arch_cache_path,
+        )
+        ckpt.save('rmod', rmod)
+        ckpt.mark_stage_done(ReviewStage.RMOD)
+    else:
+        _Progress('RMod: modification necessity analysis').done(
+            f'loaded from checkpoint ({len(rmod)} issues)'
+        )
+
     # ── R3: unified agent verification (merged old R2 agent + R4V) ──
     r3, discarded_prev_keys, r3_metrics = _round3_agent_verify(
         llm, r1, r2, diff_text, arch_doc, pr_summary=pr_summary,
@@ -2560,10 +2824,12 @@ def _run_four_rounds(  # noqa: C901
             c for c in r2
             if c.get('path') not in r3_covered_files
         ]
+        # RMod issues always pass through (modification necessity is orthogonal to R3 file coverage)
         lint_tagged = _tag(lint_issues or [], 'lint')
         final = _round4_merge_and_deduplicate(
             llm,
-            _tag(r1_passthrough, 'r1') + _tag(r2_passthrough, 'r2') + _tag(r3, 'r3') + lint_tagged,
+            _tag(r1_passthrough, 'r1') + _tag(r2_passthrough, 'r2') + _tag(r3, 'r3')
+            + _tag(rmod, 'rmod') + lint_tagged,
             existing_comments=existing_comments, language=language,
         )
         ckpt.save('final', final)
