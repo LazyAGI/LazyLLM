@@ -123,7 +123,7 @@ class _DocMutationRequest(BaseModel):
 
 
 class ReparseRequest(_DocMutationRequest):
-    pass
+    reparse_group: Optional[str] = None  # None or 'all' = reparse all ng; ng_id = reparse single ng
 
 
 class DeleteRequest(_DocMutationRequest):

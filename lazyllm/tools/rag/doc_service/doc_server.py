@@ -928,7 +928,7 @@ class DocServer(ModuleBase):
             kb_id: str,
             doc_id: str,
             group: str,
-            algo_id: str = '__default__',
+            algo_id: Optional[str] = None,
             page: int = 1,
             page_size: int = 20,
             offset: Optional[int] = None,
@@ -1053,6 +1053,11 @@ class DocServer(ModuleBase):
         def batch_get_kbs(self, request: KbBatchQueryRequest):
             self._lazy_init()
             return self._run(lambda: self._manager.batch_get_kbs(request.kb_ids))
+
+        @app.delete('/v1/kbs/{kb_id}/algos/{algo_id}')
+        def unbind_algo(self, kb_id: str, algo_id: str):
+            self._lazy_init()
+            return self._run(lambda: self._manager.unbind_algo(kb_id, algo_id))
 
         @app.delete('/v1/kbs/{kb_id}')
         def delete_kb(self, kb_id: str, idempotency_key: Optional[str] = None):
@@ -1314,6 +1319,9 @@ class DocServer(ModuleBase):
 
     def delete_kbs(self, kb_ids: List[str]):
         return self._dispatch('delete_kbs_impl', kb_ids)
+
+    def unbind_algo(self, kb_id: str, algo_id: str):
+        return self._dispatch('unbind_algo', kb_id, algo_id)
 
     def ensure_kb_registered(self, kb_id: str, algo_id: Optional[str] = None):
         '''Ensure the knowledge base row and algorithm binding exist in the doc service.'''
