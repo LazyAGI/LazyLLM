@@ -536,8 +536,10 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
 class UrlDocument(ModuleBase):
     def __init__(self, url: str, name: str = None):
+        # Initialize before ModuleBase hooks run to avoid __getattr__ recursion
+        # during attribute probing in hook registration.
+        object.__setattr__(self, '_missing_keys', set(dir(Document)) - set(dir(UrlDocument)))
         super().__init__()
-        self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
         self._manager = lazyllm.UrlModule(url=ensure_call_endpoint(url))
         self._curr_group = name or RAG_DEFAULT_GROUP_NAME
 
@@ -547,6 +549,12 @@ class UrlDocument(ModuleBase):
 
     def find(self, target) -> Callable:
         return functools.partial(self._forward, 'find', group=target)
+
+    def find_parent(self, target) -> Callable:
+        return functools.partial(self._forward, 'find_parent', group=target)
+
+    def find_children(self, target) -> Callable:
+        return functools.partial(self._forward, 'find_children', group=target)
 
     def forward(self, *args, **kw):
         return self._forward('retrieve', *args, **kw)
@@ -568,5 +576,11 @@ class UrlDocument(ModuleBase):
         return self._forward('active_node_groups')
 
     def __getattr__(self, name):
-        if name in self._missing_keys:
+        try:
+            missing_keys = object.__getattribute__(self, '_missing_keys')
+        except AttributeError:
+            missing_keys = set(dir(Document)) - set(dir(UrlDocument))
+            object.__setattr__(self, '_missing_keys', missing_keys)
+        if name in missing_keys:
             raise RuntimeError(f'Document generated with url and name has no attribute `{name}`')
+        raise AttributeError(name)

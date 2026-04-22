@@ -8,7 +8,7 @@ from typing import Type, Optional
 from lazyllm.thirdparty import redis
 from queue import Queue
 from collections import deque
-from filelock import FileLock
+from filelock import SoftFileLock
 
 config.add('default_fsqueue', str, 'sqlite', 'DEFAULT_FSQUEUE',
            description='The default file system queue to use.')
@@ -113,11 +113,14 @@ def sqlite3_check_threadsafety() -> bool:
 
 class SQLiteQueue(FileSystemQueue):
     def __init__(self, klass='__default__'):
+        if getattr(self, '_initialized', False):
+            return
         super(__class__, self).__init__(klass=klass)
         self.db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
-        self._lock = FileLock(self.db_path + '.lock')
+        self._lock = SoftFileLock(self.db_path + '.lock', is_singleton=True)
         self._check_same_thread = not sqlite3_check_threadsafety()
         self._initialize_db()
+        self._initialized = True
 
     def _initialize_db(self):
         with self._lock, sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:

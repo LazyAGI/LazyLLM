@@ -83,8 +83,8 @@ class SkillManager(ModuleBase):
         super().__init__(return_trace=False)
         self._fs = fs or fsspec.implementations.local.LocalFileSystem()
         self._is_local = fs is None
-        self._skills_dir = self._parse_dirs(dir) if dir else (
-            self._parse_dirs(config['skills_dir']) if self._is_local else []
+        self._skills_dir = self._parse_dirs(dir, is_local=self._is_local) if dir else (
+            self._parse_dirs(config['skills_dir'], is_local=self._is_local) if self._is_local else []
         )
         self._validate_fs_dir_consistency(fs, self._skills_dir)
         self._skills_expected = self._parse_skills(skills)
@@ -123,7 +123,7 @@ class SkillManager(ModuleBase):
                     )
 
     @staticmethod
-    def _parse_dirs(dir_value: Optional[str]) -> List[str]:
+    def _parse_dirs(dir_value: Optional[str], is_local: Optional[bool] = True) -> List[str]:
         if not dir_value:
             return []
         dirs = [d.strip() for d in dir_value.split(',') if d.strip()] if isinstance(dir_value, str) else list(dir_value)
@@ -134,7 +134,8 @@ class SkillManager(ModuleBase):
                 continue
             # Keep cloud paths (protocol:/ prefix) as-is; expand local paths.
             # Use the same regex as _extract_protocol for consistency.
-            path = d if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*(@[^:/]+)?:/', d) else os.path.abspath(os.path.expanduser(d))
+            is_cloud_path = bool(re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*(@[^:/]+)?:/', d))
+            path = d if is_cloud_path or not is_local else os.path.abspath(os.path.expanduser(d))
             if path not in seen:
                 seen.add(path)
                 result.append(path)
@@ -357,7 +358,7 @@ class SkillManager(ModuleBase):
             return {'status': 'error', 'error': 'run_script is not supported for cloud FS skills'}
         base = info['path']
         script_path = os.path.join(base, rel_path)
-        if not os.path.exists(script_path):
+        if not self._fs.exists(script_path):
             return {'status': 'missing', 'path': script_path}
         ext = os.path.splitext(script_path)[1].lower()
         cmd = ['python' if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh', script_path]

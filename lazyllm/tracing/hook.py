@@ -4,6 +4,15 @@ from ..hook import LazyLLMHook, register_builtin_hook_provider
 from .configs import resolve_default_module_trace
 from .runtime import finish_span, set_span_error, set_span_output, start_span
 
+_MISSING = object()
+
+
+def _safe_getattr(obj, key, default=None):
+    try:
+        return getattr(obj, key)
+    except Exception:
+        return default
+
 
 class LazyTracingHook(LazyLLMHook):
     __hook_priority__ = 0
@@ -44,9 +53,9 @@ def resolve_tracing_hooks(obj):
         trace_enabled = config['trace_enabled']
     if not trace_enabled or trace_cfg.get('sampled') is False:
         return []
-    if hasattr(obj, '_module_id'):
+    if _safe_getattr(obj, '_module_id', _MISSING) is not _MISSING:
         if not resolve_default_module_trace(
-            module_name=getattr(obj, 'name', None) or getattr(obj, '_module_name', None),
+            module_name=_safe_getattr(obj, 'name', None) or _safe_getattr(obj, '_module_name', None),
             module_class=obj.__class__,
         ):
             return []

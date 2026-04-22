@@ -43,12 +43,14 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
                  return_last_tool_calls: bool = False,
                  skills: Union[bool, str, List[str], None] = None, desc: str = '',
                  workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
-                 fs: Optional[Any] = None, skills_dir: Optional[str] = None):
+                 fs: Optional[Any] = None, skills_dir: Optional[str] = None,
+                 enable_builtin_tools: bool = True):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
                          skills=skills, desc=desc, workspace=workspace,
-                         sandbox=sandbox, fs=fs, skills_dir=skills_dir)
+                         sandbox=sandbox, fs=fs, skills_dir=skills_dir,
+                         enable_builtin_tools=enable_builtin_tools)
         self._assert_tools()
         plan_llm, solve_llm = self._normalize_llms(llm, plan_llm, solve_llm)
         self._init_planner_prompter()

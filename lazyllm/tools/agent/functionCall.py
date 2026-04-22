@@ -186,9 +186,10 @@ class FunctionCall(ModuleBase):
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
         # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed'].
         if isinstance(result, str):
-            locals['_lazyllm_agent']['completed'] = locals['_lazyllm_agent'].pop('workspace')\
-                .pop('tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
-            locals['chat_history'][self._llm._module_id] = []
+            workspace = locals['_lazyllm_agent'].pop('workspace', {})
+            completed_default = locals['_lazyllm_agent'].get('completed', [])
+            locals['_lazyllm_agent']['completed'] = workspace.pop('tool_call_trace', completed_default)
+            locals['_lazyllm_agent']['history'] = workspace.pop('history', [])
         return result
 
 @deprecated('ReactAgent')
@@ -197,11 +198,12 @@ class FunctionCallAgent(LazyLLMAgentBase):
                  return_last_tool_calls: bool = False,
                  skills: Union[bool, str, List[str], None] = None, desc: str = '',
                  workspace: Optional[str] = None, fs: Optional[Any] = None,
-                 skills_dir: Optional[str] = None):
+                 skills_dir: Optional[str] = None, enable_builtin_tools: bool = True):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
-                         skills=skills, desc=desc, workspace=workspace, fs=fs, skills_dir=skills_dir)
+                         skills=skills, desc=desc, workspace=workspace, fs=fs, skills_dir=skills_dir,
+                         enable_builtin_tools=enable_builtin_tools)
         assert self._llm is not None, 'llm cannot be empty.'
         self._assert_tools()
         prompt = FC_PROMPT
