@@ -633,37 +633,6 @@ class DocManager:
         except Exception as e:
             raise RuntimeError(f'[DocManager] Failed to get node_group_ids for algo {algo_id}: {e}') from e
 
-    def reparse_for_node_group(self, kb_id: str, algo_id: str, node_group_id: str,
-                               priority: int = 0) -> List[str]:
-        ng_ids = self._get_algo_node_group_ids(algo_id)
-        if node_group_id not in ng_ids:
-            raise ValueError(f'node_group_id {node_group_id!r} not in algo {algo_id!r}')
-        with self._db_manager.get_session() as session:
-            NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
-            rows = session.query(NgStatus).filter(
-                NgStatus.kb_id == kb_id,
-                NgStatus.node_group_id == node_group_id,
-                NgStatus.status == NodeGroupParseStatus.SUCCESS.value,
-            ).with_for_update().all()
-            success_rows = [{'doc_id': r.doc_id, 'file_path': r.file_path} for r in rows]
-        task_ids = []
-        for row in success_rows:
-            if not row['file_path']:
-                LOG.warning(f'[DocManager] No file_path for doc {row["doc_id"]}, skipping reparse')
-                continue
-            try:
-                self._upsert_ng_status_pending(row['doc_id'], kb_id, [node_group_id], row['file_path'], force=True)
-                task_id, _ = self._enqueue_task(
-                    row['doc_id'], kb_id, algo_id, TaskType.DOC_REPARSE,
-                    file_path=row['file_path'],
-                    reparse_group=node_group_id,
-                    priority=priority,
-                )
-                task_ids.append(task_id)
-            except Exception as e:
-                LOG.error(f'[DocManager] Failed to submit reparse task for doc {row["doc_id"]}: {e}')
-        return task_ids
-
     def _get_latest_parse_snapshot(self, doc_id: str, kb_id: str):
         with self._db_manager.get_session() as session:
             State = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
@@ -1247,8 +1216,10 @@ class DocManager:
         self._validate_kb_algorithm(request.kb_id, request.algo_id)
         self._validate_unique_doc_ids(request.doc_ids, field_name='doc_id')
         prepared_items = self._prepare_reparse_items(request)
+        ng_ids = self._get_algo_node_group_ids(request.algo_id)
         task_ids = []
         for item in prepared_items:
+            self._upsert_ng_status_pending(item['doc_id'], request.kb_id, ng_ids, item['file_path'], force=True)
             task_id, _ = self._enqueue_task(
                 item['doc_id'], request.kb_id, request.algo_id, TaskType.DOC_REPARSE,
                 idempotency_key=request.idempotency_key,

@@ -446,10 +446,6 @@ _add_bilingual_docs({
             '批量删除多个知识库。',
             'Delete multiple knowledge bases in one batch.'
         ),
-        'reparse_for_node_group': (
-            '对指定节点组下所有已成功解析的文档重新提交解析任务。',
-            'Re-submit parse tasks for all successfully parsed documents under a given node group.'
-        ),
     }.items()
 })
 
