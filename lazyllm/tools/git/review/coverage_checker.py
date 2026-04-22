@@ -180,7 +180,7 @@ def _grep_find_matching_files(symbol: str, test_files: List[str]) -> List[str]:
             capture_output=True, text=True, timeout=10,
         )
         return [f for f in result.stdout.strip().splitlines() if f]
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    except (subprocess.TimeoutExpired, OSError):
         matching: List[str] = []
         for f in test_files:
             try:
