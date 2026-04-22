@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, List
+
+from lazyllm.tracing.consume.datamodel.raw import RawSpanRecord, RawTraceRecord
 
 
 class TracingBackend(ABC):
@@ -11,9 +13,16 @@ class TracingBackend(ABC):
 
     @abstractmethod
     def map_attributes(self, otel_attrs: Dict[str, Any]) -> Dict[str, Any]:
-        '''Map generic OTel attributes to backend-specific OTel attributes.
+        pass
 
-        Called once at flush time (finish_span) to produce all attributes
-        that should be written to the underlying OTel span.
-        '''
+
+class ConsumeBackend(ABC):
+    name: str
+
+    @abstractmethod
+    def fetch_trace(self, trace_id: str) -> RawTraceRecord:
+        pass
+
+    @abstractmethod
+    def fetch_spans(self, trace_id: str) -> List[RawSpanRecord]:
         pass

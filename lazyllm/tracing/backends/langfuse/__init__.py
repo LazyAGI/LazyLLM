@@ -1,3 +1,3 @@
-from .backend import LangfuseBackend
+from .backend import LangfuseBackend, LangfuseConsumeBackend
 
-__all__ = ['LangfuseBackend']
+__all__ = ['LangfuseBackend', 'LangfuseConsumeBackend']

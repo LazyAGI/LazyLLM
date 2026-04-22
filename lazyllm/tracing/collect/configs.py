@@ -88,10 +88,5 @@ def resolve_default_module_trace(*, module_name=None, module_class=None) -> bool
 
 
 def resolve_runtime_module_trace_disabled(override, *, module_name=None, module_class=None) -> bool:
-    '''Decide if the runtime override (`globals['trace']['module_trace']`) disables the target.
-
-    Runtime override is single-directional: only explicit False in `by_name` / `by_class`
-    turns tracing off. It never re-enables a module that the registry/default has disabled.
-    '''
     hit = _lookup_in_config(override, module_name=module_name, module_class=module_class)
     return hit is False

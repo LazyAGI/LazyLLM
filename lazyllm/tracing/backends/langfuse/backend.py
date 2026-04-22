@@ -1,12 +1,24 @@
 import json
-from typing import Any, Dict
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlencode, urlparse
+
+import requests
 
 from lazyllm.common import LOG
 from lazyllm.thirdparty import opentelemetry
-from lazyllm.tracing.semantics import SemanticType
+from lazyllm.tracing.consume.datamodel.raw import RawSpanRecord, RawTraceRecord
+from lazyllm.tracing.consume.errors import ConsumeBackendError, TraceNotFound
+from lazyllm.tracing.semantics import SemanticType, is_valid_span_id
 
-from ..base import TracingBackend
-from .config import build_basic_auth_header, build_otlp_traces_endpoint, read_langfuse_connection
+from ..base import ConsumeBackend, TracingBackend
+from .config import (
+    build_basic_auth_header,
+    build_otlp_traces_endpoint,
+    read_consume_timeout_seconds,
+    read_langfuse_connection,
+)
 from .semantics import SEMANTIC_TO_LANGFUSE_OBSERVATION_TYPE
 
 
@@ -15,8 +27,7 @@ class LangfuseBackend(TracingBackend):
 
     _warned_semantic_types: set = set()
 
-    @staticmethod
-    def _copy_usage_attrs(attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
+    def _copy_usage_attrs(self, attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
         for key in (
             'gen_ai.usage.input_tokens',
             'gen_ai.usage.output_tokens',
@@ -25,8 +36,7 @@ class LangfuseBackend(TracingBackend):
             if key in otel_attrs:
                 attrs[key] = otel_attrs[key]
 
-    @staticmethod
-    def _copy_trace_attrs(attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
+    def _copy_trace_attrs(self, attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
         trace_name = otel_attrs.get('lazyllm.trace.name')
         if trace_name:
             attrs['langfuse.trace.name'] = trace_name
@@ -52,8 +62,7 @@ class LangfuseBackend(TracingBackend):
         if 'lazyllm.io.output' in otel_attrs:
             attrs['langfuse.trace.output'] = otel_attrs['lazyllm.io.output']
 
-    @staticmethod
-    def _copy_trace_metadata(attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
+    def _copy_trace_metadata(self, attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
         prefix = 'lazyllm.trace.metadata.'
         for key, value in otel_attrs.items():
             if key.startswith(prefix):
@@ -114,3 +123,226 @@ class LangfuseBackend(TracingBackend):
             self._copy_trace_metadata(attrs, otel_attrs)
 
         return attrs
+
+
+class LangfuseConsumeBackend(ConsumeBackend):
+    name = 'langfuse'
+    _CONNECT_TIMEOUT_S = 5.0
+    _MAX_HTTP_ATTEMPTS = 3
+    _OBSERVATIONS_PAGE_LIMIT = 1000
+
+    def _iso_to_epoch(self, value: Optional[str]) -> Optional[float]:
+        if not value or not isinstance(value, str):
+            return None
+        text = value.replace('Z', '+00:00')
+        try:
+            dt = datetime.fromisoformat(text)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except ValueError:
+            return None
+
+    def _raw_span_from_obs(self, trace_id: str, obs: Dict[str, Any]) -> RawSpanRecord:
+        span_id = str(obs['id'])
+        parent_raw = obs.get('parentObservationId')
+        parent_span_id = str(parent_raw) if parent_raw is not None else None
+        if parent_span_id is not None and not is_valid_span_id(parent_span_id):
+            parent_span_id = None
+
+        metadata = obs.get('metadata')
+        if metadata is None:
+            metadata = {}
+        elif not isinstance(metadata, dict):
+            metadata = {'_': metadata}
+
+        attributes: Dict[str, Any] = dict(metadata)
+        if obs.get('type') is not None:
+            attributes.setdefault('langfuse.observation.type', obs['type'])
+        if obs.get('model') is not None:
+            attributes.setdefault('gen_ai.request.model', obs['model'])
+
+        name = obs.get('name') or ''
+        st = self._iso_to_epoch(obs.get('startTime'))
+        if st is None:
+            raise ValueError('observation missing startTime')
+
+        return RawSpanRecord(
+            trace_id=trace_id,
+            span_id=span_id,
+            parent_span_id=parent_span_id,
+            name=name,
+            start_time=st,
+            end_time=self._iso_to_epoch(obs.get('endTime')),
+            status='error' if obs.get('level') == 'ERROR' else 'ok',
+            attributes=attributes,
+            input=obs.get('input'),
+            output=obs.get('output'),
+            metadata=dict(metadata),
+            error_message=obs.get('statusMessage'),
+            raw=dict(obs),
+        )
+
+    def _require_connection(self) -> Tuple[str, Dict[str, str]]:
+        cfg = read_langfuse_connection()
+        missing = [k for k, v in cfg.items() if not v]
+        if missing:
+            raise ConsumeBackendError(
+                'Missing Langfuse connection config (host / public_key / secret_key); '
+                f'missing: {", ".join(missing)}'
+            )
+        host = str(cfg['host']).rstrip('/')
+        auth = build_basic_auth_header(str(cfg['public_key']), str(cfg['secret_key']))
+        headers = {'Authorization': auth, 'Accept': 'application/json'}
+        return host, headers
+
+    def _request_json(
+        self,
+        method: str,
+        url: str,
+        headers: Dict[str, str],
+        *,
+        trace_id: Optional[str] = None,
+        trace_not_found_raises: bool = False,
+        observations_404_empty: bool = False,
+    ) -> Any:
+        timeouts = (self._CONNECT_TIMEOUT_S, read_consume_timeout_seconds())
+        for attempt in range(self._MAX_HTTP_ATTEMPTS):
+            try:
+                resp = requests.request(method, url, headers=headers, timeout=timeouts)
+            except requests.RequestException as exc:
+                if attempt + 1 >= self._MAX_HTTP_ATTEMPTS:
+                    netloc = urlparse(url).netloc or url
+                    msg = f'Langfuse HTTP request failed for host {netloc!r}'
+                    if trace_id is not None:
+                        msg += f', trace_id={trace_id!r}'
+                    raise ConsumeBackendError(msg) from exc
+                time.sleep(2**attempt)
+                continue
+
+            if resp.status_code == 404:
+                if trace_not_found_raises:
+                    raise TraceNotFound(trace_id or '')
+                if observations_404_empty:
+                    return {
+                        'data': [],
+                        'meta': {
+                            'page': 1,
+                            'limit': self._OBSERVATIONS_PAGE_LIMIT,
+                            'totalItems': 0,
+                            'totalPages': 1,
+                        },
+                    }
+            if resp.status_code in (401, 403):
+                raise ConsumeBackendError('authentication failed')
+            if resp.status_code == 429:
+                if attempt + 1 >= self._MAX_HTTP_ATTEMPTS:
+                    raise ConsumeBackendError(
+                        f'Langfuse rate limited (HTTP 429) for url ending {url[-48:]!r}'
+                    )
+                ra = resp.headers.get('Retry-After')
+                try:
+                    wait_s = float(ra) if ra is not None else 2**attempt
+                except (TypeError, ValueError):
+                    wait_s = 2**attempt
+                time.sleep(max(0.0, wait_s))
+                continue
+            if 500 <= resp.status_code < 600:
+                if attempt + 1 >= self._MAX_HTTP_ATTEMPTS:
+                    raise ConsumeBackendError(
+                        f'Langfuse server error HTTP {resp.status_code} for url ending {url[-48:]!r}'
+                    )
+                time.sleep(2**attempt)
+                continue
+            if not resp.ok:
+                raise ConsumeBackendError(
+                    f'Langfuse HTTP {resp.status_code} for url ending {url[-48:]!r}'
+                )
+            try:
+                if not resp.content:
+                    return None
+                return resp.json()
+            except ValueError as exc:
+                raise ConsumeBackendError('invalid JSON in Langfuse response') from exc
+
+        raise ConsumeBackendError('Langfuse HTTP request exhausted retries')
+
+    def fetch_trace(self, trace_id: str) -> RawTraceRecord:
+        host, headers = self._require_connection()
+        url = f'{host}/api/public/traces/{trace_id}'
+        body = self._request_json(
+            'GET', url, headers, trace_id=trace_id, trace_not_found_raises=True,
+        )
+        if not isinstance(body, dict):
+            raise ConsumeBackendError('Langfuse trace response is not a JSON object')
+        metadata = body.get('metadata')
+        if metadata is None:
+            metadata = {}
+        elif not isinstance(metadata, dict):
+            metadata = {'_': metadata}
+        tags = body.get('tags')
+        if not isinstance(tags, list):
+            tags = []
+        tid = body.get('id') or trace_id
+        try:
+            return RawTraceRecord(
+                trace_id=str(tid),
+                name=body.get('name'),
+                session_id=body.get('sessionId'),
+                user_id=body.get('userId'),
+                tags=[str(t) for t in tags],
+                metadata=dict(metadata),
+                input=body.get('input'),
+                output=body.get('output'),
+                start_time=self._iso_to_epoch(body.get('timestamp')),
+                end_time=None,
+                status=None,
+                raw=dict(body),
+            )
+        except ValueError as exc:
+            raise ConsumeBackendError(f'invalid trace payload from Langfuse: {exc}') from exc
+
+    def fetch_spans(self, trace_id: str) -> List[RawSpanRecord]:
+        host, headers = self._require_connection()
+
+        out: List[RawSpanRecord] = []
+        page = 1
+        while True:
+            q = urlencode(
+                {
+                    'traceId': trace_id,
+                    'limit': self._OBSERVATIONS_PAGE_LIMIT,
+                    'page': page,
+                }
+            )
+            url = f'{host}/api/public/observations?{q}'
+            body = self._request_json(
+                'GET',
+                url,
+                headers,
+                trace_id=trace_id,
+                observations_404_empty=True,
+            )
+            if not isinstance(body, dict):
+                raise ConsumeBackendError('Langfuse observations response is not a JSON object')
+            rows = body.get('data')
+            if not isinstance(rows, list):
+                rows = []
+            meta = body.get('meta') if isinstance(body.get('meta'), dict) else {}
+            total_pages = int(meta.get('totalPages', 1) or 1)
+
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                try:
+                    out.append(self._raw_span_from_obs(trace_id, row))
+                except ValueError as exc:
+                    raise ConsumeBackendError(f'invalid observation payload: {exc}') from exc
+
+            if not rows:
+                break
+            if page >= total_pages:
+                break
+            page += 1
+
+        return out

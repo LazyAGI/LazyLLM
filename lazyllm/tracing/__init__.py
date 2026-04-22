@@ -35,9 +35,11 @@ _SUBMOD_MAP = {
     ],
     'backends': [
         'get_tracing_backend',
+        'get_consume_backend',
     ],
     'backends.base': [
         'TracingBackend',
+        'ConsumeBackend',
     ],
     'semantics': [
         'SemanticType',

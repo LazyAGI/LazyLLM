@@ -1,5 +1,5 @@
 class ConsumeError(Exception):
-    '''消费链路错误基类，便于上层一次性兜底。'''
+    pass
 
 
 class TraceNotFound(ConsumeError):
@@ -9,7 +9,7 @@ class TraceNotFound(ConsumeError):
 
 
 class ConsumeBackendError(ConsumeError):
-    '''后端 I/O 或反序列化失败。'''
+    pass
 
 
 __all__ = ['ConsumeBackendError', 'ConsumeError', 'TraceNotFound']
