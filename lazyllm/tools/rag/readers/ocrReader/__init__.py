@@ -5,8 +5,8 @@ from .ocr_ir import (
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock, ListBlock,
 )
-from .ocr_adapter import ServiceConfig, ServiceKind, MinerUVariant, PaddleVariant, AdapterRegistry
-from .ocr_postprocess import l1_normalize, l2_associate
+from .ocr_reader_base import ServiceVariant
+from .ocr_postprocessor import l1_normalize, l2_associate
 
 __all__ = [
     'MineruPDFReader',
@@ -14,6 +14,6 @@ __all__ = [
     'Block', 'BBox', 'PageRef', 'Cell', 'SectionPath',
     'HeadingBlock', 'ParagraphBlock', 'TableBlock', 'FormulaBlock',
     'FigureBlock', 'CodeBlock', 'ListBlock',
-    'ServiceConfig', 'ServiceKind', 'MinerUVariant', 'PaddleVariant', 'AdapterRegistry',
+    'ServiceVariant',
     'l1_normalize', 'l2_associate',
 ]

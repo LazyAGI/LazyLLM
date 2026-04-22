@@ -1,26 +1,32 @@
 import base64
 import json
-import requests
-import uuid
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Callable
 from typing_extensions import override
 
-from lazyllm.thirdparty import bs4
+import requests
 
 import lazyllm
 from lazyllm import LOG
+from lazyllm.thirdparty import bs4
+
 from ...doc_node import DocNode
-from ..readerBase import _RichReader
-from .ocr_ir import Block, HeadingBlock, TableBlock, FigureBlock, FormulaBlock, CodeBlock, ListBlock
-from .ocr_adapter import ServiceVariant, ServiceConfig, ServiceKind, PaddleVariant, AdapterRegistry
-from .ocr_postprocess import l1_normalize, l2_associate
+from .ocr_ir import (
+    Block, BBox, PageRef, Cell,
+    HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
+    FigureBlock, CodeBlock, ListBlock,
+)
+from .ocr_postprocessor import l1_normalize, l2_associate
+from .ocr_reader_base import _OcrReaderBase, ServiceVariant
 
 lazyllm.config.add('paddleocr_api_key', str, None, 'PADDLEOCR_API_KEY', description='The API key for PaddleOCR')
 
 
-class PaddleOCRPDFReader(_RichReader):
-    def __init__(self, url: str = None, api_key: str = None,
+class PaddleOCRPDFReader(_OcrReaderBase):
+    def __init__(self,
+                 url: str = None,
+                 api_key: str = None,
                  service_variant: ServiceVariant = 'online',
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  format_block_content: bool = True,
@@ -31,7 +37,14 @@ class PaddleOCRPDFReader(_RichReader):
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True,
                  images_dir: str = None):
-        super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
+        super().__init__(
+            url=url,
+            api_key=api_key,
+            service_variant=service_variant,
+            split_doc=split_doc,
+            post_func=post_func,
+            return_trace=return_trace,
+        )
         api_key = api_key or lazyllm.config['paddleocr_api_key']
         if not url and not api_key:
             raise ValueError('Either url or api_key must be provided')
@@ -48,7 +61,7 @@ class PaddleOCRPDFReader(_RichReader):
             }
         else:
             self._headers = {'Content-Type': 'application/json'}
-        self._variant = PaddleVariant(variant)
+
         self._format_block_content = format_block_content
         self._use_layout_detection = use_layout_detection
         self._use_chart_recognition = use_chart_recognition
@@ -57,17 +70,13 @@ class PaddleOCRPDFReader(_RichReader):
             self._images_dir.mkdir(exist_ok=True)
         else:
             self._images_dir = None
-        self._drop_types = (
+        self._droped_types = (
             list(drop_types)
             if drop_types is not None
             else ['aside_text', 'header', 'footer', 'number', 'header_image', 'seal']
         )
         self._callback = callback
-        self._registry = AdapterRegistry()
-        self._config = ServiceConfig(
-            kind=ServiceKind.PADDLEOCR,
-            paddle_variant=self._variant,
-        )
+        self._page_size = None
 
     @override
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
@@ -75,37 +84,14 @@ class PaddleOCRPDFReader(_RichReader):
         try:
             if isinstance(file, str):
                 file = Path(file)
-            response_json = self._fetch_response(file)
-            return self.from_response(response_json, file, extra_info)
+            response_json = self._fetch_response(file, use_cache=use_cache)
+            return self._from_response(response_json, file, extra_info)
         except Exception as e:
             LOG.error(f'[PaddleOCRPDFReader] Error loading data from {file}: {e}')
             return []
 
-    def from_response(self, response_json: str, file: Path,
-                      extra_info: Optional[Dict] = None) -> List[DocNode]:
-        """Parse a PaddleOCR service response (JSON string) into DocNodes.
-
-        This is the primary entry point when the caller has already obtained
-        the service response.
-        """
-        try:
-            if isinstance(file, str):
-                file = Path(file)
-            raw = json.loads(response_json)
-            adapter = self._registry.get(self._config)
-            blocks = adapter.adapt(raw, self._config)
-            blocks = l1_normalize(blocks, self._config.page_size)
-            blocks, relations = l2_associate(blocks)
-            docs = self._build_nodes_from_blocks(blocks, file, extra_info)
-            if not docs:
-                LOG.warning(f'[PaddleOCRPDFReader] No elements found in response for: {file}')
-            return docs
-        except Exception as e:
-            LOG.error(f'[PaddleOCRPDFReader] Error parsing response for {file}: {e}')
-            return []
-
-    def _fetch_response(self, file: Path) -> str:
-        """Internal HTTP request."""
+    @override
+    def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
         if not file.exists():
             raise FileNotFoundError(f'File not found: {file}')
         with open(file, 'rb') as f:
@@ -125,6 +111,121 @@ class PaddleOCRPDFReader(_RichReader):
         response.raise_for_status()
         return response.text
 
+    @override
+    def _from_response(self, response_json: str, file: Path,
+                       extra_info: Optional[Dict] = None) -> List[DocNode]:
+        try:
+            if isinstance(file, str):
+                file = Path(file)
+            raw = json.loads(response_json)
+            blocks = self._adapt_raw(raw)
+            blocks = l1_normalize(blocks, self._page_size)
+            blocks, relations = l2_associate(blocks)
+            docs = self._build_nodes_from_blocks(blocks, file, extra_info)
+            if not docs:
+                LOG.warning(f'[PaddleOCRPDFReader] No elements found in response for: {file}')
+            return docs
+        except Exception as e:
+            LOG.error(f'[PaddleOCRPDFReader] Error parsing response for {file}: {e}')
+            return []
+
+    @override
+    def _adapt_raw(self, raw: dict) -> List[Block]:
+        blocks: List[Block] = []
+        # Handle both wrapped and unwrapped formats
+        pages = raw.get('pages', [raw]) if isinstance(raw, dict) else [raw]
+        for page_data in pages:
+            if not isinstance(page_data, dict):
+                continue
+            page_idx = page_data.get('page_idx', 0)
+            page_blocks = page_data.get('blocks', [])
+            for item in page_blocks:
+                block = self._adapt_one(item, page_idx)
+                if block is not None:
+                    blocks.append(block)
+        return blocks
+
+    def _adapt_one(self, item: dict, page_idx: int) -> Optional[Block]:
+        label = item.get('label', item.get('block_label', ''))
+        content = item.get('content', item.get('block_content', ''))
+        bbox = BBox.from_list(item.get('bbox', item.get('block_bbox', [])))
+        page = PageRef(index=page_idx, bbox=bbox)
+
+        if label in ('paragraph_title', 'doc_title'):
+            level, text = self._parse_markdown_heading(content)
+            if level == 0:
+                level = item.get('text_level', 1) or 1
+                text = content
+            return HeadingBlock(
+                page=page, level=int(level), text=text,
+                anchor=self._make_anchor(text),
+            )
+        elif label == 'text':
+            return ParagraphBlock(page=page, text=content)
+        elif label in ('image', 'figure'):
+            img_path = self._extract_img_path(content)
+            return FigureBlock(page=page, image_path=Path(img_path) if img_path else None)
+        elif label == 'table':
+            return TableBlock(
+                page=page,
+                cells=self._parse_table_html(content),
+                page_range=(page_idx, page_idx),
+            )
+        elif label == 'formula':
+            return FormulaBlock(page=page, latex=content, inline=False)
+        elif label == 'code':
+            return CodeBlock(page=page, text=content)
+        elif label in ('header', 'footer', 'page_number', 'aside_text', 'seal', 'number'):
+            return None
+        return None
+
+    @staticmethod
+    def _parse_markdown_heading(content: str) -> tuple:
+        m = re.match(r'^(#+)\s*(.*)$', content.strip())
+        if m:
+            return len(m.group(1)), m.group(2).strip()
+        return 0, content
+
+    @staticmethod
+    def _make_anchor(text: str) -> str:
+        return text.strip().replace(' ', '-').replace('\n', '-')[:64]
+
+    @staticmethod
+    def _extract_img_path(html: str) -> Optional[str]:
+        try:
+            soup = bs4.BeautifulSoup(html, 'html.parser')
+            img = soup.find('img')
+            if img:
+                return img.get('src', '')
+        except Exception:
+            pass
+        return None
+
+    def _parse_table_html(self, html_text: str) -> List[Cell]:
+        cells: List[Cell] = []
+        if not html_text:
+            return cells
+        try:
+            soup = bs4.BeautifulSoup(html_text, 'html.parser')
+            table = soup.find('table')
+            if not table:
+                return cells
+            for row_idx, tr in enumerate(table.find_all('tr')):
+                for col_idx, td in enumerate(tr.find_all(['td', 'th'])):
+                    rowspan = int(td.get('rowspan', 1))
+                    colspan = int(td.get('colspan', 1))
+                    cells.append(Cell(
+                        row=row_idx,
+                        col=col_idx,
+                        rowspan=rowspan,
+                        colspan=colspan,
+                        text=td.get_text(strip=True),
+                    ))
+        except Exception as e:
+            LOG.warning(f'[PaddleOCRPDFReader] Failed to parse table HTML: {e}')
+        return cells
+
+    @override
     def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
                                   extra_info: Optional[Dict] = None) -> List[DocNode]:
         docs = []
