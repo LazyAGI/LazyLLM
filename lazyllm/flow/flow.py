@@ -91,6 +91,7 @@ def _is_function(f):
 
 _thread_local = threading.local()
 _async_var = ContextVar('lazyllm.flow_stack')
+
 def _get_flow_stack():
     if events._get_running_loop() is not None:
         stack = _async_var.get(None)

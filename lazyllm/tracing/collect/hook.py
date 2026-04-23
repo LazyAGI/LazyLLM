@@ -16,15 +16,6 @@ def traced_hook_execution(
     map_exception: Optional[Callable[[Exception], Exception]] = None,
     **hook_kwargs: Any,
 ):
-    '''Wrap a call with LazyLLM hooks (including tracing).
-
-    Usage::
-
-        with traced_hook_execution(self, *args, **kw) as outcome:
-            outcome['r'] = ...  # set exactly on success; value is passed to ``post_hook``
-
-    ``map_exception`` is optional (e.g. modules mapping to ``ModuleExecutionError`` before ``on_error``).
-    '''
     hook_objs = prepare_hooks(obj, list(getattr(obj, '_hooks', []) or []), *hook_args, **hook_kwargs)
     outcome: Dict[str, Any] = {}
     try:
