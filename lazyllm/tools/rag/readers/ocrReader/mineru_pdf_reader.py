@@ -93,9 +93,16 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
 
         return self._extract_content_from_zip(result.content)
 
+    def _extract_content_from_zip(self, zip_bytes: bytes) -> str:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            zf.extractall(self._image_cache_dir)
+
+        with open(self._image_cache_dir.glob('auto/*_content_list.json'), 'r', encoding='utf-8') as f:
+            return json.dumps(json.load(f))
+
     @override
     def _build_nodes_from_response(self, response_json: str, file: Path,
-                       extra_info: Optional[Dict] = None) -> List[DocNode]:
+            extra_info: Optional[Dict] = None) -> List[DocNode]:
         raw = json.loads(response_json)
         blocks = self._adapt_raw(raw)
         blocks = l1_normalize(blocks, self._page_size)
@@ -118,6 +125,9 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
 
     def _adapt_one(self, item: dict) -> Optional[Block]:
         ty = item['type']
+        if ty in self._droped_types:
+            return None
+
         text_level = item.get('text_level', 0)
         text = item['text']
         page_idx = item['page_idx']
@@ -170,9 +180,6 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
                 items=item['list_items'],
                 ordered=False,
             )
-        elif ty in ('header', 'footer', 'page_number', 'aside_text', 'page_footnote',
-                    'discard', 'discarded'):
-            return None
         return None
 
     @staticmethod
@@ -186,23 +193,6 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         if isinstance(val, str):
             return val
         return None
-
-    def _extract_content_from_zip(self, zip_bytes: bytes) -> str:
-        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-            zf.extractall(self._image_cache_dir)
-
-        for pattern in ('**/*_content_list.json', '**/content_list.json', '**/*.json', '**/*.md'):
-            candidates = list(self._image_cache_dir.glob(pattern))
-            if candidates:
-                candidate = candidates[0]
-                if candidate.suffix == '.json':
-                    with open(candidate, 'r', encoding='utf-8') as f:
-                        return json.dumps(json.load(f))
-                elif candidate.suffix == '.md':
-                    with open(candidate, 'r', encoding='utf-8') as f:
-                        return json.dumps([{'type': 'text', 'text': f.read()}])
-
-        raise ValueError('[MineruPDFReader] No parseable content found in zip response')
 
     def _parse_table_html(self, html_text: str) -> List[Cell]:
         soup = bs4.BeautifulSoup(html_text, 'html.parser')
