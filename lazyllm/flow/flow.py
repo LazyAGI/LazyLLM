@@ -247,7 +247,10 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self._hooks = []
         register_hooks(self, resolve_builtin_hooks(self))
 
+<<<<<<< HEAD
     @execution_with_hooks
+=======
+>>>>>>> 2955666a (remove deprecated trace_kwargs and semantic_type)
     def __call__(self, *args, **kw):
         with globals.stack_enter(self.identities):
             output = self._run(args[0] if len(args) == 1 else package(args), **kw)
@@ -545,14 +548,6 @@ class Parallel(LazyLLMFlowsBase):
         self._concurrent = 0 if not _concurrent else 5 if isinstance(_concurrent, bool) else _concurrent
         self._scatter = _scatter
 
-    @property
-    def __trace_kwargs__(self):
-        d = dict(super().__trace_kwargs__)
-        d['scatter'] = self._scatter
-        d['concurrent'] = self._concurrent
-        d['aggregation'] = self._post_process_type.name.lower()
-        return d
-
     @staticmethod
     def _set_status(self, type, args=None):
         assert self._post_process_type is Parallel.PostProcessType.NONE, 'Cannor set post process twice'
@@ -710,13 +705,6 @@ class Switch(LazyLLMFlowsBase):
         self._judge_on_full_input = judge_on_full_input
         self._set_conversion(conversion)
 
-    @property
-    def __trace_kwargs__(self):
-        d = dict(super().__trace_kwargs__)
-        d['conditions'] = [str(c) for c in self.conds]
-        d['judge_on_full_input'] = self._judge_on_full_input
-        return d
-
     def __trace_output_attrs__(self, output):
         stack = _switch_trace_matched_stack.get()
         if stack:
@@ -801,14 +789,6 @@ class Loop(Pipeline):
         self._stop_condition = stop_condition
         self._loop_count = count
 
-    @property
-    def __trace_kwargs__(self):
-        d = dict(super().__trace_kwargs__)
-        d['max_loop_count'] = self._loop_count if self._loop_count != sys.maxsize else 'unlimited'
-        d['has_stop_condition'] = self._stop_condition is not None
-        d['judge_on_full_input'] = self._judge_on_full_input
-        return d
-
     def __trace_output_attrs__(self, output):
         count = getattr(self, '_trace_actual_iterations', None)
         if count is not None:
@@ -830,12 +810,6 @@ class Graph(LazyLLMFlowsBase):
 
     def __init__(self, *, post_action=None, auto_capture=False, **kw):
         super(__class__, self).__init__(post_action=post_action, auto_capture=auto_capture, **kw)
-
-    @property
-    def __trace_kwargs__(self):
-        user_nodes = [n for n in self._nodes if n not in (Graph.start_node_name, Graph.end_node_name)]
-        edge_count = sum(len(n.outputs) for n in self._nodes.values())
-        return {'node_count': len(user_nodes), 'node_names': user_nodes, 'edge_count': edge_count}
 
     def __post_init__(self):
         self._nodes = {n: Graph.Node(f, n) for f, n in zip(self._items, self._item_names)}

@@ -1,6 +1,5 @@
 from ....module import ModuleBase
-from lazyllm import config, LazyLLMRegisterMetaClass, globals, LOG
-from lazyllm.tracing.collect.runtime import current_trace
+from lazyllm import config, LazyLLMRegisterMetaClass, globals
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Optional, Union, List
 import random
@@ -86,69 +85,6 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     @property
     def series(self):
         return self.__class__._model_series
-
-    def _trace_attr_value(self, attr):
-        try:
-            value = getattr(self, attr, None)
-        except Exception as exc:
-            LOG.warning(f'Reading attr {attr!r} on {type(self).__name__} for trace metadata failed: {exc}')
-            return None
-        return value if value is not None and value != '' else None
-
-    def _collect_basic_trace_kwargs(self):
-        metadata = {}
-        attr_groups = (
-            ('model', ('_model_name', '_embed_model_name', 'base_model', '_base_model')),
-            ('base_url', ('_base_url', '_embed_url')),
-            ('stream', ('_stream',)),
-            ('skip_auth', ('_skip_auth',)),
-            ('batch_size', ('_batch_size',)),
-            ('num_worker', ('_num_worker',)),
-            ('timeout', ('_timeout',)),
-        )
-        for key, attrs in attr_groups:
-            for attr in attrs:
-                value = self._trace_attr_value(attr)
-                if value is not None:
-                    metadata[key] = value
-                    break
-        return metadata
-
-    def _collect_identity_trace_kwargs(self):
-        metadata = {'class': self.__class__.__name__}
-        try:
-            metadata['type'] = self.type
-        except Exception as exc:
-            LOG.warning(f'Reading `type` on {type(self).__name__} for trace metadata failed: {exc}')
-        try:
-            if self.series:
-                metadata['series'] = self.series
-        except Exception as exc:
-            LOG.warning(f'Reading `series` on {type(self).__name__} for trace metadata failed: {exc}')
-        return metadata
-
-    def _collect_trace_kwargs(self, **overrides):
-        metadata = self._collect_basic_trace_kwargs()
-        metadata.update(self._collect_identity_trace_kwargs())
-        static_params = getattr(self, '_static_params', None)
-        if static_params:
-            metadata['static_params'] = dict(static_params)
-        for key, value in overrides.items():
-            if value is not None and value != '':
-                metadata[key] = value
-        return metadata
-
-    @property
-    def __trace_kwargs__(self):
-        return self._collect_trace_kwargs()
-
-    def _record_trace_metadata(self, **overrides):
-        trace = current_trace()
-        if trace is None:
-            return
-        metadata = self._collect_trace_kwargs(**overrides)
-        if metadata:
-            trace.update_metadata(metadata)
 
     def _materialize_lazy_api_key(self) -> str:
         return self._default_api_key()
