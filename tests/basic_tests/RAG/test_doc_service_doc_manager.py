@@ -165,7 +165,7 @@ class _ManagerHarness:
         self.manager._parser_client.get_algorithm_groups = lambda algo_id: BaseResponse(
             code=200,
             msg='success',
-            data=[{'name': 'line', 'type': 'chunk', 'display_name': 'Line'}] if algo_id == '__default__' else None,
+            data={'node_group_ids': ['line']} if algo_id == '__default__' else None,
         )
 
 
@@ -881,10 +881,9 @@ def test_ensure_kb_algorithm_handles_flush_conflict(manager_harness, monkeypatch
 
     mgr._ensure_kb_algorithm('algo_conflict_group', '__default__')
 
-    binding = mgr._get_kb_algorithm('algo_conflict_group')
+    binding = mgr._get_kb_algorithms('algo_conflict_group')
     assert binding is not None
-    assert binding['kb_id'] == 'algo_conflict_group'
-    assert binding['algo_id'] == '__default__'
+    assert '__default__' in binding
 
 
 def test_scan_syncs_non_default_kb(manager_harness):

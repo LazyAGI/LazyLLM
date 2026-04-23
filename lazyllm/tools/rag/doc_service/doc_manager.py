@@ -1883,8 +1883,8 @@ class DocManager:
         doc = self._get_doc(doc_id)
         if doc is None or not self._has_kb_document(kb_id, doc_id):
             raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}', {'kb_id': kb_id, 'doc_id': doc_id})
-        groups = self.get_algo_groups(algo_id)
-        if not any(item.get('name') == group for item in groups):
+        ng_ids = self._get_algo_node_group_ids(algo_id)
+        if group not in ng_ids:
             raise DocServiceError(
                 'E_INVALID_PARAM',
                 f'invalid group: {group}',
