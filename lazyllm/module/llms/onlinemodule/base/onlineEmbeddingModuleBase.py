@@ -60,8 +60,7 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
                 if r.status_code == 200:
                     return self._parse_response(r.json(), input=input)
                 else:
-                    raise requests.RequestException(
-                        '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
         if isinstance(input, str):
