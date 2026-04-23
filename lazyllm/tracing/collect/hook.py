@@ -16,15 +16,6 @@ def traced_hook_execution(
     map_exception: Optional[Callable[[Exception], Exception]] = None,
     **hook_kwargs: Any,
 ):
-    '''Wrap a call with LazyLLM hooks (including tracing).
-
-    Usage::
-
-        with traced_hook_execution(self, *args, **kw) as outcome:
-            outcome['r'] = ...  # set exactly on success; value is passed to ``post_hook``
-
-    ``map_exception`` is optional (e.g. modules mapping to ``ModuleExecutionError`` before ``on_error``).
-    '''
     hook_objs = prepare_hooks(obj, list(getattr(obj, '_hooks', []) or []), *hook_args, **hook_kwargs)
     outcome: Dict[str, Any] = {}
     try:
@@ -61,7 +52,6 @@ def traced_hook_execution(
 
 
 def _unwrap_trace_subject(obj: Any) -> Any:
-    '''Resolve ``_FuncWrap`` / ``flow._BindPipelineAdapter`` / ``Bind`` to the inner callable for spans and hook policy.'''
     cls = getattr(obj, '__class__', type(obj))
     name, mod = cls.__name__, getattr(cls, '__module__', '')
     if name == '_FuncWrap' and hasattr(obj, '_f'):
@@ -105,8 +95,6 @@ class LazyTracingHook(LazyLLMHook):
             return
 
         t = self._trace_target()
-        # Runtime override is single-directional (disable-only): registry/default decides
-        # whether tracing is on; globals['trace']['module_trace'] can only turn it off.
         if hasattr(t, '_module_id') and resolve_runtime_module_trace_disabled(
             trace_cfg.get('module_trace'),
             module_name=getattr(t, 'name', None) or getattr(t, '_module_name', None),

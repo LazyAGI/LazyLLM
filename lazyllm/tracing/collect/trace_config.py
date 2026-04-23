@@ -1,12 +1,3 @@
-'''
-Tracing-side construction of ``span.config`` (``lazyllm.entity.config.*``).
-
-Aligned with ``lazyllm_tracing_v2_collect_refactor_execution_plan.md`` detailed
-steps 1–16 and 17–19: no reads of business ``__trace_kwargs__`` /
-``__semantic_type__`` from runtime.
-'''
-from __future__ import annotations
-
 import inspect
 import json
 import sys
@@ -18,7 +9,6 @@ from lazyllm.common import LOG
 
 from ..semantics import SemanticType
 
-# --- Step 1: module constants -------------------------------------------------
 
 _TRACE_DEFAULT_EXCLUDE_KEYS: FrozenSet[str] = frozenset({
     'dict', 'weakref', 'slots', 'module_id', 'flow_id', 'hooks', 'identities',
@@ -38,7 +28,6 @@ def _private_attr_deny_type_names() -> FrozenSet[str]:
     })
 
 
-# Raw attribute names on the instance (including leading '_').
 _TRACE_RAW_ATTR_EXCLUDE: FrozenSet[str] = frozenset({
     '__dict__', '__weakref__', '__slots__',
     '_module_id', '_flow_id', '_hooks', '_identities',
@@ -52,9 +41,6 @@ _TRACE_RAW_ATTR_EXCLUDE: FrozenSet[str] = frozenset({
 })
 
 _PARALLEL_LIKE_NAMES: FrozenSet[str] = frozenset({'Parallel', 'Diverter', 'Warp'})
-
-
-# --- Step 2–5: helpers --------------------------------------------------------
 
 
 def _safe_getattr(target: Any, attr: str, default: Any = None) -> Any:
@@ -138,9 +124,6 @@ def _put_if_present(cfg: Dict[str, Any], key: str, value: Any) -> None:
     cfg[key] = value
 
 
-# --- Step 6: private dict scan -------------------------------------------------
-
-
 def _collect_private_trace_config(target: Any) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     if target is None:
@@ -167,9 +150,6 @@ def _collect_private_trace_config(target: Any) -> Dict[str, Any]:
             value = value[:8192] + '...<truncated>'
         out[pub] = value
     return out
-
-
-# --- Step 8–9: LLM / embedding -------------------------------------------------
 
 
 def _looks_like_online_module(target: Any) -> bool:
@@ -230,9 +210,6 @@ def _collect_llm_trace_config(target: Any, args: tuple, kwargs: Dict[str, Any]) 
     return cfg
 
 
-# --- Step 10–11: RAG ----------------------------------------------------------
-
-
 def _looks_like_retriever(target: Any) -> bool:
     return type(target).__name__ == 'Retriever'
 
@@ -278,9 +255,6 @@ def _collect_reranker_trace_config(target: Any) -> Dict[str, Any]:
     mn = _safe_getattr(target, '_model_name', None)
     _put_if_present(cfg, 'model', mn)
     return cfg
-
-
-# --- Step 12–13: flow ---------------------------------------------------------
 
 
 def _is_flow_target(target: Any) -> bool:
@@ -345,9 +319,6 @@ def _collect_flow_trace_config(target: Any) -> Dict[str, Any]:
             cfg['judge_on_full_input'] = j
 
     return cfg
-
-
-# --- Step 14: dispatch + alias normalize (plan #3 subset) --------------------
 
 
 def normalize_trace_entity_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -432,9 +403,6 @@ def collect_trace_config(
     cfg = normalize_trace_entity_config(cfg)
     enrich_trace_entity_identity(target, cfg)
     return cfg
-
-
-# --- Steps 17–18: semantic type ----------------------------------------------
 
 
 def _semantic_from_type_value(value: Any) -> Optional[str]:

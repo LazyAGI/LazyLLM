@@ -22,7 +22,6 @@ _current_trace: 'contextvars.ContextVar[Optional[LazyTrace]]' = contextvars.Cont
 
 
 def current_trace() -> Optional[LazyTrace]:
-    '''Return the ``LazyTrace`` bound to the current execution context, if any.'''
     return _current_trace.get()
 
 
@@ -162,7 +161,6 @@ class TracingRuntime:
         args: tuple,
         call_kwargs: Dict[str, Any],
     ) -> None:
-        '''Fill identity and config fields of LazySpan from the target object.'''
         span.component_class = target.__class__.__name__
         span.component_id = self._target_id(target, span.span_kind)
 
@@ -463,7 +461,6 @@ _TRACE_CONFIG_KEYS = (
 
 
 def _extract_trace_config(kwargs: Dict[str, Any]) -> Dict[str, Any]:
-    '''Strip tracing-only kwargs from ``kwargs`` so they never reach the target callable.'''
     return {k: kwargs.pop(k) for k in list(kwargs) if k in _TRACE_CONFIG_KEYS}
 
 

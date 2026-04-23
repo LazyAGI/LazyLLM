@@ -1,11 +1,3 @@
-'''Tracing-side output attributes (``lazyllm.output.*``, ``lazyllm.matched.*``, loop counters).
-
-Retriever/Reranker: ``_post_process`` is wrapped while a trace span is active so scores are
-captured before post-processing mutates the node list. Flow Switch/IFS push matched-branch
-metadata onto context stacks consumed in ``collect_trace_output_attrs``.
-'''
-from __future__ import annotations
-
 import contextvars
 import json
 import types
