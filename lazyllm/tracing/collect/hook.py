@@ -1,11 +1,63 @@
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, Optional
 
-from ...common import LOG, globals
+from ...common import LOG, globals, HandledException
 from ...configs import config
-from ...hook import LazyLLMHook, register_builtin_hook_provider
+from ...hook import LazyLLMHook, prepare_hooks, register_builtin_hook_provider, run_hooks
 from .configs import resolve_default_module_trace, resolve_runtime_module_trace_disabled
 from .output_attrs import collect_trace_output_attrs, install_post_process_probe, remove_post_process_probe
 from .runtime import finish_span, set_span_attributes, set_span_error, set_span_output, set_span_usage, start_span
+
+
+@contextmanager
+def traced_hook_execution(
+    obj: Any,
+    *hook_args: Any,
+    map_exception: Optional[Callable[[Exception], Exception]] = None,
+    **hook_kwargs: Any,
+):
+    '''Wrap a call with LazyLLM hooks (including tracing).
+
+    Usage::
+
+        with traced_hook_execution(self, *args, **kw) as outcome:
+            outcome['r'] = ...  # set exactly on success; value is passed to ``post_hook``
+
+    ``map_exception`` is optional (e.g. modules mapping to ``ModuleExecutionError`` before ``on_error``).
+    '''
+    hook_objs = prepare_hooks(obj, list(getattr(obj, '_hooks', []) or []), *hook_args, **hook_kwargs)
+    outcome: Dict[str, Any] = {}
+    try:
+        yield outcome
+    except HandledException as e:
+        LOG.error(f'`{type(obj).__name__}` raised {type(e).__name__}: {e}')
+        try:
+            run_hooks(hook_objs, 'on_error', e)
+        except Exception:
+            LOG.warning('Hook on_error phase failed', exc_info=True)
+        raise
+    except Exception as e:
+        err = map_exception(e) if map_exception else e
+        nm = getattr(obj, 'name', None)
+        LOG.error(
+            f'Error in `{type(obj).__name__}`' + (f' name={nm!r}' if nm else '') + f': {err}'
+        )
+        try:
+            run_hooks(hook_objs, 'on_error', err)
+        except Exception:
+            LOG.warning('Hook on_error phase failed', exc_info=True)
+        if map_exception:
+            raise err from None
+        raise
+    else:
+        if 'r' not in outcome:
+            raise RuntimeError('traced_hook_execution: expected outcome["r"] to be set on success')
+        run_hooks(hook_objs, 'post_hook', outcome['r'])
+    finally:
+        try:
+            run_hooks(hook_objs, 'finalize')
+        except Exception:
+            LOG.warning('Hook finalize phase failed', exc_info=True)
 
 
 def _unwrap_trace_subject(obj: Any) -> Any:
@@ -109,4 +161,5 @@ register_builtin_hook_provider(resolve_tracing_hooks)
 __all__ = [
     'LazyTracingHook',
     'resolve_tracing_hooks',
+    'traced_hook_execution',
 ]
