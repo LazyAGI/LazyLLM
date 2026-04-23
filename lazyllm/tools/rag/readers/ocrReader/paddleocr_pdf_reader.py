@@ -36,11 +36,8 @@ class PaddleOCRPDFReader(_OcrReaderBase):
 
     @override
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
-        if not file.exists():
-            raise FileNotFoundError(f'File not found: {file}')
         with open(file, 'rb') as f:
-            file_bytes = f.read()
-            file_data = base64.b64encode(file_bytes).decode('ascii')
+            file_data = base64.b64encode(f.read()).decode('ascii')
 
         payload = {
             'file': file_data,
@@ -57,48 +54,28 @@ class PaddleOCRPDFReader(_OcrReaderBase):
     @override
     def _build_nodes_from_response(self, response_json: str, file: Path,
                        extra_info: Optional[Dict] = None) -> List[DocNode]:
-        try:
-            if isinstance(file, str):
-                file = Path(file)
-            raw = json.loads(response_json)
-            blocks = self._adapt_raw(raw)
-            blocks = l1_normalize(blocks, self._page_size)
-            blocks, relations = l2_associate(blocks)
-            docs = self._build_nodes_from_blocks(blocks, file, extra_info)
-            if not docs:
-                LOG.warning(f'[PaddleOCRPDFReader] No elements found in response for: {file}')
-            return docs
-        except Exception as e:
-            LOG.error(f'[PaddleOCRPDFReader] Error parsing response for {file}: {e}')
-            return []
+        raw = json.loads(response_json)
+        blocks = self._adapt_raw(raw)
+        blocks = l1_normalize(blocks, self._page_size)
+        blocks, relations = l2_associate(blocks)
+        return self._build_nodes_from_blocks(blocks, file, extra_info)
 
     @override
     def _adapt_raw(self, raw: dict) -> List[Block]:
         blocks: List[Block] = []
-        if 'layoutParsingResults' in raw:
-            pages = raw['layoutParsingResults']
-        elif 'result' in raw and isinstance(raw['result'], dict) and 'layoutParsingResults' in raw['result']:
-            pages = raw['result']['layoutParsingResults']
-        else:
-            pages = raw.get('pages', [raw])
-
-        for page_idx, page_data in enumerate(pages):
-            if not isinstance(page_data, dict):
-                continue
-            markdown_images = page_data.get('markdown', {}).get('images', {})
-            pruned_result = page_data.get('prunedResult', {})
-            page_blocks = pruned_result.get('parsing_res_list', [])
-            for item in page_blocks:
+        for page_idx, page_data in enumerate(raw['result']['layoutParsingResults']):
+            markdown_images = page_data['markdown']['images']
+            for item in page_data['prunedResult']['parsing_res_list']:
                 block = self._adapt_one(item, page_idx, markdown_images)
                 if block is not None:
                     blocks.append(block)
         return blocks
 
     def _adapt_one(self, item: dict, page_idx: int,
-                   markdown_images: Optional[Dict[str, str]] = None) -> Optional[Block]:
-        label = item.get('label', item.get('block_label', ''))
-        content = item.get('content', item.get('block_content', ''))
-        bbox = BBox.from_list(item.get('bbox', item.get('block_bbox', [])))
+                   markdown_images: Dict[str, str]) -> Optional[Block]:
+        label = item['block_label']
+        content = item['block_content']
+        bbox = BBox.from_list(item['block_bbox'])
         page = PageRef(index=page_idx, bbox=bbox)
 
         if label in ('paragraph_title', 'doc_title'):
@@ -114,7 +91,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             return ParagraphBlock(page=page, text=content)
         elif label in ('image', 'figure'):
             img_src = self._extract_img_path(content)
-            image_path = self._resolve_image_path(img_src, markdown_images) if img_src else None
+            image_path = self._resolve_image_path(img_src, markdown_images)
             return FigureBlock(page=page, image_path=image_path)
         elif label == 'table':
             return TableBlock(
@@ -130,23 +107,14 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             return None
         return None
 
-    def _resolve_image_path(self, img_src: str,
-                            markdown_images: Optional[Dict[str, str]]) -> Optional[Path]:
-        if not img_src or not markdown_images:
-            return None
-        img_b64 = markdown_images.get(img_src)
-        if not img_b64:
-            return None
-        try:
-            rel_path = Path(img_src)
-            clean_path = rel_path.as_posix().lstrip('./')
-            save_path = self._image_cache_dir / clean_path
-            save_path.parent.mkdir(parents=True, exist_ok=True)
-            save_path.write_bytes(base64.b64decode(img_b64))
-            return Path(clean_path)
-        except Exception as e:
-            LOG.warning(f'[PaddleOCRPDFReader] Failed to save image {img_src}: {e}')
-            return None
+    def _resolve_image_path(self, img_src: str, markdown_images: Dict[str, str]) -> Path:
+        img_b64 = markdown_images[img_src]
+        rel_path = Path(img_src)
+        clean_path = rel_path.as_posix().lstrip('./')
+        save_path = self._image_cache_dir / clean_path
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        save_path.write_bytes(base64.b64decode(img_b64))
+        return Path(clean_path)
 
     @staticmethod
     def _parse_markdown_heading(content: str) -> tuple:
@@ -160,38 +128,22 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         return text.strip().replace(' ', '-').replace('\n', '-')[:64]
 
     @staticmethod
-    def _extract_img_path(html: str) -> Optional[str]:
-        try:
-            soup = bs4.BeautifulSoup(html, 'html.parser')
-            img = soup.find('img')
-            if img:
-                return img.get('src', '')
-        except Exception:
-            pass
-        return None
+    def _extract_img_path(html: str) -> str:
+        soup = bs4.BeautifulSoup(html, 'html.parser')
+        return soup.find('img')['src']
 
     def _parse_table_html(self, html_text: str) -> List[Cell]:
+        soup = bs4.BeautifulSoup(html_text, 'html.parser')
         cells: List[Cell] = []
-        if not html_text:
-            return cells
-        try:
-            soup = bs4.BeautifulSoup(html_text, 'html.parser')
-            table = soup.find('table')
-            if not table:
-                return cells
-            for row_idx, tr in enumerate(table.find_all('tr')):
-                for col_idx, td in enumerate(tr.find_all(['td', 'th'])):
-                    rowspan = int(td.get('rowspan', 1))
-                    colspan = int(td.get('colspan', 1))
-                    cells.append(Cell(
-                        row=row_idx,
-                        col=col_idx,
-                        rowspan=rowspan,
-                        colspan=colspan,
-                        text=td.get_text(strip=True),
-                    ))
-        except Exception as e:
-            LOG.warning(f'[PaddleOCRPDFReader] Failed to parse table HTML: {e}')
+        for row_idx, tr in enumerate(soup.find('table').find_all('tr')):
+            for col_idx, td in enumerate(tr.find_all(['td', 'th'])):
+                cells.append(Cell(
+                    row=row_idx,
+                    col=col_idx,
+                    rowspan=int(td.get('rowspan', 1)),
+                    colspan=int(td.get('colspan', 1)),
+                    text=td.get_text(strip=True),
+                ))
         return cells
 
     @override
@@ -219,7 +171,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                 if b.cells:
                     metadata['cells'] = [c.__dict__ for c in b.cells]
             elif isinstance(b, FigureBlock):
-                metadata['image_path'] = str(b.image_path) if b.image_path else None
+                metadata['image_path'] = str(b.image_path)
                 metadata['image_caption'] = b.caption
             elif isinstance(b, FormulaBlock):
                 metadata['latex'] = b.latex

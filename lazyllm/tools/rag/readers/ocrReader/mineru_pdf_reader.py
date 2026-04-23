@@ -52,18 +52,14 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
             'table_enable': True,
             'formula_enable': True,
         }
-        try:
-            if not self._upload_mode:
-                payload['files'] = [str(file)]
-                response = post_sync(self._url, payload=payload, timeout=self._timeout)
-            else:
-                with open(file, 'rb') as f:
-                    files = {'upload_files': (os.path.basename(file), f)}
-                    response = post_sync(self._url, payload=payload, files=files, timeout=self._timeout)
-            return response.text
-        except requests.exceptions.RequestException as e:
-            LOG.error(f'[MineruPDFReader] POST request failed: {e}')
-            raise
+        if not self._upload_mode:
+            payload['files'] = [str(file)]
+            response = post_sync(self._url, payload=payload, timeout=self._timeout)
+        else:
+            with open(file, 'rb') as f:
+                files = {'upload_files': (os.path.basename(file), f)}
+                response = post_sync(self._url, payload=payload, files=files, timeout=self._timeout)
+        return response.text
 
     def _fetch_async(self, file: Path, use_cache: bool) -> str:
         base_url = self._url.rstrip('/')
@@ -130,35 +126,18 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
     @override
     def _build_nodes_from_response(self, response_json: str, file: Path,
                        extra_info: Optional[Dict] = None) -> List[DocNode]:
-        try:
-            if isinstance(file, str):
-                file = Path(file)
-            raw = json.loads(response_json)
-            blocks = self._adapt_raw(raw)
-            blocks = l1_normalize(blocks, self._page_size)
-            blocks, relations = l2_associate(blocks)
-            docs = self._build_nodes_from_blocks(blocks, file, extra_info)
-            if not docs:
-                LOG.warning(f'[MineruPDFReader] No elements found in response for: {file}')
-            return docs
-        except Exception as e:
-            LOG.error(f'[MineruPDFReader] Error parsing response for {file}: {e}')
-            return []
+        raw = json.loads(response_json)
+        blocks = self._adapt_raw(raw)
+        blocks = l1_normalize(blocks, self._page_size)
+        blocks, relations = l2_associate(blocks)
+        return self._build_nodes_from_blocks(blocks, file, extra_info)
 
     @override
-    def _adapt_raw(self, raw: dict) -> List[Block]:
-        # Support both direct content_list and wrapped result formats
+    def _adapt_raw(self, raw) -> List[Block]:
         if isinstance(raw, list):
             content_list = raw
-        elif isinstance(raw, dict):
-            if 'result' in raw and isinstance(raw['result'], list):
-                content_list = raw['result'][0].get('content_list', [])
-            elif 'content_list' in raw:
-                content_list = raw['content_list']
-            else:
-                content_list = []
         else:
-            content_list = []
+            content_list = raw['content_list']
 
         blocks: List[Block] = []
         for item in content_list:
@@ -168,11 +147,11 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         return blocks
 
     def _adapt_one(self, item: dict) -> Optional[Block]:
-        ty = item.get('type', '')
-        text_level = item.get('text_level', 0) or 0
-        text = item.get('text', '')
-        page_idx = item.get('page_idx', 0)
-        bbox = BBox.from_list(item.get('bbox', []))
+        ty = item['type']
+        text_level = item.get('text_level', 0)
+        text = item['text']
+        page_idx = item['page_idx']
+        bbox = BBox.from_list(item['bbox'])
 
         # patch-specific fields (only for offline with lazyllm_patch_applied)
         page_width = page_height = None
@@ -193,20 +172,9 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         elif ty == 'text':
             return ParagraphBlock(page=page, text=text)
         elif ty == 'image':
-            raw_img_path = item.get('img_path')
-            img_path: Optional[Path] = None
-            if raw_img_path:
-                p = Path(raw_img_path)
-                if p.is_absolute():
-                    try:
-                        img_path = p.relative_to(self._image_cache_dir)
-                    except ValueError:
-                        img_path = Path(p.name)
-                else:
-                    img_path = p
             return FigureBlock(
                 page=page,
-                image_path=img_path,
+                image_path=Path(item['img_path']),
                 caption=self._first(item.get('image_caption')),
                 footnote=self._first(item.get('image_footnote')),
             )
@@ -215,21 +183,21 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
                 page=page,
                 caption=self._first(item.get('table_caption')),
                 footnote=self._first(item.get('table_footnote')),
-                cells=self._parse_table_html(item.get('table_body', '')),
+                cells=self._parse_table_html(item['table_body']),
                 page_range=(page_idx, page_idx),
             )
         elif ty == 'equation':
             return FormulaBlock(page=page, latex=text, inline=False)
         elif ty == 'code':
             return CodeBlock(
-                page=page, text=item.get('code_body', ''),
+                page=page, text=item['code_body'],
                 language=item.get('guess_lang'),
                 caption=self._first(item.get('code_caption')),
             )
         elif ty == 'list':
             return ListBlock(
                 page=page,
-                items=item.get('list_items', []),
+                items=item['list_items'],
                 ordered=False,
             )
         elif ty in ('header', 'footer', 'page_number', 'aside_text', 'page_footnote',
@@ -250,19 +218,11 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         return None
 
     def _extract_content_from_zip(self, zip_bytes: bytes) -> str:
-        """Extract zip to image_cache_dir and return content_list.json as string."""
-        if self._image_cache_dir:
-            extract_dir = self._image_cache_dir
-        else:
-            import tempfile
-            extract_dir = Path(tempfile.mkdtemp())
-
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-            zf.extractall(extract_dir)
+            zf.extractall(self._image_cache_dir)
 
-        # Prefer *_content_list.json
         for pattern in ('**/*_content_list.json', '**/content_list.json', '**/*.json', '**/*.md'):
-            candidates = list(extract_dir.glob(pattern))
+            candidates = list(self._image_cache_dir.glob(pattern))
             if candidates:
                 candidate = candidates[0]
                 if candidate.suffix == '.json':
@@ -275,28 +235,17 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         raise ValueError('[MineruPDFReader] No parseable content found in zip response')
 
     def _parse_table_html(self, html_text: str) -> List[Cell]:
+        soup = bs4.BeautifulSoup(html_text, 'html.parser')
         cells: List[Cell] = []
-        if not html_text:
-            return cells
-        try:
-            from lazyllm.thirdparty import bs4
-            soup = bs4.BeautifulSoup(html_text, 'html.parser')
-            table = soup.find('table')
-            if not table:
-                return cells
-            for row_idx, tr in enumerate(table.find_all('tr')):
-                for col_idx, td in enumerate(tr.find_all(['td', 'th'])):
-                    rowspan = int(td.get('rowspan', 1))
-                    colspan = int(td.get('colspan', 1))
-                    cells.append(Cell(
-                        row=row_idx,
-                        col=col_idx,
-                        rowspan=rowspan,
-                        colspan=colspan,
-                        text=td.get_text(strip=True),
-                    ))
-        except Exception as e:
-            LOG.warning(f'[MineruPDFReader] Failed to parse table HTML: {e}')
+        for row_idx, tr in enumerate(soup.find('table').find_all('tr')):
+            for col_idx, td in enumerate(tr.find_all(['td', 'th'])):
+                cells.append(Cell(
+                    row=row_idx,
+                    col=col_idx,
+                    rowspan=int(td.get('rowspan', 1)),
+                    colspan=int(td.get('colspan', 1)),
+                    text=td.get_text(strip=True),
+                ))
         return cells
 
     @override
@@ -325,7 +274,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
                 if b.cells:
                     metadata['cells'] = [c.__dict__ for c in b.cells]
             elif isinstance(b, FigureBlock):
-                metadata['image_path'] = str(b.image_path) if b.image_path else None
+                metadata['image_path'] = str(b.image_path)
                 metadata['image_caption'] = b.caption
             elif isinstance(b, FormulaBlock):
                 metadata['latex'] = b.latex
