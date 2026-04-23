@@ -20,41 +20,44 @@ class ServiceVariant(str, Enum):
 class _OcrReaderBase(_RichReader):
     def __init__(self,
             url,
+            image_cache_dir: Path,
             api_key: Optional[str] = None,
             service_variant: ServiceVariant = 'online',
-            droped_types: Optional[Set[str]] = None,
+            droped_types: Set[str] = set(),
             split_doc: bool = True,
             post_func: Optional[Callable] = None,
             return_trace: bool = True):
         super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
         self._url = url
+        self._image_cache_dir = image_cache_dir
+        self._image_cache_dir.mkdir(parents=True, exist_ok=True)
         self._api_key = api_key
         self._service_variant = ServiceVariant(service_variant)
-        self._droped_types = droped_types if droped_types is not None else set()
+        self._droped_types = droped_types
 
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
-        """Fetch raw response string from the OCR service."""
+        '''Fetch raw response string from the OCR service.'''
         raise NotImplementedError
 
-    def _from_response(self, response: str, file: Path,
+    def _build_nodes_from_response(self, response: str, file: Path,
                        extra_info: Optional[Dict] = None) -> List[DocNode]:
-        """Parse OCR service response into DocNodes."""
+        '''Parse OCR service response into DocNodes.'''
         raise NotImplementedError
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None, use_cache: bool = True, **kwargs
         ) -> List[DocNode]:
         response_raw_text = self._fetch_response(file, use_cache=use_cache)
-        return self._from_response(response_raw_text, file, extra_info)
+        return self._build_nodes_from_response(response_raw_text, file, extra_info)
 
 
 class _Adapter:
     def _adapt_raw(self, raw: dict) -> List[Block]:
-        """Adapt raw JSON response to intermediate block representation.
+        '''Adapt raw JSON response to intermediate block representation.
 
-        Subclasses implement service-specific adaptation logic directly."""
+        Subclasses implement service-specific adaptation logic directly.'''
         raise NotImplementedError
 
     def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
-                                  extra_info: Optional[Dict] = None) -> List[DocNode]:
-        """Build DocNodes from parsed intermediate blocks."""
+            extra_info: Optional[Dict] = None) -> List[DocNode]:
+        '''Build DocNodes from parsed intermediate blocks.'''
         raise NotImplementedError

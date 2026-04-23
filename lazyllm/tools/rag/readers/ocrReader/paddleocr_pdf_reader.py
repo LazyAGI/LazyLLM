@@ -2,7 +2,7 @@ import base64
 import json
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Set
 from typing_extensions import override
 
 import lazyllm
@@ -28,10 +28,9 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                  format_block_content: bool = True,
                  use_layout_detection: bool = True,
                  use_chart_recognition: bool = True,
-                 drop_types: List[str] = None,
-                 images_dir: str = None,
+                 droped_types: Set[str] = {'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                  **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(droped_types=droped_types, **kwargs)
         url = kwargs.get('url')
         api_key = kwargs.get('api_key') or lazyllm.config['paddleocr_api_key']
         if not url and not api_key:
@@ -53,30 +52,8 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         self._format_block_content = format_block_content
         self._use_layout_detection = use_layout_detection
         self._use_chart_recognition = use_chart_recognition
-        if images_dir:
-            self._images_dir = Path(images_dir)
-            self._images_dir.mkdir(exist_ok=True)
-        else:
-            self._images_dir = None
-        self._droped_types = (
-            list(drop_types)
-            if drop_types is not None
-            else ['aside_text', 'header', 'footer', 'number', 'header_image', 'seal']
-        )
         self._callback = callback
         self._page_size = None
-
-    @override
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   use_cache: bool = True, **kwargs) -> List[DocNode]:
-        try:
-            if isinstance(file, str):
-                file = Path(file)
-            response_json = self._fetch_response(file, use_cache=use_cache)
-            return self._from_response(response_json, file, extra_info)
-        except Exception as e:
-            LOG.error(f'[PaddleOCRPDFReader] Error loading data from {file}: {e}')
-            return []
 
     @override
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
@@ -99,7 +76,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         return response.text
 
     @override
-    def _from_response(self, response_json: str, file: Path,
+    def _build_nodes_from_response(self, response_json: str, file: Path,
                        extra_info: Optional[Dict] = None) -> List[DocNode]:
         try:
             if isinstance(file, str):

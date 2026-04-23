@@ -27,7 +27,6 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
             backend: str = 'hybrid-auto-engine',
             upload_mode: bool = False,
             timeout: Optional[int] = None,
-            image_cache_dir: str = None,
             droped_types: Set[str] = {'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
             **kwargs):
         super().__init__(droped_types=droped_types, **kwargs)
@@ -36,11 +35,6 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._apply_lazyllm_patch = apply_lazyllm_patch
         self._page_size = None
-        if image_cache_dir:
-            self._image_cache_dir = Path(image_cache_dir)
-            self._image_cache_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            self._image_cache_dir = None
 
     @override
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
@@ -137,7 +131,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         return json.dumps(result)
 
     @override
-    def _from_response(self, response_json: str, file: Path,
+    def _build_nodes_from_response(self, response_json: str, file: Path,
                        extra_info: Optional[Dict] = None) -> List[DocNode]:
         try:
             if isinstance(file, str):
