@@ -1019,7 +1019,7 @@ class DocManager:
 
         for item in prepared_items:
             if self._has_kb_document(request.kb_id, item['doc_id']):
-                for algo_id in request.get_algo_ids():
+                for algo_id in request.effective_algo_ids:
                     self._assert_action_allowed(item['doc_id'], request.kb_id, algo_id, 'upload')
         return prepared_items
 
@@ -1174,7 +1174,7 @@ class DocManager:
         return prepared_items
 
     def upload(self, request: UploadRequest) -> List[Dict[str, Any]]:
-        algo_ids = request.get_algo_ids()
+        algo_ids = request.effective_algo_ids
         for algo_id in algo_ids:
             self._validate_kb_algorithm(request.kb_id, algo_id)
         prepared_items = self._prepare_upload_items(request)

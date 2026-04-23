@@ -94,8 +94,8 @@ class AddFileItem(BaseModel):
 class DocItemsRequest(BaseModel):
     items: List[AddFileItem]
     kb_id: str = '__default__'
-    algo_id: str = '__default__'
-    algo_ids: Optional[List[str]] = None  # if set, takes priority over algo_id
+    algo_id: Optional[str] = None
+    algo_ids: Optional[List[str]] = None
     source_type: Optional[SourceType] = None
     idempotency_key: Optional[str] = None
 
@@ -103,17 +103,17 @@ class DocItemsRequest(BaseModel):
     def validate_items(self):
         if not self.items:
             raise ValueError('items is required')
+        if self.algo_id is not None and self.algo_ids is not None:
+            raise ValueError('algo_id and algo_ids cannot both be provided')
+        if self.algo_id is None and self.algo_ids is None:
+            raise ValueError('one of algo_id or algo_ids is required')
+        if self.algo_ids is not None and len(set(self.algo_ids)) != len(self.algo_ids):
+            raise ValueError('algo_ids must not contain duplicates')
         return self
 
-    def get_algo_ids(self) -> List[str]:
-        '''Return the effective list of algo_ids (deduped, preserving order).'''
-        ids = self.algo_ids if self.algo_ids else [self.algo_id]
-        seen, result = set(), []
-        for a in ids:
-            if a not in seen:
-                seen.add(a)
-                result.append(a)
-        return result
+    @property
+    def effective_algo_ids(self) -> List[str]:
+        return self.algo_ids if self.algo_ids is not None else [self.algo_id or '__default__']
 
 
 AddRequest = DocItemsRequest
