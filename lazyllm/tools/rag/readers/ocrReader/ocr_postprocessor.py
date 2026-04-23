@@ -112,6 +112,8 @@ def l2_associate(blocks: List[Block]) -> List[Block]:
     blocks = [b for i, b in enumerate(blocks) if i not in caption_indices]
     blocks = _inject_section_path(blocks)
     blocks = _merge_consecutive_paragraphs(blocks)
+    for idx, b in enumerate(blocks):
+        b.index = idx
     return blocks
 
 

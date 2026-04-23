@@ -51,7 +51,8 @@ class SectionPath:
 class Block:
     page: PageRef
     section: SectionPath = field(default_factory=SectionPath)
-    lines: List[str] = []
+    lines: List[str] = field(default_factory=list)
+    index: int = -1
 
     def __post_init__(self):
         for f in self.__dataclass_fields__.values():
