@@ -1,5 +1,6 @@
 import re
-from dataclasses import dataclass, field, asdict
+import unicodedata
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Union
 from pathlib import Path
 
@@ -34,6 +35,10 @@ class Cell:
     text: str = ''
     bbox: Optional[BBox] = None
 
+    def __post_init__(self):
+        if isinstance(self.text, str):
+            self.text = unicodedata.normalize('NFKC', self.text)
+
 
 @dataclass
 class SectionPath:
@@ -46,7 +51,18 @@ class SectionPath:
 class Block:
     page: PageRef
     section: SectionPath = field(default_factory=SectionPath)
-    extra_data: dict = None
+    lines: List[str] = []
+
+    def __post_init__(self):
+        for f in self.__dataclass_fields__.values():
+            val = getattr(self, f.name)
+            if isinstance(val, str):
+                setattr(self, f.name, unicodedata.normalize('NFKC', val))
+            elif isinstance(val, list):
+                setattr(self, f.name, [
+                    unicodedata.normalize('NFKC', s) if isinstance(s, str) else s
+                    for s in val
+                ])
 
     @property
     def ty(self) -> str:
@@ -64,18 +80,21 @@ class HeadingBlock(Block):
     level: int = -1
     md_title_level: int = -1
     text: str = ''
+    anchor: str = ''
 
     def __post_init__(self):
+        super().__post_init__()
         # Parse markdown title level
         m = re.match(r'^(#+)\s*(.*)$', self.text.strip())
         if m:
-            self.md_title_level = len(m.group(1)), m.group(2).strip()
+            self.md_title_level = len(m.group(1))
+            self.text = m.group(2).strip()
 
         if self.level == -1 and self.md_title_level > 0:
             self.level = self.md_title_level
 
-        # Normalize title
-        self.text = self.text.strip().replace(' ', '-').replace('\n', '-')[:64]
+        if not self.anchor:
+            self.anchor = self._make_anchor(self.text)
 
     @property
     def ty(self) -> str:
@@ -86,6 +105,10 @@ class HeadingBlock(Block):
 
     def update_metadata(self, d: dict) -> None:
         d['text_level'] = self.level
+
+    @staticmethod
+    def _make_anchor(text: str) -> str:
+        return text.strip().replace(' ', '-').replace('\n', '-')[:64]
 
 
 @dataclass
@@ -129,7 +152,6 @@ class TableBlock(Block):
     def _cells_to_markdown(self) -> str:
         if not self.cells:
             return ''
-        # Simple markdown generation from cells
         rows: dict = {}
         for cell in self.cells:
             rows.setdefault(cell.row, []).append(cell)

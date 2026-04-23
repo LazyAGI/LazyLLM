@@ -68,9 +68,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
 
         if label in ('paragraph_title', 'doc_title'):
             return HeadingBlock(page=page, text=content)
-        elif label == 'text':
-            return ParagraphBlock(page=page, text=content)
-        elif label in ('image', 'figure'):
+        elif label in ('image', 'chart'):
             img_src = self._extract_img_path(content)
             image_path = self._resolve_image_path(img_src, markdown_images)
             return FigureBlock(page=page, image_path=image_path)
@@ -80,11 +78,12 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                 cells=self._parse_table_html(content),
                 page_range=(page_idx, page_idx),
             )
-        elif label == 'formula':
+        elif label in ('display_formula', 'inline_formula'):
             return FormulaBlock(page=page, latex=content, inline=False)
-        elif label == 'code':
+        elif label in ('code', 'algorithm'):
             return CodeBlock(page=page, text=content)
-        return None
+        else:
+            return ParagraphBlock(page=page, text=content)
 
     def _resolve_image_path(self, img_src: str, markdown_images: Dict[str, str]) -> Path:
         img_b64 = markdown_images[img_src]
@@ -100,23 +99,9 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         soup = bs4.BeautifulSoup(html, 'html.parser')
         return soup.find('img')['src']
 
-    def _parse_table_html(self, html_text: str) -> List[Cell]:
-        soup = bs4.BeautifulSoup(html_text, 'html.parser')
-        cells: List[Cell] = []
-        for row_idx, tr in enumerate(soup.find('table').find_all('tr')):
-            for col_idx, td in enumerate(tr.find_all(['td', 'th'])):
-                cells.append(Cell(
-                    row=row_idx,
-                    col=col_idx,
-                    rowspan=int(td.get('rowspan', 1)),
-                    colspan=int(td.get('colspan', 1)),
-                    text=td.get_text(strip=True),
-                ))
-        return cells
-
     @override
     def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
-                                  extra_info: Optional[Dict] = None) -> List[DocNode]:
+            extra_info: Optional[Dict] = None) -> List[DocNode]:
         docs = []
         global_metadata = dict(extra_info) if extra_info else {}
         global_metadata['image_cache_dir'] = str(self._image_cache_dir)
@@ -128,7 +113,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                 'file_path': str(file),
                 'type': b.ty,
                 'page': b.page.index,
-                'bbox': [b.page.bbox.x0, b.page.bbox.y0, b.page.bbox.x1, b.page.bbox.y1],
+                'bbox': b.page.bbox.to_list(),
                 'section_path': b.section.anchors,
             }
             b.update_metadata(metadata)
