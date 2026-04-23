@@ -427,7 +427,8 @@ class Pipeline(LazyLLMFlowsBase):
         if bind_flag:
             lazyllm.LOG.debug(f'add {self.id()} to bind_args')
             locals['bind_args'][self.id()] = bind_args_source
-        for iteration_idx in range(self._loop_count):
+        _iteration_idx = -1
+        for _iteration_idx in range(self._loop_count):
             for it in self._items:
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
                 kw.clear()
@@ -441,7 +442,7 @@ class Pipeline(LazyLLMFlowsBase):
                 break
         if isinstance(self, Loop):
             # Consumed in tracing: LazyTracingHook.post_hook -> collect_trace_output_attrs (Loop)
-            self._trace_actual_iterations = iteration_idx + 1
+            self._trace_actual_iterations = _iteration_idx + 1
         if bind_flag:
             lazyllm.LOG.debug(f'delete {self.id()} form bind_args')
             locals['bind_args'].pop(self.id(), None)
