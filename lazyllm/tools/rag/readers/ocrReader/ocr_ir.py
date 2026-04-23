@@ -45,6 +45,7 @@ class SectionPath:
 class Block:
     page: PageRef
     section: SectionPath = field(default_factory=SectionPath)
+    extra_data: dict = None
 
     @property
     def ty(self) -> str:
@@ -184,6 +185,7 @@ class CodeBlock(Block):
 
     def update_metadata(self, d: dict) -> None:
         d['code_type'] = self.language
+        d['code_caption'] = self.caption
 
 
 @dataclass

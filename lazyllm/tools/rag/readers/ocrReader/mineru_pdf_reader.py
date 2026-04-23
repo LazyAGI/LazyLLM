@@ -117,8 +117,17 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         for item in content_list:
             block = self._adapt_one(item)
             if block is not None:
+                if self._lazyllm_patch_applied and 'lines' in item:
+                    block.extra_data['lines'] = self._normalize_content(item['lines'])
                 blocks.append(block)
         return blocks
+
+    def _normalize_content(self, content):
+        if isinstance(content, str):
+            return content.encode('utf-8', 'replace').decode('utf-8')
+        elif isinstance(content, list):
+            return [t.encode('utf-8', 'replace').decode('utf-8') for t in content]
+        raise TypeError(f'Not supported type: {type(content)}.')
 
     def _adapt_one(self, item: dict) -> Optional[Block]:
         ty = item['type']
@@ -189,6 +198,8 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
                 'section_path': b.section.anchors,
             }
             b.update_metadata(metadata)
+            if b.extra_data:
+                metadata.update(b.extra_data)
             node = DocNode(text=text, metadata=metadata, global_metadata=global_metadata)
             node.excluded_embed_metadata_keys = [k for k in metadata if k not in ('file_name', 'text')]
             node.excluded_llm_metadata_keys = [k for k in metadata if k not in ('file_name', 'text')]
