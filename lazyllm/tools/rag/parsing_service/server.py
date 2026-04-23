@@ -30,7 +30,6 @@ from ..store.document_store import _DocumentStore
 from ..store.utils import create_file_path
 from ..utils import BaseResponse, ensure_call_endpoint, _get_default_db_config, _orm_to_dict
 from ..doc_to_db import SchemaExtractor
-from ..doc_impl import _compute_node_group_signature, NodeGroupType
 from ...sql import SqlManager
 
 CALLBACK_RETRY_MIN_INTERVAL = 5.0
@@ -375,6 +374,7 @@ class DocumentProcessor(ModuleBase):
                 raise
 
         def _upsert_node_groups(self, node_groups: Dict[str, Dict], reader: DirectoryReader) -> List[str]:
+            from ..doc_impl import _compute_node_group_signature, NodeGroupType
             NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
             reader_sig = reader.signature() if reader is not None else ''
             # Build signatures in topological order (parent before child)
@@ -414,6 +414,7 @@ class DocumentProcessor(ModuleBase):
             self._lazy_init()
             LOG.info(f'[DocumentProcessor] Register new node group: name={name}')
             try:
+                from ..doc_impl import _compute_node_group_signature, NodeGroupType
                 NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
                 transform = config.get('transform') or config.get('args')
                 group_type = config.get('group_type', NodeGroupType.CHUNK)

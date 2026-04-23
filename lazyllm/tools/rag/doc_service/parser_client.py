@@ -80,7 +80,8 @@ class ParserClient:
         )
 
     def delete_doc(self, task_id: str, algo_id: str, kb_id: str, doc_id: str,
-                   callback_url: Optional[str] = None):
+                   callback_url: Optional[str] = None,
+                   node_group_ids_to_delete: Optional[List[str]] = None):
         req = ParsingDeleteDocRequest(
             task_id=task_id,
             algo_id=algo_id,
@@ -88,6 +89,7 @@ class ParserClient:
             doc_ids=[doc_id],
             callback_url=callback_url,
             feedback_url=callback_url,
+            node_group_ids_to_delete=node_group_ids_to_delete,
         )
         return BaseResponse.model_validate(self._request('DELETE', '/doc/delete', json=req.model_dump(mode='json')))
 

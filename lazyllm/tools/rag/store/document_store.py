@@ -324,7 +324,8 @@ class _DocumentStore(object):
             raise
 
     def remove_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                     group: Optional[str] = None, kb_id: Optional[str] = None, **kwargs) -> None:
+                     group: Optional[str] = None, kb_id: Optional[str] = None,
+                     node_group_ids_to_delete: Optional[List[str]] = None, **kwargs) -> None:
         # remove a set of nodes by uids
         # remove the nodes of the whole file -- doc ids only
         # remove the nodes of a certain group for one file -- doc ids and group (kb_id is optional)
@@ -338,7 +339,11 @@ class _DocumentStore(object):
             if kb_id:
                 criteria[RAG_KB_ID] = kb_id
             if not group:
-                groups = self._activated_groups
+                if node_group_ids_to_delete is not None:
+                    # Only delete data for the specified node groups (used for unbind_algo).
+                    groups = [g for g in self._activated_groups if g in node_group_ids_to_delete]
+                else:
+                    groups = self._activated_groups
             else:
                 groups = [group]
             for group in groups:

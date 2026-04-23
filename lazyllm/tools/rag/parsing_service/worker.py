@@ -422,7 +422,9 @@ class DocumentProcessorWorker(ModuleBase):
             try:
                 kb_id = payload.get('kb_id')
                 doc_ids = payload.get('doc_ids')
-                processor.delete_doc(doc_ids=doc_ids, kb_id=kb_id)
+                node_group_ids_to_delete = payload.get('node_group_ids_to_delete')
+                processor.delete_doc(doc_ids=doc_ids, kb_id=kb_id,
+                                     node_group_ids_to_delete=node_group_ids_to_delete)
             except Exception as e:
                 LOG.error(f'{self._log_prefix(task_id)} Execute delete task failed: {e}')
                 raise e

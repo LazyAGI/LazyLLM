@@ -386,9 +386,11 @@ class _Processor:
             LOG.error(f'Failed to update doc meta: {e}, {traceback.format_exc()}')
             raise e
 
-    def delete_doc(self, doc_ids: List[str] = None, kb_id: str = None) -> None:
+    def delete_doc(self, doc_ids: List[str] = None, kb_id: str = None,
+                   node_group_ids_to_delete: Optional[List[str]] = None) -> None:
         try:
-            self._store.remove_nodes(kb_id=kb_id, doc_ids=doc_ids)
+            self._store.remove_nodes(kb_id=kb_id, doc_ids=doc_ids,
+                                     node_group_ids_to_delete=node_group_ids_to_delete)
             if self._schema_extractor:
                 self._schema_extractor._delete_extract_data(algo_id=self._algo_id, kb_id=kb_id, doc_ids=doc_ids)
         except Exception as e:

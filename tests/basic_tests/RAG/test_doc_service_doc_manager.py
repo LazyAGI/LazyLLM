@@ -89,6 +89,20 @@ class _ManagerHarness:
             status=DocStatus.WORKING,
         ))
 
+    def set_ng_status(self, kb_id: str, doc_id: str, ng_ids, status: str = 'SUCCESS'):
+        '''Simulate parser worker writing ng_status after successful parse.'''
+        NgStatus = self.manager._db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
+        from datetime import datetime as _dt
+        with self.manager._db_manager.get_session() as session:
+            for ng_id in ng_ids:
+                row = session.query(NgStatus).filter(
+                    NgStatus.kb_id == kb_id, NgStatus.doc_id == doc_id,
+                    NgStatus.node_group_id == ng_id,
+                ).first()
+                if row:
+                    row.status = status
+                    row.updated_at = _dt.now()
+
     def _queue_task(self, task_id: str, final_status: DocStatus):
         self.pending_task_status[task_id] = final_status
 
@@ -114,9 +128,12 @@ class _ManagerHarness:
             self._queue_task(task_id, DocStatus.SUCCESS)
             return BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
 
-        def delete_doc(task_id, algo_id, kb_id, doc_id, callback_url=None):
+        def delete_doc(task_id, algo_id, kb_id, doc_id, callback_url=None, node_group_ids_to_delete=None):
             del callback_url
-            self.delete_calls.append({'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id, 'doc_id': doc_id})
+            self.delete_calls.append({
+                'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id, 'doc_id': doc_id,
+                'node_group_ids_to_delete': node_group_ids_to_delete,
+            })
             self._queue_task(task_id, DocStatus.SUCCESS)
             return BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
 
@@ -1325,3 +1342,475 @@ def test_list_docs_page_and_size_are_clamped(manager_harness):
     resp_neg = manager_harness.manager.list_docs(kb_id=kb_id, page=-5, page_size=-1)
     assert resp_neg['page'] == 1
     assert resp_neg['page_size'] == 1
+
+
+# ======================================================================
+# Multi-algo node-group reuse tests
+#
+# Background:
+#   algo1 owns ng_ids [ng1, ng2, ng3]
+#   algo2 owns ng_ids [ng1, ng4, ng5]
+#   algo3 owns ng_ids [ng1, ng6, ng7]
+#   ng1 is shared across all three algos within the same kb.
+#
+# These tests encode the contract that shared node groups are never
+# double-reset, double-deleted, or left as stale records when an algo
+# is unbound.
+# ======================================================================
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_ALGO_NG_MAP = {
+    'algo1': ['ng1', 'ng2', 'ng3'],
+    'algo2': ['ng1', 'ng4', 'ng5'],
+    'algo3': ['ng1', 'ng6', 'ng7'],
+}
+
+
+def _patch_multi_algo(harness):
+    '''Replace get_algorithm_groups and list_algorithms with versions that know all three algos.'''
+    def get_algorithm_groups(algo_id):
+        ng_ids = _ALGO_NG_MAP.get(algo_id)
+        if ng_ids is None:
+            return BaseResponse(code=404, msg='algo not found', data=None)
+        data = {'node_group_ids': ng_ids}
+        return BaseResponse(code=200, msg='success', data=data)
+
+    all_algo_ids = list(_ALGO_NG_MAP.keys())
+    harness.manager._parser_client.list_algorithms = lambda: BaseResponse(
+        code=200, msg='success',
+        data=[{'algo_id': a, 'display_name': a, 'description': ''} for a in all_algo_ids],
+    )
+    harness.manager._parser_client.get_algorithm_groups = get_algorithm_groups
+
+
+def _ng_statuses(harness, kb_id, doc_id):
+    '''Return {node_group_id: status} for a given (kb_id, doc_id).'''
+    NgStatus = harness.manager._db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
+    with harness.manager._db_manager.get_session() as session:
+        rows = session.query(NgStatus).filter(
+            NgStatus.kb_id == kb_id, NgStatus.doc_id == doc_id,
+        ).all()
+        return {r.node_group_id: r.status for r in rows}
+
+
+def _upload_doc(harness, kb_id, doc_id, filename='doc.txt'):
+    fp = harness.make_file(filename, f'content of {doc_id}')
+    items = harness.manager.upload(UploadRequest(
+        kb_id=kb_id,
+        items=[AddFileItem(file_path=fp, doc_id=doc_id)],
+    ))
+    return fp, items
+
+
+# ---------------------------------------------------------------------------
+# Scenario 1: single kb + single algo — baseline
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario1_single_kb_single_algo(manager_harness):
+    '''Scenario 1: create kb1 with algo1, add docs → ng1/ng2/ng3 all get PENDING then SUCCESS.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb1', algo_id='algo1')
+
+    fp, items = _upload_doc(manager_harness, 'kb1', 'doc1', 'doc1.txt')
+    assert items[0]['accepted'] is True
+    task_id = items[0]['task_id']
+
+    # Before callback: ng1/ng2/ng3 should be PENDING
+    statuses = _ng_statuses(manager_harness, 'kb1', 'doc1')
+    assert set(statuses.keys()) == {'ng1', 'ng2', 'ng3'}
+    assert all(v == 'PENDING' for v in statuses.values())
+
+    # Simulate parser writing SUCCESS for all ngs, then finish the task
+    manager_harness.set_ng_status('kb1', 'doc1', ['ng1', 'ng2', 'ng3'], 'SUCCESS')
+    manager_harness.finish_task(task_id)
+
+    statuses = _ng_statuses(manager_harness, 'kb1', 'doc1')
+    assert all(v == 'SUCCESS' for v in statuses.values())
+
+
+# ---------------------------------------------------------------------------
+# Scenario 2: single kb + two algos — shared ng1 has only one ng_status row
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario2_two_algos_shared_ng_single_row(manager_harness):
+    '''Scenario 2: kb2 with algo1+algo3, add doc → ng1 has exactly one ng_status row.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb2', algo_id='algo1')
+    mgr.update_kb('kb2', algo_id='algo3')
+
+    fp, items = _upload_doc(manager_harness, 'kb2', 'doc2', 'doc2.txt')
+    # Two tasks enqueued (one per algo)
+    assert len(items) == 1
+    task_id_algo1 = items[0]['task_id']
+
+    # Finish algo1 task
+    manager_harness.finish_task(task_id_algo1)
+
+    # Find algo3 task
+    add_calls_algo3 = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo3']
+    assert len(add_calls_algo3) == 1
+    manager_harness.finish_task(add_calls_algo3[0]['task_id'])
+
+    statuses = _ng_statuses(manager_harness, 'kb2', 'doc2')
+    # ng1 shared → exactly one row; ng2/ng3 from algo1; ng6/ng7 from algo3
+    assert set(statuses.keys()) == {'ng1', 'ng2', 'ng3', 'ng6', 'ng7'}
+    # ng1 must appear only once (shared, not duplicated)
+    NgStatus = mgr._db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
+    with mgr._db_manager.get_session() as session:
+        count = session.query(NgStatus).filter(
+            NgStatus.kb_id == 'kb2', NgStatus.doc_id == 'doc2',
+            NgStatus.node_group_id == 'ng1',
+        ).count()
+    assert count == 1, 'shared ng1 must have exactly one ng_status row'
+
+
+# ---------------------------------------------------------------------------
+# Scenario 3a: add algo2 to kb1 (which already has algo1 with parsed docs)
+#              reparse for algo2 must NOT reset ng1 (shared with algo1)
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario3a_reparse_skips_shared_ng(manager_harness):
+    '''Scenario 3a: kb1 has algo1 (ng1/ng2/ng3 SUCCESS). Add algo2 and reparse all.
+    Reparse must only touch ng4/ng5 (algo2-exclusive); ng1 must stay SUCCESS.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb1s3', algo_id='algo1')
+
+    fp, items = _upload_doc(manager_harness, 'kb1s3', 'doc1s3', 'doc1s3.txt')
+    manager_harness.finish_task(items[0]['task_id'])
+
+    # Simulate parser writing SUCCESS for ng1/ng2/ng3
+    manager_harness.set_ng_status('kb1s3', 'doc1s3', ['ng1', 'ng2', 'ng3'], 'SUCCESS')
+
+    # Verify ng1/ng2/ng3 are SUCCESS
+    statuses = _ng_statuses(manager_harness, 'kb1s3', 'doc1s3')
+    assert statuses == {'ng1': 'SUCCESS', 'ng2': 'SUCCESS', 'ng3': 'SUCCESS'}
+
+    # Add algo2 to kb1s3
+    mgr.update_kb('kb1s3', algo_id='algo2')
+
+    # Reparse all for algo2 (ng1 is shared with algo1 → must be skipped)
+    task_ids = mgr.reparse(ReparseRequest(
+        kb_id='kb1s3', algo_id='algo2', doc_ids=['doc1s3'],
+    ))
+    assert len(task_ids) == 1
+
+    # ng1 must still be SUCCESS (not reset to PENDING)
+    statuses_after = _ng_statuses(manager_harness, 'kb1s3', 'doc1s3')
+    assert statuses_after['ng1'] == 'SUCCESS', 'shared ng1 must not be reset by algo2 reparse'
+    # ng4/ng5 must be PENDING (algo2-exclusive, being reparsed)
+    assert statuses_after['ng4'] == 'PENDING'
+    assert statuses_after['ng5'] == 'PENDING'
+
+    # The reparse task sent to parser must NOT include ng1
+    reparse_calls = [c for c in manager_harness.add_doc_calls
+                     if c['algo_id'] == 'algo2' and c['reparse_group'] is not None]
+    assert len(reparse_calls) == 1
+    sent_group = reparse_calls[0]['reparse_group']
+    import json as _json
+    sent_ngs = _json.loads(sent_group) if isinstance(sent_group, str) else sent_group
+    assert 'ng1' not in sent_ngs, 'parser must not receive ng1 in reparse task'
+    assert set(sent_ngs) == {'ng4', 'ng5'}
+
+
+# ---------------------------------------------------------------------------
+# Scenario 3b: explicit single-ng reparse is always allowed even if shared
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario3b_explicit_single_ng_reparse_allowed(manager_harness):
+    '''Scenario 3b: user explicitly requests reparse of ng1 (shared). Must be allowed.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb1s3b', algo_id='algo1')
+    mgr.update_kb('kb1s3b', algo_id='algo2')
+
+    fp, items = _upload_doc(manager_harness, 'kb1s3b', 'doc1s3b', 'doc1s3b.txt')
+    manager_harness.finish_task(items[0]['task_id'])
+    algo2_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo2']
+    manager_harness.finish_task(algo2_calls[0]['task_id'])
+    # Simulate parser writing SUCCESS for all ngs
+    manager_harness.set_ng_status('kb1s3b', 'doc1s3b', ['ng1', 'ng2', 'ng3', 'ng4', 'ng5'], 'SUCCESS')
+
+    # Explicit reparse of ng1 via algo1 — must succeed and reset ng1 to PENDING
+    task_ids = mgr.reparse(ReparseRequest(
+        kb_id='kb1s3b', algo_id='algo1', doc_ids=['doc1s3b'], reparse_group='ng1',
+    ))
+    assert len(task_ids) == 1
+    statuses = _ng_statuses(manager_harness, 'kb1s3b', 'doc1s3b')
+    assert statuses['ng1'] == 'PENDING', 'explicit single-ng reparse must reset ng1 to PENDING'
+
+
+# ---------------------------------------------------------------------------
+# Scenario 3c: new doc added after algo2 is bound → all ngs (ng1..ng5) parsed
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario3c_new_doc_after_second_algo_bound(manager_harness):
+    '''Scenario 3c: kb1 has algo1+algo2. New doc → tasks for both algos, ng1 has one row.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb1s3c', algo_id='algo1')
+    mgr.update_kb('kb1s3c', algo_id='algo2')
+
+    fp, items = _upload_doc(manager_harness, 'kb1s3c', 'doc_new', 'doc_new.txt')
+
+    # Two add_doc calls must have been made (one per algo)
+    algo1_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo1']
+    algo2_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo2']
+    assert len(algo1_calls) >= 1
+    assert len(algo2_calls) >= 1
+
+    manager_harness.finish_task(algo1_calls[-1]['task_id'])
+    manager_harness.finish_task(algo2_calls[-1]['task_id'])
+
+    statuses = _ng_statuses(manager_harness, 'kb1s3c', 'doc_new')
+    assert set(statuses.keys()) == {'ng1', 'ng2', 'ng3', 'ng4', 'ng5'}
+
+    # ng1 must appear exactly once
+    NgStatus = mgr._db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
+    with mgr._db_manager.get_session() as session:
+        count = session.query(NgStatus).filter(
+            NgStatus.kb_id == 'kb1s3c', NgStatus.doc_id == 'doc_new',
+            NgStatus.node_group_id == 'ng1',
+        ).count()
+    assert count == 1
+
+
+# ---------------------------------------------------------------------------
+# Scenario 4: delete docs from kb2 (algo1+algo3) → all ng_status rows removed
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario4_delete_doc_cleans_all_ng_status(manager_harness):
+    '''Scenario 4: delete a doc from kb2 (algo1+algo3) → ng_status rows for all ngs removed.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb2s4', algo_id='algo1')
+    mgr.update_kb('kb2s4', algo_id='algo3')
+
+    fp, items = _upload_doc(manager_harness, 'kb2s4', 'doc_del', 'doc_del.txt')
+    algo1_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo1']
+    algo3_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo3']
+    manager_harness.finish_task(algo1_calls[-1]['task_id'])
+    manager_harness.finish_task(algo3_calls[-1]['task_id'])
+
+    # Verify ng_status rows exist before delete
+    statuses_before = _ng_statuses(manager_harness, 'kb2s4', 'doc_del')
+    assert set(statuses_before.keys()) == {'ng1', 'ng2', 'ng3', 'ng6', 'ng7'}
+
+    # Delete the doc
+    del_items = mgr.delete(DeleteRequest(kb_id='kb2s4', doc_ids=['doc_del']))
+    assert len(del_items) == 1
+
+    # Finish delete tasks for both algos
+    for call in manager_harness.delete_calls:
+        manager_harness.finish_task(call['task_id'])
+
+    # All ng_status rows must be gone
+    statuses_after = _ng_statuses(manager_harness, 'kb2s4', 'doc_del')
+    assert statuses_after == {}, 'all ng_status rows must be removed after full doc delete'
+
+
+# ---------------------------------------------------------------------------
+# Scenario 5: unbind algo1 from kb2 (algo1+algo3) → ng2/ng3 deleted, ng1 preserved
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario5_unbind_algo_preserves_shared_ng(manager_harness):
+    '''Scenario 5: kb2 has algo1(ng1/ng2/ng3) + algo3(ng1/ng6/ng7).
+    Unbind algo1 → parser receives node_group_ids_to_delete=[ng2,ng3] (not ng1).
+    ng_status rows for ng2/ng3 removed; ng1/ng6/ng7 preserved.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb2s5', algo_id='algo1')
+    mgr.update_kb('kb2s5', algo_id='algo3')
+
+    fp, items = _upload_doc(manager_harness, 'kb2s5', 'doc_s5', 'doc_s5.txt')
+    # Finish tasks for both algos
+    algo1_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo1']
+    algo3_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo3']
+    assert len(algo1_calls) >= 1 and len(algo3_calls) >= 1
+    manager_harness.finish_task(algo1_calls[-1]['task_id'])
+    manager_harness.finish_task(algo3_calls[-1]['task_id'])
+    # Simulate parser writing SUCCESS for all ngs
+    manager_harness.set_ng_status('kb2s5', 'doc_s5', ['ng1', 'ng2', 'ng3', 'ng6', 'ng7'], 'SUCCESS')
+
+    statuses_before = _ng_statuses(manager_harness, 'kb2s5', 'doc_s5')
+    assert set(statuses_before.keys()) == {'ng1', 'ng2', 'ng3', 'ng6', 'ng7'}
+
+    # Unbind algo1
+    result = mgr.unbind_algo('kb2s5', 'algo1')
+    assert len(result['task_ids']) == 1
+
+    # The delete task sent to parser must only target ng2/ng3 (algo1-exclusive)
+    del_calls_algo1 = [c for c in manager_harness.delete_calls if c['algo_id'] == 'algo1']
+    assert len(del_calls_algo1) == 1
+    ngs_to_delete = del_calls_algo1[0]['node_group_ids_to_delete']
+    assert ngs_to_delete is not None
+    assert set(ngs_to_delete) == {'ng2', 'ng3'}, \
+        f'parser must only delete ng2/ng3; got {ngs_to_delete}'
+    assert 'ng1' not in ngs_to_delete, 'shared ng1 must NOT be in node_group_ids_to_delete'
+
+    # Finish the delete task
+    manager_harness.finish_task(del_calls_algo1[0]['task_id'])
+
+    # ng2/ng3 ng_status rows must be gone; ng1/ng6/ng7 must remain
+    statuses_after = _ng_statuses(manager_harness, 'kb2s5', 'doc_s5')
+    assert 'ng2' not in statuses_after, 'ng2 ng_status must be removed after unbind'
+    assert 'ng3' not in statuses_after, 'ng3 ng_status must be removed after unbind'
+    assert 'ng1' in statuses_after, 'shared ng1 ng_status must be preserved'
+    assert 'ng6' in statuses_after
+    assert 'ng7' in statuses_after
+
+    # algo1 binding must be removed from kb_algorithm
+    remaining_algos = mgr._get_kb_algorithms('kb2s5')
+    assert 'algo1' not in remaining_algos
+    assert 'algo3' in remaining_algos
+
+
+# ---------------------------------------------------------------------------
+# Scenario 6: reparse a single ng (ng3) in kb1
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario6_reparse_single_ng(manager_harness):
+    '''Scenario 6: user requests reparse of ng3 only in kb1 (algo1). Only ng3 reset to PENDING.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb1s6', algo_id='algo1')
+
+    fp, items = _upload_doc(manager_harness, 'kb1s6', 'doc_s6', 'doc_s6.txt')
+    algo1_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo1']
+    manager_harness.finish_task(algo1_calls[-1]['task_id'])
+    # Simulate parser writing SUCCESS
+    manager_harness.set_ng_status('kb1s6', 'doc_s6', ['ng1', 'ng2', 'ng3'], 'SUCCESS')
+
+    statuses_before = _ng_statuses(manager_harness, 'kb1s6', 'doc_s6')
+    assert statuses_before == {'ng1': 'SUCCESS', 'ng2': 'SUCCESS', 'ng3': 'SUCCESS'}
+
+    task_ids = mgr.reparse(ReparseRequest(
+        kb_id='kb1s6', algo_id='algo1', doc_ids=['doc_s6'], reparse_group='ng3',
+    ))
+    assert len(task_ids) == 1
+
+    statuses_after = _ng_statuses(manager_harness, 'kb1s6', 'doc_s6')
+    assert statuses_after['ng3'] == 'PENDING', 'ng3 must be reset to PENDING'
+    assert statuses_after['ng1'] == 'SUCCESS', 'ng1 must remain SUCCESS'
+    assert statuses_after['ng2'] == 'SUCCESS', 'ng2 must remain SUCCESS'
+
+    # Parser must receive reparse_group='ng3'
+    reparse_calls = [c for c in manager_harness.add_doc_calls
+                     if c['algo_id'] == 'algo1' and c['reparse_group'] is not None]
+    assert reparse_calls[-1]['reparse_group'] == 'ng3'
+
+
+# ---------------------------------------------------------------------------
+# Scenario 7: add_docs without algo_id → auto-resolves all bound algos
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario7_add_docs_auto_resolves_algos(manager_harness):
+    '''Scenario 7: upload without algo_id → DocManager auto-queries kb bindings.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb1s7', algo_id='algo1')
+    mgr.update_kb('kb1s7', algo_id='algo2')
+
+    fp = manager_harness.make_file('doc_s7.txt', 'content')
+    # No algo_id / algo_ids provided
+    items = mgr.upload(UploadRequest(
+        kb_id='kb1s7',
+        items=[AddFileItem(file_path=fp, doc_id='doc_s7')],
+    ))
+    assert items[0]['accepted'] is True
+
+    # Both algo1 and algo2 must have received add_doc calls
+    algo1_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo1']
+    algo2_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo2']
+    assert len(algo1_calls) >= 1
+    assert len(algo2_calls) >= 1
+
+    # ng_status must cover ng1..ng5 (union of algo1 and algo2)
+    statuses = _ng_statuses(manager_harness, 'kb1s7', 'doc_s7')
+    assert set(statuses.keys()) == {'ng1', 'ng2', 'ng3', 'ng4', 'ng5'}
+
+
+# ---------------------------------------------------------------------------
+# Scenario 8: add_docs with no algo bound → must raise E_STATE_CONFLICT
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario8_upload_no_algo_bound_raises(manager_harness):
+    '''Scenario 8: upload to a kb with no algo bound must raise E_STATE_CONFLICT.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb_noalgo', algo_id='algo1')
+    # Manually remove the algo binding to simulate a kb with no algo
+    KbAlgo = mgr._db_manager.get_table_orm_class('lazyllm_kb_algorithm')
+    with mgr._db_manager.get_session() as session:
+        session.query(KbAlgo).filter(KbAlgo.kb_id == 'kb_noalgo').delete()
+
+    fp = manager_harness.make_file('noalgo.txt', 'content')
+    with pytest.raises(DocServiceError) as exc_info:
+        mgr.upload(UploadRequest(
+            kb_id='kb_noalgo',
+            items=[AddFileItem(file_path=fp, doc_id='doc_noalgo')],
+        ))
+    assert exc_info.value.biz_code == 'E_STATE_CONFLICT'
+
+
+# ---------------------------------------------------------------------------
+# Scenario 9: unbind last algo must be rejected
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario9_unbind_last_algo_rejected(manager_harness):
+    '''Scenario 9: unbinding the last algo from a kb must raise E_STATE_CONFLICT.'''
+    mgr = manager_harness.manager
+    _patch_multi_algo(manager_harness)
+    mgr.create_kb('kb_last', algo_id='algo1')
+
+    with pytest.raises(DocServiceError) as exc_info:
+        mgr.unbind_algo('kb_last', 'algo1')
+    assert exc_info.value.biz_code == 'E_STATE_CONFLICT'
+
+
+# ---------------------------------------------------------------------------
+# Scenario 10: reparse all when all ngs are shared → no task submitted
+# ---------------------------------------------------------------------------
+
+def test_multi_algo_scenario10_reparse_all_shared_ngs_no_task(manager_harness):
+    '''Scenario 10: algo2 has ng1 (shared with algo1). Reparse all for algo2 when
+    all its ngs are shared → pending_ng_ids is empty → no task submitted.'''
+    mgr = manager_harness.manager
+
+    # Create a special algo whose only ng is ng1 (fully shared with algo1)
+    special_map = {'algo1': ['ng1', 'ng2', 'ng3'], 'algo_shared_only': ['ng1']}
+
+    def get_algorithm_groups_special(algo_id):
+        ng_ids = special_map.get(algo_id)
+        if ng_ids is None:
+            return BaseResponse(code=404, msg='algo not found', data=None)
+        return BaseResponse(code=200, msg='success', data={'node_group_ids': ng_ids})
+
+    mgr._parser_client.list_algorithms = lambda: BaseResponse(
+        code=200, msg='success',
+        data=[{'algo_id': a, 'display_name': a, 'description': ''} for a in special_map],
+    )
+    mgr._parser_client.get_algorithm_groups = get_algorithm_groups_special
+
+    mgr.create_kb('kb_shared_only', algo_id='algo1')
+    mgr.update_kb('kb_shared_only', algo_id='algo_shared_only')
+
+    fp, items = _upload_doc(manager_harness, 'kb_shared_only', 'doc_so', 'doc_so.txt')
+    manager_harness.finish_task(items[0]['task_id'])
+    algo_so_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo_shared_only']
+    if algo_so_calls:
+        manager_harness.finish_task(algo_so_calls[0]['task_id'])
+
+    # Reparse all for algo_shared_only → all its ngs are shared → no new task
+    add_calls_before = len(manager_harness.add_doc_calls)
+    task_ids = mgr.reparse(ReparseRequest(
+        kb_id='kb_shared_only', algo_id='algo_shared_only', doc_ids=['doc_so'],
+    ))
+    assert task_ids == [], 'no reparse task should be submitted when all ngs are shared'
+    assert len(manager_harness.add_doc_calls) == add_calls_before, \
+        'no new add_doc call should be made'

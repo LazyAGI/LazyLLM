@@ -86,6 +86,9 @@ class DeleteDocRequest(BaseModel):
     # NOTE: (db_info) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None
+    # When set, only delete data for these node group ids. Used for unbind_algo where shared
+    # node groups must be preserved for other algos in the same kb. None means delete all.
+    node_group_ids_to_delete: Optional[List[str]] = None
 
     @model_validator(mode='before')
     @classmethod

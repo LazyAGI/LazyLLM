@@ -105,15 +105,18 @@ class DocItemsRequest(BaseModel):
             raise ValueError('items is required')
         if self.algo_id is not None and self.algo_ids is not None:
             raise ValueError('algo_id and algo_ids cannot both be provided')
-        if self.algo_id is None and self.algo_ids is None:
-            raise ValueError('one of algo_id or algo_ids is required')
         if self.algo_ids is not None and len(set(self.algo_ids)) != len(self.algo_ids):
             raise ValueError('algo_ids must not contain duplicates')
         return self
 
     @property
-    def effective_algo_ids(self) -> List[str]:
-        return self.algo_ids if self.algo_ids is not None else [self.algo_id or '__default__']
+    def effective_algo_ids(self) -> Optional[List[str]]:
+        # None means "auto-resolve from kb bindings at call time"
+        if self.algo_ids is not None:
+            return self.algo_ids
+        if self.algo_id is not None:
+            return [self.algo_id]
+        return None
 
 
 AddRequest = DocItemsRequest
