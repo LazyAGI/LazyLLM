@@ -14,32 +14,11 @@ from .ocr_ir import (
 
 # ---------- L1: Normalize ----------
 
-def l1_normalize(blocks: List[Block], page_size: Optional[Tuple[float, float]] = None) -> List[Block]:
-    blocks = _filter_noise(blocks, page_size)
+def l1_normalize(blocks: List[Block]) -> List[Block]:
     blocks = _reorder_reading(blocks)
     blocks = _normalize_headings(blocks)
     blocks = _drop_toc_pages(blocks)
     return blocks
-
-
-def _filter_noise(blocks: List[Block], page_size: Optional[Tuple[float, float]]) -> List[Block]:
-    if not page_size:
-        page_size = (612.0, 792.0)  # Default A4
-    page_width, page_height = page_size
-    header_threshold = page_height * 0.08
-    footer_threshold = page_height * 0.92
-
-    result: List[Block] = []
-    for b in blocks:
-        bbox = b.page.bbox
-        # Skip if fully in header/footer region and text is short
-        if bbox.y1 < header_threshold or bbox.y0 > footer_threshold:
-            text = b.text_content()
-            if len(text) < 10:
-                continue
-        result.append(b)
-    return result
-
 
 def _reorder_reading(blocks: List[Block]) -> List[Block]:
     if not blocks:

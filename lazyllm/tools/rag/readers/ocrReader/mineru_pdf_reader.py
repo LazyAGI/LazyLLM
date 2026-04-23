@@ -104,18 +104,15 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
     def _build_nodes_from_response(self, response_json: str, file: Path,
             extra_info: Optional[Dict] = None) -> List[DocNode]:
         raw = json.loads(response_json)
-        blocks = self._adapt_raw(raw)
+        blocks = self._adapt_json_to_IR(raw)
+        # Post processing
         blocks = l1_normalize(blocks, self._page_size)
         blocks = l2_associate(blocks)
         return self._build_nodes_from_blocks(blocks, file, extra_info)
 
     @override
-    def _adapt_raw(self, raw) -> List[Block]:
-        if isinstance(raw, list):
-            content_list = raw
-        else:
-            content_list = raw['content_list']
-
+    def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
+        content_list = raw['content_list']
         blocks: List[Block] = []
         for item in content_list:
             block = self._adapt_one(item)
@@ -132,15 +129,6 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         text = item['text']
         page_idx = item['page_idx']
         bbox = BBox.from_list(item['bbox'])
-
-        # patch-specific fields (only for offline with lazyllm_patch_applied)
-        page_width = page_height = None
-        if (self._service_variant == ServiceVariant.OFFLINE and self._lazyllm_patch_applied):
-            page_width = item.get('page_width')
-            page_height = item.get('page_height')
-
-        if page_width and page_height and not self._page_size:
-            self._page_size = (float(page_width), float(page_height))
 
         page = PageRef(index=page_idx, bbox=bbox)
 

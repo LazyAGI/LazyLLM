@@ -32,7 +32,6 @@ class _OcrReaderBase(_RichReader):
         self._image_cache_dir.mkdir(parents=True, exist_ok=True)
         self._service_variant = ServiceVariant(service_variant)
         self._droped_types = droped_types
-        self._page_size = None
 
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
         '''Fetch raw response string from the OCR service.'''
@@ -50,7 +49,7 @@ class _OcrReaderBase(_RichReader):
 
 
 class _Adapter:
-    def _adapt_raw(self, raw: dict) -> List[Block]:
+    def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
         '''Adapt raw JSON response to intermediate block representation.
 
         Subclasses implement service-specific adaptation logic directly.'''

@@ -55,13 +55,13 @@ class PaddleOCRPDFReader(_OcrReaderBase):
     def _build_nodes_from_response(self, response_json: str, file: Path,
                        extra_info: Optional[Dict] = None) -> List[DocNode]:
         raw = json.loads(response_json)
-        blocks = self._adapt_raw(raw)
-        blocks = l1_normalize(blocks, self._page_size)
+        blocks = self._adapt_json_to_IR(raw)
+        blocks = l1_normalize(blocks)
         blocks = l2_associate(blocks)
         return self._build_nodes_from_blocks(blocks, file, extra_info)
 
     @override
-    def _adapt_raw(self, raw: dict) -> List[Block]:
+    def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
         blocks: List[Block] = []
         for page_idx, page_data in enumerate(raw['result']['layoutParsingResults']):
             markdown_images = page_data['markdown']['images']
