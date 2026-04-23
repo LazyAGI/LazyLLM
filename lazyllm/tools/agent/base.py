@@ -3,8 +3,7 @@ from typing import Iterable, Optional, Union
 
 import lazyllm
 from lazyllm.module import ModuleBase
-from lazyllm import locals, once_wrapper, LOG
-from lazyllm.tracing.collect.runtime import current_trace
+from lazyllm import locals, once_wrapper
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager, SKILLS_PROMPT
@@ -22,8 +21,6 @@ from .download_tool import download_file  # noqa: F401
 
 
 class LazyLLMAgentBase(ModuleBase):
-    __semantic_type__ = 'agent'
-
     def __init__(self, llm=None, tools=None, max_retries: int = 5, return_trace: bool = False,
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
@@ -42,8 +39,6 @@ class LazyLLMAgentBase(ModuleBase):
         self._agent = None
         self._skill_manager = None
         self._sandbox = sandbox or create_sandbox()
-        self._llm_metadata_cache: Optional[dict] = None
-        self._llm_metadata_cache_key: Optional[int] = None
 
         if use_skills:
             self._skill_manager = SkillManager(skills=self._skills)
@@ -89,7 +84,6 @@ class LazyLLMAgentBase(ModuleBase):
         self.build_agent()
         if self._agent is None:
             raise RuntimeError('build_agent() did not initialize _agent.')
-        self._record_trace_metadata()
         pre = self._pre_process(*args, **kwargs)
         if isinstance(pre, tuple):
             result = self._agent(*pre)
@@ -101,53 +95,6 @@ class LazyLLMAgentBase(ModuleBase):
 
     def _assert_tools(self):
         assert self._tools, 'tools cannot be empty.'
-
-    def _resolve_llm_metadata(self) -> dict:
-        llm = self._llm
-        metadata = {}
-
-        try:
-            trace_kwargs = getattr(llm, '__trace_kwargs__', None)
-        except Exception as exc:
-            LOG.warning(f'Reading __trace_kwargs__ on {type(llm).__name__} failed: {exc}')
-            trace_kwargs = None
-        if isinstance(trace_kwargs, dict):
-            metadata.update({k: v for k, v in trace_kwargs.items() if v is not None and v != ''})
-
-        for meta_key, attr in (
-            ('model', '_model_name'),
-            ('model', 'base_model'),
-            ('model', '_base_model'),
-            ('embed_model', '_embed_model_name'),
-            ('base_url', '_base_url'),
-            ('embed_base_url', '_embed_url'),
-            ('stream', '_stream'),
-            ('type', '_type'),
-            ('series', 'series'),
-            ('class', '__class__'),
-        ):
-            if meta_key in metadata:
-                continue
-            try:
-                value = getattr(llm, attr, None) if attr != '__class__' else llm.__class__.__name__
-            except Exception as exc:
-                LOG.warning(f'Reading attr {attr!r} on {type(llm).__name__} failed: {exc}')
-                continue
-            if value is not None and value != '':
-                metadata[meta_key] = value
-
-        return metadata
-
-    def _record_trace_metadata(self) -> None:
-        trace = current_trace()
-        if trace is None:
-            return
-        llm_key = id(self._llm) if self._llm is not None else None
-        if self._llm_metadata_cache is None or self._llm_metadata_cache_key != llm_key:
-            self._llm_metadata_cache = self._resolve_llm_metadata()
-            self._llm_metadata_cache_key = llm_key
-        if self._llm_metadata_cache:
-            trace.update_metadata(self._llm_metadata_cache)
 
     def _ensure_default_skill_tools(self):
         builtin_group = getattr(lazyllm, 'builtin_tools', None)

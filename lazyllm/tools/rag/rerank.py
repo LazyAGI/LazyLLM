@@ -18,7 +18,6 @@ _reranker_trace_attrs_var: 'contextvars.ContextVar[Optional[Dict[str, Any]]]' = 
 
 
 class Reranker(ModuleBase, _PostProcess):
-    __semantic_type__ = 'rerank'
     registered_reranker = dict()
 
     def __new__(cls, name: str = 'ModuleReranker', *args, **kwargs):
@@ -36,12 +35,6 @@ class Reranker(ModuleBase, _PostProcess):
         self._kwargs = kwargs
         lazyllm.deprecated(bool(target), '`target` parameter of reranker')
         _PostProcess.__init__(self, output_format, join)
-
-    @property
-    def __trace_kwargs__(self):
-        d = {'name': self._name, 'output_format': self._output_format, 'join': self._join}
-        d.update(self._kwargs)
-        return d
 
     def forward(self, nodes: List[DocNode], query: str = '') -> List[DocNode]:
         results = self.registered_reranker[self._name](nodes, query=query, **self._kwargs)
@@ -136,12 +129,6 @@ class ModuleReranker(Reranker):
             self._reranker = lazyllm.TrainableModule(model, type='rerank')
         else:
             self._reranker = model
-
-    @property
-    def __trace_kwargs__(self):
-        d = super().__trace_kwargs__
-        d['model'] = self._model_name
-        return d
 
     def forward(self, nodes: List[DocNode], query: str = '') -> List[DocNode]:
         if not nodes:
