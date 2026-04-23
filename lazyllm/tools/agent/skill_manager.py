@@ -1,6 +1,7 @@
 import os
 import re
 import shlex
+import threading
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import yaml
@@ -38,8 +39,10 @@ execute the workflow steps, constraints, and examples in order.
 4) **Adapt workflow to the current task**: Before execution, map the workflow
 to the user's actual goal, constraints, and available inputs; do not apply
 steps blindly.
-5) **Load support files only when needed**: Use `read_reference` to read referenced files on demand.
-6) **Run helper scripts only when required**: Use `run_script` with absolute paths and request approval if risky.
+5) **Load support files only when needed**: Use `read_reference` only for exact relative paths explicitly listed in
+the skill's SKILL.md. Do not invent reference file paths.
+6) **Run helper scripts only when required**: Use `run_script` only for exact relative script paths explicitly listed in
+the skill's SKILL.md. Do not invent script paths such as `scripts/...`; request approval if risky.
 
 ### Reference and Script
 - **Reference**: Documentation and guidance files (e.g., design notes,
@@ -49,6 +52,10 @@ steps blindly.
   scripts with `run_script` instead of writing new programs from scratch.
 - If a suitable script already exists in the skill, use it first. Only write
   new code when the existing scripts cannot satisfy the task.
+- Only call `read_reference` or `run_script` after reading the skill instructions
+  with `get_skill`, and only when SKILL.md explicitly names the target relative
+  path. If no path is listed, continue with the available instructions and other
+  tools instead of guessing a file path.
 
 ### When Skills Help
 - The user asks for a structured or repeatable process
@@ -56,7 +63,7 @@ steps blindly.
 - The skill provides a proven workflow for complex tasks
 
 ### Script Execution
-Skills may include Python or shell scripts. Prefer `run_script` for scripts provided by the selected skill.
+Skills may include Python or shell scripts. Prefer `run_script` for scripts explicitly listed by the selected skill.
 Use `shell_tool` only when needed, and always use absolute paths.
 
 ### Example
@@ -91,6 +98,7 @@ class SkillManager(ModuleBase):
         self._max_skill_md_bytes = max_skill_md_bytes or config['max_skill_md_bytes']
         self._skills_index: Dict[str, Dict] = {}
         self._skills_selected: List[str] = []
+        self._skills_index_lock = threading.Lock()
 
     @staticmethod
     def _extract_protocol(path: str) -> Optional[str]:
@@ -224,38 +232,43 @@ class SkillManager(ModuleBase):
     def _load_skills_index(self) -> None:
         if self._skills_index:
             return
-        seen: set = set()
-        for skill_dir, skill_md in self._iter_skill_files():
-            if self._fs_getsize(skill_md) > self._max_skill_md_bytes:
-                continue
-            try:
-                content = self._fs_read(skill_md)
-            except Exception:
-                continue
-            meta = self._extract_yaml_meta(content)
-            if not self._is_meta_valid(meta):
-                continue
-            name = meta.get('name')
-            if not name or name in seen:
-                continue
-            seen.add(name)
-            self._skills_index[name] = {
-                'name': name,
-                'description': meta.get('description', ''),
-                'argument-hint': meta.get('argument-hint', ''),
-                'disable-model-invocation': self._to_bool(meta.get('disable-model-invocation', False)),
-                'user-invocable': self._to_bool(meta.get('user-invocable', True)),
-                'allowed-tools': meta.get('allowed-tools'),
-                'path': skill_dir,
-                'skill_md': skill_md,
-                'raw_meta': meta,
-            }
-        if self._skills_expected:
-            self._skills_selected = [n for n in self._skills_expected if n in self._skills_index]
-        else:
-            self._skills_selected = [
-                n for n, info in self._skills_index.items() if not info.get('disable-model-invocation')
-            ]
+        with self._skills_index_lock:
+            if self._skills_index:
+                return
+            skills_index: Dict[str, Dict] = {}
+            seen: set = set()
+            for skill_dir, skill_md in self._iter_skill_files():
+                if self._fs_getsize(skill_md) > self._max_skill_md_bytes:
+                    continue
+                try:
+                    content = self._fs_read(skill_md)
+                except Exception:
+                    continue
+                meta = self._extract_yaml_meta(content)
+                if not self._is_meta_valid(meta):
+                    continue
+                name = meta.get('name')
+                if not name or name in seen:
+                    continue
+                seen.add(name)
+                skills_index[name] = {
+                    'name': name,
+                    'description': meta.get('description', ''),
+                    'argument-hint': meta.get('argument-hint', ''),
+                    'disable-model-invocation': self._to_bool(meta.get('disable-model-invocation', False)),
+                    'user-invocable': self._to_bool(meta.get('user-invocable', True)),
+                    'allowed-tools': meta.get('allowed-tools'),
+                    'path': skill_dir,
+                    'skill_md': skill_md,
+                    'raw_meta': meta,
+                }
+            self._skills_index = skills_index
+            if self._skills_expected:
+                self._skills_selected = [n for n in self._skills_expected if n in self._skills_index]
+            else:
+                self._skills_selected = [
+                    n for n, info in self._skills_index.items() if not info.get('disable-model-invocation')
+                ]
 
     def list_skill(self) -> str:
         self._load_skills_index()
