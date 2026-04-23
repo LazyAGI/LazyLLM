@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 from typing_extensions import override
 
+import lazyllm
 from lazyllm import LOG
 from lazyllm.tools.http_request import post_sync, get_sync, post_async
 
@@ -20,16 +21,18 @@ from .ocr_ir import (
 from .ocr_postprocessor import l1_normalize, l2_associate
 from .ocr_reader_base import _OcrReaderBase, _Adapter, ServiceVariant
 
+lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='The API key for Mineru')
 
 class MineruPDFReader(_OcrReaderBase, _Adapter):
     def __init__(self,
+            url: str = 'https://mineru.net/api/v4/extract/task',
             apply_lazyllm_patch: bool = False,
             backend: str = 'hybrid-auto-engine',
             upload_mode: bool = False,
             timeout: Optional[int] = None,
             droped_types: Set[str] = {'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
             **kwargs):
-        super().__init__(droped_types=droped_types, **kwargs)
+        super().__init__(url=url, droped_types=droped_types, **kwargs)
         self._backend = backend
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
@@ -43,9 +46,6 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         return self._fetch_async(file, use_cache)
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
-        if not self._url:
-            raise ValueError('url is required for MineruPDFReader')
-        url = self._url.rstrip('/') + '/api/v1/pdf_parse'
         payload = {
             'return_content_list': True,
             'use_cache': use_cache,
@@ -56,19 +56,17 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         try:
             if not self._upload_mode:
                 payload['files'] = [str(file)]
-                response = post_sync(url, payload=payload, timeout=self._timeout)
+                response = post_sync(self._url, payload=payload, timeout=self._timeout)
             else:
                 with open(file, 'rb') as f:
                     files = {'upload_files': (os.path.basename(file), f)}
-                    response = post_sync(url, payload=payload, files=files, timeout=self._timeout)
+                    response = post_sync(self._url, payload=payload, files=files, timeout=self._timeout)
             return response.text
         except requests.exceptions.RequestException as e:
             LOG.error(f'[MineruPDFReader] POST request failed: {e}')
             raise
 
     def _fetch_async(self, file: Path, use_cache: bool) -> str:
-        if not self._url:
-            raise ValueError('url is required for MineruPDFReader')
         base_url = self._url.rstrip('/')
         payload = {
             'return_md': True,
@@ -199,9 +197,20 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         elif ty == 'text':
             return ParagraphBlock(page=page, text=text)
         elif ty == 'image':
+            raw_img_path = item.get('img_path')
+            img_path: Optional[Path] = None
+            if raw_img_path:
+                p = Path(raw_img_path)
+                if p.is_absolute():
+                    try:
+                        img_path = p.relative_to(self._image_cache_dir)
+                    except ValueError:
+                        img_path = Path(p.name)
+                else:
+                    img_path = p
             return FigureBlock(
                 page=page,
-                image_path=Path(img_path) if (img_path := item.get('img_path')) else None,
+                image_path=img_path,
                 caption=self._first(item.get('image_caption')),
                 footnote=self._first(item.get('image_footnote')),
             )
@@ -298,6 +307,10 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
     def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
                                   extra_info: Optional[Dict] = None) -> List[DocNode]:
         docs = []
+
+        global_metadata = dict(extra_info) if extra_info else {}
+        global_metadata['image_cache_dir'] = str(self._image_cache_dir)
+
         for b in blocks:
             text = b.text_content()
             metadata = {
@@ -316,10 +329,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
                 if b.cells:
                     metadata['cells'] = [c.__dict__ for c in b.cells]
             elif isinstance(b, FigureBlock):
-                img_path = b.image_path
-                if img_path and self._image_cache_dir and not img_path.is_absolute():
-                    img_path = self._image_cache_dir / img_path
-                metadata['image_path'] = str(img_path) if img_path else None
+                metadata['image_path'] = str(b.image_path) if b.image_path else None
                 metadata['image_caption'] = b.caption
             elif isinstance(b, FormulaBlock):
                 metadata['latex'] = b.latex
@@ -327,8 +337,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
                 metadata['code_type'] = b.language
             elif isinstance(b, ListBlock):
                 metadata['list_items'] = b.items
-
-            node = DocNode(text=text, metadata=metadata, global_metadata=extra_info)
+            node = DocNode(text=text, metadata=metadata, global_metadata=global_metadata)
             node.excluded_embed_metadata_keys = [k for k in metadata if k not in ('file_name', 'text')]
             node.excluded_llm_metadata_keys = [k for k in metadata if k not in ('file_name', 'text')]
             docs.append(node)

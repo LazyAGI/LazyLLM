@@ -19,20 +19,20 @@ from .ocr_ir import (
 from .ocr_postprocessor import l1_normalize, l2_associate
 from .ocr_reader_base import _OcrReaderBase
 
-lazyllm.config.add('paddleocr_api_key', str, None, 'PADDLEOCR_API_KEY', description='The API key for PaddleOCR')
+lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='The API key for PaddleOCR')
 
 
 class PaddleOCRPDFReader(_OcrReaderBase):
     def __init__(self,
+                 url: str = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing',
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  format_block_content: bool = True,
                  use_layout_detection: bool = True,
                  use_chart_recognition: bool = True,
                  droped_types: Set[str] = {'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                  **kwargs):
-        super().__init__(droped_types=droped_types, **kwargs)
-        url = kwargs.get('url')
-        api_key = kwargs.get('api_key') or lazyllm.config['paddleocr_api_key']
+        super().__init__(url=url, droped_types=droped_types, **kwargs)
+        api_key = kwargs.get('api_key') or lazyllm.config['paddle_api_key']
         if not url and not api_key:
             raise ValueError('Either url or api_key must be provided')
 
@@ -127,8 +127,9 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         elif label == 'text':
             return ParagraphBlock(page=page, text=content)
         elif label in ('image', 'figure'):
-            img_path = self._extract_img_path(content)
-            return FigureBlock(page=page, image_path=Path(img_path) if img_path else None)
+            img_src = self._extract_img_path(content)
+            image_path = self._resolve_image_path(img_src, page_idx) if img_src else None
+            return FigureBlock(page=page, image_path=image_path)
         elif label == 'table':
             return TableBlock(
                 page=page,
@@ -142,6 +143,31 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         elif label in ('header', 'footer', 'page_number', 'aside_text', 'seal', 'number'):
             return None
         return None
+
+    def _resolve_image_path(self, img_src: str, page_idx: int) -> Optional[Path]:
+        if not img_src:
+            return None
+        if img_src.startswith('data:'):
+            match = re.match(r'^data:([^;]+);base64,(.+)$', img_src)
+            if match:
+                mime_type, b64_data = match.group(1), match.group(2)
+                ext = mime_type.split('/')[-1]
+                if ext in ('jpeg', 'jpg'):
+                    ext = 'jpg'
+                elif ext not in ('png', 'gif', 'webp', 'bmp'):
+                    ext = 'png'
+                filename = f'page{page_idx}_fig_{uuid.uuid4().hex[:8]}.{ext}'
+                file_path = self._image_cache_dir / filename
+                file_path.write_bytes(base64.b64decode(b64_data))
+                return Path(filename)
+            return None
+        p = Path(img_src)
+        if p.is_absolute():
+            try:
+                return p.relative_to(self._image_cache_dir)
+            except ValueError:
+                return Path(p.name)
+        return p
 
     @staticmethod
     def _parse_markdown_heading(content: str) -> tuple:
@@ -193,6 +219,9 @@ class PaddleOCRPDFReader(_OcrReaderBase):
     def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
                                   extra_info: Optional[Dict] = None) -> List[DocNode]:
         docs = []
+        global_metadata = dict(extra_info) if extra_info else {}
+        global_metadata['image_cache_dir'] = str(self._image_cache_dir)
+
         for b in blocks:
             text = b.text_content()
             metadata = {
@@ -219,8 +248,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                 metadata['code_type'] = b.language
             elif isinstance(b, ListBlock):
                 metadata['list_items'] = b.items
-
-            node = DocNode(text=text, metadata=metadata, global_metadata=extra_info)
+            node = DocNode(text=text, metadata=metadata, global_metadata=global_metadata)
             node.excluded_embed_metadata_keys = [k for k in metadata if k not in ('file_name', 'text')]
             node.excluded_llm_metadata_keys = [k for k in metadata if k not in ('file_name', 'text')]
             docs.append(node)
