@@ -106,7 +106,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         raw = json.loads(response_json)
         blocks = self._adapt_raw(raw)
         blocks = l1_normalize(blocks, self._page_size)
-        blocks, relations = l2_associate(blocks)
+        blocks = l2_associate(blocks)
         return self._build_nodes_from_blocks(blocks, file, extra_info)
 
     @override

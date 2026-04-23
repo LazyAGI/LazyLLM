@@ -115,19 +115,11 @@ def _drop_toc_pages(blocks: List[Block]) -> List[Block]:
 
 # ---------- L2: Associate ----------
 
-@dataclass
-class Relation:
-    ty: str
-    from_idx: int
-    to_idx: int
-
-
-def l2_associate(blocks: List[Block]) -> Tuple[List[Block], List[Relation]]:
-    relations: List[Relation] = []
+def l2_associate(blocks: List[Block]) -> List[Block]:
     blocks = _merge_cross_page_tables(blocks)
-    relations.extend(_pair_captions(blocks))
+    _pair_captions(blocks)
     blocks = _inject_section_path(blocks)
-    return blocks, relations
+    return blocks
 
 
 def _merge_cross_page_tables(blocks: List[Block]) -> List[Block]:
@@ -243,22 +235,16 @@ def _merge_two_tables(a: TableBlock, b: TableBlock) -> TableBlock:
     )
 
 
-def _pair_captions(blocks: List[Block]) -> List[Relation]:
-    relations: List[Relation] = []
+def _pair_captions(blocks: List[Block]) -> None:
     for i, b in enumerate(blocks):
         if isinstance(b, FigureBlock):
             caption_idx = _find_nearest_caption(blocks, i, r'^(图|Figure|Fig\.?)\s*\d+')
-            if caption_idx is not None:
-                relations.append(Relation(ty='figure_caption', from_idx=i, to_idx=caption_idx))
-                if b.caption is None:
-                    b.caption = blocks[caption_idx].text_content()
+            if caption_idx is not None and b.caption is None:
+                b.caption = blocks[caption_idx].text_content()
         elif isinstance(b, TableBlock):
             caption_idx = _find_nearest_caption(blocks, i, r'^(表|Table)\s*\d+')
-            if caption_idx is not None:
-                relations.append(Relation(ty='table_caption', from_idx=i, to_idx=caption_idx))
-                if b.caption is None:
-                    b.caption = blocks[caption_idx].text_content()
-    return relations
+            if caption_idx is not None and b.caption is None:
+                b.caption = blocks[caption_idx].text_content()
 
 
 def _find_nearest_caption(blocks: List[Block], idx: int, pattern: str) -> Optional[int]:
