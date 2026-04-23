@@ -1,6 +1,4 @@
-import contextvars
 import importlib.util
-import json
 
 from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -10,11 +8,6 @@ from lazyllm.thirdparty import spacy
 from lazyllm import ModuleBase, LOG
 from .doc_node import DocNode, MetadataMode
 from .retriever import _PostProcess
-
-
-_reranker_trace_attrs_var: 'contextvars.ContextVar[Optional[Dict[str, Any]]]' = (
-    contextvars.ContextVar('_lazyllm_reranker_trace_attrs', default=None)
-)
 
 
 class Reranker(ModuleBase, _PostProcess):
@@ -39,26 +32,7 @@ class Reranker(ModuleBase, _PostProcess):
     def forward(self, nodes: List[DocNode], query: str = '') -> List[DocNode]:
         results = self.registered_reranker[self._name](nodes, query=query, **self._kwargs)
         LOG.debug(f'Rerank use `{self._name}` and get nodes: {results}')
-        _reranker_trace_attrs_var.set(self._build_trace_output_attrs(results))
         return self._post_process(results)
-
-    @staticmethod
-    def _build_trace_output_attrs(results):
-        attrs = {}
-        if results and isinstance(results, list):
-            attrs['lazyllm.output.doc_count'] = len(results)
-            scores = [float(n.relevance_score) for n in results
-                      if isinstance(n, DocNode) and n.relevance_score is not None]
-            if scores:
-                attrs['lazyllm.output.relevance_scores'] = json.dumps(scores)
-        return attrs
-
-    def __trace_output_attrs__(self, output):
-        attrs = _reranker_trace_attrs_var.get()
-        if attrs is not None:
-            _reranker_trace_attrs_var.set(None)
-            return attrs
-        return self._build_trace_output_attrs(output)
 
     @classmethod
     def register_reranker(
@@ -141,7 +115,6 @@ class ModuleReranker(Reranker):
         for index, relevance_score in sorted_indices:
             results.append(nodes[index].with_score(relevance_score))
         LOG.debug(f'Rerank use `{self._name}` and get nodes: {results}')
-        _reranker_trace_attrs_var.set(self._build_trace_output_attrs(results))
         return self._post_process(results)
 
 # User-defined similarity decorator

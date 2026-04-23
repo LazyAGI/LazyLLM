@@ -2,6 +2,7 @@ from ...common import LOG, globals
 from ...configs import config
 from ...hook import LazyLLMHook, register_builtin_hook_provider
 from .configs import resolve_default_module_trace, resolve_runtime_module_trace_disabled
+from .output_attrs import collect_trace_output_attrs, install_post_process_probe, remove_post_process_probe
 from .runtime import finish_span, set_span_attributes, set_span_error, set_span_output, set_span_usage, start_span
 
 
@@ -39,6 +40,8 @@ class LazyTracingHook(LazyLLMHook):
             return
 
         self._span = start_span(span_kind=self._span_kind, target=self._obj, args=args, kwargs=kwargs)
+        if self._span is not None:
+            install_post_process_probe(self._obj)
 
     def post_hook(self, output):
         if self._span is None:
@@ -49,13 +52,12 @@ class LazyTracingHook(LazyLLMHook):
             usage = (globals.get('usage') or {}).get(module_id)
             if usage:
                 set_span_usage(self._span, usage)
-        if hasattr(self._obj, '__trace_output_attrs__'):
-            try:
-                output_attrs = self._obj.__trace_output_attrs__(output)
-                if output_attrs:
-                    set_span_attributes(self._span, output_attrs)
-            except Exception as e:
-                LOG.warning(f'__trace_output_attrs__ failed for {self._obj.__class__.__name__}: {e}')
+        try:
+            output_attrs = collect_trace_output_attrs(self._obj, output)
+            if output_attrs:
+                set_span_attributes(self._span, output_attrs)
+        except Exception as e:
+            LOG.warning(f'collect_trace_output_attrs failed for {self._obj.__class__.__name__}: {e}')
 
     def on_error(self, exc):
         if self._span is None:
@@ -63,6 +65,7 @@ class LazyTracingHook(LazyLLMHook):
         set_span_error(self._span, exc)
 
     def finalize(self):
+        remove_post_process_probe(self._obj)
         if self._span is None:
             return
         finish_span(self._span)

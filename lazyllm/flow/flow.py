@@ -22,6 +22,7 @@ import concurrent.futures
 from collections import deque
 import uuid
 from ..hook import LazyLLMHook, prepare_hooks, register_hooks, resolve_builtin_hooks, run_hooks
+from ..tracing.collect.output_attrs import push_ifs_matched_attrs, push_switch_matched_attrs
 from ..tracing.collect.runtime import start_span, set_span_output, set_span_error, set_span_attributes, finish_span
 from itertools import repeat
 
@@ -62,9 +63,6 @@ def _is_function(f):
 
 _thread_local = threading.local()
 _async_var = ContextVar('lazyllm.flow_stack')
-_switch_trace_matched_stack: ContextVar = ContextVar('lazyllm.switch.trace_matched_stack', default=None)
-_ifs_trace_matched_stack: ContextVar = ContextVar('lazyllm.ifs.trace_matched_stack', default=None)
-
 def _get_flow_stack():
     if events._get_running_loop() is not None:
         stack = _async_var.get(None)
@@ -697,14 +695,6 @@ class Switch(LazyLLMFlowsBase):
         self._judge_on_full_input = judge_on_full_input
         self._set_conversion(conversion)
 
-    def __trace_output_attrs__(self, output):
-        stack = _switch_trace_matched_stack.get()
-        if stack:
-            matched = stack[-1]
-            _switch_trace_matched_stack.set(stack[:-1] or None)
-            return {f'lazyllm.matched.{k}': v for k, v in matched.items()}
-        return {}
-
     def _set_conversion(self, conversion):
         self._conversion = conversion
 
@@ -725,8 +715,7 @@ class Switch(LazyLLMFlowsBase):
                 actual = getattr(self._items[idx], '__name__', None) or type(self._items[idx]).__name__
                 branch = f'{alias} -> {actual}' if alias and alias != actual else actual
                 matched = {'index': idx, 'condition': str(cond), 'branch': branch}
-                current = _switch_trace_matched_stack.get() or []
-                _switch_trace_matched_stack.set(current + [matched])
+                push_switch_matched_attrs(matched)
                 return self.invoke(self._items[idx], __input, **kw)
 
     class Case:
@@ -767,17 +756,8 @@ class IFS(LazyLLMFlowsBase):
         branch_label = 'true_path' if flag else 'false_path'
         name = getattr(chosen, '__name__', None) or type(chosen).__name__
         matched = {'branch': branch_label, 'chosen_node': name, 'condition_result': bool(flag)}
-        current = _ifs_trace_matched_stack.get() or []
-        _ifs_trace_matched_stack.set(current + [matched])
+        push_ifs_matched_attrs(matched)
         return self.invoke(chosen, __input, **kw)
-
-    def __trace_output_attrs__(self, output):
-        stack = _ifs_trace_matched_stack.get()
-        if stack:
-            matched = stack[-1]
-            _ifs_trace_matched_stack.set(stack[:-1] or None)
-            return {f'lazyllm.matched.{k}': v for k, v in matched.items()}
-        return {}
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
@@ -790,13 +770,6 @@ class Loop(Pipeline):
         self._judge_on_full_input = judge_on_full_input
         self._stop_condition = stop_condition
         self._loop_count = count
-
-    def __trace_output_attrs__(self, output):
-        count = getattr(self, '_trace_actual_iterations', None)
-        if count is not None:
-            self._trace_actual_iterations = None
-            return {'lazyllm.loop.actual_iterations': count}
-        return {}
 
 
 class Graph(LazyLLMFlowsBase):
