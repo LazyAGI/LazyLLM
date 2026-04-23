@@ -438,6 +438,11 @@ _add_bilingual_docs({
             '更新已有知识库的元信息。',
             'Update metadata of an existing knowledge base.'
         ),
+        'unbind_algo': (
+            '从知识库解绑一个算法，并异步清理该算法独有节点组的解析数据；与其他算法共享的节点组数据保留。',
+            'Unbind one algorithm from a knowledge base and asynchronously clean up parse data '
+            'for node groups exclusive to that algorithm; node groups shared with other algorithms are preserved.'
+        ),
         'delete_kb': (
             '删除一个知识库。',
             'Delete one knowledge base.'
@@ -553,6 +558,11 @@ _add_bilingual_docs({
         'batch_get_kbs': (
             '批量获取多个知识库的信息。',
             'Fetch information for multiple knowledge bases in one batch.'
+        ),
+        'unbind_algo': (
+            '从知识库解绑一个算法，并异步清理该算法独有节点组的解析数据；与其他算法共享的节点组数据保留。',
+            'Unbind one algorithm from a knowledge base and asynchronously clean up parse data '
+            'for node groups exclusive to that algorithm; node groups shared with other algorithms are preserved.'
         ),
         'delete_kb': (
             '删除一个知识库。',
