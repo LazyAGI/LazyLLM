@@ -21,9 +21,6 @@ def l1_normalize(blocks: List[Block]) -> List[Block]:
     return blocks
 
 def _reorder_reading(blocks: List[Block]) -> List[Block]:
-    if not blocks:
-        return blocks
-
     # Group by page
     pages: Dict[int, List[Block]] = {}
     for b in blocks:

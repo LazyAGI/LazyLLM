@@ -89,7 +89,3 @@ class _OcrReaderBase(_RichReader, _Adapter):
         if isinstance(val, str):
             return val
         return None
-
-    @staticmethod
-    def _make_anchor(text: str) -> str:
-        return text.strip().replace(' ', '-').replace('\n', '-')[:64]

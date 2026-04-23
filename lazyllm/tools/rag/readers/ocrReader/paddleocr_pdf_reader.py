@@ -1,12 +1,9 @@
 import base64
-import json
-import re
 from pathlib import Path
-from typing import Dict, List, Optional, Callable, Set
+from typing import Dict, List, Optional, Set
 from typing_extensions import override
 
 import lazyllm
-from lazyllm import LOG
 from lazyllm.thirdparty import bs4
 from lazyllm.tools.http_request import post_sync
 
@@ -14,7 +11,7 @@ from ...doc_node import DocNode
 from .ocr_ir import (
     Block, BBox, PageRef, Cell,
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
-    FigureBlock, CodeBlock, ListBlock,
+    FigureBlock, CodeBlock,
 )
 from .ocr_reader_base import _OcrReaderBase
 
@@ -70,14 +67,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         page = PageRef(index=page_idx, bbox=bbox)
 
         if label in ('paragraph_title', 'doc_title'):
-            level, text = self._parse_markdown_heading(content)
-            if level == 0:
-                level = item.get('text_level', 1) or 1
-                text = content
-            return HeadingBlock(
-                page=page, level=int(level), text=text,
-                anchor=self._make_anchor(text),
-            )
+            return HeadingBlock(page=page, text=content)
         elif label == 'text':
             return ParagraphBlock(page=page, text=content)
         elif label in ('image', 'figure'):
@@ -104,17 +94,6 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         save_path.parent.mkdir(parents=True, exist_ok=True)
         save_path.write_bytes(base64.b64decode(img_b64))
         return Path(clean_path)
-
-    @staticmethod
-    def _parse_markdown_heading(content: str) -> tuple:
-        m = re.match(r'^(#+)\s*(.*)$', content.strip())
-        if m:
-            return len(m.group(1)), m.group(2).strip()
-        return 0, content
-
-    @staticmethod
-    def _make_anchor(text: str) -> str:
-        return text.strip().replace(' ', '-').replace('\n', '-')[:64]
 
     @staticmethod
     def _extract_img_path(html: str) -> str:

@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Tuple, Union
 from pathlib import Path
@@ -60,9 +61,21 @@ class Block:
 
 @dataclass
 class HeadingBlock(Block):
-    level: int = 0
+    level: int = -1
+    md_title_level: int = -1
     text: str = ''
-    anchor: str = ''
+
+    def __post_init__(self):
+        # Parse markdown title level
+        m = re.match(r'^(#+)\s*(.*)$', self.text.strip())
+        if m:
+            self.md_title_level = len(m.group(1)), m.group(2).strip()
+
+        if self.level == -1 and self.md_title_level > 0:
+            self.level = self.md_title_level
+
+        # Normalize title
+        self.text = self.text.strip().replace(' ', '-').replace('\n', '-')[:64]
 
     @property
     def ty(self) -> str:

@@ -8,17 +8,15 @@ from typing import Dict, List, Optional, Set
 from typing_extensions import override
 
 import lazyllm
-from lazyllm import LOG
 from lazyllm.tools.http_request import post_sync, post_async
 
 from ...doc_node import DocNode
 from .ocr_ir import (
-    Block, BBox, PageRef, Cell,
+    Block, BBox, PageRef,
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock, ListBlock,
 )
-from .ocr_postprocessor import l1_normalize, l2_associate
-from .ocr_reader_base import _OcrReaderBase, _Adapter, ServiceVariant
+from .ocr_reader_base import _OcrReaderBase, ServiceVariant
 
 lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='The API key for Mineru')
 
@@ -124,18 +122,15 @@ class MineruPDFReader(_OcrReaderBase):
         if ty in self._droped_types:
             return None
 
-        text_level = item.get('text_level', 0)
+        text_level = item.get('text_level', -1)
         text = item['text']
         page_idx = item['page_idx']
         bbox = BBox.from_list(item['bbox'])
 
         page = PageRef(index=page_idx, bbox=bbox)
 
-        if ty in ('text', 'title') and text_level > 0:
-            return HeadingBlock(
-                page=page, level=int(text_level), text=text,
-                anchor=self._make_anchor(text),
-            )
+        if ty == 'title':
+            return HeadingBlock(page=page, level=text_level, text=text)
         elif ty == 'text':
             return ParagraphBlock(page=page, text=text)
         elif ty == 'image':
