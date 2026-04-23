@@ -436,7 +436,8 @@ class Pipeline(LazyLLMFlowsBase):
         if bind_flag:
             lazyllm.LOG.debug(f'add {self.id()} to bind_args')
             locals['bind_args'][self.id()] = bind_args_source
-        for iteration_idx in range(self._loop_count):
+        _iteration_idx = -1
+        for _iteration_idx in range(self._loop_count):
             for it in self._items:
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
                 kw.clear()
@@ -450,7 +451,7 @@ class Pipeline(LazyLLMFlowsBase):
                 break
         if isinstance(self, Loop):
             # Consumed in tracing: LazyTracingHook.post_hook -> collect_trace_output_attrs (Loop)
-            self._trace_actual_iterations = iteration_idx + 1
+            self._trace_actual_iterations = _iteration_idx + 1
         if bind_flag:
             lazyllm.LOG.debug(f'delete {self.id()} form bind_args')
             locals['bind_args'].pop(self.id(), None)
@@ -545,52 +546,60 @@ class Parallel(LazyLLMFlowsBase):
             inputs = [inputs] * len(items)
         return inputs
 
-    def _run(self, __input, __items=None, *, _kept_items: Optional[Union[int, str, List[Union[int, str]]]] = None,
-             _skip_items: Optional[Union[int, str, List[Union[int, str]]]] = None, **kw):
-        if (items := __items) is None: items = self._items
+    def _parallel_resolve_items_and_inputs(self, __input, __items, _kept_items, _skip_items):
+        if (items := __items) is None:
+            items = self._items
         if _kept_items:
-            if _skip_items: raise RuntimeError('Cannot provide `_kept_items` and `_skip_items` at the same time!')
+            if _skip_items:
+                raise RuntimeError('Cannot provide `_kept_items` and `_skip_items` at the same time!')
             _kept_idx = [i for i, (_, n) in enumerate(zip(self._items, self._item_names or repeat(None)))
                          if i in _kept_items or n in _kept_items]
         else:
             _kept_idx = ([i for i, (_, n) in enumerate(zip(self._items, self._item_names or repeat(None)))
                           if i not in _skip_items and n not in _skip_items] if _skip_items else None)
-        if _kept_idx: items = [it for i, it in enumerate(self._items) if i in _kept_idx]
+        if _kept_idx:
+            items = [it for i, it in enumerate(self._items) if i in _kept_idx]
         inputs = self._split_input(__input, items, _kept_idx)
+        return items, inputs
 
-        if self._concurrent:
-            if self._multiprocessing:
-                barrier, executor = None, lazyllm.ProcessPoolExecutor
-                kw['global_data'] = lazyllm.globals._data
-            else:
-                barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
-
-            with executor(max_workers=self._concurrent) as e:
-                # Thread workers need the parent's contextvars (OTel current span, tracing ContextVars,
-                # etc.); ProcessPoolExecutor cannot use copy_context the same way (separate interpreter).
-                futures = []
-                for it, inp in zip(items, inputs):
-                    worker_call = partial(self._worker, self.invoke, barrier, lazyllm.globals._sid,
-                                          lazyllm.locals._data, it, inp, **kw)
-                    if self._multiprocessing:
-                        futures.append(e.submit(worker_call))
-                    else:
-                        futures.append(e.submit(copy_context().run, worker_call))
-                if (not_done := concurrent.futures.wait(futures).not_done):
-                    error_msgs = []
-                    for future in not_done:
-                        if (exc := future.exception()) is not None:
-                            if (tb := getattr(future, '_traceback', None)):
-                                tb_str = ''.join(traceback.format_exception(type(exc), exc, tb))
-                            else:
-                                tb_str = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-                            error_msgs.append(f'Future: {future}\n{tb_str}')
-                        else:
-                            error_msgs.append(f'Future: {future} not complete without exception。')
-                    raise RuntimeError('Parallel execute failed!\n' + '\n'.join(error_msgs))
-                return package([future.result() for future in futures])
+    def _parallel_execute_concurrent(self, items, inputs, **kw):
+        if self._multiprocessing:
+            barrier, executor = None, lazyllm.ProcessPoolExecutor
+            kw['global_data'] = lazyllm.globals._data
         else:
-            return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
+            barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
+
+        with executor(max_workers=self._concurrent) as e:
+            # Thread workers need the parent's contextvars (OTel current span, tracing ContextVars,
+            # etc.); ProcessPoolExecutor cannot use copy_context the same way (separate interpreter).
+            futures = []
+            for it, inp in zip(items, inputs):
+                worker_call = partial(self._worker, self.invoke, barrier, lazyllm.globals._sid,
+                                      lazyllm.locals._data, it, inp, **kw)
+                if self._multiprocessing:
+                    futures.append(e.submit(worker_call))
+                else:
+                    futures.append(e.submit(copy_context().run, worker_call))
+            if (not_done := concurrent.futures.wait(futures).not_done):
+                error_msgs = []
+                for future in not_done:
+                    if (exc := future.exception()) is not None:
+                        if (tb := getattr(future, '_traceback', None)):
+                            tb_str = ''.join(traceback.format_exception(type(exc), exc, tb))
+                        else:
+                            tb_str = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                        error_msgs.append(f'Future: {future}\n{tb_str}')
+                    else:
+                        error_msgs.append(f'Future: {future} not complete without exception。')
+                raise RuntimeError('Parallel execute failed!\n' + '\n'.join(error_msgs))
+            return package([future.result() for future in futures])
+
+    def _run(self, __input, __items=None, *, _kept_items: Optional[Union[int, str, List[Union[int, str]]]] = None,
+             _skip_items: Optional[Union[int, str, List[Union[int, str]]]] = None, **kw):
+        items, inputs = self._parallel_resolve_items_and_inputs(__input, __items, _kept_items, _skip_items)
+        if self._concurrent:
+            return self._parallel_execute_concurrent(items, inputs, **kw)
+        return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
 
     def _post_process(self, output):
         if self._post_process_type == Parallel.PostProcessType.DICT:

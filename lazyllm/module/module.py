@@ -12,7 +12,7 @@ from ..common.bind import _MetaBind
 import uuid
 from ..hook import LazyLLMHook, LazyLLMFuncHook, register_hooks, resolve_builtin_hooks
 from ..tracing.collect.hook import traced_hook_execution
-from lazyllm import FileSystemQueue, LOG
+from lazyllm import FileSystemQueue
 from contextlib import contextmanager
 from typing import Optional, Union, Dict, List, Callable
 from collections import defaultdict

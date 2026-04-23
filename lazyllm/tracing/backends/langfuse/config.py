@@ -1,6 +1,6 @@
 import base64
 import os
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 
 def read_langfuse_connection() -> Dict[str, Optional[str]]:

@@ -118,7 +118,7 @@ def _loop_output_attrs(target: Any) -> Dict[str, Any]:
     if count is None:
         return {}
     try:
-        setattr(target, '_trace_actual_iterations', None)
+        target._trace_actual_iterations = None
     except Exception:
         pass
     return {'lazyllm.loop.actual_iterations': count}
@@ -147,9 +147,9 @@ def collect_trace_output_attrs(target: Any, output: Any) -> Dict[str, Any]:
 
 
 def install_post_process_probe(obj: Any) -> None:
-    if getattr(obj, _POST_PROCESS_INSTALLED, False):
+    if obj.__dict__.get(_POST_PROCESS_INSTALLED, False):
         return
-    if not hasattr(obj, '_post_process') or not callable(getattr(obj, '_post_process')):
+    if not hasattr(obj, '_post_process') or not callable(obj._post_process):
         return
     if not (_is_retriever_target(obj) or _is_reranker_target(obj)):
         return

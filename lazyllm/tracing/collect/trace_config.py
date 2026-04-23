@@ -60,7 +60,7 @@ def _normalize_private_trace_key(attr_name: str) -> Optional[str]:
     if '__' in attr_name:
         idx = attr_name.rfind('__')
         if idx > 0:
-            return attr_name[idx + 2 :]
+            return attr_name[idx + 2:]
     return attr_name[1:]
 
 
@@ -321,17 +321,13 @@ def _collect_flow_trace_config(target: Any) -> Dict[str, Any]:
     return cfg
 
 
-def normalize_trace_entity_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
-    merged = dict(cfg)
-
-    def _first_model(keys: Tuple[str, ...]):
-        for k in keys:
-            v = merged.get(k)
-            if v is not None and v != '':
-                return v
-        return None
-
-    model = _first_model(('model', 'model_name', 'embed_model_name', 'base_model'))
+def _merge_trace_entity_model_and_url_fields(merged: Dict[str, Any]) -> None:
+    model = None
+    for k in ('model', 'model_name', 'embed_model_name', 'base_model'):
+        v = merged.get(k)
+        if v is not None and v != '':
+            model = v
+            break
     if model is not None:
         merged['model'] = model
     for k in ('model_name', 'embed_model_name', 'base_model'):
@@ -347,6 +343,8 @@ def normalize_trace_entity_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         merged['base_url'] = base_url
     merged.pop('embed_url', None)
 
+
+def _merge_trace_entity_scalar_canonicals(merged: Dict[str, Any]) -> None:
     for canonical, sources in (
         ('stream', ('stream',)),
         ('skip_auth', ('skip_auth',)),
@@ -362,6 +360,12 @@ def normalize_trace_entity_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
                 elif v is False or v == 0:
                     merged[canonical] = v
                 break
+
+
+def normalize_trace_entity_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(cfg)
+    _merge_trace_entity_model_and_url_fields(merged)
+    _merge_trace_entity_scalar_canonicals(merged)
     return merged
 
 
@@ -405,6 +409,23 @@ def collect_trace_config(
     return cfg
 
 
+def _semantic_from_llmtype_enum(value: Any) -> Optional[str]:
+    try:
+        from lazyllm.components.utils.downloader.model_downloader import LLMType
+    except Exception:
+        return None
+    try:
+        if isinstance(value, LLMType):
+            if value in (LLMType.EMBED, LLMType.MULTIMODAL_EMBED, LLMType.CROSS_MODAL_EMBED):
+                return SemanticType.EMBEDDING
+            if value == LLMType.RERANK:
+                return SemanticType.RERANK
+            return SemanticType.LLM
+    except Exception:
+        pass
+    return None
+
+
 def _semantic_from_type_value(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -415,20 +436,9 @@ def _semantic_from_type_value(value: Any) -> Optional[str]:
         return SemanticType.EMBEDDING
     if 'RERANK' in s:
         return SemanticType.RERANK
-    try:
-        from lazyllm.components.utils.downloader.model_downloader import LLMType
-    except Exception:
-        LLMType = None  # type: ignore[assignment]
-    if LLMType is not None:
-        try:
-            if isinstance(value, LLMType):
-                if value in (LLMType.EMBED, LLMType.MULTIMODAL_EMBED, LLMType.CROSS_MODAL_EMBED):
-                    return SemanticType.EMBEDDING
-                if value == LLMType.RERANK:
-                    return SemanticType.RERANK
-                return SemanticType.LLM
-        except Exception:
-            pass
+    sem = _semantic_from_llmtype_enum(value)
+    if sem:
+        return sem
     if isinstance(value, str) and value.lower() in ('llm', 'chat'):
         return SemanticType.LLM
     return None

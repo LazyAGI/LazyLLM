@@ -58,7 +58,7 @@ def _unwrap_trace_subject(obj: Any) -> Any:
         inner = getattr(obj, '_f', None)
         return _unwrap_trace_subject(inner) if inner is not None else obj
     if name == '_BindPipelineAdapter' and hasattr(obj, '_b'):
-        return _unwrap_trace_subject(getattr(obj, '_b'))
+        return _unwrap_trace_subject(obj._b)
     if name == 'Bind' and 'bind' in mod and hasattr(obj, '_f'):
         inner = getattr(obj, '_f', None)
         if inner is not None and callable(inner):
