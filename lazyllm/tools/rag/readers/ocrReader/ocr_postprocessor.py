@@ -106,10 +106,12 @@ def _drop_toc_pages(blocks: List[Block]) -> List[Block]:
 # ---------- L2: Associate ----------
 
 def l2_associate(blocks: List[Block]) -> List[Block]:
-    """L2 association: merge cross-page tables, pair captions, inject section paths."""
+    """L2 association: merge cross-page tables, pair captions, inject section paths, merge paragraphs."""
     blocks = _merge_cross_page_tables(blocks)
-    _pair_captions(blocks)
+    caption_indices = _pair_captions(blocks)
+    blocks = [b for i, b in enumerate(blocks) if i not in caption_indices]
     blocks = _inject_section_path(blocks)
+    blocks = _merge_consecutive_paragraphs(blocks)
     return blocks
 
 
@@ -235,26 +237,34 @@ def _merge_two_tables(a: TableBlock, b: TableBlock) -> TableBlock:
     )
 
 
-def _pair_captions(blocks: List[Block]) -> None:
+def _pair_captions(blocks: List[Block]) -> set:
     """Pair captions with nearby figure, table, and code blocks.
 
     Scans a +/-3 window around each target block for a text line matching
     the corresponding caption pattern (e.g. 'Figure 1', 'Table 2').
-    When found, the caption text is injected into the block's caption field.
+    When found, the caption text is injected into the block's caption field
+    and the original caption block index is returned for removal.
+
+    Returns a set of indices that should be removed from the block list.
     """
+    to_remove: set = set()
     for i, b in enumerate(blocks):
         if isinstance(b, FigureBlock):
             caption_idx = _find_nearest_caption(blocks, i, r'^(图|Figure|Fig\.?)\s*\d+')
             if caption_idx is not None and b.caption is None:
                 b.caption = blocks[caption_idx].text_content()
+                to_remove.add(caption_idx)
         elif isinstance(b, TableBlock):
             caption_idx = _find_nearest_caption(blocks, i, r'^(表|Table)\s*\d+')
             if caption_idx is not None and b.caption is None:
                 b.caption = blocks[caption_idx].text_content()
+                to_remove.add(caption_idx)
         elif isinstance(b, CodeBlock):
             caption_idx = _find_nearest_caption(blocks, i, r'^(代码|Code|Listing|Algorithm)\s*\d+')
             if caption_idx is not None and b.caption is None:
                 b.caption = blocks[caption_idx].text_content()
+                to_remove.add(caption_idx)
+    return to_remove
 
 
 def _find_nearest_caption(blocks: List[Block], idx: int, pattern: str) -> Optional[int]:
@@ -299,6 +309,52 @@ def _inject_section_path(blocks: List[Block]) -> List[Block]:
                 level=len(heading_stack),
             )
     return blocks
+
+
+def _merge_consecutive_paragraphs(blocks: List[Block]) -> List[Block]:
+    """Merge consecutive ParagraphBlocks that share the same section path.
+
+    Groups consecutive ParagraphBlocks by identical section anchors.
+    Groups with more than one block are merged into a single ParagraphBlock
+    whose text is joined by '\\n\\n'. The first block's page and bbox are retained.
+    If a block carries a '_lines' attribute (patch mode), those lines are concatenated.
+    """
+    if not blocks:
+        return blocks
+
+    result: List[Block] = []
+    group: List[ParagraphBlock] = []
+
+    def flush_group():
+        if len(group) > 1:
+            merged = ParagraphBlock(
+                page=group[0].page,
+                section=group[0].section,
+                text='\n\n'.join(p.text for p in group),
+            )
+            all_lines = []
+            for p in group:
+                lines = getattr(p, '_lines', None)
+                if lines:
+                    all_lines.extend(lines)
+            if all_lines:
+                object.__setattr__(merged, '_lines', all_lines)
+            result.append(merged)
+        elif group:
+            result.append(group[0])
+        group.clear()
+
+    for b in blocks:
+        if isinstance(b, ParagraphBlock):
+            if group and group[-1].section.anchors != b.section.anchors:
+                flush_group()
+            group.append(b)
+        else:
+            flush_group()
+            result.append(b)
+
+    flush_group()
+    return result
 
 
 # ---------- Utilities ----------
