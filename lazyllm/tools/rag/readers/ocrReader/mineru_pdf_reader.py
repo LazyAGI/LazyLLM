@@ -36,6 +36,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._lazyllm_patch_applied = lazyllm_patch_applied
+        self._api_key = lazyllm.config['mineru_api_key']
 
     @override
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
@@ -84,6 +85,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
             result_url=base_url + '/tasks/{task_id}/result',
             payload=payload,
             files=files_payload,
+            headers={'Authorization': f'Bearer {self._api_key}'},
             timeout=self._timeout,
         )
         if file_obj:

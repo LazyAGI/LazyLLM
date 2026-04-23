@@ -24,9 +24,9 @@ lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='T
 
 class PaddleOCRPDFReader(_OcrReaderBase):
     def __init__(self,
-                 url: str = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing',
-                 droped_types: Set[str] = {'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
-                 **kwargs):
+            url: str = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing',
+            droped_types: Set[str] = {'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
+            **kwargs):
         super().__init__(url=url, droped_types=droped_types, **kwargs)
         self._api_key = lazyllm.config['paddle_api_key']
         self._headers = {
