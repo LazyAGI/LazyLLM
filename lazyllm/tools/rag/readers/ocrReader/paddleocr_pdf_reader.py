@@ -16,7 +16,6 @@ from .ocr_ir import (
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock, ListBlock,
 )
-from .ocr_postprocessor import l1_normalize, l2_associate
 from .ocr_reader_base import _OcrReaderBase
 
 lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='The API key for PaddleOCR')
@@ -29,10 +28,6 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             **kwargs):
         super().__init__(url=url, droped_types=droped_types, **kwargs)
         self._api_key = lazyllm.config['paddle_api_key']
-        self._headers = {
-            'Authorization': f'token {self._api_key or ""}',
-            'Content-Type': 'application/json'
-        }
 
     @override
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
@@ -48,17 +43,11 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             'prettifyMarkdown': True,
         }
 
-        response = post_sync(self._url, json_payload=payload, headers=self._headers, timeout=600)
+        response = post_sync(self._url, json_payload=payload, headers={
+            'Authorization': f'token {self._api_key or ""}',
+            'Content-Type': 'application/json'
+        }, timeout=600)
         return response.text
-
-    @override
-    def _build_nodes_from_response(self, response_json: str, file: Path,
-                       extra_info: Optional[Dict] = None) -> List[DocNode]:
-        raw = json.loads(response_json)
-        blocks = self._adapt_json_to_IR(raw)
-        blocks = l1_normalize(blocks)
-        blocks = l2_associate(blocks)
-        return self._build_nodes_from_blocks(blocks, file, extra_info)
 
     @override
     def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
@@ -71,8 +60,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                     blocks.append(block)
         return blocks
 
-    def _adapt_one(self, item: dict, page_idx: int,
-            markdown_images: Dict[str, str]) -> Optional[Block]:
+    def _adapt_one(self, item: dict, page_idx: int, markdown_images: Dict[str, str]) -> Optional[Block]:
         label = item['block_label']
         if label in self._droped_types:
             return None

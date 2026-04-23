@@ -1,11 +1,13 @@
+import json
 from typing import Optional, Callable, Set, List, Dict
 from pathlib import Path
 from enum import Enum
 
+from lazyllm.thirdparty import bs4
 from ..readerBase import _RichReader
 from ...doc_node import DocNode
 from .ocr_ir import Block, Cell
-from lazyllm.thirdparty import bs4
+from .ocr_postprocessor import l1_normalize, l2_associate
 
 class ServiceVariant(str, Enum):
     ONLINE = 'online'
@@ -17,7 +19,20 @@ class ServiceVariant(str, Enum):
         raise ValueError(f'Invalid service_variant: {value!r}, only support: {supported}')
 
 
-class _OcrReaderBase(_RichReader):
+class _Adapter:
+    def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
+        '''Adapt raw JSON response to intermediate block representation.
+
+        Subclasses implement service-specific adaptation logic directly.'''
+        raise NotImplementedError
+
+    def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
+            extra_info: Optional[Dict] = None) -> List[DocNode]:
+        '''Build DocNodes from parsed intermediate blocks.'''
+        raise NotImplementedError
+
+
+class _OcrReaderBase(_RichReader, _Adapter):
     def __init__(self,
             url,
             image_cache_dir: Path,
@@ -37,10 +52,15 @@ class _OcrReaderBase(_RichReader):
         '''Fetch raw response string from the OCR service.'''
         raise NotImplementedError
 
-    def _build_nodes_from_response(self, response: str, file: Path,
+    def _build_nodes_from_response(self, response_text: str, file: Path,
             extra_info: Optional[Dict] = None) -> List[DocNode]:
         '''Parse OCR service response into DocNodes.'''
-        raise NotImplementedError
+        raw = json.loads(response_text)
+        blocks = self._adapt_json_to_IR(raw)
+        # Post processing
+        blocks = l1_normalize(blocks, self._page_size)
+        blocks = l2_associate(blocks)
+        return self._build_nodes_from_blocks(blocks, file, extra_info)
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None, use_cache: bool = True, **kwargs
         ) -> List[DocNode]:
@@ -73,15 +93,3 @@ class _OcrReaderBase(_RichReader):
     @staticmethod
     def _make_anchor(text: str) -> str:
         return text.strip().replace(' ', '-').replace('\n', '-')[:64]
-
-class _Adapter:
-    def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
-        '''Adapt raw JSON response to intermediate block representation.
-
-        Subclasses implement service-specific adaptation logic directly.'''
-        raise NotImplementedError
-
-    def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
-            extra_info: Optional[Dict] = None) -> List[DocNode]:
-        '''Build DocNodes from parsed intermediate blocks.'''
-        raise NotImplementedError

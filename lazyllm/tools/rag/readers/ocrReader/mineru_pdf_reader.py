@@ -22,7 +22,7 @@ from .ocr_reader_base import _OcrReaderBase, _Adapter, ServiceVariant
 
 lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='The API key for Mineru')
 
-class MineruPDFReader(_OcrReaderBase, _Adapter):
+class MineruPDFReader(_OcrReaderBase):
     def __init__(self,
             url: str = 'https://mineru.net/api/v4/extract/task',
             lazyllm_patch_applied: bool = False,
@@ -99,16 +99,6 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
 
         with open(self._image_cache_dir.glob('auto/*_content_list.json'), 'r', encoding='utf-8') as f:
             return json.dumps(json.load(f))
-
-    @override
-    def _build_nodes_from_response(self, response_json: str, file: Path,
-            extra_info: Optional[Dict] = None) -> List[DocNode]:
-        raw = json.loads(response_json)
-        blocks = self._adapt_json_to_IR(raw)
-        # Post processing
-        blocks = l1_normalize(blocks, self._page_size)
-        blocks = l2_associate(blocks)
-        return self._build_nodes_from_blocks(blocks, file, extra_info)
 
     @override
     def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
