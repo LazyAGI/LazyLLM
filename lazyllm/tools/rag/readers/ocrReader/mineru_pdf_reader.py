@@ -3,15 +3,13 @@ import json
 import os
 import zipfile
 
-import requests
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 from typing_extensions import override
 
 import lazyllm
 from lazyllm import LOG
-from lazyllm.thirdparty import bs4
-from lazyllm.tools.http_request import post_sync, get_sync, post_async
+from lazyllm.tools.http_request import post_sync, post_async
 
 from ...doc_node import DocNode
 from .ocr_ir import (
@@ -170,35 +168,9 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
             )
         return None
 
-    @staticmethod
-    def _make_anchor(text: str) -> str:
-        return text.strip().replace(' ', '-').replace('\n', '-')[:64]
-
-    @staticmethod
-    def _first(val):
-        if isinstance(val, list) and val:
-            return val[0]
-        if isinstance(val, str):
-            return val
-        return None
-
-    def _parse_table_html(self, html_text: str) -> List[Cell]:
-        soup = bs4.BeautifulSoup(html_text, 'html.parser')
-        cells: List[Cell] = []
-        for row_idx, tr in enumerate(soup.find('table').find_all('tr')):
-            for col_idx, td in enumerate(tr.find_all(['td', 'th'])):
-                cells.append(Cell(
-                    row=row_idx,
-                    col=col_idx,
-                    rowspan=int(td.get('rowspan', 1)),
-                    colspan=int(td.get('colspan', 1)),
-                    text=td.get_text(strip=True),
-                ))
-        return cells
-
     @override
     def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
-                                  extra_info: Optional[Dict] = None) -> List[DocNode]:
+            extra_info: Optional[Dict] = None) -> List[DocNode]:
         docs = []
 
         global_metadata = dict(extra_info) if extra_info else {}
@@ -211,7 +183,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
                 'file_path': str(file),
                 'type': b.ty,
                 'page': b.page.index,
-                'bbox': [b.page.bbox.x0, b.page.bbox.y0, b.page.bbox.x1, b.page.bbox.y1],
+                'bbox': b.page.bbox.to_list(),
                 'section_path': b.section.anchors,
             }
             if isinstance(b, HeadingBlock):

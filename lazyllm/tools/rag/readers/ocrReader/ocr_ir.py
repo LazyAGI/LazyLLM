@@ -15,9 +15,7 @@ class BBox:
 
     @classmethod
     def from_list(cls, vals: List[float]) -> 'BBox':
-        if len(vals) >= 4:
-            return cls(x0=float(vals[0]), y0=float(vals[1]), x1=float(vals[2]), y1=float(vals[3]))
-        return cls(x0=0.0, y0=0.0, x1=0.0, y1=0.0)
+        return cls(x0=float(vals[0]), y0=float(vals[1]), x1=float(vals[2]), y1=float(vals[3]))
 
 
 @dataclass
