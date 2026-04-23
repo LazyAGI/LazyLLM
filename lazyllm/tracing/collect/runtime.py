@@ -12,6 +12,7 @@ from ..backends import get_tracing_backend
 from .context import LazyTraceContext
 from ..semantics import SemanticType
 from .span import LazySpan, LazyTrace
+from .trace_config import collect_trace_config, resolve_semantic_type_for_target
 
 
 _TRACE_SERVICE_NAME = 'lazyllm'
@@ -153,23 +154,19 @@ class TracingRuntime:
             return None
         return getattr(target, '_flow_id', None)
 
-    def _populate_identity(self, span: LazySpan, target: Any) -> None:
+    def _populate_identity(
+        self,
+        span: LazySpan,
+        target: Any,
+        args: tuple,
+        call_kwargs: Dict[str, Any],
+    ) -> None:
         '''Fill identity and config fields of LazySpan from the target object.'''
         span.component_class = target.__class__.__name__
         span.component_id = self._target_id(target, span.span_kind)
 
-        try:
-            if hasattr(target, '__trace_kwargs__'):
-                trace_kwargs = target.__trace_kwargs__
-                if isinstance(trace_kwargs, dict):
-                    span.config = dict(trace_kwargs)
-        except Exception as exc:
-            LOG.warning(f'Failed to read __trace_kwargs__ on {target.__class__.__name__}: {exc}')
-
-        semantic_type = getattr(target, '__semantic_type__', None)
-        if semantic_type is None and span.span_kind == 'flow':
-            semantic_type = SemanticType.WORKFLOW_CONTROL
-        span.semantic_type = semantic_type
+        span.config = collect_trace_config(target, span.span_kind, args, call_kwargs)
+        span.semantic_type = resolve_semantic_type_for_target(target, span.span_kind)
 
     def start_span(
         self,
@@ -240,7 +237,7 @@ class TracingRuntime:
         lazy_span._otel_span = otel_span
         lazy_span._otel_span_cm = span_cm
 
-        self._populate_identity(lazy_span, target)
+        self._populate_identity(lazy_span, target, args, kwargs)
 
         if capture_payload:
             lazy_span.input = {'args': args, 'kwargs': kwargs}
