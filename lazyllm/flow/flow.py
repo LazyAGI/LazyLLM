@@ -66,9 +66,6 @@ def _is_function(f):
 
 _thread_local = threading.local()
 _async_var = ContextVar('lazyllm.flow_stack')
-_switch_trace_matched_stack: ContextVar = ContextVar('lazyllm.switch.trace_matched_stack', default=None)
-_ifs_trace_matched_stack: ContextVar = ContextVar('lazyllm.ifs.trace_matched_stack', default=None)
-
 def _get_flow_stack():
     if events._get_running_loop() is not None:
         stack = _async_var.get(None)
@@ -247,10 +244,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self._hooks = []
         register_hooks(self, resolve_builtin_hooks(self))
 
-<<<<<<< HEAD
     @execution_with_hooks
-=======
->>>>>>> 2955666a (remove deprecated trace_kwargs and semantic_type)
     def __call__(self, *args, **kw):
         with globals.stack_enter(self.identities):
             output = self._run(args[0] if len(args) == 1 else package(args), **kw)
@@ -705,14 +699,6 @@ class Switch(LazyLLMFlowsBase):
         self._judge_on_full_input = judge_on_full_input
         self._set_conversion(conversion)
 
-    def __trace_output_attrs__(self, output):
-        stack = _switch_trace_matched_stack.get()
-        if stack:
-            matched = stack[-1]
-            _switch_trace_matched_stack.set(stack[:-1] or None)
-            return {f'lazyllm.matched.{k}': v for k, v in matched.items()}
-        return {}
-
     def _set_conversion(self, conversion):
         self._conversion = conversion
 
@@ -788,13 +774,6 @@ class Loop(Pipeline):
         self._judge_on_full_input = judge_on_full_input
         self._stop_condition = stop_condition
         self._loop_count = count
-
-    def __trace_output_attrs__(self, output):
-        count = getattr(self, '_trace_actual_iterations', None)
-        if count is not None:
-            self._trace_actual_iterations = None
-            return {'lazyllm.loop.actual_iterations': count}
-        return {}
 
 
 class Graph(LazyLLMFlowsBase):

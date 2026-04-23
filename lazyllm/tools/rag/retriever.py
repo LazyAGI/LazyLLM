@@ -1,5 +1,3 @@
-import contextvars
-import json
 from typing import List, Optional, Union, Dict, Set, Callable, Any
 from lazyllm import ModuleBase, once_wrapper, LOG, TempPathGenerator, parallel
 
@@ -10,11 +8,6 @@ from .store import LAZY_ROOT_NAME
 from .similarity import registered_similarities
 import functools
 import lazyllm
-
-
-_retriever_trace_attrs_var: 'contextvars.ContextVar[Optional[Dict[str, Any]]]' = (
-    contextvars.ContextVar('_lazyllm_retriever_trace_attrs', default=None)
-)
 
 
 class _PostProcess(object):
@@ -44,35 +37,6 @@ class _RetrieverBase(ModuleBase):
         high = 'high'
 
         def __repr__(self): return self.casefold()
-
-    _MAX_TRACED_SCORES = 50
-
-    @staticmethod
-    def _build_trace_output_attrs(nodes):
-        attrs = {}
-        if nodes and isinstance(nodes, list):
-            attrs['lazyllm.output.doc_count'] = len(nodes)
-            scores = []
-            for n in nodes:
-                if not isinstance(n, DocNode) or n.similarity_score is None:
-                    continue
-                try:
-                    scores.append(float(n.similarity_score))
-                except (TypeError, ValueError) as exc:
-                    LOG.warning(f'Skipping non-numeric similarity_score '
-                                f'{n.similarity_score!r} on DocNode: {exc}')
-            if scores:
-                attrs['lazyllm.output.similarity_scores'] = json.dumps(
-                    scores[:_RetrieverBase._MAX_TRACED_SCORES])
-        return attrs
-
-    def __trace_output_attrs__(self, output):
-        attrs = _retriever_trace_attrs_var.get()
-        if attrs is not None:
-            _retriever_trace_attrs_var.set(None)
-            return attrs
-        return self._build_trace_output_attrs(output)
-
 
 class Retriever(_RetrieverBase, _PostProcess):
     def __init__(self, doc: object, group_name: str, similarity: Optional[str] = None,
@@ -232,7 +196,6 @@ class Retriever(_RetrieverBase, _PostProcess):
             if nodes and self._target and self._target != nodes[0]._group:
                 nodes = doc.find(self._target)(nodes)
             all_nodes.extend(nodes)
-        _retriever_trace_attrs_var.set(self._build_trace_output_attrs(all_nodes))
         return self._post_process(all_nodes)
 
 
