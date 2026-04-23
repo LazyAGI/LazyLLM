@@ -1484,7 +1484,8 @@ _r3_agent_instance_counter = [0]
 
 
 def _make_traced_tool(tool: Any, step_counter: List[int], path: str,
-                      log_list: Optional[List[str]] = None) -> Any:
+                      log_list: Optional[List[str]] = None,
+                      round_name: str = 'R2') -> Any:
     import inspect
     sig = inspect.signature(tool)
     params = list(sig.parameters.keys())
@@ -1502,7 +1503,7 @@ def _make_traced_tool(tool: Any, step_counter: List[int], path: str,
                 v_str = v_str[:57] + '...'
             arg_parts.append(f'{k}={v_str}' if k != params[0] else v_str)
         call_desc = f'{tool.__name__}({", ".join(arg_parts)})'
-        lazyllm.LOG.info(f'  [R2 Step {step_counter[0]}] {call_desc}')
+        lazyllm.LOG.info(f'  [{round_name} Step {step_counter[0]}] {call_desc}')
         result = tool(*args, **kwargs)
         if log_list is not None:
             status = 'ok'
@@ -1734,7 +1735,7 @@ def _r3_build_file_context(
     )
     step_counter = [0]
     exploration_log: List[str] = []
-    traced_tools = [_make_traced_tool(t, step_counter, path, exploration_log) for t in tools]
+    traced_tools = [_make_traced_tool(t, step_counter, path, exploration_log, round_name='R3') for t in tools]
     try:
         agent = ReactAgent(
             llm, tools=traced_tools, max_retries=_R3_FILE_AGENT_RETRIES,
@@ -2348,7 +2349,7 @@ def _rmod_run_single_file(
     )
     step_counter = [0]
     exploration_log: List[str] = []
-    traced_tools = [_make_traced_tool(t, step_counter, file_path, exploration_log) for t in tools]
+    traced_tools = [_make_traced_tool(t, step_counter, file_path, exploration_log, round_name='RMod') for t in tools]
     try:
         agent = ReactAgent(
             llm, tools=traced_tools, max_retries=_RMOD_AGENT_RETRIES,
@@ -2465,7 +2466,7 @@ def _run_rmod_agent_round(
 # ── RScene: Usage Scenario Inference ──────────────────────────────────────────
 
 _RSCENE_AGENT_TIMEOUT_SECS = 180
-_RSCENE_AGENT_RETRIES = 6
+_RSCENE_AGENT_RETRIES = 10
 _RSCENE_DIFF_BUDGET = 6000
 
 _RSCENE_PROMPT_TMPL = '''\
@@ -2544,7 +2545,8 @@ def _rscene_run_single_group(
 
     step_counter = [0]
     exploration_log: List[str] = []
-    traced_tools = [_make_traced_tool(t, step_counter, anchor or (files[0] if files else 'rscene'), exploration_log)
+    traced_tools = [_make_traced_tool(t, step_counter, anchor or (files[0] if files else 'rscene'), exploration_log,
+                                      round_name='RScene')
                     for t in tools]
 
     try:
@@ -2554,6 +2556,11 @@ def _rscene_run_single_group(
             max_retries=_RSCENE_AGENT_RETRIES,
             workspace=clone_dir,
             force_summarize=True,
+            force_summarize_context=(
+                'Output a JSON array wrapped with <<<JSON_START>>> and <<<JSON_END>>> markers. '
+                'Each element must have: title, description, api_sequence, state_changes, '
+                'entry_point, call_chain, edge_cases.'
+            ),
             keep_full_turns=2,
         )
         import concurrent.futures as _cf_inner
@@ -2576,7 +2583,7 @@ def _rscene_run_single_group(
 
     result = [s for s in scenarios if isinstance(s, dict) and s.get('title')]
     lazyllm.LOG.info(f'  [RScene] {len(result)} scenarios inferred for {anchor or files}')
-    if ckpt:
+    if ckpt and result:
         ckpt.save(ckpt_key, result)
     return result
 
@@ -2669,7 +2676,7 @@ def infer_usage_scenarios(
     deduped = _rscene_dedup_scenarios(all_scenarios)
 
     prog.done(f'{len(deduped)} unique scenarios inferred')
-    if ckpt:
+    if ckpt and deduped:
         ckpt.save('rscene_all', deduped)
         ckpt.mark_stage_done(ReviewStage.RSCENE)
     return deduped
@@ -2839,7 +2846,8 @@ def _rchain_run_single_scenario(
 
         step_counter = [0]
         exploration_log: List[str] = []
-        traced_tools = [_make_traced_tool(t, step_counter, f'rchain_{safe_title}', exploration_log)
+        traced_tools = [_make_traced_tool(t, step_counter, f'rchain_{safe_title}', exploration_log,
+                                          round_name='RChain')
                         for t in tools]
 
         try:
