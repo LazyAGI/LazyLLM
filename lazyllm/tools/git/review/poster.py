@@ -74,7 +74,7 @@ def _comment_body_text(c: Dict[str, Any], model_name: str) -> str:
         'without concrete actions are incomplete, and consensus-based arguments (e.g., “others are doing this”) '
         f'alone are not sufficient.*\n\n**{severity_tag} {category_tag}** {c.get("problem", "")}\n\n'
         f'**Suggestion:** {_suggestion_prefix(c.get("suggestion", ""))}{c.get("suggestion", "")}\n\n'
-        f'---\nauto reviewed by BOT ({model_name})')
+        f'---\nauto reviewed by BOT ({model_name}), skill at https://github.com/LazyAGI/LazyCoding')
 
 
 def _fetch_existing_pr_comments(backend: LazyLLMGitBase, pr_number: int) -> List[Dict[str, Any]]:

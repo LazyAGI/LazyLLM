@@ -126,6 +126,7 @@ Note: if symbols are grouped, coverage of one may imply coverage of another.
 
 {grep_results}
 
+{usage_scenarios_block}
 ## Task
 Evaluate whether test coverage is ADEQUATE, PARTIAL, or MISSING for this group as a whole.
 
@@ -321,9 +322,23 @@ def _rcov_group_symbols(
 def _rcov_evaluate_groups(
     llm: Any, groups: List[Dict[str, Any]], symbols: List[Dict[str, Any]],
     test_files: List[str], clone_dir: Optional[str], pr_summary: str, lang_instr: str,
+    usage_scenarios_str: str = '',
 ) -> List[Dict[str, Any]]:
     '''Step 2: grep test files and evaluate coverage per group (parallel).'''
     sym_by_name = {s['symbol']: s for s in symbols}
+
+    # Build usage scenarios block for prompt injection
+    if usage_scenarios_str:
+        usage_scenarios_block = (
+            '## Inferred Usage Scenarios (from RScene)\n'
+            'The following typical usage scenarios were inferred from documentation, tests, and '
+            'existing callers. When evaluating coverage, ALSO check whether these scenarios and '
+            'their edge_cases are covered by existing tests. If a scenario\'s edge_case is not '
+            'covered, report it as a PARTIAL or MISSING issue.\n\n'
+            f'{usage_scenarios_str[:3000]}\n\n'
+        )
+    else:
+        usage_scenarios_block = ''
 
     def _evaluate_group(group: Dict[str, Any]) -> List[Dict[str, Any]]:
         group_syms = [sym_by_name[name] for name in group.get('symbols', []) if name in sym_by_name]
@@ -336,6 +351,7 @@ def _rcov_evaluate_groups(
             symbols_json=json.dumps(group_syms, ensure_ascii=False, indent=2),
             rationale=group.get('rationale', ''),
             grep_results=clip_text(grep_results, 12000),
+            usage_scenarios_block=usage_scenarios_block,
         )
         items_raw = _safe_llm_call(llm, evaluate_prompt)
         issues: List[Dict[str, Any]] = []
@@ -377,6 +393,7 @@ def _run_coverage_check(
     pr_summary: str,
     clone_dir: Optional[str],
     language: str = 'cn',
+    usage_scenarios_str: str = '',
 ) -> List[Dict[str, Any]]:
     '''
     RCov: three-step test coverage check.
@@ -400,7 +417,10 @@ def _run_coverage_check(
         test_files = _find_test_files(clone_dir)
         lazyllm.LOG.info(f'  [RCov] Found {len(test_files)} test files')
 
-    all_issues = _rcov_evaluate_groups(llm, groups, symbols, test_files, clone_dir, pr_summary, lang_instr)
+    all_issues = _rcov_evaluate_groups(
+        llm, groups, symbols, test_files, clone_dir, pr_summary, lang_instr,
+        usage_scenarios_str=usage_scenarios_str,
+    )
 
     prog.done(f'{len(all_issues)} coverage issues found across {len(groups)} group(s)')
     return all_issues

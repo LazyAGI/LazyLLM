@@ -26,6 +26,8 @@ from .pre_analysis import (
     _find_subclass_implementations,
     _extract_file_skeleton,
     _lookup_relevant_rules,
+    _build_layered_agents_index,
+    _get_local_agent_instructions,
 )
 from .constants import (
     SINGLE_CALL_CONTEXT_BUDGET, R1_DIFF_BUDGET,
@@ -683,18 +685,33 @@ def _r1_run_batch(
 def _r1_cache_key(path: str, new_start: int) -> str:
     return f'r1_hunk_{re.sub(r"[^a-zA-Z0-9_]", "_", path)}_{new_start}'
 
+def _inject_local_agent_instructions(
+    agent_instructions: str, agents_index: Optional[Dict[str, str]], file_path: str,
+) -> str:
+    '''Merge global agent_instructions with local AGENTS.md rules for the given file path.'''
+    if not agents_index:
+        return agent_instructions
+    local_rules = _get_local_agent_instructions(agents_index, file_path)
+    if not local_rules:
+        return agent_instructions
+    return (agent_instructions + '\n\n## Local Rules\n' + local_rules
+            if agent_instructions else local_rules)
+
+
 def _r1_task_batch(
     path: str, idxs: List[int], hunks: List[Tuple[str, int, int, str]],
     arch_doc: str, spec_snippet: str, summary_snippet: str,
     clone_dir: Optional[str], language: str, symbol_index: Optional[Dict[str, str]],
     lock: threading.Lock, results_by_idx: Dict[int, List[Dict[str, Any]]],
     ckpt: Optional[Any], prog: Any, use_cache: bool, llm: Any, agent_instructions: str = '',
-    pr_file_summary: str = '',
+    pr_file_summary: str = '', agents_index: Optional[Dict[str, str]] = None,
 ) -> None:
     arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=3000)
     if pr_file_summary:
         arch_snippet = f'{arch_snippet}\n\n## PR Changed Files\n{pr_file_summary}' if arch_snippet else \
             f'## PR Changed Files\n{pr_file_summary}'
+    # Inject local AGENTS.md rules for this file's directory hierarchy
+    effective_agent_instructions = _inject_local_agent_instructions(agent_instructions, agents_index, path)
     # per-file skeleton + code tags (shared across all hunks in this file)
     file_skeleton = _extract_file_skeleton(clone_dir, path) if clone_dir else ''
     first_hunk_content = hunks[idxs[0]][3] if idxs else ''
@@ -724,7 +741,7 @@ def _r1_task_batch(
             llm, path, batch_idxs, hunks,
             arch_snippet, spec_snippet, summary_snippet,
             clone_dir, language, symbol_index,
-            lock, results_by_idx, ckpt, prog, _r1_cache_key, agent_instructions,
+            lock, results_by_idx, ckpt, prog, _r1_cache_key, effective_agent_instructions,
             file_skeleton=file_skeleton, code_tags=code_tags,
         )
 
@@ -741,6 +758,7 @@ def _round1_hunk_analysis(
     ckpt: Optional[Any] = None,
     agent_instructions: str = '',
     pr_file_summary: str = '',
+    agents_index: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     all_diff = '\n'.join(h[3] for h in hunks) if hunks else ''
     spec_snippet = _lookup_relevant_rules(review_spec, all_diff, max_detail=8) if review_spec else '(not available)'
@@ -761,7 +779,7 @@ def _round1_hunk_analysis(
                 arch_doc, spec_snippet, summary_snippet,
                 clone_dir, language, symbol_index,
                 lock, results_by_idx, ckpt, prog, use_cache, llm, agent_instructions,
-                pr_file_summary,
+                pr_file_summary, agents_index,
             ): path
             for path, idxs in file_to_idxs.items()
         }
@@ -1167,10 +1185,17 @@ def _r3_unit_agent_verify(
     agent_instructions: str,
     max_chunks: int,
     review_spec: str = '',
+    agents_index: Optional[Dict[str, str]] = None,
 ) -> None:
     files = unit['files']
     anchor = unit['anchor']
     unit_diff = unit['diff']
+
+    # Inject local AGENTS.md rules for the anchor file (or first file in group)
+    primary_file = anchor or (files[0] if files else '')
+    effective_agent_instructions = _inject_local_agent_instructions(
+        agent_instructions, agents_index, primary_file,
+    )
 
     # checkpoint key: anchor file or sorted group files
     if anchor:
@@ -1195,7 +1220,7 @@ def _r3_unit_agent_verify(
     agent_diff = compress_diff_for_agent_heuristic(unit_diff, _R3_AGENT_DIFF_BUDGET)
     try:
         symbol_context = _r3_build_file_context(llm, primary, agent_diff, clone_dir, tools, language,
-                                                agent_instructions=agent_instructions)
+                                                agent_instructions=effective_agent_instructions)
     except Exception as e:
         if 'timed out' in str(e):
             raise
@@ -1224,7 +1249,7 @@ def _r3_unit_agent_verify(
         new_items, new_disc = _r3_extract_issues(
             llm, primary, annotated_chunk, hunk_range,
             filtered_ctx, shared_context, r1_issues, arch_doc, pr_summary,
-            language, agent_instructions, file_skeleton=skeleton,
+            language, effective_agent_instructions, file_skeleton=skeleton,
             all_paths=files, review_spec=review_spec,
         )
         items.extend(new_items)
@@ -1834,6 +1859,7 @@ def _round3_agent_verify(
     owner_repo: str = '',
     arch_cache_path: Optional[str] = None,
     review_spec: str = '',
+    agents_index: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[Dict[str, Any]], set, Dict[str, int]]:
     r3_metrics: Dict[str, int] = {
         'r3_files_chunk': 0, 'r3_files_group': 0,
@@ -1890,7 +1916,7 @@ def _round3_agent_verify(
             llm, unit, r1_by_file, shared_context, arch_doc, pr_summary,
             clone_dir, symbol_cache, tools, language, ckpt, all_results, all_discarded,
             use_cache=use_cache, agent_instructions=agent_instructions,
-            max_chunks=max_chunks, review_spec=review_spec,
+            max_chunks=max_chunks, review_spec=review_spec, agents_index=agents_index,
         )
         if unit['anchor']:
             r3_metrics['r3_files_chunk'] += 1
@@ -2436,9 +2462,485 @@ def _run_rmod_agent_round(
     return all_results
 
 
+# ── RScene: Usage Scenario Inference ──────────────────────────────────────────
+
+_RSCENE_AGENT_TIMEOUT_SECS = 180
+_RSCENE_AGENT_RETRIES = 6
+_RSCENE_DIFF_BUDGET = 6000
+
+_RSCENE_PROMPT_TMPL = '''\
+You are a feature analyst. Your task is to understand the public API of the modified \
+functionality and infer 2-4 typical end-to-end usage scenarios.
+
+{lang_instruction}
+
+## PR Summary
+{pr_summary}
+
+## Modified Files and Public Symbols (compressed diff — signatures only)
+{compressed_diff}
+
+## Architecture Context
+{arch_doc}
+
+## Your Task (execute in order)
+
+Step 1 — Understand the functional module:
+  - Use read_file_scoped to read the full skeleton (class definitions, method signatures, \
+key constants) of each modified file
+  - Use analyze_symbol to understand the state machine and data flow of core classes
+  - Use search_scoped to find existing call examples in test files (glob: test_*.py)
+  - Use grep_callers to find existing callers in non-test production code
+
+Step 2 — Infer typical usage scenarios:
+  - Based on the above, infer 2-4 typical end-to-end usage scenarios
+  - Each scenario must be realistic and have a clear API call sequence
+  - Focus on: multi-step operations, state changes, resource sharing, concurrent access
+  - Include edge cases that are likely to cause bugs: partial failure, concurrent calls, \
+multi-user isolation, ordering dependencies
+
+Output a JSON array. Each element must have:
+- "title": verb phrase (e.g. "Create knowledge base and add documents")
+- "description": one sentence
+- "api_sequence": list of API call strings (e.g. ["DocServer.add_kb(kb_id)", "DocServer.add_docs(...)"])
+- "state_changes": key state changes description (DB/memory state)
+- "entry_point": top-level entry symbol name
+- "call_chain": list of internal call chain steps (e.g. ["DocServer.add_docs()", "_DocManager._insert_docs()"])
+- "edge_cases": list of edge case strings to check
+
+''' + JSON_OUTPUT_INSTRUCTION
+
+
+def _rscene_run_single_group(
+    llm: Any,
+    anchor: Optional[str],
+    files: List[str],
+    diff_text: str,
+    arch_doc: str,
+    pr_summary: str,
+    clone_dir: str,
+    language: str,
+    symbol_cache: Dict[str, Any],
+    tools: Any,
+    ckpt: Optional[Any],
+    use_cache: bool,
+) -> List[Dict[str, Any]]:
+    safe = re.sub(r'[^a-zA-Z0-9_]', '_', anchor or '_'.join(sorted(files))[:60])
+    ckpt_key = f'rscene_group_{safe}'
+    if ckpt and use_cache:
+        cached = ckpt.get(ckpt_key)
+        if cached is not None:
+            return cached
+
+    compressed_diff = compress_diff_for_agent_heuristic(diff_text, _RSCENE_DIFF_BUDGET)
+    arch_snippet = _extract_arch_for_file(arch_doc, anchor or files[0], max_chars=4000) if arch_doc else ''
+
+    prompt = _RSCENE_PROMPT_TMPL.format(
+        lang_instruction=_language_instruction(language),
+        pr_summary=pr_summary[:600] if pr_summary else '(not available)',
+        compressed_diff=compressed_diff,
+        arch_doc=arch_snippet or '(not available)',
+    )
+
+    step_counter = [0]
+    exploration_log: List[str] = []
+    traced_tools = [_make_traced_tool(t, step_counter, anchor or (files[0] if files else 'rscene'), exploration_log)
+                    for t in tools]
+
+    try:
+        from lazyllm.tools.agent import ReactAgent
+        agent = ReactAgent(
+            llm, tools=traced_tools,
+            max_retries=_RSCENE_AGENT_RETRIES,
+            workspace=clone_dir,
+            force_summarize=True,
+            keep_full_turns=2,
+        )
+        import concurrent.futures as _cf_inner
+        with _cf_inner.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(agent, prompt)
+            try:
+                raw = fut.result(timeout=_RSCENE_AGENT_TIMEOUT_SECS)
+            except _cf_inner.TimeoutError:
+                lazyllm.LOG.warning(f'  [RScene] Timed out for {anchor or files} after {_RSCENE_AGENT_TIMEOUT_SECS}s')
+                return []
+    except Exception as e:
+        lazyllm.LOG.warning(f'  [RScene] Agent failed for {anchor or files}: {e}')
+        return []
+
+    json_text = _extract_json_text(raw or '')
+    scenarios = _parse_json_with_repair(json_text) if json_text else None
+    if not isinstance(scenarios, list):
+        lazyllm.LOG.warning(f'  [RScene] Could not parse scenarios JSON for {anchor or files}')
+        return []
+
+    result = [s for s in scenarios if isinstance(s, dict) and s.get('title')]
+    lazyllm.LOG.info(f'  [RScene] {len(result)} scenarios inferred for {anchor or files}')
+    if ckpt:
+        ckpt.save(ckpt_key, result)
+    return result
+
+
+def _rscene_collect_modified_file_diffs(diff_text: str) -> Dict[str, str]:
+    '''Collect per-file diffs for modified (non-new) files only.'''
+    new_paths = _rmod_new_file_paths(diff_text)
+    hunks = _parse_unified_diff(diff_text)
+    file_diffs: Dict[str, str] = {}
+    for path, start, count, content in hunks:
+        if path not in new_paths:
+            file_diffs.setdefault(path, '')
+            file_diffs[path] += f'@@ +{start},{count} @@\n{content}\n'
+    return file_diffs
+
+
+def _rscene_dedup_scenarios(scenarios: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    '''Deduplicate scenarios by exact title match (case-insensitive).'''
+    seen_titles: set = set()
+    deduped: List[Dict[str, Any]] = []
+    for s in scenarios:
+        t = s.get('title', '').strip().lower()
+        if t and t not in seen_titles:
+            seen_titles.add(t)
+            deduped.append(s)
+    return deduped
+
+
+def infer_usage_scenarios(
+    llm: Any,
+    diff_text: str,
+    arch_doc: str,
+    pr_summary: str,
+    clone_dir: str,
+    ckpt: Optional[Any] = None,
+    language: str = 'cn',
+    strategy: Optional[Any] = None,
+    owner_repo: str = '',
+    arch_cache_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    '''RScene: infer typical usage scenarios for modified public APIs.
+    Returns a list of scenario dicts (title, description, api_sequence, call_chain, edge_cases, ...).
+    '''
+    use_cache = ckpt.should_use_cache(ReviewStage.RSCENE) if ckpt else True
+    if ckpt and use_cache:
+        cached_all = ckpt.get('rscene_all')
+        if cached_all is not None:
+            lazyllm.LOG.info(f'[RScene] Using cached scenarios ({len(cached_all)} total)')
+            return cached_all
+
+    # Collect file diffs for modified (not purely new) files
+    file_diffs = _rscene_collect_modified_file_diffs(diff_text)
+
+    if not file_diffs:
+        lazyllm.LOG.info('[RScene] No modified (non-new) files found, skipping')
+        return []
+
+    large_threshold = strategy.large_file_threshold if strategy else 200
+    max_files = strategy.max_files_for_r3 if strategy else 20
+    units, skipped = _build_review_units(file_diffs, large_threshold, max_files)
+    if skipped:
+        lazyllm.LOG.info(f'[RScene] Skipped {len(skipped)} files (over budget)')
+
+    prog = _Progress('RScene: inferring usage scenarios', len(units))
+    symbol_cache: Dict[str, Any] = {}
+    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
+
+    all_scenarios: List[Dict[str, Any]] = []
+    _RSCENE_MAX_PARALLEL = 3
+    with ThreadPoolExecutor(max_workers=min(_RSCENE_MAX_PARALLEL, len(units))) as ex:
+        futs = {
+            ex.submit(
+                _rscene_run_single_group,
+                llm, unit['anchor'], unit['files'], unit['diff'],
+                arch_doc, pr_summary, clone_dir, language,
+                symbol_cache, tools, ckpt, use_cache,
+            ): unit
+            for unit in units
+        }
+        for fut in as_completed(futs):
+            unit = futs[fut]
+            try:
+                scenarios = fut.result()
+                all_scenarios.extend(scenarios)
+            except Exception as e:
+                lazyllm.LOG.warning(f'  [RScene] Group {unit["anchor"] or unit["files"]} failed: {e}')
+            prog.update(str(unit['anchor'] or unit['files']))
+
+    # Deduplicate by title similarity (simple: exact title match)
+    deduped = _rscene_dedup_scenarios(all_scenarios)
+
+    prog.done(f'{len(deduped)} unique scenarios inferred')
+    if ckpt:
+        ckpt.save('rscene_all', deduped)
+        ckpt.mark_stage_done(ReviewStage.RSCENE)
+    return deduped
+
+
+# ── RChain: Scenario-Driven Call Chain Review ─────────────────────────────────
+
+_RCHAIN_AGENT_TIMEOUT_SECS = 240
+_RCHAIN_AGENT_RETRIES = 6
+_RCHAIN_MAX_PARALLEL_SCENARIOS = 3
+_RCHAIN_FIXED_OVERHEAD = 20000
+
+_RCHAIN_PROMPT_TMPL = '''\
+You are a code reviewer specializing in call-chain correctness and API usability.
+
+{lang_instruction}
+
+## Usage Scenario
+Title: {scenario_title}
+Description: {scenario_description}
+API Sequence: {api_sequence}
+Expected Call Chain: {call_chain}
+Edge Cases to Check: {edge_cases}
+
+## Architecture Context
+{arch_doc}
+
+## File Diff (annotated with line numbers)
+{diff_text}
+
+## Your Task
+
+### Task A — Call Chain Bug Analysis
+1. Use read_file_scoped / analyze_symbol to trace each step in the call chain
+2. Verify that input/output contracts between callers and callees are consistent
+3. For each edge case listed above, check whether each layer of the call chain handles it
+4. Check for these specific bug types:
+   - Logic errors (wrong branch, off-by-one, state machine transition errors)
+   - Fact conflicts (docstring/comment contradicts implementation, return type mismatch)
+   - Concurrency issues (shared mutable state, TOCTOU, missing lock)
+   - Multi-user issues (session/user data leakage, missing tenant isolation)
+
+### Task B — Poor API Usability Detection
+Simulate the api_sequence from the user's perspective. Check for these 8 anti-patterns:
+
+1. Silent failure: operation returns success (no exception / returns True/200) but actually \
+did nothing or only partially completed. Check: can the return value distinguish "actually \
+executed" from "skipped because condition not met"?
+
+2. Irreversible operation without protection: destructive operations (delete/overwrite/clear) \
+have no dry-run parameter, confirm mechanism, or return value indicating scope of impact.
+
+3. Partial batch failure indistinguishable: for bulk add/delete/update, when some items fail, \
+the return value cannot distinguish which succeeded and which failed (idempotency issue).
+
+4. Multi-step operation without atomicity: when multiple steps in api_sequence are combined, \
+if an intermediate step fails, the system is left in a half-completed state with no rollback \
+path and no documentation on how to recover.
+
+5. Parameter order/naming violates convention: inconsistent parameter order compared to other \
+APIs in the same module, or parameter name does not match actual behavior.
+
+6. Undocumented call ordering dependency: must call A before B, but B does not check \
+preconditions — it crashes internally or produces wrong results, with error messages pointing \
+to internal implementation rather than "you need to call A first".
+
+7. Resource leak visible to user: when user forgets to call close/cleanup, instead of graceful \
+degradation, it produces hard-to-debug side effects (file locks, connection exhaustion, \
+background thread leaks).
+
+8. Error message cannot guide fix: thrown exception/error message is internal implementation \
+detail (e.g. KeyError: 'field') rather than a user-understandable description.
+
+## Output Format
+Output a JSON array of issues. Each issue must have:
+- "path": file path
+- "line": line number (integer, must reference a line in the diff)
+- "severity": "critical" | "medium" | "normal"
+- "bug_category": one of logic|type|safety|exception|performance|concurrency|design|maintainability
+  (Task A bugs: use logic/concurrency/safety/type; Task B usability: use design/exception)
+- "problem": clear description of the issue
+- "suggestion": concrete fix suggestion (wrap code with markdown code fences)
+- "source": "rchain"
+
+''' + JSON_OUTPUT_INSTRUCTION
+
+
+def _rchain_parse_issues(raw: Optional[str]) -> List[Dict[str, Any]]:
+    '''Parse and normalize RChain agent output into issue dicts.'''
+    json_text = _extract_json_text(raw or '')
+    items = _parse_json_with_repair(json_text) if json_text else None
+    result: List[Dict[str, Any]] = []
+    if not isinstance(items, list):
+        return result
+    for item in items:
+        if isinstance(item, dict):
+            item['source'] = 'rchain'
+            normalized = _normalize_comment_item(item, default_category='design')
+            if normalized:
+                result.append(normalized)
+    return result
+
+
+def _rchain_dedup_issues(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    '''Deduplicate issues: same path+line keeps highest severity.'''
+    seen: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    _sev = {'critical': 0, 'medium': 1, 'normal': 2}
+    for issue in issues:
+        key = (issue.get('path', ''), issue.get('line', 0))
+        if key not in seen or _sev.get(issue.get('severity', 'normal'), 2) < _sev.get(
+                seen[key].get('severity', 'normal'), 2):
+            seen[key] = issue
+    return list(seen.values())
+
+
+def _rchain_run_single_scenario(
+    llm: Any,
+    scenario: Dict[str, Any],
+    scene_idx: int,
+    file_diffs: Dict[str, str],
+    arch_doc: str,
+    clone_dir: str,
+    language: str,
+    symbol_cache: Dict[str, Any],
+    tools: Any,
+    ckpt: Optional[Any],
+    use_cache: bool,
+) -> List[Dict[str, Any]]:
+    title = scenario.get('title', f'scenario_{scene_idx}')
+    safe_title = re.sub(r'[^a-zA-Z0-9_]', '_', title)[:50]
+    ckpt_key = f'rchain_scene_{scene_idx}_{safe_title}'
+    if ckpt and use_cache:
+        cached = ckpt.get(ckpt_key)
+        if cached is not None:
+            return cached
+
+    # Determine which files to review: call_chain symbols → grep for files → intersect with diff
+    call_chain = scenario.get('call_chain', [])
+    relevant_files = list(file_diffs.keys())  # default: all modified files
+
+    # Build combined diff for relevant files, split into chunks if needed
+    combined_diff = '\n'.join(file_diffs[f] for f in relevant_files if f in file_diffs)
+    arch_snippet = arch_doc[:4000] if arch_doc else '(not available)'
+
+    diff_cap = SINGLE_CALL_CONTEXT_BUDGET - _RCHAIN_FIXED_OVERHEAD - len(arch_snippet)
+    all_chunks = _split_file_diff_into_chunks(combined_diff, diff_cap)
+    if len(all_chunks) > R3_MAX_CHUNKS_HARD:
+        lazyllm.LOG.warning(
+            f'  [RChain] Scenario "{title}" has {len(all_chunks)} chunks, '
+            f'capping at {R3_MAX_CHUNKS_HARD}'
+        )
+        all_chunks = all_chunks[:R3_MAX_CHUNKS_HARD]
+
+    all_issues: List[Dict[str, Any]] = []
+    for chunk_label, diff_chunk in all_chunks:
+        annotated = _annotate_full_diff(diff_chunk)
+        prompt = _RCHAIN_PROMPT_TMPL.format(
+            lang_instruction=_language_instruction(language),
+            scenario_title=title,
+            scenario_description=scenario.get('description', ''),
+            api_sequence=json.dumps(scenario.get('api_sequence', []), ensure_ascii=False),
+            call_chain=json.dumps(call_chain, ensure_ascii=False),
+            edge_cases=json.dumps(scenario.get('edge_cases', []), ensure_ascii=False),
+            arch_doc=arch_snippet,
+            diff_text=annotated[:diff_cap],
+        )
+
+        step_counter = [0]
+        exploration_log: List[str] = []
+        traced_tools = [_make_traced_tool(t, step_counter, f'rchain_{safe_title}', exploration_log)
+                        for t in tools]
+
+        try:
+            from lazyllm.tools.agent import ReactAgent
+            agent = ReactAgent(
+                llm, tools=traced_tools,
+                max_retries=_RCHAIN_AGENT_RETRIES,
+                workspace=clone_dir,
+                force_summarize=True,
+                keep_full_turns=2,
+            )
+            import concurrent.futures as _cf_inner2
+            with _cf_inner2.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(agent, prompt)
+                try:
+                    raw = fut.result(timeout=_RCHAIN_AGENT_TIMEOUT_SECS)
+                except _cf_inner2.TimeoutError:
+                    lazyllm.LOG.warning(
+                        f'  [RChain] Timed out for scenario "{title}" chunk {chunk_label} '
+                        f'after {_RCHAIN_AGENT_TIMEOUT_SECS}s'
+                    )
+                    continue
+        except Exception as e:
+            lazyllm.LOG.warning(f'  [RChain] Agent failed for scenario "{title}" chunk {chunk_label}: {e}')
+            continue
+
+        all_issues.extend(_rchain_parse_issues(raw))
+
+    # Deduplicate within scenario: same path+line keeps highest severity
+    result = _rchain_dedup_issues(all_issues)
+
+    lazyllm.LOG.info(f'  [RChain] Scenario "{title}": {len(result)} issues found')
+    if ckpt:
+        ckpt.save(ckpt_key, result)
+    return result
+
+
+def _rscenario_call_chain(
+    llm: Any,
+    usage_scenarios: List[Dict[str, Any]],
+    diff_text: str,
+    arch_doc: str,
+    pr_summary: str,
+    clone_dir: str,
+    ckpt: Optional[Any] = None,
+    language: str = 'cn',
+    strategy: Optional[Any] = None,
+    owner_repo: str = '',
+    arch_cache_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    '''RChain: scenario-driven call chain review producing bug + usability issues.'''
+    if not usage_scenarios:
+        lazyllm.LOG.info('[RChain] No scenarios to review, skipping')
+        return []
+
+    use_cache = ckpt.should_use_cache(ReviewStage.RCHAIN) if ckpt else True
+    if ckpt and use_cache:
+        cached_all = ckpt.get('rchain_all')
+        if cached_all is not None:
+            lazyllm.LOG.info(f'[RChain] Using cached issues ({len(cached_all)} total)')
+            return cached_all
+
+    # Build file diffs (all modified files)
+    file_diffs = _rscene_collect_modified_file_diffs(diff_text)
+
+    if not file_diffs:
+        lazyllm.LOG.info('[RChain] No modified files found, skipping')
+        return []
+
+    prog = _Progress('RChain: call chain review', len(usage_scenarios))
+    symbol_cache: Dict[str, Any] = {}
+    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
+
+    all_issues: List[Dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=min(_RCHAIN_MAX_PARALLEL_SCENARIOS, len(usage_scenarios))) as ex:
+        futs = {
+            ex.submit(
+                _rchain_run_single_scenario,
+                llm, scenario, idx, file_diffs, arch_doc, clone_dir, language,
+                symbol_cache, tools, ckpt, use_cache,
+            ): scenario
+            for idx, scenario in enumerate(usage_scenarios)
+        }
+        for fut in as_completed(futs):
+            scenario = futs[fut]
+            try:
+                issues = fut.result()
+                all_issues.extend(issues)
+            except Exception as e:
+                lazyllm.LOG.warning(f'  [RChain] Scenario "{scenario.get("title")}" failed: {e}')
+            prog.update(scenario.get('title', ''))
+
+    prog.done(f'{len(all_issues)} issues found across {len(usage_scenarios)} scenarios')
+    if ckpt:
+        ckpt.save('rchain_all', all_issues)
+        ckpt.mark_stage_done(ReviewStage.RCHAIN)
+    return all_issues
+
+
 _COMPRESS_COMMENTS_PROMPT_TMPL = '''\
 Summarize each of the following code review comments into ONE concise sentence (max 20 words).
-Preserve the key point: what file/line is affected and what the core problem is.
 Output a JSON array where each item has "idx" (same as input) and "summary" (one sentence).
 ''' + _JSON_OUTPUT_INSTRUCTION + '''
 
@@ -2673,6 +3175,16 @@ def _run_four_rounds(  # noqa: C901
     from .constants import BudgetManager, TOTAL_CALL_BUDGET
     _budget = BudgetManager(total_calls=TOTAL_CALL_BUDGET)  # noqa: F841
 
+    # Build layered AGENTS.md index once for all R1/R3 file-level injections
+    agents_index: Dict[str, str] = {}
+    if clone_dir:
+        try:
+            agents_index = _build_layered_agents_index(clone_dir)
+            if agents_index:
+                lazyllm.LOG.info(f'Layered agents index: {len(agents_index)} sub-directories with local rules')
+        except Exception as e:
+            lazyllm.LOG.warning(f'Failed to build layered agents index: {e}')
+
     def _rebuild_diff_from_hunks(win_hunks: List[Tuple[str, int, int, str]]) -> str:
         by_path: Dict[str, List[str]] = {}
         for path, _s, _c, content in win_hunks:
@@ -2716,7 +3228,7 @@ def _run_four_rounds(  # noqa: C901
             clone_dir=clone_dir, language=language,
             symbol_index=sym_index,
             ckpt=ckpt, agent_instructions=agent_instructions,
-            pr_file_summary=pr_file_summary,
+            pr_file_summary=pr_file_summary, agents_index=agents_index,
         )
         ckpt.save(win_key, win_r1)
         r1_all.extend(win_r1)
@@ -2783,7 +3295,7 @@ def _run_four_rounds(  # noqa: C901
         clone_dir=clone_dir, language=language, ckpt=ckpt,
         agent_instructions=agent_instructions, strategy=strategy,
         owner_repo=owner_repo, arch_cache_path=arch_cache_path,
-        review_spec=review_spec,
+        review_spec=review_spec, agents_index=agents_index,
     )
     ckpt.mark_stage_done(ReviewStage.R3)
 

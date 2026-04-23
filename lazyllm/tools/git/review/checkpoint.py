@@ -13,6 +13,8 @@ class ReviewStage(enum.Enum):
     ARCH = 'arch'
     SPEC = 'spec'
     PR_SUMMARY = 'pr_summary'
+    RSCENE = 'rscene'
+    RCHAIN = 'rchain'
     R1 = 'r1'
     R2A = 'r2a'
     R2 = 'r2'
@@ -38,8 +40,8 @@ class ReviewStage(enum.Enum):
 
 _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
-    ReviewStage.PR_SUMMARY, ReviewStage.R1,
-    ReviewStage.R2A, ReviewStage.R2, ReviewStage.RMOD,
+    ReviewStage.PR_SUMMARY, ReviewStage.RSCENE, ReviewStage.RCHAIN,
+    ReviewStage.R1, ReviewStage.R2A, ReviewStage.R2, ReviewStage.RMOD,
     ReviewStage.R3, ReviewStage.RCOV, ReviewStage.FINAL, ReviewStage.UPLOAD,
 ]
 

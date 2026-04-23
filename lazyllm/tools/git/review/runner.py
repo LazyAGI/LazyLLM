@@ -11,7 +11,7 @@ import lazyllm
 from ..client import Git
 from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
-from .rounds import _run_four_rounds
+from .rounds import _run_four_rounds, infer_usage_scenarios, _rscenario_call_chain
 from .poster import _fetch_existing_pr_comments, _post_review_comments, _build_commentable_lines, _filter_commentable
 from .output import write_review_json
 from .utils import (
@@ -298,23 +298,63 @@ def review(  # noqa: C901
         except Exception as e:
             lazyllm.LOG.warning(f'Lint analysis failed: {e}')
 
+    # ── RScene + RChain: run in parallel with _run_four_rounds ──
+    # RScene infers usage scenarios; RChain does call-chain + usability review.
+    # Both run concurrently with the main R1→R2→R3 chain.
+    usage_scenarios: List[Dict[str, Any]] = []
+    rchain_issues: List[Dict[str, Any]] = []
+
+    def _run_rscene_rchain() -> tuple:
+        if not clone_dir or not os.path.isdir(clone_dir):
+            return [], []
+        try:
+            scenarios = infer_usage_scenarios(
+                llm, diff_text, arch_doc, pr_summary, clone_dir,
+                ckpt=ckpt, language=language, strategy=strategy,
+                owner_repo=repo, arch_cache_path=arch_cache_path,
+            )
+        except Exception as e:
+            lazyllm.LOG.warning(f'RScene failed: {e}')
+            scenarios = []
+        if not scenarios:
+            return scenarios, []
+        try:
+            issues = _rscenario_call_chain(
+                llm, scenarios, diff_text, arch_doc, pr_summary, clone_dir,
+                ckpt=ckpt, language=language, strategy=strategy,
+                owner_repo=repo, arch_cache_path=arch_cache_path,
+            )
+        except Exception as e:
+            lazyllm.LOG.warning(f'RChain failed: {e}')
+            issues = []
+        return scenarios, issues
+
     cached_final = ckpt.get('final_comments')
     if cached_final is not None:
         final_comments = cached_final
         r3_metrics: Dict[str, Any] = {}
         _Progress('All review rounds').done('loaded from checkpoint')
+        # Still try to load cached RScene/RChain results
+        usage_scenarios = ckpt.get('rscene_all') or []
+        rchain_issues = ckpt.get('rchain_all') or []
     else:
-        final_comments, r3_metrics = _run_four_rounds(
-            llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
-            clone_dir=clone_dir, existing_comments=existing_comments, language=language,
-            agent_instructions=agent_instructions, strategy=strategy,
-            lint_issues=lint_issues, owner_repo=repo, arch_cache_path=arch_cache_path,
-        )
+        with _cf.ThreadPoolExecutor(max_workers=2) as _pool:
+            _fut_main = _pool.submit(
+                _run_four_rounds,
+                llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
+                clone_dir=clone_dir, existing_comments=existing_comments, language=language,
+                agent_instructions=agent_instructions, strategy=strategy,
+                lint_issues=lint_issues, owner_repo=repo, arch_cache_path=arch_cache_path,
+            )
+            _fut_rscene = _pool.submit(_run_rscene_rchain)
+            final_comments, r3_metrics = _fut_main.result()
+            usage_scenarios, rchain_issues = _fut_rscene.result()
         final_comments = meta_warnings + final_comments
         ckpt.save('final_comments', final_comments)
         ckpt.mark_stage_done(ReviewStage.FINAL)
 
     # run RCov test coverage check with checkpoint support
+    # RCov runs after RScene so it can use inferred scenarios to check coverage
     _rcov_ran = False
     rcov_issues: List[Dict[str, Any]] = []
     if ckpt.should_use_cache(ReviewStage.RCOV) and ckpt.get('rcov_issues') is not None:
@@ -328,8 +368,15 @@ def review(  # noqa: C901
         lazyllm.LOG.info(f'RCov timeout set to {_rcov_timeout}s (diff={len(diff_text)} chars)')
         try:
             from .coverage_checker import _run_coverage_check
+            import json as _json
+            _usage_scenarios_str = (
+                _json.dumps(usage_scenarios, ensure_ascii=False) if usage_scenarios else ''
+            )
             _exe = _cf.ThreadPoolExecutor(max_workers=1)
-            _fut = _exe.submit(_run_coverage_check, llm, diff_text, pr_summary, clone_dir, language)
+            _fut = _exe.submit(
+                _run_coverage_check, llm, diff_text, pr_summary, clone_dir, language,
+                _usage_scenarios_str,
+            )
             try:
                 rcov_issues = _fut.result(timeout=_rcov_timeout)
                 _rcov_ran = True
@@ -344,8 +391,8 @@ def review(  # noqa: C901
         except Exception as e:
             lazyllm.LOG.error(f'RCov analysis failed unexpectedly: {e}')
 
-    # merge: final_comments (through R4 dedup) + rcov_issues (bypass R4)
-    all_comments = final_comments + rcov_issues
+    # merge: final_comments (through R4 dedup) + rchain_issues + rcov_issues (bypass R4)
+    all_comments = final_comments + rchain_issues + rcov_issues
 
     # clean up only the clone subdirectory (not the whole pr_dir which contains checkpoint)
     # local mode: clone_dir IS the user's repo, never delete it
