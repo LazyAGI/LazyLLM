@@ -130,6 +130,8 @@ class LangfuseConsumeBackend(ConsumeBackend):
     _DEFAULT_READ_TIMEOUT_S = 30.0
     _MAX_HTTP_ATTEMPTS = 3
     _OBSERVATIONS_PAGE_LIMIT = 1000
+    _RETRY_REQUEST = object()
+    _RESPONSE_UNHANDLED = object()
     _PROMOTED_TRACE_FIELDS = frozenset({
         'id',
         'name',
@@ -230,6 +232,91 @@ class LangfuseConsumeBackend(ConsumeBackend):
         except (TypeError, ValueError):
             return self._DEFAULT_READ_TIMEOUT_S
 
+    def _handle_request_exception(
+        self,
+        exc: requests.RequestException,
+        *,
+        url: str,
+        trace_id: Optional[str],
+        attempt: int,
+    ) -> None:
+        if attempt + 1 < self._MAX_HTTP_ATTEMPTS:
+            time.sleep(2**attempt)
+            return
+        netloc = urlparse(url).netloc or url
+        msg = f'Langfuse HTTP request failed for host {netloc!r}'
+        if trace_id is not None:
+            msg += f', trace_id={trace_id!r}'
+        raise ConsumeBackendError(msg) from exc
+
+    def _handle_retryable_response(
+        self,
+        resp: requests.Response,
+        url: str,
+        attempt: int,
+    ) -> object:
+        final_attempt = attempt + 1 >= self._MAX_HTTP_ATTEMPTS
+        if resp.status_code == 429:
+            if final_attempt:
+                raise ConsumeBackendError(
+                    f'Langfuse rate limited (HTTP 429) for url ending {url[-48:]!r}'
+                )
+            raw = resp.headers.get('Retry-After')
+            try:
+                wait_s = float(raw) if raw is not None else 2**attempt
+            except (TypeError, ValueError):
+                wait_s = 2**attempt
+            time.sleep(max(0.0, wait_s))
+            return self._RETRY_REQUEST
+        if 500 <= resp.status_code < 600:
+            if final_attempt:
+                raise ConsumeBackendError(
+                    f'Langfuse server error HTTP {resp.status_code} for url ending {url[-48:]!r}'
+                )
+            time.sleep(2**attempt)
+            return self._RETRY_REQUEST
+        return self._RESPONSE_UNHANDLED
+
+    def _handle_response_status(
+        self,
+        resp: requests.Response,
+        url: str,
+        *,
+        trace_id: Optional[str],
+        trace_not_found_raises: bool,
+        observations_404_empty: bool,
+        attempt: int,
+    ) -> Any:
+        if resp.status_code == 404:
+            if trace_not_found_raises:
+                raise TraceNotFound(trace_id or '')
+            if observations_404_empty:
+                return {
+                    'data': [],
+                    'meta': {
+                        'page': 1,
+                        'limit': self._OBSERVATIONS_PAGE_LIMIT,
+                        'totalItems': 0,
+                        'totalPages': 1,
+                    },
+                }
+        if resp.status_code in (401, 403):
+            raise ConsumeBackendError('authentication failed')
+        retry = self._handle_retryable_response(resp, url, attempt)
+        if retry is not self._RESPONSE_UNHANDLED:
+            return retry
+        if not resp.ok:
+            raise ConsumeBackendError(f'Langfuse HTTP {resp.status_code} for url ending {url[-48:]!r}')
+        return self._RESPONSE_UNHANDLED
+
+    def _response_json(self, resp: requests.Response) -> Any:
+        try:
+            if not resp.content:
+                return None
+            return resp.json()
+        except ValueError as exc:
+            raise ConsumeBackendError('invalid JSON in Langfuse response') from exc
+
     def _request_json(
         self,
         method: str,
@@ -246,59 +333,22 @@ class LangfuseConsumeBackend(ConsumeBackend):
             try:
                 resp = requests.request(method, url, headers=headers, timeout=timeouts)
             except requests.RequestException as exc:
-                if attempt + 1 >= self._MAX_HTTP_ATTEMPTS:
-                    netloc = urlparse(url).netloc or url
-                    msg = f'Langfuse HTTP request failed for host {netloc!r}'
-                    if trace_id is not None:
-                        msg += f', trace_id={trace_id!r}'
-                    raise ConsumeBackendError(msg) from exc
-                time.sleep(2**attempt)
+                self._handle_request_exception(exc, url=url, trace_id=trace_id, attempt=attempt)
                 continue
 
-            if resp.status_code == 404:
-                if trace_not_found_raises:
-                    raise TraceNotFound(trace_id or '')
-                if observations_404_empty:
-                    return {
-                        'data': [],
-                        'meta': {
-                            'page': 1,
-                            'limit': self._OBSERVATIONS_PAGE_LIMIT,
-                            'totalItems': 0,
-                            'totalPages': 1,
-                        },
-                    }
-            if resp.status_code in (401, 403):
-                raise ConsumeBackendError('authentication failed')
-            if resp.status_code == 429:
-                if attempt + 1 >= self._MAX_HTTP_ATTEMPTS:
-                    raise ConsumeBackendError(
-                        f'Langfuse rate limited (HTTP 429) for url ending {url[-48:]!r}'
-                    )
-                ra = resp.headers.get('Retry-After')
-                try:
-                    wait_s = float(ra) if ra is not None else 2**attempt
-                except (TypeError, ValueError):
-                    wait_s = 2**attempt
-                time.sleep(max(0.0, wait_s))
+            status_result = self._handle_response_status(
+                resp,
+                url,
+                trace_id=trace_id,
+                trace_not_found_raises=trace_not_found_raises,
+                observations_404_empty=observations_404_empty,
+                attempt=attempt,
+            )
+            if status_result is self._RETRY_REQUEST:
                 continue
-            if 500 <= resp.status_code < 600:
-                if attempt + 1 >= self._MAX_HTTP_ATTEMPTS:
-                    raise ConsumeBackendError(
-                        f'Langfuse server error HTTP {resp.status_code} for url ending {url[-48:]!r}'
-                    )
-                time.sleep(2**attempt)
-                continue
-            if not resp.ok:
-                raise ConsumeBackendError(
-                    f'Langfuse HTTP {resp.status_code} for url ending {url[-48:]!r}'
-                )
-            try:
-                if not resp.content:
-                    return None
-                return resp.json()
-            except ValueError as exc:
-                raise ConsumeBackendError('invalid JSON in Langfuse response') from exc
+            if status_result is not self._RESPONSE_UNHANDLED:
+                return status_result
+            return self._response_json(resp)
 
         raise ConsumeBackendError('Langfuse HTTP request exhausted retries')
 
