@@ -17,6 +17,19 @@ def _latency_ms(start_time: Optional[float], end_time: Optional[float]) -> Optio
     return max(0.0, (end_time - start_time) * 1000.0)
 
 
+def _end_time_from_latency(
+    start_time: Optional[float],
+    latency_ms: Optional[float],
+) -> Optional[float]:
+    if start_time is None or latency_ms is None:
+        return None
+    return start_time + latency_ms / 1000.0
+
+
+def _public_status(status: Optional[str]) -> str:
+    return 'error' if status == 'error' else 'success'
+
+
 def _node_type(span: RawSpanRecord) -> str:
     value = span.attributes.get('lazyllm.span.kind')
     return value if value in _VALID_NODE_TYPES else 'callable'
@@ -27,14 +40,19 @@ def _error_message(span: RawSpanRecord) -> Optional[str]:
 
 
 def _build_step(span: RawSpanRecord) -> ExecutionStep:
+    latency_ms = _latency_ms(span.start_time, span.end_time)
     return ExecutionStep(
         step_id=span.span_id,
         name=span.name,
         node_type=_node_type(span),
         semantic_type=span.attributes.get('lazyllm.semantic_type'),
-        status=span.status,
+        status=_public_status(span.status),
         start_time=span.start_time,
-        latency_ms=_latency_ms(span.start_time, span.end_time),
+        end_time=span.end_time if span.end_time is not None else _end_time_from_latency(
+            span.start_time,
+            latency_ms,
+        ),
+        latency_ms=latency_ms,
         raw_data=RawData(input=span.input, output=span.output),
         semantic_data=extract_semantic(span),
         error_message=_error_message(span),
@@ -114,8 +132,9 @@ def _virtual_root(
         name=trace.name or trace.trace_id,
         node_type='flow',
         semantic_type=None,
-        status=status,
+        status=_public_status(status),
         start_time=start_time,
+        end_time=_end_time_from_latency(start_time, latency_ms),
         latency_ms=latency_ms,
         raw_data=RawData(input=trace.input, output=trace.output),
         semantic_data=None,
@@ -180,9 +199,11 @@ def rebuild(trace: RawTraceRecord, spans: List[RawSpanRecord]) -> StructuredTrac
         metadata=TraceMetadata(
             name=trace.name,
             start_time=start_time,
-            end_time=None,
+            end_time=trace.end_time if trace.end_time is not None else _end_time_from_latency(
+                start_time, aggregate_latency_ms
+            ),
             latency_ms=aggregate_latency_ms,
-            status=status,
+            status=_public_status(status),
             error_message=error_message,
             tags=list(trace.tags),
             session_id=trace.session_id,

@@ -32,6 +32,7 @@ class ExecutionStep:
     semantic_type: Optional[str]
     status: str
     start_time: float
+    end_time: Optional[float]
     latency_ms: Optional[float]
     raw_data: RawData
     semantic_data: Optional[Dict[str, Any]] = None

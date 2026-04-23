@@ -79,7 +79,7 @@ def extract_retriever(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
         'topk': as_int(config_value(span, 'topk')),
         'node_count': node_count,
         'returned_node_ids': doc_node_ids(output),
-        'retrieve_scores': parse_scores(span.attributes.get('lazyllm.output.similarity_scores')),
+        'scores': parse_scores(span.attributes.get('lazyllm.output.similarity_scores')),
         'group_name': config_value(span, 'group_name'),
         'similarity': config_value(span, 'similarity'),
         'similarity_cut_off': as_finite_float(similarity_cut_off),
@@ -120,20 +120,19 @@ def extract_rerank(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
     output_value = span_output(span)
     args = input_value.get('args') if isinstance(input_value, dict) else None
     candidates = args[0] if isinstance(args, list) and args else None
-    candidate_count = sequence_len(candidates)
+    rerank_model = config_value(span, 'model') or config_value(span, 'name')
 
     return {
         'query': query_from_input(input_value),
-        'candidate_count': candidate_count,
+        'candidate_node_count': sequence_len(candidates),
         'topk': as_int(config_value(span, 'topk')),
-        'reranked_scores': parse_scores(span.attributes.get('lazyllm.output.relevance_scores')),
-        'output_count': sequence_len(output_value),
+        'scores': parse_scores(span.attributes.get('lazyllm.output.relevance_scores')),
+        'node_count': sequence_len(output_value),
         'candidate_doc_ids': doc_node_ids(candidates),
         'ranked_doc_ids': doc_node_ids(output_value),
         'candidate_nodes': doc_node_summaries(candidates),
         'ranked_nodes': doc_node_summaries(output_value),
-        'model': config_value(span, 'model'),
-        'name': config_value(span, 'name'),
+        'rerank_model': rerank_model,
         'output_format': config_value(span, 'output_format'),
         'join': config_value(span, 'join'),
     }

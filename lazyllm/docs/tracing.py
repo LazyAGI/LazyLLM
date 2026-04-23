@@ -1054,15 +1054,15 @@ and additional metadata. This object corresponds to the final consume API ``meta
 add_chinese_doc_structured('ExecutionStep', '''\
 结构化执行树中的一个节点。
 
-节点包含步骤 ID、名称、节点类型、语义类型、状态、开始时间、延迟、原始输入输出、
+节点包含步骤 ID、名称、节点类型、语义类型、状态、开始/结束时间、延迟、原始输入输出、
 语义抽取数据、错误信息以及子节点列表。
 ''')
 
 add_english_doc_structured('ExecutionStep', '''\
 A node in the structured execution tree.
 
-Each node contains step ID, name, node type, semantic type, status, start time, latency, raw
-input/output, extracted semantic data, error information, and child execution steps.
+Each node contains step ID, name, node type, semantic type, status, start/end time, latency,
+raw input/output, extracted semantic data, error information, and child execution steps.
 ''')
 
 add_chinese_doc_structured('StructuredTrace', '''\
