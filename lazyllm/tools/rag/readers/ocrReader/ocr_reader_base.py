@@ -39,7 +39,7 @@ class _OcrReaderBase(_RichReader):
         raise NotImplementedError
 
     def _build_nodes_from_response(self, response: str, file: Path,
-                       extra_info: Optional[Dict] = None) -> List[DocNode]:
+            extra_info: Optional[Dict] = None) -> List[DocNode]:
         '''Parse OCR service response into DocNodes.'''
         raise NotImplementedError
 

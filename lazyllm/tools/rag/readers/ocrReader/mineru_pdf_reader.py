@@ -10,6 +10,7 @@ from typing_extensions import override
 
 import lazyllm
 from lazyllm import LOG
+from lazyllm.thirdparty import bs4
 from lazyllm.tools.http_request import post_sync, get_sync, post_async
 
 from ...doc_node import DocNode
@@ -71,57 +72,26 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
             'formula_enable': True,
         }
 
-        # Try local mineru-api pattern first, then cloud pattern
-        try:
-            if not self._upload_mode:
-                payload['files'] = [str(file)]
-                result = post_async(
-                    submit_url=base_url + '/tasks',
-                    status_url=base_url + '/tasks/{task_id}',
-                    result_url=base_url + '/tasks/{task_id}/result',
-                    payload=payload,
-                    timeout=self._timeout,
-                )
-            else:
-                with open(file, 'rb') as f:
-                    files = {'files': (os.path.basename(file), f)}
-                    result = post_async(
-                        submit_url=base_url + '/tasks',
-                        status_url=base_url + '/tasks/{task_id}',
-                        result_url=base_url + '/tasks/{task_id}/result',
-                        payload=payload,
-                        files=files,
-                        timeout=self._timeout,
-                    )
-        except (requests.exceptions.RequestException, RuntimeError, ValueError) as e:
-            LOG.warning(f'[MineruPDFReader] Local async failed: {e}, trying cloud endpoint')
-            with open(file, 'rb') as f:
-                files = {'file': (os.path.basename(file), f)}
-                cloud_headers = {'Authorization': f'Bearer {self._api_key}'} if self._api_key else {}
-                result = post_async(
-                    submit_url=base_url + '/api/v4/extract/task',
-                    status_url=base_url + '/api/v4/extract/task/{task_id}',
-                    payload=payload,
-                    files=files,
-                    headers=cloud_headers,
-                    timeout=self._timeout,
-                    result_extractor=lambda resp: resp.json().get('data', {}).get('full_zip_url'),
-                )
+        files_payload = None
+        file_obj = None
+        if self._upload_mode:
+            file_obj = open(file, 'rb')
+            files_payload = {'files': (os.path.basename(file), file_obj)}
+        else:
+            payload['files'] = [str(file)]
 
-        if isinstance(result, str) and result.startswith('http'):
-            zip_resp = get_sync(result, timeout=self._timeout)
-            return self._extract_content_from_zip(zip_resp.content)
-        if isinstance(result, bytes):
-            return self._extract_content_from_zip(result)
-        if isinstance(result, requests.Response):
-            content_type = result.headers.get('Content-Type', '')
-            if 'zip' in content_type:
-                return self._extract_content_from_zip(result.content)
-            try:
-                return json.dumps(result.json())
-            except Exception:
-                return result.text
-        return json.dumps(result)
+        result = post_async(
+            submit_url=base_url + '/tasks',
+            status_url=base_url + '/tasks/{task_id}',
+            result_url=base_url + '/tasks/{task_id}/result',
+            payload=payload,
+            files=files_payload,
+            timeout=self._timeout,
+        )
+        if file_obj:
+            file_obj.close()
+
+        return self._extract_content_from_zip(result.content)
 
     @override
     def _build_nodes_from_response(self, response_json: str, file: Path,
