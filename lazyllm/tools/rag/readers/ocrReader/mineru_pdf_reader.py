@@ -186,22 +186,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
                 'bbox': b.page.bbox.to_list(),
                 'section_path': b.section.anchors,
             }
-            if isinstance(b, HeadingBlock):
-                metadata['text_level'] = b.level
-            elif isinstance(b, TableBlock):
-                metadata['table_caption'] = b.caption
-                metadata['table_footnote'] = b.footnote
-                if b.cells:
-                    metadata['cells'] = [c.__dict__ for c in b.cells]
-            elif isinstance(b, FigureBlock):
-                metadata['image_path'] = str(b.image_path)
-                metadata['image_caption'] = b.caption
-            elif isinstance(b, FormulaBlock):
-                metadata['latex'] = b.latex
-            elif isinstance(b, CodeBlock):
-                metadata['code_type'] = b.language
-            elif isinstance(b, ListBlock):
-                metadata['list_items'] = b.items
+            b.update_metadata(metadata)
             node = DocNode(text=text, metadata=metadata, global_metadata=global_metadata)
             node.excluded_embed_metadata_keys = [k for k in metadata if k not in ('file_name', 'text')]
             node.excluded_llm_metadata_keys = [k for k in metadata if k not in ('file_name', 'text')]

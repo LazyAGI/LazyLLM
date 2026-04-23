@@ -46,17 +46,15 @@ class Block:
     page: PageRef
     section: SectionPath = field(default_factory=SectionPath)
 
-    def to_dict(self) -> dict:
-        d = asdict(self)
-        d['ty'] = self.ty
-        return d
-
     @property
     def ty(self) -> str:
         raise NotImplementedError
 
     def text_content(self) -> str:
         raise NotImplementedError
+
+    def update_metadata(self, d: dict) -> None:
+        pass
 
 
 @dataclass
@@ -71,6 +69,9 @@ class HeadingBlock(Block):
 
     def text_content(self) -> str:
         return self.text
+
+    def update_metadata(self, d: dict) -> None:
+        d['text_level'] = self.level
 
 
 @dataclass
@@ -106,6 +107,10 @@ class TableBlock(Block):
         if self.footnote:
             lines.append(self.footnote)
         return '\n'.join(lines)
+
+    def update_metadata(self, d: dict) -> None:
+        d['table_caption'] = self.caption
+        d['table_footnote'] = self.footnote
 
     def _cells_to_markdown(self) -> str:
         if not self.cells:
@@ -155,6 +160,10 @@ class FigureBlock(Block):
             parts.append(self.ocr_text)
         return '\n'.join(parts)
 
+    def update_metadata(self, d: dict) -> None:
+        d['image_path'] = str(self.image_path) if self.image_path else None
+        d['image_caption'] = self.caption
+
 
 @dataclass
 class CodeBlock(Block):
@@ -173,6 +182,9 @@ class CodeBlock(Block):
         parts.append(self.text)
         return '\n'.join(parts)
 
+    def update_metadata(self, d: dict) -> None:
+        d['code_type'] = self.language
+
 
 @dataclass
 class ListBlock(Block):
@@ -189,6 +201,3 @@ class ListBlock(Block):
             prefix = f'{idx}. ' if self.ordered else '- '
             lines.append(f'{prefix}{item}')
         return '\n'.join(lines)
-
-
-BlockType = Union[HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock, FigureBlock, CodeBlock, ListBlock]

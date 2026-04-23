@@ -72,8 +72,11 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         return blocks
 
     def _adapt_one(self, item: dict, page_idx: int,
-                   markdown_images: Dict[str, str]) -> Optional[Block]:
+            markdown_images: Dict[str, str]) -> Optional[Block]:
         label = item['block_label']
+        if label in self._droped_types:
+            return None
+
         content = item['block_content']
         bbox = BBox.from_list(item['block_bbox'])
         page = PageRef(index=page_idx, bbox=bbox)
@@ -103,8 +106,6 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             return FormulaBlock(page=page, latex=content, inline=False)
         elif label == 'code':
             return CodeBlock(page=page, text=content)
-        elif label in ('header', 'footer', 'page_number', 'aside_text', 'seal', 'number'):
-            return None
         return None
 
     def _resolve_image_path(self, img_src: str, markdown_images: Dict[str, str]) -> Path:
@@ -163,22 +164,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                 'bbox': [b.page.bbox.x0, b.page.bbox.y0, b.page.bbox.x1, b.page.bbox.y1],
                 'section_path': b.section.anchors,
             }
-            if isinstance(b, HeadingBlock):
-                metadata['text_level'] = b.level
-            elif isinstance(b, TableBlock):
-                metadata['table_caption'] = b.caption
-                metadata['table_footnote'] = b.footnote
-                if b.cells:
-                    metadata['cells'] = [c.__dict__ for c in b.cells]
-            elif isinstance(b, FigureBlock):
-                metadata['image_path'] = str(b.image_path)
-                metadata['image_caption'] = b.caption
-            elif isinstance(b, FormulaBlock):
-                metadata['latex'] = b.latex
-            elif isinstance(b, CodeBlock):
-                metadata['code_type'] = b.language
-            elif isinstance(b, ListBlock):
-                metadata['list_items'] = b.items
+            b.update_metadata(metadata)
             node = DocNode(text=text, metadata=metadata, global_metadata=global_metadata)
             node.excluded_embed_metadata_keys = [k for k in metadata if k not in ('file_name', 'text')]
             node.excluded_llm_metadata_keys = [k for k in metadata if k not in ('file_name', 'text')]
