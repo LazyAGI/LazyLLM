@@ -10,7 +10,8 @@ from ..components.formatter.formatterbase import file_content_hash, transform_pa
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
-from ..hook import LazyLLMHook, LazyLLMFuncHook, prepare_hooks, register_hooks, resolve_builtin_hooks, run_hooks
+from ..hook import LazyLLMHook, LazyLLMFuncHook, register_hooks, resolve_builtin_hooks
+from ..tracing.collect.hook import traced_hook_execution
 from lazyllm import FileSystemQueue, LOG
 from contextlib import contextmanager
 from typing import Optional, Union, Dict, List, Callable
@@ -326,9 +327,12 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
         raise AttributeError(f'{self.__class__} object has no attribute {key}')
 
     def __call__(self, *args, **kw):
-        hook_objs = prepare_hooks(self, self._hooks, *args, **kw)
-
-        try:
+        with traced_hook_execution(
+            self,
+            *args,
+            map_exception=lambda e: _change_exception_type(e, ModuleExecutionError),
+            **kw,
+        ) as outcome:
             kw.update(locals['global_parameters'].get(self._module_id, dict()))
             if (files := locals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
             if (history := locals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
@@ -337,31 +341,9 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
                  if args and isinstance(args[0], kwargs) else self._call_impl(*args, **kw))
             if self._return_trace:
                 lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
-        except HandledException as e:
-            LOG.error(f'Module `{self.__class__.__name__}` raised {type(e).__name__}: {e}')
-            try:
-                run_hooks(hook_objs, 'on_error', e)
-            except Exception:
-                LOG.warning('Module on_error hook failed', exc_info=True)
-            raise
-        except Exception as e:
-            LOG.error(f'An error occurred in {self.__class__}' + (f' with name {self.name}' if self.name else
-                      '') + f'. Args: `{args}`, Kwargs: `{kw}`')
-            err = _change_exception_type(e, ModuleExecutionError)
-            try:
-                run_hooks(hook_objs, 'on_error', err)
-            except Exception:
-                LOG.warning('Module on_error hook failed', exc_info=True)
-            raise err from None
-        else:
-            run_hooks(hook_objs, 'post_hook', r)
-            self._clear_usage()
-            return r
-        finally:
-            try:
-                run_hooks(hook_objs, 'finalize')
-            except Exception:
-                LOG.warning('Module finalize hook failed', exc_info=True)
+            outcome['r'] = r
+        self._clear_usage()
+        return outcome['r']
 
     def _call_impl(self, *args, **kw):
         if self._use_cache and 'R' in lazyllm.config['cache_mode']:

@@ -21,7 +21,8 @@ from typing import Union, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
-from ..hook import LazyLLMHook, prepare_hooks, register_hooks, resolve_builtin_hooks, run_hooks
+from ..hook import LazyLLMHook, register_hooks, resolve_builtin_hooks
+from ..tracing.collect.hook import traced_hook_execution
 from ..tracing.collect.output_attrs import push_ifs_matched_attrs, push_switch_matched_attrs
 from itertools import repeat
 
@@ -62,31 +63,9 @@ class _FuncWrap(object):
         register_hooks(self, resolve_builtin_hooks(self))
 
     def __call__(self, *args, **kw):
-        hook_objs = prepare_hooks(self, self._hooks, *args, **kw)
-        try:
-            r = self._f(*args, **kw)
-        except HandledException as e:
-            LOG.error(f'Function `{self._f}` raised {type(e).__name__}: {e}')
-            try:
-                run_hooks(hook_objs, 'on_error', e)
-            except Exception:
-                LOG.warning('Function on_error hook failed', exc_info=True)
-            raise
-        except Exception as e:
-            LOG.error(f'An error occurred in wrapped function `{self._f}`')
-            try:
-                run_hooks(hook_objs, 'on_error', e)
-            except Exception:
-                LOG.warning('Function on_error hook failed', exc_info=True)
-            raise
-        else:
-            run_hooks(hook_objs, 'post_hook', r)
-            return r
-        finally:
-            try:
-                run_hooks(hook_objs, 'finalize')
-            except Exception:
-                LOG.warning('Function finalize hook failed', exc_info=True)
+        with traced_hook_execution(self, *args, **kw) as outcome:
+            outcome['r'] = self._f(*args, **kw)
+        return outcome['r']
 
     def __repr__(self):
         # TODO: specify lambda/staticmethod/classmethod/instancemethod
@@ -300,29 +279,15 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         register_hooks(self, resolve_builtin_hooks(self))
 
     def __call__(self, *args, **kw):
-        hook_objs = prepare_hooks(self, self._hooks, *args, **kw)
-
-        try:
+        with traced_hook_execution(self, *args, **kw) as outcome:
             with globals.stack_enter(self.identities):
                 output = self._run(args[0] if len(args) == 1 else package(args), **kw)
-            if self.post_action is not None: self.invoke(self.post_action, output)
-            if self._sync: self.wait()
-            r = self._post_process(output)
-        except Exception as e:
-            LOG.error(f'Flow `{self.__class__.__name__}` raised {type(e).__name__}: {e}')
-            try:
-                run_hooks(hook_objs, 'on_error', e)
-            except Exception:
-                LOG.warning('Flow on_error hook failed', exc_info=True)
-            raise
-        else:
-            run_hooks(hook_objs, 'post_hook', r)
-            return r
-        finally:
-            try:
-                run_hooks(hook_objs, 'finalize')
-            except Exception:
-                LOG.warning('Flow finalize hook failed', exc_info=True)
+            if self.post_action is not None:
+                self.invoke(self.post_action, output)
+            if self._sync:
+                self.wait()
+            outcome['r'] = self._post_process(output)
+        return outcome['r']
 
     def register_hook(self, hook_type: LazyLLMHook):
         if not (isinstance(hook_type, LazyLLMHook)
