@@ -30,7 +30,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         super().__init__(url=url, droped_types=droped_types, **kwargs)
         self._api_key = lazyllm.config['paddle_api_key']
         self._headers = {
-            'Authorization': f'token {self._api_key or ''}',
+            'Authorization': f'token {self._api_key or ""}',
             'Content-Type': 'application/json'
         }
 
@@ -75,20 +75,27 @@ class PaddleOCRPDFReader(_OcrReaderBase):
     @override
     def _adapt_raw(self, raw: dict) -> List[Block]:
         blocks: List[Block] = []
-        # Handle both wrapped and unwrapped formats
-        pages = raw.get('pages', [raw]) if isinstance(raw, dict) else [raw]
-        for page_data in pages:
+        if 'layoutParsingResults' in raw:
+            pages = raw['layoutParsingResults']
+        elif 'result' in raw and isinstance(raw['result'], dict) and 'layoutParsingResults' in raw['result']:
+            pages = raw['result']['layoutParsingResults']
+        else:
+            pages = raw.get('pages', [raw])
+
+        for page_idx, page_data in enumerate(pages):
             if not isinstance(page_data, dict):
                 continue
-            page_idx = page_data.get('page_idx', 0)
-            page_blocks = page_data.get('blocks', [])
+            markdown_images = page_data.get('markdown', {}).get('images', {})
+            pruned_result = page_data.get('prunedResult', {})
+            page_blocks = pruned_result.get('parsing_res_list', [])
             for item in page_blocks:
-                block = self._adapt_one(item, page_idx)
+                block = self._adapt_one(item, page_idx, markdown_images)
                 if block is not None:
                     blocks.append(block)
         return blocks
 
-    def _adapt_one(self, item: dict, page_idx: int) -> Optional[Block]:
+    def _adapt_one(self, item: dict, page_idx: int,
+                   markdown_images: Optional[Dict[str, str]] = None) -> Optional[Block]:
         label = item.get('label', item.get('block_label', ''))
         content = item.get('content', item.get('block_content', ''))
         bbox = BBox.from_list(item.get('bbox', item.get('block_bbox', [])))
@@ -107,7 +114,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             return ParagraphBlock(page=page, text=content)
         elif label in ('image', 'figure'):
             img_src = self._extract_img_path(content)
-            image_path = self._resolve_image_path(img_src, page_idx) if img_src else None
+            image_path = self._resolve_image_path(img_src, markdown_images) if img_src else None
             return FigureBlock(page=page, image_path=image_path)
         elif label == 'table':
             return TableBlock(
@@ -123,30 +130,23 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             return None
         return None
 
-    def _resolve_image_path(self, img_src: str, page_idx: int) -> Optional[Path]:
-        if not img_src:
+    def _resolve_image_path(self, img_src: str,
+                            markdown_images: Optional[Dict[str, str]]) -> Optional[Path]:
+        if not img_src or not markdown_images:
             return None
-        if img_src.startswith('data:'):
-            match = re.match(r'^data:([^;]+);base64,(.+)$', img_src)
-            if match:
-                mime_type, b64_data = match.group(1), match.group(2)
-                ext = mime_type.split('/')[-1]
-                if ext in ('jpeg', 'jpg'):
-                    ext = 'jpg'
-                elif ext not in ('png', 'gif', 'webp', 'bmp'):
-                    ext = 'png'
-                filename = f'page{page_idx}_fig_{uuid.uuid4().hex[:8]}.{ext}'
-                file_path = self._image_cache_dir / filename
-                file_path.write_bytes(base64.b64decode(b64_data))
-                return Path(filename)
+        img_b64 = markdown_images.get(img_src)
+        if not img_b64:
             return None
-        p = Path(img_src)
-        if p.is_absolute():
-            try:
-                return p.relative_to(self._image_cache_dir)
-            except ValueError:
-                return Path(p.name)
-        return p
+        try:
+            rel_path = Path(img_src)
+            clean_path = rel_path.as_posix().lstrip('./')
+            save_path = self._image_cache_dir / clean_path
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            save_path.write_bytes(base64.b64decode(img_b64))
+            return Path(clean_path)
+        except Exception as e:
+            LOG.warning(f'[PaddleOCRPDFReader] Failed to save image {img_src}: {e}')
+            return None
 
     @staticmethod
     def _parse_markdown_heading(content: str) -> tuple:

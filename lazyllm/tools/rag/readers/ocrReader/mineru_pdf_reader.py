@@ -26,7 +26,7 @@ lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='T
 class MineruPDFReader(_OcrReaderBase, _Adapter):
     def __init__(self,
             url: str = 'https://mineru.net/api/v4/extract/task',
-            apply_lazyllm_patch: bool = False,
+            lazyllm_patch_applied: bool = False,
             backend: str = 'hybrid-auto-engine',
             upload_mode: bool = False,
             timeout: Optional[int] = None,
@@ -36,7 +36,7 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         self._backend = backend
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
-        self._apply_lazyllm_patch = apply_lazyllm_patch
+        self._lazyllm_patch_applied = lazyllm_patch_applied
 
     @override
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
@@ -174,12 +174,9 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         page_idx = item.get('page_idx', 0)
         bbox = BBox.from_list(item.get('bbox', []))
 
-        # patch-specific fields (only for offline with apply_lazyllm_patch)
+        # patch-specific fields (only for offline with lazyllm_patch_applied)
         page_width = page_height = None
-        if (
-            self._service_variant == ServiceVariant.OFFLINE
-            and self._apply_lazyllm_patch
-        ):
+        if (self._service_variant == ServiceVariant.OFFLINE and self._lazyllm_patch_applied):
             page_width = item.get('page_width')
             page_height = item.get('page_height')
 
