@@ -93,11 +93,12 @@ Returns:
 add_chinese_doc_trace('set_trace_context', '''\
 设置当前轻量级 tracing 上下文。
 
-可传入 ``LazyTraceContext`` 实例或字典。该函数会统一做规范化并写入
-``globals['trace']``，供后续 tracing runtime 与 hooks 使用。
+可传入 ``LazyTraceContext`` 实例或 ``dict``。字典会经 ``LazyTraceContext.from_dict`` 规范化；
+其它类型会按空字典处理后再规范化。结果写入 ``lazyllm`` 全局存储中的 trace 字段，供 runtime
+与 hooks 使用。
 
 Args:
-    ctx: ``LazyTraceContext`` 实例或可转换为该类型的字典。
+    ctx: ``LazyTraceContext`` 实例或 tracing 上下文字典。
 
 Returns:
     LazyTraceContext: 规范化后的 tracing 上下文对象。
@@ -106,11 +107,12 @@ Returns:
 add_english_doc_trace('set_trace_context', '''\
 Set the current lightweight tracing context.
 
-Accepts either a ``LazyTraceContext`` instance or a dictionary. The input is normalized and
-stored in ``globals['trace']`` for later use by the tracing runtime and hooks.
+Accepts a ``LazyTraceContext`` instance or a ``dict`` (normalized via ``LazyTraceContext.from_dict``).
+Any other type is treated like an empty mapping before normalization. The result is written to
+the trace field in LazyLLM's global store for the runtime and hooks.
 
 Args:
-    ctx: A ``LazyTraceContext`` instance or a dictionary convertible to one.
+    ctx: A ``LazyTraceContext`` instance or a tracing context dictionary.
 
 Returns:
     LazyTraceContext: The normalized tracing context object.
@@ -183,6 +185,126 @@ Returns:
     Any: The result of the target call, or a decorator when used in decorator-factory mode.
 ''')
 
+add_chinese_doc_trace('start_span', '''\
+在 tracing 已开启且 runtime 可用时，创建并进入一个新的 OpenTelemetry span，并返回对应的
+``LazySpan`` 句柄。
+
+通常由 ``LazyTracingHook`` 或扩展代码调用；一般业务代码更常用 ``enable_trace`` 与
+flow/module 自动 hook。
+
+Args:
+    span_kind: ``flow`` / ``module`` / ``callable`` 之一。
+    target: 被追踪的目标对象（flow、module 或可调用对象）。
+    args: 调用位置参数元组。
+    kwargs: 调用关键字参数字典。
+
+Returns:
+    Optional[LazySpan]: 成功时返回 ``LazySpan``；tracing 关闭、未采样或 runtime 不可用时返回
+    ``None``。
+''')
+
+add_english_doc_trace('start_span', '''\
+When tracing is enabled and the runtime is available, create and enter a new OpenTelemetry span
+and return the corresponding ``LazySpan`` handle.
+
+This is normally invoked by ``LazyTracingHook`` or extension code; typical application code
+prefers ``enable_trace`` and automatic flow/module hooks.
+
+Args:
+    span_kind: One of ``flow``, ``module``, or ``callable``.
+    target: The object being traced (flow, module, or callable).
+    args: Positional arguments tuple for the call.
+    kwargs: Keyword arguments dict for the call.
+
+Returns:
+    Optional[LazySpan]: A ``LazySpan`` on success; ``None`` if tracing is off, not sampled, or
+    the runtime is unavailable.
+''')
+
+add_chinese_doc_trace('set_span_output', '''\
+将成功执行结果写入 ``LazySpan``（在 ``capture_payload`` 开启时同时记录 output）。
+
+Args:
+    handle: ``start_span`` 返回的 ``LazySpan``，可为 ``None``（此时为 no-op）。
+    output: 返回值或要记录的输出对象。
+''')
+
+add_english_doc_trace('set_span_output', '''\
+Write a successful execution result onto the ``LazySpan`` (and persist ``output`` when
+``capture_payload`` is enabled).
+
+Args:
+    handle: The ``LazySpan`` returned by ``start_span``, or ``None`` (no-op).
+    output: The return value or output payload to record.
+''')
+
+add_chinese_doc_trace('set_span_usage', '''\
+将 token 用量等信息写入 ``LazySpan``（例如 ``prompt_tokens`` / ``completion_tokens``），
+在 ``finish_span`` 时映射为 OTel 用量属性。
+
+Args:
+    handle: ``LazySpan`` 句柄，可为 ``None``。
+    usage: 用量字典。
+''')
+
+add_english_doc_trace('set_span_usage', '''\
+Attach token usage (e.g. ``prompt_tokens`` / ``completion_tokens``) to the ``LazySpan``;
+``finish_span`` maps these to OTel usage attributes.
+
+Args:
+    handle: The ``LazySpan`` handle, or ``None``.
+    usage: Usage dictionary.
+''')
+
+add_chinese_doc_trace('set_span_attributes', '''\
+将额外属性合并进 ``LazySpan.output_attrs``，在 ``finish_span`` 时写入底层 OTel span。
+
+Args:
+    handle: ``LazySpan`` 句柄，可为 ``None``。
+    attrs: 要合并的属性字典。
+''')
+
+add_english_doc_trace('set_span_attributes', '''\
+Merge extra attributes into ``LazySpan.output_attrs``; they are written to the underlying OTel
+span at ``finish_span`` time.
+
+Args:
+    handle: The ``LazySpan`` handle, or ``None``.
+    attrs: Attribute dict to merge.
+''')
+
+add_chinese_doc_trace('set_span_error', '''\
+将 ``LazySpan`` 标记为错误并记录异常对象，供 ``finish_span`` 上报。
+
+Args:
+    handle: ``LazySpan`` 句柄，可为 ``None``。
+    exc: 抛出的异常实例。
+''')
+
+add_english_doc_trace('set_span_error', '''\
+Mark the ``LazySpan`` as failed and attach the exception for export in ``finish_span``.
+
+Args:
+    handle: The ``LazySpan`` handle, or ``None``.
+    exc: The raised exception instance.
+''')
+
+add_chinese_doc_trace('finish_span', '''\
+结束 ``LazySpan``：写入 lazyllm 通用 OTel 属性、调用 backend 的 ``map_attributes``、关闭
+OTel span，并更新 ``LazyTrace`` / ``current_trace`` 生命周期。
+
+Args:
+    handle: ``start_span`` 返回的 ``LazySpan``，可为 ``None``（此时为 no-op）。
+''')
+
+add_english_doc_trace('finish_span', '''\
+Finalize a ``LazySpan``: write generic LazyLLM OTel attributes, invoke the backend's
+``map_attributes``, close the OTel span, and update ``LazyTrace`` / ``current_trace`` lifecycle.
+
+Args:
+    handle: The ``LazySpan`` from ``start_span``, or ``None`` (no-op).
+''')
+
 # ============= LazyTraceContext
 
 add_chinese_doc_ctx = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.collect.context)
@@ -242,6 +364,46 @@ Args:
 
 Returns:
     LazyTraceContext: The normalized tracing context object.
+''')
+
+# ============= Span records (collect.span)
+
+add_chinese_doc_span = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.collect.span)
+add_english_doc_span = functools.partial(utils.add_english_doc, module=lazyllm.tracing.collect.span)
+
+add_chinese_doc_span('LazySpan', '''\
+表示单次 span 的数据快照（``dataclass``），与底层 OpenTelemetry span 及 ``LazyTrace`` 聚合
+状态关联。
+
+字段涵盖实体标识（``name``、``span_kind``、``semantic_type``、``component_*``）、链信息
+（``trace_id`` / ``span_id`` / ``parent_span_id``）、可选的输入输出与 ``config``、
+``output_attrs``、``usage`` 等。``start_span`` 在成功时返回该类型的实例；``finish_span``
+消费其中的状态完成上报。
+''')
+
+add_english_doc_span('LazySpan', '''\
+A ``dataclass`` snapshot for one span, linked to the underlying OpenTelemetry span and
+``LazyTrace`` aggregation state.
+
+Fields cover entity identity (``name``, ``span_kind``, ``semantic_type``, ``component_*``),
+chain identifiers (``trace_id`` / ``span_id`` / ``parent_span_id``), optional I/O and
+``config``, ``output_attrs``, ``usage``, and more. ``start_span`` returns an instance on
+success; ``finish_span`` consumes it to export telemetry.
+''')
+
+add_chinese_doc_span('LazyTrace', '''\
+表示一次请求级 trace 的内存聚合对象，由 ``ContextVar``（``current_trace``）持有。
+
+记录 ``trace_id``、根 ``span_id``、会话与用户信息、标签以及 ``metadata`` 等，并在多个
+``LazySpan`` 开始/结束时维护计数与最终状态。根 span 结束时可能触发 ``finish`` 并清空
+上下文。
+''')
+
+add_english_doc_span('LazyTrace', '''\
+In-memory aggregate for one request-level trace, held in a ``ContextVar`` (``current_trace``).
+
+Tracks ``trace_id``, root ``span_id``, session/user info, tags, ``metadata``, and span
+lifecycle counters; a owning root span may ``finish`` the trace and clear context.
 ''')
 
 # ============= Tracing configs
@@ -346,6 +508,99 @@ Args:
 
 Returns:
     bool: ``True`` if tracing should be disabled for the module at runtime.
+''')
+
+# ============= Semantics (ids and semantic_type literals)
+
+add_chinese_doc_sem = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.semantics)
+add_english_doc_sem = functools.partial(utils.add_english_doc, module=lazyllm.tracing.semantics)
+
+add_chinese_doc_sem('SemanticType', '''\
+LazyLLM 在 OTel span 上使用的 ``lazyllm.semantic_type`` 取值常量（如 ``llm``、``retriever``、
+``workflow_control`` 等），与 tracing runtime 对 module/flow 的语义归类一致。
+''')
+
+add_english_doc_sem('SemanticType', '''\
+Literal values used for ``lazyllm.semantic_type`` on OTel spans (e.g. ``llm``, ``retriever``,
+``workflow_control``), matching how the tracing runtime classifies modules and flows.
+''')
+
+add_chinese_doc_sem('is_valid_trace_id', '''\
+判断字符串是否为 32 位小写十六进制 W3C trace id 格式（与内部 ``_TRACE_ID_RE`` 一致）。
+
+Args:
+    value: 待校验字符串。
+
+Returns:
+    bool: 格式合法返回 ``True``。
+''')
+
+add_english_doc_sem('is_valid_trace_id', '''\
+Return whether *value* matches the 32-char lowercase hex W3C trace id format (same rule as
+``_TRACE_ID_RE``).
+
+Args:
+    value: Candidate string.
+
+Returns:
+    bool: ``True`` if the format is valid.
+''')
+
+add_chinese_doc_sem('is_valid_span_id', '''\
+判断字符串是否为 16 位小写十六进制 span id 格式（与内部 ``_SPAN_ID_RE`` 一致）。
+
+Args:
+    value: 待校验字符串。
+
+Returns:
+    bool: 格式合法返回 ``True``。
+''')
+
+add_english_doc_sem('is_valid_span_id', '''\
+Return whether *value* matches the 16-char lowercase hex span id format (same rule as
+``_SPAN_ID_RE``).
+
+Args:
+    value: Candidate string.
+
+Returns:
+    bool: ``True`` if the format is valid.
+''')
+
+add_chinese_doc_sem('_TRACE_ID_RE', '''\
+编译后的 trace id 正则（32 位 ``[0-9a-f]``），供 ``LazySpan`` / ``LazyTrace`` 校验与
+``is_valid_trace_id`` 使用。
+''')
+
+add_english_doc_sem('_TRACE_ID_RE', '''\
+Compiled regex for 32-char lowercase hex trace ids; used by ``LazySpan`` / ``LazyTrace``
+validation and ``is_valid_trace_id``.
+''')
+
+add_chinese_doc_sem('_SPAN_ID_RE', '''\
+编译后的 span id 正则（16 位 ``[0-9a-f]``），供 ``LazySpan`` / ``LazyTrace`` 校验与
+``is_valid_span_id`` 使用。
+''')
+
+add_english_doc_sem('_SPAN_ID_RE', '''\
+Compiled regex for 16-char lowercase hex span ids; used by ``LazySpan`` / ``LazyTrace``
+validation and ``is_valid_span_id``.
+''')
+
+add_chinese_doc_sem('_VALID_SPAN_KINDS', '''\
+允许的 ``LazySpan.span_kind`` 取值集合：``flow``、``module``、``callable``。
+''')
+
+add_english_doc_sem('_VALID_SPAN_KINDS', '''\
+Frozen set of allowed ``LazySpan.span_kind`` values: ``flow``, ``module``, ``callable``.
+''')
+
+add_chinese_doc_sem('_VALID_SPAN_STATUS', '''\
+允许的 ``LazySpan.status`` / ``LazyTrace.status`` 取值集合：``ok``、``error``。
+''')
+
+add_english_doc_sem('_VALID_SPAN_STATUS', '''\
+Frozen set of allowed ``LazySpan.status`` / ``LazyTrace.status`` values: ``ok``, ``error``.
 ''')
 
 # ============= Backends registry
