@@ -1019,7 +1019,8 @@ class DocManager:
 
         for item in prepared_items:
             if self._has_kb_document(request.kb_id, item['doc_id']):
-                self._assert_action_allowed(item['doc_id'], request.kb_id, request.algo_id, 'upload')
+                for algo_id in request.get_algo_ids():
+                    self._assert_action_allowed(item['doc_id'], request.kb_id, algo_id, 'upload')
         return prepared_items
 
     def _prepare_reparse_items(self, request: ReparseRequest) -> List[Dict[str, Any]]:
@@ -1173,7 +1174,9 @@ class DocManager:
         return prepared_items
 
     def upload(self, request: UploadRequest) -> List[Dict[str, Any]]:
-        self._validate_kb_algorithm(request.kb_id, request.algo_id)
+        algo_ids = request.get_algo_ids()
+        for algo_id in algo_ids:
+            self._validate_kb_algorithm(request.kb_id, algo_id)
         prepared_items = self._prepare_upload_items(request)
         source_type = request.source_type or SourceType.API
         items: List[Dict[str, Any]] = []
@@ -1190,18 +1193,20 @@ class DocManager:
                 source_type=source_type,
                 upload_status=DocStatus.SUCCESS,
             )
+            task_id, snapshot = None, {}
+            error_code = error_msg = None
+            accepted = True
             try:
-                task_id, snapshot = self._enqueue_task(
-                    doc_id, request.kb_id, request.algo_id, TaskType.DOC_ADD,
-                    idempotency_key=request.idempotency_key,
-                    file_path=file_path,
-                    metadata=metadata,
-                )
-                error_code = None
-                error_msg = None
-                accepted = True
+                # enqueue a DOC_ADD task for every algo — ng dedup is handled by _wait_and_decide_ng
+                for algo_id in algo_ids:
+                    task_id, snapshot = self._enqueue_task(
+                        doc_id, request.kb_id, algo_id, TaskType.DOC_ADD,
+                        idempotency_key=request.idempotency_key,
+                        file_path=file_path,
+                        metadata=metadata,
+                    )
             except Exception as exc:
-                snapshot = self._get_parse_snapshot(doc_id, request.kb_id, request.algo_id) or {}
+                snapshot = self._get_parse_snapshot(doc_id, request.kb_id, algo_ids[0]) or {}
                 doc = self._get_doc(doc_id) or doc
                 task_id = snapshot.get('current_task_id')
                 error_code = snapshot.get('last_error_code') or type(exc).__name__
@@ -1210,13 +1215,13 @@ class DocManager:
             items.append({
                 'doc_id': doc_id,
                 'kb_id': request.kb_id,
-                'algo_id': request.algo_id,
+                'algo_ids': algo_ids,
                 'upload_status': doc['upload_status'],
                 'parse_status': snapshot.get('status', DocStatus.FAILED.value),
                 'task_id': task_id,
                 'accepted': accepted,
-                'error_code': error_code,
-                'error_msg': error_msg,
+                'error_code': snapshot.get('last_error_code') if accepted else error_code,
+                'error_msg': snapshot.get('last_error_msg') if accepted else error_msg,
             })
         return items
 
@@ -1225,6 +1230,7 @@ class DocManager:
             items=request.items,
             kb_id=request.kb_id,
             algo_id=request.algo_id,
+            algo_ids=request.algo_ids,
             source_type=request.source_type or SourceType.EXTERNAL,
             idempotency_key=request.idempotency_key,
         ))
