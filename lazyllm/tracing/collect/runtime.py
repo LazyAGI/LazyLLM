@@ -5,7 +5,8 @@ import json
 import threading
 from typing import Any, Dict, Optional
 
-from lazyllm.common import LOG, globals
+from lazyllm.common import LOG
+from lazyllm.common.globals import globals as llm_globals
 from lazyllm.configs import config
 from lazyllm.thirdparty import opentelemetry
 from ..backends import get_tracing_backend
@@ -30,7 +31,7 @@ class TracingSetupError(RuntimeError):
 
 
 def get_trace_context() -> LazyTraceContext:
-    return LazyTraceContext.from_dict(globals.get('trace', {}))
+    return LazyTraceContext.from_dict(llm_globals.get('trace', {}))
 
 
 def set_trace_context(ctx) -> LazyTraceContext:
@@ -38,7 +39,7 @@ def set_trace_context(ctx) -> LazyTraceContext:
         tc = ctx
     else:
         tc = LazyTraceContext.from_dict(ctx if isinstance(ctx, dict) else {})
-    globals['trace'] = tc.to_dict()
+    llm_globals['trace'] = tc.to_dict()
     return tc
 
 
