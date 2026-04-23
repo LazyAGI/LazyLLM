@@ -29,7 +29,6 @@ class _PostProcess(object):
 
 
 class _RetrieverBase(ModuleBase):
-
     class Priority(str, Enum):
         ignore = 'ignore'
         low = 'low'
@@ -37,6 +36,7 @@ class _RetrieverBase(ModuleBase):
         high = 'high'
 
         def __repr__(self): return self.casefold()
+
 
 class Retriever(_RetrieverBase, _PostProcess):
     def __init__(self, doc: object, group_name: str, similarity: Optional[str] = None,
