@@ -25,35 +25,14 @@ lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='T
 class PaddleOCRPDFReader(_OcrReaderBase):
     def __init__(self,
                  url: str = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing',
-                 callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
-                 format_block_content: bool = True,
-                 use_layout_detection: bool = True,
-                 use_chart_recognition: bool = True,
                  droped_types: Set[str] = {'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                  **kwargs):
         super().__init__(url=url, droped_types=droped_types, **kwargs)
-        api_key = kwargs.get('api_key') or lazyllm.config['paddle_api_key']
-        if not url and not api_key:
-            raise ValueError('Either url or api_key must be provided')
-
-        if url:
-            self._url = url.rstrip('/') + '/layout-parsing'
-        else:
-            self._url = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing'
-
-        if api_key:
-            self._headers = {
-                'Authorization': f'token {api_key}',
-                'Content-Type': 'application/json'
-            }
-        else:
-            self._headers = {'Content-Type': 'application/json'}
-
-        self._format_block_content = format_block_content
-        self._use_layout_detection = use_layout_detection
-        self._use_chart_recognition = use_chart_recognition
-        self._callback = callback
-        self._page_size = None
+        self._api_key = lazyllm.config['paddle_api_key']
+        self._headers = {
+            'Authorization': f'token {self._api_key or ''}',
+            'Content-Type': 'application/json'
+        }
 
     @override
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
@@ -66,9 +45,9 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         payload = {
             'file': file_data,
             'fileType': 0 if str(file).endswith('.pdf') else 1,
-            'formatBlockContent': self._format_block_content,
-            'useLayoutDetection': self._use_layout_detection,
-            'useChartRecognition': self._use_chart_recognition,
+            'formatBlockContent': True,
+            'useLayoutDetection': True,
+            'useChartRecognition': True,
             'prettifyMarkdown': True,
         }
 

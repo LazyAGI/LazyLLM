@@ -37,7 +37,6 @@ class MineruPDFReader(_OcrReaderBase, _Adapter):
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._apply_lazyllm_patch = apply_lazyllm_patch
-        self._page_size = None
 
     @override
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:

@@ -21,7 +21,6 @@ class _OcrReaderBase(_RichReader):
     def __init__(self,
             url,
             image_cache_dir: Path,
-            api_key: Optional[str] = None,
             service_variant: ServiceVariant = 'online',
             droped_types: Set[str] = set(),
             split_doc: bool = True,
@@ -31,9 +30,9 @@ class _OcrReaderBase(_RichReader):
         self._url = url
         self._image_cache_dir = image_cache_dir
         self._image_cache_dir.mkdir(parents=True, exist_ok=True)
-        self._api_key = api_key
         self._service_variant = ServiceVariant(service_variant)
         self._droped_types = droped_types
+        self._page_size = None
 
     def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
         '''Fetch raw response string from the OCR service.'''
