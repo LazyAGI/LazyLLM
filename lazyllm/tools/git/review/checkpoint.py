@@ -22,6 +22,7 @@ class ReviewStage(enum.Enum):
     RCOV = 'rcov'
     R3 = 'r3'
     FINAL = 'final'
+    MERGE = 'merge'
     UPLOAD = 'upload'
 
     @staticmethod
@@ -42,7 +43,7 @@ _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
     ReviewStage.PR_SUMMARY, ReviewStage.RSCENE, ReviewStage.RCHAIN,
     ReviewStage.R1, ReviewStage.R2A, ReviewStage.R2, ReviewStage.RMOD,
-    ReviewStage.R3, ReviewStage.RCOV, ReviewStage.FINAL, ReviewStage.UPLOAD,
+    ReviewStage.R3, ReviewStage.RCOV, ReviewStage.FINAL, ReviewStage.MERGE, ReviewStage.UPLOAD,
 ]
 
 
@@ -104,7 +105,8 @@ class _ReviewCheckpoint:
         'r3': ReviewStage.R3,
         'r3_shared_context': ReviewStage.R3,
         'final': ReviewStage.FINAL,
-        'final_comments': ReviewStage.UPLOAD,
+        'final_comments': ReviewStage.FINAL,
+        'merged_comments': ReviewStage.MERGE,
         'upload_done_batches': ReviewStage.UPLOAD,
     }
     _PIPELINE_VERSION_KEY = '_pipeline_version'
@@ -112,7 +114,7 @@ class _ReviewCheckpoint:
     _PIPELINE_VERSION = 3
     _REVIEW_ROUND_VERSION_KEY = '_review_round_version'
     # Bump _REVIEW_ROUND_VERSION to invalidate only the FINAL (R4) stage cache
-    _REVIEW_ROUND_VERSION = 4
+    _REVIEW_ROUND_VERSION = 5
 
     def __init__(self, path: str, resume_from: Optional[ReviewStage] = None) -> None:
         self._path = path

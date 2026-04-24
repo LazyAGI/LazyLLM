@@ -3160,13 +3160,16 @@ def _round4_merge_and_deduplicate(
         kept_idxs.add(idx)
         category = item.get('bug_category') or 'logic'
         severity = item.get('severity') or 'normal'
-        result.append({
+        entry = {
             'path': original['path'], 'line': original['line'],
             'severity': severity if severity in _VALID_SEVERITIES else 'normal',
             'bug_category': category if category in _VALID_CATEGORIES else 'logic',
             'problem': item.get('problem') or '',
             'suggestion': original.get('suggestion') or '',
-        })
+        }
+        if original.get('source'):
+            entry['source'] = original['source']
+        result.append(entry)
     discarded_idxs = set(idx_map.keys()) - kept_idxs
     if discarded_idxs:
         lazyllm.LOG.info(
@@ -3376,3 +3379,113 @@ def _run_four_rounds(  # noqa: C901
     else:
         _Progress('Round 4: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')
     return final, r3_metrics
+
+
+# ---------------------------------------------------------------------------
+# Post-merge dedup: cross-source dedup/merge for final + rchain + rcov
+# ---------------------------------------------------------------------------
+
+_POST_MERGE_DEDUP_PROMPT_TMPL = '''\
+You are a senior code reviewer performing final cross-source deduplication.
+{lang_instruction}
+
+## All Issues (from multiple review sources)
+Each item has: idx (unique id), path, line, severity, bug_category, source, summary.
+{issues_json}
+
+## Task
+Sources: r1/r2/r3/rmod/lint come from the main review rounds (R1-R4); \
+rchain comes from call-chain analysis; rcov comes from test-coverage analysis.
+
+1. **Exact/near-duplicate**: same path + same or adjacent line (within ±3 lines) + same core problem
+   → keep the one with highest severity; if severity is equal, prefer r3 > rchain > rcov > r1 > r2 > lint.
+2. **Mergeable**: same path + same or adjacent line, different but complementary angles
+   → keep ONE item; set its problem/suggestion to a merged version (record the idx of the item to keep,
+     the merged problem text goes in "merged_problem", merged suggestion in "merged_suggestion").
+3. **Independent**: different location or genuinely different problem → keep all as-is.
+
+Output a JSON array. Each surviving item must have ONLY:
+- "idx": integer (the idx to keep from the input list)
+- "severity": critical | medium | normal
+- "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability
+- "problem": string (original or merged problem text)
+- "suggestion": string (original or merged suggestion text, may be empty string)
+
+Do NOT include "path" or "line" — they will be restored from the original data.
+''' + _JSON_OUTPUT_INSTRUCTION + '\n'
+
+
+def _post_merge_dedup(
+    llm: Any,
+    final_comments: List[Dict[str, Any]],
+    rchain_issues: List[Dict[str, Any]],
+    rcov_issues: List[Dict[str, Any]],
+    existing_comments: Optional[List[Dict[str, Any]]] = None,
+    language: str = 'cn',
+) -> List[Dict[str, Any]]:
+    '''Cross-source dedup/merge: final (R1-R4) + rchain + rcov → unified list.'''
+    all_in = (
+        [{**c, 'source': c.get('source') or 'r4'} for c in final_comments]
+        + [{**c, 'source': c.get('source') or 'rchain'} for c in rchain_issues]
+        + [{**c, 'source': c.get('source') or 'rcov'} for c in rcov_issues]
+    )
+    if not all_in:
+        return []
+
+    prog = _Progress('Post-merge dedup', len(all_in))
+
+    # fast path: nothing from rchain/rcov to cross-check
+    if not rchain_issues and not rcov_issues:
+        prog.done('no rchain/rcov issues, skipping LLM dedup')
+        return final_comments
+
+    if len(all_in) <= 1:
+        prog.done(f'{len(all_in)} issue(s), nothing to dedup')
+        return all_in
+
+    # compress for LLM prompt — LLM decides dedup/merge/keep, no pre-filtering by severity
+    compressed = _compress_new_issues(llm, all_in)
+    prompt = _POST_MERGE_DEDUP_PROMPT_TMPL.format(
+        lang_instruction=_language_instruction(language),
+        issues_json=json.dumps(compressed, ensure_ascii=False, indent=2),
+    )
+    items = _safe_llm_call(llm, prompt)
+    idx_map = {i: c for i, c in enumerate(all_in)}
+    result: List[Dict[str, Any]] = []
+    kept_idxs: set = set()
+    for item in (items if isinstance(items, list) else []):
+        if not isinstance(item, dict):
+            continue
+        try:
+            idx = int(item.get('idx', -1))
+        except (TypeError, ValueError):
+            continue
+        original = idx_map.get(idx)
+        if original is None or idx in kept_idxs:
+            continue
+        kept_idxs.add(idx)
+        category = item.get('bug_category') or original.get('bug_category') or 'logic'
+        severity = item.get('severity') or original.get('severity') or 'normal'
+        entry: Dict[str, Any] = {
+            'path': original['path'],
+            'line': original['line'],
+            'severity': severity if severity in _VALID_SEVERITIES else 'normal',
+            'bug_category': category if category in _VALID_CATEGORIES else 'logic',
+            'problem': item.get('problem') or original.get('problem') or '',
+            'suggestion': (item.get('suggestion')
+                           if item.get('suggestion') is not None else original.get('suggestion') or '')
+        }
+        if original.get('source'):
+            entry['source'] = original['source']
+        result.append(entry)
+
+    dropped = len(all_in) - len(result)
+    if dropped:
+        lazyllm.LOG.info(f'Post-merge dedup: LLM dropped/merged {dropped} issue(s)')
+    if not result:
+        # LLM returned nothing — fall back to full input (no dedup)
+        lazyllm.LOG.warning('Post-merge dedup: LLM returned empty, falling back to full input')
+        result = all_in
+
+    prog.done(f'{len(result)} issues after cross-source dedup')
+    return result

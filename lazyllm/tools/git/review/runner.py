@@ -11,7 +11,7 @@ import lazyllm
 from ..client import Git
 from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
-from .rounds import _run_four_rounds, infer_usage_scenarios, _rscenario_call_chain
+from .rounds import _run_four_rounds, infer_usage_scenarios, _rscenario_call_chain, _post_merge_dedup
 from .poster import _fetch_existing_pr_comments, _post_review_comments, _build_commentable_lines, _filter_commentable
 from .output import write_review_json
 from .utils import (
@@ -392,8 +392,19 @@ def review(  # noqa: C901
         except Exception as e:
             lazyllm.LOG.error(f'RCov analysis failed unexpectedly: {e}')
 
-    # merge: final_comments (through R4 dedup) + rchain_issues + rcov_issues (bypass R4)
-    all_comments = final_comments + rchain_issues + rcov_issues
+    # cross-source dedup/merge: final (R1-R4) + rchain + rcov → unified list
+    # Uses LLM to detect duplicates and merge complementary issues across sources.
+    _cached_merged = ckpt.get('merged_comments')
+    if ckpt.should_use_cache(ReviewStage.MERGE) and _cached_merged is not None:
+        all_comments = _cached_merged
+        _Progress('Post-merge dedup').done(f'loaded from checkpoint ({len(all_comments)} issues)')
+    else:
+        all_comments = _post_merge_dedup(
+            llm, final_comments, rchain_issues, rcov_issues,
+            existing_comments=existing_comments, language=language,
+        )
+        ckpt.save('merged_comments', all_comments)
+        ckpt.mark_stage_done(ReviewStage.MERGE)
 
     # clean up only the clone subdirectory (not the whole pr_dir which contains checkpoint)
     # local mode: clone_dir IS the user's repo, never delete it

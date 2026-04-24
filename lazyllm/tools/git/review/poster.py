@@ -51,8 +51,10 @@ def _filter_commentable(
             continue
         allowed = commentable.get(path)
         if allowed is None or int(line) not in allowed:
+            source = c.get('source') or 'unknown'
             lazyllm.LOG.error(
-                f'[FILTER] dropping comment: {path}:{line} not in PR diff — '
+                f'[FILTER] dropping comment: {path}:{line} not in PR diff '
+                f'(source={source}) — '
                 f'line does not correspond to any added/context line in the diff'
             )
             dropped += 1
