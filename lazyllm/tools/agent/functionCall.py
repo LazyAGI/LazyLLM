@@ -1,6 +1,6 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
-from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text, once_wrapper
+from lazyllm import pipeline, loop, locals, package, FileSystemQueue, colored_text, once_wrapper
 from .toolsManager import ToolManager
 from .skill_manager import SKILLS_PROMPT
 from typing import List, Any, Dict, Union, Callable, Optional
@@ -101,14 +101,14 @@ class FunctionCall(ModuleBase):
             )
         else:
             self._prompter = ChatPrompter(instruction=prompt, tools=self._tools_manager.tools_description)
-        self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
+        self._llm = llm.share(
+            prompt=self._prompter,
+            format=FunctionCallFormatter(),
+            stream=stream,
+        ).used_by(self._module_id)
         with pipeline() as self._impl:
-            self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
-                                            color=Color.green, stream=stream)
             self._impl.pre_action = self._build_history
             self._impl.llm = self._llm
-            self._impl.dis = StreamResponse('Decision-making or result in this round:',
-                                            prefix_color=Color.yellow, color=Color.green, stream=stream)
             self._impl.post_action = self._post_action
 
     @property

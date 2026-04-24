@@ -86,9 +86,11 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             color = stream_output.get('color') if isinstance(stream_output, dict) else None
             for item in message.get('choices', []):
                 delta = item.get('message', item.get('delta', {}))
+                if delta.get('reasoning_content') and delta.get('content'):
+                    lazyllm.LOG.warning('stream delta contains both reasoning_content and content')
                 if (reasoning_content := delta.get('reasoning_content', '')):
                     self._stream_output(reasoning_content, color, cls='think')
-                elif (content := delta.get('content', '')) and not delta.get('tool_calls'):
+                if (content := delta.get('content', '')) and not delta.get('tool_calls'):
                     self._stream_output(content, color)
             lazyllm.LOG.debug(f'message: {message}')
             return message
