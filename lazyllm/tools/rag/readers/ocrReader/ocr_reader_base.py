@@ -58,7 +58,7 @@ class _OcrReaderBase(_RichReader, _Adapter):
         raw = json.loads(response_text)
         blocks = self._adapt_json_to_IR(raw)
         # Post processing
-        blocks = l1_normalize(blocks, self._page_size)
+        blocks = l1_normalize(blocks)
         blocks = l2_associate(blocks)
         return self._build_nodes_from_blocks(blocks, file, extra_info)
 

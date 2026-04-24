@@ -68,11 +68,11 @@ class PaddleOCRPDFReader(_OcrReaderBase):
 
         if label in ('paragraph_title', 'doc_title'):
             return HeadingBlock(page=page, text=content)
-        elif label in ('image', 'chart'):
+        elif label == 'image':
             img_src = self._extract_img_path(content)
             image_path = self._resolve_image_path(img_src, markdown_images)
             return FigureBlock(page=page, image_path=image_path)
-        elif label == 'table':
+        elif label in ('table', 'chart'):
             return TableBlock(
                 page=page,
                 cells=self._parse_table_html(content),
