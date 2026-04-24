@@ -136,7 +136,7 @@ Evaluate whether test coverage is ADEQUATE, PARTIAL, or MISSING for this group a
 
 Report issues ONLY for PARTIAL and MISSING coverage. For each issue:
 - "path": the source file path (not the test file)
-- "line": 1 (use 1 when no specific line is applicable)
+- "line": null (coverage issues are not tied to a specific line)
 - "severity": "normal" for all coverage issues
 - "bug_category": "maintainability"
 - "problem": one sentence describing what coverage is missing

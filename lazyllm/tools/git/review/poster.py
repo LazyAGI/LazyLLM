@@ -37,15 +37,17 @@ def _build_commentable_lines(hunks: List[Tuple[str, int, int, str]]) -> Dict[str
 def _filter_commentable(
     comments: List[Dict[str, Any]],
     commentable: Dict[str, Set[int]],
-) -> Tuple[List[Dict[str, Any]], int]:
-    # Drop comments whose (path, line) is not in the PR diff.
-    # Returns (kept, dropped_count).
-    kept, dropped = [], 0
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
+    # Split comments into inline (valid path+line in diff) and general (no line or line not in diff).
+    # Returns (inline_kept, general_kept, dropped_count).
+    # - line is None → general comment (intentional, e.g. coverage issues)
+    # - line not in diff → drop (hallucinated line number)
+    inline, general, dropped = [], [], 0
     for c in comments:
         path = c.get('path', '')
         line = c.get('line')
         if line is None:
-            dropped += 1
+            general.append(c)
             continue
         allowed = commentable.get(path)
         if allowed is None or int(line) not in allowed:
@@ -55,8 +57,8 @@ def _filter_commentable(
             )
             dropped += 1
         else:
-            kept.append(c)
-    return kept, dropped
+            inline.append(c)
+    return inline, general, dropped
 
 
 def _suggestion_prefix(suggestion: str) -> str:
@@ -137,6 +139,7 @@ def _post_review_comments(
     model_name: str = 'unknown-model',
     review_body: str = '',
     ckpt: Optional[Any] = None,
+    general_comments: Optional[List[Dict[str, Any]]] = None,
 ) -> tuple:
     comments_payload = [
         {
@@ -150,21 +153,46 @@ def _post_review_comments(
     dropped = len(all_comments) - len(comments_payload)
     if dropped:
         lazyllm.LOG.warning(f'{dropped} comment(s) dropped: missing path or line field')
-    if not comments_payload:
+
+    # Build general (PR-level) review body from general_comments
+    general_body_parts = []
+    if general_comments:
+        general_body_parts.append('## General Review Comments\n')
+        for c in general_comments:
+            path_hint = f'`{c["path"]}`  ' if c.get('path') else ''
+            category_tag = f'[{c.get("bug_category", "maintainability")}]'
+            severity_tag = f'[{c.get("severity", "normal")}]'
+            general_body_parts.append(
+                f'**{severity_tag} {category_tag}** {path_hint}{c.get("problem", "")}\n\n'
+                f'**Suggestion:** {c.get("suggestion", "")}\n\n---'
+            )
+    general_body = '\n'.join(general_body_parts)
+
+    if not comments_payload and not general_body:
         return 0, True
 
+    # Merge general_body into review_body for the first batch
+    combined_review_body = review_body
+    if general_body:
+        combined_review_body = (review_body + '\n\n' + general_body).strip() if review_body else general_body
+
+    if not comments_payload:
+        # Only general comments — send as a single review with no inline comments
+        ok = _submit_with_retry(backend, pr_number, head_sha, [], combined_review_body)
+        posted = len(general_comments) if ok else 0
+        return posted, ok
+
     batches = [comments_payload[i:i + _BATCH_SIZE] for i in range(0, len(comments_payload), _BATCH_SIZE)]
-    # load already-completed batch indices from checkpoint (not subject to stage invalidation)
     done_batches: set = set(ckpt.get('upload_done_batches') or [] if ckpt else [])
-    prog = _Progress(f'Posting review ({len(comments_payload)} comments, {len(batches)} batch(es))', len(batches))
+    prog = _Progress(f'Posting review ({len(comments_payload)} inline + {len(general_comments or [])} general, '
+                     f'{len(batches)} batch(es))', len(batches))
     posted = sum(len(batches[i]) for i in done_batches if i < len(batches))
     all_ok = True
     for idx, batch in enumerate(batches):
         if idx in done_batches:
             prog.update(f'batch {idx + 1}/{len(batches)}: skipped (already posted)')
             continue
-        # first non-skipped batch carries the review_body summary
-        body = review_body if idx == 0 or not done_batches else ''
+        body = combined_review_body if (idx == 0 or not done_batches) else ''
         ok = _submit_with_retry(backend, pr_number, head_sha, batch, body)
         if ok:
             posted += len(batch)
@@ -177,5 +205,5 @@ def _post_review_comments(
             prog.update(f'batch {idx + 1}/{len(batches)}: FAILED, skipping')
         if idx < len(batches) - 1:
             time.sleep(_BATCH_INTERVAL)
-    prog.done(f'{posted}/{len(comments_payload)} posted')
+    prog.done(f'{posted}/{len(comments_payload)} inline posted')
     return posted, all_ok

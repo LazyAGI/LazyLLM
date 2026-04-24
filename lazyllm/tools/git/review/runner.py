@@ -416,14 +416,17 @@ def review(  # noqa: C901
                 model_name=model_name,
             )
             commentable = _build_commentable_lines(hunks)
-            postable, n_dropped = _filter_commentable(all_comments, commentable)
+            postable, general, n_dropped = _filter_commentable(all_comments, commentable)
             if n_dropped:
                 lazyllm.LOG.warning(
                     f'{n_dropped} comment(s) dropped: line not in PR diff range '
                     f'(would cause GitHub 422)'
                 )
+            if general:
+                lazyllm.LOG.info(f'{len(general)} comment(s) will be posted as general PR-level comments')
             posted, upload_all_ok = _post_review_comments(
-                backend_inst, pr_number, head_sha, postable, model_name, review_body=review_body, ckpt=ckpt
+                backend_inst, pr_number, head_sha, postable, model_name,
+                review_body=review_body, ckpt=ckpt, general_comments=general,
             )
             if upload_all_ok:
                 ckpt.mark_stage_done(ReviewStage.UPLOAD)

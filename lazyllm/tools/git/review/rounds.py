@@ -2589,15 +2589,35 @@ def _rscene_run_single_group(
 
 
 def _rscene_collect_modified_file_diffs(diff_text: str) -> Dict[str, str]:
-    '''Collect per-file diffs for modified (non-new) files only.'''
+    '''Collect per-file diffs for modified (non-new) files only, preserving original @@ headers.'''
     new_paths = _rmod_new_file_paths(diff_text)
-    hunks = _parse_unified_diff(diff_text)
     file_diffs: Dict[str, str] = {}
-    for path, start, count, content in hunks:
-        if path not in new_paths:
-            file_diffs.setdefault(path, '')
-            file_diffs[path] += f'@@ +{start},{count} @@\n{content}\n'
-    return file_diffs
+    current_path: Optional[str] = None
+    current_lines: List[str] = []
+
+    def _flush():
+        if current_path and current_lines:
+            file_diffs.setdefault(current_path, '')
+            file_diffs[current_path] += ''.join(current_lines)
+        current_lines.clear()
+
+    for line in diff_text.splitlines(keepends=True):
+        if line.startswith('diff --git '):
+            _flush()
+            m = re.match(r'diff --git a/(.+) b/(.+)$', line.rstrip())
+            current_path = m.group(2) if m else None
+            current_lines.clear()
+        elif current_path is not None and current_path not in new_paths:
+            current_lines.append(line)
+    _flush()
+    # Strip file-level metadata lines (diff/index/---/+++) from each file's diff,
+    # keeping only @@ hunks and their content so _annotate_full_diff works correctly.
+    cleaned: Dict[str, str] = {}
+    for path, raw in file_diffs.items():
+        hunk_lines = [line for line in raw.splitlines(keepends=True)
+                      if not line.startswith(('index ', '--- ', '+++ '))]
+        cleaned[path] = ''.join(hunk_lines)
+    return cleaned
 
 
 def _rscene_dedup_scenarios(scenarios: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
