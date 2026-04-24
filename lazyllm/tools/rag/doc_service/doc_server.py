@@ -128,7 +128,7 @@ class DocServer(ModuleBase):
             stale_ids = [did for path, did in all_known_docs.items() if path not in disk_set]
             if stale_ids:
                 try:
-                    request = DeleteRequest(doc_ids=stale_ids, kb_id=kb_id, algo_id=algo_id)
+                    request = DeleteRequest(doc_ids=stale_ids, kb_id=kb_id)
                     self._manager.delete(request)
                 except Exception as exc:
                     LOG.error(f'[Scan] delete failed for kb={kb_id}: {len(stale_ids)} docs: {exc}')
@@ -251,7 +251,6 @@ class DocServer(ModuleBase):
                     })
             return {
                 'kb_id': request.kb_id,
-                'algo_id': request.algo_id,
                 'source_type': source_type.value,
                 'idempotency_key': request.idempotency_key,
                 'items': items,
@@ -753,7 +752,8 @@ class DocServer(ModuleBase):
             if not files:
                 raise fastapi.HTTPException(status_code=400, detail='files is required')
             kb_id = kb_id or '__default__'
-            algo_id = algo_id or '__default__'
+            if algo_id is not None:
+                LOG.warning(f'[upload] algo_id is deprecated and ignored; kb={kb_id}')
             source_type = source_type or SourceType.API
             saved_paths, file_identities = await self._persist_uploads(files)
             upload_request = UploadRequest(
@@ -762,7 +762,6 @@ class DocServer(ModuleBase):
                     for idx, path in enumerate(saved_paths)
                 ],
                 kb_id=kb_id,
-                algo_id=algo_id,
                 source_type=source_type,
                 idempotency_key=idempotency_key,
             )
@@ -809,7 +808,6 @@ class DocServer(ModuleBase):
             self,
             status: Optional[List[str]] = None,
             kb_id: Optional[str] = None,
-            algo_id: Optional[str] = None,
             keyword: Optional[str] = None,
             include_deleted_or_canceled: bool = True,
             page: int = 1,
@@ -819,7 +817,6 @@ class DocServer(ModuleBase):
             data = self._manager.list_docs(
                 status=status,
                 kb_id=kb_id,
-                algo_id=algo_id,
                 keyword=keyword,
                 include_deleted_or_canceled=include_deleted_or_canceled,
                 page=page,

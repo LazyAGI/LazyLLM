@@ -356,13 +356,6 @@ class DocumentProcessor(ModuleBase):
                             created_at=datetime.now(), updated_at=datetime.now(),
                         ))
                     else:
-                        existing_ids = json.loads(existing.node_group_ids or '[]')
-                        if existing_ids and existing_ids != node_group_ids:
-                            raise ValueError(
-                                f'Algorithm {name!r} already exists with different node_group_ids '
-                                f'(existing={existing_ids}, new={node_group_ids}). '
-                                'Use update_algorithm() to modify node groups.'
-                            )
                         existing.info_pickle = info_pickle
                         existing.display_name = display_name
                         existing.description = description

@@ -165,7 +165,7 @@ class _ManagerHarness:
         self.manager._parser_client.get_algorithm_groups = lambda algo_id: BaseResponse(
             code=200,
             msg='success',
-            data={'node_group_ids': ['line']} if algo_id == '__default__' else None,
+            data=[{'id': 'line', 'name': 'line'}] if algo_id == '__default__' else None,
         )
 
 
@@ -325,14 +325,12 @@ def test_manager_delete_waiting_add_uses_cancel_path(manager_harness):
 
     upload = manager_harness.manager.upload(UploadRequest(
         kb_id='kb_delete_waiting',
-        algo_id='__default__',
         items=[AddFileItem(file_path=file_path, doc_id='delete-waiting-doc')],
     ))
     original_task_id = upload[0]['task_id']
 
     items = manager_harness.manager.delete(DeleteRequest(
         kb_id='kb_delete_waiting',
-        algo_id='__default__',
         doc_ids=['delete-waiting-doc'],
     ))
     snapshot = manager_harness.manager._get_parse_snapshot('delete-waiting-doc', 'kb_delete_waiting', '__default__')
@@ -1103,12 +1101,6 @@ def test_list_docs_latest_snapshot_when_algo_id_not_specified(manager_harness):
         assert item['snapshot']['algo_id'] == 'algo-C'
         assert item['snapshot']['status'] == DocStatus.SUCCESS.value
 
-    resp_explicit = manager_harness.manager.list_docs(kb_id=kb_id, algo_id='algo-A', page=1, page_size=50)
-    assert resp_explicit['total'] == 10
-    for item in resp_explicit['items']:
-        assert item['snapshot']['algo_id'] == 'algo-A'
-        assert item['snapshot']['status'] == DocStatus.FAILED.value
-
 
 def test_list_docs_kb_id_filter_isolates_results(manager_harness):
     for kb_id in ('kb-a', 'kb-b', 'kb-c'):
@@ -1281,8 +1273,9 @@ def test_list_docs_status_filter_uses_latest_snapshot_not_any(manager_harness):
 
 
 def test_list_docs_status_and_algo_id_combined(manager_harness):
-    '''status × algo_id must be combined: the status filter applies to the
-    explicitly requested algo's snapshot only.
+    '''status filter applies to the latest snapshot (most recent algo by updated_at).
+    With algo-B (FAILED) being newer than algo-A (SUCCESS), status=FAILED returns all 30,
+    status=SUCCESS returns 0.
     '''
     kb_id = 'kb_combo'
     manager_harness.manager.create_kb(kb_id, algo_id='__default__')
@@ -1291,21 +1284,21 @@ def test_list_docs_status_and_algo_id_combined(manager_harness):
         doc_ids=[f'combo-{i:03d}' for i in range(30)],
         snapshots=[
             ('algo-A', DocStatus.SUCCESS.value, 0),
-            ('algo-B', DocStatus.FAILED.value, 60),
+            ('algo-B', DocStatus.FAILED.value, 60),  # newer → latest snapshot
         ],
     )
 
-    # algo_id='algo-A' + status=['FAILED'] → expect 0 (algo-A is SUCCESS everywhere)
-    resp = manager_harness.manager.list_docs(kb_id=kb_id, algo_id='algo-A',
+    # status=FAILED → latest snapshot is algo-B (FAILED), expect all 30
+    resp = manager_harness.manager.list_docs(kb_id=kb_id,
                                              status=[DocStatus.FAILED.value], page=1, page_size=100)
+    assert resp['total'] == 30
+    assert all(it['snapshot']['algo_id'] == 'algo-B' for it in resp['items'])
+
+    # status=SUCCESS → latest snapshot is algo-B (FAILED), expect 0
+    resp = manager_harness.manager.list_docs(kb_id=kb_id,
+                                             status=[DocStatus.SUCCESS.value], page=1, page_size=100)
     assert resp['total'] == 0
     assert resp['items'] == []
-
-    # algo_id='algo-A' + status=['SUCCESS'] → expect all 30
-    resp = manager_harness.manager.list_docs(kb_id=kb_id, algo_id='algo-A',
-                                             status=[DocStatus.SUCCESS.value], page=1, page_size=100)
-    assert resp['total'] == 30
-    assert all(it['snapshot']['algo_id'] == 'algo-A' for it in resp['items'])
 
 
 def test_list_docs_empty_result_returns_well_formed_page(manager_harness):
@@ -1374,7 +1367,8 @@ def _patch_multi_algo(harness):
         ng_ids = _ALGO_NG_MAP.get(algo_id)
         if ng_ids is None:
             return BaseResponse(code=404, msg='algo not found', data=None)
-        data = {'node_group_ids': ng_ids}
+        # Return list-of-dict format: [{id, name}, ...] matching real parser response
+        data = [{'id': ng_id, 'name': ng_id} for ng_id in ng_ids]
         return BaseResponse(code=200, msg='success', data=data)
 
     all_algo_ids = list(_ALGO_NG_MAP.keys())
@@ -1537,7 +1531,7 @@ def test_multi_algo_scenario3b_explicit_single_ng_reparse_allowed(manager_harnes
 
     # Explicit reparse of ng1 via algo1 — must succeed and reset ng1 to PENDING
     task_ids = mgr.reparse(ReparseRequest(
-        kb_id='kb1s3b', algo_id='algo1', doc_ids=['doc1s3b'], reparse_group='ng1',
+        kb_id='kb1s3b', doc_ids=['doc1s3b'], reparse_group='ng1',
     ))
     assert len(task_ids) == 1
     statuses = _ng_statuses(manager_harness, 'kb1s3b', 'doc1s3b')
@@ -1689,7 +1683,7 @@ def test_multi_algo_scenario6_reparse_single_ng(manager_harness):
     assert statuses_before == {'ng1': 'SUCCESS', 'ng2': 'SUCCESS', 'ng3': 'SUCCESS'}
 
     task_ids = mgr.reparse(ReparseRequest(
-        kb_id='kb1s6', algo_id='algo1', doc_ids=['doc_s6'], reparse_group='ng3',
+        kb_id='kb1s6', doc_ids=['doc_s6'], reparse_group='ng3',
     ))
     assert len(task_ids) == 1
 
@@ -1788,7 +1782,7 @@ def test_multi_algo_scenario10_reparse_all_shared_ngs_no_task(manager_harness):
         ng_ids = special_map.get(algo_id)
         if ng_ids is None:
             return BaseResponse(code=404, msg='algo not found', data=None)
-        return BaseResponse(code=200, msg='success', data={'node_group_ids': ng_ids})
+        return BaseResponse(code=200, msg='success', data=[{'id': ng_id, 'name': ng_id} for ng_id in ng_ids])
 
     mgr._parser_client.list_algorithms = lambda: BaseResponse(
         code=200, msg='success',

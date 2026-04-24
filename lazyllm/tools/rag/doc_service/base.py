@@ -92,10 +92,10 @@ class AddFileItem(BaseModel):
 
 
 class DocItemsRequest(BaseModel):
+    model_config = {'extra': 'allow'}
+
     items: List[AddFileItem]
     kb_id: str = '__default__'
-    algo_id: Optional[str] = None
-    algo_ids: Optional[List[str]] = None
     source_type: Optional[SourceType] = None
     idempotency_key: Optional[str] = None
 
@@ -103,20 +103,12 @@ class DocItemsRequest(BaseModel):
     def validate_items(self):
         if not self.items:
             raise ValueError('items is required')
-        if self.algo_id is not None and self.algo_ids is not None:
-            raise ValueError('algo_id and algo_ids cannot both be provided')
-        if self.algo_ids is not None and len(set(self.algo_ids)) != len(self.algo_ids):
-            raise ValueError('algo_ids must not contain duplicates')
+        extra = self.model_extra or {}
+        if 'algo_id' in extra or 'algo_ids' in extra:
+            from lazyllm import LOG
+            LOG.warning('algo_id/algo_ids in upload/add request is deprecated and ignored; '
+                        'all algos bound to the kb will be used automatically')
         return self
-
-    @property
-    def effective_algo_ids(self) -> Optional[List[str]]:
-        # None means "auto-resolve from kb bindings at call time"
-        if self.algo_ids is not None:
-            return self.algo_ids
-        if self.algo_id is not None:
-            return [self.algo_id]
-        return None
 
 
 AddRequest = DocItemsRequest
@@ -136,45 +128,47 @@ class _DocMutationRequest(BaseModel):
         return self
 
 
-class ReparseRequest(_DocMutationRequest):
-    reparse_group: Optional[str] = None  # None or 'all' = reparse all ng; ng_id = reparse single ng
+class ReparseRequest(BaseModel):
+    doc_ids: List[str]
+    kb_id: str = '__default__'
+    algo_id: Optional[str] = None  # specify algo to reparse all its ngs
+    reparse_group: Optional[str] = None  # specify ng_name to reparse a single ng
+    idempotency_key: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_fields(self):
+        if not self.doc_ids:
+            raise ValueError('doc_ids is required')
+        if self.algo_id is not None and self.reparse_group is not None:
+            raise ValueError('algo_id and reparse_group are mutually exclusive; provide at most one')
+        return self
 
 
-class DeleteRequest(_DocMutationRequest):
-    pass
+class DeleteRequest(BaseModel):
+    doc_ids: List[str]
+    kb_id: str = '__default__'
+    idempotency_key: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_doc_ids(self):
+        if not self.doc_ids:
+            raise ValueError('doc_ids is required')
+        return self
 
 
 class TransferItem(BaseModel):
     doc_id: str
     target_doc_id: str
     kb_id: str = Field(default='__default__', validation_alias=AliasChoices('kb_id', 'source_kb_id'))
-    algo_id: str = Field(default='__default__', validation_alias=AliasChoices('algo_id', 'source_algo_id'))
     target_kb_id: str
-    target_algo_id: str
     target_metadata: Optional[Dict[str, Any]] = None
     target_filename: Optional[str] = None
     target_file_path: Optional[str] = None
     mode: str = 'copy'
 
-    @model_validator(mode='before')
-    @classmethod
-    def normalize_source_fields(cls, data):
-        if not isinstance(data, dict):
-            return data
-        normalized = dict(data)
-        if 'kb_id' not in normalized and 'source_kb_id' in normalized:
-            normalized['kb_id'] = normalized['source_kb_id']
-        if 'algo_id' not in normalized and 'source_algo_id' in normalized:
-            normalized['algo_id'] = normalized['source_algo_id']
-        return normalized
-
     @property
     def source_kb_id(self) -> str:
         return self.kb_id
-
-    @property
-    def source_algo_id(self) -> str:
-        return self.algo_id
 
 
 class TransferRequest(BaseModel):
@@ -196,7 +190,6 @@ class MetadataPatchItem(BaseModel):
 class MetadataPatchRequest(BaseModel):
     items: List[MetadataPatchItem]
     kb_id: str = '__default__'
-    algo_id: str = '__default__'
     idempotency_key: Optional[str] = None
 
     @model_validator(mode='after')

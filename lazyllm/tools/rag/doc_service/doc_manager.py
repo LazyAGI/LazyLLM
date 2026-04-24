@@ -609,12 +609,19 @@ class DocManager:
         try:
             resp = self._parser_client.get_algorithm_groups(algo_id)
             if resp and resp.code == 200 and resp.data:
-                ids = resp.data.get('node_group_ids') if isinstance(resp.data, dict) else None
-                if ids:
-                    result = json.loads(ids) if isinstance(ids, str) else ids
-                    if not result:
-                        raise ValueError(f'algo {algo_id!r} has no node_group_ids registered')
-                    return result
+                data = resp.data
+                # Support list-of-dict format: [{id, name, ...}, ...]
+                if isinstance(data, list):
+                    result = [g['id'] for g in data if g.get('id')]
+                    if result:
+                        return result
+                # Support legacy dict format: {node_group_ids: [...]}
+                if isinstance(data, dict):
+                    ids = data.get('node_group_ids')
+                    if ids:
+                        result = json.loads(ids) if isinstance(ids, str) else ids
+                        if result:
+                            return result
             raise ValueError(f'Failed to get node_group_ids for algo {algo_id!r}: resp={resp!r}')
         except ValueError:
             raise
@@ -627,11 +634,8 @@ class DocManager:
         shared: Set[str] = set()
         candidate_set = set(candidate_ng_ids)
         for other_algo_id in other_algo_ids:
-            try:
-                other_ngs = set(self._get_algo_node_group_ids(other_algo_id))
-                shared |= candidate_set & other_ngs
-            except Exception:
-                pass
+            other_ngs = set(self._get_algo_node_group_ids(other_algo_id))
+            shared |= candidate_set & other_ngs
         return shared
 
     def _get_latest_parse_snapshot(self, doc_id: str, kb_id: str):
@@ -649,6 +653,13 @@ class DocManager:
         with self._db_manager.get_session(session) as sess:
             State = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
             sess.query(State).filter(State.doc_id == doc_id, State.kb_id == kb_id).delete()
+
+    def _delete_parse_snapshot_for_algo(self, doc_id: str, kb_id: str, algo_id: str, session=None):
+        with self._db_manager.get_session(session) as sess:
+            State = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
+            sess.query(State).filter(
+                State.doc_id == doc_id, State.kb_id == kb_id, State.algo_id == algo_id,
+            ).delete()
 
     def _delete_ng_status(self, doc_id: str, kb_id: str, session=None):
         with self._db_manager.get_session(session) as sess:
@@ -1053,13 +1064,13 @@ class DocManager:
                     self._assert_action_allowed(item['doc_id'], request.kb_id, algo_id, 'upload')
         return prepared_items
 
-    def _prepare_reparse_items(self, request: ReparseRequest) -> List[Dict[str, Any]]:
+    def _prepare_reparse_items(self, request: ReparseRequest, algo_id: str) -> List[Dict[str, Any]]:
         prepared_items = []
         for doc_id in request.doc_ids:
             doc = self._get_doc(doc_id)
             if doc is None or not self._has_kb_document(request.kb_id, doc_id):
                 raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}')
-            self._assert_action_allowed(doc_id, request.kb_id, request.algo_id, 'reparse')
+            self._assert_action_allowed(doc_id, request.kb_id, algo_id, 'reparse')
             prepared_items.append({
                 'doc_id': doc_id,
                 'file_path': doc.get('path'),
@@ -1071,10 +1082,7 @@ class DocManager:
         prepared_items = []
         for doc_id in request.doc_ids:
             doc = self._get_doc(doc_id)
-            snapshot = (
-                self._get_parse_snapshot(doc_id, request.kb_id, request.algo_id)
-                or self._get_latest_parse_snapshot(doc_id, request.kb_id)
-            )
+            snapshot = self._get_latest_parse_snapshot(doc_id, request.kb_id)
             if doc is None or not self._has_kb_document(request.kb_id, doc_id):
                 if snapshot is not None and snapshot.get('status') in (
                     DocStatus.DELETING.value,
@@ -1096,17 +1104,18 @@ class DocManager:
                     'task_id': snapshot.get('current_task_id'),
                 })
                 continue
-            self._assert_action_allowed(doc_id, request.kb_id, request.algo_id, 'delete')
             prepared_items.append({'doc_id': doc_id, 'action': 'execute'})
         return prepared_items
 
     def _prepare_metadata_patch_items(self, request: MetadataPatchRequest) -> List[Dict[str, Any]]:
         prepared_items = []
+        all_algo_ids = self._get_kb_algorithms(request.kb_id)
         for item in request.items:
             doc = self._get_doc(item.doc_id)
             if doc is None or not self._has_kb_document(request.kb_id, item.doc_id):
                 raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {item.doc_id}')
-            self._assert_action_allowed(item.doc_id, request.kb_id, request.algo_id, 'metadata')
+            for algo_id in all_algo_ids:
+                self._assert_action_allowed(item.doc_id, request.kb_id, algo_id, 'metadata')
             merged = from_json(doc.get('meta'))
             merged.update(item.patch)
             prepared_items.append({'doc_id': item.doc_id, 'metadata': merged, 'file_path': doc.get('path')})
@@ -1129,51 +1138,51 @@ class DocManager:
                     {'doc_id': item.doc_id, 'source_kb_id': item.source_kb_id, 'target_kb_id': item.target_kb_id},
                 )
             seen_pairs.add(item_key)
-            target_key = (item.target_doc_id, item.target_kb_id, item.target_algo_id)
+            target_key = (item.target_doc_id, item.target_kb_id)
             if target_key in seen_targets:
                 raise DocServiceError(
                     'E_INVALID_PARAM',
                     'duplicate transfer target detected',
-                    {
-                        'doc_id': item.target_doc_id,
-                        'target_kb_id': item.target_kb_id,
-                        'target_algo_id': item.target_algo_id,
-                    },
+                    {'doc_id': item.target_doc_id, 'target_kb_id': item.target_kb_id},
                 )
             seen_targets.add(target_key)
-            if item.source_algo_id != item.target_algo_id:
+            # Require both kbs to have identical algo sets
+            src_algos = set(self._get_kb_algorithms(item.source_kb_id))
+            tgt_algos = set(self._get_kb_algorithms(item.target_kb_id))
+            if src_algos != tgt_algos:
                 raise DocServiceError(
                     'E_INVALID_PARAM',
-                    'transfer across different algorithms is not supported',
+                    'transfer requires source and target kb to have identical algo bindings',
                     {
-                        'doc_id': item.doc_id,
-                        'source_algo_id': item.source_algo_id,
-                        'target_algo_id': item.target_algo_id,
+                        'source_kb_id': item.source_kb_id,
+                        'target_kb_id': item.target_kb_id,
+                        'source_algos': sorted(src_algos),
+                        'target_algos': sorted(tgt_algos),
                     },
                 )
             doc = self._get_doc(item.doc_id)
             if doc is None or not self._has_kb_document(item.source_kb_id, item.doc_id):
                 raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {item.doc_id}')
-            self._validate_kb_algorithm(item.source_kb_id, item.source_algo_id)
-            self._validate_kb_algorithm(item.target_kb_id, item.target_algo_id)
-            self._assert_action_allowed(item.doc_id, item.source_kb_id, item.source_algo_id, 'transfer')
+            # Check all algos: every parse_state must be SUCCESS
+            for algo_id in src_algos:
+                self._assert_action_allowed(item.doc_id, item.source_kb_id, algo_id, 'transfer')
+                source_snapshot = self._get_parse_snapshot(item.doc_id, item.source_kb_id, algo_id)
+                if source_snapshot is None or source_snapshot.get('status') != DocStatus.SUCCESS.value:
+                    raise DocServiceError(
+                        'E_STATE_CONFLICT',
+                        f'doc transfer requires all algo parse states to be SUCCESS: {item.doc_id}',
+                        {
+                            'doc_id': item.doc_id,
+                            'source_kb_id': item.source_kb_id,
+                            'algo_id': algo_id,
+                            'status': source_snapshot.get('status') if source_snapshot else None,
+                        },
+                    )
             if self._has_kb_document(item.target_kb_id, item.target_doc_id):
                 raise DocServiceError(
                     'E_STATE_CONFLICT',
                     f'doc already exists in target kb: {item.target_doc_id}',
                     {'doc_id': item.target_doc_id, 'target_kb_id': item.target_kb_id},
-                )
-            source_snapshot = self._get_parse_snapshot(item.doc_id, item.source_kb_id, item.source_algo_id)
-            if source_snapshot is None or source_snapshot.get('status') != DocStatus.SUCCESS.value:
-                raise DocServiceError(
-                    'E_STATE_CONFLICT',
-                    f'doc transfer requires source parse status SUCCESS: {item.doc_id}',
-                    {
-                        'doc_id': item.doc_id,
-                        'source_kb_id': item.source_kb_id,
-                        'source_algo_id': item.source_algo_id,
-                        'status': source_snapshot.get('status') if source_snapshot else None,
-                    },
                 )
             source_metadata = from_json(doc.get('meta'))
             target_metadata = merge_transfer_metadata(source_metadata, item.target_metadata)
@@ -1182,12 +1191,9 @@ class DocManager:
             prepared_items.append({
                 'doc_id': item.doc_id,
                 'target_doc_id': item.target_doc_id,
-                'kb_id': item.kb_id,
-                'algo_id': item.algo_id,
                 'source_kb_id': item.source_kb_id,
-                'source_algo_id': item.source_algo_id,
                 'target_kb_id': item.target_kb_id,
-                'target_algo_id': item.target_algo_id,
+                'algo_ids': sorted(src_algos),
                 'mode': item.mode,
                 'file_path': doc.get('path'),
                 'target_file_path': target_path,
@@ -1196,7 +1202,6 @@ class DocManager:
                 'source_type': SourceType(doc.get('source_type')),
                 'transfer_params': {
                     'mode': 'mv' if item.mode == 'move' else 'cp',
-                    'target_algo_id': item.target_algo_id,
                     'target_doc_id': item.target_doc_id,
                     'target_kb_id': item.target_kb_id,
                 },
@@ -1204,17 +1209,13 @@ class DocManager:
         return prepared_items
 
     def upload(self, request: UploadRequest) -> List[Dict[str, Any]]:
-        algo_ids = request.effective_algo_ids
-        if algo_ids is None:
-            # auto-resolve: use all algos bound to this kb
-            algo_ids = self._get_kb_algorithms(request.kb_id)
-            if not algo_ids:
-                raise DocServiceError(
-                    'E_STATE_CONFLICT', f'kb has no algorithm binding: {request.kb_id}',
-                    {'kb_id': request.kb_id},
-                )
-        for algo_id in algo_ids:
-            self._validate_kb_algorithm(request.kb_id, algo_id)
+        # auto-resolve: use all algos bound to this kb
+        algo_ids = self._get_kb_algorithms(request.kb_id)
+        if not algo_ids:
+            raise DocServiceError(
+                'E_STATE_CONFLICT', f'kb has no algorithm binding: {request.kb_id}',
+                {'kb_id': request.kb_id},
+            )
         prepared_items = self._prepare_upload_items(request, algo_ids)
         source_type = request.source_type or SourceType.API
         items: List[Dict[str, Any]] = []
@@ -1267,33 +1268,44 @@ class DocManager:
         return self.upload(UploadRequest(
             items=request.items,
             kb_id=request.kb_id,
-            algo_id=request.algo_id,
-            algo_ids=request.algo_ids,
             source_type=request.source_type or SourceType.EXTERNAL,
             idempotency_key=request.idempotency_key,
         ))
 
     def reparse(self, request: ReparseRequest) -> List[str]:
-        self._validate_kb_algorithm(request.kb_id, request.algo_id)
+        reparse_group_name = request.reparse_group or 'all'
+        # Resolve algo_id: if reparse_group is specified, find the algo that owns it;
+        # otherwise use the provided algo_id or fall back to the first bound algo.
+        if reparse_group_name != 'all':
+            algo_id = self._find_algo_for_group(request.kb_id, reparse_group_name)
+        elif request.algo_id:
+            algo_id = request.algo_id
+            self._validate_kb_algorithm(request.kb_id, algo_id)
+        else:
+            algo_ids = self._get_kb_algorithms(request.kb_id)
+            if not algo_ids:
+                raise DocServiceError('E_STATE_CONFLICT', f'kb has no algorithm binding: {request.kb_id}')
+            algo_id = algo_ids[0]
         self._validate_unique_doc_ids(request.doc_ids, field_name='doc_id')
-        prepared_items = self._prepare_reparse_items(request)
-        all_ng_ids = self._get_algo_node_group_ids(request.algo_id)
-        # reparse_group=None/'all' → reparse all ngs; otherwise reparse only the specified ng
-        reparse_group = request.reparse_group or 'all'
-        if reparse_group != 'all':
-            if reparse_group not in all_ng_ids:
+        prepared_items = self._prepare_reparse_items(request, algo_id)
+        all_ng_ids = self._get_algo_node_group_ids(algo_id)
+        if reparse_group_name != 'all':
+            # Resolve ng_name → ng_id
+            groups = self.get_algo_groups(algo_id) or []
+            ng_id = next((g.get('id') for g in groups if g.get('name') == reparse_group_name), None)
+            if ng_id is None:
                 raise DocServiceError(
                     'E_INVALID_PARAM',
-                    f'reparse_group {reparse_group!r} not in algo {request.algo_id!r}',
-                    {'algo_id': request.algo_id, 'reparse_group': reparse_group},
+                    f'reparse_group {reparse_group_name!r} not found in algo {algo_id!r}',
+                    {'algo_id': algo_id, 'reparse_group': reparse_group_name},
                 )
-            pending_ng_ids = [reparse_group]
+            pending_ng_ids = [ng_id]
             # A single explicitly-requested ng is always reparsed, even if shared.
-            effective_reparse_group = reparse_group
+            effective_reparse_group = ng_id
         else:
             # Exclude ngs that are shared with other algos in the same kb — they are already
             # parsed and must not be reset to PENDING by this algo's reparse.
-            shared_ng_ids = self._get_shared_ng_ids(request.kb_id, request.algo_id, all_ng_ids)
+            shared_ng_ids = self._get_shared_ng_ids(request.kb_id, algo_id, all_ng_ids)
             pending_ng_ids = [ng for ng in all_ng_ids if ng not in shared_ng_ids]
             # Pass the filtered list to the parser so it only processes exclusive ngs.
             effective_reparse_group = json.dumps(pending_ng_ids) if pending_ng_ids else None
@@ -1304,7 +1316,7 @@ class DocManager:
             self._upsert_ng_status_pending(item['doc_id'], request.kb_id, pending_ng_ids,
                                            item['file_path'], force=True)
             task_id, _ = self._enqueue_task(
-                item['doc_id'], request.kb_id, request.algo_id, TaskType.DOC_REPARSE,
+                item['doc_id'], request.kb_id, algo_id, TaskType.DOC_REPARSE,
                 idempotency_key=request.idempotency_key,
                 file_path=item['file_path'],
                 metadata=item['metadata'],
@@ -1316,14 +1328,6 @@ class DocManager:
     def delete(self, request: DeleteRequest) -> List[Dict[str, Any]]:
         # all algo_ids bound to this kb — each needs a delete task so their stores are cleaned up
         all_algo_ids = self._get_kb_algorithms(request.kb_id)
-        # algo_id is used only to check if a pending add-task needs cancellation.
-        # If the caller didn't specify one (or specified '__default__' which isn't bound),
-        # fall back to the first bound algo.
-        check_algo_id = request.algo_id
-        if check_algo_id not in all_algo_ids:
-            check_algo_id = all_algo_ids[0] if all_algo_ids else request.algo_id
-        else:
-            self._validate_kb_algorithm(request.kb_id, check_algo_id)
         self._validate_unique_doc_ids(request.doc_ids, field_name='doc_id')
         prepared_items = self._prepare_delete_items(request)
         items: List[Dict[str, Any]] = []
@@ -1338,32 +1342,48 @@ class DocManager:
                     'error_code': None,
                 })
                 continue
-            snapshot = self._get_parse_snapshot(doc_id, request.kb_id, check_algo_id)
-            if (
-                snapshot is not None
-                and snapshot.get('status') == DocStatus.WAITING.value
-                and snapshot.get('task_type') == TaskType.DOC_ADD.value
-                and snapshot.get('current_task_id')
-            ):
-                cancel_resp = self.cancel_task(snapshot['current_task_id'])
-                if cancel_resp.code != 200:
+            # Check all algos: cancel any WAITING add-tasks, reject if any algo is WORKING
+            all_canceled = False
+            canceled_task_id = None
+            for algo_id in all_algo_ids:
+                snap = self._get_parse_snapshot(doc_id, request.kb_id, algo_id)
+                if snap is None:
+                    continue
+                status = snap.get('status')
+                task_type = snap.get('task_type')
+                if status == DocStatus.WORKING.value:
                     raise DocServiceError(
                         'E_STATE_CONFLICT',
-                        cancel_resp.msg,
-                        (
-                            cancel_resp.data
-                            if isinstance(cancel_resp.data, dict)
-                            else {'task_id': snapshot['current_task_id']}
-                        ),
+                        f'cannot delete while algo {algo_id!r} is WORKING',
+                        {'doc_id': doc_id, 'algo_id': algo_id},
                     )
+                if (
+                    status == DocStatus.WAITING.value
+                    and task_type == TaskType.DOC_ADD.value
+                    and snap.get('current_task_id')
+                ):
+                    cancel_resp = self.cancel_task(snap['current_task_id'])
+                    if cancel_resp.code != 200:
+                        raise DocServiceError(
+                            'E_STATE_CONFLICT',
+                            cancel_resp.msg,
+                            (
+                                cancel_resp.data
+                                if isinstance(cancel_resp.data, dict)
+                                else {'task_id': snap['current_task_id']}
+                            ),
+                        )
+                    all_canceled = True
+                    canceled_task_id = snap['current_task_id']
+            if all_canceled:
+                self._purge_deleted_kb_doc_data(request.kb_id, doc_id, remove_relation=True)
                 items.append({
                     'doc_id': doc_id,
                     'accepted': True,
-                    'task_id': snapshot['current_task_id'],
+                    'task_id': canceled_task_id,
                     'status': DocStatus.CANCELED.value,
                     'error_code': None,
                 })
-                self._purge_deleted_kb_doc_data(request.kb_id, doc_id, remove_relation=True)
                 continue
             with self._db_manager.get_session() as session:
                 Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
@@ -1381,9 +1401,9 @@ class DocManager:
             for algo_id in all_algo_ids:
                 task_id, snap = self._enqueue_task(
                     doc_id, request.kb_id, algo_id, TaskType.DOC_DELETE,
-                    idempotency_key=request.idempotency_key if algo_id == request.algo_id else None,
+                    idempotency_key=request.idempotency_key if primary_task_id is None else None,
                 )
-                if algo_id == request.algo_id:
+                if primary_task_id is None:
                     primary_task_id = task_id
                     primary_snapshot = snap
             items.append({
@@ -1399,7 +1419,11 @@ class DocManager:
         prepared_items = self._prepare_transfer_items(request)
         items: List[Dict[str, Any]] = []
         for item in prepared_items:
-            task_id = None
+            primary_task_id = None
+            primary_snapshot: Dict = {}
+            error_code = None
+            error_msg = None
+            accepted = True
             try:
                 self._upsert_doc_and_bind(
                     kb_id=item['target_kb_id'],
@@ -1411,52 +1435,48 @@ class DocManager:
                     upload_status=DocStatus.SUCCESS,
                     allowed_path_doc_ids={item['doc_id']},
                 )
-                task_id, snapshot = self._enqueue_task(
-                    item['target_doc_id'], item['target_kb_id'], item['target_algo_id'], TaskType.DOC_TRANSFER,
-                    idempotency_key=request.idempotency_key,
-                    file_path=item['file_path'],
-                    metadata=item['metadata'],
-                    parser_kb_id=item['source_kb_id'],
-                    transfer_params=item['transfer_params'],
-                    extra_message={
-                        'source_doc_id': item['doc_id'],
-                        'source_kb_id': item['source_kb_id'],
-                        'source_algo_id': item['source_algo_id'],
-                        'target_kb_id': item['target_kb_id'],
-                        'target_algo_id': item['target_algo_id'],
-                        'target_doc_id': item['target_doc_id'],
-                        'mode': item['mode'],
-                    },
-                    parser_doc_id=item['doc_id'],
-                )
-                error_code = None
-                error_msg = None
-                accepted = True
+                for algo_id in item['algo_ids']:
+                    task_id, snapshot = self._enqueue_task(
+                        item['target_doc_id'], item['target_kb_id'], algo_id, TaskType.DOC_TRANSFER,
+                        idempotency_key=request.idempotency_key if primary_task_id is None else None,
+                        file_path=item['file_path'],
+                        metadata=item['metadata'],
+                        parser_kb_id=item['source_kb_id'],
+                        transfer_params=item['transfer_params'],
+                        extra_message={
+                            'source_doc_id': item['doc_id'],
+                            'source_kb_id': item['source_kb_id'],
+                            'target_kb_id': item['target_kb_id'],
+                            'target_doc_id': item['target_doc_id'],
+                            'algo_id': algo_id,
+                            'mode': item['mode'],
+                        },
+                        parser_doc_id=item['doc_id'],
+                    )
+                    if primary_task_id is None:
+                        primary_task_id = task_id
+                        primary_snapshot = snapshot
             except Exception as exc:
-                snapshot = self._get_parse_snapshot(
-                    item['target_doc_id'], item['target_kb_id'], item['target_algo_id']
+                primary_snapshot = self._get_parse_snapshot(
+                    item['target_doc_id'], item['target_kb_id'], item['algo_ids'][0]
                 ) or {}
-                task_id = task_id or snapshot.get('current_task_id')
-                error_code = snapshot.get('last_error_code')
+                primary_task_id = primary_task_id or primary_snapshot.get('current_task_id')
+                error_code = primary_snapshot.get('last_error_code')
                 if not error_code:
                     error_code = exc.biz_code if isinstance(exc, DocServiceError) else type(exc).__name__
-                error_msg = snapshot.get('last_error_msg') or (
+                error_msg = primary_snapshot.get('last_error_msg') or (
                     exc.msg if isinstance(exc, DocServiceError) else str(exc)
                 )
                 accepted = False
             items.append({
                 'doc_id': item['doc_id'],
                 'target_doc_id': item['target_doc_id'],
-                'task_id': task_id,
-                'kb_id': item['kb_id'],
-                'algo_id': item['algo_id'],
+                'task_id': primary_task_id,
                 'source_kb_id': item['source_kb_id'],
                 'target_kb_id': item['target_kb_id'],
-                'source_algo_id': item['source_algo_id'],
-                'target_algo_id': item['target_algo_id'],
                 'mode': item['mode'],
                 'target_file_path': item['target_file_path'],
-                'status': snapshot.get('status', DocStatus.FAILED.value),
+                'status': primary_snapshot.get('status', DocStatus.FAILED.value),
                 'accepted': accepted,
                 'error_code': error_code,
                 'error_msg': error_msg,
@@ -1464,10 +1484,10 @@ class DocManager:
         return items
 
     def patch_metadata(self, request: MetadataPatchRequest):
-        self._validate_kb_algorithm(request.kb_id, request.algo_id)
         updated = []
         failed = []
         self._validate_unique_doc_ids([item.doc_id for item in request.items], field_name='doc_id')
+        all_algo_ids = self._get_kb_algorithms(request.kb_id)
         prepared_items = self._prepare_metadata_patch_items(request)
         for item in prepared_items:
             with self._db_manager.get_session() as session:
@@ -1476,14 +1496,17 @@ class DocManager:
                 row.meta = to_json(item['metadata'])
                 row.updated_at = datetime.now()
                 session.add(row)
-
-            task_id, _ = self._enqueue_task(
-                item['doc_id'], request.kb_id, request.algo_id, TaskType.DOC_UPDATE_META,
-                idempotency_key=request.idempotency_key,
-                file_path=item['file_path'],
-                metadata=item['metadata'],
-            )
-            updated.append({'doc_id': item['doc_id'], 'task_id': task_id})
+            primary_task_id = None
+            for algo_id in all_algo_ids:
+                task_id, _ = self._enqueue_task(
+                    item['doc_id'], request.kb_id, algo_id, TaskType.DOC_UPDATE_META,
+                    idempotency_key=request.idempotency_key if primary_task_id is None else None,
+                    file_path=item['file_path'],
+                    metadata=item['metadata'],
+                )
+                if primary_task_id is None:
+                    primary_task_id = task_id
+            updated.append({'doc_id': item['doc_id'], 'task_id': primary_task_id})
         return {
             'updated_count': len(updated),
             'doc_ids': [u['doc_id'] for u in updated],
@@ -1651,6 +1674,9 @@ class DocManager:
                     # that are exclusive to the unbound algo (shared ngs must be preserved).
                     exclusive_ng_ids = task_message.get('exclusive_ng_ids') or []
                     self._delete_ng_status_for_groups(doc_id, kb_id, exclusive_ng_ids)
+                    # Remove the parse_state row for this algo so it no longer affects
+                    # _all_algo_snapshots_deleted checks for other algos.
+                    self._delete_parse_snapshot_for_algo(doc_id, kb_id, algo_id)
                 # If this was an unbind_algo task, check if all docs for this algo are now DELETED
                 if unbind_algo:
                     remaining = self._count_non_deleted_snapshots_for_algo(kb_id, algo_id)
@@ -1667,27 +1693,21 @@ class DocManager:
             raise
 
     def list_docs(self, status: Optional[List[str]] = None, kb_id: Optional[str] = None,
-                  algo_id: Optional[str] = None, keyword: Optional[str] = None,
+                  keyword: Optional[str] = None,
                   include_deleted_or_canceled: bool = True, page: int = 1, page_size: int = 20):
         with self._db_manager.get_session() as session:
             Doc = self._db_manager.get_table_orm_class(DOCUMENTS_TABLE_INFO['name'])
             Rel = self._db_manager.get_table_orm_class(KB_DOCUMENTS_TABLE_INFO['name'])
             State = self._db_manager.get_table_orm_class(PARSE_STATE_TABLE_INFO['name'])
 
-            if algo_id:
-                SnapshotAlias = aliased(State)
-                snapshot_join_cond = sqlalchemy.and_(
-                    SnapshotAlias.doc_id == Doc.doc_id, SnapshotAlias.kb_id == Rel.kb_id,
-                    SnapshotAlias.algo_id == algo_id)
-            else:
-                rn_col = sqlalchemy.func.row_number().over(
-                    partition_by=(State.doc_id, State.kb_id),
-                    order_by=(State.updated_at.desc(), State.created_at.desc())).label('_rn')
-                ranked_sq = session.query(State, rn_col).subquery('ranked_snapshot')
-                latest_sq = session.query(ranked_sq).filter(ranked_sq.c._rn == 1).subquery('latest_snapshot')
-                SnapshotAlias = aliased(State, latest_sq)
-                snapshot_join_cond = sqlalchemy.and_(
-                    SnapshotAlias.doc_id == Doc.doc_id, SnapshotAlias.kb_id == Rel.kb_id)
+            rn_col = sqlalchemy.func.row_number().over(
+                partition_by=(State.doc_id, State.kb_id),
+                order_by=(State.updated_at.desc(), State.created_at.desc())).label('_rn')
+            ranked_sq = session.query(State, rn_col).subquery('ranked_snapshot')
+            latest_sq = session.query(ranked_sq).filter(ranked_sq.c._rn == 1).subquery('latest_snapshot')
+            SnapshotAlias = aliased(State, latest_sq)
+            snapshot_join_cond = sqlalchemy.and_(
+                SnapshotAlias.doc_id == Doc.doc_id, SnapshotAlias.kb_id == Rel.kb_id)
 
             query = (session.query(Doc, Rel, SnapshotAlias).join(Rel, Doc.doc_id == Rel.doc_id)
                      .outerjoin(SnapshotAlias, snapshot_join_cond))
@@ -1875,31 +1895,20 @@ class DocManager:
             raise DocServiceError('E_INVALID_PARAM', 'doc_id is required', {'doc_id': doc_id})
         if not group:
             raise DocServiceError('E_INVALID_PARAM', 'group is required', {'group': group})
-        # algo_id is optional: if not provided, auto-detect from kb bindings
+        doc = self._get_doc(doc_id)
+        if doc is None or not self._has_kb_document(kb_id, doc_id):
+            raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}', {'kb_id': kb_id, 'doc_id': doc_id})
+        page = max(page, 1)
+        page_size = max(page_size, 1)
+        offset = (page - 1) * page_size if offset is None else max(offset, 0)
+        # Auto-detect algo if not provided; _find_algo_for_group validates group existence
         if not algo_id:
             algo_id = self._find_algo_for_group(kb_id, group)
         else:
             self._validate_kb_algorithm(kb_id, algo_id)
-        doc = self._get_doc(doc_id)
-        if doc is None or not self._has_kb_document(kb_id, doc_id):
-            raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}', {'kb_id': kb_id, 'doc_id': doc_id})
-        ng_ids = self._get_algo_node_group_ids(algo_id)
-        if group not in ng_ids:
-            raise DocServiceError(
-                'E_INVALID_PARAM',
-                f'invalid group: {group}',
-                {'algo_id': algo_id, 'group': group},
-            )
-        page = max(page, 1)
-        page_size = max(page_size, 1)
-        offset = (page - 1) * page_size if offset is None else max(offset, 0)
         resp = self._parser_client.list_doc_chunks(
-            algo_id=algo_id,
-            kb_id=kb_id,
-            doc_id=doc_id,
-            group=group,
-            offset=offset,
-            page_size=page_size,
+            algo_id=algo_id, kb_id=kb_id, doc_id=doc_id, group=group,
+            offset=offset, page_size=page_size,
         )
         if resp.code == 404:
             raise DocServiceError('E_NOT_FOUND', resp.msg, {'kb_id': kb_id, 'doc_id': doc_id, 'group': group})
@@ -1908,12 +1917,10 @@ class DocManager:
         if resp.code != 200:
             raise DocServiceError(
                 'E_UPSTREAM_ERROR', resp.msg,
-                {'kb_id': kb_id, 'doc_id': doc_id, 'group': group, 'upstream_status': resp.code}
+                {'kb_id': kb_id, 'doc_id': doc_id, 'group': group, 'upstream_status': resp.code},
             )
         data = dict(resp.data or {})
-        data['page'] = page
-        data['page_size'] = page_size
-        data['offset'] = offset
+        data.update({'page': page, 'page_size': page_size, 'offset': offset})
         data.setdefault('items', [])
         data.setdefault('total', 0)
         return data
