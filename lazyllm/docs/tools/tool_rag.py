@@ -238,6 +238,37 @@ Raises:
     ValueError: ``doc_ids`` 为空时抛出。
 ''')
 
+add_english_doc('ReparseRequest.validate_fields', '''\
+Validate that ``doc_ids`` is non-empty and that ``algo_id`` and ``reparse_group`` are not
+both provided at the same time.
+
+Raises:
+    ValueError: If ``doc_ids`` is empty.
+    ValueError: If both ``algo_id`` and ``reparse_group`` are set simultaneously.
+''')
+
+add_chinese_doc('ReparseRequest.validate_fields', '''\
+校验 ``doc_ids`` 非空，且 ``algo_id`` 与 ``reparse_group`` 不能同时传入。
+
+Raises:
+    ValueError: ``doc_ids`` 为空时抛出。
+    ValueError: ``algo_id`` 和 ``reparse_group`` 同时传入时抛出。
+''')
+
+add_english_doc('DeleteRequest.validate_doc_ids', '''\
+Validate that ``doc_ids`` is non-empty.
+
+Raises:
+    ValueError: If ``doc_ids`` is empty.
+''')
+
+add_chinese_doc('DeleteRequest.validate_doc_ids', '''\
+校验 ``doc_ids`` 非空。
+
+Raises:
+    ValueError: ``doc_ids`` 为空时抛出。
+''')
+
 add_english_doc('DocServer.patch_metadata', '''\
 Patch document metadata through the ``/v1/docs/metadata/patch`` endpoint.
 
