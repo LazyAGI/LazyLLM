@@ -1,7 +1,11 @@
+import copy
+import functools
 import os
 import warnings
-from typing import Callable, Optional, Dict, Union, List, Type, Set, Tuple
+import weakref
 from functools import cached_property
+from typing import Callable, Optional, Dict, Union, List, Type, Set, Tuple
+
 from pydantic import BaseModel
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
@@ -21,9 +25,6 @@ from .utils import RAG_DEFAULT_GROUP_NAME, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
 from .doc_service import DocServer
 from .web import DocWebModule
-import copy
-import functools
-import weakref
 
 _LOCAL_PYTHONPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 

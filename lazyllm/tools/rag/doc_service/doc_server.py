@@ -251,6 +251,7 @@ class DocServer(ModuleBase):
                     })
             return {
                 'kb_id': request.kb_id,
+                'algo_id': None,  # deprecated; kept for idempotency-key stability
                 'source_type': source_type.value,
                 'idempotency_key': request.idempotency_key,
                 'items': items,
@@ -808,12 +809,15 @@ class DocServer(ModuleBase):
             self,
             status: Optional[List[str]] = None,
             kb_id: Optional[str] = None,
+            algo_id: Optional[str] = None,
             keyword: Optional[str] = None,
             include_deleted_or_canceled: bool = True,
             page: int = 1,
             page_size: int = 20,
         ):
             self._lazy_init()
+            if algo_id is not None:
+                LOG.warning(f'[list_docs] algo_id={algo_id!r} is deprecated and ignored')
             data = self._manager.list_docs(
                 status=status,
                 kb_id=kb_id,
@@ -1052,9 +1056,9 @@ class DocServer(ModuleBase):
             return self._run(lambda: self._manager.batch_get_kbs(request.kb_ids))
 
         @app.delete('/v1/kbs/{kb_id}/algos/{algo_id}')
-        def unbind_algo(self, kb_id: str, algo_id: str):
+        def unbind_algo(self, kb_id: str, algo_id: str, dry_run: bool = False):
             self._lazy_init()
-            return self._run(lambda: self._manager.unbind_algo(kb_id, algo_id))
+            return self._run(lambda: self._manager.unbind_algo(kb_id, algo_id, dry_run=dry_run))
 
         @app.delete('/v1/kbs/{kb_id}')
         def delete_kb(self, kb_id: str, idempotency_key: Optional[str] = None):

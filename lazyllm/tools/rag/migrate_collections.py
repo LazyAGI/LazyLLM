@@ -69,8 +69,40 @@ def new_collection_name(group: str) -> str:
 # SQLite (MapStore segment store) migration
 # ---------------------------------------------------------------------------
 
+def _sqlite_rename_table(cur, old_name: str, new_name: str) -> None:
+    cur.execute(f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"')
+    # SQLite doesn't support RENAME INDEX; drop old and recreate standard ones
+    cur.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (new_name,))
+    for (idx_name,) in cur.fetchall():
+        cur.execute(f'DROP INDEX IF EXISTS "{idx_name}"')
+    for col, suffix in [('parent', 'parent'), ('doc_id', 'docid'), ('kb_id', 'kbid'), ('number', 'number')]:
+        cur.execute(f'CREATE INDEX IF NOT EXISTS "idx_{new_name}_{suffix}" ON "{new_name}"({col})')
+
+
+def _sqlite_rename_groups(cur, algo_name: str, groups: List[str], dry_run: bool) -> int:
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    existing_tables = {row[0] for row in cur.fetchall()}
+    renamed = 0
+    for group in groups:
+        old_name = old_collection_name(algo_name, group)
+        new_name = new_collection_name(group)
+        if old_name == new_name:
+            LOG.info(f'[SQLite] SKIP {old_name!r} (names are identical)')
+            continue
+        if old_name not in existing_tables:
+            LOG.info(f'[SQLite] SKIP {old_name!r} (table not found)')
+            continue
+        if new_name in existing_tables:
+            LOG.warning(f'[SQLite] {new_name!r} already exists — skipping rename of {old_name!r}')
+            continue
+        LOG.info(f'[SQLite] {"DRY " if dry_run else ""}RENAME table {old_name!r} -> {new_name!r}')
+        if not dry_run:
+            _sqlite_rename_table(cur, old_name, new_name)
+            renamed += 1
+    return renamed
+
+
 def migrate_sqlite(db_path: str, algo_name: str, groups: List[str], dry_run: bool) -> int:
-    '''Rename tables in a MapStore SQLite file. Returns number of tables renamed.'''
     LOG.info(f'[SQLite] Migrating {db_path}')
     try:
         conn = sqlite3.connect(db_path, timeout=10.0)
@@ -80,44 +112,17 @@ def migrate_sqlite(db_path: str, algo_name: str, groups: List[str], dry_run: boo
 
     cur = conn.cursor()
     try:
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        existing_tables = {row[0] for row in cur.fetchall()}
-
-        renamed = 0
-        for group in groups:
-            old_name = old_collection_name(algo_name, group)
-            new_name = new_collection_name(group)
-            if old_name == new_name:
-                LOG.info(f'[SQLite] SKIP {old_name!r} (names are identical)')
-                continue
-            if old_name not in existing_tables:
-                LOG.info(f'[SQLite] SKIP {old_name!r} (table not found)')
-                continue
-            if new_name in existing_tables:
-                LOG.warning(f'[SQLite] {new_name!r} already exists — skipping rename of {old_name!r}')
-                continue
-            LOG.info(f'[SQLite] {"DRY " if dry_run else ""}RENAME table {old_name!r} -> {new_name!r}')
-            if not dry_run:
-                cur.execute(f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"')
-                # SQLite doesn't support RENAME INDEX; drop old and recreate standard ones
-                cur.execute(
-                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?",
-                    (new_name,)
-                )
-                for (idx_name,) in cur.fetchall():
-                    cur.execute(f'DROP INDEX IF EXISTS "{idx_name}"')
-                for col, suffix in [
-                    ('parent', 'parent'), ('doc_id', 'docid'),
-                    ('kb_id', 'kbid'), ('number', 'number'),
-                ]:
-                    cur.execute(
-                        f'CREATE INDEX IF NOT EXISTS "idx_{new_name}_{suffix}" '
-                        f'ON "{new_name}"({col})'
-                    )
-                renamed += 1
-
+        renamed = _sqlite_rename_groups(cur, algo_name, groups, dry_run)
         if not dry_run and renamed:
             conn.commit()
+    except Exception as e:
+        LOG.error(f'[SQLite] Migration failed: {e}')
+        LOG.error(traceback.format_exc())
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return 0
     finally:
         conn.close()
     LOG.info(f'[SQLite] Done: {renamed} table(s) renamed.')
@@ -185,6 +190,13 @@ def _milvus_rename_collection(client, pymilvus, old_name: str, new_name: str) ->
                 metric_type=idx.get('metric_type', 'COSINE'),
                 params=idx.get('params', {}),
             )
+        # Drop partially-created new collection from a previous failed attempt to ensure idempotency.
+        try:
+            existing_cols = {c['name'] for c in client.list_collections()}
+            if new_name in existing_cols:
+                client.drop_collection(new_name)
+        except Exception:
+            pass
         client.create_collection(new_name, schema=schema, index_params=index_params)
         output_fields = [f['field_name'] for f in fields]
         offset, batch = 0, 1000
@@ -369,8 +381,9 @@ def _resolve_args(args):
         )
     LOG.info(f'SQL DB: {sql_db}')
 
-    groups = list(args.groups or [])
-    if args.all_groups or not groups:
+    groups = list(args.groups) if args.groups is not None else []
+    # Only auto-discover if --all-groups is set OR --groups was not specified at all (args.groups is None).
+    if args.all_groups or args.groups is None:
         discovered = discover_groups_from_sql(sql_db, args.algo_name)
         seen = set(groups)
         for g in discovered:

@@ -169,7 +169,7 @@ class _Processor:
                 for k, v in root_nodes.items():
                     if not v: continue
                     self._store.update_nodes(self._set_nodes_number(v))
-                    self._create_nodes_recursive(v, k)
+                    self._create_nodes_recursive(v, k, skip_ng_ids=skip_ng_ids)
             else:
                 self._store.update_nodes(root_nodes, copy=True)
                 self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
@@ -264,10 +264,10 @@ class _Processor:
                 raise ValueError(f'Node group {group_name} does not exist. Please check the group name '
                                  'or add a new one through `create_node_group`.')
             if group['parent'] == p_name:
-                target_doc_ids = [doc_id_map[d][0] for d in ids if d in doc_id_map]
                 ng_cfg = self._node_groups.get(group_name, {})
                 ng_id = ng_cfg.get('id') or group_name
                 if skip_ng_ids and ng_id in skip_ng_ids:
+                    target_doc_ids = [doc_id_map[d][0] for d in ids if d in doc_id_map]
                     source_nodes = self._store.get_nodes(doc_ids=target_doc_ids, group=group_name, kb_id=target_kb_id)
                     if source_nodes:
                         uid_map = {n.uid: n.uid for n in source_nodes}
@@ -275,27 +275,24 @@ class _Processor:
                                                       doc_id_map=doc_id_map, p_uid_map=uid_map,
                                                       p_name=group_name, skip_ng_ids=skip_ng_ids)
                     continue
-                try:
-                    source_nodes = self._store.get_nodes(doc_ids=ids, group=group_name, kb_id=kb_id)
-                    nodes = []
-                    uid_map = {}
-                    for source_node in source_nodes:
-                        copied = self._clone_node_for_transfer(
-                            node=source_node,
-                            target_kb_id=target_kb_id,
-                            target_doc_id=doc_id_map[source_node.global_metadata[RAG_DOC_ID]][0],
-                            metadata=doc_id_map[source_node.global_metadata[RAG_DOC_ID]][1],
-                        )
-                        uid_map[source_node.uid] = copied.uid
-                        copied.parent = p_uid_map.get(source_node.parent, None) if source_node.parent else None
-                        nodes.append(copied)
-                    self._store.update_nodes(nodes, copy=True)
-                    if nodes:
-                        self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
-                                                      doc_id_map=doc_id_map, p_uid_map=uid_map,
-                                                      p_name=group_name, skip_ng_ids=skip_ng_ids)
-                except Exception:
-                    raise
+                source_nodes = self._store.get_nodes(doc_ids=ids, group=group_name, kb_id=kb_id)
+                nodes = []
+                uid_map = {}
+                for source_node in source_nodes:
+                    copied = self._clone_node_for_transfer(
+                        node=source_node,
+                        target_kb_id=target_kb_id,
+                        target_doc_id=doc_id_map[source_node.global_metadata[RAG_DOC_ID]][0],
+                        metadata=doc_id_map[source_node.global_metadata[RAG_DOC_ID]][1],
+                    )
+                    uid_map[source_node.uid] = copied.uid
+                    copied.parent = p_uid_map.get(source_node.parent, None) if source_node.parent else None
+                    nodes.append(copied)
+                self._store.update_nodes(nodes, copy=True)
+                if nodes:
+                    self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
+                                                  doc_id_map=doc_id_map, p_uid_map=uid_map,
+                                                  p_name=group_name, skip_ng_ids=skip_ng_ids)
 
     def _create_nodes_impl(self, p_nodes, group_name, ref_path=None, skip_ng_ids: Optional[set] = None):
         # NOTE transform.batch_forward will set children for p_nodes, but when calling
@@ -305,15 +302,14 @@ class _Processor:
         ng_cfg = self._node_groups.get(group_name, {})
         ng_id = ng_cfg.get('id') or group_name
         if skip_ng_ids and ng_id in skip_ng_ids:
+            if not doc_ids:
+                return []
             return self._store.get_nodes(doc_ids=doc_ids, group=group_name, kb_id=kb_id)
-        try:
-            t = self._node_groups[group_name]['transform']
-            transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
-            nodes = transform.batch_forward(p_nodes, group_name, ref_path=ref_path)
-            self._store.update_nodes(self._set_nodes_number(nodes))
-            return nodes
-        except Exception:
-            raise
+        t = self._node_groups[group_name]['transform']
+        transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
+        nodes = transform.batch_forward(p_nodes, group_name, ref_path=ref_path)
+        self._store.update_nodes(self._set_nodes_number(nodes))
+        return nodes
 
     def _get_or_create_nodes(self, group_name, uids: Optional[List[str]] = None):
         nodes = self._store.get_nodes(uids=uids, group=group_name) if self._store.is_group_active(group_name) else []

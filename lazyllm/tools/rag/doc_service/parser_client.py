@@ -91,7 +91,8 @@ class ParserClient:
             feedback_url=callback_url,
             node_group_ids_to_delete=node_group_ids_to_delete,
         )
-        return BaseResponse.model_validate(self._request('DELETE', '/doc/delete', json=req.model_dump(mode='json')))
+        return BaseResponse.model_validate(
+            self._request('DELETE', '/doc/delete', json=req.model_dump(mode='json', exclude_none=True)))
 
     def cancel_task(self, task_id: str):
         req = ParsingCancelTaskRequest(task_id=task_id)

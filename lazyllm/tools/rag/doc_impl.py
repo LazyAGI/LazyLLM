@@ -274,14 +274,16 @@ class DocImpl:
             parent_sig = groups.get(parent, {}).get('signature', '') if parent != LAZY_ROOT_NAME else ''
             ref_sig = groups.get(ref, {}).get('signature', '') if ref else ''
             new_sig = _compute_node_group_signature(name, transforms, parent_sig, ref_sig, group_type)
+            if existing_sig and existing_sig == new_sig:
+                LOG.info(f'Node group {name!r} already registered with same signature, skipping.')
+                return
             if existing_sig and existing_sig != new_sig:
                 raise ValueError(
                     f'Node group {name!r} already exists with a different signature '
                     f'(existing={existing_sig}, new={new_sig}). '
                     'Use a different name or version to create a distinct node group.'
                 )
-            LOG.info(f'Node group {name!r} already registered with same signature, skipping.')
-            return
+            # existing_sig is empty (legacy data without signature): update in-place
         for t in (transforms if isinstance(transform, list) else [transforms]):
             if isinstance(t.f, str):
                 t.f = _transmap[t.f.lower()]
@@ -312,7 +314,12 @@ class DocImpl:
     def create_global_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                                  trans_node: Optional[bool] = None, num_workers: int = 0,
                                  display_name: Optional[str] = None,
-                                 group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None, **kwargs) -> None:
+                                 group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None,
+                                 version: Optional[str] = None, **kwargs) -> None:
+        if version is not None:
+            if not _VERSION_RE.match(version):
+                raise ValueError(f'Invalid version {version!r}. Must follow PEP 440 (e.g. 1.0, 1.1.1, 1.1.1a0).')
+            name = f'{name}@v{version}'
         DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
                                         group_type=group_type, ref=ref, **kwargs)
@@ -321,6 +328,8 @@ class DocImpl:
                           trans_node: Optional[bool] = None, num_workers: int = 0, display_name: Optional[str] = None,
                           group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None,
                           version: Optional[str] = None, **kwargs) -> None:
+        # NOTE: if parent itself is versioned, pass the full versioned name (e.g. "chunks@v1.0");
+        # the version param does NOT auto-append a version suffix to parent.
         if version is not None:
             if not _VERSION_RE.match(version):
                 raise ValueError(f'Invalid version {version!r}. Must follow PEP 440 (e.g. 1.0, 1.1.1, 1.1.1a0).')
@@ -332,6 +341,10 @@ class DocImpl:
                     num_workers=num_workers, display_name=display_name,
                     group_type=group_type, ref=ref, kwargs=kwargs,
                 ))
+                # Also update local node_groups so in-process callers see the new group.
+                DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
+                                                trans_node=trans_node, num_workers=num_workers,
+                                                display_name=display_name, group_type=group_type, ref=ref, **kwargs)
                 return
             raise RuntimeError('Cannot add node group after document started in standalone mode')
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,

@@ -340,13 +340,12 @@ class DocumentProcessor(ModuleBase):
             self._lazy_init()
             LOG.info(f'[DocumentProcessor] Register algorithm: name={name}, display_name={display_name}')
             try:
-                # 1. Upsert each node group into lazyllm_node_group
-                node_group_ids = self._upsert_node_groups(node_groups, reader)
-                # 2. Persist {store, reader, schema_extractor} (no node_groups) into lazyllm_algorithm
+                # Upsert node groups and algorithm in a single transaction to ensure atomicity.
                 info_dict = {'store': store, 'reader': reader, 'schema_extractor': schema_extractor}
                 info_pickle = dump_obj(info_dict)
-                ng_ids_json = json.dumps(node_group_ids)
                 with self._db_manager.get_session() as session:
+                    node_group_ids = self._upsert_node_groups(node_groups, reader, session=session)
+                    ng_ids_json = json.dumps(node_group_ids)
                     AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
                     existing = session.query(AlgoInfo).filter(AlgoInfo.id == name).first()
                     if not existing:
@@ -366,7 +365,8 @@ class DocumentProcessor(ModuleBase):
                 LOG.error(f'[DocumentProcessor] Failed to register algorithm: {e}, {traceback.format_exc()}')
                 raise
 
-        def _upsert_node_groups(self, node_groups: Dict[str, Dict], reader: DirectoryReader) -> List[str]:
+        def _upsert_node_groups(self, node_groups: Dict[str, Dict], reader: DirectoryReader,
+                                session=None) -> List[str]:
             from ..doc_impl import _compute_node_group_signature, NodeGroupType
             NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
             reader_sig = reader.signature() if reader is not None else ''
@@ -374,18 +374,19 @@ class DocumentProcessor(ModuleBase):
             name_to_id: Dict[str, str] = {}
             name_to_sig: Dict[str, str] = {}
             ordered_names = list(node_groups.keys())
-            for ng_name in ordered_names:
-                cfg = node_groups[ng_name]
-                parent = cfg.get('parent', 'root')
-                ref = cfg.get('ref')
-                parent_sig = name_to_sig.get(parent, reader_sig)
-                ref_sig = name_to_sig.get(ref, '') if ref else ''
-                transform = cfg.get('transform') or cfg.get('args')
-                group_type = cfg.get('group_type', NodeGroupType.CHUNK)
-                sig = _compute_node_group_signature(ng_name, transform, parent_sig, ref_sig, group_type)
-                name_to_sig[ng_name] = sig
-                with self._db_manager.get_session() as session:
-                    existing = session.query(NodeGroupInfo).filter(NodeGroupInfo.name == ng_name).first()
+
+            def _upsert_in_session(sess):
+                for ng_name in ordered_names:
+                    cfg = node_groups[ng_name]
+                    parent = cfg.get('parent', 'root')
+                    ref = cfg.get('ref')
+                    parent_sig = name_to_sig.get(parent, reader_sig)
+                    ref_sig = name_to_sig.get(ref, '') if ref else ''
+                    transform = cfg.get('transform') or cfg.get('args')
+                    group_type = cfg.get('group_type', NodeGroupType.CHUNK)
+                    sig = _compute_node_group_signature(ng_name, transform, parent_sig, ref_sig, group_type)
+                    name_to_sig[ng_name] = sig
+                    existing = sess.query(NodeGroupInfo).filter(NodeGroupInfo.name == ng_name).first()
                     if existing:
                         if existing.signature != sig:
                             raise ValueError(
@@ -396,14 +397,20 @@ class DocumentProcessor(ModuleBase):
                         name_to_id[ng_name] = existing.id
                     else:
                         ng_id = str(uuid4())
-                        session.add(NodeGroupInfo(
+                        sess.add(NodeGroupInfo(
                             id=ng_id, name=ng_name, signature=sig,
                             info_pickle=dump_obj(cfg), created_at=datetime.now(), updated_at=datetime.now(),
                         ))
                         name_to_id[ng_name] = ng_id
+
+            if session is not None:
+                _upsert_in_session(session)
+            else:
+                with self._db_manager.get_session() as sess:
+                    _upsert_in_session(sess)
             return [name_to_id[n] for n in ordered_names]
 
-        def register_new_node_group(self, name: str, config: Dict) -> str:
+        def register_new_node_group(self, name: str, config: Dict, session=None) -> str:
             self._lazy_init()
             LOG.info(f'[DocumentProcessor] Register new node group: name={name}')
             try:
@@ -412,8 +419,9 @@ class DocumentProcessor(ModuleBase):
                 transform = config.get('transform') or config.get('args')
                 group_type = config.get('group_type', NodeGroupType.CHUNK)
                 sig = _compute_node_group_signature(name, transform, '', '', group_type)
-                with self._db_manager.get_session() as session:
-                    existing = session.query(NodeGroupInfo).filter(NodeGroupInfo.name == name).first()
+
+                def _do_register(sess):
+                    existing = sess.query(NodeGroupInfo).filter(NodeGroupInfo.name == name).first()
                     if existing:
                         if existing.signature != sig:
                             raise ValueError(
@@ -423,12 +431,17 @@ class DocumentProcessor(ModuleBase):
                         LOG.info(f'[DocumentProcessor] Node group {name!r} already exists, reusing id={existing.id}')
                         return existing.id
                     ng_id = str(uuid4())
-                    session.add(NodeGroupInfo(
+                    sess.add(NodeGroupInfo(
                         id=ng_id, name=name, signature=sig,
                         info_pickle=dump_obj(config), created_at=datetime.now(), updated_at=datetime.now(),
                     ))
                     LOG.info(f'[DocumentProcessor] Node group {name!r} registered with id={ng_id}')
                     return ng_id
+
+                if session is not None:
+                    return _do_register(session)
+                with self._db_manager.get_session() as sess:
+                    return _do_register(sess)
             except Exception as e:
                 LOG.error(f'[DocumentProcessor] Failed to register node group: {e}, {traceback.format_exc()}')
                 raise
@@ -457,7 +470,7 @@ class DocumentProcessor(ModuleBase):
                             if ng.id not in ids:
                                 ids.append(ng.id)
                         elif isinstance(item, dict):
-                            ng_id = self.register_new_node_group(item['name'], item)
+                            ng_id = self.register_new_node_group(item['name'], item, session=session)
                             if ng_id not in ids:
                                 ids.append(ng_id)
                     for ng_name_or_id in (remove or []):
@@ -618,7 +631,7 @@ class DocumentProcessor(ModuleBase):
                 algorithm = self._get_algo(algo_id)
                 if algorithm is None:
                     raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
-                node_group_ids = algorithm.get('node_group_ids', '[]')
+                node_group_ids = json.loads(algorithm.get('node_group_ids') or '[]')
                 return BaseResponse(code=200, msg='success', data={'node_group_ids': node_group_ids})
             except fastapi.HTTPException:
                 raise

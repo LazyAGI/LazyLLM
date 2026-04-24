@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from pydantic import AliasChoices, BaseModel, Field, model_validator
 from ..parsing_service.base import TaskType
+from lazyllm import LOG
 
 
 class DocStatus(str, Enum):
@@ -92,20 +93,20 @@ class AddFileItem(BaseModel):
 
 
 class DocItemsRequest(BaseModel):
-    model_config = {'extra': 'allow'}
+    model_config = {'extra': 'ignore'}
 
     items: List[AddFileItem]
     kb_id: str = '__default__'
     source_type: Optional[SourceType] = None
     idempotency_key: Optional[str] = None
+    algo_id: Optional[str] = None
+    algo_ids: Optional[List[str]] = None
 
     @model_validator(mode='after')
     def validate_items(self):
         if not self.items:
             raise ValueError('items is required')
-        extra = self.model_extra or {}
-        if 'algo_id' in extra or 'algo_ids' in extra:
-            from lazyllm import LOG
+        if self.algo_id is not None or self.algo_ids is not None:
             LOG.warning('algo_id/algo_ids in upload/add request is deprecated and ignored; '
                         'all algos bound to the kb will be used automatically')
         return self
@@ -131,8 +132,10 @@ class _DocMutationRequest(BaseModel):
 class ReparseRequest(BaseModel):
     doc_ids: List[str]
     kb_id: str = '__default__'
-    algo_id: Optional[str] = None  # specify algo to reparse all its ngs
-    reparse_group: Optional[str] = None  # specify ng_name to reparse a single ng
+    # algo_id: reparse all ngs of the specified algo; mutually exclusive with reparse_group
+    algo_id: Optional[str] = None
+    # reparse_group: reparse a single ng by name; mutually exclusive with algo_id
+    reparse_group: Optional[str] = None
     idempotency_key: Optional[str] = None
 
     @model_validator(mode='after')
@@ -140,7 +143,11 @@ class ReparseRequest(BaseModel):
         if not self.doc_ids:
             raise ValueError('doc_ids is required')
         if self.algo_id is not None and self.reparse_group is not None:
-            raise ValueError('algo_id and reparse_group are mutually exclusive; provide at most one')
+            raise ValueError(
+                'algo_id and reparse_group are mutually exclusive; provide at most one. '
+                'Use algo_id to reparse all node groups of an algo, '
+                'or reparse_group to reparse a single node group by name.'
+            )
         return self
 
 
