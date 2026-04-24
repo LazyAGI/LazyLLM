@@ -10,8 +10,7 @@ from ..components.formatter.formatterbase import file_content_hash, transform_pa
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
-from ..hook import LazyLLMHook, LazyLLMFuncHook, register_hooks, resolve_builtin_hooks
-from ..hook import hook_execution
+from ..hook import LazyLLMHook, LazyLLMFuncHook, execution_with_hooks, register_hooks, resolve_builtin_hooks
 from lazyllm import FileSystemQueue
 from contextlib import contextmanager
 from typing import Optional, Union, Dict, List, Callable
@@ -331,19 +330,18 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
         if (files := locals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
         if (history := locals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
 
-        with hook_execution(
-            self,
-            *args,
-            map_exception=lambda e: _change_exception_type(e, ModuleExecutionError),
-            **kw,
-        ) as hooked_call:
-            def _invoke():
-                return (self._call_impl(**args[0], **kw)
-                        if args and isinstance(args[0], kwargs) else self._call_impl(*args, **kw))
+        def _invoke():
+            return (
+                self._call_impl(**args[0], **kw)
+                if args and isinstance(args[0], kwargs)
+                else self._call_impl(*args, **kw)
+            )
+        r = execution_with_hooks(
+            self, *args, map_exception=lambda e: _change_exception_type(e, ModuleExecutionError), **kw,
+        )(_invoke)()
 
-            r = hooked_call(_invoke)
-            if self._return_trace:
-                lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
+        if self._return_trace:
+            lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
         self._clear_usage()
         return r
 

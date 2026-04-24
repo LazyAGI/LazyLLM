@@ -127,10 +127,9 @@ class Bind(object):
         bind_args = list(itertools.chain.from_iterable(x if isinstance(x, Bind.Args.Unpack) else [x] for x in bind_args))
         kwargs = {k: v.get_arg(_bind_args_source) if isinstance(v, Bind.Args) else v for k, v in kwargs.items()}
         if self._hooks:
-            from lazyllm.hook import hook_execution
+            from lazyllm.hook import execution_with_hooks
             merged = {**kwargs, **kw}
-            with hook_execution(self, *args, **merged) as hooked_call:
-                return hooked_call(self._f, *bind_args, **merged)
+            return execution_with_hooks(self, *args, **merged)(self._f)(*bind_args, **merged)
         return self._f(*bind_args, **kwargs, **kw)
 
     # TODO: modify it

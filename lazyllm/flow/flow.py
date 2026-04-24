@@ -21,7 +21,7 @@ from typing import Union, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
-from ..hook import LazyLLMHook, hook_execution, register_hooks, resolve_builtin_hooks
+from ..hook import LazyLLMHook, execution_with_hooks, register_hooks, resolve_builtin_hooks
 from ..tracing.collect.output_attrs import push_ifs_matched_attrs, push_switch_matched_attrs
 from itertools import repeat
 
@@ -36,9 +36,8 @@ class _FuncWrap(object):
         self._hooks = []
         register_hooks(self, resolve_builtin_hooks(self))
 
-    def __call__(self, *args, **kw):
-        with hook_execution(self, *args, **kw) as hooked_call:
-            return hooked_call(self._f, *args, **kw)
+    @execution_with_hooks
+    def __call__(self, *args, **kw): return self._f(*args, **kw)
 
     def __repr__(self):
         # TODO: specify lambda/staticmethod/classmethod/instancemethod
@@ -246,18 +245,15 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         self._hooks = []
         register_hooks(self, resolve_builtin_hooks(self))
 
+    @execution_with_hooks
     def __call__(self, *args, **kw):
-        def _invoke():
-            with globals.stack_enter(self.identities):
-                output = self._run(args[0] if len(args) == 1 else package(args), **kw)
-            if self.post_action is not None:
-                self.invoke(self.post_action, output)
-            if self._sync:
-                self.wait()
-            return self._post_process(output)
-
-        with hook_execution(self, *args, **kw) as hooked_call:
-            return hooked_call(_invoke)
+        with globals.stack_enter(self.identities):
+            output = self._run(args[0] if len(args) == 1 else package(args), **kw)
+        if self.post_action is not None:
+            self.invoke(self.post_action, output)
+        if self._sync:
+            self.wait()
+        return self._post_process(output)
 
     def register_hook(self, hook_type: LazyLLMHook):
         if not (isinstance(hook_type, LazyLLMHook)

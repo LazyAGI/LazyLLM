@@ -3,6 +3,7 @@ import inspect
 import ast
 import copy
 from contextlib import contextmanager
+from functools import wraps
 from typing import Any, Callable, Optional, Sequence
 
 from .common import LOG, HandledException
@@ -195,12 +196,6 @@ def hook_execution(
     map_exception: Optional[Callable[[Exception], Exception]] = None,
     **hook_kwargs: Any,
 ):
-    '''Prepare hooks (``pre_hook``), yield a one-shot ``hooked_call(fn, /, *args, **kwargs)``, then ``finalize``.
-
-    ``pre_hook`` runs inside ``prepare_hooks`` before the ``with`` body. ``hooked_call`` must be used
-    at most once; on success it runs ``post_hook`` with the return value; on failure ``on_error``.
-    (Distinct from ``run_hooks``, which dispatches a single phase across already-prepared hook instances.)
-    '''
     hook_objs = tuple(
         prepare_hooks(obj, list(getattr(obj, '_hooks', []) or []), *hook_args, **hook_kwargs)
     )
@@ -244,6 +239,34 @@ def hook_execution(
             run_hooks(hook_objs, 'finalize')
         except Exception:
             LOG.warning('Hook finalize phase failed', exc_info=True)
+
+
+def execution_with_hooks(
+    obj: Any = None,
+    *hook_args: Any,
+    map_exception: Optional[Callable[[Exception], Exception]] = None,
+    **hook_kwargs: Any,
+):
+    def decorator(fn: Callable[..., Any]):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            hook_obj = obj if obj is not None else args[0]
+            actual_hook_args = hook_args if obj is not None else args[1:]
+            actual_hook_kwargs = hook_kwargs if obj is not None else kwargs
+            with hook_execution(
+                hook_obj,
+                *actual_hook_args,
+                map_exception=map_exception,
+                **actual_hook_kwargs,
+            ) as hooked_call:
+                return hooked_call(fn, *args, **kwargs)
+        return wrapper
+
+    if callable(obj) and not hook_args and not hook_kwargs and map_exception is None:
+        fn = obj
+        obj = None
+        return decorator(fn)
+    return decorator
 
 
 try:
