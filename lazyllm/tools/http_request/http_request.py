@@ -134,7 +134,8 @@ def post_async(submit_url: str, status_url: str, result_url: str = None,
                success_states: tuple = ('completed', 'done', 'success'),
                failure_states: tuple = ('failed', 'error', 'failure'),
                max_retries: int = 120, interval: int = 3,
-               result_extractor: Optional[Callable[[requests.Response], any]] = None) -> any:
+               result_extractor: Optional[Callable[[requests.Response], any]] = None,
+               json_payload: dict = None) -> any:
     """Submit an async task, poll status, and fetch the final result.
 
     Args:
@@ -143,9 +144,11 @@ def post_async(submit_url: str, status_url: str, result_url: str = None,
         result_url: Optional result URL containing ``{task_id}`` placeholder.
         result_extractor: Optional callable to extract result from the status
             response when ``result_url`` is not provided.
+        json_payload: Optional JSON payload for the submit request (preferred
+            over ``payload`` for APIs that expect ``application/json``).
     """
     resp = post_sync(submit_url, payload=payload, files=files, headers=headers,
-                     timeout=timeout, raise_for_status=False)
+                     json_payload=json_payload, timeout=timeout, raise_for_status=False)
     resp.raise_for_status()
     data = resp.json()
     task_id = data.get('task_id')

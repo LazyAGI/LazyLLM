@@ -48,7 +48,7 @@ class _OcrReaderBase(_RichReader, _Adapter):
         self._service_variant = ServiceVariant(service_variant)
         self._droped_types = droped_types
 
-    def _fetch_response(self, file: Path, use_cache: bool = True) -> str:
+    def _fetch_response(self, file: Path, use_cache: bool = False) -> str:
         '''Fetch raw response string from the OCR service.'''
         raise NotImplementedError
 
@@ -62,10 +62,12 @@ class _OcrReaderBase(_RichReader, _Adapter):
         blocks = l2_associate(blocks)
         return self._build_nodes_from_blocks(blocks, file, extra_info)
 
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None, use_cache: bool = True, **kwargs
+    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True, **kwargs
         ) -> List[DocNode]:
-        response_raw_text = self._fetch_response(file, use_cache=use_cache)
-        return self._build_nodes_from_response(response_raw_text, file, extra_info)
+        # Preserve URL strings; Path() would corrupt https:// into https:/
+        file_path = file if isinstance(file, str) and file.startswith(('http://', 'https://')) else Path(file)
+        response_raw_text = self._fetch_response(file_path, use_cache=use_cache)
+        return self._build_nodes_from_response(response_raw_text, file_path, extra_info)
 
     @staticmethod
     def _parse_table_html( html_text: str) -> List[Cell]:
