@@ -277,10 +277,6 @@ _add_bilingual_docs({
         '校验文档 item 列表不能为空。',
         'Validate that the document item list is not empty.'
     ),
-    'rag.doc_service.base.TransferItem.normalize_source_fields': (
-        '将旧版 source 字段归一化到当前 transfer item schema。',
-        'Normalize legacy source fields into the current transfer-item schema.'
-    ),
     'rag.doc_service.base.TransferRequest.validate_items': (
         '校验 transfer 请求中的 item 列表及其基本约束。',
         'Validate transfer request items and their basic constraints.'
