@@ -72,8 +72,10 @@ Returns:
 add_chinese_doc_trace('get_trace_context', '''\
 获取当前轻量级 tracing 上下文 ``LazyTraceContext``。
 
-该上下文存储在 ``globals['trace']`` 中，主要用于跨线程或跨进程传播 ``trace_id``、
-``parent_span_id``、``session_id`` 和运行时 trace 控制信息。
+该上下文以字典形式存放在 LazyLLM 全局存储的 ``trace`` 键下。``MemoryGlobals`` 按当前
+操作系统线程（或 asyncio task）划分 session，因此**同一进程内并发线程默认各有一份**
+``trace``；父子线程之间不会自动共享，并行 Flow 的 worker 等场景由框架在子线程里通过
+``globals._update`` 显式拷入父侧数据后再执行。
 
 Returns:
     LazyTraceContext: 当前的轻量级 tracing 上下文。
@@ -82,9 +84,11 @@ Returns:
 add_english_doc_trace('get_trace_context', '''\
 Get the current lightweight tracing context as a ``LazyTraceContext``.
 
-The context is stored in ``globals['trace']`` and is mainly used to propagate ``trace_id``,
-``parent_span_id``, ``session_id``, and runtime trace control information across execution
-boundaries such as threads or processes.
+The context is stored under the ``trace`` key in LazyLLM's global store. ``MemoryGlobals``
+scopes storage by OS thread (or asyncio task), so **concurrent threads normally each have
+their own** ``trace`` mapping; contexts are not implicitly shared across threads. Framework
+code (e.g. ``Parallel`` workers) may copy parent session fields via ``globals._update`` when
+a child thread must continue the same logical request.
 
 Returns:
     LazyTraceContext: The current lightweight tracing context.
@@ -94,8 +98,8 @@ add_chinese_doc_trace('set_trace_context', '''\
 设置当前轻量级 tracing 上下文。
 
 可传入 ``LazyTraceContext`` 实例或 ``dict``。字典会经 ``LazyTraceContext.from_dict`` 规范化；
-其它类型会按空字典处理后再规范化。结果写入 ``lazyllm`` 全局存储中的 trace 字段，供 runtime
-与 hooks 使用。
+其它类型会按空字典处理后再规范化。结果写入**当前 session** 的全局 ``trace`` 字段，供
+runtime 与 hooks 使用。
 
 Args:
     ctx: ``LazyTraceContext`` 实例或 tracing 上下文字典。
@@ -109,7 +113,7 @@ Set the current lightweight tracing context.
 
 Accepts a ``LazyTraceContext`` instance or a ``dict`` (normalized via ``LazyTraceContext.from_dict``).
 Any other type is treated like an empty mapping before normalization. The result is written to
-the trace field in LazyLLM's global store for the runtime and hooks.
+the ``trace`` field of the **current globals session** for the runtime and hooks.
 
 Args:
     ctx: A ``LazyTraceContext`` instance or a tracing context dictionary.
@@ -313,18 +317,27 @@ add_english_doc_ctx = functools.partial(utils.add_english_doc, module=lazyllm.tr
 add_chinese_doc_ctx('LazyTraceContext', '''\
 轻量级 tracing 上下文对象。
 
-该对象用于在 ``globals['trace']`` 中保存可序列化的 tracing 信息，例如 ``trace_id``、
-``parent_span_id``、``session_id``、``user_id``、``request_tags`` 以及运行时 trace
-控制选项。它适合做跨线程 / 跨进程传播，不承载重型 trace 语义聚合逻辑。
+该对象用于在全局 ``trace`` 字典中保存可序列化的 tracing 信息，例如 ``trace_id``、
+``parent_span_id``、``session_id``、``user_id``、``request_tags``、运行时 trace 控制选项，
+以及 ``actual_iterations``（``Loop`` 结束时按 flow id 写入的**实际循环次数**；导出
+Loop span 时会读取并映射到 ``lazyllm.loop.actual_iterations``，**不会**从该 dict 中
+删除条目，便于同一会话内调试与并发场景下的可观测性）。
+
+它不承载 ``LazyTrace`` 级别的重型内存聚合；跨线程延续请求时需由调用方或框架显式
+拷贝/重建上下文。
 ''')
 
 add_english_doc_ctx('LazyTraceContext', '''\
 Lightweight tracing context object.
 
-This object stores serializable tracing information in ``globals['trace']``, such as
-``trace_id``, ``parent_span_id``, ``session_id``, ``user_id``, ``request_tags``, and runtime
-trace control options. It is intended for cross-thread / cross-process propagation rather
-than heavy trace-level semantic aggregation.
+This object holds serializable tracing fields for the global ``trace`` mapping, including
+``trace_id``, ``parent_span_id``, ``session_id``, ``user_id``, ``request_tags``, runtime trace
+flags, and ``actual_iterations`` (a map from ``Loop`` flow id to executed iteration count, written when
+a loop finishes under an active trace dict; read when exporting Loop span attributes as
+``lazyllm.loop.actual_iterations`` without removing entries from the dict).
+
+It does not carry the heavy in-memory aggregate represented by ``LazyTrace``; propagating the
+same logical request across threads requires explicit copy/rebuild of the context.
 ''')
 
 add_chinese_doc_ctx('LazyTraceContext.to_dict', '''\
@@ -344,7 +357,8 @@ Returns:
 add_chinese_doc_ctx('LazyTraceContext.from_dict', '''\
 从字典构造 ``LazyTraceContext``。
 
-该方法会过滤未知字段，并对 ``request_tags`` 做规范化处理。
+该方法会过滤未知字段，并对 ``request_tags``、``actual_iterations`` 做规范化处理
+（后者若非 dict 则置为空 dict）。
 
 Args:
     data (dict): 原始 tracing 上下文字典。
@@ -356,8 +370,8 @@ Returns:
 add_english_doc_ctx('LazyTraceContext.from_dict', '''\
 Construct a ``LazyTraceContext`` from a dictionary.
 
-The method filters unknown fields and normalizes ``request_tags`` before constructing the
-context object.
+The method filters unknown fields and normalizes ``request_tags`` and ``actual_iterations``
+(the latter becomes an empty dict when the incoming value is not a dict).
 
 Args:
     data (dict): The raw tracing context dictionary.
@@ -377,8 +391,10 @@ add_chinese_doc_span('LazySpan', '''\
 
 字段涵盖实体标识（``name``、``span_kind``、``semantic_type``、``component_*``）、链信息
 （``trace_id`` / ``span_id`` / ``parent_span_id``）、可选的输入输出与 ``config``、
-``output_attrs``、``usage`` 等。``start_span`` 在成功时返回该类型的实例；``finish_span``
-消费其中的状态完成上报。
+``output_attrs``、``usage`` 等。其中 ``semantic_type`` 由 tracing runtime 根据目标对象的
+``type`` / 类名 / 模块等信息集中解析（``resolve_semantic_type_for_target``），业务侧一般
+无需自行赋值。``start_span`` 在成功时返回该类型的实例；``finish_span`` 消费其中的状态
+完成上报。
 ''')
 
 add_english_doc_span('LazySpan', '''\
@@ -387,8 +403,10 @@ A ``dataclass`` snapshot for one span, linked to the underlying OpenTelemetry sp
 
 Fields cover entity identity (``name``, ``span_kind``, ``semantic_type``, ``component_*``),
 chain identifiers (``trace_id`` / ``span_id`` / ``parent_span_id``), optional I/O and
-``config``, ``output_attrs``, ``usage``, and more. ``start_span`` returns an instance on
-success; ``finish_span`` consumes it to export telemetry.
+``config``, ``output_attrs``, ``usage``, and more. ``semantic_type`` is filled by the tracing
+runtime via ``resolve_semantic_type_for_target`` (from the target's ``type``, class name,
+module, etc.); application code typically does not set it manually. ``start_span`` returns an
+instance on success; ``finish_span`` consumes it to export telemetry.
 ''')
 
 add_chinese_doc_span('LazyTrace', '''\
@@ -510,23 +528,25 @@ Returns:
     bool: ``True`` if tracing should be disabled for the module at runtime.
 ''')
 
-# ============= Semantics (ids and semantic_type literals)
+# ============= Semantics (ids and semantic_type)
 
 add_chinese_doc_sem = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.semantics)
 add_english_doc_sem = functools.partial(utils.add_english_doc, module=lazyllm.tracing.semantics)
 
 add_chinese_doc_sem('SemanticType', '''\
-LazyLLM 在 OTel span 上使用的 ``lazyllm.semantic_type`` 取值常量（如 ``llm``、``retriever``、
-``workflow_control`` 等），与 tracing runtime 对 module/flow 的语义归类一致。
+LazyLLM 写入 OTel 属性 ``lazyllm.semantic_type`` 时使用的取值常量（如 ``llm``、``retriever``、
+``workflow_control`` 等）。具体取值由 runtime 在创建 span 时解析目标对象后选择，与
+``SemanticType`` 常量集合一致。
 ''')
 
 add_english_doc_sem('SemanticType', '''\
-Literal values used for ``lazyllm.semantic_type`` on OTel spans (e.g. ``llm``, ``retriever``,
-``workflow_control``), matching how the tracing runtime classifies modules and flows.
+String constants used when the runtime sets the ``lazyllm.semantic_type`` OTel attribute
+(e.g. ``llm``, ``retriever``, ``workflow_control``). The runtime picks a value after inspecting
+the traced target; these constants describe the supported vocabulary.
 ''')
 
 add_chinese_doc_sem('is_valid_trace_id', '''\
-判断字符串是否为 32 位小写十六进制 W3C trace id 格式（与内部 ``_TRACE_ID_RE`` 一致）。
+判断字符串是否为 32 位小写十六进制 W3C trace id 格式。
 
 Args:
     value: 待校验字符串。
@@ -536,8 +556,7 @@ Returns:
 ''')
 
 add_english_doc_sem('is_valid_trace_id', '''\
-Return whether *value* matches the 32-char lowercase hex W3C trace id format (same rule as
-``_TRACE_ID_RE``).
+Return whether *value* matches the 32-char lowercase hex W3C trace id format.
 
 Args:
     value: Candidate string.
@@ -547,7 +566,7 @@ Returns:
 ''')
 
 add_chinese_doc_sem('is_valid_span_id', '''\
-判断字符串是否为 16 位小写十六进制 span id 格式（与内部 ``_SPAN_ID_RE`` 一致）。
+判断字符串是否为 16 位小写十六进制 W3C span id 格式。
 
 Args:
     value: 待校验字符串。
@@ -557,50 +576,13 @@ Returns:
 ''')
 
 add_english_doc_sem('is_valid_span_id', '''\
-Return whether *value* matches the 16-char lowercase hex span id format (same rule as
-``_SPAN_ID_RE``).
+Return whether *value* matches the 16-char lowercase hex W3C span id format.
 
 Args:
     value: Candidate string.
 
 Returns:
     bool: ``True`` if the format is valid.
-''')
-
-add_chinese_doc_sem('_TRACE_ID_RE', '''\
-编译后的 trace id 正则（32 位 ``[0-9a-f]``），供 ``LazySpan`` / ``LazyTrace`` 校验与
-``is_valid_trace_id`` 使用。
-''')
-
-add_english_doc_sem('_TRACE_ID_RE', '''\
-Compiled regex for 32-char lowercase hex trace ids; used by ``LazySpan`` / ``LazyTrace``
-validation and ``is_valid_trace_id``.
-''')
-
-add_chinese_doc_sem('_SPAN_ID_RE', '''\
-编译后的 span id 正则（16 位 ``[0-9a-f]``），供 ``LazySpan`` / ``LazyTrace`` 校验与
-``is_valid_span_id`` 使用。
-''')
-
-add_english_doc_sem('_SPAN_ID_RE', '''\
-Compiled regex for 16-char lowercase hex span ids; used by ``LazySpan`` / ``LazyTrace``
-validation and ``is_valid_span_id``.
-''')
-
-add_chinese_doc_sem('_VALID_SPAN_KINDS', '''\
-允许的 ``LazySpan.span_kind`` 取值集合：``flow``、``module``、``callable``。
-''')
-
-add_english_doc_sem('_VALID_SPAN_KINDS', '''\
-Frozen set of allowed ``LazySpan.span_kind`` values: ``flow``, ``module``, ``callable``.
-''')
-
-add_chinese_doc_sem('_VALID_SPAN_STATUS', '''\
-允许的 ``LazySpan.status`` / ``LazyTrace.status`` 取值集合：``ok``、``error``。
-''')
-
-add_english_doc_sem('_VALID_SPAN_STATUS', '''\
-Frozen set of allowed ``LazySpan.status`` / ``LazyTrace.status`` values: ``ok``, ``error``.
 ''')
 
 # ============= Backends registry

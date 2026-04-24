@@ -21,39 +21,13 @@ from typing import Union, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
-from ..hook import LazyLLMHook, register_hooks, resolve_builtin_hooks
-from ..tracing.collect.hook import traced_hook_execution
+from ..hook import LazyLLMHook, hook_execution, register_hooks, resolve_builtin_hooks
 from ..tracing.collect.output_attrs import push_ifs_matched_attrs, push_switch_matched_attrs
 from itertools import repeat
 
 
 class FlowException(HandledException):
     pass
-
-
-class _BindPipelineAdapter(object):
-    '''Holds a ``Bind`` so it can be wrapped by ``_FuncWrap`` for tracing (see ``FlowBase._add``).'''
-
-    __slots__ = ('_b',)
-
-    def __init__(self, b):
-        self._b = b
-
-    def __call__(self, *args, **kw):
-        return self._b(*args, **kw)
-
-    def __repr__(self):
-        return repr(self._b)
-
-
-def _bind_wraps_plain_callable(b) -> bool:
-    '''True for ``lambda | bind(...)``-style steps; false when inner is already a flow/module.'''
-    if not isinstance(b, bind):
-        return False
-    inner = getattr(b, '_f', None)
-    if inner is None or not callable(inner):
-        return False
-    return not (hasattr(inner, '_flow_id') or hasattr(inner, '_module_id'))
 
 
 class _FuncWrap(object):
@@ -63,9 +37,8 @@ class _FuncWrap(object):
         register_hooks(self, resolve_builtin_hooks(self))
 
     def __call__(self, *args, **kw):
-        with traced_hook_execution(self, *args, **kw) as outcome:
-            outcome['r'] = self._f(*args, **kw)
-        return outcome['r']
+        with hook_execution(self, *args, **kw) as hooked_call:
+            return hooked_call(self._f, *args, **kw)
 
     def __repr__(self):
         # TODO: specify lambda/staticmethod/classmethod/instancemethod
@@ -77,14 +50,6 @@ class _FuncWrap(object):
         if __key != '_f':
             return getattr(self._f, __key)
         return super(__class__, self).__getattr__(__key)
-
-
-def _bind_target_for_invoke(it):
-    if isinstance(it, bind):
-        return it
-    if isinstance(it, _FuncWrap) and isinstance(it._f, _BindPipelineAdapter):
-        return it._f._b
-    return None
 
 
 _oldins = isinstance
@@ -143,16 +108,19 @@ class FlowBase(SessionConfigableBase, metaclass=_MetaBind):
     def _flow_id(self):
         return self._config_id
 
+    def _make_step_item(self, v):
+        if isinstance(v, type):
+            return v()
+        if isinstance(v, bind) and v._wraps_plain_callable():
+            register_hooks(v, resolve_builtin_hooks(v))
+            return v
+        if _is_function(v) or v in self._items:
+            return _FuncWrap(v)
+        return v
+
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
-        if isinstance(v, type):
-            item = v()
-        elif isinstance(v, bind) and _bind_wraps_plain_callable(v):
-            item = _FuncWrap(_BindPipelineAdapter(v))
-        elif _is_function(v) or v in self._items:
-            item = _FuncWrap(v)
-        else:
-            item = v
+        item = self._make_step_item(v)
         self._items.append(item)
         self._item_ids.append(k or str(uuid.uuid4().hex))
         self._item_pos.append(_get_callsite(depth=3))
@@ -279,15 +247,17 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         register_hooks(self, resolve_builtin_hooks(self))
 
     def __call__(self, *args, **kw):
-        with traced_hook_execution(self, *args, **kw) as outcome:
+        def _invoke():
             with globals.stack_enter(self.identities):
                 output = self._run(args[0] if len(args) == 1 else package(args), **kw)
             if self.post_action is not None:
                 self.invoke(self.post_action, output)
             if self._sync:
                 self.wait()
-            outcome['r'] = self._post_process(output)
-        return outcome['r']
+            return self._post_process(output)
+
+        with hook_execution(self, *args, **kw) as hooked_call:
+            return hooked_call(_invoke)
 
     def register_hook(self, hook_type: LazyLLMHook):
         if not (isinstance(hook_type, LazyLLMHook)
@@ -332,11 +302,10 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
 
     # bind_args: dict(input=input, args=dict(key=value))
     def invoke(self, it, __input, *, bind_args_source=None, **kw):
-        bind_step = _bind_target_for_invoke(it)
-        if bind_step is not None:
+        if isinstance(it, bind):
             if isinstance(self, Pipeline):
-                bind_step._args = [self.output(a) if a in self._items else a for a in bind_step._args]
-                bind_step._kw = {k: self.output(v) if v in self._items else v for k, v in bind_step._kw.items()}
+                it._args = [self.output(a) if a in self._items else a for a in it._args]
+                it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
             kw['_bind_args_source'] = bind_args_source
         try:
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(__input, (package, kwargs)):
@@ -447,11 +416,9 @@ class Pipeline(LazyLLMFlowsBase):
                 assert isinstance(output, tuple) and len(output) >= 2
                 exp = output[0]
                 output = output[1:]
-            if callable(self._stop_condition) and self.invoke(self._stop_condition, exp):
-                break
-        if isinstance(self, Loop):
-            # Consumed in tracing: LazyTracingHook.post_hook -> collect_trace_output_attrs (Loop)
-            self._trace_actual_iterations = _iteration_idx + 1
+            if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
+        if isinstance(self, Loop) and isinstance(tr := globals.get('trace'), dict):
+            tr.setdefault('actual_iterations', {})[self.id()] = _iteration_idx + 1
         if bind_flag:
             lazyllm.LOG.debug(f'delete {self.id()} form bind_args')
             locals['bind_args'].pop(self.id(), None)

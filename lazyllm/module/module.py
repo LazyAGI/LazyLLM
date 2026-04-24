@@ -11,7 +11,7 @@ from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
 from ..hook import LazyLLMHook, LazyLLMFuncHook, register_hooks, resolve_builtin_hooks
-from ..tracing.collect.hook import traced_hook_execution
+from ..hook import hook_execution
 from lazyllm import FileSystemQueue
 from contextlib import contextmanager
 from typing import Optional, Union, Dict, List, Callable
@@ -327,23 +327,25 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
         raise AttributeError(f'{self.__class__} object has no attribute {key}')
 
     def __call__(self, *args, **kw):
-        with traced_hook_execution(
+        kw.update(locals['global_parameters'].get(self._module_id, dict()))
+        if (files := locals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
+        if (history := locals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
+
+        with hook_execution(
             self,
             *args,
             map_exception=lambda e: _change_exception_type(e, ModuleExecutionError),
             **kw,
-        ) as outcome:
-            kw.update(locals['global_parameters'].get(self._module_id, dict()))
-            if (files := locals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
-            if (history := locals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
+        ) as hooked_call:
+            def _invoke():
+                return (self._call_impl(**args[0], **kw)
+                        if args and isinstance(args[0], kwargs) else self._call_impl(*args, **kw))
 
-            r = (self._call_impl(**args[0], **kw)
-                 if args and isinstance(args[0], kwargs) else self._call_impl(*args, **kw))
+            r = hooked_call(_invoke)
             if self._return_trace:
                 lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
-            outcome['r'] = r
         self._clear_usage()
-        return outcome['r']
+        return r
 
     def _call_impl(self, *args, **kw):
         if self._use_cache and 'R' in lazyllm.config['cache_mode']:

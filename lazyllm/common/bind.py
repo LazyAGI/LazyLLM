@@ -94,9 +94,16 @@ class Bind(object):
             return f'<class \'lazyllm.common.bind.Bind.Args\' source={self._source_id}>'
 
     def __init__(self, __bind_func=_None, *args, **kw):
+        object.__setattr__(self, '_hooks', [])
         self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind._None else __bind_func
         self._args = args
         self._kw = kw
+
+    def _wraps_plain_callable(self) -> bool:
+        inner = getattr(self, '_f', None)
+        if inner is None or not callable(inner):
+            return False
+        return not (hasattr(inner, '_flow_id') or hasattr(inner, '_module_id'))
 
     def __or__(self, other):
         if isinstance(other, Bind):
@@ -119,6 +126,11 @@ class Bind(object):
         bind_args = [a.get_arg(_bind_args_source) if isinstance(a, Bind.Args) else a for a in bind_args]
         bind_args = list(itertools.chain.from_iterable(x if isinstance(x, Bind.Args.Unpack) else [x] for x in bind_args))
         kwargs = {k: v.get_arg(_bind_args_source) if isinstance(v, Bind.Args) else v for k, v in kwargs.items()}
+        if self._hooks:
+            from lazyllm.hook import hook_execution
+            merged = {**kwargs, **kw}
+            with hook_execution(self, *args, **merged) as hooked_call:
+                return hooked_call(self._f, *bind_args, **merged)
         return self._f(*bind_args, **kwargs, **kw)
 
     # TODO: modify it
@@ -134,7 +146,7 @@ class Bind(object):
         return super(__class__, self).__getattr__(name)
 
     def __setattr__(self, __name: str, __value: Any) -> None:
-        if __name not in ('_f', '_args', '_kw', '_has_root'):
+        if __name not in ('_f', '_args', '_kw', '_has_root', '_hooks'):
             return setattr(self._f, __name, __value)
         return super(__class__, self).__setattr__(__name, __value)
 

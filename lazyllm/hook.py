@@ -2,8 +2,10 @@ from abc import ABC, abstractmethod
 import inspect
 import ast
 import copy
-from typing import Any, Callable, Sequence
-from .common import LOG
+from contextlib import contextmanager
+from typing import Any, Callable, Optional, Sequence
+
+from .common import LOG, HandledException
 
 
 class LazyLLMHook(ABC):
@@ -184,6 +186,64 @@ def run_hooks(hook_objs, phase: str, *phase_args):
             else:
                 LOG.warning(f'Hook `{type(hook_obj).__name__}` {phase} failed and will be skipped: {e}')
     _raise_hook_phase_errors(phase, strict_errors)
+
+
+@contextmanager
+def hook_execution(
+    obj: Any,
+    *hook_args: Any,
+    map_exception: Optional[Callable[[Exception], Exception]] = None,
+    **hook_kwargs: Any,
+):
+    '''Prepare hooks (``pre_hook``), yield a one-shot ``hooked_call(fn, /, *args, **kwargs)``, then ``finalize``.
+
+    ``pre_hook`` runs inside ``prepare_hooks`` before the ``with`` body. ``hooked_call`` must be used
+    at most once; on success it runs ``post_hook`` with the return value; on failure ``on_error``.
+    (Distinct from ``run_hooks``, which dispatches a single phase across already-prepared hook instances.)
+    '''
+    hook_objs = tuple(
+        prepare_hooks(obj, list(getattr(obj, '_hooks', []) or []), *hook_args, **hook_kwargs)
+    )
+    _ran = False
+
+    def hooked_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
+        nonlocal _ran
+        if _ran:
+            raise RuntimeError('hooked_call() must be called at most once per hook_execution block')
+        _ran = True
+        try:
+            r = fn(*args, **kwargs)
+        except HandledException as e:
+            LOG.error(f'`{type(obj).__name__}` raised {type(e).__name__}: {e}')
+            try:
+                run_hooks(hook_objs, 'on_error', e)
+            except Exception:
+                LOG.warning('Hook on_error phase failed', exc_info=True)
+            raise
+        except Exception as e:
+            err = map_exception(e) if map_exception else e
+            nm = getattr(obj, 'name', None)
+            LOG.error(
+                f'Error in `{type(obj).__name__}`' + (f' name={nm!r}' if nm else '') + f': {err}'
+            )
+            try:
+                run_hooks(hook_objs, 'on_error', err)
+            except Exception:
+                LOG.warning('Hook on_error phase failed', exc_info=True)
+            if map_exception:
+                raise err from None
+            raise
+        else:
+            run_hooks(hook_objs, 'post_hook', r)
+            return r
+
+    try:
+        yield hooked_call
+    finally:
+        try:
+            run_hooks(hook_objs, 'finalize')
+        except Exception:
+            LOG.warning('Hook finalize phase failed', exc_info=True)
 
 
 try:

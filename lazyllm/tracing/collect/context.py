@@ -25,6 +25,7 @@ class LazyTraceContext:
     module_trace: Optional[Dict[str, Any]] = None
     sampled: Optional[bool] = None
     debug_capture_payload: Optional[bool] = None
+    actual_iterations: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         result: Dict[str, Any] = {}
@@ -47,4 +48,6 @@ class LazyTraceContext:
         known = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in data.items() if k in known}
         filtered['request_tags'] = _normalize_tags(filtered.get('request_tags'))
+        ai = filtered.get('actual_iterations')
+        filtered['actual_iterations'] = dict(ai) if isinstance(ai, dict) else {}
         return cls(**filtered)

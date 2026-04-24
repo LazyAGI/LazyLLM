@@ -4,6 +4,7 @@ import types
 from typing import Any, Dict, List, Optional
 
 from lazyllm.common import LOG
+from lazyllm.common import globals as llm_globals
 
 _RETRIEVER_MAX_TRACED_SCORES = 50
 
@@ -114,14 +115,13 @@ def _pop_ifs_matched_attrs() -> Dict[str, Any]:
 
 
 def _loop_output_attrs(target: Any) -> Dict[str, Any]:
-    count = getattr(target, '_trace_actual_iterations', None)
-    if count is None:
+    tid = getattr(target, 'id', None)
+    if not callable(tid):
         return {}
-    try:
-        target._trace_actual_iterations = None
-    except Exception:
-        pass
-    return {'lazyllm.loop.actual_iterations': count}
+    tr = llm_globals.get('trace')
+    ai = tr.get('actual_iterations') if isinstance(tr, dict) else None
+    count = ai.get(tid()) if isinstance(ai, dict) else None
+    return {} if count is None else {'lazyllm.loop.actual_iterations': count}
 
 
 def collect_trace_output_attrs(target: Any, output: Any) -> Dict[str, Any]:
