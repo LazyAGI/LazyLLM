@@ -30,31 +30,6 @@ class FlowException(HandledException):
     pass
 
 
-class _BindPipelineAdapter(object):
-    '''Holds a ``Bind`` so it can be wrapped by ``_FuncWrap`` for tracing (see ``FlowBase._add``).'''
-
-    __slots__ = ('_b',)
-
-    def __init__(self, b):
-        self._b = b
-
-    def __call__(self, *args, **kw):
-        return self._b(*args, **kw)
-
-    def __repr__(self):
-        return repr(self._b)
-
-
-def _bind_wraps_plain_callable(b) -> bool:
-    '''True for ``lambda | bind(...)``-style steps; false when inner is already a flow/module.'''
-    if not isinstance(b, bind):
-        return False
-    inner = getattr(b, '_f', None)
-    if inner is None or not callable(inner):
-        return False
-    return not (hasattr(inner, '_flow_id') or hasattr(inner, '_module_id'))
-
-
 class _FuncWrap(object):
     def __init__(self, f):
         self._f = f._f if isinstance(f, _FuncWrap) else f
@@ -323,11 +298,10 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
 
     # bind_args: dict(input=input, args=dict(key=value))
     def invoke(self, it, __input, *, bind_args_source=None, **kw):
-        bind_step = _bind_target_for_invoke(it)
-        if bind_step is not None:
+        if isinstance(it, bind):
             if isinstance(self, Pipeline):
-                bind_step._args = [self.output(a) if a in self._items else a for a in bind_step._args]
-                bind_step._kw = {k: self.output(v) if v in self._items else v for k, v in bind_step._kw.items()}
+                it._args = [self.output(a) if a in self._items else a for a in it._args]
+                it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
             kw['_bind_args_source'] = bind_args_source
         try:
             if not isinstance(it, LazyLLMFlowsBase) and isinstance(__input, (package, kwargs)):
@@ -438,11 +412,9 @@ class Pipeline(LazyLLMFlowsBase):
                 assert isinstance(output, tuple) and len(output) >= 2
                 exp = output[0]
                 output = output[1:]
-            if callable(self._stop_condition) and self.invoke(self._stop_condition, exp):
-                break
-        if isinstance(self, Loop):
-            # Consumed in tracing: LazyTracingHook.post_hook -> collect_trace_output_attrs (Loop)
-            self._trace_actual_iterations = _iteration_idx + 1
+            if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
+        if isinstance(self, Loop) and isinstance(tr := globals.get('trace'), dict):
+            tr.setdefault('actual_iterations', {})[self.id()] = _iteration_idx + 1
         if bind_flag:
             lazyllm.LOG.debug(f'delete {self.id()} form bind_args')
             locals['bind_args'].pop(self.id(), None)
