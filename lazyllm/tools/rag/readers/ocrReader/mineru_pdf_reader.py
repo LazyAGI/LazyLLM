@@ -52,11 +52,11 @@ class MineruPDFReader(_OcrReaderBase):
         }
         if not self._upload_mode:
             payload['files'] = [str(file)]
-            response = post_sync(self._url, payload=payload, timeout=self._timeout)
+            response = post_sync(self._url, json_payload=payload, timeout=self._timeout)
         else:
             with open(file, 'rb') as f:
                 files = {'upload_files': (os.path.basename(file), f)}
-                response = post_sync(self._url, payload=payload, files=files, timeout=self._timeout)
+                response = post_sync(self._url, json_payload=payload, files=files, timeout=self._timeout)
         return response.text
 
     def _fetch_async(self, file: Path, use_cache: bool) -> str:
@@ -78,9 +78,8 @@ class MineruPDFReader(_OcrReaderBase):
             payload['files'] = [str(file)]
 
         result = post_async(
-            submit_url=base_url + '/tasks',
-            status_url=base_url + '/tasks/{task_id}',
-            result_url=base_url + '/tasks/{task_id}/result',
+            submit_url=self._url,
+            status_url=self._url.rstrip('/') + '/{task_id}',
             payload=payload,
             files=files_payload,
             headers={'Authorization': f'Bearer {self._api_key}'},
