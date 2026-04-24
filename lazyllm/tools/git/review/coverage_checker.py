@@ -252,7 +252,7 @@ def _build_grep_results(
             idx = futs[fut]
             try:
                 ordered[idx] = fut.result()
-            except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError) as exc:
+            except (OSError, subprocess.SubprocessError, ValueError) as exc:
                 sym_name = symbols[idx].get('symbol', '')
                 lazyllm.LOG.warning(f'  [RCov] Grep failed for symbol "{sym_name}": {exc}')
                 ordered[idx] = (f'### {sym_name}', '(grep failed)')
