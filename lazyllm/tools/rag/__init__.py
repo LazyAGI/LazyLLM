@@ -4,7 +4,9 @@ check_dependency_by_group('rag')
 
 # flake8: noqa: E402
 from .document import Document
-from .doc_service import DocServer
+from .doc_service import (DocServer, DeleteRequest, ReparseRequest, AddRequest, UploadRequest,
+                           AddFileItem, TransferItem, TransferRequest, MetadataPatchItem,
+                           MetadataPatchRequest, DocStatus, DocServiceError, SourceType)
 from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever, ContextRetriever, WeightedRetriever, PriorityRetriever
 from .graph_retriever import GraphRetriever
@@ -33,6 +35,18 @@ __all__ = [
     'add_post_action_for_default_reader',
     'Document',
     'DocServer',
+    'DeleteRequest',
+    'ReparseRequest',
+    'AddRequest',
+    'UploadRequest',
+    'AddFileItem',
+    'TransferItem',
+    'TransferRequest',
+    'MetadataPatchItem',
+    'MetadataPatchRequest',
+    'DocStatus',
+    'DocServiceError',
+    'SourceType',
     'GraphDocument',
     'UrlGraphDocument',
     'Reranker',
