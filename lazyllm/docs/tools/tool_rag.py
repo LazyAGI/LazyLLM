@@ -138,29 +138,104 @@ add_chinese_doc('DocServer.upload', '''\
 add_english_doc('DocServer.reparse', '''\
 Reparse existing documents through the ``/v1/docs/reparse`` endpoint.
 
-The request body is a ``ReparseRequest`` with ``kb_id``, ``algo_id``, and ``doc_ids``. Use it after metadata
+The request body is a ``ReparseRequest`` with ``kb_id`` and ``doc_ids``. Use it after metadata
 or parsing configuration changes when you want to enqueue new parse tasks for existing documents.
+
+Specify either ``algo_id`` to reparse all node groups of that algorithm, or ``reparse_group``
+(a node-group name) to reparse a single group. The two fields are mutually exclusive — providing
+both raises a validation error. When neither is provided the first algorithm bound to the
+knowledge base is used and all its node groups are reparsed.
 ''')
 
 add_chinese_doc('DocServer.reparse', '''\
 通过 ``/v1/docs/reparse`` 接口重新解析已有文档。
 
-请求体为 ``ReparseRequest``，包含 ``kb_id``、``algo_id`` 和 ``doc_ids``。当元数据或解析配置变更后，
+请求体为 ``ReparseRequest``，包含 ``kb_id`` 和 ``doc_ids``。当元数据或解析配置变更后，
 需要为已有文档重新入队解析任务时，可使用该方法。
+
+可通过 ``algo_id`` 指定重解析该算法下的所有节点组，或通过 ``reparse_group``（节点组名称）
+指定仅重解析某一个节点组。两个字段互斥，同时传入会触发校验错误。若两者均不传，则使用知识库绑定的
+第一个算法，并重解析其所有节点组。
+''')
+
+add_english_doc('ReparseRequest', '''\
+Request model for the ``/v1/docs/reparse`` endpoint.
+
+Args:
+    doc_ids (List[str]): IDs of the documents to reparse. Must not be empty.
+    kb_id (str): Knowledge-base ID. Defaults to ``"__default__"``.
+    algo_id (Optional[str]): Algorithm ID whose node groups should all be reparsed.
+        Mutually exclusive with ``reparse_group``. When both are ``None`` the first
+        algorithm bound to the knowledge base is used.
+    reparse_group (Optional[str]): Name of a single node group to reparse.
+        Mutually exclusive with ``algo_id``. The owning algorithm is resolved
+        automatically from the knowledge-base bindings.
+    idempotency_key (Optional[str]): Optional idempotency key for deduplication.
+
+Raises:
+    ValueError: If ``doc_ids`` is empty, or if both ``algo_id`` and ``reparse_group``
+        are provided at the same time.
+''')
+
+add_chinese_doc('ReparseRequest', '''\
+``/v1/docs/reparse`` 接口的请求模型。
+
+Args:
+    doc_ids (List[str]): 需要重解析的文档 ID 列表，不能为空。
+    kb_id (str): 知识库 ID，默认为 ``"__default__"``。
+    algo_id (Optional[str]): 指定算法 ID，将重解析该算法下的所有节点组。
+        与 ``reparse_group`` 互斥。两者均为 ``None`` 时，使用知识库绑定的第一个算法。
+    reparse_group (Optional[str]): 指定单个节点组的名称，仅重解析该节点组。
+        与 ``algo_id`` 互斥，所属算法会从知识库绑定关系中自动推断。
+    idempotency_key (Optional[str]): 可选的幂等键，用于请求去重。
+
+Raises:
+    ValueError: ``doc_ids`` 为空，或同时传入了 ``algo_id`` 和 ``reparse_group`` 时抛出。
 ''')
 
 add_english_doc('DocServer.delete', '''\
 Delete documents from a knowledge base through the ``/v1/docs/delete`` endpoint.
 
-The request body is a ``DeleteRequest`` with ``kb_id``, ``algo_id``, and ``doc_ids``. Deletion is asynchronous,
+The request body is a ``DeleteRequest`` with ``kb_id`` and ``doc_ids``. Deletion is asynchronous,
 so the returned ``task_id`` should be tracked through the task APIs when you need final status.
+
+All algorithms bound to the knowledge base are handled automatically — there is no need to
+specify an ``algo_id``. If any algorithm's parse task is in WORKING state the request is
+rejected with ``E_STATE_CONFLICT``. WAITING add-tasks are cancelled before the delete proceeds.
 ''')
 
 add_chinese_doc('DocServer.delete', '''\
 通过 ``/v1/docs/delete`` 接口从知识库中删除文档。
 
-请求体为 ``DeleteRequest``，包含 ``kb_id``、``algo_id`` 和 ``doc_ids``。删除是异步操作，因此如果需要最终状态，
+请求体为 ``DeleteRequest``，包含 ``kb_id`` 和 ``doc_ids``。删除是异步操作，因此如果需要最终状态，
 应继续通过任务接口跟踪返回的 ``task_id``。
+
+知识库下绑定的所有算法均会被自动处理，无需指定 ``algo_id``。若任意算法的解析任务处于 WORKING
+状态，请求会被拒绝并返回 ``E_STATE_CONFLICT``；处于 WAITING 状态的添加任务会在删除前被自动取消。
+''')
+
+add_english_doc('DeleteRequest', '''\
+Request model for the ``/v1/docs/delete`` endpoint.
+
+Args:
+    doc_ids (List[str]): IDs of the documents to delete. Must not be empty.
+    kb_id (str): Knowledge-base ID. Defaults to ``"__default__"``.
+    idempotency_key (Optional[str]): Optional idempotency key for deduplication.
+
+Raises:
+    ValueError: If ``doc_ids`` is empty.
+''')
+
+add_chinese_doc('DeleteRequest', '''\
+``/v1/docs/delete`` 接口的请求模型。
+
+Args:
+    doc_ids (List[str]): 需要删除的文档 ID 列表，不能为空。
+    kb_id (str): 知识库 ID，默认为 ``"__default__"``。
+    idempotency_key (Optional[str]): 可选的幂等键，用于请求去重。
+
+Raises:
+    ValueError: ``doc_ids`` 为空时抛出。
 ''')
 
 add_english_doc('DocServer.patch_metadata', '''\
