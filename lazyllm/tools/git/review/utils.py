@@ -389,34 +389,43 @@ def _language_instruction(lang: str) -> str:
 def _normalize_comment_item(
     item: Dict[str, Any], new_start: int = 0, end_line: Optional[int] = None,
     default_path: str = '', default_category: str = 'logic',
+    allow_null_line: bool = False,
 ) -> Optional[Dict[str, Any]]:
     line = item.get('line')
     # LLM sometimes outputs 'description' instead of 'problem' (especially in R4)
     if item.get('problem') is None and item.get('description') is not None:
         item = dict(item, problem=item['description'])
-    if line is None or item.get('problem') is None:
-        lazyllm.LOG.info(f'[NORMALIZE_SKIP] missing line or problem: {str(item)[:200]}')
+    if item.get('problem') is None:
+        lazyllm.LOG.info(f'[NORMALIZE_SKIP] missing problem: {str(item)[:200]}')
         return None
+    if line is None:
+        if allow_null_line:
+            # General (PR-level) comment — no line binding needed
+            pass
+        else:
+            lazyllm.LOG.info(f'[NORMALIZE_SKIP] missing line or problem: {str(item)[:200]}')
+            return None
     try:
-        line = int(line)
+        line = int(line) if line is not None else None
     except (TypeError, ValueError):
         lazyllm.LOG.info(f'[NORMALIZE_SKIP] non-int line={line!r}: {str(item)[:200]}')
         return None
-    if end_line is not None:
-        # Allow a generous tolerance: LLM may reference lines slightly outside the hunk
-        # (e.g. from file_context). Hard-reject only clearly out-of-range lines.
-        hunk_size = max(end_line - new_start, 1)
-        tolerance = max(50, hunk_size // 4)
-        low = max(1, new_start - tolerance)
-        high = end_line + tolerance
-        if not (low <= line < high):
-            lazyllm.LOG.info(
-                f'[NORMALIZE_SKIP] line={line} out of range [{low}, {high}): '
-                f'{str(item)[:200]}'
-            )
+    if line is not None:
+        if end_line is not None:
+            # Allow a generous tolerance: LLM may reference lines slightly outside the hunk
+            # (e.g. from file_context). Hard-reject only clearly out-of-range lines.
+            hunk_size = max(end_line - new_start, 1)
+            tolerance = max(50, hunk_size // 4)
+            low = max(1, new_start - tolerance)
+            high = end_line + tolerance
+            if not (low <= line < high):
+                lazyllm.LOG.info(
+                    f'[NORMALIZE_SKIP] line={line} out of range [{low}, {high}): '
+                    f'{str(item)[:200]}'
+                )
+                return None
+        elif line <= 0:
             return None
-    elif line <= 0:
-        return None
     category = item.get('bug_category') or default_category
     if category not in _VALID_CATEGORIES:
         category = default_category

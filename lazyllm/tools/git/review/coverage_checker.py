@@ -359,6 +359,7 @@ def _rcov_evaluate_groups(
             normalized = _normalize_comment_item(
                 item, default_path=group_syms[0].get('file', ''),
                 default_category='maintainability',
+                allow_null_line=True,
             )
             if normalized is not None:
                 normalized['source'] = 'rcov'
