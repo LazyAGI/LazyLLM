@@ -1,7 +1,9 @@
 import base64
+import requests
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 from typing_extensions import override
+from concurrent.futures import ThreadPoolExecutor
 
 import lazyllm
 from lazyllm.thirdparty import bs4
@@ -49,15 +51,18 @@ class PaddleOCRPDFReader(_OcrReaderBase):
     @override
     def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
         blocks: List[Block] = []
+        image_tasks: List[tuple] = []
         for page_idx, page_data in enumerate(raw['result']['layoutParsingResults']):
             markdown_images = page_data['markdown']['images']
             for item in page_data['prunedResult']['parsing_res_list']:
-                block = self._adapt_one(item, page_idx, markdown_images)
+                block = self._adapt_one(item, page_idx, markdown_images, image_tasks)
                 if block is not None:
                     blocks.append(block)
+        self._download_images(image_tasks)
         return blocks
 
-    def _adapt_one(self, item: dict, page_idx: int, markdown_images: Dict[str, str]) -> Optional[Block]:
+    def _adapt_one(self, item: dict, page_idx: int, markdown_images: Dict[str, str],
+                   image_tasks: List[tuple]) -> Optional[Block]:
         label = item['block_label']
         if label in self._droped_types:
             return None
@@ -70,8 +75,11 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             return HeadingBlock(page=page, text=content)
         elif label == 'image':
             img_src = self._extract_img_path(content)
-            image_path = self._resolve_image_path(img_src, markdown_images)
-            return FigureBlock(page=page, image_path=image_path)
+            rel_path = Path(img_src).as_posix().lstrip('./')
+            save_path = self._image_cache_dir / rel_path
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            image_tasks.append((markdown_images[img_src], save_path))
+            return FigureBlock(page=page, image_path=Path(rel_path))
         elif label in ('table', 'chart'):
             return TableBlock(
                 page=page,
@@ -85,14 +93,16 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         else:
             return ParagraphBlock(page=page, text=content)
 
-    def _resolve_image_path(self, img_src: str, markdown_images: Dict[str, str]) -> Path:
-        img_b64 = markdown_images[img_src]
-        rel_path = Path(img_src)
-        clean_path = rel_path.as_posix().lstrip('./')
-        save_path = self._image_cache_dir / clean_path
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        save_path.write_bytes(base64.b64decode(img_b64))
-        return Path(clean_path)
+    @staticmethod
+    def _download_images(image_tasks: List[tuple]) -> None:
+        def _download_one(task: tuple) -> None:
+            img_url, save_path = task
+            resp = requests.get(img_url, timeout=120)
+            resp.raise_for_status()
+            save_path.write_bytes(resp.content)
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            executor.map(_download_one, image_tasks)
 
     @staticmethod
     def _extract_img_path(html: str) -> str:
