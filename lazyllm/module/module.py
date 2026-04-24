@@ -330,15 +330,15 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
         if (files := locals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
         if (history := locals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
 
-        def _invoke():
-            return (
-                self._call_impl(**args[0], **kw)
-                if args and isinstance(args[0], kwargs)
-                else self._call_impl(*args, **kw)
-            )
+        call_args = args
+        call_kw = kw
+        if args and isinstance(args[0], kwargs):
+            call_args = ()
+            call_kw = {**args[0], **kw}
+
         r = execution_with_hooks(
-            self, *args, map_exception=lambda e: _change_exception_type(e, ModuleExecutionError), **kw,
-        )(_invoke)()
+            self, *call_args, map_exception=lambda e: _change_exception_type(e, ModuleExecutionError), **call_kw,
+        )(self._call_impl)(*call_args, **call_kw)
 
         if self._return_trace:
             lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
