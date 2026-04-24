@@ -157,7 +157,7 @@ def _post_review_comments(
     # Build general (PR-level) review body from general_comments
     general_body_parts = []
     if general_comments:
-        general_body_parts.append('## General Review Comments\n')
+        general_body_parts.append('## General Review Comments')
         for c in general_comments:
             path_hint = f'`{c["path"]}`  ' if c.get('path') else ''
             category_tag = f'[{c.get("bug_category", "maintainability")}]'
@@ -188,13 +188,15 @@ def _post_review_comments(
                      f'{len(batches)} batch(es))', len(batches))
     posted = sum(len(batches[i]) for i in done_batches if i < len(batches))
     all_ok = True
+    first_sent = False
     for idx, batch in enumerate(batches):
         if idx in done_batches:
             prog.update(f'batch {idx + 1}/{len(batches)}: skipped (already posted)')
             continue
-        body = combined_review_body if (idx == 0 or not done_batches) else ''
+        body = combined_review_body if not first_sent else ''
         ok = _submit_with_retry(backend, pr_number, head_sha, batch, body)
         if ok:
+            first_sent = True
             posted += len(batch)
             done_batches.add(idx)
             if ckpt:

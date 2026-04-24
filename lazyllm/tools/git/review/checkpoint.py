@@ -104,7 +104,6 @@ class _ReviewCheckpoint:
         'r3': ReviewStage.R3,
         'r3_shared_context': ReviewStage.R3,
         'final': ReviewStage.FINAL,
-        '_review_round_version': ReviewStage.FINAL,
         'final_comments': ReviewStage.UPLOAD,
         'upload_done_batches': ReviewStage.UPLOAD,
     }
@@ -161,9 +160,6 @@ class _ReviewCheckpoint:
             return ReviewStage.R1
         if key.startswith('r3_file_') or key.startswith('r3_disc_') or key.startswith('r3_group_'):
             return ReviewStage.R3
-        # Dynamic keys with 'rmod_' prefix are also mapped to RMOD stage (reserved for future per-file RMOD keys)
-        if key.startswith('rmod_'):
-            return ReviewStage.RMOD
         if key.startswith(self._STAGE_DONE_PREFIX):
             stage_val = key[len(self._STAGE_DONE_PREFIX):]
             try:

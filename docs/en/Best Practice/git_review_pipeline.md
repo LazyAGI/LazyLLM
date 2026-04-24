@@ -67,7 +67,7 @@ review(pr_number, ...)
 | 12 | RMod | ReactAgent modification-necessity analysis: flag unnecessary changes per file |
 | 13 | Round 4 | Deterministic dedup + LLM merge + lint fusion → `final_comments` |
 | 14 | RCov | Test coverage check: identify untested symbols, evaluate gaps → `rcov_issues` (bypasses R4 dedup) |
-| 15 | Publish | Submit platform review; update checkpoint `UPLOAD` stage |
+| 15 | Publish | Merge `final_comments + rcov_issues`, submit platform review; update checkpoint `UPLOAD` stage |
 | 16 | Cleanup | Delete `{pr_dir}/clone/`; retain `checkpoint.json` |
 
 ---
@@ -460,7 +460,8 @@ conventions.
 1. `_rmod_collect_file_diffs` extracts per-file diffs; `_rmod_new_file_paths` identifies newly
    created files (correctly handles `--- /dev/null` → `+++ b/` ordering in unified diff format).
 2. For each file, a `ReactAgent` is launched with the same file-exploration tools as R3
-   (`read_file_scoped`, `search_scoped`, etc.). The agent is given the PR design doc, arch doc,
+   (`read_file_lines`, `read_file_skeleton_scoped`, `grep_symbol`, `list_directory`, etc.).
+   The agent is given the PR design doc, arch doc,
    and framework conventions as context.
 3. The agent runs with a per-file timeout (`_RMOD_AGENT_TIMEOUT_SECS`). Files are processed in
    parallel (up to `max_workers` threads).
@@ -618,8 +619,12 @@ from R1.
 ### 8.2 Commentable Line Filtering (`_filter_commentable`)
 
 Platforms only allow line-level comments on lines that are actually changed in the diff.
-`_build_commentable_lines` parses the diff to build a `{path: set(lines)}` map, filtering out
-issues not in the changed range (downgraded to PR-level comments or discarded).
+`_build_commentable_lines` parses the diff to build a `{path: set(lines)}` map.
+`_filter_commentable` returns a **three-tuple** `(inline, general, dropped)`:
+- `inline`: issues with a valid, in-diff line number → posted as line-level review comments.
+- `general`: issues with `line=None` (e.g., RCov coverage issues) → posted as PR-level comments
+  in the review body under a "General Review Comments" section.
+- `dropped`: issues whose line number is outside the changed range and cannot be mapped → discarded.
 
 ### 8.3 Comment Body Policy
 

@@ -357,8 +357,9 @@ def review(  # noqa: C901
     # RCov runs after RScene so it can use inferred scenarios to check coverage
     _rcov_ran = False
     rcov_issues: List[Dict[str, Any]] = []
-    if ckpt.should_use_cache(ReviewStage.RCOV) and ckpt.get('rcov_issues') is not None:
-        rcov_issues = ckpt.get('rcov_issues') or []
+    _cached_rcov = ckpt.get('rcov_issues')
+    if ckpt.should_use_cache(ReviewStage.RCOV) and _cached_rcov is not None:
+        rcov_issues = _cached_rcov if _cached_rcov else []
         lazyllm.LOG.info(f'RCov: loaded {len(rcov_issues)} issue(s) from checkpoint')
     elif clone_dir and os.path.isdir(clone_dir):
         # Derive timeout from diff size: 3 serial+parallel LLM call slots × 90s base,

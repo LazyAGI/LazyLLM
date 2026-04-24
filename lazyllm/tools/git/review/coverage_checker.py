@@ -252,7 +252,7 @@ def _build_grep_results(
             idx = futs[fut]
             try:
                 ordered[idx] = fut.result()
-            except Exception as exc:
+            except (OSError, subprocess.SubprocessError, UnicodeDecodeError, ValueError) as exc:
                 sym_name = symbols[idx].get('symbol', '')
                 lazyllm.LOG.warning(f'  [RCov] Grep failed for symbol "{sym_name}": {exc}')
                 ordered[idx] = (f'### {sym_name}', '(grep failed)')
@@ -371,7 +371,7 @@ def _rcov_evaluate_groups(
     with ThreadPoolExecutor(max_workers=n_workers) as ex:
         futs = {ex.submit(_evaluate_group, g): g for g in groups}
         try:
-            for fut in as_completed(futs, timeout=_RCOV_GROUP_TIMEOUT_SECS * n_workers):
+            for fut in as_completed(futs, timeout=_RCOV_GROUP_TIMEOUT_SECS):
                 try:
                     all_issues.extend(fut.result())
                 except Exception as e:
@@ -381,7 +381,7 @@ def _rcov_evaluate_groups(
         except FuturesTimeoutError:
             lazyllm.LOG.warning(
                 f'  [RCov] Overall coverage evaluation timed out after '
-                f'{_RCOV_GROUP_TIMEOUT_SECS * n_workers}s, cancelling remaining groups'
+                f'{_RCOV_GROUP_TIMEOUT_SECS}s, cancelling remaining groups'
             )
             for fut in futs:
                 fut.cancel()

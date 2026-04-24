@@ -26,6 +26,8 @@ _GIT_ENV: Dict[str, str] = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPA
 
 _SKIP_DIRS = {'.git', '__pycache__', '.cache', '.tox', 'node_modules', '.mypy_cache', '.pytest_cache', 'dist', 'build'}
 _SKIP_EXTS = {'.pyc', '.pyo', '.so', '.egg', '.egg-info'}
+# Concurrency patterns are sparse; use higher result limit to ensure sufficient coverage
+_CONCURRENCY_MAX_RESULTS = 20
 _ARCH_SNAPSHOT_BUDGET = 6000
 _ARCH_OUTLINE_MAX_SECTIONS = 13
 _ARCH_OUTLINE_MAX_SECTIONS_WITH_AGENT = 10
@@ -1358,7 +1360,7 @@ def _arch_collect_env_deps(clone_dir: str) -> str:
                     content = f.read(3000)
                 parts.append(f'# {fname}\n{content}')
             except OSError:
-                pass
+                lazyllm.LOG.debug(f'Failed to read dependency file {fpath}, skipping')
     return '\n\n'.join(parts)[:6000] if parts else '(no dependency files found)'
 
 
@@ -1374,7 +1376,7 @@ def _arch_collect_snippets_for_section(clone_dir: str, section: Dict[str, Any]) 
         )
     if 'concurrency' in title_lower or 'multi-user' in title_lower:
         return _arch_collect_snippets(
-            clone_dir, section, max_chars=6000, max_results_per_pattern=20,
+            clone_dir, section, max_chars=6000, max_results_per_pattern=_CONCURRENCY_MAX_RESULTS,
         )
     return _arch_collect_snippets(clone_dir, section)
 
@@ -2938,8 +2940,6 @@ def _run_local_arch_analysis(
                 f'Local arch analysis failed, downstream LLM calls will use empty arch_doc: {e}',
                 exc_info=True,
             )
-            if arch_doc:
-                _save_cache(arch_cache_path, 'arch_doc', arch_doc)
             prog.done('skipped (local arch analysis failed, proceeding without arch context)')
     else:
         _save_cache(arch_cache_path, 'arch_doc', arch_doc)

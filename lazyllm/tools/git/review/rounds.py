@@ -1485,7 +1485,7 @@ _r3_agent_instance_counter = [0]
 
 def _make_traced_tool(tool: Any, step_counter: List[int], path: str,
                       log_list: Optional[List[str]] = None,
-                      round_name: str = 'R2') -> Any:
+                      round_name: str = 'Agent') -> Any:
     import inspect
     sig = inspect.signature(tool)
     params = list(sig.parameters.keys())
@@ -1756,7 +1756,7 @@ def _r3_build_file_context(
         fut = ex.submit(agent, prompt)
         try:
             raw = fut.result(timeout=_R3_FILE_TIMEOUT_SECS)
-        except TimeoutError:
+        except FuturesTimeoutError:
             raise RuntimeError(f'Round 3 context collection timed out for {path} after {_R3_FILE_TIMEOUT_SECS}s')
     lazyllm.LOG.info(f'  [Agent] Done {path}')
     raw_str = raw if isinstance(raw, str) else str(raw)
