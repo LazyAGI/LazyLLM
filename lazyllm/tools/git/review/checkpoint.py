@@ -13,11 +13,16 @@ class ReviewStage(enum.Enum):
     ARCH = 'arch'
     SPEC = 'spec'
     PR_SUMMARY = 'pr_summary'
+    RSCENE = 'rscene'
+    RCHAIN = 'rchain'
     R1 = 'r1'
     R2A = 'r2a'
     R2 = 'r2'
+    RMOD = 'rmod'
+    RCOV = 'rcov'
     R3 = 'r3'
     FINAL = 'final'
+    MERGE = 'merge'
     UPLOAD = 'upload'
 
     @staticmethod
@@ -36,9 +41,9 @@ class ReviewStage(enum.Enum):
 
 _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
-    ReviewStage.PR_SUMMARY, ReviewStage.R1,
-    ReviewStage.R2A, ReviewStage.R2,
-    ReviewStage.R3, ReviewStage.FINAL, ReviewStage.UPLOAD,
+    ReviewStage.PR_SUMMARY, ReviewStage.RSCENE, ReviewStage.RCHAIN,
+    ReviewStage.R1, ReviewStage.R2A, ReviewStage.R2, ReviewStage.RMOD,
+    ReviewStage.R3, ReviewStage.RCOV, ReviewStage.FINAL, ReviewStage.MERGE, ReviewStage.UPLOAD,
 ]
 
 
@@ -83,16 +88,33 @@ def _save_cache_multi(cache_path: Optional[str], entries: Dict[str, Any]) -> Non
 
 
 class _ReviewCheckpoint:
-    _KEYS = ('arch_doc', 'review_spec', 'r3_shared_context', 'r1', 'pr_design_doc', 'r2', 'r3', 'final')
     _STAGE_DONE_PREFIX = '_stage_done_'
     _INVALIDATED_FROM_KEY = '_invalidated_from'
-    _KEY_TO_STAGE: Dict[str, 'ReviewStage'] = {}
+    _KEY_TO_STAGE: Dict[str, 'ReviewStage'] = {
+        'clone_dir': ReviewStage.CLONE,
+        'head_sha': ReviewStage.CLONE,
+        'diff_text': ReviewStage.CLONE,
+        'arch_doc': ReviewStage.ARCH,
+        'review_spec': ReviewStage.SPEC,
+        'pr_summary': ReviewStage.PR_SUMMARY,
+        'r1': ReviewStage.R1,
+        'pr_design_doc': ReviewStage.R2A,
+        'r2': ReviewStage.R2,
+        'rmod': ReviewStage.RMOD,
+        'rcov_issues': ReviewStage.RCOV,
+        'r3': ReviewStage.R3,
+        'r3_shared_context': ReviewStage.R3,
+        'final': ReviewStage.FINAL,
+        'final_comments': ReviewStage.FINAL,
+        'merged_comments': ReviewStage.MERGE,
+        'upload_done_batches': ReviewStage.UPLOAD,
+    }
     _PIPELINE_VERSION_KEY = '_pipeline_version'
     # Bump _PIPELINE_VERSION to invalidate ALL cached stages across ALL PRs
     _PIPELINE_VERSION = 3
     _REVIEW_ROUND_VERSION_KEY = '_review_round_version'
     # Bump _REVIEW_ROUND_VERSION to invalidate only the FINAL (R4) stage cache
-    _REVIEW_ROUND_VERSION = 4
+    _REVIEW_ROUND_VERSION = 5
 
     def __init__(self, path: str, resume_from: Optional[ReviewStage] = None) -> None:
         self._path = path
@@ -132,24 +154,6 @@ class _ReviewCheckpoint:
             return None
 
     def _stage_for_key(self, key: str) -> Optional[ReviewStage]:
-        if not _ReviewCheckpoint._KEY_TO_STAGE:
-            _ReviewCheckpoint._KEY_TO_STAGE = {
-                'clone_dir': ReviewStage.CLONE,
-                'head_sha': ReviewStage.CLONE,
-                'arch_doc': ReviewStage.ARCH,
-                'review_spec': ReviewStage.SPEC,
-                'pr_summary': ReviewStage.PR_SUMMARY,
-                'r1': ReviewStage.R1,
-                'pr_design_doc': ReviewStage.R2A,
-                'r2': ReviewStage.R2,
-                'r3': ReviewStage.R3,
-                'r3_shared_context': ReviewStage.R3,
-                'final': ReviewStage.FINAL,
-                '_review_round_version': ReviewStage.FINAL,
-                'diff_text': ReviewStage.CLONE,
-                'final_comments': ReviewStage.UPLOAD,
-                'upload_done_batches': ReviewStage.UPLOAD,
-            }
         if key in _ReviewCheckpoint._KEY_TO_STAGE:
             return _ReviewCheckpoint._KEY_TO_STAGE[key]
         if key.startswith('r1_hunk_'):
