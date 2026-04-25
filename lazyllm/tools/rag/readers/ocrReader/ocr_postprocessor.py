@@ -16,13 +16,13 @@ from .ocr_ir import (
 
 def l1_normalize(blocks: List[Block]) -> List[Block]:
     """L1 normalization: reorder blocks by reading order, validate heading levels, drop TOC pages."""
-    blocks = _reorder_reading(blocks)
-    blocks = _normalize_headings(blocks)
+    # blocks = _two_column_reorder_reading(blocks)
+    # blocks = _detect_heading_level_gap(blocks)
     blocks = _drop_toc_pages(blocks)
     return blocks
 
 
-def _reorder_reading(blocks: List[Block]) -> List[Block]:
+def _two_column_reorder_reading(blocks: List[Block]) -> List[Block]:
     """Restore natural reading order per page.
 
     Groups blocks by page, then detects two-column layouts by analysing the
@@ -71,7 +71,7 @@ def _reorder_reading(blocks: List[Block]) -> List[Block]:
     return result
 
 
-def _normalize_headings(blocks: List[Block]) -> List[Block]:
+def _detect_heading_level_gap(blocks: List[Block]) -> List[Block]:
     """Detect heading level gaps and log anomalies.
 
     Scans heading blocks in document order. If a heading level jumps by more
@@ -118,7 +118,7 @@ def _drop_toc_pages(blocks: List[Block]) -> List[Block]:
 
 def l2_associate(blocks: List[Block]) -> List[Block]:
     """L2 association: merge cross-page tables, pair captions, inject section paths, merge paragraphs."""
-    blocks = _merge_cross_page_tables(blocks)
+    # blocks = _merge_cross_page_tables(blocks)
     caption_indices = _pair_captions(blocks)
     blocks = [b for i, b in enumerate(blocks) if i not in caption_indices]
     blocks = _inject_section_path(blocks)
