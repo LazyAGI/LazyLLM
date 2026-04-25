@@ -48,12 +48,23 @@ def _reorder_reading(blocks: List[Block]) -> List[Block]:
         right_count = len(x0s) - left_count
 
         if left_count > 1 and right_count > 1 and min(left_count, right_count) >= len(x0s) * 0.25:
-            left_blocks = [b for b in page_blocks if b.page.bbox.x0 < mid_x]
-            right_blocks = [b for b in page_blocks if b.page.bbox.x0 >= mid_x]
-            left_blocks.sort(key=lambda b: b.page.bbox.y0)
-            right_blocks.sort(key=lambda b: b.page.bbox.y0)
-            result.extend(left_blocks)
-            result.extend(right_blocks)
+            left_x0s = [x for x in x0s if x < mid_x]
+            right_x0s = [x for x in x0s if x >= mid_x]
+            page_width = max(x0s) - min(x0s)
+            min_col_width = page_width * 0.15
+            left_width = max(left_x0s) - min(left_x0s)
+            right_width = max(right_x0s) - min(right_x0s)
+
+            if left_width >= min_col_width and right_width >= min_col_width:
+                left_blocks = [b for b in page_blocks if b.page.bbox.x0 < mid_x]
+                right_blocks = [b for b in page_blocks if b.page.bbox.x0 >= mid_x]
+                left_blocks.sort(key=lambda b: b.page.bbox.y0)
+                right_blocks.sort(key=lambda b: b.page.bbox.y0)
+                result.extend(left_blocks)
+                result.extend(right_blocks)
+            else:
+                page_blocks.sort(key=lambda b: (b.page.bbox.y0, b.page.bbox.x0))
+                result.extend(page_blocks)
         else:
             page_blocks.sort(key=lambda b: (b.page.bbox.y0, b.page.bbox.x0))
             result.extend(page_blocks)
@@ -158,15 +169,12 @@ def _should_merge_tables(a: TableBlock, b: TableBlock) -> bool:
     Checks Jaccard header similarity (>0.8), vertical position heuristics
     (a near page bottom, b near page top), and avoids exact duplicate
     last/first rows.
+
+    Also merges when the first table has very few data rows (≤1), which
+    indicates a header-only continuation page with a different header.
     """
     a_header = _get_table_header_text(a)
     b_header = _get_table_header_text(b)
-    if not a_header or not b_header:
-        return False
-
-    sim = _jaccard_similarity(a_header, b_header)
-    if sim < 0.8:
-        return False
 
     a_bottom = a.page.bbox.y1
     b_top = b.page.bbox.y0
@@ -181,7 +189,15 @@ def _should_merge_tables(a: TableBlock, b: TableBlock) -> bool:
     if a_last and b_first and a_last == b_first:
         return False
 
-    return True
+    if a_header and b_header:
+        sim = _jaccard_similarity(a_header, b_header)
+        if sim >= 0.8:
+            return True
+
+    # Allow merge when the first table has ≤1 data row (likely a
+    # header-only continuation page with a different header).
+    a_data_rows = len(set(c.row for c in a.cells)) - (1 if a_header else 0)
+    return a_data_rows <= 1
 
 
 def _get_table_header_text(t: TableBlock) -> str:
