@@ -76,13 +76,24 @@ class MineruPDFReader(_OcrReaderBase):
         response = post_sync(self._url, json_payload=payload, timeout=self._timeout)
         return response.text
 
-    def _upload_to_mineru_oss(self, file_path: str) -> str:
-        """Upload a local file to MinerU OSS and return the accessible URL."""
+    def _fetch_async(self, file, use_cache: bool) -> str:
+        file_str = str(file)
+
+        if file_str.startswith(('http://', 'https://')):
+            return self._fetch_async_by_url(file_str)
+        return self._fetch_async_by_upload(file_str)
+
+    def _fetch_async_by_upload(self, file_path: str) -> str:
+        """Upload a local file via batch presigned URL and fetch result."""
         import requests
+        import time
 
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self._api_key}'}
+
+        # Step 1: Request presigned upload URL
         payload = {
             'files': [{'name': os.path.basename(file_path)}],
+            'model_version': 'vlm',
         }
         resp = post_sync(
             'https://mineru.net/api/v4/file-urls/batch',
@@ -91,30 +102,43 @@ class MineruPDFReader(_OcrReaderBase):
             timeout=self._timeout,
         )
         data = resp.json()
+        batch_id = data['data']['batch_id']
         file_url = data['data']['file_urls'][0]
 
+        # Step 2: Upload file to OSS
         with open(file_path, 'rb') as f:
             upload_resp = requests.put(file_url, data=f, timeout=self._timeout or 300)
             upload_resp.raise_for_status()
 
-        return file_url
+        # Step 3: Poll batch results
+        status_url = f'https://mineru.net/api/v4/extract-results/batch/{batch_id}'
+        for _ in range(120):
+            status_resp = requests.get(status_url, headers=headers, timeout=self._timeout or 30)
+            status_resp.raise_for_status()
+            status_data = status_resp.json()
+            extract_result = status_data.get('data', {}).get('extract_result', [])
+            if extract_result:
+                state = extract_result[0].get('state')
+                if state == 'done':
+                    full_zip_url = extract_result[0].get('full_zip_url')
+                    zip_resp = requests.get(full_zip_url, timeout=self._timeout or 120)
+                    zip_resp.raise_for_status()
+                    return self._extract_content_from_zip(zip_resp.content)
+                elif state == 'failed':
+                    raise RuntimeError(
+                        f'[MineruPDFReader] Batch task failed: {extract_result[0].get("err_msg")}')
+            time.sleep(3)
 
-    def _fetch_async(self, file, use_cache: bool) -> str:
-        file_str = str(file)
+        raise TimeoutError('[MineruPDFReader] Batch polling timed out')
 
-        # Must upload local file to MinerU OSS first
-        if not file_str.startswith(('http://', 'https://')):
-            file_str = self._upload_to_mineru_oss(file_str)
-
+    def _fetch_async_by_url(self, file_url: str) -> str:
+        """Submit a remote URL for extraction and fetch result."""
         payload = {
             'return_md': True,
             'return_content_list': True,
-            'backend': self._backend,
-            'table_enable': True,
-            'formula_enable': True,
-            'url': file_str,
+            'model_version': 'vlm',
+            'url': file_url,
         }
-
         result = post_async(
             submit_url=self._url,
             status_url=self._url.rstrip('/') + '/{task_id}',
@@ -123,6 +147,7 @@ class MineruPDFReader(_OcrReaderBase):
             timeout=self._timeout,
             result_extractor=lambda resp: resp.json().get('data', {}).get('full_zip_url'),
         )
+        import requests
         zip_resp = requests.get(result, timeout=self._timeout or 120)
         zip_resp.raise_for_status()
         return self._extract_content_from_zip(zip_resp.content)
@@ -168,7 +193,7 @@ class MineruPDFReader(_OcrReaderBase):
             return None
 
         text_level = item.get('text_level', -1)
-        text = item['text']
+        text = item.get('text', '')
         page_idx = item['page_idx']
         bbox = BBox.from_list(item['bbox'])
 
