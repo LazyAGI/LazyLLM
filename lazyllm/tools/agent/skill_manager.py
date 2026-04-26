@@ -1,6 +1,7 @@
 import os
 import re
 import shlex
+import threading
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import yaml
@@ -38,8 +39,10 @@ execute the workflow steps, constraints, and examples in order.
 4) **Adapt workflow to the current task**: Before execution, map the workflow
 to the user's actual goal, constraints, and available inputs; do not apply
 steps blindly.
-5) **Load support files only when needed**: Use `read_reference` to read referenced files on demand.
-6) **Run helper scripts only when required**: Use `run_script` with absolute paths and request approval if risky.
+5) **Load support files only when needed**: Use `read_reference` only for exact relative paths explicitly listed in
+the skill's SKILL.md. Do not invent reference file paths.
+6) **Run helper scripts only when required**: Use `run_script` only for exact relative script paths explicitly listed in
+the skill's SKILL.md. Do not invent script paths such as `scripts/...`; request approval if risky.
 
 ### Reference and Script
 - **Reference**: Documentation and guidance files (e.g., design notes,
@@ -49,6 +52,10 @@ steps blindly.
   scripts with `run_script` instead of writing new programs from scratch.
 - If a suitable script already exists in the skill, use it first. Only write
   new code when the existing scripts cannot satisfy the task.
+- Only call `read_reference` or `run_script` after reading the skill instructions
+  with `get_skill`, and only when SKILL.md explicitly names the target relative
+  path. If no path is listed, continue with the available instructions and other
+  tools instead of guessing a file path.
 
 ### When Skills Help
 - The user asks for a structured or repeatable process
@@ -56,7 +63,7 @@ steps blindly.
 - The skill provides a proven workflow for complex tasks
 
 ### Script Execution
-Skills may include Python or shell scripts. Prefer `run_script` for scripts provided by the selected skill.
+Skills may include Python or shell scripts. Prefer `run_script` for scripts explicitly listed by the selected skill.
 Use `shell_tool` only when needed, and always use absolute paths.
 
 ### Example
@@ -83,14 +90,15 @@ class SkillManager(ModuleBase):
         super().__init__(return_trace=False)
         self._fs = fs or fsspec.implementations.local.LocalFileSystem()
         self._is_local = fs is None
-        self._skills_dir = self._parse_dirs(dir) if dir else (
-            self._parse_dirs(config['skills_dir']) if self._is_local else []
+        self._skills_dir = self._parse_dirs(dir, is_local=self._is_local) if dir else (
+            self._parse_dirs(config['skills_dir'], is_local=self._is_local) if self._is_local else []
         )
         self._validate_fs_dir_consistency(fs, self._skills_dir)
         self._skills_expected = self._parse_skills(skills)
         self._max_skill_md_bytes = max_skill_md_bytes or config['max_skill_md_bytes']
         self._skills_index: Dict[str, Dict] = {}
         self._skills_selected: List[str] = []
+        self._skills_index_lock = threading.Lock()
 
     @staticmethod
     def _extract_protocol(path: str) -> Optional[str]:
@@ -123,7 +131,7 @@ class SkillManager(ModuleBase):
                     )
 
     @staticmethod
-    def _parse_dirs(dir_value: Optional[str]) -> List[str]:
+    def _parse_dirs(dir_value: Optional[str], is_local: Optional[bool] = True) -> List[str]:
         if not dir_value:
             return []
         dirs = [d.strip() for d in dir_value.split(',') if d.strip()] if isinstance(dir_value, str) else list(dir_value)
@@ -134,7 +142,8 @@ class SkillManager(ModuleBase):
                 continue
             # Keep cloud paths (protocol:/ prefix) as-is; expand local paths.
             # Use the same regex as _extract_protocol for consistency.
-            path = d if re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*(@[^:/]+)?:/', d) else os.path.abspath(os.path.expanduser(d))
+            is_cloud_path = bool(re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*(@[^:/]+)?:/', d))
+            path = d if is_cloud_path or not is_local else os.path.abspath(os.path.expanduser(d))
             if path not in seen:
                 seen.add(path)
                 result.append(path)
@@ -223,38 +232,43 @@ class SkillManager(ModuleBase):
     def _load_skills_index(self) -> None:
         if self._skills_index:
             return
-        seen: set = set()
-        for skill_dir, skill_md in self._iter_skill_files():
-            if self._fs_getsize(skill_md) > self._max_skill_md_bytes:
-                continue
-            try:
-                content = self._fs_read(skill_md)
-            except Exception:
-                continue
-            meta = self._extract_yaml_meta(content)
-            if not self._is_meta_valid(meta):
-                continue
-            name = meta.get('name')
-            if not name or name in seen:
-                continue
-            seen.add(name)
-            self._skills_index[name] = {
-                'name': name,
-                'description': meta.get('description', ''),
-                'argument-hint': meta.get('argument-hint', ''),
-                'disable-model-invocation': self._to_bool(meta.get('disable-model-invocation', False)),
-                'user-invocable': self._to_bool(meta.get('user-invocable', True)),
-                'allowed-tools': meta.get('allowed-tools'),
-                'path': skill_dir,
-                'skill_md': skill_md,
-                'raw_meta': meta,
-            }
-        if self._skills_expected:
-            self._skills_selected = [n for n in self._skills_expected if n in self._skills_index]
-        else:
-            self._skills_selected = [
-                n for n, info in self._skills_index.items() if not info.get('disable-model-invocation')
-            ]
+        with self._skills_index_lock:
+            if self._skills_index:
+                return
+            skills_index: Dict[str, Dict] = {}
+            seen: set = set()
+            for skill_dir, skill_md in self._iter_skill_files():
+                if self._fs_getsize(skill_md) > self._max_skill_md_bytes:
+                    continue
+                try:
+                    content = self._fs_read(skill_md)
+                except Exception:
+                    continue
+                meta = self._extract_yaml_meta(content)
+                if not self._is_meta_valid(meta):
+                    continue
+                name = meta.get('name')
+                if not name or name in seen:
+                    continue
+                seen.add(name)
+                skills_index[name] = {
+                    'name': name,
+                    'description': meta.get('description', ''),
+                    'argument-hint': meta.get('argument-hint', ''),
+                    'disable-model-invocation': self._to_bool(meta.get('disable-model-invocation', False)),
+                    'user-invocable': self._to_bool(meta.get('user-invocable', True)),
+                    'allowed-tools': meta.get('allowed-tools'),
+                    'path': skill_dir,
+                    'skill_md': skill_md,
+                    'raw_meta': meta,
+                }
+            self._skills_index = skills_index
+            if self._skills_expected:
+                self._skills_selected = [n for n in self._skills_expected if n in self._skills_index]
+            else:
+                self._skills_selected = [
+                    n for n, info in self._skills_index.items() if not info.get('disable-model-invocation')
+                ]
 
     def list_skill(self) -> str:
         self._load_skills_index()
@@ -357,7 +371,7 @@ class SkillManager(ModuleBase):
             return {'status': 'error', 'error': 'run_script is not supported for cloud FS skills'}
         base = info['path']
         script_path = os.path.join(base, rel_path)
-        if not os.path.exists(script_path):
+        if not self._fs.exists(script_path):
             return {'status': 'missing', 'path': script_path}
         ext = os.path.splitext(script_path)[1].lower()
         cmd = ['python' if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh', script_path]

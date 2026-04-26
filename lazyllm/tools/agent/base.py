@@ -25,7 +25,8 @@ class LazyLLMAgentBase(ModuleBase):
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
                  desc: str = '', workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
-                 fs: Optional[Any] = None, skills_dir: Optional[str] = None):
+                 fs: Optional[Any] = None, skills_dir: Optional[str] = None,
+                 enable_builtin_tools: bool = True):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
         if not use_skills and (fs is not None or skills_dir is not None):
@@ -47,11 +48,15 @@ class LazyLLMAgentBase(ModuleBase):
         self._agent = None
         self._skill_manager = None
         self._sandbox = sandbox or create_sandbox()
+        self._builtin_tool_names = set()
+        self._skill_tool_names = set()
+        self._enable_builtin_tools = enable_builtin_tools
 
         if use_skills:
             self._skill_manager = SkillManager(dir=skills_dir, skills=self._skills, fs=fs)
             self._ensure_default_skill_tools()
         self._tools_manager = ToolManager(self._tools, return_trace=return_trace, sandbox=self._sandbox)
+        self._set_default_tool_sandbox_policy()
 
     @staticmethod
     def _normalize_skills_config(skills: Optional[Union[bool, str, Iterable[str]]]):
@@ -105,10 +110,11 @@ class LazyLLMAgentBase(ModuleBase):
         assert self._tools, 'tools cannot be empty.'
 
     def _ensure_default_skill_tools(self):
-        builtin_group = getattr(lazyllm, 'builtin_tools', None)
         builtin_names = []
+        builtin_group = getattr(lazyllm, 'builtin_tools', None) if self._enable_builtin_tools else None
         if builtin_group:
             builtin_names = [f'builtin_tools.{name}' for name in builtin_group.keys()]
+        self._builtin_tool_names = {name.split('.')[-1] for name in builtin_names}
         existing = set()
         for tool in self._tools:
             if isinstance(tool, str):
@@ -120,7 +126,16 @@ class LazyLLMAgentBase(ModuleBase):
                 self._tools.append(name)
         if self._skill_manager:
             for tool in self._skill_manager.get_skill_tools():
+                self._skill_tool_names.add(tool.__name__)
                 self._tools.append(tool)
+
+    def _set_default_tool_sandbox_policy(self):
+        forced_non_sandbox = self._builtin_tool_names | self._skill_tool_names
+        if not forced_non_sandbox:
+            return
+        for tool in self._tools_manager.all_tools:
+            if tool.name in forced_non_sandbox:
+                tool.execute_in_sandbox = False
 
     def _append_skills_prompt(self, prompt: str) -> str:
         if not self._skill_manager:
