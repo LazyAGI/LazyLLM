@@ -90,9 +90,6 @@ class TracingRuntime:
         with self._lock:
             if self._initialized:
                 return self._tracer is not None
-            # Match start_span: do not import OTel / probe backends until tracing is on
-            # for this process (config or trace context). Avoids startup warnings when
-            # tracing is unused; leaves _initialized False so enable_trace can init later.
             if not self._trace_enabled(get_trace_context()):
                 return False
             self._initialized = True
