@@ -96,13 +96,31 @@ def push_ifs_matched_attrs(matched: Dict[str, Any]) -> None:
     _ifs_matched_stack.set(current + [matched])
 
 
+def _matched_dict_from_frame(matched: Dict[str, Any]) -> Dict[str, Any]:
+    return {f'lazyllm.matched.{k}': v for k, v in matched.items()}
+
+
+def _peek_switch_matched_attrs() -> Dict[str, Any]:
+    stack = _switch_matched_stack.get()
+    if not stack:
+        return {}
+    return _matched_dict_from_frame(stack[-1])
+
+
+def _peek_ifs_matched_attrs() -> Dict[str, Any]:
+    stack = _ifs_matched_stack.get()
+    if not stack:
+        return {}
+    return _matched_dict_from_frame(stack[-1])
+
+
 def _pop_switch_matched_attrs() -> Dict[str, Any]:
     stack = _switch_matched_stack.get()
     if not stack:
         return {}
     matched = stack[-1]
     _switch_matched_stack.set(stack[:-1] or None)
-    return {f'lazyllm.matched.{k}': v for k, v in matched.items()}
+    return _matched_dict_from_frame(matched)
 
 
 def _pop_ifs_matched_attrs() -> Dict[str, Any]:
@@ -111,7 +129,15 @@ def _pop_ifs_matched_attrs() -> Dict[str, Any]:
         return {}
     matched = stack[-1]
     _ifs_matched_stack.set(stack[:-1] or None)
-    return {f'lazyllm.matched.{k}': v for k, v in matched.items()}
+    return _matched_dict_from_frame(matched)
+
+
+def discard_pending_switch_ifs_stack(target: Any) -> None:
+    cls_name = type(target).__name__
+    if cls_name == 'Switch':
+        _pop_switch_matched_attrs()
+    elif cls_name == 'IFS':
+        _pop_ifs_matched_attrs()
 
 
 def _loop_output_attrs(target: Any) -> Dict[str, Any]:
@@ -138,9 +164,9 @@ def collect_trace_output_attrs(target: Any, output: Any) -> Dict[str, Any]:
         attrs = _pop_context_attrs(_reranker_output_attrs_var)
         return attrs or _score_attrs(output, 'relevance_score', 'lazyllm.output.relevance_scores')
     if cls_name == 'Switch':
-        return _pop_switch_matched_attrs()
+        return _peek_switch_matched_attrs()
     if cls_name == 'IFS':
-        return _pop_ifs_matched_attrs()
+        return _peek_ifs_matched_attrs()
     if cls_name == 'Loop':
         return _loop_output_attrs(target)
     return {}
