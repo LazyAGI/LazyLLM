@@ -7,7 +7,7 @@ import unittest
 import lazyllm
 from lazyllm import LOG
 from lazyllm.tools.servers.mineru.mineru_server_module import MineruServer
-from lazyllm.tools.rag.readers.mineru_pdf_reader import MineruPDFReader
+from lazyllm.tools.rag.readers.ocrReader.mineru_pdf_reader import MineruPDFReader
 
 os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
 
@@ -210,9 +210,12 @@ class TestMineruServer(unittest.TestCase):
     @pytest.mark.order(6)
     def test_pdf_reader(self):
         '''Test 6: Test pdf reader (file path)'''
-        pdf_reader = MineruPDFReader(self.__class__.server._url[:-9])
+        pdf_reader = MineruPDFReader(
+            url=self.__class__.server._url[:-9],
+            service_variant='offline'
+        )
         pdf_path = str(self.test_files['pdf1'])
-        nodes = pdf_reader(pdf_path)
+        nodes = pdf_reader._load_data(Path(pdf_path))
         assert isinstance(nodes, list)
         assert len(nodes) == len(self.__class__.test_results[pdf_path]['content_list'])
         image_paths = [os.path.join(self.image_save_dir, node.metadata.get('image_path', ''))
@@ -224,9 +227,13 @@ class TestMineruServer(unittest.TestCase):
     @pytest.mark.order(7)
     def test_pdf_reader_with_upload_files(self):
         '''Test 7: Test pdf reader (upload files)'''
-        pdf_reader = MineruPDFReader(self.__class__.server._url[:-9], upload_mode=True)
+        pdf_reader = MineruPDFReader(
+            url=self.__class__.server._url[:-9],
+            service_variant='offline',
+            upload_mode=True
+        )
         pdf_path = str(self.test_files['pdf1'])
-        nodes = pdf_reader(pdf_path)
+        nodes = pdf_reader._load_data(Path(pdf_path))
         assert isinstance(nodes, list)
         assert len(nodes) == len(self.__class__.test_results[pdf_path]['content_list'])
 
@@ -239,14 +246,14 @@ class TestMineruServer(unittest.TestCase):
             return nodes
 
         pdf_reader = MineruPDFReader(
-            self.__class__.server._url[:-9],
+            url=self.__class__.server._url[:-9],
+            service_variant='offline',
             post_func=test_post_func
         )
 
         pdf_path = str(self.test_files['pdf1'])
-        nodes = pdf_reader(pdf_path)
+        nodes = pdf_reader._load_data(Path(pdf_path))
 
-        nodes = pdf_reader(pdf_path)
         assert isinstance(nodes, list)
         for node in nodes:
             assert node._content.endswith('[after_process]')
