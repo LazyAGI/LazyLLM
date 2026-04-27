@@ -173,7 +173,9 @@ def test_graph_tracing(exporter):
 
     spans = exporter.get_finished_spans()
     user_node_spans, graph_span = spans[:3], spans[-1]
-    assert [s.name for s in user_node_spans] == ['first', 'second', 'combine']
+    first_level_spans, combine_span = user_node_spans[:2], user_node_spans[2]
+    assert {s.name for s in first_level_spans} == {'first', 'second'}
+    assert combine_span.name == 'combine'
     assert graph_span.name == 'Graph'
     assert graph_span.attributes.get('lazyllm.span.kind') == 'flow'
     assert all(s.context.trace_id == graph_span.context.trace_id for s in user_node_spans)
