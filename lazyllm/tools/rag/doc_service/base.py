@@ -92,8 +92,6 @@ class AddFileItem(BaseModel):
 
 
 class DocItemsRequest(BaseModel):
-    model_config = {'extra': 'ignore'}
-
     items: List[AddFileItem]
     kb_id: str = '__default__'
     source_type: Optional[SourceType] = None

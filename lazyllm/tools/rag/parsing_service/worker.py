@@ -31,14 +31,14 @@ class DocumentProcessorWorker(ModuleBase):
 
     class _Impl():
         def __init__(self, db_config: dict = None, task_poller=None, lease_duration: float = 300.0,
-                     lease_renew_interval: float = 60.0, high_priority_task_types: list[str] = None,
-                     high_priority_only: bool = False, poll_mode: str = 'thread',
+                     lease_renew_interval: float = 60.0, poll_mode: str = 'thread',
                      callback_task_statuses: list[str] = None, callback_task_types: list[str] = None):
             self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
             self._shutdown = False
             self._processor: Optional[_Processor] = None  # global per-worker _Processor
             self._processor_lock = threading.Lock()
             self._store_conf: Optional[Dict] = None  # set by DocumentProcessor before start
+            self._reader: Optional[DirectoryReader] = None  # global reader, set by DocumentProcessor before start
             self._waiting_task_queue = None
             self._finished_task_queue = None
             self._worker_thread = None
@@ -56,8 +56,6 @@ class DocumentProcessorWorker(ModuleBase):
             self._lease_stop_event = None
             self._lease_duration = lease_duration
             self._lease_renew_interval = lease_renew_interval
-            self._high_priority_task_types = set(high_priority_task_types or [])
-            self._high_priority_only = high_priority_only
             self._callback_task_statuses = {TaskStatus(status).value for status in callback_task_statuses} \
                 if callback_task_statuses else None
             self._callback_task_types = {TaskType(task_type).value for task_type in callback_task_types} \
@@ -169,6 +167,14 @@ class DocumentProcessorWorker(ModuleBase):
                     LOG.warning(f'{self._log_prefix(task_id)} Failed to delete in-progress task')
             self._in_progress_task = None
 
+        @app.post('/set_reader')
+        def set_reader(self, reader: DirectoryReader):
+            '''Set the global reader for this worker. Called by DocumentProcessor after registration.'''
+            if self._reader is not None and self._reader is not reader:
+                raise ValueError('reader must be the same across all set_reader calls.')
+            self._reader = reader
+            return BaseResponse(code=200, msg='success')
+
         @app.get('/health')
         def get_health(self):
             self._lazy_init()
@@ -216,38 +222,23 @@ class DocumentProcessorWorker(ModuleBase):
                 LOG.warning(f'{self._log_prefix()} Failed to create global processor: {e}')
                 raise e
 
-        def _load_ng_configs(self, ng_ids: List[str]) -> Dict[str, Dict]:
-            '''Load node group configs from DB for the given ng_ids.'''
-            if not ng_ids:
-                return {}
+        def _load_all_ng_configs(self, ng_names: Optional[List[str]] = None) -> tuple:
+            '''Load all node group configs from DB, optionally filtered by ng_names.
+            Returns (node_groups: {name: config}, name_to_id: {name: id}).
+            '''
             self._lazy_init()
             with self._db_manager.get_session() as session:
                 NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
-                rows = session.query(NodeGroupInfo).filter(NodeGroupInfo.id.in_(ng_ids)).all()
-                ngs = {row.id: row for row in rows}
-            node_groups = {}
-            for ng_id in ng_ids:
-                row = ngs.get(ng_id)
-                if row is None:
-                    LOG.warning(f'{self._log_prefix()} Node group id={ng_id} not found, skipping')
-                    continue
+                if ng_names is not None:
+                    rows = session.query(NodeGroupInfo).filter(NodeGroupInfo.name.in_(ng_names)).all()
+                else:
+                    rows = session.query(NodeGroupInfo).all()
+            node_groups: Dict[str, Dict] = {}
+            name_to_id: Dict[str, str] = {}
+            for row in rows:
                 node_groups[row.name] = load_obj(row.info_pickle)
-            return node_groups
-
-        def _load_reader_for_ng_ids(self, ng_ids: List[str]) -> Optional[DirectoryReader]:
-            '''Load the reader from the first algo that contains any of the given ng_ids.'''
-            if not ng_ids:
-                return None
-            self._lazy_init()
-            ng_id_set = set(ng_ids)
-            with self._db_manager.get_session() as session:
-                AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
-                for algo in session.query(AlgoInfo).all():
-                    algo_ng_ids = set(json.loads(algo.node_group_ids or '[]'))
-                    if algo_ng_ids & ng_id_set:
-                        info = load_obj(algo.info_pickle)
-                        return info.get('reader')
-            return None
+                name_to_id[row.name] = row.id
+            return node_groups, name_to_id
 
         def _write_ng_status_batch(self, doc_ids: List[str], ng_ids: List[str], kb_id: str,
                                    status: str, error_msg: Optional[str] = None):
@@ -299,7 +290,8 @@ class DocumentProcessorWorker(ModuleBase):
             return skip_ng_ids, exec_ng_ids
 
         def _exec_add_task(self, processor: _Processor, task_id: str, payload: dict,
-                           node_groups: Dict[str, Dict], reader: Optional[DirectoryReader]):
+                           node_groups: Dict[str, Dict], name_to_id: Dict[str, str],
+                           reader: Optional[DirectoryReader]):
             file_infos = payload.get('file_infos')
             kb_id = payload.get('kb_id', None)
             input_files = []
@@ -310,7 +302,7 @@ class DocumentProcessorWorker(ModuleBase):
                 ids.append(file_info.get('doc_id'))
                 metadatas.append(file_info.get('metadata'))
 
-            ng_ids = payload.get('ng_ids') or []
+            ng_ids = list(name_to_id.values())
             if kb_id and ng_ids:
                 skip_ng_ids, exec_ng_ids = self._wait_and_decide_ng(ids, ng_ids, kb_id)
                 if not exec_ng_ids:
@@ -333,7 +325,8 @@ class DocumentProcessorWorker(ModuleBase):
 
         def _exec_reparse_task(
             self, processor: _Processor, task_id: str, payload: dict,
-            node_groups: Dict[str, Dict], reader: Optional[DirectoryReader]
+            node_groups: Dict[str, Dict], name_to_id: Dict[str, str],
+            reader: Optional[DirectoryReader]
         ):
             file_infos = payload.get('file_infos')
             kb_id = payload.get('kb_id', None)
@@ -341,31 +334,18 @@ class DocumentProcessorWorker(ModuleBase):
             reparse_files = []
             reparse_metadatas = []
 
-            first_reparse_group = None
             for file_info in file_infos:
-                current_group = file_info.get('reparse_group')
-                if first_reparse_group is None:
-                    first_reparse_group = current_group
-                elif first_reparse_group != current_group:
-                    raise ValueError('All files must have the same reparse_group')
                 reparse_doc_ids.append(file_info.get('doc_id'))
                 reparse_files.append(file_info.get('file_path'))
                 reparse_metadatas.append(file_info.get('metadata'))
 
-            reparse_group = first_reparse_group
-            ng_ids = payload.get('ng_ids') or []
-            # reparse always re-executes; determine which ng_ids are affected
-            if kb_id:
-                if reparse_group == 'all' or reparse_group is None:
-                    exec_ng_ids = list(ng_ids)
-                else:
-                    exec_ng_ids = [reparse_group]
+            # node_groups is already filtered to the requested ng_names by _run_task
+            exec_ng_ids = list(name_to_id.values())
+            if kb_id and exec_ng_ids:
                 self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
-            else:
-                exec_ng_ids = []
 
             try:
-                processor.reparse(group_name=reparse_group, node_groups=node_groups,
+                processor.reparse(group_name=None, node_groups=node_groups,
                                   doc_ids=reparse_doc_ids, doc_paths=reparse_files,
                                   metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
                 if kb_id and exec_ng_ids:
@@ -377,7 +357,7 @@ class DocumentProcessorWorker(ModuleBase):
                 raise e
 
         def _exec_transfer_task(self, processor: _Processor, task_id: str, payload: dict,
-                                node_groups: Dict[str, Dict]):
+                                node_groups: Dict[str, Dict], name_to_id: Dict[str, str]):
             self._validate_transfer_payload(payload)
             file_infos = payload.get('file_infos')
             kb_id = payload.get('kb_id', None)
@@ -398,7 +378,7 @@ class DocumentProcessorWorker(ModuleBase):
                     target_kb_id = file_info.get('transfer_params', {}).get('target_kb_id')
                 target_doc_ids.append(file_info.get('transfer_params', {}).get('target_doc_id'))
 
-            ng_ids = payload.get('ng_ids') or []
+            ng_ids = list(name_to_id.values())
             if target_kb_id and ng_ids:
                 skip_ng_ids, exec_ng_ids = self._wait_and_decide_ng(target_doc_ids, ng_ids, target_kb_id)
                 if not exec_ng_ids:
@@ -457,7 +437,6 @@ class DocumentProcessorWorker(ModuleBase):
                     'doc_id': file_info.get('doc_id'),
                     'file_path': file_info.get('file_path'),
                     'metadata': file_info.get('metadata'),
-                    'reparse_group': file_info.get('reparse_group'),
                 } for file_info in file_infos]
             elif task_type == TaskType.DOC_DELETE.value:
                 items = [{'doc_id': doc_id} for doc_id in (payload.get('doc_ids') or [])]
@@ -532,7 +511,7 @@ class DocumentProcessorWorker(ModuleBase):
             summary = {
                 'task_type': task_type,
                 'kb_id': payload.get('kb_id'),
-                'ng_ids': payload.get('ng_ids'),
+                'ng_names': payload.get('ng_names'),
             }
             if task_type == TaskType.DOC_DELETE.value:
                 summary['doc_ids'] = payload.get('doc_ids', [])
@@ -543,7 +522,6 @@ class DocumentProcessorWorker(ModuleBase):
                     file_infos.append({
                         'doc_id': file_info.get('doc_id'),
                         'file_path': file_info.get('file_path'),
-                        'reparse_group': file_info.get('reparse_group'),
                         'target_doc_id': transfer_params.get('target_doc_id'),
                         'target_kb_id': transfer_params.get('target_kb_id'),
                         'transfer_mode': transfer_params.get('mode'),
@@ -614,9 +592,7 @@ class DocumentProcessorWorker(ModuleBase):
                 }
                 if from_queue:
                     self._start_lease_renewal(task_id)
-                ng_ids = payload.get('ng_ids') or []
-                if not ng_ids:
-                    raise ValueError(f'{self._log_prefix(task_id)} task payload is missing ng_ids: {payload}')
+                ng_names = payload.get('ng_names')  # None means all node groups
 
                 LOG.info(f'{self._log_prefix(task_id)} Start processing task: '
                          f'{self._summarize_task_payload(task_type, payload)}')
@@ -629,18 +605,21 @@ class DocumentProcessorWorker(ModuleBase):
                 )
 
                 processor = self._get_processor()
-                node_groups = self._load_ng_configs(ng_ids)
-                reader = self._load_reader_for_ng_ids(ng_ids)
+                node_groups, name_to_id = self._load_all_ng_configs(ng_names)
+                reader = self._reader  # global reader, set by DocumentProcessor before start
                 if task_type == TaskType.DOC_ADD.value:
-                    self._exec_add_task(processor, task_id, payload, node_groups=node_groups, reader=reader)
+                    self._exec_add_task(processor, task_id, payload, node_groups=node_groups,
+                                        name_to_id=name_to_id, reader=reader)
                 elif task_type == TaskType.DOC_REPARSE.value:
-                    self._exec_reparse_task(processor, task_id, payload, node_groups=node_groups, reader=reader)
+                    self._exec_reparse_task(processor, task_id, payload, node_groups=node_groups,
+                                            name_to_id=name_to_id, reader=reader)
                 elif task_type == TaskType.DOC_DELETE.value:
                     self._exec_delete_task(processor, task_id, payload)
                 elif task_type == TaskType.DOC_UPDATE_META.value:
                     self._exec_update_meta_task(processor, task_id, payload)
                 elif task_type == TaskType.DOC_TRANSFER.value:
-                    self._exec_transfer_task(processor, task_id, payload, node_groups=node_groups)
+                    self._exec_transfer_task(processor, task_id, payload, node_groups=node_groups,
+                                             name_to_id=name_to_id)
                 else:
                     raise ValueError(f'{self._log_prefix(task_id)} Unknown task type: {task_type}')
 
@@ -698,17 +677,11 @@ class DocumentProcessorWorker(ModuleBase):
             LOG.info(f'{self._log_prefix()} [Poller] stopped')
 
         def _poll_task(self):
-            include_types = None
-            exclude_types = None
-            if self._high_priority_task_types and self._high_priority_only:
-                include_types = list(self._high_priority_task_types)
             return self._waiting_task_queue.claim(
                 worker_id=self._worker_id,
                 lease_duration=self._lease_duration,
                 status_waiting=TaskStatus.WAITING.value,
                 status_working=TaskStatus.WORKING.value,
-                include_task_types=include_types,
-                exclude_task_types=exclude_types,
             )
 
         def _enqueue_finished_task(self, task_id: str, task_type: str, task_status: TaskStatus,
@@ -848,7 +821,6 @@ class DocumentProcessorWorker(ModuleBase):
 
     def __init__(self, db_config: dict = None, num_workers: int = 1, port: int = None,
                  task_poller=None, lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
-                 high_priority_task_types: list[str] = None, high_priority_only: bool = False,
                  poll_mode: str = 'thread', callback_task_statuses: list[str] = None,
                  callback_task_types: list[str] = None, launcher: Optional[Launcher] = None):
         super().__init__()
@@ -860,8 +832,6 @@ class DocumentProcessorWorker(ModuleBase):
             task_poller=task_poller,
             lease_duration=lease_duration,
             lease_renew_interval=lease_renew_interval,
-            high_priority_task_types=high_priority_task_types,
-            high_priority_only=high_priority_only,
             poll_mode=poll_mode,
             callback_task_statuses=callback_task_statuses,
             callback_task_types=callback_task_types,
@@ -898,6 +868,9 @@ class DocumentProcessorWorker(ModuleBase):
         if isinstance(impl, ServerModule):
             return impl.wait()
         LOG.warning('[DocumentProcessorWorker] wait() is no-op in local mode')
+
+    def set_reader(self, reader: 'DirectoryReader'):
+        return self._dispatch('set_reader', reader)
 
     def stop(self):
         LOG.info('[DocumentProcessorWorker] Stopping worker...')

@@ -26,29 +26,17 @@ class ParserClient:
             raise RuntimeError(f'parser http error: {response.status_code} {response.text}')
         return response.json()
 
-    def _get_with_fallback(self, paths: List[str], params: Optional[Dict[str, Any]] = None):
-        last_error = None
-        for path in paths:
-            try:
-                return self._request('GET', path, params=params)
-            except RuntimeError as exc:
-                last_error = exc
-                if '404' not in str(exc):
-                    raise
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError('parser http error: no path provided')
-
     def health(self):
         return BaseResponse.model_validate(self._request('GET', '/health'))
 
     def add_doc(self, task_id: str, kb_id: str, doc_id: str, file_path: str,
-                metadata: Optional[Dict[str, Any]] = None, ng_ids: Optional[List[str]] = None,
-                reparse_group: Optional[str] = None,
+                metadata: Optional[Dict[str, Any]] = None, ng_names: Optional[List[str]] = None,
+                task_type: Optional[str] = None,
                 callback_url: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None):
         req = ParsingAddDocRequest(
             task_id=task_id,
-            ng_ids=ng_ids,
+            ng_names=ng_names,
+            task_type=task_type,
             kb_id=kb_id,
             callback_url=callback_url,
             feedback_url=callback_url,
@@ -56,7 +44,6 @@ class ParserClient:
                 file_path=file_path,
                 doc_id=doc_id,
                 metadata=metadata or {},
-                reparse_group=reparse_group,
                 transfer_params=(
                     ParsingTransferParams.model_validate(transfer_params)
                     if transfer_params is not None else None
@@ -98,11 +85,11 @@ class ParserClient:
         return BaseResponse.model_validate(self._request('POST', '/doc/cancel', json=req.model_dump(mode='json')))
 
     def list_algorithms(self):
-        return BaseResponse.model_validate(self._get_with_fallback(['/v1/algo/list', '/algo/list']))
+        return BaseResponse.model_validate(self._request('GET', '/v1/algo/list'))
 
     def get_algorithm_groups(self, algo_id: str):
         try:
-            data = self._get_with_fallback([f'/v1/algo/{algo_id}/groups', f'/algo/{algo_id}/group/info'])
+            data = self._request('GET', f'/v1/algo/{algo_id}/groups')
             return BaseResponse.model_validate(data)
         except RuntimeError as exc:
             if '404' in str(exc):

@@ -16,7 +16,6 @@ class FileInfo(BaseModel):
     file_path: Optional[str] = None
     doc_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    reparse_group: Optional[str] = None
     transformed_file_path: Optional[str] = None
     transfer_params: EmptyTransfer = None
 
@@ -37,7 +36,8 @@ EmptyDBInfo = Annotated[DBInfo | None, BeforeValidator(lambda v: None if v == {}
 
 class AddDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
-    ng_ids: Optional[List[str]] = None
+    ng_names: Optional[List[str]] = None  # node group names to process; None means all
+    task_type: Optional[str] = None       # DOC_ADD / DOC_REPARSE / DOC_TRANSFER; resolved if None
     kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
@@ -138,36 +138,33 @@ def _calculate_task_score(task_type: str, user_priority: int) -> int:
     return type_weight * 10 - user_priority * 15
 
 
-def _resolve_add_doc_task_type(request: AddDocRequest) -> str:  # noqa: C901
-    new_file_ids = []
-    reparse_file_ids = []
+def _resolve_add_doc_task_type(request: AddDocRequest) -> str:
+    # If task_type is explicitly provided, validate and return it directly.
+    if request.task_type is not None:
+        valid = {t.value for t in (TaskType.DOC_ADD, TaskType.DOC_REPARSE, TaskType.DOC_TRANSFER)}
+        if request.task_type not in valid:
+            raise ValueError(f'task_type must be one of {valid}, got {request.task_type!r}')
+        return request.task_type
+
+    # Fallback: infer from transfer_params (legacy path, no reparse_group anymore).
     transfer_mode = None
     target_kb_id = None
-
     for file_info in request.file_infos:
-        if file_info.reparse_group is not None:
-            reparse_file_ids.append(file_info.doc_id)
-        else:
-            new_file_ids.append(file_info.doc_id)
-            if file_info.transfer_params:
-                if target_kb_id is not None and target_kb_id != file_info.transfer_params.target_kb_id:
-                    raise ValueError('transfer_params.target_kb_id must be the same for all files')
-                if transfer_mode is not None and transfer_mode != file_info.transfer_params.mode:
-                    raise ValueError('transfer_params.mode must be the same for all files')
-                target_kb_id = file_info.transfer_params.target_kb_id
-                transfer_mode = file_info.transfer_params.mode
-                if transfer_mode not in ['cp', 'mv']:
-                    raise ValueError('transfer_params.mode must be one of [cp, mv]')
+        if file_info.transfer_params:
+            if target_kb_id is not None and target_kb_id != file_info.transfer_params.target_kb_id:
+                raise ValueError('transfer_params.target_kb_id must be the same for all files')
+            if transfer_mode is not None and transfer_mode != file_info.transfer_params.mode:
+                raise ValueError('transfer_params.mode must be the same for all files')
+            target_kb_id = file_info.transfer_params.target_kb_id
+            transfer_mode = file_info.transfer_params.mode
+            if transfer_mode not in ['cp', 'mv']:
+                raise ValueError('transfer_params.mode must be one of [cp, mv]')
 
-    if new_file_ids and reparse_file_ids:
-        raise ValueError('new_file_ids and reparse_file_ids cannot be specified at the same time')
     if transfer_mode:
         return TaskType.DOC_TRANSFER.value
-    if new_file_ids:
-        return TaskType.DOC_ADD.value
-    if reparse_file_ids:
-        return TaskType.DOC_REPARSE.value
-    raise ValueError('no input files or reparse group specified')
+    if not request.file_infos:
+        raise ValueError('no input files specified')
+    return TaskType.DOC_ADD.value
 
 
 # Waiting task queue table

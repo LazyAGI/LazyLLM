@@ -618,19 +618,32 @@ class DocManager:
     def _get_algo_node_group_ids(self, algo_id: str) -> List[str]:
         try:
             resp = self._parser_client.get_algorithm_groups(algo_id)
-            if resp and resp.code == 200 and resp.data:
-                data = resp.data
-                # Support list-of-dict format: [{id, name, ...}, ...]
-                if isinstance(data, list):
-                    if (result := [g['id'] for g in data if g.get('id')]): return result
-                # Support legacy dict format: {node_group_ids: [...]}
-                if isinstance(data, dict):
-                    if (ids := data.get('node_group_ids')):
-                        if (result := json.loads(ids) if isinstance(ids, str) else ids): return result
+            if resp and resp.code == 200 and isinstance(resp.data, list):
+                result = [g['id'] for g in resp.data if g.get('id')]
+                if result:
+                    return result
         except Exception as e:
             raise RuntimeError(f'[DocManager] Failed to get node_group_ids for algo {algo_id}: {e}') from e
         raise ValueError(f'Failed to get node_group_ids for algo {algo_id!r}: '
                          f'code={getattr(resp, "code", None)}, msg={getattr(resp, "msg", None)!r}')
+
+    def _algo_ids_to_ng_names(self, algo_ids: List[str]) -> Dict[str, str]:
+        '''Return {ng_name: ng_id} mapping for all node groups across the given algo_ids (deduped by name).'''
+        name_to_id: Dict[str, str] = {}
+        for algo_id in algo_ids:
+            try:
+                resp = self._parser_client.get_algorithm_groups(algo_id)
+                if resp and resp.code == 200 and isinstance(resp.data, list):
+                    for g in resp.data:
+                        name = g.get('name')
+                        ng_id = g.get('id')
+                        if name and ng_id and name not in name_to_id:
+                            name_to_id[name] = ng_id
+            except Exception as e:
+                raise RuntimeError(
+                    f'[DocManager] Failed to get ng names for algo {algo_id}: {e}'
+                ) from e
+        return name_to_id
 
     def _get_shared_ng_ids(self, kb_id: str, algo_id: str, candidate_ng_ids: List[str]) -> Set[str]:
         # Returns the subset of candidate_ng_ids that are also owned by other algos in the same kb.
@@ -782,13 +795,11 @@ class DocManager:
                     {'kb_id': kb_id, 'doc_id': doc_id, 'status': status, 'task_type': task_type},
                 )
             # enqueue a delete task for each algo bound to this kb
-            for idx, algo_id in enumerate(binding or [default_algo_id]):
+            for algo_id in (binding or [default_algo_id]):
                 items.append({
                     'action': 'enqueue_delete',
                     'doc_id': doc_id,
                     'algo_id': algo_id,
-                    # mark only the first algo's task as "primary" (responsible for ng_status cleanup)
-                    'primary': idx == 0,
                 })
         return {'kb': kb, 'items': items}
 
@@ -906,24 +917,18 @@ class DocManager:
             )
 
     def _create_parser_task(self, task_id: str, doc_id: str, kb_id: str, algo_id: str, task_type: TaskType,
-                            ng_ids: Optional[List[str]] = None,
+                            ng_names: Optional[List[str]] = None,
                             file_path: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
-                            reparse_group: Optional[str] = None, parser_kb_id: Optional[str] = None,
+                            parser_kb_id: Optional[str] = None,
                             transfer_params: Optional[Dict[str, Any]] = None,
                             node_group_ids_to_delete: Optional[List[str]] = None):
-        if task_type in (TaskType.DOC_ADD, TaskType.DOC_TRANSFER):
+        if task_type in (TaskType.DOC_ADD, TaskType.DOC_REPARSE, TaskType.DOC_TRANSFER):
             if not file_path:
                 raise RuntimeError(f'file_path is required for task_type {task_type.value}')
             task_resp = self._parser_client.add_doc(
                 task_id, parser_kb_id or kb_id, doc_id, file_path, metadata,
-                ng_ids=ng_ids, callback_url=self._callback_url, transfer_params=transfer_params,
-            )
-        elif task_type == TaskType.DOC_REPARSE:
-            if not file_path:
-                raise RuntimeError('file_path is required for reparse task')
-            task_resp = self._parser_client.add_doc(
-                task_id, kb_id, doc_id, file_path, metadata,
-                ng_ids=ng_ids, reparse_group=reparse_group or 'all', callback_url=self._callback_url,
+                ng_names=ng_names, task_type=task_type.value,
+                callback_url=self._callback_url, transfer_params=transfer_params,
             )
         elif task_type == TaskType.DOC_UPDATE_META:
             task_resp = self._parser_client.update_meta(
@@ -944,10 +949,13 @@ class DocManager:
         self, doc_id: str, kb_id: str, algo_id: str, task_type: TaskType,
         idempotency_key: Optional[str] = None, priority: int = 0,
         file_path: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
-        reparse_group: Optional[str] = None, cleanup_policy: Optional[str] = None,
+        algo_ids: Optional[List[str]] = None, ng_names: Optional[List[str]] = None,
+        cleanup_policy: Optional[str] = None,
         parser_kb_id: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None,
         extra_message: Optional[Dict[str, Any]] = None, parser_doc_id: Optional[str] = None,
     ):
+        assert not (algo_ids is not None and ng_names is not None), \
+            'algo_ids and ng_names are mutually exclusive'
         task_id = str(uuid4())
         task_message = {
             'doc_id': doc_id,
@@ -955,7 +963,6 @@ class DocManager:
             'algo_id': algo_id,
             'file_path': file_path,
             'metadata': metadata,
-            'reparse_group': reparse_group,
         }
         if extra_message:
             task_message.update(extra_message)
@@ -986,21 +993,26 @@ class DocManager:
             exclusive_ng_ids = (
                 (extra_message or {}).get('exclusive_ng_ids') if task_type == TaskType.DOC_DELETE else None
             )
-            # Resolve ng_ids for this algo before submitting to the parser queue.
-            # For ADD/REPARSE tasks, ng_ids are passed to the Worker so it knows which ngs to process.
-            ng_ids = None
-            if task_type in (TaskType.DOC_ADD, TaskType.DOC_REPARSE, TaskType.DOC_TRANSFER):
-                ng_ids = self._get_algo_node_group_ids(algo_id)
-            elif task_type == TaskType.DOC_DELETE and exclusive_ng_ids:
-                ng_ids = exclusive_ng_ids
+            # Resolve ng_names before submitting to the parser queue.
+            # algo_ids → ng_names conversion happens here; callers may also pass ng_names directly.
+            # ng_ids are only needed for _upsert_ng_status_pending (DOC_ADD).
+            resolved_ng_names: Optional[List[str]] = ng_names  # may be None (= all ngs)
+            ng_ids_for_pending: List[str] = []
+            if algo_ids is not None:
+                name_to_id = self._algo_ids_to_ng_names(algo_ids)
+                resolved_ng_names = list(name_to_id.keys())
+                ng_ids_for_pending = list(name_to_id.values())
+            elif ng_names is not None and task_type == TaskType.DOC_ADD:
+                # need ng_ids for PENDING status; look them up from the single algo_id
+                ng_ids_for_pending = self._get_algo_node_group_ids(algo_id)
             # Insert PENDING status for each node group before submitting the parser task,
             # so that on_task_callback can always find the status rows even if submission fails.
             if task_type == TaskType.DOC_ADD:
-                self._upsert_ng_status_pending(doc_id, kb_id, ng_ids or [], file_path)
+                self._upsert_ng_status_pending(doc_id, kb_id, ng_ids_for_pending, file_path)
             self._create_parser_task(
                 task_id, parser_doc_id or doc_id, kb_id, algo_id, task_type,
-                ng_ids=ng_ids,
-                file_path=file_path, metadata=metadata, reparse_group=reparse_group,
+                ng_names=resolved_ng_names,
+                file_path=file_path, metadata=metadata,
                 parser_kb_id=parser_kb_id, transfer_params=transfer_params,
                 node_group_ids_to_delete=exclusive_ng_ids,
             )
@@ -1248,18 +1260,16 @@ class DocManager:
             error_code = error_msg = None
             accepted = True
             try:
-                # enqueue a DOC_ADD task for every algo — ng dedup is handled by _wait_and_decide_ng
-                current_algo_id = algo_ids[0]
-                for algo_id in algo_ids:
-                    current_algo_id = algo_id
-                    task_id, snapshot = self._enqueue_task(
-                        doc_id, request.kb_id, algo_id, TaskType.DOC_ADD,
-                        idempotency_key=request.idempotency_key,
-                        file_path=file_path,
-                        metadata=metadata,
-                    )
+                # enqueue a single DOC_ADD task covering all algos; ng dedup handled by _wait_and_decide_ng
+                task_id, snapshot = self._enqueue_task(
+                    doc_id, request.kb_id, algo_ids[0], TaskType.DOC_ADD,
+                    idempotency_key=request.idempotency_key,
+                    file_path=file_path,
+                    metadata=metadata,
+                    algo_ids=algo_ids,
+                )
             except Exception as exc:
-                snapshot = self._get_parse_snapshot(doc_id, request.kb_id, current_algo_id) or {}
+                snapshot = self._get_parse_snapshot(doc_id, request.kb_id, algo_ids[0]) or {}
                 doc = self._get_doc(doc_id) or doc
                 task_id = snapshot.get('current_task_id')
                 error_code = snapshot.get('last_error_code') or type(exc).__name__
@@ -1337,17 +1347,18 @@ class DocManager:
         prepared_items = self._prepare_reparse_items(request, algo_id)
         all_ng_ids = self._get_algo_node_group_ids(algo_id)
         if request.ng_names:
-            # Resolve ng_names → ng_ids via parser client (avoids cross-DB dependency)
+            # Filter to only ng_names that belong to this algo
             resp = self._parser_client.get_algorithm_groups(algo_id)
             groups = (resp.data if resp and resp.code == 200 and isinstance(resp.data, list) else [])
+            algo_ng_names = {g['name'] for g in groups if g.get('name') and g.get('id') in all_ng_ids}
+            effective_ng_names = [n for n in request.ng_names if n in algo_ng_names]
+            # Also resolve ng_ids for _upsert_ng_status_pending
             name_to_id = {g['name']: g['id'] for g in groups if g.get('name') and g.get('id')}
-            pending_ng_ids = [name_to_id[n] for n in request.ng_names
-                              if name_to_id.get(n) in all_ng_ids]
-            effective_reparse_group = json.dumps(pending_ng_ids) if pending_ng_ids else None
+            pending_ng_ids = [name_to_id[n] for n in effective_ng_names if n in name_to_id]
         else:
             shared_ng_ids = self._get_shared_ng_ids(request.kb_id, algo_id, all_ng_ids)
             pending_ng_ids = [ng for ng in all_ng_ids if ng not in shared_ng_ids]
-            effective_reparse_group = json.dumps(pending_ng_ids) if pending_ng_ids else None
+            effective_ng_names = None  # None means all non-shared ngs
         if not pending_ng_ids:
             LOG.info(f'[reparse] algo={algo_id!r} kb={request.kb_id!r}: all node groups are shared, nothing to reparse')
             return []
@@ -1360,7 +1371,7 @@ class DocManager:
                 idempotency_key=request.idempotency_key,
                 file_path=item['file_path'],
                 metadata=item['metadata'],
-                reparse_group=effective_reparse_group,
+                ng_names=effective_ng_names,
             )
             task_ids.append(task_id)
         return task_ids
@@ -1421,25 +1432,17 @@ class DocManager:
                 row.updated_at = datetime.now()
                 session.add(row)
 
-            # submit a delete task for every algo bound to this kb so all stores are cleaned up
-            primary_task_id = None
-            primary_snapshot = None
-            for algo_id in all_algo_ids:
-                algo_idem_key = (
-                    f'{request.idempotency_key}:{algo_id}' if request.idempotency_key else None
-                )
-                task_id, snap = self._enqueue_task(
-                    doc_id, request.kb_id, algo_id, TaskType.DOC_DELETE,
-                    idempotency_key=algo_idem_key,
-                )
-                if primary_task_id is None:
-                    primary_task_id = task_id
-                    primary_snapshot = snap
+            # submit a single delete task covering all algos
+            task_id, snap = self._enqueue_task(
+                doc_id, request.kb_id, all_algo_ids[0], TaskType.DOC_DELETE,
+                idempotency_key=request.idempotency_key,
+                algo_ids=all_algo_ids,
+            )
             items.append({
                 'doc_id': doc_id,
                 'accepted': True,
-                'task_id': primary_task_id,
-                'status': primary_snapshot['status'] if primary_snapshot else DocStatus.DELETING.value,
+                'task_id': task_id,
+                'status': snap['status'] if snap else DocStatus.DELETING.value,
                 'error_code': None,
             })
         return items
@@ -1464,27 +1467,25 @@ class DocManager:
                     upload_status=DocStatus.SUCCESS,
                     allowed_path_doc_ids={item['doc_id']},
                 )
-                for algo_id in item['algo_ids']:
-                    task_id, snapshot = self._enqueue_task(
-                        item['target_doc_id'], item['target_kb_id'], algo_id, TaskType.DOC_TRANSFER,
-                        idempotency_key=request.idempotency_key if primary_task_id is None else None,
-                        file_path=item['file_path'],
-                        metadata=item['metadata'],
-                        parser_kb_id=item['source_kb_id'],
-                        transfer_params=item['transfer_params'],
-                        extra_message={
-                            'source_doc_id': item['doc_id'],
-                            'source_kb_id': item['source_kb_id'],
-                            'target_kb_id': item['target_kb_id'],
-                            'target_doc_id': item['target_doc_id'],
-                            'algo_id': algo_id,
-                            'mode': item['mode'],
-                        },
-                        parser_doc_id=item['doc_id'],
-                    )
-                    if primary_task_id is None:
-                        primary_task_id = task_id
-                        primary_snapshot = snapshot
+                task_id, snapshot = self._enqueue_task(
+                    item['target_doc_id'], item['target_kb_id'], item['algo_ids'][0], TaskType.DOC_TRANSFER,
+                    idempotency_key=request.idempotency_key,
+                    file_path=item['file_path'],
+                    metadata=item['metadata'],
+                    algo_ids=item['algo_ids'],
+                    parser_kb_id=item['source_kb_id'],
+                    transfer_params=item['transfer_params'],
+                    extra_message={
+                        'source_doc_id': item['doc_id'],
+                        'source_kb_id': item['source_kb_id'],
+                        'target_kb_id': item['target_kb_id'],
+                        'target_doc_id': item['target_doc_id'],
+                        'mode': item['mode'],
+                    },
+                    parser_doc_id=item['doc_id'],
+                )
+                primary_task_id = task_id
+                primary_snapshot = snapshot
             except Exception as exc:
                 primary_snapshot = self._get_parse_snapshot(
                     item['target_doc_id'], item['target_kb_id'], item['algo_ids'][0]
