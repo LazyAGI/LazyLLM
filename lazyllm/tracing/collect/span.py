@@ -15,41 +15,34 @@ from ..semantics import (
 
 @dataclass
 class LazySpan:
-    # --- identity ---
     name: str = ''
     span_kind: str = ''
     semantic_type: Optional[str] = None
     component_class: str = ''
     component_id: Optional[str] = None
 
-    # --- chain (populated from OTel span after creation) ---
     trace_id: Optional[str] = None
     span_id: Optional[str] = None
     parent_span_id: Optional[str] = None
     is_root_span: bool = False
     is_reconstructed: bool = False
 
-    # --- data ---
     input: Optional[Any] = None
     output: Optional[Any] = None
     capture_payload: bool = False
 
-    # --- state ---
     status: str = 'ok'
     error: Optional[Exception] = None
 
-    # --- extensions ---
     config: Dict[str, Any] = field(default_factory=dict)
     output_attrs: Dict[str, Any] = field(default_factory=dict)
     usage: Optional[Dict[str, Any]] = None
     tags: List[str] = field(default_factory=list)
 
-    # --- trace-level context (populated only on root spans for backend compatibility) ---
     session_id: Optional[str] = None
     user_id: Optional[str] = None
     request_tags: List[str] = field(default_factory=list)
 
-    # Internal runtime handles; populated by TracingRuntime after __init__.
     _otel_span: Any = field(default=None, init=False, repr=False, compare=False)
     _otel_span_cm: Any = field(default=None, init=False, repr=False, compare=False)
     _owns_lazy_trace: bool = field(default=False, init=False, repr=False, compare=False)
@@ -85,9 +78,6 @@ class LazyTrace:
     status: str = 'ok'
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    # True when this LazyTrace only represents a local slice of a remote trace
-    # (e.g. a Parallel worker reconstructing the parent chain). Finalization in
-    # a reconstructed trace is best-effort and does not imply the request is over.
     is_reconstructed: bool = False
 
     _span_count: int = field(default=0, repr=False)
@@ -106,7 +96,6 @@ class LazyTrace:
         if not isinstance(self.metadata, dict):
             raise TypeError(f'LazyTrace.metadata must be dict, got {type(self.metadata).__name__}')
 
-    # ---- state ----
     @property
     def is_active(self) -> bool:
         with self._lock:
@@ -124,7 +113,6 @@ class LazyTrace:
         with self._lock:
             return self._span_count
 
-    # ---- mutation (trace-level user API) ----
     def add_tag(self, tag: str) -> None:
         if not isinstance(tag, str):
             raise TypeError(f'tag must be str, got {type(tag).__name__}')
@@ -144,7 +132,6 @@ class LazyTrace:
         with self._lock:
             self.metadata.update(items)
 
-    # ---- lifecycle (runtime API) ----
     def _record_span_start(self, span: 'LazySpan') -> None:
         with self._lock:
             self._span_count += 1
