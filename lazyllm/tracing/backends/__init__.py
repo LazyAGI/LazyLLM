@@ -1,5 +1,5 @@
 try:
-    from .langfuse import LangfuseBackend
+    from .langfuse.backend import LangfuseBackend
     _BACKEND_CLASSES = {LangfuseBackend.name: LangfuseBackend}
 except ImportError:
     _BACKEND_CLASSES = {}

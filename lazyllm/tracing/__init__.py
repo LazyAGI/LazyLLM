@@ -1,27 +1,35 @@
 from importlib import import_module
 
-# Optional third-party dependencies
-from lazyllm.thirdparty import opentelemetry  # noqa: F401
-
-# Required internal modules
 _SUBMOD_MAP = {
-    'runtime': [
+    'collect.context': [
+        'LazyTraceContext',
+    ],
+    'collect.span': [
+        'LazySpan',
+        'LazyTrace',
+    ],
+    'collect.runtime': [
         'TracingSetupError',
-        'start_span',
-        'set_span_output',
-        'set_span_error',
-        'finish_span',
         'get_trace_context',
         'set_trace_context',
         'tracing_available',
+        'enable_trace',
+        'current_trace',
+        'start_span',
+        'set_span_output',
+        'set_span_attributes',
+        'set_span_error',
+        'set_span_usage',
+        'finish_span',
     ],
-    'configs': [
+    'collect.configs': [
         'DEFAULT_MODULE_TRACE_CONFIG',
         'get_default_module_trace_config',
         'set_default_module_trace_config',
         'resolve_default_module_trace',
+        'resolve_runtime_module_trace_disabled',
     ],
-    'hook': [
+    'collect.hook': [
         'LazyTracingHook',
         'resolve_tracing_hooks',
     ],
@@ -30,6 +38,15 @@ _SUBMOD_MAP = {
     ],
     'backends.base': [
         'TracingBackend',
+    ],
+    'semantics': [
+        'SemanticType',
+        'is_valid_trace_id',
+        'is_valid_span_id',
+        '_TRACE_ID_RE',
+        '_SPAN_ID_RE',
+        '_VALID_SPAN_KINDS',
+        '_VALID_SPAN_STATUS',
     ],
 }
 _SUBMOD_MAP_REVERSE = {sym: mod for mod, syms in _SUBMOD_MAP.items() for sym in syms}
