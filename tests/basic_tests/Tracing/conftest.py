@@ -9,7 +9,7 @@ from lazyllm.tracing.collect import runtime as tracing_runtime
 
 
 class MemoryTracingBackend:
-    name = "memory"
+    name = 'memory'
 
     def __init__(self, exporter):
         self._exporter = exporter
@@ -28,13 +28,13 @@ def exporter(monkeypatch):
 
     set_trace_context(LazyTraceContext(trace_id='test-trace', enabled=True))
     exporter = InMemorySpanExporter()
-    monkeypatch.setattr(tracing_runtime, "_runtime", tracing_runtime.TracingRuntime())
-    monkeypatch.setattr(tracing_runtime, "get_tracing_backend", lambda name: MemoryTracingBackend(exporter))
-    monkeypatch.setattr(tracing_runtime.opentelemetry.sdk.trace.export, "BatchSpanProcessor", SimpleSpanProcessor)
+    monkeypatch.setattr(tracing_runtime, '_runtime', tracing_runtime.TracingRuntime())
+    monkeypatch.setattr(tracing_runtime, 'get_tracing_backend', lambda name: MemoryTracingBackend(exporter))
+    monkeypatch.setattr(tracing_runtime.opentelemetry.sdk.trace.export, 'BatchSpanProcessor', SimpleSpanProcessor)
 
-    with lazyllm.config.temp("trace_backend", "memory"):
-        with lazyllm.config.temp("trace_enabled", True):
-            with lazyllm.config.temp("trace_content_enabled", True):
+    with lazyllm.config.temp('trace_backend', 'memory'):
+        with lazyllm.config.temp('trace_enabled', True):
+            with lazyllm.config.temp('trace_content_enabled', True):
                 assert tracing_runtime.tracing_available()
                 yield exporter
 
