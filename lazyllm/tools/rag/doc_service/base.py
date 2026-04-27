@@ -19,6 +19,13 @@ class DocStatus(str, Enum):
     DELETED = 'DELETED'
 
 
+class NodeGroupParseStatus(str, Enum):
+    PENDING = 'PENDING'
+    WORKING = 'WORKING'
+    SUCCESS = 'SUCCESS'
+    FAILED = 'FAILED'
+
+
 class KBStatus(str, Enum):
     ACTIVE = 'ACTIVE'
     DELETING = 'DELETING'
@@ -87,7 +94,6 @@ class AddFileItem(BaseModel):
 class DocItemsRequest(BaseModel):
     items: List[AddFileItem]
     kb_id: str = '__default__'
-    algo_id: str = '__default__'
     source_type: Optional[SourceType] = None
     idempotency_key: Optional[str] = None
 
@@ -115,45 +121,48 @@ class _DocMutationRequest(BaseModel):
         return self
 
 
-class ReparseRequest(_DocMutationRequest):
-    pass
+class ReparseRequest(BaseModel):
+    doc_ids: List[str]
+    kb_id: str = '__default__'
+    # algo_ids and ng_names are mutually exclusive; omit both to reparse all algos/ngs
+    algo_ids: Optional[List[str]] = None
+    ng_names: Optional[List[str]] = None
+    idempotency_key: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_fields(self):
+        if not self.doc_ids:
+            raise ValueError('doc_ids is required')
+        if self.algo_ids is not None and self.ng_names is not None:
+            raise ValueError('algo_ids and ng_names are mutually exclusive; provide at most one.')
+        return self
 
 
-class DeleteRequest(_DocMutationRequest):
-    pass
+class DeleteRequest(BaseModel):
+    doc_ids: List[str]
+    kb_id: str = '__default__'
+    idempotency_key: Optional[str] = None
+
+    @model_validator(mode='after')
+    def validate_doc_ids(self):
+        if not self.doc_ids:
+            raise ValueError('doc_ids is required')
+        return self
 
 
 class TransferItem(BaseModel):
     doc_id: str
     target_doc_id: str
     kb_id: str = Field(default='__default__', validation_alias=AliasChoices('kb_id', 'source_kb_id'))
-    algo_id: str = Field(default='__default__', validation_alias=AliasChoices('algo_id', 'source_algo_id'))
     target_kb_id: str
-    target_algo_id: str
     target_metadata: Optional[Dict[str, Any]] = None
     target_filename: Optional[str] = None
     target_file_path: Optional[str] = None
     mode: str = 'copy'
 
-    @model_validator(mode='before')
-    @classmethod
-    def normalize_source_fields(cls, data):
-        if not isinstance(data, dict):
-            return data
-        normalized = dict(data)
-        if 'kb_id' not in normalized and 'source_kb_id' in normalized:
-            normalized['kb_id'] = normalized['source_kb_id']
-        if 'algo_id' not in normalized and 'source_algo_id' in normalized:
-            normalized['algo_id'] = normalized['source_algo_id']
-        return normalized
-
     @property
     def source_kb_id(self) -> str:
         return self.kb_id
-
-    @property
-    def source_algo_id(self) -> str:
-        return self.algo_id
 
 
 class TransferRequest(BaseModel):
@@ -175,7 +184,6 @@ class MetadataPatchItem(BaseModel):
 class MetadataPatchRequest(BaseModel):
     items: List[MetadataPatchItem]
     kb_id: str = '__default__'
-    algo_id: str = '__default__'
     idempotency_key: Optional[str] = None
 
     @model_validator(mode='after')
@@ -248,7 +256,7 @@ class KbRequest(BaseModel):
     description: Optional[str] = None
     owner_id: Optional[str] = None
     meta: Optional[Dict[str, Any]] = None
-    algo_id: str = '__default__'
+    algo_id: Optional[str] = None
     idempotency_key: Optional[str] = None
 
 
@@ -436,6 +444,28 @@ PARSE_STATE_TABLE_INFO = {
         {'name': 'queued_at', 'data_type': 'datetime', 'nullable': True, 'comment': 'Queued time'},
         {'name': 'started_at', 'data_type': 'datetime', 'nullable': True, 'comment': 'Started time'},
         {'name': 'finished_at', 'data_type': 'datetime', 'nullable': True, 'comment': 'Finished time'},
+        {'name': 'created_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
+         'comment': 'Created time'},
+        {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
+         'comment': 'Updated time'},
+    ],
+}
+
+DOC_NODE_GROUP_STATUS_TABLE_INFO = {
+    'name': 'lazyllm_doc_node_group_status',
+    'comment': 'Per-document per-node-group parse status table',
+    'columns': [
+        {'name': 'id', 'data_type': 'integer', 'nullable': False, 'is_primary_key': True,
+         'comment': 'Auto increment ID'},
+        {'name': 'doc_id', 'data_type': 'string', 'nullable': False, 'comment': 'Document ID'},
+        {'name': 'kb_id', 'data_type': 'string', 'nullable': False, 'comment': 'Knowledge base ID'},
+        {'name': 'node_group_id', 'data_type': 'string', 'nullable': False,
+         'comment': 'Node group ID (logical reference to node group definition)'},
+        {'name': 'file_path', 'data_type': 'string', 'nullable': True,
+         'comment': 'Document file path (cached for reparse without querying store)'},
+        {'name': 'status', 'data_type': 'string', 'nullable': False,
+         'comment': 'PENDING / WORKING / SUCCESS / FAILED'},
+        {'name': 'error_msg', 'data_type': 'text', 'nullable': True, 'comment': 'Error message on failure'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,
          'comment': 'Created time'},
         {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False, 'default': datetime.now,

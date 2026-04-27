@@ -6,7 +6,6 @@ from datetime import datetime
 
 class TransferParams(BaseModel):
     mode: Optional[str] = 'cp'  # cp or mv
-    target_algo_id: str
     target_doc_id: str
     target_kb_id: str
 
@@ -17,7 +16,6 @@ class FileInfo(BaseModel):
     file_path: Optional[str] = None
     doc_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    reparse_group: Optional[str] = None
     transformed_file_path: Optional[str] = None
     transfer_params: EmptyTransfer = None
 
@@ -38,7 +36,8 @@ EmptyDBInfo = Annotated[DBInfo | None, BeforeValidator(lambda v: None if v == {}
 
 class AddDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
-    algo_id: Optional[str] = '__default__'
+    ng_names: Optional[List[str]] = None  # node group names to process; None means all
+    task_type: Optional[str] = None       # DOC_ADD / DOC_REPARSE / DOC_TRANSFER; resolved if None
     kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
@@ -58,7 +57,6 @@ class AddDocRequest(BaseModel):
 
 class UpdateMetaRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
-    algo_id: Optional[str] = '__default__'
     kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
@@ -78,7 +76,6 @@ class UpdateMetaRequest(BaseModel):
 
 class DeleteDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
-    algo_id: Optional[str] = '__default__'
     kb_id: Optional[str] = None
     doc_ids: List[str]
     priority: Optional[int] = 0
@@ -86,6 +83,9 @@ class DeleteDocRequest(BaseModel):
     # NOTE: (db_info) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None
+    # When set, only delete data for these node group ids. Used for unbind_algo where shared
+    # node groups must be preserved for other algos in the same kb. None means delete all.
+    node_group_ids_to_delete: Optional[List[str]] = None
 
     @model_validator(mode='before')
     @classmethod
@@ -138,42 +138,33 @@ def _calculate_task_score(task_type: str, user_priority: int) -> int:
     return type_weight * 10 - user_priority * 15
 
 
-def _resolve_add_doc_task_type(request: AddDocRequest) -> str:  # noqa: C901
-    new_file_ids = []
-    reparse_file_ids = []
+def _resolve_add_doc_task_type(request: AddDocRequest) -> str:
+    # If task_type is explicitly provided, validate and return it directly.
+    if request.task_type is not None:
+        valid = {t.value for t in (TaskType.DOC_ADD, TaskType.DOC_REPARSE, TaskType.DOC_TRANSFER)}
+        if request.task_type not in valid:
+            raise ValueError(f'task_type must be one of {valid}, got {request.task_type!r}')
+        return request.task_type
+
+    # Fallback: infer from transfer_params (legacy path, no reparse_group anymore).
     transfer_mode = None
-    target_algo_id = None
     target_kb_id = None
-
     for file_info in request.file_infos:
-        if file_info.reparse_group is not None:
-            reparse_file_ids.append(file_info.doc_id)
-        else:
-            new_file_ids.append(file_info.doc_id)
-            if file_info.transfer_params:
-                if target_algo_id is not None and target_algo_id != file_info.transfer_params.target_algo_id:
-                    raise ValueError('transfer_params.target_algo_id must be the same for all files')
-                if target_kb_id is not None and target_kb_id != file_info.transfer_params.target_kb_id:
-                    raise ValueError('transfer_params.target_kb_id must be the same for all files')
-                if transfer_mode is not None and transfer_mode != file_info.transfer_params.mode:
-                    raise ValueError('transfer_params.mode must be the same for all files')
-                if file_info.transfer_params.target_algo_id != request.algo_id:
-                    raise ValueError('transfer_params.target_algo_id must be the same for all files')
-                target_algo_id = file_info.transfer_params.target_algo_id
-                target_kb_id = file_info.transfer_params.target_kb_id
-                transfer_mode = file_info.transfer_params.mode
-                if transfer_mode not in ['cp', 'mv']:
-                    raise ValueError('transfer_params.mode must be one of [cp, mv]')
+        if file_info.transfer_params:
+            if target_kb_id is not None and target_kb_id != file_info.transfer_params.target_kb_id:
+                raise ValueError('transfer_params.target_kb_id must be the same for all files')
+            if transfer_mode is not None and transfer_mode != file_info.transfer_params.mode:
+                raise ValueError('transfer_params.mode must be the same for all files')
+            target_kb_id = file_info.transfer_params.target_kb_id
+            transfer_mode = file_info.transfer_params.mode
+            if transfer_mode not in ['cp', 'mv']:
+                raise ValueError('transfer_params.mode must be one of [cp, mv]')
 
-    if new_file_ids and reparse_file_ids:
-        raise ValueError('new_file_ids and reparse_file_ids cannot be specified at the same time')
     if transfer_mode:
         return TaskType.DOC_TRANSFER.value
-    if new_file_ids:
-        return TaskType.DOC_ADD.value
-    if reparse_file_ids:
-        return TaskType.DOC_REPARSE.value
-    raise ValueError('no input files or reparse group specified')
+    if not request.file_infos:
+        raise ValueError('no input files specified')
+    return TaskType.DOC_ADD.value
 
 
 # Waiting task queue table
@@ -247,7 +238,29 @@ ALGORITHM_TABLE_INFO = {
         {'name': 'description', 'data_type': 'string', 'nullable': False,
          'comment': 'Algorithm description'},
         {'name': 'info_pickle', 'data_type': 'string', 'nullable': False,
-         'comment': 'Algorithm info from pickle string'},
+         'comment': 'Pickled {store, reader, schema_extractor} (node_groups excluded)'},
+        {'name': 'node_group_ids', 'data_type': 'string', 'nullable': True, 'default': '[]',
+         'comment': 'JSON-encoded ordered list of node_group IDs, e.g. ["id1","id2"]'},
+        {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,
+         'comment': 'Creation time (auto-generated)', 'default': datetime.now},
+        {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False,
+         'comment': 'Last update time (set when updating)', 'default': datetime.now},
+    ]
+}
+
+# Node group registration table
+NODE_GROUP_TABLE_INFO = {
+    'name': 'lazyllm_node_group',
+    'comment': 'Node group registration table; each row is a uniquely-signed node group',
+    'columns': [
+        {'name': 'id', 'data_type': 'string', 'nullable': False, 'is_primary_key': True,
+         'comment': 'Node group UUID'},
+        {'name': 'name', 'data_type': 'string', 'nullable': False,
+         'comment': 'Node group name (may include version suffix, e.g. sentences@v1.0)'},
+        {'name': 'signature', 'data_type': 'string', 'nullable': False,
+         'comment': 'sha256[:16] of the node group config (reader + transform chain)'},
+        {'name': 'info_pickle', 'data_type': 'string', 'nullable': False,
+         'comment': 'Pickled node group config (transform, parent, ref, group_type, etc.)'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,
          'comment': 'Creation time (auto-generated)', 'default': datetime.now},
         {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False,

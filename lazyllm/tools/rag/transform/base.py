@@ -67,6 +67,13 @@ class NodeTransform(ModuleBase):
         self._on_match: Optional[Callable[[Any, Tuple['Rule', Any], '_Context'], Any]] = None
         self._on_miss: Optional[Callable[[Any, '_Context'], Any]] = None
 
+    def sig_fields(self) -> Dict:
+        '''Return a dict of parameters that affect output content (used for signature computation).
+        Subclasses should override this to include all content-affecting constructor parameters.
+        Runtime-only parameters (num_workers, return_trace, etc.) must NOT be included.
+        '''
+        raise NotImplementedError(f'{type(self).__name__} must implement sig_fields()')
+
     def _get_ref_nodes(self, node, ref_path):
         current = [node]
         for key in ref_path:

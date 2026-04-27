@@ -1,7 +1,11 @@
+import copy
+import functools
 import os
 import warnings
-from typing import Callable, Optional, Dict, Union, List, Type, Set, Tuple
+import weakref
 from functools import cached_property
+from typing import Callable, Optional, Dict, Union, List, Type, Set, Tuple
+
 from pydantic import BaseModel
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
@@ -11,7 +15,6 @@ from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 from lazyllm.common.bind import _MetaBind
 
 from ._store_config import is_local_map_store, is_persistent_store, iter_embedded_store_endpoints
-from .doc_service import DocServer
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files, SchemaExtractor
@@ -20,10 +23,8 @@ from .store.store_base import DEFAULT_KB_ID
 from .index_base import IndexBase
 from .utils import RAG_DEFAULT_GROUP_NAME, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
+from .doc_service import DocServer
 from .web import DocWebModule
-import copy
-import functools
-import weakref
 
 _LOCAL_PYTHONPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
@@ -220,8 +221,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             impl = DocImpl(
                 dataset_path=self._doc_impl_dataset_path, embed=embed, kb_group_name=name,
                 global_metadata_desc=doc_fields,
-                store=store_conf or self._store_conf, processor=self._doc_processor or self._processor,
-                algo_name=name, display_name=name, description=self._description,
+                store=store_conf or (None if (self._doc_processor or self._processor) else self._store_conf),
+                processor=self._doc_processor or self._processor,
+                algo_name=name, display_name=name, description='',
                 schema_extractor=schema_extractor,
             )
             self._iter_kbs()[name] = impl
@@ -263,9 +265,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         '''
         if not isinstance(manager, DocumentProcessor):
             return None, manager
-        if store_conf is None:
-            raise ValueError('`store_conf` is required when `manager` is a DocumentProcessor')
-        if is_local_map_store(store_conf):
+        if store_conf is not None:
+            raise ValueError(
+                '`store_conf` must not be passed to `Document` when `manager` is a DocumentProcessor; '
+                'set `store_conf` on the DocumentProcessor instance instead.'
+            )
+        if getattr(manager, '_store_conf', None) is None:
+            raise ValueError(
+                '`manager=DocumentProcessor(...)` requires the DocumentProcessor to have `store_conf` set; '
+                'pass `store_conf=...` when constructing the DocumentProcessor.'
+            )
+        if is_local_map_store(manager._store_conf):
             raise ValueError('`manager=DocumentProcessor(...)` does not support pure local map store')
         if dataset_path is not None:
             raise ValueError(

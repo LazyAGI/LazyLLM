@@ -128,7 +128,7 @@ class DocServer(ModuleBase):
             stale_ids = [did for path, did in all_known_docs.items() if path not in disk_set]
             if stale_ids:
                 try:
-                    request = DeleteRequest(doc_ids=stale_ids, kb_id=kb_id, algo_id=algo_id)
+                    request = DeleteRequest(doc_ids=stale_ids, kb_id=kb_id)
                     self._manager.delete(request)
                 except Exception as exc:
                     LOG.error(f'[Scan] delete failed for kb={kb_id}: {len(stale_ids)} docs: {exc}')
@@ -251,7 +251,7 @@ class DocServer(ModuleBase):
                     })
             return {
                 'kb_id': request.kb_id,
-                'algo_id': request.algo_id,
+                'algo_id': None,  # deprecated; kept for idempotency-key stability
                 'source_type': source_type.value,
                 'idempotency_key': request.idempotency_key,
                 'items': items,
@@ -753,7 +753,8 @@ class DocServer(ModuleBase):
             if not files:
                 raise fastapi.HTTPException(status_code=400, detail='files is required')
             kb_id = kb_id or '__default__'
-            algo_id = algo_id or '__default__'
+            if algo_id is not None:
+                LOG.warning(f'[upload] algo_id is deprecated and ignored; kb={kb_id}')
             source_type = source_type or SourceType.API
             saved_paths, file_identities = await self._persist_uploads(files)
             upload_request = UploadRequest(
@@ -762,7 +763,6 @@ class DocServer(ModuleBase):
                     for idx, path in enumerate(saved_paths)
                 ],
                 kb_id=kb_id,
-                algo_id=algo_id,
                 source_type=source_type,
                 idempotency_key=idempotency_key,
             )
@@ -816,10 +816,11 @@ class DocServer(ModuleBase):
             page_size: int = 20,
         ):
             self._lazy_init()
+            if algo_id is not None:
+                LOG.warning(f'[list_docs] algo_id={algo_id!r} is deprecated and ignored')
             data = self._manager.list_docs(
                 status=status,
                 kb_id=kb_id,
-                algo_id=algo_id,
                 keyword=keyword,
                 include_deleted_or_canceled=include_deleted_or_canceled,
                 page=page,
@@ -928,7 +929,7 @@ class DocServer(ModuleBase):
             kb_id: str,
             doc_id: str,
             group: str,
-            algo_id: str = '__default__',
+            algo_id: Optional[str] = None,
             page: int = 1,
             page_size: int = 20,
             offset: Optional[int] = None,
@@ -1053,6 +1054,11 @@ class DocServer(ModuleBase):
         def batch_get_kbs(self, request: KbBatchQueryRequest):
             self._lazy_init()
             return self._run(lambda: self._manager.batch_get_kbs(request.kb_ids))
+
+        @app.delete('/v1/kbs/{kb_id}/algos/{algo_id}')
+        def unbind_algo(self, kb_id: str, algo_id: str, dry_run: bool = False):
+            self._lazy_init()
+            return self._run(lambda: self._manager.unbind_algo(kb_id, algo_id, dry_run=dry_run))
 
         @app.delete('/v1/kbs/{kb_id}')
         def delete_kb(self, kb_id: str, idempotency_key: Optional[str] = None):
@@ -1314,6 +1320,9 @@ class DocServer(ModuleBase):
 
     def delete_kbs(self, kb_ids: List[str]):
         return self._dispatch('delete_kbs_impl', kb_ids)
+
+    def unbind_algo(self, kb_id: str, algo_id: str):
+        return self._dispatch('unbind_algo', kb_id, algo_id)
 
     def ensure_kb_registered(self, kb_id: str, algo_id: Optional[str] = None):
         '''Ensure the knowledge base row and algorithm binding exist in the doc service.'''

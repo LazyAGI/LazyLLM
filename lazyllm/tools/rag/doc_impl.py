@@ -1,11 +1,14 @@
 import os
+import hashlib
+import json
+import re
 from enum import Enum
 from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
 from lazyllm import LOG, once_wrapper, config
 from lazyllm.module import LLMBase
-from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
-                        TransformArgs, TransformArgs as TArgs)
+from .transform import (NodeTransform, SentenceSplitter,
+                        TransformArgs, TransformArgs as TArgs, _transmap)
 from .index_base import IndexBase
 from .store import (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, LazyLLMStoreBase)
 from .store.store_base import DEFAULT_KB_ID
@@ -20,7 +23,51 @@ from .embed_wrapper import _EmbedWrapper
 from .doc_to_db import SchemaExtractor
 from dataclasses import dataclass
 
-_transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
+_VERSION_RE = re.compile(
+    r'^([0-9]+!)?[0-9]+(\.[0-9]+)*([-_\.]?(a|b|rc|alpha|beta|preview)[0-9]*)?(\.post[0-9]+)?(\.dev[0-9]+)?$',
+    re.IGNORECASE,
+)
+
+
+def _callable_sig_for_doc_impl(t) -> str:
+    import inspect as _inspect
+    qualname = getattr(t, '__qualname__', None)
+    module = getattr(t, '__module__', None)
+    if qualname and '<lambda>' not in qualname:
+        return f'{module}.{qualname}' if module else qualname
+    try:
+        src = _inspect.getsource(t).strip()
+        return '__lambda__::' + hashlib.sha256(src.encode()).hexdigest()[:16]
+    except (OSError, TypeError):
+        return repr(t)
+
+
+def _compute_node_group_signature(name: str, transform, parent_sig: str, ref_sig: str,
+                                  group_type: 'NodeGroupType') -> str:
+    def _elem_sig(t) -> str:
+        if isinstance(t, TransformArgs):
+            return t.signature()
+        if isinstance(t, str):
+            cls = _transmap.get(t.lower())
+            return cls.__name__ if cls else t
+        if callable(t):
+            return _callable_sig_for_doc_impl(t)
+        return repr(t)
+
+    if isinstance(transform, (list, tuple)):
+        transform_sig = [_elem_sig(t) for t in transform]
+    elif isinstance(transform, TransformArgs):
+        transform_sig = transform.signature()
+    else:
+        transform_sig = _elem_sig(transform)
+    payload = json.dumps({
+        'name': name,
+        'parent_sig': parent_sig,
+        'ref_sig': ref_sig,
+        'transform_sig': transform_sig,
+        'group_type': group_type.name if isinstance(group_type, NodeGroupType) else str(group_type),
+    }, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 class StorePlaceholder:
     pass
@@ -135,7 +182,10 @@ class DocImpl:
         return self._store
 
     def _create_store(self):
-        self._store = self._store or {'type': 'map'}
+        store = self._store
+        if store is None and self._processor is not None:
+            store = getattr(self._processor, '_store_conf', None)
+        self._store = store or {'type': 'map'}
         embed_dims, embed_datatypes = {}, {}
         for k, e in self.embed.items():
             embedding = e('a')
@@ -182,8 +232,7 @@ class DocImpl:
             self._processor.register_algorithm(self._algo_name, self._store, self._reader, self.node_groups,
                                                self._schema_extractor, self._display_name, self._description)
         else:
-            self._processor = _Processor(self._algo_name, self._store, self._reader, self.node_groups,
-                                         self._schema_extractor, self._display_name, self._description)
+            self._processor = _Processor(self._store, self._schema_extractor)
 
         # `cloud` is True iff both dataset_path and doc_files are absent. Otherwise do a
         # one-time ingest: DocImpl only owns the scan in map-store flows now (persistent
@@ -222,7 +271,21 @@ class DocImpl:
                                        num_workers=num_workers, kwargs=kwargs)
 
         if name in groups:
-            LOG.warning(f'Duplicate group name: {name}')
+            existing = groups[name]
+            existing_sig = existing.get('signature', '')
+            parent_sig = groups.get(parent, {}).get('signature', '') if parent != LAZY_ROOT_NAME else ''
+            ref_sig = groups.get(ref, {}).get('signature', '') if ref else ''
+            new_sig = _compute_node_group_signature(name, transforms, parent_sig, ref_sig, group_type)
+            if existing_sig and existing_sig == new_sig:
+                LOG.info(f'Node group {name!r} already registered with same signature, skipping.')
+                return
+            if existing_sig and existing_sig != new_sig:
+                raise ValueError(
+                    f'Node group {name!r} already exists with a different signature '
+                    f'(existing={existing_sig}, new={new_sig}). '
+                    'Use a different name or version to create a distinct node group.'
+                )
+            # existing_sig is empty (legacy data without signature): update in-place
         for t in (transforms if isinstance(transform, list) else [transforms]):
             if isinstance(t.f, str):
                 t.f = _transmap[t.f.lower()]
@@ -234,8 +297,11 @@ class DocImpl:
                     'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
             else:
                 assert callable(t.f), f'transform should be callable, but get {t.f}'
+        parent_sig = groups.get(parent, {}).get('signature', '') if parent != LAZY_ROOT_NAME else ''
+        ref_sig = groups.get(ref, {}).get('signature', '') if ref else ''
+        signature = _compute_node_group_signature(name, transforms, parent_sig, ref_sig, group_type)
         groups[name] = dict(transform=transforms, parent=parent, display_name=display_name or name,
-                            group_type=group_type, ref=ref)
+                            group_type=group_type, ref=ref, signature=signature)
 
     @classmethod
     def _create_builtin_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME,
@@ -250,15 +316,39 @@ class DocImpl:
     def create_global_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                                  trans_node: Optional[bool] = None, num_workers: int = 0,
                                  display_name: Optional[str] = None,
-                                 group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None, **kwargs) -> None:
+                                 group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None,
+                                 version: Optional[str] = None, **kwargs) -> None:
+        if version is not None:
+            if not _VERSION_RE.match(version):
+                raise ValueError(f'Invalid version {version!r}. Must follow PEP 440 (e.g. 1.0, 1.1.1, 1.1.1a0).')
+            name = f'{name}@v{version}'
         DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
                                         group_type=group_type, ref=ref, **kwargs)
 
     def create_node_group(self, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                           trans_node: Optional[bool] = None, num_workers: int = 0, display_name: Optional[str] = None,
-                          group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None, **kwargs) -> None:
-        assert not self._lazy_init.flag, 'Cannot add node group after document started'
+                          group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None,
+                          version: Optional[str] = None, **kwargs) -> None:
+        # NOTE: if parent itself is versioned, pass the full versioned name (e.g. "chunks@v1.0");
+        # the version param does NOT auto-append a version suffix to parent.
+        if version is not None:
+            if not _VERSION_RE.match(version):
+                raise ValueError(f'Invalid version {version!r}. Must follow PEP 440 (e.g. 1.0, 1.1.1, 1.1.1a0).')
+            name = f'{name}@v{version}'
+        if self._lazy_init.flag:
+            if isinstance(self._processor, DocumentProcessor):
+                self._processor.register_new_node_group(name, dict(
+                    transform=transform, parent=parent, trans_node=trans_node,
+                    num_workers=num_workers, display_name=display_name,
+                    group_type=group_type, ref=ref, kwargs=kwargs,
+                ))
+                # Also update local node_groups so in-process callers see the new group.
+                DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
+                                                trans_node=trans_node, num_workers=num_workers,
+                                                display_name=display_name, group_type=group_type, ref=ref, **kwargs)
+                return
+            raise RuntimeError('Cannot add node group after document started in standalone mode')
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
                                         group_type=group_type, ref=ref, **kwargs)
@@ -300,7 +390,8 @@ class DocImpl:
         for filepath, doc_id, metadata in zip(input_files, ids, metadatas):
             filepath = os.path.abspath(filepath)
             try:
-                self._processor.add_doc([filepath], [doc_id], [metadata] if metadata is not None else None)
+                self._processor.add_doc([filepath], self.node_groups, self._reader,
+                                        [doc_id], [metadata] if metadata is not None else None)
                 success_ids.add(doc_id)
             except Exception as e:
                 LOG.error(f'Error adding document {doc_id} ({filepath}) to store: {e}')
@@ -361,7 +452,7 @@ class DocImpl:
                 if parent in self._activated_groups: break
                 self._store.activate_group(parent)
                 self._activated_groups.add(parent)
-            if self._store.is_group_empty(group_name): self._processor.reparse(group_name)
+            if self._store.is_group_empty(group_name): self._processor.reparse(group_name, self.node_groups)
 
     def active_node_groups(self):
         return {k: v for k, v in self._activated_embeddings.items() if k in self._activated_groups}

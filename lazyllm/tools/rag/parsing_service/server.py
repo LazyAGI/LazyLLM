@@ -4,20 +4,21 @@ import random
 import threading
 import time
 import traceback
+import requests
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from lazyllm import (
     LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app,
     LazyLLMLaunchersBase as Launcher, load_obj, once_wrapper, dump_obj
 )
-import requests
 from lazyllm.thirdparty import fastapi
 
 from .base import (
-    ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
+    ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO,
+    WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
     TaskStatus, TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest,
     _calculate_task_score, _resolve_add_doc_task_type
 )
@@ -35,6 +36,14 @@ CALLBACK_RETRY_MIN_INTERVAL = 5.0
 CALLBACK_RETRY_MAX_INTERVAL = 300.0
 CALLBACK_RETRY_MAX_ATTEMPTS = 5
 
+# Global registry: json(db_config) -> store_conf, enforces that all DocumentProcessor
+# instances sharing the same db_config must use the same store_conf.
+_PROC_STORE_REGISTRY: Dict[str, Optional[Dict]] = {}
+
+# Global registry: json(db_config) -> reader, enforces that all DocumentProcessor
+# instances sharing the same db_config must use the same reader.
+_PROC_READER_REGISTRY: Dict[str, Optional['DirectoryReader']] = {}
+
 
 class DocumentProcessor(ModuleBase):
 
@@ -43,8 +52,7 @@ class DocumentProcessor(ModuleBase):
                      post_func: Optional[Callable] = None, path_prefix: Optional[str] = None,
                      callback_url: Optional[str] = None,
                      lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
-                     high_priority_task_types: Optional[List[str]] = None,
-                     high_priority_workers: int = 1, callback_task_statuses: Optional[List[str]] = None,
+                     callback_task_statuses: Optional[List[str]] = None,
                      callback_task_types: Optional[List[str]] = None,
                      worker_launcher: Optional[Launcher] = None):
             self._db_config = db_config
@@ -57,19 +65,9 @@ class DocumentProcessor(ModuleBase):
             self._path_prefix = path_prefix
             self._lease_duration = lease_duration
             self._lease_renew_interval = lease_renew_interval
-            self._high_priority_task_types = (
-                high_priority_task_types
-                if high_priority_task_types is not None
-                else [TaskType.DOC_DELETE.value]
-            )
-            self._high_priority_workers = max(high_priority_workers, 0)
             self._callback_task_statuses = callback_task_statuses
             self._callback_task_types = callback_task_types
             self._callback_retry_attempts: Dict[int, int] = {}
-            # Launcher used for internal Worker subprocesses. When the outer
-            # DocumentProcessor is constructed with launcher=empty(...) we want
-            # its workers to stay local too, instead of falling back to the
-            # process-wide default (which is 'sco' in CI and tries srun).
             self._worker_launcher = worker_launcher
 
             self._db_manager = None
@@ -77,12 +75,15 @@ class DocumentProcessor(ModuleBase):
             self._finished_task_queue = None
             self._post_func_thread = None
             self._workers = None
-            self._high_priority_workers_module = None
+            self._schema_extractor: Optional[SchemaExtractor] = None
+            self._reader: Optional[DirectoryReader] = None  # global reader, set by register_algorithm
 
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
             LOG.info('[DocumentProcessor._Impl] Starting lazy initialization...')
-            self._db_manager = SqlManager(**self._db_config, tables_info_dict={'tables': [ALGORITHM_TABLE_INFO]})
+            self._db_manager = SqlManager(**self._db_config, tables_info_dict={
+                'tables': [ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO]
+            })
 
             self._waiting_task_queue = Queue(
                 table_name=WAITING_TASK_QUEUE_TABLE_INFO['name'],
@@ -103,41 +104,22 @@ class DocumentProcessor(ModuleBase):
             self._post_func_thread.start()
 
             if self._num_workers > 0:
-                high_priority_types = [t for t in (self._high_priority_task_types or []) if t]
-                high_priority_workers = 0
-                if high_priority_types and self._high_priority_workers > 0:
-                    if self._num_workers <= 1:
-                        LOG.warning('[DocumentProcessor] num_workers <= 1, high priority workers disabled')
-                    else:
-                        high_priority_workers = min(self._high_priority_workers, self._num_workers - 1)
-                        if high_priority_workers < self._high_priority_workers:
-                            LOG.warning('[DocumentProcessor] high_priority_workers trimmed to fit num_workers')
-                normal_workers = self._num_workers - high_priority_workers
-                if high_priority_workers > 0:
-                    self._high_priority_workers_module = Worker(
-                        db_config=self._db_config,
-                        num_workers=high_priority_workers,
-                        lease_duration=self._lease_duration,
-                        lease_renew_interval=self._lease_renew_interval,
-                        high_priority_task_types=high_priority_types,
-                        high_priority_only=True,
-                        callback_task_statuses=self._callback_task_statuses,
-                        callback_task_types=self._callback_task_types,
-                        launcher=self._worker_launcher,
-                    )
-                    self._high_priority_workers_module.start()
-                if normal_workers > 0:
-                    self._workers = Worker(
-                        db_config=self._db_config,
-                        num_workers=normal_workers,
-                        lease_duration=self._lease_duration,
-                        lease_renew_interval=self._lease_renew_interval,
-                        high_priority_task_types=high_priority_types,
-                        callback_task_statuses=self._callback_task_statuses,
-                        callback_task_types=self._callback_task_types,
-                        launcher=self._worker_launcher,
-                    )
-                    self._workers.start()
+                self._workers = Worker(
+                    db_config=self._db_config,
+                    num_workers=self._num_workers,
+                    lease_duration=self._lease_duration,
+                    lease_renew_interval=self._lease_renew_interval,
+                    callback_task_statuses=self._callback_task_statuses,
+                    callback_task_types=self._callback_task_types,
+                    launcher=self._worker_launcher,
+                )
+                self._workers.start()
+            # Push reader to workers if already set (e.g. register_algorithm called before _lazy_init)
+            if self._reader is not None and self._workers is not None:
+                try:
+                    self._workers.set_reader(self._reader)
+                except Exception as e:
+                    LOG.warning(f'[DocumentProcessor] Failed to push reader to workers: {e}')
             LOG.info('[DocumentProcessor] Lazy initialization completed!')
 
         def __getstate__(self):
@@ -147,7 +129,6 @@ class DocumentProcessor(ModuleBase):
             state['_finished_task_queue'] = None
             state['_post_func_thread'] = None
             state['_workers'] = None
-            state['_high_priority_workers_module'] = None
             return state
 
         def __setstate__(self, state):
@@ -306,17 +287,17 @@ class DocumentProcessor(ModuleBase):
             task_context = self._load_task_context(finished_task)
 
             base_payload = {'task_type': task_context.get('task_type'),
-                            'kb_id': task_context.get('kb_id'),
-                            'algo_id': task_context.get('algo_id')}
+                            'kb_id': task_context.get('kb_id')}
             items = task_context.get('items') or [{}]
             for index, item in enumerate(items):
                 callback_payload = {
+                    # uuid5: deterministic id based on task_id+status+index, ensures idempotent callbacks
                     'callback_id': str(uuid5(NAMESPACE_URL, f'{task_id}:{task_status}:{index}')),
                     'task_id': task_id,
                     'task_status': task_status,
                     'payload': {k: v for k, v in {**base_payload, **item}.items() if v is not None},
                 }
-                for field in ('task_type', 'kb_id', 'algo_id'):
+                for field in ('task_type', 'kb_id'):
                     if base_payload.get(field) is not None:
                         callback_payload[field] = base_payload[field]
                 if item.get('doc_id') is not None:
@@ -330,46 +311,147 @@ class DocumentProcessor(ModuleBase):
                 response.raise_for_status()
             return True
 
+        def _validate_schema_extractor(self, schema_extractor):
+            if schema_extractor is None:
+                return
+            if self._schema_extractor is None:
+                self._schema_extractor = schema_extractor
+            elif self._schema_extractor is not schema_extractor:
+                raise ValueError(
+                    'schema_extractor must be the same across all register_algorithm calls. '
+                    'Only one global schema_extractor is supported per DocumentProcessor.'
+                )
+
+        def _validate_reader(self, reader):
+            if reader is None:
+                return
+            incoming_sig = reader.signature()
+            if self._reader is None:
+                self._reader = reader
+            elif self._reader.signature() != incoming_sig:
+                raise ValueError(
+                    'reader must be the same across all register_algorithm calls. '
+                    'Only one global reader is supported per DocumentProcessor.'
+                )
+
         def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader,
                                node_groups: Dict[str, Dict], schema_extractor: Optional[SchemaExtractor] = None,
                                display_name: Optional[str] = None, description: Optional[str] = None):
             # NOTE: name is the algorithm id, display_name is the algorithm display name
             self._lazy_init()
-            LOG.info((f'[DocumentProcessor] Get register algorithm request: name={name},'
-                      f'display_name={display_name}, description={description}'))
-            # write the processor to database
+            LOG.info(f'[DocumentProcessor] Register algorithm: name={name}, display_name={display_name}')
+            self._validate_schema_extractor(schema_extractor)
+            self._validate_reader(reader)
             try:
-                info_dict = {
-                    'store': store,
-                    'reader': reader,
-                    'node_groups': node_groups,
-                    'schema_extractor': schema_extractor,
-                }
-                info_pickle = dump_obj(info_dict)
+                # Upsert node groups and algorithm in a single transaction to ensure atomicity.
+                info_pickle = dump_obj({})
                 with self._db_manager.get_session() as session:
+                    node_group_ids = self._upsert_node_groups(node_groups, session=session)
+                    ng_ids_json = json.dumps(node_group_ids)
                     AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
-                    existing_algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == name).first()
-                    if not existing_algorithm:
-                        # new algorithm
-                        new_algo_info = AlgoInfo(
-                            id=name,
-                            display_name=display_name,
-                            description=description,
-                            info_pickle=info_pickle,
-                            created_at=datetime.now(),
-                            updated_at=datetime.now(),
-                        )
-                        session.add(new_algo_info)
+                    existing = session.query(AlgoInfo).filter(AlgoInfo.id == name).first()
+                    if not existing:
+                        session.add(AlgoInfo(
+                            id=name, display_name=display_name, description=description,
+                            info_pickle=info_pickle, node_group_ids=ng_ids_json,
+                            created_at=datetime.now(), updated_at=datetime.now(),
+                        ))
                     else:
-                        # existing algorithm
-                        existing_algorithm.info_pickle = info_pickle
-                        existing_algorithm.display_name = display_name
-                        existing_algorithm.description = description
-                        existing_algorithm.updated_at = datetime.now()
-                LOG.info(f'[DocumentProcessor] Algorithm {name} {display_name} {description} registered!')
+                        existing.info_pickle = info_pickle
+                        existing.display_name = display_name
+                        existing.description = description
+                        existing.node_group_ids = ng_ids_json
+                        existing.updated_at = datetime.now()
+                LOG.info(f'[DocumentProcessor] Algorithm {name!r} registered with {len(node_group_ids)} node groups.')
+                # Push reader to workers if they are already running
+                if reader is not None and self._workers is not None:
+                    try:
+                        self._workers.set_reader(reader)
+                    except Exception as e:
+                        LOG.warning(f'[DocumentProcessor] Failed to push reader to workers: {e}')
             except Exception as e:
                 LOG.error(f'[DocumentProcessor] Failed to register algorithm: {e}, {traceback.format_exc()}')
-                raise e
+                raise
+
+        def _upsert_node_groups(self, node_groups: Dict[str, Dict], session=None) -> List[str]:
+            from ..doc_impl import _compute_node_group_signature, NodeGroupType
+            NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+            reader_sig = self._reader.signature() if self._reader is not None else ''
+            # Build signatures in topological order (parent before child)
+            name_to_id: Dict[str, str] = {}
+            name_to_sig: Dict[str, str] = {}
+            ordered_names = list(node_groups.keys())
+
+            def _upsert_in_session(sess):
+                for ng_name in ordered_names:
+                    cfg = node_groups[ng_name]
+                    parent = cfg.get('parent', 'root')
+                    ref = cfg.get('ref')
+                    parent_sig = name_to_sig.get(parent, reader_sig)
+                    ref_sig = name_to_sig.get(ref, '') if ref else ''
+                    transform = cfg.get('transform') or cfg.get('args')
+                    group_type = cfg.get('group_type', NodeGroupType.CHUNK)
+                    sig = _compute_node_group_signature(ng_name, transform, parent_sig, ref_sig, group_type)
+                    name_to_sig[ng_name] = sig
+                    existing = sess.query(NodeGroupInfo).filter(NodeGroupInfo.name == ng_name).first()
+                    if existing:
+                        if existing.signature != sig:
+                            raise ValueError(
+                                f'Node group {ng_name!r} already registered with different signature '
+                                f'(existing={existing.signature}, new={sig}). '
+                                'Use a different name or version.'
+                            )
+                        name_to_id[ng_name] = existing.id
+                    else:
+                        ng_id = str(uuid4())  # random id for new node group
+                        sess.add(NodeGroupInfo(
+                            id=ng_id, name=ng_name, signature=sig,
+                            info_pickle=dump_obj(cfg), created_at=datetime.now(), updated_at=datetime.now(),
+                        ))
+                        name_to_id[ng_name] = ng_id
+
+            if session is not None:
+                _upsert_in_session(session)
+            else:
+                with self._db_manager.get_session() as sess:
+                    _upsert_in_session(sess)
+            return [name_to_id[n] for n in ordered_names]
+
+        def register_new_node_group(self, name: str, config: Dict, session=None) -> str:
+            self._lazy_init()
+            LOG.info(f'[DocumentProcessor] Register new node group: name={name}')
+            try:
+                from ..doc_impl import _compute_node_group_signature, NodeGroupType
+                NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                transform = config.get('transform') or config.get('args')
+                group_type = config.get('group_type', NodeGroupType.CHUNK)
+                sig = _compute_node_group_signature(name, transform, '', '', group_type)
+
+                def _do_register(sess):
+                    existing = sess.query(NodeGroupInfo).filter(NodeGroupInfo.name == name).first()
+                    if existing:
+                        if existing.signature != sig:
+                            raise ValueError(
+                                f'Node group {name!r} already registered with different signature '
+                                f'(existing={existing.signature}, new={sig}).'
+                            )
+                        LOG.info(f'[DocumentProcessor] Node group {name!r} already exists, reusing id={existing.id}')
+                        return existing.id
+                    ng_id = str(uuid4())  # random id for new node group
+                    sess.add(NodeGroupInfo(
+                        id=ng_id, name=name, signature=sig,
+                        info_pickle=dump_obj(config), created_at=datetime.now(), updated_at=datetime.now(),
+                    ))
+                    LOG.info(f'[DocumentProcessor] Node group {name!r} registered with id={ng_id}')
+                    return ng_id
+
+                if session is not None:
+                    return _do_register(session)
+                with self._db_manager.get_session() as sess:
+                    return _do_register(sess)
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to register node group: {e}, {traceback.format_exc()}')
+                raise
 
         def drop_algorithm(self, name: str) -> None:
             try:
@@ -386,13 +468,61 @@ class DocumentProcessor(ModuleBase):
                 LOG.error(f'[DocumentProcessor] Failed to drop algorithm: {e}, {traceback.format_exc()}')
                 raise e
 
-        def _get_algo(self, algo_id: str) -> Dict[str, Any]:
+        def drop_node_group(self, name: str) -> None:
+            self._lazy_init()
+            LOG.info(f'[DocumentProcessor] Drop node group: name={name}')
+            try:
+                with self._db_manager.get_session() as session:
+                    NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                    ng = session.query(NodeGroupInfo).filter(NodeGroupInfo.name == name).first()
+                    if not ng:
+                        LOG.warning(f'[DocumentProcessor] Node group {name!r} not found')
+                        return
+                    AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
+                    referencing = [
+                        a.id for a in session.query(AlgoInfo).all()
+                        if ng.id in json.loads(a.node_group_ids or '[]')
+                    ]
+                    if referencing:
+                        raise ValueError(
+                            f"Node group '{name}' is referenced by algorithm(s): {referencing}. "
+                            'Delete those algorithms first.'
+                        )
+                    session.delete(ng)
+                    LOG.info(f'[DocumentProcessor] Node group {name!r} dropped.')
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to drop node group: {e}, {traceback.format_exc()}')
+                raise
+
+        def _get_algo(self, algo_id: str) -> Optional[Dict[str, Any]]:
             with self._db_manager.get_session() as session:
                 AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
                 algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == algo_id).first()
                 if algorithm is None:
                     return None
-                return _orm_to_dict(algorithm)
+                algo_dict = _orm_to_dict(algorithm)
+                # Load node_groups from lazyllm_node_group using node_group_ids
+                ng_ids = json.loads(algo_dict.get('node_group_ids') or '[]')
+                if ng_ids:
+                    NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                    ngs = {
+                        row.id: row for row in
+                        session.query(NodeGroupInfo).filter(NodeGroupInfo.id.in_(ng_ids)).all()
+                    }
+                    node_groups = {}
+                    for ng_id in ng_ids:
+                        row = ngs.get(ng_id)
+                        if row is None:
+                            LOG.warning(f'[DocumentProcessor] Node group id={ng_id} not found in DB')
+                            continue
+                        cfg = load_obj(row.info_pickle)
+                        node_groups[row.name] = cfg
+                    algo_dict['node_groups'] = node_groups
+                else:
+                    # Backward compat: node_groups embedded in info_pickle
+                    info = load_obj(algo_dict.get('info_pickle', ''))
+                    algo_dict['node_groups'] = info.get('node_groups', {}) if isinstance(info, dict) else {}
+                return algo_dict
 
         @app.get('/health')
         def get_health(self) -> None:
@@ -458,6 +588,23 @@ class DocumentProcessor(ModuleBase):
                 LOG.warning('[DocumentProcessor] No algorithm registered')
             return BaseResponse(code=200, msg='success', data=data)
 
+        @app.get('/algo/{algo_id}/groups')
+        def get_algo_groups(self, algo_id: str) -> None:
+            self._lazy_init()
+            if self._shutdown:
+                raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
+            try:
+                algorithm = self._get_algo(algo_id)
+                if algorithm is None:
+                    raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
+                node_group_ids = json.loads(algorithm.get('node_group_ids') or '[]')
+                return BaseResponse(code=200, msg='success', data={'node_group_ids': node_group_ids})
+            except fastapi.HTTPException:
+                raise
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to get algo groups: {e}, {traceback.format_exc()}')
+                raise fastapi.HTTPException(status_code=500, detail=f'Failed to get algo groups: {str(e)}')
+
         @app.get('/algo/{algo_id}/group/info')
         def get_algo_group_info(self, algo_id: str) -> None:
             self._lazy_init()
@@ -472,9 +619,6 @@ class DocumentProcessor(ModuleBase):
             except Exception as e:
                 LOG.error(f'[DocumentProcessor] Failed to get group info: {e}, {traceback.format_exc()}')
                 raise fastapi.HTTPException(status_code=500, detail=f'Failed to get group info: {str(e)}')
-
-        def get_group_info(self, algo_id: str) -> None:
-            return self.get_algo_group_info(algo_id)
 
         def _get_algo_group_info_data(self, algo_id: str):
             algorithm = self._get_algo(algo_id)
@@ -582,13 +726,9 @@ class DocumentProcessor(ModuleBase):
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
             LOG.info(f'[DocumentProcessor] Received add doc request (raw): {request.model_dump()}')
             task_id = request.task_id
-            algo_id = request.algo_id
             file_infos = request.file_infos
             if not file_infos:
                 raise fastapi.HTTPException(status_code=400, detail='file_infos is required')
-            algorithm = self._get_algo(algo_id)
-            if algorithm is None:
-                raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
             # NOTE: No idempotency key check, should be handled by the caller!
             for file_info in file_infos:
                 if self._path_prefix:
@@ -635,14 +775,10 @@ class DocumentProcessor(ModuleBase):
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
             LOG.info(f'[DocumentProcessor] Received update meta request (raw): {request.model_dump()}')
             task_id = request.task_id
-            algo_id = request.algo_id
             file_infos = request.file_infos
 
             if not file_infos:
                 raise fastapi.HTTPException(status_code=400, detail='file_infos is required')
-            algorithm = self._get_algo(algo_id)
-            if algorithm is None:
-                raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
             payload = request.model_dump()
             LOG.info(f'[DocumentProcessor] Received update meta request: {payload}')
             resolved_callback_url = self._resolve_callback_url(payload)
@@ -685,13 +821,9 @@ class DocumentProcessor(ModuleBase):
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
             LOG.info(f'[DocumentProcessor] Received delete doc request (raw): {request.model_dump()}')
             task_id = request.task_id
-            algo_id = request.algo_id
             doc_ids = request.doc_ids
             if not doc_ids:
                 raise fastapi.HTTPException(status_code=400, detail='doc_ids is required')
-            algorithm = self._get_algo(algo_id)
-            if algorithm is None:
-                raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
             payload = request.model_dump()
             LOG.info(f'[DocumentProcessor] Received delete doc request: {payload}')
             resolved_callback_url = self._resolve_callback_url(payload)
@@ -825,15 +957,37 @@ class DocumentProcessor(ModuleBase):
 
     def __init__(self, port: int = None, url: str = None, num_workers: int = 1,
                  db_config: Optional[Dict[str, Any]] = None,
+                 store_conf: Optional[Dict] = None,
+                 reader: Optional['DirectoryReader'] = None,
                  launcher: Optional[Launcher] = None, post_func: Optional[Callable] = None,
                  path_prefix: Optional[str] = None, callback_url: Optional[str] = None, lease_duration: float = 300.0,
-                 lease_renew_interval: float = 60.0, high_priority_task_types: Optional[List[str]] = None,
-                 high_priority_workers: int = 1, pythonpath: Optional[str] = None,
+                 lease_renew_interval: float = 60.0, pythonpath: Optional[str] = None,
                  callback_task_statuses: Optional[List[str]] = None,
                  callback_task_types: Optional[List[str]] = None):
         super().__init__()
         self._raw_impl = None  # save the reference of the original Impl object
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
+        self._store_conf = store_conf
+        if store_conf is not None:
+            key = json.dumps(self._db_config, sort_keys=True)
+            if key in _PROC_STORE_REGISTRY:
+                if _PROC_STORE_REGISTRY[key] != store_conf:
+                    raise ValueError(
+                        f'DocumentProcessor instances sharing the same db_config must use the same store_conf. '
+                        f'Expected {_PROC_STORE_REGISTRY[key]!r}, got {store_conf!r}.'
+                    )
+            else:
+                _PROC_STORE_REGISTRY[key] = store_conf
+        self._reader = reader
+        if reader is not None:
+            key = json.dumps(self._db_config, sort_keys=True)
+            if key in _PROC_READER_REGISTRY:
+                if _PROC_READER_REGISTRY[key].signature() != reader.signature():
+                    raise ValueError(
+                        'DocumentProcessor instances sharing the same db_config must use the same reader.'
+                    )
+            else:
+                _PROC_READER_REGISTRY[key] = reader
         if not url:
             # DocumentProcessor and its Workers are lightweight orchestration
             # (task queue polling, callbacks) with no GPU needs; default to a
@@ -850,8 +1004,6 @@ class DocumentProcessor(ModuleBase):
                 path_prefix=path_prefix,
                 lease_duration=lease_duration,
                 lease_renew_interval=lease_renew_interval,
-                high_priority_task_types=high_priority_task_types,
-                high_priority_workers=high_priority_workers,
                 callback_url=callback_url,
                 callback_task_statuses=callback_task_statuses,
                 callback_task_types=callback_task_types,

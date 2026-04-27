@@ -75,6 +75,12 @@ class XMLSplitter(_LanguageSplitterBase):
         self._keep_trace = keep_trace
         self._keep_tags = keep_tags
 
+    def sig_fields(self) -> Dict:
+        return {
+            'chunk_size': self._chunk_size, 'overlap': self._overlap,
+            'keep_trace': self._keep_trace, 'keep_tags': self._keep_tags,
+        }
+
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:  # noqa: C901
         try:
             root = xml.etree.ElementTree.fromstring(text)
@@ -174,7 +180,8 @@ class GeneralCodeSplitter(_LanguageSplitterBase):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers,
                          filetype=filetype, **kwargs)
 
-        self._extra_params = kwargs
+    def sig_fields(self) -> Dict:
+        return {'chunk_size': self._chunk_size, 'overlap': self._overlap, 'filetype': self._filetype}
 
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:  # noqa: C901
         if not text.strip():
@@ -294,6 +301,12 @@ class JSONSplitter(_LanguageSplitterBase):
 
         self._compact_output = compact_output
         self._max_depth = 20
+
+    def sig_fields(self) -> Dict:
+        return {
+            'chunk_size': self._chunk_size, 'overlap': self._overlap,
+            'filetype': self._filetype, 'compact_output': self._compact_output,
+        }
 
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:
         try:
@@ -625,6 +638,12 @@ class HTMLSplitter(_LanguageSplitterBase):
         self._keep_sections = keep_sections
         self._keep_tags = keep_tags
 
+    def sig_fields(self) -> Dict:
+        return {
+            'chunk_size': self._chunk_size, 'overlap': self._overlap,
+            'keep_sections': self._keep_sections, 'keep_tags': self._keep_tags,
+        }
+
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:
         try:
             soup = bs4.BeautifulSoup(text, 'html.parser')
@@ -921,6 +940,9 @@ class CodeSplitter(_TextSplitterBase):
 
         if self._filetype:
             self._splitter = self.from_language(filetype)
+
+    def sig_fields(self) -> Dict:
+        return {'chunk_size': self._chunk_size, 'overlap': self._overlap, 'filetype': self._filetype}
 
     def from_language(self, filetype: str) -> _LanguageSplitterBase:
         filetype_lower = filetype.lower()

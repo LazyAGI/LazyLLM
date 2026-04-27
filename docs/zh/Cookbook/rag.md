@@ -668,7 +668,7 @@ docs.start()
 
 ### 使用 url 接入 `Document`
 
-启动后，假设文档服务部署在 `127.0.0.1` 的 `9200` 端口，则可以通过 `http://127.0.0.1:9200/` 访问文档服务。我们使用 `lazyllm.UrlDocument` 来接入文档服务，并指定文档服务的名称 `doc_server`。
+启动后，假设文档服务部署在 `127.0.0.1` 的 `9200` 端口，则可以通过 `http://127.0.0.1:9200/` 访问文档服务。我们使用 `lazyllm.Document(url=...)` 来接入文档服务，并指定文档服务的名称 `doc_server`。
 ```python
 docs2 = lazyllm.Document(url="http://127.0.0.1:9200/", name="doc_server")
 retriever = lazyllm.Retriever(doc=docs2, group_name="sentences", topk=3)

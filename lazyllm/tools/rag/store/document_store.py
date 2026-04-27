@@ -133,8 +133,113 @@ class _DocumentStore(object):
                 global_metadata_desc=self._global_metadata_desc,
                 collections=[self._gen_collection_name(group) for group in self.activated_groups()]
             )
+            self._check_legacy_collections()
         elif self._impl.capability == StoreCapability.SEGMENT:
             self._impl.connect(global_metadata_desc=self._global_metadata_desc)
+            self._check_legacy_collections()
+
+    def _check_legacy_collections(self):
+        stale = []
+        for group in self.activated_groups():
+            new_name = self._gen_collection_name(group)
+            old_name = self._gen_collection_name_legacy(group)
+            if new_name == old_name:
+                continue
+            if self._collection_exists(old_name) and not self._collection_exists(new_name):
+                stale.append((group, old_name, new_name))
+        if stale:
+            lines = [
+                '[_DocumentStore] Legacy collection names detected. '
+                'Data is stored under old names (col_{algo}_{group}) but the current format is col_{group}. '
+                'Run the migration script to move data:',
+                '    python -m lazyllm.tools.rag.migrate_collections \\',
+                f'        --algo-name {self._algo_name} \\',
+            ]
+            store_type, store_uri = self._get_store_type_and_uri()
+            if store_type:
+                lines.append(f'        --store-type {store_type} \\')
+            if store_uri:
+                lines.append(f'        --store-uri {store_uri} \\')
+            lines.append(f'        --groups {" ".join(g for g, _, _ in stale)}')
+            LOG.warning('\n'.join(lines))
+
+    def _collection_exists(self, collection_name: str) -> bool:
+        impl = self._impl
+        # HybridStore: check segment store (MapStore/SQLite) and vector store separately
+        if hasattr(impl, 'segment_store') and hasattr(impl, 'vector_store'):
+            return (self._collection_exists_in(impl.segment_store, collection_name)
+                    or self._collection_exists_in(impl.vector_store, collection_name))
+        return self._collection_exists_in(impl, collection_name)
+
+    def _collection_exists_in(self, store, collection_name: str) -> bool:
+        try:
+            if hasattr(store, '_client_context'):
+                return self._exists_milvus(store, collection_name)
+            if hasattr(store, '_client') and hasattr(store, '_embed_datatypes'):
+                return self._exists_chroma(store, collection_name)
+            if hasattr(store, '_uri') and store._uri:
+                return self._exists_sqlite(store._uri, collection_name)
+            if hasattr(store, '_collection2uids'):
+                return collection_name in store._collection2uids
+            if hasattr(store, '_client') and hasattr(store._client, 'indices'):
+                return store._client.indices.exists(index=collection_name)
+        except Exception as e:
+            LOG.debug(f'[_DocumentStore] _collection_exists_in check failed for {collection_name!r}: {e}')
+        return False
+
+    def _exists_milvus(self, store, collection_name: str) -> bool:
+        with store._client_context() as client:
+            return client.has_collection(collection_name)
+
+    def _exists_chroma(self, store, collection_name: str) -> bool:
+        for embed_key in (store._embed_datatypes or {}).keys():
+            sub = store._gen_collection_name(collection_name, embed_key)
+            try:
+                store._client.get_collection(sub)
+                return True
+            except Exception as e:
+                LOG.debug(f'[_DocumentStore] Chroma collection {sub!r} not found: {e}')
+        return False
+
+    def _exists_sqlite(self, uri: str, collection_name: str) -> bool:
+        import sqlite3 as _sqlite3
+        try:
+            conn = _sqlite3.connect(uri, timeout=3.0)
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                        (collection_name,))
+            exists = cur.fetchone() is not None
+            conn.close()
+            return exists
+        except Exception:
+            return False
+
+    def _get_store_type_and_uri(self) -> Tuple[Optional[str], Optional[str]]:
+        impl = self._impl
+        vec = getattr(impl, 'vector_store', impl)
+        seg = getattr(impl, 'segment_store', None)
+        store_type = type(vec).__name__.replace('Store', '').lower()
+        uri = getattr(vec, '_uri', None) or getattr(vec, 'dir', None)
+        if uri is None and seg is not None:
+            uri = getattr(seg, '_uri', None)
+        return store_type, uri
+
+    def _gen_collection_name_legacy(self, group: str) -> str:
+        return self._normalize_collection_raw_name(f'col_{self._algo_name}_{group}'.lower())
+
+    @staticmethod
+    def _normalize_collection_raw_name(raw_name: str) -> str:
+        normalized = _DocumentStore._COLLECTION_NAME_PATTERN.sub('_', raw_name).strip('_')
+        if not normalized:
+            normalized = 'col'
+        if normalized[0].isdigit():
+            normalized = f'col_{normalized}'
+        if normalized == raw_name and len(normalized) <= _DocumentStore._COLLECTION_NAME_MAX_LEN:
+            return normalized
+        digest = hashlib.sha1(raw_name.encode()).hexdigest()[:12]
+        max_prefix_len = _DocumentStore._COLLECTION_NAME_MAX_LEN - len(digest) - 1
+        prefix = normalized[:max_prefix_len].rstrip('_') or 'col'
+        return f'{prefix}_{digest}'
 
     @property
     def impl(self):
@@ -148,6 +253,34 @@ class _DocumentStore(object):
             if group not in self._activated_groups:
                 self._activated_groups.add(group)
         return True
+
+    def activate_group_with_connect(self, group_name: str, embed_keys: Optional[List[str]] = None) -> bool:
+        if group_name not in self._activated_groups:
+            self._activated_groups.add(group_name)
+        if embed_keys:
+            self._group_embed_keys[group_name] = embed_keys
+        collection_name = self._gen_collection_name(group_name)
+        if hasattr(self.impl, 'create_collection'):
+            try:
+                self.impl.create_collection(collection_name)
+            except Exception as e:
+                LOG.warning(f'[_DocumentStore] create_collection({collection_name}) failed: {e}')
+                return False
+        return True
+
+    def drop_collection(self, group_name: str) -> bool:
+        collection_name = self._gen_collection_name(group_name)
+        ok = True
+        if hasattr(self.impl, 'drop_collection'):
+            try:
+                self.impl.drop_collection(collection_name)
+                LOG.info(f'[_DocumentStore] Dropped collection {collection_name} for group {group_name}')
+            except Exception as e:
+                LOG.warning(f'[_DocumentStore] drop_collection({collection_name}) failed: {e}')
+                ok = False
+        self._activated_groups.discard(group_name)
+        self._group_embed_keys.pop(group_name, None)
+        return ok
 
     def activated_groups(self) -> List[str]:
         return list(self._activated_groups)
@@ -191,7 +324,8 @@ class _DocumentStore(object):
             raise
 
     def remove_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                     group: Optional[str] = None, kb_id: Optional[str] = None, **kwargs) -> None:
+                     group: Optional[str] = None, kb_id: Optional[str] = None,
+                     node_group_ids_to_delete: Optional[List[str]] = None, **kwargs) -> None:
         # remove a set of nodes by uids
         # remove the nodes of the whole file -- doc ids only
         # remove the nodes of a certain group for one file -- doc ids and group (kb_id is optional)
@@ -205,7 +339,11 @@ class _DocumentStore(object):
             if kb_id:
                 criteria[RAG_KB_ID] = kb_id
             if not group:
-                groups = self._activated_groups
+                if node_group_ids_to_delete is not None:
+                    # Only delete data for the specified node groups (used for unbind_algo).
+                    groups = [g for g in self._activated_groups if g in node_group_ids_to_delete]
+                else:
+                    groups = self._activated_groups
             else:
                 groups = [group]
             for group in groups:
@@ -480,16 +618,4 @@ class _DocumentStore(object):
         return node.with_sim_score(score) if score else node
 
     def _gen_collection_name(self, group: str) -> str:
-        raw_name = f'col_{self._algo_name}_{group}'.lower()
-        normalized = self._COLLECTION_NAME_PATTERN.sub('_', raw_name).strip('_')
-        if not normalized:
-            normalized = 'col'
-        if normalized[0].isdigit():
-            normalized = f'col_{normalized}'
-        if normalized == raw_name and len(normalized) <= self._COLLECTION_NAME_MAX_LEN:
-            return normalized
-
-        digest = hashlib.sha1(raw_name.encode()).hexdigest()[:12]
-        max_prefix_len = self._COLLECTION_NAME_MAX_LEN - len(digest) - 1
-        prefix = normalized[:max_prefix_len].rstrip('_') or 'col'
-        return f'{prefix}_{digest}'
+        return self._normalize_collection_raw_name(f'col_{group}'.lower())
