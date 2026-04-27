@@ -42,10 +42,6 @@ def test_rag_tracing(exporter):
         primary = Retriever(Mock(spec=Document), group_name='sentences')
         secondary = Retriever(Mock(spec=Document), group_name='sentences')
 
-    with parallel() as retrieval:
-        retrieval.primary = primary
-        retrieval.secondary = secondary
-
     reranker = Reranker(name='ModuleReranker', model=rerank_model, topk=2)
 
     with patch.object(primary, 'forward', return_value=primary_nodes):
@@ -53,7 +49,9 @@ def test_rag_tracing(exporter):
             with patch.object(OnlineChatModule, 'forward', return_value='mock answer'):
                 llm = OnlineChatModule(source='dynamic', type='llm', model='mock-chat')
                 with pipeline() as rag:
-                    rag.retrieval = retrieval
+                    with parallel() as retrieval:
+                        retrieval.primary = primary
+                        retrieval.secondary = secondary
                     rag.merge_doc_groups = merge_doc_groups
                     rag.reranker = reranker
                     rag.format_rag_input = format_rag_input | bind(query=rag.input)

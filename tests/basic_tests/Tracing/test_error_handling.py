@@ -60,12 +60,10 @@ def test_parallel_branch_error_tracing(exporter):
 
 
 def test_nested_parallel_error_propagates_to_pipeline(exporter):
-    with parallel(_concurrent=2) as branches:
-        branches.first = first
-        branches.raises_error = raises_error
-
     with pipeline() as flow:
-        flow.branches = branches
+        with parallel(_concurrent=2) as branches:
+            branches.first = first
+            branches.raises_error = raises_error
         flow.unreachable = unreachable
 
     with pytest.raises(Exception, match='boom:1'):
