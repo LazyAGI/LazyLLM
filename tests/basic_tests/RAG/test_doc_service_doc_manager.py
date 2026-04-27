@@ -55,6 +55,8 @@ class _ManagerHarness:
         self.chunk_calls = []
         self.add_doc_calls = []
         self.chunk_response = BaseResponse(code=200, msg='success', data={'items': [], 'total': 0})
+        # ng_id → algo_id mapping, populated by _patch_multi_algo
+        self._ng_to_algo: dict = {}
         self._patch_parser_client()
 
     def close(self):
@@ -107,8 +109,17 @@ class _ManagerHarness:
         self.pending_task_status[task_id] = final_status
 
     def _patch_parser_client(self):
-        def add_doc(task_id, algo_id, kb_id, doc_id, file_path, metadata=None, reparse_group=None,
-                    callback_url=None, transfer_params=None):
+        def add_doc(task_id, kb_id, doc_id, file_path, metadata=None, ng_ids=None,
+                    reparse_group=None, callback_url=None, transfer_params=None):
+            # Infer algo_id from ng_ids using the ng→algo mapping populated by _patch_multi_algo.
+            # Only exclusive ng_ids (not shared across algos) are in the mapping.
+            # Falls back to '__default__' when the mapping is empty (single-algo tests).
+            algo_id = '__default__'
+            if ng_ids and self._ng_to_algo:
+                for ng_id in ng_ids:
+                    if ng_id in self._ng_to_algo:
+                        algo_id = self._ng_to_algo[ng_id]
+                        break
             self.add_doc_calls.append({
                 'task_id': task_id,
                 'algo_id': algo_id,
@@ -116,26 +127,27 @@ class _ManagerHarness:
                 'doc_id': doc_id,
                 'file_path': file_path,
                 'metadata': metadata,
+                'ng_ids': ng_ids,
                 'reparse_group': reparse_group,
                 'callback_url': callback_url,
                 'transfer_params': transfer_params,
             })
             self._queue_task(task_id, DocStatus.SUCCESS)
-            return BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
+            return BaseResponse(code=200, msg='success', data={'task_id': task_id, 'kb_id': kb_id})
 
-        def update_meta(task_id, algo_id, kb_id, doc_id, metadata=None, file_path=None, callback_url=None):
+        def update_meta(task_id, kb_id, doc_id, metadata=None, file_path=None, callback_url=None):
             del doc_id, metadata, file_path, callback_url
             self._queue_task(task_id, DocStatus.SUCCESS)
-            return BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
+            return BaseResponse(code=200, msg='success', data={'task_id': task_id, 'kb_id': kb_id})
 
-        def delete_doc(task_id, algo_id, kb_id, doc_id, callback_url=None, node_group_ids_to_delete=None):
+        def delete_doc(task_id, kb_id, doc_id, callback_url=None, node_group_ids_to_delete=None):
             del callback_url
             self.delete_calls.append({
-                'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id, 'doc_id': doc_id,
+                'task_id': task_id, 'kb_id': kb_id, 'doc_id': doc_id,
                 'node_group_ids_to_delete': node_group_ids_to_delete,
             })
             self._queue_task(task_id, DocStatus.SUCCESS)
-            return BaseResponse(code=200, msg='success', data={'task_id': task_id, 'algo_id': algo_id, 'kb_id': kb_id})
+            return BaseResponse(code=200, msg='success', data={'task_id': task_id, 'kb_id': kb_id})
 
         def cancel_task(task_id):
             self.cancel_calls.append(task_id)
@@ -358,12 +370,12 @@ def test_manager_stale_callback_ignored_after_reparse(manager_harness):
 
     first_task_id = manager_harness.manager.reparse(ReparseRequest(
         kb_id='kb_stale',
-        algo_id='__default__',
+        algo_ids=['__default__'],
         doc_ids=['stale-doc'],
     ))[0]
     second_task_id = manager_harness.manager.reparse(ReparseRequest(
         kb_id='kb_stale',
-        algo_id='__default__',
+        algo_ids=['__default__'],
         doc_ids=['stale-doc'],
     ))[0]
 
@@ -1378,6 +1390,18 @@ def _patch_multi_algo(harness):
     )
     harness.manager._parser_client.get_algorithm_groups = get_algorithm_groups
 
+    # Populate ng_id → algo_id mapping for add_doc inference (shared ngs are excluded)
+    ng_to_algo = {}
+    ng_count = {}
+    for _algo_id, ng_ids in _ALGO_NG_MAP.items():
+        for ng_id in ng_ids:
+            ng_count[ng_id] = ng_count.get(ng_id, 0) + 1
+    for algo_id, ng_ids in _ALGO_NG_MAP.items():
+        for ng_id in ng_ids:
+            if ng_count[ng_id] == 1:  # exclusive ng_id
+                ng_to_algo[ng_id] = algo_id
+    harness._ng_to_algo = ng_to_algo
+
 
 def _ng_statuses(harness, kb_id, doc_id):
     '''Return {node_group_id: status} for a given (kb_id, doc_id).'''
@@ -1489,7 +1513,7 @@ def test_multi_algo_scenario3a_reparse_skips_shared_ng(manager_harness):
 
     # Reparse all for algo2 (ng1 is shared with algo1 → must be skipped)
     task_ids = mgr.reparse(ReparseRequest(
-        kb_id='kb1s3', algo_id='algo2', doc_ids=['doc1s3'],
+        kb_id='kb1s3', algo_ids=['algo2'], doc_ids=['doc1s3'],
     ))
     assert len(task_ids) == 1
 
@@ -1531,7 +1555,7 @@ def test_multi_algo_scenario3b_explicit_single_ng_reparse_allowed(manager_harnes
 
     # Explicit reparse of ng1 via algo1 — must succeed and reset ng1 to PENDING
     task_ids = mgr.reparse(ReparseRequest(
-        kb_id='kb1s3b', doc_ids=['doc1s3b'], reparse_group='ng1',
+        kb_id='kb1s3b', doc_ids=['doc1s3b'], ng_names=['ng1'],
     ))
     assert len(task_ids) == 1
     statuses = _ng_statuses(manager_harness, 'kb1s3b', 'doc1s3b')
@@ -1638,16 +1662,16 @@ def test_multi_algo_scenario5_unbind_algo_preserves_shared_ng(manager_harness):
     assert len(result['task_ids']) == 1
 
     # The delete task sent to parser must only target ng2/ng3 (algo1-exclusive)
-    del_calls_algo1 = [c for c in manager_harness.delete_calls if c['algo_id'] == 'algo1']
-    assert len(del_calls_algo1) == 1
-    ngs_to_delete = del_calls_algo1[0]['node_group_ids_to_delete']
+    del_calls_with_ngs = [c for c in manager_harness.delete_calls if c['node_group_ids_to_delete']]
+    assert len(del_calls_with_ngs) == 1
+    ngs_to_delete = del_calls_with_ngs[0]['node_group_ids_to_delete']
     assert ngs_to_delete is not None
     assert set(ngs_to_delete) == {'ng2', 'ng3'}, \
         f'parser must only delete ng2/ng3; got {ngs_to_delete}'
     assert 'ng1' not in ngs_to_delete, 'shared ng1 must NOT be in node_group_ids_to_delete'
 
     # Finish the delete task
-    manager_harness.finish_task(del_calls_algo1[0]['task_id'])
+    manager_harness.finish_task(del_calls_with_ngs[0]['task_id'])
 
     # ng2/ng3 ng_status rows must be gone; ng1/ng6/ng7 must remain
     statuses_after = _ng_statuses(manager_harness, 'kb2s5', 'doc_s5')
@@ -1683,7 +1707,7 @@ def test_multi_algo_scenario6_reparse_single_ng(manager_harness):
     assert statuses_before == {'ng1': 'SUCCESS', 'ng2': 'SUCCESS', 'ng3': 'SUCCESS'}
 
     task_ids = mgr.reparse(ReparseRequest(
-        kb_id='kb1s6', doc_ids=['doc_s6'], reparse_group='ng3',
+        kb_id='kb1s6', doc_ids=['doc_s6'], ng_names=['ng3'],
     ))
     assert len(task_ids) == 1
 
@@ -1692,10 +1716,12 @@ def test_multi_algo_scenario6_reparse_single_ng(manager_harness):
     assert statuses_after['ng1'] == 'SUCCESS', 'ng1 must remain SUCCESS'
     assert statuses_after['ng2'] == 'SUCCESS', 'ng2 must remain SUCCESS'
 
-    # Parser must receive reparse_group='ng3'
+    # Parser must receive reparse_group containing 'ng3' (JSON list of ng_ids)
     reparse_calls = [c for c in manager_harness.add_doc_calls
                      if c['algo_id'] == 'algo1' and c['reparse_group'] is not None]
-    assert reparse_calls[-1]['reparse_group'] == 'ng3'
+    import json as _json
+    sent_ngs = _json.loads(reparse_calls[-1]['reparse_group'])
+    assert 'ng3' in sent_ngs
 
 
 # ---------------------------------------------------------------------------
@@ -1795,14 +1821,14 @@ def test_multi_algo_scenario10_reparse_all_shared_ngs_no_task(manager_harness):
 
     fp, items = _upload_doc(manager_harness, 'kb_shared_only', 'doc_so', 'doc_so.txt')
     manager_harness.finish_task(items[0]['task_id'])
-    algo_so_calls = [c for c in manager_harness.add_doc_calls if c['algo_id'] == 'algo_shared_only']
-    if algo_so_calls:
-        manager_harness.finish_task(algo_so_calls[0]['task_id'])
+    # Finish all pending add_doc tasks (algo1 and algo_shared_only)
+    for call in list(manager_harness.add_doc_calls):
+        manager_harness.finish_task(call['task_id'])
 
     # Reparse all for algo_shared_only → all its ngs are shared → no new task
     add_calls_before = len(manager_harness.add_doc_calls)
     task_ids = mgr.reparse(ReparseRequest(
-        kb_id='kb_shared_only', algo_id='algo_shared_only', doc_ids=['doc_so'],
+        kb_id='kb_shared_only', algo_ids=['algo_shared_only'], doc_ids=['doc_so'],
     ))
     assert task_ids == [], 'no reparse task should be submitted when all ngs are shared'
     assert len(manager_harness.add_doc_calls) == add_calls_before, \

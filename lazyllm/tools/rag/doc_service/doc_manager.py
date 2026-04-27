@@ -622,22 +622,15 @@ class DocManager:
                 data = resp.data
                 # Support list-of-dict format: [{id, name, ...}, ...]
                 if isinstance(data, list):
-                    result = [g['id'] for g in data if g.get('id')]
-                    if result:
-                        return result
+                    if (result := [g['id'] for g in data if g.get('id')]): return result
                 # Support legacy dict format: {node_group_ids: [...]}
                 if isinstance(data, dict):
-                    ids = data.get('node_group_ids')
-                    if ids:
-                        result = json.loads(ids) if isinstance(ids, str) else ids
-                        if result:
-                            return result
-            raise ValueError(f'Failed to get node_group_ids for algo {algo_id!r}: '
-                             f'code={getattr(resp, "code", None)}, msg={getattr(resp, "msg", None)!r}')
-        except ValueError:
-            raise
+                    if (ids := data.get('node_group_ids')):
+                        if (result := json.loads(ids) if isinstance(ids, str) else ids): return result
         except Exception as e:
             raise RuntimeError(f'[DocManager] Failed to get node_group_ids for algo {algo_id}: {e}') from e
+        raise ValueError(f'Failed to get node_group_ids for algo {algo_id!r}: '
+                         f'code={getattr(resp, "code", None)}, msg={getattr(resp, "msg", None)!r}')
 
     def _get_shared_ng_ids(self, kb_id: str, algo_id: str, candidate_ng_ids: List[str]) -> Set[str]:
         # Returns the subset of candidate_ng_ids that are also owned by other algos in the same kb.
@@ -1316,35 +1309,38 @@ class DocManager:
         return task_ids
 
     def _get_algos_for_ng_names(self, kb_id: str, ng_names: List[str]) -> List[str]:
-        '''Return algo_ids bound to kb_id that contain at least one of the given ng_names.'''
-        # Resolve ng_names → ng_ids via lazyllm_node_group table
-        ng_ids_by_name = {}
-        with self._db_manager.get_session() as session:
-            NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
-            rows = session.query(NodeGroupInfo).filter(NodeGroupInfo.name.in_(ng_names)).all()
-            for row in rows:
-                ng_ids_by_name[row.name] = row.id
-        target_ng_ids = set(ng_ids_by_name.values())
-        if not target_ng_ids:
-            return []
-        # Find algos bound to kb that contain any of the target ng_ids
+        '''Return algo_ids bound to kb_id that contain at least one of the given ng_names.
+        For each ng_name, only the first matching algo is selected to avoid duplicate reparse tasks
+        for shared node groups.'''
+        target_names = set(ng_names)
         all_algo_ids = self._get_kb_algorithms(kb_id)
-        matching = []
+        # Build ng_name → first_algo mapping
+        ng_name_to_algo: Dict[str, str] = {}
         for algo_id in all_algo_ids:
-            algo_ng_ids = set(self._get_algo_node_group_ids(algo_id))
-            if algo_ng_ids & target_ng_ids:
-                matching.append(algo_id)
-        return matching
+            resp = self._parser_client.get_algorithm_groups(algo_id)
+            if resp and resp.code == 200 and resp.data:
+                groups = resp.data if isinstance(resp.data, list) else []
+                for g in groups:
+                    name = g.get('name')
+                    if name and name in target_names and name not in ng_name_to_algo:
+                        ng_name_to_algo[name] = algo_id
+        # Return deduplicated list of algo_ids (preserving order)
+        seen: set = set()
+        result = []
+        for algo_id in ng_name_to_algo.values():
+            if algo_id not in seen:
+                seen.add(algo_id)
+                result.append(algo_id)
+        return result
 
     def _reparse_for_algo(self, request: ReparseRequest, algo_id: str) -> List[str]:
         prepared_items = self._prepare_reparse_items(request, algo_id)
         all_ng_ids = self._get_algo_node_group_ids(algo_id)
         if request.ng_names:
-            # Resolve ng_names → ng_ids that belong to this algo
-            with self._db_manager.get_session() as session:
-                NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
-                rows = session.query(NodeGroupInfo).filter(NodeGroupInfo.name.in_(request.ng_names)).all()
-                name_to_id = {row.name: row.id for row in rows}
+            # Resolve ng_names → ng_ids via parser client (avoids cross-DB dependency)
+            resp = self._parser_client.get_algorithm_groups(algo_id)
+            groups = (resp.data if resp and resp.code == 200 and isinstance(resp.data, list) else [])
+            name_to_id = {g['name']: g['id'] for g in groups if g.get('name') and g.get('id')}
             pending_ng_ids = [name_to_id[n] for n in request.ng_names
                               if name_to_id.get(n) in all_ng_ids]
             effective_reparse_group = json.dumps(pending_ng_ids) if pending_ng_ids else None

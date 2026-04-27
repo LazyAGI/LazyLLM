@@ -133,7 +133,7 @@ def test_explicit_transfer_payload_executes_with_single_mode_and_target():
     _, task_type, payload = impl._parse_task_payload(task)
     processor = _DummyProcessor()
 
-    impl._exec_transfer_task(processor, 'transfer-task', payload)
+    impl._exec_transfer_task(processor, 'transfer-task', payload, node_groups={})
 
     assert task_type == TaskType.DOC_TRANSFER.value
     assert processor.calls == [{
@@ -141,6 +141,8 @@ def test_explicit_transfer_payload_executes_with_single_mode_and_target():
         'ids': ['doc-a', 'doc-b'],
         'metadatas': [{'k': 1}, {'k': 2}],
         'kb_id': 'kb_source',
+        'node_groups': {},
+        'reader': None,
         'transfer_mode': 'cp',
         'target_kb_id': 'kb_target',
         'target_doc_ids': ['target-doc-a', 'target-doc-b'],

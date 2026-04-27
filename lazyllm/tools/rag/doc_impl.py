@@ -232,8 +232,7 @@ class DocImpl:
             self._processor.register_algorithm(self._algo_name, self._store, self._reader, self.node_groups,
                                                self._schema_extractor, self._display_name, self._description)
         else:
-            self._processor = _Processor(self._algo_name, self._store, self._reader, self.node_groups,
-                                         self._schema_extractor, self._display_name, self._description)
+            self._processor = _Processor(self._store, self._schema_extractor)
 
         # `cloud` is True iff both dataset_path and doc_files are absent. Otherwise do a
         # one-time ingest: DocImpl only owns the scan in map-store flows now (persistent
@@ -391,7 +390,8 @@ class DocImpl:
         for filepath, doc_id, metadata in zip(input_files, ids, metadatas):
             filepath = os.path.abspath(filepath)
             try:
-                self._processor.add_doc([filepath], [doc_id], [metadata] if metadata is not None else None)
+                self._processor.add_doc([filepath], self.node_groups, self._reader,
+                                        [doc_id], [metadata] if metadata is not None else None)
                 success_ids.add(doc_id)
             except Exception as e:
                 LOG.error(f'Error adding document {doc_id} ({filepath}) to store: {e}')
@@ -452,7 +452,7 @@ class DocImpl:
                 if parent in self._activated_groups: break
                 self._store.activate_group(parent)
                 self._activated_groups.add(parent)
-            if self._store.is_group_empty(group_name): self._processor.reparse(group_name)
+            if self._store.is_group_empty(group_name): self._processor.reparse(group_name, self.node_groups)
 
     def active_node_groups(self):
         return {k: v for k, v in self._activated_embeddings.items() if k in self._activated_groups}

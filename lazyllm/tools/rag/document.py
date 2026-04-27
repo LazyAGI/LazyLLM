@@ -223,6 +223,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 global_metadata_desc=doc_fields,
                 store=store_conf or (None if (self._doc_processor or self._processor) else self._store_conf),
                 processor=self._doc_processor or self._processor,
+                algo_name=name, display_name=name, description='',
                 schema_extractor=schema_extractor,
             )
             self._iter_kbs()[name] = impl

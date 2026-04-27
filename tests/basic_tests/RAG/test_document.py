@@ -93,7 +93,8 @@ class TestDocImpl(unittest.TestCase):
         new_doc = DocNode(text='new dummy text', group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_ID: gen_docid(self.tmp_file_b.name), RAG_DOC_PATH: self.tmp_file_b.name}
         self.mock_directory_reader.load_data.return_value = {LAZY_ROOT_NAME: [new_doc], LAZY_IMAGE_GROUP: []}
-        self.doc_impl._processor.add_doc([self.tmp_file_b.name])
+        self.doc_impl._processor.add_doc(
+            [self.tmp_file_b.name], self.doc_impl.node_groups, self.doc_impl._reader)
         assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 2
 
     def test_dataset_path_sync_without_doc_list_manager(self):
@@ -442,16 +443,20 @@ class TestDocument(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, 'store_conf'):
             Document(dataset_path, manager=processor)
-        with self.assertRaisesRegex(ValueError, 'pure local map store'):
+        with self.assertRaisesRegex(ValueError, 'store_conf'):
             Document(dataset_path, manager=processor, store_conf={'type': 'map'})
         # dataset_path + DocumentProcessor is rejected: external parser has no
         # directory-scan lifecycle, so pairing with a local path is ambiguous.
-        with self.assertRaisesRegex(ValueError, 'does not accept a local `dataset_path`'):
+        # Note: store_conf must be set on the DocumentProcessor, not passed here.
+        with self.assertRaisesRegex(ValueError, 'store_conf'):
             Document(dataset_path, manager=processor, store_conf=milvus_store)
 
         # Valid: standalone DocumentProcessor mode without dataset_path. Documents
         # must be ingested via explicit API calls (upload / add_files) in this mode.
-        doc = Document(name='dp_standalone', manager=processor, store_conf=milvus_store)
+        # store_conf must be set on the DocumentProcessor, not on Document.
+        processor_with_store = document_module.DocumentProcessor(
+            url='http://127.0.0.1:9966', store_conf=milvus_store)
+        doc = Document(name='dp_standalone', manager=processor_with_store)
         try:
             assert doc._impl._dataset_path is None
         finally:

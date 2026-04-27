@@ -1808,12 +1808,10 @@ class TestBatchForwardRefPath:
             }
 
             processor = _Processor(
-                algo_id='test_ref_path',
                 store=store,
-                reader=reader,
-                node_groups=node_groups,
             )
-            processor.add_doc(input_files=[p1, p2], ids=[id1, id2], metadatas=[{}, {}])
+            processor.add_doc(input_files=[p1, p2], node_groups=node_groups, reader=reader,
+                              ids=[id1, id2], metadatas=[{}, {}])
 
             assert len(recorded_groups_per_call) == 2
             assert recorded_groups_per_call[0] == ['section', 'section']
@@ -1842,15 +1840,11 @@ class TestBatchForwardRefPath:
         }
         store = MagicMock()
         store.get_nodes.return_value = []
-        processor = _Processor(
-            algo_id='test_reparse',
-            store=store,
-            reader=reader,
-            node_groups={},
-        )
+        processor = _Processor(store=store)
         processor.add_doc = MagicMock()
 
-        processor._reparse_docs(group_name='all', doc_ids=[doc_id], doc_paths=[doc_path], metadatas=None)
+        processor._reparse_docs(group_name='all', node_groups={}, reader=reader,
+                                doc_ids=[doc_id], doc_paths=[doc_path], metadatas=None)
 
         reader.load_data.assert_called_once_with(
             [doc_path],
@@ -1862,6 +1856,8 @@ class TestBatchForwardRefPath:
             ids=[doc_id],
             metadatas=[{RAG_DOC_ID: doc_id, RAG_DOC_PATH: doc_path, RAG_KB_ID: DEFAULT_KB_ID}],
             kb_id=DEFAULT_KB_ID,
+            node_groups={},
+            reader=reader,
             preloaded_root_nodes=reader.load_data.return_value,
         )
 
