@@ -182,7 +182,10 @@ class DocImpl:
         return self._store
 
     def _create_store(self):
-        self._store = self._store or {'type': 'map'}
+        store = self._store
+        if store is None and self._processor is not None:
+            store = getattr(self._processor, '_store_conf', None)
+        self._store = store or {'type': 'map'}
         embed_dims, embed_datatypes = {}, {}
         for k, e in self.embed.items():
             embedding = e('a')

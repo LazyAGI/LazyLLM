@@ -913,6 +913,7 @@ class DocManager:
             )
 
     def _create_parser_task(self, task_id: str, doc_id: str, kb_id: str, algo_id: str, task_type: TaskType,
+                            ng_ids: Optional[List[str]] = None,
                             file_path: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
                             reparse_group: Optional[str] = None, parser_kb_id: Optional[str] = None,
                             transfer_params: Optional[Dict[str, Any]] = None,
@@ -921,23 +922,23 @@ class DocManager:
             if not file_path:
                 raise RuntimeError(f'file_path is required for task_type {task_type.value}')
             task_resp = self._parser_client.add_doc(
-                task_id, algo_id, parser_kb_id or kb_id, doc_id, file_path, metadata,
-                callback_url=self._callback_url, transfer_params=transfer_params,
+                task_id, parser_kb_id or kb_id, doc_id, file_path, metadata,
+                ng_ids=ng_ids, callback_url=self._callback_url, transfer_params=transfer_params,
             )
         elif task_type == TaskType.DOC_REPARSE:
             if not file_path:
                 raise RuntimeError('file_path is required for reparse task')
             task_resp = self._parser_client.add_doc(
-                task_id, algo_id, kb_id, doc_id, file_path, metadata,
-                reparse_group=reparse_group or 'all', callback_url=self._callback_url,
+                task_id, kb_id, doc_id, file_path, metadata,
+                ng_ids=ng_ids, reparse_group=reparse_group or 'all', callback_url=self._callback_url,
             )
         elif task_type == TaskType.DOC_UPDATE_META:
             task_resp = self._parser_client.update_meta(
-                task_id, algo_id, kb_id, doc_id, metadata, file_path, callback_url=self._callback_url,
+                task_id, kb_id, doc_id, metadata, file_path, callback_url=self._callback_url,
             )
         elif task_type == TaskType.DOC_DELETE:
             task_resp = self._parser_client.delete_doc(
-                task_id, algo_id, kb_id, doc_id, callback_url=self._callback_url,
+                task_id, kb_id, doc_id, callback_url=self._callback_url,
                 node_group_ids_to_delete=node_group_ids_to_delete,
             )
         else:
@@ -992,13 +993,20 @@ class DocManager:
             exclusive_ng_ids = (
                 (extra_message or {}).get('exclusive_ng_ids') if task_type == TaskType.DOC_DELETE else None
             )
+            # Resolve ng_ids for this algo before submitting to the parser queue.
+            # For ADD/REPARSE tasks, ng_ids are passed to the Worker so it knows which ngs to process.
+            ng_ids = None
+            if task_type in (TaskType.DOC_ADD, TaskType.DOC_REPARSE, TaskType.DOC_TRANSFER):
+                ng_ids = self._get_algo_node_group_ids(algo_id)
+            elif task_type == TaskType.DOC_DELETE and exclusive_ng_ids:
+                ng_ids = exclusive_ng_ids
             # Insert PENDING status for each node group before submitting the parser task,
             # so that on_task_callback can always find the status rows even if submission fails.
             if task_type == TaskType.DOC_ADD:
-                ng_ids = self._get_algo_node_group_ids(algo_id)
-                self._upsert_ng_status_pending(doc_id, kb_id, ng_ids, file_path)
+                self._upsert_ng_status_pending(doc_id, kb_id, ng_ids or [], file_path)
             self._create_parser_task(
                 task_id, parser_doc_id or doc_id, kb_id, algo_id, task_type,
+                ng_ids=ng_ids,
                 file_path=file_path, metadata=metadata, reparse_group=reparse_group,
                 parser_kb_id=parser_kb_id, transfer_params=transfer_params,
                 node_group_ids_to_delete=exclusive_ng_ids,
@@ -1286,41 +1294,63 @@ class DocManager:
         ))
 
     def reparse(self, request: ReparseRequest) -> List[str]:
-        reparse_group_name = request.reparse_group or 'all'
-        # Resolve algo_id: if reparse_group is specified, find the algo that owns it;
-        # otherwise use the provided algo_id or fall back to the first bound algo.
-        if reparse_group_name != 'all':
-            algo_id = self._find_algo_for_group(request.kb_id, reparse_group_name)
-        elif request.algo_id:
-            algo_id = request.algo_id
-            self._validate_kb_algorithm(request.kb_id, algo_id)
+        self._validate_unique_doc_ids(request.doc_ids, field_name='doc_id')
+        # Build the list of algo_ids to process.
+        if request.algo_ids is not None:
+            algo_ids = request.algo_ids
+            for aid in algo_ids:
+                self._validate_kb_algorithm(request.kb_id, aid)
+        elif request.ng_names is not None:
+            # Resolve ng_names → ng_ids, then find which algos contain those ngs
+            algo_ids = self._get_algos_for_ng_names(request.kb_id, request.ng_names)
+            if not algo_ids:
+                raise DocServiceError('E_INVALID_PARAM',
+                                      f'no algos found for ng_names {request.ng_names!r} in kb {request.kb_id!r}')
         else:
             algo_ids = self._get_kb_algorithms(request.kb_id)
             if not algo_ids:
                 raise DocServiceError('E_STATE_CONFLICT', f'kb has no algorithm binding: {request.kb_id}')
-            algo_id = algo_ids[0]
-        self._validate_unique_doc_ids(request.doc_ids, field_name='doc_id')
+        task_ids = []
+        for algo_id in algo_ids:
+            task_ids.extend(self._reparse_for_algo(request, algo_id))
+        return task_ids
+
+    def _get_algos_for_ng_names(self, kb_id: str, ng_names: List[str]) -> List[str]:
+        '''Return algo_ids bound to kb_id that contain at least one of the given ng_names.'''
+        # Resolve ng_names → ng_ids via lazyllm_node_group table
+        ng_ids_by_name = {}
+        with self._db_manager.get_session() as session:
+            NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+            rows = session.query(NodeGroupInfo).filter(NodeGroupInfo.name.in_(ng_names)).all()
+            for row in rows:
+                ng_ids_by_name[row.name] = row.id
+        target_ng_ids = set(ng_ids_by_name.values())
+        if not target_ng_ids:
+            return []
+        # Find algos bound to kb that contain any of the target ng_ids
+        all_algo_ids = self._get_kb_algorithms(kb_id)
+        matching = []
+        for algo_id in all_algo_ids:
+            algo_ng_ids = set(self._get_algo_node_group_ids(algo_id))
+            if algo_ng_ids & target_ng_ids:
+                matching.append(algo_id)
+        return matching
+
+    def _reparse_for_algo(self, request: ReparseRequest, algo_id: str) -> List[str]:
         prepared_items = self._prepare_reparse_items(request, algo_id)
         all_ng_ids = self._get_algo_node_group_ids(algo_id)
-        if reparse_group_name != 'all':
-            # Resolve ng_name → ng_id
-            groups = self.get_algo_groups(algo_id) or []
-            ng_id = next((g.get('id') for g in groups if g.get('name') == reparse_group_name), None)
-            if ng_id is None:
-                raise DocServiceError(
-                    'E_INVALID_PARAM',
-                    f'reparse_group {reparse_group_name!r} not found in algo {algo_id!r}',
-                    {'algo_id': algo_id, 'reparse_group': reparse_group_name},
-                )
-            pending_ng_ids = [ng_id]
-            # A single explicitly-requested ng is always reparsed, even if shared.
-            effective_reparse_group = ng_id
+        if request.ng_names:
+            # Resolve ng_names → ng_ids that belong to this algo
+            with self._db_manager.get_session() as session:
+                NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                rows = session.query(NodeGroupInfo).filter(NodeGroupInfo.name.in_(request.ng_names)).all()
+                name_to_id = {row.name: row.id for row in rows}
+            pending_ng_ids = [name_to_id[n] for n in request.ng_names
+                              if name_to_id.get(n) in all_ng_ids]
+            effective_reparse_group = json.dumps(pending_ng_ids) if pending_ng_ids else None
         else:
-            # Exclude ngs that are shared with other algos in the same kb — they are already
-            # parsed and must not be reset to PENDING by this algo's reparse.
             shared_ng_ids = self._get_shared_ng_ids(request.kb_id, algo_id, all_ng_ids)
             pending_ng_ids = [ng for ng in all_ng_ids if ng not in shared_ng_ids]
-            # Pass the filtered list to the parser so it only processes exclusive ngs.
             effective_reparse_group = json.dumps(pending_ng_ids) if pending_ng_ids else None
         if not pending_ng_ids:
             LOG.info(f'[reparse] algo={algo_id!r} kb={request.kb_id!r}: all node groups are shared, nothing to reparse')
@@ -1554,14 +1584,15 @@ class DocManager:
         if task is not None:
             return task
         payload = callback.payload or {}
-        required_fields = {'task_type', 'doc_id', 'kb_id', 'algo_id'}
+        # Fallback: reconstruct minimal task data from payload (no algo_id required)
+        required_fields = {'task_type', 'doc_id', 'kb_id'}
         if required_fields.issubset(payload.keys()):
             return {
                 'task_id': callback.task_id,
                 'task_type': payload['task_type'],
                 'doc_id': payload['doc_id'],
                 'kb_id': payload['kb_id'],
-                'algo_id': payload['algo_id'],
+                'algo_id': payload.get('algo_id'),  # may be None for new-style callbacks
             }
         return None
 

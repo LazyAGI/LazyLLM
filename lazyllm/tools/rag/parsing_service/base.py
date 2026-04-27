@@ -6,7 +6,6 @@ from datetime import datetime
 
 class TransferParams(BaseModel):
     mode: Optional[str] = 'cp'  # cp or mv
-    target_algo_id: str
     target_doc_id: str
     target_kb_id: str
 
@@ -38,7 +37,7 @@ EmptyDBInfo = Annotated[DBInfo | None, BeforeValidator(lambda v: None if v == {}
 
 class AddDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
-    algo_id: Optional[str] = '__default__'
+    ng_ids: Optional[List[str]] = None
     kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
@@ -58,7 +57,6 @@ class AddDocRequest(BaseModel):
 
 class UpdateMetaRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
-    algo_id: Optional[str] = '__default__'
     kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
@@ -78,7 +76,6 @@ class UpdateMetaRequest(BaseModel):
 
 class DeleteDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
-    algo_id: Optional[str] = '__default__'
     kb_id: Optional[str] = None
     doc_ids: List[str]
     priority: Optional[int] = 0
@@ -145,7 +142,6 @@ def _resolve_add_doc_task_type(request: AddDocRequest) -> str:  # noqa: C901
     new_file_ids = []
     reparse_file_ids = []
     transfer_mode = None
-    target_algo_id = None
     target_kb_id = None
 
     for file_info in request.file_infos:
@@ -154,15 +150,10 @@ def _resolve_add_doc_task_type(request: AddDocRequest) -> str:  # noqa: C901
         else:
             new_file_ids.append(file_info.doc_id)
             if file_info.transfer_params:
-                if target_algo_id is not None and target_algo_id != file_info.transfer_params.target_algo_id:
-                    raise ValueError('transfer_params.target_algo_id must be the same for all files')
                 if target_kb_id is not None and target_kb_id != file_info.transfer_params.target_kb_id:
                     raise ValueError('transfer_params.target_kb_id must be the same for all files')
                 if transfer_mode is not None and transfer_mode != file_info.transfer_params.mode:
                     raise ValueError('transfer_params.mode must be the same for all files')
-                if file_info.transfer_params.target_algo_id != request.algo_id:
-                    raise ValueError('transfer_params.target_algo_id must be the same for all files')
-                target_algo_id = file_info.transfer_params.target_algo_id
                 target_kb_id = file_info.transfer_params.target_kb_id
                 transfer_mode = file_info.transfer_params.mode
                 if transfer_mode not in ['cp', 'mv']:

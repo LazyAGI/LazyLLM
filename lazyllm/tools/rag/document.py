@@ -221,8 +221,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             impl = DocImpl(
                 dataset_path=self._doc_impl_dataset_path, embed=embed, kb_group_name=name,
                 global_metadata_desc=doc_fields,
-                store=store_conf or self._store_conf, processor=self._doc_processor or self._processor,
-                algo_name=name, display_name=name, description=self._description,
+                store=store_conf or (None if (self._doc_processor or self._processor) else self._store_conf),
+                processor=self._doc_processor or self._processor,
                 schema_extractor=schema_extractor,
             )
             self._iter_kbs()[name] = impl
@@ -264,9 +264,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         '''
         if not isinstance(manager, DocumentProcessor):
             return None, manager
-        if store_conf is None:
-            raise ValueError('`store_conf` is required when `manager` is a DocumentProcessor')
-        if is_local_map_store(store_conf):
+        if store_conf is not None:
+            raise ValueError(
+                '`store_conf` must not be passed to `Document` when `manager` is a DocumentProcessor; '
+                'set `store_conf` on the DocumentProcessor instance instead.'
+            )
+        if getattr(manager, '_store_conf', None) is None:
+            raise ValueError(
+                '`manager=DocumentProcessor(...)` requires the DocumentProcessor to have `store_conf` set; '
+                'pass `store_conf=...` when constructing the DocumentProcessor.'
+            )
+        if is_local_map_store(manager._store_conf):
             raise ValueError('`manager=DocumentProcessor(...)` does not support pure local map store')
         if dataset_path is not None:
             raise ValueError(

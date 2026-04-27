@@ -36,6 +36,10 @@ CALLBACK_RETRY_MIN_INTERVAL = 5.0
 CALLBACK_RETRY_MAX_INTERVAL = 300.0
 CALLBACK_RETRY_MAX_ATTEMPTS = 5
 
+# Global registry: json(db_config) -> store_conf, enforces that all DocumentProcessor
+# instances sharing the same db_config must use the same store_conf.
+_PROC_STORE_REGISTRY: Dict[str, Optional[Dict]] = {}
+
 
 class DocumentProcessor(ModuleBase):
 
@@ -79,6 +83,7 @@ class DocumentProcessor(ModuleBase):
             self._post_func_thread = None
             self._workers = None
             self._high_priority_workers_module = None
+            self._schema_extractor: Optional[SchemaExtractor] = None
 
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
@@ -309,8 +314,7 @@ class DocumentProcessor(ModuleBase):
             task_context = self._load_task_context(finished_task)
 
             base_payload = {'task_type': task_context.get('task_type'),
-                            'kb_id': task_context.get('kb_id'),
-                            'algo_id': task_context.get('algo_id')}
+                            'kb_id': task_context.get('kb_id')}
             items = task_context.get('items') or [{}]
             for index, item in enumerate(items):
                 callback_payload = {
@@ -319,7 +323,7 @@ class DocumentProcessor(ModuleBase):
                     'task_status': task_status,
                     'payload': {k: v for k, v in {**base_payload, **item}.items() if v is not None},
                 }
-                for field in ('task_type', 'kb_id', 'algo_id'):
+                for field in ('task_type', 'kb_id'):
                     if base_payload.get(field) is not None:
                         callback_payload[field] = base_payload[field]
                 if item.get('doc_id') is not None:
@@ -339,9 +343,19 @@ class DocumentProcessor(ModuleBase):
             # NOTE: name is the algorithm id, display_name is the algorithm display name
             self._lazy_init()
             LOG.info(f'[DocumentProcessor] Register algorithm: name={name}, display_name={display_name}')
+            # schema_extractor is global: validate consistency across all registrations
+            if schema_extractor is not None:
+                if self._schema_extractor is None:
+                    self._schema_extractor = schema_extractor
+                elif self._schema_extractor is not schema_extractor:
+                    raise ValueError(
+                        'schema_extractor must be the same across all register_algorithm calls. '
+                        'Only one global schema_extractor is supported per DocumentProcessor.'
+                    )
             try:
                 # Upsert node groups and algorithm in a single transaction to ensure atomicity.
-                info_dict = {'store': store, 'reader': reader, 'schema_extractor': schema_extractor}
+                # store and schema_extractor are no longer stored per-algo; only reader is kept.
+                info_dict = {'reader': reader}
                 info_pickle = dump_obj(info_dict)
                 with self._db_manager.get_session() as session:
                     node_group_ids = self._upsert_node_groups(node_groups, reader, session=session)
@@ -760,13 +774,9 @@ class DocumentProcessor(ModuleBase):
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
             LOG.info(f'[DocumentProcessor] Received add doc request (raw): {request.model_dump()}')
             task_id = request.task_id
-            algo_id = request.algo_id
             file_infos = request.file_infos
             if not file_infos:
                 raise fastapi.HTTPException(status_code=400, detail='file_infos is required')
-            algorithm = self._get_algo(algo_id)
-            if algorithm is None:
-                raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
             # NOTE: No idempotency key check, should be handled by the caller!
             for file_info in file_infos:
                 if self._path_prefix:
@@ -813,14 +823,10 @@ class DocumentProcessor(ModuleBase):
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
             LOG.info(f'[DocumentProcessor] Received update meta request (raw): {request.model_dump()}')
             task_id = request.task_id
-            algo_id = request.algo_id
             file_infos = request.file_infos
 
             if not file_infos:
                 raise fastapi.HTTPException(status_code=400, detail='file_infos is required')
-            algorithm = self._get_algo(algo_id)
-            if algorithm is None:
-                raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
             payload = request.model_dump()
             LOG.info(f'[DocumentProcessor] Received update meta request: {payload}')
             resolved_callback_url = self._resolve_callback_url(payload)
@@ -863,13 +869,9 @@ class DocumentProcessor(ModuleBase):
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
             LOG.info(f'[DocumentProcessor] Received delete doc request (raw): {request.model_dump()}')
             task_id = request.task_id
-            algo_id = request.algo_id
             doc_ids = request.doc_ids
             if not doc_ids:
                 raise fastapi.HTTPException(status_code=400, detail='doc_ids is required')
-            algorithm = self._get_algo(algo_id)
-            if algorithm is None:
-                raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
             payload = request.model_dump()
             LOG.info(f'[DocumentProcessor] Received delete doc request: {payload}')
             resolved_callback_url = self._resolve_callback_url(payload)
@@ -1003,6 +1005,7 @@ class DocumentProcessor(ModuleBase):
 
     def __init__(self, port: int = None, url: str = None, num_workers: int = 1,
                  db_config: Optional[Dict[str, Any]] = None,
+                 store_conf: Optional[Dict] = None,
                  launcher: Optional[Launcher] = None, post_func: Optional[Callable] = None,
                  path_prefix: Optional[str] = None, callback_url: Optional[str] = None, lease_duration: float = 300.0,
                  lease_renew_interval: float = 60.0, high_priority_task_types: Optional[List[str]] = None,
@@ -1012,6 +1015,17 @@ class DocumentProcessor(ModuleBase):
         super().__init__()
         self._raw_impl = None  # save the reference of the original Impl object
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
+        self._store_conf = store_conf
+        if store_conf is not None:
+            key = json.dumps(self._db_config, sort_keys=True)
+            if key in _PROC_STORE_REGISTRY:
+                if _PROC_STORE_REGISTRY[key] != store_conf:
+                    raise ValueError(
+                        f'DocumentProcessor instances sharing the same db_config must use the same store_conf. '
+                        f'Expected {_PROC_STORE_REGISTRY[key]!r}, got {store_conf!r}.'
+                    )
+            else:
+                _PROC_STORE_REGISTRY[key] = store_conf
         if not url:
             # DocumentProcessor and its Workers are lightweight orchestration
             # (task queue polling, callbacks) with no GPU needs; default to a
