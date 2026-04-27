@@ -1,6 +1,30 @@
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
 from lazyllm import barrier, loop, parallel
+
+
+CONCURRENT_REQUESTS = 32
+REQUESTS = {f'req-{index:02d}': index for index in range(CONCURRENT_REQUESTS)}
+
+
+def _run_concurrent_requests(flow):
+    results = {}
+    with ThreadPoolExecutor(max_workers=len(REQUESTS)) as executor:
+        futures = {executor.submit(flow, request): tag for tag, request in REQUESTS.items()}
+        for future in as_completed(futures):
+            tag = futures[future]
+            results[tag] = future.result()
+    assert set(results) == set(REQUESTS)
+    return results
+
+
+def _group_spans_by_trace_id(spans):
+    grouped_spans = defaultdict(list)
+    for span in spans:
+        grouped_spans[span.context.trace_id].append(span)
+    return grouped_spans
 
 
 def _assert_overlapping(spans):
@@ -9,6 +33,33 @@ def _assert_overlapping(spans):
         for index, left in enumerate(spans)
         for right in spans[index + 1:]
     ), f'Expected overlapping spans, but spans are sequential: {[s.name for s in spans]}'
+
+
+def _assert_parallel_trace_group(spans):
+    assert len(spans) == 4
+    child_spans, parallel_span = spans[:3], spans[-1]
+    assert parallel_span.name == 'Parallel'
+    assert {span.name for span in child_spans} == {'branch_a', 'branch_b', 'branch_c'}
+    assert all(span.context.trace_id == parallel_span.context.trace_id for span in spans)
+    assert all(span.parent.span_id == parallel_span.context.span_id for span in child_spans)
+    _assert_overlapping(child_spans)
+
+
+def _assert_loop_parallel_trace_group(spans):
+    assert len(spans) == 10
+    loop_span = spans[-1]
+    assert loop_span.name == 'Loop'
+    assert all(span.context.trace_id == loop_span.context.trace_id for span in spans)
+
+    for iteration in range(3):
+        start = iteration * 3
+        children = spans[start:start + 2]
+        parallel_span = spans[start + 2]
+        assert parallel_span.name == 'Parallel'
+        assert parallel_span.parent.span_id == loop_span.context.span_id
+        assert {span.name for span in children} == {'increment', 'keep_zero'}
+        assert all(span.parent.span_id == parallel_span.context.span_id for span in children)
+        _assert_overlapping(children)
 
 
 def test_parallel_tracing_propagates_context_across_threads(exporter):
@@ -30,16 +81,18 @@ def test_parallel_tracing_propagates_context_across_threads(exporter):
         flow.branch_a = branch_a
         flow.branch_b = branch_b
         flow.branch_c = branch_c
-    result = flow(3)
+    flow.aslist
+
+    results = _run_concurrent_requests(flow)
 
     spans = exporter.get_finished_spans()
-    child_spans, parallel_span = spans[:3], spans[3]
-    assert list(result) == [4, 6, 2]
-    assert parallel_span.name == 'Parallel'
-    assert {s.name for s in child_spans} == {'branch_a', 'branch_b', 'branch_c'}
-    assert all(s.context.trace_id == parallel_span.context.trace_id for s in spans)
-    assert all(s.parent.span_id == parallel_span.context.span_id for s in child_spans)
-    _assert_overlapping(child_spans)
+    grouped_spans = _group_spans_by_trace_id(spans)
+    assert len(spans) == CONCURRENT_REQUESTS * 4
+    assert len(grouped_spans) == CONCURRENT_REQUESTS
+    for tag, index in REQUESTS.items():
+        assert results[tag] == [index + 1, index * 2, index - 1]
+    for trace_spans in grouped_spans.values():
+        _assert_parallel_trace_group(trace_spans)
 
 
 def test_loop_with_parallel_keeps_nested_parent_context(exporter):
@@ -58,19 +111,14 @@ def test_loop_with_parallel_keeps_nested_parent_context(exporter):
 
     with loop(count=3) as flow:
         flow.branches = branches
-    result = flow(0)
+
+    results = _run_concurrent_requests(flow)
 
     spans = exporter.get_finished_spans()
-    loop_span = spans[-1]
-    parallel_spans = spans[2:9:3]
-    branch_spans = spans[0:2] + spans[3:5] + spans[6:8]
-    assert result == 3
-    assert loop_span.name == 'Loop'
-    assert all(s.name == 'Parallel' for s in parallel_spans)
-
-    assert all(s.context.trace_id == loop_span.context.trace_id for s in spans)
-    assert all(s.parent.span_id == loop_span.context.span_id for s in parallel_spans)
-    for parallel_span in parallel_spans:
-        children = [s for s in branch_spans if s.parent.span_id == parallel_span.context.span_id]
-        assert {s.name for s in children} == {'increment', 'keep_zero'}
-        _assert_overlapping(children)
+    grouped_spans = _group_spans_by_trace_id(spans)
+    assert len(spans) == CONCURRENT_REQUESTS * 10
+    assert len(grouped_spans) == CONCURRENT_REQUESTS
+    for tag, index in REQUESTS.items():
+        assert results[tag] == index + 3
+    for trace_spans in grouped_spans.values():
+        _assert_loop_parallel_trace_group(trace_spans)
