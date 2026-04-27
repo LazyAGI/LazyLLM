@@ -9,11 +9,11 @@ def test_simple_function_tracing(exporter):
     assert result == 8
 
     spans = exporter.get_finished_spans()
-    assert len(spans) == 1 and spans[0].name == "add"
-    assert spans[0].attributes.get("lazyllm.span.kind") == "callable"
-    assert spans[0].attributes.get("lazyllm.status") == "ok"
-    assert spans[0].attributes.get("lazyllm.io.output") == "8"
-    assert spans[0].attributes.get("lazyllm.entity.name") == "add"
+    assert len(spans) == 1 and spans[0].name == 'add'
+    assert spans[0].attributes.get('lazyllm.span.kind') == 'callable'
+    assert spans[0].attributes.get('lazyllm.status') == 'ok'
+    assert spans[0].attributes.get('lazyllm.io.output') == '8'
+    assert spans[0].attributes.get('lazyllm.entity.name') == 'add'
 
 
 def test_decorator_tracing(exporter):
@@ -25,18 +25,16 @@ def test_decorator_tracing(exporter):
 
     spans = exporter.get_finished_spans()
     assert result == 7
-    assert len(spans) == 1 and spans[0].name == "subtract"
-    assert spans[0].attributes.get("lazyllm.span.kind") == "callable"
-    assert spans[0].attributes.get("lazyllm.entity.name") == "subtract"
+    assert len(spans) == 1 and spans[0].name == 'subtract'
+    assert spans[0].attributes.get('lazyllm.span.kind') == 'callable'
+    assert spans[0].attributes.get('lazyllm.entity.name') == 'subtract'
 
 
 def test_lambda_function_tracing(exporter):
-    func = lambda x: x * 2
-    result = enable_trace(func, 5)
+    result = enable_trace(lambda x: x * 2, 5)
     assert result == 10
 
     spans = exporter.get_finished_spans()
-    assert len(spans) == 1 and spans[0].name == "<lambda>"
-    assert spans[0].attributes.get("lazyllm.span.kind") == "callable"
-    assert spans[0].attributes.get("lazyllm.entity.name") == "<lambda>"
-
+    assert len(spans) == 1 and spans[0].name == '<lambda>'
+    assert spans[0].attributes.get('lazyllm.span.kind') == 'callable'
+    assert spans[0].attributes.get('lazyllm.entity.name') == '<lambda>'
