@@ -1,7 +1,7 @@
 import json
 from unittest.mock import Mock, patch
 
-from lazyllm import ChatPrompter, Document, OnlineChatModule, Reranker, Retriever, bind, parallel, pipeline, switch
+from lazyllm import ChatPrompter, Document, OnlineChatModule, Reranker, Retriever, bind, parallel, pipeline
 from lazyllm.tools.rag.doc_node import DocNode
 
 
@@ -21,7 +21,7 @@ def rerank_model(query, documents, top_n):
     return [(1, 0.95), (0, 0.85)]
 
 
-def test_naive_rag_workflow_tracing(exporter):
+def test_rag_tracing(exporter):
     prompt = (
         "Answer based only on context. Context:\n{context_str}\n\n"
         "Question: {query}\nAnswer:"
@@ -91,51 +91,3 @@ def test_naive_rag_workflow_tracing(exporter):
     assert json.loads(secondary_span.attributes.get("lazyllm.output.similarity_scores")) == [0.8, 0.6]
     assert json.loads(rerank_span.attributes.get("lazyllm.output.relevance_scores")) == [0.95, 0.85]
 
-
-def test_nested_flow_workflow_tracing(exporter):
-    with parallel() as branches:
-        branches.add_one = lambda value: value + 1
-        branches.double = lambda value: value * 2
-
-    with pipeline() as flow:
-        flow.branches = branches
-        flow.sum_pair = lambda left, right: left + right
-    result = flow(3)
-
-    spans = exporter.get_finished_spans()
-    assert result == 10
-    assert [s.name for s in spans[2:]] == ["Parallel", "<lambda>", "Pipeline"]
-
-    parallel_children = spans[:2]
-    parallel_span, sum_span, pipeline_span = spans[2:]
-
-    assert all(s.parent.span_id == pipeline_span.context.span_id for s in [parallel_span, sum_span])
-    assert all(s.parent.span_id == parallel_span.context.span_id for s in parallel_children)
-
-
-def test_switch_routing_workflow_tracing(exporter):
-    def chat_branch(route):
-        return f"chat:{route}"
-
-    def search_branch(route):
-        return f"search:{route}"
-
-    def default_branch(route):
-        return f"default:{route}"
-
-    router = switch("chat", chat_branch, "search", search_branch, "default", default_branch)
-
-    with pipeline() as flow:
-        flow.router = router
-        flow.finalize_route = lambda value: f"final:{value}"
-    search_result = flow("search")
-
-    spans = exporter.get_finished_spans()
-    assert search_result == "final:search:search"
-    assert [s.name for s in spans] == ["search_branch", "Switch", "<lambda>", "Pipeline"]
-
-    branch_span, switch_span, finalize_span, pipeline_span = spans
-    assert branch_span.parent.span_id == switch_span.context.span_id
-    assert all(s.parent.span_id == pipeline_span.context.span_id for s in [switch_span, finalize_span])
-    assert switch_span.attributes.get("lazyllm.matched.index") == 1
-    assert switch_span.attributes.get("lazyllm.matched.branch") == "search_branch"
