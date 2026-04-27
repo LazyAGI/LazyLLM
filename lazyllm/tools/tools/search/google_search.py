@@ -30,13 +30,17 @@ class GoogleSearch(SearchBase):
 
     def search(self, query: str,
                date_restrict: str = 'm1',
-               search_engine_id: Optional[str] = None) -> List[Dict[str, Any]]:
+               search_engine_id: Optional[str] = None,
+               raise_on_error: bool = False) -> List[Dict[str, Any]]:
         sid = search_engine_id or self._search_engine_id
-        raw = self._http.forward(
-            query=query,
-            search_engine_id=sid,
-            date_restrict=date_restrict,
-        )
+        try:
+            raw = self._http.forward(
+                query=query,
+                search_engine_id=sid,
+                date_restrict=date_restrict,
+            )
+        except Exception as err:
+            return self._handle_error(err, raise_on_error=raise_on_error)
         if not raw or not isinstance(raw, dict):
             return []
         items = raw.get('items') or []

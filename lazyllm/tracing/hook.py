@@ -1,17 +1,11 @@
 from ..common import globals
+from lazyllm.common.utils import safe_getattr as _safe_getattr
 from ..configs import config
 from ..hook import LazyLLMHook, register_builtin_hook_provider
 from .configs import resolve_default_module_trace
 from .runtime import finish_span, set_span_error, set_span_output, start_span
 
 _MISSING = object()
-
-
-def _safe_getattr(obj, key, default=None):
-    try:
-        return getattr(obj, key)
-    except Exception:
-        return default
 
 
 class LazyTracingHook(LazyLLMHook):

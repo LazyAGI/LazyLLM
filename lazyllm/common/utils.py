@@ -11,6 +11,13 @@ import pickle
 import base64
 import argparse
 
+def safe_getattr(obj, key, default=None):
+    '''Safely get an attribute, returning default on AttributeError.'''
+    try:
+        return getattr(obj, key)
+    except AttributeError:
+        return default
+
 def check_path(
     path: Union[str, PathLike],
     exist: bool = True,

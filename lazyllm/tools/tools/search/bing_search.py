@@ -14,7 +14,7 @@ class BingSearch(SearchBase):
         self._url = endpoint or 'https://api.bing.microsoft.com/v7.0/search'
         self._timeout = timeout
 
-    def search(self, query: str, count: int = 10) -> List[dict]:
+    def search(self, query: str, count: int = 10, raise_on_error: bool = False) -> List[dict]:
         headers = {'Ocp-Apim-Subscription-Key': self._key}
         params = {'q': query, 'count': min(count, 50)}
         try:
@@ -26,8 +26,8 @@ class BingSearch(SearchBase):
             )
             resp.raise_for_status()
             data = resp.json()
-        except Exception:
-            return []
+        except Exception as err:
+            return self._handle_error(err, raise_on_error=raise_on_error)
         if data.get('_type') == 'ErrorResponse':
             return []
         web = data.get('webPages') or {}

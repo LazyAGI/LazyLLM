@@ -16,7 +16,8 @@ class BochaSearch(SearchBase):
 
     def search(self, query: str, count: int = 10,
                freshness: Optional[str] = None,
-               summary: bool = False) -> List[dict]:
+               summary: bool = False,
+               raise_on_error: bool = False) -> List[dict]:
         url = f'{self._base_url}/v1/web-search'
         headers = {'Authorization': f'Bearer {self._api_key}', 'Content-Type': 'application/json'}
         body = {'query': query, 'count': min(count, 20), 'summary': summary}
@@ -26,8 +27,8 @@ class BochaSearch(SearchBase):
             resp = httpx.post(url, headers=headers, json=body, timeout=self._timeout)
             resp.raise_for_status()
             data = resp.json()
-        except Exception:
-            return []
+        except Exception as err:
+            return self._handle_error(err, raise_on_error=raise_on_error)
         results = data.get('results') or data.get('data') or data.get('items') or []
         if isinstance(results, dict):
             results = results.get('value', results.get('results', [])) or []

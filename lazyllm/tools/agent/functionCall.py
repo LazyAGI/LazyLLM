@@ -184,12 +184,14 @@ class FunctionCall(ModuleBase):
         result = self._impl(input)
 
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
-        # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed'].
+        # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed']
+        # and history is stored in locals['_lazyllm_agent']['history'].
         if isinstance(result, str):
             workspace = locals['_lazyllm_agent'].pop('workspace', {})
-            completed_default = locals['_lazyllm_agent'].get('completed', [])
-            locals['_lazyllm_agent']['completed'] = workspace.pop('tool_call_trace', completed_default)
+            locals['_lazyllm_agent']['completed'] = workspace.pop(
+                'tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
             locals['_lazyllm_agent']['history'] = workspace.pop('history', [])
+            locals['chat_history'][self._llm._module_id] = []
         return result
 
 @deprecated('ReactAgent')

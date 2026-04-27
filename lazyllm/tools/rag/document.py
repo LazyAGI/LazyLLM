@@ -550,12 +550,6 @@ class UrlDocument(ModuleBase):
     def find(self, target) -> Callable:
         return functools.partial(self._forward, 'find', group=target)
 
-    def find_parent(self, target) -> Callable:
-        return functools.partial(self._forward, 'find_parent', group=target)
-
-    def find_children(self, target) -> Callable:
-        return functools.partial(self._forward, 'find_children', group=target)
-
     def forward(self, *args, **kw):
         return self._forward('retrieve', *args, **kw)
 
@@ -582,5 +576,4 @@ class UrlDocument(ModuleBase):
             missing_keys = set(dir(Document)) - set(dir(UrlDocument))
             object.__setattr__(self, '_missing_keys', missing_keys)
         if name in missing_keys:
-            raise RuntimeError(f'Document generated with url and name has no attribute `{name}`')
-        raise AttributeError(name)
+            raise RuntimeError(f'Document generated with url and name has noattribute `{name}`')

@@ -39,7 +39,7 @@ class WikipediaSearch(SearchBase):
         page = pages.get(str(pageid)) or {}
         return (page.get('extract') or '').strip() or super().get_content(item)
 
-    def search(self, query: str, limit: int = 10) -> List[dict]:
+    def search(self, query: str, limit: int = 10, raise_on_error: bool = False) -> List[dict]:
         params = {
             'action': 'query',
             'list': 'search',
@@ -51,8 +51,8 @@ class WikipediaSearch(SearchBase):
             resp = httpx.get(self._api_url, params=params, timeout=self._timeout)
             resp.raise_for_status()
             data = resp.json()
-        except Exception:
-            return []
+        except Exception as err:
+            return self._handle_error(err, raise_on_error=raise_on_error)
         search = data.get('query', {}).get('search') or []
         out: List[dict] = []
         for it in search:
