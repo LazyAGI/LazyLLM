@@ -19,15 +19,15 @@ def test_pipeline_tracing(exporter):
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 4
-    add_one_span, double_span, format_result_span, pipeline_span = spans
-    assert [s.name for s in (add_one_span, double_span, format_result_span)] == ["add_one", "double", "<lambda>"]
-    assert pipeline_span.name == "Pipeline"
-    assert pipeline_span.attributes.get("lazyllm.span.kind") == "flow"
-    assert pipeline_span.attributes.get("lazyllm.semantic_type") == "workflow_control"
-    assert json.loads(pipeline_span.attributes.get("lazyllm.io.input")) == {"args": [3], "kwargs": {}}
-    assert pipeline_span.attributes.get("lazyllm.io.output") == "result:8"
-    child_spans = [add_one_span, double_span, format_result_span]
-    assert all(s.parent.span_id == pipeline_span.context.span_id for s in child_spans)
+    a1_span, dbl_span, fmt_span, pipe_span = spans
+    assert [s.name for s in (a1_span, dbl_span, fmt_span)] == ["add_one", "double", "<lambda>"]
+    assert pipe_span.name == "Pipeline"
+    assert pipe_span.attributes.get("lazyllm.span.kind") == "flow"
+    assert pipe_span.attributes.get("lazyllm.semantic_type") == "workflow_control"
+    assert json.loads(pipe_span.attributes.get("lazyllm.io.input")) == {"args": [3], "kwargs": {}}
+    assert pipe_span.attributes.get("lazyllm.io.output") == "result:8"
+    child_spans = [a1_span, dbl_span, fmt_span]
+    assert all(s.parent.span_id == pipe_span.context.span_id for s in child_spans)
     assert result == "result:8"
 
 

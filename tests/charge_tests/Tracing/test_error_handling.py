@@ -78,6 +78,7 @@ def test_nested_parallel_error_propagates_to_pipeline(exporter):
 
     branch_spans, parallel_span, pipeline_span = spans[:2], spans[2], spans[3]
     error_span = [s for s in branch_spans if s.name == "raises_error"][0]
-    assert error_span.attributes.get("lazyllm.status") == "error"
-    assert parallel_span.attributes.get("lazyllm.status") == "error"
-    assert pipeline_span.attributes.get("lazyllm.status") == "error"
+    assert all(
+        s.attributes.get("lazyllm.status") == "error"
+        for s in (error_span, parallel_span, pipeline_span)
+    )
