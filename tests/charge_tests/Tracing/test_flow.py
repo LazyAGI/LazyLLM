@@ -1,6 +1,6 @@
 import json
 
-from lazyllm import ifs, loop, parallel, pipeline, switch
+from lazyllm import barrier, diverter, graph, ifs, loop, parallel, pipeline, switch, warp
 
 
 def add_one(value):
@@ -47,26 +47,27 @@ def test_parallel_tracing(exporter):
 
 
 def test_switch_tracing(exporter):
-    def is_positive(value):
-        return value > 0
+    def chat_branch(route):
+        return f"chat:{route}"
 
-    def positive_branch(value):
-        return f"positive:{value}"
+    def search_branch(route):
+        return f"search:{route}"
 
-    def default_branch(value):
-        return f"default:{value}"
+    def default_branch(route):
+        return f"default:{route}"
 
-    flow = switch(is_positive, positive_branch, "default", default_branch)
-    result = flow(3)
+    flow = switch("chat", chat_branch, "search", search_branch, "default", default_branch)
+    result = flow("search")
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 2
     branch_span, switch_span = spans
     assert switch_span.name == "Switch"
-    assert branch_span.name == "positive_branch"
-    assert switch_span.attributes.get("lazyllm.matched.index") == 0
-    assert switch_span.attributes.get("lazyllm.matched.branch") == "positive_branch"
-    assert result == "positive:3"
+    assert branch_span.name == "search_branch"
+    assert branch_span.parent.span_id == switch_span.context.span_id
+    assert switch_span.attributes.get("lazyllm.matched.index") == 1
+    assert switch_span.attributes.get("lazyllm.matched.branch") == "search_branch"
+    assert result == "search:search"
 
 
 def test_loop_tracing(exporter):
@@ -110,3 +111,105 @@ def test_ifs_tracing(exporter):
     assert ifs_span.attributes.get("lazyllm.matched.chosen_node") == "true_path"
     assert ifs_span.attributes.get("lazyllm.matched.condition_result") is True
     assert result == "even:4"
+
+
+def test_diverter_tracing(exporter):
+    with diverter() as flow:
+        flow.add_one = add_one
+        flow.double = double
+        flow.minus_one = lambda v: v - 1
+    result = flow(3, 5, 7)
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 4
+    diverter_span = spans[-1]
+    child_spans = spans[:-1]
+    assert diverter_span.name == "Diverter"
+    assert diverter_span.attributes.get("lazyllm.span.kind") == "flow"
+    assert {s.name for s in child_spans} == {"add_one", "double", "<lambda>"}
+    assert all(s.parent.span_id == diverter_span.context.span_id for s in child_spans)
+    assert all(s.context.trace_id == diverter_span.context.trace_id for s in child_spans)
+    assert json.loads(diverter_span.attributes.get("lazyllm.io.input")) == {"args": [3, 5, 7], "kwargs": {}}
+    assert tuple(result) == (4, 10, 6)
+
+
+def test_warp_tracing(exporter):
+    flow = warp(add_one)
+    result = flow(1, 2, 3)
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 4
+    warp_span = spans[-1]
+    child_spans = spans[:-1]
+    assert warp_span.name == "Warp"
+    assert warp_span.attributes.get("lazyllm.span.kind") == "flow"
+    assert {s.name for s in child_spans} == {"add_one"}
+    assert all(s.parent.span_id == warp_span.context.span_id for s in child_spans)
+    assert all(s.context.trace_id == warp_span.context.trace_id for s in child_spans)
+    assert json.loads(warp_span.attributes.get("lazyllm.io.input")) == {"args": [1, 2, 3], "kwargs": {}}
+    assert tuple(result) == (2, 3, 4)
+
+
+def test_graph_tracing(exporter):
+    def first(x):
+        return x + 1
+
+    def second(x):
+        return x * 2
+
+    def combine(a, b):
+        return a + b
+
+    with graph() as g:
+        g.first = first
+        g.second = second
+        g.combine = combine
+
+    g.add_edge(g.start_node_name, ["first", "second"])
+    g.add_edge(["first", "second"], "combine")
+    g.add_edge("combine", g.end_node_name)
+
+    result = g(3)
+
+    spans = exporter.get_finished_spans()
+    user_node_spans, graph_span = spans[:3], spans[-1]
+    assert [s.name for s in user_node_spans] == ["first", "second", "combine"]
+    assert graph_span.name == "Graph"
+    assert graph_span.attributes.get("lazyllm.span.kind") == "flow"
+    assert all(s.context.trace_id == graph_span.context.trace_id for s in user_node_spans)
+    assert all(s.parent.span_id == graph_span.context.span_id for s in user_node_spans)
+    assert json.loads(graph_span.attributes.get("lazyllm.io.input")) == {"args": [3], "kwargs": {}}
+    assert result == (3 + 1) + (3 * 2)
+
+
+def test_barrier_tracing(exporter):
+    order = []
+
+    def record(tag):
+        def _step(value):
+            order.append(tag)
+            return value + 1
+        _step.__name__ = tag
+        return _step
+
+    with parallel() as flow:
+        with pipeline() as flow.left:
+            flow.left.l1 = record("left_pre")
+            flow.left.bar = barrier
+            flow.left.l2 = record("left_post")
+        with pipeline() as flow.right:
+            flow.right.r1 = record("right_pre")
+            flow.right.bar = barrier
+            flow.right.r2 = record("right_post")
+    result = flow(0)
+
+    spans = exporter.get_finished_spans()
+    pre_spans, rest_spans = spans[:2], spans[2:-1]
+    rest_names = [s.name for s in rest_spans]
+    assert spans[-1].name == "Parallel"
+    assert {s.name for s in pre_spans} == {"left_pre", "right_pre"}
+    assert {"left_post", "right_post"}.issubset(rest_names)
+    pre_indices = [order.index("left_pre"), order.index("right_pre")]
+    post_indices = [order.index("left_post"), order.index("right_post")]
+    assert max(pre_indices) < min(post_indices)
+    assert tuple(result) == (2, 2)
