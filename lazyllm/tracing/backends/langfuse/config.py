@@ -3,14 +3,6 @@ import os
 from typing import Dict, Optional
 
 
-def read_consume_timeout_seconds() -> float:
-    raw = os.getenv('LAZYLLM_TRACE_CONSUME_TIMEOUT', '30')
-    try:
-        return max(1.0, float(raw))
-    except (TypeError, ValueError):
-        return 30.0
-
-
 def read_langfuse_connection() -> Dict[str, Optional[str]]:
     return {
         'host': os.getenv('LANGFUSE_HOST') or os.getenv('LANGFUSE_BASE_URL'),
