@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from ...datamodel.raw import RawSpanRecord
 from .utils import (
@@ -32,7 +32,7 @@ def _first_not_none(*values):
     return None
 
 
-def extract_llm(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
+def extract_llm(span: RawSpanRecord) -> Dict[str, Any]:
     input_value = span_input(span)
     output_value = span_output(span)
     static_params = config_value(span, 'static_params')
@@ -66,7 +66,8 @@ def extract_llm(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
     }
 
 
-def extract_retriever(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
+def extract_retriever(span: RawSpanRecord) -> Dict[str, Any]:
+    input_value = span_input(span)
     output = span_output(span)
     similarity_cut_off = config_value(span, 'similarity_cut_off')
     node_count = as_int(span.attributes.get('lazyllm.output.doc_count'))
@@ -74,8 +75,8 @@ def extract_retriever(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
         node_count = sequence_len(output)
 
     return {
-        'query': query_from_input(span_input(span)),
-        'filters': input_filters(span_input(span)),
+        'query': query_from_input(input_value),
+        'filters': input_filters(input_value),
         'topk': as_int(config_value(span, 'topk')),
         'node_count': node_count,
         'returned_node_ids': doc_node_ids(output),
@@ -95,7 +96,7 @@ def extract_retriever(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
     }
 
 
-def extract_embedding(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
+def extract_embedding(span: RawSpanRecord) -> Dict[str, Any]:
     input_value = span_input(span)
     output_value = span_output(span)
     model_name = span.attributes.get('gen_ai.request.model') or config_value(span, 'model')
@@ -115,7 +116,7 @@ def extract_embedding(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
     }
 
 
-def extract_rerank(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
+def extract_rerank(span: RawSpanRecord) -> Dict[str, Any]:
     input_value = span_input(span)
     output_value = span_output(span)
     args = input_value.get('args') if isinstance(input_value, dict) else None

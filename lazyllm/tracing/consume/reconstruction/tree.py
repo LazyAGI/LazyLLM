@@ -187,8 +187,6 @@ def rebuild(trace: RawTraceRecord, spans: List[RawSpanRecord]) -> StructuredTrac
         )
     else:
         execution_tree = root_steps[0]
-        if execution_tree.status == 'error' and execution_tree.error_message:
-            error_message = execution_tree.error_message
         latency = execution_tree.latency_ms
         if latency is None:
             latency = aggregate_latency_ms

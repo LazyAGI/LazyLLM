@@ -155,6 +155,7 @@ class LangfuseConsumeBackend(ConsumeBackend):
                 dt = dt.replace(tzinfo=timezone.utc)
             return dt.timestamp()
         except ValueError:
+            LOG.warning(f'Failed to parse Langfuse timestamp: {value!r}')
             return None
 
     def _raw_span_from_obs(self, trace_id: str, obs: Dict[str, Any]) -> RawSpanRecord:
@@ -301,7 +302,8 @@ class LangfuseConsumeBackend(ConsumeBackend):
                     },
                 }
         if resp.status_code in (401, 403):
-            raise ConsumeBackendError('authentication failed')
+            netloc = urlparse(url).netloc or url
+            raise ConsumeBackendError(f'Langfuse authentication failed for host {netloc!r}')
         retry = self._handle_retryable_response(resp, url, attempt)
         if retry is not self._RESPONSE_UNHANDLED:
             return retry
@@ -350,7 +352,11 @@ class LangfuseConsumeBackend(ConsumeBackend):
                 return status_result
             return self._response_json(resp)
 
-        raise ConsumeBackendError('Langfuse HTTP request exhausted retries')
+        netloc = urlparse(url).netloc or url
+        msg = f'Langfuse request exhausted retries for host {netloc!r}'
+        if trace_id is not None:
+            msg += f', trace_id={trace_id!r}'
+        raise ConsumeBackendError(msg)
 
     def _fetch_trace_body(
         self,

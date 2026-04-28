@@ -22,7 +22,14 @@ def extract_semantic(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
     try:
         return fn(span)
     except Exception as exc:
-        LOG.warning(f'extractor {sem} failed on span {span.span_id}: {exc}')
+        LOG.warning(
+            'extractor %s failed on span_id=%s span_name=%r: %s',
+            sem,
+            span.span_id,
+            span.name,
+            exc,
+            exc_info=True,
+        )
         return None
 
 

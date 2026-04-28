@@ -197,6 +197,7 @@ class TracingRuntime:
         is_reconstructed = False
         if is_root_span and ctx.trace_id and ctx.parent_span_id:
             try:
+                # Reattach to the caller-provided parent context when enable_trace resumes an existing trace.
                 trace_flags_value = 0x00 if ctx.sampled is False else 0x01
                 parent_sc = opentelemetry.trace.SpanContext(
                     trace_id=int(ctx.trace_id, 16),
@@ -383,6 +384,7 @@ class TracingRuntime:
 
         active_trace = _current_trace.get()
         trace_matches = active_trace is not None and active_trace.trace_id == span.trace_id
+        # Build and attach generic attrs before backend-specific mapping and final span closure.
         otel_attrs = self._build_otel_attributes(span, trace=active_trace if trace_matches else None)
 
         for k, v in otel_attrs.items():

@@ -2,9 +2,6 @@ from .api import get_single_trace
 from .datamodel import (
     ExecutionStep,
     RawData,
-    RawSpanRecord,
-    RawTracePayload,
-    RawTraceRecord,
     StructuredTrace,
     TraceMetadata,
 )
@@ -15,9 +12,6 @@ __all__ = [
     'ConsumeError',
     'ExecutionStep',
     'RawData',
-    'RawSpanRecord',
-    'RawTracePayload',
-    'RawTraceRecord',
     'StructuredTrace',
     'TraceMetadata',
     'TraceNotFound',

@@ -88,5 +88,6 @@ def resolve_default_module_trace(*, module_name=None, module_class=None) -> bool
 
 
 def resolve_runtime_module_trace_disabled(override, *, module_name=None, module_class=None) -> bool:
+    '''Return True only when runtime override explicitly disables module tracing.'''
     hit = _lookup_in_config(override, module_name=module_name, module_class=module_class)
     return hit is False
