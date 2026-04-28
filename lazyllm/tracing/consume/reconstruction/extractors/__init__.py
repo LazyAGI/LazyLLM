@@ -26,4 +26,4 @@ def extract_semantic(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
         return None
 
 
-__all__ = ['_REGISTRY', 'extract_semantic']
+__all__ = ['extract_semantic']

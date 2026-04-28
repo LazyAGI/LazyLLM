@@ -119,7 +119,8 @@ def extract_rerank(span: RawSpanRecord) -> Optional[Dict[str, Any]]:
     input_value = span_input(span)
     output_value = span_output(span)
     args = input_value.get('args') if isinstance(input_value, dict) else None
-    candidates = args[0] if isinstance(args, list) and args else None
+    raw_candidates = args[0] if isinstance(args, list) and args else None
+    candidates = raw_candidates if isinstance(raw_candidates, list) else None
     rerank_model = config_value(span, 'model') or config_value(span, 'name')
 
     return {

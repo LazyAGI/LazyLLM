@@ -264,6 +264,8 @@ def doc_node_summaries(
     for item in items:
         if isinstance(item, dict):
             doc_id = item.get('id') or item.get('node_id') or item.get('doc_id')
+            if not doc_id:
+                continue
             group = item.get('group') or item.get('group_name')
             content = item.get('content') or item.get('text')
         elif isinstance(item, str):
