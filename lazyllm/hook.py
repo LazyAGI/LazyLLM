@@ -2,8 +2,11 @@ from abc import ABC, abstractmethod
 import inspect
 import ast
 import copy
-from typing import Any, Callable, Sequence
-from .common import LOG
+from contextlib import contextmanager
+from functools import wraps
+from typing import Any, Callable, Optional, Sequence
+
+from .common import LOG, HandledException
 
 
 class LazyLLMHook(ABC):
@@ -186,7 +189,87 @@ def run_hooks(hook_objs, phase: str, *phase_args):
     _raise_hook_phase_errors(phase, strict_errors)
 
 
+@contextmanager
+def hook_execution(
+    obj: Any,
+    *hook_args: Any,
+    map_exception: Optional[Callable[[Exception], Exception]] = None,
+    **hook_kwargs: Any,
+):
+    hook_objs = tuple(
+        prepare_hooks(obj, list(getattr(obj, '_hooks', []) or []), *hook_args, **hook_kwargs)
+    )
+    _ran = False
+
+    def hooked_call(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
+        nonlocal _ran
+        if _ran:
+            raise RuntimeError('hooked_call() must be called at most once per hook_execution block')
+        _ran = True
+        try:
+            r = fn(*args, **kwargs)
+        except HandledException as e:
+            LOG.error(f'`{type(obj).__name__}` raised {type(e).__name__}: {e}')
+            try:
+                run_hooks(hook_objs, 'on_error', e)
+            except Exception:
+                LOG.warning('Hook on_error phase failed', exc_info=True)
+            raise
+        except Exception as e:
+            err = map_exception(e) if map_exception else e
+            nm = getattr(obj, 'name', None)
+            LOG.error(
+                f'Error in `{type(obj).__name__}`' + (f' name={nm!r}' if nm else '') + f': {err}'
+            )
+            try:
+                run_hooks(hook_objs, 'on_error', err)
+            except Exception:
+                LOG.warning('Hook on_error phase failed', exc_info=True)
+            if map_exception:
+                raise err from None
+            raise
+        else:
+            run_hooks(hook_objs, 'post_hook', r)
+            return r
+
+    try:
+        yield hooked_call
+    finally:
+        try:
+            run_hooks(hook_objs, 'finalize')
+        except Exception:
+            LOG.warning('Hook finalize phase failed', exc_info=True)
+
+
+def execution_with_hooks(
+    obj: Any = None,
+    *hook_args: Any,
+    map_exception: Optional[Callable[[Exception], Exception]] = None,
+    **hook_kwargs: Any,
+):
+    def decorator(fn: Callable[..., Any]):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            hook_obj = obj if obj is not None else args[0]
+            actual_hook_args = hook_args if obj is not None else args[1:]
+            actual_hook_kwargs = hook_kwargs if obj is not None else kwargs
+            with hook_execution(
+                hook_obj,
+                *actual_hook_args,
+                map_exception=map_exception,
+                **actual_hook_kwargs,
+            ) as hooked_call:
+                return hooked_call(fn, *args, **kwargs)
+        return wrapper
+
+    if callable(obj) and not hook_args and not hook_kwargs and map_exception is None:
+        fn = obj
+        obj = None
+        return decorator(fn)
+    return decorator
+
+
 try:
-    from .tracing.hook import resolve_tracing_hooks  # noqa: F401, E402
+    from .tracing.collect.hook import resolve_tracing_hooks  # noqa: F401, E402
 except ImportError:
     pass

@@ -386,36 +386,52 @@ def _language_instruction(lang: str) -> str:
     )
 
 
-def _normalize_comment_item(
-    item: Dict[str, Any], new_start: int = 0, end_line: Optional[int] = None,
-    default_path: str = '', default_category: str = 'logic',
-) -> Optional[Dict[str, Any]]:
-    line = item.get('line')
-    # LLM sometimes outputs 'description' instead of 'problem' (especially in R4)
-    if item.get('problem') is None and item.get('description') is not None:
-        item = dict(item, problem=item['description'])
-    if line is None or item.get('problem') is None:
-        lazyllm.LOG.info(f'[NORMALIZE_SKIP] missing line or problem: {str(item)[:200]}')
+def _normalize_line(
+    line: Any, new_start: int, end_line: Optional[int], allow_null_line: bool, item_repr: str,
+) -> Optional[Optional[int]]:
+    '''Parse and range-check the line field. Returns (line_int_or_None,) on success, or raises
+    a sentinel _SkipItem on failure.'''
+    if line is None:
+        if not allow_null_line:
+            lazyllm.LOG.info(f'[NORMALIZE_SKIP] missing line or problem: {item_repr}')
+            return _SKIP
         return None
     try:
         line = int(line)
     except (TypeError, ValueError):
-        lazyllm.LOG.info(f'[NORMALIZE_SKIP] non-int line={line!r}: {str(item)[:200]}')
-        return None
+        lazyllm.LOG.info(f'[NORMALIZE_SKIP] non-int line={line!r}: {item_repr}')
+        return _SKIP
     if end_line is not None:
-        # Allow a generous tolerance: LLM may reference lines slightly outside the hunk
-        # (e.g. from file_context). Hard-reject only clearly out-of-range lines.
         hunk_size = max(end_line - new_start, 1)
         tolerance = max(50, hunk_size // 4)
         low = max(1, new_start - tolerance)
         high = end_line + tolerance
         if not (low <= line < high):
             lazyllm.LOG.info(
-                f'[NORMALIZE_SKIP] line={line} out of range [{low}, {high}): '
-                f'{str(item)[:200]}'
+                f'[NORMALIZE_SKIP] line={line} out of range [{low}, {high}): {item_repr}'
             )
-            return None
+            return _SKIP
     elif line <= 0:
+        return _SKIP
+    return line
+
+
+_SKIP = object()  # sentinel returned by _normalize_line to signal skip
+
+
+def _normalize_comment_item(
+    item: Dict[str, Any], new_start: int = 0, end_line: Optional[int] = None,
+    default_path: str = '', default_category: str = 'logic',
+    allow_null_line: bool = False,
+) -> Optional[Dict[str, Any]]:
+    # LLM sometimes outputs 'description' instead of 'problem' (especially in R4)
+    if item.get('problem') is None and item.get('description') is not None:
+        item = dict(item, problem=item['description'])
+    if item.get('problem') is None:
+        lazyllm.LOG.info(f'[NORMALIZE_SKIP] missing problem: {str(item)[:200]}')
+        return None
+    line = _normalize_line(item.get('line'), new_start, end_line, allow_null_line, str(item)[:200])
+    if line is _SKIP:
         return None
     category = item.get('bug_category') or default_category
     if category not in _VALID_CATEGORIES:

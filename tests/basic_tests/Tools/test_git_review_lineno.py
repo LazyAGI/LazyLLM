@@ -452,8 +452,8 @@ class TestCommentableFilter:
             {'path': 'foo.py', 'line': 10},
             {'path': 'foo.py', 'line': 14},
         ]
-        kept, dropped = _filter_commentable(comments, cm)
-        assert len(kept) == 2
+        inline, general, dropped = _filter_commentable(comments, cm)
+        assert len(inline + general) == 2
         assert dropped == 0
 
     def test_filter_drops_out_of_range(self):
@@ -464,7 +464,8 @@ class TestCommentableFilter:
             {'path': 'foo.py', 'line': 15},  # after hunk (new_start+new_count = 15, exclusive)
             {'path': 'foo.py', 'line': 12},  # valid
         ]
-        kept, dropped = _filter_commentable(comments, cm)
+        inline, general, dropped = _filter_commentable(comments, cm)
+        kept = inline + general
         assert len(kept) == 1
         assert kept[0]['line'] == 12
         assert dropped == 2
@@ -473,22 +474,22 @@ class TestCommentableFilter:
         hunks = self._make_hunks([('foo.py', 1, 10)])
         cm = _build_commentable_lines(hunks)
         comments = [{'path': 'other.py', 'line': 5}]
-        kept, dropped = _filter_commentable(comments, cm)
-        assert kept == []
+        inline, general, dropped = _filter_commentable(comments, cm)
+        assert inline + general == []
         assert dropped == 1
 
     def test_filter_drops_missing_line(self):
         hunks = self._make_hunks([('foo.py', 1, 10)])
         cm = _build_commentable_lines(hunks)
-        comments = [{'path': 'foo.py'}]  # no 'line' key
-        kept, dropped = _filter_commentable(comments, cm)
-        assert kept == []
-        assert dropped == 1
+        comments = [{'path': 'foo.py'}]  # no 'line' key → treated as general comment
+        inline, general, dropped = _filter_commentable(comments, cm)
+        assert len(general) == 1
+        assert dropped == 0
 
     def test_filter_empty_input(self):
         cm = _build_commentable_lines([])
-        kept, dropped = _filter_commentable([], cm)
-        assert kept == [] and dropped == 0
+        inline, general, dropped = _filter_commentable([], cm)
+        assert inline + general == [] and dropped == 0
 
     # --- precise content-based parsing (non-empty content) ---
 
@@ -527,8 +528,8 @@ class TestCommentableFilter:
             {'path': 'f.py', 'line': 10},   # valid (added line)
             {'path': 'f.py', 'line': 11},   # valid (context line)
         ]
-        kept, dropped = _filter_commentable(comments, cm)
-        assert len(kept) == 2
+        inline, general, dropped = _filter_commentable(comments, cm)
+        assert len(inline + general) == 2
         assert dropped == 0
 
     def test_deleted_and_added_at_same_position(self):
@@ -542,8 +543,8 @@ class TestCommentableFilter:
         # ctx→10, new_line→11, ctx2→12; old_line has no new-file number
         assert cm['f.py'] == {10, 11, 12}
         # line 11 is the '+new_line', not '-old_line'
-        kept, dropped = _filter_commentable([{'path': 'f.py', 'line': 11}], cm)
-        assert len(kept) == 1 and dropped == 0
+        inline, general, dropped = _filter_commentable([{'path': 'f.py', 'line': 11}], cm)
+        assert len(inline + general) == 1 and dropped == 0
 
     def test_filter_drops_line_beyond_content_with_content(self):
         content = '+add1\n ctx'   # new-file lines 5, 6
@@ -554,7 +555,8 @@ class TestCommentableFilter:
             {'path': 'f.py', 'line': 4},   # before hunk
             {'path': 'f.py', 'line': 5},   # valid
         ]
-        kept, dropped = _filter_commentable(comments, cm)
+        inline, general, dropped = _filter_commentable(comments, cm)
+        kept = inline + general
         assert len(kept) == 1
         assert kept[0]['line'] == 5
         assert dropped == 2
