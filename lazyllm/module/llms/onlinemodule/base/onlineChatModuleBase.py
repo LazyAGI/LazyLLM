@@ -94,7 +94,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                     self._stream_output(content, color)
             lazyllm.LOG.debug(f'message: {message}')
             return message
-        except (TypeError, ValueError, json.JSONDecodeError):
+        except Exception:
             lazyllm.LOG.warning(f'Failed to parse message: {msg}')
             return ''
 
