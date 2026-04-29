@@ -109,7 +109,7 @@ DO report it as a maintainability issue with severity "medium" and suggest remov
 the unnecessary code. The key test: would a human expert write this? If not, flag it. \
 Patterns to flag (severity must be "medium", bug_category "maintainability"): \
 (a) Unnecessary null/None checks — checking a value for None when the caller contract or type \
-annotation guarantees it is never None; `or []` / `or {}` / `or 0` fallbacks on values that \
+annotation guarantees it is never None; `or []` / `or {{}}` / `or 0` fallbacks on values that \
 cannot be None by design; multi-layer nested None-guards with no clear invariant. \
 (b) Over-broad exception handling — bare `except:` or `except Exception` blocks that silently \
 swallow all errors with no logging, no re-raise, and no meaningful recovery; catching a broad \
@@ -444,6 +444,7 @@ def _analyze_single_hunk(
         sym_notes = _lookup_relevant_symbols(annotated_content, symbol_index)
         if sym_notes:
             effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
+    safe_content = annotated_content.replace('{', '{{').replace('}', '}}')
     prompt = _ROUND1_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
@@ -451,7 +452,7 @@ def _analyze_single_hunk(
         file_skeleton=file_skeleton or '(not available)',
         code_profile=code_profile, review_focus_block=review_focus_block,
         file_context=file_context or '(not available)',
-        path=path, start=new_start, end=new_start + actual_count, content=annotated_content,
+        path=path, start=new_start, end=new_start + actual_count, content=safe_content,
         density_rule=issue_density_rule(annotated_content),
     )
     items = _safe_llm_call(llm, prompt)
@@ -496,6 +497,7 @@ def _analyze_large_hunk(
             sym_notes = _lookup_relevant_symbols(win_annotated, symbol_index)
             if sym_notes:
                 effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
+        safe_content = win_annotated.replace('{', '{{').replace('}', '}}')
         prompt = _ROUND1_PROMPT_TMPL.format(
             lang_instruction=_language_instruction(language),
             pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
@@ -503,7 +505,7 @@ def _analyze_large_hunk(
             file_skeleton=file_skeleton or '(not available)',
             code_profile=code_profile, review_focus_block=review_focus_block,
             file_context=file_context or '(not available)',
-            path=path, start=win_start, end=win_start + win_count, content=win_annotated,
+            path=path, start=win_start, end=win_start + win_count, content=safe_content,
             density_rule=issue_density_rule(win_annotated),
         )
         items = _safe_llm_call(llm, prompt)
@@ -576,6 +578,7 @@ def _analyze_hunk_batch(
         f'{_annotate_diff_with_line_numbers(_truncate_hunk_content(cnt, hunk_budget_lines), s)}\n</hunk>'
         for s, c, cnt in hunks
     ]
+    safe_hunks = '\n\n'.join(hunk_blocks).replace('{', '{{').replace('}', '}}')
     prompt = _ROUND1_BATCH_PROMPT_TMPL.format(
         lang_instruction=_language_instruction(language),
         pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
@@ -583,7 +586,7 @@ def _analyze_hunk_batch(
         file_skeleton=file_skeleton or '(not available)',
         code_profile=code_profile, review_focus_block=review_focus_block,
         file_context=file_context or '(not available)',
-        path=path, hunks_content='\n\n'.join(hunk_blocks), density_rule=issue_density_rule('\n'.join(hunk_blocks)),
+        path=path, hunks_content=safe_hunks, density_rule=issue_density_rule('\n'.join(hunk_blocks)),
     )
     items = _safe_llm_call(llm, prompt)
     # derive context_end_line from file_context header (same logic as _analyze_single_hunk)
