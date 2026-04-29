@@ -131,7 +131,7 @@ class SkillManager(ModuleBase):
                     )
 
     @staticmethod
-    def _parse_dirs(dir_value: Optional[str], is_local: Optional[bool] = True) -> List[str]:
+    def _parse_dirs(dir_value: Optional[str], is_local: bool = True) -> List[str]:
         if not dir_value:
             return []
         dirs = [d.strip() for d in dir_value.split(',') if d.strip()] if isinstance(dir_value, str) else list(dir_value)

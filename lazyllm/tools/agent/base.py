@@ -24,7 +24,8 @@ class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools=None, max_retries: int = 5, return_trace: bool = False,
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
-                 desc: str = '', workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
+                 desc: str = '', workspace: Optional[str] = None,
+                 sandbox: Union[str, LazyLLMSandboxBase, None] = 'auto',
                  fs: Optional[Any] = None, skills_dir: Optional[str] = None,
                  enable_builtin_tools: bool = True):
         super().__init__(return_trace=return_trace)
@@ -47,16 +48,17 @@ class LazyLLMAgentBase(ModuleBase):
         self._workspace = self._init_workspace(workspace)
         self._agent = None
         self._skill_manager = None
-        self._sandbox = sandbox or create_sandbox()
+        self._sandbox = create_sandbox() if sandbox == 'auto' else sandbox
         self._builtin_tool_names = set()
         self._skill_tool_names = set()
         self._enable_builtin_tools = enable_builtin_tools
 
+        if self._enable_builtin_tools:
+            self._ensure_builtin_tools()
         if use_skills:
             self._skill_manager = SkillManager(dir=skills_dir, skills=self._skills, fs=fs)
             self._ensure_default_skill_tools()
         self._tools_manager = ToolManager(self._tools, return_trace=return_trace, sandbox=self._sandbox)
-        self._set_default_tool_sandbox_policy()
 
     @staticmethod
     def _normalize_skills_config(skills: Optional[Union[bool, str, Iterable[str]]]):
@@ -109,33 +111,31 @@ class LazyLLMAgentBase(ModuleBase):
     def _assert_tools(self):
         assert self._tools, 'tools cannot be empty.'
 
-    def _ensure_default_skill_tools(self):
-        builtin_names = []
-        builtin_group = getattr(lazyllm, 'builtin_tools', None) if self._enable_builtin_tools else None
+    def _ensure_builtin_tools(self):
+        builtin_keys = []
+        builtin_group = getattr(lazyllm, 'builtin_tools', None)
         if builtin_group:
-            builtin_names = [f'builtin_tools.{name}' for name in builtin_group.keys()]
-        self._builtin_tool_names = {name.split('.')[-1] for name in builtin_names}
+            builtin_keys = list(builtin_group.keys())
+        self._builtin_tool_names = {
+            key[:-len('builtin_tools')] if key.endswith('builtin_tools') else key
+            for key in builtin_keys
+        }
         existing = set()
         for tool in self._tools:
             if isinstance(tool, str):
                 existing.add(tool.split('.')[-1])
             elif hasattr(tool, '__name__'):
                 existing.add(tool.__name__)
-        for name in builtin_names:
-            if name.split('.')[-1] not in existing:
-                self._tools.append(name)
+        for key in builtin_keys:
+            name = key[:-len('builtin_tools')] if key.endswith('builtin_tools') else key
+            if name not in existing:
+                self._tools.append(f'builtin_tools.{key}')
+
+    def _ensure_default_skill_tools(self):
         if self._skill_manager:
             for tool in self._skill_manager.get_skill_tools():
                 self._skill_tool_names.add(tool.__name__)
                 self._tools.append(tool)
-
-    def _set_default_tool_sandbox_policy(self):
-        forced_non_sandbox = self._builtin_tool_names | self._skill_tool_names
-        if not forced_non_sandbox:
-            return
-        for tool in self._tools_manager.all_tools:
-            if tool.name in forced_non_sandbox:
-                tool.execute_in_sandbox = False
 
     def _append_skills_prompt(self, prompt: str) -> str:
         if not self._skill_manager:
@@ -160,7 +160,7 @@ class LazyLLMAgentBase(ModuleBase):
         return self._workspace
 
     @property
-    def sandbox(self) -> LazyLLMSandboxBase:
+    def sandbox(self) -> Optional[LazyLLMSandboxBase]:
         return self._sandbox
 
     @sandbox.setter
