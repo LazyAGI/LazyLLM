@@ -5,7 +5,7 @@ import os
 import re
 import threading
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
@@ -26,6 +26,8 @@ from .pre_analysis import (
     _find_subclass_implementations,
     _extract_file_skeleton,
     _lookup_relevant_rules,
+    _build_layered_agents_index,
+    _get_local_agent_instructions,
 )
 from .constants import (
     SINGLE_CALL_CONTEXT_BUDGET, R1_DIFF_BUDGET,
@@ -78,7 +80,7 @@ ownership rules — e.g. tracing config in top-level configs.py instead of traci
 - dependency: new hard dependency that should be optional/extra (e.g. added to install_requires but \
 only used by an optional feature; should be in extras_require or optional-dependencies instead)'''
 
-_R1_STRICT_RULES = '''\
+_SHARED_STRICT_RULES_PREFIX = '''\
 STRICT RULES — violations will be rejected:
 1. Only report issues INTRODUCED or WORSENED by the diff (added/modified/deleted lines). \
 Pre-existing code smells, refactoring opportunities, or style inconsistencies in unchanged code \
@@ -86,21 +88,50 @@ are OUT OF SCOPE even if visible in context. If the issue would exist identicall
 2. Do NOT report lint/style tool errors that automated tools already catch: \
 unused imports (F401), line-too-long, complexity metrics, missing blank lines, \
 trailing whitespace, etc. \
-HOWEVER, if the diff deletes or rewrites a function/class and you can see in the file context \
-that a helper function, constant, or variable was ONLY used by the old code and is now orphaned, \
-DO report it (bug_category: maintainability, severity: normal). \
-The distinction: "unused import" = lint tool's job; \
-"orphaned helper after refactoring" = reviewer's job. \
+HOWEVER, DO report dead code left behind by THIS diff's refactoring: \
+if the diff deletes or rewrites a function/class, and a helper function, constant, \
+or prompt template that was ONLY used by the old code is still present, that IS a valid issue \
+(bug_category: maintainability). The distinction: "unused import" = lint tool's job; \
+"orphaned function after refactoring" = reviewer's job. \
 CAVEAT — do NOT report a symbol as orphaned if any of these dynamic-reference patterns apply: \
 (a) its class uses a metaclass or __init_subclass__ (auto-registration upon definition), \
 (b) it appears in __all__, a registry dict, a @register decorator, or plugin entry-points, \
 (c) the module defines __getattr__ (dynamic attribute dispatch), \
-(d) its name follows a convention pattern (*_handler, *_impl, *_hook, *_plugin) suggesting dynamic dispatch. \
+(d) its name follows a convention pattern (*_handler, *_impl, *_hook, *_plugin) suggesting dynamic dispatch, \
+(e) the Project Agent Instructions (AGENTS.md) describe a dynamic dispatch mechanism that covers this symbol. \
 If any pattern applies, do NOT report it; if uncertain, add \
 "(may be dynamically referenced)" and cap severity at "normal".
-3. Do NOT flag defensive programming as a bug. Patterns like `max(n, 1)`, `or default`, \
+3. Do NOT flag necessary defensive programming as a bug. Patterns like `max(n, 1)`, `or default`, \
 `if x is None: x = []`, guard clauses, and similar constructs are intentional safety measures — \
-report them only if they introduce a concrete logical error (e.g. masking a real zero that matters).
+report them only if they introduce a concrete logical error (e.g. masking a real zero that matters). \
+HOWEVER, if the diff introduces code that looks like AI-generated over-defensive programming, \
+DO report it as a maintainability issue with severity "medium" and suggest removing or simplifying \
+the unnecessary code. The key test: would a human expert write this? If not, flag it. \
+Patterns to flag (severity must be "medium", bug_category "maintainability"): \
+(a) Unnecessary null/None checks — checking a value for None when the caller contract or type \
+annotation guarantees it is never None; `or []` / `or {}` / `or 0` fallbacks on values that \
+cannot be None by design; multi-layer nested None-guards with no clear invariant. \
+(b) Over-broad exception handling — bare `except:` or `except Exception` blocks that silently \
+swallow all errors with no logging, no re-raise, and no meaningful recovery; catching a broad \
+exception type when only one specific exception is expected. \
+(c) Redundant type/state checks — isinstance checks before every operation on a parameter that \
+is already typed or validated at the entry point; re-validating the same precondition multiple \
+times within the same function; asserting invariants that are structurally guaranteed. \
+(d) Superfluous boundary checks — off-by-one guards like `if len(x) == 0` immediately before \
+a loop that already handles empty input correctly; range checks on values whose domain is \
+constrained by the type system or upstream logic. \
+(e) Overly complex conditional branches — deeply nested if/elif chains that could be replaced \
+by a lookup table, early return, or polymorphism; boolean expressions with redundant sub-clauses \
+that are always true or always false given the surrounding context. \
+(f) Unused or misleading defaults — function parameters with default values that are never \
+actually used by any caller and exist only as "just in case" placeholders; default values that \
+contradict the documented required semantics of the parameter. \
+(g) Verbose or redundant logging — logging the same event at multiple levels (DEBUG + INFO + \
+WARNING) for a single operation; log messages that repeat the function name and arguments \
+verbatim with no additional context; logging inside tight loops with no rate-limiting. \
+(h) Redundant loops or recursion — iterating over a collection only to immediately return the \
+first element (use `next()` instead); recursive calls that could be a single expression; \
+re-computing the same derived value on every iteration instead of hoisting it out of the loop.
 4. Do NOT flag a helper function as "duplicate code" or "should reuse X" unless you can confirm \
 that X exists in the current codebase AND has an identical or compatible interface. \
 Specialized helpers (e.g. agent tool wrappers, prompt builders) are NOT duplicates of \
@@ -124,56 +155,22 @@ API (e.g. GitCode, Gitee, GitLab), do NOT guess its conventions based on other p
 9. When suggesting "add error handling" or "add exception protection", first verify whether \
 the called function already handles exceptions internally. If the callee wraps its body in \
 try/except or returns a safe default, the caller does NOT need redundant protection.
-10. {density_rule}'''
+10. Do NOT claim `except Exception` swallows `KeyboardInterrupt`, `SystemExit`, or \
+`GeneratorExit`. In Python 3, these inherit from `BaseException`, NOT `Exception`, so \
+`except Exception` does NOT catch them. Only flag broad exception handling if the code \
+uses `except BaseException` or bare `except:`.
+11. Do NOT report issues that static analysis tools (pyflakes, mypy, pylint, isort) already \
+catch reliably: undefined names / NameError, circular imports, unresolved references, \
+unreachable code, type errors detectable from signatures alone. These are out of scope for \
+a diff-level review — they will be caught by CI.
+12. Do NOT report a design choice as a bug or inconsistency unless you can cite a concrete \
+runtime failure, data corruption, or explicit contract violation that the choice causes. \
+Structural preferences (e.g. two commands vs one flag, composition vs inheritance, \
+separate modules vs merged) are the author's prerogative and must not be flagged without \
+evidence of actual harm.'''
 
-# Rules 1-5 are shared across all rounds (density_rule is round-specific and injected separately)
-_SHARED_STRICT_RULES_PREFIX = '''\
-STRICT RULES — violations will be rejected:
-1. Only report issues INTRODUCED or WORSENED by the diff (added/modified/deleted lines). \
-Pre-existing code smells, refactoring opportunities, or style inconsistencies in unchanged code \
-are OUT OF SCOPE even if visible in context. If the issue would exist identically without this diff, discard it.
-2. Do NOT report lint/style tool errors that automated tools already catch: \
-unused imports (F401), line-too-long, complexity metrics, missing blank lines, \
-trailing whitespace, etc. \
-HOWEVER, DO report dead code left behind by THIS diff's refactoring: \
-if the diff deletes or rewrites a function/class, and a helper function, constant, \
-or prompt template that was ONLY used by the old code is still present, that IS a valid issue \
-(bug_category: maintainability). The distinction: "unused import" = lint tool's job; \
-"orphaned function after refactoring" = reviewer's job. \
-CAVEAT — do NOT report a symbol as orphaned if any of these dynamic-reference patterns apply: \
-(a) its class uses a metaclass or __init_subclass__ (auto-registration upon definition), \
-(b) it appears in __all__, a registry dict, a @register decorator, or plugin entry-points, \
-(c) the module defines __getattr__ (dynamic attribute dispatch), \
-(d) its name follows a convention pattern (*_handler, *_impl, *_hook, *_plugin) suggesting dynamic dispatch, \
-(e) the Project Agent Instructions (AGENTS.md) describe a dynamic dispatch mechanism that covers this symbol. \
-If any pattern applies, do NOT report it; if uncertain, add \
-"(may be dynamically referenced)" and cap severity at "normal".
-3. Do NOT flag defensive programming as a bug. Patterns like `max(n, 1)`, `or default`, \
-`if x is None: x = []`, guard clauses, and similar constructs are intentional safety measures — \
-report them only if they introduce a concrete logical error (e.g. masking a real zero that matters).
-4. Do NOT flag a helper function as "duplicate code" or "should reuse X" unless you can confirm \
-that X exists in the current codebase AND has an identical or compatible interface. \
-Specialized helpers (e.g. agent tool wrappers, prompt builders) are NOT duplicates of \
-general-purpose utilities even if they perform similar operations.
-5. If the diff changes an abstract method or base-class interface, do NOT report it as a \
-"breaking change" without first verifying (via file_context or your knowledge of the diff) \
-that subclass implementations have NOT been updated. Only report if you have evidence that \
-at least one concrete subclass is out of sync.
-6. Do NOT report top-level side-effects (e.g. sys.path modification, module-level function calls) \
-as bugs when the file is an entry-point script. A file is an entry-point script if its name is \
-server.py, worker.py, main.py, __main__.py, or if the diff contains an \
-`if __name__ == "__main__":` block. Top-level setup code in such files is intentional.
-7. Before claiming something is "missing", "unused", "unreachable", or "always X", \
-you MUST cite the specific diff lines that prove the absence. If the diff does not \
-contain enough context to confirm, state "cannot verify from diff alone" and set \
-severity to at most "normal".
-8. Do NOT claim an API endpoint, field name, URL path, or protocol behavior is wrong \
-unless the diff itself contains contradictory evidence (e.g. a test assertion, a docstring, \
-or an error message that conflicts with the code). If you are unfamiliar with a third-party \
-API (e.g. GitCode, Gitee, GitLab), do NOT guess its conventions based on other platforms.
-9. When suggesting "add error handling" or "add exception protection", first verify whether \
-the called function already handles exceptions internally. If the callee wraps its body in \
-try/except or returns a safe default, the caller does NOT need redundant protection.'''
+# _R1_STRICT_RULES = _SHARED_STRICT_RULES_PREFIX + density_rule as rule 13.
+_R1_STRICT_RULES = _SHARED_STRICT_RULES_PREFIX + '\n13. {density_rule}'
 
 _R1_ISSUE_FIELDS = '''\
 For EVERY issue found, output a JSON object with:
@@ -290,7 +287,7 @@ def _extract_code_tags(
         max_focus=max_focus,
     )
     raw = _safe_llm_call_text(llm, prompt)
-    if not raw:
+    if not raw or not raw.strip():
         return {}
     parsed = _parse_json_with_repair(_extract_json_text(raw))
     return parsed if isinstance(parsed, dict) else {}
@@ -414,6 +411,18 @@ def _analyze_single_hunk(
     file_skeleton: str = '', code_tags: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     file_context = _read_file_context(clone_dir, path, new_start, new_start + new_count) if clone_dir else ''
+    # derive the last line number visible to LLM from file_context header
+    # "full file, N lines" → N; "excerpt lines S–E of T" → E
+    context_end_line: Optional[int] = None
+    if file_context:
+        first_line = file_context.split('\n', 1)[0]
+        m = re.search(r'full file,\s*(\d+)\s*lines', first_line)
+        if m:
+            context_end_line = int(m.group(1))
+        else:
+            m = re.search(r'excerpt lines\s*\d+\s*[–-]\s*(\d+)', first_line)
+            if m:
+                context_end_line = int(m.group(1))
     code_profile = _format_code_profile(code_tags) if code_tags else '(not available)'
     review_focus_block = _format_review_focus(code_tags) if code_tags else ''
     diff_budget = _r1_diff_budget(arch_snippet, spec_snippet, summary_snippet, agent_instructions,
@@ -446,8 +455,9 @@ def _analyze_single_hunk(
         density_rule=issue_density_rule(annotated_content),
     )
     items = _safe_llm_call(llm, prompt)
+    effective_end = max(new_start + actual_count, context_end_line or 0)
     return [n for item in items if (n := _normalize_comment_item(
-        item, new_start=new_start, end_line=new_start + actual_count, default_path=path,
+        item, new_start=new_start, end_line=effective_end, default_path=path,
     )) is not None]
 
 
@@ -518,10 +528,12 @@ def _assign_batch_item(
     item: Dict[str, Any],
     hunks: List[Tuple[int, int, str]],
     path: str,
+    context_end_line: Optional[int] = None,
 ) -> Optional[Tuple[int, Dict[str, Any]]]:
     for new_start, new_count, _ in hunks:
+        effective_end = max(new_start + new_count, context_end_line or 0)
         normalized = _normalize_comment_item(
-            item, new_start=new_start, end_line=new_start + new_count, default_path=path,
+            item, new_start=new_start, end_line=effective_end, default_path=path,
         )
         if normalized is not None:
             return new_start, normalized
@@ -574,11 +586,22 @@ def _analyze_hunk_batch(
         path=path, hunks_content='\n\n'.join(hunk_blocks), density_rule=issue_density_rule('\n'.join(hunk_blocks)),
     )
     items = _safe_llm_call(llm, prompt)
+    # derive context_end_line from file_context header (same logic as _analyze_single_hunk)
+    context_end_line: Optional[int] = None
+    if file_context:
+        first_line = file_context.split('\n', 1)[0]
+        m = re.search(r'full file,\s*(\d+)\s*lines', first_line)
+        if m:
+            context_end_line = int(m.group(1))
+        else:
+            m = re.search(r'excerpt lines\s*\d+\s*[–-]\s*(\d+)', first_line)
+            if m:
+                context_end_line = int(m.group(1))
     results: Dict[int, List[Dict[str, Any]]] = {s: [] for s, _, _ in hunks}
     for item in (items if isinstance(items, list) else []):
         if not isinstance(item, dict) or item.get('problem') is None:
             continue
-        assigned = _assign_batch_item(item, hunks, path)
+        assigned = _assign_batch_item(item, hunks, path, context_end_line=context_end_line)
         if assigned is not None:
             results[assigned[0]].append(assigned[1])
     return results
@@ -644,26 +667,43 @@ def _r1_run_batch(
 def _r1_cache_key(path: str, new_start: int) -> str:
     return f'r1_hunk_{re.sub(r"[^a-zA-Z0-9_]", "_", path)}_{new_start}'
 
+def _inject_local_agent_instructions(
+    agent_instructions: str, agents_index: Optional[Dict[str, str]], file_path: str,
+) -> str:
+    '''Merge global agent_instructions with local AGENTS.md rules for the given file path.'''
+    if not agents_index:
+        return agent_instructions
+    local_rules = _get_local_agent_instructions(agents_index, file_path)
+    if not local_rules:
+        return agent_instructions
+    return (agent_instructions + '\n\n## Local Rules\n' + local_rules
+            if agent_instructions else local_rules)
+
+
 def _r1_task_batch(
     path: str, idxs: List[int], hunks: List[Tuple[str, int, int, str]],
     arch_doc: str, spec_snippet: str, summary_snippet: str,
     clone_dir: Optional[str], language: str, symbol_index: Optional[Dict[str, str]],
     lock: threading.Lock, results_by_idx: Dict[int, List[Dict[str, Any]]],
     ckpt: Optional[Any], prog: Any, use_cache: bool, llm: Any, agent_instructions: str = '',
-    pr_file_summary: str = '',
+    pr_file_summary: str = '', agents_index: Optional[Dict[str, str]] = None,
 ) -> None:
     arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=3000)
     if pr_file_summary:
         arch_snippet = f'{arch_snippet}\n\n## PR Changed Files\n{pr_file_summary}' if arch_snippet else \
             f'## PR Changed Files\n{pr_file_summary}'
+    # Inject local AGENTS.md rules for this file's directory hierarchy
+    effective_agent_instructions = _inject_local_agent_instructions(agent_instructions, agents_index, path)
     # per-file skeleton + code tags (shared across all hunks in this file)
     file_skeleton = _extract_file_skeleton(clone_dir, path) if clone_dir else ''
     first_hunk_content = hunks[idxs[0]][3] if idxs else ''
     code_tags: Dict[str, Any] = {}
-    try:
-        code_tags = _extract_code_tags(llm, file_skeleton, first_hunk_content[:1500])
-    except Exception as e:
-        lazyllm.LOG.warning(f'Round 1: code tag extraction failed for {path}: {e}')
+    # skip code tag extraction for trivially short files to avoid wasted LLM calls
+    if file_skeleton and len(file_skeleton.strip()) >= 50:
+        try:
+            code_tags = _extract_code_tags(llm, file_skeleton, first_hunk_content[:1500])
+        except Exception as e:
+            lazyllm.LOG.warning(f'Round 1: code tag extraction failed for {path}: {e}')
     uncached_idxs: List[int] = []
     for idx in idxs:
         _, new_start, new_count, _ = hunks[idx]
@@ -683,7 +723,7 @@ def _r1_task_batch(
             llm, path, batch_idxs, hunks,
             arch_snippet, spec_snippet, summary_snippet,
             clone_dir, language, symbol_index,
-            lock, results_by_idx, ckpt, prog, _r1_cache_key, agent_instructions,
+            lock, results_by_idx, ckpt, prog, _r1_cache_key, effective_agent_instructions,
             file_skeleton=file_skeleton, code_tags=code_tags,
         )
 
@@ -700,6 +740,7 @@ def _round1_hunk_analysis(
     ckpt: Optional[Any] = None,
     agent_instructions: str = '',
     pr_file_summary: str = '',
+    agents_index: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
     all_diff = '\n'.join(h[3] for h in hunks) if hunks else ''
     spec_snippet = _lookup_relevant_rules(review_spec, all_diff, max_detail=8) if review_spec else '(not available)'
@@ -720,7 +761,7 @@ def _round1_hunk_analysis(
                 arch_doc, spec_snippet, summary_snippet,
                 clone_dir, language, symbol_index,
                 lock, results_by_idx, ckpt, prog, use_cache, llm, agent_instructions,
-                pr_file_summary,
+                pr_file_summary, agents_index,
             ): path
             for path, idxs in file_to_idxs.items()
         }
@@ -1126,10 +1167,17 @@ def _r3_unit_agent_verify(
     agent_instructions: str,
     max_chunks: int,
     review_spec: str = '',
+    agents_index: Optional[Dict[str, str]] = None,
 ) -> None:
     files = unit['files']
     anchor = unit['anchor']
     unit_diff = unit['diff']
+
+    # Inject local AGENTS.md rules for the anchor file (or first file in group)
+    primary_file = anchor or (files[0] if files else '')
+    effective_agent_instructions = _inject_local_agent_instructions(
+        agent_instructions, agents_index, primary_file,
+    )
 
     # checkpoint key: anchor file or sorted group files
     if anchor:
@@ -1154,7 +1202,7 @@ def _r3_unit_agent_verify(
     agent_diff = compress_diff_for_agent_heuristic(unit_diff, _R3_AGENT_DIFF_BUDGET)
     try:
         symbol_context = _r3_build_file_context(llm, primary, agent_diff, clone_dir, tools, language,
-                                                agent_instructions=agent_instructions)
+                                                agent_instructions=effective_agent_instructions)
     except Exception as e:
         if 'timed out' in str(e):
             raise
@@ -1183,7 +1231,7 @@ def _r3_unit_agent_verify(
         new_items, new_disc = _r3_extract_issues(
             llm, primary, annotated_chunk, hunk_range,
             filtered_ctx, shared_context, r1_issues, arch_doc, pr_summary,
-            language, agent_instructions, file_skeleton=skeleton,
+            language, effective_agent_instructions, file_skeleton=skeleton,
             all_paths=files, review_spec=review_spec,
         )
         items.extend(new_items)
@@ -1353,6 +1401,16 @@ If it does, DISCARD the issue — the caller does NOT need redundant protection.
    - For "wrong API endpoint/field" claims: DISCARD unless the diff itself contains contradictory \
 evidence (e.g. a test, a docstring, or an error message that conflicts with the code). \
 Do NOT guess third-party API conventions based on other platforms.
+   - For "variable may be uninitialized / NameError / circular import / unresolved reference" \
+claims: DISCARD. These are reliably caught by static analysis tools (pyflakes, mypy, pylint) \
+and are out of scope for diff-level review.
+   - For "`except Exception` swallows KeyboardInterrupt/SystemExit" claims: DISCARD. In Python 3, \
+`KeyboardInterrupt` and `SystemExit` inherit from `BaseException`, not `Exception`. \
+`except Exception` does NOT catch them. Only flag if the code uses bare `except:` or \
+`except BaseException`.
+   - For "design inconsistency / should use X pattern instead of Y" claims: DISCARD unless \
+you can cite a concrete runtime failure, data corruption, or explicit contract violation \
+that the choice causes. Structural preferences are the author's prerogative.
 2. Find NEW issues that require cross-file or cross-function context to detect:
    - Interface inconsistencies (method signatures changed but callers not updated)
    - Abstraction violations (bypassing base class contracts)
@@ -1408,7 +1466,8 @@ _r3_agent_instance_counter = [0]
 
 
 def _make_traced_tool(tool: Any, step_counter: List[int], path: str,
-                      log_list: Optional[List[str]] = None) -> Any:
+                      log_list: Optional[List[str]] = None,
+                      round_name: str = 'Agent') -> Any:
     import inspect
     sig = inspect.signature(tool)
     params = list(sig.parameters.keys())
@@ -1426,7 +1485,7 @@ def _make_traced_tool(tool: Any, step_counter: List[int], path: str,
                 v_str = v_str[:57] + '...'
             arg_parts.append(f'{k}={v_str}' if k != params[0] else v_str)
         call_desc = f'{tool.__name__}({", ".join(arg_parts)})'
-        lazyllm.LOG.info(f'  [R2 Step {step_counter[0]}] {call_desc}')
+        lazyllm.LOG.info(f'  [{round_name} Step {step_counter[0]}] {call_desc}')
         result = tool(*args, **kwargs)
         if log_list is not None:
             status = 'ok'
@@ -1658,7 +1717,7 @@ def _r3_build_file_context(
     )
     step_counter = [0]
     exploration_log: List[str] = []
-    traced_tools = [_make_traced_tool(t, step_counter, path, exploration_log) for t in tools]
+    traced_tools = [_make_traced_tool(t, step_counter, path, exploration_log, round_name='R3') for t in tools]
     try:
         agent = ReactAgent(
             llm, tools=traced_tools, max_retries=_R3_FILE_AGENT_RETRIES,
@@ -1679,7 +1738,7 @@ def _r3_build_file_context(
         fut = ex.submit(agent, prompt)
         try:
             raw = fut.result(timeout=_R3_FILE_TIMEOUT_SECS)
-        except TimeoutError:
+        except FuturesTimeoutError:
             raise RuntimeError(f'Round 3 context collection timed out for {path} after {_R3_FILE_TIMEOUT_SECS}s')
     lazyllm.LOG.info(f'  [Agent] Done {path}')
     raw_str = raw if isinstance(raw, str) else str(raw)
@@ -1783,6 +1842,7 @@ def _round3_agent_verify(
     owner_repo: str = '',
     arch_cache_path: Optional[str] = None,
     review_spec: str = '',
+    agents_index: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[Dict[str, Any]], set, Dict[str, int]]:
     r3_metrics: Dict[str, int] = {
         'r3_files_chunk': 0, 'r3_files_group': 0,
@@ -1839,7 +1899,7 @@ def _round3_agent_verify(
             llm, unit, r1_by_file, shared_context, arch_doc, pr_summary,
             clone_dir, symbol_cache, tools, language, ckpt, all_results, all_discarded,
             use_cache=use_cache, agent_instructions=agent_instructions,
-            max_chunks=max_chunks, review_spec=review_spec,
+            max_chunks=max_chunks, review_spec=review_spec, agents_index=agents_index,
         )
         if unit['anchor']:
             r3_metrics['r3_files_chunk'] += 1
@@ -2142,9 +2202,774 @@ def _round2_architect_review(
     return result
 
 
+# ── RMod: modification necessity analysis (ReactAgent, per-file parallel) ──
+
+_RMOD_AGENT_TIMEOUT_SECS = 180
+_RMOD_AGENT_RETRIES = 6
+_RMOD_MAX_PARALLEL_FILES = 4  # max concurrent agent workers
+
+_RMOD_PROMPT_TMPL = '''\
+You are a senior software architect. Your task is to evaluate whether modifications \
+to EXISTING modules in THIS FILE are appropriate, given the relationship between the \
+new and existing code.
+
+{lang_instruction}
+
+## PR Design Intent
+{pr_design_doc}
+
+## Project Architecture
+{arch_doc}
+
+## Project Agent Instructions
+{agent_instructions}
+
+## File Being Analyzed
+{file_path}
+
+## Diff for This File (annotated with line numbers)
+Each diff line is annotated with [old_lineno|new_lineno]:
+  [N|M]  context line, [--|M] + added line, [N|--] - removed line.
+{diff_text}
+
+## Your Task
+
+For each EXISTING module/class/function that is MODIFIED (not newly added) in this file's diff:
+
+### Step 1 — Classify the relationship type using tools
+Use read_file_scoped, analyze_symbol, grep_callers, search_scoped to determine:
+
+  TYPE_A (Independent): The existing module should NOT be aware of the new module.
+    Correct approach: minimal invasion — existing module must not gain knowledge of new module.
+    Violation: existing module now contains awareness of new module (e.g. `if new_feature: ...`,
+               importing new module, or adding new-module-specific parameters).
+
+  TYPE_B (Capability gap): New module depends on existing module, but existing module
+    lacks flexibility (hardcoded logic, closed design, no extension points).
+    Correct approach: enhance existing module via abstraction/interface/hooks/callbacks.
+    Violation: hack/workaround used instead of proper extension (e.g. modifying a high-level
+               orchestration function when only a low-level wrapper/helper needs changing).
+
+  TYPE_C (Migration): New module is gradually replacing part of the existing module.
+    Correct approach: keep existing module intact, introduce new module in parallel.
+    Violation: existing module behavior was broken or significantly altered during migration.
+
+  TYPE_D (Dependency complexity): New module introduces new dependencies into an already
+    complex dependency graph.
+    Correct approach: refactor dependency relationships to avoid unnecessary coupling.
+    Violation: new dependency directly injected into existing module, increasing coupling.
+
+  TYPE_E (Rapid requirement change): Existing module needs to adapt to fast-changing needs.
+    Correct approach: re-evaluate module design for flexibility, not patch-by-patch fixes.
+    Violation: patch-style fix applied instead of a design-level solution.
+
+### Step 2 — Evaluate whether the actual modification matches the relationship type
+Report an issue ONLY if:
+- The modification approach does NOT match the relationship type (see violations above), AND
+- You can name a SPECIFIC, CONCRETE alternative (e.g. "modify _FuncWrap instead of flow.invoke")
+
+### Step 3 — Check if the modification is aligned with the PR's stated goal
+If a modification is orthogonal to the PR's core goal (e.g. a rename or refactoring mixed
+into a feature PR), report it as a separate issue suggesting it be extracted to its own PR.
+
+## STRICT RULES
+- You MUST use tools to verify the relationship type before reporting any issue
+- Do NOT report newly added code — only modifications to pre-existing code
+- Do NOT apply "minimal invasion" as a universal rule — it only applies to TYPE_A
+- Do NOT report if the modification is the only reasonable approach
+- Do NOT report if the modification is a necessary and correct enhancement (TYPE_B correct case)
+- Only report if you can name the SPECIFIC problem and a CONCRETE alternative
+- Severity: medium if the mismatch involves >20 lines or breaks existing behavior, normal otherwise
+- bug_category: design
+
+## Output Format
+''' + JSON_OUTPUT_INSTRUCTION + '''
+Each issue must have: path, line (new-file line number), severity, bug_category, problem, suggestion.
+If no issues found: output an empty JSON array [].
+'''
+
+
+def _rmod_file_diff(diff_text: str, file_path: str) -> str:
+    lines = diff_text.splitlines(keepends=True)
+    result: List[str] = []
+    in_file = False
+    for line in lines:
+        if line.startswith('diff --git '):
+            if in_file:
+                break  # past the target file
+            continue
+        if line.startswith('--- a/') or line.startswith('--- '):
+            candidate = line[6:].strip() if line.startswith('--- a/') else line[4:].strip()
+            in_file = (candidate == file_path
+                       or os.path.realpath(candidate) == os.path.realpath(file_path))
+        if in_file:
+            result.append(line)
+    return ''.join(result) if result else diff_text
+
+
+def _rmod_run_single_file(
+    llm: Any,
+    file_path: str,
+    file_diff: str,
+    arch_doc: str,
+    pr_design_doc: str,
+    pr_summary: str,
+    clone_dir: str,
+    language: str,
+    agent_instructions: str,
+    tools: List[Any],
+) -> List[Dict[str, Any]]:
+    annotated = _annotate_full_diff(file_diff)
+    arch_use = clip_text(arch_doc or '', 12000) if arch_doc else '(not available)'
+    prompt = _RMOD_PROMPT_TMPL.format(
+        lang_instruction=_language_instruction(language),
+        pr_design_doc=clip_text(pr_design_doc, 8000) if pr_design_doc else '(not available)',
+        arch_doc=arch_use,
+        agent_instructions=agent_instructions or '(not available)',
+        file_path=file_path,
+        diff_text=annotated,
+    )
+    step_counter = [0]
+    exploration_log: List[str] = []
+    traced_tools = [_make_traced_tool(t, step_counter, file_path, exploration_log, round_name='RMod') for t in tools]
+    try:
+        agent = ReactAgent(
+            llm, tools=traced_tools, max_retries=_RMOD_AGENT_RETRIES,
+            workspace=clone_dir, force_summarize=True,
+            force_summarize_context=(
+                f'Analyzing modification necessity for {file_path}:\n{pr_summary[:400]}\n\n'
+                f'Key framework conventions:\n{agent_instructions[:300]}'
+            ),
+            keep_full_turns=2,
+        )
+    except Exception as e:
+        lazyllm.LOG.warning(f'  [RMod] ReactAgent init failed for {file_path}: {e}')
+        return []
+    lazyllm.LOG.info(f'  [RMod] Analyzing {file_path} ...')
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(agent, prompt)
+        try:
+            raw = fut.result(timeout=_RMOD_AGENT_TIMEOUT_SECS)
+        except FuturesTimeoutError:
+            lazyllm.LOG.warning(f'  [RMod] Timed out for {file_path} after {_RMOD_AGENT_TIMEOUT_SECS}s')
+            return []
+        except Exception as e:
+            lazyllm.LOG.warning(f'  [RMod] Failed for {file_path}: {e}')
+            return []
+    raw_str = raw if isinstance(raw, str) else str(raw)
+    json_text = _extract_json_text(raw_str)
+    items = _parse_json_with_repair(json_text) if json_text else []
+    issues = [n for item in (items if isinstance(items, list) else [])
+              if (n := _normalize_comment_item(item, default_path=file_path,
+                                               default_category='design')) is not None]
+    lazyllm.LOG.info(f'  [RMod] Done {file_path}: {len(issues)} issue(s)')
+    return issues
+
+
+def _rmod_new_file_paths(diff_text: str) -> set:
+    new_paths: set = set()
+    is_new_file: bool = False
+    for line in diff_text.splitlines():
+        if line.startswith('--- /dev/null'):
+            is_new_file = True
+        elif line.startswith('--- '):
+            is_new_file = False
+        elif line.startswith('+++ b/') and is_new_file:
+            new_paths.add(line[6:].strip())
+            is_new_file = False
+    return new_paths
+
+
+def _rmod_collect_file_diffs(diff_text: str) -> Dict[str, str]:
+    new_paths = _rmod_new_file_paths(diff_text)
+    hunks = _parse_unified_diff(diff_text)
+    file_diffs: Dict[str, str] = {}
+    for path, start, count, content in hunks:
+        if path not in new_paths:
+            if path not in file_diffs:
+                file_diffs[path] = f'--- a/{path}\n+++ b/{path}\n'
+            file_diffs[path] += f'@@ -{start},{count} +{start},{count} @@\n{content}\n'
+    return file_diffs
+
+
+def _run_rmod_agent_round(
+    llm: Any,
+    diff_text: str,
+    arch_doc: str,
+    pr_design_doc: str,
+    pr_summary: str = '',
+    clone_dir: Optional[str] = None,
+    language: str = 'cn',
+    agent_instructions: str = '',
+    owner_repo: str = '',
+    arch_cache_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    prog = _Progress('RMod: modification necessity analysis')
+    if not clone_dir or not os.path.isdir(clone_dir):
+        prog.done('skipped (no clone_dir)')
+        return []
+
+    file_diffs = _rmod_collect_file_diffs(diff_text)
+    if not file_diffs:
+        prog.done('no pre-existing modified files found')
+        return []
+
+    lazyllm.LOG.info(f'  [RMod] Analyzing {len(file_diffs)} modified file(s) in parallel')
+
+    all_results: List[Dict[str, Any]] = []
+    lock = threading.Lock()
+
+    def _run_file(file_path: str, file_diff: str) -> None:
+        symbol_cache: Dict[str, Any] = {}
+        tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
+        for tool in tools:
+            if hasattr(tool, 'execute_in_sandbox'):
+                tool.execute_in_sandbox = False
+        issues = _rmod_run_single_file(
+            llm, file_path, file_diff, arch_doc, pr_design_doc, pr_summary,
+            clone_dir, language, agent_instructions, tools,
+        )
+        with lock:
+            all_results.extend(issues)
+
+    with ThreadPoolExecutor(max_workers=min(_RMOD_MAX_PARALLEL_FILES, len(file_diffs))) as ex:
+        futs = {ex.submit(_run_file, fp, fd): fp for fp, fd in file_diffs.items()}
+        for fut in as_completed(futs):
+            fp = futs[fut]
+            try:
+                fut.result()
+            except Exception as e:
+                lazyllm.LOG.warning(f'  [RMod] Unexpected error for {fp}: {e}')
+
+    prog.done(f'{len(all_results)} modification necessity issues found across {len(file_diffs)} file(s)')
+    return all_results
+
+
+# ── RScene: Usage Scenario Inference ──────────────────────────────────────────
+
+_RSCENE_AGENT_TIMEOUT_SECS = 180
+_RSCENE_AGENT_RETRIES = 10
+_RSCENE_DIFF_BUDGET = 6000
+
+_RSCENE_PROMPT_TMPL = '''\
+You are a feature analyst. Your task is to understand the public API of the modified \
+functionality and infer 2-4 typical end-to-end usage scenarios.
+
+{lang_instruction}
+
+## PR Summary
+{pr_summary}
+
+## Modified Files and Public Symbols (compressed diff — signatures only)
+{compressed_diff}
+
+## Architecture Context
+{arch_doc}
+
+## Your Task (execute in order)
+
+Step 1 — Understand the functional module:
+  - Use read_file_scoped to read the full skeleton (class definitions, method signatures, \
+key constants) of each modified file
+  - Use analyze_symbol to understand the state machine and data flow of core classes
+  - Use search_scoped to find existing call examples in test files (glob: test_*.py)
+  - Use grep_callers to find existing callers in non-test production code
+
+Step 2 — Infer typical usage scenarios:
+  - Based on the above, infer 2-4 typical end-to-end usage scenarios
+  - Each scenario must be realistic and have a clear API call sequence
+  - Focus on: multi-step operations, state changes, resource sharing, concurrent access
+  - Include edge cases that are likely to cause bugs: partial failure, concurrent calls, \
+multi-user isolation, ordering dependencies
+
+Output a JSON array. Each element must have:
+- "title": verb phrase (e.g. "Create knowledge base and add documents")
+- "description": one sentence
+- "api_sequence": list of API call strings (e.g. ["DocServer.add_kb(kb_id)", "DocServer.add_docs(...)"])
+- "state_changes": key state changes description (DB/memory state)
+- "entry_point": top-level entry symbol name
+- "call_chain": list of internal call chain steps (e.g. ["DocServer.add_docs()", "_DocManager._insert_docs()"])
+- "edge_cases": list of edge case strings to check
+
+''' + JSON_OUTPUT_INSTRUCTION
+
+
+def _rscene_run_single_group(
+    llm: Any,
+    anchor: Optional[str],
+    files: List[str],
+    diff_text: str,
+    arch_doc: str,
+    pr_summary: str,
+    clone_dir: str,
+    language: str,
+    symbol_cache: Dict[str, Any],
+    tools: Any,
+    ckpt: Optional[Any],
+    use_cache: bool,
+) -> List[Dict[str, Any]]:
+    safe = re.sub(r'[^a-zA-Z0-9_]', '_', anchor or '_'.join(sorted(files))[:60])
+    ckpt_key = f'rscene_group_{safe}'
+    if ckpt and use_cache:
+        cached = ckpt.get(ckpt_key)
+        if cached is not None:
+            return cached
+
+    compressed_diff = compress_diff_for_agent_heuristic(diff_text, _RSCENE_DIFF_BUDGET)
+    arch_snippet = _extract_arch_for_file(arch_doc, anchor or files[0], max_chars=4000) if arch_doc else ''
+
+    prompt = _RSCENE_PROMPT_TMPL.format(
+        lang_instruction=_language_instruction(language),
+        pr_summary=pr_summary[:600] if pr_summary else '(not available)',
+        compressed_diff=compressed_diff,
+        arch_doc=arch_snippet or '(not available)',
+    )
+
+    step_counter = [0]
+    exploration_log: List[str] = []
+    traced_tools = [_make_traced_tool(t, step_counter, anchor or (files[0] if files else 'rscene'), exploration_log,
+                                      round_name='RScene')
+                    for t in tools]
+
+    try:
+        from lazyllm.tools.agent import ReactAgent
+        agent = ReactAgent(
+            llm, tools=traced_tools,
+            max_retries=_RSCENE_AGENT_RETRIES,
+            workspace=clone_dir,
+            force_summarize=True,
+            force_summarize_context=(
+                'Output a JSON array wrapped with <<<JSON_START>>> and <<<JSON_END>>> markers. '
+                'Each element must have: title, description, api_sequence, state_changes, '
+                'entry_point, call_chain, edge_cases.'
+            ),
+            keep_full_turns=2,
+        )
+        import concurrent.futures as _cf_inner
+        with _cf_inner.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(agent, prompt)
+            try:
+                raw = fut.result(timeout=_RSCENE_AGENT_TIMEOUT_SECS)
+            except _cf_inner.TimeoutError:
+                lazyllm.LOG.warning(f'  [RScene] Timed out for {anchor or files} after {_RSCENE_AGENT_TIMEOUT_SECS}s')
+                return []
+    except Exception as e:
+        lazyllm.LOG.warning(f'  [RScene] Agent failed for {anchor or files}: {e}')
+        return []
+
+    json_text = _extract_json_text(raw or '')
+    scenarios = _parse_json_with_repair(json_text) if json_text else None
+    if not isinstance(scenarios, list):
+        lazyllm.LOG.warning(f'  [RScene] Could not parse scenarios JSON for {anchor or files}')
+        return []
+
+    result = [s for s in scenarios if isinstance(s, dict) and s.get('title')]
+    lazyllm.LOG.info(f'  [RScene] {len(result)} scenarios inferred for {anchor or files}')
+    if ckpt and result:
+        ckpt.save(ckpt_key, result)
+    return result
+
+
+def _rscene_collect_modified_file_diffs(diff_text: str) -> Dict[str, str]:
+    '''Collect per-file diffs for modified (non-new) files only, preserving original @@ headers.'''
+    new_paths = _rmod_new_file_paths(diff_text)
+    file_diffs: Dict[str, str] = {}
+    current_path: Optional[str] = None
+    current_lines: List[str] = []
+
+    def _flush():
+        if current_path and current_lines:
+            file_diffs.setdefault(current_path, '')
+            file_diffs[current_path] += ''.join(current_lines)
+        current_lines.clear()
+
+    for line in diff_text.splitlines(keepends=True):
+        if line.startswith('diff --git '):
+            _flush()
+            m = re.match(r'diff --git a/(.+) b/(.+)$', line.rstrip())
+            current_path = m.group(2) if m else None
+            current_lines.clear()
+        elif current_path is not None and current_path not in new_paths:
+            current_lines.append(line)
+    _flush()
+    # Strip file-level metadata lines (diff/index/---/+++) from each file's diff,
+    # keeping only @@ hunks and their content so _annotate_full_diff works correctly.
+    cleaned: Dict[str, str] = {}
+    for path, raw in file_diffs.items():
+        hunk_lines = [line for line in raw.splitlines(keepends=True)
+                      if not line.startswith(('index ', '--- ', '+++ '))]
+        cleaned[path] = ''.join(hunk_lines)
+    return cleaned
+
+
+def _rscene_dedup_scenarios(scenarios: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    '''Deduplicate scenarios by exact title match (case-insensitive).'''
+    seen_titles: set = set()
+    deduped: List[Dict[str, Any]] = []
+    for s in scenarios:
+        t = s.get('title', '').strip().lower()
+        if t and t not in seen_titles:
+            seen_titles.add(t)
+            deduped.append(s)
+    return deduped
+
+
+def infer_usage_scenarios(
+    llm: Any,
+    diff_text: str,
+    arch_doc: str,
+    pr_summary: str,
+    clone_dir: str,
+    ckpt: Optional[Any] = None,
+    language: str = 'cn',
+    strategy: Optional[Any] = None,
+    owner_repo: str = '',
+    arch_cache_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    '''RScene: infer typical usage scenarios for modified public APIs.
+    Returns a list of scenario dicts (title, description, api_sequence, call_chain, edge_cases, ...).
+    '''
+    use_cache = ckpt.should_use_cache(ReviewStage.RSCENE) if ckpt else True
+    if ckpt and use_cache:
+        cached_all = ckpt.get('rscene_all')
+        if cached_all is not None:
+            lazyllm.LOG.info(f'[RScene] Using cached scenarios ({len(cached_all)} total)')
+            return cached_all
+
+    # Collect file diffs for modified (not purely new) files
+    file_diffs = _rscene_collect_modified_file_diffs(diff_text)
+
+    if not file_diffs:
+        lazyllm.LOG.info('[RScene] No modified (non-new) files found, skipping')
+        return []
+
+    large_threshold = strategy.large_file_threshold if strategy else 200
+    max_files = strategy.max_files_for_r3 if strategy else 20
+    units, skipped = _build_review_units(file_diffs, large_threshold, max_files)
+    if skipped:
+        lazyllm.LOG.info(f'[RScene] Skipped {len(skipped)} files (over budget)')
+
+    prog = _Progress('RScene: inferring usage scenarios', len(units))
+    symbol_cache: Dict[str, Any] = {}
+    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
+
+    all_scenarios: List[Dict[str, Any]] = []
+    _RSCENE_MAX_PARALLEL = 3
+    with ThreadPoolExecutor(max_workers=min(_RSCENE_MAX_PARALLEL, len(units))) as ex:
+        futs = {
+            ex.submit(
+                _rscene_run_single_group,
+                llm, unit['anchor'], unit['files'], unit['diff'],
+                arch_doc, pr_summary, clone_dir, language,
+                symbol_cache, tools, ckpt, use_cache,
+            ): unit
+            for unit in units
+        }
+        for fut in as_completed(futs):
+            unit = futs[fut]
+            try:
+                scenarios = fut.result()
+                all_scenarios.extend(scenarios)
+            except Exception as e:
+                lazyllm.LOG.warning(f'  [RScene] Group {unit["anchor"] or unit["files"]} failed: {e}')
+            prog.update(str(unit['anchor'] or unit['files']))
+
+    # Deduplicate by title similarity (simple: exact title match)
+    deduped = _rscene_dedup_scenarios(all_scenarios)
+
+    prog.done(f'{len(deduped)} unique scenarios inferred')
+    if ckpt and deduped:
+        ckpt.save('rscene_all', deduped)
+        ckpt.mark_stage_done(ReviewStage.RSCENE)
+    return deduped
+
+
+# ── RChain: Scenario-Driven Call Chain Review ─────────────────────────────────
+
+_RCHAIN_AGENT_TIMEOUT_SECS = 240
+_RCHAIN_AGENT_RETRIES = 12
+_RCHAIN_MAX_PARALLEL_SCENARIOS = 3
+_RCHAIN_FIXED_OVERHEAD = 20000
+
+_RCHAIN_PROMPT_TMPL = '''\
+You are a code reviewer specializing in call-chain correctness and API usability.
+
+{lang_instruction}
+
+## Usage Scenario
+Title: {scenario_title}
+Description: {scenario_description}
+API Sequence: {api_sequence}
+Expected Call Chain: {call_chain}
+Edge Cases to Check: {edge_cases}
+
+## Architecture Context
+{arch_doc}
+
+## File Diff (annotated with line numbers)
+{diff_text}
+
+## Your Task
+
+### Task A — Call Chain Bug Analysis
+1. Use read_file_scoped / analyze_symbol to trace each step in the call chain
+2. Verify that input/output contracts between callers and callees are consistent
+3. For each edge case listed above, check whether each layer of the call chain handles it
+4. Check for these specific bug types:
+   - Logic errors (wrong branch, off-by-one, state machine transition errors)
+   - Fact conflicts (docstring/comment contradicts implementation, return type mismatch)
+   - Concurrency issues (shared mutable state, TOCTOU, missing lock)
+   - Multi-user issues (session/user data leakage, missing tenant isolation)
+
+### Task B — Poor API Usability Detection
+Simulate the api_sequence from the user's perspective. Check for these 8 anti-patterns:
+
+1. Silent failure: operation returns success (no exception / returns True/200) but actually \
+did nothing or only partially completed. Check: can the return value distinguish "actually \
+executed" from "skipped because condition not met"?
+
+2. Irreversible operation without protection: destructive operations (delete/overwrite/clear) \
+have no dry-run parameter, confirm mechanism, or return value indicating scope of impact.
+
+3. Partial batch failure indistinguishable: for bulk add/delete/update, when some items fail, \
+the return value cannot distinguish which succeeded and which failed (idempotency issue).
+
+4. Multi-step operation without atomicity: when multiple steps in api_sequence are combined, \
+if an intermediate step fails, the system is left in a half-completed state with no rollback \
+path and no documentation on how to recover.
+
+5. Parameter order/naming violates convention: inconsistent parameter order compared to other \
+APIs in the same module, or parameter name does not match actual behavior.
+
+6. Undocumented call ordering dependency: must call A before B, but B does not check \
+preconditions — it crashes internally or produces wrong results, with error messages pointing \
+to internal implementation rather than "you need to call A first".
+
+7. Resource leak visible to user: when user forgets to call close/cleanup, instead of graceful \
+degradation, it produces hard-to-debug side effects (file locks, connection exhaustion, \
+background thread leaks).
+
+8. Error message cannot guide fix: thrown exception/error message is internal implementation \
+detail (e.g. KeyError: 'field') rather than a user-understandable description.
+
+## Output Format
+Output a JSON array of issues. Each issue must have:
+- "path": file path (must be a file present in the diff)
+- "line": line number (integer, must reference a line in the diff of that file)
+- "severity": "critical" | "medium" | "normal"
+- "bug_category": one of logic|type|safety|exception|performance|concurrency|design|maintainability
+  (Task A bugs: use logic/concurrency/safety/type; Task B usability: use design/exception)
+- "scenario": the scenario title that triggered this issue (use the exact title from "## Usage Scenario" above)
+- "problem": clear description of the issue — if the root cause is in a callee outside the diff,
+  describe it here (e.g. "callee foo() at bar.py:123 does not handle None, causing crash at this call site")
+- "suggestion": concrete fix suggestion (wrap code with markdown code fences)
+- "source": "rchain"
+
+IMPORTANT: All issues MUST be anchored to a line in the diff. If you discover a bug deep in the
+call chain (in a file not in the diff), report it at the call site in the diff that triggers it,
+and explain the downstream root cause in the "problem" field.
+
+''' + JSON_OUTPUT_INSTRUCTION
+
+
+def _rchain_parse_issues(raw: Optional[str], scenario_title: str = '') -> List[Dict[str, Any]]:
+    '''Parse and normalize RChain agent output into issue dicts.'''
+    json_text = _extract_json_text(raw or '')
+    items = _parse_json_with_repair(json_text) if json_text else None
+    result: List[Dict[str, Any]] = []
+    if not isinstance(items, list):
+        return result
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item['source'] = 'rchain'
+        if scenario_title and not item.get('scenario'):
+            item['scenario'] = scenario_title
+        # First try strict normalization (line must be in diff).
+        normalized = _normalize_comment_item(item, default_category='design')
+        if normalized is None:
+            # Fallback: treat as a general (line=None) issue if the item has a valid problem.
+            # This preserves call-chain findings that cannot be anchored to a specific diff line.
+            normalized = _normalize_comment_item(
+                item, default_category='design', allow_null_line=True,
+            )
+        if normalized:
+            normalized['source'] = 'rchain'
+            if scenario_title:
+                normalized['scenario'] = item.get('scenario') or scenario_title
+            result.append(normalized)
+    return result
+
+
+def _rchain_dedup_issues(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    '''Deduplicate issues: same path+line keeps highest severity.'''
+    seen: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    _sev = {'critical': 0, 'medium': 1, 'normal': 2}
+    for issue in issues:
+        key = (issue.get('path', ''), issue.get('line', 0))
+        if key not in seen or _sev.get(issue.get('severity', 'normal'), 2) < _sev.get(
+                seen[key].get('severity', 'normal'), 2):
+            seen[key] = issue
+    return list(seen.values())
+
+
+def _rchain_run_single_scenario(
+    llm: Any,
+    scenario: Dict[str, Any],
+    scene_idx: int,
+    file_diffs: Dict[str, str],
+    arch_doc: str,
+    clone_dir: str,
+    language: str,
+    symbol_cache: Dict[str, Any],
+    tools: Any,
+    ckpt: Optional[Any],
+    use_cache: bool,
+) -> List[Dict[str, Any]]:
+    title = scenario.get('title', f'scenario_{scene_idx}')
+    safe_title = re.sub(r'[^a-zA-Z0-9_]', '_', title)[:50]
+    ckpt_key = f'rchain_scene_{scene_idx}_{safe_title}'
+    if ckpt and use_cache:
+        cached = ckpt.get(ckpt_key)
+        if cached is not None:
+            return cached
+
+    # Determine which files to review: call_chain symbols → grep for files → intersect with diff
+    call_chain = scenario.get('call_chain', [])
+    relevant_files = list(file_diffs.keys())  # default: all modified files
+
+    # Build combined diff for relevant files, split into chunks if needed
+    combined_diff = '\n'.join(file_diffs[f] for f in relevant_files if f in file_diffs)
+    arch_snippet = arch_doc[:4000] if arch_doc else '(not available)'
+
+    diff_cap = SINGLE_CALL_CONTEXT_BUDGET - _RCHAIN_FIXED_OVERHEAD - len(arch_snippet)
+    all_chunks = _split_file_diff_into_chunks(combined_diff, diff_cap)
+    if len(all_chunks) > R3_MAX_CHUNKS_HARD:
+        lazyllm.LOG.warning(
+            f'  [RChain] Scenario "{title}" has {len(all_chunks)} chunks, '
+            f'capping at {R3_MAX_CHUNKS_HARD}'
+        )
+        all_chunks = all_chunks[:R3_MAX_CHUNKS_HARD]
+
+    all_issues: List[Dict[str, Any]] = []
+    for chunk_label, diff_chunk in all_chunks:
+        annotated = _annotate_full_diff(diff_chunk)
+        prompt = _RCHAIN_PROMPT_TMPL.format(
+            lang_instruction=_language_instruction(language),
+            scenario_title=title,
+            scenario_description=scenario.get('description', ''),
+            api_sequence=json.dumps(scenario.get('api_sequence', []), ensure_ascii=False),
+            call_chain=json.dumps(call_chain, ensure_ascii=False),
+            edge_cases=json.dumps(scenario.get('edge_cases', []), ensure_ascii=False),
+            arch_doc=arch_snippet,
+            diff_text=annotated[:diff_cap],
+        )
+
+        step_counter = [0]
+        exploration_log: List[str] = []
+        traced_tools = [_make_traced_tool(t, step_counter, f'rchain_{safe_title}', exploration_log,
+                                          round_name='RChain')
+                        for t in tools]
+
+        try:
+            from lazyllm.tools.agent import ReactAgent
+            agent = ReactAgent(
+                llm, tools=traced_tools,
+                max_retries=_RCHAIN_AGENT_RETRIES,
+                workspace=clone_dir,
+                force_summarize=True,
+                keep_full_turns=2,
+            )
+            import concurrent.futures as _cf_inner2
+            with _cf_inner2.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(agent, prompt)
+                try:
+                    raw = fut.result(timeout=_RCHAIN_AGENT_TIMEOUT_SECS)
+                except _cf_inner2.TimeoutError:
+                    lazyllm.LOG.warning(
+                        f'  [RChain] Timed out for scenario "{title}" chunk {chunk_label} '
+                        f'after {_RCHAIN_AGENT_TIMEOUT_SECS}s'
+                    )
+                    continue
+        except Exception as e:
+            lazyllm.LOG.warning(f'  [RChain] Agent failed for scenario "{title}" chunk {chunk_label}: {e}')
+            continue
+
+        all_issues.extend(_rchain_parse_issues(raw, scenario_title=title))
+
+    # Deduplicate within scenario: same path+line keeps highest severity
+    result = _rchain_dedup_issues(all_issues)
+
+    lazyllm.LOG.info(f'  [RChain] Scenario "{title}": {len(result)} issues found')
+    if ckpt:
+        ckpt.save(ckpt_key, result)
+    return result
+
+
+def _rscenario_call_chain(
+    llm: Any,
+    usage_scenarios: List[Dict[str, Any]],
+    diff_text: str,
+    arch_doc: str,
+    pr_summary: str,
+    clone_dir: str,
+    ckpt: Optional[Any] = None,
+    language: str = 'cn',
+    strategy: Optional[Any] = None,
+    owner_repo: str = '',
+    arch_cache_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    '''RChain: scenario-driven call chain review producing bug + usability issues.'''
+    if not usage_scenarios:
+        lazyllm.LOG.info('[RChain] No scenarios to review, skipping')
+        return []
+
+    use_cache = ckpt.should_use_cache(ReviewStage.RCHAIN) if ckpt else True
+    if ckpt and use_cache:
+        cached_all = ckpt.get('rchain_all')
+        if cached_all is not None:
+            lazyllm.LOG.info(f'[RChain] Using cached issues ({len(cached_all)} total)')
+            return cached_all
+
+    # Build file diffs (all modified files)
+    file_diffs = _rscene_collect_modified_file_diffs(diff_text)
+
+    if not file_diffs:
+        lazyllm.LOG.info('[RChain] No modified files found, skipping')
+        return []
+
+    prog = _Progress('RChain: call chain review', len(usage_scenarios))
+    symbol_cache: Dict[str, Any] = {}
+    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
+
+    all_issues: List[Dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=min(_RCHAIN_MAX_PARALLEL_SCENARIOS, len(usage_scenarios))) as ex:
+        futs = {
+            ex.submit(
+                _rchain_run_single_scenario,
+                llm, scenario, idx, file_diffs, arch_doc, clone_dir, language,
+                symbol_cache, tools, ckpt, use_cache,
+            ): scenario
+            for idx, scenario in enumerate(usage_scenarios)
+        }
+        for fut in as_completed(futs):
+            scenario = futs[fut]
+            try:
+                issues = fut.result()
+                all_issues.extend(issues)
+            except Exception as e:
+                lazyllm.LOG.warning(f'  [RChain] Scenario "{scenario.get("title")}" failed: {e}')
+            prog.update(scenario.get('title', ''))
+
+    prog.done(f'{len(all_issues)} issues found across {len(usage_scenarios)} scenarios')
+    if ckpt:
+        ckpt.save('rchain_all', all_issues)
+        ckpt.mark_stage_done(ReviewStage.RCHAIN)
+    return all_issues
+
+
 _COMPRESS_COMMENTS_PROMPT_TMPL = '''\
 Summarize each of the following code review comments into ONE concise sentence (max 20 words).
-Preserve the key point: what file/line is affected and what the core problem is.
 Output a JSON array where each item has "idx" (same as input) and "summary" (one sentence).
 ''' + _JSON_OUTPUT_INSTRUCTION + '''
 
@@ -2195,7 +3020,13 @@ def _compress_existing_comments(llm: Any, comments: List[Dict[str, Any]]) -> Lis
 
 def _compress_new_issues(llm: Any, issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     def body_fn(c: Dict[str, Any]) -> str:
-        return (c.get('problem') or '') + ' ' + (c.get('suggestion') or '')
+        problem = c.get('problem') or ''
+        suggestion = c.get('suggestion') or ''
+        if isinstance(problem, list):
+            problem = ' '.join(str(x) for x in problem)
+        if isinstance(suggestion, list):
+            suggestion = ' '.join(str(x) for x in suggestion)
+        return problem + ' ' + suggestion
 
     def extra_fn(c: Dict[str, Any], summary: Optional[str]) -> Dict[str, Any]:
         return {
@@ -2268,7 +3099,7 @@ def _deterministic_dedup(issues: List[Dict[str, Any]], cross_category: bool = Tr
     # group by (path, line, bug_category); within each group keep highest-severity item
     # source priority: r3 > r1 > r2 > lint (more context = more reliable)
     _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
-    _src_order = {'r3': 0, 'r1': 1, 'r2': 2, 'lint': 3}
+    _src_order = {'r3': 0, 'r1': 1, 'r2': 2, 'rmod': 2, 'lint': 3}
     groups: Dict[tuple, List[Dict[str, Any]]] = {}
     for c in issues:
         key = (c.get('path', ''), int(c.get('line') or 0), c.get('bug_category', ''))
@@ -2336,20 +3167,23 @@ def _round4_merge_and_deduplicate(
         kept_idxs.add(idx)
         category = item.get('bug_category') or 'logic'
         severity = item.get('severity') or 'normal'
-        result.append({
+        entry = {
             'path': original['path'], 'line': original['line'],
             'severity': severity if severity in _VALID_SEVERITIES else 'normal',
             'bug_category': category if category in _VALID_CATEGORIES else 'logic',
             'problem': item.get('problem') or '',
             'suggestion': original.get('suggestion') or '',
-        })
+        }
+        if original.get('source'):
+            entry['source'] = original['source']
+        result.append(entry)
     discarded_idxs = set(idx_map.keys()) - kept_idxs
     if discarded_idxs:
         lazyllm.LOG.info(
             f'Round 4: LLM discarded {len(discarded_idxs)} issues: '
             + ', '.join(
                 f'#{i} {idx_map[i].get("path", "?")}:{idx_map[i].get("line", "?")} '
-                f'[{idx_map[i].get("severity","?")}][{idx_map[i].get("bug_category","?")}]'
+                f'[{idx_map[i].get("severity", "?")}][{idx_map[i].get("bug_category", "?")}]'
                 for i in sorted(discarded_idxs)
             )
         )
@@ -2378,6 +3212,16 @@ def _run_four_rounds(  # noqa: C901
 ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     from .constants import BudgetManager, TOTAL_CALL_BUDGET
     _budget = BudgetManager(total_calls=TOTAL_CALL_BUDGET)  # noqa: F841
+
+    # Build layered AGENTS.md index once for all R1/R3 file-level injections
+    agents_index: Dict[str, str] = {}
+    if clone_dir:
+        try:
+            agents_index = _build_layered_agents_index(clone_dir)
+            if agents_index:
+                lazyllm.LOG.info(f'Layered agents index: {len(agents_index)} sub-directories with local rules')
+        except Exception as e:
+            lazyllm.LOG.warning(f'Failed to build layered agents index: {e}')
 
     def _rebuild_diff_from_hunks(win_hunks: List[Tuple[str, int, int, str]]) -> str:
         by_path: Dict[str, List[str]] = {}
@@ -2422,7 +3266,7 @@ def _run_four_rounds(  # noqa: C901
             clone_dir=clone_dir, language=language,
             symbol_index=sym_index,
             ckpt=ckpt, agent_instructions=agent_instructions,
-            pr_file_summary=pr_file_summary,
+            pr_file_summary=pr_file_summary, agents_index=agents_index,
         )
         ckpt.save(win_key, win_r1)
         r1_all.extend(win_r1)
@@ -2464,13 +3308,32 @@ def _run_four_rounds(  # noqa: C901
             f'loaded from checkpoint ({len(r2)} issues)'
         )
 
+    # ── RMod: modification necessity analysis (parallel with R2, both depend on R2A) ──
+    use_rmod_cache = ckpt.should_use_cache(ReviewStage.RMOD)
+    rmod = ckpt.get('rmod') if use_rmod_cache else None
+    if rmod is None:
+        if not use_rmod_cache:
+            lazyllm.LOG.warning('RMod: cache bypassed, re-computing')
+        rmod = _run_rmod_agent_round(
+            llm, diff_text, arch_doc, pr_design_doc=pr_design_doc,
+            pr_summary=pr_summary, clone_dir=clone_dir, language=language,
+            agent_instructions=agent_instructions, owner_repo=owner_repo,
+            arch_cache_path=arch_cache_path,
+        )
+        ckpt.save('rmod', rmod)
+        ckpt.mark_stage_done(ReviewStage.RMOD)
+    else:
+        _Progress('RMod: modification necessity analysis').done(
+            f'loaded from checkpoint ({len(rmod)} issues)'
+        )
+
     # ── R3: unified agent verification (merged old R2 agent + R4V) ──
     r3, discarded_prev_keys, r3_metrics = _round3_agent_verify(
         llm, r1, r2, diff_text, arch_doc, pr_summary=pr_summary,
         clone_dir=clone_dir, language=language, ckpt=ckpt,
         agent_instructions=agent_instructions, strategy=strategy,
         owner_repo=owner_repo, arch_cache_path=arch_cache_path,
-        review_spec=review_spec,
+        review_spec=review_spec, agents_index=agents_index,
     )
     ckpt.mark_stage_done(ReviewStage.R3)
 
@@ -2509,10 +3372,12 @@ def _run_four_rounds(  # noqa: C901
             c for c in r2
             if c.get('path') not in r3_covered_files
         ]
+        # RMod issues always pass through (modification necessity is orthogonal to R3 file coverage)
         lint_tagged = _tag(lint_issues or [], 'lint')
         final = _round4_merge_and_deduplicate(
             llm,
-            _tag(r1_passthrough, 'r1') + _tag(r2_passthrough, 'r2') + _tag(r3, 'r3') + lint_tagged,
+            _tag(r1_passthrough, 'r1') + _tag(r2_passthrough, 'r2') + _tag(r3, 'r3')
+            + _tag(rmod, 'rmod') + lint_tagged,
             existing_comments=existing_comments, language=language,
         )
         ckpt.save('final', final)
@@ -2521,3 +3386,113 @@ def _run_four_rounds(  # noqa: C901
     else:
         _Progress('Round 4: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')
     return final, r3_metrics
+
+
+# ---------------------------------------------------------------------------
+# Post-merge dedup: cross-source dedup/merge for final + rchain + rcov
+# ---------------------------------------------------------------------------
+
+_POST_MERGE_DEDUP_PROMPT_TMPL = '''\
+You are a senior code reviewer performing final cross-source deduplication.
+{lang_instruction}
+
+## All Issues (from multiple review sources)
+Each item has: idx (unique id), path, line, severity, bug_category, source, summary.
+{issues_json}
+
+## Task
+Sources: r1/r2/r3/rmod/lint come from the main review rounds (R1-R4); \
+rchain comes from call-chain analysis; rcov comes from test-coverage analysis.
+
+1. **Exact/near-duplicate**: same path + same or adjacent line (within ±3 lines) + same core problem
+   → keep the one with highest severity; if severity is equal, prefer r3 > rchain > rcov > r1 > r2 > lint.
+2. **Mergeable**: same path + same or adjacent line, different but complementary angles
+   → keep ONE item; set its problem/suggestion to a merged version (record the idx of the item to keep,
+     the merged problem text goes in "merged_problem", merged suggestion in "merged_suggestion").
+3. **Independent**: different location or genuinely different problem → keep all as-is.
+
+Output a JSON array. Each surviving item must have ONLY:
+- "idx": integer (the idx to keep from the input list)
+- "severity": critical | medium | normal
+- "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability
+- "problem": string (original or merged problem text)
+- "suggestion": string (original or merged suggestion text, may be empty string)
+
+Do NOT include "path" or "line" — they will be restored from the original data.
+''' + _JSON_OUTPUT_INSTRUCTION + '\n'
+
+
+def _post_merge_dedup(
+    llm: Any,
+    final_comments: List[Dict[str, Any]],
+    rchain_issues: List[Dict[str, Any]],
+    rcov_issues: List[Dict[str, Any]],
+    existing_comments: Optional[List[Dict[str, Any]]] = None,
+    language: str = 'cn',
+) -> List[Dict[str, Any]]:
+    '''Cross-source dedup/merge: final (R1-R4) + rchain + rcov → unified list.'''
+    all_in = (
+        [{**c, 'source': c.get('source') or 'r4'} for c in final_comments]
+        + [{**c, 'source': c.get('source') or 'rchain'} for c in rchain_issues]
+        + [{**c, 'source': c.get('source') or 'rcov'} for c in rcov_issues]
+    )
+    if not all_in:
+        return []
+
+    prog = _Progress('Post-merge dedup', len(all_in))
+
+    # fast path: nothing from rchain/rcov to cross-check
+    if not rchain_issues and not rcov_issues:
+        prog.done('no rchain/rcov issues, skipping LLM dedup')
+        return final_comments
+
+    if len(all_in) <= 1:
+        prog.done(f'{len(all_in)} issue(s), nothing to dedup')
+        return all_in
+
+    # compress for LLM prompt — LLM decides dedup/merge/keep, no pre-filtering by severity
+    compressed = _compress_new_issues(llm, all_in)
+    prompt = _POST_MERGE_DEDUP_PROMPT_TMPL.format(
+        lang_instruction=_language_instruction(language),
+        issues_json=json.dumps(compressed, ensure_ascii=False, indent=2),
+    )
+    items = _safe_llm_call(llm, prompt)
+    idx_map = {i: c for i, c in enumerate(all_in)}
+    result: List[Dict[str, Any]] = []
+    kept_idxs: set = set()
+    for item in (items if isinstance(items, list) else []):
+        if not isinstance(item, dict):
+            continue
+        try:
+            idx = int(item.get('idx', -1))
+        except (TypeError, ValueError):
+            continue
+        original = idx_map.get(idx)
+        if original is None or idx in kept_idxs:
+            continue
+        kept_idxs.add(idx)
+        category = item.get('bug_category') or original.get('bug_category') or 'logic'
+        severity = item.get('severity') or original.get('severity') or 'normal'
+        entry: Dict[str, Any] = {
+            'path': original['path'],
+            'line': original['line'],
+            'severity': severity if severity in _VALID_SEVERITIES else 'normal',
+            'bug_category': category if category in _VALID_CATEGORIES else 'logic',
+            'problem': item.get('problem') or original.get('problem') or '',
+            'suggestion': (item.get('suggestion')
+                           if item.get('suggestion') is not None else original.get('suggestion') or '')
+        }
+        if original.get('source'):
+            entry['source'] = original['source']
+        result.append(entry)
+
+    dropped = len(all_in) - len(result)
+    if dropped:
+        lazyllm.LOG.info(f'Post-merge dedup: LLM dropped/merged {dropped} issue(s)')
+    if not result:
+        # LLM returned nothing — fall back to full input (no dedup)
+        lazyllm.LOG.warning('Post-merge dedup: LLM returned empty, falling back to full input')
+        result = all_in
+
+    prog.done(f'{len(result)} issues after cross-source dedup')
+    return result

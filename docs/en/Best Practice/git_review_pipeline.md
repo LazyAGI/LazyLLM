@@ -2,12 +2,15 @@
 
 This document describes the end-to-end PR review flow of the `lazyllm.tools.git.review` module.
 The entry point is the `review()` function in `runner.py`, which runs through pre-analysis
-(architecture parsing, historical spec extraction), four rounds of LLM analysis
-(R1 hunk review → R2a PR design doc → R2 architect review → R3 Agent verification → R4 merge & dedup),
-static lint integration, and finally publishes results to GitHub / GitLab / Gitee / GitCode.
+(architecture parsing, historical spec extraction), static lint analysis, six LLM stages
+(R1 hunk review → R2a PR design doc → R2 architect review → R3 Agent verification →
+RMod modification-necessity analysis → R4 merge & dedup),
+usage-scenario inference (RScene) and call-chain bug analysis (RChain) running in parallel
+with the main chain, a test coverage check (RCov), and finally publishes
+`final_comments + rchain_issues + rcov_issues` to GitHub / GitLab / Gitee / GitCode.
 
 Source directory: `lazyllm/tools/git/review/`
-(`runner.py`, `pre_analysis.py`, `rounds.py`, `constants.py`, `checkpoint.py`, `utils.py`, `poster.py`, `lint_runner.py`).
+(`runner.py`, `pre_analysis.py`, `rounds.py`, `coverage_checker.py`, `constants.py`, `checkpoint.py`, `utils.py`, `poster.py`, `lint_runner.py`).
 
 ---
 
@@ -18,8 +21,9 @@ Source directory: `lazyllm/tools/git/review/`
 | Module | Responsibility |
 |--------|---------------|
 | `runner.py` | **Main entry point**: orchestrates all sub-modules; diff fetching & truncation; strategy decision (`_ReviewStrategy`); meta warning generation; clone cleanup; comment publishing |
-| `pre_analysis.py` | Repository clone; architecture doc generation (`analyze_repo_architecture`); historical review spec extraction (`analyze_historical_reviews`); PR summary; R3 Agent tool set construction |
-| `rounds.py` | **Four-round review core**: R1 hunk-level analysis, R2a PR design doc, R2 architect review, R3 ReactAgent verification, R4 merge & dedup |
+| `pre_analysis.py` | Repository clone; architecture doc generation (`analyze_repo_architecture`); local-repo arch analysis (local mode); historical review spec extraction (`analyze_historical_reviews`); PR summary; R3 Agent tool set construction |
+| `rounds.py` | **Review round core**: R1 hunk-level analysis, R2a PR design doc, R2 architect review, R3 ReactAgent verification, RMod modification-necessity analysis, R4 merge & dedup |
+| `coverage_checker.py` | **RCov**: test coverage check — identify testable symbols, group by dependency, grep test files, evaluate coverage gaps (LLM, parallel) |
 | `lint_runner.py` | Static lint analysis (no LLM calls), results injected directly into R4 |
 | `checkpoint.py` | Resume support: PR-level checkpoint; stage enum `ReviewStage`; soft invalidation (`resume_from`) |
 | `constants.py` | Context budget constants; `BudgetManager`; issue density control; diff heuristic compression |
@@ -38,7 +42,12 @@ review(pr_number, ...)
   └─ _pre_round_pr_summary → pr_summary
   └─ _fetch_existing_pr_comments
   └─ _run_lint_analysis → lint_issues
-  └─ _run_four_rounds (R1 → R2a → R2 → R3 → R4)
+  ├─ _run_four_rounds (R1 → R2a → R2 → R3 → RMod → R4) → final_comments   ┐ parallel
+  └─ _run_rscene_rchain                                                      │
+       ├─ infer_usage_scenarios (RScene) → usage_scenarios                   │
+       └─ _rscenario_call_chain (RChain) → rchain_issues                    ┘
+  └─ _run_coverage_check (RCov, independent thread, dynamic timeout) → rcov_issues
+  └─ Merge: final_comments + rchain_issues + rcov_issues → all_comments
   └─ Clean up clone subdirectory
   └─ _post_review_comments → platform
 ```
@@ -59,9 +68,13 @@ review(pr_number, ...)
 | 9 | Round 2a | PR design document (structured, 9 sections) |
 | 10 | Round 2 | Architect-perspective global design review issue list |
 | 11 | Round 3 | ReactAgent verification: validate R1+R2 issues + discover new cross-file issues |
-| 12 | Round 4 | Deterministic dedup + LLM merge + lint fusion → `final_comments` |
-| 13 | Publish | Submit platform review; update checkpoint `UPLOAD` stage |
-| 14 | Cleanup | Delete `{pr_dir}/clone/`; retain `checkpoint.json` |
+| 12 | RMod | ReactAgent modification-necessity analysis: flag unnecessary changes per file |
+| 13 | Round 4 | Deterministic dedup + LLM merge + lint fusion → `final_comments` |
+| 14 | RScene | Scenario inference (parallel with R1–RMod): infer 2–4 typical usage scenarios → `usage_scenarios` |
+| 15 | RChain | Call-chain bug analysis (after RScene): scenario-driven bug + usability issues → `rchain_issues` |
+| 16 | RCov | Test coverage check: identify untested symbols, evaluate gaps → `rcov_issues` (bypasses R4 dedup, appended directly) |
+| 17 | Publish | Merge `final_comments + rchain_issues + rcov_issues`, submit platform review; update checkpoint `UPLOAD` stage |
+| 18 | Cleanup | Delete `{pr_dir}/clone/`; retain `checkpoint.json` |
 
 ---
 
@@ -124,28 +137,53 @@ subsequent LLM calls. It consists of four sub-stages, all of which support check
 - When `pin_sha` (the PR head commit) is specified, `_pin_clone_to_sha` switches the clone to
   the exact commit, ensuring the reviewed code matches the PR.
 - The clone directory is stored under `arch_cache_path/{owner_repo}/clone/` and reused across PRs.
+- **Local mode** (`review-local`): cloning is skipped. If `arch_doc` is empty, `analyze_repo_architecture`
+  is called directly on the local repo path via `_run_local_arch_analysis`, so architecture context
+  is still available without a network clone.
 
 ### 3.2 Architecture Document Generation (`analyze_repo_architecture`)
 
 The architecture document is the "map" for the entire review flow, allowing the LLM to understand
 the repository structure without reading all the code.
 
-**Generation steps:**
+**Generation steps (five steps):**
 
-1. **File tree scan**: traverse the clone directory, skip `__pycache__`, `.git`, `node_modules`,
-   etc., and produce a file tree.
-2. **Symbol index** (`_get_symbol_index`): extract class names, function names, and decorators
-   from each Python file, building a `{path: [symbols]}` index.
-3. **DeepWiki integration** (optional): if a DeepWiki MCP is configured, pre-indexed architecture
-   summaries are fetched from DeepWiki and merged with local analysis for higher accuracy.
-4. **LLM architecture analysis**: feed the file tree + symbol index + README content to the LLM
-   to generate a structured architecture document containing:
-   - Module responsibility breakdown
-   - Core classes and inheritance relationships
-   - Key design patterns (registry, metaclass, lazy-loading, etc.)
-   - Inter-module dependency relationships
-5. **Caching**: the architecture document is cached at `arch_cache_path/{owner_repo}/arch_doc.json`;
-   subsequent PRs on the same repository reuse it without re-analysis.
+1. **Structured snapshot** (`_collect_structured_snapshot`): scan the clone directory and collect
+   the directory tree (2 levels), top-level `__init__.py`, sub-package `__init__.py`, core module
+   files (`module.py`, `flow.py`, etc.), dependency config files (`pyproject.toml`,
+   `requirements.txt`, etc.), `AGENTS.md`, etc. Concatenate into a structured snapshot text,
+   constrained by the `_ARCH_SNAPSHOT_BUDGET` character budget.
+
+2. **DeepWiki integration** (optional): if the `mcp` package is installed, fetch the repository's
+   pre-indexed architecture summary from the DeepWiki MCP service (`_fetch_deepwiki_summary`) and
+   append it to the snapshot as background reference. Always uses `base_repo` (the upstream
+   repository) rather than the fork URL to avoid missing data on forks. DeepWiki data may be
+   1–3 months stale; a staleness notice is included when injected.
+
+3. **Outline generation** (`_arch_generate_outline`): feed the snapshot to the LLM to generate an
+   N-section outline (at most `_ARCH_OUTLINE_MAX_SECTIONS_WITH_AGENT` sections when `AGENTS.md`
+   is present, otherwise `_ARCH_OUTLINE_MAX_SECTIONS`). The outline always ends with two fixed
+   sections:
+   - Second-to-last: **Concurrency & Multi-User Conventions** (thread safety, ContextVar, lock
+     conventions)
+   - Last: **Testing & Examples** (test file locations, example scripts)
+   The outline is cached as `arch_outline` to avoid regeneration.
+
+4. **Batch section fill** (`_arch_fill_all_sections`): for each section, first use
+   `_arch_collect_snippets_for_section` to grep relevant code snippets from the repository, then
+   pack multiple sections into a single LLM call (`_arch_fill_batch_llm`) to reduce LLM call
+   count. Each section is capped at 3500 characters and cached under an independent key
+   (`arch_section_{title}`).
+
+5. **Public API Catalog** (`_build_public_api_catalog`): the LLM identifies the repository's
+   public API files, then regex-extracts public symbols (functions, classes, constants) from each
+   file, generating a JSON-format API catalog appended to the architecture document. Supports
+   Python, Go, TypeScript, Java, Rust, C++, and more.
+
+**Final output**: architecture document + Public API Catalog; also generates `arch_index`
+(section summary index) and `arch_symbol_index` (symbol → section mapping) for on-demand
+retrieval by R1/R2/R3. All outputs are cached at `arch_cache_path/{owner_repo}/`; subsequent
+PRs on the same repository reuse them directly.
 
 **AGENTS.md support**: if `AGENTS.md` exists in the repository root, its content is injected as
 `agent_instructions` into all LLM prompts, allowing project maintainers to customize review rules
@@ -196,11 +234,13 @@ exploring indefinitely and exhausting the budget.
 
 ---
 
-## 4. Four-Round Analysis (`rounds.py`)
+## 4. Six-Round Analysis (`rounds.py`)
 
-The four-round analysis is the core of the review. Each round has a clear responsibility,
+The six-round analysis is the core of the review. Each round has a clear responsibility,
 forming a progressive structure: broad scan → design doc → architect review → deep verification
-→ merge & dedup.
+→ modification-necessity analysis → merge & dedup. In parallel, **RScene** (scenario inference)
+and **RChain** (call-chain bug analysis) run alongside the main chain, with their results merged
+after R4.
 
 ---
 
@@ -439,10 +479,113 @@ excessive budget.
 
 ---
 
-### 4.5 Round 4: Merge & Dedup
+### 4.5 RMod: Modification-Necessity Analysis (`_run_rmod_agent_round`)
 
-**Goal**: merge the issue lists from R1, R2, R3, and `lint_issues` into a final, deduplicated
-comment list.
+**Goal**: for each modified file, use a ReactAgent to judge whether the changes are architecturally
+justified — flagging unnecessary refactors, over-engineering, or changes that violate framework
+conventions.
+
+**How it works:**
+
+1. `_rmod_collect_file_diffs` extracts per-file diffs; `_rmod_new_file_paths` identifies newly
+   created files (correctly handles `--- /dev/null` → `+++ b/` ordering in unified diff format).
+2. For each file, a `ReactAgent` is launched with the same file-exploration tools as R3
+   (`read_file_scoped`, `search_scoped`, etc.).
+   The agent is given the PR design doc, arch doc,
+   and framework conventions as context.
+3. The agent runs with a per-file timeout (`_RMOD_AGENT_TIMEOUT_SECS`). Files are processed in
+   parallel (up to `max_workers` threads).
+4. Issues are tagged `source='rmod'` and `bug_category='design'`.
+5. Results are saved to checkpoint (`ReviewStage.RMOD`) for resume support.
+
+**Key implementation notes:**
+- `execute_in_sandbox` is disabled on tools before agent creation (not via private `_tools_manager`).
+- `FuturesTimeoutError` (from `concurrent.futures`) is used instead of the built-in `TimeoutError`.
+
+---
+
+### 4.6 RScene: Usage Scenario Inference (`infer_usage_scenarios`)
+
+**Goal**: understand the public APIs modified by the PR, infer 2–4 typical end-to-end usage
+scenarios, and provide input for RChain. RScene runs **in parallel** with the main chain
+(R1→R2→R3→RMod) and does not block it.
+
+**How it works (two steps):**
+
+**Step 1 — Understand the functional module**: the ReactAgent actively explores the repository
+using the tool set:
+- Use `read_file_scoped` to read the full skeleton (class definitions, method signatures, key
+  constants) of each modified file
+- Use `analyze_symbol` to understand the state machine and data flow of core classes
+- Use `search_in_files` to search existing tests and examples for established usage patterns
+
+**Step 2 — Infer typical usage scenarios**: based on the understanding, output 2–4 scenarios,
+each containing:
+- `title`: scenario name
+- `description`: scenario description
+- `api_sequence`: API call order (e.g. `init → configure → run → cleanup`)
+- `call_chain`: expected call chain (list of function/method names)
+- `edge_cases`: edge cases to check
+
+**Scale controls**:
+- Process at most `max_files_for_r3` files (shared strategy parameter with R3)
+- Only process modified files (not newly created files); new files have no historical behavior
+  to infer from
+- At most 3 parallel workers (`_RSCENE_MAX_PARALLEL`)
+- Per-agent timeout of `_RSCENE_AGENT_TIMEOUT_SECS` (180s), with up to `_RSCENE_AGENT_RETRIES`
+  (10) retries
+
+**Checkpoint**: scenario results are saved to `ReviewStage.RSCENE` (key: `rscene_all`); on
+resume, the cached results are loaded directly.
+
+---
+
+### 4.7 RChain: Call-Chain Bug Analysis (`_rscenario_call_chain`)
+
+**Goal**: driven by the usage scenarios inferred by RScene, perform deep bug analysis and API
+usability review on the call chain of each scenario. RChain starts immediately after RScene
+completes, running in parallel with the main chain.
+
+**How it works (two tasks):**
+
+**Task A — Call-chain bug analysis**:
+1. Use `read_file_scoped` / `analyze_symbol` to trace each step in the call chain
+2. Verify that input/output contracts between callers and callees are consistent
+3. Check exception propagation paths: are exceptions correctly caught or propagated upward?
+4. Check resource lifecycle: are files/connections/locks properly released on all paths?
+5. Check concurrency safety: are there race conditions or shared-state issues in the call chain?
+
+**Task B — API usability review**:
+1. Verify that the API sequence is intuitive (parameter order, naming, default values)
+2. Check whether error messages are clear enough for users to debug
+3. Check for easily misused APIs (e.g. parameter order that is easy to confuse)
+
+**Output**: issues are tagged `source='rchain'`; Task A uses `bug_category` values of
+`bug`/`security`/`performance`/`concurrency`/`safety`/`type`; Task B uses `design`/`exception`.
+
+**Scale controls**:
+- Each scenario runs an independent ReactAgent; at most `_RCHAIN_MAX_PARALLEL_SCENARIOS` (3)
+  run in parallel
+- Per-agent timeout of `_RCHAIN_AGENT_TIMEOUT_SECS` (240s), with up to `_RCHAIN_AGENT_RETRIES`
+  (6) retries
+- Each scenario's diff budget is constrained by `_RCHAIN_FIXED_OVERHEAD`
+
+**Checkpoint**: each scenario's result is cached independently (key:
+`rchain_scene_{idx}_{title}`); the overall result is cached as `rchain_all`
+(`ReviewStage.RCHAIN`).
+
+**Relationship with the main chain**: RChain issues **bypass R4 dedup** and are appended
+directly to `all_comments` after `final_comments` (similar to RCov). This is because RChain's
+scenario-driven perspective is complementary to R1/R2/R3's diff-centric perspective; forcing
+dedup would discard valuable scenario-level bugs.
+
+---
+
+### 4.8 Round 4: Merge & Dedup
+
+**Goal**: merge the issue lists from R1, R2, R3, RMod, and `lint_issues` into a final,
+deduplicated comment list. RCov and RChain issues bypass this stage and are appended directly
+after R4.
 
 **How it works (three steps):**
 
@@ -464,9 +607,59 @@ comment list.
 
 ---
 
-## 5. Static Lint Analysis (`lint_runner.py`)
+## 5. RCov: Test Coverage Check (`coverage_checker.py`)
 
-Lint analysis runs independently before the four LLM rounds and consumes no LLM call budget.
+RCov runs **after** R4 (independently, not merged through dedup) and checks whether new or
+modified public symbols have adequate test coverage.
+
+### 5.1 Three-Step Flow
+
+**Step 1 — Identify testable symbols** (`_rcov_identify_symbols`):
+- Clips the diff to `SINGLE_CALL_CONTEXT_BUDGET - 20000` chars.
+- Calls the LLM to extract a list of public functions/classes that need test coverage.
+- Filters out internal helpers (`is_internal=True`).
+
+**Step 1.5 — Group by dependency** (`_rcov_group_symbols`):
+- If more than one symbol is found, calls the LLM to group related symbols (e.g. a class and its
+  key methods) so they are evaluated together.
+- Falls back to one group per symbol if grouping fails.
+
+**Step 2 — Grep + evaluate** (`_rcov_evaluate_groups`):
+- `_find_test_files` scans `clone_dir` for test files (`test_*.py`, `*_test.py`, etc.).
+- For each group, `_build_grep_results` greps test files in parallel for each symbol name.
+  Symbol names are validated with `re.fullmatch` before being passed to `grep -F` to prevent
+  regex injection.
+- The LLM evaluates whether existing tests are sufficient; issues are tagged `source='rcov'`.
+- Groups are evaluated in parallel (up to 4 workers); each group has a per-call timeout of
+  `_RCOV_GROUP_TIMEOUT_SECS` (90s).
+
+### 5.2 Timeout Strategy
+
+The outer timeout in `runner.py` is derived dynamically from diff size:
+
+```
+timeout = clamp((3 * 90) + (len(diff_text) // 10000) * 30, min=300, max=900)  # seconds
+# Note: base value 270 < min=300, so the actual minimum is 300 when diff is very small.
+```
+
+The larger the diff, the longer the timeout, avoiding false timeouts on large PRs while
+preventing unnecessary waiting on small ones. The actual timeout value is logged at `INFO`
+level for observability.
+
+### 5.3 Checkpoint
+
+RCov results are stored under the independent `ReviewStage.RCOV` checkpoint key (`rcov_issues`).
+On resume, the cached results are loaded directly, skipping all LLM calls.
+
+Output metrics:
+- `rcov_issues_count`: number of issues found, or `None` if RCov was skipped (timeout / no clone).
+- `rcov_ran`: boolean indicating whether RCov actually executed.
+
+---
+
+## 6. Static Lint Analysis (`lint_runner.py`)
+
+Lint analysis runs independently before the LLM review rounds and consumes no LLM call budget.
 
 **How it works:**
 
@@ -481,9 +674,9 @@ precision with no hallucination risk.
 
 ---
 
-## 6. Checkpoint System (`checkpoint.py`)
+## 7. Checkpoint System (`checkpoint.py`)
 
-### 6.1 Design Goals
+### 7.1 Design Goals
 
 - **Resume support**: if the review fails mid-way (network timeout, LLM rate limit), it resumes
   from the last completed stage without repeating finished LLM calls.
@@ -492,16 +685,20 @@ precision with no hallucination risk.
 - **Version control**: when `_REVIEW_ROUND_VERSION` is incremented, the R4 (merge & dedup) cache
   is automatically invalidated, ensuring prompt changes trigger a recomputation of the final result.
 
-### 6.2 Stage Enum (`ReviewStage`)
+### 7.2 Stage Enum (`ReviewStage`)
 
 ```
-CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2A → R2 → R3 → FINAL → UPLOAD
+CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2A → R2 → R3 → RMOD →
+RSCENE → RCHAIN → FINAL → RCOV → UPLOAD
 ```
 
 After each stage completes, `ckpt.mark_stage_done(stage)` is called. On restart,
 `ckpt.should_use_cache(stage)` determines whether to skip the stage.
 
-### 6.3 Head SHA Rotation
+`_KEY_TO_STAGE` is a class-level dict (initialized at class definition time, not lazily) mapping
+checkpoint keys to their owning stage. This avoids TOCTOU races in concurrent scenarios.
+
+### 7.3 Head SHA Rotation
 
 If the PR is force-pushed during review (head SHA changes), the checkpoint is automatically
 backed up and all review-round data is purged (clone, arch, and spec are retained), restarting
@@ -509,9 +706,9 @@ from R1.
 
 ---
 
-## 7. Comment Publishing (`poster.py`)
+## 8. Comment Publishing (`poster.py`)
 
-### 7.1 Publishing Strategy
+### 8.1 Publishing Strategy
 
 1. **Batch submit**: prefer the platform's `submit_review` API to submit all comments at once
    (GitHub Pull Request Review).
@@ -519,16 +716,30 @@ from R1.
    range), retry each comment individually with `create_review_comment`.
 3. **Rate limit retry**: on 429 / 403 rate-limit responses, retry with exponential backoff
    (up to 3 times).
+4. **Merge order**: `all_comments = final_comments + rchain_issues + rcov_issues`; all three
+   categories of issues are filtered through `_filter_commentable` before publishing.
 
-### 7.2 Commentable Line Filtering (`_filter_commentable`)
+### 8.2 Commentable Line Filtering (`_filter_commentable`)
 
 Platforms only allow line-level comments on lines that are actually changed in the diff.
-`_build_commentable_lines` parses the diff to build a `{path: set(lines)}` map, filtering out
-issues not in the changed range (downgraded to PR-level comments or discarded).
+`_build_commentable_lines` parses the diff to build a `{path: set(lines)}` map.
+`_filter_commentable` returns a **three-tuple** `(inline, general, dropped)`:
+- `inline`: issues with a valid, in-diff line number → posted as line-level review comments.
+- `general`: issues with `line=None` (e.g., RCov coverage issues) → posted as PR-level comments
+  in the review body under a "General Review Comments" section.
+- `dropped`: issues whose line number is outside the changed range and cannot be mapped → discarded.
+
+### 8.3 Comment Body Policy
+
+Each comment body includes the following enforcement statement:
+
+> *Newly introduced architecture issues must be fixed before merging; pre-existing ones must be
+> tracked via an issue (new or linked). Style issues must also be fixed; missing test coverage
+> must be added.*
 
 ---
 
-## 8. Budget & Rate Limiting (`constants.py`)
+## 9. Budget & Rate Limiting (`constants.py`)
 
 | Constant | Default | Description |
 |----------|---------|-------------|
@@ -546,7 +757,7 @@ before calling, and skips non-critical steps when the budget is exhausted.
 
 ---
 
-## 9. Issue Field Specification
+## 10. Issue Field Specification
 
 All rounds output issues in a unified format:
 
@@ -559,16 +770,17 @@ All rounds output issues in a unified format:
 | `title` | str | Short title (≤80 chars) |
 | `description` | str | Detailed problem description |
 | `suggestion` | str | Fix suggestion (with code example using markdown code blocks) |
-| `source` | str | `r1` / `r2` / `r3` / `lint` / `meta` |
+| `source` | str | `r1` / `r2` / `r3` / `rmod` / `rcov` / `lint` / `meta` |
 
 ---
 
-## 10. Known Limitations
+## 11. Known Limitations
 
 | Limitation | Description |
 |------------|-------------|
 | Diff truncation | Very large PRs (>120K chars) only review the first N files; truncated files are reported via a meta warning |
 | R3 file cap | On large PRs, R3 processes at most 10 files; the rest only go through R1/R2 |
+| RCov clone dependency | RCov requires `clone_dir` to grep test files; in local mode without a clone, test file discovery falls back to the local repo path |
 | Dynamic references | `grep_symbol` cannot trace runtime-generated symbol names (e.g. `getattr(obj, name)`) |
 | Cross-repo dependencies | Only the current repository is analyzed; interface changes in external dependencies cannot be detected |
 | Language support | Lint analysis currently focuses on Python (ruff/flake8); JS/TS requires eslint to be installed locally |

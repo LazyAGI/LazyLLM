@@ -1048,3 +1048,143 @@ _add_review_example('analyze_historical_reviews', '''\
 >>> spec = analyze_historical_reviews(backend, llm, cache_path='/tmp/spec.json', max_prs=30)
 >>> print(spec)
 ''')
+
+# ---------------------------------------------------------------------------
+# LocalGit
+# ---------------------------------------------------------------------------
+try:
+    _local_mod = importlib.import_module('lazyllm.tools.git.supplier.local')
+except ImportError:
+    _local_mod = None
+
+if _local_mod is not None:
+    _add_local_chinese = functools.partial(utils.add_chinese_doc, module=_local_mod)
+    _add_local_english = functools.partial(utils.add_english_doc, module=_local_mod)
+    _add_local_example = functools.partial(utils.add_example, module=_local_mod)
+else:
+    def _add_local_chinese(*args, **kwargs): pass  # noqa: E704
+    def _add_local_english(*args, **kwargs): pass  # noqa: E704
+    def _add_local_example(*args, **kwargs): pass  # noqa: E704
+
+_add_local_chinese('LocalGit', '''\
+本地 Git 仓库后端，无需云端 Token 或网络访问，直接对本地分支做 AI code review。
+
+diff 计算方式：
+    git diff $(git merge-base <base> HEAD) [HEAD]
+
+只包含当前分支引入的变更，<base> 上已有的提交不会出现在 diff 中。
+
+与云端后端（GitHub/GitLab 等）的区别：
+- 无需 Token，无网络依赖
+- 不支持将评审评论发布到平台（post_to_github 自动禁用）
+- 使用本地工作树作为 file-skeleton 提取的 clone_dir
+- checkpoint 路径格式：``cache/<origin_repo>/local/<branch>/checkpoint.json``，
+  与云端模式共享同一 ``<origin_repo>`` 目录下的 arch/spec 缓存
+
+Args:
+    repo_path (str): 本地 git 仓库路径，默认为当前目录 ``'.'``。
+    base (str): diff 基准分支或 commit，默认 ``'main'``。
+    include_uncommitted (bool): 为 ``True``（默认）时，通过 ``git diff <merge-base>`` 包含
+        staged 和 working-tree 的未提交变更；为 ``False`` 时，通过 ``git diff <merge-base> HEAD``
+        只包含已提交的变更。
+    return_trace (bool): 是否返回调用追踪信息，默认 ``False``。
+''')
+
+_add_local_english('LocalGit', '''\
+Local-repository Git backend. Requires no cloud token or network access; reviews a local branch directly.
+
+Diff is computed as:
+    git diff $(git merge-base <base> HEAD) [HEAD]
+
+Only changes introduced by the current branch are included — commits already present on <base> are excluded.
+
+Differences from cloud backends (GitHub / GitLab / …):
+- No token or network required.
+- Posting review comments back to a platform is not supported (post_to_github is disabled automatically).
+- The local working tree is used as the clone_dir for file-skeleton extraction.
+- Checkpoint path format: ``cache/<origin_repo>/local/<branch>/checkpoint.json``;
+  arch/spec caches under ``<origin_repo>`` are shared with cloud-mode reviews of the same repo.
+
+Args:
+    repo_path (str): Path to the local git repository. Defaults to ``'.'`` (current directory).
+    base (str): Base branch or commit to diff against. Defaults to ``'main'``.
+    include_uncommitted (bool): When ``True`` (default), staged and working-tree changes are included
+        via ``git diff <merge-base>``; when ``False``, only committed changes are included
+        via ``git diff <merge-base> HEAD``.
+    return_trace (bool): Whether to return call trace. Defaults to ``False``.
+''')
+
+_add_local_example('LocalGit', '''\
+>>> from lazyllm.tools.git import Git
+>>> # local mode — no token needed
+>>> backend = Git(backend='local', repo_path='.', base='main')
+>>> diff = backend.get_pr_diff(0)
+>>> print(diff['diff'][:500])
+''')
+
+_add_local_chinese('LocalGit.get_origin_repo', '''\
+从 ``git remote -v`` 解析 origin 远端 URL，返回 ``owner/repo`` 格式的仓库标识。
+
+用于推断 checkpoint 和 arch/spec 缓存的存储路径，使本地模式与云端模式共享同一缓存目录。
+
+支持的 URL 格式：
+- HTTPS：``https://github.com/owner/repo.git``
+- SSH：``git@github.com:owner/repo.git``
+
+若无 origin 远端或解析失败，fallback 为项目根目录名（``os.path.basename(repo_path)``）。
+
+Returns:
+    str: ``owner/repo`` 格式的仓库标识，或 fallback 的目录名。
+''')
+
+_add_local_english('LocalGit.get_origin_repo', '''\
+Parse the origin remote URL from ``git remote -v`` and return a ``owner/repo`` repository identifier.
+
+Used to derive the storage path for checkpoints and arch/spec caches, so that local-mode reviews
+share the same cache directory as cloud-mode reviews of the same repository.
+
+Supported URL formats:
+- HTTPS: ``https://github.com/owner/repo.git``
+- SSH: ``git@github.com:owner/repo.git``
+
+Falls back to the project root directory name (``os.path.basename(repo_path)``) if no origin remote
+exists or the URL cannot be parsed.
+
+Returns:
+    str: Repository identifier in ``owner/repo`` format, or the fallback directory name.
+''')
+
+_add_local_example('LocalGit.get_origin_repo', '''\
+>>> from lazyllm.tools.git import Git
+>>> backend = Git(backend='local', repo_path='/path/to/lazyllm')
+>>> backend.get_origin_repo()
+... 'LazyAGI/LazyLLM'
+''')
+
+_add_local_chinese('LocalGit.add_issue_comment', '''\
+本地模式不支持向平台发布评论，调用此方法始终返回失败。
+
+Args:
+    number (int): 占位参数，本地模式无意义。
+    body (str): 占位参数，本地模式无意义。
+
+Returns:
+    dict: ``{'success': False, 'message': 'add_issue_comment is not supported in local mode'}``
+''')
+
+_add_local_english('LocalGit.add_issue_comment', '''\
+Not supported in local mode. Always returns a failure response.
+
+Args:
+    number (int): Placeholder; unused in local mode.
+    body (str): Placeholder; unused in local mode.
+
+Returns:
+    dict: ``{'success': False, 'message': 'add_issue_comment is not supported in local mode'}``
+''')
+
+_add_local_example('LocalGit.add_issue_comment', '''\
+>>> backend = Git(backend='local', repo_path='.')
+>>> backend.add_issue_comment(0, 'hello')
+... {'success': False, 'message': 'add_issue_comment is not supported in local mode'}
+''')

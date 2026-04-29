@@ -26,6 +26,8 @@ _GIT_ENV: Dict[str, str] = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPA
 
 _SKIP_DIRS = {'.git', '__pycache__', '.cache', '.tox', 'node_modules', '.mypy_cache', '.pytest_cache', 'dist', 'build'}
 _SKIP_EXTS = {'.pyc', '.pyo', '.so', '.egg', '.egg-info'}
+# Concurrency patterns are sparse; use higher result limit to ensure sufficient coverage
+_CONCURRENCY_MAX_RESULTS = 20
 _ARCH_SNAPSHOT_BUDGET = 6000
 _ARCH_OUTLINE_MAX_SECTIONS = 13
 _ARCH_OUTLINE_MAX_SECTIONS_WITH_AGENT = 10
@@ -311,6 +313,47 @@ def _read_agent_instructions(clone_dir: str) -> str:
     parts.append(_FRAMEWORK_GOTCHAS_NOTICE)
     combined = '\n\n'.join(parts)
     return combined[:_AGENT_INSTRUCTIONS_MAX_CHARS]
+
+
+def _build_layered_agents_index(clone_dir: str) -> Dict[str, str]:
+    '''Scan clone_dir for sub-directory AGENTS.md/CLAUDE.md files (excluding root).
+    Returns {relative_dir_path: combined_content} for each directory that has one.
+    '''
+    index: Dict[str, str] = {}
+    for root, dirs, _files in os.walk(clone_dir):
+        # Skip root itself (already handled by _read_agent_instructions)
+        if os.path.normpath(root) == os.path.normpath(clone_dir):
+            dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
+            continue
+        dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
+        parts = []
+        for fname in _AGENT_INSTRUCTION_FILES:
+            fpath = os.path.join(root, fname)
+            content = _read_file_head(fpath, 2000)
+            if content:
+                parts.append(f'### {os.path.relpath(fpath, clone_dir)}\n{content}')
+        if parts:
+            rel_dir = os.path.relpath(root, clone_dir).replace('\\', '/')
+            index[rel_dir] = '\n\n'.join(parts)
+    return index
+
+
+def _get_local_agent_instructions(agents_index: Dict[str, str], file_path: str) -> str:
+    '''For a given file path, collect local AGENTS.md content from its directory
+    up to (but not including) the root. Closer directories have higher priority (appended last).
+    '''
+    rel = file_path.replace('\\', '/').lstrip('/')
+    parts_path = rel.split('/')
+    # Build list of ancestor dirs from shallowest to deepest (excluding root and file itself)
+    ancestor_dirs = []
+    for i in range(1, len(parts_path)):
+        ancestor_dirs.append('/'.join(parts_path[:i]))
+    found = []
+    for d in ancestor_dirs:
+        if d in agents_index:
+            found.append(agents_index[d])
+    return '\n\n'.join(found)[:3000] if found else ''
+
 
 def _is_complete_clone(clone_dir: str) -> bool:
     try:
@@ -752,9 +795,23 @@ The THIRD section MUST be:
 
 {gotchas_instruction}
 
+The THIRD-TO-LAST section MUST be:
+{{"title": "Typical Usage Patterns",
+ "focus": "Typical calling conventions for public APIs, common multi-step composition patterns, \
+known usage constraints and ordering requirements inferred from tests, examples, and documentation",
+ "search_hints": ["<generate 2-3 regex patterns for test files, example scripts, or README usage blocks>"]}}
+
+The SECOND-TO-LAST section MUST be:
+{{"title": "Concurrency & Multi-User Conventions",
+ "focus": "Thread-safety guarantees, per-request vs shared objects, lock usage conventions, \
+tenant/user isolation mechanisms, async safety, ContextVar usage",
+ "search_hints": ["threading\\.Lock|asyncio\\.Lock|threading\\.local", "session|user_id|tenant_id", \
+"ContextVar|contextvars"]}}
+
 The LAST section MUST be:
 {{"title": "Key Utilities & Usage Notes",
- "focus": "Key helper functions, data structures, their typical usage and caveats",
+ "focus": "Key helper functions, data structures, their typical usage and caveats. \
+Format each entry as: FunctionName(args): one-line description",
  "search_hints": ["<generate 2-3 regex patterns for utility classes/functions visible in the snapshot>"]}}
 
 ''' + JSON_OUTPUT_INSTRUCTION + '''
@@ -1239,54 +1296,97 @@ def _build_scoped_agent_tools_with_cache(
         )
     return all_tools
 
-def _arch_collect_snippets(clone_dir: str, section: Dict[str, Any], max_chars: int = 6000) -> str:  # noqa: C901
+def _arch_collect_snippets(  # noqa: C901
+    clone_dir: str, section: Dict[str, Any], max_chars: int = 6000,
+    extra_globs: Optional[List[str]] = None, max_results_per_pattern: int = 8,
+) -> str:
     from lazyllm.tools.agent.file_tool import search_in_files, read_file
     hints = section.get('search_hints', [])
     parts: List[str] = []
     seen_paths: set = set()
+    globs_to_search = ['*.py'] + (extra_globs or [])
     for pattern in hints:
-        try:
-            result = search_in_files(pattern, path=clone_dir, glob='*.py', max_results=8, root=clone_dir)
-            matches = result.get('results', []) if isinstance(result, dict) else []
-        except Exception:
-            matches = []
-        for m in matches:
-            path = m.get('path', '')
-            if path in seen_paths:
-                continue
-            seen_paths.add(path)
+        for glob_pat in globs_to_search:
             try:
-                line = int(m.get('line', 1))
-                match_text = m.get('text', '')
-                if re.match(r'\s*class\s+\w+', match_text):
-                    fc = read_file(path, start_line=max(1, line - 1), end_line=line + 2, root=clone_dir)
-                    class_def = fc.get('content', '') if isinstance(fc, dict) else ''
-                    try:
-                        with open(path, 'r', encoding='utf-8', errors='replace') as _f:
-                            all_lines = _f.readlines()
-                        sigs = _extract_class_method_signatures(all_lines, line - 1)
-                        snippet = class_def + ('\n' + '\n'.join(sigs[:12]) if sigs else '')
-                    except Exception:
-                        snippet = class_def
-                else:
-                    end = line + 10 if re.match(r'\s*def\s+\w+', match_text) else line + 20
-                    fc = read_file(path, start_line=max(1, line - 1), end_line=end, root=clone_dir)
-                    snippet = fc.get('content', '') if isinstance(fc, dict) else ''
+                result = search_in_files(
+                    pattern, path=clone_dir, glob=glob_pat,
+                    max_results=max_results_per_pattern, root=clone_dir,
+                )
+                matches = result.get('results', []) if isinstance(result, dict) else []
             except Exception:
-                snippet = m.get('text', '')
-            if snippet:
-                parts.append(f'# {os.path.relpath(path, clone_dir)}\n{snippet}')
+                matches = []
+            for m in matches:
+                path = m.get('path', '')
+                if path in seen_paths:
+                    continue
+                seen_paths.add(path)
+                try:
+                    line = int(m.get('line', 1))
+                    match_text = m.get('text', '')
+                    if re.match(r'\s*class\s+\w+', match_text):
+                        fc = read_file(path, start_line=max(1, line - 1), end_line=line + 2, root=clone_dir)
+                        class_def = fc.get('content', '') if isinstance(fc, dict) else ''
+                        try:
+                            with open(path, 'r', encoding='utf-8', errors='replace') as _f:
+                                all_lines = _f.readlines()
+                            sigs = _extract_class_method_signatures(all_lines, line - 1)
+                            snippet = class_def + ('\n' + '\n'.join(sigs[:12]) if sigs else '')
+                        except Exception:
+                            snippet = class_def
+                    else:
+                        end = line + 10 if re.match(r'\s*def\s+\w+', match_text) else line + 20
+                        fc = read_file(path, start_line=max(1, line - 1), end_line=end, root=clone_dir)
+                        snippet = fc.get('content', '') if isinstance(fc, dict) else ''
+                except Exception:
+                    snippet = m.get('text', '')
+                if snippet:
+                    parts.append(f'# {os.path.relpath(path, clone_dir)}\n{snippet}')
+            if sum(len(p) for p in parts) >= max_chars:
+                break
         if sum(len(p) for p in parts) >= max_chars:
             break
     combined = '\n\n'.join(parts)
     return combined[:max_chars] if combined else '(no relevant snippets found)'
+
+def _arch_collect_env_deps(clone_dir: str) -> str:
+    '''Directly read dependency config files instead of grepping *.py.'''
+    parts = []
+    for fname in ('pyproject.toml', 'setup.py', 'setup.cfg',
+                  'requirements.txt', 'requirements-dev.txt', 'requirements_dev.txt'):
+        fpath = os.path.join(clone_dir, fname)
+        if os.path.isfile(fpath):
+            try:
+                with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
+                    content = f.read(3000)
+                parts.append(f'# {fname}\n{content}')
+            except OSError:
+                lazyllm.LOG.debug(f'Failed to read dependency file {fpath}, skipping')
+    return '\n\n'.join(parts)[:6000] if parts else '(no dependency files found)'
+
+
+def _arch_collect_snippets_for_section(clone_dir: str, section: Dict[str, Any]) -> str:
+    '''Route section snippet collection based on section title.'''
+    title_lower = section.get('title', '').lower()
+    if 'environment' in title_lower or 'dependenc' in title_lower:
+        return _arch_collect_env_deps(clone_dir)
+    if 'typical usage' in title_lower or 'usage pattern' in title_lower:
+        return _arch_collect_snippets(
+            clone_dir, section, max_chars=6000,
+            extra_globs=['*.md', '*.rst', 'test_*.py', '*_test.py'],
+        )
+    if 'concurrency' in title_lower or 'multi-user' in title_lower:
+        return _arch_collect_snippets(
+            clone_dir, section, max_chars=6000, max_results_per_pattern=_CONCURRENCY_MAX_RESULTS,
+        )
+    return _arch_collect_snippets(clone_dir, section)
+
 
 def _arch_fill_section(
     llm: Any, clone_dir: str, section: Dict[str, Any],
     dir_tree_1level: str, prev_summaries: List[str],
 ) -> str:
     prev_text = ('\n'.join(prev_summaries) or '(none yet)')[-_ARCH_PREV_SUMMARY_BUDGET:]
-    snippets = _arch_collect_snippets(clone_dir, section)
+    snippets = _arch_collect_snippets_for_section(clone_dir, section)
     prompt = _ARCH_SECTION_PROMPT.format(
         section_title=section.get('title', ''), section_focus=section.get('focus', ''),
         dir_tree=dir_tree_1level[:400], prev_summaries=prev_text, code_snippets=snippets[:6000],
@@ -1363,7 +1463,7 @@ def _arch_fill_all_sections(
     llm: Any, clone_dir: str, outline: List[Dict[str, Any]], dir_tree_1level: str,
     cache_path: Optional[str] = None, owner_repo: str = '',
 ) -> str:
-    pairs = [(sec, _arch_collect_snippets(clone_dir, sec)) for sec in outline]
+    pairs = [(sec, _arch_collect_snippets_for_section(clone_dir, sec)) for sec in outline]
     batch_budget = max(28000, SINGLE_CALL_CONTEXT_BUDGET - 18000)
     batches = _arch_pack_pairs(pairs, batch_budget)
     sections: List[str] = []
@@ -1454,10 +1554,25 @@ def _extract_sym_desc(lines: List[str], idx: int) -> str:
     if idx + 1 >= len(lines):
         return ''
     nxt = lines[idx + 1].strip()
-    if nxt.startswith('"""') or nxt.startswith("'''"):
-        return nxt.strip('"\'').strip()[:80]
+    # Single-line comment
     if nxt.startswith('//') or nxt.startswith('#') or nxt.startswith('/*'):
-        return re.sub(r'^[/#*\s]+', '', nxt).strip()[:80]
+        return re.sub(r'^[/#*\s]+', '', nxt).strip()[:300]
+    # Docstring: collect until closing quote
+    if nxt.startswith('"""') or nxt.startswith("'''"):
+        quote = nxt[:3]
+        # Check if it closes on the same line
+        rest = nxt[3:]
+        if quote in rest:
+            return rest[:rest.index(quote)].strip()[:300]
+        # Multi-line: collect up to 8 more lines
+        parts = [rest]
+        for j in range(idx + 2, min(idx + 10, len(lines))):
+            ln = lines[j]
+            if quote in ln:
+                parts.append(ln[:ln.index(quote)])
+                break
+            parts.append(ln.rstrip())
+        return ' '.join(p.strip() for p in parts if p.strip())[:300]
     return ''
 
 def _scan_file_symbols(lines: List[str], pattern: re.Pattern) -> List[str]:
@@ -1552,6 +1667,8 @@ _ARCH_ALWAYS_INJECT = frozenset({
     'gotchas',
     'key utilities',
     'key utilities & usage notes',
+    'typical usage patterns',
+    'concurrency & multi-user conventions',
 })
 
 def _candidate_scopes(file_path: str) -> List[str]:
@@ -2778,12 +2895,69 @@ def _run_spec_analysis(
             raise
     return review_spec
 
+def _resume_arch_from_checkpoint(
+    arch_doc: str, clone_dir: Optional[str], agent_instructions: str,
+    arch_cache_path: str, pr: Any, repo: str, clone_target_dir: Optional[str],
+    head_sha: Optional[str], ckpt: Any,
+) -> Tuple[str, Optional[str], str]:
+    _save_cache(arch_cache_path, 'arch_doc', arch_doc)
+    _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
+    if not clone_dir:
+        try:
+            clone_url, branch = _resolve_clone_target(pr, repo)
+            lazyllm.LOG.info(f'Cloning {clone_url} @ {branch} for agent file access')
+            clone_dir, _ = _fetch_repo_code(clone_url, branch, work_dir=clone_target_dir, pin_sha=head_sha)
+            ckpt.save('clone_dir', clone_dir)
+        except (OSError, subprocess.CalledProcessError, ValueError) as e:
+            lazyllm.LOG.error(f'Clone for agent failed: {e}')
+            raise RuntimeError(f'Clone for agent failed: {e}') from e
+    else:
+        lazyllm.LOG.info(f'Reusing cached clone at {clone_dir}')
+    if not agent_instructions and clone_dir:
+        agent_instructions = _read_agent_instructions(clone_dir)
+        if agent_instructions:
+            _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
+    return arch_doc, clone_dir, agent_instructions
+
+
+def _run_local_arch_analysis(
+    llm: Any, arch_doc: str, local_repo_path: Optional[str],
+    arch_cache_path: str, agent_instructions: str, repo: str, ckpt: Any,
+) -> Tuple[str, str]:
+    if not arch_doc and local_repo_path and os.path.isdir(local_repo_path):
+        agent_instructions = _read_agent_instructions(local_repo_path)
+        if agent_instructions:
+            _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
+        prog = _Progress('Pre-analysis: architecture')
+        try:
+            arch_doc = analyze_repo_architecture(
+                llm, local_repo_path, arch_cache_path, agent_instructions, base_repo=repo,
+            )
+            ckpt.save('arch_doc', arch_doc)
+            prog.done('architecture doc ready')
+        except Exception as e:
+            lazyllm.LOG.error(
+                f'Local arch analysis failed, downstream LLM calls will use empty arch_doc: {e}',
+                exc_info=True,
+            )
+            prog.done('skipped (local arch analysis failed, proceeding without arch context)')
+    else:
+        _save_cache(arch_cache_path, 'arch_doc', arch_doc)
+        _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
+    return arch_doc, agent_instructions
+
+
 def _run_pre_analysis(
     llm: Any, backend_inst: LazyLLMGitBase, repo: str, pr: Any,
     fetch_repo_code: bool, arch_cache_path: Optional[str], review_spec_cache_path: Optional[str],
     max_history_prs: int, ckpt: Any, pr_dir: Optional[str] = None,
-    head_sha: Optional[str] = None,
+    head_sha: Optional[str] = None, local_repo_path: Optional[str] = None,
 ) -> Tuple[str, str, Optional[str], str]:
+    if fetch_repo_code and local_repo_path:
+        raise ValueError(
+            '`local_repo_path` must not be set when `fetch_repo_code=True`; '
+            'use `head_sha` to pin the remote clone instead.'
+        )
     from .checkpoint import _ReviewCheckpoint
     repo_cache_dir = _ReviewCheckpoint.repo_cache_dir(repo)
     arch_cache_path = arch_cache_path or os.path.join(repo_cache_dir, 'arch.json')
@@ -2804,27 +2978,14 @@ def _run_pre_analysis(
                 head_sha=head_sha,
             )
         else:
-            _save_cache(arch_cache_path, 'arch_doc', arch_doc)
-            _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
-            if not clone_dir:
-                try:
-                    clone_url, branch = _resolve_clone_target(pr, repo)
-                    lazyllm.LOG.info(f'Cloning {clone_url} @ {branch} for agent file access')
-                    clone_dir, _ = _fetch_repo_code(
-                        clone_url, branch, work_dir=clone_target_dir,
-                        pin_sha=head_sha)
-                    ckpt.save('clone_dir', clone_dir)
-                except Exception as e:
-                    raise RuntimeError(f'Clone for agent failed: {e}') from e
-            else:
-                lazyllm.LOG.info(f'Reusing cached clone at {clone_dir}')
-            if not agent_instructions and clone_dir:
-                agent_instructions = _read_agent_instructions(clone_dir)
-                if agent_instructions:
-                    _save_cache(arch_cache_path, 'agent_instructions', agent_instructions)
+            arch_doc, clone_dir, agent_instructions = _resume_arch_from_checkpoint(
+                arch_doc, clone_dir, agent_instructions, arch_cache_path,
+                pr, repo, clone_target_dir, head_sha, ckpt,
+            )
     else:
-        _save_cache(arch_cache_path, 'arch_doc', arch_doc)
-        _Progress('Pre-analysis: architecture').done('loaded from checkpoint')
+        arch_doc, agent_instructions = _run_local_arch_analysis(
+            llm, arch_doc, local_repo_path, arch_cache_path, agent_instructions, repo, ckpt,
+        )
 
     review_spec = _run_spec_analysis(backend_inst, llm, review_spec_cache_path, max_history_prs, ckpt)
 

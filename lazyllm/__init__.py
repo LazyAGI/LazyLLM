@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, SkillManager,
                         FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                         LLMParser)
+    from .tracing import (TracingSetupError, LazyTraceContext, get_trace_context, set_trace_context,
+                          enable_trace)
 from .patch import patch_os_env
 from .docs import add_doc
 config.done()
@@ -95,8 +97,10 @@ __all__ = [
 
     # tracing
     'TracingSetupError',
+    'LazyTraceContext',
     'get_trace_context',
     'set_trace_context',
+    'enable_trace',
 
     # tools
     'FS',
