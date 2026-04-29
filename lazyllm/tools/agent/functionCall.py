@@ -145,9 +145,12 @@ class FunctionCall(ModuleBase):
                     'name': tool_call['function']['name'],
                 } for tool_call in workspace['tool_call_trace']
             ]
-            workspace['history'].append(
-                {'role': 'assistant', 'content': input.get('content', ''), 'tool_calls': input.get('tool_calls', [])}
-            )
+            workspace['history'].append({
+                'role': 'assistant',
+                'content': input.get('content', ''),
+                'tool_calls': input.get('tool_calls', []),
+                'reasoning_content': input.get('reasoning_content', ''),
+            })
             input = {'input': tool_call_results}
             history_idx += 1
             workspace['history'].extend(tool_call_results)

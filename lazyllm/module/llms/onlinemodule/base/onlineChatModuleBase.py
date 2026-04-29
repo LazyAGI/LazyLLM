@@ -102,8 +102,6 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         if not ('choices' in response and isinstance(response['choices'], list)):
             raise ValueError(f'The response {response} does not contain a `choices` field.')
         outputs = response['choices'][0].get('message') or response['choices'][0].get('delta', {})
-        if 'reasoning_content' in outputs and outputs['reasoning_content'] and 'content' in outputs:
-            outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
         return outputs
 
     def _merge_stream_result(self, src: List[Union[str, int, list, dict]], force_join: bool = False):
