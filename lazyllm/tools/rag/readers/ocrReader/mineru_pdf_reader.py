@@ -126,7 +126,7 @@ class MineruPDFReader(_OcrReaderBase):
                     return self._extract_content_from_zip(zip_resp.content)
                 elif state == 'failed':
                     raise RuntimeError(
-                        f'[MineruPDFReader] Batch task failed: {extract_result[0].get("err_msg")}')
+                        f'[MineruPDFReader] Batch task failed: {extract_result[0].get("err_msg", 'Unknown error')}')
             time.sleep(3)
 
         raise TimeoutError('[MineruPDFReader] Batch polling timed out')
@@ -147,7 +147,6 @@ class MineruPDFReader(_OcrReaderBase):
             timeout=self._timeout,
             result_extractor=lambda resp: resp.json().get('data', {}).get('full_zip_url'),
         )
-        import requests
         zip_resp = requests.get(result, timeout=self._timeout or 120)
         zip_resp.raise_for_status()
         return self._extract_content_from_zip(zip_resp.content)
