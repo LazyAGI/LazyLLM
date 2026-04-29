@@ -76,12 +76,12 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def _str_to_json(self, msg: str, stream_output: bool):
         if isinstance(msg, bytes):
-            pattern = re.compile(r'^data:\s*')
-            msg = re.sub(pattern, '', msg.decode('utf-8'))
-        if isinstance(msg, str) and msg.strip() in ('[DONE]', 'data: [DONE]', ''):
+            msg = msg.decode('utf-8')
+        content = re.sub(r'^data:\s*', '', msg.strip())
+        if not content or content == '[DONE]':
             return ''
         try:
-            message = self._convert_msg_format(json.loads(msg))
+            message = self._convert_msg_format(json.loads(content))
             if not stream_output: return message
             color = stream_output.get('color') if isinstance(stream_output, dict) else None
             for item in message.get('choices', []):
@@ -94,8 +94,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                     self._stream_output(content, color)
             lazyllm.LOG.debug(f'message: {message}')
             return message
-        except Exception as e:
-            lazyllm.LOG.warning(f'Failed to parse message: {msg}, error: {e}')
+        except (TypeError, ValueError, json.JSONDecodeError):
+            lazyllm.LOG.warning(f'Failed to parse message: {msg}')
             return ''
 
     def _extract_specified_key_fields(self, response: Dict[str, Any]):
