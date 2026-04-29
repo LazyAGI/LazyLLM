@@ -1,9 +1,9 @@
 from typing import Any, Dict, Optional
 
 from lazyllm.common import LOG
+from lazyllm.tracing.datamodel.raw import RawSpanRecord
 from lazyllm.tracing.semantics import SemanticType
 
-from ...datamodel.raw import RawSpanRecord
 from .builtin import extract_embedding, extract_llm, extract_rerank, extract_retriever
 
 _REGISTRY = {

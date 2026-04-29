@@ -1,8 +1,8 @@
 from typing import Any
 
-from ...common import LOG, globals
-from ...configs import config
-from ...hook import LazyLLMHook, register_builtin_hook_provider
+from lazyllm.common import LOG, globals
+from lazyllm.configs import config
+from lazyllm.hook import LazyLLMHook, register_builtin_hook_provider
 from .configs import resolve_default_module_trace, resolve_runtime_module_trace_disabled
 from .output_attrs import (
     collect_trace_output_attrs,

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from lazyllm.tracing.consume.datamodel.raw import RawSpanRecord, RawTracePayload, RawTraceRecord
+from lazyllm.tracing.datamodel.raw import RawSpanRecord, RawTracePayload, RawTraceRecord
 
 
 class TracingBackend(ABC):

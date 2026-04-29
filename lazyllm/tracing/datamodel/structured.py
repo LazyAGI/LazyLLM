@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -37,7 +35,7 @@ class ExecutionStep:
     raw_data: RawData
     semantic_data: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
-    children: List[ExecutionStep] = field(default_factory=list)
+    children: List['ExecutionStep'] = field(default_factory=list)
 
 
 @dataclass

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List, Optional, Set
 
-from ..datamodel.raw import RawSpanRecord, RawTraceRecord
-from ..datamodel.structured import ExecutionStep, RawData, StructuredTrace, TraceMetadata
+from lazyllm.tracing.datamodel.raw import RawSpanRecord, RawTraceRecord
+from lazyllm.tracing.datamodel.structured import ExecutionStep, RawData, StructuredTrace, TraceMetadata
 from .extractors import extract_semantic
 
 

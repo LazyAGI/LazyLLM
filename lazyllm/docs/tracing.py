@@ -3,9 +3,9 @@ from . import utils
 import functools
 import lazyllm
 import lazyllm.tracing.consume.configs
-import lazyllm.tracing.consume.datamodel.raw
-import lazyllm.tracing.consume.datamodel.structured
-import lazyllm.tracing.consume.errors
+import lazyllm.tracing.datamodel.raw
+import lazyllm.tracing.datamodel.structured
+import lazyllm.tracing.errors
 
 # ============= Tracing helpers
 
@@ -967,8 +967,8 @@ Raises:
 
 # ============= Consume raw datamodel
 
-add_chinese_doc_raw = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.consume.datamodel.raw)
-add_english_doc_raw = functools.partial(utils.add_english_doc, module=lazyllm.tracing.consume.datamodel.raw)
+add_chinese_doc_raw = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.datamodel.raw)
+add_english_doc_raw = functools.partial(utils.add_english_doc, module=lazyllm.tracing.datamodel.raw)
 
 add_chinese_doc_raw('RawTraceRecord', '''\
 后端读取层返回的原始 trace 记录。
@@ -1017,9 +1017,9 @@ boundary object between the backend access layer and the reconstruction layer.
 # ============= Consume structured datamodel
 
 add_chinese_doc_structured = functools.partial(
-    utils.add_chinese_doc, module=lazyllm.tracing.consume.datamodel.structured)
+    utils.add_chinese_doc, module=lazyllm.tracing.datamodel.structured)
 add_english_doc_structured = functools.partial(
-    utils.add_english_doc, module=lazyllm.tracing.consume.datamodel.structured)
+    utils.add_english_doc, module=lazyllm.tracing.datamodel.structured)
 
 add_chinese_doc_structured('RawData', '''\
 结构化执行节点中的原始输入输出。
@@ -1081,8 +1081,8 @@ This object is the final structure exposed by the current consume API. It contai
 
 # ============= Consume errors
 
-add_chinese_doc_consume_errors = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.consume.errors)
-add_english_doc_consume_errors = functools.partial(utils.add_english_doc, module=lazyllm.tracing.consume.errors)
+add_chinese_doc_consume_errors = functools.partial(utils.add_chinese_doc, module=lazyllm.tracing.errors)
+add_english_doc_consume_errors = functools.partial(utils.add_english_doc, module=lazyllm.tracing.errors)
 
 add_chinese_doc_consume_errors('ConsumeError', '''\
 tracing 消费链路异常基类。

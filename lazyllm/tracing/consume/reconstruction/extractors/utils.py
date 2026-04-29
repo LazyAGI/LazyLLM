@@ -3,7 +3,7 @@ import math
 import re
 from typing import Any, Dict, List, Optional
 
-from ...datamodel.raw import RawSpanRecord
+from lazyllm.tracing.datamodel.raw import RawSpanRecord
 
 
 _TRUNCATED_SUFFIX = '...<truncated>'

@@ -8,11 +8,10 @@ import requests
 
 from lazyllm.common import LOG
 from lazyllm.thirdparty import opentelemetry
-from lazyllm.tracing.consume.datamodel.raw import RawSpanRecord, RawTracePayload, RawTraceRecord
-from lazyllm.tracing.consume.errors import ConsumeBackendError, TraceNotFound
+from lazyllm.tracing.datamodel.raw import RawSpanRecord, RawTracePayload, RawTraceRecord
+from lazyllm.tracing.errors import ConsumeBackendError, TraceNotFound
 from lazyllm.tracing.semantics import SemanticType, is_valid_span_id
-
-from ..base import ConsumeBackend, TracingBackend
+from lazyllm.tracing.backends.base import ConsumeBackend, TracingBackend
 from .config import (
     build_basic_auth_header,
     build_otlp_traces_endpoint,

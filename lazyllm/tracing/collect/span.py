@@ -4,8 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from lazyllm.common import LOG
-
-from ..semantics import (
+from lazyllm.tracing.semantics import (
     _SPAN_ID_RE,
     _TRACE_ID_RE,
     _VALID_SPAN_KINDS,

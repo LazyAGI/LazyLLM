@@ -1,4 +1,4 @@
-from ...configs import config
+from lazyllm.configs import config
 
 
 config.add(

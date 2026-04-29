@@ -6,8 +6,7 @@ from enum import Enum
 from typing import Any, Dict, FrozenSet, Optional, Set, Tuple
 
 from lazyllm.common import LOG
-
-from ..semantics import SemanticType
+from lazyllm.tracing.semantics import SemanticType
 
 
 _TRACE_DEFAULT_EXCLUDE_KEYS: FrozenSet[str] = frozenset({

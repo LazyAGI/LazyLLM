@@ -1,9 +1,9 @@
 from typing import Optional
 
+from lazyllm.tracing.datamodel.structured import StructuredTrace
 from lazyllm.tracing.semantics import is_valid_trace_id
 
 from .configs import read_consume_backend_name, read_consume_timeout_seconds
-from .datamodel.structured import StructuredTrace
 from .reconstruction import rebuild
 
 

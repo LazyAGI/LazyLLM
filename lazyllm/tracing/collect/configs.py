@@ -1,5 +1,6 @@
 import threading
-from ...configs import config
+
+from lazyllm.configs import config
 
 config.add('trace_enabled', bool, True, 'TRACE_ENABLED',
            description='Whether LazyLLM tracing is enabled by default.')

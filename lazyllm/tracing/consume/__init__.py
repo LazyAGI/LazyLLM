@@ -1,11 +1,11 @@
 from .api import get_single_trace
-from .datamodel import (
+from lazyllm.tracing.datamodel import (
     ExecutionStep,
     RawData,
     StructuredTrace,
     TraceMetadata,
 )
-from .errors import ConsumeBackendError, ConsumeError, TraceNotFound
+from lazyllm.tracing.errors import ConsumeBackendError, ConsumeError, TraceNotFound
 
 __all__ = [
     'ConsumeBackendError',

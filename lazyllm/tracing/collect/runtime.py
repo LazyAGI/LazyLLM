@@ -9,9 +9,9 @@ from lazyllm.common import LOG
 from lazyllm.common.globals import globals as llm_globals
 from lazyllm.configs import config
 from lazyllm.thirdparty import opentelemetry
-from ..backends import get_tracing_backend
+from lazyllm.tracing.backends import get_tracing_backend
+from lazyllm.tracing.semantics import SemanticType
 from .context import LazyTraceContext
-from ..semantics import SemanticType
 from .span import LazySpan, LazyTrace
 from .trace_config import collect_trace_config, resolve_semantic_type_for_target
 

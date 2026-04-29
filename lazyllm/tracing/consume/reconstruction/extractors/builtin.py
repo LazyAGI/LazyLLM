@@ -1,6 +1,6 @@
 from typing import Any, Dict
 
-from ...datamodel.raw import RawSpanRecord
+from lazyllm.tracing.datamodel.raw import RawSpanRecord
 from .utils import (
     as_bool,
     as_finite_float,
