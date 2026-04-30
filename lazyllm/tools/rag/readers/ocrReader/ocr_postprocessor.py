@@ -101,7 +101,7 @@ def _drop_toc_pages(blocks: List[Block]) -> List[Block]:
     i = 0
     while i < len(blocks):
         text = blocks[i].text_content().strip()
-        if re.search(r'^目\s*[次录]', text):
+        if re.search(r'^目\s*[次录]|^Table\s*of\s*Contents|^Contents', text, re.IGNORECASE):
             i += 1
             while i < len(blocks):
                 ntext = blocks[i].text_content().strip()

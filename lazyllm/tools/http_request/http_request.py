@@ -152,6 +152,8 @@ def post_async(submit_url: str, status_url: str, result_url: str = None,
                      json_payload=json_payload, timeout=timeout, raise_for_status=False)
     resp.raise_for_status()
     data = resp.json()
+    if not isinstance(data, dict):
+        raise ValueError(f'[HttpRequest] Unexpected response format: {data}')
     task_id = data.get('task_id')
     if not task_id and 'data' in data:
         task_id = data['data'].get('task_id')
