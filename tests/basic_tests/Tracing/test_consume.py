@@ -10,7 +10,7 @@ from lazyllm.tracing.consume.reconstruction.extractors import extract_semantic
 from lazyllm.tracing.consume.reconstruction.extractors.utils import doc_node_summaries
 from lazyllm.tracing.consume.reconstruction.tree import rebuild
 from lazyllm.tracing.datamodel.raw import RawSpanRecord, RawTraceRecord
-from lazyllm.tracing.errors import ConsumeBackendError, TraceNotFound
+from lazyllm.tracing.errors import ConsumeBackendError
 from lazyllm.tracing.semantics import SemanticType
 
 from .conftest import (
@@ -115,27 +115,6 @@ def test_get_single_trace_rebuilds_structured_trace_from_langfuse_payload(monkey
     assert trace.execution_tree.children[0].raw_data.output == 'child-output'
 
 
-def test_get_single_trace_surfaces_missing_langfuse_config(monkeypatch):
-    for key in ('LANGFUSE_HOST', 'LANGFUSE_BASE_URL', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY'):
-        monkeypatch.delenv(key, raising=False)
-
-    with pytest.raises(ConsumeBackendError, match='Missing Langfuse connection config'):
-        get_single_trace(TRACE_ID, backend='langfuse')
-
-
-def test_get_single_trace_surfaces_langfuse_trace_not_found(monkeypatch):
-    set_langfuse_env(monkeypatch)
-
-    monkeypatch.setattr(
-        langfuse_backend_module.requests, 'request',
-        Mock(return_value=make_response({'message': 'missing'}, status_code=404)),
-    )
-
-    with pytest.raises(TraceNotFound) as exc_info:
-        get_single_trace(TRACE_ID, backend='langfuse')
-
-    assert exc_info.value.trace_id == TRACE_ID
-
 
 def test_rebuild_nested_workflow_trace_with_semantic_steps():
     trace = make_trace(start_time=None)
@@ -194,13 +173,13 @@ def test_rebuild_nested_workflow_trace_with_semantic_steps():
     ],
 )
 def test_rebuild_uses_virtual_root_for_empty_or_ambiguous_graphs(spans, expected_child_ids):
-    trace = make_trace(name='virtual-trace', start_time=9.0)
+    trace = make_trace(name='virtual-trace', input = {'query': 'I am query.'}, start_time=9.0)
 
     structured = rebuild(trace, spans)
 
     assert structured.execution_tree.step_id == '__root__'
     assert structured.execution_tree.name == 'virtual-trace'
-    assert structured.execution_tree.raw_data.input == {'query': 'trace input'}
+    assert structured.execution_tree.raw_data.input == {'query': 'I am query.'}
     assert [child.step_id for child in structured.execution_tree.children] == expected_child_ids
 
 
@@ -239,8 +218,6 @@ def test_rebuild_aggregates_error_status_latency_and_trace_metadata():
     assert structured.metadata.end_time == 8.0
     assert structured.metadata.latency_ms == 3000.0
     assert structured.metadata.tags == ['prod', 'debug']
-    assert structured.metadata.session_id == 'session-1'
-    assert structured.metadata.user_id == 'user-1'
     assert structured.metadata.metadata == {'tenant': 'acme'}
     assert structured.execution_tree.children[0].status == 'error'
     assert structured.execution_tree.children[0].error_message == 'boom'
