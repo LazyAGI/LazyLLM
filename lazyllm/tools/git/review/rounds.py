@@ -109,7 +109,7 @@ DO report it as a maintainability issue with severity "medium" and suggest remov
 the unnecessary code. The key test: would a human expert write this? If not, flag it. \
 Patterns to flag (severity must be "medium", bug_category "maintainability"): \
 (a) Unnecessary null/None checks — checking a value for None when the caller contract or type \
-annotation guarantees it is never None; `or []` / `or {{}}` / `or 0` fallbacks on values that \
+annotation guarantees it is never None; `or []` / `or {}` / `or 0` fallbacks on values that \
 cannot be None by design; multi-layer nested None-guards with no clear invariant. \
 (b) Over-broad exception handling — bare `except:` or `except Exception` blocks that silently \
 swallow all errors with no logging, no re-raise, and no meaningful recovery; catching a broad \

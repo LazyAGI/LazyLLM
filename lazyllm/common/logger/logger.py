@@ -119,7 +119,6 @@ class _Log:
         def impl(*args, join: str = '\n', depth: int = 0, **kw):
             call_kw = dict(jobid=(f', jobid={jobid}' if (jobid := kw.pop('jobid', None)) else ''))
             if 'name' in kw: call_kw['name'] = kw.pop('name')
-            # Separate loguru .opt() params from logging method params
             opt_params = {'exception', 'record', 'lazy', 'colors', 'raw', 'capture', 'ansi'}
             for k in list(kw):
                 if k not in opt_params:

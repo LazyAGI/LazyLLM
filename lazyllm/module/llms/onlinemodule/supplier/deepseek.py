@@ -1,6 +1,6 @@
 from urllib.parse import urljoin
 import requests
-import warnings
+from lazyllm import LOG
 from typing import Optional
 from ..base import OnlineChatModuleBase
 
@@ -11,10 +11,9 @@ class DeepSeekChat(OnlineChatModuleBase):
         base_url = base_url or 'https://api.deepseek.com'
         model = model or 'deepseek-chat'
         if model in ('deepseek-chat', 'deepseek-reasoner'):
-            warnings.warn(
+            LOG.warnings(
                 f'Model "{model}" is deprecated and will be removed after 2026/07/24. '
-                'Please use "deepseek-v4-flash" or "deepseek-v4-pro" instead.',
-                DeprecationWarning, stacklevel=2)
+                'Please use "deepseek-v4-flash" or "deepseek-v4-pro" instead.')
         super().__init__(api_key=api_key or self._default_api_key(),
                          base_url=base_url, model_name=model, stream=stream, return_trace=return_trace, **kwargs)
 

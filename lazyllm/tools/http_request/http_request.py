@@ -1,6 +1,4 @@
 import re
-import time
-from typing import Optional, Callable
 
 import requests
 from lazyllm.thirdparty import httpx
@@ -124,62 +122,3 @@ def get_sync(url: str, headers: dict = None, timeout: int = 60,
     except requests.exceptions.RequestException as e:
         LOG.error(f'[HttpRequest] GET request to {url} failed: {e}')
         raise
-
-
-def post_async(submit_url: str, status_url: str, result_url: str = None,
-               payload: dict = None, files: dict = None, headers: dict = None,
-               timeout: int = 60,
-               success_states: tuple = ('completed', 'done', 'success'),
-               failure_states: tuple = ('failed', 'error', 'failure'),
-               max_retries: int = 120, interval: int = 3,
-               total_timeout: Optional[int] = None,
-               result_extractor: Optional[Callable[[requests.Response], any]] = None,
-               json_payload: dict = None) -> any:
-    '''Submit an async task, poll status, and fetch the final result.
-
-    Args:
-        submit_url: URL to submit the task.
-        status_url: Status polling URL containing ``{task_id}`` placeholder.
-        result_url: Optional result URL containing ``{task_id}`` placeholder.
-        result_extractor: Optional callable to extract result from the status
-            response when ``result_url`` is not provided.
-        json_payload: Optional JSON payload for the submit request (preferred
-            over ``payload`` for APIs that expect ``application/json``).
-    '''
-    resp = post_sync(submit_url, payload=payload, files=files, headers=headers,
-                     json_payload=json_payload, timeout=timeout, raise_for_status=False)
-    resp.raise_for_status()
-    data = resp.json()
-    if not isinstance(data, dict):
-        raise ValueError(f'[HttpRequest] Unexpected response format: {data}')
-    task_id = data.get('task_id')
-    if not task_id and 'data' in data:
-        task_id = data['data'].get('task_id')
-    if not task_id:
-        raise ValueError(f'[HttpRequest] No task_id in submit response: {data}')
-
-    deadline = time.time() + total_timeout if total_timeout else None
-    for _ in range(max_retries):
-        if deadline and time.time() > deadline:
-            raise TimeoutError(f'[HttpRequest] Task polling timed out after {total_timeout}s')
-        status_resp = get_sync(status_url.format(task_id=task_id), headers=headers,
-                               timeout=timeout, raise_for_status=False)
-        if status_resp.status_code == 404:
-            LOG.error(f'[HttpRequest] Status endpoint 404: {status_url.format(task_id=task_id)}')
-            raise RuntimeError(f'[HttpRequest] Status endpoint 404: {status_url.format(task_id=task_id)}')
-        status_resp.raise_for_status()
-        status_data = status_resp.json()
-        status = status_data.get('status', status_data.get('state', ''))
-        if 'data' in status_data and isinstance(status_data['data'], dict):
-            status = status_data['data'].get('state', status)
-        if status in success_states:
-            if result_url:
-                return get_sync(result_url.format(task_id=task_id), headers=headers, timeout=timeout)
-            if result_extractor:
-                return result_extractor(status_resp)
-            return status_resp
-        if status in failure_states:
-            raise RuntimeError(f'[HttpRequest] Task failed: {status_data}')
-        time.sleep(interval)
-
-    raise TimeoutError(f'[HttpRequest] Task polling timed out after {max_retries * interval}s')
