@@ -23,9 +23,9 @@ lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='T
 class PaddleOCRPDFReader(_OcrReaderBase):
     def __init__(self,
             url: str = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing',
-            droped_types: Set[str] = {'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
+            dropped_types: Set[str] = {'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
             **kwargs):
-        super().__init__(url=url, droped_types=droped_types, **kwargs)
+        super().__init__(url=url, dropped_types=dropped_types, **kwargs)
         self._api_key = lazyllm.config['paddle_api_key']
 
     @override
@@ -64,7 +64,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
     def _adapt_one(self, item: dict, page_idx: int, markdown_images: Dict[str, str],
                    image_tasks: List[tuple]) -> Optional[Block]:
         label = item['block_label']
-        if label in self._droped_types:
+        if label in self._dropped_types:
             return None
 
         content = item['block_content']
@@ -75,7 +75,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             return HeadingBlock(page=page, text=content)
         elif label == 'image':
             img_src = self._extract_img_path(content)
-            rel_path = Path(img_src).as_posix().lstrip('./')
+            rel_path = Path(img_src).as_posix().removeprefix('./')
             save_path = self._image_cache_dir / rel_path
             save_path.parent.mkdir(parents=True, exist_ok=True)
             image_tasks.append((markdown_images[img_src], save_path))
@@ -86,8 +86,10 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                 cells=self._parse_table_html(content),
                 page_range=(page_idx, page_idx),
             )
-        elif label in ('display_formula', 'inline_formula'):
+        elif label == 'display_formula':
             return FormulaBlock(page=page, latex=content, inline=False)
+        elif label == 'inline_formula':
+            return FormulaBlock(page=page, latex=content, inline=True)
         elif label in ('code', 'algorithm'):
             return CodeBlock(page=page, text=content)
         else:
@@ -102,12 +104,15 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             save_path.write_bytes(resp.content)
 
         with ThreadPoolExecutor(max_workers=8) as executor:
-            executor.map(_download_one, image_tasks)
+            list(executor.map(_download_one, image_tasks))
 
     @staticmethod
     def _extract_img_path(html: str) -> str:
         soup = bs4.BeautifulSoup(html, 'html.parser')
-        return soup.find('img')['src']
+        img_tag = soup.find('img')
+        if img_tag is None:
+            raise ValueError(f'No img tag found in HTML: {html[:100]!r}')
+        return img_tag['src']
 
     @override
     def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,

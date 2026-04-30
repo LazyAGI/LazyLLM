@@ -64,6 +64,11 @@ class Block:
                     unicodedata.normalize('NFKC', s) if isinstance(s, str) else s
                     for s in val
                 ])
+            elif isinstance(val, SectionPath):
+                val.anchors = [
+                    unicodedata.normalize('NFKC', s) if isinstance(s, str) else s
+                    for s in val.anchors
+                ]
 
     @property
     def ty(self) -> str:
@@ -157,10 +162,11 @@ class TableBlock(Block):
         for cell in self.cells:
             rows.setdefault(cell.row, []).append(cell)
         md_lines = []
+        first_row = min(rows.keys())
         for row_idx in sorted(rows.keys()):
             row_cells = sorted(rows[row_idx], key=lambda c: c.col)
             md_lines.append('| ' + ' | '.join(c.text for c in row_cells) + ' |')
-            if row_idx == min(rows.keys()):
+            if row_idx == first_row:
                 md_lines.append('|' + '|'.join([' --- '] * len(row_cells)) + '|')
         return '\n'.join(md_lines)
 

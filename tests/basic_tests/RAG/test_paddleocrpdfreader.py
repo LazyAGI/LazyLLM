@@ -57,6 +57,8 @@ def _make_mock_response() -> str:
 
 def _make_test_pdf(tmp_path: Path) -> Path:
     pdf = tmp_path / 'test.pdf'
+    # Note: this is not a valid PDF, but sufficient for mock tests that
+    # never parse the file content.
     pdf.write_bytes(b'%PDF-1.4 fake pdf content for testing')
     return pdf
 

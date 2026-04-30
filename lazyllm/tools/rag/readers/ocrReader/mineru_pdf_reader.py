@@ -30,9 +30,9 @@ class MineruPDFReader(_OcrReaderBase):
             backend: str = 'hybrid-auto-engine',
             upload_mode: bool = False,
             timeout: Optional[int] = None,
-            droped_types: Set[str] = {'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
+            dropped_types: Set[str] = {'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
             **kwargs):
-        super().__init__(url=url, droped_types=droped_types, **kwargs)
+        super().__init__(url=url, dropped_types=dropped_types, **kwargs)
         self._backend = backend
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
@@ -125,9 +125,8 @@ class MineruPDFReader(_OcrReaderBase):
                     return self._extract_content_from_zip(zip_resp.content)
                 elif state == 'failed':
                     raise RuntimeError(
-                        f'[MineruPDFReader] Batch task failed: {
-                            extract_result[0].get("err_msg", "Unknown error")
-                        }')
+                        f'[MineruPDFReader] Batch task failed: '
+                        f'{extract_result[0].get("err_msg", "Unknown error")}')
             time.sleep(3)
 
         raise TimeoutError('[MineruPDFReader] Batch polling timed out')
@@ -154,6 +153,10 @@ class MineruPDFReader(_OcrReaderBase):
 
     def _extract_content_from_zip(self, zip_bytes: bytes) -> str:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            for member in zf.infolist():
+                member_path = Path(member.filename)
+                if member_path.is_absolute() or '..' in member_path.parts:
+                    raise ValueError(f"Path traversal detected in zip: {member.filename}")
             zf.extractall(self._image_cache_dir)
 
         matches = list(self._image_cache_dir.rglob('*_content_list.json'))
@@ -196,7 +199,7 @@ class MineruPDFReader(_OcrReaderBase):
 
     def _adapt_one(self, item: dict) -> Optional[Block]:
         ty = item['type']
-        if ty in self._droped_types:
+        if ty in self._dropped_types:
             return None
 
         text_level = item.get('text_level', -1)
@@ -249,7 +252,7 @@ class MineruPDFReader(_OcrReaderBase):
         global_metadata = dict(extra_info) if extra_info else {}
         global_metadata['image_cache_dir'] = str(self._image_cache_dir)
 
-        file_name = Path(file).name if not isinstance(file, str) else file.split('/')[-1]
+        file_name = Path(file).name if not isinstance(file, str) else Path(file).name
         file_path = str(file)
 
         for b in blocks:

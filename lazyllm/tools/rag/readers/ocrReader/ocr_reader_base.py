@@ -36,8 +36,8 @@ class _OcrReaderBase(_RichReader, _Adapter):
     def __init__(self,
             url,
             image_cache_dir: Path,
-            service_variant: ServiceVariant = 'online',
-            droped_types: Set[str] = set(),
+            service_variant: str = 'online',
+            dropped_types: Optional[Set[str]] = None,
             split_doc: bool = True,
             post_func: Optional[Callable] = None,
             return_trace: bool = True):
@@ -46,7 +46,7 @@ class _OcrReaderBase(_RichReader, _Adapter):
         self._image_cache_dir = image_cache_dir
         self._image_cache_dir.mkdir(parents=True, exist_ok=True)
         self._service_variant = ServiceVariant(service_variant)
-        self._droped_types = droped_types
+        self._dropped_types = dropped_types if dropped_types is not None else set()
 
     def _fetch_response(self, file: Path, use_cache: bool = False) -> str:
         '''Fetch raw response string from the OCR service.'''
@@ -73,7 +73,10 @@ class _OcrReaderBase(_RichReader, _Adapter):
     def _parse_table_html( html_text: str) -> List[Cell]:
         soup = bs4.BeautifulSoup(html_text, 'html.parser')
         cells: List[Cell] = []
-        for row_idx, tr in enumerate(soup.find('table').find_all('tr')):
+        table = soup.find('table')
+        if table is None:
+            return []
+        for row_idx, tr in enumerate(table.find_all('tr')):
             for col_idx, td in enumerate(tr.find_all(['td', 'th'])):
                 cells.append(Cell(
                     row=row_idx,

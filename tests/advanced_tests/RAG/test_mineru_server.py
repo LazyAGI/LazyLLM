@@ -4,6 +4,7 @@ import os
 import pytest
 import requests
 import unittest
+from pathlib import Path
 import lazyllm
 from lazyllm import LOG
 from lazyllm.tools.servers.mineru.mineru_server_module import MineruServer
