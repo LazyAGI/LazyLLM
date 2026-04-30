@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from lazyllm import barrier, diverter, graph, ifs, loop, parallel, pipeline, switch, warp
 
 
@@ -8,6 +10,16 @@ def add_one(value):
 
 def double(value):
     return value * 2
+
+
+def chat_branch(route):
+    return f'chat:{route}'
+
+def search_branch(route):
+    return f'search:{route}'
+
+def boom(value):
+    raise ValueError(f'boom:{value}')
 
 
 def test_pipeline_tracing(exporter):
@@ -47,27 +59,71 @@ def test_parallel_tracing(exporter):
 
 
 def test_switch_tracing(exporter):
-    def chat_branch(route):
-        return f'chat:{route}'
+    flow = switch('chat', chat_branch, 'search', search_branch, 'boom', boom)
 
-    def search_branch(route):
-        return f'search:{route}'
-
-    def default_branch(route):
-        return f'default:{route}'
-
-    flow = switch('chat', chat_branch, 'search', search_branch, 'default', default_branch)
-    result = flow('search')
+    flow('search')
+    with pytest.raises(Exception, match='boom:boom'):
+        flow('boom')
+    assert flow('missing') is None
 
     spans = exporter.get_finished_spans()
-    assert len(spans) == 2
-    branch_span, switch_span = spans
-    assert switch_span.name == 'Switch'
-    assert branch_span.name == 'search_branch'
-    assert branch_span.parent.span_id == switch_span.context.span_id
-    assert switch_span.attributes.get('lazyllm.matched.index') == 1
-    assert switch_span.attributes.get('lazyllm.matched.branch') == 'search_branch'
-    assert result == 'search:search'
+    matched_branch, matched_switch, error_branch, error_switch, unmatched_switch = spans
+
+    assert matched_branch.name == 'search_branch' and matched_switch.name == 'Switch'
+    assert matched_branch.parent.span_id == matched_switch.context.span_id
+    assert matched_switch.attributes.get('lazyllm.matched.index') == 1
+    assert matched_switch.attributes.get('lazyllm.matched.condition') == 'search'
+    assert matched_switch.attributes.get('lazyllm.matched.branch') == 'search_branch'
+    assert matched_switch.attributes.get('lazyllm.status') == 'ok'
+
+    assert error_branch.name == 'boom' and error_switch.name == 'Switch'
+    assert error_branch.parent.span_id == error_switch.context.span_id
+    assert error_switch.attributes.get('lazyllm.matched.index') is None
+    assert error_switch.attributes.get('lazyllm.matched.condition') is None
+    assert error_switch.attributes.get('lazyllm.matched.branch') is None
+    assert error_switch.attributes.get('lazyllm.status') == 'error'
+    assert error_switch.attributes.get('lazyllm.error.message') == 'boom:boom'
+
+    assert unmatched_switch.name == 'Switch'
+    assert unmatched_switch.attributes.get('lazyllm.matched.index') is None
+    assert unmatched_switch.attributes.get('lazyllm.matched.condition') is None
+    assert unmatched_switch.attributes.get('lazyllm.matched.branch') is None
+    assert unmatched_switch.attributes.get('lazyllm.status') == 'ok'
+
+
+def test_ifs_tracing(exporter):
+    def is_even(value):
+        return value % 2 == 0
+
+    flow = ifs(is_even, chat_branch, boom)
+
+    flow(4)
+    with pytest.raises(Exception, match='boom:5'):
+        flow(5)
+    assert flow(6) == 'chat:6'
+    spans = exporter.get_finished_spans()
+
+    true_fc, true_cond, true_branch, true_ifs = spans[0:4]
+    assert true_cond.name == 'is_even' and true_branch.name == 'chat_branch'
+    assert true_branch.parent.span_id == true_ifs.context.span_id
+    assert true_ifs.attributes.get('lazyllm.matched.branch') == 'true_path'
+    assert true_ifs.attributes.get('lazyllm.matched.chosen_node') == 'chat_branch'
+    assert true_ifs.attributes.get('lazyllm.matched.condition_result') is True
+    assert true_ifs.attributes.get('lazyllm.status') == 'ok'
+    assert true_ifs.attributes.get('lazyllm.error.message') is None
+
+    error_fc, error_cond, error_branch, error_ifs = spans[4:8]
+    assert error_cond.name == 'is_even' and error_branch.name == 'boom'
+    assert error_ifs.attributes.get('lazyllm.matched.branch') is None
+    assert error_ifs.attributes.get('lazyllm.matched.chosen_node') is None
+    assert error_ifs.attributes.get('lazyllm.matched.condition_result') is None
+    assert error_ifs.attributes.get('lazyllm.status') == 'error'
+    assert error_ifs.attributes.get('lazyllm.error.message') == 'boom:5'
+
+    recovery_fc, recovery_cond, recovery_branch, recovery_ifs = spans[8:12]
+    assert recovery_cond.name == 'is_even' and recovery_branch.name == 'chat_branch'
+    assert recovery_ifs.attributes.get('lazyllm.matched.branch') == 'true_path'
+    assert recovery_ifs.attributes.get('lazyllm.error.message') is None
 
 
 def test_loop_tracing(exporter):
@@ -88,29 +144,6 @@ def test_loop_tracing(exporter):
     assert all(s.name == 'increment' for s in iteration_spans)
     assert loop_span.attributes.get('lazyllm.loop.actual_iterations') == 3
     assert result == 3
-
-
-def test_ifs_tracing(exporter):
-    def is_even(value=4):
-        return value % 2 == 0
-
-    def true_path(value):
-        return f'even:{value}'
-
-    def false_path(value):
-        return f'odd:{value}'
-
-    flow = ifs(is_even, true_path, false_path)
-    result = flow(4)
-
-    spans = exporter.get_finished_spans()
-    assert len(spans) == 3
-    condition_span, branch_span, ifs_span = spans
-    assert [condition_span.name, branch_span.name, ifs_span.name] == ['is_even', 'true_path', 'IFS']
-    assert ifs_span.attributes.get('lazyllm.matched.branch') == 'true_path'
-    assert ifs_span.attributes.get('lazyllm.matched.chosen_node') == 'true_path'
-    assert ifs_span.attributes.get('lazyllm.matched.condition_result') is True
-    assert result == 'even:4'
 
 
 def test_diverter_tracing(exporter):
