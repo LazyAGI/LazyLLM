@@ -28,20 +28,19 @@ class _Adapter:
         raise NotImplementedError
 
     def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
-            extra_info: Optional[Dict] = None) -> List[DocNode]:
+                                 extra_info: Optional[Dict] = None) -> List[DocNode]:
         '''Build DocNodes from parsed intermediate blocks.'''
         raise NotImplementedError
 
 
 class _OcrReaderBase(_RichReader, _Adapter):
-    def __init__(self,
-            url,
-            image_cache_dir: Path,
-            service_variant: str = 'online',
-            dropped_types: Optional[Set[str]] = None,
-            split_doc: bool = True,
-            post_func: Optional[Callable] = None,
-            return_trace: bool = True):
+    def __init__(self, url,
+                 image_cache_dir: Path,
+                 service_variant: str = 'online',
+                 dropped_types: Optional[Set[str]] = None,
+                 split_doc: bool = True,
+                 post_func: Optional[Callable] = None,
+                 return_trace: bool = True):
         super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
         self._url = url
         self._image_cache_dir = image_cache_dir
@@ -57,7 +56,7 @@ class _OcrReaderBase(_RichReader, _Adapter):
         raise NotImplementedError
 
     def _build_nodes_from_response(self, response_text: str, file: Path,
-            extra_info: Optional[Dict] = None) -> List[DocNode]:
+                                   extra_info: Optional[Dict] = None) -> List[DocNode]:
         '''Parse OCR service response into DocNodes.'''
         raw = json.loads(response_text)
         blocks = self._adapt_json_to_IR(raw)
@@ -66,15 +65,15 @@ class _OcrReaderBase(_RichReader, _Adapter):
         blocks = l2_associate(blocks)
         return self._build_nodes_from_blocks(blocks, file, extra_info)
 
-    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True, **kwargs
-        ) -> List[DocNode]:
+    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True,
+                   **kwargs) -> List[DocNode]:
         # Preserve URL strings; Path() would corrupt https:// into https:/
         file_path = file if isinstance(file, str) and file.startswith(('http://', 'https://')) else Path(file)
         response_raw_text = self._fetch_response(file_path, use_cache=use_cache)
         return self._build_nodes_from_response(response_raw_text, file_path, extra_info)
 
     @staticmethod
-    def _parse_table_html( html_text: str) -> List[Cell]:
+    def _parse_table_html(html_text: str) -> List[Cell]:
         soup = bs4.BeautifulSoup(html_text, 'html.parser')
         cells: List[Cell] = []
         table = soup.find('table')

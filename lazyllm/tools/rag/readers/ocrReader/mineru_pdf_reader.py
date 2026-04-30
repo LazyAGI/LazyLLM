@@ -24,14 +24,13 @@ lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='T
 
 
 class MineruPDFReader(_OcrReaderBase):
-    def __init__(self,
-            url: str = 'https://mineru.net/api/v4/extract/task',
-            lazyllm_patch_applied: bool = False,
-            backend: str = 'hybrid-auto-engine',
-            upload_mode: bool = False,
-            timeout: Optional[int] = None,
-            dropped_types: Set[str] = {'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
-            **kwargs):
+    def __init__(self, url: str = 'https://mineru.net/api/v4/extract/task',
+                 lazyllm_patch_applied: bool = False,
+                 backend: str = 'hybrid-auto-engine',
+                 upload_mode: bool = False,
+                 timeout: Optional[int] = None,
+                 dropped_types: Optional[Set[str]] = None,
+                 **kwargs):
         super().__init__(url=url, dropped_types=dropped_types, **kwargs)
         self._backend = backend
         self._upload_mode = upload_mode
@@ -85,7 +84,7 @@ class MineruPDFReader(_OcrReaderBase):
         return self._fetch_async_by_upload(file_str)
 
     def _fetch_async_by_upload(self, file_path: str) -> str:
-        """Upload a local file via batch presigned URL and fetch result."""
+        '''Upload a local file via batch presigned URL and fetch result.'''
 
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self._api_key}'}
 
@@ -132,7 +131,7 @@ class MineruPDFReader(_OcrReaderBase):
         raise TimeoutError('[MineruPDFReader] Batch polling timed out')
 
     def _fetch_async_by_url(self, file_url: str) -> str:
-        """Submit a remote URL for extraction and fetch result."""
+        '''Submit a remote URL for extraction and fetch result.'''
         payload = {
             'return_md': True,
             'return_content_list': True,
@@ -156,14 +155,14 @@ class MineruPDFReader(_OcrReaderBase):
             for member in zf.infolist():
                 member_path = Path(member.filename)
                 if member_path.is_absolute() or '..' in member_path.parts:
-                    raise ValueError(f"Path traversal detected in zip: {member.filename}")
+                    raise ValueError(f'Path traversal detected in zip: {member.filename}')
             zf.extractall(self._image_cache_dir)
 
         matches = list(self._image_cache_dir.rglob('*_content_list.json'))
         if len(matches) != 1:
             raise ValueError(
-                f"Expected exactly one '*_content_list.json' in {self._image_cache_dir}, "
-                f"found {len(matches)}"
+                f'Expected exactly one \'*_content_list.json\' in {self._image_cache_dir}, '
+                f'found {len(matches)}'
             )
         with open(matches[0], 'r', encoding='utf-8') as f:
             return json.dumps(json.load(f))
@@ -246,7 +245,7 @@ class MineruPDFReader(_OcrReaderBase):
 
     @override
     def _build_nodes_from_blocks(self, blocks: List[Block], file,
-            extra_info: Optional[Dict] = None) -> List[DocNode]:
+                                 extra_info: Optional[Dict] = None) -> List[DocNode]:
         docs = []
 
         global_metadata = dict(extra_info) if extra_info else {}

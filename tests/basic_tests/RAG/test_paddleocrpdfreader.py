@@ -68,7 +68,7 @@ def _make_test_pdf(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 class TestPaddleOCRPDFReaderMock(object):
-    """Mock-based tests that verify parsing logic without external services."""
+    '''Mock-based tests that verify parsing logic without external services.'''
 
     def test_load_data_mock(self, tmp_path):
         pdf = _make_test_pdf(tmp_path)

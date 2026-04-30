@@ -1,7 +1,5 @@
-import io
 import re
 import time
-import zipfile
 from typing import Optional, Callable
 
 import requests
@@ -99,7 +97,7 @@ class HttpRequest(ModuleBase):
 def post_sync(url: str, payload: dict = None, files: dict = None, headers: dict = None,
               json_payload: dict = None, timeout: int = 60,
               raise_for_status: bool = True) -> requests.Response:
-    """Execute a synchronous POST request with unified error handling."""
+    '''Execute a synchronous POST request with unified error handling.'''
     try:
         if json_payload is not None:
             resp = requests.post(url, json=json_payload, headers=headers, timeout=timeout)
@@ -117,7 +115,7 @@ def post_sync(url: str, payload: dict = None, files: dict = None, headers: dict 
 
 def get_sync(url: str, headers: dict = None, timeout: int = 60,
              raise_for_status: bool = True) -> requests.Response:
-    """Execute a synchronous GET request with unified error handling."""
+    '''Execute a synchronous GET request with unified error handling.'''
     try:
         resp = requests.get(url, headers=headers, timeout=timeout)
         if raise_for_status:
@@ -137,7 +135,7 @@ def post_async(submit_url: str, status_url: str, result_url: str = None,
                total_timeout: Optional[int] = None,
                result_extractor: Optional[Callable[[requests.Response], any]] = None,
                json_payload: dict = None) -> any:
-    """Submit an async task, poll status, and fetch the final result.
+    '''Submit an async task, poll status, and fetch the final result.
 
     Args:
         submit_url: URL to submit the task.
@@ -147,7 +145,7 @@ def post_async(submit_url: str, status_url: str, result_url: str = None,
             response when ``result_url`` is not provided.
         json_payload: Optional JSON payload for the submit request (preferred
             over ``payload`` for APIs that expect ``application/json``).
-    """
+    '''
     resp = post_sync(submit_url, payload=payload, files=files, headers=headers,
                      json_payload=json_payload, timeout=timeout, raise_for_status=False)
     resp.raise_for_status()

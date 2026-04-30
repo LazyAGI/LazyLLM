@@ -11,7 +11,7 @@ from lazyllm.tools.http_request import post_sync
 
 from ...doc_node import DocNode
 from .ocr_ir import (
-    Block, BBox, PageRef, Cell,
+    Block, BBox, PageRef,
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock,
 )
@@ -21,10 +21,8 @@ lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='T
 
 
 class PaddleOCRPDFReader(_OcrReaderBase):
-    def __init__(self,
-            url: str = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing',
-            dropped_types: Set[str] = {'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
-            **kwargs):
+    def __init__(self, url: str = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing',
+                 dropped_types: Optional[Set[str]] = None, **kwargs):
         super().__init__(url=url, dropped_types=dropped_types, **kwargs)
         self._api_key = lazyllm.config['paddle_api_key']
 
@@ -116,7 +114,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
 
     @override
     def _build_nodes_from_blocks(self, blocks: List[Block], file: Path,
-            extra_info: Optional[Dict] = None) -> List[DocNode]:
+                                 extra_info: Optional[Dict] = None) -> List[DocNode]:
         docs = []
         global_metadata = dict(extra_info) if extra_info else {}
         global_metadata['image_cache_dir'] = str(self._image_cache_dir)
