@@ -14,10 +14,11 @@ from .ocr_ir import (
 
 # ---------- L1: Normalize ----------
 
-def l1_normalize(blocks: List[Block]) -> List[Block]:
+def l1_normalize(blocks: List[Block], fix_reader_order: bool = False) -> List[Block]:
     """L1 normalization: reorder blocks by reading order, validate heading levels, drop TOC pages."""
-    # blocks = _two_column_reorder_reading(blocks)
-    # blocks = _detect_heading_level_gap(blocks)
+    if fix_reader_order:
+        blocks = _two_column_reorder_reading(blocks)
+        blocks = _detect_heading_level_gap(blocks)
     blocks = _drop_toc_pages(blocks)
     return blocks
 
@@ -116,9 +117,10 @@ def _drop_toc_pages(blocks: List[Block]) -> List[Block]:
 
 # ---------- L2: Associate ----------
 
-def l2_associate(blocks: List[Block]) -> List[Block]:
+def l2_associate(blocks: List[Block], merge_table: bool = False) -> List[Block]:
     """L2 association: merge cross-page tables, pair captions, inject section paths, merge paragraphs."""
-    # blocks = _merge_cross_page_tables(blocks)
+    if merge_table:
+        blocks = _merge_cross_page_tables(blocks)
     caption_indices = _pair_captions(blocks)
     blocks = [b for i, b in enumerate(blocks) if i not in caption_indices]
     blocks = _inject_section_path(blocks)

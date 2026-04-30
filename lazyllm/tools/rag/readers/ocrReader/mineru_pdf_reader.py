@@ -3,6 +3,7 @@ import json
 import os
 import zipfile
 import requests
+import time
 
 from pathlib import Path
 from typing import Dict, List, Optional, Set
@@ -85,8 +86,6 @@ class MineruPDFReader(_OcrReaderBase):
 
     def _fetch_async_by_upload(self, file_path: str) -> str:
         """Upload a local file via batch presigned URL and fetch result."""
-        import requests
-        import time
 
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self._api_key}'}
 
