@@ -295,7 +295,7 @@ class DocServer(ModuleBase):
             await upload_file.close()
 
         async def _persist_uploads(
-            self, files: List['fastapi.UploadFile'], *,
+            self, files: List[fastapi.UploadFile], *,
             override: bool = False, sub_dir: str = '',
         ):
             saved_paths = []
