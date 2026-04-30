@@ -569,4 +569,4 @@ class UrlDocument(ModuleBase):
 
     def __getattr__(self, name):
         if name in self.__dict__.get('_missing_keys', []):
-            raise RuntimeError(f'Document generated with url and name has no attribute `{name}`')
+            raise AttributeError(f'Document generated with url and name has no attribute `{name}`')
