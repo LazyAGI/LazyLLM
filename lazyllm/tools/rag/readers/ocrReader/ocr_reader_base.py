@@ -1,4 +1,5 @@
 import json
+import shutil
 from typing import Optional, Callable, Set, List, Dict
 from pathlib import Path
 from enum import Enum
@@ -45,6 +46,9 @@ class _OcrReaderBase(_RichReader, _Adapter):
         self._url = url
         self._image_cache_dir = image_cache_dir
         self._image_cache_dir.mkdir(parents=True, exist_ok=True)
+        # Clear any stale contents from previous runs
+        for item in self._image_cache_dir.iterdir():
+            shutil.rmtree(item) if item.is_dir() else item.unlink()
         self._service_variant = ServiceVariant(service_variant)
         self._dropped_types = dropped_types if dropped_types is not None else set()
 
