@@ -121,7 +121,7 @@ def test_consume_fetch_trace_payload_with_inline_observations(monkeypatch):
     request.assert_called_once()
     args, kwargs = request.call_args
     assert args == ('GET', langfuse_trace_url())
-    assert kwargs['timeout'] == (5.0, 3.5)
+    assert kwargs['timeout'] == (LangfuseConsumeBackend._CONNECT_TIMEOUT_S, 3.5)
     assert kwargs['headers']['Authorization'] == LANGFUSE_AUTH_HEADER
     assert kwargs['headers']['Accept'] == 'application/json'
 
@@ -168,6 +168,14 @@ def test_consume_fetch_spans_paginates_observations(monkeypatch):
     assert parse_qs(urlparse(obs_url_2).query) == {
         'traceId': [TRACE_ID], 'limit': ['1000'], 'page': ['2'],
     }
+
+
+def test_consume_raises_when_langfuse_config_missing(monkeypatch):
+    for key in ('LANGFUSE_HOST', 'LANGFUSE_BASE_URL', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY'):
+        monkeypatch.delenv(key, raising=False)
+
+    with pytest.raises(ConsumeBackendError, match='Missing Langfuse connection config'):
+        LangfuseConsumeBackend().fetch_trace_payload(TRACE_ID)
 
 
 @pytest.mark.parametrize(
