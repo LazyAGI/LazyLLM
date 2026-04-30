@@ -34,7 +34,8 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                  dropped_types: Optional[Set[str]] = None,
                  **kwargs):
         super().__init__(url=url,
-                         dropped_types=drop_types or dropped_types,
+                         dropped_types=drop_types or dropped_types or {
+                             'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                          return_trace=return_trace,
                          image_cache_dir=images_dir,
                          **kwargs)

@@ -39,7 +39,8 @@ class MineruPDFReader(_OcrReaderBase):
                  patch_applied: bool = False,
                  **kwargs):
         super().__init__(url=url,
-                         dropped_types=dropped_types,
+                         dropped_types=dropped_types or {
+                             'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
                          return_trace=return_trace,
                          post_func=post_func,
                          **kwargs)
