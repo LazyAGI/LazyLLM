@@ -26,17 +26,27 @@ lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='T
 
 class MineruPDFReader(_OcrReaderBase):
     def __init__(self, url: str = 'https://mineru.net/api/v4/extract/task',
-                 lazyllm_patch_applied: bool = False,
                  backend: str = 'hybrid-auto-engine',
                  upload_mode: bool = False,
+                 extract_table: bool = True,
+                 extract_formula: bool = True,
+                 split_doc: bool = True,
+                 clean_content: bool = True,
                  timeout: Optional[int] = None,
+                 post_func: Optional[Callable] = None,
+                 return_trace: bool = True,
                  dropped_types: Optional[Set[str]] = None,
+                 patch_applied: bool = False,
                  **kwargs):
-        super().__init__(url=url, dropped_types=dropped_types, **kwargs)
+        super().__init__(url=url,
+                         dropped_types=dropped_types,
+                         return_trace=return_trace,
+                         post_func=post_func,
+                         **kwargs)
         self._backend = backend
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
-        self._lazyllm_patch_applied = lazyllm_patch_applied
+        self._patch_applied = patch_applied
         self._api_key = lazyllm.config['mineru_api_key']
 
     @override
@@ -47,7 +57,7 @@ class MineruPDFReader(_OcrReaderBase):
             return self._fetch_async(file_path, use_cache)
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
-        if self._lazyllm_patch_applied:
+        if self._patch_applied:
             # Patch-deployed local server: form-encoded.
             payload = {
                 'return_content_list': 'true',
@@ -170,7 +180,7 @@ class MineruPDFReader(_OcrReaderBase):
 
     @override
     def _adapt_json_to_IR(self, raw) -> List[Block]:
-        if self._lazyllm_patch_applied:
+        if self._patch_applied:
             content_list = raw['result'][0]['content_list']
         else:
             content_list = raw
@@ -179,7 +189,7 @@ class MineruPDFReader(_OcrReaderBase):
         for item in content_list:
             block = self._adapt_one(item)
             if block is not None:
-                if self._lazyllm_patch_applied and 'lines' in item:
+                if self._patch_applied and 'lines' in item:
                     block.lines = self._normalize_content(item['lines'])
                 blocks.append(block)
         return blocks

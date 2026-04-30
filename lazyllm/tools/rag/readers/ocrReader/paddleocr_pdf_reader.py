@@ -1,7 +1,7 @@
 import base64
 import requests
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Callable
 from typing_extensions import override
 from concurrent.futures import ThreadPoolExecutor
 
@@ -22,8 +22,22 @@ lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='T
 
 class PaddleOCRPDFReader(_OcrReaderBase):
     def __init__(self, url: str = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing',
-                 dropped_types: Optional[Set[str]] = None, **kwargs):
-        super().__init__(url=url, dropped_types=dropped_types, **kwargs)
+                 callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
+                 format_block_content: bool = True,
+                 use_layout_detection: bool = True,
+                 use_chart_recognition: bool = True,
+                 split_doc: bool = True,
+                 drop_types: List[str] = None,
+                 post_func: Optional[Callable] = None,
+                 return_trace: bool = True,
+                 images_dir: str = None,
+                 dropped_types: Optional[Set[str]] = None,
+                 **kwargs):
+        super().__init__(url=url,
+                         dropped_types=drop_types or dropped_types,
+                         return_trace=return_trace,
+                         image_cache_dir=images_dir,
+                         **kwargs)
         self._api_key = lazyllm.config['paddle_api_key']
 
     @override
