@@ -120,17 +120,15 @@ def register_builtin_hook_provider(provider: Callable[[Any], list]):
 
 def _ensure_builtin_hook_providers_loaded():
     global _builtin_hook_providers_state
-    if _builtin_hook_providers_state != 'pending':
+    if _builtin_hook_providers_state == 'loaded':
         return
-    _builtin_hook_providers_state = 'loading'
     try:
         from .tracing.collect.hook import resolve_tracing_hooks  # noqa: F401
+        _builtin_hook_providers_state = 'loaded'
     except Exception as exc:
         _builtin_hook_providers_state = 'pending'
         if not isinstance(exc, ImportError):
             raise
-    else:
-        _builtin_hook_providers_state = 'loaded'
 
 
 def resolve_builtin_hooks(obj):
