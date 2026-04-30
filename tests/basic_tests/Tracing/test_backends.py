@@ -4,10 +4,9 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-import lazyllm.tracing.backends as backends_module
 import lazyllm.tracing.backends.langfuse.backend as langfuse_backend_module
 from lazyllm.tracing.backends.langfuse.backend import LangfuseBackend, LangfuseConsumeBackend
-from lazyllm.tracing.consume.errors import ConsumeBackendError, TraceNotFound
+from lazyllm.tracing.errors import ConsumeBackendError, TraceNotFound
 from lazyllm.tracing.semantics import SemanticType
 
 from .conftest import (
