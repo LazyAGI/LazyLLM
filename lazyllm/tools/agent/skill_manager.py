@@ -8,7 +8,6 @@ import yaml
 
 from lazyllm import config, ModuleBase
 from lazyllm.thirdparty import fsspec
-from .file_tool import read_file as _read_file
 from .shell_tool import shell_tool as _shell_tool
 
 DEFAULT_SKILLS_DIR = os.path.join(config['home'], 'skills')
@@ -23,7 +22,7 @@ config.add(
 
 # Filename convention for cloud FS skills (no extension).
 # A node/file whose name starts with this prefix is treated as a skill definition.
-CLOUD_SKILL_PREFIX = 'SKILL'
+SKILL_PREFIX = 'SKILL'
 
 SKILLS_PROMPT = '''
 ## Skills Guide
@@ -89,10 +88,7 @@ class SkillManager(ModuleBase):
                  max_skill_md_bytes: Optional[int] = None, fs=None):
         super().__init__(return_trace=False)
         self._fs = fs or fsspec.implementations.local.LocalFileSystem()
-        self._is_local = fs is None
-        self._skills_dir = self._parse_dirs(dir, is_local=self._is_local) if dir else (
-            self._parse_dirs(config['skills_dir'], is_local=self._is_local) if self._is_local else []
-        )
+        self._skills_dir = self._parse_dirs(dir or config['skills_dir'])
         self._validate_fs_dir_consistency(fs, self._skills_dir)
         self._skills_expected = self._parse_skills(skills)
         self._max_skill_md_bytes = max_skill_md_bytes or config['max_skill_md_bytes']
@@ -131,7 +127,7 @@ class SkillManager(ModuleBase):
                     )
 
     @staticmethod
-    def _parse_dirs(dir_value: Optional[str], is_local: bool = True) -> List[str]:
+    def _parse_dirs(dir_value: Optional[str]) -> List[str]:
         if not dir_value:
             return []
         dirs = [d.strip() for d in dir_value.split(',') if d.strip()] if isinstance(dir_value, str) else list(dir_value)
@@ -143,7 +139,7 @@ class SkillManager(ModuleBase):
             # Keep cloud paths (protocol:/ prefix) as-is; expand local paths.
             # Use the same regex as _extract_protocol for consistency.
             is_cloud_path = bool(re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*(@[^:/]+)?:/', d))
-            path = d if is_cloud_path or not is_local else os.path.abspath(os.path.expanduser(d))
+            path = d if is_cloud_path else os.path.abspath(os.path.expanduser(d))
             if path not in seen:
                 seen.add(path)
                 result.append(path)
@@ -176,8 +172,6 @@ class SkillManager(ModuleBase):
             return []
 
     def _fs_join(self, base: str, name: str) -> str:
-        if self._is_local:
-            return os.path.join(base, name)
         return base.rstrip('/') + '/' + name
 
     def _iter_skill_files(self) -> Iterable[Tuple[str, str]]:
@@ -194,9 +188,8 @@ class SkillManager(ModuleBase):
                     full_path = name if '/' in name else self._fs_join(cur, basename)
                     etype = entry.get('type', 'file')
                     if etype not in ('directory', 'dir'):
-                        # Local: match 'SKILL.md'; cloud: match any name starting with CLOUD_SKILL_PREFIX
-                        if (self._is_local and basename == 'SKILL.md') or \
-                                (not self._is_local and basename.startswith(CLOUD_SKILL_PREFIX)):
+                        # match any name starting with SKILL_PREFIX
+                        if basename.startswith(SKILL_PREFIX):
                             skill_node = full_path
                     elif etype in ('directory', 'dir'):
                         subdirs.append(full_path)
@@ -354,12 +347,10 @@ class SkillManager(ModuleBase):
             return {'status': 'missing', 'name': name}
         base = info['path']
         path = self._fs_join(base, rel_path)
-        if not self._is_local:
-            try:
-                return {'status': 'ok', 'path': path, 'content': self._fs_read(path)}
-            except Exception as e:
-                return {'status': 'error', 'path': path, 'error': str(e)}
-        return _read_file(path, root=base, **kwargs)
+        try:
+            return {'status': 'ok', 'path': path, 'content': self._fs_read(path)}
+        except Exception as e:
+            return {'status': 'error', 'path': path, 'error': str(e)}
 
     def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
                    allow_unsafe: bool = False, cwd: Optional[str] = None) -> Dict[str, str]:
@@ -367,10 +358,10 @@ class SkillManager(ModuleBase):
         info = self._skills_index.get(name)
         if not info:
             return {'status': 'missing', 'name': name}
-        if not self._is_local:
-            return {'status': 'error', 'error': 'run_script is not supported for cloud FS skills'}
         base = info['path']
         script_path = os.path.join(base, rel_path)
+        if self._extract_protocol(script_path):
+            return {'status': 'error', 'error': 'run_script is not supported for cloud FS skills'}
         if not self._fs.exists(script_path):
             return {'status': 'missing', 'path': script_path}
         ext = os.path.splitext(script_path)[1].lower()
