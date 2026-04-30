@@ -126,7 +126,9 @@ class MineruPDFReader(_OcrReaderBase):
                     return self._extract_content_from_zip(zip_resp.content)
                 elif state == 'failed':
                     raise RuntimeError(
-                        f'[MineruPDFReader] Batch task failed: {extract_result[0].get("err_msg", 'Unknown error')}')
+                        f'[MineruPDFReader] Batch task failed: {
+                            extract_result[0].get("err_msg", "Unknown error")
+                        }')
             time.sleep(3)
 
         raise TimeoutError('[MineruPDFReader] Batch polling timed out')
@@ -154,7 +156,14 @@ class MineruPDFReader(_OcrReaderBase):
     def _extract_content_from_zip(self, zip_bytes: bytes) -> str:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             zf.extractall(self._image_cache_dir)
-        with open(next(self._image_cache_dir.rglob('*_content_list.json')), 'r', encoding='utf-8') as f:
+
+        matches = list(self._image_cache_dir.rglob('*_content_list.json'))
+        if len(matches) != 1:
+            raise ValueError(
+                f"Expected exactly one '*_content_list.json' in {self._image_cache_dir}, "
+                f"found {len(matches)}"
+            )
+        with open(matches[0], 'r', encoding='utf-8') as f:
             return json.dumps(json.load(f))
 
     @override
