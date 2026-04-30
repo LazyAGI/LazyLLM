@@ -57,16 +57,15 @@ class SearchBase(ModuleBase):
         return []
 
     def __call__(self, *args, **kwargs) -> List[Dict[str, Any]]:
-        raise_on_error = bool(kwargs.get('raise_on_error', False))
+        raise_on_error = bool(kwargs.pop('raise_on_error', False))
         try:
             return super().__call__(*args, **kwargs)
-        except ModuleExecutionError as err:
-            return self._handle_error(err.__context__ or err, raise_on_error=raise_on_error)
         except Exception as err:
+            if isinstance(err, ModuleExecutionError) and err.__context__:
+                err = err.__context__
             return self._handle_error(err, raise_on_error=raise_on_error)
 
     def forward(self, query: str, **kwargs) -> List[Dict[str, Any]]:
-        kwargs.pop('raise_on_error', None)
         return self.search(query, **kwargs)
 
     def get_content(self, item: Dict[str, Any]) -> str:
