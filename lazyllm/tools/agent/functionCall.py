@@ -1,6 +1,6 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
-from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text, once_wrapper
+from lazyllm import pipeline, loop, locals, package, FileSystemQueue, colored_text, once_wrapper
 from .toolsManager import ToolManager
 from .skill_manager import SKILLS_PROMPT
 from typing import List, Any, Dict, Union, Callable, Optional
@@ -101,14 +101,14 @@ class FunctionCall(ModuleBase):
             )
         else:
             self._prompter = ChatPrompter(instruction=prompt, tools=self._tools_manager.tools_description)
-        self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
+        self._llm = llm.share(
+            prompt=self._prompter,
+            format=FunctionCallFormatter(),
+            stream=stream,
+        ).used_by(self._module_id)
         with pipeline() as self._impl:
-            self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
-                                            color=Color.green, stream=stream)
             self._impl.pre_action = self._build_history
             self._impl.llm = self._llm
-            self._impl.dis = StreamResponse('Decision-making or result in this round:',
-                                            prefix_color=Color.yellow, color=Color.green, stream=stream)
             self._impl.post_action = self._post_action
 
     @property
@@ -145,9 +145,12 @@ class FunctionCall(ModuleBase):
                     'name': tool_call['function']['name'],
                 } for tool_call in workspace['tool_call_trace']
             ]
-            workspace['history'].append(
-                {'role': 'assistant', 'content': input.get('content', ''), 'tool_calls': input.get('tool_calls', [])}
-            )
+            workspace['history'].append({
+                'role': 'assistant',
+                'content': input.get('content', ''),
+                'tool_calls': input.get('tool_calls', []),
+                'reasoning_content': input.get('reasoning_content', ''),
+            })
             input = {'input': tool_call_results}
             history_idx += 1
             workspace['history'].extend(tool_call_results)
@@ -184,10 +187,13 @@ class FunctionCall(ModuleBase):
         result = self._impl(input)
 
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
-        # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed'].
+        # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed']
+        # and history is stored in locals['_lazyllm_agent']['history'].
         if isinstance(result, str):
-            locals['_lazyllm_agent']['completed'] = locals['_lazyllm_agent'].pop('workspace')\
-                .pop('tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
+            workspace = locals['_lazyllm_agent'].pop('workspace', {})
+            locals['_lazyllm_agent']['completed'] = workspace.pop(
+                'tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
+            locals['_lazyllm_agent']['history'] = workspace.pop('history', [])
             locals['chat_history'][self._llm._module_id] = []
         return result
 
@@ -197,11 +203,12 @@ class FunctionCallAgent(LazyLLMAgentBase):
                  return_last_tool_calls: bool = False,
                  skills: Union[bool, str, List[str], None] = None, desc: str = '',
                  workspace: Optional[str] = None, fs: Optional[Any] = None,
-                 skills_dir: Optional[str] = None):
+                 skills_dir: Optional[str] = None, enable_builtin_tools: bool = True):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
-                         skills=skills, desc=desc, workspace=workspace, fs=fs, skills_dir=skills_dir)
+                         skills=skills, desc=desc, workspace=workspace, fs=fs, skills_dir=skills_dir,
+                         enable_builtin_tools=enable_builtin_tools)
         assert self._llm is not None, 'llm cannot be empty.'
         self._assert_tools()
         prompt = FC_PROMPT

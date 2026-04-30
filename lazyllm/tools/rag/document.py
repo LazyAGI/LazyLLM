@@ -568,5 +568,5 @@ class UrlDocument(ModuleBase):
         return self._forward('active_node_groups')
 
     def __getattr__(self, name):
-        if name in self._missing_keys:
-            raise RuntimeError(f'Document generated with url and name has no attribute `{name}`')
+        if name in self.__dict__.get('_missing_keys', []):
+            raise AttributeError(f'Document generated with url and name has no attribute `{name}`')

@@ -3,6 +3,7 @@ from html import unescape
 from typing import List, Dict, Any
 
 from lazyllm.module import ModuleBase
+from lazyllm.module.module import ModuleExecutionError
 from lazyllm.thirdparty import httpx
 
 
@@ -48,13 +49,24 @@ class SearchBase(ModuleBase):
     def search(self, query: str, **kwargs: Any) -> List[Dict[str, Any]]:
         raise NotImplementedError('Subclass must implement search')
 
-    def forward(self, query: str, **kwargs) -> List[Dict[str, Any]]:
+    def _handle_error(self, err: Exception, *, raise_on_error: bool) -> List[Dict[str, Any]]:
+        if raise_on_error:
+            raise err
+        import lazyllm
+        lazyllm.LOG.error('Search request failed: %s', type(err).__name__)
+        return []
+
+    def __call__(self, *args, **kwargs) -> List[Dict[str, Any]]:
+        raise_on_error = bool(kwargs.pop('raise_on_error', False))
         try:
-            return self.search(query, **kwargs)
+            return super().__call__(*args, **kwargs)
         except Exception as err:
-            import lazyllm
-            lazyllm.LOG.error('Search request failed: %s', type(err).__name__)
-            return []
+            if isinstance(err, ModuleExecutionError) and err.__context__:
+                err = err.__context__
+            return self._handle_error(err, raise_on_error=raise_on_error)
+
+    def forward(self, query: str, **kwargs) -> List[Dict[str, Any]]:
+        return self.search(query, **kwargs)
 
     def get_content(self, item: Dict[str, Any]) -> str:
         url = item.get('url') or item.get('link') or ''

@@ -109,6 +109,7 @@ def _raise_hook_phase_errors(phase: str, errors):
 
 
 _builtin_hook_providers: list[Callable[[Any], list]] = []
+_builtin_hook_providers_state = 'pending'
 
 
 def register_builtin_hook_provider(provider: Callable[[Any], list]):
@@ -117,7 +118,21 @@ def register_builtin_hook_provider(provider: Callable[[Any], list]):
     return provider
 
 
+def _ensure_builtin_hook_providers_loaded():
+    global _builtin_hook_providers_state
+    if _builtin_hook_providers_state == 'loaded':
+        return
+    try:
+        from .tracing.collect.hook import resolve_tracing_hooks  # noqa: F401
+        _builtin_hook_providers_state = 'loaded'
+    except Exception as exc:
+        _builtin_hook_providers_state = 'pending'
+        if not isinstance(exc, ImportError):
+            raise
+
+
 def resolve_builtin_hooks(obj):
+    _ensure_builtin_hook_providers_loaded()
     hooks = []
     for provider in _builtin_hook_providers:
         provided_hooks = provider(obj)
@@ -267,9 +282,3 @@ def execution_with_hooks(
         obj = None
         return decorator(fn)
     return decorator
-
-
-try:
-    from .tracing.collect.hook import resolve_tracing_hooks  # noqa: F401, E402
-except ImportError:
-    pass

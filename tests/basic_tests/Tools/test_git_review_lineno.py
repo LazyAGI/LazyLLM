@@ -191,7 +191,7 @@ class TestLargeHunkSplitting:
         ranges = [(ws, ws + wc) for ws, wc, _ in wins]
         for i in range(len(ranges) - 1):
             assert ranges[i][1] <= ranges[i + 1][0], (
-                f'overlapping new-file ranges: {ranges[i]} and {ranges[i+1]}'
+                f'overlapping new-file ranges: {ranges[i]} and {ranges[i + 1]}'
             )
 
 
