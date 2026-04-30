@@ -1,21 +1,20 @@
 import copy
 import re
 from typing import List, Tuple, Optional, Dict
-from dataclasses import dataclass
 
 from lazyllm import LOG
 
 from .ocr_ir import (
-    Block, BBox, PageRef, SectionPath,
-    HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
-    FigureBlock, CodeBlock, ListBlock,
+    Block, SectionPath,
+    HeadingBlock, ParagraphBlock, TableBlock,
+    FigureBlock, CodeBlock,
 )
 
 
 # ---------- L1: Normalize ----------
 
 def l1_normalize(blocks: List[Block], fix_reader_order: bool = False) -> List[Block]:
-    """L1 normalization: reorder blocks by reading order, validate heading levels, drop TOC pages."""
+    '''L1 normalization: reorder blocks by reading order, validate heading levels, drop TOC pages.'''
     if fix_reader_order:
         blocks = _two_column_reorder_reading(blocks)
         blocks = _detect_heading_level_gap(blocks)
@@ -24,13 +23,13 @@ def l1_normalize(blocks: List[Block], fix_reader_order: bool = False) -> List[Bl
 
 
 def _two_column_reorder_reading(blocks: List[Block]) -> List[Block]:
-    """Restore natural reading order per page.
+    '''Restore natural reading order per page.
 
     Groups blocks by page, then detects two-column layouts by analysing the
     x0 distribution. If both left and right columns contain enough blocks,
     sorts each column top-to-bottom and concatenates left before right.
     Otherwise falls back to standard top-to-bottom, left-to-right ordering.
-    """
+    '''
     pages: Dict[int, List[Block]] = {}
     for b in blocks:
         pages.setdefault(b.page.index, []).append(b)
@@ -73,12 +72,12 @@ def _two_column_reorder_reading(blocks: List[Block]) -> List[Block]:
 
 
 def _detect_heading_level_gap(blocks: List[Block]) -> List[Block]:
-    """Detect heading level gaps and log anomalies.
+    '''Detect heading level gaps and log anomalies.
 
     Scans heading blocks in document order. If a heading level jumps by more
     than one (e.g. level 1 -> level 3), logs a debug message but does not
     insert virtual headings.
-    """
+    '''
     prev_level = 0
     for b in blocks:
         if isinstance(b, HeadingBlock):
@@ -89,11 +88,11 @@ def _detect_heading_level_gap(blocks: List[Block]) -> List[Block]:
 
 
 def _drop_toc_pages(blocks: List[Block]) -> List[Block]:
-    """Drop table-of-contents pages.
+    '''Drop table-of-contents pages.
 
     Detects a TOC start by the Chinese pattern '目[次录]'. All subsequent
     short lines ending with a number are treated as TOC entries and removed.
-    """
+    '''
     if not blocks:
         return blocks
 
@@ -118,7 +117,7 @@ def _drop_toc_pages(blocks: List[Block]) -> List[Block]:
 # ---------- L2: Associate ----------
 
 def l2_associate(blocks: List[Block], merge_table: bool = False) -> List[Block]:
-    """L2 association: merge cross-page tables, pair captions, inject section paths, merge paragraphs."""
+    '''L2 association: merge cross-page tables, pair captions, inject section paths, merge paragraphs.'''
     if merge_table:
         blocks = _merge_cross_page_tables(blocks)
     caption_indices = _pair_captions(blocks)
@@ -131,12 +130,12 @@ def l2_associate(blocks: List[Block], merge_table: bool = False) -> List[Block]:
 
 
 def _merge_cross_page_tables(blocks: List[Block]) -> List[Block]:
-    """Merge tables that span across consecutive pages.
+    '''Merge tables that span across consecutive pages.
 
     Scans for adjacent TableBlocks on consecutive pages. If header similarity,
     vertical position, and row-deduplication heuristics all pass, the two
     tables are merged into a single TableBlock with shifted row indices.
-    """
+    '''
     if not blocks:
         return blocks
 
@@ -166,7 +165,7 @@ def _merge_cross_page_tables(blocks: List[Block]) -> List[Block]:
 
 
 def _should_merge_tables(a: TableBlock, b: TableBlock) -> bool:
-    """Return True if two consecutive page tables should be merged.
+    '''Return True if two consecutive page tables should be merged.
 
     Checks Jaccard header similarity (>0.8), vertical position heuristics
     (a near page bottom, b near page top), and avoids exact duplicate
@@ -174,7 +173,7 @@ def _should_merge_tables(a: TableBlock, b: TableBlock) -> bool:
 
     Also merges when the first table has very few data rows (≤1), which
     indicates a header-only continuation page with a different header.
-    """
+    '''
     a_header = _get_table_header_text(a)
     b_header = _get_table_header_text(b)
 
@@ -203,7 +202,7 @@ def _should_merge_tables(a: TableBlock, b: TableBlock) -> bool:
 
 
 def _get_table_header_text(t: TableBlock) -> str:
-    """Concatenate header cell texts of a table."""
+    '''Concatenate header cell texts of a table.'''
     if not t.cells:
         return ''
     min_row = min(c.row for c in t.cells)
@@ -212,7 +211,7 @@ def _get_table_header_text(t: TableBlock) -> str:
 
 
 def _get_first_row_text(t: TableBlock) -> str:
-    """Concatenate first-row cell texts of a table."""
+    '''Concatenate first-row cell texts of a table.'''
     if not t.cells:
         return ''
     min_row = min(c.row for c in t.cells)
@@ -221,7 +220,7 @@ def _get_first_row_text(t: TableBlock) -> str:
 
 
 def _get_last_row_text(t: TableBlock) -> str:
-    """Concatenate last-row cell texts of a table."""
+    '''Concatenate last-row cell texts of a table.'''
     if not t.cells:
         return ''
     max_row = max(c.row for c in t.cells)
@@ -230,7 +229,7 @@ def _get_last_row_text(t: TableBlock) -> str:
 
 
 def _merge_two_tables(a: TableBlock, b: TableBlock) -> TableBlock:
-    """Merge table b into table a, shifting row indices and deduplicating headers."""
+    '''Merge table b into table a, shifting row indices and deduplicating headers.'''
     max_row_a = max((c.row for c in a.cells), default=-1)
     shifted_cells = []
     for c in b.cells:
@@ -258,7 +257,7 @@ def _merge_two_tables(a: TableBlock, b: TableBlock) -> TableBlock:
 
 
 def _pair_captions(blocks: List[Block]) -> set:
-    """Pair captions with nearby figure, table, and code blocks.
+    '''Pair captions with nearby figure, table, and code blocks.
 
     Scans a +/-3 window around each target block for a text line matching
     the corresponding caption pattern (e.g. 'Figure 1', 'Table 2').
@@ -266,7 +265,7 @@ def _pair_captions(blocks: List[Block]) -> set:
     and the original caption block index is returned for removal.
 
     Returns a set of indices that should be removed from the block list.
-    """
+    '''
     to_remove: set = set()
     for i, b in enumerate(blocks):
         if isinstance(b, FigureBlock):
@@ -288,11 +287,11 @@ def _pair_captions(blocks: List[Block]) -> set:
 
 
 def _find_nearest_caption(blocks: List[Block], idx: int, pattern: str) -> Optional[int]:
-    """Search up to 3 positions around idx for a block whose text matches pattern.
+    '''Search up to 3 positions around idx for a block whose text matches pattern.
 
     Returns the index of the first matching block, or None if none found.
     Only considers blocks with text shorter than 200 chars.
-    """
+    '''
     window = 3
     for offset in range(1, window + 1):
         for sign in (-1, 1):
@@ -305,12 +304,12 @@ def _find_nearest_caption(blocks: List[Block], idx: int, pattern: str) -> Option
 
 
 def _inject_section_path(blocks: List[Block]) -> List[Block]:
-    """Inject heading hierarchy (section path) into every block.
+    '''Inject heading hierarchy (section path) into every block.
 
     Maintains a stack of active headings. For each heading encountered,
     pops higher-or-equal levels and pushes the current one. Every block
     receives a SectionPath containing the stacked heading texts.
-    """
+    '''
     heading_stack: List[Tuple[int, str, str]] = []  # (level, text, anchor)
 
     for b in blocks:
@@ -332,13 +331,13 @@ def _inject_section_path(blocks: List[Block]) -> List[Block]:
 
 
 def _merge_consecutive_paragraphs(blocks: List[Block]) -> List[Block]:
-    """Merge consecutive ParagraphBlocks that share the same section path.
+    '''Merge consecutive ParagraphBlocks that share the same section path.
 
     Groups consecutive ParagraphBlocks by identical section anchors.
     Groups with more than one block are merged into a single ParagraphBlock
     whose text is joined by '\\n\\n'. The first block's page and bbox are retained.
     If a block carries a '_lines' attribute (patch mode), those lines are concatenated.
-    """
+    '''
     if not blocks:
         return blocks
 
@@ -380,7 +379,7 @@ def _merge_consecutive_paragraphs(blocks: List[Block]) -> List[Block]:
 # ---------- Utilities ----------
 
 def _jaccard_similarity(a: str, b: str) -> float:
-    """Compute Jaccard similarity between two strings (word-level)."""
+    '''Compute Jaccard similarity between two strings (word-level).'''
     set_a = set(a.split())
     set_b = set(b.split())
     if not set_a and not set_b:
