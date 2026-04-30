@@ -80,55 +80,6 @@ ownership rules — e.g. tracing config in top-level configs.py instead of traci
 - dependency: new hard dependency that should be optional/extra (e.g. added to install_requires but \
 only used by an optional feature; should be in extras_require or optional-dependencies instead)'''
 
-_R1_STRICT_RULES = '''\
-STRICT RULES — violations will be rejected:
-1. Only report issues INTRODUCED or WORSENED by the diff (added/modified/deleted lines). \
-Pre-existing code smells, refactoring opportunities, or style inconsistencies in unchanged code \
-are OUT OF SCOPE even if visible in context. If the issue would exist identically without this diff, discard it.
-2. Do NOT report lint/style tool errors that automated tools already catch: \
-unused imports (F401), line-too-long, complexity metrics, missing blank lines, \
-trailing whitespace, etc. \
-HOWEVER, if the diff deletes or rewrites a function/class and you can see in the file context \
-that a helper function, constant, or variable was ONLY used by the old code and is now orphaned, \
-DO report it (bug_category: maintainability, severity: normal). \
-The distinction: "unused import" = lint tool's job; \
-"orphaned helper after refactoring" = reviewer's job. \
-CAVEAT — do NOT report a symbol as orphaned if any of these dynamic-reference patterns apply: \
-(a) its class uses a metaclass or __init_subclass__ (auto-registration upon definition), \
-(b) it appears in __all__, a registry dict, a @register decorator, or plugin entry-points, \
-(c) the module defines __getattr__ (dynamic attribute dispatch), \
-(d) its name follows a convention pattern (*_handler, *_impl, *_hook, *_plugin) suggesting dynamic dispatch. \
-If any pattern applies, do NOT report it; if uncertain, add \
-"(may be dynamically referenced)" and cap severity at "normal".
-3. Do NOT flag defensive programming as a bug. Patterns like `max(n, 1)`, `or default`, \
-`if x is None: x = []`, guard clauses, and similar constructs are intentional safety measures — \
-report them only if they introduce a concrete logical error (e.g. masking a real zero that matters).
-4. Do NOT flag a helper function as "duplicate code" or "should reuse X" unless you can confirm \
-that X exists in the current codebase AND has an identical or compatible interface. \
-Specialized helpers (e.g. agent tool wrappers, prompt builders) are NOT duplicates of \
-general-purpose utilities even if they perform similar operations.
-5. If the diff changes an abstract method or base-class interface, do NOT report it as a \
-"breaking change" without first verifying (via file_context or your knowledge of the diff) \
-that subclass implementations have NOT been updated. Only report if you have evidence that \
-at least one concrete subclass is out of sync.
-6. Do NOT report top-level side-effects (e.g. sys.path modification, module-level function calls) \
-as bugs when the file is an entry-point script. A file is an entry-point script if its name is \
-server.py, worker.py, main.py, __main__.py, or if the diff contains an \
-`if __name__ == "__main__":` block. Top-level setup code in such files is intentional.
-7. Before claiming something is "missing", "unused", "unreachable", or "always X", \
-you MUST cite the specific diff lines that prove the absence. If the diff does not \
-contain enough context to confirm, state "cannot verify from diff alone" and set \
-severity to at most "normal".
-8. Do NOT claim an API endpoint, field name, URL path, or protocol behavior is wrong \
-unless the diff itself contains contradictory evidence (e.g. a test assertion, a docstring, \
-or an error message that conflicts with the code). If you are unfamiliar with a third-party \
-API (e.g. GitCode, Gitee, GitLab), do NOT guess its conventions based on other platforms.
-9. When suggesting "add error handling" or "add exception protection", first verify whether \
-the called function already handles exceptions internally. If the callee wraps its body in \
-try/except or returns a safe default, the caller does NOT need redundant protection.
-10. {density_rule}'''
-
-# Rules 1-5 are shared across all rounds (density_rule is round-specific and injected separately)
 _SHARED_STRICT_RULES_PREFIX = '''\
 STRICT RULES — violations will be rejected:
 1. Only report issues INTRODUCED or WORSENED by the diff (added/modified/deleted lines). \
@@ -150,9 +101,37 @@ CAVEAT — do NOT report a symbol as orphaned if any of these dynamic-reference 
 (e) the Project Agent Instructions (AGENTS.md) describe a dynamic dispatch mechanism that covers this symbol. \
 If any pattern applies, do NOT report it; if uncertain, add \
 "(may be dynamically referenced)" and cap severity at "normal".
-3. Do NOT flag defensive programming as a bug. Patterns like `max(n, 1)`, `or default`, \
+3. Do NOT flag necessary defensive programming as a bug. Patterns like `max(n, 1)`, `or default`, \
 `if x is None: x = []`, guard clauses, and similar constructs are intentional safety measures — \
-report them only if they introduce a concrete logical error (e.g. masking a real zero that matters).
+report them only if they introduce a concrete logical error (e.g. masking a real zero that matters). \
+HOWEVER, if the diff introduces code that looks like AI-generated over-defensive programming, \
+DO report it as a maintainability issue with severity "medium" and suggest removing or simplifying \
+the unnecessary code. The key test: would a human expert write this? If not, flag it. \
+Patterns to flag (severity must be "medium", bug_category "maintainability"): \
+(a) Unnecessary null/None checks — checking a value for None when the caller contract or type \
+annotation guarantees it is never None; `or []` / `or {}` / `or 0` fallbacks on values that \
+cannot be None by design; multi-layer nested None-guards with no clear invariant. \
+(b) Over-broad exception handling — bare `except:` or `except Exception` blocks that silently \
+swallow all errors with no logging, no re-raise, and no meaningful recovery; catching a broad \
+exception type when only one specific exception is expected. \
+(c) Redundant type/state checks — isinstance checks before every operation on a parameter that \
+is already typed or validated at the entry point; re-validating the same precondition multiple \
+times within the same function; asserting invariants that are structurally guaranteed. \
+(d) Superfluous boundary checks — off-by-one guards like `if len(x) == 0` immediately before \
+a loop that already handles empty input correctly; range checks on values whose domain is \
+constrained by the type system or upstream logic. \
+(e) Overly complex conditional branches — deeply nested if/elif chains that could be replaced \
+by a lookup table, early return, or polymorphism; boolean expressions with redundant sub-clauses \
+that are always true or always false given the surrounding context. \
+(f) Unused or misleading defaults — function parameters with default values that are never \
+actually used by any caller and exist only as "just in case" placeholders; default values that \
+contradict the documented required semantics of the parameter. \
+(g) Verbose or redundant logging — logging the same event at multiple levels (DEBUG + INFO + \
+WARNING) for a single operation; log messages that repeat the function name and arguments \
+verbatim with no additional context; logging inside tight loops with no rate-limiting. \
+(h) Redundant loops or recursion — iterating over a collection only to immediately return the \
+first element (use `next()` instead); recursive calls that could be a single expression; \
+re-computing the same derived value on every iteration instead of hoisting it out of the loop.
 4. Do NOT flag a helper function as "duplicate code" or "should reuse X" unless you can confirm \
 that X exists in the current codebase AND has an identical or compatible interface. \
 Specialized helpers (e.g. agent tool wrappers, prompt builders) are NOT duplicates of \
@@ -189,6 +168,9 @@ runtime failure, data corruption, or explicit contract violation that the choice
 Structural preferences (e.g. two commands vs one flag, composition vs inheritance, \
 separate modules vs merged) are the author's prerogative and must not be flagged without \
 evidence of actual harm.'''
+
+# _R1_STRICT_RULES = _SHARED_STRICT_RULES_PREFIX + density_rule as rule 13.
+_R1_STRICT_RULES = _SHARED_STRICT_RULES_PREFIX + '\n13. {density_rule}'
 
 _R1_ISSUE_FIELDS = '''\
 For EVERY issue found, output a JSON object with:
@@ -2705,7 +2687,7 @@ def infer_usage_scenarios(
 # ── RChain: Scenario-Driven Call Chain Review ─────────────────────────────────
 
 _RCHAIN_AGENT_TIMEOUT_SECS = 240
-_RCHAIN_AGENT_RETRIES = 6
+_RCHAIN_AGENT_RETRIES = 12
 _RCHAIN_MAX_PARALLEL_SCENARIOS = 3
 _RCHAIN_FIXED_OVERHEAD = 20000
 
@@ -2772,19 +2754,25 @@ detail (e.g. KeyError: 'field') rather than a user-understandable description.
 
 ## Output Format
 Output a JSON array of issues. Each issue must have:
-- "path": file path
-- "line": line number (integer, must reference a line in the diff)
+- "path": file path (must be a file present in the diff)
+- "line": line number (integer, must reference a line in the diff of that file)
 - "severity": "critical" | "medium" | "normal"
 - "bug_category": one of logic|type|safety|exception|performance|concurrency|design|maintainability
   (Task A bugs: use logic/concurrency/safety/type; Task B usability: use design/exception)
-- "problem": clear description of the issue
+- "scenario": the scenario title that triggered this issue (use the exact title from "## Usage Scenario" above)
+- "problem": clear description of the issue — if the root cause is in a callee outside the diff,
+  describe it here (e.g. "callee foo() at bar.py:123 does not handle None, causing crash at this call site")
 - "suggestion": concrete fix suggestion (wrap code with markdown code fences)
 - "source": "rchain"
+
+IMPORTANT: All issues MUST be anchored to a line in the diff. If you discover a bug deep in the
+call chain (in a file not in the diff), report it at the call site in the diff that triggers it,
+and explain the downstream root cause in the "problem" field.
 
 ''' + JSON_OUTPUT_INSTRUCTION
 
 
-def _rchain_parse_issues(raw: Optional[str]) -> List[Dict[str, Any]]:
+def _rchain_parse_issues(raw: Optional[str], scenario_title: str = '') -> List[Dict[str, Any]]:
     '''Parse and normalize RChain agent output into issue dicts.'''
     json_text = _extract_json_text(raw or '')
     items = _parse_json_with_repair(json_text) if json_text else None
@@ -2792,11 +2780,24 @@ def _rchain_parse_issues(raw: Optional[str]) -> List[Dict[str, Any]]:
     if not isinstance(items, list):
         return result
     for item in items:
-        if isinstance(item, dict):
-            item['source'] = 'rchain'
-            normalized = _normalize_comment_item(item, default_category='design')
-            if normalized:
-                result.append(normalized)
+        if not isinstance(item, dict):
+            continue
+        item['source'] = 'rchain'
+        if scenario_title and not item.get('scenario'):
+            item['scenario'] = scenario_title
+        # First try strict normalization (line must be in diff).
+        normalized = _normalize_comment_item(item, default_category='design')
+        if normalized is None:
+            # Fallback: treat as a general (line=None) issue if the item has a valid problem.
+            # This preserves call-chain findings that cannot be anchored to a specific diff line.
+            normalized = _normalize_comment_item(
+                item, default_category='design', allow_null_line=True,
+            )
+        if normalized:
+            normalized['source'] = 'rchain'
+            if scenario_title:
+                normalized['scenario'] = item.get('scenario') or scenario_title
+            result.append(normalized)
     return result
 
 
@@ -2894,7 +2895,7 @@ def _rchain_run_single_scenario(
             lazyllm.LOG.warning(f'  [RChain] Agent failed for scenario "{title}" chunk {chunk_label}: {e}')
             continue
 
-        all_issues.extend(_rchain_parse_issues(raw))
+        all_issues.extend(_rchain_parse_issues(raw, scenario_title=title))
 
     # Deduplicate within scenario: same path+line keeps highest severity
     result = _rchain_dedup_issues(all_issues)
@@ -3019,7 +3020,13 @@ def _compress_existing_comments(llm: Any, comments: List[Dict[str, Any]]) -> Lis
 
 def _compress_new_issues(llm: Any, issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     def body_fn(c: Dict[str, Any]) -> str:
-        return (c.get('problem') or '') + ' ' + (c.get('suggestion') or '')
+        problem = c.get('problem') or ''
+        suggestion = c.get('suggestion') or ''
+        if isinstance(problem, list):
+            problem = ' '.join(str(x) for x in problem)
+        if isinstance(suggestion, list):
+            suggestion = ' '.join(str(x) for x in suggestion)
+        return problem + ' ' + suggestion
 
     def extra_fn(c: Dict[str, Any], summary: Optional[str]) -> Dict[str, Any]:
         return {
@@ -3176,7 +3183,7 @@ def _round4_merge_and_deduplicate(
             f'Round 4: LLM discarded {len(discarded_idxs)} issues: '
             + ', '.join(
                 f'#{i} {idx_map[i].get("path", "?")}:{idx_map[i].get("line", "?")} '
-                f'[{idx_map[i].get("severity","?")}][{idx_map[i].get("bug_category","?")}]'
+                f'[{idx_map[i].get("severity", "?")}][{idx_map[i].get("bug_category", "?")}]'
                 for i in sorted(discarded_idxs)
             )
         )

@@ -49,12 +49,9 @@ class ArxivSearch(SearchBase):
             'sortBy': sort_by,
             'sortOrder': 'descending',
         }
-        try:
-            resp = httpx.get(self._url, params=params, timeout=self._timeout)
-            resp.raise_for_status()
-            text = resp.text
-        except Exception:
-            return []
+        resp = httpx.get(self._url, params=params, timeout=self._timeout)
+        resp.raise_for_status()
+        text = resp.text
         ns = {'atom': 'http://www.w3.org/2005/Atom'}
         try:
             root = xml.etree.ElementTree.fromstring(text)

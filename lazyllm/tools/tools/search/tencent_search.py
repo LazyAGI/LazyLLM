@@ -1,7 +1,5 @@
 from typing import Dict, Any, List
 
-import lazyllm
-
 from .base import SearchBase, _make_result
 
 
@@ -24,13 +22,9 @@ class TencentSearch(SearchBase):
             'tms', '2020-12-29', self._cred, '', profile=client_profile)
 
     def search(self, query: str) -> List[Dict[str, Any]]:
-        try:
-            res_dict = self._client.call_json(
-                'SearchPro', {'Query': query, 'Mode': 2}, headers=self._headers)
-            pages = res_dict.get('Response', {}).get('Pages') or []
-        except Exception as err:
-            lazyllm.LOG.error('Request Tencent Search meets error: %s', err)
-            return []
+        res_dict = self._client.call_json(
+            'SearchPro', {'Query': query, 'Mode': 2}, headers=self._headers)
+        pages = res_dict.get('Response', {}).get('Pages') or []
         out: List[Dict[str, Any]] = []
         for p in pages:
             title = p.get('Title') or p.get('title') or ''

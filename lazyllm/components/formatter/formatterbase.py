@@ -30,7 +30,11 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
         raise NotImplementedError('This data parse function is not implemented.')
 
     def format(self, msg):
-        if _is_chat_message(msg): msg = msg['content']
+        if _is_chat_message(msg):
+            if reasoning_content := msg.get('reasoning_content'):
+                msg = f'<think>{reasoning_content}</think>' + msg['content']
+            else:
+                msg = msg['content']
         if isinstance(msg, str): msg = self._load(msg)
         return self._parse_py_data_by_formatter(msg)
 
@@ -151,7 +155,7 @@ class EmptyFormatter(LazyLLMFormatterBase):
 class FunctionCallFormatter(LazyLLMFormatterBase):
     def format(self, msg):
         assert isinstance(msg, dict), 'FunctionCallFormatter only supports dict input.'
-        return {k: msg[k] for k in ('role', 'content', 'tool_calls') if k in msg}
+        return {k: msg[k] for k in ('role', 'content', 'tool_calls', 'reasoning_content') if k in msg}
 
 LAZYLLM_QUERY_PREFIX = '<lazyllm-query>'
 

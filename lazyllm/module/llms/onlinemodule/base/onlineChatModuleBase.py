@@ -76,29 +76,32 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def _str_to_json(self, msg: str, stream_output: bool):
         if isinstance(msg, bytes):
-            pattern = re.compile(r'^data:\s*')
-            msg = re.sub(pattern, '', msg.decode('utf-8'))
+            msg = msg.decode('utf-8')
+        content = re.sub(r'^data:\s*', '', msg.strip())
+        if not content or content == '[DONE]':
+            return ''
         try:
-            message = self._convert_msg_format(json.loads(msg))
+            message = self._convert_msg_format(json.loads(content))
             if not stream_output: return message
             color = stream_output.get('color') if isinstance(stream_output, dict) else None
             for item in message.get('choices', []):
                 delta = item.get('message', item.get('delta', {}))
+                if delta.get('reasoning_content') and delta.get('content'):
+                    lazyllm.LOG.warning('stream delta contains both reasoning_content and content')
                 if (reasoning_content := delta.get('reasoning_content', '')):
                     self._stream_output(reasoning_content, color, cls='think')
-                elif (content := delta.get('content', '')) and not delta.get('tool_calls'):
+                if (content := delta.get('content', '')) and not delta.get('tool_calls'):
                     self._stream_output(content, color)
             lazyllm.LOG.debug(f'message: {message}')
             return message
         except Exception:
+            lazyllm.LOG.warning(f'Failed to parse message: {msg}')
             return ''
 
     def _extract_specified_key_fields(self, response: Dict[str, Any]):
         if not ('choices' in response and isinstance(response['choices'], list)):
             raise ValueError(f'The response {response} does not contain a `choices` field.')
         outputs = response['choices'][0].get('message') or response['choices'][0].get('delta', {})
-        if 'reasoning_content' in outputs and outputs['reasoning_content'] and 'content' in outputs:
-            outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
         return outputs
 
     def _merge_stream_result(self, src: List[Union[str, int, list, dict]], force_join: bool = False):
