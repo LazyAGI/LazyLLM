@@ -8,10 +8,8 @@ from opentelemetry import trace
 import lazyllm
 from lazyllm import set_trace_context, LazyTraceContext
 from lazyllm.tracing.collect import runtime as tracing_runtime
-from lazyllm.tracing.backends.langfuse.backend import LangfuseConsumeBackend
 
 TRACE_ID = '0' * 32
-OTHER_TRACE_ID = '1' * 32
 ROOT_SPAN_ID = '1' * 16
 CHILD_SPAN_ID = '2' * 16
 
@@ -27,7 +25,6 @@ LANGFUSE_ENV = {
     'LANGFUSE_SECRET_KEY': LANGFUSE_SECRET_KEY,
 }
 _MISSING = object()
-_RAW_BACKEND = LangfuseConsumeBackend()
 
 
 class MemoryTracingBackend:
@@ -126,28 +123,6 @@ def make_langfuse_observation(
     }
     observation.update(overrides)
     return observation
-
-
-def make_raw_trace(trace_id=TRACE_ID, **overrides):
-    return _RAW_BACKEND._raw_trace_from_body(
-        trace_id,
-        make_langfuse_trace_payload(trace_id=trace_id, **overrides),
-    )
-
-
-def make_raw_span(
-    span_id=ROOT_SPAN_ID, *,
-    trace_id=TRACE_ID, parent_span_id=None, **overrides,
-):
-    return _RAW_BACKEND._raw_span_from_obs(
-        trace_id,
-        make_langfuse_observation(
-            span_id,
-            trace_id=trace_id,
-            parent_id=parent_span_id,
-            **overrides,
-        ),
-    )
 
 
 @pytest.fixture
