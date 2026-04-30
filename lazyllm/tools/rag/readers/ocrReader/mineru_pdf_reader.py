@@ -286,7 +286,6 @@ class MineruPDFReader(_OcrReaderBase):
         return docs
 
 
-
 def post_async(submit_url: str, status_url: str, result_url: str = None,
                payload: dict = None, files: dict = None, headers: dict = None,
                timeout: int = 60,
