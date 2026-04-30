@@ -50,12 +50,9 @@ class SemanticScholarSearch(SearchBase):
         headers = {}
         if self._api_key:
             headers['x-api-key'] = self._api_key
-        try:
-            resp = httpx.get(url, params=params, headers=headers or None, timeout=self._timeout)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception:
-            return []
+        resp = httpx.get(url, params=params, headers=headers or None, timeout=self._timeout)
+        resp.raise_for_status()
+        data = resp.json()
         items = data.get('data') or []
         out: List[dict] = []
         for it in items:

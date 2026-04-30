@@ -41,8 +41,7 @@ class ArxivSearch(SearchBase):
         return super().get_content(item)
 
     def search(self, query: str, max_results: int = 10,
-               sort_by: str = 'relevance',
-               raise_on_error: bool = False) -> List[dict]:
+               sort_by: str = 'relevance') -> List[dict]:
         params = {
             'search_query': f'all:{query}',
             'start': 0,
@@ -50,12 +49,9 @@ class ArxivSearch(SearchBase):
             'sortBy': sort_by,
             'sortOrder': 'descending',
         }
-        try:
-            resp = httpx.get(self._url, params=params, timeout=self._timeout)
-            resp.raise_for_status()
-            text = resp.text
-        except Exception as err:
-            return self._handle_error(err, raise_on_error=raise_on_error)
+        resp = httpx.get(self._url, params=params, timeout=self._timeout)
+        resp.raise_for_status()
+        text = resp.text
         ns = {'atom': 'http://www.w3.org/2005/Atom'}
         try:
             root = xml.etree.ElementTree.fromstring(text)

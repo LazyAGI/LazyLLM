@@ -23,7 +23,7 @@ Subclasses must implement search and normalize raw API responses to a list of di
 add_example('SearchBase', '''
 from lazyllm.tools.tools import SearchBase, ArxivSearch
 engine = ArxivSearch()
-results = engine.forward('transformer')
+results = engine('transformer')
 ''')
 
 add_chinese_doc('SearchBase.search', '''
@@ -99,7 +99,7 @@ Returns:
 add_example('SearchBase.get_content', '''
 from lazyllm.tools.tools import ArxivSearch
 engine = ArxivSearch()
-results = engine.forward('transformer')
+results = engine('transformer')
 if results:
     text = engine.get_content(results[0])
 ''')
@@ -107,7 +107,7 @@ if results:
 add_example('SearchBase.get_contents', '''
 from lazyllm.tools.tools import WikipediaSearch
 wiki = WikipediaSearch()
-items = wiki.search('machine learning')
+items = wiki('machine learning')
 texts = wiki.get_contents(items[:3])
 ''')
 
@@ -177,7 +177,7 @@ Returns:
 add_example('GoogleSearch.search', '''
 from lazyllm.tools.tools import GoogleSearch
 google = GoogleSearch('<api_key>', '<search_engine_id>')
-res = google.search('machine learning', date_restrict='m1')
+res = google('machine learning', date_restrict='m1')
 ''')
 
 add_chinese_doc('GoogleSearch.get_content', '''
@@ -239,7 +239,7 @@ Returns:
 add_example('TencentSearch.search', '''
 from lazyllm.tools.tools import TencentSearch
 searcher = TencentSearch(secret_id='<id>', secret_key='<key>')
-res = searcher.search('calculus')
+res = searcher('calculus')
 ''')
 
 add_chinese_doc('TencentSearch.get_content', '''
@@ -657,7 +657,7 @@ Returns:
 add_example('WikipediaSearch.search', '''
 from lazyllm.tools.tools import WikipediaSearch
 wiki = WikipediaSearch(base_url='https://en.wikipedia.org')
-res = wiki.search('machine learning', limit=5)
+res = wiki('machine learning', limit=5)
 ''')
 
 add_chinese_doc('WikipediaSearch.get_content', '''

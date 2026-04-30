@@ -18,12 +18,9 @@ class GoogleBooksSearch(SearchBase):
         params = {'q': query, 'maxResults': min(max_results, 40)}
         if self._api_key:
             params['key'] = self._api_key
-        try:
-            resp = httpx.get(self._url, params=params, timeout=self._timeout)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception:
-            return []
+        resp = httpx.get(self._url, params=params, timeout=self._timeout)
+        resp.raise_for_status()
+        data = resp.json()
         items = data.get('items') or []
         out: List[dict] = []
         for it in items:

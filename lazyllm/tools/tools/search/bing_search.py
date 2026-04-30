@@ -14,20 +14,17 @@ class BingSearch(SearchBase):
         self._url = endpoint or 'https://api.bing.microsoft.com/v7.0/search'
         self._timeout = timeout
 
-    def search(self, query: str, count: int = 10, raise_on_error: bool = False) -> List[dict]:
+    def search(self, query: str, count: int = 10) -> List[dict]:
         headers = {'Ocp-Apim-Subscription-Key': self._key}
         params = {'q': query, 'count': min(count, 50)}
-        try:
-            resp = httpx.get(
-                self._url,
-                headers=headers,
-                params=params,
-                timeout=self._timeout,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as err:
-            return self._handle_error(err, raise_on_error=raise_on_error)
+        resp = httpx.get(
+            self._url,
+            headers=headers,
+            params=params,
+            timeout=self._timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
         if data.get('_type') == 'ErrorResponse':
             return []
         web = data.get('webPages') or {}
