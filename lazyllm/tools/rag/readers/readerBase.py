@@ -267,9 +267,11 @@ class _RichReader(LazyLLMReaderBase):
         if self._split_doc:
             return [RichDocNode(nodes, global_metadata=nodes[0].global_metadata if nodes else None)]
         else:
+            if not nodes:
+                return []
             texts = [b.text for b in nodes]
             return [DocNode(
                 text='\n'.join(texts),
-                metadata={'file_name': nodes[0].metadata['file_name']},
+                metadata={'file_name': nodes[0].metadata.get('file_name', '')},
                 global_metadata=nodes[0].global_metadata
             )]
