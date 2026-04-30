@@ -65,12 +65,9 @@ class StackOverflowSearch(SearchBase):
         }
         if self._key:
             params['key'] = self._key
-        try:
-            resp = httpx.get(url, params=params, timeout=self._timeout)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception:
-            return []
+        resp = httpx.get(url, params=params, timeout=self._timeout)
+        resp.raise_for_status()
+        data = resp.json()
         items = data.get('items') or []
         out: List[dict] = []
         for it in items:

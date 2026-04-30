@@ -1,10 +1,15 @@
 from typing import Any
 
-from ...common import LOG, globals
-from ...configs import config
-from ...hook import LazyLLMHook, register_builtin_hook_provider
+from lazyllm.common import LOG, globals
+from lazyllm.configs import config
+from lazyllm.hook import LazyLLMHook, register_builtin_hook_provider
 from .configs import resolve_default_module_trace, resolve_runtime_module_trace_disabled
-from .output_attrs import collect_trace_output_attrs, install_post_process_probe, remove_post_process_probe
+from .output_attrs import (
+    collect_trace_output_attrs,
+    discard_pending_switch_ifs_stack,
+    install_post_process_probe,
+    remove_post_process_probe,
+)
 from .runtime import finish_span, set_span_attributes, set_span_error, set_span_output, set_span_usage, start_span
 
 
@@ -86,6 +91,7 @@ class LazyTracingHook(LazyLLMHook):
         remove_post_process_probe(self._obj)
         if self._span is None:
             return
+        discard_pending_switch_ifs_stack(self._obj)
         finish_span(self._span)
         self._span = None
 

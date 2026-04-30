@@ -3186,7 +3186,7 @@ def _round4_merge_and_deduplicate(
             f'Round 4: LLM discarded {len(discarded_idxs)} issues: '
             + ', '.join(
                 f'#{i} {idx_map[i].get("path", "?")}:{idx_map[i].get("line", "?")} '
-                f'[{idx_map[i].get("severity","?")}][{idx_map[i].get("bug_category","?")}]'
+                f'[{idx_map[i].get("severity", "?")}][{idx_map[i].get("bug_category", "?")}]'
                 for i in sorted(discarded_idxs)
             )
         )

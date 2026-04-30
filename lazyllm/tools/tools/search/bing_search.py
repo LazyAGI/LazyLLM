@@ -17,17 +17,14 @@ class BingSearch(SearchBase):
     def search(self, query: str, count: int = 10) -> List[dict]:
         headers = {'Ocp-Apim-Subscription-Key': self._key}
         params = {'q': query, 'count': min(count, 50)}
-        try:
-            resp = httpx.get(
-                self._url,
-                headers=headers,
-                params=params,
-                timeout=self._timeout,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception:
-            return []
+        resp = httpx.get(
+            self._url,
+            headers=headers,
+            params=params,
+            timeout=self._timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
         if data.get('_type') == 'ErrorResponse':
             return []
         web = data.get('webPages') or {}
