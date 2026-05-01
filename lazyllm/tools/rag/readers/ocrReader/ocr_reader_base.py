@@ -43,11 +43,12 @@ class _OcrReaderBase(_RichReader, _Adapter):
                  return_trace: bool = True):
         super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
         self._url = url
-        self._image_cache_dir = image_cache_dir
-        self._image_cache_dir.mkdir(parents=True, exist_ok=True)
-        # Clear any stale contents from previous runs
-        for item in self._image_cache_dir.iterdir():
-            shutil.rmtree(item) if item.is_dir() else item.unlink()
+        self._image_cache_dir = Path(image_cache_dir) if image_cache_dir is not None else None
+        if self._image_cache_dir is not None:
+            self._image_cache_dir.mkdir(parents=True, exist_ok=True)
+            # Clear any stale contents from previous runs
+            for item in self._image_cache_dir.iterdir():
+                shutil.rmtree(item) if item.is_dir() else item.unlink()
         self._service_variant = ServiceVariant(service_variant)
         self._dropped_types = dropped_types if dropped_types is not None else set()
 

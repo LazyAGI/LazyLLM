@@ -36,22 +36,30 @@ def _is_url_accessible(base_url: str, timeout: float = 1.0) -> bool:
 
 def _make_mock_response() -> str:
     return json.dumps({
-        'pages': [
-            {
-                'page_idx': 0,
-                'blocks': [
-                    {'label': 'paragraph_title', 'content': '# Test Heading',
-                     'bbox': [0, 100, 400, 130]},
-                    {'label': 'text', 'content': 'This is test paragraph content.',
-                     'bbox': [0, 130, 400, 160]},
-                    {'label': 'image', 'content': '<img src="test_img.png"/>',
-                     'bbox': [0, 160, 400, 360]},
-                    {'label': 'table',
-                     'content': '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>',
-                     'bbox': [0, 360, 400, 420]},
-                ]
-            }
-        ]
+        'result': {
+            'layoutParsingResults': [
+                {
+                    'markdown': {
+                        'images': {
+                            'test_img.png': 'http://mock-url/test_img.png'
+                        }
+                    },
+                    'prunedResult': {
+                        'parsing_res_list': [
+                            {'block_label': 'paragraph_title', 'block_content': '# Test Heading',
+                             'block_bbox': [0, 100, 400, 130]},
+                            {'block_label': 'text', 'block_content': 'This is test paragraph content.',
+                             'block_bbox': [0, 130, 400, 160]},
+                            {'block_label': 'image', 'block_content': '<img src="test_img.png"/>',
+                             'block_bbox': [0, 160, 400, 360]},
+                            {'block_label': 'table',
+                             'block_content': '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>',
+                             'block_bbox': [0, 360, 400, 420]},
+                        ]
+                    }
+                }
+            ]
+        }
     })
 
 
@@ -74,7 +82,8 @@ class TestPaddleOCRPDFReaderMock(object):
         pdf = _make_test_pdf(tmp_path)
         reader = PaddleOCRPDFReader(url='http://mock-paddle')
 
-        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post:
+        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
             resp = MagicMock()
             resp.text = _make_mock_response()
             mock_post.return_value = resp
@@ -94,7 +103,8 @@ class TestPaddleOCRPDFReaderMock(object):
         images_dir = tmp_path / 'images'
         reader = PaddleOCRPDFReader(url='http://mock-paddle', images_dir=str(images_dir))
 
-        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post:
+        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
             resp = MagicMock()
             resp.text = _make_mock_response()
             mock_post.return_value = resp
@@ -108,7 +118,8 @@ class TestPaddleOCRPDFReaderMock(object):
         pdf = _make_test_pdf(tmp_path)
         reader = PaddleOCRPDFReader(url='http://mock-paddle', split_doc=False)
 
-        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post:
+        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
             resp = MagicMock()
             resp.text = _make_mock_response()
             mock_post.return_value = resp
@@ -124,7 +135,8 @@ class TestPaddleOCRPDFReaderMock(object):
     def test_load_data_with_different_init_parameters_mock(self, tmp_path):
         pdf = _make_test_pdf(tmp_path)
 
-        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post:
+        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
             resp = MagicMock()
             resp.text = _make_mock_response()
             mock_post.return_value = resp
