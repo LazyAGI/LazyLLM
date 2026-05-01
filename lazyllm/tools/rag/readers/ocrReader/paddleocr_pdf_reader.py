@@ -1,5 +1,6 @@
 import base64
 import requests
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Callable
 from typing_extensions import override
@@ -37,7 +38,8 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                          dropped_types=drop_types or dropped_types or {
                              'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                          return_trace=return_trace,
-                         image_cache_dir=images_dir,
+                         image_cache_dir=images_dir or os.path.join(
+                             lazyllm.config['home'], 'cache/paddleocr'),
                          **kwargs)
         self._api_key = lazyllm.config['paddle_api_key']
 

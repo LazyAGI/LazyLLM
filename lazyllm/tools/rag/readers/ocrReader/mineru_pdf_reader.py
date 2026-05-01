@@ -43,6 +43,8 @@ class MineruPDFReader(_OcrReaderBase):
                              'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
                          return_trace=return_trace,
                          post_func=post_func,
+                         image_cache_dir=kwargs.pop('image_cache_dir', os.path.join(
+                             lazyllm.config['home'], 'cache/mineru')),
                          **kwargs)
         self._backend = backend
         self._upload_mode = upload_mode
