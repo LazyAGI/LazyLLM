@@ -39,7 +39,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                              'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                          return_trace=return_trace,
                          image_cache_dir=images_dir or os.path.join(
-                             lazyllm.config['home'], 'cache/paddleocr'),
+                             lazyllm.config['home'], 'paddleocr_cache'),
                          **kwargs)
         self._api_key = lazyllm.config['paddle_api_key']
 
