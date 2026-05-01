@@ -53,7 +53,8 @@ def _make_mock_response() -> str:
                             {'block_label': 'image', 'block_content': '<img src="test_img.png"/>',
                              'block_bbox': [0, 160, 400, 360]},
                             {'block_label': 'table',
-                             'block_content': '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>',
+                             'block_content': ('<table><tr><th>A</th><th>B</th></tr>'
+                                               '<tr><td>1</td><td>2</td></tr></table>'),
                              'block_bbox': [0, 360, 400, 420]},
                         ]
                     }
