@@ -4,9 +4,9 @@ import os
 import requests
 import re
 import random
+import time
 from typing import Tuple, List, Dict, Union, Any, Optional
 from urllib.parse import urljoin
-import time
 from operator import itemgetter as itemget
 
 import lazyllm
@@ -127,9 +127,72 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             return {k: self._merge_stream_result([d.get(k) for d in src], k == 'content') for k in set().union(*src)}
         return src[-1]
 
+    def _extract_partial_content(self, msg_json: list) -> str:
+        if not msg_json:
+            return ''
+        try:
+            extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
+            return extractor.get('content', '') or ''
+        except Exception:
+            return ''
+
+    def _forward_impl(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
+                      proxies: Optional[Dict]) -> List[Dict[str, Any]]:
+        with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
+                           proxies=proxies) as r:
+            if r.status_code != 200:
+                err_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) \
+                    if stream_output else r.text
+                raise requests.RequestException(f'{r.status_code}: {err_msg}')
+
+            with self.stream_output(stream_output):
+                msg_json = list(filter(lambda x: x, (
+                    [self._str_to_json(line, stream_output) for line in r.iter_lines() if len(line)]
+                    if stream_output
+                    else [self._str_to_json(r.text, stream_output)]
+                )))
+        return msg_json
+
+    def _forward_with_retry(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
+                            proxies: Optional[Dict], max_retries: int) -> List[Dict[str, Any]]:
+        _RETRY_DELAYS = [3, 10, 30]
+        _CONTINUATION_PROMPT = (
+            'Your previous response was interrupted. '
+            'Please continue your response exactly from where it left off. '
+            'Do NOT repeat any content that was already provided. '
+            'Do NOT add any transitional phrases like "Continuing..." or "As I was saying...". '
+            'Just seamlessly continue the response. '
+            'Keep the same language as your previous response.'
+        )
+        msg_json = []
+        partial_content = ''
+        for attempt in range(max_retries):
+            if attempt > 0 and partial_content:
+                data['messages'].append({'role': 'assistant', 'content': partial_content})
+                data['messages'].append({'role': 'user', 'content': _CONTINUATION_PROMPT})
+                partial_content = ''
+            try:
+                msg_json = self._forward_impl(data, runtime_url=runtime_url,
+                                              stream_output=stream_output, proxies=proxies)
+            except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError):
+                if attempt < max_retries - 1:
+                    partial_content = self._extract_partial_content(msg_json)
+                    lazyllm.LOG.warning(f'Stream interrupted (attempt {attempt + 1}), retrying...')
+                    time.sleep(_RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)])
+                    continue
+                raise
+            except requests.RequestException:
+                if attempt < max_retries - 1:
+                    lazyllm.LOG.warning(f'Request failed (attempt {attempt + 1}), retrying...')
+                    time.sleep(_RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)])
+                    continue
+                raise
+            break
+        return msg_json
+
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
                 tools: List[Dict[str, Any]] = None, stream_output: bool = None, stream: bool = None,
-                lazyllm_files=None, url: str = None, model: str = None, **kw):
+                lazyllm_files=None, url: str = None, model: str = None, max_retries: int = 3, **kw):
         stream_output = stream_output if stream_output is not None else stream
         stream_output = stream_output if stream_output is not None else self._stream
         __input, files = self._get_files(__input, lazyllm_files)
@@ -155,23 +218,16 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
         data = self._prepare_request_data(data)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-        with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
-                           proxies=proxies) as r:
-            if r.status_code != 200:  # request error
-                msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) if stream_output else r.text
-                raise requests.RequestException(f'{r.status_code}: {msg}')
+        msg_json = self._forward_with_retry(data, runtime_url=runtime_url, stream_output=stream_output,
+                                            proxies=proxies, max_retries=max_retries)
 
-            with self.stream_output(stream_output):
-                msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
-                                if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
-
-            usage = {'prompt_tokens': -1, 'completion_tokens': -1}
-            if len(msg_json) > 0 and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict):
-                for k in usage:
-                    usage[k] = msg_json[-1]['usage'].get(k, usage[k])
-            self._record_usage(usage)
-            extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
-            return self._formatter(extractor) if extractor else ''
+        usage = {'prompt_tokens': -1, 'completion_tokens': -1}
+        if len(msg_json) > 0 and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict):
+            for k in usage:
+                usage[k] = msg_json[-1]['usage'].get(k, usage[k])
+        self._record_usage(usage)
+        extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
+        return self._formatter(extractor) if extractor else ''
 
     def _record_usage(self, usage: dict):
         globals['usage'][self._module_id] = usage

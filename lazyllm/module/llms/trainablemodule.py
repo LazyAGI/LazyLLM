@@ -6,6 +6,7 @@ import os
 import copy
 import uuid
 import re
+import time
 import requests
 from lazyllm.thirdparty import deepdiff
 
@@ -516,16 +517,18 @@ class TrainableModule(UrlModule):
                 globals['usage'][par_muduleid][k] += usage[k]
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
-                *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
+                *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False,
+                max_retries: int = 3, **kw):
         if self._url.endswith('/v1/'):
             return self.forward_openai(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
-                                       tools=tools, stream_output=stream_output, **kw)
+                                       tools=tools, stream_output=stream_output, max_retries=max_retries, **kw)
         else:
             return self.forward_standard(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
-                                         tools=tools, stream_output=stream_output, **kw)
+                                         tools=tools, stream_output=stream_output, max_retries=max_retries, **kw)
 
     def forward_openai(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
-                       *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
+                       *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False,
+                       max_retries: int = 3, **kw):
         if not getattr(self, '_openai_module', None):
             model_type = self.type.lower()
             if model_type in ['llm', 'vlm']:
@@ -542,10 +545,11 @@ class TrainableModule(UrlModule):
                 raise ValueError(f'Unsupported type: {model_type} for openai compatible module')
             self._openai_module.used_by(self._module_id)
         return self._openai_module.forward(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
-                                           tools=tools, stream_output=stream_output, **kw)
+                                           tools=tools, stream_output=stream_output, max_retries=max_retries, **kw)
 
     def forward_standard(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
-                         *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
+                         *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False,
+                         max_retries: int = 3, **kw):
         __input, files = self._get_files(__input, lazyllm_files)
         text_input_for_token_usage = __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
         url = self._url
@@ -570,14 +574,44 @@ class TrainableModule(UrlModule):
             stop_key = next((k for k in data if k.startswith('stop')), 'stop')
             data[stop_key] = (data.get(stop_key) or []) + [self._tool_end_token]
 
+        inputs_key = self.keys_name_handle.get('inputs', 'inputs')
+        original_input = data.get(inputs_key, '') if isinstance(data, dict) else data
+        _RETRY_DELAYS = [3, 10, 30]
+        partial_out: List = []
+
         with self.stream_output((stream_output := (stream_output or self._stream))):
-            return self._forward_impl(data, stream_output=stream_output, url=url, text_input=text_input_for_token_usage)
+            for attempt in range(max_retries):
+                if attempt > 0 and partial_out:
+                    partial_messages = partial_out[0]
+                    if isinstance(data, dict):
+                        data = dict(data)
+                        data[inputs_key] = original_input + partial_messages
+                    else:
+                        data = original_input + partial_messages
+                    partial_out.clear()
+                try:
+                    return self._forward_impl(data, stream_output=stream_output, url=url,
+                                              text_input=text_input_for_token_usage, partial_out=partial_out)
+                except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError):
+                    if attempt < max_retries - 1:
+                        LOG.warning(f'Stream interrupted (attempt {attempt + 1}), retrying...')
+                        time.sleep(_RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)])
+                        continue
+                    raise
+                except requests.RequestException:
+                    if attempt < max_retries - 1:
+                        LOG.warning(f'Request failed (attempt {attempt + 1}), retrying...')
+                        time.sleep(_RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)])
+                        continue
+                    raise
 
     def _maybe_has_fc(self, token: str, chunk: str) -> bool:
         return token and (token.startswith(chunk if token.startswith('\n') else chunk.lstrip('\n')) or token in chunk)
 
     def _forward_impl(self, data: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), *,  # noqa B008
-                      url: str, stream_output: Optional[Union[bool, Dict]] = None, text_input: Optional[str] = None):
+                      url: str, stream_output: Optional[Union[bool, Dict]] = None,
+                      text_input: Optional[str] = None,
+                      partial_out: Optional[List] = None) -> Tuple[Any, str]:
         headers = self.template_headers or {'Content-Type': 'application/json'}
         parse_parameters = self.stream_parse_parameters if stream_output else {'delimiter': b'<|lazyllm_delimiter|>'}
 
@@ -597,6 +631,7 @@ class TrainableModule(UrlModule):
                 chunk = self._prompt.get_response(self.extract_result_func(line, data))
                 chunk = chunk[len(messages):] if isinstance(chunk, str) and chunk.startswith(messages) else chunk
                 messages = chunk if not isinstance(chunk, str) else messages + chunk
+                if partial_out is not None: partial_out[:] = [messages]
 
                 if not stream_output: continue
                 if not cache: cache = chunk if self._maybe_has_fc(token, chunk) else self._stream_output(chunk, color)
@@ -607,9 +642,9 @@ class TrainableModule(UrlModule):
                     cache += chunk
                     if not self._maybe_has_fc(token, cache): cache = self._stream_output(cache, color)
 
-            if text_input: self._record_usage(text_input, messages)
-            temp_output = self._extract_and_format(messages)
-            return self._formatter(temp_output)
+        if text_input: self._record_usage(text_input, messages)
+        temp_output = self._extract_and_format(messages)
+        return self._formatter(temp_output)
 
     def _modify_parameters(self, paras: dict, kw: dict, *, optional_keys: Union[List[str], str] = None):
         for key, value in paras.items():
