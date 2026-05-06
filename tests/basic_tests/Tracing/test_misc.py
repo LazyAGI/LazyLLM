@@ -20,7 +20,7 @@ from lazyllm import (
 from lazyllm.tools.rag.doc_node import DocNode
 
 
-def test_trace_controls_recording_and_module_overrides(exporter):
+def test_trace_controls_disable_and_overrides(exporter):
     with pipeline() as disabled_context_flow:
         disabled_context_flow.add_one = lambda value: value + 1
     set_trace_context(LazyTraceContext(enabled=False, sampled=True))
@@ -103,7 +103,7 @@ def rerank_model(query, documents, top_n):
     return [(1, 0.95), (0, 0.85)]
 
 
-def test_rag_tracing_records_core_pipeline_shape(exporter):
+def test_rag_tracing_records_core_spans(exporter):
     prompt = (
         'Answer based only on context. Context:\n{context_str}\n\n'
         'Question: {query}\nAnswer:'

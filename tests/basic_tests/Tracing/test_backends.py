@@ -106,7 +106,7 @@ def _set_langfuse_env(monkeypatch):
     monkeypatch.setenv('LANGFUSE_SECRET_KEY', LANGFUSE_SECRET_KEY)
 
 
-def test_get_single_trace_rebuilds_langfuse_payload(monkeypatch):
+def test_get_single_trace_rebuilds_langfuse_trace(monkeypatch):
     _set_langfuse_env(monkeypatch)
     request = Mock(side_effect=[
         _FakeResponse(LANGFUSE_TRACE_BODY),
@@ -173,7 +173,7 @@ def test_get_single_trace_retries_rate_limit_then_succeeds(monkeypatch):
     assert sleeps == [1.0]
 
 
-def test_export_backend_maps_trace_and_observation_contract():
+def test_export_backend_maps_langfuse_attrs():
     backend = LangfuseBackend()
 
     root_attrs = backend.map_attributes({

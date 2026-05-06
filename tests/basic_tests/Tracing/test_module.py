@@ -93,7 +93,7 @@ def test_reranker_tracing(exporter):
     assert [node.relevance_score for node in result] == [0.95, 0.85]
 
 
-def test_agent_module_tracing(exporter, tmp_path):
+def test_react_agent_tracing(exporter, tmp_path):
     mock_llm = Mock()
     with patch('lazyllm.tools.agent.base.create_sandbox', return_value=None), \
          patch('lazyllm.tools.agent.base.ToolManager'):

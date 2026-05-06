@@ -12,7 +12,7 @@ def format_pair(value, query):
     return {'value': value, 'query': query}
 
 
-def test_bind_in_pipeline(exporter):
+def test_bind_function_args_in_pipeline(exporter):
     with pipeline() as flow:
         flow.add_ten = add | bind(lazyllm._0, 10)
         flow.format_pair = format_pair | bind(query=flow.input)
@@ -43,7 +43,7 @@ def test_bind_module_in_pipeline(exporter):
     assert result == 'mock response'
 
 
-def test_lazyllm_bind_function_in_pipeline(exporter):
+def test_lazyllm_bind_alias_in_pipeline(exporter):
     with pipeline() as flow:
         flow.add_ten = lazyllm.bind(add, lazyllm._0, 10)
     result = flow(20)

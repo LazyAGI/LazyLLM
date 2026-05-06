@@ -1,7 +1,7 @@
 from lazyllm import enable_trace
 
 
-def test_simple_function_tracing(exporter):
+def test_enable_trace_function_call(exporter):
     def add(a, b):
         return a + b
 
@@ -16,7 +16,7 @@ def test_simple_function_tracing(exporter):
     assert spans[0].attributes.get('lazyllm.entity.name') == 'add'
 
 
-def test_decorator_tracing(exporter):
+def test_enable_trace_decorator(exporter):
     @enable_trace()
     def subtract(x, y):
         return x - y
@@ -30,7 +30,7 @@ def test_decorator_tracing(exporter):
     assert spans[0].attributes.get('lazyllm.entity.name') == 'subtract'
 
 
-def test_lambda_function_tracing(exporter):
+def test_enable_trace_lambda(exporter):
     result = enable_trace(lambda x: x * 2, 5)
     assert result == 10
 
