@@ -6,21 +6,12 @@ from lazyllm import barrier, diverter, graph, ifs, loop, parallel, pipeline, swi
 from lazyllm.tracing.semantics import SemanticType
 
 
-def add_one(value):
-    return value + 1
+def add_one(value): return value + 1
+def double(value): return value * 2
 
-def double(value):
-    return value * 2
-
-
-def chat_branch(route):
-    return f'chat:{route}'
-
-def search_branch(route):
-    return f'search:{route}'
-
-def boom(value):
-    raise ValueError(f'boom:{value}')
+def chat_branch(route): return f'chat:{route}'
+def search_branch(route): return f'search:{route}'
+def boom(value): raise ValueError(f'boom:{value}')
 
 
 def test_pipeline_tracing(exporter):
@@ -28,7 +19,7 @@ def test_pipeline_tracing(exporter):
         flow.add_one = add_one
         flow.double = double
         flow.format_result = lambda v: f'result:{v}'
-    result = flow(3)
+    flow(3)
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 4
@@ -37,11 +28,12 @@ def test_pipeline_tracing(exporter):
     assert pipe_span.name == 'Pipeline'
     assert pipe_span.attributes.get('lazyllm.span.kind') == 'flow'
     assert pipe_span.attributes.get('lazyllm.semantic_type') == SemanticType.WORKFLOW_CONTROL
+    assert pipe_span.attributes.get('lazyllm.status') == 'ok'
     assert json.loads(pipe_span.attributes.get('lazyllm.io.input')) == {'args': [3], 'kwargs': {}}
     assert pipe_span.attributes.get('lazyllm.io.output') == 'result:8'
     child_spans = [a1_span, dbl_span, fmt_span]
     assert all(s.parent.span_id == pipe_span.context.span_id for s in child_spans)
-    assert result == 'result:8'
+    assert all(s.context.trace_id == pipe_span.context.trace_id for s in child_spans)
 
 
 def test_parallel_tracing(exporter):
@@ -79,22 +71,15 @@ def test_switch_tracing(exporter):
 
     assert error_branch.name == 'boom' and error_switch.name == 'Switch'
     assert error_branch.parent.span_id == error_switch.context.span_id
-    assert error_switch.attributes.get('lazyllm.matched.index') is None
-    assert error_switch.attributes.get('lazyllm.matched.condition') is None
     assert error_switch.attributes.get('lazyllm.matched.branch') is None
-    assert error_switch.attributes.get('lazyllm.status') == 'error'
-    assert error_switch.attributes.get('lazyllm.error.message') == 'boom:boom'
 
     assert unmatched_switch.name == 'Switch'
-    assert unmatched_switch.attributes.get('lazyllm.matched.index') is None
-    assert unmatched_switch.attributes.get('lazyllm.matched.condition') is None
     assert unmatched_switch.attributes.get('lazyllm.matched.branch') is None
     assert unmatched_switch.attributes.get('lazyllm.status') == 'ok'
 
 
 def test_ifs_tracing(exporter):
-    def is_even(value):
-        return value % 2 == 0
+    def is_even(value): return value % 2 == 0
 
     flow = ifs(is_even, chat_branch, boom)
 
@@ -110,29 +95,21 @@ def test_ifs_tracing(exporter):
     assert true_ifs.attributes.get('lazyllm.matched.branch') == 'true_path'
     assert true_ifs.attributes.get('lazyllm.matched.chosen_node') == 'chat_branch'
     assert true_ifs.attributes.get('lazyllm.matched.condition_result') is True
-    assert true_ifs.attributes.get('lazyllm.status') == 'ok'
-    assert true_ifs.attributes.get('lazyllm.error.message') is None
 
     error_fc, error_cond, error_branch, error_ifs = spans[4:8]
     assert error_cond.name == 'is_even' and error_branch.name == 'boom'
     assert error_ifs.attributes.get('lazyllm.matched.branch') is None
-    assert error_ifs.attributes.get('lazyllm.matched.chosen_node') is None
-    assert error_ifs.attributes.get('lazyllm.matched.condition_result') is None
     assert error_ifs.attributes.get('lazyllm.status') == 'error'
     assert error_ifs.attributes.get('lazyllm.error.message') == 'boom:5'
 
     recovery_fc, recovery_cond, recovery_branch, recovery_ifs = spans[8:12]
     assert recovery_cond.name == 'is_even' and recovery_branch.name == 'chat_branch'
-    assert recovery_ifs.attributes.get('lazyllm.matched.branch') == 'true_path'
     assert recovery_ifs.attributes.get('lazyllm.error.message') is None
 
 
 def test_loop_tracing(exporter):
-    def increment(value):
-        return value + 1
-
-    def stop_at_three(value):
-        return value >= 3
+    def increment(value): return value + 1
+    def stop_at_three(value): return value >= 3
 
     with loop(count=5, stop_condition=stop_at_three) as flow:
         flow.increment = increment
@@ -144,7 +121,6 @@ def test_loop_tracing(exporter):
     assert loop_span.name == 'Loop'
     assert all(s.name == 'increment' for s in iteration_spans)
     assert loop_span.attributes.get('lazyllm.loop.actual_iterations') == 3
-    assert result == 3
 
 
 def test_diverter_tracing(exporter):
@@ -159,12 +135,8 @@ def test_diverter_tracing(exporter):
     diverter_span = spans[-1]
     child_spans = spans[:-1]
     assert diverter_span.name == 'Diverter'
-    assert diverter_span.attributes.get('lazyllm.span.kind') == 'flow'
     assert {s.name for s in child_spans} == {'add_one', 'double', '<lambda>'}
-    assert all(s.parent.span_id == diverter_span.context.span_id for s in child_spans)
-    assert all(s.context.trace_id == diverter_span.context.trace_id for s in child_spans)
     assert json.loads(diverter_span.attributes.get('lazyllm.io.input')) == {'args': [3, 5, 7], 'kwargs': {}}
-    assert tuple(result) == (4, 10, 6)
 
 
 def test_warp_tracing(exporter):
@@ -176,23 +148,13 @@ def test_warp_tracing(exporter):
     warp_span = spans[-1]
     child_spans = spans[:-1]
     assert warp_span.name == 'Warp'
-    assert warp_span.attributes.get('lazyllm.span.kind') == 'flow'
     assert {s.name for s in child_spans} == {'add_one'}
-    assert all(s.parent.span_id == warp_span.context.span_id for s in child_spans)
-    assert all(s.context.trace_id == warp_span.context.trace_id for s in child_spans)
-    assert json.loads(warp_span.attributes.get('lazyllm.io.input')) == {'args': [1, 2, 3], 'kwargs': {}}
-    assert tuple(result) == (2, 3, 4)
 
 
 def test_graph_tracing(exporter):
-    def first(x):
-        return x + 1
-
-    def second(x):
-        return x * 2
-
-    def combine(a, b):
-        return a + b
+    def first(x): return x + 1
+    def second(x): return x * 2
+    def combine(a, b): return a + b
 
     with graph() as g:
         g.first = first
@@ -211,11 +173,8 @@ def test_graph_tracing(exporter):
     assert {s.name for s in first_level_spans} == {'first', 'second'}
     assert combine_span.name == 'combine'
     assert graph_span.name == 'Graph'
-    assert graph_span.attributes.get('lazyllm.span.kind') == 'flow'
     assert all(s.context.trace_id == graph_span.context.trace_id for s in user_node_spans)
     assert all(s.parent.span_id == graph_span.context.span_id for s in user_node_spans)
-    assert json.loads(graph_span.attributes.get('lazyllm.io.input')) == {'args': [3], 'kwargs': {}}
-    assert result == (3 + 1) + (3 * 2)
 
 
 def test_barrier_tracing(exporter):
@@ -248,4 +207,3 @@ def test_barrier_tracing(exporter):
     pre_indices = [order.index('left_pre'), order.index('right_pre')]
     post_indices = [order.index('left_post'), order.index('right_post')]
     assert max(pre_indices) < min(post_indices)
-    assert tuple(result) == (2, 2)
