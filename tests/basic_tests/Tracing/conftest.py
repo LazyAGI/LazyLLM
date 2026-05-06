@@ -1,30 +1,16 @@
-import base64
+import os
+import tempfile
 
 import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry import trace
 
+os.environ.setdefault('LAZYLLM_HOME', os.path.join(tempfile.gettempdir(), 'lazyllm-tracing-tests'))
+
 import lazyllm
 from lazyllm import set_trace_context, LazyTraceContext
 from lazyllm.tracing.collect import runtime as tracing_runtime
-
-TRACE_ID = '0' * 32
-ROOT_SPAN_ID = '1' * 16
-CHILD_SPAN_ID = '2' * 16
-
-LANGFUSE_HOST = 'https://langfuse.example'
-LANGFUSE_PUBLIC_KEY = 'public'
-LANGFUSE_SECRET_KEY = 'secret'
-LANGFUSE_AUTH_HEADER = (
-    'Basic ' + base64.b64encode(f'{LANGFUSE_PUBLIC_KEY}:{LANGFUSE_SECRET_KEY}'.encode('utf-8')).decode()
-)
-LANGFUSE_ENV = {
-    'LANGFUSE_HOST': LANGFUSE_HOST + '/',
-    'LANGFUSE_PUBLIC_KEY': LANGFUSE_PUBLIC_KEY,
-    'LANGFUSE_SECRET_KEY': LANGFUSE_SECRET_KEY,
-}
-_MISSING = object()
 
 
 class MemoryTracingBackend:
@@ -38,91 +24,6 @@ class MemoryTracingBackend:
 
     def map_attributes(self, otel_attrs):
         return {}
-
-
-class _FakeResponse:
-    def __init__(
-        self, status_code=200, body=None, *,
-        headers=None, content=True, json_exc=None,
-    ):
-        self.status_code = status_code
-        self.ok = 200 <= status_code < 400
-        self.headers = headers or {}
-        self._body = body
-        self.content = b'{}' if content else b''
-        self._json_exc = json_exc
-
-    def json(self):
-        if self._json_exc is not None:
-            raise self._json_exc
-        return self._body
-
-
-def langfuse_trace_url(trace_id=TRACE_ID):
-    return f'{LANGFUSE_HOST}/api/public/traces/{trace_id}'
-
-
-def make_response(body=None, *, status_code=200, headers=None, content=True, json_exc=None):
-    return _FakeResponse(
-        status_code=status_code, body=body,
-        headers=headers, content=content, json_exc=json_exc,
-    )
-
-
-def set_langfuse_env(monkeypatch):
-    for name, value in LANGFUSE_ENV.items():
-        monkeypatch.setenv(name, value)
-
-
-def make_langfuse_trace_payload(observations=_MISSING, *, trace_id=TRACE_ID, **overrides):
-    payload = {
-        'id': trace_id,
-        'timestamp': '2026-04-29T08:00:00Z',
-        'name': 'trace-name',
-        'sessionId': 'session-1',
-        'userId': 'user-1',
-        'tags': ['tag-a'],
-        'metadata': {'source': 'langfuse'},
-        'input': {'query': 'hello'},
-        'output': {'answer': 'world'},
-    }
-    if observations is not _MISSING:
-        payload['observations'] = observations
-    payload.update(overrides)
-    return payload
-
-
-def make_langfuse_observation(
-    observation_id, *, trace_id=TRACE_ID,
-    parent_id=None, obs_type='CHAIN', name='root-step',
-    start='2026-04-29T08:00:01Z', end='2026-04-29T08:00:02Z',
-    obs_input=_MISSING, obs_output=_MISSING,
-    attrs=None, metadata_extra=None,
-    **overrides,
-):
-    metadata = {
-        'attributes': {'lazyllm.span.kind': 'flow', **(attrs or {})},
-        'resourceAttributes': {'service.name': 'lazyllm'},
-        'scope': {'name': 'lazyllm.tracing'},
-    }
-    metadata.update(metadata_extra or {})
-    observation = {
-        'id': observation_id,
-        'traceId': trace_id,
-        'parentObservationId': parent_id,
-        'type': obs_type,
-        'name': name,
-        'startTime': start,
-        'endTime': end,
-        'input': {'args': ['hello'], 'kwargs': {}} if obs_input is _MISSING else obs_input,
-        'output': {'root': 'ok'} if obs_output is _MISSING else obs_output,
-        'metadata': metadata,
-        'model': None,
-        'level': 'DEFAULT',
-        'statusMessage': None,
-    }
-    observation.update(overrides)
-    return observation
 
 
 @pytest.fixture

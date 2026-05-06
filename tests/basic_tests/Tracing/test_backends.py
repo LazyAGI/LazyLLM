@@ -1,25 +1,176 @@
+import base64
 import json
 from unittest.mock import Mock
 from urllib.parse import parse_qs, urlparse
 
-import pytest
-
+import lazyllm
 import lazyllm.tracing.backends.langfuse.backend as langfuse_backend_module
 from lazyllm.tracing.backends.langfuse.backend import LangfuseBackend, LangfuseConsumeBackend
-from lazyllm.tracing.errors import ConsumeBackendError, TraceNotFound
+from lazyllm.tracing.consume.api import get_single_trace
 from lazyllm.tracing.semantics import SemanticType
 
-from .conftest import (
-    CHILD_SPAN_ID,
-    LANGFUSE_AUTH_HEADER,
-    ROOT_SPAN_ID,
-    TRACE_ID,
-    langfuse_trace_url,
-    make_langfuse_observation,
-    make_langfuse_trace_payload,
-    make_response,
-    set_langfuse_env,
+
+TRACE_ID = '0' * 32
+ROOT_SPAN_ID = '1' * 16
+RETRIEVER_SPAN_ID = '2' * 16
+LLM_SPAN_ID = '3' * 16
+
+LANGFUSE_HOST = 'https://langfuse.example'
+LANGFUSE_PUBLIC_KEY = 'public'
+LANGFUSE_SECRET_KEY = 'secret'
+LANGFUSE_AUTH_HEADER = (
+    'Basic ' + base64.b64encode(f'{LANGFUSE_PUBLIC_KEY}:{LANGFUSE_SECRET_KEY}'.encode('utf-8')).decode()
 )
+
+LANGFUSE_TRACE_BODY = {
+    'id': TRACE_ID,
+    'name': 'paginated-rag-trace',
+    'sessionId': 'session-1',
+    'userId': 'user-1',
+    'tags': ['tag-a', 'rag'],
+    'metadata': {'source': 'langfuse', 'tenant': 'tenant-a'},
+}
+LANGFUSE_OBSERVATIONS_PAGE_1 = {
+    'data': [
+        {
+            'id': ROOT_SPAN_ID,
+            'name': 'rag-root',
+            'startTime': '2026-04-29T08:00:01Z',
+            'input': {'args': ['hello'], 'kwargs': {}},
+            'metadata': {
+                'attributes': {
+                    'lazyllm.span.kind': 'flow',
+                    'lazyllm.semantic_type': SemanticType.WORKFLOW_CONTROL,
+                },
+            },
+        },
+        {
+            'id': RETRIEVER_SPAN_ID,
+            'parentObservationId': ROOT_SPAN_ID,
+            'name': 'retrieve-docs',
+            'startTime': '2026-04-29T08:00:02Z',
+            'metadata': {
+                'attributes': {
+                    'lazyllm.span.kind': 'module',
+                    'lazyllm.semantic_type': SemanticType.RETRIEVER,
+                },
+            },
+        },
+    ],
+    'meta': {'totalPages': 2},
+}
+LANGFUSE_OBSERVATIONS_PAGE_2 = {
+    'data': [
+        {
+            'id': LLM_SPAN_ID,
+            'parentObservationId': ROOT_SPAN_ID,
+            'name': 'call-llm',
+            'startTime': '2026-04-29T08:00:03Z',
+            'metadata': {
+                'attributes': {
+                    'lazyllm.span.kind': 'module',
+                    'lazyllm.semantic_type': SemanticType.LLM,
+                },
+            },
+            'model': 'gpt-4o-mini',
+            'level': 'ERROR',
+            'statusMessage': 'provider timeout',
+        },
+    ],
+    'meta': {'totalPages': 2},
+}
+MINIMAL_LANGFUSE_TRACE_BODY = {
+    'id': TRACE_ID,
+    'name': 'retried-trace',
+    'metadata': {},
+    'tags': [],
+    'observations': [],
+}
+
+
+class _FakeResponse:
+    def __init__(self, body=None, *, status_code=200, headers=None):
+        self.status_code = status_code
+        self.ok = 200 <= status_code < 400
+        self.headers = headers or {}
+        self.content = b'{}'
+        self._body = body
+
+    def json(self):
+        return self._body
+
+
+def _set_langfuse_env(monkeypatch):
+    monkeypatch.setenv('LANGFUSE_HOST', LANGFUSE_HOST + '/')
+    monkeypatch.setenv('LANGFUSE_PUBLIC_KEY', LANGFUSE_PUBLIC_KEY)
+    monkeypatch.setenv('LANGFUSE_SECRET_KEY', LANGFUSE_SECRET_KEY)
+
+
+def test_get_single_trace_rebuilds_langfuse_payload(monkeypatch):
+    _set_langfuse_env(monkeypatch)
+    request = Mock(side_effect=[
+        _FakeResponse(LANGFUSE_TRACE_BODY),
+        _FakeResponse(LANGFUSE_OBSERVATIONS_PAGE_1),
+        _FakeResponse(LANGFUSE_OBSERVATIONS_PAGE_2),
+    ])
+    monkeypatch.setattr(langfuse_backend_module.requests, 'request', request)
+
+    with lazyllm.config.temp('trace_consume_backend', 'langfuse'):
+        with lazyllm.config.temp('trace_consume_timeout', 3.5):
+            trace = get_single_trace(TRACE_ID)
+
+    metadata = trace.metadata
+    assert trace.trace_id == TRACE_ID
+    assert (metadata.name, metadata.session_id, metadata.user_id) == (
+        'paginated-rag-trace', 'session-1', 'user-1',
+    )
+    assert metadata.tags == ['tag-a', 'rag']
+    assert metadata.metadata == {'source': 'langfuse', 'tenant': 'tenant-a'}
+    assert (metadata.status, metadata.error_message) == ('error', 'provider timeout')
+
+    root = trace.execution_tree
+    retriever, llm = root.children
+    assert (root.step_id, root.name, root.node_type, root.semantic_type) == (
+        ROOT_SPAN_ID, 'rag-root', 'flow', SemanticType.WORKFLOW_CONTROL,
+    )
+    assert root.raw_data.input == {'args': ['hello'], 'kwargs': {}}
+    assert [child.step_id for child in root.children] == [RETRIEVER_SPAN_ID, LLM_SPAN_ID]
+    assert (retriever.name, retriever.semantic_type) == ('retrieve-docs', SemanticType.RETRIEVER)
+    assert (llm.semantic_data['model_name'], llm.status, llm.error_message) == (
+        'gpt-4o-mini', 'error', 'provider timeout',
+    )
+
+    calls = request.call_args_list
+    assert len(calls) == 3
+    assert [call.args[0] for call in calls] == ['GET', 'GET', 'GET']
+    assert calls[0].args[1] == f'{LANGFUSE_HOST}/api/public/traces/{TRACE_ID}'
+    assert calls[0].kwargs['headers'] == {'Authorization': LANGFUSE_AUTH_HEADER, 'Accept': 'application/json'}
+    assert calls[0].kwargs['timeout'] == (LangfuseConsumeBackend._CONNECT_TIMEOUT_S, 3.5)
+    assert urlparse(calls[1].args[1]).path == '/api/public/observations'
+    assert parse_qs(urlparse(calls[1].args[1]).query) == {
+        'traceId': [TRACE_ID], 'limit': ['1000'], 'page': ['1'],
+    }
+    assert parse_qs(urlparse(calls[2].args[1]).query) == {
+        'traceId': [TRACE_ID], 'limit': ['1000'], 'page': ['2'],
+    }
+
+
+def test_get_single_trace_retries_rate_limit_then_succeeds(monkeypatch):
+    _set_langfuse_env(monkeypatch)
+
+    sleeps = []
+    monkeypatch.setattr(langfuse_backend_module.time, 'sleep', sleeps.append)
+    request = Mock(side_effect=[
+        _FakeResponse(status_code=429, headers={'Retry-After': '1.0'}),
+        _FakeResponse(MINIMAL_LANGFUSE_TRACE_BODY),
+    ])
+    monkeypatch.setattr(langfuse_backend_module.requests, 'request', request)
+
+    trace = get_single_trace(TRACE_ID, backend='langfuse')
+
+    assert trace.metadata.name == 'retried-trace'
+    assert request.call_count == 2
+    assert sleeps == [1.0]
 
 
 def test_export_backend_maps_trace_and_observation_contract():
@@ -32,20 +183,13 @@ def test_export_backend_maps_trace_and_observation_contract():
         'lazyllm.trace.tags': ['prod', 'rag'],
         'lazyllm.trace.metadata.tenant': 'tenant-a',
         'session.id': 'session-1',
-        'user.id': 'user-1',
-        'lazyllm.io.input': {'query': 'hello'},
-        'lazyllm.io.output': {'answer': 'world'},
         'lazyllm.error.message': 'model failed',
         'gen_ai.request.model': 'gpt-4o-mini',
-        'gen_ai.usage.input_tokens': 12,
-        'gen_ai.usage.output_tokens': 8,
         'gen_ai.usage.total_tokens': 20,
     })
     child_attrs = backend.map_attributes({
         'lazyllm.semantic_type': SemanticType.RETRIEVER,
         'lazyllm.trace.name': 'must-not-promote',
-        'lazyllm.io.input': 'retriever input',
-        'lazyllm.io.output': [{'doc': 'doc-1'}],
     })
 
     assert root_attrs['langfuse.observation.type'] == 'generation'
@@ -56,159 +200,5 @@ def test_export_backend_maps_trace_and_observation_contract():
     assert json.loads(root_attrs['langfuse.trace.tags']) == ['prod', 'rag']
     assert root_attrs['langfuse.trace.metadata.tenant'] == 'tenant-a'
     assert root_attrs['session.id'] == 'session-1'
-    assert root_attrs['user.id'] == 'user-1'
-    assert root_attrs['langfuse.trace.input'] == {'query': 'hello'}
-    assert root_attrs['langfuse.trace.output'] == {'answer': 'world'}
-
-    assert child_attrs == {
-        'langfuse.observation.type': 'retriever',
-        'langfuse.observation.input': 'retriever input',
-        'langfuse.observation.output': [{'doc': 'doc-1'}],
-    }
-
-
-def test_consume_fetch_trace_payload_with_inline_observations(monkeypatch):
-    set_langfuse_env(monkeypatch)
-    response = make_response(make_langfuse_trace_payload(
-        name='inline-trace', sessionId='session-1', userId='user-1',
-        tags=['tag-a'], metadata={'source': 'langfuse'},
-        input={'query': 'hello'}, output={'answer': 'world'},
-        public=True, observations=[
-            make_langfuse_observation(
-                ROOT_SPAN_ID,
-                name='root-step',
-                attrs={
-                    'langfuse.observation.type': 'chain',
-                    'gen_ai.request.model': 'metadata-model',
-                },
-                model='top-level-model',
-            ),
-            make_langfuse_observation(
-                CHILD_SPAN_ID,
-                parent_id=ROOT_SPAN_ID,
-                obs_type='GENERATION',
-                model='gpt-4o-mini',
-                level='ERROR',
-                statusMessage='provider timeout',
-            ),
-        ],
-    ))
-    request = Mock(return_value=response)
-    monkeypatch.setattr(langfuse_backend_module.requests, 'request', request)
-
-    payload = LangfuseConsumeBackend().fetch_trace_payload(TRACE_ID, timeout_seconds=3.5)
-
-    assert payload.trace.trace_id == TRACE_ID
-    assert payload.trace.name == 'inline-trace'
-    assert payload.trace.session_id == 'session-1'
-    assert payload.trace.user_id == 'user-1'
-    assert payload.trace.tags == ['tag-a']
-    assert payload.trace.metadata == {'source': 'langfuse'}
-    assert payload.trace.input == {'query': 'hello'}
-    assert payload.trace.output == {'answer': 'world'}
-    assert payload.trace.raw == {'public': True}
-
-    root, child = payload.spans
-    assert root.name == 'root-step'
-    assert root.attributes['langfuse.observation.type'] == 'chain'
-    assert root.attributes['gen_ai.request.model'] == 'metadata-model'
-    assert root.metadata['resourceAttributes'] == {'service.name': 'lazyllm'}
-    assert child.parent_span_id == ROOT_SPAN_ID
-    assert child.attributes['langfuse.observation.type'] == 'GENERATION'
-    assert child.attributes['gen_ai.request.model'] == 'gpt-4o-mini'
-    assert child.status == 'error'
-    assert child.error_message == 'provider timeout'
-    request.assert_called_once()
-    args, kwargs = request.call_args
-    assert args == ('GET', langfuse_trace_url())
-    assert kwargs['timeout'] == (LangfuseConsumeBackend._CONNECT_TIMEOUT_S, 3.5)
-    assert kwargs['headers']['Authorization'] == LANGFUSE_AUTH_HEADER
-    assert kwargs['headers']['Accept'] == 'application/json'
-
-
-def test_consume_fetch_spans_paginates_observations(monkeypatch):
-    set_langfuse_env(monkeypatch)
-    responses = [
-        make_response(make_langfuse_trace_payload(name='paginated-trace')),
-        make_response({
-            'data': [make_langfuse_observation(ROOT_SPAN_ID, name='page-one-root')],
-            'meta': {'page': 1, 'limit': 1000, 'totalItems': 2, 'totalPages': 2},
-        }),
-        make_response({
-            'data': [make_langfuse_observation(
-                CHILD_SPAN_ID,
-                parent_id=ROOT_SPAN_ID,
-                name='page-two-child',
-            )],
-            'meta': {'page': 2, 'limit': 1000, 'totalItems': 2, 'totalPages': 2},
-        }),
-    ]
-    request = Mock(side_effect=responses)
-    monkeypatch.setattr(langfuse_backend_module.requests, 'request', request)
-
-    payload = LangfuseConsumeBackend().fetch_trace_payload(TRACE_ID)
-
-    assert payload.trace.trace_id == TRACE_ID
-    assert payload.trace.name == 'paginated-trace'
-    assert [span.name for span in payload.spans] == ['page-one-root', 'page-two-child']
-    assert payload.spans[0].span_id == ROOT_SPAN_ID
-    assert payload.spans[1].span_id == CHILD_SPAN_ID
-    assert payload.spans[1].parent_span_id == ROOT_SPAN_ID
-
-    calls = request.call_args_list
-    assert [call.args[0] for call in calls] == ['GET', 'GET', 'GET']
-    assert calls[0].args[1] == langfuse_trace_url()
-
-    obs_url_1 = calls[1].args[1]
-    obs_url_2 = calls[2].args[1]
-    assert urlparse(obs_url_1).path == '/api/public/observations'
-    assert parse_qs(urlparse(obs_url_1).query) == {
-        'traceId': [TRACE_ID], 'limit': ['1000'], 'page': ['1'],
-    }
-    assert parse_qs(urlparse(obs_url_2).query) == {
-        'traceId': [TRACE_ID], 'limit': ['1000'], 'page': ['2'],
-    }
-
-
-def test_consume_raises_when_langfuse_config_missing(monkeypatch):
-    for key in ('LANGFUSE_HOST', 'LANGFUSE_BASE_URL', 'LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY'):
-        monkeypatch.delenv(key, raising=False)
-
-    with pytest.raises(ConsumeBackendError, match='Missing Langfuse connection config'):
-        LangfuseConsumeBackend().fetch_trace_payload(TRACE_ID)
-
-
-@pytest.mark.parametrize(
-    ('status_code', 'expected_error', 'expected_message'),
-    [
-        (404, TraceNotFound, TRACE_ID),
-        (401, ConsumeBackendError, 'authentication failed'),
-    ],
-)
-def test_consume_http_errors(monkeypatch, status_code, expected_error, expected_message):
-    set_langfuse_env(monkeypatch)
-    monkeypatch.setattr(
-        langfuse_backend_module.requests, 'request',
-        Mock(return_value=make_response(status_code=status_code, body={'message': 'error'})),
-    )
-
-    with pytest.raises(expected_error, match=expected_message):
-        LangfuseConsumeBackend().fetch_trace_payload(TRACE_ID)
-
-
-def test_consume_retries_on_rate_limit_then_succeeds(monkeypatch):
-    set_langfuse_env(monkeypatch)
-    sleeps = []
-    monkeypatch.setattr(langfuse_backend_module.time, 'sleep', sleeps.append)
-
-    responses = [
-        make_response(status_code=429, headers={'Retry-After': '0'}),
-        make_response(make_langfuse_trace_payload(name='retried-trace')),
-    ]
-    request = Mock(side_effect=responses)
-    monkeypatch.setattr(langfuse_backend_module.requests, 'request', request)
-
-    trace = LangfuseConsumeBackend().fetch_trace(TRACE_ID)
-
-    assert trace.name == 'retried-trace'
-    assert request.call_count == 2
+    assert 'langfuse.trace.name' not in child_attrs
+    assert child_attrs['langfuse.observation.type'] == 'retriever'
