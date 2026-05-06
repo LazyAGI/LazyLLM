@@ -113,4 +113,3 @@ def test_react_agent_tracing(exporter, tmp_path):
     spans = exporter.get_finished_spans()
     assert len(spans) == 1 and spans[0].name == 'ReactAgent'
     assert spans[0].attributes.get('lazyllm.semantic_type') == SemanticType.AGENT
-

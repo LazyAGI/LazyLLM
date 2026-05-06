@@ -2,8 +2,7 @@ from lazyllm import enable_trace
 
 
 def test_enable_trace_function_call(exporter):
-    def add(a, b):
-        return a + b
+    def add(a, b): return a + b
 
     result = enable_trace(add, 5, 3)
     assert result == 8
@@ -18,8 +17,7 @@ def test_enable_trace_function_call(exporter):
 
 def test_enable_trace_decorator(exporter):
     @enable_trace()
-    def subtract(x, y):
-        return x - y
+    def subtract(x, y): return x - y
 
     result = subtract(10, 3)
 

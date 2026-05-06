@@ -57,14 +57,9 @@ def test_trace_controls_disable_and_overrides(exporter):
 
 
 def test_nested_parallel_error_propagates_status_to_parent_flows(exporter):
-    def first(value):
-        return value + 1
-
-    def raises_error(value):
-        raise ValueError(f'boom:{value}')
-
-    def unreachable(value):
-        return value * 2
+    def first(value): return value + 1
+    def raises_error(value): raise ValueError(f'boom:{value}')
+    def unreachable(value): return value * 2
 
     with pipeline() as flow:
         with parallel(_concurrent=2) as branches:
@@ -144,12 +139,8 @@ def test_rag_tracing_records_core_spans(exporter):
     assert result == 'mock answer'
     assert {span.name for span in spans[:2]} == {'primary', 'secondary'}
     assert [span.name for span in spans[2:]] == [
-        'Parallel',
-        'merge_doc_groups',
-        'ModuleReranker',
-        'format_rag_input',
-        'llm',
-        'Pipeline',
+        'Parallel', 'merge_doc_groups', 'ModuleReranker',
+        'format_rag_input', 'llm', 'Pipeline',
     ]
 
     by_name = {span.name: span for span in spans}

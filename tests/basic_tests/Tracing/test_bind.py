@@ -5,11 +5,8 @@ import lazyllm
 from lazyllm import OnlineChatModule, bind, pipeline
 
 
-def add(x, y):
-    return x + y
-
-def format_pair(value, query):
-    return {'value': value, 'query': query}
+def add(x, y): return x + y
+def format_pair(value, query): return {'value': value, 'query': query}
 
 
 def test_bind_function_args_in_pipeline(exporter):
