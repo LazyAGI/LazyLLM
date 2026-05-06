@@ -11,6 +11,7 @@ from lazyllm import (
 )
 from lazyllm.tools.agent.reactAgent import ReactAgent
 from lazyllm.tools.rag.doc_node import DocNode
+from lazyllm.tracing.semantics import SemanticType
 
 
 def test_online_chat_module_tracing(exporter):
@@ -25,7 +26,7 @@ def test_online_chat_module_tracing(exporter):
     assert len(spans) == 1
     assert spans[0].name == 'OnlineChatModule'
     assert spans[0].attributes.get('lazyllm.span.kind') == 'module'
-    assert spans[0].attributes.get('lazyllm.semantic_type') == 'llm'
+    assert spans[0].attributes.get('lazyllm.semantic_type') == SemanticType.LLM
     assert spans[0].attributes.get('lazyllm.entity.config.model') == 'mock-chat'
     assert spans[0].attributes.get('gen_ai.request.model') == 'mock-chat'
     assert spans[0].attributes.get('lazyllm.entity.class') == 'OnlineChatModule'
@@ -44,7 +45,7 @@ def test_online_embedding_module_tracing(exporter):
 
     spans = exporter.get_finished_spans()
     assert [s.name for s in spans] == ['OnlineEmbeddingModule']
-    assert spans[0].attributes.get('lazyllm.semantic_type') == 'embedding'
+    assert spans[0].attributes.get('lazyllm.semantic_type') == SemanticType.EMBEDDING
     assert spans[0].attributes.get('lazyllm.entity.config.model') == 'mock-embedding'
     assert json.loads(spans[0].attributes.get('lazyllm.io.output')) == embeddings
     assert result == embeddings
@@ -65,7 +66,7 @@ def test_retriever_tracing(exporter):
 
     spans = exporter.get_finished_spans()
     assert [s.name for s in spans] == ['Retriever']
-    assert spans[0].attributes.get('lazyllm.semantic_type') == 'retriever'
+    assert spans[0].attributes.get('lazyllm.semantic_type') == SemanticType.RETRIEVER
     assert spans[0].attributes.get('lazyllm.output.doc_count') == 3
     assert json.loads(spans[0].attributes.get('lazyllm.output.similarity_scores')) == [0.9, 0.8, 0.7]
     assert spans[0].attributes.get('lazyllm.entity.config.similarity') == 'cosine'
@@ -84,7 +85,7 @@ def test_reranker_tracing(exporter):
 
     spans = exporter.get_finished_spans()
     assert [s.name for s in spans] == ['ModuleReranker']
-    assert spans[0].attributes.get('lazyllm.semantic_type') == 'rerank'
+    assert spans[0].attributes.get('lazyllm.semantic_type') == SemanticType.RERANK
     assert spans[0].attributes.get('lazyllm.entity.config.model') == 'mock-reranker'
     assert spans[0].attributes.get('lazyllm.output.doc_count') == 2
     assert json.loads(spans[0].attributes.get('lazyllm.output.relevance_scores')) == [0.95, 0.85]
@@ -106,7 +107,7 @@ def test_agent_module_tracing(exporter, tmp_path):
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 1 and spans[0].name == 'ReactAgent'
-    assert spans[0].attributes.get('lazyllm.semantic_type') == 'agent'
+    assert spans[0].attributes.get('lazyllm.semantic_type') == SemanticType.AGENT
     assert spans[0].attributes.get('lazyllm.span.kind') == 'module'
     assert spans[0].attributes.get('lazyllm.entity.class') == 'ReactAgent'
     assert result == 'agent:input'
@@ -120,5 +121,5 @@ def test_tool_manager_module_tracing(exporter):
 
     spans = exporter.get_finished_spans()
     assert [s.name for s in spans] == ['ToolManager']
-    assert spans[0].attributes.get('lazyllm.semantic_type') == 'tool'
+    assert spans[0].attributes.get('lazyllm.semantic_type') == SemanticType.TOOL
     assert result == ['tool result']
