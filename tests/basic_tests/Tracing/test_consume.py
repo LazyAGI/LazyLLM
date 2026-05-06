@@ -24,7 +24,7 @@ def span(
     )
 
 
-def test_rebuild_handles_complex_tree_metadata_error_and_orphan():
+def test_rebuild_complex_trace_with_error_orphan():
     trace_id = '0' * 32
     root_id, parallel_id, retriever_a_id, retriever_b_id, merge_id, rerank_id, llm_id, orphan_id = [
         value * 16 for value in '12345678'
@@ -94,7 +94,7 @@ def test_rebuild_handles_complex_tree_metadata_error_and_orphan():
     assert tree.children[1].raw_data.output == 'orphan-output'
 
 
-def test_semantic_extractors_map_representative_fields():
+def test_extractors_map_core_semantics():
     llm = extract_semantic(SimpleNamespace(
         span_id='llm',
         name='llm',
