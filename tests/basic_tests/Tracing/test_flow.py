@@ -113,7 +113,7 @@ def test_loop_tracing(exporter):
 
     with loop(count=5, stop_condition=stop_at_three) as flow:
         flow.increment = increment
-    result = flow(0)
+    flow(0)
 
     spans = exporter.get_finished_spans()
     loop_span, iteration_spans = spans[-1], spans[:3]
@@ -128,7 +128,7 @@ def test_diverter_tracing(exporter):
         flow.add_one = add_one
         flow.double = double
         flow.minus_one = lambda v: v - 1
-    result = flow(3, 5, 7)
+    flow(3, 5, 7)
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 4
@@ -141,7 +141,7 @@ def test_diverter_tracing(exporter):
 
 def test_warp_tracing(exporter):
     flow = warp(add_one)
-    result = flow(1, 2, 3)
+    flow(1, 2, 3)
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 4
@@ -165,7 +165,7 @@ def test_graph_tracing(exporter):
     g.add_edge(['first', 'second'], 'combine')
     g.add_edge('combine', g.end_node_name)
 
-    result = g(3)
+    g(3)
 
     spans = exporter.get_finished_spans()
     user_node_spans, graph_span = spans[:3], spans[-1]
@@ -196,7 +196,7 @@ def test_barrier_tracing(exporter):
             flow.right.r1 = record('right_pre')
             flow.right.bar = barrier
             flow.right.r2 = record('right_post')
-    result = flow(0)
+    flow(0)
 
     spans = exporter.get_finished_spans()
     pre_spans, rest_spans = spans[:2], spans[2:-1]
