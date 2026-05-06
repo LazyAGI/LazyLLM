@@ -39,13 +39,12 @@ class TestFormatter(object):
             'content': '',
             'reasoning_content': 'Deciding which tool to call.',
             'tool_calls': [{'id': 'c1', 'type': 'function',
-                             'function': {'name': 'search', 'arguments': '{}'}}],
+                            'function': {'name': 'search', 'arguments': '{}'}}],
         }
         result = fc()(msg)
         assert isinstance(result, dict)
         assert result['reasoning_content'] == 'Deciding which tool to call.'
         assert result['tool_calls'] == msg['tool_calls']
-
 
     def test_jsonlike_formatter_base(self):
         jsf = formatter.JsonLike
