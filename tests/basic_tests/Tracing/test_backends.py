@@ -148,10 +148,10 @@ def test_get_single_trace_rebuilds_langfuse_payload(monkeypatch):
     assert calls[0].kwargs['timeout'] == (LangfuseConsumeBackend._CONNECT_TIMEOUT_S, 3.5)
     assert urlparse(calls[1].args[1]).path == '/api/public/observations'
     assert parse_qs(urlparse(calls[1].args[1]).query) == {
-        'traceId': [TRACE_ID], 'limit': ['1000'], 'page': ['1'],
+        'traceId': [TRACE_ID], 'limit': [str(LangfuseConsumeBackend._OBSERVATIONS_PAGE_LIMIT)], 'page': ['1'],
     }
     assert parse_qs(urlparse(calls[2].args[1]).query) == {
-        'traceId': [TRACE_ID], 'limit': ['1000'], 'page': ['2'],
+        'traceId': [TRACE_ID], 'limit': [str(LangfuseConsumeBackend._OBSERVATIONS_PAGE_LIMIT)], 'page': ['2'],
     }
 
 

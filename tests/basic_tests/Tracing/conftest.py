@@ -1,17 +1,16 @@
 import os
 import tempfile
-
 import pytest
+
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry import trace
-
-os.environ.setdefault('LAZYLLM_HOME', os.path.join(tempfile.gettempdir(), 'lazyllm-tracing-tests'))
 
 import lazyllm
 from lazyllm import set_trace_context, LazyTraceContext
 from lazyllm.tracing.collect import runtime as tracing_runtime
 
+os.environ.setdefault('LAZYLLM_HOME', os.path.join(tempfile.gettempdir(), 'lazyllm-tracing-tests'))
 
 class MemoryTracingBackend:
     name = 'memory'

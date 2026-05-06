@@ -3,6 +3,7 @@ import json
 import pytest
 
 from lazyllm import barrier, diverter, graph, ifs, loop, parallel, pipeline, switch, warp
+from lazyllm.tracing.semantics import SemanticType
 
 
 def add_one(value):
@@ -35,7 +36,7 @@ def test_pipeline_tracing(exporter):
     assert [s.name for s in (a1_span, dbl_span, fmt_span)] == ['add_one', 'double', '<lambda>']
     assert pipe_span.name == 'Pipeline'
     assert pipe_span.attributes.get('lazyllm.span.kind') == 'flow'
-    assert pipe_span.attributes.get('lazyllm.semantic_type') == 'workflow_control'
+    assert pipe_span.attributes.get('lazyllm.semantic_type') == SemanticType.WORKFLOW_CONTROL
     assert json.loads(pipe_span.attributes.get('lazyllm.io.input')) == {'args': [3], 'kwargs': {}}
     assert pipe_span.attributes.get('lazyllm.io.output') == 'result:8'
     child_spans = [a1_span, dbl_span, fmt_span]
