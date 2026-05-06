@@ -5,6 +5,48 @@ import pytest
 
 class TestFormatter(object):
 
+    def test_empty_formatter_preserves_dict_when_tool_calls_present(self):
+        # When tool_calls are present the full assistant dict must be returned so
+        # that reasoning_content survives for provider-compatible history replay
+        # (e.g. DeepSeek rejects the next request if reasoning_content is missing).
+        ef = formatter.EmptyFormatter
+        msg = {
+            'role': 'assistant',
+            'content': '',
+            'reasoning_content': 'I should look up the weather.',
+            'tool_calls': [{
+                'id': 'call_1',
+                'type': 'function',
+                'function': {'name': 'get_weather', 'arguments': '{"city":"Beijing"}'},
+            }],
+        }
+        result = ef()(msg)
+        assert isinstance(result, dict)
+        assert result['reasoning_content'] == 'I should look up the weather.'
+        assert result['tool_calls'] == msg['tool_calls']
+        assert result['content'] == ''
+
+    def test_empty_formatter_wraps_reasoning_content_when_no_tool_calls(self):
+        ef = formatter.EmptyFormatter
+        msg = {'role': 'assistant', 'content': 'Hello!', 'reasoning_content': 'Some thought.'}
+        result = ef()(msg)
+        assert result == '<think>Some thought.</think>Hello!'
+
+    def test_function_call_formatter_preserves_dict(self):
+        fc = formatter.FunctionCallFormatter
+        msg = {
+            'role': 'assistant',
+            'content': '',
+            'reasoning_content': 'Deciding which tool to call.',
+            'tool_calls': [{'id': 'c1', 'type': 'function',
+                             'function': {'name': 'search', 'arguments': '{}'}}],
+        }
+        result = fc()(msg)
+        assert isinstance(result, dict)
+        assert result['reasoning_content'] == 'Deciding which tool to call.'
+        assert result['tool_calls'] == msg['tool_calls']
+
+
     def test_jsonlike_formatter_base(self):
         jsf = formatter.JsonLike
 

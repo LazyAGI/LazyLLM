@@ -31,6 +31,12 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
 
     def format(self, msg):
         if _is_chat_message(msg):
+            if msg.get('tool_calls'):
+                # When tool_calls are present, the full dict must be returned so that
+                # reasoning_content is preserved for provider-compatible history replay.
+                # DeepSeek (and compatible providers) reject multi-turn tool-calling
+                # requests whose previous assistant turn omits reasoning_content.
+                return msg
             if reasoning_content := msg.get('reasoning_content'):
                 msg = f'<think>{reasoning_content}</think>' + msg['content']
             else:
