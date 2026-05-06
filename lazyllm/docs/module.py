@@ -3298,3 +3298,22 @@ Note:
     - This module automatically downloads generated images to local files
     - The returned result contains file path information for easy subsequent processing
 ''')
+
+add_chinese_doc('StreamCallHelper', '''\
+流式调用辅助类，用于将阻塞调用包装为生成器形式，逐步返回执行结果。
+支持同步生成器（``__call__``）和异步生成器（``astream``）两种调用方式。
+
+Args:
+    impl (Callable): 需要流式执行的函数或可调用对象。
+    interval (float): 轮询队列的时间间隔，单位为秒，默认为0.1。
+''')
+
+add_english_doc('StreamCallHelper', '''\
+Helper class for streaming function calls, wrapping a blocking callable into a generator
+that yields results incrementally.
+Supports both a synchronous generator (``__call__``) and an async generator (``astream``).
+
+Args:
+    impl (Callable): The function or callable to execute in streaming mode.
+    interval (float): Time interval (in seconds) to poll the internal queue. Defaults to 0.1.
+''')
