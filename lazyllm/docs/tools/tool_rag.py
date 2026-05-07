@@ -7529,22 +7529,6 @@ Args:
     **kwargs: Keyword arguments for the query.
 ''')
 
-add_chinese_doc('StreamCallHelper', '''\
-流式调用辅助类，用于将阻塞调用包装为生成器形式，逐步返回执行结果。
-
-Args:
-    impl (Callable): 需要流式执行的函数或可调用对象。
-    interval (float): 轮询队列的时间间隔，单位为秒，默认为0.1。
-''')
-
-add_english_doc('StreamCallHelper', '''\
-Helper class for streaming function calls, wrapping a blocking callable into a generator that yields results incrementally.
-
-Args:
-    impl (Callable): The function or callable to execute in streaming mode.
-    interval (float): Time interval (in seconds) to poll the internal queue. Defaults to 0.1.
-''')
-
 add_chinese_doc('rag.LazyLLMStoreBase', '''\
 向量存储基类，定义了存储层的通用接口规范，所有具体的存储实现（如 Chroma、Milvus 等）需继承并实现该类。
 ''')
