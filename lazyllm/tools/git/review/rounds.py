@@ -474,20 +474,15 @@ def _analyze_single_hunk(
         sym_notes = _lookup_relevant_symbols(annotated_content, symbol_index)
         if sym_notes:
             effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
-<<<<<<< wzh/static_analysis
     prompt = _safe_format(
         _ROUND1_PROMPT_TMPL,
-=======
-    safe_content = annotated_content.replace('{', '{{').replace('}', '}}')
-    prompt = _ROUND1_PROMPT_TMPL.format(
->>>>>>> main
         lang_instruction=_language_instruction(language),
         pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
         arch_doc=effective_arch, review_spec=spec_snippet,
         file_skeleton=file_skeleton or '(not available)',
         code_profile=code_profile, review_focus_block=review_focus_block,
         file_context=file_context or '(not available)',
-        path=path, start=new_start, end=new_start + actual_count, content=safe_content,
+        path=path, start=new_start, end=new_start + actual_count, content=annotated_content,
         density_rule=issue_density_rule(annotated_content),
     )
     items = _safe_llm_call(llm, prompt)
@@ -532,20 +527,15 @@ def _analyze_large_hunk(
             sym_notes = _lookup_relevant_symbols(win_annotated, symbol_index)
             if sym_notes:
                 effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
-<<<<<<< wzh/static_analysis
         prompt = _safe_format(
             _ROUND1_PROMPT_TMPL,
-=======
-        safe_content = win_annotated.replace('{', '{{').replace('}', '}}')
-        prompt = _ROUND1_PROMPT_TMPL.format(
->>>>>>> main
             lang_instruction=_language_instruction(language),
             pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
             arch_doc=effective_arch, review_spec=spec_snippet,
             file_skeleton=file_skeleton or '(not available)',
             code_profile=code_profile, review_focus_block=review_focus_block,
             file_context=file_context or '(not available)',
-            path=path, start=win_start, end=win_start + win_count, content=safe_content,
+            path=path, start=win_start, end=win_start + win_count, content=win_annotated,
             density_rule=issue_density_rule(win_annotated),
         )
         items = _safe_llm_call(llm, prompt)
@@ -618,20 +608,15 @@ def _analyze_hunk_batch(
         f'{_annotate_diff_with_line_numbers(_truncate_hunk_content(cnt, hunk_budget_lines), s)}\n</hunk>'
         for s, c, cnt in hunks
     ]
-<<<<<<< wzh/static_analysis
     prompt = _safe_format(
         _ROUND1_BATCH_PROMPT_TMPL,
-=======
-    safe_hunks = '\n\n'.join(hunk_blocks).replace('{', '{{').replace('}', '}}')
-    prompt = _ROUND1_BATCH_PROMPT_TMPL.format(
->>>>>>> main
         lang_instruction=_language_instruction(language),
         pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
         arch_doc=effective_arch, review_spec=spec_snippet,
         file_skeleton=file_skeleton or '(not available)',
         code_profile=code_profile, review_focus_block=review_focus_block,
         file_context=file_context or '(not available)',
-        path=path, hunks_content=safe_hunks, density_rule=issue_density_rule('\n'.join(hunk_blocks)),
+        path=path, hunks_content='\n\n'.join(hunk_blocks), density_rule=issue_density_rule('\n'.join(hunk_blocks)),
     )
     items = _safe_llm_call(llm, prompt)
     # derive context_end_line from file_context header (same logic as _analyze_single_hunk)
