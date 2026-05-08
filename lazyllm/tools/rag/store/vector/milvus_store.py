@@ -17,6 +17,16 @@ from ..store_base import LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREF
 from ...data_type import DataType
 from ...global_metadata import GlobalMetadataDesc
 
+
+def _is_empty_embedding_value(v) -> bool:
+    if v is None:
+        return True
+    if isinstance(v, (list, tuple)):
+        return len(v) == 0
+    if isinstance(v, dict):
+        return not v
+    return False
+
 MILVUS_UPSERT_BATCH_SIZE = 500
 MILVUS_PAGINATION_OFFSET = 1000
 MILVUS_INDEX_MAX_RETRY = 3
@@ -141,16 +151,60 @@ class MilvusStore(LazyLLMStoreBase):
         finally:
             self._client_pool.release(c)
 
+    def _row_has_valid_embedding(self, d: dict, required_embed_keys: Set[str]) -> bool:
+        '''True if row has every collection-required embed key with a non-empty value.'''
+        emb = d.get('embedding')
+        if not emb or not isinstance(emb, dict):
+            return False
+        for k in required_embed_keys:
+            if _is_empty_embedding_value(emb.get(k)):
+                return False
+        return True
+
+    def _collection_embed_keys(self, client, collection_name: str) -> Set[str]:
+        desc = client.describe_collection(collection_name=collection_name)
+        return {
+            field.get('name')[len(EMBED_PREFIX):]
+            for field in desc.get('fields', [])
+            if field.get('name', '').startswith(EMBED_PREFIX)
+        }
+
+    def _data_embed_keys(self, data: List[dict]) -> Set[str]:
+        keys = set()
+        for row in data:
+            emb = row.get('embedding')
+            if not isinstance(emb, dict):
+                continue
+            keys.update(k for k, v in emb.items() if not _is_empty_embedding_value(v))
+        return keys
+
     @override
-    def upsert(self, collection_name: str, data: List[dict]) -> bool:
+    def upsert(self, collection_name: str, data: List[dict]) -> bool:  # noqa: C901
         try:
             if not data: return True
-            data_embeddings = data[0].get('embedding', {})
-            if not data_embeddings: return True
             with self._client_context() as client:
-                if not client.has_collection(collection_name):
+                collection_exists = client.has_collection(collection_name)
+                required_embed_keys = (
+                    self._collection_embed_keys(client, collection_name)
+                    if collection_exists else self._data_embed_keys(data)
+                )
+                if not required_embed_keys:
+                    return True
+
+                # Only require embeddings that belong to this collection. Different node groups may use
+                # different embedding models, e.g. text groups use BGE while image groups use SigLIP.
+                valid_data = [d for d in data if self._row_has_valid_embedding(d, required_embed_keys)]
+                dropped = len(data) - len(valid_data)
+                if dropped:
+                    LOG.warning(f'[Milvus Store - upsert] Dropping {dropped} rows with missing/empty embedding for '
+                                f'collection {collection_name}, required embeddings: {sorted(required_embed_keys)}.')
+                data = valid_data
+                if not data:
+                    return True
+
+                if not collection_exists:
                     embed_kwargs = {}
-                    for embed_key in data_embeddings.keys():
+                    for embed_key in required_embed_keys:
                         assert self._embed_datatypes.get(embed_key), \
                             f'cannot find embedding params for embed [{embed_key}]'
                         if embed_key not in embed_kwargs:
