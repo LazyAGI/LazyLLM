@@ -112,11 +112,19 @@ class SqlManager(DBManager):
                 # Keep cross-db compatibility while handling MySQL/TiDB PK restrictions.
                 real_type = self._sql_type_for(column_type, is_primary_key=is_primary)
                 # Handle default value
+                # For non-integer primary keys, disable autoincrement so SQLAlchemy
+                # always includes the column in INSERT statements.
+                autoincrement = 'auto' if not is_primary else (
+                    'auto' if column_type in ('integer', 'int') else False
+                )
                 if default_value is not None:
                     attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable,
-                                                           primary_key=is_primary, default=default_value)
+                                                           primary_key=is_primary, default=default_value,
+                                                           autoincrement=autoincrement)
                 else:
-                    attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable, primary_key=is_primary)
+                    attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable,
+                                                           primary_key=is_primary,
+                                                           autoincrement=autoincrement)
             # When create dynamic class with same name, old version will be replaced
             TableClass = type(table_info.name.capitalize(), (TableBase,), attrs)
             self.create_table(TableClass)
@@ -369,6 +377,16 @@ class SqlManager(DBManager):
         if table_name in self._orm_cache:
             return self._orm_cache[table_name]
         self._refresh_metadata(only=[table_name])
+        # SQLAlchemy automap sets autoincrement='auto' for all primary keys, including
+        # non-integer ones (TEXT/VARCHAR). This causes SQLAlchemy to omit the PK column
+        # from INSERT statements when the value is provided, leading to NOT NULL errors.
+        # Explicitly disable autoincrement for non-integer primary key columns before
+        # calling Base.prepare() so the compiled INSERT includes the PK column.
+        table = self._metadata.tables.get(table_name)
+        if table is not None:
+            for col in table.primary_key.columns:
+                if not isinstance(col.type, sqlalchemy.Integer):
+                    col.autoincrement = False
         Base = automap_base(metadata=self._metadata)
         Base.prepare()
         class_obj = getattr(Base.classes, table_name, None)

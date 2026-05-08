@@ -26,9 +26,13 @@ The Document constructor has the following parameters:
 
 * `dataset_path`: Specifies which file directory to build from.
 * `embed`: Uses the specified model to perform text embedding. If you need to generate multiple embeddings for the text, you need to specify them in a dictionary, where the key identifies the name of the embedding and the value is the corresponding embedding model.
-* `manager`: Whether to use the UI interface, which will affect the internal processing logic of Document; the default is True.
+* `manager`: Controls the running mode of `Document`, defaults to `False`. Supports the following values:
+    * `False`: Standalone mode, document parsing is done in the current process, suitable for local development and debugging.
+    * `True` or `'ui'`: Distributed mode, automatically starts `DocumentProcessor` (parsing service) and `DocServer` (document management service), with optional Web UI.
+    * A `DocServer` instance: Connects to an existing external document management service.
+    * A `DocumentProcessor` instance: Connects to an existing external parsing service; in this case, `store_conf` must be passed to `DocumentProcessor` instead of `Document`.
 * `launcher`: The method of launching the service, which is used in cluster applications; it can be ignored for single-machine applications.
-* `store_conf`: Configure which storage backend to use.
+* `store_conf`: Configure which storage backend to use. In standalone mode and distributed mode with `manager=True`, pass this to `Document`; if `manager` is a `DocumentProcessor` instance, `store_conf` should be passed to that `DocumentProcessor` instead, and `Document` no longer accepts this parameter.
 * `doc_fields`: Configure the fields and corresponding types that need to be stored and retrieved (currently only used by the Chroma and Milvus backend).
 
 #### Node and NodeGroup
@@ -107,6 +111,166 @@ The relationship of these `Node Group`s is shown in the diagram below:
 
 
 These `Node Group`s have different granularities and rules, reflecting various characteristics of the document. In subsequent processing, we use these characteristics in different contexts to better judge the relevance between the document and the user's query content.
+
+#### Running Modes
+
+`Document` supports four running modes for different deployment scenarios. The mode is controlled by the `manager` parameter.
+
+---
+
+**Mode 1: Temporary Document Mode**
+
+Pass in a file list directly without writing to any persistent storage. Suitable for one-off temporary retrieval scenarios.
+
+```python
+doc = Document(doc_files=['/tmp/a.pdf', '/tmp/b.txt'], embed=embed_model)
+retriever = Retriever(doc, group_name='CoarseChunk', similarity='cosine', topk=3)
+```
+
+Internal objects:
+
+- `_Processor` (in main process, lazily created on init)
+- `_DocumentStore` (pure in-memory map, destroyed when process exits)
+
+Call chain:
+
+```
+Document._lazy_init()
+  → _DocumentStore(type='map')
+  → _Processor(store, reader, node_groups)
+  → _Processor.add_doc(doc_files)
+```
+
+---
+
+**Mode 2: Standalone Mode (`manager=False`, default)**
+
+Load documents from a local directory; parsing is done in the current process. Suitable for local development and debugging.
+
+```python
+doc = Document(
+    dataset_path='/data/docs',
+    embed=embed_model,
+    manager=False,
+    store_conf=milvus_store_conf,  # optional, defaults to in-memory storage
+)
+doc.create_node_group('MyChunk', transform=SentenceSplitter)
+doc.start()
+```
+
+Internal objects:
+
+- `_Processor` (in main process)
+- `_DocumentStore` (determined by `store_conf`, defaults to in-memory map)
+
+Call chain:
+
+```
+Document.start() → _lazy_init()
+  → _DocumentStore(store_conf)
+  → _Processor(store, reader, node_groups)
+  → scan dataset_path → _Processor.add_doc(...)
+```
+
+No background services; `_Processor` runs synchronously in the main process.
+
+---
+
+**Mode 3: Distributed Mode (`manager=True`, auto-start)**
+
+Automatically starts `DocumentProcessor` (parsing service) and `DocServer` (document management service). Suitable for production environments. Pass `store_conf` to `Document`.
+
+```python
+doc = Document(
+    dataset_path='/data/docs',
+    embed=embed_model,
+    manager=True,
+    store_conf=milvus_store_conf,
+)
+doc.start()
+```
+
+Internal objects and call chain:
+
+```
+Document.start()
+  ├─ auto-start DocServer (subprocess, HTTP service)
+  │    └─ DocManager (document CRUD, directory scan, task enqueue)
+  └─ auto-start DocumentProcessor (subprocess, HTTP service)
+       └─ Worker × N (each an independent subprocess)
+            └─ _Processor (in Worker process, lazily created on first task)
+                 └─ _DocumentStore (connects to external Milvus/Chroma, etc.)
+
+Write flow:
+DocServer.upload()
+  → DocManager → ParserClient.add_doc() [HTTP]
+  → DocumentProcessor → task queue
+  → Worker._Processor.add_doc(node_groups, reader)
+  → _DocumentStore.update_nodes()
+  → callback → DocManager.on_task_callback()
+
+Retrieval flow (bypasses all services, accesses storage directly):
+Document.forward(query)
+  → _DocumentStore.query()
+```
+
+`DocServer` handles file CRUD and directory scanning; the retrieval path does not go through it at all.
+
+---
+
+**Mode 4: Distributed Mode (`manager=DocumentProcessor`, manual management)**
+
+The user creates and manages `DocumentProcessor` themselves, without needing `DocServer`. Files are uploaded via an external API. `store_conf` must be passed to `DocumentProcessor`; `Document` no longer accepts this parameter.
+
+```python
+from lazyllm.tools.rag import DocumentProcessor
+
+proc = DocumentProcessor(
+    store_conf=milvus_store_conf,
+)
+proc.start()
+
+doc = Document(
+    manager=proc,
+    embed=embed_model,
+    # Note: store_conf must NOT be passed here, otherwise an error will be raised
+)
+doc.start()
+```
+
+Internal objects:
+
+- `DocumentProcessor` (user-created, subprocess or remote service)
+  - `Worker × N` → `_Processor` (same as Mode 3)
+- `DocImpl` (in main process, used for retrieval)
+- **No DocServer**, no directory scanning
+
+Call chain:
+
+```
+DocImpl._lazy_init()
+  → store_conf comes from proc._store_conf
+  → _DocumentStore(store_conf)
+  → proc.register_algorithm(algo_name, store, reader, node_groups)
+     (registers to remote DocumentProcessor, no local _Processor created)
+```
+
+---
+
+**Comparison of the Four Modes**
+
+| Dimension | Temporary | Standalone | Distributed (auto) | Distributed (manual Processor) |
+|-----------|-----------|------------|--------------------|---------------------------------|
+| `_Processor` location | Main process | Main process | Worker subprocess | Worker subprocess |
+| `DocServer` | None | None | Auto-created | None |
+| `DocumentProcessor` | None | None | Auto-created | User-created |
+| `store_conf` passed to | None (in-memory) | `Document` | `Document` | `DocumentProcessor` |
+| Directory scan | None | One-time | DocServer continuous scan | None |
+| Retrieval path | Direct store access | Direct store access | Direct store access | Direct store access |
+
+In all modes, the **retrieval path is identical**: `DocImpl → _DocumentStore.query()`, without going through any background service.
+
+---
 
 #### Store and Index
 

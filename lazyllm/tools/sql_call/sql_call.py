@@ -7,8 +7,6 @@ import datetime
 import re
 from lazyllm.tools.sql import DBManager
 
-from ..rag import Document
-
 sql_query_instruct_template = '''
 Given the following SQL tables and current date {current_date}, your job is to write sql queries in {db_type} given a user’s request.
 
@@ -156,22 +154,6 @@ class SqlCall(ModuleBase):
             return True, extracted_content if not self.sql_post_func else self.sql_post_func(extracted_content)
         else:
             return False, str_response
-
-    @classmethod
-    def create_from_document(cls, document: Document, llm=None, sql_examples: str = '',
-                             sql_post_func: Callable = None, use_llm_for_sql_result=True,
-                             return_trace: bool = False) -> 'SqlCall':
-        if not document._schema_extractor:
-            raise ValueError('Only document with schema extractor can be used to create SqlCall.')
-        sql_manager = document._impl._schema_extractor.sql_manager_for_nl2sql(algo_id=document._curr_group)
-        llm = document._schema_extractor._llm if not llm else llm
-        if not sql_manager:
-            raise ValueError('Sql manager is not initialized in schema extractor.')
-        if not llm:
-            raise ValueError('LLM is not initialized in schema extractor.')
-        return cls(llm=llm, sql_manager=sql_manager, sql_examples=sql_examples,
-                   sql_post_func=sql_post_func, use_llm_for_sql_result=use_llm_for_sql_result,
-                   return_trace=return_trace)
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         globals['root_input'] = {self._llm_answer._module_id: input}
