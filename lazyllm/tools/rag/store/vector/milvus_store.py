@@ -169,15 +169,6 @@ class MilvusStore(LazyLLMStoreBase):
             if field.get('name', '').startswith(EMBED_PREFIX)
         }
 
-    def _data_embed_keys(self, data: List[dict]) -> Set[str]:
-        keys = set()
-        for row in data:
-            emb = row.get('embedding')
-            if not isinstance(emb, dict):
-                continue
-            keys.update(k for k, v in emb.items() if not _is_empty_embedding_value(v))
-        return keys
-
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:  # noqa: C901
         try:
@@ -186,13 +177,12 @@ class MilvusStore(LazyLLMStoreBase):
                 collection_exists = client.has_collection(collection_name)
                 required_embed_keys = (
                     self._collection_embed_keys(client, collection_name)
-                    if collection_exists else self._data_embed_keys(data)
+                    if collection_exists else set(self._embed_datatypes.keys())
                 )
                 if not required_embed_keys:
                     return True
 
-                # Only require embeddings that belong to this collection. Different node groups may use
-                # different embedding models, e.g. text groups use BGE while image groups use SigLIP.
+                # Validate rows only against schema-required embedding fields.
                 valid_data = [d for d in data if self._row_has_valid_embedding(d, required_embed_keys)]
                 dropped = len(data) - len(valid_data)
                 if dropped:
@@ -204,7 +194,7 @@ class MilvusStore(LazyLLMStoreBase):
 
                 if not collection_exists:
                     embed_kwargs = {}
-                    for embed_key in required_embed_keys:
+                    for embed_key in sorted(required_embed_keys):
                         assert self._embed_datatypes.get(embed_key), \
                             f'cannot find embedding params for embed [{embed_key}]'
                         if embed_key not in embed_kwargs:
@@ -216,7 +206,8 @@ class MilvusStore(LazyLLMStoreBase):
 
                 for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
                     client.upsert(collection_name=collection_name,
-                                  data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
+                                  data=[self._serialize_data(d, required_embed_keys)
+                                        for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
             return True
         except Exception as e:
             LOG.error(f'[Milvus Store - upsert] error: {e}')
@@ -468,12 +459,14 @@ class MilvusStore(LazyLLMStoreBase):
                 # if user passed a non-dict (exception), replace it with the default dict
                 index_item['params'] = dict(default_params)
 
-    def _serialize_data(self, d: dict) -> dict:
+    def _serialize_data(self, d: dict, allowed_embed_keys: Optional[Set[str]] = None) -> dict:
         # only keep primary_key, embedding and global_meta
         res = {
             self._primary_key: d.get(self._primary_key, '')
         }
         for embed_key, value in d.get('embedding', {}).items():
+            if allowed_embed_keys is not None and embed_key not in allowed_embed_keys:
+                continue
             res[self._gen_embed_key(embed_key)] = value
         global_meta = d.get('global_meta', {})
         for name, desc in self._global_metadata_desc.items():
