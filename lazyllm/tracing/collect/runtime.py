@@ -9,9 +9,9 @@ from lazyllm.common import LOG
 from lazyllm.common.globals import globals as llm_globals
 from lazyllm.configs import config
 from lazyllm.thirdparty import opentelemetry
-from ..backends import get_tracing_backend
+from lazyllm.tracing.backends import get_tracing_backend
+from lazyllm.tracing.semantics import SemanticType
 from .context import LazyTraceContext
-from ..semantics import SemanticType
 from .span import LazySpan, LazyTrace
 from .trace_config import collect_trace_config, resolve_semantic_type_for_target
 
@@ -90,6 +90,8 @@ class TracingRuntime:
         with self._lock:
             if self._initialized:
                 return self._tracer is not None
+            if not self._trace_enabled(get_trace_context()):
+                return False
             self._initialized = True
             try:
                 trace_api = opentelemetry.trace
@@ -195,6 +197,7 @@ class TracingRuntime:
         is_reconstructed = False
         if is_root_span and ctx.trace_id and ctx.parent_span_id:
             try:
+                # Reattach to the caller-provided parent context when enable_trace resumes an existing trace.
                 trace_flags_value = 0x00 if ctx.sampled is False else 0x01
                 parent_sc = opentelemetry.trace.SpanContext(
                     trace_id=int(ctx.trace_id, 16),
@@ -241,11 +244,6 @@ class TracingRuntime:
         if capture_payload:
             lazy_span.input = {'args': args, 'kwargs': kwargs}
 
-        # --- LazyTrace lifecycle ---
-        # The first span in the current context (or a span that lands on a new
-        # trace_id due to e.g. an explicit reset) creates and owns a LazyTrace.
-        # Nested spans reuse it; cross-thread reconstructed slices build a local
-        # LazyTrace anchored on the propagated trace_id.
         active_trace = _current_trace.get()
         if active_trace is None or active_trace.trace_id != trace_id_hex or not active_trace.is_active:
             new_trace = LazyTrace(
@@ -340,7 +338,6 @@ class TracingRuntime:
             attrs['lazyllm.io.output'] = _stringify_payload(span.output)
 
     def _build_otel_attributes(self, span: LazySpan, trace: Optional[LazyTrace] = None) -> Dict[str, Any]:
-        '''Build the generic OTel attribute set for a span.'''
         attrs: Dict[str, Any] = {
             'lazyllm.span.kind': span.span_kind,
             'lazyllm.span.is_root': span.is_root_span,
@@ -387,28 +384,23 @@ class TracingRuntime:
 
         active_trace = _current_trace.get()
         trace_matches = active_trace is not None and active_trace.trace_id == span.trace_id
+        # Build and attach generic attrs before backend-specific mapping and final span closure.
         otel_attrs = self._build_otel_attributes(span, trace=active_trace if trace_matches else None)
 
-        # 1) lazyllm.* attributes
         for k, v in otel_attrs.items():
             otel_span.set_attribute(k, v)
 
-        # 2) Backend-specific attributes
         if self._backend:
             for k, v in self._backend.map_attributes(otel_attrs).items():
                 otel_span.set_attribute(k, v)
 
-        # 3) Error handling
         if span.error:
             status_cls, status_code = self._status
             otel_span.set_status(status_cls(status_code.ERROR, str(span.error)))
             otel_span.record_exception(span.error)
 
-        # 4) Close OTel span
         span._otel_span_cm.__exit__(None, None, None)
 
-        # 5) LazyTrace bookkeeping: aggregate outcome; if this span owns the trace,
-        #    finalize it and clear the ContextVar so the next request starts fresh.
         if trace_matches:
             active_trace._record_span_end(span)
             if span._owns_lazy_trace:
@@ -475,7 +467,6 @@ def _run_with_trace(func, args, kwargs, trace_config):
     old_ctx = get_trace_context()
     new_ctx_data = old_ctx.to_dict()
 
-    # Clear inherited trace linkage unless explicitly provided, enforcing a new root trace.
     new_ctx_data['trace_id'] = trace_id
     new_ctx_data['parent_span_id'] = parent_span_id
 
@@ -513,23 +504,6 @@ def _run_with_trace(func, args, kwargs, trace_config):
 
 
 def enable_trace(func=None, *args, **kwargs):
-    '''
-    Explicitly enable and configure tracing for a pipeline or function.
-    Can be used as a wrapper or a decorator.
-
-    Tracing-configuration kwargs (``trace_id``, ``parent_span_id``, ``session_id``,
-    ``user_id``, ``request_tags``, ``module_trace``) are consumed by ``enable_trace``
-    itself and are never forwarded to ``func``. If ``func`` needs a parameter with
-    the same name, pass it positionally or rename it on the callable.
-
-    Usage as a wrapper:
-        enable_trace(pipeline, input_data, trace_id='123', session_id='abc')
-
-    Usage as a decorator:
-        @enable_trace(session_id='abc')
-        def my_flow(query):
-            ...
-    '''
     if func is None:
         trace_config = _extract_trace_config(kwargs)
         if kwargs:

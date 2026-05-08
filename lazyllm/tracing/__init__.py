@@ -35,9 +35,11 @@ _SUBMOD_MAP = {
     ],
     'backends': [
         'get_tracing_backend',
+        'get_consume_backend',
     ],
     'backends.base': [
         'TracingBackend',
+        'ConsumeBackend',
     ],
     'semantics': [
         'SemanticType',
@@ -47,6 +49,25 @@ _SUBMOD_MAP = {
         '_SPAN_ID_RE',
         '_VALID_SPAN_KINDS',
         '_VALID_SPAN_STATUS',
+    ],
+    'consume.api': [
+        'get_single_trace',
+    ],
+    'datamodel.structured': [
+        'ExecutionStep',
+        'RawData',
+        'StructuredTrace',
+        'TraceMetadata',
+    ],
+    'datamodel.raw': [
+        'RawSpanRecord',
+        'RawTracePayload',
+        'RawTraceRecord',
+    ],
+    'errors': [
+        'ConsumeError',
+        'TraceNotFound',
+        'ConsumeBackendError',
     ],
 }
 _SUBMOD_MAP_REVERSE = {sym: mod for mod, syms in _SUBMOD_MAP.items() for sym in syms}

@@ -259,12 +259,9 @@ def check_config_map_format(config_map: dict):
                 raise ValueError(f'source for model {k} should be a string')
 
 def _get_module_config_map(path):
-    try:
-        cfg = yaml.safe_load(open(path, 'r')) if os.path.exists(path) else {}
-        check_config_map_format(cfg)
-    except Exception:
-        LOG.warning(f'Failed to load trainable module config map from {path}')
-        cfg = {}
+    if not os.path.exists(path): return {}
+    cfg = {k: [v] if isinstance(v, dict) else v for k, v in yaml.safe_load(open(path, 'r')).items()}
+    check_config_map_format(cfg)
     return cfg
 
 def _classify_config_entry(entry: Dict[str, Any]) -> str:
@@ -353,6 +350,9 @@ def process_online_args(model: str, source: str, type: str,
         entry['source'] = source
     if type:
         entry['type'] = type
-    entry.pop('name', None)
-    entry.pop('id', None)
+    # Pass the config-map key (role name) as the module name so that
+    # identities = [config_id, role_name, group_id].  This lets
+    # ConfigsDict look up per-role dynamic configs by name rather than
+    # falling back to 'default' for every module of the same slot type.
+    entry.setdefault('name', model)
     return entry

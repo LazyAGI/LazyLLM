@@ -47,12 +47,9 @@ class WikipediaSearch(SearchBase):
             'srlimit': min(limit, 500),
             'format': 'json',
         }
-        try:
-            resp = httpx.get(self._api_url, params=params, timeout=self._timeout)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception:
-            return []
+        resp = httpx.get(self._api_url, params=params, timeout=self._timeout)
+        resp.raise_for_status()
+        data = resp.json()
         search = data.get('query', {}).get('search') or []
         out: List[dict] = []
         for it in search:

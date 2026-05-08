@@ -200,7 +200,7 @@ def main():  # noqa C901
                 cat = c.get('bug_category', '')
                 sev = c.get('severity', '')
                 prob = (c.get('problem') or '')[:60]
-                print(f'   [{i+1}] {c.get("path")} L{c.get("line")} [{sev}][{cat}] {prob}...')
+                print(f'   [{i + 1}] {c.get("path")} L{c.get("line")} [{sev}][{cat}] {prob}...')
             if len(comments) > 10:
                 print(f'   ... and {len(comments) - 10} more')
         except Exception as e:

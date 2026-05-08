@@ -440,6 +440,8 @@ MODEL_MAPPING = {
     # ===== DeepSeek =====
     'deepseek-chat': 'llm',
     'deepseek-reasoner': 'llm',
+    'deepseek-v4-flash': 'llm',
+    'deepseek-v4-pro': 'llm',
 
     # ===== SiliconFlow =====
     'qwen/qwen-image-edit': 'image_editing',

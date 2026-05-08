@@ -119,6 +119,10 @@ class _Log:
         def impl(*args, join: str = '\n', depth: int = 0, **kw):
             call_kw = dict(jobid=(f', jobid={jobid}' if (jobid := kw.pop('jobid', None)) else ''))
             if 'name' in kw: call_kw['name'] = kw.pop('name')
+            opt_params = {'exception', 'record', 'lazy', 'colors', 'raw', 'capture', 'ansi'}
+            for k in list(kw):
+                if k not in opt_params:
+                    call_kw[k] = kw.pop(k)
             s = str(args[0]) if len(args) == 1 else join.join([str(a) for a in args])
             s = s.replace('{', '{{').replace('}', '}}')
             getattr(self._logger.opt(depth=depth + 1, **kw), attr)(s, **call_kw)

@@ -1,11 +1,14 @@
 import os
+import json
 import pytest
 import tempfile
 import shutil
 import requests
+from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 import lazyllm
-from lazyllm.tools.rag.readers.paddleocr_pdf_reader import PaddleOCRPDFReader
+from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import PaddleOCRPDFReader
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.doc_node import RichDocNode
 from lazyllm.tools.rag.transform import RichTransform
@@ -13,6 +16,7 @@ from lazyllm.tools.rag.transform.sentence import SentenceSplitter
 
 
 lazyllm.config.add('PADDLEOCRVL_URL', str, '', 'PADDLEOCRVL_URL')
+
 
 def _is_url_accessible(base_url: str, timeout: float = 1.0) -> bool:
     if not base_url or not base_url.strip():
@@ -30,9 +34,147 @@ def _is_url_accessible(base_url: str, timeout: float = 1.0) -> bool:
         return False
 
 
-class TestPaddleOCRPDFReader(object):
+def _make_mock_response() -> str:
+    return json.dumps({
+        'result': {
+            'layoutParsingResults': [
+                {
+                    'markdown': {
+                        'images': {
+                            'test_img.png': 'http://mock-url/test_img.png'
+                        }
+                    },
+                    'prunedResult': {
+                        'parsing_res_list': [
+                            {'block_label': 'paragraph_title', 'block_content': '# Test Heading',
+                             'block_bbox': [0, 100, 400, 130]},
+                            {'block_label': 'text', 'block_content': 'This is test paragraph content.',
+                             'block_bbox': [0, 130, 400, 160]},
+                            {'block_label': 'image', 'block_content': '<img src="test_img.png"/>',
+                             'block_bbox': [0, 160, 400, 360]},
+                            {'block_label': 'table',
+                             'block_content': ('<table><tr><th>A</th><th>B</th></tr>'
+                                               '<tr><td>1</td><td>2</td></tr></table>'),
+                             'block_bbox': [0, 360, 400, 420]},
+                        ]
+                    }
+                }
+            ]
+        }
+    })
+
+
+def _make_test_pdf(tmp_path: Path) -> Path:
+    pdf = tmp_path / 'test.pdf'
+    # Note: this is not a valid PDF, but sufficient for mock tests that
+    # never parse the file content.
+    pdf.write_bytes(b'%PDF-1.4 fake pdf content for testing')
+    return pdf
+
+
+# ---------------------------------------------------------------------------
+# Mock-based tests (no external service required)
+# ---------------------------------------------------------------------------
+
+class TestPaddleOCRPDFReaderMock(object):
+    '''Mock-based tests that verify parsing logic without external services.'''
+
+    def test_load_data_mock(self, tmp_path):
+        pdf = _make_test_pdf(tmp_path)
+        reader = PaddleOCRPDFReader(url='http://mock-paddle')
+
+        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
+            resp = MagicMock()
+            resp.text = _make_mock_response()
+            mock_post.return_value = resp
+
+            docs = reader._load_data(pdf)
+
+        assert isinstance(docs, list)
+        assert len(docs) > 0, 'Return result should not be empty'
+        types = {d.metadata.get('type') for d in docs}
+        assert 'heading' in types
+        assert 'paragraph' in types
+        assert 'figure' in types
+        assert 'table' in types
+
+    def test_load_data_with_images_dir_mock(self, tmp_path):
+        pdf = _make_test_pdf(tmp_path)
+        images_dir = tmp_path / 'images'
+        reader = PaddleOCRPDFReader(url='http://mock-paddle', images_dir=str(images_dir))
+
+        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
+            resp = MagicMock()
+            resp.text = _make_mock_response()
+            mock_post.return_value = resp
+
+            docs = reader._load_data(pdf)
+
+        assert isinstance(docs, list)
+        assert len(docs) > 0, 'Return result should not be empty'
+
+    def test_load_data_with_split_doc_false_mock(self, tmp_path):
+        pdf = _make_test_pdf(tmp_path)
+        reader = PaddleOCRPDFReader(url='http://mock-paddle', split_doc=False)
+
+        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
+            resp = MagicMock()
+            resp.text = _make_mock_response()
+            mock_post.return_value = resp
+
+            docs = reader._load_data(pdf)
+
+        assert isinstance(docs, list)
+        assert len(docs) > 0, 'Return result should not be empty'
+        # When split_doc=False the base _RichReader still returns a single
+        # merged node wrapped in a list.
+        assert isinstance(docs[0], DocNode)
+
+    def test_load_data_with_different_init_parameters_mock(self, tmp_path):
+        pdf = _make_test_pdf(tmp_path)
+
+        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
+            resp = MagicMock()
+            resp.text = _make_mock_response()
+            mock_post.return_value = resp
+
+            # format_block_content=False
+            reader1 = PaddleOCRPDFReader(url='http://mock-paddle', format_block_content=False)
+            docs1 = reader1._load_data(pdf)
+            assert isinstance(docs1, list) and len(docs1) > 0
+
+            # use_layout_detection=False
+            reader2 = PaddleOCRPDFReader(url='http://mock-paddle', use_layout_detection=False)
+            docs2 = reader2._load_data(pdf)
+            assert isinstance(docs2, list) and len(docs2) > 0
+
+            # use_chart_recognition=False
+            reader3 = PaddleOCRPDFReader(url='http://mock-paddle', use_chart_recognition=False)
+            docs3 = reader3._load_data(pdf)
+            assert isinstance(docs3, list) and len(docs3) > 0
+
+            # drop_types
+            reader4 = PaddleOCRPDFReader(
+                url='http://mock-paddle',
+                drop_types=['header', 'footer', 'aside_text']
+            )
+            docs4 = reader4._load_data(pdf)
+            assert isinstance(docs4, list) and len(docs4) > 0
+            for d in docs4:
+                if 'type' in d.metadata:
+                    assert d.metadata['type'] not in ['header', 'footer', 'aside_text']
+
+
+# ---------------------------------------------------------------------------
+# Live-service tests (skip when service unavailable)
+# ---------------------------------------------------------------------------
+
+class TestPaddleOCRPDFReaderLive(object):
     def setup_method(self):
-        # Skip all tests if paddleocrvl_url is empty or not accessible
         self.url = lazyllm.config['PADDLEOCRVL_URL']
         if not self.url or not self.url.strip():
             pytest.skip('paddleocrvl_url is empty or not set')
@@ -53,23 +195,19 @@ class TestPaddleOCRPDFReader(object):
     def test_load_data_without_images_dir(self):
         self._skip_if_pdf_not_exist()
         reader = PaddleOCRPDFReader(url=self.url)
-        docs = reader(self.test_pdf)
+        docs = reader._load_data(Path(self.test_pdf))
         assert isinstance(docs, list)
         assert len(docs) > 0, 'Return result should not be empty'
 
     def test_load_data_with_images_dir(self):
         self._skip_if_pdf_not_exist()
         images_dir = os.path.join(self.temp_dir, 'images')
-        reader = PaddleOCRPDFReader(
-            url=self.url,
-            images_dir=images_dir
-        )
-        root_docs = reader(self.test_pdf)
+        reader = PaddleOCRPDFReader(url=self.url, images_dir=images_dir)
+        root_docs = reader._load_data(Path(self.test_pdf))
         assert isinstance(root_docs, list)
         assert len(root_docs) > 0, 'Return result should not be empty'
         assert len(root_docs) == 1, 'Return result should be a single RichDocNode'
         assert isinstance(root_docs[0], RichDocNode), 'Return result should be a RichDocNode'
-        # Check if image_path in image node metadata actually exists
         docs = RichTransform()([root_docs[0]])
         image_nodes = [doc for doc in docs if doc.metadata.get('type') == 'image']
         assert len(image_nodes) > 0, 'Return result should contain image nodes'
@@ -80,7 +218,7 @@ class TestPaddleOCRPDFReader(object):
     def test_load_data_with_split_doc_false(self):
         self._skip_if_pdf_not_exist()
         reader = PaddleOCRPDFReader(url=self.url, split_doc=False)
-        docs = reader(self.test_pdf)
+        docs = reader._load_data(Path(self.test_pdf))
         assert isinstance(docs, list)
         assert len(docs) > 0, 'Return result should not be empty'
         assert len(docs) == 1, 'When split_doc=False, should return only one node'
@@ -89,7 +227,7 @@ class TestPaddleOCRPDFReader(object):
     def test_richdocnode_compatible(self):
         self._skip_if_pdf_not_exist()
         split_reader = PaddleOCRPDFReader(url=self.url, split_doc=True)
-        docs = split_reader(self.test_pdf)
+        docs = split_reader._load_data(Path(self.test_pdf))
         assert isinstance(docs, list)
         assert len(docs) == 1, 'When split_doc=True, should return only one node'
         assert isinstance(docs[0], RichDocNode), 'Return result should be a RichDocNode'
@@ -108,46 +246,29 @@ class TestPaddleOCRPDFReader(object):
     def test_load_data_with_different_init_parameters(self):
         self._skip_if_pdf_not_exist()
 
-        # Test format_block_content=False
-        reader1 = PaddleOCRPDFReader(
-            url=self.url,
-            format_block_content=False
-        )
-        docs1 = reader1(self.test_pdf)
+        reader1 = PaddleOCRPDFReader(url=self.url, format_block_content=False)
+        docs1 = reader1._load_data(Path(self.test_pdf))
         docs1 = RichTransform()([docs1[0]])
         assert isinstance(docs1, list)
         assert len(docs1) > 0, 'Return result should not be empty when format_block_content=False'
 
-        # Test use_layout_detection=False
-        reader2 = PaddleOCRPDFReader(
-            url=self.url,
-            use_layout_detection=False
-        )
-        docs2 = reader2(self.test_pdf)
+        reader2 = PaddleOCRPDFReader(url=self.url, use_layout_detection=False)
+        docs2 = reader2._load_data(Path(self.test_pdf))
         docs2 = RichTransform()([docs2[0]])
         assert isinstance(docs2, list)
         assert len(docs2) > 0 and len(docs2) < 15, 'Return result should not be empty when use_layout_detection=False'
 
-        # Test use_chart_recognition=False
-        reader3 = PaddleOCRPDFReader(
-            url=self.url,
-            use_chart_recognition=False
-        )
-        docs3 = reader3(self.test_pdf)
+        reader3 = PaddleOCRPDFReader(url=self.url, use_chart_recognition=False)
+        docs3 = reader3._load_data(Path(self.test_pdf))
         docs3 = RichTransform()([docs3[0]])
         assert isinstance(docs3, list)
         assert len(docs3) > 0, 'Return result should not be empty when use_chart_recognition=False'
 
-        # Test drop_types parameter
-        reader4 = PaddleOCRPDFReader(
-            url=self.url,
-            drop_types=['header', 'footer', 'aside_text']
-        )
-        docs4 = reader4(self.test_pdf)
+        reader4 = PaddleOCRPDFReader(url=self.url, drop_types=['header', 'footer', 'aside_text'])
+        docs4 = reader4._load_data(Path(self.test_pdf))
         docs4 = RichTransform()([docs4[0]])
         assert isinstance(docs4, list)
         assert len(docs4) > 0, 'Return result should not be empty when using drop_types'
-        # Check that metadata should not contain filtered types
         for doc in docs4:
             if 'type' in doc.metadata:
                 assert doc.metadata['type'] not in ['header', 'footer', 'aside_text']
