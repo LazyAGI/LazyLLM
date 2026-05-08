@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from filelock import FileLock, Timeout
 
@@ -28,7 +28,7 @@ def _strip_otel_id_prefix(value: str) -> str:
     return value[2:] if value.startswith('0x') else value
 
 
-def _span_to_json_line(span: opentelemetry.sdk.trace.ReadableSpan) -> str:
+def _span_to_json_line(span: 'opentelemetry.sdk.trace.ReadableSpan') -> str:
     raw = span.to_json(indent=None)
     payload = json.loads(raw)
     if not isinstance(payload, dict):
@@ -130,7 +130,7 @@ class LocalFileSpanExporter(opentelemetry.sdk.trace.export.SpanExporter):
         self.storage_dir = Path(storage_dir) if storage_dir is not None else read_local_storage_dir()
         self._shutdown = False
 
-    def export(self, spans: Sequence[opentelemetry.sdk.trace.ReadableSpan]):
+    def export(self, spans: Sequence['opentelemetry.sdk.trace.ReadableSpan']):
         SpanExportResult = opentelemetry.sdk.trace.export.SpanExportResult
         if self._shutdown:
             return SpanExportResult.FAILURE
