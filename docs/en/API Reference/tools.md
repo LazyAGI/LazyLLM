@@ -97,32 +97,6 @@
     members: retrieve
     exclude-members:
 
-::: lazyllm.tools.rag.doc_to_db.DocGenreAnalyser
-    members: gen_detection_query, analyse_doc_genre
-    exclude-members:
-
-::: lazyllm.tools.rag.doc_to_db.DocInfoSchemaAnalyser
-    members: analyse_info_schema
-	exclude-members:
-
-::: lazyllm.tools.rag.doc_to_db.DocInfoExtractor
-    members: extract_doc_info
-	exclude-members:
-
-::: lazyllm.tools.rag.doc_to_db.DocInfoExtractor
-    members:
-    exclude-members:
-
-::: lazyllm.tools.rag.doc_to_db.DocToDbProcessor
-    members:
-        - extract_info_from_docs
-        - analyze_info_schema_by_llm
-        - clear
-        - export_info_to_db
-    exclude-members:
-
-::: lazyllm.tools.rag.doc_to_db.extract_db_schema_from_files
-
 ::: lazyllm.tools.rag.doc_to_db.SchemaExtractor
     members:
 	- extract_and_store
