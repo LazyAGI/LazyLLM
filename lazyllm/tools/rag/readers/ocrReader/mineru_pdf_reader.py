@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import shutil
 import zipfile
 import requests
 import time
@@ -107,6 +108,7 @@ class MineruPDFReader(_OcrReaderBase):
             'files': [{'name': os.path.basename(file_path)}],
             'model_version': 'vlm',
         }
+        LOG.info(f'[MineruPDFReader] Step 1/3: Requesting presigned URL for {os.path.basename(file_path)}')
         resp = post_sync(
             'https://mineru.net/api/v4/file-urls/batch',
             json_payload=payload,
@@ -116,32 +118,50 @@ class MineruPDFReader(_OcrReaderBase):
         data = resp.json()
         batch_id = data['data']['batch_id']
         file_url = data['data']['file_urls'][0]
+        LOG.info(f'[MineruPDFReader] Got batch_id={batch_id}')
 
         # Step 2: Upload file to OSS
+        file_size = os.path.getsize(file_path)
+        LOG.info(f'[MineruPDFReader] Step 2/3: Uploading {os.path.basename(file_path)} ({file_size / 1024 / 1024:.1f}MB) to OSS')
         with open(file_path, 'rb') as f:
-            upload_resp = requests.put(file_url, data=f, timeout=self._timeout or 300)
+            upload_timeout = self._timeout or 1200  # 20 min for large files
+            upload_resp = requests.put(file_url, data=f, timeout=upload_timeout)
             upload_resp.raise_for_status()
+        LOG.info(f'[MineruPDFReader] Upload completed successfully')
 
         # Step 3: Poll batch results
         status_url = f'https://mineru.net/api/v4/extract-results/batch/{batch_id}'
-        for _ in range(120):
+        poll_count = 0
+        LOG.info(f'[MineruPDFReader] Step 3/3: Polling results from {status_url}')
+        for _ in range(600):
+            poll_count += 1
             status_resp = requests.get(status_url, headers=headers, timeout=self._timeout or 30)
             status_resp.raise_for_status()
             status_data = status_resp.json()
             extract_result = status_data.get('data', {}).get('extract_result', [])
             if extract_result:
                 state = extract_result[0].get('state')
+                err_msg = extract_result[0].get('err_msg', '')
+                LOG.info(f'[MineruPDFReader] Poll #{poll_count}: state={state}, err_msg={err_msg!r}')
                 if state == 'done':
                     full_zip_url = extract_result[0].get('full_zip_url')
+                    LOG.info(f'[MineruPDFReader] Task done, downloading result ZIP')
                     zip_resp = requests.get(full_zip_url, timeout=self._timeout or 120)
                     zip_resp.raise_for_status()
                     return self._extract_content_from_zip(zip_resp.content)
                 elif state == 'failed':
+                    LOG.error(
+                        f'[MineruPDFReader] Batch task failed after {poll_count} polls. '
+                        f'Full extract_result: {extract_result[0]}'
+                    )
                     raise RuntimeError(
                         f'[MineruPDFReader] Batch task failed: '
-                        f'{extract_result[0].get("err_msg", "Unknown error")}')
+                        f'{err_msg or "Unknown error"}')
+            else:
+                LOG.info(f'[MineruPDFReader] Poll #{poll_count}: no extract_result yet (still queued)')
             time.sleep(3)
 
+        LOG.error(f'[MineruPDFReader] Polling timed out after {poll_count} attempts ({poll_count * 3}s)')
         raise TimeoutError('[MineruPDFReader] Batch polling timed out')
 
     def _fetch_async_by_url(self, file_url: str) -> str:
@@ -165,6 +185,14 @@ class MineruPDFReader(_OcrReaderBase):
         return self._extract_content_from_zip(zip_resp.content)
 
     def _extract_content_from_zip(self, zip_bytes: bytes) -> str:
+        # Clear cache dir before extracting to avoid pollution from previous files
+        if self._image_cache_dir is not None and self._image_cache_dir.exists():
+            for entry in self._image_cache_dir.iterdir():
+                if entry.is_dir():
+                    shutil.rmtree(entry)
+                else:
+                    entry.unlink()
+
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             for member in zf.infolist():
                 member_path = Path(member.filename)

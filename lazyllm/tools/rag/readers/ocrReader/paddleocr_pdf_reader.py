@@ -16,13 +16,13 @@ from .ocr_ir import (
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock,
 )
-from .ocr_reader_base import _OcrReaderBase
+from .ocr_reader_base import _OcrReaderBase, ServiceVariant
 
 lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='The API key for PaddleOCR')
 
 
 class PaddleOCRPDFReader(_OcrReaderBase):
-    def __init__(self, url: str = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing',
+    def __init__(self,
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  format_block_content: bool = True,
                  use_layout_detection: bool = True,
@@ -41,6 +41,8 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                          image_cache_dir=images_dir or os.path.join(
                              lazyllm.config['home'], 'paddleocr_cache'),
                          **kwargs)
+        if self._service_variant == ServiceVariant.ONLINE:
+            self._url = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing'
         self._api_key = lazyllm.config['paddle_api_key']
 
     @override
