@@ -207,6 +207,22 @@ class DocumentProcessorWorker(ModuleBase):
                     LOG.info(f'{self._log_prefix()} Poller thread stopped')
             return BaseResponse(code=200, msg='success')
 
+        def _load_algo_info_from_db(self) -> dict:
+            '''Load the first registered algorithm's info_pickle from DB.
+            Returns the deserialized dict, or {} if not found.'''
+            self._lazy_init()
+            try:
+                with self._db_manager.get_session() as session:
+                    AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
+                    row = session.query(AlgoInfo).first()
+                    if row is None:
+                        return {}
+                    info = load_obj(row.info_pickle)
+                    return info if isinstance(info, dict) else {}
+            except Exception as e:
+                LOG.warning(f'{self._log_prefix()} Failed to load algo info from DB: {e}')
+                return {}
+
         def _get_processor(self) -> _Processor:
             '''Return the global per-worker _Processor, creating it lazily on first call.'''
             try:
@@ -214,15 +230,19 @@ class DocumentProcessorWorker(ModuleBase):
                 with self._processor_lock:
                     if self._processor is not None:
                         return self._processor
-                    store_conf = self._store_conf or {'type': 'map'}
-                    store = _DocumentStore(store=store_conf)
+                    info = self._load_algo_info_from_db()
+                    store = info.get('store') or _DocumentStore(store=self._store_conf or {'type': 'map'})
                     schema_extractors = getattr(self, '_schema_extractors', {})
                     self._processor = _Processor(store=store, schema_extractors=schema_extractors)
                     LOG.info(f'{self._log_prefix()} Created global processor')
                 return self._processor
             except Exception as e:
                 LOG.warning(f'{self._log_prefix()} Failed to create global processor: {e}')
-                raise e
+                raise
+
+        def _load_reader_from_db(self) -> Optional[DirectoryReader]:
+            '''Load the global reader from any registered algorithm's info_pickle in DB.'''
+            return self._load_algo_info_from_db().get('reader')
 
         def _load_all_ng_configs(self, ng_names: Optional[List[str]] = None) -> tuple:
             '''Load all node group configs from DB, optionally filtered by ng_names.
@@ -611,7 +631,7 @@ class DocumentProcessorWorker(ModuleBase):
 
                 processor = self._get_processor()
                 node_groups, name_to_id = self._load_all_ng_configs(ng_names)
-                reader = self._reader  # global reader, set by DocumentProcessor before start
+                reader = self._reader or self._load_reader_from_db()
                 if task_type == TaskType.DOC_ADD.value:
                     self._exec_add_task(processor, task_id, payload, node_groups=node_groups,
                                         name_to_id=name_to_id, reader=reader,

@@ -58,6 +58,17 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 class NodeTransform(ModuleBase):
     __support_rich__ = False
 
+    # Simple scalar types that are safe to serialize into a signature dict.
+    _SIG_SIMPLE_TYPES = (bool, int, float, str)
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls._uses_default_sig_fields = not any(
+            'sig_fields' in klass.__dict__
+            for klass in cls.__mro__
+            if klass not in (NodeTransform, ModuleBase, object)
+        )
+
     def __init__(self, num_workers: int = 0, rules: Optional['RuleSet'] = None,
                  return_trace: bool = False, **kwargs):
         super().__init__(return_trace=return_trace, **kwargs)
@@ -66,13 +77,69 @@ class NodeTransform(ModuleBase):
         self._rules = rules or RuleSet()
         self._on_match: Optional[Callable[[Any, Tuple['Rule', Any], '_Context'], Any]] = None
         self._on_miss: Optional[Callable[[Any, '_Context'], Any]] = None
+        # Only pay the stack-walk cost when no class in the MRO overrides
+        # sig_fields() — checked once per class in __init_subclass__.
+        self._auto_sig_params: Dict[str, Any] = (
+            self._capture_init_args() if type(self)._uses_default_sig_fields else {}
+        )
+
+    @staticmethod
+    def _is_sig_serializable(val: Any) -> bool:
+        if isinstance(val, NodeTransform._SIG_SIMPLE_TYPES):
+            return True
+        if isinstance(val, (tuple, list)):
+            return all(isinstance(v, NodeTransform._SIG_SIMPLE_TYPES) for v in val)
+        if isinstance(val, dict):
+            return all(
+                isinstance(k, str) and isinstance(v, NodeTransform._SIG_SIMPLE_TYPES)
+                for k, v in val.items()
+            )
+        return False
+
+    def _capture_init_args(self) -> Dict[str, Any]:
+        _skip = frozenset({'self', 'num_workers', 'return_trace', 'rules', 'kwargs', 'args'})
+        result: Dict[str, Any] = {}
+        for frame_info in inspect.stack():
+            if frame_info.function != '__init__':
+                continue
+            local_self = frame_info.frame.f_locals.get('self')
+            if local_self is not self:
+                continue
+            owner_cls = frame_info.frame.f_locals.get('__class__')
+            if owner_cls is None or not (
+                isinstance(owner_cls, type)
+                and issubclass(owner_cls, NodeTransform)
+                and owner_cls is not NodeTransform
+            ):
+                continue
+            try:
+                sig = inspect.signature(owner_cls.__init__)
+            except (ValueError, TypeError):
+                continue
+            locals_ = frame_info.frame.f_locals
+            for name, param in sig.parameters.items():
+                if name in _skip or name.startswith('_'):
+                    continue
+                if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                    continue
+                if name not in locals_:
+                    continue
+                val = locals_[name]
+                if self._is_sig_serializable(val):
+                    result.setdefault(name, val if not isinstance(val, tuple) else list(val))
+        return result
 
     def sig_fields(self) -> Dict:
         '''Return a dict of parameters that affect output content (used for signature computation).
+
         Subclasses should override this to include all content-affecting constructor parameters.
         Runtime-only parameters (num_workers, return_trace, etc.) must NOT be included.
+
+        The default implementation returns the simple-typed (int, bool, float, str, list/tuple of
+        those, dict[str, str]) constructor parameters captured from the actual __init__ call.
+        Override for parameters that are non-trivially transformed before storage.
         '''
-        raise NotImplementedError(f'{type(self).__name__} must implement sig_fields()')
+        return dict(self._auto_sig_params)
 
     def _get_ref_nodes(self, node, ref_path):
         current = [node]

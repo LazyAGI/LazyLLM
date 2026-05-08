@@ -68,7 +68,9 @@ class TransformArgs():
             type_name = f.__name__
         else:
             if isinstance(f, NodeTransform):
-                sig_dict = {'type': type(f).__name__, **f.sig_fields()}
+                # Use a nested 'params' key so that a sig_fields() dict containing
+                # a 'type' key never collides with the top-level type discriminator.
+                sig_dict = {'type': type(f).__name__, 'params': f.sig_fields()}
                 if self.pattern is not None:
                     sig_dict['pattern'] = _callable_sig(self.pattern) if callable(self.pattern) else self.pattern
                 return hashlib.sha256(json.dumps(sig_dict, sort_keys=True).encode()).hexdigest()[:16]
@@ -80,7 +82,7 @@ class TransformArgs():
 
         instance = cls(**kw) if cls is not None else None
         if instance is not None:
-            sig_dict = {'type': type_name, **instance.sig_fields()}
+            sig_dict = {'type': type_name, 'params': instance.sig_fields()}
         else:
             sig_dict = {'type': type_name}
         if self.pattern is not None:

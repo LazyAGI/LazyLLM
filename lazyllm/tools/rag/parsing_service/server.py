@@ -77,6 +77,7 @@ class DocumentProcessor(ModuleBase):
             self._workers = None
             self._schema_extractors: Dict[str, SchemaExtractor] = {}
             self._reader: Optional[DirectoryReader] = None  # global reader, set by register_algorithm
+            self._store: Optional['_DocumentStore'] = None  # global store, lazily loaded from DB
 
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
@@ -351,7 +352,7 @@ class DocumentProcessor(ModuleBase):
             self._validate_reader(reader)
             try:
                 # Upsert node groups and algorithm in a single transaction to ensure atomicity.
-                info_pickle = dump_obj({})
+                info_pickle = dump_obj({'reader': reader, 'store': store})
                 with self._db_manager.get_session() as session:
                     node_group_ids = self._upsert_node_groups(node_groups, session=session)
                     ng_ids_json = json.dumps(node_group_ids)
@@ -522,6 +523,7 @@ class DocumentProcessor(ModuleBase):
                         session.query(NodeGroupInfo).filter(NodeGroupInfo.id.in_(ng_ids)).all()
                     }
                     node_groups = {}
+                    id_to_name = {}
                     for ng_id in ng_ids:
                         row = ngs.get(ng_id)
                         if row is None:
@@ -529,11 +531,14 @@ class DocumentProcessor(ModuleBase):
                             continue
                         cfg = load_obj(row.info_pickle)
                         node_groups[row.name] = cfg
+                        id_to_name[ng_id] = row.name
                     algo_dict['node_groups'] = node_groups
+                    algo_dict['ng_id_to_name'] = id_to_name
                 else:
                     # Backward compat: node_groups embedded in info_pickle
                     info = load_obj(algo_dict.get('info_pickle', ''))
                     algo_dict['node_groups'] = info.get('node_groups', {}) if isinstance(info, dict) else {}
+                    algo_dict['ng_id_to_name'] = {}
                 return algo_dict
 
         @app.get('/health')
@@ -609,8 +614,32 @@ class DocumentProcessor(ModuleBase):
                 algorithm = self._get_algo(algo_id)
                 if algorithm is None:
                     raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
-                node_group_ids = json.loads(algorithm.get('node_group_ids') or '[]')
-                return BaseResponse(code=200, msg='success', data={'node_group_ids': node_group_ids})
+                ng_ids = json.loads(algorithm.get('node_group_ids') or '[]')
+                id_to_name = algorithm.get('ng_id_to_name') or {}
+                node_groups = algorithm.get('node_groups') or {}  # {name: cfg}
+                # Load store to check which groups are active
+                store = self._get_or_init_store(algorithm)
+                active_groups = set(store.activated_groups()) if store is not None else set(node_groups.keys())
+                # Build name -> {type, display_name} mapping from node_groups cfg
+                name_to_meta: Dict[str, Dict] = {}
+                for ng_name, cfg in node_groups.items():
+                    gt = cfg.get('group_type')
+                    type_str = (gt.value if hasattr(gt, 'value') else str(gt)) if gt is not None else ''
+                    name_to_meta[ng_name] = {
+                        'type': type_str,
+                        'display_name': cfg.get('display_name') or ng_name,
+                    }
+                data = [
+                    {
+                        'id': ng_id,
+                        'name': id_to_name.get(ng_id, ng_id),
+                        'type': name_to_meta.get(id_to_name.get(ng_id, ng_id), {}).get('type', ''),
+                        'display_name': name_to_meta.get(id_to_name.get(ng_id, ng_id), {}).get('display_name', ''),
+                    }
+                    for ng_id in ng_ids
+                    if id_to_name.get(ng_id, ng_id) in active_groups
+                ]
+                return BaseResponse(code=200, msg='success', data=data)
             except fastapi.HTTPException:
                 raise
             except Exception as e:
@@ -632,21 +661,30 @@ class DocumentProcessor(ModuleBase):
                 LOG.error(f'[DocumentProcessor] Failed to get group info: {e}, {traceback.format_exc()}')
                 raise fastapi.HTTPException(status_code=500, detail=f'Failed to get group info: {str(e)}')
 
+        def _get_or_init_store(self, algorithm: dict) -> Optional['_DocumentStore']:
+            '''Return the global _DocumentStore, lazily loaded from DB info_pickle and initialized once.'''
+            if self._store is not None:
+                return self._store
+            info = load_obj(algorithm.get('info_pickle'))
+            store: Optional[_DocumentStore] = info.get('store') if isinstance(info, dict) else None
+            if store is None:
+                return None
+            store._lazy_init()
+            self._store = store
+            return store
+
         def _get_algo_group_info_data(self, algo_id: str):
             algorithm = self._get_algo(algo_id)
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
-            info_pickle_bytes = algorithm.get('info_pickle')
-            info = load_obj(info_pickle_bytes)
-            store: _DocumentStore = info['store']  # type: ignore
-            node_groups = info['node_groups']
-
+            # node_groups is {name: cfg} built by _get_algo from lazyllm_node_group table
+            node_groups = algorithm.get('node_groups') or {}
             data = []
-            for group_name in store.activated_groups():
-                if group_name in node_groups:
-                    group_info = {'name': group_name, 'type': node_groups[group_name].get('group_type'),
-                                  'display_name': node_groups[group_name].get('display_name')}
-                    data.append(group_info)
+            for group_name, cfg in node_groups.items():
+                group_info = {'name': group_name,
+                              'type': cfg.get('group_type'),
+                              'display_name': cfg.get('display_name')}
+                data.append(group_info)
             return data
 
         @staticmethod
@@ -672,9 +710,10 @@ class DocumentProcessor(ModuleBase):
             algorithm = self._get_algo(algo_id)
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
-            info = load_obj(algorithm.get('info_pickle'))
-            store: _DocumentStore = info['store']  # type: ignore
-            node_groups = info.get('node_groups', {})
+            store = self._get_or_init_store(algorithm)
+            if store is None:
+                raise fastapi.HTTPException(status_code=503, detail='Store not initialized for algo')
+            node_groups = algorithm.get('node_groups') or {}  # {name: cfg} built by _get_algo
             if group not in node_groups or not store.is_group_active(group):
                 raise fastapi.HTTPException(status_code=400, detail=f'Invalid group {group}')
             offset = max(offset, 0)

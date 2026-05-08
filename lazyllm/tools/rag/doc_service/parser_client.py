@@ -87,11 +87,11 @@ class ParserClient:
         return BaseResponse.model_validate(self._request('POST', '/doc/cancel', json=req.model_dump(mode='json')))
 
     def list_algorithms(self):
-        return BaseResponse.model_validate(self._request('GET', '/v1/algo/list'))
+        return BaseResponse.model_validate(self._request('GET', '/algo/list'))
 
     def get_algorithm_groups(self, algo_id: str):
         try:
-            data = self._request('GET', f'/v1/algo/{algo_id}/groups')
+            data = self._request('GET', f'/algo/{algo_id}/groups')
             return BaseResponse.model_validate(data)
         except RuntimeError as exc:
             if '404' in str(exc):
@@ -99,7 +99,7 @@ class ParserClient:
             raise
 
     def list_doc_chunks(self, kb_id: str, doc_id: str, group: str, offset: int, page_size: int,
-                        ng_names: Optional[List[str]] = None):
+                        algo_id: Optional[str] = None, ng_names: Optional[List[str]] = None):
         params = {
             'kb_id': kb_id,
             'doc_id': doc_id,
@@ -107,6 +107,8 @@ class ParserClient:
             'offset': offset,
             'page_size': page_size,
         }
+        if algo_id:
+            params['algo_id'] = algo_id
         if ng_names:
             params['ng_names'] = ng_names
         data = self._request('GET', '/doc/chunks', params=params)

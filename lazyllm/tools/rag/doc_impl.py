@@ -196,7 +196,7 @@ class DocImpl:
                 embed_datatypes[k] = DataType.FLOAT_VECTOR
 
         self._store.pop('metadata_store', None)
-        self._store = _DocumentStore(algo_name=self._algo_name, store=self._store,
+        self._store = _DocumentStore(store=self._store,
                                      group_embed_keys=self._activated_embeddings, embed=self.embed,
                                      embed_dims=embed_dims, embed_datatypes=embed_datatypes,
                                      global_metadata_desc=self._global_metadata_desc)
