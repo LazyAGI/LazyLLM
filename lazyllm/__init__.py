@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, SkillManager,
                         FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                         LLMParser)
+    from .tracing import (TracingSetupError, LazyTraceContext, get_trace_context, set_trace_context,
+                          enable_trace)
 from .patch import patch_os_env
 from .docs import add_doc
 config.done()
@@ -35,13 +37,17 @@ del _get_base_cls_from_registry  # noqa F821
 del patch_os_env
 
 
+_LAZY_SUBMODS = ('tracing', 'tools')
+
+
 def __getattr__(name: str):
-    if name == 'tools':
-        return importlib.import_module('lazyllm.tools')
-    elif name in __all__:
-        tools = importlib.import_module('lazyllm.tools')
-        builtins.globals()[name] = value = getattr(tools, name)
-        return value
+    for submod in _LAZY_SUBMODS:
+        if name == submod:
+            return importlib.import_module(f'.{submod}', package=__package__)
+        mod = importlib.import_module(f'.{submod}', package=__package__)
+        if name in getattr(mod, '__all__', ()):
+            builtins.globals()[name] = value = getattr(mod, name)
+            return value
     raise AttributeError(f"module 'lazyllm' has no attribute '{name}'")
 
 
@@ -89,7 +95,16 @@ __all__ = [
     'LazyLLMHook',
     'LazyLLMFuncHook',
 
+    # tracing
+    'TracingSetupError',
+    'LazyTraceContext',
+    'get_trace_context',
+    'set_trace_context',
+    'enable_trace',
+
     # tools
+    'FS',
+    'dynamic_fs_config',
     'Document',
     'Retriever',
     'Reranker',

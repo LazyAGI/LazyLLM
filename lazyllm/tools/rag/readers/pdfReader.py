@@ -33,13 +33,9 @@ class PDFReader(_RichReader):
             pdf = pypdf.PdfReader(stream)
             num_pages = len(pdf.pages)
             docs = []
-            if self._split_doc:
-                for page in range(num_pages):
-                    page_text = pdf.pages[page].extract_text()
-                    page_label = pdf.page_labels[page]
-                    metadata = {'page_label': page_label}
-                    docs.append(DocNode(text=page_text, metadata=metadata))
-            else:
-                text = '\n'.join(pdf.pages[page].extract_text() for page in range(num_pages))
-                docs.append(DocNode(text=text))
+            for page in range(num_pages):
+                page_text = pdf.pages[page].extract_text()
+                page_label = pdf.page_labels[page]
+                metadata = {'page_label': page_label}
+                docs.append(DocNode(text=page_text, metadata=metadata))
             return docs

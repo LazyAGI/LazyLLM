@@ -37,9 +37,13 @@ class HybridStore(LazyLLMStoreBase):
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         res_segments = self.segment_store.get(collection_name=collection_name, criteria=criteria, **kwargs)
-        if not res_segments: return []
+        total = None
+        if isinstance(res_segments, tuple):
+            res_segments, total = res_segments
+        if not res_segments:
+            return ([], total or 0) if total is not None else []
         uids = [item.get('uid') for item in res_segments]
-        res_vectors = self.vector_store.get(collection_name=collection_name, criteria={'uid': uids}, **kwargs)
+        res_vectors = self.vector_store.get(collection_name=collection_name, criteria={'uid': uids})
 
         data = {}
         for item in res_segments:
@@ -50,7 +54,8 @@ class HybridStore(LazyLLMStoreBase):
             else:
                 raise ValueError(f'[HybridStore - get] uid {item["uid"]} in vector store'
                                  ' but not found in segment store')
-        return list(data.values())
+        ordered = [data[item.get('uid')] for item in res_segments if item.get('uid') in data]
+        return (ordered, total) if total is not None else ordered
 
     @override
     def search(self, collection_name: str, query: str, query_embedding: Optional[Union[dict, List[float]]] = None,

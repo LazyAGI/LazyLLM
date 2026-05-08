@@ -1,11 +1,16 @@
-from lazyllm.tools.tools import HttpTool
-from typing import Optional, Dict
+from typing import Optional, Dict, Any, List
 
-class GoogleSearch(HttpTool):
-    # @param proxies refer to https://www.python-httpx.org/advanced/proxies
+from lazyllm.tools.tools import HttpTool
+
+from .base import SearchBase, _make_result
+
+
+class GoogleSearch(SearchBase):
+
     def __init__(self, custom_search_api_key: str, search_engine_id: str,
-                 timeout=10, proxies: Optional[Dict] = None):
-        # refer to https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list?hl=zh-cn
+                 timeout: int = 10, proxies: Optional[Dict[str, str]] = None,
+                 source_name: str = 'google'):
+        super().__init__(source_name=source_name)
         params = {
             'key': custom_search_api_key,
             'cx': '{{search_engine_id}}',
@@ -14,14 +19,33 @@ class GoogleSearch(HttpTool):
             'start': 0,
             'num': 10,
         }
-        super().__init__(method='GET', url='https://customsearch.googleapis.com/customsearch/v1',
-                         params=params, timeout=timeout, proxies=proxies)
+        self._http = HttpTool(
+            method='GET',
+            url='https://customsearch.googleapis.com/customsearch/v1',
+            params=params,
+            timeout=timeout,
+            proxies=proxies,
+        )
         self._search_engine_id = search_engine_id
 
-    def forward(self, query: str, date_restrict: str = 'm1',
-                search_engine_id: Optional[str] = None) -> Optional[Dict]:
-        if not search_engine_id:
-            search_engine_id = self._search_engine_id
-
-        return super().forward(query=query, search_engine_id=search_engine_id,
-                               date_restrict=date_restrict)
+    def search(self, query: str,
+               date_restrict: str = 'm1',
+               search_engine_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        sid = search_engine_id or self._search_engine_id
+        raw = self._http.forward(
+            query=query,
+            search_engine_id=sid,
+            date_restrict=date_restrict,
+        )
+        if not raw or not isinstance(raw, dict):
+            return []
+        items = raw.get('items') or []
+        return [
+            _make_result(
+                title=it.get('title', ''),
+                url=it.get('link', ''),
+                snippet=it.get('snippet', ''),
+                source=self.source_name,
+            )
+            for it in items
+        ]

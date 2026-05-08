@@ -6,8 +6,8 @@ from .toolsManager import register
 from .file_tool import _check_root, _resolve_path
 
 
-@register('builtin_tools')
-@register('tool')
+@register('builtin_tools', execute_in_sandbox=False)
+@register('tool', execute_in_sandbox=False)
 def download_file(url: str, dst: str, timeout: int = 30, root: Optional[str] = None,
                   allow_unsafe: bool = False) -> dict:
     '''Download a file from a URL to a local path.

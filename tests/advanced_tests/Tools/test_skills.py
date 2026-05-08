@@ -60,6 +60,14 @@ class TestSkills(object):
         assert self._alpha_name in listing
         assert self._beta_name in listing
 
+    def test_parse_dirs_local_expands_paths(self):
+        parsed = SkillManager._parse_dirs('~/skills')
+        assert parsed == [os.path.abspath(os.path.expanduser('~/skills'))]
+
+    def test_parse_dirs_cloud_preserves_paths(self):
+        parsed = SkillManager._parse_dirs('s3:/remote/skills')
+        assert parsed == ['s3:/remote/skills']
+
     def test_react_agent_with_skills(self):
         llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct')
         agent = ReactAgent(llm=llm, skills=[self._alpha_name, self._beta_name])

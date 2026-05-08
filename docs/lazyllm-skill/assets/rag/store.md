@@ -64,13 +64,13 @@ store_conf = {
     },
 }
 
-OceanBase支持的字段详细参考: [oceanbase官方文档](https://www.oceanbase.com/docs/oceanbase-database-cn)
+OceanBase 支持的字段详细参考: [Store 与数据源参考](store_external_refs.md)
 
 #### SenseCoreStore
 
 基于SenseCore的存储类，提供基于SenseCore的文档存储和检索功能，支持大规模文档管理和高效查询。
 
-SenseCore的使用手册参考: [SenseCore官方文档](https://www.sensecore.cn/help#storage)
+SenseCore 使用手册参考: [Store 与数据源参考](store_external_refs.md)
 
 ### Segment Store（切片存储类型）
 
@@ -100,7 +100,7 @@ store_conf = {
     }
 }
 
-OpenSearch支持的字段详细参考: [opensearch官方文档](https://opensearch-project.github.io/opensearch-py/api-ref/clients/opensearch_client.html)
+OpenSearch 支持的字段详细参考: [Store 与数据源参考](store_external_refs.md)
 
 #### ElasticSearchStore
 
@@ -129,7 +129,7 @@ store_conf = {
     }
 }
 
-ElasticSearch支持的字段详细参考: [elasticsearch官方文档](https://www.elastic.co/docs/api/doc/elasticsearch/)
+ElasticSearch 支持的字段详细参考: [Store 与数据源参考](store_external_refs.md)
 
 ### Vector Store（向量存储类型）
 
@@ -160,7 +160,7 @@ store_conf = {
     },
 }
 
-Chroma支持的字段详细参考: [chroma官方文档](https://docs.trychroma.com/)
+Chroma 支持的字段详细参考: [Store 与数据源参考](store_external_refs.md)
 
 #### MilvusStore
 
@@ -195,7 +195,7 @@ store_conf = {
     },
 }
 
-Milvus支持的字段详细参考: [milvus官方文档](https://milvus.io/docs/v2.3.0/index.md)
+Milvus 支持的字段详细参考: [Store 与数据源参考](store_external_refs.md)
 
 ## 基础使用
 

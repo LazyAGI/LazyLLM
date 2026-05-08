@@ -70,3 +70,8 @@ class TestChat:
     @pytest.mark.xfail
     def test_ppio_chat(self):
         self.common_chat(source='ppio')
+
+    @pytest.mark.ignore_cache_on_change(get_path('claude'))
+    @pytest.mark.xfail
+    def test_claude_chat(self):
+        self.common_chat(source='claude')

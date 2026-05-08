@@ -4,10 +4,11 @@ from lazyllm import config
 from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind
 from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals, _get_callsite
 from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
+from lazyllm.common import SessionConfigableBase
 from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from enum import Enum
 from asyncio import events
 import types
@@ -20,7 +21,8 @@ from typing import Union, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
-from ..hook import LazyLLMHook
+from ..hook import LazyLLMHook, execution_with_hooks, register_hooks, resolve_builtin_hooks
+from ..tracing.collect.output_attrs import push_ifs_matched_attrs, push_switch_matched_attrs
 from itertools import repeat
 
 
@@ -31,7 +33,10 @@ class FlowException(HandledException):
 class _FuncWrap(object):
     def __init__(self, f):
         self._f = f._f if isinstance(f, _FuncWrap) else f
+        self._hooks = []
+        register_hooks(self, resolve_builtin_hooks(self))
 
+    @execution_with_hooks
     def __call__(self, *args, **kw): return self._f(*args, **kw)
 
     def __repr__(self):
@@ -44,6 +49,7 @@ class _FuncWrap(object):
         if __key != '_f':
             return getattr(self._f, __key)
         return super(__class__, self).__getattr__(__key)
+
 
 _oldins = isinstance
 def new_ins(obj, cls):
@@ -78,14 +84,15 @@ def _get_flow_stack():
 _register_trim_module({'lazyllm.flow.flow': ['__call__']}, continuous=True)
 _register_trim_module({'lazyllm.flow.flow': ['_run', 'invoke'], 'lazyllm.common.bind': ['__call__']})
 
-class FlowBase(metaclass=_MetaBind):
-    def __init__(self, *items, item_names=None, auto_capture=False) -> None:
+class FlowBase(SessionConfigableBase, metaclass=_MetaBind):
+    def __init__(self, *items, item_names=None, auto_capture=False, id: Optional[str] = None, name: Optional[str] = None,
+                 group_id: Optional[str] = None) -> None:
+        super().__init__(id=id, name=name, group_id=group_id)
         self._father = None
         self._items, self._item_names, self._item_ids, self._item_pos = [], [], [], []
         self._auto_capture = auto_capture
         self._capture = True
         self._curr_frame = None
-        self._flow_id = str(uuid.uuid4().hex)
         self._find_user_instantiation_frame()
 
         for k, v in zip(item_names if item_names else repeat(None), items):
@@ -96,17 +103,32 @@ class FlowBase(metaclass=_MetaBind):
 
     def __post_init__(self): pass
 
+    @property
+    def _flow_id(self):
+        return self._config_id
+
+    def _make_step_item(self, v):
+        if isinstance(v, type):
+            return v()
+        if isinstance(v, bind) and v._wraps_plain_callable():
+            register_hooks(v, resolve_builtin_hooks(v))
+            return v
+        if _is_function(v) or v in self._items:
+            return _FuncWrap(v)
+        return v
+
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
-        self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) or v in self._items else v)
+        item = self._make_step_item(v)
+        self._items.append(item)
         self._item_ids.append(k or str(uuid.uuid4().hex))
         self._item_pos.append(_get_callsite(depth=3))
-        if isinstance(v, FlowBase): v._father = self
+        if isinstance(item, FlowBase): item._father = self
         if k:
             assert k not in self._item_names, f'Duplicated names {k}'
             self._item_names.append(k)
-        if self._curr_frame and isinstance(v, FlowBase) and k and k not in self._curr_frame.f_locals:
-            self._curr_frame.f_locals[k] = v  # make sense only when locals is globals
+        if self._curr_frame and isinstance(item, FlowBase) and k and k not in self._curr_frame.f_locals:
+            self._curr_frame.f_locals[k] = item  # make sense only when locals is globals
 
     def __enter__(self, __frame=None):
         assert len(self._items) == 0, f'Cannot init {self.__class__} with items if you want to use it by context.'
@@ -151,10 +173,12 @@ class FlowBase(metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
+            if hasattr(value, '_module_id') and hasattr(value, 'name') and value.name is None:
+                value.name = name
             if len(_get_flow_stack()) > 1 and not self._auto_registered:
                 super(__class__, self).__setattr__('_auto_registered', True)
-                locals = self._curr_frame.f_locals.copy()
-                for key, item in locals.items():
+                frame_locals = self._curr_frame.f_locals.copy()
+                for key, item in frame_locals.items():
                     if item == self and (parent := _get_flow_stack()[-2]) != item:
                         if key not in parent._item_names and parent._defined_at_the_same_scope(self):
                             parent._add(key, self)
@@ -207,44 +231,44 @@ bind.__exit__ = _bind_exit
 # TODO(wangzhihong): support workflow launcher.
 # Disable item launchers if launcher is already set in workflow.
 class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, *args, post_action=None, auto_capture=False, **kw):
+    def __init__(self, *args, post_action=None, auto_capture=False, id: Optional[str] = None,
+                 name: Optional[str] = None, group_id: Optional[str] = None, **kw):
         assert len(args) == 0 or len(kw) == 0, f'Cannot provide args `{args}` and kwargs `{kw}` at the same time'
         if len(args) > 0 and isinstance(args[0], (tuple, list)):
             assert len(args) == 1, 'args should be list of callable functions'
             args = args[0]
         args = list(args) + [v() if isinstance(v, type) else v for v in kw.values()]
-        super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture)
+        super(__class__, self).__init__(*args, item_names=list(kw.keys()), auto_capture=auto_capture,
+                                        id=id, name=name, group_id=group_id)
         self.post_action = post_action() if isinstance(post_action, type) else post_action
         self._sync = False
-        self._hooks = set()
+        self._hooks = []
+        register_hooks(self, resolve_builtin_hooks(self))
 
+    @execution_with_hooks
     def __call__(self, *args, **kw):
-        hook_objs = []
-        for hook_type in self._hooks:
-            if isinstance(hook_type, LazyLLMHook):
-                hook_objs.append(hook_type)
-            else:
-                hook_objs.append(hook_type(self))
-            hook_objs[-1].pre_hook(*args, **kw)
-        output = self._run(args[0] if len(args) == 1 else package(args), **kw)
-        if self.post_action is not None: self.invoke(self.post_action, output)
-        if self._sync: self.wait()
-        r = self._post_process(output)
-        for hook_obj in hook_objs[::-1]:
-            hook_obj.post_hook(r)
-        for hook_obj in hook_objs:
-            hook_obj.report()
-        return r
+        with globals.stack_enter(self.identities):
+            output = self._run(args[0] if len(args) == 1 else package(args), **kw)
+        if self.post_action is not None:
+            self.invoke(self.post_action, output)
+        if self._sync:
+            self.wait()
+        return self._post_process(output)
 
     def register_hook(self, hook_type: LazyLLMHook):
-        self._hooks.add(hook_type)
+        if not (isinstance(hook_type, LazyLLMHook)
+                or (isinstance(hook_type, type) and issubclass(hook_type, LazyLLMHook))):
+            raise TypeError(f'Invalid hook type: {type(hook_type)}, '
+                            'must be subclass or instance of LazyLLMHook')
+        if hook_type not in self._hooks:
+            self._hooks.append(hook_type)
 
     def unregister_hook(self, hook_type: LazyLLMHook):
         if hook_type in self._hooks:
             self._hooks.remove(hook_type)
 
     def clear_hooks(self):
-        self._hooks = set()
+        self._hooks = []
 
     def _post_process(self, output):
         return output
@@ -377,7 +401,8 @@ class Pipeline(LazyLLMFlowsBase):
         if bind_flag:
             lazyllm.LOG.debug(f'add {self.id()} to bind_args')
             locals['bind_args'][self.id()] = bind_args_source
-        for _ in range(self._loop_count):
+        _iteration_idx = -1
+        for _iteration_idx in range(self._loop_count):
             for it in self._items:
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
                 kw.clear()
@@ -388,6 +413,8 @@ class Pipeline(LazyLLMFlowsBase):
                 exp = output[0]
                 output = output[1:]
             if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
+        if isinstance(self, Loop) and isinstance(tr := globals.get('trace'), dict):
+            tr.setdefault('actual_iterations', {})[self.id()] = _iteration_idx + 1
         if bind_flag:
             lazyllm.LOG.debug(f'delete {self.id()} form bind_args')
             locals['bind_args'].pop(self.id(), None)
@@ -418,8 +445,7 @@ class Parallel(LazyLLMFlowsBase):
         lazyllm.globals._init_sid(sid)
         if global_data: lazyllm.globals._update(global_data)
         lazyllm.locals._init_sid()
-        lazyllm.locals._update(local_data)
-        lazyllm.locals['bind_args'] = lazyllm.locals['bind_args'].copy()
+        lazyllm.locals._update({k: v.copy() for k, v in local_data.items()})
         _barr.impl = barrier
         r = func(*args, **kw)
         lazyllm.locals.clear()
@@ -483,45 +509,60 @@ class Parallel(LazyLLMFlowsBase):
             inputs = [inputs] * len(items)
         return inputs
 
-    def _run(self, __input, __items=None, *, _kept_items: Optional[Union[int, str, List[Union[int, str]]]] = None,
-             _skip_items: Optional[Union[int, str, List[Union[int, str]]]] = None, **kw):
-        if (items := __items) is None: items = self._items
+    def _parallel_resolve_items_and_inputs(self, __input, __items, _kept_items, _skip_items):
+        if (items := __items) is None:
+            items = self._items
         if _kept_items:
-            if _skip_items: raise RuntimeError('Cannot provide `_kept_items` and `_skip_items` at the same time!')
+            if _skip_items:
+                raise RuntimeError('Cannot provide `_kept_items` and `_skip_items` at the same time!')
             _kept_idx = [i for i, (_, n) in enumerate(zip(self._items, self._item_names or repeat(None)))
                          if i in _kept_items or n in _kept_items]
         else:
             _kept_idx = ([i for i, (_, n) in enumerate(zip(self._items, self._item_names or repeat(None)))
                           if i not in _skip_items and n not in _skip_items] if _skip_items else None)
-        if _kept_idx: items = [it for i, it in enumerate(self._items) if i in _kept_idx]
+        if _kept_idx:
+            items = [it for i, it in enumerate(self._items) if i in _kept_idx]
         inputs = self._split_input(__input, items, _kept_idx)
+        return items, inputs
 
-        if self._concurrent:
-            if self._multiprocessing:
-                barrier, executor = None, lazyllm.ProcessPoolExecutor
-                kw['global_data'] = lazyllm.globals._data
-            else:
-                barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
-
-            with executor(max_workers=self._concurrent) as e:
-                futures = [e.submit(partial(self._worker, self.invoke, barrier, lazyllm.globals._sid,
-                                            lazyllm.locals._data, it, inp, **kw))
-                           for it, inp in zip(items, inputs)]
-                if (not_done := concurrent.futures.wait(futures).not_done):
-                    error_msgs = []
-                    for future in not_done:
-                        if (exc := future.exception()) is not None:
-                            if (tb := getattr(future, '_traceback', None)):
-                                tb_str = ''.join(traceback.format_exception(type(exc), exc, tb))
-                            else:
-                                tb_str = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-                            error_msgs.append(f'Future: {future}\n{tb_str}')
-                        else:
-                            error_msgs.append(f'Future: {future} not complete without exception。')
-                    raise RuntimeError('Parallel execute failed!\n' + '\n'.join(error_msgs))
-                return package([future.result() for future in futures])
+    def _parallel_execute_concurrent(self, items, inputs, **kw):
+        if self._multiprocessing:
+            barrier, executor = None, lazyllm.ProcessPoolExecutor
+            kw['global_data'] = lazyllm.globals._data
         else:
-            return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
+            barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
+
+        with executor(max_workers=self._concurrent) as e:
+            # Thread workers need the parent's contextvars (OTel current span, tracing ContextVars,
+            # etc.); ProcessPoolExecutor cannot use copy_context the same way (separate interpreter).
+            futures = []
+            for it, inp in zip(items, inputs):
+                worker_call = partial(self._worker, self.invoke, barrier, lazyllm.globals._sid,
+                                      lazyllm.locals._data, it, inp, **kw)
+                if self._multiprocessing:
+                    futures.append(e.submit(worker_call))
+                else:
+                    futures.append(e.submit(copy_context().run, worker_call))
+            if (not_done := concurrent.futures.wait(futures).not_done):
+                error_msgs = []
+                for future in not_done:
+                    if (exc := future.exception()) is not None:
+                        if (tb := getattr(future, '_traceback', None)):
+                            tb_str = ''.join(traceback.format_exception(type(exc), exc, tb))
+                        else:
+                            tb_str = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                        error_msgs.append(f'Future: {future}\n{tb_str}')
+                    else:
+                        error_msgs.append(f'Future: {future} not complete without exception。')
+                raise RuntimeError('Parallel execute failed!\n' + '\n'.join(error_msgs))
+            return package([future.result() for future in futures])
+
+    def _run(self, __input, __items=None, *, _kept_items: Optional[Union[int, str, List[Union[int, str]]]] = None,
+             _skip_items: Optional[Union[int, str, List[Union[int, str]]]] = None, **kw):
+        items, inputs = self._parallel_resolve_items_and_inputs(__input, __items, _kept_items, _skip_items)
+        if self._concurrent:
+            return self._parallel_execute_concurrent(items, inputs, **kw)
+        return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
 
     def _post_process(self, output):
         if self._post_process_type == Parallel.PostProcessType.DICT:
@@ -600,6 +641,11 @@ class Switch(LazyLLMFlowsBase):
         for idx, cond in enumerate(self.conds):
             if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or (
                     exp == package((cond,))) or cond == 'default':
+                alias = self._item_names[idx] if self._item_names and idx < len(self._item_names) else None
+                actual = getattr(self._items[idx], '__name__', None) or type(self._items[idx]).__name__
+                branch = f'{alias} -> {actual}' if alias and alias != actual else actual
+                matched = {'index': idx, 'condition': str(cond), 'branch': branch}
+                push_switch_matched_attrs(matched)
                 return self.invoke(self._items[idx], __input, **kw)
 
     class Case:
@@ -636,7 +682,12 @@ class IFS(LazyLLMFlowsBase):
             flag = cond()
         except Exception:
             flag = cond if isinstance(cond, bool) else self.invoke(cond, __input, **kw)
-        return self.invoke(tpath if flag else fpath, __input, **kw)
+        chosen = tpath if flag else fpath
+        branch_label = 'true_path' if flag else 'false_path'
+        name = getattr(chosen, '__name__', None) or type(chosen).__name__
+        matched = {'branch': branch_label, 'chosen_node': name, 'condition_result': bool(flag)}
+        push_ifs_matched_attrs(matched)
+        return self.invoke(chosen, __input, **kw)
 
 
 #  in(out) -> module1 -> ... -> moduleN -> exp, out -> out
@@ -776,7 +827,10 @@ class Graph(LazyLLMFlowsBase):
                     intermediate_results['values'][node.name] = (
                         arguments(__input, kw) if (__input and kw) else (kw or __input))
                 else:
-                    future = executor.submit(self.compute_node, globals._sid, node, intermediate_results, futures)
+                    future = executor.submit(
+                        copy_context().run,
+                        partial(self.compute_node, globals._sid, node, intermediate_results, futures),
+                    )
                     futures[node.name] = future
 
         return futures[Graph.end_node_name].result()

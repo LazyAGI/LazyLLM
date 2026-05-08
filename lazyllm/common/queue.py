@@ -1,5 +1,6 @@
 import sqlite3
 import threading
+import inspect
 from abc import ABC, abstractmethod
 from .globals import globals
 from ..configs import config
@@ -8,7 +9,7 @@ from typing import Type, Optional
 from lazyllm.thirdparty import redis
 from queue import Queue
 from collections import deque
-from filelock import FileLock
+from filelock import SoftFileLock
 
 config.add('default_fsqueue', str, 'sqlite', 'DEFAULT_FSQUEUE',
            description='The default file system queue to use.')
@@ -49,6 +50,7 @@ class RecentQueue(Queue):
 class FileSystemQueue(ABC):
 
     __queue_pool__ = dict()
+    __queue_pool_lock__ = threading.RLock()
 
     def __init__(self, *, klass='__default__'):
         super().__init__()
@@ -57,10 +59,12 @@ class FileSystemQueue(ABC):
     def __new__(cls, *args, **kw):
         klass = kw.get('klass', '__default__')
         if klass not in __class__.__queue_pool__:
-            if cls is __class__:
-                __class__.__queue_pool__[klass] = cls.__default_queue__(*args, **kw)
-            else:
-                __class__.__queue_pool__[klass] = super().__new__(cls)
+            with __class__.__queue_pool_lock__:
+                if klass not in __class__.__queue_pool__:
+                    if cls is __class__:
+                        __class__.__queue_pool__[klass] = cls.__default_queue__(*args, **kw)
+                    else:
+                        __class__.__queue_pool__[klass] = super().__new__(cls)
         return __class__.__queue_pool__[klass]
 
     @classmethod
@@ -112,12 +116,29 @@ def sqlite3_check_threadsafety() -> bool:
     return True if res[0][0] == 'THREADSAFE=1' else False
 
 class SQLiteQueue(FileSystemQueue):
+    _init_lock = threading.Lock()
+
     def __init__(self, klass='__default__'):
-        super(__class__, self).__init__(klass=klass)
-        self.db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
-        self._lock = FileLock(self.db_path + '.lock')
-        self._check_same_thread = not sqlite3_check_threadsafety()
-        self._initialize_db()
+        if getattr(self, '_initialized', False):
+            return
+        with self._init_lock:
+            if getattr(self, '_initialized', False):
+                return
+            super(__class__, self).__init__(klass=klass)
+            self.db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
+            lock_kwargs = {}
+            if 'is_singleton' in inspect.signature(SoftFileLock).parameters:
+                lock_kwargs['is_singleton'] = True
+            self._lock = SoftFileLock(self.db_path + '.lock', **lock_kwargs)
+            self._check_same_thread = not sqlite3_check_threadsafety()
+            try:
+                self._initialize_db()
+            except Exception:
+                with FileSystemQueue.__queue_pool_lock__:
+                    if FileSystemQueue.__queue_pool__.get(klass) is self:
+                        FileSystemQueue.__queue_pool__.pop(klass, None)
+                raise
+            self._initialized = True
 
     def _initialize_db(self):
         with self._lock, sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:

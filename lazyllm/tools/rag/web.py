@@ -51,10 +51,13 @@ class WebUi:
         return response.json()['msg']
 
     def list_groups(self):
-        response = requests.get(
-            f'{self.base_url}/list_kb_groups', headers=self.basic_headers(False)
-        )
-        return response.json()['data']
+        response = requests.get(f'{self.base_url}/list_kb_groups', headers=self.basic_headers(False))
+        payload = response.json()
+        if 'data' in payload:
+            return payload['data']
+        response = requests.get(f'{self.base_url}/v1/kbs', headers=self.basic_headers(False))
+        payload = response.json()
+        return [item.get('kb_id') for item in payload.get('data', {}).get('items', []) if item.get('kb_id')]
 
     def upload_files(self, group_name: str, override: bool = True):
         response = requests.post(
@@ -101,7 +104,12 @@ class WebUi:
                 with gr.TabItem('上传文件'):
 
                     def _upload_files(group_name, files):
-
+                        if not group_name:
+                            gr.Info('请先选择分组')
+                            return
+                        if not files:
+                            gr.Info('请先选择要上传的文件')
+                            return
                         files_to_upload = [
                             ('files', (os.path.basename(file), open(file, 'rb')))
                             for file in files
@@ -135,16 +143,14 @@ class WebUi:
                     def _list_group_files(group_name):
                         file_list = self.list_files_in_group(group_name)
                         values = [[i] + file_list[i][:2] for i in range(len(file_list))]
-                        return gr.update(
-                            value=values
-                        )
+                        return gr.update(value=values)
 
                     select_group = gr.Dropdown(self.list_groups(), label='选择分组')
+                    refresh_btn = gr.Button('刷新')
                     show_list = self.gr_show_list([], list_name=['file_id', 'file_name'])
-                    select_group.change(
-                        fn=_list_group_files, inputs=select_group, outputs=show_list
-                    )
-                    select_group_list.append(select_group)
+
+                    select_group.change(fn=_list_group_files, inputs=select_group, outputs=show_list)
+                    refresh_btn.click(fn=_list_group_files, inputs=select_group, outputs=show_list)
 
                 with gr.TabItem('删除文件'):
 
@@ -154,13 +160,21 @@ class WebUi:
                         return gr.update(choices=file_list)
 
                     select_group = gr.Dropdown(self.list_groups(), label='选择分组')
+                    refresh_btn = gr.Button('刷新文件列表')
                     select_file = gr.Dropdown([], label='选择文件')
-                    select_group.change(
-                        fn=_list_group_files, inputs=select_group, outputs=select_file
-                    )
+
+                    select_group.change(fn=_list_group_files, inputs=select_group, outputs=select_file)
+                    refresh_btn.click(fn=_list_group_files, inputs=select_group, outputs=select_file)
+
                     delete_btn = gr.Button('删除')
 
                     def _delete_file(group_name, select_file):
+                        if not group_name:
+                            gr.Info('请先选择分组')
+                            return gr.update()
+                        if not select_file:
+                            gr.Info('请先选择要删除的文件')
+                            return gr.update()
                         file_ids = [select_file.split(',')[0]]
                         gr.Info(self.delete_file(group_name, file_ids))
                         return _list_group_files(group_name)
@@ -229,10 +243,11 @@ class DocWebModule(ModuleBase):
         self.demo.block_thread()
 
     def stop(self):
-        if self.demo:
-            self.demo.close()
+        demo = self.__dict__.get('demo')
+        if demo:
+            demo.close()
             del self.demo
-            self.demo, self.url = None, ''
+        self.url = ''
 
     def _find_can_use_network_port(self):
         for port in self.port:

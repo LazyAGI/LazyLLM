@@ -13,6 +13,6 @@ class RichTransform(NodeTransform):
         new_node.excluded_llm_metadata_keys = n.excluded_llm_metadata_keys
         return new_node
 
-    def transform(self, node: RichDocNode, **kwargs) -> List[DocNode]:
+    def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         assert isinstance(node, RichDocNode), f'Expected RichDocNode, got {type(node)}'
         return [self._clone_node(sub_node) for sub_node in node.nodes]

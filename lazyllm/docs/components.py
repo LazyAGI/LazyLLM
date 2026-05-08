@@ -1781,6 +1781,61 @@ Args:
     job (Optional[Any]): Job object, if None uses the current instance's job property.
 ''')
 
+# Deploy-BertDeploy
+add_chinese_doc('deploy.BertDeploy', '''\
+此类是 ``LazyLLMDeployBase`` 的子类，用于部署 HuggingFace 风格的**序列分类**（sequence classification）模型。服务通过 ``RelayServer`` 提供 HTTP ``/generate`` 接口，无独立 CLI；用法与 ``StableDiffusionDeploy`` 类似：对实例调用 ``__call__(finetuned_model, base_model)`` 得到可启动的 Relay 服务。
+
+Args:
+    launcher (Optional[LazyLLMLaunchersBase]): 启动器实例，默认为 ``None``。
+    log_path (Optional[str]): 日志文件路径，默认为 ``None``。
+    trust_remote_code (bool): 加载 tokenizer / 模型时是否 ``trust_remote_code``，默认为 ``True``。
+    port (Optional[int]): 服务监听端口，默认为 ``None`` 时由框架分配。
+    max_length (int): 编码时的最大序列长度，默认为 ``512``。
+    device (Optional[str]): 推理设备，例如 ``"cuda"``、``"cpu"``；默认为 ``None`` 时自动选择。
+    **kw: 未识别的关键字参数将被记录警告并忽略。
+
+Message Format:
+    与 ``TrainableModule`` 联用时，首参映射为 ``text_a``，``text_b`` 通过关键字传入。请求体为 JSON：
+    - text_a (str): 第一段文本（如候选词）
+    - text_b (str): 第二段文本（如上下文片段）；可为空，此时按单序列编码
+
+**Returns:**
+- 服务进程返回的 JSON 字符串，含 ``logits``、``probs``、``predicted_label`` 等字段。
+''')
+
+add_english_doc('deploy.BertDeploy', '''\
+This class is a subclass of ``LazyLLMDeployBase``, used to deploy HuggingFace-style **sequence classification** models. The service exposes an HTTP ``/generate`` endpoint via ``RelayServer`` (no standalone CLI). Usage mirrors ``StableDiffusionDeploy``: calling the instance ``__call__(finetuned_model, base_model)`` returns a launchable Relay service.
+
+Args:
+    launcher (Optional[LazyLLMLaunchersBase]): Launcher instance, defaults to ``None``.
+    log_path (Optional[str]): Log file path, defaults to ``None``.
+    trust_remote_code (bool): Whether to pass ``trust_remote_code`` when loading tokenizer/model, defaults to ``True``.
+    port (Optional[int]): Listen port; ``None`` lets the framework assign one.
+    max_length (int): Maximum sequence length for tokenization, default ``512``.
+    device (Optional[str]): Device for inference, e.g. ``"cuda"`` or ``"cpu"``; ``None`` selects automatically.
+    **kw: Unknown keyword arguments are logged as a warning and ignored.
+
+Message Format:
+    With ``TrainableModule``, the first positional argument maps to ``text_a`` and ``text_b`` is passed as a keyword. JSON body:
+    - text_a (str): First segment (e.g. span text).
+    - text_b (str): Second segment (e.g. context); may be empty for single-sequence encoding.
+
+**Returns:**
+- JSON string from the worker with fields such as ``logits``, ``probs``, and ``predicted_label``.
+''')
+
+add_example('deploy.BertDeploy', '''\
+>>> import lazyllm
+>>> m = lazyllm.TrainableModule('xlm-roberta-base', use_model_map=False).deploy_method(
+...     lazyllm.deploy.BertDeploy, port=36001, max_length=128,
+... ).start()
+>>> # Two-sequence input: candidate span + surrounding context.
+>>> pair_out = m('candidate_span', text_b='This is the surrounding context.')
+>>> print(pair_out)
+>>> # Single-sequence input: either omit ``text_b`` or pass an empty string.
+>>> single_out = m('This is a single sequence.')
+>>> print(single_out)
+''')
 
 add_chinese_doc('deploy.relay.base.FastapiApp.get', """\
 注册GET请求路由装饰器。
@@ -3022,7 +3077,7 @@ add_example('prompter.PrompterBase', '''\
 >>> p = MyPrompter('ins {instruction}')
 >>> p.generate_prompt('hello')
 '<system>You are an AI-Agent developed by LazyLLM.</system>\\\\n</instruction>ins hello\\\\n\\\\n</instruction>\\\\n\\\\n, ## Response::'
->>> p.generate_prompt('hello world', return_dict=True)
+>>> p.generate_prompt('hello world', format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nins hello world\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
 ''')
 
@@ -3055,7 +3110,8 @@ Args:
     tools (Option[List[Dict]]: 可以使用的工具合集，大模型用作FunctionCall时使用，默认为None
     label (Option[str]): 标签，训练或微调时使用，默认为None
     show (bool): 标志是否打印生成的Prompt，默认为False
-    return_dict (bool): 标志是否返回dict，一般情况下使用 ``OnlineChatModule`` 时会设置为True。如果返回dict，则仅填充 ``instruction``。默认为False
+    return_dict (bool): 已弃用，请改用 ``format="openai"``。当 ``format`` 为 ``None`` 且该参数为 True 时，行为与 ``format="openai"`` 相同，并会记录一次弃用告警。默认为 False。
+    format (Option[str]): 输出结构。``None`` 表示返回用于本地/微调的拼接字符串；``"openai"`` 表示返回 OpenAI Chat Completions 风格的 ``messages``（及可选 ``tools``）；``"anthropic"`` 表示 Anthropic Messages API 所需的 ``system``/``messages`` 结构。使用 ``OnlineChatModule`` 时由模块传入相应格式。若同时传入 ``return_dict`` 与本参数，以本参数为准。默认为 ``None``。
 ''')
 
 add_english_doc('prompter.PrompterBase.generate_prompt', '''\
@@ -3068,7 +3124,8 @@ Args:
     tools (Option[List[Dict]]): A collection of tools that can be used, used when the large model performs FunctionCall, defaults to None.
     label (Option[str]): Label, used during fine-tuning or training, defaults to None.
     show (bool): Flag indicating whether to print the generated Prompt, defaults to False.
-    return_dict (bool): Flag indicating whether to return a dict, generally set to True when using ``OnlineChatModule``. If returning a dict, only the ``instruction`` will be filled. Defaults to False.
+    return_dict (bool): Deprecated; prefer ``format="openai"``. When ``format`` is ``None`` and this is True, behaves like ``format="openai"`` and emits a one-time deprecation warning. Defaults to False.
+    format (Option[str]): Output structure. ``None`` returns a concatenated string for local/finetuning use; ``"openai"`` returns OpenAI-style ``messages`` (and optional ``tools``); ``"anthropic"`` returns Anthropic-style ``system``/``messages``. ``OnlineChatModule`` passes the appropriate value. If both ``return_dict`` and ``format`` are provided, ``format`` takes precedence. Defaults to ``None``.
 ''')
 
 add_chinese_doc('prompter.PrompterBase.get_response', '''\
@@ -3124,6 +3181,8 @@ Args:
     tools (Option[List[Dict]]): 工具参数，可忽略，默认None。
     label (Option[str]): 标签，可忽略，默认None。
     show (bool): 是否打印返回内容，默认为False。
+    return_dict (bool): 已弃用，请改用 ``format="openai"``。当 ``format`` 为 ``None`` 且该参数为 True 时，与 ``format="openai"`` 行为一致并记录一次弃用告警。
+    format (Option[str]): 若为非空（例如 ``"openai"``），则返回 ``{"messages": [{"role": "user", "content": input}]}``；否则直接返回 ``input``。若同时传入 ``return_dict`` 与本参数，以本参数为准。
 ''')
 
 add_english_doc('prompter.EmptyPrompter.generate_prompt', '''\
@@ -3137,6 +3196,8 @@ Args:
     tools (Option[List[Dict]]): Tool definitions, ignored. Defaults to None.
     label (Option[str]): Label, ignored. Defaults to None.
     show (bool): Whether to print the returned prompt. Defaults to False.
+    return_dict (bool): Deprecated; prefer ``format="openai"``. When ``format`` is ``None`` and this is True, behaves like ``format="openai"`` with a one-time deprecation warning.
+    format (Option[str]): If set (e.g. ``"openai"``), returns ``{"messages": [{"role": "user", "content": input}]}``; otherwise returns ``input`` unchanged. If both ``return_dict`` and ``format`` are provided, ``format`` takes precedence.
 ''')
 
 add_english_doc('prompter.builtinPrompt.LazyLLMPrompterBase', '''\
@@ -3209,19 +3270,19 @@ add_example('AlpacaPrompter', '''\
 >>> p = AlpacaPrompter('hello world {instruction}')
 >>> p.generate_prompt('this is my input')
 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n\\\\n### Response:\\\\n'
->>> p.generate_prompt('this is my input', return_dict=True)
+>>> p.generate_prompt('this is my input', format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world this is my input\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
 >>>
 >>> p = AlpacaPrompter('hello world {instruction}, {input}', extra_keys=['knowledge'])
 >>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'))
 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n\\\\n### Response:\\\\n'
->>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), return_dict=True)
+>>> p.generate_prompt(dict(instruction='hello world', input='my input', knowledge='lazyllm'), format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world hello world, my input\\\\n\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nlazyllm\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
 >>>
 >>> p = AlpacaPrompter(dict(system="hello world", user="this is user instruction {input}"))
 >>> p.generate_prompt(dict(input="my input"))
 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello word\\\\n\\\\n\\\\n\\\\nthis is user instruction my input### Response:\\\\n'
->>> p.generate_prompt(dict(input="my input"), return_dict=True)
+>>> p.generate_prompt(dict(input="my input"), format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
 ''')
 
@@ -3259,7 +3320,7 @@ add_example('ChatPrompter', '''\
 >>> p.generate_prompt('this is my input')
 'You are an AI-Agent developed by LazyLLM.hello world\\\\nthis is my input\\\\n'
 
->>> p.generate_prompt('this is my input', return_dict=True)
+>>> p.generate_prompt('this is my input', format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world'}, {'role': 'user', 'content': 'this is my input'}]}
 
 - Using extra_keys
@@ -3284,7 +3345,7 @@ add_example('ChatPrompter', '''\
 >>> p.generate_prompt({'input': "my input", 'query': "this is user query"})
 'You are an AI-Agent developed by LazyLLM.hello world\\\\nthis is user instruction my input this is user query\\\\n'
 
->>> p.generate_prompt({'input': "my input", 'query': "this is user query"}, return_dict=True)
+>>> p.generate_prompt({'input': "my input", 'query': "this is user query"}, format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
 ''')
 

@@ -1,3 +1,18 @@
+::: lazyllm.tools.agent.code_interpreter
+    exclude-members:
+
+::: lazyllm.tools.sandbox.LazyLLMSandboxBase
+    members:
+    exclude-members:
+
+::: lazyllm.tools.sandbox.DummySandbox
+    members:
+    exclude-members:
+
+::: lazyllm.tools.sandbox.SandboxFusion
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.IntentClassifier
     members:
     - intent_promt_hook
@@ -185,35 +200,29 @@
     members: [find]
     exclude-members:
 
-::: lazyllm.tools.rag.DocManager
-    members: document, list_kb_groups, add_files, reparse_files
-	exclude-members:
+::: lazyllm.tools.rag.doc_service.DocServer
+    members: [upload, add, reparse, delete, transfer, patch_metadata, list_docs, get_doc, list_tasks, get_task, cancel_task, list_kbs, get_kb, list_chunks, list_algorithms, get_algorithm_info, create_kb, update_kb, batch_get_kbs, delete_kb, delete_kbs]
+    exclude-members:
 
-::: lazyllm.tools.rag.utils.SqliteDocListManager
+::: lazyllm.tools.rag.doc_service.base.AddFileItem
     members:
-      - table_inited
-      - get_status_cond_and_params
-      - validate_paths
-      - update_need_reparsing
-      - list_files
-      - get_docs
-      - set_docs_new_meta
-      - fetch_docs_changed_meta
-      - list_all_kb_group
-      - add_kb_group
-      - list_kb_group_files
-      - delete_unreferenced_doc
-      - get_docs_need_reparse
-      - get_existing_paths_by_pattern
-      - update_file_message
-      - update_file_status
-      - add_files_to_kb_group
-      - delete_files_from_kb_group
-      - get_file_status
-      - update_kb_group
-      - release
-      - get_status_cond_and_params
-	exclude-members:
+    exclude-members:
+
+::: lazyllm.tools.rag.doc_service.base.UploadRequest
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.doc_service.base.AddRequest
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.doc_service.base.TransferItem
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.doc_service.base.TransferRequest
+    members:
+    exclude-members:
 
 ::: lazyllm.tools.rag.data_loaders.DirectoryReader
     members: load_data
@@ -263,7 +272,35 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.transform.layout.LayoutNodeParser
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.contentfilter.ContentFiltParser
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.treebuilder.TreeBuilderParser
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.treefixer.TreeFixerParser
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.groupby.GroupNodeParser
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.rag.transform.base.NodeTransform
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.base.Rule
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.base.RuleSet
     members:
     exclude-members:
 
@@ -382,9 +419,7 @@
 ::: lazyllm.tools.rag.rerank.ModuleReranker
     members: forward
     exclude-members:
-::: lazyllm.tools.rag.utils.DocListManager
-    members:
-    exclude-members:
+
 ::: lazyllm.tools.rag.global_metadata.GlobalMetadataDesc
     members:
     exclude-members:
@@ -501,4 +536,8 @@
 
 ::: lazyllm.tools.review.tools.chinese_corrector.ChineseCorrector
     members: correct, correct_batch
+    exclude-members:
+
+::: lazyllm.tools.rag.QueryEnhACProcessor
+    members: __call__, get_matches, update_data_source, update_discriminator
     exclude-members:

@@ -75,10 +75,11 @@ class Bind(object):
                 if self._source_id in locals['bind_args']:
                     source = locals['bind_args'][self._source_id]
                     if not source or source['source'] != self._source_id:
-                        LOG.debug(f'Get source failed, source is {source}, and expect id is {self._source_id}')
+                        LOG.error(f'Get source failed, source is {source}, and expect id is {self._source_id}')
                         raise RuntimeError('Internal Error, please report issue to `https://github.com/LazyAGI/LazyLLM`')
                 else:
-                    LOG.debug(f'Get source failed, locals is {locals["bind_args"]}, and expect id is {self._source_id}')
+                    LOG.error(f'Get source failed, locals is {locals["bind_args"]} with id {locals._sid}, '
+                              f'and expect id is {self._source_id}')
                     raise RuntimeError('Unable to find the bound parameter, possibly due to pipeline.input/output can '
                                        'only be bind in direct member of pipeline! You may solve this by defining the '
                                        'pipeline in a `with lazyllm.save_pipeline_result():` block.')
@@ -93,9 +94,16 @@ class Bind(object):
             return f'<class \'lazyllm.common.bind.Bind.Args\' source={self._source_id}>'
 
     def __init__(self, __bind_func=_None, *args, **kw):
+        object.__setattr__(self, '_hooks', [])
         self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind._None else __bind_func
         self._args = args
         self._kw = kw
+
+    def _wraps_plain_callable(self) -> bool:
+        inner = getattr(self, '_f', None)
+        if inner is None or not callable(inner):
+            return False
+        return not (hasattr(inner, '_flow_id') or hasattr(inner, '_module_id'))
 
     def __or__(self, other):
         if isinstance(other, Bind):
@@ -118,6 +126,10 @@ class Bind(object):
         bind_args = [a.get_arg(_bind_args_source) if isinstance(a, Bind.Args) else a for a in bind_args]
         bind_args = list(itertools.chain.from_iterable(x if isinstance(x, Bind.Args.Unpack) else [x] for x in bind_args))
         kwargs = {k: v.get_arg(_bind_args_source) if isinstance(v, Bind.Args) else v for k, v in kwargs.items()}
+        if self._hooks:
+            from lazyllm.hook import execution_with_hooks
+            merged = {**kwargs, **kw}
+            return execution_with_hooks(self, *args, **merged)(self._f)(*bind_args, **merged)
         return self._f(*bind_args, **kwargs, **kw)
 
     # TODO: modify it
@@ -133,7 +145,7 @@ class Bind(object):
         return super(__class__, self).__getattr__(name)
 
     def __setattr__(self, __name: str, __value: Any) -> None:
-        if __name not in ('_f', '_args', '_kw', '_has_root'):
+        if __name not in ('_f', '_args', '_kw', '_has_root', '_hooks'):
             return setattr(self._f, __name, __value)
         return super(__class__, self).__setattr__(__name, __value)
 
