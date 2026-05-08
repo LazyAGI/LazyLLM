@@ -1772,7 +1772,7 @@ class TestBatchForwardRefPath:
                 recorded_doc_ids_per_call.append([n.global_metadata.get(RAG_DOC_ID) for n in nodes])
                 return [DocNode(text=f'ref-{n.text}') for n in nodes]
 
-        store = _DocumentStore(algo_name='test_ref_path', store={'type': 'map'}, embed={})
+        store = _DocumentStore(store={'type': 'map'}, embed={})
         store.impl.need_embedding = False
         store.activate_group(LAZY_ROOT_NAME)
         store.activate_group('section')

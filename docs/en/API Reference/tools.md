@@ -97,10 +97,6 @@
     members: retrieve
     exclude-members:
 
-::: lazyllm.tools.rag.doc_to_db.DocInfoSchemaItem
-    members:
-    exclude-members:
-
 ::: lazyllm.tools.rag.doc_to_db.DocGenreAnalyser
     members: gen_detection_query, analyse_doc_genre
     exclude-members:
