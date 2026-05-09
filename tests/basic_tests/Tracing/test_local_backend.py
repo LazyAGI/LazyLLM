@@ -1,5 +1,6 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 
 import pytest
 
@@ -9,18 +10,24 @@ from lazyllm.thirdparty import opentelemetry
 TRACE_ID_A = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
 
-def _new_tracer_with_exporter(storage_dir):
-    from lazyllm.tracing.backends.local import LocalFileSpanExporter
+@contextmanager
+def _tracer_with_exporter(storage_dir):
+    from lazyllm.tracing.backends.local.backend import LocalFileSpanExporter
 
     exporter = LocalFileSpanExporter(storage_dir=storage_dir)
     provider = opentelemetry.sdk.trace.TracerProvider()
     provider.add_span_processor(opentelemetry.sdk.trace.export.SimpleSpanProcessor(exporter))
-    return provider, provider.get_tracer('lazyllm.tracing.local.test')
+    try:
+        yield provider.get_tracer('lazyllm.tracing.local.test')
+    finally:
+        try:
+            provider.force_flush()
+        finally:
+            provider.shutdown()
 
 
 def _emit_real_trace(storage_dir, root_name, child_names=()):
-    provider, tracer = _new_tracer_with_exporter(storage_dir)
-    try:
+    with _tracer_with_exporter(storage_dir) as tracer:
         with tracer.start_as_current_span(root_name) as root:
             root.set_attribute('lazyllm.span.kind', 'flow')
             root.set_attribute('lazyllm.span.is_root', True)
@@ -30,10 +37,7 @@ def _emit_real_trace(storage_dir, root_name, child_names=()):
                 with tracer.start_as_current_span(child_name) as child:
                     child.set_attribute('lazyllm.span.kind', 'callable')
                     child.set_attribute('lazyllm.status', 'ok')
-        provider.force_flush()
-        return trace_id
-    finally:
-        provider.shutdown()
+    return trace_id
 
 
 @pytest.mark.parametrize(
@@ -67,32 +71,28 @@ def test_local_backend_writes_and_reads_trace(tmp_path, root_name, child_names, 
 def test_local_backend_consumes_concurrent_appends_to_same_trace(tmp_path):
     from lazyllm.tracing.backends.local import LocalConsumeBackend
 
-    provider, tracer = _new_tracer_with_exporter(tmp_path)
-    parent_span_id = '1111111111111111'
-    parent_context = opentelemetry.trace.set_span_in_context(
-        opentelemetry.trace.NonRecordingSpan(
-            opentelemetry.trace.SpanContext(
-                trace_id=int(TRACE_ID_A, 16),
-                span_id=int(parent_span_id, 16),
-                is_remote=False,
-                trace_flags=opentelemetry.trace.TraceFlags(0x01),
+    with _tracer_with_exporter(tmp_path) as tracer:
+        parent_span_id = '1111111111111111'
+        parent_context = opentelemetry.trace.set_span_in_context(
+            opentelemetry.trace.NonRecordingSpan(
+                opentelemetry.trace.SpanContext(
+                    trace_id=int(TRACE_ID_A, 16),
+                    span_id=int(parent_span_id, 16),
+                    is_remote=False,
+                    trace_flags=opentelemetry.trace.TraceFlags(0x01),
+                )
             )
         )
-    )
 
-    def emit_one(idx):
-        with tracer.start_as_current_span(f'span-{idx}', context=parent_context) as span:
-            span.set_attribute('lazyllm.span.kind', 'callable')
-            span.set_attribute('lazyllm.status', 'ok')
+        def emit_one(idx):
+            with tracer.start_as_current_span(f'span-{idx}', context=parent_context) as span:
+                span.set_attribute('lazyllm.span.kind', 'callable')
+                span.set_attribute('lazyllm.status', 'ok')
 
-    num_spans = 64
+        num_spans = 64
 
-    try:
         with ThreadPoolExecutor(max_workers=16) as pool:
             list(pool.map(emit_one, range(1, num_spans + 1)))
-        provider.force_flush()
-    finally:
-        provider.shutdown()
 
     lines = (tmp_path / f'{TRACE_ID_A}.jsonl').read_text(encoding='utf-8').splitlines()
     payloads = [json.loads(line) for line in lines]
@@ -110,8 +110,7 @@ def test_consume_backend_rebuilds_raw_payload_from_local_jsonl(tmp_path):
     from lazyllm.tracing.backends.local import LocalConsumeBackend
     from lazyllm.tracing.consume.reconstruction import rebuild
 
-    provider, tracer = _new_tracer_with_exporter(tmp_path)
-    try:
+    with _tracer_with_exporter(tmp_path) as tracer:
         with tracer.start_as_current_span('root') as root:
             root_context = root.get_span_context()
             trace_id = f'{root_context.trace_id:032x}'
@@ -132,9 +131,6 @@ def test_consume_backend_rebuilds_raw_payload_from_local_jsonl(tmp_path):
                 child.set_attribute('lazyllm.status', 'ok')
                 child.set_attribute('lazyllm.io.input', '{"args":["hello"],"kwargs":{}}')
                 child.set_attribute('lazyllm.io.output', 'world')
-        provider.force_flush()
-    finally:
-        provider.shutdown()
 
     payload = LocalConsumeBackend(storage_dir=tmp_path).fetch_trace_payload(trace_id)
     structured = rebuild(payload.trace, payload.spans)

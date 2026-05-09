@@ -24,8 +24,8 @@ def _trace_lock(path: Path, timeout_seconds: Optional[float] = None) -> FileLock
     return FileLock(str(path) + '.lock', timeout=timeout)
 
 
-def _strip_otel_id_prefix(value: str) -> str:
-    return value[2:] if value.startswith('0x') else value
+def _strip_otel_id_prefix(value):
+    return value[2:] if isinstance(value, str) and value.startswith('0x') else value
 
 
 def _span_to_json_line(span: 'opentelemetry.sdk.trace.ReadableSpan') -> str:
@@ -47,33 +47,35 @@ def _choose_root_span(spans: List[RawSpanRecord]) -> Optional[RawSpanRecord]:
 
 
 def _raw_span_from_otel_json(row: Dict[str, Any]) -> RawSpanRecord:
-    trace_id = _strip_otel_id_prefix(row['context'].get('trace_id'))
-    span_id = _strip_otel_id_prefix(row['context'].get('span_id'))
+    context = row.get('context')
+    if not isinstance(context, dict):
+        raise ConsumeBackendError('local span context field is missing or not a JSON object')
+
+    trace_id = _strip_otel_id_prefix(context.get('trace_id'))
+    span_id = _strip_otel_id_prefix(context.get('span_id'))
     if not is_valid_trace_id(trace_id) or not is_valid_span_id(span_id):
         raise ConsumeBackendError('local span context field is invalid')
-    parent_span_id = None
-    parent = row.get('parent_id')
-    if parent not in (None, ''):
-        candidate = _strip_otel_id_prefix(parent)
-        if is_valid_span_id(candidate):
-            parent_span_id = candidate
+
+    parent_span_id = _strip_otel_id_prefix(row.get('parent_id'))
+    parent_span_id = parent_span_id if is_valid_span_id(parent_span_id) else None
 
     attributes = row.get('attributes')
-    if attributes is None:
-        attributes = {}
     if not isinstance(attributes, dict):
         raise ConsumeBackendError('local span attributes field is not a JSON object')
 
     start_time = iso_to_epoch(row.get('start_time'))
-    if start_time is None:
-        raise ConsumeBackendError('local span missing start_time')
+    raw_end_time = row.get('end_time')
+    end_time = iso_to_epoch(raw_end_time) if raw_end_time else None
 
-    status_body = row.get('status') if isinstance(row.get('status'), dict) else {}
+    status_value = row.get('status')
+    status_body = status_value if isinstance(status_value, dict) else {}
     status_code = status_body.get('status_code')
     lazy_status = attributes.get('lazyllm.status')
     status = 'error' if status_code == 'ERROR' or lazy_status == 'error' else 'ok'
-    resource = row.get('resource') if isinstance(row.get('resource'), dict) else {}
-    resource_attrs = resource.get('attributes') if isinstance(resource.get('attributes'), dict) else {}
+    resource_value = row.get('resource')
+    resource = resource_value if isinstance(resource_value, dict) else {}
+    resource_attrs_value = resource.get('attributes')
+    resource_attrs = resource_attrs_value if isinstance(resource_attrs_value, dict) else {}
 
     metadata = {
         'attributes': dict(attributes),
@@ -86,7 +88,7 @@ def _raw_span_from_otel_json(row: Dict[str, Any]) -> RawSpanRecord:
         parent_span_id=parent_span_id,
         name=str(row.get('name') or ''),
         start_time=start_time,
-        end_time=iso_to_epoch(row.get('end_time')),
+        end_time=end_time,
         status=status,
         attributes=dict(attributes),
         input=attributes.get('lazyllm.io.input'),
@@ -125,9 +127,51 @@ def _raw_trace_from_spans(trace_id: str, spans: List[RawSpanRecord]) -> RawTrace
     )
 
 
+def _read_trace_lines(
+    path: Path,
+    trace_id: str,
+    timeout_seconds: Optional[float],
+) -> List[str]:
+    try:
+        with _trace_lock(path, timeout_seconds=timeout_seconds):
+            if not path.exists():
+                raise TraceNotFound(trace_id)
+            with path.open('r', encoding='utf-8') as file_obj:
+                return file_obj.readlines()
+    except Timeout as exc:
+        raise ConsumeBackendError(f'timed out waiting for local trace file lock: {path.name}') from exc
+
+
+def _raw_spans_from_lines(path_name: str, lines: List[str]) -> List[RawSpanRecord]:
+    spans = []
+    for line_no, line in enumerate(lines, start=1):
+        text = line.strip()
+        if not text:
+            continue
+        try:
+            row = json.loads(text)
+        except ValueError as exc:
+            raise ConsumeBackendError(
+                f'invalid JSON in local trace file {path_name} at line {line_no}'
+            ) from exc
+        if not isinstance(row, dict):
+            raise ConsumeBackendError(
+                f'local trace file {path_name} line {line_no} is not a JSON object'
+            )
+
+        try:
+            spans.append(_raw_span_from_otel_json(row))
+        except (ConsumeBackendError, ValueError) as exc:
+            raise ConsumeBackendError(
+                f'invalid span in local trace file {path_name} at line {line_no}: {exc}'
+            ) from exc
+    return spans
+
+
 class LocalFileSpanExporter(opentelemetry.sdk.trace.export.SpanExporter):
     def __init__(self, storage_dir: Optional[Path] = None):
         self.storage_dir = Path(storage_dir) if storage_dir is not None else read_local_storage_dir()
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
         self._shutdown = False
 
     def export(self, spans: Sequence['opentelemetry.sdk.trace.ReadableSpan']):
@@ -146,12 +190,11 @@ class LocalFileSpanExporter(opentelemetry.sdk.trace.export.SpanExporter):
             return SpanExportResult.FAILURE
 
         try:
-            self.storage_dir.mkdir(parents=True, exist_ok=True)
             for trace_id, lines in grouped.items():
                 path = _trace_path(self.storage_dir, trace_id)
                 with _trace_lock(path):
                     with path.open('a', encoding='utf-8') as file_obj:
-                        file_obj.write(''.join(line + '\n' for line in lines))
+                        file_obj.writelines(f'{line}\n' for line in lines)
         except Exception as exc:
             LOG.warning(f'LocalFileSpanExporter failed to write spans: {exc}')
             return SpanExportResult.FAILURE
@@ -172,6 +215,7 @@ class LocalBackend(TracingBackend):
         return LocalFileSpanExporter()
 
     def map_attributes(self, otel_attrs: Dict[str, Any]) -> Dict[str, Any]:
+        # Local exports keep the original OTel attributes in the JSONL payload.
         return {}
 
 
@@ -186,32 +230,7 @@ class LocalConsumeBackend(ConsumeBackend):
             raise ValueError(f'invalid trace_id: {trace_id!r}')
 
         path = _trace_path(self.storage_dir, trace_id)
-        if not path.exists():
-            raise TraceNotFound(trace_id)
-
-        rows: List[Dict[str, Any]] = []
-        try:
-            with _trace_lock(path, timeout_seconds=timeout_seconds):
-                with path.open('r', encoding='utf-8') as file_obj:
-                    for line_no, line in enumerate(file_obj, start=1):
-                        text = line.strip()
-                        if not text:
-                            continue
-                        try:
-                            row = json.loads(text)
-                        except ValueError as exc:
-                            raise ConsumeBackendError(
-                                f'invalid JSON in local trace file {path.name} at line {line_no}'
-                            ) from exc
-                        if not isinstance(row, dict):
-                            raise ConsumeBackendError(
-                                f'local trace file {path.name} line {line_no} is not a JSON object'
-                            )
-                        rows.append(row)
-        except Timeout as exc:
-            raise ConsumeBackendError(f'timed out waiting for local trace file lock: {path.name}') from exc
-
-        spans = [_raw_span_from_otel_json(row) for row in rows]
+        spans = _raw_spans_from_lines(path.name, _read_trace_lines(path, trace_id, timeout_seconds))
         spans = [span for span in spans if span.trace_id == trace_id]
         spans.sort(key=lambda span: (span.start_time, span.name, span.span_id))
         return RawTracePayload(

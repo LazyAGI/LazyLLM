@@ -1,9 +1,8 @@
-from .backend import LocalBackend, LocalConsumeBackend, LocalFileSpanExporter
+from .backend import LocalBackend, LocalConsumeBackend
 from .config import read_local_storage_dir
 
 __all__ = [
     'LocalBackend',
     'LocalConsumeBackend',
-    'LocalFileSpanExporter',
     'read_local_storage_dir',
 ]

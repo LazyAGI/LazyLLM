@@ -1,7 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
-
-from lazyllm.common import LOG
+from typing import Any, Dict
 
 
 _TRACE_METADATA_PREFIX = 'lazyllm.trace.metadata.'
@@ -15,15 +13,14 @@ def extract_trace_metadata(attrs: Dict[str, Any], target_prefix: str = '') -> Di
     }
 
 
-def iso_to_epoch(value: Optional[str]) -> Optional[float]:
-    if not value or not isinstance(value, str):
-        return None
-    text = value.replace('Z', '+00:00')
+def iso_to_epoch(value: str) -> float:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f'invalid tracing backend timestamp: {value!r}')
     try:
+        text = value.removesuffix('Z') + '+00:00' if value.endswith('Z') else value
         dt = datetime.fromisoformat(text)
-    except ValueError:
-        LOG.warning(f'Failed to parse tracing backend timestamp: {value!r}')
-        return None
+    except ValueError as exc:
+        raise ValueError(f'invalid tracing backend timestamp: {value!r}') from exc
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.timestamp()

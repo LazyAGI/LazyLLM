@@ -173,8 +173,8 @@ class LangfuseConsumeBackend(ConsumeBackend):
 
         name = obs.get('name') or ''
         st = iso_to_epoch(obs.get('startTime'))
-        if st is None:
-            raise ValueError('observation missing startTime')
+        raw_end_time = obs.get('endTime')
+        end_time = iso_to_epoch(raw_end_time) if raw_end_time else None
 
         return RawSpanRecord(
             trace_id=trace_id,
@@ -182,7 +182,7 @@ class LangfuseConsumeBackend(ConsumeBackend):
             parent_span_id=parent_span_id,
             name=name,
             start_time=st,
-            end_time=iso_to_epoch(obs.get('endTime')),
+            end_time=end_time,
             status='error' if obs.get('level') == 'ERROR' else 'ok',
             attributes=attributes,
             input=obs.get('input'),
@@ -373,6 +373,8 @@ class LangfuseConsumeBackend(ConsumeBackend):
             if key not in self._PROMOTED_TRACE_FIELDS
         }
         try:
+            raw_start_time = body.get('timestamp')
+            start_time = iso_to_epoch(raw_start_time) if raw_start_time else None
             return RawTraceRecord(
                 trace_id=str(tid),
                 name=body.get('name'),
@@ -382,7 +384,7 @@ class LangfuseConsumeBackend(ConsumeBackend):
                 metadata=dict(metadata),
                 input=body.get('input'),
                 output=body.get('output'),
-                start_time=iso_to_epoch(body.get('timestamp')),
+                start_time=start_time,
                 end_time=None,
                 status=None,
                 raw=trace_raw,

@@ -21,7 +21,7 @@ def _load_backend_classes(specs: Tuple[Tuple[str, str, str], ...]) -> Tuple[Dict
             module = import_module(module_path, package=__package__)
             backend_cls = getattr(module, class_name)
             classes[backend_cls.name] = backend_cls
-        except ImportError as exc:
+        except (ImportError, AttributeError) as exc:
             import_errors[backend_name] = exc
 
     return classes, import_errors
