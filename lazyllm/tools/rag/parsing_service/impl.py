@@ -160,6 +160,7 @@ class _Processor:
                             self._thread_pool.submit(self._schema_extractor, nodes, algo_id=self._algo_id)
                         )
 
+            store_start = time.time()
             if transfer_mode is None:
                 for k, v in root_nodes.items():
                     if not v: continue
@@ -179,9 +180,10 @@ class _Processor:
                     schema_errors.append(exc)
             if schema_errors:
                 raise schema_errors[0]
+            store_time = time.time() - store_start
             add_time = time.time() - add_start
             LOG.info(f'[_Processor - add_doc] Add documents done! files:{input_files}, '
-                     f'Total Time: {add_time}s, Data Loading Time: {load_time}s')
+                     f'Total Time: {add_time}s, Data Loading Time: {load_time}s, Store Time: {store_time}s')
         except Exception as e:
             cleanup_doc_ids = ids if transfer_mode is None else (target_doc_ids or [])
             cleanup_kb_id = kb_id if transfer_mode is None else target_kb_id
