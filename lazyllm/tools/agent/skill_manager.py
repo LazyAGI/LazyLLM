@@ -174,6 +174,10 @@ class SkillManager(ModuleBase):
     def _fs_join(self, base: str, name: str) -> str:
         return base.rstrip('/') + '/' + name
 
+    @classmethod
+    def _source_from_path(cls, path: str) -> str:
+        return cls._extract_protocol(path) or 'file'
+
     def _iter_skill_files(self) -> Iterable[Tuple[str, str]]:
         for base_dir in self._skills_dir:
             stack = [base_dir]
@@ -251,6 +255,7 @@ class SkillManager(ModuleBase):
                     'disable-model-invocation': self._to_bool(meta.get('disable-model-invocation', False)),
                     'user-invocable': self._to_bool(meta.get('user-invocable', True)),
                     'allowed-tools': meta.get('allowed-tools'),
+                    'source': self._source_from_path(skill_dir),
                     'path': skill_dir,
                     'skill_md': skill_md,
                     'raw_meta': meta,
@@ -273,7 +278,12 @@ class SkillManager(ModuleBase):
             return '\n'.join(lines)
         for name, info in self._skills_index.items():
             desc = (info.get('description', '') or '')[:1024]
-            lines += [f'- **{name}**', f'  - {desc}', f'  - Path: {info.get("path")}']
+            lines += [
+                f'- **{name}**',
+                f'  - {desc}',
+                f'  - Source: {info.get("source", "file")}',
+                f'  - Path: {info.get("path")}',
+            ]
         return '\n'.join(lines)
 
     def build_prompt(self, task: str) -> str:
@@ -420,7 +430,10 @@ class SkillManager(ModuleBase):
             info = self._skills_index.get(name)
             if info:
                 desc = (info.get('description', '') or '')[:1024]
-                lines.append(f'- {name}: {desc} (path: {info.get("path")})')
+                lines.append(
+                    f'- {name}: {desc} (source: {info.get("source", "file")}, '
+                    f'path: {info.get("path")})'
+                )
         return '\n'.join(lines)
 
     def _format_skills_locations(self) -> str:

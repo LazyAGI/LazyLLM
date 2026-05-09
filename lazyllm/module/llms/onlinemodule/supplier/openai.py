@@ -37,7 +37,7 @@ class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
         self.fine_tuning_job_id = None
 
     def _get_system_prompt(self):
-        return 'You are ChatGPT, a large language model trained by OpenAI.You are a helpful assistant.'
+        return 'You are ChatGPT, a large language model trained by OpenAI. You are a helpful assistant.'
 
     def _convert_file_format(self, filepath: str) -> str:
         with open(filepath, 'r', encoding='utf-8') as fr:
