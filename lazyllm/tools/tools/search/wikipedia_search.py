@@ -2,6 +2,7 @@ import re
 from typing import Any, Dict, List
 from urllib.parse import quote
 
+import lazyllm
 from lazyllm.thirdparty import httpx
 
 from .base import SearchBase, _make_result
@@ -9,7 +10,7 @@ from .base import SearchBase, _make_result
 
 class WikipediaSearch(SearchBase):
 
-    _UA = 'LazyRAG/1.0 (https://github.com/LazyAGI/LazyLLM; wikipedia-search)'
+    _UA = f'LazyLLM/{lazyllm.__version__} (https://github.com/LazyAGI/LazyLLM; wikipedia-search)'
 
     def __init__(self, base_url: str = 'https://en.wikipedia.org',
                  timeout: int = 10, source_name: str = 'wikipedia'):

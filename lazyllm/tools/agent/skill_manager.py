@@ -174,10 +174,6 @@ class SkillManager(ModuleBase):
     def _fs_join(self, base: str, name: str) -> str:
         return base.rstrip('/') + '/' + name
 
-    @classmethod
-    def _source_from_path(cls, path: str) -> str:
-        return cls._extract_protocol(path) or 'file'
-
     def _iter_skill_files(self) -> Iterable[Tuple[str, str]]:
         for base_dir in self._skills_dir:
             stack = [base_dir]
@@ -255,7 +251,7 @@ class SkillManager(ModuleBase):
                     'disable-model-invocation': self._to_bool(meta.get('disable-model-invocation', False)),
                     'user-invocable': self._to_bool(meta.get('user-invocable', True)),
                     'allowed-tools': meta.get('allowed-tools'),
-                    'source': self._source_from_path(skill_dir),
+                    'source': self._extract_protocol(skill_dir) or 'file',
                     'path': skill_dir,
                     'skill_md': skill_md,
                     'raw_meta': meta,
