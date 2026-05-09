@@ -423,7 +423,17 @@ def _normalize_comment_item(
     item: Dict[str, Any], new_start: int = 0, end_line: Optional[int] = None,
     default_path: str = '', default_category: str = 'logic',
     allow_null_line: bool = False,
+    demote_on_out_of_range: bool = False,
 ) -> Optional[Dict[str, Any]]:
+    '''Normalize a raw LLM issue dict into a clean comment dict.
+
+    Args:
+        demote_on_out_of_range: When True, issues whose ``line`` falls outside the diff
+            range are *demoted* to ``line=None`` (file-level general comments) instead of
+            being silently discarded.  Set this to True for architectural / holistic stages
+            (R2, RMod, dep_check) where an issue may legitimately reference code that is not
+            part of the current diff.
+    '''
     # LLM sometimes outputs 'description' instead of 'problem' (especially in R4)
     if item.get('problem') is None and item.get('description') is not None:
         item = dict(item, problem=item['description'])
@@ -432,7 +442,14 @@ def _normalize_comment_item(
         return None
     line = _normalize_line(item.get('line'), new_start, end_line, allow_null_line, str(item)[:200])
     if line is _SKIP:
-        return None
+        if demote_on_out_of_range:
+            # Demote to a file-level general comment rather than discarding.
+            line = None
+            lazyllm.LOG.info(
+                f'[NORMALIZE_DEMOTE] line out of range, demoted to general comment: {str(item)[:200]}'
+            )
+        else:
+            return None
     category = item.get('bug_category') or default_category
     if category not in _VALID_CATEGORIES:
         category = default_category

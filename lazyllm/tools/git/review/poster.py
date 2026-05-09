@@ -69,13 +69,15 @@ def _suggestion_prefix(suggestion: str) -> str:
 def _comment_body_text(c: Dict[str, Any], model_name: str) -> str:
     category_tag = f'[{c.get("bug_category", "logic")}]'
     severity_tag = f'[{c.get("severity", "normal")}]'
+    source = c.get('source', '')
+    stage_tag = f' [stage:{source}]' if source else ''
     return (
         '*This suggestion is AI-assisted and has been manually reviewed for relevance. If you disagree, '
         'provide concrete technical reasoning or counterexamples. Newly introduced architecture issues must '
         'be fixed before merging; pre-existing ones must be tracked via an issue (new or linked). '
         'Style issues must be fixed before merging. Missing test coverage must be added before merging. Responses '
         'without concrete actions are incomplete, and consensus-based arguments (e.g., “others are doing this”) '
-        f'alone are not sufficient.*\n\n**{severity_tag} {category_tag}** {c.get("problem", "")}\n\n'
+        f'alone are not sufficient.*\n\n**{severity_tag} {category_tag}{stage_tag}** {c.get("problem", "")}\n\n'
         f'**Suggestion:** {_suggestion_prefix(c.get("suggestion", ""))}{c.get("suggestion", "")}\n\n'
         f'---\nauto reviewed by BOT ({model_name}), skill at https://github.com/LazyAGI/LazyCoding')
 
@@ -150,9 +152,11 @@ def _build_general_body(general_comments: List[Dict[str, Any]]) -> str:
         for c in items:
             category_tag = f'[{c.get("bug_category", "maintainability")}]'
             severity_tag = f'[{c.get("severity", "normal")}]'
+            source = c.get('source', '')
+            stage_tag = f' [stage:{source}]' if source else ''
             line_hint = f' (line {c["line"]})' if c.get('line') else ''
             parts.append(
-                f'**{severity_tag} {category_tag}**{line_hint} {c.get("problem", "")}\n\n'
+                f'**{severity_tag} {category_tag}{stage_tag}**{line_hint} {c.get("problem", "")}\n\n'
                 f'**Suggestion:** {c.get("suggestion", "")}\n\n---'
             )
     if no_file:
@@ -160,8 +164,10 @@ def _build_general_body(general_comments: List[Dict[str, Any]]) -> str:
         for c in no_file:
             category_tag = f'[{c.get("bug_category", "maintainability")}]'
             severity_tag = f'[{c.get("severity", "normal")}]'
+            source = c.get('source', '')
+            stage_tag = f' [stage:{source}]' if source else ''
             parts.append(
-                f'**{severity_tag} {category_tag}** {c.get("problem", "")}\n\n'
+                f'**{severity_tag} {category_tag}{stage_tag}** {c.get("problem", "")}\n\n'
                 f'**Suggestion:** {c.get("suggestion", "")}\n\n---'
             )
     return '\n'.join(parts)

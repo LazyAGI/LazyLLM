@@ -811,6 +811,20 @@ def _round1_hunk_analysis(
             raise RuntimeError(f'Round 1 failed on {failed}/{len(file_to_idxs)} files (>{50}%); aborting.')
 
     all_comments = [c for i in range(len(hunks)) for c in results_by_idx.get(i, [])]
+    # Cross-hunk dedup: remove duplicates that appear across overlapping windows.
+    _seen_r1: set = set()
+    deduped_comments: List[Dict[str, Any]] = []
+    for c in all_comments:
+        key = (
+            c.get('path', ''),
+            int(c.get('line') or 0),
+            c.get('bug_category', ''),
+            (c.get('problem') or '')[:60],
+        )
+        if key not in _seen_r1:
+            _seen_r1.add(key)
+            deduped_comments.append(c)
+    all_comments = deduped_comments
     cap = max_issues_for_diff('\n'.join(h[3] for h in hunks))
     all_comments = cap_issues_by_severity(all_comments, cap)
     prog.done(f'{len(all_comments)} issues total')
@@ -941,13 +955,30 @@ def _find_related_small_files(
     small_files: List[str],
     file_diffs: Dict[str, str],
 ) -> List[str]:
-    # Extract module names imported in the large file's diff, match against small file paths.
-    import_re = re.compile(r'^\+\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))', re.MULTILINE)
+    '''Find small files imported (directly or via relative import) by the large file.
+
+    Handles:
+    - ``import foo`` / ``from foo import X`` → last component of ``foo``
+    - ``from .bar import X`` / ``from ..pkg.bar import X`` → ``bar`` (basename of relative module)
+    '''
+    # Absolute imports: ``from foo.bar import X`` → ``bar``, ``import foo.bar`` → ``bar``
+    abs_import_re = re.compile(r'^\+\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))', re.MULTILINE)
+    # Relative imports: ``from .bar import X`` or ``from ..pkg.bar import X`` → ``bar``
+    rel_import_re = re.compile(r'^\+\s*from\s+(\.+[\w.]*)\s+import', re.MULTILINE)
+
     imported_modules: set = set()
-    for m in import_re.finditer(large_diff):
+    for m in abs_import_re.finditer(large_diff):
         mod = (m.group(1) or m.group(2) or '').split('.')[-1]
         if mod:
             imported_modules.add(mod)
+    for m in rel_import_re.finditer(large_diff):
+        rel = m.group(1).lstrip('.')
+        if rel:
+            mod = rel.split('.')[-1]
+            if mod:
+                imported_modules.add(mod)
+        # ``from . import X`` form: X is in the import list not the from-clause, skip here
+
     if not imported_modules:
         return []
     related: List[str] = []
@@ -1836,8 +1867,10 @@ def _r3_extract_issues(
         if r1_idx is not None:
             kept_r1_idxs.add(r1_idx)
         result.append(entry)
+    # key format: {path}:{line}:{bug_category} so that only the specific category is discarded.
+    # Old checkpoints without category are treated as "discard all categories" (see R4 filter).
     discarded_keys = {
-        f'{c.get("path", path)}:{c.get("line")}'
+        f'{c.get("path", path)}:{c.get("line")}:{c.get("bug_category", "")}'
         for i, c in enumerate(r1_issues) if i not in kept_r1_idxs
     }
     return result, discarded_keys
@@ -1929,20 +1962,45 @@ def _round3_agent_verify(
     prog = _Progress('Round 3: unified agent verify', len(units))
     all_results: List[Dict[str, Any]] = []
     all_discarded: set = set()
+    _r3_merge_lock = __import__('threading').Lock()
 
-    for unit in units:
-        _r3_unit_agent_verify(
-            llm, unit, r1_by_file, shared_context, arch_doc, pr_summary,
-            clone_dir, symbol_cache, tools, language, ckpt, all_results, all_discarded,
-            use_cache=use_cache, agent_instructions=agent_instructions,
-            max_chunks=max_chunks, review_spec=review_spec, agents_index=agents_index,
+    def _run_unit(unit: Dict[str, Any]) -> None:
+        unit_results: List[Dict[str, Any]] = []
+        unit_discarded: set = set()
+        try:
+            _r3_unit_agent_verify(
+                llm, unit, r1_by_file, shared_context, arch_doc, pr_summary,
+                clone_dir, symbol_cache, tools, language, ckpt, unit_results, unit_discarded,
+                use_cache=use_cache, agent_instructions=agent_instructions,
+                max_chunks=max_chunks, review_spec=review_spec, agents_index=agents_index,
+            )
+        except Exception as exc:
+            lazyllm.LOG.warning(f'[R3] Unit {unit.get("anchor") or unit.get("files")} failed: {exc}')
+        with _r3_merge_lock:
+            all_results.extend(unit_results)
+            all_discarded.update(unit_discarded)
+            if unit['anchor']:
+                r3_metrics['r3_files_chunk'] += 1
+            else:
+                r3_metrics['r3_files_group'] += len(unit['files'])
+        prog.update(
+            f'{unit["anchor"]} [anchor+{len(unit["files"]) - 1} related]'
+            if unit['anchor']
+            else f'group {unit["files"]} [{len(unit["files"])} files]'
         )
-        if unit['anchor']:
-            r3_metrics['r3_files_chunk'] += 1
-            prog.update(f'{unit["anchor"]} [anchor+{len(unit["files"]) - 1} related]')
-        else:
-            r3_metrics['r3_files_group'] += len(unit['files'])
-            prog.update(f'group {unit["files"]} [{len(unit["files"])} files]')
+
+    max_workers = min(3, len(units))
+    if max_workers <= 1:
+        for unit in units:
+            _run_unit(unit)
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as r3_pool:
+            futs = [r3_pool.submit(_run_unit, unit) for unit in units]
+            for fut in as_completed(futs):
+                try:
+                    fut.result()
+                except Exception as exc:
+                    lazyllm.LOG.warning(f'[R3] Unit future raised: {exc}')
 
     prog.done(f'{len(all_results)} issues from agent; {len(all_discarded)} prev issues discarded')
     return all_results, all_discarded, r3_metrics
@@ -2019,9 +2077,14 @@ def _round2_generate_pr_doc(
     pr_summary: str = '',
     language: str = 'cn',
     agent_instructions: str = '',
-) -> str:
+) -> Tuple[str, List[str]]:
     prog = _Progress('Round 2a: generating PR design document')
-    diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 22000)
+    diff_use, dropped_files = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 22000)
+    if dropped_files:
+        lazyllm.LOG.warning(
+            f'[R2a] Diff truncated: {len(dropped_files)} file(s) skipped due to context budget: '
+            + ', '.join(dropped_files)
+        )
     arch_use = clip_text(arch_doc or '', 12000) if arch_doc else '(not available)'
     prompt = _safe_format(
         _ROUND2_DOC_PROMPT_TMPL,
@@ -2032,7 +2095,7 @@ def _round2_generate_pr_doc(
     )
     result = _safe_llm_call_text(llm, prompt) or '(PR design document unavailable)'
     prog.done(f'{len(result)} chars')
-    return result
+    return result, dropped_files
 
 _ROUND2_ARCHITECT_PROMPT_TMPL = '''\
 You are a principal software architect performing a holistic design review.
@@ -2218,9 +2281,14 @@ def _round2_architect_review(
     llm: Any, diff_text: str, arch_doc: str,
     pr_summary: str = '', language: str = 'cn', agent_instructions: str = '',
     pr_design_doc: str = '', review_spec: str = '',
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], List[str]]:
     prog = _Progress('Round 2: architect design review')
-    diff_use = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 38000)
+    diff_use, dropped_files = clip_diff_by_hunk_budget(diff_text, SINGLE_CALL_CONTEXT_BUDGET - 38000)
+    if dropped_files:
+        lazyllm.LOG.warning(
+            f'[R2] Diff truncated: {len(dropped_files)} file(s) skipped due to context budget: '
+            + ', '.join(dropped_files)
+        )
     arch_use = clip_text(arch_doc or '', 42000) if arch_doc else '(not available)'
     annotated_diff = _annotate_full_diff(diff_use)
     prompt = _safe_format(
@@ -2234,10 +2302,11 @@ def _round2_architect_review(
     )
     items = _safe_llm_call(llm, prompt)
     result = [n for item in (items if isinstance(items, list) else [])
-              if (n := _normalize_comment_item(item, default_path='', default_category='design')) is not None]
+              if (n := _normalize_comment_item(item, default_path='', default_category='design',
+                                               demote_on_out_of_range=True)) is not None]
     result = cap_issues_by_severity(result, max_issues_for_diff(diff_use))
     prog.done(f'{len(result)} architect issues found')
-    return result
+    return result, dropped_files
 
 
 # ── RMod: modification necessity analysis (ReactAgent, per-file parallel) ──
@@ -2400,7 +2469,8 @@ def _rmod_run_single_file(
     items = _parse_json_with_repair(json_text) if json_text else []
     issues = [n for item in (items if isinstance(items, list) else [])
               if (n := _normalize_comment_item(item, default_path=file_path,
-                                               default_category='design')) is not None]
+                                               default_category='design',
+                                               demote_on_out_of_range=True)) is not None]
     lazyllm.LOG.info(f'  [RMod] Done {file_path}: {len(issues)} issue(s)')
     return issues
 
@@ -2642,6 +2712,35 @@ def _rscene_collect_modified_file_diffs(diff_text: str) -> Dict[str, str]:
     return cleaned
 
 
+def _collect_all_file_diffs(diff_text: str) -> Dict[str, str]:
+    '''Collect per-file diffs for ALL changed files (including new files), preserving @@ headers.'''
+    file_diffs: Dict[str, str] = {}
+    current_path: Optional[str] = None
+    current_lines: List[str] = []
+
+    def _flush():
+        if current_path and current_lines:
+            file_diffs.setdefault(current_path, '')
+            file_diffs[current_path] += ''.join(current_lines)
+        current_lines.clear()
+
+    for line in diff_text.splitlines(keepends=True):
+        if line.startswith('diff --git '):
+            _flush()
+            m = re.match(r'diff --git a/(.+) b/(.+)$', line.rstrip())
+            current_path = m.group(2) if m else None
+            current_lines.clear()
+        elif current_path is not None:
+            current_lines.append(line)
+    _flush()
+    cleaned: Dict[str, str] = {}
+    for path, raw in file_diffs.items():
+        hunk_lines = [line for line in raw.splitlines(keepends=True)
+                      if not line.startswith(('index ', '--- ', '+++ '))]
+        cleaned[path] = ''.join(hunk_lines)
+    return cleaned
+
+
 def _rscene_dedup_scenarios(scenarios: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     '''Deduplicate scenarios by exact title match (case-insensitive).'''
     seen_titles: set = set()
@@ -2676,11 +2775,12 @@ def infer_usage_scenarios(
             lazyllm.LOG.info(f'[RScene] Using cached scenarios ({len(cached_all)} total)')
             return cached_all
 
-    # Collect file diffs for modified (not purely new) files
-    file_diffs = _rscene_collect_modified_file_diffs(diff_text)
+    # Collect file diffs for ALL changed files (including new files so that
+    # scenario inference covers newly-added APIs and modules).
+    file_diffs = _collect_all_file_diffs(diff_text)
 
     if not file_diffs:
-        lazyllm.LOG.info('[RScene] No modified (non-new) files found, skipping')
+        lazyllm.LOG.info('[RScene] No changed files found, skipping')
         return []
 
     large_threshold = strategy.large_file_threshold if strategy else 200
@@ -2872,7 +2972,11 @@ def _rchain_run_single_scenario(
     if ckpt and use_cache:
         cached = ckpt.get(ckpt_key)
         if cached is not None:
-            return cached
+            # Support both legacy list format and new {status, issues, error} dict format.
+            if isinstance(cached, list):
+                return cached
+            if isinstance(cached, dict):
+                return cached.get('issues') or []
 
     # Determine which files to review: call_chain symbols → grep for files → intersect with diff
     call_chain = scenario.get('call_chain', [])
@@ -2912,6 +3016,8 @@ def _rchain_run_single_scenario(
                                           round_name='RChain')
                         for t in tools]
 
+        _timeout_occurred = False
+        _agent_error: Optional[str] = None
         try:
             from lazyllm.tools.agent import ReactAgent
             agent = ReactAgent(
@@ -2927,13 +3033,16 @@ def _rchain_run_single_scenario(
                 try:
                     raw = fut.result(timeout=_RCHAIN_AGENT_TIMEOUT_SECS)
                 except _cf_inner2.TimeoutError:
-                    lazyllm.LOG.warning(
-                        f'  [RChain] Timed out for scenario "{title}" chunk {chunk_label} '
-                        f'after {_RCHAIN_AGENT_TIMEOUT_SECS}s'
+                    _timeout_occurred = True
+                    _agent_error = (
+                        f'Timed out after {_RCHAIN_AGENT_TIMEOUT_SECS}s '
+                        f'for scenario "{title}" chunk {chunk_label}'
                     )
+                    lazyllm.LOG.warning(f'  [RChain] {_agent_error}')
                     continue
         except Exception as e:
-            lazyllm.LOG.warning(f'  [RChain] Agent failed for scenario "{title}" chunk {chunk_label}: {e}')
+            _agent_error = f'Agent failed for scenario "{title}" chunk {chunk_label}: {e}'
+            lazyllm.LOG.warning(f'  [RChain] {_agent_error}')
             continue
 
         all_issues.extend(_rchain_parse_issues(raw, scenario_title=title))
@@ -2943,7 +3052,9 @@ def _rchain_run_single_scenario(
 
     lazyllm.LOG.info(f'  [RChain] Scenario "{title}": {len(result)} issues found')
     if ckpt:
-        ckpt.save(ckpt_key, result)
+        # Save structured {status, issues, error} for observability.
+        status = 'ok' if result or not _agent_error else ('timeout' if _timeout_occurred else 'error')
+        ckpt.save(ckpt_key, {'status': status, 'issues': result, 'error': _agent_error or ''})
     return result
 
 
@@ -2972,11 +3083,12 @@ def _rscenario_call_chain(
             lazyllm.LOG.info(f'[RChain] Using cached issues ({len(cached_all)} total)')
             return cached_all
 
-    # Build file diffs (all modified files)
-    file_diffs = _rscene_collect_modified_file_diffs(diff_text)
+    # Build file diffs for ALL changed files (including new files so that
+    # call-chain analysis covers newly-added code paths).
+    file_diffs = _collect_all_file_diffs(diff_text)
 
     if not file_diffs:
-        lazyllm.LOG.info('[RChain] No modified files found, skipping')
+        lazyllm.LOG.info('[RChain] No changed files found, skipping')
         return []
 
     prog = _Progress('RChain: call chain review', len(usage_scenarios))
@@ -2984,13 +3096,37 @@ def _rscenario_call_chain(
     tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
 
     all_issues: List[Dict[str, Any]] = []
+    # Thread-safe counters for observability metrics.
+    _rchain_ok = _rchain_timeout = _rchain_error = 0
+    _rchain_lock = __import__('threading').Lock()
+
+    def _run_scenario(scenario: Dict[str, Any], idx: int) -> List[Dict[str, Any]]:
+        title = scenario.get('title', f'scenario_{idx}')
+        safe_title = re.sub(r'[^a-zA-Z0-9_]', '_', title)[:50]
+        ckpt_key = f'rchain_scene_{idx}_{safe_title}'
+        result = _rchain_run_single_scenario(
+            llm, scenario, idx, file_diffs, arch_doc, clone_dir, language,
+            symbol_cache, tools, ckpt, use_cache,
+        )
+        # Determine status from the saved checkpoint entry for metrics.
+        nonlocal _rchain_ok, _rchain_timeout, _rchain_error
+        status = 'ok'
+        if ckpt:
+            saved = ckpt.get(ckpt_key)
+            if isinstance(saved, dict):
+                status = saved.get('status', 'ok')
+        with _rchain_lock:
+            if status == 'timeout':
+                _rchain_timeout += 1
+            elif status == 'error':
+                _rchain_error += 1
+            else:
+                _rchain_ok += 1
+        return result
+
     with ThreadPoolExecutor(max_workers=min(_RCHAIN_MAX_PARALLEL_SCENARIOS, len(usage_scenarios))) as ex:
         futs = {
-            ex.submit(
-                _rchain_run_single_scenario,
-                llm, scenario, idx, file_diffs, arch_doc, clone_dir, language,
-                symbol_cache, tools, ckpt, use_cache,
-            ): scenario
+            ex.submit(_run_scenario, scenario, idx): scenario
             for idx, scenario in enumerate(usage_scenarios)
         }
         for fut in as_completed(futs):
@@ -3000,11 +3136,24 @@ def _rscenario_call_chain(
                 all_issues.extend(issues)
             except Exception as e:
                 lazyllm.LOG.warning(f'  [RChain] Scenario "{scenario.get("title")}" failed: {e}')
+                with _rchain_lock:
+                    _rchain_error += 1
             prog.update(scenario.get('title', ''))
 
-    prog.done(f'{len(all_issues)} issues found across {len(usage_scenarios)} scenarios')
+    prog.done(
+        f'{len(all_issues)} issues found across {len(usage_scenarios)} scenarios '
+        f'(ok={_rchain_ok}, timeout={_rchain_timeout}, error={_rchain_error})'
+    )
+    if _rchain_timeout or _rchain_error:
+        lazyllm.LOG.warning(
+            f'[RChain] Completed with issues: '
+            f'{_rchain_timeout} timeout(s), {_rchain_error} error(s) out of {len(usage_scenarios)} scenarios.'
+        )
     if ckpt:
         ckpt.save('rchain_all', all_issues)
+        ckpt.save('rchain_metrics', {
+            'ok': _rchain_ok, 'timeout': _rchain_timeout, 'error': _rchain_error,
+        })
         ckpt.mark_stage_done(ReviewStage.RCHAIN)
     return all_issues
 
@@ -3114,9 +3263,18 @@ Do NOT include "path", "line", or "suggestion" — they will be restored from th
 ''' + _JSON_OUTPUT_INSTRUCTION + '''
 '''
 
-def _token_overlap(a: str, b: str) -> float:
-    ta = set(re.findall(r'\w+', a.lower()))
-    tb = set(re.findall(r'\w+', b.lower()))
+def _token_overlap(a: str, b: str, n: int = 3) -> float:
+    '''Compute n-gram character Jaccard overlap between two strings.
+
+    Works for both ASCII and CJK text (unlike word-tokenisation which produces
+    one mega-token for Chinese sentences and yields 0 similarity).
+    Threshold calibration: use >= 0.45 for "similar-enough" Chinese/English issue text.
+    '''
+    def _ngrams(s: str) -> set:
+        s = re.sub(r'\s+', '', s.lower())
+        return {s[i:i + n] for i in range(len(s) - n + 1)} if len(s) >= n else {s}
+
+    ta, tb = _ngrams(a), _ngrams(b)
     if not ta or not tb:
         return 0.0
     return len(ta & tb) / min(len(ta), len(tb))
@@ -3137,33 +3295,23 @@ def _merge_similar_issues(group: List[Dict[str, Any]], threshold: float) -> List
     return kept
 
 
-def _deterministic_dedup(issues: List[Dict[str, Any]], cross_category: bool = True) -> List[Dict[str, Any]]:
-    # group by (path, line, bug_category); within each group keep highest-severity item
-    # source priority: r3 > r1 > r2 > lint (more context = more reliable)
+def _deterministic_dedup(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    # group by (path, line, bug_category); within each group keep highest-severity / highest-priority-source item.
+    # source priority: r3 > r1 > r2 = rmod > lint > dep_check (more context = more reliable)
+    # Same (path, line) issues with DIFFERENT categories are ALL kept and forwarded to the LLM dedup step.
     _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
-    _src_order = {'r3': 0, 'r1': 1, 'r2': 2, 'rmod': 2, 'lint': 3}
+    _src_order = {'r3': 0, 'r1': 1, 'r2': 2, 'rmod': 2, 'lint': 3, 'dep_check': 3}
     groups: Dict[tuple, List[Dict[str, Any]]] = {}
     for c in issues:
         key = (c.get('path', ''), int(c.get('line') or 0), c.get('bug_category', ''))
         groups.setdefault(key, []).append(c)
-    after_plc = [
+    return [
         min(group, key=lambda c: (
             _sev_order.get(c.get('severity', 'normal'), 2),
             _src_order.get(c.get('source', ''), 9),
         ))
         for group in groups.values()
     ]
-    if not cross_category:
-        return after_plc
-    # second pass: collapse same (path, line) across categories when problem text is similar
-    by_pl: Dict[tuple, List[Dict[str, Any]]] = {}
-    for c in after_plc:
-        key = (c.get('path', ''), int(c.get('line') or 0))
-        by_pl.setdefault(key, []).append(c)
-    result: List[Dict[str, Any]] = []
-    for group in by_pl.values():
-        result.extend([group[0]] if len(group) == 1 else _merge_similar_issues(group, threshold=0.6))
-    return result
 
 
 def _round4_merge_and_deduplicate(
@@ -3231,8 +3379,16 @@ def _round4_merge_and_deduplicate(
             )
         )
     if not result:
+        # LLM returned empty - use heuristic merge as fallback.
+        # Group same (path, line) issues across categories and apply token-overlap similarity merge.
         _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
-        result = [c for c in sorted(deduped, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2))]
+        by_pl: Dict[tuple, List[Dict[str, Any]]] = {}
+        for c in sorted(deduped, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2)):
+            key = (c.get('path', ''), int(c.get('line') or 0))
+            by_pl.setdefault(key, []).append(c)
+        result = []
+        for group in by_pl.values():
+            result.extend([group[0]] if len(group) == 1 else _merge_similar_issues(group, threshold=0.45))
     prog.done(f'{len(result)} final issues')
     return result
 
@@ -3317,16 +3473,30 @@ def _run_four_rounds(  # noqa: C901
     r1 = r1_all
     ckpt.mark_stage_done(ReviewStage.R1)
 
+    # Accumulate R2/R2a truncation meta warnings to be prepended into final output.
+    r2_meta_warnings: List[Dict[str, Any]] = []
+
     # ── R2a: PR design document ──
     use_r2a_cache = ckpt.should_use_cache(ReviewStage.R2A)
     pr_design_doc = ckpt.get('pr_design_doc') if use_r2a_cache else None
     if pr_design_doc is None:
         if not use_r2a_cache:
             lazyllm.LOG.warning('Round 2a: no cache found, re-computing')
-        pr_design_doc = _round2_generate_pr_doc(
+        pr_design_doc, r2a_dropped = _round2_generate_pr_doc(
             llm, diff_text, arch_doc, pr_summary=pr_summary,
             language=language, agent_instructions=agent_instructions,
         )
+        if r2a_dropped:
+            r2_meta_warnings.append({
+                'type': 'meta', 'severity': 'normal', 'bug_category': 'maintainability',
+                'path': '', 'line': None,
+                'problem': (
+                    f'R2a skipped {len(r2a_dropped)} file(s) due to context budget limit '
+                    f'(design doc may be incomplete): ' + ', '.join(r2a_dropped)
+                ),
+                'suggestion': 'Consider splitting the PR or increasing the context budget.',
+                'source': 'meta',
+            })
         ckpt.save('pr_design_doc', pr_design_doc)
         ckpt.mark_stage_done(ReviewStage.R2A)
     else:
@@ -3340,11 +3510,22 @@ def _run_four_rounds(  # noqa: C901
     if r2 is None:
         if not use_r2_cache:
             lazyllm.LOG.warning('Round 2: no cache found, re-computing')
-        r2 = _round2_architect_review(
+        r2, r2_dropped = _round2_architect_review(
             llm, diff_text, arch_doc, pr_summary=pr_summary,
             language=language, agent_instructions=agent_instructions,
             pr_design_doc=pr_design_doc, review_spec=review_spec,
         )
+        if r2_dropped:
+            r2_meta_warnings.append({
+                'type': 'meta', 'severity': 'normal', 'bug_category': 'maintainability',
+                'path': '', 'line': None,
+                'problem': (
+                    f'R2 architect review skipped {len(r2_dropped)} file(s) due to context budget: '
+                    + ', '.join(r2_dropped)
+                ),
+                'suggestion': 'Consider splitting the PR or increasing the context budget.',
+                'source': 'meta',
+            })
         ckpt.save('r2', r2)
         ckpt.mark_stage_done(ReviewStage.R2)
     else:
@@ -3399,34 +3580,37 @@ def _run_four_rounds(  # noqa: C901
         def _tag(issues: List[Dict[str, Any]], src: str) -> List[Dict[str, Any]]:
             return [{**c, 'source': src} for c in issues]
 
-        r3_covered_files = {c.get('path') for c in r3 if c.get('path')}
-        r1_passthrough = [
-            c for c in r1
-            if c.get('path') not in r3_covered_files
-            or f'{c.get("path")}:{c.get("line")}' not in discarded_prev_keys
-        ]
-        r3_covered_keys = {f'{c.get("path")}:{c.get("line")}' for c in r3}
-        r1_passthrough = [
-            c for c in r1_passthrough
-            if c.get('path') not in r3_covered_files
-            or f'{c.get("path")}:{c.get("line")}' not in r3_covered_keys
-        ]
-        # R2 architect issues for files not covered by R3 pass through directly
-        r2_passthrough = [
-            c for c in r2
-            if c.get('path') not in r3_covered_files
-        ]
-        # RMod issues always pass through (modification necessity is orthogonal to R3 file coverage)
+        # Only drop R1 issues that R3 explicitly marked as false positives.
+        # The second pass (r3_covered_keys) is removed: _deterministic_dedup handles
+        # same-(path,line,category) deduplication downstream.
+        # Key format: {path}:{line}:{category} (new) or {path}:{line} (old checkpoints = discard all categories).
+        def _r1_is_discarded(c: Dict[str, Any]) -> bool:
+            pl = f'{c.get("path")}:{c.get("line")}'
+            plc = f'{pl}:{c.get("bug_category", "")}'
+            return pl in discarded_prev_keys or plc in discarded_prev_keys
+
+        r1_passthrough = [c for c in r1 if not _r1_is_discarded(c)]
+        # R2 architect issues are no longer dropped by file-level coverage filter.
+        # All R2 issues feed into _round4_merge_and_deduplicate which uses
+        # _deterministic_dedup (source priority r3>r1>r2) + LLM dedup to resolve overlaps.
         lint_tagged = _tag(lint_issues or [], 'lint')
         dep_tagged = _tag(dep_issues or [], 'dep_check')
         final = _round4_merge_and_deduplicate(
             llm,
-            _tag(r1_passthrough, 'r1') + _tag(r2_passthrough, 'r2') + _tag(r3, 'r3')
+            _tag(r1_passthrough, 'r1') + _tag(r2, 'r2') + _tag(r3, 'r3')
             + _tag(rmod, 'rmod') + lint_tagged + dep_tagged,
             existing_comments=existing_comments, language=language,
         )
+        # Prepend R2/R2a truncation meta warnings so they are always visible.
+        if r2_meta_warnings:
+            final = r2_meta_warnings + final
         ckpt.save('final', final)
         ckpt.save('_review_round_version', ckpt._REVIEW_ROUND_VERSION)
+        if r2_meta_warnings:
+            r3_metrics['r2_dropped_files'] = sum(
+                len(w.get('problem', '').split(': ')[-1].split(', '))
+                for w in r2_meta_warnings
+            )
         ckpt.mark_stage_done(ReviewStage.FINAL)
     else:
         _Progress('Round 4: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')

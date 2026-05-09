@@ -90,12 +90,25 @@ def clip_text(text: str, max_chars: int) -> str:
     return text[:max_chars] + '\n...(truncated)'
 
 
-def clip_diff_by_hunk_budget(diff_text: str, max_chars: int) -> str:
+def clip_diff_by_hunk_budget(diff_text: str, max_chars: int) -> Tuple[str, List[str]]:
+    '''Clip a unified diff to stay within *max_chars*.
+
+    Returns:
+        (clipped_diff, dropped_files) where *dropped_files* is the list of file
+        paths whose diffs were entirely omitted due to the budget.  Callers should
+        log a warning and record these in metrics / meta_warnings when non-empty.
+    '''
     if len(diff_text) <= max_chars:
-        return diff_text
+        return diff_text, []
+
+    # Identify which files are present in the full diff so we can report the ones dropped.
+    _file_header_re = re.compile(r'^diff --git a/.+ b/(.+)$', re.MULTILINE)
+    all_files: List[str] = _file_header_re.findall(diff_text)
+
     parts = diff_text.split('@@')
     if len(parts) <= 1:
-        return diff_text[:max_chars]
+        return diff_text[:max_chars], all_files
+
     out: List[str] = []
     cur = 0
     for i, p in enumerate(parts):
@@ -104,7 +117,13 @@ def clip_diff_by_hunk_budget(diff_text: str, max_chars: int) -> str:
             break
         out.append(block)
         cur += len(block)
-    return ''.join(out) if out else diff_text[:max_chars]
+    clipped = ''.join(out) if out else diff_text[:max_chars]
+
+    # Determine which files survived the clip.
+    kept_files: List[str] = _file_header_re.findall(clipped)
+    kept_set = set(kept_files)
+    dropped_files = [f for f in all_files if f not in kept_set]
+    return clipped, dropped_files
 
 
 def compress_diff_for_agent_heuristic(diff_text: str, max_chars: int) -> str:
