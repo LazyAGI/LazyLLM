@@ -18,9 +18,7 @@ config.add(
 def read_local_storage_dir() -> Path:
     value = config['trace_local_storage_dir']
     if not value:
-        LOG.warning(
-            f'LAZYLLM_TRACE_LOCAL_STORAGE_DIR is empty; falling back to {_DEFAULT_STORAGE_DIR}'
-        )
+        LOG.warning(f'LAZYLLM_TRACE_LOCAL_STORAGE_DIR is empty; using {_DEFAULT_STORAGE_DIR}')
         value = str(_DEFAULT_STORAGE_DIR)
     return Path(value).expanduser().resolve()
 
