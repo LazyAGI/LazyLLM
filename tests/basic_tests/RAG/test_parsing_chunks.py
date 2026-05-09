@@ -9,7 +9,7 @@ from lazyllm.tools.rag.store.document_store import _DocumentStore
 
 
 def test_parsing_service_lists_doc_chunks_sorted_with_offset(monkeypatch):
-    store = _DocumentStore(algo_name='__default__', store=MapStore())
+    store = _DocumentStore(store=MapStore())
     store.activate_group('line')
     store.update_nodes([
         DocNode(
@@ -48,13 +48,13 @@ def test_parsing_service_lists_doc_chunks_sorted_with_offset(monkeypatch):
         post_func=lambda *args, **kwargs: True,
     )
     impl._lazy_init = lambda: None
-    monkeypatch.setattr(parsing_server, 'load_obj', lambda _: {
-        'store': store,
-        'node_groups': {'line': {'display_name': 'Line', 'group_type': 'chunk'}},
-    })
+    monkeypatch.setattr(parsing_server, 'load_obj', lambda _: {'store': store})
     impl._get_algo = lambda algo_id: {
         'id': algo_id,
         'info_pickle': 'mock-info',
+        'node_groups': {'line': {'display_name': 'Line', 'group_type': 'chunk'}},
+        'node_group_ids': '[]',
+        'ng_id_to_name': {},
     }
 
     data = impl._list_doc_chunks_data(

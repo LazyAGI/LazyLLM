@@ -621,7 +621,7 @@ Before starting, ensure that the document service has created all the necessary 
 
 ### Using url to Access `Document`
 
-After starting, assuming that the document service is deployed on port `9200` of `127.0.0.1`, it can be accessed through `http://127.0.0.1:9200/`. We use `lazyllm.UrlDocument` to access the document service, and specify the name of the document service as `doc_server`.
+After starting, assuming that the document service is deployed on port `9200` of `127.0.0.1`, it can be accessed through `http://127.0.0.1:9200/`. We use `lazyllm.Document(url=...)` to access the document service, and specify the name of the document service as `doc_server`.
 
 ```python
 docs2 = lazyllm.Document(url="http://127.0.0.1:9200/", name="doc_server")

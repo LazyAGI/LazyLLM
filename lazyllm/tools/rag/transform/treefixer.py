@@ -1,5 +1,5 @@
 import re
-from typing import List, Optional, Tuple, Any
+from typing import List, Optional, Tuple, Any, Dict
 
 from ..doc_node import DocNode, RichDocNode, TreeDocNode
 from .base import NodeTransform, RuleSet, _Context
@@ -38,6 +38,12 @@ class TreeFixerParser(NodeTransform):
         self._compiled_patterns = [(re.compile(p), fmt) for p, fmt in base]
         self._skip_level_under = skip_level_under if skip_level_under is not None else 1
         self._reset_state()
+
+    def sig_fields(self) -> Dict:
+        return {
+            'patterns': [(p.pattern, fmt) for p, fmt in self._compiled_patterns],
+            'skip_level_under': self._skip_level_under,
+        }
 
     def _reset_state(self) -> None:
         self._result: List[DocNode] = []

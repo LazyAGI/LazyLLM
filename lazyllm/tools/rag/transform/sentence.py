@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 from .base import _TextSplitterBase, _Split, _UNSET
 from lazyllm.cpp import cpp_proxy
 
@@ -6,6 +6,9 @@ from lazyllm.cpp import cpp_proxy
 class SentenceSplitter(_TextSplitterBase):
     def __init__(self, chunk_size: int = _UNSET, chunk_overlap: int = _UNSET, num_workers: int = _UNSET):
         super().__init__(chunk_size=chunk_size, overlap=chunk_overlap, num_workers=num_workers)
+
+    def sig_fields(self) -> Dict:
+        return {'chunk_size': self._chunk_size, 'chunk_overlap': self._overlap}
 
     def _merge(self, splits: List[_Split], chunk_size: int) -> List[str]:
         chunks: List[str] = []

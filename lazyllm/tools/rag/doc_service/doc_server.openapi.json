@@ -232,22 +232,6 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
-      "KbBatchQueryRequest": {
-        "properties": {
-          "kb_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Kb Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "kb_ids"
-        ],
-        "title": "KbBatchQueryRequest",
-        "type": "object"
-      },
       "KbCreateRequest": {
         "properties": {
           "algo_id": {
@@ -1688,42 +1672,6 @@
           }
         },
         "summary": "Create Kb"
-      }
-    },
-    "/v1/kbs/batch": {
-      "post": {
-        "operationId": "batch_get_kbs_v1_kbs_batch_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/KbBatchQueryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Batch Get Kbs"
       }
     },
     "/v1/kbs/{kb_id}": {

@@ -8,7 +8,7 @@ from lazyllm.tools.rag.store.document_store import _DocumentStore
 
 
 def test_update_nodes_raises_when_store_upsert_returns_false():
-    document_store = _DocumentStore(algo_name='test_algo', store={'type': 'map'})
+    document_store = _DocumentStore(store={'type': 'map'})
     document_store.activate_group('group1')
     document_store.impl.upsert = MagicMock(return_value=False)
 
@@ -24,7 +24,7 @@ def test_update_nodes_raises_when_store_upsert_returns_false():
 
 
 def test_update_doc_meta_raises_when_store_upsert_returns_false():
-    document_store = _DocumentStore(algo_name='test_algo', store={'type': 'map'})
+    document_store = _DocumentStore(store={'type': 'map'})
     document_store.activate_group('group1')
 
     node = DocNode(

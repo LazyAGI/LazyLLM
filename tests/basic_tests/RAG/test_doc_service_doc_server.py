@@ -297,7 +297,6 @@ def test_upload_files_legacy_returns_legacy_response_shape(server_impl):
 
     assert body['code'] == 200
     assert upload_request.kb_id == '__default__'
-    assert upload_request.algo_id == '__default__'
     assert upload_request.source_type == SourceType.API
     assert [item.metadata for item in upload_request.items] == metas
     # Legacy response shape: data = [doc_ids, results]
@@ -422,10 +421,7 @@ def test_legacy_upload_uses_kb_id_as_algo_id(server_impl):
     ))
     upload_request = server_impl._manager.upload_request
     assert upload_request.kb_id == 'law_kg'
-    assert upload_request.algo_id == 'law_kg', (
-        'algo_id must default to kb_id, not __default__, to match '
-        'ensure_kb_registered binding'
-    )
+    # algo_id is no longer part of DocItemsRequest; kb_id carries the routing info.
 
 
 def test_legacy_upload_user_path_namespaces_files(server_impl):
