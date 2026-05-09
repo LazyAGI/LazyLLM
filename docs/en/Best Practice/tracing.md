@@ -68,11 +68,11 @@ When debugging, logs only tell you what events occurred, and metrics only tell y
 
 ## 2. Using the LazyLLM Observability System
 
+LazyLLM observability is not tied to a single backend. The target for trace data is determined by the specific backend configuration. Through a unified backend abstraction and interface contract, developers can connect observability data to different storage or analysis systems without modifying the core business code, allowing the observability system to adapt flexibly to different infrastructure environments.
+
 ### 2.1 Prerequisites
 
-Using Langfuse as an example, there are two main preparations before enabling observability in LazyLLM: a Langfuse project with API credentials, and a local runtime environment with the required tracing dependencies and configuration.
-
-Start by preparing a Langfuse project:
+This section uses Langfuse as the observability backend example to describe the complete setup flow. Start by preparing a Langfuse project:
 
 1. Open the official Langfuse getting-started guide:
    <https://langfuse.com/docs/observability/get-started>
@@ -864,24 +864,71 @@ This code shows how `LazyTrace` is created and registered. The first active span
 
 ### 3.5 The Tracing Backend Layer
 
-#### 3.5.1 Exporter Construction and Runtime Initialization
+The Backend layer receives standardized spans and writes them to a concrete observability backend. LazyLLM does not make business flows, hook logic, or OTel lifecycle management depend on a specific storage target. Instead, it uses the Tracing Backend layer to handle backend integration in one place. This layer sits after the OTEL standard layer and isolates storage-target differences, so the upper layers only need to produce unified observability data.
 
-The first problem this layer solves is how observability data can be delivered reliably to backend storage, such as Langfuse, without intruding on the business layer. LazyLLM does not call the high-level Langfuse tracing SDK directly. Instead, it sends data through an OTel exporter and a unified provider.
+With this abstraction, observability data can be written to Langfuse, local JSONL files, or other storage, analysis, and observability platforms. New backends should reuse the same layer interface instead of changing the upstream collection flow. Backend differences are limited to the write channel and attribute adaptation.
+
+#### 3.5.1 Backend Layer Capabilities
+
+The `TracingBackend` base class exposes two core capabilities:
 
 ```python
-# The backend constructs the exporter, and the runtime installs it onto the provider
-def build_exporter(...):
-    cfg = read_langfuse_connection()
-    return OTLPSpanExporter(
-        endpoint=build_otlp_traces_endpoint(cfg['host']),
-        headers={'Authorization': build_basic_auth_header(cfg['public_key'], cfg['secret_key'])},
-    )
+class TracingBackend(ABC):
+    name = ''
 
-# service.name becomes the service identifier visible in the observability backend
+    # Build the write channel and decide where spans are delivered
+    @abstractmethod
+    def build_exporter(self):
+        pass
+
+    # Adapt attributes for the target backend without changing the shared OTel flow
+    @abstractmethod
+    def map_attributes(self, otel_attrs: Dict[str, Any]) -> Dict[str, Any]:
+        pass
+```
+
+`build_exporter(...)` constructs the data write channel. For example, the Langfuse backend uses an OTLP exporter to send spans to Langfuse, while the local backend uses a file exporter to write spans to JSONL.
+
+`map_attributes(...)` handles backend-specific attribute adaptation. LazyLLM first generates unified OTel attributes, and then the backend adds the fields required by the target system. Langfuse maps part of the generic attributes to `langfuse.*` fields. The local backend keeps the original OTel attributes as they are, so no extra mapping is needed.
+
+#### 3.5.2 Backend Layer Implementation
+
+Concrete backends enter the unified loading path through their name, module path, and class name. The runtime retrieves a backend instance from configuration and does not depend on any specific backend class directly.
+
+```python
+# Different backends enter the loading flow through one registry
+_TRACE_BACKEND_SPECS = (
+    ('langfuse', '.langfuse.backend', 'LangfuseBackend'),
+    ('local', '.local.backend', 'LocalBackend'),
+)
+
+_CONSUME_BACKEND_SPECS = (
+    ('langfuse', '.langfuse', 'LangfuseConsumeBackend'),
+    ('local', '.local.backend', 'LocalConsumeBackend'),
+)
+```
+
+Tracing backends are responsible for writing observability data, while consume backends are responsible for reading existing observability data in the analysis path. For example, after a local backend writes spans to JSONL, the consume side can reconstruct those JSONL spans into a unified `RawTracePayload` for downstream analysis systems.
+
+Runtime usage of the backend stays stable:
+
+```python
+# The backend builds the exporter, and the runtime installs it onto the provider
+backend = self._get_backend()
+exporter = backend.build_exporter()
 resource = Resource.create({'service.name': 'lazyllm'})
 provider = TracerProvider(resource=resource)
 provider.add_span_processor(BatchSpanProcessor(exporter))
 trace_api.set_tracer_provider(provider)
+
+...
+
+# Write shared LazyLLM attributes first, then add backend-specific attributes
+for k, v in otel_attrs.items():
+    otel_span.set_attribute(k, v)
+
+for k, v in self._backend.map_attributes(otel_attrs).items():
+    otel_span.set_attribute(k, v)
 ```
 
-This code corresponds to three key backend steps: read connection parameters, construct the exporter, and let the runtime install that exporter into the provider. The business layer only needs to produce standard spans. Actual data delivery is handled uniformly by the backend layer.
+The Backend layer does not change span creation, progression, or completion. It only provides the exporter during runtime initialization and supplements backend-specific attributes before a span closes. Because the extension points are concentrated in the write channel and attribute adaptation, LazyLLM can support Langfuse, local JSONL, and other backends through the same observability flow.

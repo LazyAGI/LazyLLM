@@ -68,11 +68,11 @@ LazyLLM 的观测系统主要解决以下问题：
 
 ## 2. LazyLLM观测系统使用指南
 
+LazyLLM 的观测能力不绑定单一后端，观测数据的写入目标由具体的后端配置决定。通过统一的后端抽象与接口约定，开发者可以在无需修改核心业务代码的前提下，将观测数据接入不同的存储或分析系统，从而灵活适配各类基础设施环境。
+
 ### 2.1 前置准备
 
-以 Langfuse 为例，在使用 LazyLLM 观测功能之前，需要完成的准备工作主要有两类：一类是 Langfuse 项目与 API 凭证，另一类是本地运行环境中的 Tracing 依赖与配置。
-
-首先准备一个 Langfuse 项目：
+当前以 Langfuse 作为观测后端为例说明完整接入流程,首先准备一个 Langfuse 项目：
 
 1. 打开 Langfuse 官方入门文档：  
    <https://langfuse.com/docs/observability/get-started>
@@ -877,24 +877,71 @@ active_trace._record_span_start(lazy_span)
 
 ### 3.5 Tracing Backend 底座层
 
-#### 3.5.1 Exporter 构建与运行时初始化
+Backend 层负责承接已经标准化的 span，并将其写入具体的观测后端。LazyLLM 没有让业务流程、Hook 逻辑或 OTel 生命周期管理直接依赖某个存储目标，而是通过 Tracing Backend 层统一处理后端接入。它位于 OTEL 标准层之后，用于隔离写入目标差异，使上层只需稳定生成统一的观测数据。
 
-Tracing Backend 底座层首先要解决的问题是：观测数据如何在不侵入业务层的前提下稳定发送到后端存储中，例如 Langfuse。LazyLLM 没有直接调用 Langfuse 的高层 tracing SDK，而是通过 OTel exporter 与统一 provider 完成发送链路。
+通过这个统一的抽象接口，观测数据可以写入 Langfuse、本地 JSONL 等观测后端，也可以接入其他存储系统、分析系统或可观测平台。新增后端时，只需要沿用这一层接口，而不需要改动上层采集流程。
+
+#### 3.5.1 Backend 层的能力
+
+`TracingBackend` 基类抽象出两个核心能力：
 
 ```python
-# backend 负责构造 exporter，runtime 负责把它装到 provider 上
-def build_exporter(...):
-    cfg = read_langfuse_connection()
-    return OTLPSpanExporter(
-        endpoint=build_otlp_traces_endpoint(cfg['host']),
-        headers={'Authorization': build_basic_auth_header(cfg['public_key'], cfg['secret_key'])},
-    )
+class TracingBackend(ABC):
+    name = ''
 
-# service.name 会成为观测后端里的服务标识
+    # 构造写入通道，决定 span 最终写入哪个后端
+    @abstractmethod
+    def build_exporter(self):
+        pass
+
+    # 按后端需要补充或转换属性，不改变 LazyLLM 的通用属性生成流程
+    @abstractmethod
+    def map_attributes(self, otel_attrs: Dict[str, Any]) -> Dict[str, Any]:
+        pass
+```
+
+`build_exporter(...)` 负责构造数据写入通道。例如，Langfuse 后端通过 OTLP exporter 将 span 发送到 Langfuse；Local 后端通过本地文件 exporter 将 span 写入 JSONL 文件。
+
+`map_attributes(...)` 负责后端专用字段适配。LazyLLM 先生成统一的 OTel 属性，再由 backend 补充目标后端需要的字段。Langfuse 需要将部分通用属性映射为 `langfuse.*` 字段；Local 后端保留原始 OTel 属性即可，因此不需要额外映射。
+
+#### 3.5.2 Backend 层的实现
+
+具体后端通过名称、模块路径和类名进入统一加载路径。运行时根据配置获取 backend 实例，不直接依赖具体后端类。
+
+```python
+# 不同后端通过统一注册表进入加载流程
+_TRACE_BACKEND_SPECS = (
+    ('langfuse', '.langfuse.backend', 'LangfuseBackend'),
+    ('local', '.local.backend', 'LocalBackend'),
+)
+
+_CONSUME_BACKEND_SPECS = (
+    ('langfuse', '.langfuse', 'LangfuseConsumeBackend'),
+    ('local', '.local.backend', 'LocalConsumeBackend'),
+)
+```
+
+其中，Tracing backend 负责写入观测数据，Consume backend 负责在分析消费路径中读取已有观测数据。例如 Local 后端写入本地 JSONL 后，消费端可以将 JSONL span 还原为统一的 `RawTracePayload`，供后续分析系统使用。
+
+运行时对 backend 的调用方式保持稳定：
+
+```python
+# backend 负责构造 exporter，runtime 负责把它安装到 provider 上
+backend = self._get_backend()
+exporter = backend.build_exporter()
 resource = Resource.create({'service.name': 'lazyllm'})
 provider = TracerProvider(resource=resource)
 provider.add_span_processor(BatchSpanProcessor(exporter))
 trace_api.set_tracer_provider(provider)
+
+...
+
+# 先写入 LazyLLM 通用属性，再补充后端专用属性
+for k, v in otel_attrs.items():
+    otel_span.set_attribute(k, v)
+
+for k, v in self._backend.map_attributes(otel_attrs).items():
+    otel_span.set_attribute(k, v)
 ```
 
-这段代码对应了 backend 层的三个关键步骤：读取连接参数、构造 exporter、再由 runtime 把 exporter 安装进 provider。业务层只需要产生标准 span，真正的数据发送则由 backend 层统一接管。
+Backend 层不改变上层 span 的创建、推进和结束过程，只在运行时初始化阶段提供 exporter，并在 span 结束前补充后端需要的属性。
