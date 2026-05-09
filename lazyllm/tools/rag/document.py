@@ -1,29 +1,30 @@
+import copy
+import functools
 import os
 import warnings
-from typing import Callable, Optional, Dict, Union, List, Type, Set, Tuple
+import weakref
 from functools import cached_property
+from typing import Callable, Optional, Dict, Union, List, Type, Set, Tuple
+
 from pydantic import BaseModel
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.module import LLMBase
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
-from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
+from lazyllm.tools.sql.sql_manager import SqlManager
 from lazyllm.common.bind import _MetaBind
 
 from ._store_config import is_local_map_store, is_persistent_store, iter_embedded_store_endpoints
-from .doc_service import DocServer
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
-from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files, SchemaExtractor
+from .doc_to_db import SchemaExtractor
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .store.store_base import DEFAULT_KB_ID
 from .index_base import IndexBase
 from .utils import RAG_DEFAULT_GROUP_NAME, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
+from .doc_service import DocServer
 from .web import DocWebModule
-import copy
-import functools
-import weakref
 
 _LOCAL_PYTHONPATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
@@ -220,8 +221,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             impl = DocImpl(
                 dataset_path=self._doc_impl_dataset_path, embed=embed, kb_group_name=name,
                 global_metadata_desc=doc_fields,
-                store=store_conf or self._store_conf, processor=self._doc_processor or self._processor,
-                algo_name=name, display_name=name, description=self._description,
+                store=store_conf or (None if (self._doc_processor or self._processor) else self._store_conf),
+                processor=self._doc_processor or self._processor,
+                algo_name=name, display_name=name, description='',
                 schema_extractor=schema_extractor,
             )
             self._iter_kbs()[name] = impl
@@ -263,9 +265,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         '''
         if not isinstance(manager, DocumentProcessor):
             return None, manager
-        if store_conf is None:
-            raise ValueError('`store_conf` is required when `manager` is a DocumentProcessor')
-        if is_local_map_store(store_conf):
+        if store_conf is not None:
+            raise ValueError(
+                '`store_conf` must not be passed to `Document` when `manager` is a DocumentProcessor; '
+                'set `store_conf` on the DocumentProcessor instance instead.'
+            )
+        if getattr(manager, '_store_conf', None) is None:
+            raise ValueError(
+                '`manager=DocumentProcessor(...)` requires the DocumentProcessor to have `store_conf` set; '
+                'pass `store_conf=...` when constructing the DocumentProcessor.'
+            )
+        if is_local_map_store(manager._store_conf):
             raise ValueError('`manager=DocumentProcessor(...)` does not support pure local map store')
         if dataset_path is not None:
             raise ValueError(
@@ -331,7 +341,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                                               display_name=display_name, description=description,
                                               schema_extractor=schema_extractor, create_ui=create_ui)
             self._curr_group = name
-        self._doc_to_db_processor: DocToDbProcessor = None
         self._graph_document: weakref.ref = None
 
     @staticmethod
@@ -367,48 +376,38 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         assert isinstance(self._manager._kbs, ServerModule), 'Document is not a service, please set `manager` to `True`'
         return self._manager._kbs._url
 
-    def connect_sql_manager(self, sql_manager: SqlManager, schma: Optional[DocInfoSchema] = None,
+    @deprecated('Use SchemaExtractor directly')
+    def connect_sql_manager(self, sql_manager: SqlManager, schma=None,
                             force_refresh: bool = True):
-        def schema_as_dicts(schema: DocInfoSchema):
-            if schema is None:
-                return None, None
-            return ({e['key']: e['desc'] for e in schema}, {e['key']: e['type'] for e in schema})
-
-        if sql_manager.check_connection().status != DBStatus.SUCCESS:
-            raise RuntimeError(f'Failed to connect to sql manager: {sql_manager._gen_conn_url()}')
-
-        pre_schema = self._doc_to_db_processor.doc_info_schema if self._doc_to_db_processor else None
-        assert pre_schema or schma, 'doc_table_schma must be given'
-        schema_equal = schema_as_dicts(pre_schema) == schema_as_dicts(schma)
-        assert schema_equal or force_refresh is True, \
-            'When changing doc_table_schema, force_refresh should be set to True'
-
-        if self._doc_to_db_processor is None or sql_manager != self._doc_to_db_processor.sql_manager:
-            self._doc_to_db_processor = DocToDbProcessor(sql_manager)
-
-        if schma and not schema_equal:
-            # Clears existing lazyllm_doc_elements table.
-            self._doc_to_db_processor._reset_doc_info_schema(schma)
+        raise NotImplementedError(
+            'connect_sql_manager is removed. Use SchemaExtractor with register_schema_set instead.'
+        )
 
     def get_sql_manager(self):
-        if self._doc_to_db_processor is None:
-            raise ValueError('Please call connect_sql_manager to init handler first')
-        return self._doc_to_db_processor.sql_manager
+        ext = self._schema_extractor
+        if ext is None:
+            raise ValueError('No schema extractor configured for this Document')
+        return ext.sql_manager_for_nl2sql()
 
     def extract_db_schema(
-        self, llm: Union[OnlineChatModule, TrainableModule], print_schema: bool = False
-    ) -> DocInfoSchema:
+        self, llm: Union[OnlineChatModule, TrainableModule] = None, print_schema: bool = False
+    ):
+        ext = self._schema_extractor
+        if ext is None:
+            raise ValueError('No schema extractor configured for this Document')
         file_paths = self._list_all_files_in_dataset()
-        schema = extract_db_schema_from_files(file_paths, llm)
+        result = ext.analyze_schema_and_register(data=file_paths)
         if print_schema:
-            lazyllm.LOG.info(f'Extracted Schema:\n\t{schema}\n')
-        return schema
+            lazyllm.LOG.info(f'Extracted Schema:\n\t{result}\n')
+        return result
 
-    def update_database(self, llm: Union[OnlineChatModule, TrainableModule]):
-        assert self._doc_to_db_processor, 'Please call connect_db to init handler first'
+    def update_database(self, llm: Union[OnlineChatModule, TrainableModule] = None):
+        ext = self._schema_extractor
+        if ext is None:
+            raise ValueError('No schema extractor configured for this Document')
         file_paths = self._list_all_files_in_dataset()
-        info_dicts = self._doc_to_db_processor.extract_info_from_docs(llm, file_paths)
-        self._doc_to_db_processor.export_info_to_db(info_dicts)
+        for fp in file_paths:
+            ext.extract_and_store(data=fp)
 
     @deprecated('Document(dataset_path, manager=doc.manager, name=xx, doc_fields=xx, store_conf=xx)')
     def create_kb_group(self, name: str, doc_fields: Optional[Dict[str, DocField]] = None,
@@ -427,7 +426,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @property
     def _schema_extractor(self):
-        # Compat shim for pre-refactor callers (e.g. ``SqlCall.create_from_document``);
+        # Compat shim: read through the active DocImpl so shared-manager KBs keep per-group values.
         # read through the active DocImpl so shared-manager KBs keep per-group values.
         impl = self._manager.get_doc_by_kb_group(self._curr_group)
         return getattr(impl, '_schema_extractor', None)

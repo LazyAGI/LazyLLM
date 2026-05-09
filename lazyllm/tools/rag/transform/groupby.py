@@ -1,7 +1,7 @@
 import copy
 import functools
 import re
-from typing import Any, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable
 
 from ..doc_node import DocNode, RichDocNode
 from .base import NodeTransform, RuleSet
@@ -21,6 +21,9 @@ class GroupNodeParser(NodeTransform):
 
         self.on_match = self._default_group_handler
         self.on_miss = self._default_group_handler
+
+    def sig_fields(self) -> Dict:
+        return {'max_length': self.max_length, 'merge_title': self.merge_title}
 
     def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         nodes = node.nodes if isinstance(node, RichDocNode) else [node]

@@ -88,6 +88,9 @@ class _SQLBasedQueue:
                 query = query.order_by(order_column.desc())
             else:
                 query = query.order_by(order_column.asc())
+            # Secondary sort by queued_at ASC to ensure FIFO within the same priority
+            if order_field != 'queued_at' and hasattr(TableCls, 'queued_at'):
+                query = query.order_by(TableCls.queued_at.asc())
 
         return query
 

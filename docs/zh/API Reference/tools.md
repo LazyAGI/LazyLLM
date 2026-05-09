@@ -96,39 +96,11 @@
     members: retrieve
     exclude-members:
 
-::: lazyllm.tools.rag.doc_to_db.DocInfoSchemaItem
-    members:
-    exclude-members:
-
-::: lazyllm.tools.rag.doc_to_db.DocGenreAnalyser
-    members: gen_detection_query, analyse_doc_genre
-    exclude-members:
-
-::: lazyllm.tools.rag.doc_to_db.DocInfoSchemaAnalyser
-    members: analyse_info_schema
-	exclude-members:
-
-::: lazyllm.tools.rag.doc_to_db.DocInfoExtractor
-    members: extract_doc_info
-	exclude-members:
-
-::: lazyllm.tools.rag.doc_to_db.DocToDbProcessor
-    members:
-        - extract_info_from_docs
-        - analyze_info_schema_by_llm
-        - clear
-        - export_info_to_db
-
-    exclude-members:
-
-::: lazyllm.tools.rag.doc_to_db.extract_db_schema_from_files
-
 ::: lazyllm.tools.rag.doc_to_db.SchemaExtractor
     members:
 	- extract_and_store
         - register_schema_set
         - has_schema_set
-        - register_schema_set_to_kb
         - analyze_schema_and_register
     exclude-members:
 
@@ -190,7 +162,7 @@
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_service.DocServer
-    members: [upload, add, reparse, delete, transfer, patch_metadata, list_docs, get_doc, list_tasks, get_task, cancel_task, list_kbs, get_kb, list_chunks, list_algorithms, get_algorithm_info, create_kb, update_kb, batch_get_kbs, delete_kb, delete_kbs]
+    members: [upload, add, reparse, delete, transfer, patch_metadata, list_docs, get_doc, list_tasks, get_task, cancel_task, list_kbs, get_kb, list_chunks, list_algorithms, get_algorithm_info, create_kb, update_kb, delete_kb, delete_kbs]
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_service.base.AddFileItem

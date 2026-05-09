@@ -1,3 +1,6 @@
+import hashlib
+import inspect
+import json
 from typing import List, Optional, Dict, Union
 from lazyllm import LOG
 from lazyllm.common.common import once_wrapper
@@ -21,9 +24,31 @@ class DirectoryReader:
         self._input_files = input_files
         self._local_readers, self._global_readers = local_readers, global_readers
 
+    def _reader_entry_sig(self, reader) -> str:
+        if reader is None:
+            return '__none__'
+        if inspect.isclass(reader):
+            return f'{reader.__module__}.{reader.__qualname__}'
+        qualname = getattr(reader, '__qualname__', None)
+        module = getattr(reader, '__module__', None)
+        if qualname and '<lambda>' not in qualname:
+            return f'{module}.{qualname}' if module else qualname
+        try:
+            src = inspect.getsource(reader).strip()
+            return '__lambda__::' + hashlib.sha256(src.encode()).hexdigest()[:16]
+        except (OSError, TypeError):
+            return repr(reader)
+
+    def signature(self) -> str:
+        local_sig = {k: self._reader_entry_sig(v) for k, v in (self._local_readers or {}).items()}
+        global_sig = {k: self._reader_entry_sig(v) for k, v in (self._global_readers or {}).items()}
+        payload = json.dumps({'local_readers': local_sig, 'global_readers': global_sig}, sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
     @once_wrapper
     def _lazy_init(self):
-        self._reader = SimpleDirectoryReader(file_extractor={**self._global_readers, **self._local_readers})
+        self._reader = SimpleDirectoryReader(
+            file_extractor={**(self._global_readers or {}), **(self._local_readers or {})})
 
     def load_data(self, input_files: Optional[List[str]] = None, metadatas: Optional[Dict] = None,
                   *, split_nodes_by_type: bool = False) -> List[DocNode]:
