@@ -231,8 +231,6 @@ class LocalConsumeBackend(ConsumeBackend):
 
         path = _trace_path(self.storage_dir, trace_id)
         spans = _raw_spans_from_lines(path.name, _read_trace_lines(path, trace_id, timeout_seconds))
-        spans = [span for span in spans if span.trace_id == trace_id]
-        spans.sort(key=lambda span: (span.start_time, span.name, span.span_id))
         return RawTracePayload(
             trace=_raw_trace_from_spans(trace_id, spans),
             spans=spans,

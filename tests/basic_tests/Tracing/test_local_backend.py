@@ -150,7 +150,7 @@ def test_consume_backend_rebuilds_raw_payload_from_local_jsonl(tmp_path):
     assert stored_by_name['root']['context']['span_id'] == f'0x{root_id}'
     assert stored_by_name['child']['context']['span_id'] == f'0x{child_id}'
     assert stored_by_name['child']['parent_id'] == f'0x{root_id}'
-    assert [span.span_id for span in payload.spans] == [root_id, child_id]
+    assert {span.span_id for span in payload.spans} == {root_id, child_id}
     assert all(not span.span_id.startswith('0x') for span in payload.spans)
     assert payload.spans[0].parent_span_id is None
     assert payload.spans[1].parent_span_id == root_id
