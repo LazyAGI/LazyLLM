@@ -455,8 +455,8 @@ Langfuse 的 Tracing 页面通常由三部分组成：
 | 层 | 主要职责 | 关键代码 |
 | --- | --- | --- |
 | LazyLLM 运行层 | 执行 `Flow`、`Module`、`callable`，形成真实业务调用链 | `lazyllm/flow/flow.py`、`lazyllm/module/module.py` |
-| 埋点适配层 | 决定默认接入方式、采集策略、语义补全和结构化输出属性 | `lazyllm/hook.py`、`lazyllm/tracing/collect/hook.py`、`trace_config.py`、`output_attrs.py` |
-| OTEL 标准层 | 管理 `span` 生命周期、上下文传播、父子关系和请求级聚合状态 | `lazyllm/tracing/collect/runtime.py`、`context.py`、`span.py` |
+| 埋点适配层 | 决定默认接入方式、采集策略、语义补全和结构化输出属性 | `lazyllm/hook.py`、`lazyllm/tracing/collect/hook.py`、`lazyllm/tracing/collect/trace_config.py`、`lazyllm/tracing/collect/output_attrs.py` |
+| OTEL 标准层 | 管理 `span` 生命周期、上下文传播、父子关系和请求级聚合状态 | `lazyllm/tracing/collect/runtime.py`、`lazyllm/tracing/collect/context.py`、`lazyllm/tracing/collect/span.py` |
 | Tracing Backend 底座层 | 构造 exporter，把 OTel spans 写入后端存储 | `lazyllm/tracing/backends/langfuse/*` |
 | 分析适配层 | 从 Tracing Backend 读取数据，转换为上层分析系统的数据结构 | - |
 
@@ -466,8 +466,10 @@ Langfuse 的 Tracing 页面通常由三部分组成：
 
 观测系统内部同时存在传播、节点描述和请求聚合三类状态，因此 LazyLLM 观测系统没有把它们压缩到同一个对象中，而是拆成三类长期协作的核心对象：轻量请求上下文、节点级对象和请求级聚合对象。
 
+下面的代码片段只保留理解模型所需的关键字段，并非完整源码定义。完整实现可参考 `lazyllm/tracing/collect/context.py` 和 `lazyllm/tracing/collect/span.py`。
+
 ```python
-# 轻量上下文：只保存请求级传播所需的最小 tracing 信息
+# 简化示意：轻量上下文保存请求级传播所需的 tracing 信息
 @dataclass
 class LazyTraceContext:
     enabled: Optional[bool] = None
@@ -481,22 +483,25 @@ class LazyTraceContext:
     debug_capture_payload: Optional[bool] = None
 ```
 ```python
-# 节点快照：描述单个 observation 的身份、输入输出和附加属性
+# 简化示意：节点快照描述单个 observation 的身份、输入输出和附加属性
 @dataclass
 class LazySpan:
     name: str = ''
     span_kind: str = ''
+    semantic_type: Optional[str] = None
     trace_id: Optional[str] = None
     span_id: Optional[str] = None
     parent_span_id: Optional[str] = None
     input: Optional[Any] = None
     output: Optional[Any] = None
+    status: str = 'ok'
+    error: Optional[Exception] = None
     config: Dict[str, Any] = field(default_factory=dict)
     output_attrs: Dict[str, Any] = field(default_factory=dict)
     usage: Optional[Dict[str, Any]] = None
 ```
 ```python
-# 请求级聚合对象：维护整条 trace 的总体状态
+# 简化示意：请求级聚合对象维护整条 trace 的总体状态
 @dataclass
 class LazyTrace:
     trace_id: str
@@ -504,6 +509,9 @@ class LazyTrace:
     session_id: Optional[str] = None
     user_id: Optional[str] = None
     request_tags: List[str] = field(default_factory=list)
+    start_time: float = field(default_factory=time.time)
+    end_time: Optional[float] = None
+    is_reconstructed: bool = False
     status: str = 'ok'
     metadata: Dict[str, Any] = field(default_factory=dict)
 ```

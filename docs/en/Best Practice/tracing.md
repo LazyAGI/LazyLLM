@@ -447,8 +447,8 @@ Based on the diagram above, the responsibilities of each layer can be summarized
 | Layer | Main responsibility | Key code |
 | --- | --- | --- |
 | LazyLLM runtime layer | Execute `Flow`, `Module`, and `callable` objects and form the real business call path | `lazyllm/flow/flow.py`, `lazyllm/module/module.py` |
-| Instrumentation adaptation layer | Decide default attachment behavior, capture strategy, semantic enrichment, and structured output attributes | `lazyllm/hook.py`, `lazyllm/tracing/collect/hook.py`, `trace_config.py`, `output_attrs.py` |
-| OTEL standard layer | Manage `span` lifecycle, context propagation, parent-child relationships, and request-level aggregate state | `lazyllm/tracing/collect/runtime.py`, `context.py`, `span.py` |
+| Instrumentation adaptation layer | Decide default attachment behavior, capture strategy, semantic enrichment, and structured output attributes | `lazyllm/hook.py`, `lazyllm/tracing/collect/hook.py`, `lazyllm/tracing/collect/trace_config.py`, `lazyllm/tracing/collect/output_attrs.py` |
+| OTEL standard layer | Manage `span` lifecycle, context propagation, parent-child relationships, and request-level aggregate state | `lazyllm/tracing/collect/runtime.py`, `lazyllm/tracing/collect/context.py`, `lazyllm/tracing/collect/span.py` |
 | Tracing backend layer | Build the exporter and send OTel spans to backend storage | `lazyllm/tracing/backends/langfuse/*` |
 | Analysis adaptation layer | Read data from the Tracing Backend and transform it into structures for upper-layer analysis systems | - |
 
@@ -456,8 +456,10 @@ Based on the diagram above, the responsibilities of each layer can be summarized
 
 Internally, the observability system has to manage propagation state, node description state, and request aggregation state at the same time. LazyLLM does not force all of them into a single object. Instead, it separates them into three core object types that work together: a lightweight request context, node-level objects, and a request-level aggregate object.
 
+The following code snippets keep only the key fields needed to understand the model. They are simplified sketches, not complete source definitions. For the full implementation, see `lazyllm/tracing/collect/context.py` and `lazyllm/tracing/collect/span.py`.
+
 ```python
-# Lightweight context: only the minimum tracing information needed for request propagation
+# Simplified sketch: lightweight context carries request-level tracing data
 @dataclass
 class LazyTraceContext:
     enabled: Optional[bool] = None
@@ -472,23 +474,26 @@ class LazyTraceContext:
 ```
 
 ```python
-# Node snapshot: describes the identity, I/O, and attached attributes of one observation
+# Simplified sketch: node snapshot describes one observation
 @dataclass
 class LazySpan:
     name: str = ''
     span_kind: str = ''
+    semantic_type: Optional[str] = None
     trace_id: Optional[str] = None
     span_id: Optional[str] = None
     parent_span_id: Optional[str] = None
     input: Optional[Any] = None
     output: Optional[Any] = None
+    status: str = 'ok'
+    error: Optional[Exception] = None
     config: Dict[str, Any] = field(default_factory=dict)
     output_attrs: Dict[str, Any] = field(default_factory=dict)
     usage: Optional[Dict[str, Any]] = None
 ```
 
 ```python
-# Request-level aggregate object: maintains the overall state of one trace
+# Simplified sketch: request-level aggregate object maintains trace-wide state
 @dataclass
 class LazyTrace:
     trace_id: str
@@ -496,6 +501,9 @@ class LazyTrace:
     session_id: Optional[str] = None
     user_id: Optional[str] = None
     request_tags: List[str] = field(default_factory=list)
+    start_time: float = field(default_factory=time.time)
+    end_time: Optional[float] = None
+    is_reconstructed: bool = False
     status: str = 'ok'
     metadata: Dict[str, Any] = field(default_factory=dict)
 ```
