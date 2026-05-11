@@ -672,6 +672,7 @@ def _round3_agent_verify(
 
     units, skipped_files = _build_review_units(file_diffs, large_threshold, max_files)
     r3_metrics['r3_files_skipped'] = len(skipped_files)
+    r3_metrics['r3_skipped_files'] = skipped_files
     if skipped_files:
         lazyllm.LOG.warning(
             f'Round 3: {len(skipped_files)} files skipped due to max_files_for_r3={max_files}: '

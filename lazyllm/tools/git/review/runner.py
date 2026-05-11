@@ -14,6 +14,7 @@ from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
 from .rounds import _run_four_rounds, infer_usage_scenarios, _rscenario_call_chain, _post_merge_dedup
 from .poster import _fetch_existing_pr_comments, _post_review_comments, _build_commentable_lines, _filter_commentable
 from .output import write_review_json
+from .report import build_report, write_report
 from .utils import (
     _get_default_llm, _ensure_non_streaming_llm, _get_model_name,
     _get_head_sha_from_pr, _parse_unified_diff, _Progress,
@@ -339,6 +340,7 @@ def review(  # noqa: C901
     if cached_final is not None:
         final_comments = cached_final
         r3_metrics: Dict[str, Any] = {}
+        _round_report_data: Dict[str, Any] = {}
         _Progress('All review rounds').done('loaded from checkpoint')
         # Still try to load cached RScene/RChain results
         usage_scenarios = ckpt.get('rscene_all') or []
@@ -354,7 +356,7 @@ def review(  # noqa: C901
                 owner_repo=repo, arch_cache_path=arch_cache_path,
             )
             _fut_rscene = _pool.submit(_run_rscene_rchain)
-            final_comments, r3_metrics = _fut_main.result()
+            final_comments, r3_metrics, _round_report_data = _fut_main.result()
             usage_scenarios, rchain_issues = _fut_rscene.result()
         final_comments = meta_warnings + final_comments
         ckpt.save('final_comments', final_comments)
@@ -420,6 +422,8 @@ def review(  # noqa: C901
         shutil.rmtree(clone_subdir, ignore_errors=True)
 
     posted = 0
+    _posted_inline = 0
+    _posted_general = 0
     if post_to_github and head_sha:
         if ckpt.should_use_cache(ReviewStage.UPLOAD):
             _Progress('Upload: posting review comments').done('loaded from checkpoint (already uploaded)')
@@ -447,6 +451,8 @@ def review(  # noqa: C901
                 backend_inst, pr_number, head_sha, postable, model_name,
                 review_body=review_body, ckpt=ckpt, general_comments=general,
             )
+            _posted_inline = len(postable)
+            _posted_general = len(general)
             if upload_all_ok:
                 ckpt.mark_stage_done(ReviewStage.UPLOAD)
             else:
@@ -490,4 +496,45 @@ def review(  # noqa: C901
     if output_path:
         write_review_json(result, output_path)
         lazyllm.LOG.info(f'Review result written to {output_path}')
+
+    # ── Generate local Markdown report ──
+    try:
+        _rchain_metrics = ckpt.get('rchain_metrics') or {}
+        _report_path = os.path.join(pr_dir, 'report.md')
+        _report = build_report(
+            pr_identifier=_ckpt_key,
+            repo=repo,
+            pr_title=getattr(pr, 'title', '') or '',
+            source_branch=getattr(pr, 'source_branch', '') or '',
+            target_branch=getattr(pr, 'target_branch', '') or '',
+            model_name=model_name,
+            report_path=_report_path,
+            post_to_github=post_to_github,
+            r1_issues=_round_report_data.get('r1_issues', []),
+            r2_issues=_round_report_data.get('r2_issues', []),
+            rmod_issues=_round_report_data.get('rmod_issues', []),
+            lint_issues=lint_issues,
+            dep_issues=dep_issues,
+            r3_output=final_comments,
+            r3_discarded_keys=_round_report_data.get('r3_discarded_keys', set()),
+            r3_files_skipped=_round_report_data.get('r3_files_skipped', []),
+            r4_input=_round_report_data.get('r4_input', []),
+            r4_output=_round_report_data.get('r4_output', []),
+            rchain_issues=rchain_issues,
+            rcov_issues=rcov_issues,
+            postmerge_input=final_comments + rchain_issues + rcov_issues,
+            postmerge_output=all_comments,
+            final_issues=all_comments,
+            posted_inline=_posted_inline,
+            posted_general=_posted_general,
+            diff_truncated=truncated_diff,
+            rcov_timed_out=not _rcov_ran and (ckpt.get('rcov_issues') is None),
+            rchain_metrics=_rchain_metrics,
+        )
+        write_report(_report)
+        lazyllm.LOG.info(f'Review report written to {_report_path}')
+        result['report_path'] = _report_path
+    except Exception as _report_err:
+        lazyllm.LOG.warning(f'Failed to generate review report: {_report_err}')
+
     return result

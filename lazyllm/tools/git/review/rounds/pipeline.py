@@ -75,9 +75,20 @@ def _run_four_rounds(  # noqa: C901
     dep_issues: Optional[List[Dict[str, Any]]] = None,
     owner_repo: str = '',
     arch_cache_path: Optional[str] = None,
-) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, int], Dict[str, Any]]:
     from ..constants import BudgetManager, TOTAL_CALL_BUDGET
     _budget = BudgetManager(total_calls=TOTAL_CALL_BUDGET)  # noqa: F841
+
+    # report_data accumulates per-stage raw data for the final report
+    report_data: Dict[str, Any] = {
+        'r1_issues': [],
+        'r2_issues': [],
+        'rmod_issues': [],
+        'r3_discarded_keys': set(),
+        'r3_files_skipped': [],
+        'r4_input': [],
+        'r4_output': [],
+    }
 
     agents_index: Dict[str, str] = {}
     if clone_dir:
@@ -114,6 +125,7 @@ def _run_four_rounds(  # noqa: C901
         r1_all.extend(win_r1)
     r1 = r1_all
     ckpt.mark_stage_done(ReviewStage.R1)
+    report_data['r1_issues'] = list(r1)
 
     r2_meta_warnings: List[Dict[str, Any]] = []
 
@@ -173,6 +185,7 @@ def _run_four_rounds(  # noqa: C901
         _Progress('Round 2: architect design review').done(
             f'loaded from checkpoint ({len(r2)} issues)'
         )
+    report_data['r2_issues'] = list(r2)
 
     # ── RMod: modification necessity analysis (parallel with R2, both depend on R2A) ──
     use_rmod_cache = ckpt.should_use_cache(ReviewStage.RMOD)
@@ -192,6 +205,7 @@ def _run_four_rounds(  # noqa: C901
         _Progress('RMod: modification necessity analysis').done(
             f'loaded from checkpoint ({len(rmod)} issues)'
         )
+    report_data['rmod_issues'] = list(rmod)
 
     # ── R3: unified agent verification ──
     r3, discarded_prev_keys, r3_metrics = _round3_agent_verify(
@@ -202,6 +216,8 @@ def _run_four_rounds(  # noqa: C901
         review_spec=review_spec, agents_index=agents_index,
     )
     ckpt.mark_stage_done(ReviewStage.R3)
+    report_data['r3_discarded_keys'] = discarded_prev_keys
+    report_data['r3_files_skipped'] = r3_metrics.get('r3_skipped_files', [])
 
     # ── R4: merge & deduplicate ──
     use_final_cache = ckpt.should_use_cache(ReviewStage.FINAL)
@@ -229,12 +245,17 @@ def _run_four_rounds(  # noqa: C901
         r1_passthrough = [c for c in r1 if not _r1_is_discarded(c)]
         lint_tagged = _tag(lint_issues or [], 'lint')
         dep_tagged = _tag(dep_issues or [], 'dep_check')
+        r4_input_list = (
+            _tag(r1_passthrough, 'r1') + _tag(r2, 'r2') + _tag(r3, 'r3')
+            + _tag(rmod, 'rmod') + lint_tagged + dep_tagged
+        )
         final = _round4_merge_and_deduplicate(
             llm,
-            _tag(r1_passthrough, 'r1') + _tag(r2, 'r2') + _tag(r3, 'r3')
-            + _tag(rmod, 'rmod') + lint_tagged + dep_tagged,
+            r4_input_list,
             existing_comments=existing_comments, language=language,
         )
+        report_data['r4_input'] = r4_input_list
+        report_data['r4_output'] = list(final)
         if r2_meta_warnings:
             final = r2_meta_warnings + final
         ckpt.save('final', final)
@@ -247,4 +268,4 @@ def _run_four_rounds(  # noqa: C901
         ckpt.mark_stage_done(ReviewStage.FINAL)
     else:
         _Progress('Round 4: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')
-    return final, r3_metrics
+    return final, r3_metrics, report_data
