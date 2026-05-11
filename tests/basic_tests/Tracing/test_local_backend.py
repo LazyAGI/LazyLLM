@@ -10,6 +10,12 @@ from lazyllm.thirdparty import opentelemetry
 TRACE_ID_A = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
 
+def _read_trace_jsonl_lines(storage_dir, trace_id):
+    stored_files = list(storage_dir.glob(f'*_{trace_id}.jsonl'))
+    assert len(stored_files) == 1
+    return stored_files[0].read_text(encoding='utf-8').splitlines()
+
+
 @contextmanager
 def _tracer_with_exporter(storage_dir):
     from lazyllm.tracing.backends.local.backend import LocalFileSpanExporter
@@ -54,7 +60,7 @@ def test_local_backend_writes_and_reads_trace(tmp_path, root_name, child_names, 
     trace_id = _emit_real_trace(tmp_path, root_name, child_names=child_names)
 
     backend = LocalConsumeBackend(storage_dir=tmp_path)
-    lines = (tmp_path / f'{trace_id}.jsonl').read_text(encoding='utf-8').splitlines()
+    lines = _read_trace_jsonl_lines(tmp_path, trace_id)
     payloads = [json.loads(line) for line in lines]
     raw = backend.fetch_trace_payload(trace_id)
 
@@ -94,7 +100,7 @@ def test_local_backend_consumes_concurrent_appends_to_same_trace(tmp_path):
         with ThreadPoolExecutor(max_workers=16) as pool:
             list(pool.map(emit_one, range(1, num_spans + 1)))
 
-    lines = (tmp_path / f'{TRACE_ID_A}.jsonl').read_text(encoding='utf-8').splitlines()
+    lines = _read_trace_jsonl_lines(tmp_path, TRACE_ID_A)
     payloads = [json.loads(line) for line in lines]
     raw = LocalConsumeBackend(storage_dir=tmp_path).fetch_trace_payload(TRACE_ID_A)
 
@@ -136,9 +142,10 @@ def test_consume_backend_rebuilds_raw_payload_from_local_jsonl(tmp_path):
     structured = rebuild(payload.trace, payload.spans)
     stored_rows = [
         json.loads(line)
-        for line in (tmp_path / f'{trace_id}.jsonl').read_text(encoding='utf-8').splitlines()
+        for line in _read_trace_jsonl_lines(tmp_path, trace_id)
     ]
     stored_by_name = {row['name']: row for row in stored_rows}
+    spans_by_id = {span.span_id: span for span in payload.spans}
 
     assert payload.trace.trace_id == trace_id
     assert payload.trace.name == 'root'
@@ -152,11 +159,11 @@ def test_consume_backend_rebuilds_raw_payload_from_local_jsonl(tmp_path):
     assert stored_by_name['child']['parent_id'] == f'0x{root_id}'
     assert {span.span_id for span in payload.spans} == {root_id, child_id}
     assert all(not span.span_id.startswith('0x') for span in payload.spans)
-    assert payload.spans[0].parent_span_id is None
-    assert payload.spans[1].parent_span_id == root_id
-    assert payload.spans[1].attributes['lazyllm.semantic_type'] == 'llm'
-    assert payload.spans[1].input == '{"args":["hello"],"kwargs":{}}'
-    assert payload.spans[1].output == 'world'
+    assert spans_by_id[root_id].parent_span_id is None
+    assert spans_by_id[child_id].parent_span_id == root_id
+    assert spans_by_id[child_id].attributes['lazyllm.semantic_type'] == 'llm'
+    assert spans_by_id[child_id].input == '{"args":["hello"],"kwargs":{}}'
+    assert spans_by_id[child_id].output == 'world'
     assert structured.trace_id == trace_id
     assert structured.execution_tree.name == 'root'
     assert structured.execution_tree.children[0].name == 'child'

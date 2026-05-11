@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -15,13 +16,27 @@ from lazyllm.tracing.semantics import is_valid_span_id, is_valid_trace_id
 from .config import read_local_storage_dir
 
 
+def _find_trace_path(storage_dir: Path, trace_id: str) -> Optional[Path]:
+    paths = sorted(storage_dir.glob(f'*_{trace_id}.jsonl'))
+    if len(paths) > 1:
+        LOG.warning(
+            f'Found multiple local trace files for trace_id={trace_id!r}: '
+            f'{[path.name for path in paths]}'
+        )
+    return paths[0] if paths else None
+
+
 def _trace_path(storage_dir: Path, trace_id: str) -> Path:
-    return storage_dir / f'{trace_id}.jsonl'
+    path = _find_trace_path(storage_dir, trace_id)
+    if path is not None:
+        return path
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    return storage_dir / f'{timestamp}_{trace_id}.jsonl'
 
 
-def _trace_lock(path: Path, timeout_seconds: Optional[float] = None) -> FileLock:
+def _trace_lock(storage_dir: Path, trace_id: str, timeout_seconds: Optional[float] = None) -> FileLock:
     timeout = timeout_seconds if timeout_seconds is not None else -1
-    return FileLock(str(path) + '.lock', timeout=timeout)
+    return FileLock(str(storage_dir / f'.{trace_id}.lock'), timeout=timeout)
 
 
 def _strip_otel_id_prefix(value):
@@ -127,19 +142,20 @@ def _raw_trace_from_spans(trace_id: str, spans: List[RawSpanRecord]) -> RawTrace
     )
 
 
-def _read_trace_lines(
-    path: Path,
+def _read_trace_file(
+    storage_dir: Path,
     trace_id: str,
     timeout_seconds: Optional[float],
-) -> List[str]:
+) -> tuple[str, List[str]]:
     try:
-        with _trace_lock(path, timeout_seconds=timeout_seconds):
-            if not path.exists():
+        with _trace_lock(storage_dir, trace_id, timeout_seconds=timeout_seconds):
+            path = _find_trace_path(storage_dir, trace_id)
+            if path is None:
                 raise TraceNotFound(trace_id)
             with path.open('r', encoding='utf-8') as file_obj:
-                return file_obj.readlines()
+                return path.name, file_obj.readlines()
     except Timeout as exc:
-        raise ConsumeBackendError(f'timed out waiting for local trace file lock: {path.name}') from exc
+        raise ConsumeBackendError(f'timed out waiting for local trace file lock: {trace_id}') from exc
 
 
 def _raw_spans_from_lines(path_name: str, lines: List[str]) -> List[RawSpanRecord]:
@@ -191,8 +207,8 @@ class LocalFileSpanExporter(opentelemetry.sdk.trace.export.SpanExporter):
 
         try:
             for trace_id, lines in grouped.items():
-                path = _trace_path(self.storage_dir, trace_id)
-                with _trace_lock(path):
+                with _trace_lock(self.storage_dir, trace_id):
+                    path = _trace_path(self.storage_dir, trace_id)
                     with path.open('a', encoding='utf-8') as file_obj:
                         file_obj.writelines(f'{line}\n' for line in lines)
         except Exception as exc:
@@ -229,8 +245,8 @@ class LocalConsumeBackend(ConsumeBackend):
         if not is_valid_trace_id(trace_id):
             raise ValueError(f'invalid trace_id: {trace_id!r}')
 
-        path = _trace_path(self.storage_dir, trace_id)
-        spans = _raw_spans_from_lines(path.name, _read_trace_lines(path, trace_id, timeout_seconds))
+        path_name, lines = _read_trace_file(self.storage_dir, trace_id, timeout_seconds)
+        spans = _raw_spans_from_lines(path_name, lines)
         return RawTracePayload(
             trace=_raw_trace_from_spans(trace_id, spans),
             spans=spans,
