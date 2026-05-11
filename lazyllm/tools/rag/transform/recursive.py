@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 from functools import partial
 from .character import CharacterSplitter
 from .base import _UNSET
@@ -16,6 +16,11 @@ class RecursiveSplitter(CharacterSplitter):
             partial(self._default_split, self._get_separator_pattern(sep))
             for sep in self._separators
         ] + [list]
+
+    def sig_fields(self) -> Dict:
+        base = super().sig_fields()
+        base.update({'separators': self._separators})
+        return base
 
     def _get_splits_by_fns(self, text: str) -> Tuple[List[str], bool]:
         character_split_fns = self._character_split_fns

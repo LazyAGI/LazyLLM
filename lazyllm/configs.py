@@ -244,8 +244,8 @@ class _NamespaceConfig(object):
         return self._config._prefix
 
 
-config = _NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
-                                description='The default mode for LazyLLM.'
+config = (_NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
+                                 description='The default mode for LazyLLM.'
         ).add('repr_ml', bool, False, 'REPR_USE_ML', description='Whether to use Markup Language for repr.'
         ).add('repr_show_child', bool, False, 'REPR_SHOW_CHILD',
               description='Whether to show child modules in repr.'
@@ -263,7 +263,8 @@ config = _NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Dis
               description='Whether to skip check keywords for deployment.'
         ).add('allow_internal_network', bool, False, 'ALLOW_INTERNAL_NETWORK',
               description='Whether to allow loading images from internal network addresses. '
-                          'Set to False for security in production environments.')
+                          'Set to False for security in production environments.'
+        ))
 
 def refresh_config(key):
     if key in Config:

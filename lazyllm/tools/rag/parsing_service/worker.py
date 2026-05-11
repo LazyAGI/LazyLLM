@@ -1,19 +1,28 @@
 import json
+import os
+import subprocess
 import time
 import traceback
 import threading
-import cloudpickle
 
 from datetime import datetime
-from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapper
+from typing import List, Optional, Dict
+from uuid import uuid4
+from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapper, load_obj
+from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from ..utils import BaseResponse, _get_default_db_config
 from .base import (
     FINISHED_TASK_QUEUE_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO,
-    TaskStatus, TaskType, ALGORITHM_TABLE_INFO
+    TaskStatus, TaskType, ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO,
+    AddDocRequest, UpdateMetaRequest,
+    DeleteDocRequest, _calculate_task_score, _resolve_add_doc_task_type
 )
 from .impl import _Processor
 from .queue import _SQLBasedQueue as Queue
 from ...sql import SqlManager
+from ..doc_service.base import DOC_NODE_GROUP_STATUS_TABLE_INFO
+from ..store.document_store import _DocumentStore
+from ..data_loaders import DirectoryReader
 
 WORKER_ERROR_RETRY_INTERVAL = 5.0
 
@@ -21,13 +30,45 @@ WORKER_ERROR_RETRY_INTERVAL = 5.0
 class DocumentProcessorWorker(ModuleBase):
 
     class _Impl():
-        def __init__(self, db_config: dict = None):
+        def __init__(self, db_config: dict = None, task_poller=None, lease_duration: float = 300.0,
+                     lease_renew_interval: float = 60.0, poll_mode: str = 'thread',
+                     callback_task_statuses: list[str] = None, callback_task_types: list[str] = None):
             self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
             self._shutdown = False
-            self._processors: dict[str, _Processor] = {}  # algo_id -> _Processor
+            self._processor: Optional[_Processor] = None  # global per-worker _Processor
+            self._processor_lock = threading.Lock()
+            self._store_conf: Optional[Dict] = None  # set by DocumentProcessor before start
+            self._reader: Optional[DirectoryReader] = None  # global reader, set by DocumentProcessor before start
             self._waiting_task_queue = None
             self._finished_task_queue = None
             self._worker_thread = None
+            self._poller_thread = None
+            if task_poller is not None and not callable(task_poller):
+                raise TypeError('task_poller is not callable')
+            self._task_poller = task_poller
+            self._task_poller_impl = self._wrap_task_poller(task_poller) if task_poller else None
+            if poll_mode not in ('direct', 'thread'):
+                raise ValueError('poll_mode must be one of ["direct", "thread"]')
+            self._poll_mode = poll_mode
+            self._worker_id = f'{self._get_worker_identity()}-{uuid4()}'
+            self._in_progress_task = None
+            self._lease_thread = None
+            self._lease_stop_event = None
+            self._lease_duration = lease_duration
+            self._lease_renew_interval = lease_renew_interval
+            self._callback_task_statuses = {TaskStatus(status).value for status in callback_task_statuses} \
+                if callback_task_statuses else None
+            self._callback_task_types = {TaskType(task_type).value for task_type in callback_task_types} \
+                if callback_task_types else None
+
+        def __getstate__(self):
+            state = self.__dict__.copy()
+            state['_processor_lock'] = None
+            return state
+
+        def __setstate__(self, state):
+            self.__dict__.update(state)
+            self._processor_lock = threading.Lock()
 
         @once_wrapper(reset_on_pickle=True)
         def _lazy_init(self):
@@ -35,6 +76,8 @@ class DocumentProcessorWorker(ModuleBase):
                 table_name=WAITING_TASK_QUEUE_TABLE_INFO['name'],
                 columns=WAITING_TASK_QUEUE_TABLE_INFO['columns'],
                 db_config=self._db_config,
+                order_by='task_score',
+                order_desc=False,
             )
             self._finished_task_queue = Queue(
                 table_name=FINISHED_TASK_QUEUE_TABLE_INFO['name'],
@@ -43,10 +86,96 @@ class DocumentProcessorWorker(ModuleBase):
             )
             self._db_manager = SqlManager(
                 **self._db_config,
-                tables_info_dict={'tables': [ALGORITHM_TABLE_INFO]},
+                tables_info_dict={'tables': [ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO,
+                                             DOC_NODE_GROUP_STATUS_TABLE_INFO]},
             )
+            self._processor_cache_times: dict[str, datetime] = {}  # algo_id -> load time (kept for compat)
 
-            LOG.info('[DocumentProcessorWorker._Impl] initialized')
+            LOG.info(f'{self._log_prefix()} initialized')
+
+        def _get_worker_identity(self) -> str:
+            env_keys = ('POD_IP', 'POD_NAME', 'HOSTNAME')
+            for key in env_keys:
+                value = os.getenv(key)
+                if value:
+                    return value
+            try:
+                ip = subprocess.check_output(['hostname', '-i'], text=True).strip()
+                if ip:
+                    return ip
+            except Exception:
+                pass
+            return 'worker'
+
+        def _log_prefix(self, task_id: str = None) -> str:
+            if task_id:
+                return f'[DocumentProcessorWorker._Impl][worker_id={self._worker_id}][task_id={task_id}]'
+            return f'[DocumentProcessorWorker._Impl][worker_id={self._worker_id}]'
+
+        def _wrap_task_poller(self, task_poller):
+            def _impl():
+                result = task_poller()
+                if result is None:
+                    return []
+                return result if isinstance(result, list) else [result]
+            return _impl
+
+        def _start_lease_renewal(self, task_id: str):
+            if self._lease_renew_interval <= 0:
+                return
+            self._lease_stop_event = threading.Event()
+
+            def _renew():
+                while not self._lease_stop_event.wait(self._lease_renew_interval):
+                    try:
+                        self._waiting_task_queue.extend_lease(task_id, self._worker_id, self._lease_duration)
+                    except Exception as e:
+                        LOG.warning(f'{self._log_prefix(task_id)} Failed to extend lease: {e}')
+
+            self._lease_thread = threading.Thread(target=_renew, daemon=True)
+            self._lease_thread.start()
+
+        def _stop_lease_renewal(self):
+            if self._lease_stop_event is not None:
+                self._lease_stop_event.set()
+            if self._lease_thread is not None and self._lease_thread.is_alive():
+                self._lease_thread.join(timeout=2.0)
+            self._lease_thread = None
+            self._lease_stop_event = None
+
+        def _fail_in_progress_task(self, reason: str):
+            if not self._in_progress_task:
+                return
+            task_id = self._in_progress_task.get('task_id')
+            task_type = self._in_progress_task.get('task_type')
+            callback_url = self._in_progress_task.get('callback_url')
+            task_context_json = self._in_progress_task.get('task_context_json')
+            if task_id and task_type:
+                self._enqueue_finished_task(
+                    task_id=task_id,
+                    task_type=task_type,
+                    task_status=TaskStatus.FAILED,
+                    error_code='PRESTOP',
+                    error_msg=reason,
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
+                )
+                deleted = self._waiting_task_queue.delete(
+                    filter_by={'task_id': task_id, 'worker_id': self._worker_id}
+                )
+                if deleted == 0:
+                    LOG.warning(f'{self._log_prefix(task_id)} Failed to delete in-progress task')
+            self._in_progress_task = None
+
+        def set_reader(self, reader: DirectoryReader):
+            if self._reader is not None and self._reader is not reader:
+                raise ValueError('reader must be the same across all set_reader calls.')
+            self._reader = reader
+            return BaseResponse(code=200, msg='success')
+
+        def set_schema_extractors(self, schema_extractors: Dict):
+            self._schema_extractors = schema_extractors
+            return BaseResponse(code=200, msg='success')
 
         @app.get('/health')
         def get_health(self):
@@ -55,7 +184,7 @@ class DocumentProcessorWorker(ModuleBase):
                 return BaseResponse(code=503, msg='Worker thread not started')
 
             if not self._worker_thread.is_alive():
-                LOG.error('[DocumentProcessorWorker._Impl] Worker thread is dead')
+                LOG.error(f'{self._log_prefix()} Worker thread is dead')
                 return BaseResponse(code=503, msg='Worker thread is not alive')
 
             return BaseResponse(code=200, msg='success')
@@ -66,95 +195,245 @@ class DocumentProcessorWorker(ModuleBase):
             if self._worker_thread is not None and self._worker_thread.is_alive():
                 self._worker_thread.join(timeout=5.0)
                 if self._worker_thread.is_alive():
-                    LOG.warning('[DocumentProcessorWorker._Impl] Worker thread did not stop within timeout')
+                    LOG.warning(f'{self._log_prefix()} Worker thread did not stop within timeout')
+                    self._fail_in_progress_task('prestop timeout')
                 else:
-                    LOG.info('[DocumentProcessorWorker._Impl] Worker thread stopped')
+                    LOG.info(f'{self._log_prefix()} Worker thread stopped')
+            if self._poller_thread is not None and self._poller_thread.is_alive():
+                self._poller_thread.join(timeout=5.0)
+                if self._poller_thread.is_alive():
+                    LOG.warning(f'{self._log_prefix()} Poller thread did not stop within timeout')
+                else:
+                    LOG.info(f'{self._log_prefix()} Poller thread stopped')
             return BaseResponse(code=200, msg='success')
 
-        def _get_or_create_processor(self, algo_id: str) -> _Processor:
+        def _load_algo_info_from_db(self) -> dict:
+            '''Load the first registered algorithm's info_pickle from DB.
+            Returns the deserialized dict, or {} if not found.'''
+            self._lazy_init()
             try:
-                self._lazy_init()
-                if algo_id in self._processors:
-                    LOG.debug(f'[DocumentProcessorWorker._Impl] Using cached processor for {algo_id}')
-                    return self._processors[algo_id]
-
                 with self._db_manager.get_session() as session:
                     AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
-                    algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == algo_id).first()
-                    if algorithm is None:
-                        raise ValueError(f'Algo id {algo_id} not found')
-                    display_name = algorithm.display_name
-                    description = algorithm.description
-                    info_pickle = algorithm.info_pickle
-                    info = cloudpickle.loads(info_pickle)
-                    store = info['store']
-                    reader = info['reader']
-                    node_groups = info['node_groups']
-                    schema_extractor = info['schema_extractor']
-                    processor = _Processor(algo_id, store, reader, node_groups, schema_extractor,
-                                           display_name, description)
-                    self._processors[algo_id] = processor
-                    LOG.info(f'[DocumentProcessorWorker._Impl] Created processor for {algo_id}')
-                return self._processors[algo_id]
+                    row = session.query(AlgoInfo).first()
+                    if row is None:
+                        return {}
+                    info = load_obj(row.info_pickle)
+                    return info if isinstance(info, dict) else {}
             except Exception as e:
-                LOG.warning(f'[DocumentProcessorWorker._Impl] Failed to load algo: {e}')
-                raise e
+                LOG.warning(f'{self._log_prefix()} Failed to load algo info from DB: {e}')
+                return {}
 
-        def _exec_add_task(self, processor: _Processor, task_id: str, payload: dict):
+        def _get_processor(self) -> _Processor:
+            '''Return the global per-worker _Processor, creating it lazily on first call.'''
             try:
-                file_infos = payload.get('file_infos')
-                kb_id = payload.get('kb_id', None)
-                input_files = []
-                ids = []
-                metadatas = []
-
-                for file_info in file_infos:
-                    input_files.append(file_info.get('file_path'))
-                    ids.append(file_info.get('doc_id'))
-                    metadatas.append(file_info.get('metadata'))
-
-                processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas, kb_id=kb_id)
+                self._lazy_init()
+                with self._processor_lock:
+                    if self._processor is not None:
+                        return self._processor
+                    info = self._load_algo_info_from_db()
+                    store = info.get('store') or _DocumentStore(store=self._store_conf or {'type': 'map'})
+                    schema_extractors = getattr(self, '_schema_extractors', {})
+                    self._processor = _Processor(store=store, schema_extractors=schema_extractors)
+                    LOG.info(f'{self._log_prefix()} Created global processor')
+                return self._processor
             except Exception as e:
-                LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute add task failed, error: {e}')
+                LOG.warning(f'{self._log_prefix()} Failed to create global processor: {e}')
+                raise
+
+        def _load_reader_from_db(self) -> Optional[DirectoryReader]:
+            '''Load the global reader from any registered algorithm's info_pickle in DB.'''
+            return self._load_algo_info_from_db().get('reader')
+
+        def _load_all_ng_configs(self, ng_names: Optional[List[str]] = None) -> tuple:
+            '''Load all node group configs from DB, optionally filtered by ng_names.
+            Returns (node_groups: {name: config}, name_to_id: {name: id}).
+            '''
+            self._lazy_init()
+            with self._db_manager.get_session() as session:
+                NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                if ng_names is not None:
+                    rows = session.query(NodeGroupInfo).filter(NodeGroupInfo.name.in_(ng_names)).all()
+                else:
+                    rows = session.query(NodeGroupInfo).all()
+            node_groups: Dict[str, Dict] = {}
+            name_to_id: Dict[str, str] = {}
+            for row in rows:
+                node_groups[row.name] = load_obj(row.info_pickle)
+                name_to_id[row.name] = row.id
+            return node_groups, name_to_id
+
+        def _write_ng_status_batch(self, doc_ids: List[str], ng_ids: List[str], kb_id: str,
+                                   status: str, error_msg: Optional[str] = None):
+            try:
+                now = datetime.now()
+                with self._db_manager.get_session() as session:
+                    NgStatus = self._db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
+                    for doc_id in doc_ids:
+                        for ng_id in ng_ids:
+                            existing = session.query(NgStatus).filter(
+                                NgStatus.doc_id == doc_id, NgStatus.kb_id == kb_id,
+                                NgStatus.node_group_id == ng_id,
+                            ).first()
+                            if existing:
+                                existing.status = status
+                                existing.error_msg = error_msg
+                                existing.updated_at = now
+                            else:
+                                session.add(NgStatus(
+                                    doc_id=doc_id, kb_id=kb_id, node_group_id=ng_id,
+                                    status=status, error_msg=error_msg,
+                                    created_at=now, updated_at=now,
+                                ))
+            except Exception as e:
+                LOG.error(f'[Worker] _write_ng_status_batch failed: {e}')
+
+        def _wait_and_decide_ng(self, doc_ids: List[str], ng_ids: List[str], kb_id: str) -> tuple:
+            import time as _time
+            skip_ng_ids: set = set()
+            exec_ng_ids: set = set()
+            for ng_id in ng_ids:
+                while True:
+                    with self._db_manager.get_session() as session:
+                        NgStatus = self._db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
+                        rows = session.query(NgStatus).filter(
+                            NgStatus.kb_id == kb_id, NgStatus.node_group_id == ng_id,
+                            NgStatus.doc_id.in_(doc_ids),
+                        ).all()
+                        status_map = {r.doc_id: r.status for r in rows}
+                    statuses = [status_map.get(d) for d in doc_ids]
+                    if any(s == 'WORKING' for s in statuses):
+                        _time.sleep(1)
+                        continue
+                    if all(s == 'SUCCESS' for s in statuses):
+                        skip_ng_ids.add(ng_id)
+                    else:
+                        exec_ng_ids.add(ng_id)
+                    break
+            return skip_ng_ids, exec_ng_ids
+
+        def _exec_add_task(self, processor: _Processor, task_id: str, payload: dict,
+                           node_groups: Dict[str, Dict], name_to_id: Dict[str, str],
+                           reader: Optional[DirectoryReader],
+                           extractor_names: Optional[List[str]] = None):
+            file_infos = payload.get('file_infos')
+            kb_id = payload.get('kb_id', None)
+            input_files = []
+            ids = []
+            metadatas = []
+            for file_info in file_infos:
+                input_files.append(file_info.get('file_path'))
+                ids.append(file_info.get('doc_id'))
+                metadatas.append(file_info.get('metadata'))
+
+            ng_ids = list(name_to_id.values())
+            if kb_id and ng_ids:
+                skip_ng_ids, exec_ng_ids = self._wait_and_decide_ng(ids, ng_ids, kb_id)
+                if not exec_ng_ids:
+                    LOG.info(f'{self._log_prefix(task_id)} All node-groups already SUCCESS, skipping')
+                    return
+                self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'WORKING')
+            else:
+                skip_ng_ids, exec_ng_ids = set(), set(ng_ids)
+
+            try:
+                processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas, kb_id=kb_id,
+                                  node_groups=node_groups, reader=reader, skip_ng_ids=skip_ng_ids,
+                                  extractor_names=extractor_names)
+                if kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'SUCCESS')
+            except Exception as e:
+                LOG.error(f'{self._log_prefix(task_id)} Execute add task failed: {e}')
+                if kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'FAILED', str(e))
                 raise e
 
         def _exec_reparse_task(
-            self, processor: _Processor, task_id: str, payload: dict
+            self, processor: _Processor, task_id: str, payload: dict,
+            node_groups: Dict[str, Dict], name_to_id: Dict[str, str],
+            reader: Optional[DirectoryReader]
         ):
+            file_infos = payload.get('file_infos')
+            kb_id = payload.get('kb_id', None)
+            reparse_doc_ids = []
+            reparse_files = []
+            reparse_metadatas = []
+
+            for file_info in file_infos:
+                reparse_doc_ids.append(file_info.get('doc_id'))
+                reparse_files.append(file_info.get('file_path'))
+                reparse_metadatas.append(file_info.get('metadata'))
+
+            # node_groups is already filtered to the requested ng_names by _run_task
+            exec_ng_ids = list(name_to_id.values())
+            if kb_id and exec_ng_ids:
+                self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
+
             try:
-                file_infos = payload.get('file_infos')
-                kb_id = payload.get('kb_id', None)
-                reparse_group = None
-                reparse_doc_ids = []
-                reparse_files = []
-                reparse_metadatas = []
-
-                first_reparse_group = None
-                for file_info in file_infos:
-                    current_group = file_info.get('reparse_group')
-                    if first_reparse_group is None:
-                        first_reparse_group = current_group
-                    elif first_reparse_group != current_group:
-                        raise ValueError('All files must have the same reparse_group')
-                    reparse_doc_ids.append(file_info.get('doc_id'))
-                    reparse_files.append(file_info.get('file_path'))
-                    reparse_metadatas.append(file_info.get('metadata'))
-
-                reparse_group = first_reparse_group
-                processor.reparse(group_name=reparse_group, doc_ids=reparse_doc_ids,
-                                  doc_paths=reparse_files, metadatas=reparse_metadatas,
-                                  kb_id=kb_id)
+                processor.reparse(group_name=None, node_groups=node_groups,
+                                  doc_ids=reparse_doc_ids, doc_paths=reparse_files,
+                                  metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
+                if kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
             except Exception as e:
-                LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute reparse task failed, error: {e}')
+                LOG.error(f'{self._log_prefix(task_id)} Execute reparse task failed: {e}')
+                if kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'FAILED', str(e))
+                raise e
+
+        def _exec_transfer_task(self, processor: _Processor, task_id: str, payload: dict,
+                                node_groups: Dict[str, Dict], name_to_id: Dict[str, str]):
+            self._validate_transfer_payload(payload)
+            file_infos = payload.get('file_infos')
+            kb_id = payload.get('kb_id', None)
+            input_files = []
+            ids = []
+            metadatas = []
+            transfer_mode = None
+            target_kb_id = None
+            target_doc_ids = []
+
+            for file_info in file_infos:
+                input_files.append(file_info.get('file_path'))
+                ids.append(file_info.get('doc_id'))
+                metadatas.append(file_info.get('metadata'))
+                if transfer_mode is None:
+                    transfer_mode = file_info.get('transfer_params', {}).get('mode')
+                if target_kb_id is None:
+                    target_kb_id = file_info.get('transfer_params', {}).get('target_kb_id')
+                target_doc_ids.append(file_info.get('transfer_params', {}).get('target_doc_id'))
+
+            ng_ids = list(name_to_id.values())
+            if target_kb_id and ng_ids:
+                skip_ng_ids, exec_ng_ids = self._wait_and_decide_ng(target_doc_ids, ng_ids, target_kb_id)
+                if not exec_ng_ids:
+                    LOG.info(f'{self._log_prefix(task_id)} All node-groups already SUCCESS for transfer, skipping')
+                    return
+                self._write_ng_status_batch(target_doc_ids, list(exec_ng_ids), target_kb_id, 'WORKING')
+            else:
+                skip_ng_ids, exec_ng_ids = set(), set(ng_ids)
+
+            try:
+                processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas, kb_id=kb_id,
+                                  node_groups=node_groups, reader=None,
+                                  transfer_mode=transfer_mode, target_kb_id=target_kb_id,
+                                  target_doc_ids=target_doc_ids, skip_ng_ids=skip_ng_ids)
+                if target_kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(target_doc_ids, list(exec_ng_ids), target_kb_id, 'SUCCESS')
+            except Exception as e:
+                LOG.error(f'{self._log_prefix(task_id)} Execute transfer task failed: {e}')
+                if target_kb_id and exec_ng_ids:
+                    self._write_ng_status_batch(target_doc_ids, list(exec_ng_ids), target_kb_id, 'FAILED', str(e))
                 raise e
 
         def _exec_delete_task(self, processor: _Processor, task_id: str, payload: dict):
             try:
                 kb_id = payload.get('kb_id')
                 doc_ids = payload.get('doc_ids')
-                processor.delete_doc(doc_ids=doc_ids, kb_id=kb_id)
+                node_group_ids_to_delete = payload.get('node_group_ids_to_delete')
+                processor.delete_doc(doc_ids=doc_ids, kb_id=kb_id,
+                                     node_group_ids_to_delete=node_group_ids_to_delete)
             except Exception as e:
-                LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute delete task failed, error: {e}')
+                LOG.error(f'{self._log_prefix(task_id)} Execute delete task failed: {e}')
                 raise e
 
         def _exec_update_meta_task(self, processor: _Processor, task_id: str, payload: dict):
@@ -166,102 +445,434 @@ class DocumentProcessorWorker(ModuleBase):
                     metadata = file_info.get('metadata')
                     processor.update_doc_meta(doc_id=doc_id, metadata=metadata, kb_id=kb_id)
             except Exception as e:
-                LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute update meta task failed,'
-                          f'error: {e}')
+                LOG.error(f'{self._log_prefix(task_id)} Execute update meta task failed: {e}')
                 raise e
 
+        @staticmethod
+        def _resolve_callback_url(payload: dict):
+            return payload.get('callback_url') or payload.get('feedback_url')
+
+        @staticmethod
+        def _build_task_context(task_type: str, payload: dict) -> dict:
+            items = []
+            if task_type in (TaskType.DOC_ADD.value, TaskType.DOC_REPARSE.value, TaskType.DOC_UPDATE_META.value):
+                file_infos = payload.get('file_infos') or []
+                items = [{
+                    'doc_id': file_info.get('doc_id'),
+                    'file_path': file_info.get('file_path'),
+                    'metadata': file_info.get('metadata'),
+                } for file_info in file_infos]
+            elif task_type == TaskType.DOC_DELETE.value:
+                items = [{'doc_id': doc_id} for doc_id in (payload.get('doc_ids') or [])]
+            elif task_type == TaskType.DOC_TRANSFER.value:
+                file_infos = payload.get('file_infos') or []
+                items = [{
+                    'doc_id': file_info.get('doc_id'),
+                    'file_path': file_info.get('file_path'),
+                    'metadata': file_info.get('metadata'),
+                    'transfer_params': file_info.get('transfer_params'),
+                } for file_info in file_infos]
+            return {
+                'task_type': task_type,
+                'kb_id': payload.get('kb_id'),
+                'items': items,
+            }
+
+        def _resolve_task_type(self, request: AddDocRequest) -> str:
+            return _resolve_add_doc_task_type(request)
+
+        @staticmethod
+        def _validate_transfer_payload(payload: dict):  # noqa: C901
+            file_infos = payload.get('file_infos')
+            if not isinstance(file_infos, list) or not file_infos:
+                raise ValueError('file_infos is required for task_type DOC_TRANSFER')
+            transfer_mode = None
+            target_kb_id = None
+            target_doc_ids = set()
+            for idx, file_info in enumerate(file_infos):
+                transfer_params = file_info.get('transfer_params')
+                if not isinstance(transfer_params, dict) or not transfer_params:
+                    raise ValueError(f'transfer_params is required for task_type DOC_TRANSFER at index {idx}')
+                current_mode = transfer_params.get('mode')
+                current_target_kb_id = transfer_params.get('target_kb_id')
+                current_target_doc_id = transfer_params.get('target_doc_id')
+                if current_mode not in ('cp', 'mv'):
+                    raise ValueError('transfer_params.mode must be one of [cp, mv]')
+                if not current_target_kb_id:
+                    raise ValueError('transfer_params.target_kb_id is required for task_type DOC_TRANSFER')
+                if not current_target_doc_id:
+                    raise ValueError('transfer_params.target_doc_id is required for task_type DOC_TRANSFER')
+                if transfer_mode is not None and transfer_mode != current_mode:
+                    raise ValueError('transfer_params.mode must be the same for all files')
+                if target_kb_id is not None and target_kb_id != current_target_kb_id:
+                    raise ValueError('transfer_params.target_kb_id must be the same for all files')
+                if current_target_doc_id in target_doc_ids:
+                    raise ValueError('transfer_params.target_doc_id must be unique for all files')
+                transfer_mode = current_mode
+                target_kb_id = current_target_kb_id
+                target_doc_ids.add(current_target_doc_id)
+
+        def _validate_task_payload(self, task_type: str, payload: dict):
+            if not isinstance(payload, dict):
+                raise ValueError('payload must be a dict')
+            if task_type in (
+                TaskType.DOC_ADD.value,
+                TaskType.DOC_REPARSE.value,
+                TaskType.DOC_TRANSFER.value,
+                TaskType.DOC_UPDATE_META.value,
+            ):
+                file_infos = payload.get('file_infos')
+                if not isinstance(file_infos, list) or not file_infos:
+                    raise ValueError(f'file_infos is required for task_type {task_type}')
+            if task_type == TaskType.DOC_DELETE.value:
+                doc_ids = payload.get('doc_ids')
+                if not isinstance(doc_ids, list) or not doc_ids:
+                    raise ValueError('doc_ids is required for task_type DOC_DELETE')
+            if task_type == TaskType.DOC_TRANSFER.value:
+                self._validate_transfer_payload(payload)
+
+        def _summarize_task_payload(self, task_type: str, payload: dict) -> str:
+            summary = {
+                'task_type': task_type,
+                'kb_id': payload.get('kb_id'),
+                'ng_names': payload.get('ng_names'),
+            }
+            if task_type == TaskType.DOC_DELETE.value:
+                summary['doc_ids'] = payload.get('doc_ids', [])
+            else:
+                file_infos = []
+                for file_info in payload.get('file_infos', []):
+                    transfer_params = file_info.get('transfer_params') or {}
+                    file_infos.append({
+                        'doc_id': file_info.get('doc_id'),
+                        'file_path': file_info.get('file_path'),
+                        'target_doc_id': transfer_params.get('target_doc_id'),
+                        'target_kb_id': transfer_params.get('target_kb_id'),
+                        'transfer_mode': transfer_params.get('mode'),
+                    })
+                summary['file_infos'] = file_infos
+            return json.dumps(summary, ensure_ascii=False)
+
+        def _enqueue_task_from_payload(self, task: dict):
+            try:
+                task_type = task.get('task_type')
+                if task_type == TaskType.DOC_DELETE.value:
+                    task_info = DeleteDocRequest(**task)
+                elif task_type == TaskType.DOC_UPDATE_META.value:
+                    task_info = UpdateMetaRequest(**task)
+                else:
+                    task_info = AddDocRequest(**task)
+                    task_type = task_type or self._resolve_task_type(task_info)
+                task_id = task_info.task_id
+                payload = task_info.model_dump()
+                self._validate_task_payload(task_type, payload)
+                user_priority = task_info.priority if task_info.priority is not None else 0
+                task_score = _calculate_task_score(task_type, user_priority)
+                payload_json = json.dumps(payload, ensure_ascii=False)
+                now = datetime.now()
+
+                self._waiting_task_queue.enqueue(
+                    task_id=task_id,
+                    task_type=task_type,
+                    user_priority=user_priority,
+                    task_score=task_score,
+                    message=payload_json,
+                    status=TaskStatus.WAITING.value,
+                    worker_id=None,
+                    lease_expires_at=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+                LOG.info(f'{self._log_prefix(task_id)} [Poller] task (type={task_type}, '
+                         f'user_priority={user_priority}, score={task_score}) '
+                         'submitted to database queue successfully')
+            except Exception as e:
+                LOG.warning(f'{self._log_prefix()} [Poller] Skip invalid task payload: {e}. '
+                            f'payload={task}')
+
+        def _parse_task_payload(self, task: dict):
+            task_type = task.get('task_type')
+            if task_type == TaskType.DOC_DELETE.value:
+                task_info = DeleteDocRequest.model_validate(task)
+            elif task_type == TaskType.DOC_UPDATE_META.value:
+                task_info = UpdateMetaRequest.model_validate(task)
+            else:
+                task_info = AddDocRequest.model_validate(task)
+                task_type = task_type or self._resolve_task_type(task_info)
+            task_id = task_info.task_id
+            payload = task_info.model_dump(mode='json')
+            self._validate_task_payload(task_type, payload)
+            return task_id, task_type, payload
+
+        def _run_task(self, task_id: str, task_type: str, payload: dict, from_queue: bool):  # noqa: C901
+            callback_url = self._resolve_callback_url(payload)
+            task_context_json = json.dumps(self._build_task_context(task_type, payload), ensure_ascii=False)
+            try:
+                self._in_progress_task = {
+                    'task_id': task_id,
+                    'task_type': task_type,
+                    'callback_url': callback_url,
+                    'task_context_json': task_context_json,
+                }
+                if from_queue:
+                    self._start_lease_renewal(task_id)
+                ng_names = payload.get('ng_names')  # None means all node groups
+                extractor_names = payload.get('extractor_names')  # None means all extractors
+
+                LOG.info(f'{self._log_prefix(task_id)} Start processing task: '
+                         f'{self._summarize_task_payload(task_type, payload)}')
+                self._enqueue_finished_task(
+                    task_id=task_id,
+                    task_type=task_type,
+                    task_status=TaskStatus.WORKING,
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
+                )
+
+                processor = self._get_processor()
+                node_groups, name_to_id = self._load_all_ng_configs(ng_names)
+                reader = self._reader or self._load_reader_from_db()
+                if task_type == TaskType.DOC_ADD.value:
+                    self._exec_add_task(processor, task_id, payload, node_groups=node_groups,
+                                        name_to_id=name_to_id, reader=reader,
+                                        extractor_names=extractor_names)
+                elif task_type == TaskType.DOC_REPARSE.value:
+                    self._exec_reparse_task(processor, task_id, payload, node_groups=node_groups,
+                                            name_to_id=name_to_id, reader=reader)
+                elif task_type == TaskType.DOC_DELETE.value:
+                    self._exec_delete_task(processor, task_id, payload)
+                elif task_type == TaskType.DOC_UPDATE_META.value:
+                    self._exec_update_meta_task(processor, task_id, payload)
+                elif task_type == TaskType.DOC_TRANSFER.value:
+                    self._exec_transfer_task(processor, task_id, payload, node_groups=node_groups,
+                                             name_to_id=name_to_id)
+                else:
+                    raise ValueError(f'{self._log_prefix(task_id)} Unknown task type: {task_type}')
+
+                self._enqueue_finished_task(
+                    task_id=task_id,
+                    task_type=task_type,
+                    task_status=TaskStatus.SUCCESS,
+                    error_code='200',
+                    error_msg='success',
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
+                )
+                if from_queue:
+                    deleted = self._waiting_task_queue.delete(
+                        filter_by={'task_id': task_id, 'worker_id': self._worker_id}
+                    )
+                    if deleted == 0:
+                        LOG.warning(f'{self._log_prefix(task_id)} Failed to delete finished task')
+            except Exception as e:
+                LOG.error(f'{self._log_prefix(task_id)} Failed to run task: {e}, {traceback.format_exc()}')
+                if task_id and task_type:
+                    self._enqueue_finished_task(
+                        task_id=task_id,
+                        task_type=task_type,
+                        task_status=TaskStatus.FAILED,
+                        error_code=type(e).__name__,
+                        error_msg=str(e),
+                        callback_url=callback_url,
+                        task_context_json=task_context_json,
+                    )
+                    if from_queue:
+                        deleted = self._waiting_task_queue.delete(
+                            filter_by={'task_id': task_id, 'worker_id': self._worker_id}
+                        )
+                        if deleted == 0:
+                            LOG.warning(f'{self._log_prefix(task_id)} Failed to delete failed task')
+                time.sleep(WORKER_ERROR_RETRY_INTERVAL)
+            finally:
+                if from_queue:
+                    self._stop_lease_renewal()
+                self._in_progress_task = None
+
+        def _poller(self):  # noqa: C901
+            while not self._shutdown:
+                try:
+                    tasks = self._task_poller_impl()
+                    if not tasks:
+                        time.sleep(0.1)
+                        continue
+                    for task in tasks:
+                        self._enqueue_task_from_payload(task)
+                except Exception as e:
+                    LOG.error(f'{self._log_prefix()} [Poller] fetch failed: {e}')
+                    time.sleep(WORKER_ERROR_RETRY_INTERVAL)
+            LOG.info(f'{self._log_prefix()} [Poller] stopped')
+
+        def _poll_task(self):
+            return self._waiting_task_queue.claim(
+                worker_id=self._worker_id,
+                lease_duration=self._lease_duration,
+                status_waiting=TaskStatus.WAITING.value,
+                status_working=TaskStatus.WORKING.value,
+            )
+
         def _enqueue_finished_task(self, task_id: str, task_type: str, task_status: TaskStatus,
-                                   error_code: str = None, error_msg: str = None):
+                                   error_code: str = None, error_msg: str = None,
+                                   callback_url: str = None, task_context_json: str = None):
             try:
                 self._lazy_init()
+                if self._callback_task_statuses and task_status.value not in self._callback_task_statuses:
+                    return
+                if self._callback_task_types and task_type not in self._callback_task_types:
+                    return
                 self._finished_task_queue.enqueue(
                     task_id=task_id,
                     task_type=task_type,
                     task_status=task_status.value,
                     finished_at=datetime.now(),
+                    callback_url=callback_url,
+                    task_context_json=task_context_json,
                     error_code=error_code if error_code else '200',
                     error_msg=error_msg if error_msg else 'success'
                 )
-                if task_status == TaskStatus.FINISHED:
-                    LOG.info(f'[DocumentProcessorWorker._Impl] Task {task_id} finished successfully')
+                if task_status == TaskStatus.WORKING:
+                    LOG.info(f'{self._log_prefix(task_id)} Task started')
+                elif task_status == TaskStatus.SUCCESS:
+                    LOG.info(f'{self._log_prefix(task_id)} Task completed successfully')
                 else:
-                    LOG.error(f'[DocumentProcessorWorker._Impl] Task {task_id} completed with status {task_status}:'
-                              f' {error_msg}')
+                    LOG.error(f'{self._log_prefix(task_id)} Task completed with status {task_status}: {error_msg}')
             except Exception as e:
-                LOG.error(f'[DocumentProcessorWorker._Impl] Failed to enqueue finished task {task_id}: {e}')
+                LOG.error(f'{self._log_prefix(task_id)} Failed to enqueue finished task: {e}')
 
-        def _worker_impl(self):
+        def _worker_impl(self):  # noqa: C901
             while not self._shutdown:
-                task_id = None
-                task_type = None
                 try:
-                    task_data = self._waiting_task_queue.dequeue()
-                    if not task_data:
-                        time.sleep(0.1)
-                        continue
-
-                    task_id = task_data['task_id']
-                    task_type = task_data['task_type']
-                    payload = json.loads(task_data.get('message'))
-                    algo_id = payload.get('algo_id')
-                    if not algo_id:
-                        raise ValueError(f'[DocumentProcessorWorker._Impl] task_id {task_id} is missing algo_id in '
-                                         f'payload: {payload}')
-
-                    LOG.info(f'[DocumentProcessorWorker._Impl] Start processing task {task_id}, type: {task_type},'
-                             f' algo_id: {algo_id}')
-
-                    processor = self._get_or_create_processor(algo_id)
-                    if task_type == TaskType.DOC_ADD.value:
-                        self._exec_add_task(processor, task_id, payload)
-                    elif task_type == TaskType.DOC_REPARSE.value:
-                        self._exec_reparse_task(processor, task_id, payload)
-                    elif task_type == TaskType.DOC_DELETE.value:
-                        self._exec_delete_task(processor, task_id, payload)
-                    elif task_type == TaskType.DOC_UPDATE_META.value:
-                        self._exec_update_meta_task(processor, task_id, payload)
-                    else:
-                        raise ValueError(f'[DocumentProcessorWorker._Impl] Unknown task type: {task_type}')
-
-                    self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FINISHED,
-                                                error_code='200', error_msg='success')
+                    task_data = self._poll_task()
                 except Exception as e:
-                    LOG.error(f'[DocumentProcessorWorker._Impl] Failed to run task {task_id}: {e},'
-                              f' {traceback.format_exc()}')
-                    if task_id and task_type:
-                        self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FAILED,
-                                                    error_code=type(e).__name__, error_msg=str(e))
+                    LOG.error(f'{self._log_prefix()} [Worker] poll_task failed: {e}, {traceback.format_exc()}')
                     time.sleep(WORKER_ERROR_RETRY_INTERVAL)
                     continue
+                if task_data:
+                    payload = None
+                    callback_url = None
+                    task_context_json = None
+                    try:
+                        payload = json.loads(task_data.get('message'))
+                        callback_url = self._resolve_callback_url(payload) if isinstance(payload, dict) else None
+                        if isinstance(payload, dict):
+                            task_context_json = json.dumps(
+                                self._build_task_context(task_data['task_type'], payload),
+                                ensure_ascii=False,
+                            )
+                        self._validate_task_payload(task_data['task_type'], payload)
+                    except Exception as e:
+                        task_id = task_data.get('task_id')
+                        task_type = task_data.get('task_type')
+                        LOG.error(f'{self._log_prefix(task_id)} [Worker] Failed to parse task payload: {e}, '
+                                  f'{traceback.format_exc()}')
+                        if task_id and task_type:
+                            try:
+                                self._enqueue_finished_task(
+                                    task_id=task_id,
+                                    task_type=task_type,
+                                    task_status=TaskStatus.FAILED,
+                                    error_code=type(e).__name__,
+                                    error_msg=str(e),
+                                    callback_url=callback_url,
+                                    task_context_json=task_context_json,
+                                )
+                                deleted = self._waiting_task_queue.delete(
+                                    filter_by={'task_id': task_id, 'worker_id': self._worker_id}
+                                )
+                                if deleted == 0:
+                                    LOG.warning(f'{self._log_prefix(task_id)} Failed to delete invalid task')
+                            except Exception as inner_e:
+                                LOG.error(f'{self._log_prefix(task_id)} Failed to cleanup invalid task: {inner_e}, '
+                                          f'{traceback.format_exc()}')
+                        time.sleep(WORKER_ERROR_RETRY_INTERVAL)
+                        continue
+                    LOG.info(f'{self._log_prefix(task_data["task_id"])} [Worker] Claimed queued task: '
+                             f'{self._summarize_task_payload(task_data["task_type"], payload)}')
+                    self._run_task(task_data['task_id'], task_data['task_type'], payload, from_queue=True)
+                    continue
+
+                if self._task_poller_impl is not None and self._poll_mode == 'direct':
+                    try:
+                        tasks = self._task_poller_impl()
+                        if not tasks:
+                            time.sleep(0.1)
+                            continue
+                        for task in tasks:
+                            try:
+                                task_id, task_type, payload = self._parse_task_payload(task)
+                            except Exception as e:
+                                LOG.warning(f'{self._log_prefix()} [Poller] Skip invalid task payload: {e}. '
+                                            f'payload={task}')
+                                continue
+                            LOG.info(f'{self._log_prefix(task_id)} [Poller] Received direct task: '
+                                     f'{self._summarize_task_payload(task_type, payload)}')
+                            self._run_task(task_id, task_type, payload, from_queue=False)
+                    except Exception as e:
+                        LOG.error(f'{self._log_prefix()} [Poller] fetch failed: {e}')
+                        time.sleep(WORKER_ERROR_RETRY_INTERVAL)
+                    continue
+
+                time.sleep(0.1)
 
         def start(self):
-            LOG.info('[DocumentProcessorWorker._Impl] Starting worker...')
+            LOG.info(f'{self._log_prefix()} Starting worker...')
             self._lazy_init()
             if self._worker_thread is not None and self._worker_thread.is_alive():
-                LOG.warning('[DocumentProcessorWorker._Impl] Worker thread is already running')
+                LOG.warning(f'{self._log_prefix()} Worker thread is already running')
                 return
             self._shutdown = False
+            if self._task_poller_impl is not None and self._poll_mode == 'thread':
+                if self._poller_thread is None or not self._poller_thread.is_alive():
+                    self._poller_thread = threading.Thread(target=self._poller, daemon=True)
+                    self._poller_thread.start()
             self._worker_thread = threading.Thread(target=self._worker_impl, daemon=True)
             self._worker_thread.start()
-            LOG.info('[DocumentProcessorWorker._Impl] Worker thread started')
+            LOG.info(f'{self._log_prefix()} Worker thread started')
 
         def shutdown(self):
-            LOG.info('[DocumentProcessorWorker._Impl] Shutting down worker...')
+            LOG.info(f'{self._log_prefix()} Shutting down worker...')
             self._shutdown = True
             if self._worker_thread is not None and self._worker_thread.is_alive():
                 self._worker_thread.join(timeout=5.0)
                 if self._worker_thread.is_alive():
-                    LOG.warning('[DocumentProcessorWorker._Impl] Worker thread did not stop within timeout')
+                    LOG.warning(f'{self._log_prefix()} Worker thread did not stop within timeout')
+                    self._fail_in_progress_task('shutdown timeout')
                 else:
-                    LOG.info('[DocumentProcessorWorker._Impl] Worker thread stopped')
+                    LOG.info(f'{self._log_prefix()} Worker thread stopped')
+            if self._poller_thread is not None and self._poller_thread.is_alive():
+                self._poller_thread.join(timeout=5.0)
+                if self._poller_thread.is_alive():
+                    LOG.warning(f'{self._log_prefix()} Poller thread did not stop within timeout')
+                else:
+                    LOG.info(f'{self._log_prefix()} Poller thread stopped')
 
-    def __init__(self, db_config: dict = None, num_workers: int = 1, port: int = None):
+    def __init__(self, db_config: dict = None, num_workers: int = 1, port: int = None,
+                 task_poller=None, lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
+                 poll_mode: str = 'thread', callback_task_statuses: list[str] = None,
+                 callback_task_types: list[str] = None, launcher: Optional[Launcher] = None):
         super().__init__()
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         self._num_workers = num_workers
         self._port = port
-        worker_impl = DocumentProcessorWorker._Impl(db_config=self._db_config)
-        self._worker_impl = ServerModule(worker_impl, port=self._port, num_replicas=self._num_workers)
+        worker_impl = DocumentProcessorWorker._Impl(
+            db_config=self._db_config,
+            task_poller=task_poller,
+            lease_duration=lease_duration,
+            lease_renew_interval=lease_renew_interval,
+            poll_mode=poll_mode,
+            callback_task_statuses=callback_task_statuses,
+            callback_task_types=callback_task_types,
+        )
+        # Workers are lightweight orchestration subprocesses (task queue polling,
+        # callbacks); they never need GPU. Default to EmptyLauncher so they stay
+        # on the same host even when the process-wide LAZYLLM_DEFAULT_LAUNCHER is
+        # 'sco' (CI) -- otherwise worker.start() tries to srun and hangs waiting
+        # for a slurm node. Callers can still override via the ``launcher`` arg.
+        import lazyllm as _lazyllm
+        effective_launcher = launcher if launcher is not None else _lazyllm.launchers.empty(sync=False)
+        self._worker_impl = ServerModule(
+            worker_impl, port=self._port, num_replicas=self._num_workers,
+            launcher=effective_launcher,
+        )
         LOG.info(f'[DocumentProcessorWorker] Worker initialized with {num_workers} workers')
 
     def _dispatch(self, method: str, *args, **kwargs):
@@ -277,6 +888,18 @@ class DocumentProcessorWorker(ModuleBase):
         self._dispatch('start')
         LOG.info('[DocumentProcessorWorker] Worker started')
         return result
+
+    def wait(self):
+        impl = self._worker_impl
+        if isinstance(impl, ServerModule):
+            return impl.wait()
+        LOG.warning('[DocumentProcessorWorker] wait() is no-op in local mode')
+
+    def set_reader(self, reader: 'DirectoryReader'):
+        return self._dispatch('set_reader', reader)
+
+    def set_schema_extractors(self, schema_extractors):
+        return self._dispatch('set_schema_extractors', schema_extractors)
 
     def stop(self):
         LOG.info('[DocumentProcessorWorker] Stopping worker...')

@@ -1,12 +1,13 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
-from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text, once_wrapper
+from lazyllm import pipeline, loop, locals, package, FileSystemQueue, colored_text, once_wrapper
 from .toolsManager import ToolManager
 from .skill_manager import SKILLS_PROMPT
 from typing import List, Any, Dict, Union, Callable, Optional
 from .base import LazyLLMAgentBase
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 import re
 import json
 
@@ -38,19 +39,51 @@ class StreamResponse():
         return package(*inputs)
 
 
+_COMPACTION_TRUNCATE_LEN = 200  # chars kept per old tool result
+
+
+def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -> List[Dict[str, Any]]:
+    # identify tool-result message indices (role == 'tool'), from oldest to newest
+    tool_indices = [i for i, m in enumerate(history) if m.get('role') == 'tool']
+    # keep the last keep_full_turns tool results intact; truncate the rest
+    cutoff = len(tool_indices) - keep_full_turns
+    if cutoff <= 0:
+        return list(history)
+    to_truncate = set(tool_indices[:cutoff])
+    result = []
+    for i, msg in enumerate(history):
+        if i in to_truncate:
+            content = msg.get('content', '')
+            if content is None:
+                content = ''
+            if isinstance(content, list):
+                content = ' '.join(
+                    p.get('text', '') if isinstance(p, dict) else str(p) for p in content
+                )
+            if isinstance(content, str) and len(content) > _COMPACTION_TRUNCATE_LEN:
+                truncated = content[:_COMPACTION_TRUNCATE_LEN]
+                msg = dict(msg, content=f'[truncated {len(content)} chars] {truncated}...')
+        result.append(msg)
+    return result
+
+
 class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None, _tool_manager: Optional[ToolManager] = None,
-                 skill_manager=None, workspace: Optional[str] = None):
+                 skill_manager=None, workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
+                 keep_full_turns: int = 0):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
-            self._tools_manager = ToolManager(tools, return_trace=return_trace)
+            self._sandbox = sandbox or create_sandbox()
+            self._tools_manager = ToolManager(tools, return_trace=return_trace, sandbox=self._sandbox)
         else:
             self._tools_manager = _tool_manager
+            self._sandbox = _tool_manager.sandbox
         self._skill_manager = skill_manager
         self._workspace = workspace
+        self._keep_full_turns = keep_full_turns
         prompt = _prompt or FC_PROMPT
         if self._workspace:
             prompt = (
@@ -68,15 +101,25 @@ class FunctionCall(ModuleBase):
             )
         else:
             self._prompter = ChatPrompter(instruction=prompt, tools=self._tools_manager.tools_description)
-        self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
+        self._llm = llm.share(
+            prompt=self._prompter,
+            format=FunctionCallFormatter(),
+            stream=stream,
+        ).used_by(self._module_id)
         with pipeline() as self._impl:
-            self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
-                                            color=Color.green, stream=stream)
             self._impl.pre_action = self._build_history
             self._impl.llm = self._llm
-            self._impl.dis = StreamResponse('Decision-making or result in this round:',
-                                            prefix_color=Color.yellow, color=Color.green, stream=stream)
             self._impl.post_action = self._post_action
+
+    @property
+    def sandbox(self) -> LazyLLMSandboxBase:
+        return self._sandbox
+
+    @sandbox.setter
+    def sandbox(self, sandbox: Optional[LazyLLMSandboxBase]):
+        self._sandbox = sandbox
+        if hasattr(self, '_tools_manager') and self._tools_manager is not None:
+            self._tools_manager.sandbox = sandbox
 
     def _build_history(self, input: Union[str, dict, list]):
         workspace = locals['_lazyllm_agent']['workspace']
@@ -102,13 +145,18 @@ class FunctionCall(ModuleBase):
                     'name': tool_call['function']['name'],
                 } for tool_call in workspace['tool_call_trace']
             ]
-            workspace['history'].append(
-                {'role': 'assistant', 'content': input.get('content', ''), 'tool_calls': input.get('tool_calls', [])}
-            )
+            workspace['history'].append({
+                'role': 'assistant',
+                'content': input.get('content', ''),
+                'tool_calls': input.get('tool_calls', []),
+                'reasoning_content': input.get('reasoning_content', ''),
+            })
             input = {'input': tool_call_results}
             history_idx += 1
             workspace['history'].extend(tool_call_results)
         chat_history = workspace['history'][:history_idx]
+        if self._keep_full_turns > 0:
+            chat_history = _compact_chat_history(chat_history, self._keep_full_turns)
         locals['chat_history'][self._llm._module_id] = chat_history
         if self._skill_manager and isinstance(input, dict) and 'available_skills' not in input:
             available = workspace.get('available_skills')
@@ -139,10 +187,13 @@ class FunctionCall(ModuleBase):
         result = self._impl(input)
 
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
-        # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed'].
+        # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed']
+        # and history is stored in locals['_lazyllm_agent']['history'].
         if isinstance(result, str):
-            locals['_lazyllm_agent']['completed'] = locals['_lazyllm_agent'].pop('workspace')\
-                .pop('tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
+            workspace = locals['_lazyllm_agent'].pop('workspace', {})
+            locals['_lazyllm_agent']['completed'] = workspace.pop(
+                'tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
+            locals['_lazyllm_agent']['history'] = workspace.pop('history', [])
             locals['chat_history'][self._llm._module_id] = []
         return result
 
@@ -151,11 +202,13 @@ class FunctionCallAgent(LazyLLMAgentBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False,
                  return_last_tool_calls: bool = False,
                  skills: Union[bool, str, List[str], None] = None, desc: str = '',
-                 workspace: Optional[str] = None):
+                 workspace: Optional[str] = None, fs: Optional[Any] = None,
+                 skills_dir: Optional[str] = None, enable_builtin_tools: bool = True):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
-                         skills=skills, desc=desc, workspace=workspace)
+                         skills=skills, desc=desc, workspace=workspace, fs=fs, skills_dir=skills_dir,
+                         enable_builtin_tools=enable_builtin_tools)
         assert self._llm is not None, 'llm cannot be empty.'
         self._assert_tools()
         prompt = FC_PROMPT

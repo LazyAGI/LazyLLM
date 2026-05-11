@@ -24,9 +24,13 @@ docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), mana
 其中 `Document` 的构造函数有以下参数：
 * `dataset_path`：指定从哪个文件目录构建；
 * `embed`：期望在语义检索中使用的向量模型。 如果需要对文本生成多个向量模型，此处需要通过字典的方式指定，key 标识 embedding 的名字，value 为对应的 embedding 模型；
-* `manager`：是否使用 ui 界面会影响 `Document` 内部的处理逻辑，默认为 `False`；
+* `manager`：控制 `Document` 的运行模式，默认为 `False`。支持以下取值：
+    * `False`：单机模式，文档解析在当前进程内完成，适合本地开发和调试；
+    * `True` 或 `'ui'`：分布式模式，自动启动 `DocumentProcessor`（解析服务）和 `DocServer`（文档管理服务），并可选开启 Web UI；
+    * `DocServer` 实例：连接已有的外部文档管理服务；
+    * `DocumentProcessor` 实例：连接已有的外部解析服务，此时 `store_conf` 必须传给 `DocumentProcessor` 而非 `Document`；
 * `launcher`：启动服务的方式，集群应用会用到这个参数，单机应用可以忽略；
-* `store_conf`：配置使用哪种存储引擎保存文档解析结果；
+* `store_conf`：配置使用哪种存储引擎保存文档解析结果。在单机模式和 `manager=True` 的分布式模式下传给 `Document`；若 `manager` 为 `DocumentProcessor` 实例，则 `store_conf` 应传给该 `DocumentProcessor`，`Document` 层不再接受此参数；
 * `doc_fields`：配置需要存储和检索的字段及对应的类型（当前在使用内存存储、Chroma以及Milvus向量数据库时支持该功能）
 * 更多参数说明请前往[Document API][lazyllm.Document]查看。
 
@@ -107,6 +111,166 @@ docs.create_node_group(name='sentence-len',
 
 
 `Node Group` 的拆分粒度和规则各不相同，反映了文档不同方面的特征。在后续的处理中，我们通过在不同的场合使用这些特征，从而更好地判断文档和用户输入的查询内容的相关性。
+
+#### 运行模式
+
+`Document` 支持四种运行模式，适用于不同的部署场景。模式由 `manager` 参数控制。
+
+---
+
+**模式一：临时文档模式**
+
+直接传入文件列表，不写入任何持久化存储，适合一次性的临时检索场景。
+
+```python
+doc = Document(doc_files=['/tmp/a.pdf', '/tmp/b.txt'], embed=embed_model)
+retriever = Retriever(doc, group_name='CoarseChunk', similarity='cosine', topk=3)
+```
+
+内部对象：
+
+- `_Processor`（主进程内，懒初始化时创建）
+- `_DocumentStore`（纯内存 map，进程退出即销毁）
+
+调用链：
+
+```
+Document._lazy_init()
+  → _DocumentStore(type='map')
+  → _Processor(store, reader, node_groups)
+  → _Processor.add_doc(doc_files)
+```
+
+---
+
+**模式二：单机模式（`manager=False`，默认）**
+
+从本地目录加载文档，解析在当前进程内完成，适合本地开发和调试。
+
+```python
+doc = Document(
+    dataset_path='/data/docs',
+    embed=embed_model,
+    manager=False,
+    store_conf=milvus_store_conf,  # 可选，不指定则使用内存存储
+)
+doc.create_node_group('MyChunk', transform=SentenceSplitter)
+doc.start()
+```
+
+内部对象：
+
+- `_Processor`（主进程内）
+- `_DocumentStore`（由 `store_conf` 决定，默认为内存 map）
+
+调用链：
+
+```
+Document.start() → _lazy_init()
+  → _DocumentStore(store_conf)
+  → _Processor(store, reader, node_groups)
+  → 扫描 dataset_path → _Processor.add_doc(...)
+```
+
+无后台服务，`_Processor` 在主进程内同步运行。
+
+---
+
+**模式三：分布式模式（`manager=True`，自动启动）**
+
+自动启动 `DocumentProcessor`（解析服务）和 `DocServer`（文档管理服务），适合生产环境。`store_conf` 传给 `Document`。
+
+```python
+doc = Document(
+    dataset_path='/data/docs',
+    embed=embed_model,
+    manager=True,
+    store_conf=milvus_store_conf,
+)
+doc.start()
+```
+
+内部对象及调用链：
+
+```
+Document.start()
+  ├─ 自动启动 DocServer（子进程，HTTP 服务）
+  │    └─ DocManager（文档 CRUD、目录扫描、任务入队）
+  └─ 自动启动 DocumentProcessor（子进程，HTTP 服务）
+       └─ Worker × N（各自独立子进程）
+            └─ _Processor（Worker 进程内，首次处理任务时懒创建）
+                 └─ _DocumentStore（连接外部 Milvus/Chroma 等）
+
+写入流程：
+DocServer.upload()
+  → DocManager → ParserClient.add_doc() [HTTP]
+  → DocumentProcessor → 任务队列
+  → Worker._Processor.add_doc(node_groups, reader)
+  → _DocumentStore.update_nodes()
+  → 回调 → DocManager.on_task_callback()
+
+检索流程（绕过所有服务，直接访问存储）：
+Document.forward(query)
+  → _DocumentStore.query()
+```
+
+`DocServer` 负责文件 CRUD 和目录扫描，检索路径完全不经过它。
+
+---
+
+**模式四：分布式模式（`manager=DocumentProcessor`，手动管理）**
+
+用户自己创建并管理 `DocumentProcessor`，不需要 `DocServer`，文件通过外部 API 上传。`store_conf` 必须传给 `DocumentProcessor`，`Document` 层不再接受此参数。
+
+```python
+from lazyllm.tools.rag import DocumentProcessor
+
+proc = DocumentProcessor(
+    store_conf=milvus_store_conf,
+)
+proc.start()
+
+doc = Document(
+    manager=proc,
+    embed=embed_model,
+    # 注意：此处不能再传 store_conf，否则会报错
+)
+doc.start()
+```
+
+内部对象：
+
+- `DocumentProcessor`（用户创建，子进程或远程服务）
+  - `Worker × N` → `_Processor`（同模式三）
+- `DocImpl`（主进程内，用于检索）
+- **无 DocServer**，无目录扫描
+
+调用链：
+
+```
+DocImpl._lazy_init()
+  → store_conf 来自 proc._store_conf
+  → _DocumentStore(store_conf)
+  → proc.register_algorithm(algo_name, store, reader, node_groups)
+     （注册到远程 DocumentProcessor，不在本地创建 _Processor）
+```
+
+---
+
+**四种模式对比**
+
+| 维度 | 临时文档 | 单机 | 分布式（自动） | 分布式（手动 Processor） |
+|------|---------|------|--------------|------------------------|
+| `_Processor` 位置 | 主进程 | 主进程 | Worker 子进程 | Worker 子进程 |
+| `DocServer` | 无 | 无 | 自动创建 | 无 |
+| `DocumentProcessor` | 无 | 无 | 自动创建 | 用户创建 |
+| `store_conf` 传给 | 无（内存） | `Document` | `Document` | `DocumentProcessor` |
+| 目录扫描 | 无 | 一次性 | DocServer 持续扫描 | 无 |
+| 检索路径 | 直接访问 store | 直接访问 store | 直接访问 store | 直接访问 store |
+
+所有模式下，**检索路径完全一致**：`DocImpl → _DocumentStore.query()`，不经过任何后台服务。
+
+---
 
 #### 存储和索引
 

@@ -40,6 +40,7 @@
   - 流式处理: Best Practice/stream.md
   - 注册机制: Best Practice/Features/AutoRegistry.md
   - 数据处理: Best Practice/data_process.md
+  - Git PR Review 流程: Best Practice/git_review_pipeline.md
 - 高级主题:
   - 贡献指南: Advanced Topics/contribution.md
   - 更新日志: Advanced Topics/changelog.md

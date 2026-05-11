@@ -255,13 +255,23 @@ class _RichReader(LazyLLMReaderBase):
         self._split_doc = split_doc
 
     def forward(self, *args, **kwargs) -> List[DocNode]:
-        r = super().forward(*args, **kwargs)
+        nodes = super().forward(*args, **kwargs)
         if self._post_func:
-            r = self._post_func(r)
-            assert isinstance(r, list), f'Expected list, got {type(r)}, please check your post function'
-            for n in r:
+            nodes = self._post_func(nodes)
+            assert isinstance(nodes, list), f'Expected list, got {type(nodes)}, please check your post function'
+            for n in nodes:
                 assert isinstance(n, DocNode), f'Expected DocNode, got {type(n)}, \
                     please check your post function'
                 if kwargs.get('extra_info'):
                     n.global_metadata.update(kwargs['extra_info'])
-        return [RichDocNode(r, global_metadata=r[0].global_metadata if r else None)] if self._split_doc else r
+        if self._split_doc:
+            return [RichDocNode(nodes, global_metadata=nodes[0].global_metadata if nodes else None)]
+        else:
+            if not nodes:
+                return []
+            texts = [b.text for b in nodes]
+            return [DocNode(
+                text='\n'.join(texts),
+                metadata={'file_name': nodes[0].metadata.get('file_name', '')},
+                global_metadata=nodes[0].global_metadata
+            )]

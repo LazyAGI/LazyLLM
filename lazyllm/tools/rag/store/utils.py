@@ -9,7 +9,7 @@ import importlib.util
 from lazyllm import LOG
 from lazyllm.thirdparty import boto3
 
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any
 from io import BytesIO
 
 INSERT_MAX_RETRIES = 10
@@ -183,6 +183,58 @@ def download_data_from_s3(
             os.remove(tmp.name)
         except OSError:
             pass
+
+def presign_obj_from_s3(
+    bucket_name: str,
+    object_key: str,
+    aws_access_key_id: Optional[str] = None,
+    aws_secret_access_key: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+    region_name: str = 'us-east-1',
+    client_method: str = 'get_object',
+    expires_in: int = 3600,
+    extra_params: Optional[Dict[str, Any]] = None,
+) -> str:
+
+    spec = importlib.util.find_spec('botocore.client')
+    if spec is None:
+        raise ImportError(
+            'Please install boto3 to use botocore module. '
+            'You can install it with `pip install boto3`'
+        )
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    Config = m.Config
+
+    s3_client = boto3.client(
+        's3',
+        region_name=region_name,
+        endpoint_url=endpoint_url,
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        config=Config(
+            signature_version='s3v4',
+        ),
+    )
+
+    params = {
+        'Bucket': bucket_name,
+        'Key': object_key,
+    }
+
+    if extra_params:
+        params.update(extra_params)
+
+    try:
+        url = s3_client.generate_presigned_url(
+            ClientMethod=client_method,
+            Params=params,
+            ExpiresIn=expires_in,
+        )
+        return url
+    except Exception as e:
+        LOG.error(f'Generate presigned url failed: {e}')
+        raise e
 
 def fibonacci_backoff(max_retries: int = INSERT_MAX_RETRIES):
     a, b = 1, 1

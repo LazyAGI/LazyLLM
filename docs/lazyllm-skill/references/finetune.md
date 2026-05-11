@@ -145,7 +145,5 @@ Reranker 模型用于文档重排序，提升检索质量。
 
 ## 相关资源
 
-- [微调教程](https://docs.lazyllm.ai/zh-cn/stable/Tutorial/9/)
-- [LLaMA-Factory文档](https://github.com/hiyouga/LLaMA-Factory)
-- [FlagEmbedding文档](https://github.com/FlagOpen/FlagEmbedding)
-- [Flow数据流编排](./flow.md)
+- [微调相关资源（本地）](../assets/finetune/related_resources.md)：微调教程、LLaMA-Factory、FlagEmbedding 等说明
+- [Flow 数据流编排](./flow.md)

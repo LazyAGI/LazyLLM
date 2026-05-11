@@ -11,8 +11,18 @@ class AutoModel:
     def __new__(cls, model: Optional[str] = None, *, config_id: Optional[str] = None, source: Optional[str] = None,  # noqa C901
                 type: Optional[str] = None, config: Union[str, bool] = True, **kwargs: Any):
         # check and accomodate user params
-        model = model or kwargs.pop('base_model', kwargs.pop('embed_model_name', None))
+        model = model or kwargs.pop('base_model', kwargs.pop('embed_model_name', kwargs.pop('model_name', None)))
+
+        if source == 'dynamic':
+            from .onlinemodule import OnlineChatModule
+            dynamic_auth = kwargs.pop('dynamic_auth', False)
+            return OnlineChatModule(source='dynamic', dynamic_auth=dynamic_auth, type=type, **kwargs)
+
         if model in lazyllm.online.chat:
+            if source is not None:
+                raise ValueError(
+                    f'`{model!r}` is a recognised source name; pass it as `source=` and '
+                    f'do not also set `source={source!r}`.')
             source, model = model, None
 
         if not model:

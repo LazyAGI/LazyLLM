@@ -36,10 +36,7 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
             embed_kwargs = params.copy()
             embed_kwargs.pop('function', None)
             embed_kwargs.setdefault('type', 'rerank' if resolved_type == LLMType.RERANK else 'embed')
-            return OnlineEmbeddingModule(source=source,
-                                         embed_url=url,
-                                         embed_model_name=model,
-                                         **embed_kwargs)
+            return OnlineEmbeddingModule(model=model, source=source, url=url, **embed_kwargs)
 
         if resolved_type in list(self._MULTI_TYPE_TO_FUNCTION.keys()):
             multi_kwargs = params.copy()

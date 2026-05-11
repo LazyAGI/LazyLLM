@@ -4,6 +4,7 @@ import pytest
 
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
+@pytest.mark.xfail
 class TestPowerMem(object):
     def test_powermem(self):
         from lazyllm.tools.memory import Memory

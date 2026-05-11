@@ -67,8 +67,7 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
             'image': {}
         }
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
-        self.document_store = _DocumentStore(algo_name='__default__',
-                                             store=HybridStore(MapStore(),
+        self.document_store = _DocumentStore(store=HybridStore(MapStore(),
                                                                MilvusStore(uri=self.store_dir,
                                                                            index_kwargs=self.index_kwargs)),
                                              group_embed_keys=self.group_embed_keys,

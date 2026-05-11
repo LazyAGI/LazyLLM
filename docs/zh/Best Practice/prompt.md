@@ -31,14 +31,15 @@ import lazyllm
 prompter.generate_prompt(dict(context='背景', input='输入'))
 
 # {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n'}, {'role': 'user', 'content': ''}]}
-prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=True)
+prompter.generate_prompt(dict(context='背景', input='输入'), format='openai')
 ```
 
 在上面的例子中， ``generate_prompt`` 的输入是一个 ``dict`` ，他会把值依次填入 ``instruction`` 提供的槽位中。
 
 !!! Note "注意"
 
-    - 上面代码中出现了一个值得您关注的参数 ``return_dict`` , 当 ``return_dict`` 为 True 时，会返回 OpenAI 格式的 dict 用于线上模型。
+    - 上面代码中出现了一个值得您关注的参数 ``format`` ，当 ``format='openai'`` 时，会返回 OpenAI Chat Completions 风格的 dict 用于线上模型。
+    - 旧版代码中的 ``return_dict=True`` 仍受支持（等价于 ``format='openai'``，并会提示弃用）；新代码请优先使用 ``format``。
     - 一般情况下，您只需要将Prompter设置给 ``TrainableModule`` 或 ``OnlineChatModule`` 即可，而无需关心 ``generate_prompt`` 这一函数。
 
 ## LazyLLM Prompter 的设计思路
@@ -220,7 +221,7 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
         >>> import lazyllm
         >>> tools=[dict(type='function', function=dict(name='example'))]
         >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extra_keys='input', tools=tools)
-        >>> prompter.generate_prompt('帮我查询一下今天的天气', return_dict=True)
+        >>> prompter.generate_prompt('帮我查询一下今天的天气', format='openai')
         {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n'}, {'role': 'user', 'content': ''}],
         'tools': [{'type': 'function', 'function': {'name': 'example'}}]}
 
@@ -234,9 +235,9 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 >>> prompter = lazyllm.ChatPrompter('你是一个对话机器人，现在你要和用户进行友好的对话')
 >>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']])
 '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n<|end_system|>\\n\\n<|Human|>:你好<|Assistant|>:你好，我是一个对话机器人，有什么能为您服务的\\n<|Human|>:\\n我们聊会儿天吧\\n<|Assistant|>:\\n'
->>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']], return_dict=True)
+>>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']], format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
->>> prompter.generate_prompt('我们聊会儿天吧', history=[dict(role='user', content='你好'), dict(role='assistant', content='你好，我是一个对话机器人，有什么能为您服务的')], return_dict=True)
+>>> prompter.generate_prompt('我们聊会儿天吧', history=[dict(role='user', content='你好'), dict(role='assistant', content='你好，我是一个对话机器人，有什么能为您服务的')], format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
 ```
 
@@ -245,12 +246,12 @@ prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=Tru
 !!! Note "注意"
 
     - 只有 ``ChatPrompter`` 支持传入历史对话
-    - 当输入是 ``[[a, b], ...]`` 格式时，同时支持 ``return_dict`` 为 ``True`` 或 ``False`` ， 而当输入为  ``[dict, dict]`` 格式时，仅支持 ``return_dict`` 为 ``True``
+    - 当输入是 ``[[a, b], ...]`` 格式时，同时支持 ``format`` 为 ``'openai'``（或默认 ``None`` 走字符串拼接），而当输入为 ``[dict, dict]`` 格式时，仅支持 ``format='openai'`` 等 API 消息格式
 
 ### 和 OnlineChatModule 一起使用
 
-当 ``Prompter`` 和 ``OnlineChatModule`` 一起使用时， ``OnlineChatModule.__call__`` 会调用 ``Prompter.generate_prompt`` ，并且将 ``__input``,
-``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``generate_prompt`` 的 ``return_dict`` 会被设置为 ``True``。下面给出一个例子：
+当 ``Prompter`` 和 ``OnlineChatModule`` 一起使用时， ``OnlineChatModule.__call__`` 会调用 ``Prompter.generate_prompt`` ，并且将 ``__input``、
+``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``generate_prompt`` 的 ``format`` 会由模块设为 ``'openai'`` 或 ``'anthropic'`` 等。下面给出一个例子：
 
 ```python
 import lazyllm
@@ -262,8 +263,8 @@ module(dict(context='背景', input='输入'))
 
 ### 和 TrainableModule 一起使用
 
-当 ``Prompter`` 和 ``TrainableModule`` 一起使用时， ``TrainableModule.__call__`` 会调用 ``Prompter.generate_prompt`` ，并且将 ``__input``,
-``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``generate_prompt`` 的 ``return_dict`` 会被设置为 ``True``。下面给出一个例子：
+当 ``Prompter`` 和 ``TrainableModule`` 一起使用时， ``TrainableModule.__call__`` 会调用 ``Prompter.generate_prompt`` ，并且将 ``__input``、
+``history`` 和 ``tools`` 传给 ``generate_prompt`` ，此时 ``format`` 为默认（``None``），得到用于本地推理的拼接字符串。下面给出一个例子：
 
 ```python
 import lazyllm
