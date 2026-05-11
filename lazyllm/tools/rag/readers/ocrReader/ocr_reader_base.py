@@ -93,25 +93,37 @@ class _OcrReaderBase(_RichReader, _Adapter):
         num_parts = original_size // max_size_bytes + 1
         pages_per_part = max(1, total_pages // num_parts)
 
-        result = []
+        # Build initial chunks as (list_of_page_indices, start_offset)
+        chunks = []
         start_page = 0
-
         while start_page < total_pages:
             end_page = min(start_page + pages_per_part, total_pages)
+            chunks.append((list(range(start_page, end_page)), start_page))
+            start_page = end_page
 
+        # Iteratively split oversized chunks until all are under max_size_bytes
+        final_result = []
+        while chunks:
+            page_indices, offset = chunks.pop(0)
             writer = PdfWriter()
-            for i in range(start_page, end_page):
+            for i in page_indices:
                 writer.add_page(reader.pages[i])
 
-            part_name = f'{basename}_part_{start_page}-{end_page}.pdf'
+            part_name = f'{basename}_part_{offset}-{offset + len(page_indices)}.pdf'
             part_path = splits_dir / part_name
             with open(part_path, 'wb') as f:
                 writer.write(f)
 
-            result.append((str(part_path), start_page))
-            start_page = end_page
+            if os.path.getsize(part_path) <= max_size_bytes or len(page_indices) == 1:
+                final_result.append((str(part_path), offset))
+            else:
+                # Oversized and multi-page: split in half and re-queue
+                mid = len(page_indices) // 2
+                chunks.insert(0, (page_indices[mid:], offset + mid))
+                chunks.insert(0, (page_indices[:mid], offset))
+                os.remove(part_path)  # Remove the oversized temp file
 
-        return result
+        return sorted(final_result, key=lambda x: x[1])
 
     @staticmethod
     def _parse_page_start(filename: str) -> int:
