@@ -159,7 +159,7 @@ def infer_usage_scenarios(
     '''RScene: infer typical usage scenarios for modified public APIs.
     Returns a list of scenario dicts (title, description, api_sequence, call_chain, edge_cases, ...).
     '''
-    use_cache = ckpt.should_use_cache(ReviewStage.RSCENE) if ckpt else True
+    use_cache = ckpt.should_use_cache(ReviewStage.RScene) if ckpt else True
     if ckpt and use_cache:
         cached_all = ckpt.get('rscene_all')
         if cached_all is not None:
@@ -208,5 +208,5 @@ def infer_usage_scenarios(
     prog.done(f'{len(deduped)} unique scenarios inferred')
     if ckpt and deduped:
         ckpt.save('rscene_all', deduped)
-        ckpt.mark_stage_done(ReviewStage.RSCENE)
+        ckpt.mark_stage_done(ReviewStage.RScene)
     return deduped

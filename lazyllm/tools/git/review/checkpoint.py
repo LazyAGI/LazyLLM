@@ -13,15 +13,15 @@ class ReviewStage(enum.Enum):
     ARCH = 'arch'
     SPEC = 'spec'
     PR_SUMMARY = 'pr_summary'
-    RSCENE = 'rscene'
-    RCHAIN = 'rchain'
-    R1 = 'r1'
-    R2A = 'r2a'
-    R2 = 'r2'
-    RMOD = 'rmod'
-    RCOV = 'rcov'
-    R3 = 'r3'
-    FINAL = 'final'
+    RScene = 'rscene'
+    RChain = 'rchain'
+    RHunkScan = 'rhunk_scan'
+    RPrDoc = 'rpr_doc'
+    RArchReview = 'rarch_review'
+    RMod = 'rmod'
+    RCov = 'rcov'
+    RAgentVerify = 'ragent_verify'
+    RDedupMerge = 'rdedup_merge'
     MERGE = 'merge'
     UPLOAD = 'upload'
 
@@ -41,9 +41,9 @@ class ReviewStage(enum.Enum):
 
 _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
-    ReviewStage.PR_SUMMARY, ReviewStage.RSCENE, ReviewStage.RCHAIN,
-    ReviewStage.R1, ReviewStage.R2A, ReviewStage.R2, ReviewStage.RMOD,
-    ReviewStage.R3, ReviewStage.RCOV, ReviewStage.FINAL, ReviewStage.MERGE, ReviewStage.UPLOAD,
+    ReviewStage.PR_SUMMARY, ReviewStage.RScene, ReviewStage.RChain,
+    ReviewStage.RHunkScan, ReviewStage.RPrDoc, ReviewStage.RArchReview, ReviewStage.RMod,
+    ReviewStage.RAgentVerify, ReviewStage.RCov, ReviewStage.RDedupMerge, ReviewStage.MERGE, ReviewStage.UPLOAD,
 ]
 
 
@@ -97,15 +97,15 @@ class _ReviewCheckpoint:
         'arch_doc': ReviewStage.ARCH,
         'review_spec': ReviewStage.SPEC,
         'pr_summary': ReviewStage.PR_SUMMARY,
-        'r1': ReviewStage.R1,
-        'pr_design_doc': ReviewStage.R2A,
-        'r2': ReviewStage.R2,
-        'rmod': ReviewStage.RMOD,
-        'rcov_issues': ReviewStage.RCOV,
-        'r3': ReviewStage.R3,
-        'r3_shared_context': ReviewStage.R3,
-        'final': ReviewStage.FINAL,
-        'final_comments': ReviewStage.FINAL,
+        'r1': ReviewStage.RHunkScan,
+        'pr_design_doc': ReviewStage.RPrDoc,
+        'r2': ReviewStage.RArchReview,
+        'rmod': ReviewStage.RMod,
+        'rcov_issues': ReviewStage.RCov,
+        'r3': ReviewStage.RAgentVerify,
+        'r3_shared_context': ReviewStage.RAgentVerify,
+        'final': ReviewStage.RDedupMerge,
+        'final_comments': ReviewStage.RDedupMerge,
         'merged_comments': ReviewStage.MERGE,
         'upload_done_batches': ReviewStage.UPLOAD,
     }
@@ -113,7 +113,7 @@ class _ReviewCheckpoint:
     # Bump _PIPELINE_VERSION to invalidate ALL cached stages across ALL PRs
     _PIPELINE_VERSION = 3
     _REVIEW_ROUND_VERSION_KEY = '_review_round_version'
-    # Bump _REVIEW_ROUND_VERSION to invalidate only the FINAL (R4) stage cache
+    # Bump _REVIEW_ROUND_VERSION to invalidate only the RDedupMerge stage cache
     _REVIEW_ROUND_VERSION = 5
 
     def __init__(self, path: str, resume_from: Optional[ReviewStage] = None) -> None:
@@ -156,12 +156,12 @@ class _ReviewCheckpoint:
     def _stage_for_key(self, key: str) -> Optional[ReviewStage]:
         if key in _ReviewCheckpoint._KEY_TO_STAGE:
             return _ReviewCheckpoint._KEY_TO_STAGE[key]
-        if key.startswith('r1_hunk_'):
-            return ReviewStage.R1
-        if key.startswith('r1_window_'):
-            return ReviewStage.R1
+        if key.startswith('r1_hunk_') or key.startswith('rhunk_scan_'):
+            return ReviewStage.RHunkScan
+        if key.startswith('r1_window_') or key.startswith('rhunk_scan_window_'):
+            return ReviewStage.RHunkScan
         if key.startswith('r3_file_') or key.startswith('r3_disc_') or key.startswith('r3_group_'):
-            return ReviewStage.R3
+            return ReviewStage.RAgentVerify
         if key.startswith(self._STAGE_DONE_PREFIX):
             stage_val = key[len(self._STAGE_DONE_PREFIX):]
             try:

@@ -3,8 +3,8 @@
 This document describes the end-to-end PR review flow of the `lazyllm.tools.git.review` module.
 The entry point is the `review()` function in `runner.py`, which runs through pre-analysis
 (architecture parsing, historical spec extraction), static lint analysis, six LLM stages
-(R1 hunk review → R2a PR design doc → R2 architect review → R3 Agent verification →
-RMod modification-necessity analysis → R4 merge & dedup),
+(RHunkScan hunk review → RPrDoc PR design doc → RArchReview architect review → RAgentVerify Agent verification →
+RMod modification-necessity analysis → RDedupMerge merge & dedup),
 usage-scenario inference (RScene) and call-chain bug analysis (RChain) running in parallel
 with the main chain, a test coverage check (RCov), and finally publishes
 `final_comments + rchain_issues + rcov_issues` to GitHub / GitLab / Gitee / GitCode.
@@ -21,10 +21,10 @@ Source directory: `lazyllm/tools/git/review/`
 | Module | Responsibility |
 |--------|---------------|
 | `runner.py` | **Main entry point**: orchestrates all sub-modules; diff fetching & truncation; strategy decision (`_ReviewStrategy`); meta warning generation; clone cleanup; comment publishing |
-| `pre_analysis.py` | Repository clone; architecture doc generation (`analyze_repo_architecture`); local-repo arch analysis (local mode); historical review spec extraction (`analyze_historical_reviews`); PR summary; R3 Agent tool set construction |
-| `rounds.py` | **Review round core**: R1 hunk-level analysis, R2a PR design doc, R2 architect review, R3 ReactAgent verification, RMod modification-necessity analysis, R4 merge & dedup |
+| `pre_analysis.py` | Repository clone; architecture doc generation (`analyze_repo_architecture`); local-repo arch analysis (local mode); historical review spec extraction (`analyze_historical_reviews`); PR summary; RAgentVerify Agent tool set construction |
+| `rounds.py` | **Review round core**: RHunkScan hunk-level analysis, RPrDoc PR design doc, RArchReview architect review, RAgentVerify ReactAgent verification, RMod modification-necessity analysis, RDedupMerge merge & dedup |
 | `coverage_checker.py` | **RCov**: test coverage check — identify testable symbols, group by dependency, grep test files, evaluate coverage gaps (LLM, parallel) |
-| `lint_runner.py` | Static lint analysis (no LLM calls), results injected directly into R4 |
+| `lint_runner.py` | Static lint analysis (no LLM calls), results injected directly into RDedupMerge |
 | `checkpoint.py` | Resume support: PR-level checkpoint; stage enum `ReviewStage`; soft invalidation (`resume_from`) |
 | `constants.py` | Context budget constants; `BudgetManager`; issue density control; diff heuristic compression |
 | `utils.py` | LLM call wrappers (retry/QPS); diff parsing; JSON parsing & repair; progress reporting |
@@ -42,7 +42,7 @@ review(pr_number, ...)
   └─ _pre_round_pr_summary → pr_summary
   └─ _fetch_existing_pr_comments
   └─ _run_lint_analysis → lint_issues
-  ├─ _run_four_rounds (R1 → R2a → R2 → R3 → RMod → R4) → final_comments   ┐ parallel
+  ├─ _run_review_pipeline (RHunkScan → RPrDoc → RArchReview → RAgentVerify → RMod → RDedupMerge) → final_comments   ┐ parallel
   └─ _run_rscene_rchain                                                      │
        ├─ infer_usage_scenarios (RScene) → usage_scenarios                   │
        └─ _rscenario_call_chain (RChain) → rchain_issues                    ┘
@@ -58,21 +58,21 @@ review(pr_number, ...)
 |---|-------|-------------|
 | 0 | Checkpoint initialization | `pr_dir`, `checkpoint.json`, `resume_from` soft invalidation |
 | 1 | Diff fetch & truncation | `diff_text` (truncated to `max_diff_chars` at file boundary), `hunks` |
-| 2 | Strategy decision | `_DiffStats`, `_ReviewStrategy` (adaptive R3 parameters) |
+| 2 | Strategy decision | `_DiffStats`, `_ReviewStrategy` (adaptive RAgentVerify parameters) |
 | 3 | Meta Warning | `source='meta'` issue inserted when truncation occurs |
 | 4 | Pre-analysis | `arch_doc`, `review_spec`, `clone_dir`, `agent_instructions` |
 | 5 | PR summary | `pr_summary` |
-| 6 | Existing comments | `existing_comments` (for R4 dedup) |
-| 7 | Lint analysis | `lint_issues` (no LLM, injected into R4) |
-| 8 | Round 1 | Hunk-level static review issue list |
-| 9 | Round 2a | PR design document (structured, 9 sections) |
-| 10 | Round 2 | Architect-perspective global design review issue list |
-| 11 | Round 3 | ReactAgent verification: validate R1+R2 issues + discover new cross-file issues |
+| 6 | Existing comments | `existing_comments` (for RDedupMerge dedup) |
+| 7 | Lint analysis | `lint_issues` (no LLM, injected into RDedupMerge) |
+| 8 | RHunkScan | Hunk-level static review issue list |
+| 9 | RPrDoc | PR design document (structured, 9 sections) |
+| 10 | RArchReview | Architect-perspective global design review issue list |
+| 11 | RAgentVerify | ReactAgent verification: validate RHunkScan+RArchReview issues + discover new cross-file issues |
 | 12 | RMod | ReactAgent modification-necessity analysis: flag unnecessary changes per file |
-| 13 | Round 4 | Deterministic dedup + LLM merge + lint fusion → `final_comments` |
-| 14 | RScene | Scenario inference (parallel with R1–RMod): infer 2–4 typical usage scenarios → `usage_scenarios` |
+| 13 | RDedupMerge | Deterministic dedup + LLM merge + lint fusion → `final_comments` |
+| 14 | RScene | Scenario inference (parallel with RHunkScan–RMod): infer 2–4 typical usage scenarios → `usage_scenarios` |
 | 15 | RChain | Call-chain bug analysis (after RScene): scenario-driven bug + usability issues → `rchain_issues` |
-| 16 | RCov | Test coverage check: identify untested symbols, evaluate gaps → `rcov_issues` (bypasses R4 dedup, appended directly) |
+| 16 | RCov | Test coverage check: identify untested symbols, evaluate gaps → `rcov_issues` (bypasses RDedupMerge, appended directly) |
 | 17 | Publish | Merge `final_comments + rchain_issues + rcov_issues`, submit platform review; update checkpoint `UPLOAD` stage |
 | 18 | Cleanup | Delete `{pr_dir}/clone/`; retain `checkpoint.json` |
 
@@ -107,10 +107,10 @@ def review(
 
 ### 2.2 Strategy Decision (`_ReviewStrategy`)
 
-Automatically adjusts R3 parameters based on diff size to avoid excessive LLM calls on large PRs:
+Automatically adjusts RAgentVerify parameters based on diff size to avoid excessive LLM calls on large PRs:
 
-| PR Size | Condition | `large_file_threshold` | `max_files_for_r3` | `max_chunks_per_file` |
-|---------|-----------|----------------------|-------------------|----------------------|
+| PR Size | Condition | `large_file_threshold` | `max_files_for_ragent_verify` | `max_chunks_per_file` |
+|---------|-----------|----------------------|-------------------------------|----------------------|
 | Large | >3000 lines or >50 files | 100 chars | 10 | 2 |
 | Medium | >1000 lines or >20 files | 150 chars | 15 | 2 |
 | Small | otherwise | 200 chars (default) | 20 (default) | 3 (default) |
@@ -182,7 +182,7 @@ the repository structure without reading all the code.
 
 **Final output**: architecture document + Public API Catalog; also generates `arch_index`
 (section summary index) and `arch_symbol_index` (symbol → section mapping) for on-demand
-retrieval by R1/R2/R3. All outputs are cached at `arch_cache_path/{owner_repo}/`; subsequent
+retrieval by RHunkScan/RArchReview/RAgentVerify. All outputs are cached at `arch_cache_path/{owner_repo}/`; subsequent
 PRs on the same repository reuse them directly.
 
 **AGENTS.md support**: if `AGENTS.md` exists in the repository root, its content is injected as
@@ -215,12 +215,12 @@ containing:
 - Main changed modules
 - Potential impact scope
 
-The PR summary is injected as context into R2 and R3 prompts, helping the LLM evaluate from the
+The PR summary is injected as context into RArchReview and RAgentVerify prompts, helping the LLM evaluate from the
 perspective of "PR intent" rather than looking at each hunk in isolation.
 
-### 3.5 R3 Agent Tool Set (`_build_scoped_agent_tools_with_cache`)
+### 3.5 RAgentVerify Agent Tool Set (`_build_scoped_agent_tools_with_cache`)
 
-Builds a file-system tool set for R3's ReactAgent, with all tools scoped to the clone directory:
+Builds a file-system tool set for RAgentVerify's ReactAgent, with all tools scoped to the clone directory:
 
 | Tool | Function |
 |------|----------|
@@ -240,11 +240,11 @@ The six-round analysis is the core of the review. Each round has a clear respons
 forming a progressive structure: broad scan → design doc → architect review → deep verification
 → modification-necessity analysis → merge & dedup. In parallel, **RScene** (scenario inference)
 and **RChain** (call-chain bug analysis) run alongside the main chain, with their results merged
-after R4.
+after RDedupMerge.
 
 ---
 
-### 4.1 Round 1: Hunk-Level Static Review
+### 4.1 RHunkScan: Hunk-Level Static Review
 
 **Goal**: fine-grained code quality review of each diff hunk to find concrete bugs, logic errors,
 and security issues.
@@ -293,16 +293,16 @@ from generating excessive noise.
   "title": "Short title",
   "description": "Problem description",
   "suggestion": "Fix suggestion (with code example)",
-  "source": "r1"
+  "source": "rhunk_scan"
 }
 ```
 
 ---
 
-### 4.2 Round 2a: PR Design Document Generation
+### 4.2 RPrDoc: PR Design Document Generation
 
-**Goal**: before the architect review (R2), generate a structured PR design document as input
-context for R2.
+**Goal**: before the architect review (RArchReview), generate a structured PR design document as input
+context for RArchReview.
 
 **How it works:**
 
@@ -326,17 +326,17 @@ the final review result.
 
 ---
 
-### 4.3 Round 2: Architect Design Review
+### 4.3 RArchReview: Architect Design Review
 
 **Goal**: review the entire PR from a global architectural perspective, finding design-level issues
-that R1 cannot detect.
+that RHunkScan cannot detect.
 
 **How it works:**
 
-Takes the full diff + PR design document (R2a output) + architecture document + PR summary as
+Takes the full diff + PR design document (RPrDoc output) + architecture document + PR summary as
 input, and performs a global review in a single LLM call.
 
-**11 evaluation dimensions (`_ROUND2_ARCHITECT_PROMPT_TMPL`):**
+**11 evaluation dimensions (`_RARCH_REVIEW_PROMPT_TMPL`):**
 
 1. **Module Responsibility**: is the new code placed in the right module? Is any logic scattered
    where it does not belong? Should it live in a different module?
@@ -392,9 +392,9 @@ input, and performs a global review in a single LLM call.
 
 ---
 
-### 4.4 Round 3: ReactAgent Deep Verification
+### 4.4 RAgentVerify: ReactAgent Deep Verification
 
-**Goal**: R1 and R2 can only see the diff itself. R3 uses a ReactAgent to actively explore the
+**Goal**: RHunkScan and RArchReview can only see the diff itself. RAgentVerify uses a ReactAgent to actively explore the
 repository, validate the accuracy of existing issues, and discover new problems that require
 cross-file context.
 
@@ -441,7 +441,7 @@ Context Collect output is structured JSON:
 
 #### Phase 2: Issue Extract
 
-Using the context collected in Phase 1 + existing R1/R2 issues as input, two tasks are performed:
+Using the context collected in Phase 1 + existing RHunkScan/RArchReview issues as input, two tasks are performed:
 
 **Task 1: Validate existing issues**
 - Confirm whether issues are real (eliminate false positives)
@@ -465,21 +465,21 @@ Using the context collected in Phase 1 + existing R1/R2 issues as input, two tas
   (`__or__`, `__getitem__`, `__lshift__`, etc.), verify the semantics align with mainstream
   language/shell conventions; report if it could mislead users
 
-**R3 scale controls:**
+**RAgentVerify scale controls:**
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `R3_MAX_FILES` | 20 | Maximum files processed by R3 |
+| `R3_MAX_FILES` | 20 | Maximum files processed by RAgentVerify |
 | `R3_MAX_CHUNKS_PER_FILE` | 3 | Maximum chunks per file |
 | `R3_MAX_CHUNKS_HARD` | 8 | Hard upper bound on chunks per file |
 | Agent step limit | 15 steps | Maximum tool calls per Context Collect invocation |
 
-Large files (diff exceeding `large_file_threshold`) are skipped in R3 to avoid consuming
+Large files (diff exceeding `large_file_threshold`) are skipped in RAgentVerify to avoid consuming
 excessive budget.
 
 ---
 
-### 4.5 RMod: Modification-Necessity Analysis (`_run_rmod_agent_round`)
+### 4.5 RMod: Modification-Necessity Analysis (`_rmod_run`)
 
 **Goal**: for each modified file, use a ReactAgent to judge whether the changes are architecturally
 justified — flagging unnecessary refactors, over-engineering, or changes that violate framework
@@ -489,14 +489,14 @@ conventions.
 
 1. `_rmod_collect_file_diffs` extracts per-file diffs; `_rmod_new_file_paths` identifies newly
    created files (correctly handles `--- /dev/null` → `+++ b/` ordering in unified diff format).
-2. For each file, a `ReactAgent` is launched with the same file-exploration tools as R3
+2. For each file, a `ReactAgent` is launched with the same file-exploration tools as RAgentVerify
    (`read_file_scoped`, `search_scoped`, etc.).
    The agent is given the PR design doc, arch doc,
    and framework conventions as context.
 3. The agent runs with a per-file timeout (`_RMOD_AGENT_TIMEOUT_SECS`). Files are processed in
    parallel (up to `max_workers` threads).
 4. Issues are tagged `source='rmod'` and `bug_category='design'`.
-5. Results are saved to checkpoint (`ReviewStage.RMOD`) for resume support.
+5. Results are saved to checkpoint (`ReviewStage.RMod`) for resume support.
 
 **Key implementation notes:**
 - `execute_in_sandbox` is disabled on tools before agent creation (not via private `_tools_manager`).
@@ -508,7 +508,7 @@ conventions.
 
 **Goal**: understand the public APIs modified by the PR, infer 2–4 typical end-to-end usage
 scenarios, and provide input for RChain. RScene runs **in parallel** with the main chain
-(R1→R2→R3→RMod) and does not block it.
+(RHunkScan→RArchReview→RAgentVerify→RMod) and does not block it.
 
 **How it works (two steps):**
 
@@ -528,14 +528,14 @@ each containing:
 - `edge_cases`: edge cases to check
 
 **Scale controls**:
-- Process at most `max_files_for_r3` files (shared strategy parameter with R3)
+- Process at most `max_files_for_ragent_verify` files (shared strategy parameter with RAgentVerify)
 - Only process modified files (not newly created files); new files have no historical behavior
   to infer from
 - At most 3 parallel workers (`_RSCENE_MAX_PARALLEL`)
 - Per-agent timeout of `_RSCENE_AGENT_TIMEOUT_SECS` (180s), with up to `_RSCENE_AGENT_RETRIES`
   (10) retries
 
-**Checkpoint**: scenario results are saved to `ReviewStage.RSCENE` (key: `rscene_all`); on
+**Checkpoint**: scenario results are saved to `ReviewStage.RScene` (key: `rscene_all`); on
 resume, the cached results are loaded directly.
 
 ---
@@ -572,20 +572,20 @@ completes, running in parallel with the main chain.
 
 **Checkpoint**: each scenario's result is cached independently (key:
 `rchain_scene_{idx}_{title}`); the overall result is cached as `rchain_all`
-(`ReviewStage.RCHAIN`).
+(`ReviewStage.RChain`).
 
-**Relationship with the main chain**: RChain issues **bypass R4 dedup** and are appended
+**Relationship with the main chain**: RChain issues **bypass RDedupMerge** and are appended
 directly to `all_comments` after `final_comments` (similar to RCov). This is because RChain's
-scenario-driven perspective is complementary to R1/R2/R3's diff-centric perspective; forcing
+scenario-driven perspective is complementary to RHunkScan/RArchReview/RAgentVerify's diff-centric perspective; forcing
 dedup would discard valuable scenario-level bugs.
 
 ---
 
-### 4.8 Round 4: Merge & Dedup
+### 4.8 RDedupMerge: Merge & Dedup
 
-**Goal**: merge the issue lists from R1, R2, R3, RMod, and `lint_issues` into a final,
+**Goal**: merge the issue lists from RHunkScan, RArchReview, RAgentVerify, RMod, and `lint_issues` into a final,
 deduplicated comment list. RCov and RChain issues bypass this stage and are appended directly
-after R4.
+after RDedupMerge.
 
 **How it works (three steps):**
 
@@ -609,7 +609,7 @@ after R4.
 
 ## 5. RCov: Test Coverage Check (`coverage_checker.py`)
 
-RCov runs **after** R4 (independently, not merged through dedup) and checks whether new or
+RCov runs **after** RDedupMerge (independently, not merged through dedup) and checks whether new or
 modified public symbols have adequate test coverage.
 
 ### 5.1 Three-Step Flow
@@ -648,7 +648,7 @@ level for observability.
 
 ### 5.3 Checkpoint
 
-RCov results are stored under the independent `ReviewStage.RCOV` checkpoint key (`rcov_issues`).
+RCov results are stored under the independent `ReviewStage.RCov` checkpoint key (`rcov_issues`).
 On resume, the cached results are loaded directly, skipping all LLM calls.
 
 Output metrics:
@@ -667,7 +667,7 @@ Lint analysis runs independently before the LLM review rounds and consumes no LL
 2. Run `ruff` / `flake8` on Python files, and `eslint` on JS/TS files (if installed).
 3. Filter to only lint errors that appear on diff-changed lines (pre-existing issues in unchanged
    lines are not reported).
-4. Convert results to the unified issue format (`source='lint'`) and inject into R4.
+4. Convert results to the unified issue format (`source='lint'`) and inject into RDedupMerge.
 
 Lint issues bypass LLM validation and go directly into the final result, giving them high
 precision with no hallucination risk.
@@ -682,14 +682,14 @@ precision with no hallucination risk.
   from the last completed stage without repeating finished LLM calls.
 - **Soft invalidation**: the `resume_from` parameter restarts from a specific stage without
   deleting other cached stages.
-- **Version control**: when `_REVIEW_ROUND_VERSION` is incremented, the R4 (merge & dedup) cache
+- **Version control**: when `_REVIEW_ROUND_VERSION` is incremented, the RDedupMerge (merge & dedup) cache
   is automatically invalidated, ensuring prompt changes trigger a recomputation of the final result.
 
 ### 7.2 Stage Enum (`ReviewStage`)
 
 ```
-CLONE → ARCH → SPEC → PR_SUMMARY → R1 → R2A → R2 → R3 → RMOD →
-RSCENE → RCHAIN → FINAL → RCOV → UPLOAD
+CLONE → ARCH → SPEC → PR_SUMMARY → RHunkScan → RPrDoc → RArchReview → RAgentVerify → RMod →
+RScene → RChain → RDedupMerge → RCov → UPLOAD
 ```
 
 After each stage completes, `ckpt.mark_stage_done(stage)` is called. On restart,
@@ -701,8 +701,7 @@ checkpoint keys to their owning stage. This avoids TOCTOU races in concurrent sc
 ### 7.3 Head SHA Rotation
 
 If the PR is force-pushed during review (head SHA changes), the checkpoint is automatically
-backed up and all review-round data is purged (clone, arch, and spec are retained), restarting
-from R1.
+backed up and all review-round data is purged (clone, arch, and spec are retained), restarting from RHunkScan.
 
 ---
 
@@ -744,13 +743,13 @@ Each comment body includes the following enforcement statement:
 | Constant | Default | Description |
 |----------|---------|-------------|
 | `SINGLE_CALL_CONTEXT_BUDGET` | 120000 chars | Context limit per LLM call |
-| `R1_DIFF_BUDGET` | 95000 chars | Diff content limit in R1 (25000 reserved for system prompt + arch doc) |
+| `R1_DIFF_BUDGET` | 95000 chars | Diff content limit in RHunkScan (25000 reserved for system prompt + arch doc) |
 | `TOTAL_CALL_BUDGET` | 60 calls | Total LLM call limit for the entire review session |
 | `ISSUE_DENSITY_LINE_BLOCK` | 100 lines | Block size for issue density control |
 | `ISSUE_DENSITY_MAX_PER_BLOCK` | 5 issues | Maximum issues per 100 lines |
-| `R3_MAX_FILES` | 20 | Maximum files processed by R3 |
-| `R3_MAX_CHUNKS_PER_FILE` | 3 | Maximum chunks per file in R3 |
-| `R3_MAX_CHUNKS_HARD` | 8 | Hard upper bound on chunks per file in R3 |
+| `R3_MAX_FILES` | 20 | Maximum files processed by RAgentVerify |
+| `R3_MAX_CHUNKS_PER_FILE` | 3 | Maximum chunks per file in RAgentVerify |
+| `R3_MAX_CHUNKS_HARD` | 8 | Hard upper bound on chunks per file in RAgentVerify |
 
 `BudgetManager` tracks the number of LLM calls consumed. Each round checks the remaining budget
 before calling, and skips non-critical steps when the budget is exhausted.
@@ -770,7 +769,7 @@ All rounds output issues in a unified format:
 | `title` | str | Short title (≤80 chars) |
 | `description` | str | Detailed problem description |
 | `suggestion` | str | Fix suggestion (with code example using markdown code blocks) |
-| `source` | str | `r1` / `r2` / `r3` / `rmod` / `rcov` / `lint` / `meta` |
+| `source` | str | `rhunk_scan` / `rarch_review` / `ragent_verify` / `rmod` / `rcov` / `lint` / `meta` |
 
 ---
 
@@ -779,7 +778,7 @@ All rounds output issues in a unified format:
 | Limitation | Description |
 |------------|-------------|
 | Diff truncation | Very large PRs (>120K chars) only review the first N files; truncated files are reported via a meta warning |
-| R3 file cap | On large PRs, R3 processes at most 10 files; the rest only go through R1/R2 |
+| RAgentVerify file cap | On large PRs, RAgentVerify processes at most 10 files; the rest only go through RHunkScan/RArchReview |
 | RCov clone dependency | RCov requires `clone_dir` to grep test files; in local mode without a clone, test file discovery falls back to the local repo path |
 | Dynamic references | `grep_symbol` cannot trace runtime-generated symbol names (e.g. `getattr(obj, name)`) |
 | Cross-repo dependencies | Only the current repository is analyzed; interface changes in external dependencies cannot be detected |

@@ -226,7 +226,7 @@ def _rscenario_call_chain(
         lazyllm.LOG.info('[RChain] No scenarios to review, skipping')
         return []
 
-    use_cache = ckpt.should_use_cache(ReviewStage.RCHAIN) if ckpt else True
+    use_cache = ckpt.should_use_cache(ReviewStage.RChain) if ckpt else True
     if ckpt and use_cache:
         cached_all = ckpt.get('rchain_all')
         if cached_all is not None:
@@ -278,5 +278,5 @@ def _rscenario_call_chain(
     if ckpt:
         ckpt.save('rchain_all', all_issues)
         ckpt.save('rchain_metrics', counters)
-        ckpt.mark_stage_done(ReviewStage.RCHAIN)
+        ckpt.mark_stage_done(ReviewStage.RChain)
     return all_issues

@@ -11,7 +11,7 @@ import lazyllm
 from ..client import Git
 from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
-from .rounds import _run_four_rounds, infer_usage_scenarios, _rscenario_call_chain, _post_merge_dedup
+from .rounds import _run_review_pipeline, infer_usage_scenarios, _rscenario_call_chain, _post_merge_dedup
 from .poster import _fetch_existing_pr_comments, _post_review_comments, _build_commentable_lines, _filter_commentable
 from .output import write_review_json
 from .report import build_report, write_report
@@ -291,9 +291,9 @@ def review(  # noqa: C901
         except Exception as e:
             lazyllm.LOG.warning(f'Dep analysis failed: {e}')
 
-    # ── RScene + RChain: run in parallel with _run_four_rounds ──
+    # ── RScene + RChain: run in parallel with _run_review_pipeline ──
     # RScene infers usage scenarios; RChain does call-chain + usability review.
-    # Both run concurrently with the main R1→R2→R3 chain.
+    # Both run concurrently with the main RHunkScan→RArchReview→RAgentVerify chain.
     usage_scenarios: List[Dict[str, Any]] = []
     rchain_issues: List[Dict[str, Any]] = []
 
@@ -334,7 +334,7 @@ def review(  # noqa: C901
     else:
         with _cf.ThreadPoolExecutor(max_workers=2) as _pool:
             _fut_main = _pool.submit(
-                _run_four_rounds,
+                _run_review_pipeline,
                 llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
                 clone_dir=clone_dir, existing_comments=existing_comments, language=language,
                 agent_instructions=agent_instructions, strategy=strategy,
@@ -342,18 +342,18 @@ def review(  # noqa: C901
                 owner_repo=repo, arch_cache_path=arch_cache_path,
             )
             _fut_rscene = _pool.submit(_run_rscene_rchain)
-            final_comments, r3_metrics, _round_report_data = _fut_main.result()
+            final_comments, ragent_verify_metrics, _round_report_data = _fut_main.result()
             usage_scenarios, rchain_issues = _fut_rscene.result()
         final_comments = meta_warnings + final_comments
         ckpt.save('final_comments', final_comments)
-        ckpt.mark_stage_done(ReviewStage.FINAL)
+        ckpt.mark_stage_done(ReviewStage.RDedupMerge)
 
     # run RCov test coverage check with checkpoint support
     # RCov runs after RScene so it can use inferred scenarios to check coverage
     _rcov_ran = False
     rcov_issues: List[Dict[str, Any]] = []
     _cached_rcov = ckpt.get('rcov_issues')
-    if ckpt.should_use_cache(ReviewStage.RCOV) and _cached_rcov is not None:
+    if ckpt.should_use_cache(ReviewStage.RCov) and _cached_rcov is not None:
         rcov_issues = _cached_rcov if _cached_rcov else []
         lazyllm.LOG.info(f'RCov: loaded {len(rcov_issues)} issue(s) from checkpoint')
     elif clone_dir and os.path.isdir(clone_dir):
@@ -379,7 +379,7 @@ def review(  # noqa: C901
             finally:
                 _exe.shutdown(wait=False)
             ckpt.save('rcov_issues', rcov_issues)
-            ckpt.mark_stage_done(ReviewStage.RCOV)
+            ckpt.mark_stage_done(ReviewStage.RCov)
         except _cf.TimeoutError:
             lazyllm.LOG.warning(f'RCov analysis timed out after {_rcov_timeout}s, skipping')
         except ImportError as e:
@@ -387,7 +387,7 @@ def review(  # noqa: C901
         except Exception as e:
             lazyllm.LOG.error(f'RCov analysis failed unexpectedly: {e}')
 
-    # cross-source dedup/merge: final (R1-R4) + rchain + rcov → unified list
+    # cross-source dedup/merge: final (RHunkScan-RDedupMerge) + rchain + rcov → unified list
     # Uses LLM to detect duplicates and merge complementary issues across sources.
     _cached_merged = ckpt.get('merged_comments')
     if ckpt.should_use_cache(ReviewStage.MERGE) and _cached_merged is not None:
@@ -448,17 +448,17 @@ def review(  # noqa: C901
     stats = _category_stats(all_comments)
     summary = (
         f'PR #{pr_number} "{getattr(pr, "title", "")}" — '
-        f'{n} issue(s) found across review rounds (R1–R4, RCov, lint). '
+        f'{n} issue(s) found across review rounds (RHunkScan–RDedupMerge, RCov, lint). '
         f'{posted} comment(s) posted to GitHub.'
     )
     prog_main.done(summary)
 
     metrics = {
-        'r3_mode': 'skip' if not strategy.enable_r3 else 'mixed',
-        'r3_files_chunk': r3_metrics.get('r3_files_chunk', 0),
-        'r3_files_group': r3_metrics.get('r3_files_group', 0),
-        'r3_files_skipped': r3_metrics.get('r3_files_skipped', 0),
-        'r3_chunks_total': r3_metrics.get('r3_chunks_total', 0),
+        'ragent_verify_mode': 'skip' if not strategy.enable_r3 else 'mixed',
+        'ragent_verify_files_chunk': r3_metrics.get('r3_files_chunk', 0),
+        'ragent_verify_files_group': r3_metrics.get('r3_files_group', 0),
+        'ragent_verify_files_skipped': r3_metrics.get('r3_files_skipped', 0),
+        'ragent_verify_chunks_total': r3_metrics.get('r3_chunks_total', 0),
         'truncated_diff_flag': truncated_diff,
         'truncated_hunks_flag': False,  # hunks are processed in sliding windows; per-hunk truncation is not applied
         'lint_issues_count': len(lint_issues),
@@ -496,16 +496,16 @@ def review(  # noqa: C901
             model_name=model_name,
             report_path=_report_path,
             post_to_github=post_to_github,
-            r1_issues=_round_report_data.get('r1_issues', []),
-            r2_issues=_round_report_data.get('r2_issues', []),
+            rhunk_scan_issues=_round_report_data.get('rhunk_scan_issues', []),
+            rarch_review_issues=_round_report_data.get('rarch_review_issues', []),
             rmod_issues=_round_report_data.get('rmod_issues', []),
             lint_issues=lint_issues,
             dep_issues=dep_issues,
-            r3_output=final_comments,
-            r3_discarded_keys=_round_report_data.get('r3_discarded_keys', set()),
-            r3_files_skipped=_round_report_data.get('r3_files_skipped', []),
-            r4_input=_round_report_data.get('r4_input', []),
-            r4_output=_round_report_data.get('r4_output', []),
+            ragent_verify_output=final_comments,
+            ragent_verify_discarded_keys=_round_report_data.get('ragent_verify_discarded_keys', set()),
+            ragent_verify_files_skipped=_round_report_data.get('ragent_verify_files_skipped', []),
+            rdedup_merge_input=_round_report_data.get('rdedup_merge_input', []),
+            rdedup_merge_output=_round_report_data.get('rdedup_merge_output', []),
             rchain_issues=rchain_issues,
             rcov_issues=rcov_issues,
             postmerge_input=final_comments + rchain_issues + rcov_issues,

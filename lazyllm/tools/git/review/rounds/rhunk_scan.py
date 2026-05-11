@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-# Round 1: hunk-level diff analysis.
-# Entry point: _round1_hunk_analysis
+# RHunkScan: hunk-level diff analysis.
+# Entry point: _rhunk_scan_analysis
 
 import math
 import re
@@ -31,7 +31,7 @@ from .common import (
     _extract_code_tags, _format_code_profile, _format_review_focus,
     _inject_local_agent_instructions,
 )
-from .prompt import _ROUND1_PROMPT_TMPL, _ROUND1_BATCH_PROMPT_TMPL
+from .prompt import _RHUNK_SCAN_PROMPT_TMPL, _RHUNK_SCAN_BATCH_PROMPT_TMPL
 
 _R1_LARGE_HUNK_OVERLAP = 30
 _R1_PROMPT_OVERHEAD = 28000
@@ -86,8 +86,8 @@ def _analyze_single_hunk(
         sym_notes = _lookup_relevant_symbols(annotated_content, symbol_index)
         if sym_notes:
             effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
-    prompt = _safe_format(
-        _ROUND1_PROMPT_TMPL,
+        prompt = _safe_format(
+            _RHUNK_SCAN_PROMPT_TMPL,
         lang_instruction=_language_instruction(language),
         pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
         arch_doc=effective_arch, review_spec=spec_snippet,
@@ -140,7 +140,7 @@ def _analyze_large_hunk(
             if sym_notes:
                 effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
         prompt = _safe_format(
-            _ROUND1_PROMPT_TMPL,
+            _RHUNK_SCAN_PROMPT_TMPL,
             lang_instruction=_language_instruction(language),
             pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
             arch_doc=effective_arch, review_spec=spec_snippet,
@@ -223,7 +223,7 @@ def _analyze_hunk_batch(
         for s, c, cnt in hunks
     ]
     prompt = _safe_format(
-        _ROUND1_BATCH_PROMPT_TMPL,
+        _RHUNK_SCAN_BATCH_PROMPT_TMPL,
         lang_instruction=_language_instruction(language),
         pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
         arch_doc=effective_arch, review_spec=spec_snippet,
@@ -337,7 +337,7 @@ def _r1_task_batch(
         try:
             code_tags = _extract_code_tags(llm, file_skeleton, first_hunk_content[:1500])
         except Exception as e:
-            lazyllm.LOG.warning(f'Round 1: code tag extraction failed for {path}: {e}')
+            lazyllm.LOG.warning(f'RHunkScan: code tag extraction failed for {path}: {e}')
     uncached_idxs: List[int] = []
     for idx in idxs:
         _, new_start, new_count, _ = hunks[idx]
@@ -348,7 +348,7 @@ def _r1_task_batch(
                 prog.update(f'{path}:{new_start}-{new_start + new_count - 1} (cached)')
         else:
             if cached is None and not use_cache:
-                lazyllm.LOG.warning(f'Round 1: no cache for {path}:{new_start}, re-computing')
+                lazyllm.LOG.warning(f'RHunkScan: no cache for {path}:{new_start}, re-computing')
             uncached_idxs.append(idx)
     if not uncached_idxs:
         return
@@ -362,7 +362,7 @@ def _r1_task_batch(
         )
 
 
-def _round1_hunk_analysis(
+def _rhunk_scan_analysis(
     llm: Any,
     hunks: List[Tuple[str, int, int, str]],
     arch_doc: str,
@@ -380,10 +380,10 @@ def _round1_hunk_analysis(
     all_diff = '\n'.join(h[3] for h in hunks) if hunks else ''
     spec_snippet = _lookup_relevant_rules(review_spec, all_diff, max_detail=8) if review_spec else '(not available)'
     summary_snippet = pr_summary[:600] if pr_summary else '(not available)'
-    prog = _Progress('Round 1: hunk analysis', len(hunks))
+    prog = _Progress('RHunkScan: hunk analysis', len(hunks))
     lock = threading.Lock()
     results_by_idx: Dict[int, List[Dict[str, Any]]] = {}
-    use_cache = ckpt.should_use_cache(ReviewStage.R1) if ckpt else True
+    use_cache = ckpt.should_use_cache(ReviewStage.RHunkScan) if ckpt else True
 
     file_to_idxs: Dict[str, List[int]] = {}
     for idx, (path, _, _, _) in enumerate(hunks):
@@ -406,11 +406,11 @@ def _round1_hunk_analysis(
             if exc is not None:
                 failed += 1
                 lazyllm.LOG.warning(
-                    f'Round 1 file task failed ({futures[f]}): {exc}\n'
+                    f'RHunkScan file task failed ({futures[f]}): {exc}\n'
                     + ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
                 )
         if failed > 0 and len(file_to_idxs) > 0 and failed / len(file_to_idxs) > 0.5:
-            raise RuntimeError(f'Round 1 failed on {failed}/{len(file_to_idxs)} files (>{50}%); aborting.')
+            raise RuntimeError(f'RHunkScan failed on {failed}/{len(file_to_idxs)} files (>{50}%); aborting.')
 
     all_comments = [c for i in range(len(hunks)) for c in results_by_idx.get(i, [])]
     _seen_r1: set = set()

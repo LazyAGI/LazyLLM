@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 # RMod: modification necessity analysis (ReactAgent, per-file parallel).
-# Entry point: _run_rmod_agent_round
+# Entry point: _rmod_run
 
 import os
 import threading
@@ -116,7 +116,7 @@ def _rmod_collect_file_diffs(diff_text: str) -> Dict[str, str]:
     return file_diffs
 
 
-def _run_rmod_agent_round(
+def _rmod_run(
     llm: Any,
     diff_text: str,
     arch_doc: str,

@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-# Round 4: merge and deduplicate all issues from R1, R2, R3, RMod, lint, dep_check.
-# Entry point: _round4_merge_and_deduplicate
+# RDedupMerge: merge and deduplicate all issues from RHunkScan, RArchReview, RAgentVerify, RMod, lint, dep_check.
+# Entry point: _rdedup_merge
 
 import json
 import re
@@ -15,7 +15,7 @@ from ..utils import (
 from .common import (
     _safe_format, _compress_new_issues, _compress_existing_comments,
 )
-from .prompt import _ROUND4_DEDUP_PROMPT_TMPL
+from .prompt import _RDEDUP_MERGE_PROMPT_TMPL
 
 
 def _token_overlap(a: str, b: str, n: int = 3) -> float:
@@ -92,7 +92,7 @@ def _r4_restore_dropped_high_severity(
         best_in_result = result_by_pl.get(key, 99)
         if best_in_result > _sev_order.get(sev, 2):
             lazyllm.LOG.warning(
-                f'Round 4: restoring dropped {sev} issue at '
+                f'RDedupMerge: restoring dropped {sev} issue at '
                 f'{c.get("path")}:{c.get("line")} [{c.get("bug_category")}]'
             )
             restored.append(c)
@@ -143,26 +143,26 @@ def _r4_fallback_dedup(deduped: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return result
 
 
-def _round4_merge_and_deduplicate(
+def _rdedup_merge(
     llm: Any, all_comments: List[Dict[str, Any]],
     existing_comments: Optional[List[Dict[str, Any]]] = None, language: str = 'cn',
 ) -> List[Dict[str, Any]]:
     if not all_comments:
         return []
-    prog = _Progress('Round 4: merge & deduplicate')
+    prog = _Progress('RDedupMerge: merge & deduplicate')
     valid = [c for c in all_comments if c.get('path')]
     if not valid:
         prog.done('no valid comments')
         return []
 
     deduped = _deterministic_dedup(valid)
-    lazyllm.LOG.info(f'Round 4: deterministic dedup {len(valid)} -> {len(deduped)} issues')
+    lazyllm.LOG.info(f'RDedupMerge: deterministic dedup {len(valid)} -> {len(deduped)} issues')
 
     compressed_new = _compress_new_issues(llm, deduped)
     existing_json = json.dumps(_compress_existing_comments(llm, existing_comments), ensure_ascii=False, indent=2) \
         if existing_comments else '(none)'
     prompt = _safe_format(
-        _ROUND4_DEDUP_PROMPT_TMPL,
+            _RDEDUP_MERGE_PROMPT_TMPL,
         lang_instruction=_language_instruction(language),
         new_issues_json=json.dumps(compressed_new, ensure_ascii=False, indent=2),
         existing_json=existing_json,
@@ -173,7 +173,7 @@ def _round4_merge_and_deduplicate(
     discarded_idxs = set(idx_map.keys()) - kept_idxs
     if discarded_idxs:
         lazyllm.LOG.info(
-            f'Round 4: LLM discarded {len(discarded_idxs)} issues: '
+            f'RDedupMerge: LLM discarded {len(discarded_idxs)} issues: '
             + ', '.join(
                 f'#{i} {idx_map[i].get("path", "?")}:{idx_map[i].get("line", "?")} '
                 f'[{idx_map[i].get("severity", "?")}][{idx_map[i].get("bug_category", "?")}]'

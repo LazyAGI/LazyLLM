@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-# Round 3: unified agent verification pass (context-enriched, cross-file).
-# Entry point: _round3_agent_verify
+# RAgentVerify: unified agent verification pass (context-enriched, cross-file).
+# Entry point: _ragent_verify
 
 import json
 import os
@@ -32,7 +32,7 @@ from .common import (
     _R3_SHARED_CTX_BUDGET,
 )
 from .prompt import (
-    _ROUND3_GROUP_PROMPT_TMPL, _R3_CONTEXT_COLLECT_PROMPT_TMPL, _R3_ISSUE_EXTRACT_PROMPT_TMPL,
+    _RAGENT_VERIFY_GROUP_PROMPT_TMPL, _RAGENT_CONTEXT_COLLECT_PROMPT_TMPL, _RAGENT_ISSUE_EXTRACT_PROMPT_TMPL,
 )
 
 _R3_R1_BUDGET = 8000
@@ -251,7 +251,7 @@ def _r3_build_file_context(
     language: str = 'cn', agent_instructions: str = '',
 ) -> str:
     prompt = _safe_format(
-        _R3_CONTEXT_COLLECT_PROMPT_TMPL,
+        _RAGENT_CONTEXT_COLLECT_PROMPT_TMPL,
         path=path, diff_chunk=diff_chunk[:8000],
         agent_instructions=agent_instructions or '(not available)',
         lang_instruction=_language_instruction(language),
@@ -280,7 +280,7 @@ def _r3_build_file_context(
         try:
             raw = fut.result(timeout=_R3_FILE_TIMEOUT_SECS)
         except FuturesTimeoutError:
-            raise RuntimeError(f'Round 3 context collection timed out for {path} after {_R3_FILE_TIMEOUT_SECS}s')
+            raise RuntimeError(f'RAgentVerify context collection timed out for {path} after {_R3_FILE_TIMEOUT_SECS}s')
     lazyllm.LOG.info(f'  [Agent] Done {path}')
     raw_str = raw if isinstance(raw, str) else str(raw)
     return _r3_build_rich_context(clone_dir, raw_str, path, exploration_log=exploration_log)
@@ -321,7 +321,7 @@ def _r3_extract_issues(
     skel_trimmed = _r3_trim_skeleton(file_skeleton, diff_chunk, _R3_FILE_SKELETON_MAX) if file_skeleton else ''
     shared_trimmed = _r3_trim_shared_context(shared_context, _R3_SHARED_CTX_BUDGET) if shared_context else ''
     prompt = _safe_format(
-        _R3_ISSUE_EXTRACT_PROMPT_TMPL,
+        _RAGENT_ISSUE_EXTRACT_PROMPT_TMPL,
         lang_instruction=_language_instruction(language),
         pr_summary=(pr_summary or '')[:_R3_SUMMARY_BUDGET],
         agent_instructions=agent_instructions or '(not available)',
@@ -440,7 +440,7 @@ def _r3_group_review(
     density_rule = issue_density_rule(files_block)
 
     prompt = _safe_format(
-        _ROUND3_GROUP_PROMPT_TMPL,
+        _RAGENT_VERIFY_GROUP_PROMPT_TMPL,
         lang_instruction=_language_instruction(language),
         pr_summary=pr_summary[:600] if pr_summary else '(not available)',
         agent_instructions=agent_instructions[:400] if agent_instructions else '',
@@ -462,7 +462,7 @@ def _r3_group_review(
                 if norm:
                     items.append(norm)
     except Exception as e:
-        lazyllm.LOG.warning(f'Round 3 group review parse failed for {group_paths}: {e}')
+        lazyllm.LOG.warning(f'RAgentVerify group review parse failed for {group_paths}: {e}')
 
     if ckpt:
         ckpt.save(group_key, items)
@@ -523,7 +523,7 @@ def _r3_unit_agent_verify(
     except Exception as e:
         if 'timed out' in str(e):
             raise
-        lazyllm.LOG.warning(f'Round 3 unit context failed for {files}: {e}')
+        lazyllm.LOG.warning(f'RAgentVerify unit context failed for {files}: {e}')
         symbol_context = ''
 
     skeleton = _extract_file_skeleton(clone_dir, anchor) if anchor else ''
@@ -533,7 +533,7 @@ def _r3_unit_agent_verify(
     all_chunks = _split_file_diff_into_chunks(unit_diff, diff_cap)
     if len(all_chunks) > R3_MAX_CHUNKS_HARD:
         lazyllm.LOG.warning(
-            f'Round 3: {anchor or files} has {len(all_chunks)} chunks, '
+            f'RAgentVerify: {anchor or files} has {len(all_chunks)} chunks, '
             f'capping at {R3_MAX_CHUNKS_HARD} (R3_MAX_CHUNKS_HARD)'
         )
         all_chunks = all_chunks[:R3_MAX_CHUNKS_HARD]
@@ -638,7 +638,7 @@ def _r3_dispatch_units(
                     lazyllm.LOG.warning(f'[R3] Unit future raised: {exc}')
 
 
-def _round3_agent_verify(
+def _ragent_verify(
     llm: Any,
     round1: List[Dict[str, Any]],
     round2: List[Dict[str, Any]],
@@ -661,18 +661,18 @@ def _round3_agent_verify(
     }
 
     if strategy is not None and not strategy.enable_r3:
-        lazyllm.LOG.warning('Round 3 agent: skipped by strategy (enable_r3=False)')
+        lazyllm.LOG.warning('RAgentVerify: skipped by strategy (enable_r3=False)')
         return [], set(), r3_metrics
 
     if clone_dir is None or not os.path.isdir(clone_dir):
-        lazyllm.LOG.warning('Round 3 agent: clone_dir not available, skipping agent verify')
+        lazyllm.LOG.warning('RAgentVerify: clone_dir not available, skipping agent verify')
         return [], set(), r3_metrics
 
     max_files = strategy.max_files_for_r3 if strategy else 20
     large_threshold = strategy.large_file_threshold if strategy else 200
     max_chunks = strategy.max_chunks_per_file if strategy else 3
 
-    use_cache = ckpt.should_use_cache(ReviewStage.R3) if ckpt else True
+    use_cache = ckpt.should_use_cache(ReviewStage.RAgentVerify) if ckpt else True
     shared_context, file_diffs, r1_by_file = _r3_prepare_context(
         diff_text, round1, round2, ckpt, use_cache,
     )
@@ -682,14 +682,14 @@ def _round3_agent_verify(
     r3_metrics['r3_skipped_files'] = skipped_files
     if skipped_files:
         lazyllm.LOG.warning(
-            f'Round 3: {len(skipped_files)} files skipped due to max_files_for_r3={max_files}: '
+            f'RAgentVerify: {len(skipped_files)} files skipped due to max_files_for_r3={max_files}: '
             + ', '.join(skipped_files[:5])
         )
 
     symbol_cache: Dict[str, Any] = {}
     tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
 
-    prog = _Progress('Round 3: unified agent verify', len(units))
+    prog = _Progress('RAgentVerify: unified agent verify', len(units))
     all_results: List[Dict[str, Any]] = []
     all_discarded: set = set()
 

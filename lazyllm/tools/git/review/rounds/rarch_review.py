@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-# Round 2a (PR design document generation) + Round 2 (architect design review).
-# Entry point: _round2_generate_pr_doc, _round2_architect_review
+# RArchReview: RPrDoc (PR design document generation) + RArchReview (architect design review).
+# Entry point: _rpr_doc_generate, _rarch_review
 
 import re
 from typing import Any, Dict, List, Tuple
@@ -17,7 +17,7 @@ from ..constants import (
     issue_density_rule,
 )
 from .common import _safe_format
-from .prompt import _ROUND2_DOC_PROMPT_TMPL, _ROUND2_ARCHITECT_PROMPT_TMPL
+from .prompt import _RPR_DOC_PROMPT_TMPL, _RARCH_REVIEW_PROMPT_TMPL
 
 
 def _split_diff_into_file_batches(
@@ -51,7 +51,7 @@ def _split_diff_into_file_batches(
     return batches
 
 
-def _round2_generate_pr_doc(
+def _rpr_doc_generate(
     llm: Any,
     diff_text: str,
     arch_doc: str,
@@ -59,7 +59,7 @@ def _round2_generate_pr_doc(
     language: str = 'cn',
     agent_instructions: str = '',
 ) -> Tuple[str, List[str]]:
-    prog = _Progress('Round 2a: generating PR design document')
+    prog = _Progress('RPrDoc: generating PR design document')
     budget = SINGLE_CALL_CONTEXT_BUDGET - 22000
     arch_use = clip_text(arch_doc or '', 12000) if arch_doc else '(not available)'
 
@@ -71,7 +71,7 @@ def _round2_generate_pr_doc(
     doc_parts: List[str] = []
     for batch_diff, batch_paths in batches:
         prompt = _safe_format(
-            _ROUND2_DOC_PROMPT_TMPL,
+            _RPR_DOC_PROMPT_TMPL,
             lang_instruction=_language_instruction(language),
             arch_doc=arch_use,
             pr_summary=pr_summary[:800] if pr_summary else '(not available)',
@@ -86,12 +86,12 @@ def _round2_generate_pr_doc(
     return result, []  # no files dropped
 
 
-def _round2_architect_review(
+def _rarch_review(
     llm: Any, diff_text: str, arch_doc: str,
     pr_summary: str = '', language: str = 'cn', agent_instructions: str = '',
     pr_design_doc: str = '', review_spec: str = '',
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
-    prog = _Progress('Round 2: architect design review')
+    prog = _Progress('RArchReview: architect design review')
     budget = SINGLE_CALL_CONTEXT_BUDGET - 38000
     arch_use = clip_text(arch_doc or '', 42000) if arch_doc else '(not available)'
 
@@ -104,7 +104,7 @@ def _round2_architect_review(
     for batch_diff, _batch_paths in batches:
         annotated_diff = _annotate_full_diff(batch_diff)
         prompt = _safe_format(
-            _ROUND2_ARCHITECT_PROMPT_TMPL,
+            _RARCH_REVIEW_PROMPT_TMPL,
             lang_instruction=_language_instruction(language),
             agent_instructions=agent_instructions or '(not available)',
             arch_doc=arch_use, review_spec=review_spec[:4000] if review_spec else '(not available)',

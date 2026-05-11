@@ -65,7 +65,7 @@ class ReviewReport:
     rchain_scenarios_ok: int
     rchain_scenarios_timeout: int
     rchain_scenarios_error: int
-    r3_files_skipped: List[str]
+    ragent_verify_files_skipped: List[str]
 
 
 # ---------------------------------------------------------------------------
@@ -85,14 +85,14 @@ def _short_problem(issue: Dict[str, Any], max_len: int = 120) -> str:
     return p[:max_len] + '…' if len(p) > max_len else p
 
 
-def collect_r3_discarded(
-    r1_issues: List[Dict[str, Any]],
-    r2_issues: List[Dict[str, Any]],
+def collect_ragent_verify_discarded(
+    rhunk_scan_issues: List[Dict[str, Any]],
+    rarch_review_issues: List[Dict[str, Any]],
     discarded_keys: set,
 ) -> List[DiscardedIssue]:
-    """Compute which R1/R2 issues were discarded by R3 via set-diff on discarded_keys."""
+    """Compute which RHunkScan/RArchReview issues were discarded by RAgentVerify via set-diff on discarded_keys."""
     result: List[DiscardedIssue] = []
-    for issue in list(r1_issues) + list(r2_issues):
+    for issue in list(rhunk_scan_issues) + list(rarch_review_issues):
         path = issue.get('path', '')
         line = issue.get('line')
         cat = issue.get('bug_category', '')
@@ -100,36 +100,36 @@ def collect_r3_discarded(
         key_plc = f'{path}:{line}:{cat}'
         if key_pl in discarded_keys or key_plc in discarded_keys:
             result.append(DiscardedIssue(
-                stage='R3 (Agent 验证)',
+                stage='RAgentVerify (Agent 验证)',
                 path=path,
                 line=line,
                 severity=issue.get('severity', 'normal'),
                 category=cat,
-                source=issue.get('source', 'r1/r2'),
+                source=issue.get('source', 'rhunk_scan/rarch_review'),
                 problem=_short_problem(issue),
-                reason='R3 Agent 验证未通过（误报或逻辑正确）',
+                reason='RAgentVerify Agent 验证未通过（误报或逻辑正确）',
             ))
     return result
 
 
-def collect_r4_discarded(
-    r4_input: List[Dict[str, Any]],
-    r4_output: List[Dict[str, Any]],
+def collect_rdedup_merge_discarded(
+    rdedup_merge_input: List[Dict[str, Any]],
+    rdedup_merge_output: List[Dict[str, Any]],
 ) -> List[DiscardedIssue]:
-    """Compute R4 discards by set-diff on (path, line, category) keys."""
-    output_keys = {_issue_key(i) for i in r4_output}
+    """Compute RDedupMerge discards by set-diff on (path, line, category) keys."""
+    output_keys = {_issue_key(i) for i in rdedup_merge_output}
     result: List[DiscardedIssue] = []
-    for issue in r4_input:
+    for issue in rdedup_merge_input:
         if _issue_key(issue) not in output_keys:
             result.append(DiscardedIssue(
-                stage='R4 (合并去重)',
+                stage='RDedupMerge (合并去重)',
                 path=issue.get('path', ''),
                 line=issue.get('line'),
                 severity=issue.get('severity', 'normal'),
                 category=issue.get('bug_category', ''),
                 source=issue.get('source', ''),
                 problem=_short_problem(issue),
-                reason='R4 LLM 去重（重复或低质量）',
+                reason='RDedupMerge LLM 去重（重复或低质量）',
             ))
     return result
 
@@ -279,10 +279,10 @@ def render_markdown(report: ReviewReport) -> str:
         f'timeout={report.rchain_scenarios_timeout}, '
         f'error={report.rchain_scenarios_error}'
     )
-    if report.r3_files_skipped:
-        lines.append(f'- **R3 跳过文件**: {", ".join(f"`{f}`" for f in report.r3_files_skipped)}')
+    if report.ragent_verify_files_skipped:
+        lines.append(f'- **RAgentVerify 跳过文件**: {", ".join(f"`{f}`" for f in report.ragent_verify_files_skipped)}')
     else:
-        lines.append('- **R3 跳过文件**: 无')
+        lines.append('- **RAgentVerify 跳过文件**: 无')
     lines += ['', '---', '']
 
     # ── Summary ──
@@ -335,16 +335,16 @@ def build_report(
     report_path: str,
     post_to_github: bool,
     # per-stage raw data
-    r1_issues: List[Dict[str, Any]],
-    r2_issues: List[Dict[str, Any]],
+    rhunk_scan_issues: List[Dict[str, Any]],
+    rarch_review_issues: List[Dict[str, Any]],
     rmod_issues: List[Dict[str, Any]],
     lint_issues: List[Dict[str, Any]],
     dep_issues: List[Dict[str, Any]],
-    r3_output: List[Dict[str, Any]],
-    r3_discarded_keys: set,
-    r3_files_skipped: List[str],
-    r4_input: List[Dict[str, Any]],
-    r4_output: List[Dict[str, Any]],
+    ragent_verify_output: List[Dict[str, Any]],
+    ragent_verify_discarded_keys: set,
+    ragent_verify_files_skipped: List[str],
+    rdedup_merge_input: List[Dict[str, Any]],
+    rdedup_merge_output: List[Dict[str, Any]],
     rchain_issues: List[Dict[str, Any]],
     rcov_issues: List[Dict[str, Any]],
     postmerge_input: List[Dict[str, Any]],
@@ -360,31 +360,31 @@ def build_report(
 
     # ── Collect discarded issues ──
     discarded: List[DiscardedIssue] = []
-    discarded += collect_r3_discarded(r1_issues, r2_issues, r3_discarded_keys)
-    discarded += collect_r4_discarded(r4_input, r4_output)
+    discarded += collect_ragent_verify_discarded(rhunk_scan_issues, rarch_review_issues, ragent_verify_discarded_keys)
+    discarded += collect_rdedup_merge_discarded(rdedup_merge_input, rdedup_merge_output)
     discarded += collect_postmerge_discarded(postmerge_input, postmerge_output)
 
     # ── Build stage stats ──
-    r3_input_count = len(r1_issues) + len(r2_issues)
-    r3_discarded_count = len([d for d in discarded if d.stage.startswith('R3')])
-    r4_input_count = len(r4_input)
-    r4_discarded_count = len([d for d in discarded if d.stage.startswith('R4')])
+    ragent_verify_input_count = len(rhunk_scan_issues) + len(rarch_review_issues)
+    ragent_verify_discarded_count = len([d for d in discarded if d.stage.startswith('RAgentVerify')])
+    rdedup_merge_input_count = len(rdedup_merge_input)
+    rdedup_merge_discarded_count = len([d for d in discarded if d.stage.startswith('RDedupMerge')])
     pm_input_count = len(postmerge_input)
     pm_discarded_count = len([d for d in discarded if d.stage.startswith('Post')])
 
     stages: List[StageStats] = [
-        StageStats('R1 (Hunk 分析)', len(r1_issues), 0, len(r1_issues)),
-        StageStats('R2 (架构审查)', len(r2_issues), 0, len(r2_issues)),
+        StageStats('RHunkScan (Hunk 分析)', len(rhunk_scan_issues), 0, len(rhunk_scan_issues)),
+        StageStats('RArchReview (架构审查)', len(rarch_review_issues), 0, len(rarch_review_issues)),
         StageStats('RMod (改动必要性)', len(rmod_issues), 0, len(rmod_issues)),
         StageStats('Lint 静态分析', len(lint_issues), 0, len(lint_issues)),
         StageStats('Dep 依赖检查', len(dep_issues), 0, len(dep_issues)),
         StageStats(
-            f'R3 (Agent 验证)  [{r3_input_count} 输入]',
-            len(r3_output), r3_discarded_count, len(r3_output),
+            f'RAgentVerify (Agent 验证)  [{ragent_verify_input_count} 输入]',
+            len(ragent_verify_output), ragent_verify_discarded_count, len(ragent_verify_output),
         ),
         StageStats(
-            f'R4 (合并去重)  [{r4_input_count} 输入]',
-            r4_input_count, r4_discarded_count, len(r4_output),
+            f'RDedupMerge (合并去重)  [{rdedup_merge_input_count} 输入]',
+            rdedup_merge_input_count, rdedup_merge_discarded_count, len(rdedup_merge_output),
         ),
         StageStats('RChain (调用链)', len(rchain_issues), 0, len(rchain_issues)),
         StageStats('RCov (覆盖率)', len(rcov_issues), 0, len(rcov_issues)),
@@ -414,5 +414,5 @@ def build_report(
         rchain_scenarios_ok=rchain_metrics.get('ok', 0),
         rchain_scenarios_timeout=rchain_metrics.get('timeout', 0),
         rchain_scenarios_error=rchain_metrics.get('error', 0),
-        r3_files_skipped=r3_files_skipped,
+        ragent_verify_files_skipped=ragent_verify_files_skipped,
     )

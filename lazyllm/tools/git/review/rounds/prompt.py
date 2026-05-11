@@ -222,7 +222,7 @@ Rules for review_focus:
 - Tailor each item to the SPECIFIC classes/functions visible in the skeleton and diff
 ''' + _JSON_OBJ_OUTPUT_INSTRUCTION
 
-_ROUND1_PROMPT_TMPL = _R1_COMMON_HEADER + '''
+_RHUNK_SCAN_PROMPT_TMPL = _R1_COMMON_HEADER + '''
 
 ## Current File Context
 The following is the content of `{path}` for reference. Lines are numbered — use these numbers when reporting issues.
@@ -255,7 +255,7 @@ If no issues: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
 </diff>
 '''
 
-_ROUND1_BATCH_PROMPT_TMPL = _R1_COMMON_HEADER + '''
+_RHUNK_SCAN_BATCH_PROMPT_TMPL = _R1_COMMON_HEADER + '''
 
 ## Current File Context
 The following is the content of `{path}` for reference. Lines are numbered — use these numbers when reporting issues.
@@ -285,9 +285,9 @@ If no issues: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
 {hunks_content}
 '''
 
-# ── R3 prompts ────────────────────────────────────────────────────────────────
+# ── RAgentVerify prompts ──────────────────────────────────────────────────────
 
-_ROUND3_GROUP_PROMPT_TMPL = '''\
+_RAGENT_VERIFY_GROUP_PROMPT_TMPL = '''\
 You are a senior code reviewer performing a second-pass context-enriched analysis on a GROUP of related files.
 {lang_instruction}
 
@@ -342,7 +342,7 @@ handles exceptions internally.
 5. {density_rule}
 '''
 
-_R3_CONTEXT_COLLECT_PROMPT_TMPL = '''\
+_RAGENT_CONTEXT_COLLECT_PROMPT_TMPL = '''\
 You are a code analysis assistant. Your ONLY task is to explore the repository and \
 identify files/symbols relevant to the diff below. Do NOT produce review comments or judgments.
 
@@ -443,7 +443,7 @@ Keep total output concise. At most 5 related_files, 3 framework_notes, and 5 sib
 {lang_instruction}
 '''
 
-_R3_ISSUE_EXTRACT_PROMPT_TMPL = '''\
+_RAGENT_ISSUE_EXTRACT_PROMPT_TMPL = '''\
 You are a senior code reviewer performing a unified verification pass.
 {lang_instruction}
 
@@ -575,9 +575,9 @@ If no issues found: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
 8. {density_rule}
 '''
 
-# ── R2 prompts ────────────────────────────────────────────────────────────────
+# ── RArchReview prompts ───────────────────────────────────────────────────────
 
-_ROUND2_DOC_PROMPT_TMPL = '''\
+_RPR_DOC_PROMPT_TMPL = '''\
 Based on the following information, generate a complete PR design document.
 {lang_instruction}
 
@@ -642,7 +642,7 @@ Notes:
 - Output plain text with the section headers above. No extra markdown.
 '''
 
-_ROUND2_ARCHITECT_PROMPT_TMPL = '''\
+_RARCH_REVIEW_PROMPT_TMPL = '''\
 You are a principal software architect performing a holistic design review.
 {lang_instruction}
 
@@ -1047,7 +1047,7 @@ Output a JSON array where each item has "idx" (same as input) and "summary" (one
 {items_json}
 '''
 
-_ROUND4_DEDUP_PROMPT_TMPL = '''\
+_RDEDUP_MERGE_PROMPT_TMPL = '''\
 You are a senior code reviewer performing final consolidation of review findings.
 {lang_instruction}
 
