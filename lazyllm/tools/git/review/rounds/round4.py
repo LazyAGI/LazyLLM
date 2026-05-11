@@ -66,10 +66,42 @@ def _deterministic_dedup(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
+def _r4_restore_dropped_high_severity(
+    deduped: List[Dict[str, Any]],
+    result: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    '''Ensure no critical/medium issue is silently dropped by the LLM dedup step.
+
+    For every critical or medium issue in `deduped`, check whether the result
+    already contains an issue at the same (path, line) with equal or higher
+    severity. If not, restore the original issue from `deduped`.
+    '''
+    _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
+    result_by_pl: Dict[tuple, int] = {}
+    for c in result:
+        key = (c.get('path', ''), int(c.get('line') or 0))
+        cur = result_by_pl.get(key, 99)
+        result_by_pl[key] = min(cur, _sev_order.get(c.get('severity', 'normal'), 2))
+
+    restored: List[Dict[str, Any]] = []
+    for c in deduped:
+        sev = c.get('severity', 'normal')
+        if sev not in ('critical', 'medium'):
+            continue
+        key = (c.get('path', ''), int(c.get('line') or 0))
+        best_in_result = result_by_pl.get(key, 99)
+        if best_in_result > _sev_order.get(sev, 2):
+            lazyllm.LOG.warning(
+                f'Round 4: restoring dropped {sev} issue at '
+                f'{c.get("path")}:{c.get("line")} [{c.get("bug_category")}]'
+            )
+            restored.append(c)
+    return result + restored
+
+
 def _r4_build_result_from_llm(
     items: Any, idx_map: Dict[int, Dict[str, Any]],
 ) -> tuple:
-    '''Parse LLM dedup output into result list and kept index set.'''
     result: List[Dict[str, Any]] = []
     kept_idxs: set = set()
     for item in (items if isinstance(items, list) else []):
@@ -150,5 +182,7 @@ def _round4_merge_and_deduplicate(
         )
     if not result:
         result = _r4_fallback_dedup(deduped)
+    # Safety net: restore any critical/medium issue the LLM silently dropped
+    result = _r4_restore_dropped_high_severity(deduped, result)
     prog.done(f'{len(result)} final issues')
     return result

@@ -227,8 +227,8 @@ def review(  # noqa: C901
         if not diff_res.get('success'):
             raise RuntimeError(f'Failed to get PR #{pr_number} diff: {diff_res.get("message", "unknown")}')
         diff_text = diff_res.get('diff', '')
-        if max_diff_chars and len(diff_text) > max_diff_chars:
-            diff_text, truncated_diff = _truncate_diff_at_file_boundary(diff_text, max_diff_chars)
+        # Never truncate diff_text — each round handles oversized content internally
+        # via sliding windows, per-file batching, or skeleton extraction.
         ckpt.save('diff_text', diff_text)
         if head_sha:
             ckpt.save('head_sha', head_sha)
@@ -239,25 +239,11 @@ def review(  # noqa: C901
     prog_main.update(f'diff parsed: {len(hunks)} hunks')
 
     # build diff stats and decide review strategy
-    diff_stats = _compute_diff_stats(diff_text, hunks, truncated_diff, False)
+    diff_stats = _compute_diff_stats(diff_text, hunks, False, False)
     strategy = _decide_review_strategy(diff_stats)
 
-    # build meta warning issues for truncation
+    # no truncation meta warnings — diff is never truncated at the runner level
     meta_warnings: List[Dict[str, Any]] = []
-    if truncated_diff:
-        meta_warnings.append({
-            'type': 'meta',
-            'severity': 'normal',
-            'bug_category': 'maintainability',
-            'path': '',
-            'line': 0,
-            'problem': (
-                f'Review may be incomplete: diff exceeded {max_diff_chars} chars and was truncated '
-                f'at a file boundary. Files beyond the limit were skipped entirely.'
-            ),
-            'suggestion': 'Consider increasing max_diff_chars or splitting the PR.',
-            'source': 'meta',
-        })
 
     llm = _get_default_llm() if llm is None else llm
     llm = _ensure_non_streaming_llm(llm)

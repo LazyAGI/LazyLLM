@@ -91,19 +91,25 @@ def _rchain_run_single_scenario(
                 return cached.get('issues') or []
 
     call_chain = scenario.get('call_chain', [])
-    relevant_files = list(file_diffs.keys())
+
+    # Use relevant_diff_files from the scenario if available; fall back to all diff files.
+    # This scopes the diff to only the files involved in this scenario's call chain,
+    # avoiding context overflow from unrelated files.
+    scenario_relevant = scenario.get('relevant_diff_files') or []
+    if scenario_relevant:
+        relevant_files = [f for f in scenario_relevant if f in file_diffs]
+        if not relevant_files:
+            # Fallback: scenario listed files not in diff — use all diff files
+            relevant_files = list(file_diffs.keys())
+    else:
+        relevant_files = list(file_diffs.keys())
 
     combined_diff = '\n'.join(file_diffs[f] for f in relevant_files if f in file_diffs)
     arch_snippet = arch_doc[:4000] if arch_doc else '(not available)'
 
     diff_cap = SINGLE_CALL_CONTEXT_BUDGET - _RCHAIN_FIXED_OVERHEAD - len(arch_snippet)
     all_chunks = _split_file_diff_into_chunks(combined_diff, diff_cap)
-    if len(all_chunks) > R3_MAX_CHUNKS_HARD:
-        lazyllm.LOG.warning(
-            f'  [RChain] Scenario "{title}" has {len(all_chunks)} chunks, '
-            f'capping at {R3_MAX_CHUNKS_HARD}'
-        )
-        all_chunks = all_chunks[:R3_MAX_CHUNKS_HARD]
+    # No hard cap on chunks — process all of them to avoid missing issues
 
     all_issues: List[Dict[str, Any]] = []
     _timeout_occurred = False

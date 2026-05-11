@@ -286,7 +286,7 @@ def _r3_build_file_context(
     return _r3_build_rich_context(clone_dir, raw_str, path, exploration_log=exploration_log)
 
 
-def _r3_parse_item(item: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Optional[int]]]:
+def _r3_parse_item(item: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Optional[int], bool]]:
     if not isinstance(item, dict) or item.get('problem') is None:
         return None
     if not item.get('path'):
@@ -299,7 +299,8 @@ def _r3_parse_item(item: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Optio
         r1_idx = int(r1_idx) if r1_idx is not None else None
     except (TypeError, ValueError):
         r1_idx = None
-    return normalized, r1_idx
+    is_discard = bool(item.get('discard')) and r1_idx is not None
+    return normalized, r1_idx, is_discard
 
 
 def _r3_extract_issues(
@@ -336,17 +337,23 @@ def _r3_extract_issues(
     items = _safe_llm_call(llm, prompt)
     result: List[Dict[str, Any]] = []
     kept_r1_idxs: set = set()
+    explicitly_discarded_idxs: set = set()
     for item in (items if isinstance(items, list) else []):
         parsed = _r3_parse_item(item)
         if parsed is None:
             continue
-        entry, r1_idx = parsed
+        entry, r1_idx, is_discard = parsed
         if r1_idx is not None:
+            if is_discard:
+                explicitly_discarded_idxs.add(r1_idx)
+                continue  # discarded issues are not added to result
             kept_r1_idxs.add(r1_idx)
         result.append(entry)
+    # Only issues explicitly marked discard:true enter disc_keys.
+    # Issues the agent simply didn't mention are NOT discarded — they pass through.
     discarded_keys = {
         f'{c.get("path", path)}:{c.get("line")}:{c.get("bug_category", "")}'
-        for i, c in enumerate(r1_issues) if i not in kept_r1_idxs
+        for i, c in enumerate(r1_issues) if i in explicitly_discarded_idxs
     }
     return result, discarded_keys
 

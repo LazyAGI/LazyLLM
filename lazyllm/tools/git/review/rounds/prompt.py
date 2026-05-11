@@ -472,8 +472,22 @@ You are a senior code reviewer performing a unified verification pass.
 The following issues were found in earlier rounds with limited context. For each one, decide:
 - KEEP: valid issue (you may improve the description). Include it in output with "r1_idx" field set.
 - MODIFY: partially correct — fix the problem/suggestion and include with "r1_idx" field set.
-- DISCARD: invalid (e.g. misunderstood framework/library behavior, incorrect assumption about types or \
-initialization, or the project already follows this pattern elsewhere). Do NOT include in output.
+- DISCARD: confirmed invalid. Include it in output with "r1_idx" field set AND "discard": true.
+
+DEFAULT TO KEEP. Only DISCARD when you can point to specific evidence that the issue is factually wrong:
+  - The code already handles this case (cite the exact line that handles it)
+  - The assumption about types/initialization is demonstrably incorrect (explain why)
+  - The issue targets a line that was NOT changed in this PR and has no relation to the diff
+
+DO NOT DISCARD because:
+  - The description could be improved → use MODIFY instead
+  - You found a better way to describe the same root cause → use MODIFY with r1_idx
+  - It is a design preference without a concrete runtime failure
+  - You are not 100% certain → default to KEEP
+
+IMPORTANT: If you independently discover an issue that is essentially the same as a previous
+issue (same root cause, same location), set "r1_idx" to link them rather than creating a
+separate new entry. This prevents duplicate reporting.
 
 {round1_json}
 
@@ -544,14 +558,15 @@ __all__ lists, decorator @register, and getattr() calls reference symbols by str
 (e.g. "classes inheriting from XBase are auto-registered") that covers this symbol?
   If ANY of the above apply, the symbol is NOT orphaned — do not report it.
 
-For EVERY issue in the output (kept/modified previous + new), output a JSON object with:
+For EVERY issue in the output (kept/modified/discarded previous + new), output a JSON object with:
 - "path": file path (must be one of: {all_paths})
 - "line": integer — the RIGHT-SIDE (new-file) line number from the annotated diff above
 - "severity": "critical" | "medium" | "normal"
 - "bug_category": one of logic|type|safety|exception|performance|concurrency|design|style|maintainability
 - "problem": clear description of the issue
 - "suggestion": how to fix it (wrap code snippets with markdown code fences)
-- "r1_idx": integer index from the previous issues list above (only for kept/modified issues; omit for new)
+- "r1_idx": integer index from the previous issues list above (required for kept/modified/discarded issues; omit for new)
+- "discard": true — ONLY include this field when explicitly discarding a previous issue (r1_idx must also be set)
 
 ''' + _JSON_OUTPUT_INSTRUCTION + '''
 If no issues found: use <<<JSON_START>>>\n[]\n<<<JSON_END>>>
@@ -930,6 +945,7 @@ Output a JSON array. Each element must have:
 - "entry_point": top-level entry symbol name
 - "call_chain": list of internal call chain steps (e.g. ["DocServer.add_docs()", "_DocManager._insert_docs()"])
 - "edge_cases": list of edge case strings to check
+- "relevant_diff_files": list of file paths from the diff that are directly involved in this scenario's call chain (subset of the modified files shown above; used to scope the RChain analysis)
 
 ''' + JSON_OUTPUT_INSTRUCTION
 
@@ -1002,7 +1018,13 @@ Output a JSON array of issues. Each issue must have:
 - "line": line number (integer, must reference a line in the diff of that file)
 - "severity": "critical" | "medium" | "normal"
 - "bug_category": one of logic|type|safety|exception|performance|concurrency|design|maintainability
-  (Task A bugs: use logic/concurrency/safety/type; Task B usability: use design/exception)
+  (Task A bugs → logic/safety/exception/concurrency; Task B usability → design/maintainability)
+- "problem": clear description of the bug or usability issue
+- "suggestion": how to fix it
+
+IMPORTANT: "path" must be a file that appears in the diff. If the root cause is in a file NOT
+in the diff (e.g. a caller that was not modified), report the issue at the call site in the diff
+that triggers it, and explain the downstream root cause in the "problem" field.gs: use logic/concurrency/safety/type; Task B usability: use design/exception)
 - "scenario": the scenario title that triggered this issue (use the exact title from "## Usage Scenario" above)
 - "problem": clear description of the issue — if the root cause is in a callee outside the diff,
   describe it here (e.g. "callee foo() at bar.py:123 does not handle None, causing crash at this call site")
@@ -1045,6 +1067,9 @@ so r3 > r1 priority only resolves residual conflicts where both sources independ
 1. Remove exact or near-duplicate new issues (keep the one with highest severity or most detail; record its idx)
    - When a r3 issue and a r1 issue describe the same location (same path+line), prefer the r3 version \
 (it has more cross-file context); discard the r1 duplicate.
+   - HARD RULE: Never discard a "critical" severity issue unless another issue in this list covers the \
+EXACT SAME root cause at the same location with equal or higher severity. A severity downgrade \
+(e.g. critical→normal) is NOT a valid reason to discard — keep both if they describe different aspects.
 2. Merge new issues that describe the same root cause at the same location (keep one idx)
 3. Remove any new issue whose problem is already covered by an existing PR comment \
    (match by same path+line or same core problem)

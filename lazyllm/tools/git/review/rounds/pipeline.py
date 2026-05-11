@@ -19,6 +19,44 @@ from .round4 import _round4_merge_and_deduplicate
 from .rmod import _run_rmod_agent_round
 
 
+def _r1_dedup_and_filter(
+    r1_issues: List[Dict[str, Any]],
+    discarded_prev_keys: set,
+) -> List[Dict[str, Any]]:
+    '''Filter R1 issues using R3 disc_keys, then deduplicate within each group.
+
+    Groups issues by (path, line, bug_category). For each group:
+    - If the group key is in disc_keys → the whole group was explicitly discarded by R3, skip it.
+    - Otherwise → keep the group, but merge near-identical descriptions (n-gram >= 0.85).
+
+    This prevents a single disc_key from silently dropping multiple distinct issues that
+    happen to share the same path:line:category.
+    '''
+    from .round4 import _token_overlap
+
+    groups: Dict[tuple, List[Dict[str, Any]]] = _dd(list)
+    for c in r1_issues:
+        key = (c.get('path', ''), c.get('line'), c.get('bug_category', ''))
+        groups[key].append(c)
+
+    result: List[Dict[str, Any]] = []
+    for key, group in groups.items():
+        pl  = f'{key[0]}:{key[1]}'
+        plc = f'{pl}:{key[2]}'
+        if pl in discarded_prev_keys or plc in discarded_prev_keys:
+            # Entire group explicitly discarded by R3 — skip
+            continue
+        # Deduplicate within the group: keep issues whose problem text is not
+        # near-identical (>= 0.85 n-gram overlap) to an already-kept issue.
+        kept: List[Dict[str, Any]] = []
+        for c in group:
+            prob = c.get('problem', '')
+            if not any(_token_overlap(prob, k.get('problem', '')) >= 0.85 for k in kept):
+                kept.append(c)
+        result.extend(kept)
+    return result
+
+
 def _build_pr_file_summary(hunks: List[Tuple[str, int, int, str]], max_chars: int = 2000) -> str:
     added: Dict[str, int] = _dd(int)
     removed: Dict[str, int] = _dd(int)
@@ -135,21 +173,10 @@ def _run_four_rounds(  # noqa: C901
     if pr_design_doc is None:
         if not use_r2a_cache:
             lazyllm.LOG.warning('Round 2a: no cache found, re-computing')
-        pr_design_doc, r2a_dropped = _round2_generate_pr_doc(
+        pr_design_doc, _r2a_dropped = _round2_generate_pr_doc(
             llm, diff_text, arch_doc, pr_summary=pr_summary,
             language=language, agent_instructions=agent_instructions,
         )
-        if r2a_dropped:
-            r2_meta_warnings.append({
-                'type': 'meta', 'severity': 'normal', 'bug_category': 'maintainability',
-                'path': '', 'line': None,
-                'problem': (
-                    f'R2a skipped {len(r2a_dropped)} file(s) due to context budget limit '
-                    f'(design doc may be incomplete): ' + ', '.join(r2a_dropped)
-                ),
-                'suggestion': 'Consider splitting the PR or increasing the context budget.',
-                'source': 'meta',
-            })
         ckpt.save('pr_design_doc', pr_design_doc)
         ckpt.mark_stage_done(ReviewStage.R2A)
     else:
@@ -163,22 +190,11 @@ def _run_four_rounds(  # noqa: C901
     if r2 is None:
         if not use_r2_cache:
             lazyllm.LOG.warning('Round 2: no cache found, re-computing')
-        r2, r2_dropped = _round2_architect_review(
+        r2, _r2_dropped = _round2_architect_review(
             llm, diff_text, arch_doc, pr_summary=pr_summary,
             language=language, agent_instructions=agent_instructions,
             pr_design_doc=pr_design_doc, review_spec=review_spec,
         )
-        if r2_dropped:
-            r2_meta_warnings.append({
-                'type': 'meta', 'severity': 'normal', 'bug_category': 'maintainability',
-                'path': '', 'line': None,
-                'problem': (
-                    f'R2 architect review skipped {len(r2_dropped)} file(s) due to context budget: '
-                    + ', '.join(r2_dropped)
-                ),
-                'suggestion': 'Consider splitting the PR or increasing the context budget.',
-                'source': 'meta',
-            })
         ckpt.save('r2', r2)
         ckpt.mark_stage_done(ReviewStage.R2)
     else:
@@ -237,12 +253,7 @@ def _run_four_rounds(  # noqa: C901
         def _tag(issues: List[Dict[str, Any]], src: str) -> List[Dict[str, Any]]:
             return [{**c, 'source': src} for c in issues]
 
-        def _r1_is_discarded(c: Dict[str, Any]) -> bool:
-            pl = f'{c.get("path")}:{c.get("line")}'
-            plc = f'{pl}:{c.get("bug_category", "")}'
-            return pl in discarded_prev_keys or plc in discarded_prev_keys
-
-        r1_passthrough = [c for c in r1 if not _r1_is_discarded(c)]
+        r1_passthrough = _r1_dedup_and_filter(r1, discarded_prev_keys)
         lint_tagged = _tag(lint_issues or [], 'lint')
         dep_tagged = _tag(dep_issues or [], 'dep_check')
         r4_input_list = (
@@ -256,15 +267,8 @@ def _run_four_rounds(  # noqa: C901
         )
         report_data['r4_input'] = r4_input_list
         report_data['r4_output'] = list(final)
-        if r2_meta_warnings:
-            final = r2_meta_warnings + final
         ckpt.save('final', final)
         ckpt.save('_review_round_version', ckpt._REVIEW_ROUND_VERSION)
-        if r2_meta_warnings:
-            r3_metrics['r2_dropped_files'] = sum(
-                len(w.get('problem', '').split(': ')[-1].split(', '))
-                for w in r2_meta_warnings
-            )
         ckpt.mark_stage_done(ReviewStage.FINAL)
     else:
         _Progress('Round 4: merge & deduplicate').done(f'loaded from checkpoint ({len(final)} issues)')
