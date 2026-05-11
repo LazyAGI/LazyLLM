@@ -302,7 +302,19 @@ def _llm_call_with_retry(llm: Any, prompt: str, parse_json: bool = True) -> Any:
             return [parsed] if isinstance(parsed, dict) else []
         # JSON parse failed — could be a truncated response; retry if budget allows
         if delay is None:
-            lazyllm.LOG.warning(f'JSON parse/repair failed after all retries. Raw snippet: {raw_response[:300]}')
+            import traceback as _tb
+            caller_frames = _tb.format_stack()
+            # Summarise the 3 most-relevant frames (skip this file's own frames)
+            caller_summary = ''.join(
+                f for f in caller_frames[-6:-1]
+                if 'utils.py' not in f
+            )[:400]
+            lazyllm.LOG.warning(
+                f'JSON parse/repair failed after all retries.\n'
+                f'  Prompt head: {prompt[:200]!r}\n'
+                f'  Raw snippet: {raw_response[:300]!r}\n'
+                f'  Caller:\n{caller_summary}'
+            )
             return []
         lazyllm.LOG.warning(
             f'JSON parse failed (attempt {attempt + 1}/{len(delays) - 1}), retrying. '

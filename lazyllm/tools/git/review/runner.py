@@ -300,11 +300,15 @@ def review(  # noqa: C901
     def _run_rscene_rchain() -> tuple:
         if not clone_dir or not os.path.isdir(clone_dir):
             return [], []
+        # Shared symbol_cache between RScene and RChain: symbols explored by RScene are
+        # immediately available to RChain, avoiding redundant LLM summarisation calls.
+        shared_symbol_cache: Dict[str, Any] = {}
         try:
             scenarios = infer_usage_scenarios(
                 llm, diff_text, arch_doc, pr_summary, clone_dir,
                 ckpt=ckpt, language=language, strategy=strategy,
                 owner_repo=repo, arch_cache_path=arch_cache_path,
+                symbol_cache=shared_symbol_cache,
             )
         except Exception as e:
             lazyllm.LOG.warning(f'RScene failed: {e}')
@@ -316,6 +320,7 @@ def review(  # noqa: C901
                 llm, scenarios, diff_text, arch_doc, pr_summary, clone_dir,
                 ckpt=ckpt, language=language, strategy=strategy,
                 owner_repo=repo, arch_cache_path=arch_cache_path,
+                symbol_cache=shared_symbol_cache,
             )
         except Exception as e:
             lazyllm.LOG.warning(f'RChain failed: {e}')

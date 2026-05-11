@@ -13,6 +13,7 @@ from ..utils import (
 )
 from .common import _safe_format, _compress_new_issues
 from .prompt import _POST_MERGE_DEDUP_PROMPT_TMPL
+from .rdedup_merge import _r4_restore_dropped_high_severity
 
 
 def _post_merge_dedup(
@@ -84,6 +85,9 @@ def _post_merge_dedup(
     if not result:
         lazyllm.LOG.warning('Post-merge dedup: LLM returned empty, falling back to full input')
         result = all_in
+
+    # Safety net: restore any critical/medium issue the LLM silently dropped.
+    result = _r4_restore_dropped_high_severity(all_in, result)
 
     prog.done(f'{len(result)} issues after cross-source dedup')
     return result

@@ -463,7 +463,7 @@ Context Collect 的输出是结构化 JSON：
 **工作原理（三步）：**
 
 1. **确定性去重**：
-   - 相同 `(path, line, bug_category)` 的 issue 只保留 severity 最高的一条
+   - 相同 `(path, line, bug_category)` 的 issue 先按 severity / 来源优先级排序，再用 n-gram 语义相似度（阈值 0.85）判断是否为重复描述：**仅当 `problem` 文本高度相似时才合并**，语义不同的 issue 即使 category 和行号相同也全部保留，交由后续 LLM 步骤做最终判断
    - 已在 `existing_comments` 中存在的 issue 直接丢弃（避免重复评论）
 
 2. **LLM 语义合并**：

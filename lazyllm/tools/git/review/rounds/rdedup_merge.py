@@ -51,30 +51,43 @@ def _merge_similar_issues(group: List[Dict[str, Any]], threshold: float) -> List
 
 
 def _deterministic_dedup(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    '''Remove only near-identical duplicates.
+
+    Groups issues by (path, line, bug_category) and within each group uses
+    n-gram overlap to merge issues whose *problem* text is semantically the
+    same (threshold=0.85).  Issues with distinct problem descriptions are kept
+    even when they share the same category and line, so that genuinely
+    different findings are not silently dropped before the LLM dedup step.
+    '''
     _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
     _src_order = {'r3': 0, 'r1': 1, 'r2': 2, 'rmod': 2, 'lint': 3, 'dep_check': 3}
     groups: Dict[tuple, List[Dict[str, Any]]] = {}
     for c in issues:
         key = (c.get('path', ''), int(c.get('line') or 0), c.get('bug_category', ''))
         groups.setdefault(key, []).append(c)
-    return [
-        min(group, key=lambda c: (
+    result: List[Dict[str, Any]] = []
+    for group in groups.values():
+        # Sort so the highest-severity / most-trusted source comes first
+        ordered = sorted(group, key=lambda c: (
             _sev_order.get(c.get('severity', 'normal'), 2),
             _src_order.get(c.get('source', ''), 9),
         ))
-        for group in groups.values()
-    ]
+        result.extend(_merge_similar_issues(ordered, threshold=0.85))
+    return result
 
 
 def _r4_restore_dropped_high_severity(
     deduped: List[Dict[str, Any]],
     result: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    '''Ensure no critical/medium issue is silently dropped by the LLM dedup step.
+    '''Ensure no issue is silently dropped by the LLM dedup step.
 
-    For every critical or medium issue in `deduped`, check whether the result
-    already contains an issue at the same (path, line) with equal or higher
-    severity. If not, restore the original issue from `deduped`.
+    Two tiers of restoration:
+    1. critical/medium — restored whenever the result has no issue of equal or higher
+       severity at the same (path, line).
+    2. normal — restored only when the result has *no issue at all* at that (path, line),
+       i.e. the position was completely omitted rather than merged into another issue.
+       This avoids reversing intentional dedup while still catching silent drops.
     '''
     _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
     result_by_pl: Dict[tuple, int] = {}
@@ -86,16 +99,23 @@ def _r4_restore_dropped_high_severity(
     restored: List[Dict[str, Any]] = []
     for c in deduped:
         sev = c.get('severity', 'normal')
-        if sev not in ('critical', 'medium'):
-            continue
         key = (c.get('path', ''), int(c.get('line') or 0))
         best_in_result = result_by_pl.get(key, 99)
-        if best_in_result > _sev_order.get(sev, 2):
-            lazyllm.LOG.warning(
-                f'RDedupMerge: restoring dropped {sev} issue at '
-                f'{c.get("path")}:{c.get("line")} [{c.get("bug_category")}]'
-            )
-            restored.append(c)
+        if sev in ('critical', 'medium'):
+            if best_in_result > _sev_order.get(sev, 2):
+                lazyllm.LOG.warning(
+                    f'RDedupMerge: restoring dropped {sev} issue at '
+                    f'{c.get("path")}:{c.get("line")} [{c.get("bug_category")}]'
+                )
+                restored.append(c)
+        else:
+            # normal: only restore if the position is completely absent from result
+            if best_in_result == 99:
+                lazyllm.LOG.info(
+                    f'RDedupMerge: restoring orphaned normal issue at '
+                    f'{c.get("path")}:{c.get("line")} [{c.get("bug_category")}]'
+                )
+                restored.append(c)
     return result + restored
 
 

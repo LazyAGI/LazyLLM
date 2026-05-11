@@ -590,7 +590,7 @@ after RDedupMerge.
 **How it works (three steps):**
 
 1. **Deterministic dedup**:
-   - For the same `(path, line, bug_category)`, keep only the highest-severity issue
+   - For the same `(path, line, bug_category)`, issues are first sorted by severity / source priority, then evaluated for semantic similarity using n-gram overlap (threshold 0.85): **only issues whose `problem` text is near-identical are merged**; issues with distinct descriptions are all retained even when they share the same category and line, and are passed to the LLM step for final judgement
    - Issues already present in `existing_comments` are discarded (avoid duplicate comments)
 
 2. **LLM semantic merge**:

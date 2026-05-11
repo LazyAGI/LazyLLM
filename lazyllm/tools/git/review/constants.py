@@ -20,8 +20,12 @@ TOTAL_CALL_BUDGET = 60
 # R3 throttle limits (agent verification round)
 R3_MAX_FILES = 20
 R3_MAX_CHUNKS_PER_FILE = 3
-# Hard upper bound on chunks per file regardless of strategy (prevents runaway LLM calls)
+# Hard upper bound on chunks per file regardless of strategy (prevents runaway LLM calls).
+# Only triggers when *both* chunk count > R3_MAX_CHUNKS_HARD *and* effective diff lines >
+# R3_MAX_CHUNKS_HARD_LINES. Files with many small hunks (e.g. lots of 2-line tweaks) are
+# processed in full even when chunk count exceeds the hard limit.
 R3_MAX_CHUNKS_HARD = 8
+R3_MAX_CHUNKS_HARD_LINES = 800
 
 # R3 unit diff budget: max combined diff chars per review unit (anchor + absorbed small files)
 R3_UNIT_DIFF_BUDGET = 40000
@@ -30,6 +34,7 @@ R3_UNIT_DIFF_BUDGET = 40000
 R2_MAX_FILES = R3_MAX_FILES
 R2_MAX_CHUNKS_PER_FILE = R3_MAX_CHUNKS_PER_FILE
 R2_MAX_CHUNKS_HARD = R3_MAX_CHUNKS_HARD
+R2_MAX_CHUNKS_HARD_LINES = R3_MAX_CHUNKS_HARD_LINES
 R2_UNIT_DIFF_BUDGET = R3_UNIT_DIFF_BUDGET
 
 # R1 window limits: split large hunk lists into windows to avoid truncation

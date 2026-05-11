@@ -22,7 +22,8 @@ from ..pre_analysis import (
 )
 from ..constants import (
     SINGLE_CALL_CONTEXT_BUDGET,
-    R3_MAX_CHUNKS_HARD, compress_diff_for_agent_heuristic, issue_density_rule,
+    R3_MAX_CHUNKS_HARD, R3_MAX_CHUNKS_HARD_LINES,
+    compress_diff_for_agent_heuristic, issue_density_rule, effective_diff_line_count,
 )
 from ..checkpoint import ReviewStage
 from lazyllm.tools.agent import ReactAgent
@@ -312,9 +313,10 @@ def _r3_extract_issues(
 ) -> Tuple[List[Dict[str, Any]], set]:
     arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=_R3_ARCH_BUDGET)
     r1_indexed = [{**c, 'r1_idx': i, 'problem': (c.get('problem') or '')[:120]} for i, c in enumerate(r1_issues)]
-    r1_text = json.dumps(r1_indexed, ensure_ascii=False, indent=2) if r1_indexed else '(none)'
-    if len(r1_text) > _R3_R1_BUDGET:
-        r1_text = r1_text[:_R3_R1_BUDGET] + '\n...(truncated)'
+    if r1_indexed:
+        r1_text = _trim_r1_by_severity(r1_indexed, _R3_R1_BUDGET)
+    else:
+        r1_text = '(none)'
     paths_str = ', '.join(f'`{p}`' for p in (all_paths or [path]))
     spec_snippet = _lookup_relevant_rules(review_spec, diff_chunk, max_detail=10) if review_spec else '(not available)'
     sym_trimmed = _r3_trim_rich_context(symbol_context, _R3_SYMBOL_CONTEXT_MAX) if symbol_context else ''
@@ -380,16 +382,34 @@ def _filter_symbol_context_for_chunk(symbol_context: str, diff_chunk: str) -> st
         else _r3_trim_rich_context(symbol_context, _R3_SYMBOL_CONTEXT_MAX)
 
 
-def _trim_r1_for_group(all_r1: List[Dict[str, Any]], budget: int = 4000) -> str:
+_R1_SEV_ORDER = {'critical': 0, 'medium': 1, 'normal': 2}
+
+
+def _trim_r1_by_severity(issues: List[Dict[str, Any]], budget: int) -> str:
+    '''Trim an R1 issue list to fit within *budget* chars, keeping high-severity issues first.
+
+    Unlike a plain string slice, this preserves valid JSON and prioritises critical/medium
+    issues over normal ones when the budget is tight.
+    '''
+    sorted_issues = sorted(issues, key=lambda x: _R1_SEV_ORDER.get(x.get('severity', 'normal'), 2))
     trimmed: List[Dict[str, Any]] = []
     chars = 0
-    for item in all_r1:
+    for item in sorted_issues:
         s = json.dumps(item, ensure_ascii=False)
         if chars + len(s) > budget:
             break
         trimmed.append(item)
         chars += len(s)
+    if len(trimmed) < len(sorted_issues):
+        lazyllm.LOG.info(
+            f'[R3] R1 issue list trimmed: {len(sorted_issues)} -> {len(trimmed)} '
+            f'(budget={budget} chars)'
+        )
     return json.dumps(trimmed, ensure_ascii=False, indent=2) if trimmed else '[]'
+
+
+def _trim_r1_for_group(all_r1: List[Dict[str, Any]], budget: int = 4000) -> str:
+    return _trim_r1_by_severity(all_r1, budget)
 
 
 def _r3_group_review(
@@ -532,11 +552,27 @@ def _r3_unit_agent_verify(
     diff_cap = _r3_diff_budget(symbol_context, skeleton)
     all_chunks = _split_file_diff_into_chunks(unit_diff, diff_cap)
     if len(all_chunks) > R3_MAX_CHUNKS_HARD:
-        lazyllm.LOG.warning(
-            f'RAgentVerify: {anchor or files} has {len(all_chunks)} chunks, '
-            f'capping at {R3_MAX_CHUNKS_HARD} (R3_MAX_CHUNKS_HARD)'
-        )
-        all_chunks = all_chunks[:R3_MAX_CHUNKS_HARD]
+        total_eff_lines = effective_diff_line_count(unit_diff)
+        if total_eff_lines <= R3_MAX_CHUNKS_HARD_LINES:
+            # Many small hunks but low total line count — process all chunks without capping.
+            lazyllm.LOG.info(
+                f'RAgentVerify: {anchor or files} has {len(all_chunks)} chunks '
+                f'but only {total_eff_lines} effective lines — processing all chunks'
+            )
+        else:
+            # High chunk count *and* high line count: cap and compress the overflow into one
+            # skeleton chunk so the tail of the diff is not silently dropped.
+            lazyllm.LOG.warning(
+                f'RAgentVerify: {anchor or files} has {len(all_chunks)} chunks '
+                f'and {total_eff_lines} effective lines, '
+                f'capping at {R3_MAX_CHUNKS_HARD} + overflow(compressed)'
+            )
+            overflow_diff = '\n'.join(chunk for _, chunk in all_chunks[R3_MAX_CHUNKS_HARD:])
+            compressed = compress_diff_for_agent_heuristic(overflow_diff, diff_cap)
+            if compressed.strip():
+                all_chunks = all_chunks[:R3_MAX_CHUNKS_HARD] + [('overflow(compressed)', compressed)]
+            else:
+                all_chunks = all_chunks[:R3_MAX_CHUNKS_HARD]
     r1_issues = [c for f in files for c in r1_by_file.get(f, [])]
     items: List[Dict[str, Any]] = []
     discarded: set = set()

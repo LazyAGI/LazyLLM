@@ -1,4 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import functools
 import json
 import os
 import re
@@ -399,6 +400,7 @@ def _build_public_api_catalog(llm: Any, clone_dir: str, cache_path: Optional[str
     return result
 
 
+@functools.lru_cache(maxsize=4)
 def _parse_arch_sections(arch_doc: str) -> List[Tuple[str, str]]:
     sections: List[Tuple[str, str]] = []
     current_title = ''

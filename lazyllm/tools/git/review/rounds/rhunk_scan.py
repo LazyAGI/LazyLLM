@@ -86,21 +86,22 @@ def _analyze_single_hunk(
         sym_notes = _lookup_relevant_symbols(annotated_content, symbol_index)
         if sym_notes:
             effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
-        prompt = _safe_format(
-            _RHUNK_SCAN_PROMPT_TMPL,
-            lang_instruction=_language_instruction(language),
-            pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
-            arch_doc=effective_arch, review_spec=spec_snippet,
-            file_skeleton=file_skeleton or '(not available)',
-            code_profile=code_profile, review_focus_block=review_focus_block,
-            file_context=file_context or '(not available)',
-            path=path, start=new_start, end=new_start + actual_count, content=annotated_content,
-            density_rule=issue_density_rule(annotated_content),
-        )
+    prompt = _safe_format(
+        _RHUNK_SCAN_PROMPT_TMPL,
+        lang_instruction=_language_instruction(language),
+        pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
+        arch_doc=effective_arch, review_spec=spec_snippet,
+        file_skeleton=file_skeleton or '(not available)',
+        code_profile=code_profile, review_focus_block=review_focus_block,
+        file_context=file_context or '(not available)',
+        path=path, start=new_start, end=new_start + actual_count, content=annotated_content,
+        density_rule=issue_density_rule(annotated_content),
+    )
     items = _safe_llm_call(llm, prompt)
     effective_end = max(new_start + actual_count, context_end_line or 0)
     return [n for item in items if (n := _normalize_comment_item(
         item, new_start=new_start, end_line=effective_end, default_path=path,
+        demote_on_out_of_range=True,
     )) is not None]
 
 
@@ -154,6 +155,7 @@ def _analyze_large_hunk(
         for item in items:
             n = _normalize_comment_item(
                 item, new_start=win_start, end_line=win_start + win_count, default_path=path,
+                demote_on_out_of_range=True,
             )
             if n is None:
                 continue
@@ -179,6 +181,7 @@ def _assign_batch_item(
         effective_end = max(new_start + new_count, context_end_line or 0)
         normalized = _normalize_comment_item(
             item, new_start=new_start, end_line=effective_end, default_path=path,
+            demote_on_out_of_range=True,
         )
         if normalized is not None:
             return new_start, normalized

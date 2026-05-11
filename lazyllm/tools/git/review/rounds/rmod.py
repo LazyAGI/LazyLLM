@@ -140,18 +140,23 @@ def _rmod_run(
 
     lazyllm.LOG.info(f'  [RMod] Analyzing {len(file_diffs)} modified file(s) in parallel')
 
+    # symbol_cache is shared across all per-file workers so that symbols referenced by
+    # multiple files (e.g. a shared base class) are only fetched and summarised once.
+    # Individual dict read/write operations are GIL-protected, and the TOCTOU race is
+    # benign here because the same key always maps to the same deterministic value.
+    symbol_cache: Dict[str, Any] = {}
+    shared_tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
+    for tool in shared_tools:
+        if hasattr(tool, 'execute_in_sandbox'):
+            tool.execute_in_sandbox = False
+
     all_results: List[Dict[str, Any]] = []
     lock = threading.Lock()
 
     def _run_file(file_path: str, file_diff: str) -> None:
-        symbol_cache: Dict[str, Any] = {}
-        tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
-        for tool in tools:
-            if hasattr(tool, 'execute_in_sandbox'):
-                tool.execute_in_sandbox = False
         issues = _rmod_run_single_file(
             llm, file_path, file_diff, arch_doc, pr_design_doc, pr_summary,
-            clone_dir, language, agent_instructions, tools,
+            clone_dir, language, agent_instructions, shared_tools,
         )
         with lock:
             all_results.extend(issues)

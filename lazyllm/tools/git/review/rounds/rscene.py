@@ -155,6 +155,7 @@ def infer_usage_scenarios(
     strategy: Optional[Any] = None,
     owner_repo: str = '',
     arch_cache_path: Optional[str] = None,
+    symbol_cache: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     '''RScene: infer typical usage scenarios for modified public APIs.
     Returns a list of scenario dicts (title, description, api_sequence, call_chain, edge_cases, ...).
@@ -179,7 +180,8 @@ def infer_usage_scenarios(
         lazyllm.LOG.info(f'[RScene] Skipped {len(skipped)} files (over budget)')
 
     prog = _Progress('RScene: inferring usage scenarios', len(units))
-    symbol_cache: Dict[str, Any] = {}
+    if symbol_cache is None:
+        symbol_cache = {}
     tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
 
     all_scenarios: List[Dict[str, Any]] = []

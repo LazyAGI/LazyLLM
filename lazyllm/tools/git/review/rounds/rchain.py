@@ -220,6 +220,7 @@ def _rscenario_call_chain(
     strategy: Optional[Any] = None,
     owner_repo: str = '',
     arch_cache_path: Optional[str] = None,
+    symbol_cache: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     '''RChain: scenario-driven call chain review producing bug + usability issues.'''
     if not usage_scenarios:
@@ -240,7 +241,8 @@ def _rscenario_call_chain(
         return []
 
     prog = _Progress('RChain: call chain review', len(usage_scenarios))
-    symbol_cache: Dict[str, Any] = {}
+    if symbol_cache is None:
+        symbol_cache = {}
     tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
 
     all_issues: List[Dict[str, Any]] = []
