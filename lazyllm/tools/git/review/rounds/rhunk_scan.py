@@ -88,15 +88,15 @@ def _analyze_single_hunk(
             effective_arch = f'{arch_snippet}\n\nKey utilities in this diff:\n{sym_notes}'
         prompt = _safe_format(
             _RHUNK_SCAN_PROMPT_TMPL,
-        lang_instruction=_language_instruction(language),
-        pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
-        arch_doc=effective_arch, review_spec=spec_snippet,
-        file_skeleton=file_skeleton or '(not available)',
-        code_profile=code_profile, review_focus_block=review_focus_block,
-        file_context=file_context or '(not available)',
-        path=path, start=new_start, end=new_start + actual_count, content=annotated_content,
-        density_rule=issue_density_rule(annotated_content),
-    )
+            lang_instruction=_language_instruction(language),
+            pr_summary=summary_snippet, agent_instructions=agent_instructions or '(not available)',
+            arch_doc=effective_arch, review_spec=spec_snippet,
+            file_skeleton=file_skeleton or '(not available)',
+            code_profile=code_profile, review_focus_block=review_focus_block,
+            file_context=file_context or '(not available)',
+            path=path, start=new_start, end=new_start + actual_count, content=annotated_content,
+            density_rule=issue_density_rule(annotated_content),
+        )
     items = _safe_llm_call(llm, prompt)
     effective_end = max(new_start + actual_count, context_end_line or 0)
     return [n for item in items if (n := _normalize_comment_item(

@@ -16,7 +16,7 @@ from ..utils import (
     _extract_json_text, _parse_json_with_repair,
 )
 from ..pre_analysis import _build_scoped_agent_tools_with_cache
-from ..constants import SINGLE_CALL_CONTEXT_BUDGET, R3_MAX_CHUNKS_HARD
+from ..constants import SINGLE_CALL_CONTEXT_BUDGET
 from ..checkpoint import ReviewStage
 from lazyllm.tools.agent import ReactAgent
 from .common import _safe_format, _make_traced_tool, _collect_all_file_diffs, _split_file_diff_into_chunks
@@ -66,7 +66,7 @@ def _rchain_dedup_issues(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return list(seen.values())
 
 
-def _rchain_run_single_scenario(
+def _rchain_run_single_scenario(  # noqa: C901
     llm: Any,
     scenario: Dict[str, Any],
     scene_idx: int,

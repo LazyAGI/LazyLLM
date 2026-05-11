@@ -945,7 +945,8 @@ Output a JSON array. Each element must have:
 - "entry_point": top-level entry symbol name
 - "call_chain": list of internal call chain steps (e.g. ["DocServer.add_docs()", "_DocManager._insert_docs()"])
 - "edge_cases": list of edge case strings to check
-- "relevant_diff_files": list of file paths from the diff that are directly involved in this scenario's call chain (subset of the modified files shown above; used to scope the RChain analysis)
+- "relevant_diff_files": list of file paths from the diff that are directly involved in this
+  scenario's call chain (subset of the modified files shown above; used to scope the RChain analysis)
 
 ''' + JSON_OUTPUT_INSTRUCTION
 
@@ -1024,7 +1025,7 @@ Output a JSON array of issues. Each issue must have:
 
 IMPORTANT: "path" must be a file that appears in the diff. If the root cause is in a file NOT
 in the diff (e.g. a caller that was not modified), report the issue at the call site in the diff
-that triggers it, and explain the downstream root cause in the "problem" field.gs: use logic/concurrency/safety/type; Task B usability: use design/exception)
+that triggers it, and explain the downstream root cause in the "problem" field.
 - "scenario": the scenario title that triggered this issue (use the exact title from "## Usage Scenario" above)
 - "problem": clear description of the issue — if the root cause is in a callee outside the diff,
   describe it here (e.g. "callee foo() at bar.py:123 does not handle None, causing crash at this call site")

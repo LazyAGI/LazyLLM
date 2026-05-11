@@ -41,7 +41,7 @@ def _r1_dedup_and_filter(
 
     result: List[Dict[str, Any]] = []
     for key, group in groups.items():
-        pl  = f'{key[0]}:{key[1]}'
+        pl = f'{key[0]}:{key[1]}'
         plc = f'{pl}:{key[2]}'
         if pl in discarded_prev_keys or plc in discarded_prev_keys:
             # Entire group explicitly discarded by R3 — skip
@@ -164,8 +164,6 @@ def _run_review_pipeline(  # noqa: C901
     rhunk_scan = rhunk_scan_all
     ckpt.mark_stage_done(ReviewStage.RHunkScan)
     report_data['rhunk_scan_issues'] = list(rhunk_scan)
-
-    rarch_review_meta_warnings: List[Dict[str, Any]] = []
 
     # ── RPrDoc: PR design document ──
     use_rpr_doc_cache = ckpt.should_use_cache(ReviewStage.RPrDoc)

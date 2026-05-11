@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 @dataclasses.dataclass
 class StageStats:
-    """Statistics for a single review stage."""
+    '''Statistics for a single review stage.'''
     name: str           # human-readable stage name
     produced: int       # issues produced by this stage
     discarded: int      # issues discarded (0 if stage is a source, not a filter)
@@ -23,7 +23,7 @@ class StageStats:
 
 @dataclasses.dataclass
 class DiscardedIssue:
-    """A single issue that was discarded, with its reason."""
+    '''A single issue that was discarded, with its reason.'''
     stage: str          # which stage discarded it
     path: str
     line: Optional[int]
@@ -36,7 +36,7 @@ class DiscardedIssue:
 
 @dataclasses.dataclass
 class ReviewReport:
-    """Full report data collected across all review stages."""
+    '''Full report data collected across all review stages.'''
     # meta
     pr_identifier: str          # PR number or local branch name
     repo: str
@@ -90,7 +90,7 @@ def collect_ragent_verify_discarded(
     rarch_review_issues: List[Dict[str, Any]],
     discarded_keys: set,
 ) -> List[DiscardedIssue]:
-    """Compute which RHunkScan/RArchReview issues were discarded by RAgentVerify via set-diff on discarded_keys."""
+    '''Compute which RHunkScan/RArchReview issues were discarded by RAgentVerify via set-diff on discarded_keys.'''
     result: List[DiscardedIssue] = []
     for issue in list(rhunk_scan_issues) + list(rarch_review_issues):
         path = issue.get('path', '')
@@ -116,7 +116,7 @@ def collect_rdedup_merge_discarded(
     rdedup_merge_input: List[Dict[str, Any]],
     rdedup_merge_output: List[Dict[str, Any]],
 ) -> List[DiscardedIssue]:
-    """Compute RDedupMerge discards by set-diff on (path, line, category) keys."""
+    '''Compute RDedupMerge discards by set-diff on (path, line, category) keys.'''
     output_keys = {_issue_key(i) for i in rdedup_merge_output}
     result: List[DiscardedIssue] = []
     for issue in rdedup_merge_input:
@@ -138,7 +138,7 @@ def collect_postmerge_discarded(
     merge_input: List[Dict[str, Any]],
     merge_output: List[Dict[str, Any]],
 ) -> List[DiscardedIssue]:
-    """Compute post-merge dedup discards by set-diff."""
+    '''Compute post-merge dedup discards by set-diff.'''
     output_keys = {_issue_key(i) for i in merge_output}
     result: List[DiscardedIssue] = []
     for issue in merge_input:
@@ -311,7 +311,7 @@ def render_markdown(report: ReviewReport) -> str:
 # ---------------------------------------------------------------------------
 
 def write_report(report: ReviewReport, path: Optional[str] = None) -> str:
-    """Render and write the Markdown report. Returns the path written."""
+    '''Render and write the Markdown report. Returns the path written.'''
     out_path = path or report.report_path
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     content = render_markdown(report)

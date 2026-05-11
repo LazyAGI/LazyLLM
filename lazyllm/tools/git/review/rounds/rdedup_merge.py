@@ -162,7 +162,7 @@ def _rdedup_merge(
     existing_json = json.dumps(_compress_existing_comments(llm, existing_comments), ensure_ascii=False, indent=2) \
         if existing_comments else '(none)'
     prompt = _safe_format(
-            _RDEDUP_MERGE_PROMPT_TMPL,
+        _RDEDUP_MERGE_PROMPT_TMPL,
         lang_instruction=_language_instruction(language),
         new_issues_json=json.dumps(compressed_new, ensure_ascii=False, indent=2),
         existing_json=existing_json,

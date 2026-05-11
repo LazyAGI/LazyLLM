@@ -5,15 +5,13 @@
 import re
 from typing import Any, Dict, List, Tuple
 
-import lazyllm
-
 from ..utils import (
     _Progress, _language_instruction, _safe_llm_call, _safe_llm_call_text,
     _annotate_full_diff, _normalize_comment_item,
 )
 from ..constants import (
     SINGLE_CALL_CONTEXT_BUDGET,
-    max_issues_for_diff, cap_issues_by_severity, clip_text, clip_diff_by_hunk_budget,
+    max_issues_for_diff, cap_issues_by_severity, clip_text,
     issue_density_rule,
 )
 from .common import _safe_format
@@ -69,7 +67,7 @@ def _rpr_doc_generate(
         batches = _split_diff_into_file_batches(diff_text, budget)
 
     doc_parts: List[str] = []
-    for batch_diff, batch_paths in batches:
+    for batch_diff, _batch_paths in batches:
         prompt = _safe_format(
             _RPR_DOC_PROMPT_TMPL,
             lang_instruction=_language_instruction(language),
