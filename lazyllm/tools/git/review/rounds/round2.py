@@ -2,7 +2,7 @@
 # Round 2a (PR design document generation) + Round 2 (architect design review).
 # Entry point: _round2_generate_pr_doc, _round2_architect_review
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import lazyllm
 

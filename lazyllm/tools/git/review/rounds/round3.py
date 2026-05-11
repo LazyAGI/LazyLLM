@@ -552,6 +552,85 @@ def _r3_unit_agent_verify(
     all_discarded.update(discarded)
 
 
+def _r3_run_unit(
+    llm: Any, unit: Dict[str, Any],
+    r1_by_file: Dict[str, List[Dict[str, Any]]],
+    shared_context: str, arch_doc: str, pr_summary: str,
+    clone_dir: str, symbol_cache: Dict[str, Any], tools: Any,
+    language: str, ckpt: Optional[Any], use_cache: bool,
+    agent_instructions: str, max_chunks: int,
+    review_spec: str, agents_index: Optional[Dict[str, str]],
+    all_results: List[Dict[str, Any]], all_discarded: set,
+    r3_metrics: Dict[str, int], lock: threading.Lock,
+    prog: Any,
+) -> None:
+    '''Run a single R3 unit and merge results into shared lists under lock.'''
+    unit_results: List[Dict[str, Any]] = []
+    unit_discarded: set = set()
+    try:
+        _r3_unit_agent_verify(
+            llm, unit, r1_by_file, shared_context, arch_doc, pr_summary,
+            clone_dir, symbol_cache, tools, language, ckpt, unit_results, unit_discarded,
+            use_cache=use_cache, agent_instructions=agent_instructions,
+            max_chunks=max_chunks, review_spec=review_spec, agents_index=agents_index,
+        )
+    except Exception as exc:
+        lazyllm.LOG.warning(f'[R3] Unit {unit.get("anchor") or unit.get("files")} failed: {exc}')
+    with lock:
+        all_results.extend(unit_results)
+        all_discarded.update(unit_discarded)
+        if unit['anchor']:
+            r3_metrics['r3_files_chunk'] += 1
+        else:
+            r3_metrics['r3_files_group'] += len(unit['files'])
+    prog.update(
+        f'{unit["anchor"]} [anchor+{len(unit["files"]) - 1} related]'
+        if unit['anchor']
+        else f'group {unit["files"]} [{len(unit["files"])} files]'
+    )
+
+
+def _r3_prepare_context(
+    diff_text: str, round1: List[Dict[str, Any]], round2: List[Dict[str, Any]],
+    ckpt: Optional[Any], use_cache: bool,
+) -> tuple:
+    '''Build shared_context, file_diffs, and r1_by_file from diff and prior rounds.'''
+    shared_context = (ckpt.get('r3_shared_context') if ckpt and use_cache else None) or ''
+    if not shared_context:
+        shared_context = _r3_build_shared_context(diff_text)
+        if ckpt and shared_context:
+            ckpt.save('r3_shared_context', shared_context)
+
+    file_diffs: Dict[str, str] = {}
+    for path, new_start, new_count, content in _parse_unified_diff(diff_text):
+        hunk_header = f'@@ -{new_start},{new_count} +{new_start},{new_count} @@\n'
+        file_diffs[path] = file_diffs.get(path, '') + hunk_header + content + '\n'
+
+    r1_by_file: Dict[str, List[Dict[str, Any]]] = {}
+    for c in list(round1) + list(round2):
+        r1_by_file.setdefault(c.get('path') or '', []).append(c)
+
+    return shared_context, file_diffs, r1_by_file
+
+
+def _r3_dispatch_units(
+    units: List[Dict[str, Any]], run_unit_kwargs: Dict[str, Any],
+) -> None:
+    '''Run all R3 units, using a thread pool when there are multiple units.'''
+    max_workers = min(3, len(units))
+    if max_workers <= 1:
+        for unit in units:
+            _r3_run_unit(unit=unit, **run_unit_kwargs)
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as r3_pool:
+            futs = [r3_pool.submit(_r3_run_unit, unit=unit, **run_unit_kwargs) for unit in units]
+            for fut in as_completed(futs):
+                try:
+                    fut.result()
+                except Exception as exc:
+                    lazyllm.LOG.warning(f'[R3] Unit future raised: {exc}')
+
+
 def _round3_agent_verify(
     llm: Any,
     round1: List[Dict[str, Any]],
@@ -587,22 +666,9 @@ def _round3_agent_verify(
     max_chunks = strategy.max_chunks_per_file if strategy else 3
 
     use_cache = ckpt.should_use_cache(ReviewStage.R3) if ckpt else True
-    shared_context = (ckpt.get('r3_shared_context') if ckpt and use_cache else None) or ''
-    if not shared_context:
-        shared_context = _r3_build_shared_context(diff_text)
-        if ckpt and shared_context:
-            ckpt.save('r3_shared_context', shared_context)
-
-    file_diffs: Dict[str, str] = {}
-    for path, new_start, new_count, content in _parse_unified_diff(diff_text):
-        hunk_header = f'@@ -{new_start},{new_count} +{new_start},{new_count} @@\n'
-        file_diffs[path] = file_diffs.get(path, '') + hunk_header + content + '\n'
-
-    all_prev_issues = list(round1) + list(round2)
-    r1_by_file: Dict[str, List[Dict[str, Any]]] = {}
-    for c in all_prev_issues:
-        p = c.get('path') or ''
-        r1_by_file.setdefault(p, []).append(c)
+    shared_context, file_diffs, r1_by_file = _r3_prepare_context(
+        diff_text, round1, round2, ckpt, use_cache,
+    )
 
     units, skipped_files = _build_review_units(file_diffs, large_threshold, max_files)
     r3_metrics['r3_files_skipped'] = len(skipped_files)
@@ -618,45 +684,16 @@ def _round3_agent_verify(
     prog = _Progress('Round 3: unified agent verify', len(units))
     all_results: List[Dict[str, Any]] = []
     all_discarded: set = set()
-    _r3_merge_lock = threading.Lock()
 
-    def _run_unit(unit: Dict[str, Any]) -> None:
-        unit_results: List[Dict[str, Any]] = []
-        unit_discarded: set = set()
-        try:
-            _r3_unit_agent_verify(
-                llm, unit, r1_by_file, shared_context, arch_doc, pr_summary,
-                clone_dir, symbol_cache, tools, language, ckpt, unit_results, unit_discarded,
-                use_cache=use_cache, agent_instructions=agent_instructions,
-                max_chunks=max_chunks, review_spec=review_spec, agents_index=agents_index,
-            )
-        except Exception as exc:
-            lazyllm.LOG.warning(f'[R3] Unit {unit.get("anchor") or unit.get("files")} failed: {exc}')
-        with _r3_merge_lock:
-            all_results.extend(unit_results)
-            all_discarded.update(unit_discarded)
-            if unit['anchor']:
-                r3_metrics['r3_files_chunk'] += 1
-            else:
-                r3_metrics['r3_files_group'] += len(unit['files'])
-        prog.update(
-            f'{unit["anchor"]} [anchor+{len(unit["files"]) - 1} related]'
-            if unit['anchor']
-            else f'group {unit["files"]} [{len(unit["files"])} files]'
-        )
-
-    max_workers = min(3, len(units))
-    if max_workers <= 1:
-        for unit in units:
-            _run_unit(unit)
-    else:
-        with ThreadPoolExecutor(max_workers=max_workers) as r3_pool:
-            futs = [r3_pool.submit(_run_unit, unit) for unit in units]
-            for fut in as_completed(futs):
-                try:
-                    fut.result()
-                except Exception as exc:
-                    lazyllm.LOG.warning(f'[R3] Unit future raised: {exc}')
+    _r3_dispatch_units(units, dict(
+        llm=llm, r1_by_file=r1_by_file, shared_context=shared_context,
+        arch_doc=arch_doc, pr_summary=pr_summary, clone_dir=clone_dir,
+        symbol_cache=symbol_cache, tools=tools, language=language,
+        ckpt=ckpt, use_cache=use_cache, agent_instructions=agent_instructions,
+        max_chunks=max_chunks, review_spec=review_spec, agents_index=agents_index,
+        all_results=all_results, all_discarded=all_discarded,
+        r3_metrics=r3_metrics, lock=threading.Lock(), prog=prog,
+    ))
 
     prog.done(f'{len(all_results)} issues from agent; {len(all_discarded)} prev issues discarded')
     return all_results, all_discarded, r3_metrics

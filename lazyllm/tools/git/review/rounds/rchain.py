@@ -5,7 +5,7 @@
 import json
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
@@ -166,6 +166,42 @@ def _rchain_run_single_scenario(
     return result
 
 
+def _rchain_collect_scenario_status(ckpt: Optional[Any], ckpt_key: str) -> str:
+    '''Read the saved status for a scenario from checkpoint.'''
+    if not ckpt:
+        return 'ok'
+    saved = ckpt.get(ckpt_key)
+    if isinstance(saved, dict):
+        return saved.get('status', 'ok')
+    return 'ok'
+
+
+def _rchain_run_and_track(
+    llm: Any, scenario: Dict[str, Any], idx: int,
+    file_diffs: Dict[str, str], arch_doc: str, clone_dir: str,
+    language: str, symbol_cache: Dict[str, Any], tools: Any,
+    ckpt: Optional[Any], use_cache: bool,
+    counters: Dict[str, int], lock: threading.Lock,
+) -> List[Dict[str, Any]]:
+    '''Run a single scenario and update ok/timeout/error counters.'''
+    title = scenario.get('title', f'scenario_{idx}')
+    safe_title = re.sub(r'[^a-zA-Z0-9_]', '_', title)[:50]
+    ckpt_key = f'rchain_scene_{idx}_{safe_title}'
+    result = _rchain_run_single_scenario(
+        llm, scenario, idx, file_diffs, arch_doc, clone_dir, language,
+        symbol_cache, tools, ckpt, use_cache,
+    )
+    status = _rchain_collect_scenario_status(ckpt, ckpt_key)
+    with lock:
+        if status == 'timeout':
+            counters['timeout'] += 1
+        elif status == 'error':
+            counters['error'] += 1
+        else:
+            counters['ok'] += 1
+    return result
+
+
 def _rscenario_call_chain(
     llm: Any,
     usage_scenarios: List[Dict[str, Any]],
@@ -202,61 +238,39 @@ def _rscenario_call_chain(
     tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
 
     all_issues: List[Dict[str, Any]] = []
-    _rchain_ok = _rchain_timeout = _rchain_error = 0
-    _rchain_lock = threading.Lock()
-
-    def _run_scenario(scenario: Dict[str, Any], idx: int) -> List[Dict[str, Any]]:
-        title = scenario.get('title', f'scenario_{idx}')
-        safe_title = re.sub(r'[^a-zA-Z0-9_]', '_', title)[:50]
-        ckpt_key = f'rchain_scene_{idx}_{safe_title}'
-        result = _rchain_run_single_scenario(
-            llm, scenario, idx, file_diffs, arch_doc, clone_dir, language,
-            symbol_cache, tools, ckpt, use_cache,
-        )
-        nonlocal _rchain_ok, _rchain_timeout, _rchain_error
-        status = 'ok'
-        if ckpt:
-            saved = ckpt.get(ckpt_key)
-            if isinstance(saved, dict):
-                status = saved.get('status', 'ok')
-        with _rchain_lock:
-            if status == 'timeout':
-                _rchain_timeout += 1
-            elif status == 'error':
-                _rchain_error += 1
-            else:
-                _rchain_ok += 1
-        return result
+    counters: Dict[str, int] = {'ok': 0, 'timeout': 0, 'error': 0}
+    lock = threading.Lock()
 
     with ThreadPoolExecutor(max_workers=min(_RCHAIN_MAX_PARALLEL_SCENARIOS, len(usage_scenarios))) as ex:
         futs = {
-            ex.submit(_run_scenario, scenario, idx): scenario
+            ex.submit(
+                _rchain_run_and_track,
+                llm, scenario, idx, file_diffs, arch_doc, clone_dir,
+                language, symbol_cache, tools, ckpt, use_cache, counters, lock,
+            ): scenario
             for idx, scenario in enumerate(usage_scenarios)
         }
         for fut in as_completed(futs):
             scenario = futs[fut]
             try:
-                issues = fut.result()
-                all_issues.extend(issues)
+                all_issues.extend(fut.result())
             except Exception as e:
                 lazyllm.LOG.warning(f'  [RChain] Scenario "{scenario.get("title")}" failed: {e}')
-                with _rchain_lock:
-                    _rchain_error += 1
+                with lock:
+                    counters['error'] += 1
             prog.update(scenario.get('title', ''))
 
     prog.done(
         f'{len(all_issues)} issues found across {len(usage_scenarios)} scenarios '
-        f'(ok={_rchain_ok}, timeout={_rchain_timeout}, error={_rchain_error})'
+        f'(ok={counters["ok"]}, timeout={counters["timeout"]}, error={counters["error"]})'
     )
-    if _rchain_timeout or _rchain_error:
+    if counters['timeout'] or counters['error']:
         lazyllm.LOG.warning(
             f'[RChain] Completed with issues: '
-            f'{_rchain_timeout} timeout(s), {_rchain_error} error(s) out of {len(usage_scenarios)} scenarios.'
+            f'{counters["timeout"]} timeout(s), {counters["error"]} error(s) out of {len(usage_scenarios)} scenarios.'
         )
     if ckpt:
         ckpt.save('rchain_all', all_issues)
-        ckpt.save('rchain_metrics', {
-            'ok': _rchain_ok, 'timeout': _rchain_timeout, 'error': _rchain_error,
-        })
+        ckpt.save('rchain_metrics', counters)
         ckpt.mark_stage_done(ReviewStage.RCHAIN)
     return all_issues

@@ -13,7 +13,7 @@ from .agent_instructions import _AGENT_INSTRUCTION_FILES
 from .deepwiki import _fetch_deepwiki_summary, _deepwiki_ask_cached, _parse_owner_repo
 from .file_context import (
     _build_dir_tree, _read_file_head,
-    _extract_class_method_signatures, _SKIP_DIRS, _SKIP_EXTS,
+    _extract_class_method_signatures, _SKIP_DIRS,
 )
 from .prompt import (
     _ARCH_OUTLINE_PROMPT, _ARCH_GOTCHAS_INSTRUCTION, _ARCH_HAS_AGENT_INSTRUCTION,

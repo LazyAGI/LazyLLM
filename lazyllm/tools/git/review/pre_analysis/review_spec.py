@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
 
-from ..base import LazyLLMGitBase
+from ...base import LazyLLMGitBase
 from ..checkpoint import _load_cache, _save_cache, _save_cache_multi
 from ..constants import SINGLE_CALL_CONTEXT_BUDGET
 from ..utils import _Progress, _safe_llm_call, JSON_OUTPUT_INSTRUCTION

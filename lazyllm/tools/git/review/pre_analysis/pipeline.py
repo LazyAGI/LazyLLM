@@ -5,7 +5,7 @@ from typing import Any, Optional, Tuple
 
 import lazyllm
 
-from ..base import LazyLLMGitBase
+from ...base import LazyLLMGitBase
 from ..checkpoint import _load_cache, _save_cache, ReviewStage
 from ..utils import _Progress, _safe_llm_call_text
 from .agent_instructions import _read_agent_instructions, _AGENT_INSTRUCTIONS_MAX_CHARS

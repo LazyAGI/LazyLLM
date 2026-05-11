@@ -289,7 +289,6 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
         method_sigs: List[str] = []
         if kind == 'class':
             if ext == '.py':
-                from .file_context import _extract_class_method_signatures
                 class_indent = len(lines[def_line_idx]) - len(lines[def_line_idx].lstrip())
                 for i in range(def_line_idx + 1, len(lines)):
                     ln = lines[i]

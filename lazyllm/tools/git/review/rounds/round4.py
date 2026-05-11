@@ -4,7 +4,7 @@
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import lazyllm
 
@@ -66,6 +66,51 @@ def _deterministic_dedup(issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
+def _r4_build_result_from_llm(
+    items: Any, idx_map: Dict[int, Dict[str, Any]],
+) -> tuple:
+    '''Parse LLM dedup output into result list and kept index set.'''
+    result: List[Dict[str, Any]] = []
+    kept_idxs: set = set()
+    for item in (items if isinstance(items, list) else []):
+        if not isinstance(item, dict) or item.get('problem') is None:
+            continue
+        try:
+            idx = int(item.get('idx', -1))
+        except (TypeError, ValueError):
+            continue
+        original = idx_map.get(idx)
+        if original is None:
+            continue
+        kept_idxs.add(idx)
+        category = item.get('bug_category') or 'logic'
+        severity = item.get('severity') or 'normal'
+        entry = {
+            'path': original['path'], 'line': original['line'],
+            'severity': severity if severity in _VALID_SEVERITIES else 'normal',
+            'bug_category': category if category in _VALID_CATEGORIES else 'logic',
+            'problem': item.get('problem') or '',
+            'suggestion': original.get('suggestion') or '',
+        }
+        if original.get('source'):
+            entry['source'] = original['source']
+        result.append(entry)
+    return result, kept_idxs
+
+
+def _r4_fallback_dedup(deduped: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    '''Fallback when LLM returns no results: group by path+line and merge.'''
+    _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
+    by_pl: Dict[tuple, List[Dict[str, Any]]] = {}
+    for c in sorted(deduped, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2)):
+        key = (c.get('path', ''), int(c.get('line') or 0))
+        by_pl.setdefault(key, []).append(c)
+    result = []
+    for group in by_pl.values():
+        result.extend([group[0]] if len(group) == 1 else _merge_similar_issues(group, threshold=0.45))
+    return result
+
+
 def _round4_merge_and_deduplicate(
     llm: Any, all_comments: List[Dict[str, Any]],
     existing_comments: Optional[List[Dict[str, Any]]] = None, language: str = 'cn',
@@ -92,31 +137,7 @@ def _round4_merge_and_deduplicate(
     )
     items = _safe_llm_call(llm, prompt)
     idx_map = {i: c for i, c in enumerate(deduped)}
-    result: List[Dict[str, Any]] = []
-    kept_idxs: set = set()
-    for item in (items if isinstance(items, list) else []):
-        if not isinstance(item, dict) or item.get('problem') is None:
-            continue
-        try:
-            idx = int(item.get('idx', -1))
-        except (TypeError, ValueError):
-            continue
-        original = idx_map.get(idx)
-        if original is None:
-            continue
-        kept_idxs.add(idx)
-        category = item.get('bug_category') or 'logic'
-        severity = item.get('severity') or 'normal'
-        entry = {
-            'path': original['path'], 'line': original['line'],
-            'severity': severity if severity in _VALID_SEVERITIES else 'normal',
-            'bug_category': category if category in _VALID_CATEGORIES else 'logic',
-            'problem': item.get('problem') or '',
-            'suggestion': original.get('suggestion') or '',
-        }
-        if original.get('source'):
-            entry['source'] = original['source']
-        result.append(entry)
+    result, kept_idxs = _r4_build_result_from_llm(items, idx_map)
     discarded_idxs = set(idx_map.keys()) - kept_idxs
     if discarded_idxs:
         lazyllm.LOG.info(
@@ -128,13 +149,6 @@ def _round4_merge_and_deduplicate(
             )
         )
     if not result:
-        _sev_order = {'critical': 0, 'medium': 1, 'normal': 2}
-        by_pl: Dict[tuple, List[Dict[str, Any]]] = {}
-        for c in sorted(deduped, key=lambda c: _sev_order.get(c.get('severity', 'normal'), 2)):
-            key = (c.get('path', ''), int(c.get('line') or 0))
-            by_pl.setdefault(key, []).append(c)
-        result = []
-        for group in by_pl.values():
-            result.extend([group[0]] if len(group) == 1 else _merge_similar_issues(group, threshold=0.45))
+        result = _r4_fallback_dedup(deduped)
     prog.done(f'{len(result)} final issues')
     return result

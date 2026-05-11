@@ -5,14 +5,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
 
-from ..base import LazyLLMGitBase
+from ...base import LazyLLMGitBase
 from ..checkpoint import _load_cache, _save_cache_multi
 from ..utils import _Progress, _safe_llm_call
 from .prompt import _VALIDATE_CONVENTION_PROMPT
 from .review_spec import (
     _is_merged_pr, _fetch_all_pr_comments,
     _preload_bot_templates_from_cache, _accumulate_and_detect_templates,
-    _strip_bot_templates, _BOT_USER_PATTERNS, _BOT_BODY_INDICATORS,
+    _BOT_USER_PATTERNS, _BOT_BODY_INDICATORS,
     _MAINTAINER_ASSOCIATIONS, _SPEC_CACHE_VERSION,
 )
 

@@ -6,7 +6,6 @@ import inspect
 import json
 import os
 import re
-import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
@@ -15,7 +14,7 @@ from ..utils import (
     _safe_llm_call, _safe_llm_call_text,
     _parse_json_with_repair, _extract_json_text, _parse_unified_diff,
 )
-from ..pre_analysis import _get_local_agent_instructions, _extract_file_skeleton
+from ..pre_analysis import _get_local_agent_instructions
 from ..constants import R3_UNIT_DIFF_BUDGET
 from .prompt import _CODE_TAG_PROMPT_TMPL, _COMPRESS_COMMENTS_PROMPT_TMPL
 

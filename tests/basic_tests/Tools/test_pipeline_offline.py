@@ -7,10 +7,8 @@ external checkpoints, or network access.
 To run:
     pytest tests/basic_tests/Tools/test_pipeline_offline.py -v
 '''
-import os
-import re
 import unittest
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 # ---------------------------------------------------------------------------
@@ -21,12 +19,12 @@ class TestF1aR2Passthrough(unittest.TestCase):
     '''F1a: Verify that R2 issues are no longer filtered by r3_covered_files.'''
 
     def _build_issues(self):
-        r1 = [{'path': 'a.py', 'line': 10, 'bug_category': 'logic', 'severity': 'normal',
-                'problem': 'r1 issue', 'source': 'r1'}]
-        r2 = [{'path': 'a.py', 'line': 20, 'bug_category': 'design', 'severity': 'medium',
-                'problem': 'r2 arch issue', 'source': 'r2'}]
-        r3 = [{'path': 'a.py', 'line': 10, 'bug_category': 'logic', 'severity': 'normal',
-                'problem': 'r3 confirmed issue', 'source': 'r3'}]
+        r1 = [{'path': 'a.py', 'line': 10, 'bug_category': 'logic',
+               'severity': 'normal', 'problem': 'r1 issue', 'source': 'r1'}]
+        r2 = [{'path': 'a.py', 'line': 20, 'bug_category': 'design',
+               'severity': 'medium', 'problem': 'r2 arch issue', 'source': 'r2'}]
+        r3 = [{'path': 'a.py', 'line': 10, 'bug_category': 'logic',
+               'severity': 'normal', 'problem': 'r3 confirmed issue', 'source': 'r3'}]
         return r1, r2, r3
 
     def test_r2_not_filtered(self):
