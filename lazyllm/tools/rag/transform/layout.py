@@ -1,7 +1,8 @@
 import itertools
-from typing import List, Optional, Callable, Any
+from typing import List, Optional, Callable, Any, Dict
 
 from .base import NodeTransform, RuleSet, Rule
+from .factory import _callable_sig
 from ..doc_node import DocNode, RichDocNode
 
 NO_GROUPING = object()
@@ -45,6 +46,18 @@ class LayoutNodeParser(NodeTransform):
             self._group_by = group_by if group_by is not None else _default_layout_group_key
         self._sort_by = sort_by if sort_by is not None else _default_layout_sort_key
         self._post_process = post_process if post_process is not None else _default_layout_post_process
+
+    def sig_fields(self) -> Dict:
+        rules_sig = [
+            {'priority': r.priority, 'match_sig': _callable_sig(r.match), 'apply_sig': _callable_sig(r.apply)}
+            for r in (self._rules._rules if hasattr(self._rules, '_rules') else [])
+        ]
+        return {
+            'rules_sig': rules_sig,
+            'group_by_sig': _callable_sig(self._group_by),
+            'sort_by_sig': _callable_sig(self._sort_by),
+            'post_process_sig': _callable_sig(self._post_process),
+        }
 
     def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         nodes = node.nodes if isinstance(node, RichDocNode) else [node]

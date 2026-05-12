@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Union, Set
 
+import lazyllm
 from lazyllm.common import override
 
 from ..store_base import LazyLLMStoreBase, StoreCapability
@@ -33,6 +34,19 @@ class HybridStore(LazyLLMStoreBase):
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
         return self.segment_store.delete(collection_name=collection_name, criteria=criteria, **kwargs) and \
             self.vector_store.delete(collection_name=collection_name, criteria=criteria, **kwargs)
+
+    def drop_collection(self, collection_name: str) -> bool:
+        ok = True
+        for store in (self.segment_store, self.vector_store):
+            if hasattr(store, 'drop_collection'):
+                result = store.drop_collection(collection_name)
+                ok = bool(result) and ok
+            else:
+                lazyllm.LOG.warning(
+                    f'[HybridStore] {type(store).__name__} does not implement '
+                    f'drop_collection; skipping for collection {collection_name!r}'
+                )
+        return ok
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:

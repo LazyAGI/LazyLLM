@@ -1,7 +1,8 @@
 import re
-from typing import Any, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable
 
 from .base import NodeTransform, RuleSet
+from .factory import _callable_sig
 from ..doc_node import DocNode, RichDocNode, TreeDocNode
 
 def _default_get_level(node: DocNode) -> int:
@@ -53,6 +54,12 @@ class TreeBuilderParser(NodeTransform):
         super().__init__(rules=rules or RuleSet(), return_trace=return_trace, **kwargs)
         self._get_level = get_level or _default_get_level
         self._is_valid_child = is_valid_child or _default_is_valid_child
+
+    def sig_fields(self) -> Dict:
+        return {
+            'get_level_sig': _callable_sig(self._get_level),
+            'is_valid_child_sig': _callable_sig(self._is_valid_child),
+        }
 
     def forward(self, node: DocNode, **kwargs) -> List[DocNode]:
         nodes = node.nodes if isinstance(node, RichDocNode) else [node]

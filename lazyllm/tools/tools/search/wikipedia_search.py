@@ -2,6 +2,7 @@ import re
 from typing import Any, Dict, List
 from urllib.parse import quote
 
+import lazyllm
 from lazyllm.thirdparty import httpx
 
 from .base import SearchBase, _make_result
@@ -9,12 +10,15 @@ from .base import SearchBase, _make_result
 
 class WikipediaSearch(SearchBase):
 
+    _UA = f'LazyLLM/{lazyllm.__version__} (https://github.com/LazyAGI/LazyLLM; wikipedia-search)'
+
     def __init__(self, base_url: str = 'https://en.wikipedia.org',
                  timeout: int = 10, source_name: str = 'wikipedia'):
         super().__init__(source_name=source_name)
         self._base_url = base_url.rstrip('/')
         self._api_url = f'{self._base_url}/w/api.php'
         self._timeout = timeout
+        self._headers = {'User-Agent': self._UA}
 
     def get_content(self, item: Dict[str, Any]) -> str:
         extra = item.get('extra') or {}
@@ -30,7 +34,7 @@ class WikipediaSearch(SearchBase):
             'format': 'json',
         }
         try:
-            resp = httpx.get(self._api_url, params=params, timeout=self._timeout)
+            resp = httpx.get(self._api_url, params=params, headers=self._headers, timeout=self._timeout)
             resp.raise_for_status()
             data = resp.json()
         except Exception:
@@ -47,7 +51,7 @@ class WikipediaSearch(SearchBase):
             'srlimit': min(limit, 500),
             'format': 'json',
         }
-        resp = httpx.get(self._api_url, params=params, timeout=self._timeout)
+        resp = httpx.get(self._api_url, params=params, headers=self._headers, timeout=self._timeout)
         resp.raise_for_status()
         data = resp.json()
         search = data.get('query', {}).get('search') or []
