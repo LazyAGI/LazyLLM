@@ -56,6 +56,7 @@ class MineruPDFReader(_OcrReaderBase):
     @override
     def _fetch_response(self, file_path: Path, use_cache: bool = False) -> str:
         if self._service_variant == ServiceVariant.OFFLINE:
+            self._url += r'/api/v1/pdf_parse'
             return self._fetch_sync(file_path, use_cache)
         else:
             return self._fetch_async(file_path, use_cache)
