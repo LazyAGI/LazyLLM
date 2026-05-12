@@ -155,7 +155,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             is_tool = any(item.get('role') == 'tool' for item in input)
             input = '\n'.join([item.get('content', '') for item in input])
         params = dict(system=self._system, instruction=instruction, input=input, user=user, history=history, tools=tools,
-                      skills=self._skills, sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa, eoa=self._eoa)
+                      skills=self._skills, sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa,
+                      eoa=self._eoa)
         if is_tool:
             params['soh'] = getattr(self, '_soe', self._soh)
             params['eoh'] = getattr(self, '_eoe', self._eoh)
