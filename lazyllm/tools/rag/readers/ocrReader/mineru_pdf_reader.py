@@ -56,12 +56,13 @@ class MineruPDFReader(_OcrReaderBase):
     @override
     def _fetch_response(self, file_path: Path, use_cache: bool = False) -> str:
         if self._service_variant == ServiceVariant.OFFLINE:
-            self._url += r'/api/v1/pdf_parse'
-            return self._fetch_sync(file_path, use_cache)
+            url = self._url + '/api/v1/pdf_parse'
+            return self._fetch_sync(file_path, use_cache, url=url)
         else:
             return self._fetch_async(file_path, use_cache)
 
-    def _fetch_sync(self, file: Path, use_cache: bool) -> str:
+    def _fetch_sync(self, file: Path, use_cache: bool, url: str = None) -> str:
+        url = url or self._url
         if self._patch_applied:
             # Patch-deployed local server: form-encoded.
             payload = {
@@ -73,11 +74,11 @@ class MineruPDFReader(_OcrReaderBase):
             }
             if not self._upload_mode:
                 payload['files'] = str(file)
-                response = post_sync(self._url, payload=payload, timeout=self._timeout)
+                response = post_sync(url, payload=payload, timeout=self._timeout)
             else:
                 with open(file, 'rb') as f:
                     files = {'upload_files': (os.path.basename(file), f)}
-                    response = post_sync(self._url, payload=payload, files=files, timeout=self._timeout)
+                    response = post_sync(url, payload=payload, files=files, timeout=self._timeout)
             return response.text
 
         # Original local server: JSON payload.
@@ -89,7 +90,7 @@ class MineruPDFReader(_OcrReaderBase):
             'formula_enable': True,
             'files': [str(file)],
         }
-        response = post_sync(self._url, json_payload=payload, timeout=self._timeout)
+        response = post_sync(url, json_payload=payload, timeout=self._timeout)
         return response.text
 
     def _fetch_async(self, file, use_cache: bool) -> str:
