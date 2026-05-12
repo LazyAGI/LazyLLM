@@ -328,6 +328,28 @@ def _r1_task_batch(
     ckpt: Optional[Any], prog: Any, use_cache: bool, llm: Any, agent_instructions: str = '',
     pr_file_summary: str = '', agents_index: Optional[Dict[str, str]] = None,
 ) -> None:
+    try:
+        _r1_task_batch_impl(
+            path, idxs, hunks, arch_doc, spec_snippet, summary_snippet,
+            clone_dir, language, symbol_index, lock, results_by_idx,
+            ckpt, prog, use_cache, llm, agent_instructions, pr_file_summary, agents_index,
+        )
+    except Exception as _task_exc:
+        lazyllm.LOG.error(
+            f'[RHunkScan] _r1_task_batch FAILED for {path}:\n'
+            + ''.join(traceback.format_exception(type(_task_exc), _task_exc, _task_exc.__traceback__))
+        )
+        raise
+
+
+def _r1_task_batch_impl(
+    path: str, idxs: List[int], hunks: List[Tuple[str, int, int, str]],
+    arch_doc: str, spec_snippet: str, summary_snippet: str,
+    clone_dir: Optional[str], language: str, symbol_index: Optional[Dict[str, str]],
+    lock: threading.Lock, results_by_idx: Dict[int, List[Dict[str, Any]]],
+    ckpt: Optional[Any], prog: Any, use_cache: bool, llm: Any, agent_instructions: str = '',
+    pr_file_summary: str = '', agents_index: Optional[Dict[str, str]] = None,
+) -> None:
     arch_snippet = _extract_arch_for_file(arch_doc, path, max_chars=3000)
     if pr_file_summary:
         arch_snippet = f'{arch_snippet}\n\n## PR Changed Files\n{pr_file_summary}' if arch_snippet else \

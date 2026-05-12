@@ -4,6 +4,7 @@
 
 import re
 import concurrent.futures as _cf
+import threading
 from typing import Any, Dict, List, Optional
 
 import lazyllm
@@ -84,6 +85,8 @@ def _rscene_run_single_group(
                 raw = fut.result(timeout=_RSCENE_AGENT_TIMEOUT_SECS)
             except _cf.TimeoutError:
                 lazyllm.LOG.warning(f'  [RScene] Timed out for {anchor or files} after {_RSCENE_AGENT_TIMEOUT_SECS}s')
+                fut.cancel()
+                ex.shutdown(wait=False)
                 return []
     except Exception as e:
         lazyllm.LOG.warning(f'  [RScene] Agent failed for {anchor or files}: {e}')
@@ -182,7 +185,15 @@ def infer_usage_scenarios(
     prog = _Progress('RScene: inferring usage scenarios', len(units))
     if symbol_cache is None:
         symbol_cache = {}
-    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
+    # symbol_cache is shared across concurrent workers.  Python's GIL makes individual
+    # dict reads/writes atomic, so the worst-case race is a duplicate symbol analysis
+    # (benign redundancy), not data corruption.  A lock is used for the check-then-set
+    # pattern to avoid unnecessary duplicate work.
+    _symbol_cache_lock = threading.Lock()
+    tools = _build_scoped_agent_tools_with_cache(
+        clone_dir, llm, symbol_cache, owner_repo, arch_cache_path,
+        cache_lock=_symbol_cache_lock,
+    )
 
     all_scenarios: List[Dict[str, Any]] = []
     _RSCENE_MAX_PARALLEL = 3

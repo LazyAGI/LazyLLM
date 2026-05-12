@@ -162,7 +162,12 @@ def _r3_parse_exploration_json(raw: str) -> dict:
 
 
 def _r3_read_lines(clone_dir: str, rel_path: str, start: int, end: int) -> str:
-    abs_path = os.path.join(clone_dir, rel_path)
+    # Guard against path traversal: ensure the resolved path stays inside clone_dir.
+    abs_clone = os.path.realpath(clone_dir)
+    abs_path = os.path.realpath(os.path.join(clone_dir, rel_path))
+    if not abs_path.startswith(abs_clone + os.sep) and abs_path != abs_clone:
+        lazyllm.LOG.warning(f'[R3] Path traversal attempt blocked: {rel_path!r}')
+        return ''
     try:
         with open(abs_path, 'r', encoding='utf-8', errors='replace') as f:
             lines = f.readlines()
@@ -540,9 +545,9 @@ def _r3_unit_agent_verify(
     try:
         symbol_context = _r3_build_file_context(llm, primary, agent_diff, clone_dir, tools, language,
                                                 agent_instructions=effective_agent_instructions)
+    except RuntimeError:
+        raise
     except Exception as e:
-        if 'timed out' in str(e):
-            raise
         lazyllm.LOG.warning(f'RAgentVerify unit context failed for {files}: {e}')
         symbol_context = ''
 
@@ -604,7 +609,7 @@ def _r3_run_unit(
     agent_instructions: str, max_chunks: int,
     review_spec: str, agents_index: Optional[Dict[str, str]],
     all_results: List[Dict[str, Any]], all_discarded: set,
-    r3_metrics: Dict[str, int], lock: threading.Lock,
+    r3_metrics: Dict[str, Any], lock: threading.Lock,
     prog: Any,
 ) -> None:
     '''Run a single R3 unit and merge results into shared lists under lock.'''
@@ -617,6 +622,11 @@ def _r3_run_unit(
             use_cache=use_cache, agent_instructions=agent_instructions,
             max_chunks=max_chunks, review_spec=review_spec, agents_index=agents_index,
         )
+    except RuntimeError as exc:
+        # Re-raise timeout signals so the pipeline can abort properly.
+        if 'timed out' in str(exc).lower():
+            raise
+        lazyllm.LOG.warning(f'[R3] Unit {unit.get("anchor") or unit.get("files")} failed: {exc}')
     except Exception as exc:
         lazyllm.LOG.warning(f'[R3] Unit {unit.get("anchor") or unit.get("files")} failed: {exc}')
     with lock:
@@ -690,8 +700,8 @@ def _ragent_verify(
     arch_cache_path: Optional[str] = None,
     review_spec: str = '',
     agents_index: Optional[Dict[str, str]] = None,
-) -> Tuple[List[Dict[str, Any]], set, Dict[str, int]]:
-    r3_metrics: Dict[str, int] = {
+) -> Tuple[List[Dict[str, Any]], set, Dict[str, Any]]:
+    r3_metrics: Dict[str, Any] = {
         'r3_files_chunk': 0, 'r3_files_group': 0,
         'r3_files_skipped': 0, 'r3_chunks_total': 0,
     }
@@ -723,7 +733,11 @@ def _ragent_verify(
         )
 
     symbol_cache: Dict[str, Any] = {}
-    tools = _build_scoped_agent_tools_with_cache(clone_dir, llm, symbol_cache, owner_repo, arch_cache_path)
+    _symbol_cache_lock = threading.Lock()
+    tools = _build_scoped_agent_tools_with_cache(
+        clone_dir, llm, symbol_cache, owner_repo, arch_cache_path,
+        cache_lock=_symbol_cache_lock,
+    )
 
     prog = _Progress('RAgentVerify: unified agent verify', len(units))
     all_results: List[Dict[str, Any]] = []

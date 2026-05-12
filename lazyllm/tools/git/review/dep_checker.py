@@ -226,7 +226,7 @@ def extract_imports_go(file_path: str, content: str, clone_dir: str) -> List[Imp
                 if target and target != file_path:
                     edges.append(ImportEdge(
                         source=file_path, target=target,
-                        symbol=lm.group(1), line=block_start + j,
+                        symbol=lm.group(1), line=block_start + j + 1,
                     ))
     return edges
 
@@ -340,7 +340,7 @@ def build_dep_graph(
         new_edges: edges introduced by this PR (source, target)
         edge_details: maps (source, target) to ImportEdge list for issue reporting
     '''
-    changed_files = _parse_changed_files(diff_text)
+    changed_files = set(_parse_changed_files(diff_text))
     new_import_lines = _extract_new_import_lines(diff_text)
 
     graph: Dict[str, Set[str]] = {}
@@ -437,6 +437,39 @@ def aggregate_to_module_graph(
 _MAX_CYCLE_LENGTH = 5
 
 
+_MAX_CYCLES_TOTAL = 500  # hard cap to prevent combinatorial explosion on dense graphs
+
+
+def _dfs_collect_cycles(
+    start: str, current: str, path: List[str], seen: Set[str],
+    graph: Dict[str, Set[str]], cycles: List[List[str]],
+    visited_cycles: Set[Tuple[str, ...]], max_length: int,
+) -> None:
+    '''Recursive DFS helper for _find_cycles_dfs.'''
+    if len(cycles) >= _MAX_CYCLES_TOTAL or len(path) > max_length:
+        return
+    for neighbor in graph.get(current, set()):
+        if neighbor == start and len(path) >= 2:
+            ring = path[:]
+            min_idx = ring.index(min(ring))
+            rotated = tuple(ring[min_idx:] + ring[:min_idx])
+            if rotated not in visited_cycles:
+                visited_cycles.add(rotated)
+                cycles.append(path + [neighbor])
+            continue
+        if neighbor in seen:
+            continue
+        seen.add(neighbor)
+        path.append(neighbor)
+        _dfs_collect_cycles(start, neighbor, path, seen, graph, cycles, visited_cycles, max_length)
+        path.pop()
+        seen.discard(neighbor)
+
+
+def _cycle_contains_new_edge(cycle: List[str], new_edges: Set[Tuple[str, str]]) -> bool:
+    return any((cycle[i], cycle[i + 1]) in new_edges for i in range(len(cycle) - 1))
+
+
 def _find_cycles_dfs(
     graph: Dict[str, Set[str]],
     new_edges: Set[Tuple[str, str]],
@@ -446,41 +479,16 @@ def _find_cycles_dfs(
     cycles: List[List[str]] = []
     visited_cycles: Set[Tuple[str, ...]] = set()
 
-    def _dfs(start: str, current: str, path: List[str], seen: Set[str]) -> None:
-        if len(path) > max_length:
-            return
-        for neighbor in graph.get(current, set()):
-            if neighbor == start and len(path) >= 2:
-                ring = path[:]  # without the closing node
-                # normalize: rotate so smallest element is first
-                min_idx = ring.index(min(ring))
-                rotated = tuple(ring[min_idx:] + ring[:min_idx])
-                if rotated not in visited_cycles:
-                    visited_cycles.add(rotated)
-                    cycles.append(path + [neighbor])
-                continue
-            if neighbor in seen:
-                continue
-            seen.add(neighbor)
-            path.append(neighbor)
-            _dfs(start, neighbor, path, seen)
-            path.pop()
-            seen.discard(neighbor)
-
     for node in graph:
-        _dfs(node, node, [node], {node})
+        if len(cycles) >= _MAX_CYCLES_TOTAL:
+            lazyllm.LOG.warning(
+                f'_find_cycles_dfs: reached {_MAX_CYCLES_TOTAL} cycle limit, stopping early'
+            )
+            break
+        _dfs_collect_cycles(node, node, [node], {node}, graph, cycles, visited_cycles, max_length)
 
     # filter: only keep cycles containing at least one new_edge
-    result: List[List[str]] = []
-    for cycle in cycles:
-        has_new = False
-        for i in range(len(cycle) - 1):
-            if (cycle[i], cycle[i + 1]) in new_edges:
-                has_new = True
-                break
-        if has_new:
-            result.append(cycle)
-    return result
+    return [c for c in cycles if _cycle_contains_new_edge(c, new_edges)]
 
 
 def detect_cycles(
@@ -527,18 +535,18 @@ class _LayerDef:
 
 def _load_layer_config(clone_dir: str) -> Optional[List[_LayerDef]]:
     '''Load .dep-layers.yaml from project root if it exists.'''
+    try:
+        import yaml as _yaml
+    except ImportError:
+        lazyllm.LOG.debug('PyYAML not installed, skipping .dep-layers.yaml')
+        return None
     for fname in ('.dep-layers.yaml', '.dep-layers.yml'):
         fpath = os.path.join(clone_dir, fname)
         if not os.path.isfile(fpath):
             continue
         try:
-            import yaml
-        except ImportError:
-            lazyllm.LOG.debug('PyYAML not installed, skipping .dep-layers.yaml')
-            return None
-        try:
             with open(fpath, 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f)
+                data = _yaml.safe_load(f)
             layers = []
             for item in data.get('layers', []):
                 layers.append(_LayerDef(
@@ -557,10 +565,11 @@ _HEURISTIC_LAYERS: Dict[str, int] = {
     'core': 0, 'base': 0, 'common': 0, 'shared': 0, 'lib': 0,
     'utils': 1, 'util': 1, 'helpers': 1, 'helper': 1,
     'models': 2, 'model': 2, 'domain': 2, 'entities': 2,
-    'services': 3, 'service': 3, 'engine': 3,
+    'services': 3, 'service': 3,
     'tools': 3, 'plugins': 3,
     'api': 4, 'routes': 4, 'views': 4, 'handlers': 4,
     'controllers': 4, 'endpoints': 4,
+    'engine': 4,  # engine depends on tools in this project (tools ← engine)
     'app': 5, 'application': 5, 'main': 5, 'cmd': 5, 'cli': 5,
 }
 

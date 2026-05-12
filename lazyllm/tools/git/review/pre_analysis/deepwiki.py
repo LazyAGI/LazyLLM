@@ -53,6 +53,8 @@ def _compress_markdown_by_sections(text: str, budget: int) -> str:
     return ''.join(chunk for chunk, _, _ in result_parts)[:budget]
 
 
+_DEEPWIKI_FETCH_TIMEOUT_SECS = 30
+
 def _fetch_deepwiki_summary(owner_repo: str) -> str:
     try:
         from mcp import ClientSession
@@ -68,9 +70,9 @@ def _fetch_deepwiki_summary(owner_repo: str) -> str:
             async with streamablehttp_client(_DEEPWIKI_MCP_URL) as (read, write, _):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    result = await session.call_tool(
-                        'read_wiki_contents',
-                        {'repoName': owner_repo},
+                    result = await asyncio.wait_for(
+                        session.call_tool('read_wiki_contents', {'repoName': owner_repo}),
+                        timeout=_DEEPWIKI_FETCH_TIMEOUT_SECS,
                     )
                     if not result or not result.content:
                         return ''
@@ -78,6 +80,9 @@ def _fetch_deepwiki_summary(owner_repo: str) -> str:
                         c.text for c in result.content if hasattr(c, 'text') and c.text
                     )
                     return _compress_markdown_by_sections(text, _DEEPWIKI_SUMMARY_BUDGET)
+        except asyncio.TimeoutError:
+            lazyllm.LOG.warning(f'DeepWiki query timed out for {owner_repo} after {_DEEPWIKI_FETCH_TIMEOUT_SECS}s')
+            return ''
         except Exception as e:
             lazyllm.LOG.info(f'DeepWiki query failed for {owner_repo}: {e}')
             return ''
@@ -90,7 +95,10 @@ def _fetch_deepwiki_summary(owner_repo: str) -> str:
 
 
 def _deepwiki_qa_cache_path(owner_repo: str) -> str:
-    owner, repo = (owner_repo.split('/', 1) + [''])[:2]
+    # Sanitise owner/repo components to prevent path traversal via '..' sequences.
+    parts = owner_repo.split('/', 1)
+    owner = parts[0].replace('..', '_').replace(os.sep, '_') if parts else 'unknown'
+    repo = parts[1].replace('..', '_').replace(os.sep, '_') if len(parts) > 1 else 'unknown'
     return os.path.join(lazyllm.config['home'], 'review', 'cache', owner, repo, 'deepwiki_qa.json')
 
 

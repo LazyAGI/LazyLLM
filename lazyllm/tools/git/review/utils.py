@@ -3,6 +3,7 @@ import json
 import re
 import sys
 import time
+import traceback as _tb
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
@@ -302,7 +303,6 @@ def _llm_call_with_retry(llm: Any, prompt: str, parse_json: bool = True) -> Any:
             return [parsed] if isinstance(parsed, dict) else []
         # JSON parse failed — could be a truncated response; retry if budget allows
         if delay is None:
-            import traceback as _tb
             caller_frames = _tb.format_stack()
             # Summarise the 3 most-relevant frames (skip this file's own frames)
             caller_summary = ''.join(
@@ -446,6 +446,9 @@ def _normalize_comment_item(
             (R2, RMod, dep_check) where an issue may legitimately reference code that is not
             part of the current diff.
     '''
+    if not isinstance(item, dict):
+        lazyllm.LOG.info(f'[NORMALIZE_SKIP] non-dict item (type={type(item).__name__}): {str(item)[:200]}')
+        return None
     # LLM sometimes outputs 'description' instead of 'problem' (especially in R4)
     if item.get('problem') is None and item.get('description') is not None:
         item = dict(item, problem=item['description'])
@@ -500,3 +503,38 @@ def _build_review_body(
         f'---\n'
         f'auto reviewed by BOT ({model_name})'
     )
+
+
+# ---------------------------------------------------------------------------
+# Safe template formatting (moved here from rounds/common to avoid circular imports)
+# ---------------------------------------------------------------------------
+
+_LBRACE_SENTINEL = '\x00__LB__\x00'
+_RBRACE_SENTINEL = '\x00__RB__\x00'
+
+
+def _escape_braces(text: str) -> str:
+    '''Escape curly braces in user/code content so str.format() won't interpret them.'''
+    return text.replace('{', '{{').replace('}', '}}')
+
+
+def _safe_format(template: str, **kwargs: Any) -> str:
+    '''Template substitution immune to braces in parameter values.
+
+    Strategy:
+    1. Protect template literal braces ({{ / }}) with sentinels.
+    2. Replace placeholders via str.replace — values can contain {{ }} safely.
+       Any sentinel strings that appear inside a value are pre-escaped so they
+       are not accidentally expanded during the final restore step.
+    3. Restore sentinels back to literal { / }.
+    '''
+    protected = template.replace('{{', _LBRACE_SENTINEL).replace('}}', _RBRACE_SENTINEL)
+    for key, val in kwargs.items():
+        placeholder = '{' + key + '}'
+        safe_val = (
+            str(val)
+            .replace(_LBRACE_SENTINEL, '{')
+            .replace(_RBRACE_SENTINEL, '}')
+        )
+        protected = protected.replace(placeholder, safe_val)
+    return protected.replace(_LBRACE_SENTINEL, '{').replace(_RBRACE_SENTINEL, '}')

@@ -3,15 +3,15 @@ import json
 import re
 from typing import Any, Dict, List
 
+from ..utils import _safe_format
 from .prompt import _RULE_CARD_TEMPLATE
-
-
 def _format_rule_card(rule: Dict[str, Any]) -> str:
     detect = rule.get('detect') or []
     detect_bullets = '\n'.join(f'- {d}' for d in detect) if detect else '- (see bad example)'
     rationale = rule.get('rationale', '')
     rationale_line = f'\n[Rationale] {rationale}' if rationale else ''
-    return _RULE_CARD_TEMPLATE.format(
+    return _safe_format(
+        _RULE_CARD_TEMPLATE,
         rule_id=rule.get('rule_id', 'RULE000'),
         category=rule.get('category', 'other'),
         title=rule.get('title', ''),

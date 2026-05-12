@@ -37,7 +37,9 @@ def _post_merge_dedup(
 
     if not rchain_issues and not rcov_issues:
         prog.done('no rchain/rcov issues, skipping LLM dedup')
-        return final_comments
+        # Still run restore to ensure no high-severity issues were silently dropped upstream.
+        result = _r4_restore_dropped_high_severity(all_in, all_in)
+        return result
 
     if len(all_in) <= 1:
         prog.done(f'{len(all_in)} issue(s), nothing to dedup')

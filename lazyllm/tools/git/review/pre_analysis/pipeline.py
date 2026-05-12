@@ -7,7 +7,7 @@ import lazyllm
 
 from ...base import LazyLLMGitBase
 from ..checkpoint import _load_cache, _save_cache, ReviewStage
-from ..utils import _Progress, _safe_llm_call_text
+from ..utils import _Progress, _safe_llm_call_text, _safe_format
 from .agent_instructions import _read_agent_instructions, _AGENT_INSTRUCTIONS_MAX_CHARS
 from .arch_pipeline import analyze_repo_architecture
 from .conventions import analyze_framework_conventions, _merge_conventions_into_spec
@@ -25,7 +25,8 @@ def _pre_round_pr_summary(
 ) -> str:
     from ..utils import _language_instruction
     prog = _Progress('Pre-round: summarizing PR changes')
-    prompt = _PRE_ROUND_PROMPT_TMPL.format(
+    prompt = _safe_format(
+        _PRE_ROUND_PROMPT_TMPL,
         lang_instruction=_language_instruction(language),
         pr_title=pr_title or '(no title)',
         pr_body=(pr_body or '(no description)')[:800],

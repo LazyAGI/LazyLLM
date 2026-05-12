@@ -347,8 +347,9 @@ def review(  # noqa: C901
                 owner_repo=repo, arch_cache_path=arch_cache_path,
             )
             _fut_rscene = _pool.submit(_run_rscene_rchain)
-            final_comments, ragent_verify_metrics, _round_report_data = _fut_main.result()
-            usage_scenarios, rchain_issues = _fut_rscene.result()
+        final_comments, ragent_verify_metrics, _round_report_data = _fut_main.result()
+        r3_metrics = ragent_verify_metrics
+        usage_scenarios, rchain_issues = _fut_rscene.result()
         final_comments = meta_warnings + final_comments
         ckpt.save('final_comments', final_comments)
         ckpt.mark_stage_done(ReviewStage.RDedupMerge)
@@ -506,7 +507,7 @@ def review(  # noqa: C901
             rmod_issues=_round_report_data.get('rmod_issues', []),
             lint_issues=lint_issues,
             dep_issues=dep_issues,
-            ragent_verify_output=final_comments,
+            ragent_verify_output=_round_report_data.get('ragent_verify_issues', []),
             ragent_verify_discarded_keys=_round_report_data.get('ragent_verify_discarded_keys', set()),
             ragent_verify_files_skipped=_round_report_data.get('ragent_verify_files_skipped', []),
             rdedup_merge_input=_round_report_data.get('rdedup_merge_input', []),

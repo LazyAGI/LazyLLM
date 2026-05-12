@@ -188,8 +188,24 @@ def _build_scoped_agent_tools(  # noqa: C901
     return tools
 
 
-def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str, Any]) -> Any:  # noqa: C901
+def _build_analyze_symbol_tool(  # noqa: C901
+    llm: Any, clone_dir: str, symbol_cache: Dict[str, Any],
+    cache_lock: Optional[Any] = None,
+) -> Any:
     from lazyllm.tools.agent.file_tool import search_in_files
+
+    def _cache_get(key: str) -> Optional[Any]:
+        if cache_lock:
+            with cache_lock:
+                return symbol_cache.get(key)
+        return symbol_cache.get(key)
+
+    def _cache_set(key: str, value: Any) -> None:
+        if cache_lock:
+            with cache_lock:
+                symbol_cache[key] = value
+        else:
+            symbol_cache[key] = value
 
     def analyze_symbol(symbol_name: str, file_path: str = '', max_depth: int = 2) -> dict:
         '''Read and analyze a class or function definition, with its dependencies.
@@ -204,8 +220,9 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
 
         cache_key = f'{file_path}::{symbol_name}' if file_path else f'::{symbol_name}'
 
-        if cache_key in symbol_cache:
-            return {'cached': True, 'entry': symbol_cache[cache_key]}
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return {'cached': True, 'entry': cached}
 
         abs_file = os.path.join(clone_dir, file_path) if file_path else ''
         if not abs_file or not os.path.isfile(abs_file):
@@ -222,11 +239,12 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
                         abs_file = matches[0].get('path', '')
                         file_path = os.path.relpath(abs_file, clone_dir) if abs_file else file_path
                         cache_key = f'{file_path}::{symbol_name}'
-                        if cache_key in symbol_cache:
-                            return {'cached': True, 'entry': symbol_cache[cache_key]}
+                        cached = _cache_get(cache_key)
+                        if cached is not None:
+                            return {'cached': True, 'entry': cached}
                         break
-            except Exception:
-                pass
+            except Exception as _e:
+                lazyllm.LOG.warning(f'[analyze_symbol] Symbol search failed for {symbol_name!r}: {_e}')
 
         if not abs_file or not os.path.isfile(abs_file):
             return {'cached': False, 'entry': None, 'error': f'Cannot locate {symbol_name}'}
@@ -346,7 +364,7 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
             'signature': signature, 'docstring': docstring, 'summary': summary,
             'method_signatures': method_sigs[:15], 'deps': deps[:10],
         }
-        symbol_cache[cache_key] = entry
+        _cache_set(cache_key, entry)
 
         if max_depth > 1:
             for dep_key in deps[:5]:
@@ -368,9 +386,10 @@ def _build_analyze_symbol_tool(llm: Any, clone_dir: str, symbol_cache: Dict[str,
 def _build_scoped_agent_tools_with_cache(
     clone_dir: str, llm: Any, symbol_cache: Dict[str, Any],
     owner_repo: str = '', cache_path: Optional[str] = None,
+    cache_lock: Optional[Any] = None,
 ) -> list:
     tools = _build_scoped_agent_tools(clone_dir, owner_repo=owner_repo, cache_path=cache_path)
-    analyze_symbol = _build_analyze_symbol_tool(llm, clone_dir, symbol_cache)
+    analyze_symbol = _build_analyze_symbol_tool(llm, clone_dir, symbol_cache, cache_lock=cache_lock)
     all_tools = tools + [analyze_symbol]
     missing = [fn.__name__ for fn in all_tools if callable(fn) and not getattr(fn, '__doc__', None)]
     if missing:

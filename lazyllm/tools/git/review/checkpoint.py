@@ -41,9 +41,10 @@ class ReviewStage(enum.Enum):
 
 _REVIEW_STAGE_ORDER = [
     ReviewStage.CLONE, ReviewStage.ARCH, ReviewStage.SPEC,
-    ReviewStage.PR_SUMMARY, ReviewStage.RScene, ReviewStage.RChain,
+    ReviewStage.PR_SUMMARY,
     ReviewStage.RHunkScan, ReviewStage.RPrDoc, ReviewStage.RArchReview, ReviewStage.RMod,
-    ReviewStage.RAgentVerify, ReviewStage.RCov, ReviewStage.RDedupMerge, ReviewStage.MERGE, ReviewStage.UPLOAD,
+    ReviewStage.RAgentVerify, ReviewStage.RScene, ReviewStage.RChain,
+    ReviewStage.RCov, ReviewStage.RDedupMerge, ReviewStage.MERGE, ReviewStage.UPLOAD,
 ]
 
 

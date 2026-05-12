@@ -13,6 +13,7 @@ import lazyllm
 from ..utils import (
     _safe_llm_call, _safe_llm_call_text,
     _parse_json_with_repair, _extract_json_text, _parse_unified_diff,
+    _safe_format,
 )
 from ..pre_analysis import _get_local_agent_instructions
 from ..constants import R3_UNIT_DIFF_BUDGET
@@ -37,31 +38,6 @@ def _sample_text(text: str, max_chars: int) -> str:
         + '\n...\n'
         + text[-third:]
     )
-
-
-def _escape_braces(text: str) -> str:
-    '''Escape curly braces in user/code content so str.format() won't interpret them.'''
-    return text.replace('{', '{{').replace('}', '}}')
-
-
-_LBRACE_SENTINEL = '\x00__LB__\x00'
-_RBRACE_SENTINEL = '\x00__RB__\x00'
-
-
-def _safe_format(template: str, **kwargs: Any) -> str:
-    '''Template substitution immune to braces in parameter values.
-
-    Strategy:
-    1. Protect template literal braces ({{ / }}) with sentinels.
-    2. Replace placeholders via str.replace — values can contain {{ }} safely.
-    3. Restore sentinels back to literal {{ }}.
-    '''
-    protected = template.replace('{{', _LBRACE_SENTINEL).replace('}}', _RBRACE_SENTINEL)
-    for key, val in kwargs.items():
-        placeholder = '{' + key + '}'
-        protected = protected.replace(placeholder, str(val))
-    result = protected.replace(_LBRACE_SENTINEL, '{').replace(_RBRACE_SENTINEL, '}')
-    return result
 
 
 # ── Code tag utilities (R1) ───────────────────────────────────────────────────

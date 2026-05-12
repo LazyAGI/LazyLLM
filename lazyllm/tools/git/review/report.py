@@ -366,21 +366,35 @@ def build_report(
 
     # ── Build stage stats ──
     ragent_verify_input_count = len(rhunk_scan_issues) + len(rarch_review_issues)
-    ragent_verify_discarded_count = len([d for d in discarded if d.stage.startswith('RAgentVerify')])
     rdedup_merge_input_count = len(rdedup_merge_input)
     rdedup_merge_discarded_count = len([d for d in discarded if d.stage.startswith('RDedupMerge')])
     pm_input_count = len(postmerge_input)
     pm_discarded_count = len([d for d in discarded if d.stage.startswith('Post')])
 
+    # Compute per-source RAgentVerify discard counts
+    _r3_discarded = [d for d in discarded if d.stage.startswith('RAgentVerify')]
+    _r3_disc_by_src: Dict[str, int] = {}
+    for d in _r3_discarded:
+        _r3_disc_by_src[d.source] = _r3_disc_by_src.get(d.source, 0) + 1
+
+    def _r3_disc(src: str) -> int:
+        return _r3_disc_by_src.get(src, 0)
+
     stages: List[StageStats] = [
-        StageStats('RHunkScan (Hunk 分析)', len(rhunk_scan_issues), 0, len(rhunk_scan_issues)),
-        StageStats('RArchReview (架构审查)', len(rarch_review_issues), 0, len(rarch_review_issues)),
+        StageStats('RHunkScan (Hunk 分析)',
+                   len(rhunk_scan_issues),
+                   _r3_disc('rhunk_scan') + _r3_disc('r1'),
+                   len(rhunk_scan_issues) - _r3_disc('rhunk_scan') - _r3_disc('r1')),
+        StageStats('RArchReview (架构审查)',
+                   len(rarch_review_issues),
+                   _r3_disc('rarch_review') + _r3_disc('r2'),
+                   len(rarch_review_issues) - _r3_disc('rarch_review') - _r3_disc('r2')),
         StageStats('RMod (改动必要性)', len(rmod_issues), 0, len(rmod_issues)),
         StageStats('Lint 静态分析', len(lint_issues), 0, len(lint_issues)),
         StageStats('Dep 依赖检查', len(dep_issues), 0, len(dep_issues)),
         StageStats(
             f'RAgentVerify (Agent 验证)  [{ragent_verify_input_count} 输入]',
-            len(ragent_verify_output), ragent_verify_discarded_count, len(ragent_verify_output),
+            len(ragent_verify_output), 0, len(ragent_verify_output),
         ),
         StageStats(
             f'RDedupMerge (合并去重)  [{rdedup_merge_input_count} 输入]',

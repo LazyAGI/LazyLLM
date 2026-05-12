@@ -1,5 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import time
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import lazyllm
@@ -136,7 +137,6 @@ def _submit_with_retry(
 
 def _build_general_body(general_comments: List[Dict[str, Any]]) -> str:
     '''Build a grouped markdown body from general (non-inline) comments.'''
-    from collections import OrderedDict
     by_file: OrderedDict = OrderedDict()
     no_file: list = []
     for c in general_comments:

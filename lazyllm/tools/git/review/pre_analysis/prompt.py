@@ -53,7 +53,7 @@ The THIRD section MUST be:
 (e.g. config definitions inside feature modules, not top-level), and allowed cross-module reference directions",
  "search_hints": ["<generate 2-3 regex patterns for config/ownership patterns visible in the snapshot>"]}}
 
-{{gotchas_instruction}}
+{gotchas_instruction}
 
 The THIRD-TO-LAST section MUST be:
 {{"title": "Typical Usage Patterns",

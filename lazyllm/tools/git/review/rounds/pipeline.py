@@ -169,7 +169,7 @@ def _run_review_pipeline(  # noqa: C901
     use_rpr_doc_cache = ckpt.should_use_cache(ReviewStage.RPrDoc)
     pr_design_doc = ckpt.get('pr_design_doc') if use_rpr_doc_cache else None
     if pr_design_doc is None:
-        if not use_rpr_doc_cache:
+        if use_rpr_doc_cache:
             lazyllm.LOG.warning('RPrDoc: no cache found, re-computing')
         pr_design_doc, _rpr_doc_dropped = _rpr_doc_generate(
             llm, diff_text, arch_doc, pr_summary=pr_summary,
@@ -230,6 +230,7 @@ def _run_review_pipeline(  # noqa: C901
         review_spec=review_spec, agents_index=agents_index,
     )
     ckpt.mark_stage_done(ReviewStage.RAgentVerify)
+    report_data['ragent_verify_issues'] = list(ragent_verify_issues)
     report_data['ragent_verify_discarded_keys'] = discarded_prev_keys
     report_data['ragent_verify_files_skipped'] = ragent_verify_metrics.get('r3_skipped_files', [])
 

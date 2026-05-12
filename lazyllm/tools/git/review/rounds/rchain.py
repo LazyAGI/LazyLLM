@@ -5,7 +5,7 @@
 import json
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
@@ -143,12 +143,11 @@ def _rchain_run_single_scenario(  # noqa: C901
                 force_summarize=True,
                 keep_full_turns=2,
             )
-            import concurrent.futures as _cf_inner
-            with _cf_inner.ThreadPoolExecutor(max_workers=1) as ex:
+            with ThreadPoolExecutor(max_workers=1) as ex:
                 fut = ex.submit(agent, prompt)
                 try:
                     raw = fut.result(timeout=_RCHAIN_AGENT_TIMEOUT_SECS)
-                except _cf_inner.TimeoutError:
+                except FuturesTimeoutError:
                     _timeout_occurred = True
                     _agent_error = (
                         f'Timed out after {_RCHAIN_AGENT_TIMEOUT_SECS}s '
