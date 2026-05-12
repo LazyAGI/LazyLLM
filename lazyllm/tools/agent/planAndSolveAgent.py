@@ -82,7 +82,6 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
     @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
         with pipeline() as agent:
-            agent.plan_input = (lambda x: x)
             agent.plan = self._plan_llm
             agent.parse = (lambda text, query: package([], '', [v for v in re.split('\n\\s*\\d+\\. ', text)[1:]],
                            query)) | bind(query=agent.input)
