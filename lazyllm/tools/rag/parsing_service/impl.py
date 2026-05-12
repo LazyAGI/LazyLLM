@@ -337,7 +337,7 @@ class _Processor:
                       doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict],
                       kb_id: str = None, reader: Optional[DirectoryReader] = None, **kwargs):
         doc_ids, metadatas, kb_id = self._prepare_doc_inputs(doc_paths, doc_ids, metadatas, kb_id)
-        if group_name == 'all':
+        if group_name is None:
             preloaded_root_nodes = reader.load_data(doc_paths, metadatas, split_nodes_by_type=True)
             self._store.remove_nodes(doc_ids=doc_ids, kb_id=kb_id)
             removed_flag = False
