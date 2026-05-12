@@ -74,16 +74,15 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
 
     def _init_planner_prompter(self):
         planner_prompt = self._build_planner_prompt()
-        planner_prompt = self._append_skills_prompt(planner_prompt)
-        planner_extra_keys = ['available_skills'] if self._skill_manager else None
-        self._planner_prompter = ChatPrompter(instruction=planner_prompt, extra_keys=planner_extra_keys)
+        self._planner_prompter = ChatPrompter(instruction={'system': planner_prompt, 'user': ''},
+                                               skills=self._skill_manager.build_prompt() if self._skill_manager else '')
         self._planner_stream = dict(prefix='I will give a plan first:\n', prefix_color=Color.blue,
                                     color=Color.green) if self._stream else False
 
     @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
         with pipeline() as agent:
-            agent.plan_input = self._wrap_user_input_with_skills
+            agent.plan_input = (lambda x: x)
             agent.plan = self._plan_llm
             agent.parse = (lambda text, query: package([], '', [v for v in re.split('\n\\s*\\d+\\. ', text)[1:]],
                            query)) | bind(query=agent.input)
@@ -106,7 +105,7 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
         )
         if self._return_last_tool_calls:
             solver_prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
-        return package(self._wrap_user_input_with_skills(solver_prompt), [])
+        return package(solver_prompt, [])
 
     def _build_planner_prompt(self) -> str:
         tools_desc = []

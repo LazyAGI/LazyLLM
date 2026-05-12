@@ -101,7 +101,7 @@ class ReactAgent(LazyLLMAgentBase):
         self._agent = agent
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
-        return (self._wrap_user_input_with_skills(query), llm_chat_history or [])
+        return (query, llm_chat_history or [])
 
     def _force_summarize_from_history(self, history: list) -> Optional[str]:
         recent = history[-8:]

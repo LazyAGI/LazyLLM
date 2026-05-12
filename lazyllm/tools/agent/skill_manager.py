@@ -282,37 +282,14 @@ class SkillManager(ModuleBase):
             ]
         return '\n'.join(lines)
 
-    def build_prompt(self, task: str) -> str:
+    def build_prompt(self) -> str:
         self._load_skills_index()
-        selected = self._selector(task) or list(self._skills_index.keys())
-        skills_list = self._format_skills_list(selected)
+        skills_list = self._format_skills_list(list(self._skills_index.keys()))
         lines = ['**Skills Directory**']
         if self._skills_dir:
             lines.append(self._format_skills_locations())
         lines += ['**Available Skills**', skills_list or '- (none)']
-        return '\n'.join(lines)
-
-    def _available_skills_text(self, task: str) -> str:
-        return self.build_prompt(task)
-
-    def wrap_input(self, input, task: str):
-        available = self._available_skills_text(task)
-        if not available:
-            return input
-        if isinstance(input, dict):
-            if 'available_skills' in input:
-                return input
-            ret = dict(input)
-            if 'input' not in ret:
-                ret['input'] = ret.pop('content', task)
-            else:
-                ret.pop('content', None)
-            ret.pop('role', None)
-            ret['available_skills'] = available
-            return ret
-        if isinstance(input, str):
-            return {'input': input, 'available_skills': available}
-        return input
+        return f'{SKILLS_PROMPT}\n\n' + '\n'.join(lines)
 
     @staticmethod
     def _to_bool(value) -> bool:
@@ -321,14 +298,6 @@ class SkillManager(ModuleBase):
         if isinstance(value, str):
             return value.strip().lower() in ('true', '1', 'yes', 'y', 'on')
         return bool(value) if value is not None else False
-
-    def _selector(self, task: str) -> List[str]:
-        self._load_skills_index()
-        if self._skills_expected:
-            return list(self._skills_selected)
-        candidates = self._skills_selected
-        # TODO: Use BM25-based ranking when rag dependencies are available.
-        return list(candidates) if task and candidates else list(candidates)
 
     def get_skill(self, name: str, allow_large: bool = False) -> Dict[str, str]:
         self._load_skills_index()
