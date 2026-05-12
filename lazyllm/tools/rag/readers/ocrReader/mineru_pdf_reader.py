@@ -158,7 +158,6 @@ class MineruPDFReader(_OcrReaderBase):
 
                 if extract_result:
                     states = [r.get('state') for r in extract_result]
-                    err_msgs = [r.get('err_msg', '') for r in extract_result]
                     LOG.info(f'[MineruPDFReader] Poll #{poll_count}: states={states}')
 
                     if all(s == 'done' for s in states):
@@ -258,7 +257,7 @@ class MineruPDFReader(_OcrReaderBase):
             return result
         raise TypeError(f'Not supported type: {type(content)}.')
 
-    def _adapt_one(self, item: dict) -> Optional[Block]:
+    def _adapt_one(self, item: dict) -> Optional[Block]:  # noqa: C901
         ty = item.get('type')
         if ty is None or ty in self._dropped_types:
             return None
