@@ -74,8 +74,10 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
 
     def _init_planner_prompter(self):
         planner_prompt = self._build_planner_prompt()
-        self._planner_prompter = ChatPrompter(instruction={'system': planner_prompt, 'user': ''},
-                                               skills=self._skill_manager.build_prompt() if self._skill_manager else '')
+        self._planner_prompter = ChatPrompter(
+            instruction={'system': planner_prompt, 'user': ''},
+            skills=self._skill_manager.build_prompt() if self._skill_manager else '',
+        )
         self._planner_stream = dict(prefix='I will give a plan first:\n', prefix_color=Color.blue,
                                     color=Color.green) if self._stream else False
 

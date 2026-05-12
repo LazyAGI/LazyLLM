@@ -91,9 +91,11 @@ class FunctionCall(ModuleBase):
                 '- Prefer creating/updating files under this workspace.\n'
                 '- Use absolute paths under this workspace when creating files.\n'
             )
-        self._prompter = ChatPrompter(instruction={'system': prompt, 'user': ''},
-                                       tools=self._tools_manager.tools_description,
-                                       skills=self._skill_manager.build_prompt() if self._skill_manager else '')
+        self._prompter = ChatPrompter(
+            instruction={'system': prompt, 'user': ''},
+            tools=self._tools_manager.tools_description,
+            skills=self._skill_manager.build_prompt() if self._skill_manager else '',
+        )
         self._llm = llm.share(
             prompt=self._prompter,
             format=FunctionCallFormatter(),
