@@ -180,7 +180,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
         if self._enable_system:
             history.insert(0, {'role': 'system',
-                               'content': self._system + '\n' + instruction if instruction else self._system})
+                               'content': instruction if instruction else self._system})
         return dict(messages=history, tools=tools) if tools else dict(messages=history)
 
     # Used for OnlineChatModule with Anthropic-format API
