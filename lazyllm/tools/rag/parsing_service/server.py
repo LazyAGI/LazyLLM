@@ -10,11 +10,22 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
+import lazyllm
 from lazyllm import (
     LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app,
     LazyLLMLaunchersBase as Launcher, load_obj, once_wrapper, dump_obj
 )
 from lazyllm.thirdparty import fastapi
+
+lazyllm.config.add(
+    'algo_register_policy', str, '', 'ALGO_REGISTER_POLICY',
+    description=(
+        'Algorithm registration policy when re-registering an existing algo. '
+        'force=overwrite reader and node groups unconditionally; '
+        'update=overwrite reader if signature matches, error otherwise; '
+        'empty/other=skip if reader already registered.'
+    )
+)
 
 from .base import (
     ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO,
@@ -115,6 +126,12 @@ class DocumentProcessor(ModuleBase):
                     launcher=self._worker_launcher,
                 )
                 self._workers.start()
+            # Restore reader from DB if not already set (e.g. after a restart in a distributed setup
+            # where register_algorithm has not been called yet by lazyllm-algo).
+            if self._reader is None:
+                self._reader = self._load_reader_from_db()
+                if self._reader is not None:
+                    LOG.info('[DocumentProcessor] Reader restored from DB.')
             # Push reader to workers if already set (e.g. register_algorithm called before _lazy_init)
             if self._reader is not None and self._workers is not None:
                 try:
@@ -333,13 +350,32 @@ class DocumentProcessor(ModuleBase):
         def _validate_reader(self, reader):
             if reader is None:
                 return
+            policy = lazyllm.config['algo_register_policy'].strip().lower()
             incoming_sig = reader.signature()
+
             if self._reader is None:
                 self._reader = reader
-            elif self._reader.signature() != incoming_sig:
-                raise ValueError(
-                    'reader must be the same across all register_algorithm calls. '
-                    'Only one global reader is supported per DocumentProcessor.'
+                return
+
+            if policy == 'force':
+                LOG.warning(
+                    f'[DocumentProcessor] force policy: overwriting reader '
+                    f'(old_sig={self._reader.signature()}, new_sig={incoming_sig})'
+                )
+                self._reader = reader
+            elif policy == 'update':
+                if self._reader.signature() != incoming_sig:
+                    raise ValueError(
+                        f'[DocumentProcessor] update policy: reader signature mismatch '
+                        f'(existing={self._reader.signature()}, incoming={incoming_sig}). '
+                        'Set LAZYLLM_ALGO_REGISTER_POLICY=force to override.'
+                    )
+                self._reader = reader
+            else:
+                LOG.info(
+                    f'[DocumentProcessor] Reader already registered, skipping '
+                    f'(sig={self._reader.signature()}). '
+                    'Set LAZYLLM_ALGO_REGISTER_POLICY=update or force to overwrite.'
                 )
 
         def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader,
@@ -389,6 +425,7 @@ class DocumentProcessor(ModuleBase):
         def _upsert_node_groups(self, node_groups: Dict[str, Dict], session=None) -> List[str]:
             from ..doc_impl import _compute_node_group_signature, NodeGroupType
             NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+            policy = lazyllm.config['algo_register_policy'].strip().lower()
             reader_sig = self._reader.signature() if self._reader is not None else ''
             # Build signatures in topological order (parent before child)
             name_to_id: Dict[str, str] = {}
@@ -409,11 +446,20 @@ class DocumentProcessor(ModuleBase):
                     existing = sess.query(NodeGroupInfo).filter(NodeGroupInfo.name == ng_name).first()
                     if existing:
                         if existing.signature != sig:
-                            raise ValueError(
-                                f'Node group {ng_name!r} already registered with different signature '
-                                f'(existing={existing.signature}, new={sig}). '
-                                'Use a different name or version.'
-                            )
+                            if policy == 'force':
+                                LOG.warning(
+                                    f'[DocumentProcessor] force policy: overwriting node group {ng_name!r} '
+                                    f'(old_sig={existing.signature}, new_sig={sig})'
+                                )
+                                existing.signature = sig
+                                existing.info_pickle = dump_obj(cfg)
+                                existing.updated_at = datetime.now()
+                            else:
+                                raise ValueError(
+                                    f'Node group {ng_name!r} already registered with different signature '
+                                    f'(existing={existing.signature}, new={sig}). '
+                                    'Use a different name or version.'
+                                )
                         name_to_id[ng_name] = existing.id
                     else:
                         ng_id = str(uuid4())  # random id for new node group
@@ -672,6 +718,23 @@ class DocumentProcessor(ModuleBase):
             store._lazy_init()
             self._store = store
             return store
+
+        def _load_reader_from_db(self) -> Optional[DirectoryReader]:
+            '''Restore the global DirectoryReader from any registered algorithm's info_pickle in DB.
+            Called on startup to recover reader state without waiting for lazyllm-algo to re-register.'''
+            try:
+                with self._db_manager.get_session() as session:
+                    AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
+                    row = session.query(AlgoInfo).first()
+                    if row is None:
+                        return None
+                    info = load_obj(row.info_pickle)
+                    if not isinstance(info, dict):
+                        return None
+                    return info.get('reader')
+            except Exception as e:
+                LOG.warning(f'[DocumentProcessor] Failed to restore reader from DB: {e}')
+                return None
 
         def _get_algo_group_info_data(self, algo_id: str):
             algorithm = self._get_algo(algo_id)
