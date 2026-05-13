@@ -2,7 +2,7 @@ import re
 import docstring_parser
 import lazyllm
 from lazyllm.tools import ToolManager
-from lazyllm.tools.agent import MethodModuleTool, ClassToolWrapper
+from lazyllm.tools.agent import MethodModuleTool
 from lazyllm.tools.agent.toolsManager import (
     _gen_empty_func_str_from_parsed_docstring,
     _gen_func_from_str,
@@ -234,6 +234,44 @@ class MockSearchForTest:
         return ','.join(f'result:{q}' for q in queries.split(','))
 
 
+class MockSearchWithClassKeySource:
+    __public_apis__ = ['search']
+    __key_source__ = lambda inst: inst._key  # noqa: E731
+
+    def __init__(self, key: str = ''):
+        self._key = key
+
+    def search(self, query: str) -> str:
+        '''Search the web.
+
+        Args:
+            query (str): The search query string.
+
+        Returns:
+            str: The search result.
+        '''
+        return f'result:{query}'
+
+
+class MockSearchWithStrClassKeySource:
+    __public_apis__ = ['search']
+    __key_source__ = 'env.MOCK_SEARCH_STR_KEY'
+
+    def __init__(self):
+        pass
+
+    def search(self, query: str) -> str:
+        '''Search the web.
+
+        Args:
+            query (str): The search query string.
+
+        Returns:
+            str: The search result.
+        '''
+        return f'result:{query}'
+
+
 class TestMethodModuleTool:
     def test_name_and_invocation_without_key(self):
         inst = MockSearchForTest()
@@ -255,19 +293,42 @@ class TestMethodModuleTool:
         tool = MethodModuleTool(inst, 'search', lambda i: i._key)
         assert tool.should_skip() is False
 
-    def test_should_skip_globals_key_source(self):
-        inst = MockSearchForTest()
-        tool = MethodModuleTool(inst, 'search', 'globals.test_mmt_key')
-        assert tool.should_skip() is True
-        lazyllm.globals['test_mmt_key'] = 'abc'
-        assert tool.should_skip() is False
-        lazyllm.globals['test_mmt_key'] = ''  # reset instead of delete
-
     def test_should_skip_env_key_source(self, monkeypatch):
         inst = MockSearchForTest()
         tool = MethodModuleTool(inst, 'search', 'env.TEST_MMT_API_KEY')
         assert tool.should_skip() is True
         monkeypatch.setenv('TEST_MMT_API_KEY', 'env-value')
+        assert tool.should_skip() is False
+
+    def test_should_skip_multi_key_source_any_satisfies(self, monkeypatch):
+        inst = MockSearchForTest(key='')
+        tool = MethodModuleTool(inst, 'search', [lambda i: i._key, 'env.TEST_MULTI_KEY'])
+        assert tool.should_skip() is True
+        monkeypatch.setenv('TEST_MULTI_KEY', 'env-val')
+        assert tool.should_skip() is False
+
+    def test_should_skip_multi_key_source_first_satisfies(self):
+        inst = MockSearchForTest(key='my-key')
+        tool = MethodModuleTool(inst, 'search', [lambda i: i._key, 'env.NONEXISTENT_KEY_XYZ'])
+        assert tool.should_skip() is False
+
+    def test_should_skip_class_key_source_callable(self):
+        inst = MockSearchWithClassKeySource(key='')
+        tool = MethodModuleTool(inst, 'search')
+        assert tool.should_skip() is True
+        inst._key = 'valid'
+        assert tool.should_skip() is False
+
+    def test_should_skip_class_key_source_str(self, monkeypatch):
+        inst = MockSearchWithStrClassKeySource()
+        tool = MethodModuleTool(inst, 'search')
+        assert tool.should_skip() is True
+        monkeypatch.setenv('MOCK_SEARCH_STR_KEY', 'some-key')
+        assert tool.should_skip() is False
+
+    def test_explicit_key_source_overrides_class_key_source(self):
+        inst = MockSearchWithClassKeySource(key='')
+        tool = MethodModuleTool(inst, 'search', lambda i: 'override')
         assert tool.should_skip() is False
 
     def test_schema_contains_parameter_info(self):
@@ -283,6 +344,20 @@ class TestMethodModuleTool:
         names = {t.name for t in tm.all_tools}
         assert 'MockSearchForTest_search' in names
         assert 'MockSearchForTest_batch_search' in names
+
+    def test_tool_manager_loads_bare_instance_with_class_key_source(self):
+        inst = MockSearchWithClassKeySource(key='k')
+        tm = ToolManager([inst])
+        names = {t.name for t in tm.all_tools}
+        assert 'MockSearchWithClassKeySource_search' in names
+        assert len(tm.tools_description) == 1
+
+    def test_tool_manager_bare_instance_hidden_when_no_key(self):
+        inst = MockSearchWithClassKeySource(key='')
+        tm = ToolManager([inst])
+        assert len(tm.tools_description) == 0
+        inst._key = 'valid'
+        assert len(tm.tools_description) == 1
 
     def test_tools_description_filters_when_key_missing(self):
         inst = MockSearchForTest(key='')
@@ -301,7 +376,7 @@ class TestMethodModuleTool:
             pass
 
         try:
-            ToolManager([(NoPublicApis(), 'globals.k')])
+            ToolManager([(NoPublicApis(), 'env.K')])
             raised = False
         except ValueError:
             raised = True
@@ -316,91 +391,3 @@ class TestMethodModuleTool:
         tool, result = tm._parse_tool_call(tc)
         assert tool is None
         assert 'unavailable' in result.lower() or 'missing' in result.lower()
-
-
-class MockFSForTest:
-    __public_apis__ = ['read_file', 'write_file']
-
-    def __init__(self, token: str = ''):
-        self._token = token
-
-    def read_file(self, path: str) -> str:
-        '''Read content from a file.
-
-        Args:
-            path (str): The file path to read.
-
-        Returns:
-            str: The file content.
-        '''
-        return f'content:{path}'
-
-    def write_file(self, path: str, content: str) -> str:
-        '''Write content to a file.
-
-        Args:
-            path (str): The file path to write.
-            content (str): Content to write.
-
-        Returns:
-            str: Result message.
-        '''
-        return f'wrote:{path}'
-
-
-class TestClassToolWrapper:
-    def test_build_tools_from_instance_uses_public_apis(self):
-        inst = MockFSForTest(token='t')
-        wrapper = ClassToolWrapper(inst, key_source=lambda i: i._token)
-        tools = wrapper.build_tools()
-        names = {t.name for t in tools}
-        assert names == {'MockFSForTest_read_file', 'MockFSForTest_write_file'}
-
-    def test_build_tools_from_class_with_init_kwargs(self):
-        wrapper = ClassToolWrapper(MockFSForTest, init_kwargs={'token': 'tok'}, key_source=lambda i: i._token)
-        tools = wrapper.build_tools()
-        assert len(tools) == 2
-        assert all(not t.should_skip() for t in tools)
-
-    def test_build_tools_with_explicit_apis(self):
-        inst = MockFSForTest()
-        wrapper = ClassToolWrapper(inst, apis=['read_file'])
-        tools = wrapper.build_tools()
-        assert len(tools) == 1
-        assert tools[0].name == 'MockFSForTest_read_file'
-
-    def test_raises_without_public_apis_and_no_apis_param(self):
-        class NoApis:
-            pass
-
-        try:
-            ClassToolWrapper(NoApis())
-            raised = False
-        except ValueError:
-            raised = True
-        assert raised
-
-    def test_tool_manager_expands_class_tool_wrapper(self):
-        inst = MockFSForTest(token='t')
-        tm = ToolManager([ClassToolWrapper(inst)])
-        names = {t.name for t in tm.all_tools}
-        assert 'MockFSForTest_read_file' in names
-        assert 'MockFSForTest_write_file' in names
-
-    def test_tools_description_filters_via_class_tool_wrapper(self):
-        inst = MockFSForTest(token='')
-        tm = ToolManager([ClassToolWrapper(inst, key_source=lambda i: i._token)])
-        assert len(tm.tools_description) == 0
-        inst._token = 'valid'
-        assert len(tm.tools_description) == 2
-
-    def test_class_tool_wrapper_and_tuple_coexist(self):
-        inst_search = MockSearchForTest(key='k')
-        inst_fs = MockFSForTest(token='')
-        tm = ToolManager([
-            (inst_search, lambda i: i._key),
-            ClassToolWrapper(inst_fs, key_source=lambda i: i._token),
-        ])
-        assert len(tm.all_tools) == 4
-        # search visible, fs hidden
-        assert len(tm.tools_description) == 2

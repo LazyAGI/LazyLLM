@@ -277,9 +277,12 @@ if 'builtin_tools' not in LazyLLMRegisterMetaClass.all_clses:
 
 
 class MethodModuleTool(ModuleTool):
-    def __init__(self, instance: Any, method_name: str, key_source: Union[str, Callable, None] = None):
+    def __init__(self, instance: Any, method_name: str,
+                 key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
         self._instance = instance
         self._method_name = method_name
+        if key_source is None:
+            key_source = getattr(type(instance), '__key_source__', None)
         self._key_source = key_source
         self._bound_method = getattr(instance, method_name)
         bound = self._bound_method
@@ -298,22 +301,18 @@ class MethodModuleTool(ModuleTool):
     def should_skip(self) -> bool:
         if self._key_source is None:
             return False
-        return not bool(self._resolve_key())
+        sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
+        return not any(bool(self._resolve_one_key(src)) for src in sources)
 
-    def _resolve_key(self) -> Optional[str]:
-        if callable(self._key_source):
-            return self._key_source(self._instance) or None
-        prefix, _, attr = self._key_source.partition('.')
-        if prefix == 'globals':
+    def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
+        if callable(source):
+            return source(self._instance) or None
+        if '.' not in source:
             try:
-                return lazyllm.globals[attr] or None
-            except (KeyError, AttributeError):
+                return lazyllm.globals.config[source] or None
+            except (KeyError, AttributeError, AssertionError):
                 return None
-        if prefix == 'locals':
-            try:
-                return lazyllm.locals[attr] or None
-            except (KeyError, AttributeError):
-                return None
+        prefix, _, attr = source.partition('.')
         if prefix == 'env':
             return os.environ.get(attr) or None
         if prefix == 'config':
@@ -321,27 +320,13 @@ class MethodModuleTool(ModuleTool):
                 return lazyllm.config[attr] or None
             except (KeyError, AttributeError):
                 return None
+        if prefix == 'globals' and attr.startswith('config.'):
+            cfg_key = attr[len('config.'):]
+            try:
+                return lazyllm.globals.config[cfg_key] or None
+            except (KeyError, AttributeError, AssertionError):
+                return None
         return None
-
-
-class ClassToolWrapper:
-    def __init__(self, cls_or_instance: Any, apis: List[str] = None,
-                 key_source: Union[str, Callable, None] = None,
-                 init_kwargs: Dict[str, Any] = None):
-        if inspect.isclass(cls_or_instance):
-            self._instance = cls_or_instance(**(init_kwargs or {}))
-        else:
-            self._instance = cls_or_instance
-        if apis is None:
-            if not hasattr(self._instance, '__public_apis__'):
-                raise ValueError(f'{self._instance!r} does not have __public_apis__ and no apis were provided')
-            self._apis = self._instance.__public_apis__
-        else:
-            self._apis = apis
-        self._key_source = key_source
-
-    def build_tools(self) -> List['MethodModuleTool']:
-        return [MethodModuleTool(self._instance, method_name, self._key_source) for method_name in self._apis]
 
 
 TOOL_CALL_FORMAT_EXAMPLE = (
@@ -377,8 +362,6 @@ class ToolManager(ModuleBase):
         for element in tools:
             if isinstance(element, str):
                 _tools.append(self._load_tool_by_name(element))
-            elif isinstance(element, ClassToolWrapper):
-                _tools.extend(element.build_tools())
             elif isinstance(element, ModuleTool):
                 _tools.append(element)
             elif isinstance(element, tuple) and len(element) == 2:
@@ -387,6 +370,9 @@ class ToolManager(ModuleBase):
                     raise ValueError(f'Instance {instance!r} does not have __public_apis__')
                 for method_name in instance.__public_apis__:
                     _tools.append(MethodModuleTool(instance, method_name, key_source))
+            elif hasattr(element, '__public_apis__'):
+                for method_name in element.__public_apis__:
+                    _tools.append(MethodModuleTool(element, method_name))
             elif isinstance(element, Callable):
                 # just to convert `element` to the internal type in `Register`
                 register('tmp_tool')(element)

@@ -22,7 +22,6 @@ if TYPE_CHECKING:
         ReWOOAgent,
         ModuleTool,
         MethodModuleTool,
-        ClassToolWrapper,
         SkillManager,
         install_skill,
     )
@@ -88,7 +87,6 @@ _SUBMOD_MAP = {
         'ToolManager',
         'ModuleTool',
         'MethodModuleTool',
-        'ClassToolWrapper',
         'FunctionCall',
         'FunctionCallAgent',
         'fc_register',
