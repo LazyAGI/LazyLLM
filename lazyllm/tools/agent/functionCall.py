@@ -85,7 +85,7 @@ class FunctionCall(ModuleBase):
         prompt = _prompt or FC_PROMPT
         self._prompter = ChatPrompter(
             instruction={'system': prompt, 'user': ''},
-            tools=self._tools_manager.tools_description,
+            tools=lambda: self._tools_manager.tools_description,
             skills=self._skill_manager.build_prompt() if self._skill_manager else '',
         )
         self._llm = llm.share(
@@ -109,7 +109,6 @@ class FunctionCall(ModuleBase):
             self._tools_manager.sandbox = sandbox
 
     def _build_history(self, input: Union[str, dict, list]):
-        self._prompter._tools = self._tools_manager.tools_description
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
         if isinstance(input, str):
