@@ -19,11 +19,12 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     ISA = '<!lazyllm-spliter!>'
     ISE = '</!lazyllm-spliter!>'
 
-    def __init__(self, show=False, tools=None, history=None, *, enable_system: bool = True):
+    def __init__(self, show=False, tools=None, skills=None, history=None, *, enable_system: bool = True):
         self._set_model_configs(system='You are an AI-Agent developed by LazyLLM.', sos='',
                                 soh='', soa='', eos='', eoh='', eoa='')
         self._show = show
         self._tools = tools
+        self._skills = skills or ''
         self._pre_hook = None
         self._history = history or []
         self._enable_system = enable_system
@@ -154,7 +155,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             is_tool = any(item.get('role') == 'tool' for item in input)
             input = '\n'.join([item.get('content', '') for item in input])
         params = dict(system=self._system, instruction=instruction, input=input, user=user, history=history, tools=tools,
-                      sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa, eoa=self._eoa)
+                      skills=self._skills, sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa,
+                      eoa=self._eoa)
         if is_tool:
             params['soh'] = getattr(self, '_soe', self._soh)
             params['eoh'] = getattr(self, '_eoe', self._eoh)
@@ -179,8 +181,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             history[-1]['content'] = user + history[-1]['content']
 
         if self._enable_system:
-            history.insert(0, {'role': 'system',
-                               'content': self._system + '\n' + instruction if instruction else self._system})
+            system_content = '\n\n'.join(p for p in (instruction or self._system, self._skills) if p)
+            history.insert(0, {'role': 'system', 'content': system_content})
         return dict(messages=history, tools=tools) if tools else dict(messages=history)
 
     # Used for OnlineChatModule with Anthropic-format API
@@ -213,7 +215,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             pattern = re.compile(r'%s(.*)%s' % (LazyLLMPrompterBase.ISA, LazyLLMPrompterBase.ISE), re.DOTALL)
             ret = re.split(pattern, instruction)
             system_instruction = ret[0]
-            user_instruction = ret[1]
+            user_instruction = ret[1] + (ret[2] if len(ret) > 2 else '')
 
         return system_instruction, user_instruction
 
