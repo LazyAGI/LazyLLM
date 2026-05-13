@@ -22,6 +22,7 @@ from .queue import _SQLBasedQueue as Queue
 from ...sql import SqlManager
 from ..doc_service.base import DOC_NODE_GROUP_STATUS_TABLE_INFO
 from ..store.document_store import _DocumentStore
+from ..store import LAZY_IMAGE_GROUP, LAZY_ROOT_NAME
 from ..data_loaders import DirectoryReader
 
 WORKER_ERROR_RETRY_INTERVAL = 5.0
@@ -325,7 +326,8 @@ class DocumentProcessorWorker(ModuleBase):
                 ids.append(file_info.get('doc_id'))
                 metadatas.append(file_info.get('metadata'))
 
-            ng_ids = list(name_to_id.values())
+            ng_ids = [ng_id for name, ng_id in name_to_id.items()
+                      if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
             if kb_id and ng_ids:
                 skip_ng_ids, exec_ng_ids = self._wait_and_decide_ng(ids, ng_ids, kb_id)
                 if not exec_ng_ids:
@@ -354,6 +356,7 @@ class DocumentProcessorWorker(ModuleBase):
         ):
             file_infos = payload.get('file_infos')
             kb_id = payload.get('kb_id', None)
+            ng_names_requested = payload.get('ng_names')  # None means full reparse
             reparse_doc_ids = []
             reparse_files = []
             reparse_metadatas = []
@@ -363,15 +366,37 @@ class DocumentProcessorWorker(ModuleBase):
                 reparse_files.append(file_info.get('file_path'))
                 reparse_metadatas.append(file_info.get('metadata'))
 
-            # node_groups is already filtered to the requested ng_names by _run_task
-            exec_ng_ids = list(name_to_id.values())
+            exec_ng_ids = [ng_id for name, ng_id in name_to_id.items()
+                           if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
             if kb_id and exec_ng_ids:
                 self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
 
             try:
-                processor.reparse(group_name=None, node_groups=node_groups,
-                                  doc_ids=reparse_doc_ids, doc_paths=reparse_files,
-                                  metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
+                if ng_names_requested is None:
+                    # Full reparse: reload from source and rebuild all node groups.
+                    processor.reparse(group_name=None, node_groups=node_groups,
+                                      doc_ids=reparse_doc_ids, doc_paths=reparse_files,
+                                      metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
+                else:
+                    # Source groups have no transform; including them forces a full reparse.
+                    source_groups = {LAZY_ROOT_NAME, LAZY_IMAGE_GROUP}
+                    if source_groups & set(ng_names_requested):
+                        LOG.warning(
+                            f'{self._log_prefix(task_id)} ng_names contains source group(s) '
+                            f'{source_groups & set(ng_names_requested)}, upgrading to full reparse')
+                        processor.reparse(group_name=None, node_groups=node_groups,
+                                          doc_ids=reparse_doc_ids, doc_paths=reparse_files,
+                                          metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
+                    else:
+                        # Partial reparse: rebuild only the requested node groups in-place,
+                        # without touching other groups' nodes.
+                        for name in ng_names_requested:
+                            if name not in node_groups:
+                                LOG.warning(f'{self._log_prefix(task_id)} ng_name {name!r} not found, skipping')
+                                continue
+                            processor.reparse(group_name=name, node_groups=node_groups,
+                                              doc_ids=reparse_doc_ids, doc_paths=reparse_files,
+                                              metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
                 if kb_id and exec_ng_ids:
                     self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
             except Exception as e:
@@ -402,7 +427,8 @@ class DocumentProcessorWorker(ModuleBase):
                     target_kb_id = file_info.get('transfer_params', {}).get('target_kb_id')
                 target_doc_ids.append(file_info.get('transfer_params', {}).get('target_doc_id'))
 
-            ng_ids = list(name_to_id.values())
+            ng_ids = [ng_id for name, ng_id in name_to_id.items()
+                      if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
             if target_kb_id and ng_ids:
                 skip_ng_ids, exec_ng_ids = self._wait_and_decide_ng(target_doc_ids, ng_ids, target_kb_id)
                 if not exec_ng_ids:
@@ -630,7 +656,13 @@ class DocumentProcessorWorker(ModuleBase):
                 )
 
                 processor = self._get_processor()
-                node_groups, name_to_id = self._load_all_ng_configs(ng_names)
+                # For reparse tasks, always load all node groups so that
+                # _reparse_group_recursive can access parent/sibling groups.
+                # ng_names filtering is handled inside _exec_reparse_task.
+                if task_type == TaskType.DOC_REPARSE.value:
+                    node_groups, name_to_id = self._load_all_ng_configs(None)
+                else:
+                    node_groups, name_to_id = self._load_all_ng_configs(ng_names)
                 reader = self._reader or self._load_reader_from_db()
                 if task_type == TaskType.DOC_ADD.value:
                     self._exec_add_task(processor, task_id, payload, node_groups=node_groups,

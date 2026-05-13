@@ -6,7 +6,7 @@ from lazyllm.module import ModuleBase
 from lazyllm import locals, once_wrapper
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 from .toolsManager import ToolManager
-from .skill_manager import SkillManager, SKILLS_PROMPT
+from .skill_manager import SkillManager
 from .file_tool import (  # noqa: F401
     read_file,
     list_dir,
@@ -137,17 +137,9 @@ class LazyLLMAgentBase(ModuleBase):
                 self._skill_tool_names.add(tool.__name__)
                 self._tools.append(tool)
 
-    def _append_skills_prompt(self, prompt: str) -> str:
-        if not self._skill_manager:
-            return prompt
-        return f'{prompt}\n\n{SKILLS_PROMPT}'
-
-    def _wrap_user_input_with_skills(self, query: str):
-        if not self._skill_manager:
-            return query
-        return self._skill_manager.wrap_input(query, query)
-
     def _append_workspace_prompt(self, prompt: str) -> str:
+        if not self._enable_builtin_tools:
+            return prompt
         return (
             f'{prompt}\n\n## Workspace\n'
             f'- Default workspace: `{self._workspace}`\n'

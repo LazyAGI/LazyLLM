@@ -333,11 +333,11 @@ class _Processor:
         else:
             self._get_or_create_nodes(group_name, node_groups, uids)
 
-    def _reparse_docs(self, group_name: str, node_groups: Dict[str, Dict],
+    def _reparse_docs(self, group_name: Optional[str], node_groups: Dict[str, Dict],
                       doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict],
                       kb_id: str = None, reader: Optional[DirectoryReader] = None, **kwargs):
         doc_ids, metadatas, kb_id = self._prepare_doc_inputs(doc_paths, doc_ids, metadatas, kb_id)
-        if group_name == 'all':
+        if group_name is None:
             preloaded_root_nodes = reader.load_data(doc_paths, metadatas, split_nodes_by_type=True)
             self._store.remove_nodes(doc_ids=doc_ids, kb_id=kb_id)
             removed_flag = False
@@ -356,6 +356,12 @@ class _Processor:
         else:
             p_nodes = self._store.get_nodes(group=node_groups[group_name]['parent'],
                                             kb_id=kb_id, doc_ids=doc_ids)
+            # TODO: reparse recursively
+            if not p_nodes:
+                raise ValueError(
+                    f'Cannot reparse group "{group_name}": parent group '
+                    f'"{node_groups[group_name]["parent"]}" has no nodes for docs {doc_ids}. '
+                    f'Run a full reparse (without specifying ng_names) to rebuild from source.')
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name,
                                           node_groups=node_groups, doc_ids=doc_ids, kb_id=kb_id)
 
