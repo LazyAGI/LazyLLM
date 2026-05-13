@@ -328,7 +328,7 @@ class FeishuFSBase(LazyLLMFSBase):
                               'seq': (None, str(i)),
                               'size': (None, str(len(chunk))),
                               'file': (name, chunk, 'application/octet-stream'),
-                          },
+                              },
                           headers={'Content-Type': None})
         result = self._post(f'{self._base_url}/drive/v1/files/upload_finish',
                             json={'upload_id': upload_id, 'block_num': num_blocks})

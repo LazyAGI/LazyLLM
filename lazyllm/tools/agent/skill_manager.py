@@ -38,12 +38,26 @@ execute the workflow steps, constraints, and examples in order.
 4) **Adapt workflow to the current task**: Before execution, map the workflow
 to the user's actual goal, constraints, and available inputs; do not apply
 steps blindly.
-5) **Load support files only when needed**: Use `read_reference` only for exact relative paths explicitly listed in
-the skill's SKILL.md. Do not invent reference file paths.
-6) **Run helper scripts only when required**: Use `run_script` only for exact relative script paths explicitly listed in
-the skill's SKILL.md. Do not invent script paths such as `scripts/...`; request approval if risky.
 
-### Reference and Script
+### Reference and Script Tools (Strict Constraint)
+**CRITICAL — Read Before Using `read_reference` or `run_script`:**
+
+These two tools have a hard prerequisite and a hard path rule:
+
+**Prerequisite**: You MUST call `get_skill` for the skill first and receive its
+SKILL.md content before you can use `read_reference` or `run_script`.
+
+**Path Rule**: The `rel_path` argument MUST be copied verbatim from the SKILL.md
+body. You are FORBIDDEN from fabricating, guessing, or extrapolating paths.
+Examples of FORBIDDEN path fabrication:
+  - Making up paths like `scripts/create_spring_prose.sh` that do not appear in SKILL.md
+  - Assuming a file exists because "most skills have it" (e.g., `scripts/setup.sh`)
+  - Constructing paths from the skill name (e.g., `scripts/<skill_name>.py`)
+  - Trying common filenames (e.g., `README.md`, `docs/guide.md`) unless explicitly listed
+
+If the SKILL.md does not contain any explicit reference or script path, these
+tools MUST NOT be called for that skill — use your other available tools instead.
+
 - **Reference**: Documentation and guidance files (e.g., design notes,
   domain rules, templates). Read them with `read_reference` to understand
   how to execute the workflow correctly.
@@ -51,10 +65,6 @@ the skill's SKILL.md. Do not invent script paths such as `scripts/...`; request 
   scripts with `run_script` instead of writing new programs from scratch.
 - If a suitable script already exists in the skill, use it first. Only write
   new code when the existing scripts cannot satisfy the task.
-- Only call `read_reference` or `run_script` after reading the skill instructions
-  with `get_skill`, and only when SKILL.md explicitly names the target relative
-  path. If no path is listed, continue with the available instructions and other
-  tools instead of guessing a file path.
 
 ### When Skills Help
 - The user asks for a structured or repeatable process
@@ -63,7 +73,6 @@ the skill's SKILL.md. Do not invent script paths such as `scripts/...`; request 
 
 ### Script Execution
 Skills may include Python or shell scripts. Prefer `run_script` for scripts explicitly listed by the selected skill.
-Use `shell_tool` only when needed, and always use absolute paths.
 
 ### Example
 User: "Research the latest developments in quantum computing."
@@ -71,7 +80,7 @@ User: "Research the latest developments in quantum computing."
 1) See a "web‑research" skill in the list
 2) Call `get_skill` to fetch its full usage
 3) Follow the research workflow (search → organize → synthesize)
-4) Use `read_reference` and `run_script` if the workflow calls for them
+4) Use `read_reference` and `run_script` only if the SKILL.md explicitly names them
 
 Skills improve reliability and consistency. If a skill applies, use it.
 '''
