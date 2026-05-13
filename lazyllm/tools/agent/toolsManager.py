@@ -1,11 +1,12 @@
 import copy
+import functools
 import json5 as json
 import lazyllm
 import docstring_parser
 import os
 from lazyllm.module import ModuleBase
 from lazyllm.common import LazyLLMRegisterMetaClass, compile_func, kwargs
-from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set
+from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
 from lazyllm import LOG
@@ -274,6 +275,75 @@ if 'tool' not in LazyLLMRegisterMetaClass.all_clses:
 if 'builtin_tools' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('builtin_tools')
 
+
+class MethodModuleTool(ModuleTool):
+    def __init__(self, instance: Any, method_name: str, key_source: Union[str, Callable, None] = None):
+        self._instance = instance
+        self._method_name = method_name
+        self._key_source = key_source
+        self._bound_method = getattr(instance, method_name)
+        bound = self._bound_method
+
+        @functools.wraps(bound)
+        def _apply(**kwargs):
+            return bound(**kwargs)
+
+        self.apply = _apply
+        super().__init__(execute_in_sandbox=False)
+        self._name = f'{instance.__class__.__name__}_{method_name}'
+
+    def _load_function_schema(self, func: Callable) -> Type[BaseModel]:
+        return super()._load_function_schema(self._bound_method)
+
+    def should_skip(self) -> bool:
+        if self._key_source is None:
+            return False
+        return not bool(self._resolve_key())
+
+    def _resolve_key(self) -> Optional[str]:
+        if callable(self._key_source):
+            return self._key_source(self._instance) or None
+        prefix, _, attr = self._key_source.partition('.')
+        if prefix == 'globals':
+            try:
+                return lazyllm.globals[attr] or None
+            except (KeyError, AttributeError):
+                return None
+        if prefix == 'locals':
+            try:
+                return lazyllm.locals[attr] or None
+            except (KeyError, AttributeError):
+                return None
+        if prefix == 'env':
+            return os.environ.get(attr) or None
+        if prefix == 'config':
+            try:
+                return lazyllm.config[attr] or None
+            except (KeyError, AttributeError):
+                return None
+        return None
+
+
+class ClassToolWrapper:
+    def __init__(self, cls_or_instance: Any, apis: List[str] = None,
+                 key_source: Union[str, Callable, None] = None,
+                 init_kwargs: Dict[str, Any] = None):
+        if inspect.isclass(cls_or_instance):
+            self._instance = cls_or_instance(**(init_kwargs or {}))
+        else:
+            self._instance = cls_or_instance
+        if apis is None:
+            if not hasattr(self._instance, '__public_apis__'):
+                raise ValueError(f'{self._instance!r} does not have __public_apis__ and no apis were provided')
+            self._apis = self._instance.__public_apis__
+        else:
+            self._apis = apis
+        self._key_source = key_source
+
+    def build_tools(self) -> List['MethodModuleTool']:
+        return [MethodModuleTool(self._instance, method_name, self._key_source) for method_name in self._apis]
+
+
 TOOL_CALL_FORMAT_EXAMPLE = (
     '{"function": {"name": "tool_name", "arguments": '
     '"{{"arg1": "value1", "arg2": "value2"}}"}}'
@@ -288,6 +358,17 @@ class ToolManager(ModuleBase):
         self._tools_desc = self._transform_to_openai_function()
         self._sandbox = sandbox
 
+    def _load_tool_by_name(self, name: str) -> 'ModuleTool':
+        name = name.strip()
+        if '.' not in name:
+            return getattr(lazyllm.tool, name)()
+        target = lazyllm
+        for part in name.split('.'):
+            if not part:
+                raise ValueError(f'invalid tool name: {name}')
+            target = getattr(target, part)
+        return target()
+
     def _load_tools(self, tools: List[Union[str, Callable]]):
         if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
             register.new_group('tmp_tool')
@@ -295,18 +376,17 @@ class ToolManager(ModuleBase):
         _tools = []
         for element in tools:
             if isinstance(element, str):
-                name = element.strip()
-                if '.' in name:
-                    target = lazyllm
-                    for part in name.split('.'):
-                        if not part:
-                            raise ValueError(f'invalid tool name: {element}')
-                        target = getattr(target, part)
-                    _tools.append(target())
-                else:
-                    _tools.append(getattr(lazyllm.tool, name)())
+                _tools.append(self._load_tool_by_name(element))
+            elif isinstance(element, ClassToolWrapper):
+                _tools.extend(element.build_tools())
             elif isinstance(element, ModuleTool):
                 _tools.append(element)
+            elif isinstance(element, tuple) and len(element) == 2:
+                instance, key_source = element
+                if not hasattr(instance, '__public_apis__'):
+                    raise ValueError(f'Instance {instance!r} does not have __public_apis__')
+                for method_name in instance.__public_apis__:
+                    _tools.append(MethodModuleTool(instance, method_name, key_source))
             elif isinstance(element, Callable):
                 # just to convert `element` to the internal type in `Register`
                 register('tmp_tool')(element)
@@ -320,8 +400,14 @@ class ToolManager(ModuleBase):
         return self._tools
 
     @property
-    def tools_description(self):
-        return self._tools_desc
+    def tools_description(self) -> List[Dict]:
+        result = []
+        for desc, tool in zip(self._tools_desc, self._tools):
+            if hasattr(tool, 'should_skip') and tool.should_skip():
+                LOG.debug(f'Tool [{tool.name}] skipped: key_source={tool._key_source!r} resolved to None')
+            else:
+                result.append(desc)
+        return result
 
     @property
     def tools_info(self):
@@ -451,6 +537,8 @@ class ToolManager(ModuleBase):
         tool = self._tool_call.get(name)
         if tool is None:
             return None, f'Tool [{name}] is not available. Please choose from the available tools.'
+        if hasattr(tool, 'should_skip') and tool.should_skip():
+            return None, f'Tool [{name}] is currently unavailable (missing required key).'
         if not self._validate_tool(name, arguments):
             return None, f'Tool [{name}] parameters error.'
         return tool, arguments

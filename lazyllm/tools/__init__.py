@@ -21,6 +21,8 @@ if TYPE_CHECKING:
         PlanAndSolveAgent,
         ReWOOAgent,
         ModuleTool,
+        MethodModuleTool,
+        ClassToolWrapper,
         SkillManager,
         install_skill,
     )
@@ -85,6 +87,8 @@ _SUBMOD_MAP = {
     'agent': [
         'ToolManager',
         'ModuleTool',
+        'MethodModuleTool',
+        'ClassToolWrapper',
         'FunctionCall',
         'FunctionCallAgent',
         'fc_register',

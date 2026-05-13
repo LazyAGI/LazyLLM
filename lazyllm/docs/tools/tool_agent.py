@@ -1861,3 +1861,144 @@ add_agent_example('functionCall.StreamResponse', '''\
 Hello, world!
 ''')
 
+
+add_agent_chinese_doc('MethodModuleTool', '''\
+将一个对象实例的指定方法包装为可注册到 ToolManager 的 ModuleTool。
+支持可选的 key_source 参数，用于在运行时检测凭据是否存在；当凭据不存在时，该工具会从 tools_description 中自动隐藏，LLM 不会感知到其存在。
+
+主要用于将 SearchBase、LazyLLMFSBase 等带有 __public_apis__ 的对象注册为 Agent 工具。
+
+Args:
+    instance (Any): 持有目标方法的对象实例。
+    method_name (str): 要包装为工具的方法名，必须是 instance 上的可调用属性。
+    key_source (Union[str, Callable, None]): 运行时凭据来源，用于 should_skip() 判断。
+
+        - None（默认）：不检查凭据，工具始终可用。
+        - 字符串格式：``globals.key``、``locals.key``、``env.KEY``、``config.key``，分别从 lazyllm.globals、lazyllm.locals、os.environ、lazyllm.config 中读取。
+        - callable：接收 instance 作为参数，返回凭据字符串或空值，如 ``lambda inst: inst._key``。
+''')
+
+add_agent_english_doc('MethodModuleTool', '''\
+Wraps a specified method of an object instance into a ModuleTool that can be registered with ToolManager.
+Accepts an optional key_source parameter to detect credential availability at runtime; when the credential is absent, the tool is automatically hidden from tools_description so the LLM is unaware of it.
+
+Primarily used to register objects with __public_apis__ (such as SearchBase or LazyLLMFSBase subclasses) as Agent tools.
+
+Args:
+    instance (Any): The object instance holding the target method.
+    method_name (str): Name of the method to wrap as a tool; must be a callable attribute on instance.
+    key_source (Union[str, Callable, None]): Runtime credential source used by should_skip().
+
+        - None (default): No credential check; the tool is always available.
+        - String format: ``globals.key``, ``locals.key``, ``env.KEY``, or ``config.key`` — reads from lazyllm.globals, lazyllm.locals, os.environ, or lazyllm.config respectively.
+        - callable: Receives instance as argument and returns the credential string or an empty value, e.g. ``lambda inst: inst._key``.
+''')
+
+add_agent_example('MethodModuleTool', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.agent import ToolManager, MethodModuleTool
+>>> class MockSearch:
+...     __public_apis__ = ["search"]
+...     def __init__(self):
+...         self._key = ""
+...     def search(self, query: str) -> str:
+...         return f"results for {query}"
+>>> inst = MockSearch()
+>>> tool = MethodModuleTool(inst, "search", lambda i: i._key)
+>>> tool.should_skip()
+True
+>>> inst._key = "my-key"
+>>> tool.should_skip()
+False
+>>> tm = ToolManager([(inst, lambda i: i._key)])
+>>> len(tm.tools_description)
+1
+''')
+
+add_agent_chinese_doc('MethodModuleTool.should_skip', '''\
+根据 key_source 判断该工具当前是否应被跳过（即凭据不可用）。
+
+Returns:
+    bool: 若 key_source 为 None 则返回 False；否则尝试解析凭据，若凭据为空或不存在则返回 True。
+''')
+
+add_agent_english_doc('MethodModuleTool.should_skip', '''\
+Determines whether this tool should currently be skipped based on key_source (i.e., the credential is unavailable).
+
+Returns:
+    bool: Returns False if key_source is None; otherwise resolves the credential and returns True if it is empty or missing.
+''')
+
+add_agent_chinese_doc('ClassToolWrapper', '''\
+类工具包装器，用于将带有 __public_apis__ 的类或实例注册为一组 Agent 工具。
+
+支持直接传入类（延迟实例化）或已有实例，可通过 apis 参数显式指定要暴露的方法列表，也可省略以自动读取对象的 __public_apis__。通过 key_source 为整个类实例声明运行时凭据来源，凭据缺失时所有相关工具均会被 ToolManager 自动隐藏。
+
+将 ClassToolWrapper 传入 ToolManager（或 ReactAgent 的 tools 参数）时，会被自动展开为多个 MethodModuleTool。
+
+Args:
+    cls_or_instance (Any): 要注册的类（将使用 init_kwargs 实例化）或已有实例。
+    apis (List[str], optional): 要暴露为工具的方法名列表。若为 None，则自动读取 cls_or_instance.__public_apis__。
+    key_source (Union[str, Callable, None]): 运行时凭据来源，语义与 MethodModuleTool 相同。默认为 None（无凭据检查）。
+    init_kwargs (Dict[str, Any], optional): 当 cls_or_instance 为类时，用于实例化的关键字参数。
+''')
+
+add_agent_english_doc('ClassToolWrapper', '''\
+A class tool wrapper that registers a class or instance with __public_apis__ as a group of Agent tools.
+
+Accepts either a class (with deferred instantiation) or an existing instance. The apis parameter explicitly specifies which methods to expose; if omitted, __public_apis__ is read automatically. key_source declares a runtime credential source for the entire instance — when the credential is absent, all tools derived from this wrapper are hidden from ToolManager automatically.
+
+When passed to ToolManager (or ReactAgent's tools parameter), ClassToolWrapper is automatically expanded into multiple MethodModuleTool instances.
+
+Args:
+    cls_or_instance (Any): The class to register (instantiated using init_kwargs) or an existing instance.
+    apis (List[str], optional): List of method names to expose as tools. If None, reads cls_or_instance.__public_apis__ automatically.
+    key_source (Union[str, Callable, None]): Runtime credential source; semantics identical to MethodModuleTool. Defaults to None (no credential check).
+    init_kwargs (Dict[str, Any], optional): Keyword arguments used for instantiation when cls_or_instance is a class.
+''')
+
+add_agent_example('ClassToolWrapper', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.agent import ToolManager, ClassToolWrapper
+>>>
+>>> class MockFS:
+...     __public_apis__ = ["read_file", "write_file"]
+...     def __init__(self, token=""):
+...         self._token = token
+...     def read_file(self, path: str) -> str:
+...         return f"content of {path}"
+...     def write_file(self, path: str, content: str) -> str:
+...         return f"wrote {len(content)} bytes to {path}"
+>>>
+>>> # Pass a class — ClassToolWrapper instantiates it with init_kwargs
+>>> wrapper = ClassToolWrapper(MockFS, key_source=lambda i: i._token, init_kwargs={"token": "secret"})
+>>> tools = wrapper.build_tools()
+>>> len(tools)
+2
+>>> tools[0].name
+MockFS_read_file
+>>>
+>>> # Pass an existing instance and override which apis to expose
+>>> inst = MockFS()
+>>> wrapper2 = ClassToolWrapper(inst, apis=["read_file"], key_source=lambda i: i._token)
+>>> tm = ToolManager([wrapper2])
+>>> len(tm.tools_description)  # no token yet, tools hidden
+0
+>>> inst._token = "tok"
+>>> len(tm.tools_description)
+1
+''')
+
+add_agent_chinese_doc('ClassToolWrapper.build_tools', '''\
+将包装器展开为 MethodModuleTool 列表，每个元素对应 apis 中的一个方法。
+
+Returns:
+    List[MethodModuleTool]: 包装后的工具列表，与 apis 顺序一致。
+''')
+
+add_agent_english_doc('ClassToolWrapper.build_tools', '''\
+Expands the wrapper into a list of MethodModuleTool instances, one per method in apis.
+
+Returns:
+    List[MethodModuleTool]: List of wrapped tools in the same order as apis.
+''')

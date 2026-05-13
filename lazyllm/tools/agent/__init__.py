@@ -4,7 +4,7 @@ from .base import LazyLLMAgentBase
 from .reactAgent import ReactAgent
 from .planAndSolveAgent import PlanAndSolveAgent
 from .rewooAgent import ReWOOAgent
-from .toolsManager import ModuleTool
+from .toolsManager import ModuleTool, MethodModuleTool, ClassToolWrapper
 from .code_interpreter import code_interpreter
 from .skill_manager import SkillManager
 from .skill_hub import install_skill
@@ -19,6 +19,8 @@ __all__ = [
     'PlanAndSolveAgent',
     'ReWOOAgent',
     'ModuleTool',
+    'MethodModuleTool',
+    'ClassToolWrapper',
     'code_interpreter',
     'SkillManager',
     'install_skill',
