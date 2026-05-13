@@ -1,0 +1,213 @@
+# Copyright (c) 2026 LazyAGI. All rights reserved.
+import time
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import lazyllm
+
+from ..base import LazyLLMGitBase
+from .utils import _Progress
+
+_BATCH_SIZE = 30          # comments per submit_review call (GitHub limit is ~50)
+_BATCH_INTERVAL = 5.0     # seconds between batches to avoid secondary rate limit
+_RATE_LIMIT_BACKOFF = [60, 120, 300]  # retry waits (seconds) on 403
+
+
+def _build_commentable_lines(hunks: List[Tuple[str, int, int, str]]) -> Dict[str, Set[int]]:
+    # Build a mapping of path -> set of new-file line numbers that GitHub will accept
+    # for RIGHT-side review comments.  Only lines that actually appear in the new file
+    # (i.e. context lines ' ' and added lines '+') are valid; deleted lines '-' are NOT
+    # present in the new file and GitHub rejects them with 422.
+    # When content is available, parse it precisely; otherwise fall back to new_count range.
+    commentable: Dict[str, Set[int]] = {}
+    for path, new_start, new_count, content in hunks:
+        s = commentable.setdefault(path, set())
+        lines = content.splitlines() if content else []
+        if lines:
+            new_no = new_start
+            for raw_line in lines:
+                if raw_line.startswith('-'):
+                    continue
+                s.add(new_no)
+                new_no += 1
+        else:
+            s.update(range(new_start, new_start + new_count))
+    return commentable
+
+
+def _filter_commentable(
+    comments: List[Dict[str, Any]],
+    commentable: Dict[str, Set[int]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
+    # Split comments into inline (valid path+line in diff) and general (no line or line not in diff).
+    # Returns (inline_kept, general_kept, dropped_count).
+    # - line is None → general comment (intentional, e.g. coverage issues)
+    # - line not in diff → drop (hallucinated line number)
+    inline, general, dropped = [], [], 0
+    for c in comments:
+        path = c.get('path', '')
+        line = c.get('line')
+        if line is None:
+            general.append(c)
+            continue
+        allowed = commentable.get(path)
+        if allowed is None or int(line) not in allowed:
+            source = c.get('source') or 'unknown'
+            lazyllm.LOG.error(
+                f'[FILTER] dropping comment: {path}:{line} not in PR diff '
+                f'(source={source}) — '
+                f'line does not correspond to any added/context line in the diff'
+            )
+            dropped += 1
+        else:
+            inline.append(c)
+    return inline, general, dropped
+
+
+def _suggestion_prefix(suggestion: str) -> str:
+    return '\n' if suggestion.startswith('```') else ''
+
+
+def _comment_body_text(c: Dict[str, Any], model_name: str) -> str:
+    category_tag = f'[{c.get("bug_category", "logic")}]'
+    severity_tag = f'[{c.get("severity", "normal")}]'
+    return (
+        '*This suggestion is AI-assisted and has been manually reviewed for relevance. If you disagree, '
+        'provide concrete technical reasoning or counterexamples. Newly introduced architecture issues must '
+        'be fixed before merging; pre-existing ones must be tracked via an issue (new or linked). '
+        'Style issues must be fixed before merging. Missing test coverage must be added before merging. Responses '
+        'without concrete actions are incomplete, and consensus-based arguments (e.g., “others are doing this”) '
+        f'alone are not sufficient.*\n\n**{severity_tag} {category_tag}** {c.get("problem", "")}\n\n'
+        f'**Suggestion:** {_suggestion_prefix(c.get("suggestion", ""))}{c.get("suggestion", "")}\n\n'
+        f'---\nauto reviewed by BOT ({model_name}), skill at https://github.com/LazyAGI/LazyCoding')
+
+
+def _fetch_existing_pr_comments(backend: LazyLLMGitBase, pr_number: int) -> List[Dict[str, Any]]:
+    res = backend.list_review_comments(pr_number)
+    if not res.get('success'):
+        lazyllm.LOG.warning(f'Failed to fetch existing PR comments: {res.get("message", "unknown")}')
+        return []
+    raw_comments = res.get('comments') or []
+    result = []
+    for c in raw_comments:
+        body = (c.get('body') if isinstance(c, dict) else getattr(c, 'body', '')) or ''
+        path = (c.get('path') if isinstance(c, dict) else getattr(c, 'path', '')) or ''
+        line = (c.get('line') if isinstance(c, dict) else getattr(c, 'line', None))
+        if not body.strip():
+            continue
+        entry: Dict[str, Any] = {'body': body}
+        if path:
+            entry['path'] = path
+        if line is not None:
+            try:
+                entry['line'] = int(line)
+            except (TypeError, ValueError):
+                pass
+        result.append(entry)
+    return result
+
+
+def _submit_with_retry(
+    backend: LazyLLMGitBase,
+    pr_number: int,
+    head_sha: Optional[str],
+    batch: List[Dict[str, Any]],
+    body: str,
+) -> bool:
+    for wait in _RATE_LIMIT_BACKOFF + [None]:
+        r = backend.submit_review(
+            number=pr_number,
+            event='COMMENT',
+            body=body,
+            comments=batch,
+            commit_id=head_sha,
+        )
+        if r.get('success'):
+            return True
+        status = r.get('status_code', 0)
+        if status == 403 and wait is not None:
+            lazyllm.LOG.warning(f'Rate limited (403), retrying after {wait}s...')
+            time.sleep(wait)
+            continue
+        lazyllm.LOG.warning(f'submit_review failed: {r.get("message", "unknown")[:200]}')
+        return False
+    return False
+
+
+def _post_review_comments(
+    backend: LazyLLMGitBase,
+    pr_number: int,
+    head_sha: Optional[str],
+    all_comments: List[Dict[str, Any]],
+    model_name: str = 'unknown-model',
+    review_body: str = '',
+    ckpt: Optional[Any] = None,
+    general_comments: Optional[List[Dict[str, Any]]] = None,
+) -> tuple:
+    comments_payload = [
+        {
+            'path': c['path'],
+            'line': int(c['line']),
+            'body': _comment_body_text(c, model_name),
+            'side': 'RIGHT',
+        }
+        for c in all_comments if c.get('path') and c.get('line')
+    ]
+    dropped = len(all_comments) - len(comments_payload)
+    if dropped:
+        lazyllm.LOG.warning(f'{dropped} comment(s) dropped: missing path or line field')
+
+    # Build general (PR-level) review body from general_comments
+    general_body_parts = []
+    if general_comments:
+        general_body_parts.append('## General Review Comments')
+        for c in general_comments:
+            path_hint = f'`{c["path"]}`  ' if c.get('path') else ''
+            category_tag = f'[{c.get("bug_category", "maintainability")}]'
+            severity_tag = f'[{c.get("severity", "normal")}]'
+            general_body_parts.append(
+                f'**{severity_tag} {category_tag}** {path_hint}{c.get("problem", "")}\n\n'
+                f'**Suggestion:** {c.get("suggestion", "")}\n\n---'
+            )
+    general_body = '\n'.join(general_body_parts)
+
+    if not comments_payload and not general_body:
+        return 0, True
+
+    # Merge general_body into review_body for the first batch
+    combined_review_body = review_body
+    if general_body:
+        combined_review_body = (review_body + '\n\n' + general_body).strip() if review_body else general_body
+
+    if not comments_payload:
+        # Only general comments — send as a single review with no inline comments
+        ok = _submit_with_retry(backend, pr_number, head_sha, [], combined_review_body)
+        posted = len(general_comments) if ok else 0
+        return posted, ok
+
+    batches = [comments_payload[i:i + _BATCH_SIZE] for i in range(0, len(comments_payload), _BATCH_SIZE)]
+    done_batches: set = set(ckpt.get('upload_done_batches') or [] if ckpt else [])
+    prog = _Progress(f'Posting review ({len(comments_payload)} inline + {len(general_comments or [])} general, '
+                     f'{len(batches)} batch(es))', len(batches))
+    posted = sum(len(batches[i]) for i in done_batches if i < len(batches))
+    all_ok = True
+    first_sent = False
+    for idx, batch in enumerate(batches):
+        if idx in done_batches:
+            prog.update(f'batch {idx + 1}/{len(batches)}: skipped (already posted)')
+            continue
+        body = combined_review_body if not first_sent else ''
+        ok = _submit_with_retry(backend, pr_number, head_sha, batch, body)
+        if ok:
+            first_sent = True
+            posted += len(batch)
+            done_batches.add(idx)
+            if ckpt:
+                ckpt.save('upload_done_batches', list(done_batches))
+            prog.update(f'batch {idx + 1}/{len(batches)}: {len(batch)} comments ok')
+        else:
+            all_ok = False
+            prog.update(f'batch {idx + 1}/{len(batches)}: FAILED, skipping')
+        if idx < len(batches) - 1:
+            time.sleep(_BATCH_INTERVAL)
+    prog.done(f'{posted}/{len(comments_payload)} inline posted')
+    return posted, all_ok

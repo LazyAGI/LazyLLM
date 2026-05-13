@@ -26,8 +26,8 @@ def _check_root(path: str, root: Optional[str]) -> Optional[Dict[str, str]]:
     return None
 
 
-@register('builtin_tools')
-@register('tool')
+@register('builtin_tools', execute_in_sandbox=False)
+@register('tool', execute_in_sandbox=False)
 def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None,
               encoding: str = 'utf-8', errors: str = 'replace', root: Optional[str] = None,
               max_chars: int = 200000) -> dict:
@@ -72,8 +72,8 @@ def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[in
     }
 
 
-@register('builtin_tools')
-@register('tool')
+@register('builtin_tools', execute_in_sandbox=False)
+@register('tool', execute_in_sandbox=False)
 def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
              root: Optional[str] = None) -> dict:
     '''List directory entries.
@@ -113,8 +113,8 @@ def list_dir(path: str = '.', recursive: bool = False, max_depth: int = 5,
     return {'status': 'ok', 'path': path_abs, 'entries': entries}
 
 
-@register('builtin_tools')
-@register('tool')
+@register('builtin_tools', execute_in_sandbox=False)
+@register('tool', execute_in_sandbox=False)
 def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
                     max_results: int = 50, root: Optional[str] = None,
                     encoding: str = 'utf-8', errors: str = 'replace',
@@ -165,8 +165,8 @@ def search_in_files(pattern: str, path: str = '.', glob: Optional[str] = None,
     return {'status': 'ok', 'results': results}
 
 
-@register('builtin_tools')
-@register('tool')
+@register('builtin_tools', execute_in_sandbox=False)
+@register('tool', execute_in_sandbox=False)
 def make_dir(path: str, parents: bool = True, exist_ok: bool = True,
              root: Optional[str] = None) -> dict:
     '''Create a directory.
@@ -188,8 +188,8 @@ def make_dir(path: str, parents: bool = True, exist_ok: bool = True,
     return {'status': 'ok', 'path': path_abs}
 
 
-@register('builtin_tools')
-@register('tool')
+@register('builtin_tools', execute_in_sandbox=False)
+@register('tool', execute_in_sandbox=False)
 def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str = 'utf-8',
                root: Optional[str] = None, create_parents: bool = True,
                allow_unsafe: bool = False) -> dict:
@@ -230,8 +230,8 @@ def write_file(path: str, content: str, mode: str = 'overwrite', encoding: str =
     return {'status': 'ok', 'path': path_abs, 'mode': mode, 'bytes': len(content)}
 
 
-@register('builtin_tools')
-@register('tool')
+@register('builtin_tools', execute_in_sandbox=False)
+@register('tool', execute_in_sandbox=False)
 def delete_file(path: str, root: Optional[str] = None, allow_unsafe: bool = False) -> dict:
     '''Delete a file.
 
@@ -258,8 +258,8 @@ def delete_file(path: str, root: Optional[str] = None, allow_unsafe: bool = Fals
     return {'status': 'ok', 'path': path_abs}
 
 
-@register('builtin_tools')
-@register('tool')
+@register('builtin_tools', execute_in_sandbox=False)
+@register('tool', execute_in_sandbox=False)
 def move_file(src: str, dst: str, root: Optional[str] = None, allow_unsafe: bool = False,
               overwrite: bool = False, create_parents: bool = True) -> dict:
     '''Move or rename a file.

@@ -509,7 +509,7 @@ from lazyllm import bind
 
 with lazyllm.pipeline() as rag_ppl:
     rag_ppl.retriever = retriever
-    rag_ppl.formatter = (lambda nodes, query: dict(context_str=nodes, query=query)) | bind(query=rag_ppl.input)
+    rag_ppl.formatter = (lambda nodes, query: dict(context_str='\n\n'.join([n.get_content() for n in nodes]), query=query)) | bind(query=rag_ppl.input)
     rag_ppl.llm = llm
 ```
 

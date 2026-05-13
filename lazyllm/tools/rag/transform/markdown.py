@@ -1,5 +1,5 @@
 from .base import _TextSplitterBase, _UNSET
-from typing import List, Optional
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 from lazyllm import LOG
 import re
@@ -40,6 +40,15 @@ class MarkdownSplitter(_TextSplitterBase):
         self.keep_tables = keep_tables
         self.keep_images = keep_images
         self.keep_links = keep_links
+
+    def sig_fields(self) -> Dict:
+        return {
+            'chunk_size': self._chunk_size, 'overlap': self._overlap,
+            'keep_trace': self.keep_trace, 'keep_headers': self.keep_headers,
+            'keep_lists': self.keep_lists, 'keep_code_blocks': self.keep_code_blocks,
+            'keep_tables': self.keep_tables, 'keep_images': self.keep_images,
+            'keep_links': self.keep_links,
+        }
 
     def _split(self, text: str, chunk_size: int) -> List[_MdSplit]:
         splits = self.split_markdown_by_semantics(text)

@@ -22,7 +22,9 @@ RAG 解析服务示例
 可切换为服务模式，对外暴露 URL，Retriever 可通过该 URL 远程检索。
 
 参考 `document.py` 的配置：
-- `manager=DocumentProcessor(url="http://0.0.0.0:9966")` 指向解析服务。
+- `manager=DocumentProcessor(url="http://127.0.0.1:9966")` 指向解析服务。
+- 该模式下 `Document` 不会创建 `DocServer` 或 UI，`dataset_path` 会被忽略（本地文件变更监听被禁用）。
+- 必须显式提供 `store_conf`，且不能使用纯 map store（map store 无法持久化、也无法跨进程共享）；请使用 OpenSearch、Milvus 等持久化存储后端。
 - `server=9977` 将 Document 作为服务暴露。
 
 然后在 `retriever_using_url.py` 中使用：

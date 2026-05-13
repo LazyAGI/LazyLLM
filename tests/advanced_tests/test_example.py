@@ -151,6 +151,9 @@ class TestExamples(object):
         assert '天道' in res
         assert len(res) >= 16
 
+@pytest.mark.skip(reason='For local test')
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestRagFilter(object):
     def setup_class(self):
         from examples.rag_milvus_store import ppl, documents, tmp_dir

@@ -1,9 +1,10 @@
 import os
-from typing import Iterable, Optional, Union
+from typing import Any, Iterable, Optional, Union
 
 import lazyllm
 from lazyllm.module import ModuleBase
 from lazyllm import locals, once_wrapper
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager, SKILLS_PROMPT
 from .file_tool import (  # noqa: F401
@@ -23,9 +24,19 @@ class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools=None, max_retries: int = 5, return_trace: bool = False,
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
-                 desc: str = '', workspace: Optional[str] = None):
+                 desc: str = '', workspace: Optional[str] = None,
+                 sandbox: Union[str, LazyLLMSandboxBase, None] = 'auto',
+                 fs: Optional[Any] = None, skills_dir: Optional[str] = None,
+                 enable_builtin_tools: bool = True):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
+        if not use_skills and (fs is not None or skills_dir is not None):
+            import warnings
+            warnings.warn(
+                'fs and skills_dir are ignored because skills is not enabled. '
+                'Pass skills=True (or a list of skill names) to enable skill loading.',
+                UserWarning, stacklevel=2,
+            )
         self._llm = llm
         self._tools = list(tools) if tools else []
         self._memory = memory
@@ -37,11 +48,17 @@ class LazyLLMAgentBase(ModuleBase):
         self._workspace = self._init_workspace(workspace)
         self._agent = None
         self._skill_manager = None
+        self._sandbox = create_sandbox() if sandbox == 'auto' else sandbox
+        self._builtin_tool_names = set()
+        self._skill_tool_names = set()
+        self._enable_builtin_tools = enable_builtin_tools
 
+        if self._enable_builtin_tools:
+            self._ensure_builtin_tools()
         if use_skills:
-            self._skill_manager = SkillManager(skills=self._skills)
+            self._skill_manager = SkillManager(dir=skills_dir, skills=self._skills, fs=fs)
             self._ensure_default_skill_tools()
-        self._tools_manager = ToolManager(self._tools, return_trace=return_trace)
+        self._tools_manager = ToolManager(self._tools, return_trace=return_trace, sandbox=self._sandbox)
 
     @staticmethod
     def _normalize_skills_config(skills: Optional[Union[bool, str, Iterable[str]]]):
@@ -94,22 +111,30 @@ class LazyLLMAgentBase(ModuleBase):
     def _assert_tools(self):
         assert self._tools, 'tools cannot be empty.'
 
-    def _ensure_default_skill_tools(self):
+    def _ensure_builtin_tools(self):
+        builtin_keys = []
         builtin_group = getattr(lazyllm, 'builtin_tools', None)
-        builtin_names = []
         if builtin_group:
-            builtin_names = [f'builtin_tools.{name}' for name in builtin_group.keys()]
+            builtin_keys = list(builtin_group.keys())
+        self._builtin_tool_names = {
+            key[:-len('builtin_tools')] if key.endswith('builtin_tools') else key
+            for key in builtin_keys
+        }
         existing = set()
         for tool in self._tools:
             if isinstance(tool, str):
                 existing.add(tool.split('.')[-1])
             elif hasattr(tool, '__name__'):
                 existing.add(tool.__name__)
-        for name in builtin_names:
-            if name.split('.')[-1] not in existing:
-                self._tools.append(name)
+        for key in builtin_keys:
+            name = key[:-len('builtin_tools')] if key.endswith('builtin_tools') else key
+            if name not in existing:
+                self._tools.append(f'builtin_tools.{key}')
+
+    def _ensure_default_skill_tools(self):
         if self._skill_manager:
             for tool in self._skill_manager.get_skill_tools():
+                self._skill_tool_names.add(tool.__name__)
                 self._tools.append(tool)
 
     def _append_skills_prompt(self, prompt: str) -> str:
@@ -133,6 +158,16 @@ class LazyLLMAgentBase(ModuleBase):
     @property
     def workspace(self) -> str:
         return self._workspace
+
+    @property
+    def sandbox(self) -> Optional[LazyLLMSandboxBase]:
+        return self._sandbox
+
+    @sandbox.setter
+    def sandbox(self, sandbox: Optional[LazyLLMSandboxBase]):
+        self._sandbox = sandbox
+        if hasattr(self, '_tools_manager') and self._tools_manager is not None:
+            self._tools_manager.sandbox = sandbox
 
     @property
     def desc(self) -> str:
