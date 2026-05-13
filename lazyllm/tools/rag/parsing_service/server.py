@@ -17,16 +17,6 @@ from lazyllm import (
 )
 from lazyllm.thirdparty import fastapi
 
-lazyllm.config.add(
-    'algo_register_policy', str, '', 'ALGO_REGISTER_POLICY',
-    description=(
-        'Algorithm registration policy when re-registering an existing algo. '
-        'force=overwrite reader and node groups unconditionally; '
-        'update=overwrite reader if signature matches, error otherwise; '
-        'empty/other=skip if reader already registered.'
-    )
-)
-
 from .base import (
     ALGORITHM_TABLE_INFO, NODE_GROUP_TABLE_INFO,
     WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
@@ -42,6 +32,16 @@ from ..store.utils import create_file_path
 from ..utils import BaseResponse, ensure_call_endpoint, _get_default_db_config, _orm_to_dict
 from ..doc_to_db import SchemaExtractor
 from ...sql import SqlManager
+
+lazyllm.config.add(
+    'algo_register_policy', str, '', 'ALGO_REGISTER_POLICY',
+    description=(
+        'Algorithm registration policy when re-registering an existing algo. '
+        'force=overwrite reader and node groups unconditionally; '
+        'update=overwrite reader if signature matches, error otherwise; '
+        'empty/other=skip if reader already registered.'
+    )
+)
 
 CALLBACK_RETRY_MIN_INTERVAL = 5.0
 CALLBACK_RETRY_MAX_INTERVAL = 300.0

@@ -1,8 +1,6 @@
 import io
 import json
 import os
-import shutil
-import threading
 import uuid
 import zipfile
 import requests
@@ -54,24 +52,21 @@ class MineruPDFReader(_OcrReaderBase):
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._patch_applied = patch_applied
         self._api_key = lazyllm.config['mineru_api_key']
-        self._local = threading.local()
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        # threading.local is not picklable; recreate it on unpickle
-        state.pop('_local', None)
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-        self._local = threading.local()
 
     @override
-    def _fetch_response(self, file_path: Path, use_cache: bool = False) -> str:
+    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True,
+                   **kwargs) -> List['DocNode']:
+        file_path = (file if isinstance(file, str) and file.startswith(('http://', 'https://'))
+                     else Path(file))
         if self._service_variant == ServiceVariant.OFFLINE:
-            return self._fetch_sync(file_path, use_cache)
+            response_text = self._fetch_sync(file_path, use_cache)
+            task_dir = None
         else:
-            return self._fetch_async(file_path, use_cache)
+            response_text, task_dir = self._fetch_async(file_path, use_cache)
+        merged_info = dict(extra_info) if extra_info else {}
+        if task_dir is not None:
+            merged_info['image_cache_dir'] = str(task_dir)
+        return self._build_nodes_from_response(response_text, file_path, merged_info)
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
         if self._patch_applied:
@@ -104,14 +99,14 @@ class MineruPDFReader(_OcrReaderBase):
         response = post_sync(self._url, json_payload=payload, timeout=self._timeout)
         return response.text
 
-    def _fetch_async(self, file, use_cache: bool) -> str:
+    def _fetch_async(self, file, use_cache: bool):
         file_str = str(file)
 
         if file_str.startswith(('http://', 'https://')):
             return self._fetch_async_by_url(file_str)
         return self._fetch_async_by_upload(file_str)
 
-    def _fetch_async_by_upload(self, file_path: str) -> str:
+    def _fetch_async_by_upload(self, file_path: str):
         '''Upload a local file via batch presigned URL and fetch result.'''
 
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self._api_key}'}
@@ -149,7 +144,7 @@ class MineruPDFReader(_OcrReaderBase):
                     full_zip_url = extract_result[0].get('full_zip_url')
                     zip_resp = requests.get(full_zip_url, timeout=self._timeout or 120)
                     zip_resp.raise_for_status()
-                    return self._extract_content_from_zip(zip_resp.content, batch_id)
+                    return self._extract_content_from_zip(zip_resp.content)
                 elif state == 'failed':
                     raise RuntimeError(
                         f'[MineruPDFReader] Batch task failed: '
@@ -158,7 +153,7 @@ class MineruPDFReader(_OcrReaderBase):
 
         raise TimeoutError('[MineruPDFReader] Batch polling timed out')
 
-    def _fetch_async_by_url(self, file_url: str) -> str:
+    def _fetch_async_by_url(self, file_url: str):
         '''Submit a remote URL for extraction and fetch result.'''
         payload = {
             'return_md': True,
@@ -176,12 +171,10 @@ class MineruPDFReader(_OcrReaderBase):
         )
         zip_resp = requests.get(result, timeout=self._timeout or 120)
         zip_resp.raise_for_status()
-        return self._extract_content_from_zip(zip_resp.content, task_id)
+        return self._extract_content_from_zip(zip_resp.content)
 
-    def _extract_content_from_zip(self, zip_bytes: bytes, task_id: str = None) -> str:
-        # Use a per-task subdirectory to avoid cross-request file collisions
-        # when multiple threads share the same reader instance.
-        task_dir = self._image_cache_dir / (task_id or str(uuid.uuid4()))
+    def _extract_content_from_zip(self, zip_bytes: bytes):
+        task_dir = self._image_cache_dir / str(uuid.uuid4())
         task_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             for member in zf.infolist():
@@ -198,10 +191,7 @@ class MineruPDFReader(_OcrReaderBase):
             )
         with open(matches[0], 'r', encoding='utf-8') as f:
             content = json.load(f)
-        # Store task_dir in thread-local storage so _build_nodes_from_blocks
-        # can reference the correct per-request image directory.
-        self._local.task_dir = task_dir
-        return json.dumps(content)
+        return json.dumps(content), task_dir
 
     @override
     def _adapt_json_to_IR(self, raw) -> List[Block]:
@@ -285,10 +275,9 @@ class MineruPDFReader(_OcrReaderBase):
         docs = []
 
         global_metadata = dict(extra_info) if extra_info else {}
-        # Use the per-request task_dir (set by _extract_content_from_zip via thread-local)
-        # so downstream image lookups resolve to the correct subdirectory.
-        task_dir = getattr(self._local, 'task_dir', None)
-        global_metadata['image_cache_dir'] = str(task_dir) if task_dir else str(self._image_cache_dir)
+        # image_cache_dir is injected into extra_info by _load_data for async requests
+        if 'image_cache_dir' not in global_metadata:
+            global_metadata['image_cache_dir'] = str(self._image_cache_dir)
 
         file_name = Path(file).name if not isinstance(file, str) else Path(file).name
         file_path = str(file)
