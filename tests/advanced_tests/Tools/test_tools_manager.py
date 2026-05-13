@@ -2,7 +2,7 @@ import re
 import docstring_parser
 import lazyllm
 from lazyllm.tools import ToolManager
-from lazyllm.tools.agent import MethodModuleTool
+from lazyllm.tools.agent.toolsManager import MethodModuleTool
 from lazyllm.tools.agent.toolsManager import (
     _gen_empty_func_str_from_parsed_docstring,
     _gen_func_from_str,

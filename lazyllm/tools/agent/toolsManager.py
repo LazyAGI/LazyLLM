@@ -305,27 +305,17 @@ class MethodModuleTool(ModuleTool):
         return not any(bool(self._resolve_one_key(src)) for src in sources)
 
     def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
-        if callable(source):
-            return source(self._instance) or None
-        if '.' not in source:
-            try:
+        if callable(source): return source(self._instance) or None
+        try:
+            if '.' not in source:
                 return lazyllm.globals.config[source] or None
-            except (KeyError, AttributeError, AssertionError):
-                return None
-        prefix, _, attr = source.partition('.')
-        if prefix == 'env':
-            return os.environ.get(attr) or None
-        if prefix == 'config':
-            try:
-                return lazyllm.config[attr] or None
-            except (KeyError, AttributeError):
-                return None
-        if prefix == 'globals' and attr.startswith('config.'):
-            cfg_key = attr[len('config.'):]
-            try:
-                return lazyllm.globals.config[cfg_key] or None
-            except (KeyError, AttributeError, AssertionError):
-                return None
+            prefix, _, attr = source.partition('.')
+            if prefix == 'env': return os.environ.get(attr) or None
+            elif prefix == 'config': return lazyllm.config[attr] or None
+            elif prefix == 'globals':
+                if attr.startswith('config.'): return lazyllm.globals.config[attr[len('config.'):]] or None
+                else: return lazyllm.globals[attr] or None
+        except Exception: pass
         return None
 
 

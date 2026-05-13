@@ -8,6 +8,9 @@ add_example = functools.partial(utils.add_example, module=importlib.import_modul
 add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.agent'))
 add_agent_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent'))
 add_agent_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent'))
+add_toolsmgr_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
+add_toolsmgr_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
+add_toolsmgr_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 
 add_chinese_doc('IntentClassifier', '''\
 意图分类模块，用于根据输入文本在给定的意图列表中进行分类。
@@ -1886,7 +1889,9 @@ Hello, world!
 ''')
 
 
-add_agent_chinese_doc('MethodModuleTool', '''\
+add_toolsmgr_chinese_doc('MethodModuleTool', '''\
+内部类，通常不需要直接使用。将 ``(instance, key_source)`` 元组或带 ``__public_apis__`` 的裸实例传给 ToolManager 时，框架会自动创建该对象。
+
 将一个对象实例的指定方法包装为可注册到 ToolManager 的 ModuleTool。
 支持可选的 key_source 参数，用于在运行时检测凭据是否存在；当凭据不存在时，该工具会从 tools_description 中自动隐藏，LLM 不会感知到其存在。
 
@@ -1909,7 +1914,9 @@ Args:
         - list：多个来源，任一非空即视为凭据可用（逻辑 OR）。
 ''')
 
-add_agent_english_doc('MethodModuleTool', '''\
+add_toolsmgr_english_doc('MethodModuleTool', '''\
+Internal class; direct use is not normally required. The framework creates instances automatically when a ``(instance, key_source)`` tuple or a bare instance with ``__public_apis__`` is passed to ToolManager.
+
 Wraps a specified method of an object instance into a ModuleTool that can be registered with ToolManager.
 Accepts an optional key_source parameter to detect credential availability at runtime; when the credential is absent, the tool is automatically hidden from tools_description so the LLM is unaware of it.
 
@@ -1932,9 +1939,9 @@ Args:
         - list: Multiple sources; the tool is considered available if any source resolves to a non-empty value (logical OR).
 ''')
 
-add_agent_example('MethodModuleTool', '''\
+add_toolsmgr_example('MethodModuleTool', '''\
 >>> import lazyllm
->>> from lazyllm.tools.agent import ToolManager, MethodModuleTool
+>>> from lazyllm.tools.agent.toolsManager import MethodModuleTool
 >>> class MockSearch:
 ...     __public_apis__ = ["search"]
 ...     def __init__(self):
@@ -1976,7 +1983,7 @@ False
 1
 ''')
 
-add_agent_chinese_doc('MethodModuleTool.should_skip', '''\
+add_toolsmgr_chinese_doc('MethodModuleTool.should_skip', '''\
 根据 key_source 判断该工具当前是否应被跳过（即凭据不可用）。
 
 当 key_source 为列表时，任一来源解析出非空值即视为凭据可用（逻辑 OR）。
@@ -1985,7 +1992,7 @@ Returns:
     bool: 若 key_source 为 None 且类未定义 __key_source__ 则返回 False；否则尝试解析凭据，若所有来源均为空或不存在则返回 True。
 ''')
 
-add_agent_english_doc('MethodModuleTool.should_skip', '''\
+add_toolsmgr_english_doc('MethodModuleTool.should_skip', '''\
 Determines whether this tool should currently be skipped based on key_source (i.e., the credential is unavailable).
 
 When key_source is a list, the tool is considered available if any source resolves to a non-empty value (logical OR).
