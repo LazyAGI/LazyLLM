@@ -230,44 +230,66 @@ class MineruPDFReader(_OcrReaderBase):
         text_level = item.get('text_level', -1)
         text = item.get('text', '')
         page_idx = item['page_idx']
-        bbox = BBox.from_list(item['bbox'])
-
-        page = PageRef(index=page_idx, bbox=bbox)
+        page = PageRef(index=page_idx, bbox=BBox.from_list(item['bbox']))
 
         if ty == 'title':
             return HeadingBlock(page=page, level=text_level, text=text)
         elif ty in ('text', 'ref_text', 'phonetic'):
             return ParagraphBlock(page=page, text=text)
         elif ty == 'image':
-            return FigureBlock(
-                page=page,
-                image_path=Path(item['img_path']),
-                caption=self._first(item.get('image_caption')),
-                footnote=self._first(item.get('image_footnote')),
-            )
+            return self._adapt_image(item, page, page_idx)
         elif ty == 'table':
-            return TableBlock(
-                page=page,
-                caption=self._first(item.get('table_caption')),
-                footnote=self._first(item.get('table_footnote')),
-                cells=self._parse_table_html(item['table_body']),
-                page_range=(page_idx, page_idx),
-            )
+            return self._adapt_table(item, page, page_idx)
         elif ty == 'equation':
             return FormulaBlock(page=page, latex=text, inline=False)
         elif ty == 'code':
-            return CodeBlock(
-                page=page, text=item['code_body'],
-                language=item.get('guess_lang'),
-                caption=self._first(item.get('code_caption')),
-            )
+            return self._adapt_code(item, page, page_idx)
         elif ty == 'list':
-            return ListBlock(
-                page=page,
-                items=item['list_items'],
-                ordered=False,
-            )
+            return self._adapt_list(item, page, page_idx)
         return None
+
+    def _adapt_image(self, item: dict, page: PageRef, page_idx: int) -> Optional[Block]:
+        img_path = item.get('img_path')
+        if img_path is None:
+            LOG.warning(f'[MineruPDFReader] image block on page {page_idx} missing img_path, skipped')
+            return None
+        return FigureBlock(
+            page=page,
+            image_path=Path(img_path),
+            caption=self._first(item.get('image_caption')),
+            footnote=self._first(item.get('image_footnote')),
+        )
+
+    def _adapt_table(self, item: dict, page: PageRef, page_idx: int) -> TableBlock:
+        table_body = item.get('table_body')
+        if table_body is None:
+            LOG.warning(f'[MineruPDFReader] table block on page {page_idx} missing table_body, '
+                        f'caption={self._first(item.get("table_caption"))}')
+        return TableBlock(
+            page=page,
+            caption=self._first(item.get('table_caption')),
+            footnote=self._first(item.get('table_footnote')),
+            cells=self._parse_table_html(table_body or ''),
+            page_range=(page_idx, page_idx),
+        )
+
+    def _adapt_code(self, item: dict, page: PageRef, page_idx: int) -> Optional[Block]:
+        code_body = item.get('code_body')
+        if code_body is None:
+            LOG.warning(f'[MineruPDFReader] code block on page {page_idx} missing code_body, skipped')
+            return None
+        return CodeBlock(
+            page=page, text=code_body,
+            language=item.get('guess_lang'),
+            caption=self._first(item.get('code_caption')),
+        )
+
+    def _adapt_list(self, item: dict, page: PageRef, page_idx: int) -> Optional[Block]:
+        list_items = item.get('list_items')
+        if list_items is None:
+            LOG.warning(f'[MineruPDFReader] list block on page {page_idx} missing list_items, skipped')
+            return None
+        return ListBlock(page=page, items=list_items, ordered=False)
 
     @override
     def _build_nodes_from_blocks(self, blocks: List[Block], file,
