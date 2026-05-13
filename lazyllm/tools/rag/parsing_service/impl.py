@@ -333,7 +333,7 @@ class _Processor:
         else:
             self._get_or_create_nodes(group_name, node_groups, uids)
 
-    def _reparse_docs(self, group_name: str, node_groups: Dict[str, Dict],
+    def _reparse_docs(self, group_name: Optional[str], node_groups: Dict[str, Dict],
                       doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict],
                       kb_id: str = None, reader: Optional[DirectoryReader] = None, **kwargs):
         doc_ids, metadatas, kb_id = self._prepare_doc_inputs(doc_paths, doc_ids, metadatas, kb_id)
@@ -356,6 +356,7 @@ class _Processor:
         else:
             p_nodes = self._store.get_nodes(group=node_groups[group_name]['parent'],
                                             kb_id=kb_id, doc_ids=doc_ids)
+            # TODO: reparse recursively
             if not p_nodes:
                 raise ValueError(
                     f'Cannot reparse group "{group_name}": parent group '
