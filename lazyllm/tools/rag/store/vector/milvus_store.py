@@ -216,7 +216,8 @@ class MilvusStore(LazyLLMStoreBase):
 
                 for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
                     client.upsert(collection_name=collection_name,
-                                  data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
+                                  data=[self._serialize_data(d, required_embed_keys)
+                                        for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
             return True
         except Exception as e:
             LOG.error(f'[Milvus Store - upsert] error: {e}')
@@ -468,13 +469,16 @@ class MilvusStore(LazyLLMStoreBase):
                 # if user passed a non-dict (exception), replace it with the default dict
                 index_item['params'] = dict(default_params)
 
-    def _serialize_data(self, d: dict) -> dict:
+    def _serialize_data(self, d: dict, required_embed_keys: Optional[Set[str]] = None) -> dict:
         # only keep primary_key, embedding and global_meta
         res = {
             self._primary_key: d.get(self._primary_key, '')
         }
-        for embed_key, value in d.get('embedding', {}).items():
-            res[self._gen_embed_key(embed_key)] = value
+        emb = d.get('embedding', {})
+        embed_keys = required_embed_keys if required_embed_keys is not None else emb.keys()
+        for embed_key in embed_keys:
+            if embed_key in emb:
+                res[self._gen_embed_key(embed_key)] = emb[embed_key]
         global_meta = d.get('global_meta', {})
         for name, desc in self._global_metadata_desc.items():
             value = global_meta.get(name, desc.default_value)
