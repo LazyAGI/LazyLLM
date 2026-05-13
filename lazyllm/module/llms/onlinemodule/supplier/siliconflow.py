@@ -19,7 +19,7 @@ class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         base_url = base_url or 'https://api.siliconflow.cn/v1/'
-        model = model or 'Qwen/QwQ-32B'
+        model = model or 'Qwen/Qwen3-8B'
         super().__init__(api_key=api_key or self._default_api_key(), base_url=base_url, model_name=model,
                          stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
