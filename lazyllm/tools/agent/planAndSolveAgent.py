@@ -57,10 +57,10 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
         self._plan_llm = plan_llm.share(prompt=self._planner_prompter, stream=self._planner_stream)\
             .used_by(self._module_id)
         self._solve_llm = solve_llm.share().used_by(self._module_id)
-        prompt = FC_PROMPT
+        prompt = self._append_workspace_prompt(FC_PROMPT)
         self._fc = FunctionCall(llm=self._solve_llm, return_trace=return_trace, stream=stream,
                                 _prompt=prompt, _tool_manager=self._tools_manager,
-                                skill_manager=self._skill_manager, workspace=self.workspace)
+                                skill_manager=self._skill_manager)
 
     def _normalize_llms(self, llm, plan_llm, solve_llm):
         assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), (

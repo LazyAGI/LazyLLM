@@ -86,7 +86,7 @@ class ReactAgent(LazyLLMAgentBase):
             prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
         assert self._llm is not None, 'llm cannot be empty.'
         self._assert_tools()
-        self._prompt = prompt
+        self._prompt = self._append_workspace_prompt(prompt)
         self._force_summarize = force_summarize
         self._force_summarize_context = force_summarize_context
         self._keep_full_turns = keep_full_turns
@@ -95,7 +95,7 @@ class ReactAgent(LazyLLMAgentBase):
     def build_agent(self):
         agent = loop(FunctionCall(llm=self._llm, _prompt=self._prompt, return_trace=self._return_trace,
                                   stream=self._stream, _tool_manager=self._tools_manager,
-                                  skill_manager=self._skill_manager, workspace=self.workspace,
+                                  skill_manager=self._skill_manager,
                                   keep_full_turns=self._keep_full_turns),
                      stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
         self._agent = agent

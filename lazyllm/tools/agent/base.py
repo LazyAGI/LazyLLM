@@ -138,6 +138,8 @@ class LazyLLMAgentBase(ModuleBase):
                 self._tools.append(tool)
 
     def _append_workspace_prompt(self, prompt: str) -> str:
+        if not self._enable_builtin_tools:
+            return prompt
         return (
             f'{prompt}\n\n## Workspace\n'
             f'- Default workspace: `{self._workspace}`\n'
