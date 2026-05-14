@@ -393,7 +393,7 @@ class ToolManager(ModuleBase):
 
     @property
     def tools_description(self) -> List[Dict]:
-        return [item() if callable(item) else item for item in self._tools_desc]
+        return [x for item in self._tools_desc for x in (item() if callable(item) else [item])]
 
     @property
     def tools_info(self):
