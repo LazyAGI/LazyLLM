@@ -1889,17 +1889,16 @@ Hello, world!
 ''')
 
 
-add_toolsmgr_chinese_doc('MethodModuleTool', '''\
+add_toolsmgr_chinese_doc('InstanceToolGroup', '''\
 内部类，通常不需要直接使用。将 ``(instance, key_source)`` 元组或带 ``__public_apis__`` 的裸实例传给 ToolManager 时，框架会自动创建该对象。
 
-将一个对象实例的指定方法包装为可注册到 ToolManager 的 ModuleTool。
-支持可选的 key_source 参数，用于在运行时检测凭据是否存在；当凭据不存在时，该工具会从 tools_description 中自动隐藏，LLM 不会感知到其存在。
+将一个对象实例的所有 ``__public_apis__`` 方法统一封装为可注册到 ToolManager 的工具组。
+支持可选的 key_source 参数，用于在运行时检测凭据是否存在；当凭据不存在时，该组内所有工具会从 tools_description 中自动隐藏，LLM 不会感知到其存在。
 
 主要用于将 SearchBase、LazyLLMFSBase 等带有 __public_apis__ 的对象注册为 Agent 工具。
 
 Args:
     instance (Any): 持有目标方法的对象实例。
-    method_name (str): 要包装为工具的方法名，必须是 instance 上的可调用属性。
     key_source (Union[str, Callable, List[Union[str, Callable]], None]): 运行时凭据来源，用于 should_skip() 判断。
 
         - None（默认）：若实例的类定义了 ``__key_source__`` 字段，则自动使用该字段作为凭据来源；否则不检查凭据，工具始终可用。
@@ -1914,20 +1913,19 @@ Args:
         - list：多个来源，任一非空即视为凭据可用（逻辑 OR）。
 ''')
 
-add_toolsmgr_english_doc('MethodModuleTool', '''\
+add_toolsmgr_english_doc('InstanceToolGroup', '''\
 Internal class; direct use is not normally required. The framework creates instances automatically when a ``(instance, key_source)`` tuple or a bare instance with ``__public_apis__`` is passed to ToolManager.
 
-Wraps a specified method of an object instance into a ModuleTool that can be registered with ToolManager.
-Accepts an optional key_source parameter to detect credential availability at runtime; when the credential is absent, the tool is automatically hidden from tools_description so the LLM is unaware of it.
+Wraps all ``__public_apis__`` methods of an object instance into a tool group that can be registered with ToolManager.
+Accepts an optional key_source parameter to detect credential availability at runtime; when the credential is absent, all tools in the group are automatically hidden from tools_description so the LLM is unaware of them.
 
 Primarily used to register objects with __public_apis__ (such as SearchBase or LazyLLMFSBase subclasses) as Agent tools.
 
 Args:
-    instance (Any): The object instance holding the target method.
-    method_name (str): Name of the method to wrap as a tool; must be a callable attribute on instance.
+    instance (Any): The object instance holding the target methods.
     key_source (Union[str, Callable, List[Union[str, Callable]], None]): Runtime credential source used by should_skip().
 
-        - None (default): If the instance's class defines a ``__key_source__`` attribute, it is used automatically; otherwise no credential check is performed and the tool is always available.
+        - None (default): If the instance's class defines a ``__key_source__`` attribute, it is used automatically; otherwise no credential check is performed and the tools are always available.
         - String format:
 
           - ``env.KEY``: reads environment variable ``KEY`` from ``os.environ``.
@@ -1936,12 +1934,12 @@ Args:
           - No dot (e.g. ``key``): equivalent to ``globals.config.key``.
 
         - callable: Receives instance as argument and returns the credential string or an empty value, e.g. ``lambda inst: inst._key``.
-        - list: Multiple sources; the tool is considered available if any source resolves to a non-empty value (logical OR).
+        - list: Multiple sources; the tools are considered available if any source resolves to a non-empty value (logical OR).
 ''')
 
-add_toolsmgr_example('MethodModuleTool', '''\
+add_toolsmgr_example('InstanceToolGroup', '''\
 >>> import lazyllm
->>> from lazyllm.tools.agent.toolsManager import MethodModuleTool
+>>> from lazyllm.tools.agent.toolsManager import InstanceToolGroup
 >>> class MockSearch:
 ...     __public_apis__ = ["search"]
 ...     def __init__(self):
@@ -1949,22 +1947,15 @@ add_toolsmgr_example('MethodModuleTool', '''\
 ...     def search(self, query: str) -> str:
 ...         return f"results for {query}"
 >>> inst = MockSearch()
->>> tool = MethodModuleTool(inst, "search", lambda i: i._key)
->>> tool.should_skip()
+>>> grp = InstanceToolGroup(inst, lambda i: i._key)
+>>> grp.should_skip()
 True
 >>> inst._key = "my-key"
->>> tool.should_skip()
+>>> grp.should_skip()
 False
 >>> tm = ToolManager([(inst, lambda i: i._key)])
 >>> len(tm.tools_description)
 1
-
->>> # Multiple key sources: available if any resolves to a non-empty value
->>> import os
->>> os.environ["SEARCH_API_KEY"] = ""
->>> tool2 = MethodModuleTool(inst, "search", [lambda i: i._key, "env.SEARCH_API_KEY"])
->>> tool2.should_skip()
-False
 
 >>> # Class-level __key_source__: no need to pass key_source when registering
 >>> class BingSearch:
@@ -1983,8 +1974,8 @@ False
 1
 ''')
 
-add_toolsmgr_chinese_doc('MethodModuleTool.should_skip', '''\
-根据 key_source 判断该工具当前是否应被跳过（即凭据不可用）。
+add_toolsmgr_chinese_doc('InstanceToolGroup.should_skip', '''\
+根据 key_source 判断该工具组当前是否应被跳过（即凭据不可用）。
 
 当 key_source 为列表时，任一来源解析出非空值即视为凭据可用（逻辑 OR）。
 
@@ -1992,10 +1983,10 @@ Returns:
     bool: 若 key_source 为 None 且类未定义 __key_source__ 则返回 False；否则尝试解析凭据，若所有来源均为空或不存在则返回 True。
 ''')
 
-add_toolsmgr_english_doc('MethodModuleTool.should_skip', '''\
-Determines whether this tool should currently be skipped based on key_source (i.e., the credential is unavailable).
+add_toolsmgr_english_doc('InstanceToolGroup.should_skip', '''\
+Determines whether this tool group should currently be skipped based on key_source (i.e., the credential is unavailable).
 
-When key_source is a list, the tool is considered available if any source resolves to a non-empty value (logical OR).
+When key_source is a list, the tools are considered available if any source resolves to a non-empty value (logical OR).
 
 Returns:
     bool: Returns False if key_source is None and the class has no __key_source__; otherwise resolves all sources and returns True only if every source is empty or missing.

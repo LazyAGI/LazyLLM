@@ -2,7 +2,7 @@ import re
 import docstring_parser
 import lazyllm
 from lazyllm.tools import ToolManager
-from lazyllm.tools.agent.toolsManager import MethodModuleTool
+from lazyllm.tools.agent.toolsManager import InstanceToolGroup
 from lazyllm.tools.agent.toolsManager import (
     _gen_empty_func_str_from_parsed_docstring,
     _gen_func_from_str,
@@ -272,71 +272,72 @@ class MockSearchWithStrClassKeySource:
         return f'result:{query}'
 
 
-class TestMethodModuleTool:
+class TestInstanceToolGroup:
     def test_name_and_invocation_without_key(self):
         inst = MockSearchForTest()
-        tool = MethodModuleTool(inst, 'search')
+        grp = InstanceToolGroup(inst)
+        tool = grp._tools['MockSearchForTest_search']
         assert tool.name == 'MockSearchForTest_search'
         assert tool.apply(query='hello') == 'result:hello'
 
     def test_should_skip_returns_false_when_no_key_source(self):
-        tool = MethodModuleTool(MockSearchForTest(), 'search')
-        assert tool.should_skip() is False
+        grp = InstanceToolGroup(MockSearchForTest())
+        assert grp.should_skip() is False
 
     def test_should_skip_callable_key_source_empty(self):
         inst = MockSearchForTest(key='')
-        tool = MethodModuleTool(inst, 'search', lambda i: i._key)
-        assert tool.should_skip() is True
+        grp = InstanceToolGroup(inst, lambda i: i._key)
+        assert grp.should_skip() is True
 
     def test_should_skip_callable_key_source_present(self):
         inst = MockSearchForTest(key='valid-key')
-        tool = MethodModuleTool(inst, 'search', lambda i: i._key)
-        assert tool.should_skip() is False
+        grp = InstanceToolGroup(inst, lambda i: i._key)
+        assert grp.should_skip() is False
 
     def test_should_skip_env_key_source(self, monkeypatch):
         inst = MockSearchForTest()
-        tool = MethodModuleTool(inst, 'search', 'env.TEST_MMT_API_KEY')
-        assert tool.should_skip() is True
+        grp = InstanceToolGroup(inst, 'env.TEST_MMT_API_KEY')
+        assert grp.should_skip() is True
         monkeypatch.setenv('TEST_MMT_API_KEY', 'env-value')
-        assert tool.should_skip() is False
+        assert grp.should_skip() is False
 
     def test_should_skip_multi_key_source_any_satisfies(self, monkeypatch):
         inst = MockSearchForTest(key='')
-        tool = MethodModuleTool(inst, 'search', [lambda i: i._key, 'env.TEST_MULTI_KEY'])
-        assert tool.should_skip() is True
+        grp = InstanceToolGroup(inst, [lambda i: i._key, 'env.TEST_MULTI_KEY'])
+        assert grp.should_skip() is True
         monkeypatch.setenv('TEST_MULTI_KEY', 'env-val')
-        assert tool.should_skip() is False
+        assert grp.should_skip() is False
 
     def test_should_skip_multi_key_source_first_satisfies(self):
         inst = MockSearchForTest(key='my-key')
-        tool = MethodModuleTool(inst, 'search', [lambda i: i._key, 'env.NONEXISTENT_KEY_XYZ'])
-        assert tool.should_skip() is False
+        grp = InstanceToolGroup(inst, [lambda i: i._key, 'env.NONEXISTENT_KEY_XYZ'])
+        assert grp.should_skip() is False
 
     def test_should_skip_class_key_source_callable(self):
         inst = MockSearchWithClassKeySource(key='')
-        tool = MethodModuleTool(inst, 'search')
-        assert tool.should_skip() is True
+        grp = InstanceToolGroup(inst)
+        assert grp.should_skip() is True
         inst._key = 'valid'
-        assert tool.should_skip() is False
+        assert grp.should_skip() is False
 
     def test_should_skip_class_key_source_str(self, monkeypatch):
         inst = MockSearchWithStrClassKeySource()
-        tool = MethodModuleTool(inst, 'search')
-        assert tool.should_skip() is True
+        grp = InstanceToolGroup(inst)
+        assert grp.should_skip() is True
         monkeypatch.setenv('MOCK_SEARCH_STR_KEY', 'some-key')
-        assert tool.should_skip() is False
+        assert grp.should_skip() is False
 
     def test_explicit_key_source_overrides_class_key_source(self):
         inst = MockSearchWithClassKeySource(key='')
-        tool = MethodModuleTool(inst, 'search', lambda i: 'override')
-        assert tool.should_skip() is False
+        grp = InstanceToolGroup(inst, lambda i: 'override')
+        assert grp.should_skip() is False
 
     def test_schema_contains_parameter_info(self):
         inst = MockSearchForTest()
-        tool = MethodModuleTool(inst, 'search')
-        schema = tool._params_schema
-        assert schema is not None
-        assert 'query' in schema.model_fields
+        grp = InstanceToolGroup(inst)
+        tool = grp._tools['MockSearchForTest_search']
+        assert tool._params_schema is not None
+        assert 'query' in tool._params_schema.model_fields
 
     def test_tool_manager_loads_public_apis_as_tools(self):
         inst = MockSearchForTest(key='k')
