@@ -8,6 +8,9 @@ add_example = functools.partial(utils.add_example, module=importlib.import_modul
 add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.agent'))
 add_agent_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent'))
 add_agent_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent'))
+add_toolsmgr_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
+add_toolsmgr_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
+add_toolsmgr_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 
 add_chinese_doc('IntentClassifier', '''\
 意图分类模块，用于根据输入文本在给定的意图列表中进行分类。
@@ -795,7 +798,19 @@ ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程
 
 Args:
     llm: 大语言模型实例，用于生成推理和工具调用决策
-    tools (List[str]): 可用工具列表，可以是工具函数或工具名称
+    tools (List): 可用工具列表，每个元素支持以下四种形式：
+
+        - ``str``：已注册工具的名称，如 ``"multiply_tool"``。
+        - ``Callable``：直接传入函数，会被临时注册为工具。
+        - ``ModuleTool`` 实例：直接使用已构造好的工具对象。
+        - 带有 ``__public_apis__`` 的对象实例：直接传入，框架自动将 ``__public_apis__`` 中的每个方法展开为独立工具。
+          若该类定义了 ``__key_source__`` 字段，则自动用作凭据来源；否则工具始终可用。
+        - ``(instance, key_source)`` 元组：将带有 ``__public_apis__`` 的对象实例注册为一组工具，并绑定运行时凭据来源。
+          ``instance`` 需声明 ``__public_apis__: List[str]``，其中每个方法名都会被展开为一个独立工具。
+          ``key_source`` 支持字符串（``'env.XXX'``、``'config.xxx'``、``'globals.config.xxx'``，无 ``.`` 时等价于 ``globals.config.xxx``）、
+          callable（如 ``lambda inst: inst._key``）或上述类型的列表（任一满足即可）；
+          凭据不存在时，该实例的所有工具均从 LLM 可见列表中隐藏，LLM 不会尝试调用它们。
+
     max_retries (int): 工具调用循环的最大轮次，超出后若 `force_summarize=True` 则触发强制总结，否则抛出异常，默认为5
     return_trace (bool): 是否返回完整的执行轨迹，用于调试和分析，默认为False
     prompt (str): 自定义提示词模板，如果为None则使用内置模板
@@ -815,7 +830,19 @@ ReactAgent follows the `Thought->Action->Observation->Thought...->Finish` loop t
 
 Args:
     llm: The large language model instance used for reasoning and tool-call decisions.
-    tools (List[str]): List of available tools, either as callable functions or tool name strings.
+    tools (List): List of available tools. Each element can be one of four forms:
+
+        - ``str``: Name of a registered tool, e.g. ``"multiply_tool"``.
+        - ``Callable``: A plain function passed directly; it is temporarily registered as a tool.
+        - ``ModuleTool`` instance: A pre-constructed tool object used as-is.
+        - Object instance with ``__public_apis__``: Passed directly; each method in ``__public_apis__`` is expanded into a separate tool automatically.
+          If the class defines a ``__key_source__`` attribute, it is used as the credential source; otherwise the tools are always available.
+        - ``(instance, key_source)`` tuple: Registers an object instance that declares ``__public_apis__: List[str]`` as a group of tools, with a runtime credential source attached.
+          Each method listed in ``__public_apis__`` is expanded into a separate tool.
+          ``key_source`` accepts a string (``'env.XXX'``, ``'config.xxx'``, ``'globals.config.xxx'``; no dot means ``globals.config.xxx``),
+          a callable (e.g. ``lambda inst: inst._key``), or a list of the above (available if any resolves to a non-empty value).
+          When the credential is absent, all tools from that instance are hidden from the LLM's visible tool list and will not be called.
+
     max_retries (int): Maximum number of tool-call loop iterations. When exceeded, the force-summarize fallback is triggered (if enabled) or an exception is raised. Defaults to 5.
     return_trace (bool): Whether to return the full execution trace for debugging and analysis. Defaults to False.
     prompt (str): Custom prompt template. If None, the built-in ReAct instruction template is used.
@@ -871,6 +898,33 @@ add_example('ReactAgent', """\
 >>> res = agent(query)
 >>> print(res)
 'Answer: The result of 20+(2*4) is 28.'
+
+>>> # Using (instance, key_source) tuple to register a class with __public_apis__
+>>> class BingSearch:
+...     __public_apis__ = ["search"]
+...     def __init__(self, subscription_key: str = ""):
+...         self._key = subscription_key
+...     def search(self, query: str) -> str:
+...         '''Search the web using Bing.
+...
+...         Args:
+...             query (str): The search query string.
+...
+...         Returns:
+...             str: Search results.
+...         '''
+...         return f"bing results for: {query}"
+...
+>>> bing = BingSearch()
+>>> agent2 = ReactAgent(llm, tools=[(bing, 'globals.bing_key')])
+>>> # Without a key, the tool is hidden from the LLM
+>>> len(agent2._tools_manager.tools_description)
+0
+>>> lazyllm.globals['bing_key'] = 'my-subscription-key'
+>>> # Now the tool becomes visible
+>>> len(agent2._tools_manager.tools_description)
+1
+>>> res2 = agent2("Search for the latest LazyLLM release.")
 """)
 
 add_chinese_doc('PlanAndSolveAgent', '''\
@@ -1834,3 +1888,152 @@ add_agent_example('functionCall.StreamResponse', '''\
 Hello, world!
 ''')
 
+
+add_toolsmgr_chinese_doc('InstanceToolGroup', '''\
+内部类，通常不需要直接使用。将 ``(instance, key_source)`` 元组或带 ``__public_apis__`` 的裸实例传给 ToolManager 时，框架会自动创建该对象。
+
+将一个对象实例的所有 ``__public_apis__`` 方法统一封装为可注册到 ToolManager 的工具组。
+支持可选的 key_source 参数，用于在运行时检测凭据是否存在；当凭据不存在时，该组内所有工具会从 tools_description 中自动隐藏，LLM 不会感知到其存在。
+
+主要用于将 SearchBase、LazyLLMFSBase 等带有 __public_apis__ 的对象注册为 Agent 工具。
+
+Args:
+    instance (Any): 持有目标方法的对象实例。
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): 运行时凭据来源，用于 should_skip() 判断。
+
+        - None（默认）：若实例的类定义了 ``__key_source__`` 字段，则自动使用该字段作为凭据来源；否则不检查凭据，工具始终可用。
+        - 字符串格式：
+
+          - ``env.KEY``：从 ``os.environ`` 读取环境变量 ``KEY``。
+          - ``config.key``：从 ``lazyllm.config`` 读取静态全局配置 ``key``。
+          - ``globals.config.key``：从 ``lazyllm.globals.config`` 读取会话级动态配置 ``key``。
+          - 无 ``.``（如 ``key``）：等价于 ``globals.config.key``。
+
+        - callable：接收 instance 作为参数，返回凭据字符串或空值，如 ``lambda inst: inst._key``。
+        - list：多个来源，任一非空即视为凭据可用（逻辑 OR）。
+''')
+
+add_toolsmgr_english_doc('InstanceToolGroup', '''\
+Internal class; direct use is not normally required. The framework creates instances automatically when a ``(instance, key_source)`` tuple or a bare instance with ``__public_apis__`` is passed to ToolManager.
+
+Wraps all ``__public_apis__`` methods of an object instance into a tool group that can be registered with ToolManager.
+Accepts an optional key_source parameter to detect credential availability at runtime; when the credential is absent, all tools in the group are automatically hidden from tools_description so the LLM is unaware of them.
+
+Primarily used to register objects with __public_apis__ (such as SearchBase or LazyLLMFSBase subclasses) as Agent tools.
+
+Args:
+    instance (Any): The object instance holding the target methods.
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): Runtime credential source used by should_skip().
+
+        - None (default): If the instance's class defines a ``__key_source__`` attribute, it is used automatically; otherwise no credential check is performed and the tools are always available.
+        - String format:
+
+          - ``env.KEY``: reads environment variable ``KEY`` from ``os.environ``.
+          - ``config.key``: reads static global config ``key`` from ``lazyllm.config``.
+          - ``globals.config.key``: reads session-level dynamic config ``key`` from ``lazyllm.globals.config``.
+          - No dot (e.g. ``key``): equivalent to ``globals.config.key``.
+
+        - callable: Receives instance as argument and returns the credential string or an empty value, e.g. ``lambda inst: inst._key``.
+        - list: Multiple sources; the tools are considered available if any source resolves to a non-empty value (logical OR).
+''')
+
+add_toolsmgr_example('InstanceToolGroup', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.agent.toolsManager import InstanceToolGroup
+>>> class MockSearch:
+...     __public_apis__ = ["search"]
+...     def __init__(self):
+...         self._key = ""
+...     def search(self, query: str) -> str:
+...         return f"results for {query}"
+>>> inst = MockSearch()
+>>> grp = InstanceToolGroup(inst, lambda i: i._key)
+>>> grp.should_skip()
+True
+>>> inst._key = "my-key"
+>>> grp.should_skip()
+False
+>>> tm = ToolManager([(inst, lambda i: i._key)])
+>>> len(tm.tools_description)
+1
+
+>>> # Class-level __key_source__: no need to pass key_source when registering
+>>> class BingSearch:
+...     __public_apis__ = ["search"]
+...     __key_source__ = lambda inst: inst._subscription_key
+...     def __init__(self, subscription_key=""):
+...         self._subscription_key = subscription_key
+...     def search(self, query: str) -> str:
+...         return f"bing: {query}"
+>>> bing = BingSearch()
+>>> tm2 = ToolManager([bing])
+>>> len(tm2.tools_description)
+0
+>>> bing._subscription_key = "valid-key"
+>>> len(tm2.tools_description)
+1
+''')
+
+add_toolsmgr_chinese_doc('InstanceToolGroup.should_skip', '''\
+根据 key_source 判断该工具组当前是否应被跳过（即凭据不可用）。
+
+当 key_source 为列表时，任一来源解析出非空值即视为凭据可用（逻辑 OR）。
+
+Returns:
+    bool: 若 key_source 为 None 且类未定义 __key_source__ 则返回 False；否则尝试解析凭据，若所有来源均为空或不存在则返回 True。
+''')
+
+add_toolsmgr_english_doc('InstanceToolGroup.should_skip', '''\
+Determines whether this tool group should currently be skipped based on key_source (i.e., the credential is unavailable).
+
+When key_source is a list, the tools are considered available if any source resolves to a non-empty value (logical OR).
+
+Returns:
+    bool: Returns False if key_source is None and the class has no __key_source__; otherwise resolves all sources and returns True only if every source is empty or missing.
+''')
+
+add_toolsmgr_chinese_doc('InstanceToolGroup.get_description', '''\
+返回该工具组的 OpenAI function calling 格式描述列表。
+
+若 should_skip() 返回 True（凭据不可用），则返回空列表，LLM 不会感知到该组内的任何工具；
+否则返回所有工具的描述列表，每个元素为符合 OpenAI function calling 规范的字典。
+
+Returns:
+    List[Dict]: 工具描述字典列表。当凭据不可用时返回空列表。
+''')
+
+add_toolsmgr_english_doc('InstanceToolGroup.get_description', '''\
+Returns the list of tool descriptions in OpenAI function calling format for this tool group.
+
+If should_skip() returns True (credential unavailable), an empty list is returned so the LLM is unaware of any tools in this group;
+otherwise returns the description list for all tools, where each element is a dict conforming to the OpenAI function calling specification.
+
+Returns:
+    List[Dict]: List of tool description dicts. Returns an empty list when the credential is unavailable.
+''')
+
+add_toolsmgr_chinese_doc('MethodModuleTool', '''\
+内部类，通常不需要直接使用。InstanceToolGroup 在初始化时会自动为实例的每个 ``__public_apis__`` 方法创建对应的 MethodModuleTool。
+
+将对象实例的某个绑定方法封装为 ModuleTool，使其可被 ToolManager 管理和调用。
+工具名称由实例类名和方法名拼接而成（``ClassName_method_name``）；若方法名为 ``__call__``，则工具名直接使用类名。
+工具描述和参数 schema 从绑定方法的 docstring 和类型注解中自动解析。
+
+Args:
+    instance (Any): 持有目标方法的对象实例。
+    method_name (str): 要封装的方法名称。
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): 保留参数，当前未使用，默认为 None。
+''')
+
+add_toolsmgr_english_doc('MethodModuleTool', '''\
+Internal class; direct use is not normally required. InstanceToolGroup automatically creates a MethodModuleTool for each ``__public_apis__`` method of the instance during initialization.
+
+Wraps a bound method of an object instance as a ModuleTool so it can be managed and invoked by ToolManager.
+The tool name is formed by concatenating the class name and method name (``ClassName_method_name``); if the method name is ``__call__``, the tool name is the class name alone.
+The tool description and parameter schema are automatically parsed from the bound method's docstring and type annotations.
+
+Args:
+    instance (Any): The object instance holding the target method.
+    method_name (str): The name of the method to wrap.
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): Reserved parameter, currently unused. Defaults to None.
+''')
