@@ -99,7 +99,7 @@ class MineruPDFReader(_OcrReaderBase):
         response = post_sync(self._url, json_payload=payload, timeout=self._timeout)
         return response.text
 
-    def _fetch_async(self, file):
+    def _fetch_async(self, file, use_cache: bool = True):
         file_str = str(file)
         splits = self._split_large_pdf(file_str)
 
