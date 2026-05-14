@@ -1,53 +1,17 @@
+import ast
 import copy
 import json5 as json
 import lazyllm
 import docstring_parser
 import os
 from lazyllm.module import ModuleBase
-from lazyllm.common import LazyLLMRegisterMetaClass, compile_func, kwargs
+from lazyllm.common import LazyLLMRegisterMetaClass, kwargs
+from lazyllm.common.utils import SecurityVisitor
 from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
 from lazyllm import LOG
 from typing import *  # noqa F403, to import all types for compile_func(), do not remove
-import time
-
-# ---------------------------------------------------------------------------- #
-
-def _gen_empty_func_str_from_parsed_docstring(parsed_docstring):
-    '''
-    returns a function prototype string
-    '''
-
-    func_name = 'f' + str(int(time.time()))
-    s = 'def ' + func_name + '('
-    for param in parsed_docstring.params:
-        s += param.arg_name
-        if param.type_name:
-            s += ':' + param.type_name + ','
-        else:
-            s += ','
-    s += ')'
-
-    if parsed_docstring.returns and parsed_docstring.returns.type_name:
-        s += '->' + parsed_docstring.returns.type_name
-    s += ':\n    pass'
-
-    return s
-
-def _gen_func_from_str(func_str, orig_docstring, global_env=None):
-    if not global_env:
-        global_env = globals()
-    f = compile_func(func_str, global_env)
-    f.__doc__ = orig_docstring
-    return f
-
-def _check_return_type_is_the_same(doc_type_hints, func_type_hints) -> None:
-    func_return_type = func_type_hints.get('return') if func_type_hints else None
-    doc_return_type = doc_type_hints.get('return') if doc_type_hints else None
-    if func_return_type is not None and doc_return_type is not None:
-        if func_return_type != doc_return_type:
-            raise TypeError('return info in docstring is different from that in function prototype.')
 
 # ---------------------------------------------------------------------------- #
 
@@ -72,45 +36,67 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         self._params_schema = self._load_function_schema(self.__class__.apply)
 
+    @staticmethod
+    def _safe_eval_type(type_str: str, context: str) -> Any:
+        try:
+            tree = ast.parse(type_str, mode='eval')
+            SecurityVisitor().visit(tree)
+        except ValueError as e:
+            raise ValueError(f'Unsafe type expression in docstring ({context}): {e}')
+        try:
+            return eval(type_str, globals())  # noqa S307
+        except Exception:
+            raise NameError(f'Unknown type "{type_str}" in docstring ({context}).')
+
+    @staticmethod
+    def _parse_type_from_docstring(parsed_docstring) -> Dict[str, Any]:
+        hints: Dict[str, Any] = {}
+        for param in parsed_docstring.params:
+            if not param.type_name:
+                continue
+            hints[param.arg_name] = ModuleTool._safe_eval_type(
+                param.type_name, f'parameter "{param.arg_name}"')
+        if parsed_docstring.returns and parsed_docstring.returns.type_name:
+            hints['return'] = ModuleTool._safe_eval_type(
+                parsed_docstring.returns.type_name, 'return type')
+        return hints
+
     def _load_function_schema(self, func: Callable) -> Type[BaseModel]:
         parsed_docstring = docstring_parser.parse(self._description)
-        func_str_from_doc = _gen_empty_func_str_from_parsed_docstring(parsed_docstring)
-        func_from_doc = _gen_func_from_str(func_str_from_doc, self._description)
-        func_from_doc.__name__ = func.__name__
-        doc_type_hints = get_type_hints(func_from_doc, globals(), locals())
+        doc_type_hints = self._parse_type_from_docstring(parsed_docstring)
 
         func_type_hints = get_type_hints(func, globals(), locals())
 
-        _check_return_type_is_the_same(doc_type_hints, func_type_hints)
+        func_return = func_type_hints.get('return')
+        doc_return = doc_type_hints.get('return')
+        if func_return is not None and doc_return is not None and func_return != doc_return:
+            raise TypeError('return info in docstring is different from that in function prototype.')
 
         signature = inspect.signature(func)
-        has_var_args = False
-        for _, param in signature.parameters.items():
-            if param.kind == inspect.Parameter.VAR_POSITIONAL or\
-               param.kind == inspect.Parameter.VAR_KEYWORD:
-                has_var_args = True
-                break
+        has_var_args = any(
+            p.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+            for p in signature.parameters.values()
+        )
 
         if has_var_args:
-            # we cannot get type hints from var args, so we get them from docstring
             self._type_hints = doc_type_hints
-            signature = inspect.signature(func_from_doc)
+            param_names = [p.arg_name for p in parsed_docstring.params]
+            fields = {
+                name: (doc_type_hints.get(name, Any), ...)
+                for name in param_names
+            }
         else:
             self._type_hints = func_type_hints
-            # accomplish type_hints from docstring
-            for name, type in doc_type_hints.items():
-                self._type_hints.setdefault(name, type)
+            for name, t in doc_type_hints.items():
+                self._type_hints.setdefault(name, t)
+            fields = {
+                name: (self._type_hints.get(name, Any), param.default
+                       if param.default is not inspect.Parameter.empty else ...)
+                for name, param in signature.parameters.items()
+                if name != 'self'
+            }
 
         self._return_type = self._type_hints.get('return') if self._type_hints else None
-
-        fields = {
-            name: (self._type_hints.get(name, Any), param.default
-                   if param.default is not inspect.Parameter.empty
-                   else ...)
-            for name, param in signature.parameters.items()
-            if name != 'self'
-        }
-
         return create_model(self._name, **fields)
 
     @property
@@ -209,7 +195,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             return (ModuleTool._rebuild_from_reduce, (self._module_id, orig or self.__class__))
         return super().__reduce__()
 
-    def _validate_input(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_input(self, tool_input: Union[Dict[str, Any], str]) -> Dict[str, Any]:
         input_params = self._params_schema
         if isinstance(tool_input, dict):
             if input_params is not None:
@@ -224,11 +210,8 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                 if arg_type:
                     return {key: arg_type(tool_input)}
                 return {key: tool_input}
-
-            if len(self._type_hints) != 1:
-                return tool_input
-            arg_type = self._type_hints.values()[0]
-            return arg_type(tool_input)
+            key = next(iter(self._type_hints.keys()))
+            return {key: self._type_hints[key](tool_input)}
         else:
             raise TypeError(f'tool_input {tool_input} only supports dict and str.')
 
@@ -285,11 +268,11 @@ class MethodModuleTool(ModuleTool):
         def _apply(**kwargs): return bound(**kwargs)
         _apply.__doc__ = bound.__doc__
         _apply.__name__ = method_name
-        _apply.__annotations__ = getattr(bound, '__annotations__', {})
 
         self.apply = _apply
         super().__init__(execute_in_sandbox=False)
-        self._name = f'{instance.__class__.__name__}_{method_name}'
+        self._name = instance.__class__.__name__ if method_name == '__call__' \
+            else f'{instance.__class__.__name__}_{method_name}'
 
     def _load_function_schema(self, func: Callable) -> Type[BaseModel]:
         return super()._load_function_schema(getattr(self._instance, self._method_name))
@@ -303,7 +286,8 @@ class InstanceToolGroup:
             key_source = getattr(type(instance), '__key_source__', None)
         self._key_source = key_source
         self._tools: Dict[str, MethodModuleTool] = {
-            f'{instance.__class__.__name__}_{m}': MethodModuleTool(instance, m)
+            (instance.__class__.__name__ if m == '__call__' else f'{instance.__class__.__name__}_{m}'):
+            MethodModuleTool(instance, m)
             for m in instance.__public_apis__
         }
 
@@ -427,8 +411,12 @@ class ToolManager(ModuleBase):
             for item in self._tools:
                 if isinstance(item, InstanceToolGroup):
                     for name in item._tools:
+                        if name in self._tool_call:
+                            raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
                         self._tool_call[name] = item
                 else:
+                    if item.name in self._tool_call:
+                        raise ValueError(f'Duplicate tool name [{item.name}]. Tool names must be unique.')
                     self._tool_call[item.name] = item
 
     def _flat_tools(self) -> List[ModuleTool]:
@@ -541,8 +529,6 @@ class ToolManager(ModuleBase):
         entry = self._tool_call.get(name)
         if entry is None:
             return None, f'Tool [{name}] is not available. Please choose from the available tools.'
-        if isinstance(entry, InstanceToolGroup) and entry.should_skip():
-            return None, f'Tool [{name}] is currently unavailable (missing required key).'
         tool = entry._tools[name] if isinstance(entry, InstanceToolGroup) else entry
         if not self._validate_tool(name, arguments):
             return None, f'Tool [{name}] parameters error.'
