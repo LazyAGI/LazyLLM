@@ -75,26 +75,19 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         signature = inspect.signature(func)
         has_var_args = any(
             p.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-            for p in signature.parameters.values()
-        )
+            for p in signature.parameters.values())
 
         if has_var_args:
             self._type_hints = doc_type_hints
             param_names = [p.arg_name for p in parsed_docstring.params]
-            fields = {
-                name: (doc_type_hints.get(name, Any), ...)
-                for name in param_names
-            }
+            fields = {name: (doc_type_hints.get(name, Any), ...) for name in param_names}
         else:
             self._type_hints = func_type_hints
-            for name, t in doc_type_hints.items():
-                self._type_hints.setdefault(name, t)
+            for name, t in doc_type_hints.items(): self._type_hints.setdefault(name, t)
             fields = {
                 name: (self._type_hints.get(name, Any), param.default
                        if param.default is not inspect.Parameter.empty else ...)
-                for name, param in signature.parameters.items()
-                if name != 'self'
-            }
+                for name, param in signature.parameters.items() if name != 'self'}
 
         self._return_type = self._type_hints.get('return') if self._type_hints else None
         return create_model(self._name, **fields)
@@ -316,19 +309,15 @@ class InstanceToolGroup:
     def __init__(self, instance: Any,
                  key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
         self._instance = instance
-        if key_source is None:
-            key_source = getattr(type(instance), '__key_source__', None)
+        if key_source is None: key_source = getattr(type(instance), '__key_source__', None)
         self._key_source = key_source
         self._tools: Dict[str, MethodModuleTool] = {
             (instance.__class__.__name__ if m == '__call__' else f'{instance.__class__.__name__}_{m}'):
-            MethodModuleTool(instance, m)
-            for m in instance.__public_apis__
-        }
+            MethodModuleTool(instance, m) for m in instance.__public_apis__}
         self._tool_descs: List[Dict] = [_build_tool_desc(t) for t in self._tools.values()]
 
     def should_skip(self) -> bool:
-        if self._key_source is None:
-            return False
+        if self._key_source is None: return False
         sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
         return not any(bool(self._resolve_one_key(src)) for src in sources)
 
@@ -366,12 +355,10 @@ class ToolManager(ModuleBase):
 
     def _load_tool_by_name(self, name: str) -> 'ModuleTool':
         name = name.strip()
-        if '.' not in name:
-            return getattr(lazyllm.tool, name)()
+        if '.' not in name: return getattr(lazyllm.tool, name)()
         target = lazyllm
         for part in name.split('.'):
-            if not part:
-                raise ValueError(f'invalid tool name: {name}')
+            if not part: raise ValueError(f'invalid tool name: {name}')
             target = getattr(target, part)
         return target()
 
@@ -406,13 +393,7 @@ class ToolManager(ModuleBase):
 
     @property
     def tools_description(self) -> List[Dict]:
-        result = []
-        for item in self._tools_desc:
-            if callable(item):
-                result.extend(item())
-            else:
-                result.append(item)
-        return result
+        return [item() if callable(item) else item for item in self._tools_desc]
 
     @property
     def tools_info(self):
@@ -437,15 +418,11 @@ class ToolManager(ModuleBase):
         if isinstance(self._tools, List):
             self._tool_call: Dict[str, ModuleTool] = {}
             for item in self._tools:
-                if isinstance(item, InstanceToolGroup):
-                    for name, tool in item._tools.items():
-                        if name in self._tool_call:
-                            raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
-                        self._tool_call[name] = tool
-                else:
-                    if item.name in self._tool_call:
-                        raise ValueError(f'Duplicate tool name [{item.name}]. Tool names must be unique.')
-                    self._tool_call[item.name] = item
+                items = item._tools if isinstance(item, InstanceToolGroup) else {item.name: item}
+                for name, tool in items.items():
+                    if name in self._tool_call:
+                        raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
+                    self._tool_call[name] = tool
 
     def _transform_to_openai_function(self):
         if not isinstance(self._tools, List):
