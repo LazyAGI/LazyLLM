@@ -280,9 +280,6 @@ class MethodModuleTool(ModuleTool):
                  key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
         self._instance = instance
         self._method_name = method_name
-        if key_source is None:
-            key_source = getattr(type(instance), '__key_source__', None)
-        self._key_source = key_source
         bound = getattr(instance, method_name)
 
         def _apply(**kwargs): return bound(**kwargs)
@@ -306,7 +303,7 @@ class InstanceToolGroup:
             key_source = getattr(type(instance), '__key_source__', None)
         self._key_source = key_source
         self._tools: Dict[str, MethodModuleTool] = {
-            f'{instance.__class__.__name__}_{m}': MethodModuleTool(instance, m, key_source)
+            f'{instance.__class__.__name__}_{m}': MethodModuleTool(instance, m)
             for m in instance.__public_apis__
         }
 
@@ -497,19 +494,14 @@ class ToolManager(ModuleBase):
                 parsed_docstring = docstring_parser.parse(tool.description)
                 args = self._gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring)
                 required_arg_list = tool.params_schema.model_json_schema().get('required', [])
-                func = {
+                format_tools.append({
                     'type': 'function',
                     'function': {
                         'name': tool.name,
                         'description': parsed_docstring.short_description,
-                        'parameters': {
-                            'type': 'object',
-                            'properties': args,
-                            'required': required_arg_list,
-                        }
+                        'parameters': {'type': 'object', 'properties': args, 'required': required_arg_list},
                     }
-                }
-                format_tools.append(func)
+                })
             except Exception:
                 typehints_template = '''
                 def myfunc(arg1: str, arg2: Dict[str, Any], arg3: Literal['aaa', 'bbb', 'ccc']='aaa'):
