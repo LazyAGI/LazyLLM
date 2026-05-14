@@ -42,12 +42,12 @@ class MineruPDFReader(_OcrReaderBase):
                  patch_applied: bool = False,
                  **kwargs):
         super().__init__(dropped_types=dropped_types or {
-                             'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
-                         return_trace=return_trace,
-                         post_func=post_func,
-                         image_cache_dir=kwargs.pop('image_cache_dir', os.path.join(
-                             lazyllm.config['home'], 'mineru_cache')),
-                         **kwargs)
+            'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
+            return_trace=return_trace,
+            post_func=post_func,
+            image_cache_dir=kwargs.pop('image_cache_dir', os.path.join(
+                lazyllm.config['home'], 'mineru_cache')),
+            **kwargs)
         self._backend = backend
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
