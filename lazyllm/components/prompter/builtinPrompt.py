@@ -31,7 +31,8 @@ class _DynamicValue:
 
 
 _DEFULT_CONFIG = 'You are an AI-Agent developed by LazyLLM.'
-config.add('disable_system_prompt', bool, False, description='Whether to disable default system prompt.')
+config.add('disable_system_prompt', bool, False, 'DISABLE_SYSTEM_PROMPT',
+           description='Whether to disable default system prompt.')
 
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     ISA = '<!lazyllm-spliter!>'
@@ -181,7 +182,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         if is_tool:
             params['soh'] = getattr(self, '_soe', self._soh)
             params['eoh'] = getattr(self, '_eoe', self._eoh)
-        return self._template.format(**params) + (label if label else '')
+        return (self._template.format(**params) + (label if label else '')).lstrip('\n')
 
     # Used for OnlineChatModule
     def _generate_prompt_dict_impl(self, instruction, input, user, history, tools, label, skills):
