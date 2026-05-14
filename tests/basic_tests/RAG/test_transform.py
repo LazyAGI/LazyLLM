@@ -1843,7 +1843,7 @@ class TestBatchForwardRefPath:
         processor = _Processor(store=store)
         processor.add_doc = MagicMock()
 
-        processor._reparse_docs(group_name='all', node_groups={}, reader=reader,
+        processor._reparse_docs(group_name=None, node_groups={}, reader=reader,
                                 doc_ids=[doc_id], doc_paths=[doc_path], metadatas=None)
 
         reader.load_data.assert_called_once_with(

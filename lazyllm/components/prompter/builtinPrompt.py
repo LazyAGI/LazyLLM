@@ -1,6 +1,6 @@
 from typing import Dict, Union, Any, List, Callable, Optional
 from ...common import LazyLLMRegisterMetaClass
-from lazyllm import LOG
+from lazyllm import LOG, config
 import json5 as json
 from functools import reduce
 import copy
@@ -30,13 +30,16 @@ class _DynamicValue:
         return self._func(**kwargs)
 
 
+_DEFULT_CONFIG = 'You are an AI-Agent developed by LazyLLM.'
+config.add('disable_system_prompt', bool, False, description='Whether to disable default system prompt.')
+
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     ISA = '<!lazyllm-spliter!>'
     ISE = '</!lazyllm-spliter!>'
 
     def __init__(self, show=False, tools=None, skills=None, history=None, *, enable_system: bool = True):
-        self._set_model_configs(system='You are an AI-Agent developed by LazyLLM.', sos='',
-                                soh='', soa='', eos='', eoh='', eoa='')
+        self._set_model_configs(system=_DEFULT_CONFIG if not config['disable_system_prompt'] else '',
+                                sos='', soh='', soa='', eos='', eoh='', eoa='')
         self._show = show
         self._tools = _DynamicValue(tools) if callable(tools) else tools
         self._skills = _DynamicValue(skills) if callable(skills) else (skills or '')
@@ -199,7 +202,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             history[-1]['content'] = user + history[-1]['content']
 
         if self._enable_system:
-            system_content = '\n\n'.join(p for p in (instruction or self._system, skills) if p)
+            system_content = '\n'.join(p for p in (self._system, instruction, skills) if p)
             history.insert(0, {'role': 'system', 'content': system_content})
         return dict(messages=history, tools=tools) if tools else dict(messages=history)
 
@@ -233,7 +236,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             pattern = re.compile(r'%s(.*)%s' % (LazyLLMPrompterBase.ISA, LazyLLMPrompterBase.ISE), re.DOTALL)
             ret = re.split(pattern, instruction)
             system_instruction = ret[0]
-            user_instruction = ret[1] + (ret[2] if len(ret) > 2 else '')
+            user_instruction = ret[1]
 
         return system_instruction, user_instruction
 
