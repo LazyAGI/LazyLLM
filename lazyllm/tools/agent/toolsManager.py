@@ -278,6 +278,40 @@ class MethodModuleTool(ModuleTool):
         return super()._load_function_schema(getattr(self._instance, self._method_name))
 
 
+def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
+    tool_args = tool.args
+    assert len(tool_args) == len(parsed_docstring.params), ('The parameter description and the actual '
+                                                            'number of input parameters are inconsistent.')
+    args_description = {param.arg_name: param.description for param in parsed_docstring.params}
+    args = {}
+    for k, v in tool_args.items():
+        val = copy.deepcopy(v)
+        val.pop('title', None)
+        val.pop('default', None)
+        args[k] = val if val else {'type': 'string'}
+        desc = args_description.get(k, None)
+        if desc:
+            args[k].update({'description': desc})
+        else:
+            raise ValueError(f'The actual input parameter "{k}" is not found '
+                             f'in the parameter description of tool "{tool.name}".')
+    return args
+
+
+def _build_tool_desc(tool: 'ModuleTool') -> Dict:
+    parsed_docstring = docstring_parser.parse(tool.description)
+    args = _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring)
+    required_arg_list = tool.params_schema.model_json_schema().get('required', [])
+    return {
+        'type': 'function',
+        'function': {
+            'name': tool.name,
+            'description': parsed_docstring.short_description,
+            'parameters': {'type': 'object', 'properties': args, 'required': required_arg_list},
+        }
+    }
+
+
 class InstanceToolGroup:
     def __init__(self, instance: Any,
                  key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
@@ -290,12 +324,16 @@ class InstanceToolGroup:
             MethodModuleTool(instance, m)
             for m in instance.__public_apis__
         }
+        self._tool_descs: List[Dict] = [_build_tool_desc(t) for t in self._tools.values()]
 
     def should_skip(self) -> bool:
         if self._key_source is None:
             return False
         sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
         return not any(bool(self._resolve_one_key(src)) for src in sources)
+
+    def get_description(self) -> List[Dict]:
+        return [] if self.should_skip() else self._tool_descs
 
     def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
         if callable(source): return source(self._instance) or None
@@ -363,26 +401,17 @@ class ToolManager(ModuleBase):
         return _tools
 
     @property
-    def all_tools(self):
-        return self._flat_tools()
+    def all_tools(self) -> List[ModuleTool]:
+        return list(self._tool_call.values())
 
     @property
     def tools_description(self) -> List[Dict]:
-        skipped: set = set()
-        checked: set = set()
         result = []
-        for desc in self._tools_desc:
-            entry = self._tool_call.get(desc['function']['name'])
-            if isinstance(entry, InstanceToolGroup):
-                gid = id(entry)
-                if gid not in checked:
-                    checked.add(gid)
-                    if entry.should_skip():
-                        LOG.debug(f'InstanceToolGroup skipped: key_source={entry._key_source!r} resolved to None')
-                        skipped.add(gid)
-                if gid in skipped:
-                    continue
-            result.append(desc)
+        for item in self._tools_desc:
+            if callable(item):
+                result.extend(item())
+            else:
+                result.append(item)
         return result
 
     @property
@@ -402,96 +431,40 @@ class ToolManager(ModuleBase):
         if not entry:
             LOG.error(f'cannot find tool named [{tool_name}]')
             return False
-        tool = entry._tools[tool_name] if isinstance(entry, InstanceToolGroup) else entry
-        return tool.validate_parameters(tool_arguments)
+        return entry.validate_parameters(tool_arguments)
 
     def _format_tools(self):
         if isinstance(self._tools, List):
-            self._tool_call: Dict[str, Union[ModuleTool, 'InstanceToolGroup']] = {}
+            self._tool_call: Dict[str, ModuleTool] = {}
             for item in self._tools:
                 if isinstance(item, InstanceToolGroup):
-                    for name in item._tools:
+                    for name, tool in item._tools.items():
                         if name in self._tool_call:
                             raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
-                        self._tool_call[name] = item
+                        self._tool_call[name] = tool
                 else:
                     if item.name in self._tool_call:
                         raise ValueError(f'Duplicate tool name [{item.name}]. Tool names must be unique.')
                     self._tool_call[item.name] = item
-
-    def _flat_tools(self) -> List[ModuleTool]:
-        result, seen_groups = [], set()
-        for v in self._tool_call.values():
-            if isinstance(v, InstanceToolGroup):
-                if id(v) not in seen_groups:
-                    seen_groups.add(id(v))
-                    result.extend(v._tools.values())
-            else:
-                result.append(v)
-        return result
-
-    @staticmethod
-    def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
-        '''
-        returns a dict of param names containing at least
-          1. `type`
-          2. `description` of params
-
-        for example:
-            args = {
-                'foo': {
-                    'enum': ['baz', 'bar'],
-                    'type': 'string',
-                    'description': 'a string',
-                },
-                'bar': {
-                    'type': 'integer',
-                    'description': 'an integer',
-                }
-            }
-        '''
-        tool_args = tool.args
-        assert len(tool_args) == len(parsed_docstring.params), ('The parameter description and the actual '
-                                                                'number of input parameters are inconsistent.')
-
-        args_description = {}
-        for param in parsed_docstring.params:
-            args_description[param.arg_name] = param.description
-
-        args = {}
-        for k, v in tool_args.items():
-            val = copy.deepcopy(v)
-            val.pop('title', None)
-            val.pop('default', None)
-            args[k] = val if val else {'type': 'string'}
-            desc = args_description.get(k, None)
-            if desc:
-                args[k].update({'description': desc})
-            else:
-                raise ValueError(f'The actual input parameter "{k}" is not found '
-                                 f'in the parameter description of tool "{tool.name}".')
-        return args
 
     def _transform_to_openai_function(self):
         if not isinstance(self._tools, List):
             raise TypeError(f'The tools type should be List instead of {type(self._tools)}')
 
         format_tools = []
-        for tool in self._flat_tools():
-            try:
-                parsed_docstring = docstring_parser.parse(tool.description)
-                args = self._gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring)
-                required_arg_list = tool.params_schema.model_json_schema().get('required', [])
-                format_tools.append({
-                    'type': 'function',
-                    'function': {
-                        'name': tool.name,
-                        'description': parsed_docstring.short_description,
-                        'parameters': {'type': 'object', 'properties': args, 'required': required_arg_list},
-                    }
-                })
-            except Exception:
-                typehints_template = '''
+        for item in self._tools:
+            if isinstance(item, InstanceToolGroup):
+                format_tools.append(item.get_description)
+            else:
+                try:
+                    format_tools.append(_build_tool_desc(item))
+                except Exception:
+                    self._raise_format_error()
+        return format_tools
+
+    @staticmethod
+    def _raise_format_error():
+        typehints_template = '''
                 def myfunc(arg1: str, arg2: Dict[str, Any], arg3: Literal['aaa', 'bbb', 'ccc']='aaa'):
                     """
                     Function description ...
@@ -502,9 +475,8 @@ class ToolManager(ModuleBase):
                         arg3 (Literal['aaa', 'bbb', 'ccc']): arg3 description
                     """
                 '''
-                raise TypeError('Function description must include function description and '
-                                f'parameter description, the format is as follows: {typehints_template}')
-        return format_tools
+        raise TypeError('Function description must include function description and '
+                        f'parameter description, the format is as follows: {typehints_template}')
 
     @staticmethod
     def _ensure_list(value):
@@ -526,10 +498,9 @@ class ToolManager(ModuleBase):
         arguments = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
         if not isinstance(arguments, dict):
             return None, f'Tool [{name}] arguments format error.'
-        entry = self._tool_call.get(name)
-        if entry is None:
+        tool = self._tool_call.get(name)
+        if tool is None:
             return None, f'Tool [{name}] is not available. Please choose from the available tools.'
-        tool = entry._tools[name] if isinstance(entry, InstanceToolGroup) else entry
         if not self._validate_tool(name, arguments):
             return None, f'Tool [{name}] parameters error.'
         return tool, arguments

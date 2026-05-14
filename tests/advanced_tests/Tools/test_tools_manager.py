@@ -1,6 +1,6 @@
 import lazyllm
 from lazyllm.tools import ToolManager
-from lazyllm.tools.agent.toolsManager import InstanceToolGroup
+from lazyllm.tools.agent.toolsManager import InstanceToolGroup, _gen_args_info_from_moduletool_and_docstring
 from lazyllm.tools.agent.toolsManager import register
 from lazyllm.common import LazyLLMRegisterMetaClass
 from typing import Literal
@@ -30,7 +30,7 @@ class TestToolManager:
         import docstring_parser
         parsed_doc = docstring_parser.parse(doc)
         tool = _gen_wrapped_moduletool(func)
-        args = ToolManager._gen_args_info_from_moduletool_and_docstring(tool, parsed_doc)
+        args = _gen_args_info_from_moduletool_and_docstring(tool, parsed_doc)
         info_of_s = args['s']
         assert info_of_s['enum'] == ['a', 'b', 'c']
 
