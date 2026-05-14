@@ -28,7 +28,7 @@ lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='T
 
 
 class MineruPDFReader(_OcrReaderBase):
-    def __init__(self, url: str = 'https://mineru.net/api/v4/extract/task',
+    def __init__(self,
                  backend: str = 'hybrid-auto-engine',
                  upload_mode: bool = False,
                  extract_table: bool = True,
@@ -41,8 +41,7 @@ class MineruPDFReader(_OcrReaderBase):
                  dropped_types: Optional[Set[str]] = None,
                  patch_applied: bool = False,
                  **kwargs):
-        super().__init__(url=url,
-                         dropped_types=dropped_types or {
+        super().__init__(dropped_types=dropped_types or {
                              'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
                          return_trace=return_trace,
                          post_func=post_func,
