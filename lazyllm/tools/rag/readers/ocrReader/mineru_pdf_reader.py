@@ -230,7 +230,7 @@ class MineruPDFReader(_OcrReaderBase):
                 blocks.append(block)
         return blocks
 
-    def _normalize_content(self, content) -> List[str]:
+    def _normalize_content(self, content) -> List:
         if isinstance(content, str):
             return [content.encode('utf-8', 'replace').decode('utf-8')]
         elif isinstance(content, list):
@@ -239,7 +239,13 @@ class MineruPDFReader(_OcrReaderBase):
                 if isinstance(item, str):
                     result.append(item.encode('utf-8', 'replace').decode('utf-8'))
                 elif isinstance(item, dict):
-                    result.append(item.get('content', '').encode('utf-8', 'replace').decode('utf-8'))
+                    normalized = dict(item)
+                    if 'content' in normalized and isinstance(normalized['content'], str):
+                        normalized['content'] = normalized['content'].encode(
+                            'utf-8', 'replace').decode('utf-8')
+                    result.append(normalized)
+                else:
+                    result.append(item)
             return result
         raise TypeError(f'Not supported type: {type(content)}.')
 
