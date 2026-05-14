@@ -6,8 +6,10 @@ import zipfile
 import requests
 import time
 
+from concurrent.futures import as_completed
+from lazyllm.common.threading import ThreadPoolExecutor
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Callable, Tuple
+from typing import Dict, List, Optional, Set, Callable
 from typing_extensions import override
 
 import lazyllm
@@ -54,10 +56,9 @@ class MineruPDFReader(_OcrReaderBase):
         self._api_key = lazyllm.config['mineru_api_key']
 
     @override
-    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True,
-                   **kwargs) -> List['DocNode']:
-        file_path = (file if isinstance(file, str) and file.startswith(('http://', 'https://'))
-                     else Path(file))
+    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True
+                   ) -> List['DocNode']:
+        file_path = Path(file)
         if self._service_variant == ServiceVariant.OFFLINE:
             response_text = self._fetch_sync(file_path, use_cache)
             task_dir = None
@@ -80,11 +81,11 @@ class MineruPDFReader(_OcrReaderBase):
             }
             if not self._upload_mode:
                 payload['files'] = str(file)
-                response = post_sync(url, payload=payload, timeout=self._timeout)
+                response = post_sync(self._url, payload=payload, timeout=self._timeout)
             else:
                 with open(file, 'rb') as f:
                     files = {'upload_files': (os.path.basename(file), f)}
-                    response = post_sync(url, payload=payload, files=files, timeout=self._timeout)
+                    response = post_sync(self._url, payload=payload, files=files, timeout=self._timeout)
             return response.text
 
         # Original local server: JSON payload.
@@ -96,54 +97,81 @@ class MineruPDFReader(_OcrReaderBase):
             'formula_enable': True,
             'files': [str(file)],
         }
-        response = post_sync(url, json_payload=payload, timeout=self._timeout)
+        response = post_sync(self._url, json_payload=payload, timeout=self._timeout)
         return response.text
 
-    def _fetch_async(self, file, use_cache: bool):
+    def _fetch_async(self, file):
         file_str = str(file)
+        splits = self._split_large_pdf(file_str)
 
-        if file_str.startswith(('http://', 'https://')):
-            return self._fetch_async_by_url(file_str)
-        return self._fetch_async_by_upload(file_str)
+        if len(splits) == 1:
+            return self._fetch_async_by_upload(splits[0][0])
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=min(len(splits), 5)) as executor:
+            futures = {
+                executor.submit(self._fetch_async_by_upload, sub_path): start_page
+                for sub_path, start_page in splits
+            }
+            for future in as_completed(futures):
+                start_page = futures[future]
+                results[start_page] = future.result()
+
+        return self._merge_split_results(results)
+
+    def _merge_split_results(self, results: dict):
+        sorted_pages = sorted(results.keys())
+        all_content = []
+        first_task_dir = None
+
+        for start_page in sorted_pages:
+            json_str, task_dir = results[start_page]
+            if first_task_dir is None:
+                first_task_dir = task_dir
+            content = json.loads(json_str)
+            if self._patch_applied:
+                items = content['result'][0]['content_list']
+            else:
+                items = content
+
+            for item in items:
+                if 'page_idx' in item:
+                    item['page_idx'] += start_page
+                all_content.append(item)
+
+        if self._patch_applied:
+            first_content = json.loads(results[sorted_pages[0]][0])
+            first_content['result'][0]['content_list'] = all_content
+            merged_json = json.dumps(first_content)
+        else:
+            merged_json = json.dumps(all_content)
+
+        return merged_json, first_task_dir
 
     def _fetch_async_by_upload(self, file_path: str):
         '''Upload a local file via batch presigned URL and fetch result.'''
 
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self._api_key}'}
-        batch_size = 50
-        all_content_lists = []
 
-        for batch_start in range(0, len(split_result), batch_size):
-            batch = split_result[batch_start:batch_start + batch_size]
-            file_paths = [f[0] for f in batch]
-            page_offsets = {f[0]: f[1] for f in batch}
+        # Step 1: Request presigned upload URL
+        payload = {
+            'files': [{'name': os.path.basename(file_path)}],
+            'model_version': 'vlm',
+        }
+        resp = post_sync(
+            'https://mineru.net/api/v4/file-urls/batch',
+            json_payload=payload,
+            headers=headers,
+            timeout=self._timeout,
+        )
+        data = resp.json()
+        batch_id = data['data']['batch_id']
+        file_url = data['data']['file_urls'][0]
 
-            # Step 1: Request presigned upload URLs
-            payload = {
-                'files': [{'name': os.path.basename(f)} for f in file_paths],
-                'model_version': 'vlm',
-            }
-            LOG.info(f'[MineruPDFReader] Requesting presigned URL for {len(file_paths)} file(s)')
-            resp = post_sync(
-                'https://mineru.net/api/v4/file-urls/batch',
-                json_payload=payload,
-                headers=headers,
-                timeout=self._timeout,
-            )
-            data = resp.json()
-            batch_id = data['data']['batch_id']
-            file_urls = data['data']['file_urls']
-            LOG.info(f'[MineruPDFReader] Got batch_id={batch_id}')
-
-            # Step 2: Upload all files to OSS
-            for file_path, file_url in zip(file_paths, file_urls):
-                file_size = os.path.getsize(file_path)
-                LOG.info(f'[MineruPDFReader] Uploading {os.path.basename(file_path)} ({file_size / 1024 / 1024:.1f}MB)')
-                with open(file_path, 'rb') as f:
-                    upload_timeout = self._timeout or 1200
-                    upload_resp = requests.put(file_url, data=f, timeout=upload_timeout)
-                    upload_resp.raise_for_status()
-            LOG.info(f'[MineruPDFReader] Upload completed for {len(file_paths)} file(s)')
+        # Step 2: Upload file to OSS
+        with open(file_path, 'rb') as f:
+            upload_resp = requests.put(file_url, data=f, timeout=self._timeout or 300)
+            upload_resp.raise_for_status()
 
         # Step 3: Poll batch results
         status_url = f'https://mineru.net/api/v4/extract-results/batch/{batch_id}'
@@ -166,26 +194,6 @@ class MineruPDFReader(_OcrReaderBase):
             time.sleep(3)
 
         raise TimeoutError('[MineruPDFReader] Batch polling timed out')
-
-    def _fetch_async_by_url(self, file_url: str):
-        '''Submit a remote URL for extraction and fetch result.'''
-        payload = {
-            'return_md': True,
-            'return_content_list': True,
-            'model_version': 'vlm',
-            'url': file_url,
-        }
-        result = post_async(
-            submit_url=self._url,
-            status_url=self._url.rstrip('/') + '/{task_id}',
-            json_payload=payload,
-            headers={'Authorization': f'Bearer {self._api_key}'},
-            timeout=self._timeout,
-            result_extractor=lambda resp: resp.json().get('data', {}).get('full_zip_url'),
-        )
-        zip_resp = requests.get(result, timeout=self._timeout or 120)
-        zip_resp.raise_for_status()
-        return self._extract_content_from_zip(zip_resp.content)
 
     def _extract_content_from_zip(self, zip_bytes: bytes):
         task_dir = self._image_cache_dir / str(uuid.uuid4())
@@ -236,9 +244,9 @@ class MineruPDFReader(_OcrReaderBase):
             return result
         raise TypeError(f'Not supported type: {type(content)}.')
 
-    def _adapt_one(self, item: dict) -> Optional[Block]:  # noqa: C901
-        ty = item.get('type')
-        if ty is None or ty in self._dropped_types:
+    def _adapt_one(self, item: dict) -> Optional[Block]:
+        ty = item['type']
+        if ty in self._dropped_types:
             return None
 
         text_level = item.get('text_level', -1)
@@ -253,28 +261,10 @@ class MineruPDFReader(_OcrReaderBase):
         elif ty == 'image':
             return self._adapt_image(item, page, page_idx)
         elif ty == 'table':
-            table_body = item.get('table_body')
-            if table_body is None:
-                return None
-            return TableBlock(
-                page=page,
-                caption=self._first(item.get('table_caption')),
-                footnote=self._first(item.get('table_footnote')),
-                cells=self._parse_table_html(table_body),
-                page_range=(page_idx, page_idx),
-            )
             return self._adapt_table(item, page, page_idx)
         elif ty == 'equation':
             return FormulaBlock(page=page, latex=text, inline=False)
         elif ty == 'code':
-            code_body = item.get('code_body')
-            if code_body is None:
-                return None
-            return CodeBlock(
-                page=page, text=code_body,
-                language=item.get('guess_lang'),
-                caption=self._first(item.get('code_caption')),
-            )
             return self._adapt_code(item, page, page_idx)
         elif ty == 'list':
             return self._adapt_list(item, page, page_idx)
@@ -396,7 +386,7 @@ def post_async(submit_url: str, status_url: str, result_url: str = None,
         status_resp = get_sync(status_url.format(task_id=task_id), headers=headers,
                                timeout=timeout, raise_for_status=False)
         if status_resp.status_code == 404:
-            LOG.error(f'[HttpError] Status endpoint 404: {status_url.format(task_id=task_id)}')
+            LOG.error(f'[HttpRequest] Status endpoint 404: {status_url.format(task_id=task_id)}')
             raise RuntimeError(f'[HttpRequest] Status endpoint 404: {status_url.format(task_id=task_id)}')
         status_resp.raise_for_status()
         status_data = status_resp.json()

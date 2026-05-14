@@ -55,7 +55,7 @@ class _OcrReaderBase(_RichReader, _Adapter):
         self._dropped_types = dropped_types if dropped_types is not None else set()
 
     @staticmethod
-    def split_large_pdf(pdf_path: str, max_size_mb: int = 200) -> List[Tuple[str, int]]:
+    def _split_large_pdf(pdf_path: str, max_size_mb: int = 200) -> List[Tuple[str, int]]:
         '''Split a large PDF into equal-page parts until each is under max_size_mb.
 
         Split files are placed in {pdf_path}.splits/ directory.
