@@ -276,6 +276,28 @@ if 'builtin_tools' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('builtin_tools')
 
 
+def _resolve_key_source(instance: Any, source: Union[str, Callable]) -> Optional[str]:
+    if callable(source): return source(instance) or None
+    try:
+        if '.' not in source:
+            return lazyllm.globals.config[source] or None
+        prefix, _, attr = source.partition('.')
+        if prefix == 'env': return os.environ.get(attr) or None
+        elif prefix == 'config': return lazyllm.config[attr] or None
+        elif prefix == 'globals':
+            if attr.startswith('config.'): return lazyllm.globals.config[attr[len('config.'):]] or None
+            else: return lazyllm.globals[attr] or None
+    except Exception: pass
+    return None
+
+
+def _check_key_source(instance: Any, key_source: Union[str, Callable, List, None]) -> bool:
+    if key_source is None:
+        return True
+    sources = key_source if isinstance(key_source, list) else [key_source]
+    return any(bool(_resolve_key_source(instance, src)) for src in sources)
+
+
 class MethodModuleTool(ModuleTool):
     def __init__(self, instance: Any, method_name: str,
                  key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
@@ -299,24 +321,26 @@ class MethodModuleTool(ModuleTool):
         return super()._load_function_schema(self._bound_method)
 
     def should_skip(self) -> bool:
-        if self._key_source is None:
-            return False
-        sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
-        return not any(bool(self._resolve_one_key(src)) for src in sources)
+        return not _check_key_source(self._instance, self._key_source)
 
-    def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
-        if callable(source): return source(self._instance) or None
-        try:
-            if '.' not in source:
-                return lazyllm.globals.config[source] or None
-            prefix, _, attr = source.partition('.')
-            if prefix == 'env': return os.environ.get(attr) or None
-            elif prefix == 'config': return lazyllm.config[attr] or None
-            elif prefix == 'globals':
-                if attr.startswith('config.'): return lazyllm.globals.config[attr[len('config.'):]] or None
-                else: return lazyllm.globals[attr] or None
-        except Exception: pass
-        return None
+
+class InstanceToolGroup:
+    def __init__(self, instance: Any,
+                 key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
+        self._instance = instance
+        if key_source is None:
+            key_source = getattr(type(instance), '__key_source__', None)
+        self._key_source = key_source
+        self._tools: List[MethodModuleTool] = [
+            MethodModuleTool(instance, m, key_source) for m in instance.__public_apis__
+        ]
+
+    def should_skip(self) -> bool:
+        return not _check_key_source(self._instance, self._key_source)
+
+    @property
+    def tools(self) -> List[MethodModuleTool]:
+        return self._tools
 
 
 TOOL_CALL_FORMAT_EXAMPLE = (
@@ -358,11 +382,9 @@ class ToolManager(ModuleBase):
                 instance, key_source = element
                 if not hasattr(instance, '__public_apis__'):
                     raise ValueError(f'Instance {instance!r} does not have __public_apis__')
-                for method_name in instance.__public_apis__:
-                    _tools.append(MethodModuleTool(instance, method_name, key_source))
+                _tools.append(InstanceToolGroup(instance, key_source))
             elif hasattr(element, '__public_apis__'):
-                for method_name in element.__public_apis__:
-                    _tools.append(MethodModuleTool(element, method_name))
+                _tools.append(InstanceToolGroup(element))
             elif isinstance(element, Callable):
                 # just to convert `element` to the internal type in `Register`
                 register('tmp_tool')(element)
@@ -373,16 +395,26 @@ class ToolManager(ModuleBase):
 
     @property
     def all_tools(self):
-        return self._tools
+        return list(self._tool_call.values())
 
     @property
     def tools_description(self) -> List[Dict]:
+        skipped: set = set()
+        enabled: set = set()
         result = []
-        for desc, tool in zip(self._tools_desc, self._tools):
-            if hasattr(tool, 'should_skip') and tool.should_skip():
-                LOG.debug(f'Tool [{tool.name}] skipped: key_source={tool._key_source!r} resolved to None')
-            else:
-                result.append(desc)
+        for desc in self._tools_desc:
+            group = self._tool_group.get(desc['function']['name'])
+            if group is not None:
+                gid = id(group)
+                if gid not in skipped and gid not in enabled:
+                    if group.should_skip():
+                        LOG.debug(f'InstanceToolGroup skipped: key_source={group._key_source!r} resolved to None')
+                        skipped.add(gid)
+                    else:
+                        enabled.add(gid)
+                if gid in skipped:
+                    continue
+            result.append(desc)
         return result
 
     @property
@@ -407,7 +439,19 @@ class ToolManager(ModuleBase):
 
     def _format_tools(self):
         if isinstance(self._tools, List):
-            self._tool_call = {tool.name: tool for tool in self._tools}
+            self._tool_call: Dict[str, ModuleTool] = {}
+            self._tool_group: Dict[str, Optional['InstanceToolGroup']] = {}
+            for item in self._tools:
+                if isinstance(item, InstanceToolGroup):
+                    for tool in item.tools:
+                        self._tool_call[tool.name] = tool
+                        self._tool_group[tool.name] = item
+                else:
+                    self._tool_call[item.name] = item
+                    self._tool_group[item.name] = None
+
+    def _flat_tools(self) -> List[ModuleTool]:
+        return list(self._tool_call.values())
 
     @staticmethod
     def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
@@ -456,7 +500,7 @@ class ToolManager(ModuleBase):
             raise TypeError(f'The tools type should be List instead of {type(self._tools)}')
 
         format_tools = []
-        for tool in self._tools:
+        for tool in self._flat_tools():
             try:
                 parsed_docstring = docstring_parser.parse(tool.description)
                 args = self._gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring)
@@ -513,7 +557,8 @@ class ToolManager(ModuleBase):
         tool = self._tool_call.get(name)
         if tool is None:
             return None, f'Tool [{name}] is not available. Please choose from the available tools.'
-        if hasattr(tool, 'should_skip') and tool.should_skip():
+        group = self._tool_group.get(name)
+        if group is not None and group.should_skip():
             return None, f'Tool [{name}] is currently unavailable (missing required key).'
         if not self._validate_tool(name, arguments):
             return None, f'Tool [{name}] parameters error.'
