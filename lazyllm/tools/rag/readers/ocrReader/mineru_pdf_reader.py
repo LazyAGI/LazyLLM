@@ -1,7 +1,7 @@
 import io
 import json
 import os
-import shutil
+import uuid
 import zipfile
 import requests
 import time
@@ -54,15 +54,21 @@ class MineruPDFReader(_OcrReaderBase):
         self._api_key = lazyllm.config['mineru_api_key']
 
     @override
-    def _fetch_response(self, file_path: Path, use_cache: bool = False) -> str:
+    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True,
+                   **kwargs) -> List['DocNode']:
+        file_path = (file if isinstance(file, str) and file.startswith(('http://', 'https://'))
+                     else Path(file))
         if self._service_variant == ServiceVariant.OFFLINE:
-            url = self._url + '/api/v1/pdf_parse'
-            return self._fetch_sync(file_path, use_cache, url=url)
+            response_text = self._fetch_sync(file_path, use_cache)
+            task_dir = None
         else:
-            return self._fetch_async(file_path, use_cache)
+            response_text, task_dir = self._fetch_async(file_path, use_cache)
+        merged_info = dict(extra_info) if extra_info else {}
+        if task_dir is not None:
+            merged_info['image_cache_dir'] = str(task_dir)
+        return self._build_nodes_from_response(response_text, file_path, merged_info)
 
-    def _fetch_sync(self, file: Path, use_cache: bool, url: str = None) -> str:
-        url = url or self._url
+    def _fetch_sync(self, file: Path, use_cache: bool) -> str:
         if self._patch_applied:
             # Patch-deployed local server: form-encoded.
             payload = {
@@ -93,23 +99,16 @@ class MineruPDFReader(_OcrReaderBase):
         response = post_sync(url, json_payload=payload, timeout=self._timeout)
         return response.text
 
-    def _fetch_async(self, file, use_cache: bool) -> str:
+    def _fetch_async(self, file, use_cache: bool):
         file_str = str(file)
-        # Online mode: split large files then batch upload; Offline mode passes original file directly
-        if self._service_variant == ServiceVariant.ONLINE:
-            split_result = self.split_large_pdf(file_str, max_size_mb=200)
-        else:
-            split_result = [(file_str, 0)]
-        return self._fetch_async_batch(split_result)
 
-    def _fetch_async_batch(self, split_result: List[Tuple[str, int]]) -> str:
-        '''Core implementation of batch upload.
+        if file_str.startswith(('http://', 'https://')):
+            return self._fetch_async_by_url(file_str)
+        return self._fetch_async_by_upload(file_str)
 
-        split_result: [(file_path, start_page_offset), ...]
-        Files are uploaded in batches of up to 50 per MinerU API call.
-        Returns merged content_list as a JSON string.
-        '''
-        '''Core implementation of batch upload.'''
+    def _fetch_async_by_upload(self, file_path: str):
+        '''Upload a local file via batch presigned URL and fetch result.'''
+
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self._api_key}'}
         batch_size = 50
         all_content_lists = []
@@ -146,88 +145,67 @@ class MineruPDFReader(_OcrReaderBase):
                     upload_resp.raise_for_status()
             LOG.info(f'[MineruPDFReader] Upload completed for {len(file_paths)} file(s)')
 
-            # Step 3: Poll batch results
-            status_url = f'https://mineru.net/api/v4/extract-results/batch/{batch_id}'
-            poll_count = 0
-            LOG.info(f'[MineruPDFReader] Polling results from {status_url}')
-            for _ in range(600):
-                poll_count += 1
-                status_resp = requests.get(status_url, headers=headers, timeout=self._timeout or 30)
-                status_resp.raise_for_status()
-                status_data = status_resp.json()
-                extract_result = status_data.get('data', {}).get('extract_result', [])
+        # Step 3: Poll batch results
+        status_url = f'https://mineru.net/api/v4/extract-results/batch/{batch_id}'
+        for _ in range(120):
+            status_resp = requests.get(status_url, headers=headers, timeout=self._timeout or 30)
+            status_resp.raise_for_status()
+            status_data = status_resp.json()
+            extract_result = status_data.get('data', {}).get('extract_result', [])
+            if extract_result:
+                state = extract_result[0].get('state')
+                if state == 'done':
+                    full_zip_url = extract_result[0].get('full_zip_url')
+                    zip_resp = requests.get(full_zip_url, timeout=self._timeout or 120)
+                    zip_resp.raise_for_status()
+                    return self._extract_content_from_zip(zip_resp.content)
+                elif state == 'failed':
+                    raise RuntimeError(
+                        f'[MineruPDFReader] Batch task failed: '
+                        f'{extract_result[0].get("err_msg", "Unknown error")}')
+            time.sleep(3)
 
-                if extract_result:
-                    states = [r.get('state') for r in extract_result]
-                    LOG.info(f'[MineruPDFReader] Poll #{poll_count}: states={states}')
+        raise TimeoutError('[MineruPDFReader] Batch polling timed out')
 
-                    if all(s == 'done' for s in states):
-                        # Download and parse each result ZIP
-                        for i, result_item in enumerate(extract_result):
-                            full_zip_url = result_item.get('full_zip_url')
-                            file_path = file_paths[i]
-                            offset = page_offsets[file_path]
+    def _fetch_async_by_url(self, file_url: str):
+        '''Submit a remote URL for extraction and fetch result.'''
+        payload = {
+            'return_md': True,
+            'return_content_list': True,
+            'model_version': 'vlm',
+            'url': file_url,
+        }
+        result = post_async(
+            submit_url=self._url,
+            status_url=self._url.rstrip('/') + '/{task_id}',
+            json_payload=payload,
+            headers={'Authorization': f'Bearer {self._api_key}'},
+            timeout=self._timeout,
+            result_extractor=lambda resp: resp.json().get('data', {}).get('full_zip_url'),
+        )
+        zip_resp = requests.get(result, timeout=self._timeout or 120)
+        zip_resp.raise_for_status()
+        return self._extract_content_from_zip(zip_resp.content)
 
-                            LOG.info(f'[MineruPDFReader] Downloading ZIP for {os.path.basename(file_path)}')
-                            zip_resp = requests.get(full_zip_url, timeout=self._timeout or 120)
-                            zip_resp.raise_for_status()
-
-                            # Extract to a per-part sub-directory to avoid image collisions
-                            sub_dir = self._image_cache_dir / f'part_{offset}'
-                            sub_dir.mkdir(parents=True, exist_ok=True)
-                            content_list_json = self._extract_content_from_zip(zip_resp.content, extract_dir=sub_dir)
-                            content_list = json.loads(content_list_json)
-
-                            # Adjust page_idx offset and image paths
-                            prefix = f'part_{offset}/'
-                            for item in content_list:
-                                if 'page_idx' in item:
-                                    item['page_idx'] += offset
-                                if 'img_path' in item:
-                                    item['img_path'] = prefix + item['img_path']
-
-                            all_content_lists.extend(content_list)
-                        break
-
-                    elif any(s == 'failed' for s in states):
-                        failed = [(r.get('file_name'), r.get('err_msg'))
-                                  for r in extract_result if r.get('state') == 'failed']
-                        raise RuntimeError(f'[MineruPDFReader] Batch task failed: {failed}')
-
-                time.sleep(3)
-            else:
-                raise TimeoutError('[MineruPDFReader] Batch polling timed out')
-
-        return json.dumps(all_content_lists)
-
-    def _extract_content_from_zip(self, zip_bytes: bytes, extract_dir: Optional[Path] = None) -> str:
-        target_dir = extract_dir or self._image_cache_dir
-        if target_dir is None:
-            raise ValueError('No extract directory available')
-
-        # Clean target dir before extracting to avoid stale files from previous runs
-        if target_dir.exists():
-            for entry in target_dir.iterdir():
-                if entry.is_dir():
-                    shutil.rmtree(entry)
-                else:
-                    entry.unlink()
-
+    def _extract_content_from_zip(self, zip_bytes: bytes):
+        task_dir = self._image_cache_dir / str(uuid.uuid4())
+        task_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             for member in zf.infolist():
                 member_path = Path(member.filename)
                 if member_path.is_absolute() or '..' in member_path.parts:
                     raise ValueError(f'Path traversal detected in zip: {member.filename}')
-            zf.extractall(target_dir)
+            zf.extractall(task_dir)
 
-        matches = list(target_dir.rglob('*_content_list.json'))
+        matches = list(task_dir.rglob('*_content_list.json'))
         if len(matches) != 1:
             raise ValueError(
-                f'Expected exactly one \'*_content_list.json\' in {target_dir}, '
+                f'Expected exactly one \'*_content_list.json\' in {task_dir}, '
                 f'found {len(matches)}'
             )
         with open(matches[0], 'r', encoding='utf-8') as f:
-            return json.dumps(json.load(f))
+            content = json.load(f)
+        return json.dumps(content), task_dir
 
     @override
     def _adapt_json_to_IR(self, raw) -> List[Block]:
@@ -265,29 +243,15 @@ class MineruPDFReader(_OcrReaderBase):
 
         text_level = item.get('text_level', -1)
         text = item.get('text', '')
-        page_idx = item.get('page_idx')
-        if page_idx is None:
-            return None
-        bbox = item.get('bbox')
-        if bbox is None:
-            return None
-
-        page = PageRef(index=page_idx, bbox=BBox.from_list(bbox))
+        page_idx = item['page_idx']
+        page = PageRef(index=page_idx, bbox=BBox.from_list(item['bbox']))
 
         if ty == 'title':
             return HeadingBlock(page=page, level=text_level, text=text)
         elif ty in ('text', 'ref_text', 'phonetic'):
             return ParagraphBlock(page=page, text=text)
         elif ty == 'image':
-            img_path = item.get('img_path')
-            if img_path is None:
-                return None
-            return FigureBlock(
-                page=page,
-                image_path=Path(img_path),
-                caption=self._first(item.get('image_caption')),
-                footnote=self._first(item.get('image_footnote')),
-            )
+            return self._adapt_image(item, page, page_idx)
         elif ty == 'table':
             table_body = item.get('table_body')
             if table_body is None:
@@ -299,6 +263,7 @@ class MineruPDFReader(_OcrReaderBase):
                 cells=self._parse_table_html(table_body),
                 page_range=(page_idx, page_idx),
             )
+            return self._adapt_table(item, page, page_idx)
         elif ty == 'equation':
             return FormulaBlock(page=page, latex=text, inline=False)
         elif ty == 'code':
@@ -310,16 +275,53 @@ class MineruPDFReader(_OcrReaderBase):
                 language=item.get('guess_lang'),
                 caption=self._first(item.get('code_caption')),
             )
+            return self._adapt_code(item, page, page_idx)
         elif ty == 'list':
-            list_items = item.get('list_items')
-            if list_items is None:
-                return None
-            return ListBlock(
-                page=page,
-                items=list_items,
-                ordered=False,
-            )
+            return self._adapt_list(item, page, page_idx)
         return None
+
+    def _adapt_image(self, item: dict, page: PageRef, page_idx: int) -> Optional[Block]:
+        img_path = item.get('img_path')
+        if img_path is None:
+            LOG.warning(f'[MineruPDFReader] image block on page {page_idx} missing img_path, skipped')
+            return None
+        return FigureBlock(
+            page=page,
+            image_path=Path(img_path),
+            caption=self._first(item.get('image_caption')),
+            footnote=self._first(item.get('image_footnote')),
+        )
+
+    def _adapt_table(self, item: dict, page: PageRef, page_idx: int) -> TableBlock:
+        table_body = item.get('table_body')
+        if table_body is None:
+            LOG.warning(f'[MineruPDFReader] table block on page {page_idx} missing table_body, '
+                        f'caption={self._first(item.get("table_caption"))}')
+        return TableBlock(
+            page=page,
+            caption=self._first(item.get('table_caption')),
+            footnote=self._first(item.get('table_footnote')),
+            cells=self._parse_table_html(table_body or ''),
+            page_range=(page_idx, page_idx),
+        )
+
+    def _adapt_code(self, item: dict, page: PageRef, page_idx: int) -> Optional[Block]:
+        code_body = item.get('code_body')
+        if code_body is None:
+            LOG.warning(f'[MineruPDFReader] code block on page {page_idx} missing code_body, skipped')
+            return None
+        return CodeBlock(
+            page=page, text=code_body,
+            language=item.get('guess_lang'),
+            caption=self._first(item.get('code_caption')),
+        )
+
+    def _adapt_list(self, item: dict, page: PageRef, page_idx: int) -> Optional[Block]:
+        list_items = item.get('list_items')
+        if list_items is None:
+            LOG.warning(f'[MineruPDFReader] list block on page {page_idx} missing list_items, skipped')
+            return None
+        return ListBlock(page=page, items=list_items, ordered=False)
 
     @override
     def _build_nodes_from_blocks(self, blocks: List[Block], file,
@@ -327,7 +329,9 @@ class MineruPDFReader(_OcrReaderBase):
         docs = []
 
         global_metadata = dict(extra_info) if extra_info else {}
-        global_metadata['image_cache_dir'] = str(self._image_cache_dir)
+        # image_cache_dir is injected into extra_info by _load_data for async requests
+        if 'image_cache_dir' not in global_metadata:
+            global_metadata['image_cache_dir'] = str(self._image_cache_dir)
 
         file_name = Path(file).name if not isinstance(file, str) else Path(file).name
         file_path = str(file)

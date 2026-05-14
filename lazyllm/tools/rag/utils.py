@@ -18,7 +18,7 @@ from lazyllm import config
 from lazyllm.common import override
 from lazyllm.thirdparty import tarfile
 
-from .doc_node import DocNode, MetadataMode
+from .doc_node import DocNode, MetadataMode, ImageDocNode
 from .global_metadata import RAG_DOC_PATH
 from .index_base import IndexBase
 
@@ -199,7 +199,7 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
     def _process_key(k: str, knodes: List[DocNode]):
         try:
             fn = embed[k]
-            if _check_batch(fn):
+            if _check_batch(fn) and not any(isinstance(n, ImageDocNode) for n in knodes):
                 texts = [n.get_text(MetadataMode.EMBED) for n in knodes]
                 vecs = fn(texts)
                 if len(vecs) != len(texts):
