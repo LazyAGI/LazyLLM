@@ -1991,3 +1991,49 @@ When key_source is a list, the tools are considered available if any source reso
 Returns:
     bool: Returns False if key_source is None and the class has no __key_source__; otherwise resolves all sources and returns True only if every source is empty or missing.
 ''')
+
+add_toolsmgr_chinese_doc('InstanceToolGroup.get_description', '''\
+返回该工具组的 OpenAI function calling 格式描述列表。
+
+若 should_skip() 返回 True（凭据不可用），则返回空列表，LLM 不会感知到该组内的任何工具；
+否则返回所有工具的描述列表，每个元素为符合 OpenAI function calling 规范的字典。
+
+Returns:
+    List[Dict]: 工具描述字典列表。当凭据不可用时返回空列表。
+''')
+
+add_toolsmgr_english_doc('InstanceToolGroup.get_description', '''\
+Returns the list of tool descriptions in OpenAI function calling format for this tool group.
+
+If should_skip() returns True (credential unavailable), an empty list is returned so the LLM is unaware of any tools in this group;
+otherwise returns the description list for all tools, where each element is a dict conforming to the OpenAI function calling specification.
+
+Returns:
+    List[Dict]: List of tool description dicts. Returns an empty list when the credential is unavailable.
+''')
+
+add_toolsmgr_chinese_doc('MethodModuleTool', '''\
+内部类，通常不需要直接使用。InstanceToolGroup 在初始化时会自动为实例的每个 ``__public_apis__`` 方法创建对应的 MethodModuleTool。
+
+将对象实例的某个绑定方法封装为 ModuleTool，使其可被 ToolManager 管理和调用。
+工具名称由实例类名和方法名拼接而成（``ClassName_method_name``）；若方法名为 ``__call__``，则工具名直接使用类名。
+工具描述和参数 schema 从绑定方法的 docstring 和类型注解中自动解析。
+
+Args:
+    instance (Any): 持有目标方法的对象实例。
+    method_name (str): 要封装的方法名称。
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): 保留参数，当前未使用，默认为 None。
+''')
+
+add_toolsmgr_english_doc('MethodModuleTool', '''\
+Internal class; direct use is not normally required. InstanceToolGroup automatically creates a MethodModuleTool for each ``__public_apis__`` method of the instance during initialization.
+
+Wraps a bound method of an object instance as a ModuleTool so it can be managed and invoked by ToolManager.
+The tool name is formed by concatenating the class name and method name (``ClassName_method_name``); if the method name is ``__call__``, the tool name is the class name alone.
+The tool description and parameter schema are automatically parsed from the bound method's docstring and type annotations.
+
+Args:
+    instance (Any): The object instance holding the target method.
+    method_name (str): The name of the method to wrap.
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): Reserved parameter, currently unused. Defaults to None.
+''')
