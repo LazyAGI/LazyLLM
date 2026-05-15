@@ -1,6 +1,7 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Protocol, runtime_checkable
+from typing import Any, Dict, Optional
+from abc import ABC, abstractmethod
 
 _AUTH_KINDS = ('static', 'dynamic', 'oauth2', 'app_credentials')
 
@@ -19,13 +20,15 @@ class Credential:
             raise ValueError(f'Invalid Credential.kind: {self.kind!r}, must be one of {_AUTH_KINDS}')
 
 
-@runtime_checkable
-class AuthStrategy(Protocol):
+class AuthStrategy(ABC):
+    @abstractmethod
     def build_header(self, token: str) -> Dict[str, str]: ...
+
+    @abstractmethod
     def build_params(self, token: str) -> Dict[str, str]: ...
 
 
-class BearerTokenStrategy:
+class BearerTokenStrategy(AuthStrategy):
 
     def build_header(self, token: str) -> Dict[str, str]:
         return {'Authorization': f'Bearer {token}'} if token else {}
@@ -34,7 +37,7 @@ class BearerTokenStrategy:
         return {}
 
 
-class ApiKeyHeaderStrategy:
+class ApiKeyHeaderStrategy(AuthStrategy):
 
     def __init__(self, header_name: str, value_template: Optional[str] = None) -> None:
         self._header_name = header_name
@@ -50,7 +53,7 @@ class ApiKeyHeaderStrategy:
         return {}
 
 
-class QueryParamStrategy:
+class QueryParamStrategy(AuthStrategy):
 
     def __init__(self, param_name: str) -> None:
         self._param_name = param_name
