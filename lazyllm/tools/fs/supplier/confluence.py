@@ -51,14 +51,19 @@ class ConfluenceFS(LazyLLMFSBase):
             'Accept': 'application/json',
         })
 
-    def _get_auth_header(self) -> Optional[Dict[str, str]]:
+    def inject_auth_header(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        out = dict(headers or {})
         if self._dynamic_auth:
             token = self._dynamic_token
-            return {'Authorization': f'Bearer {token}'} if token else None
+            if token:
+                out['Authorization'] = f'Bearer {token}'
+            return out
         if self._cloud and self._email:
             cred = base64.b64encode(f'{self._email}:{self._secret_key}'.encode()).decode()
-            return {'Authorization': f'Basic {cred}'}
-        return {'Authorization': f'Bearer {self._secret_key}'} if self._secret_key else None
+            out['Authorization'] = f'Basic {cred}'
+        elif self._secret_key:
+            out['Authorization'] = f'Bearer {self._secret_key}'
+        return out
 
     @property
     def _rest(self) -> str:

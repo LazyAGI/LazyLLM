@@ -67,17 +67,18 @@ class GoogleDriveFS(LazyLLMFSBase):
         return None
 
     def _setup_auth(self) -> None:
-        # Short-lived access tokens are injected into headers by _ensure_token.
+        # Short-lived access tokens are injected into headers by inject_auth_header().
         return None
 
-    def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
+    def _do_acquire_without_refresh(self) -> Tuple[str, Optional[float], str]:
         if not self._service_account_info:
-            return '', None
+            raise ValueError(f'{type(self).__name__} failed to acquire access token: '
+                             'service_account_info is not configured.')
         token = self._fetch_sa_token()
         if not token:
-            return '', None
+            raise ValueError(f'{type(self).__name__} failed to acquire access token from service account.')
         expires_at = time.time() + 3600 - _SA_TOKEN_BUFFER
-        return token, expires_at
+        return token, expires_at, ''
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         parts = self._parse_path(path)

@@ -1,16 +1,14 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-import os
 import re
-import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import urlencode
 
 import requests
 
 
 from lazyllm import LOG, config
+from lazyllm.common import Credential
 from lazyllm.thirdparty import mistune
 
 from ..base import LazyLLMFSBase, CloudFSBufferedFile
@@ -18,8 +16,6 @@ from ..base import LazyLLMFSBase, CloudFSBufferedFile
 config.add('feishu_app_id', str, None, 'FEISHU_APP_ID', description='Feishu App ID for tenant_access_token.')
 config.add('feishu_app_secret', str, None, 'FEISHU_APP_SECRET', description='Feishu App Secret for tenant_access_token.')
 
-
-_TOKENS_FILE = os.path.join(config['home'], '.lazyllm/tokens.txt')
 
 _API_BASE = 'https://open.feishu.cn/open-apis'
 _TOKEN_URL = 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal'
@@ -35,40 +31,6 @@ _DEFAULT_OAUTH_SCOPE = (
     'drive:drive drive:drive:readonly drive:drive.metadata:readonly '
     'wiki:wiki wiki:wiki:readonly wiki:node:retrieve docx:document'
 )
-
-
-def _load_persisted_token(key: str) -> str:
-    try:
-        with open(_TOKENS_FILE, 'r', encoding='utf-8') as f:
-            for line in f:
-                k, sep, v = line.strip().partition(': ')
-                if sep and k.strip() == key:
-                    return v.strip()
-    except FileNotFoundError:
-        pass
-    return ''
-
-
-def _save_persisted_token(key: str, value: str) -> None:
-    os.makedirs(os.path.dirname(_TOKENS_FILE), exist_ok=True)
-    lines: List[str] = []
-    found = False
-    try:
-        with open(_TOKENS_FILE, 'r', encoding='utf-8') as f:
-            for line in f:
-                k, sep, _ = line.strip().partition(': ')
-                if sep and k.strip() == key:
-                    if value:  # empty value → delete the entry (don't write the line)
-                        found = True
-                        lines.append(f'{key}: {value}\n')
-                else:
-                    lines.append(line if line.endswith('\n') else line + '\n')
-    except FileNotFoundError:
-        pass
-    if not found and value:
-        lines.append(f'{key}: {value}\n')
-    with open(_TOKENS_FILE, 'w', encoding='utf-8') as f:
-        f.writelines(lines)
 
 
 def _feishu_acquire_access_token(
@@ -96,65 +58,6 @@ def _feishu_acquire_access_token(
         return '', None
     expires_at = now + expire_sec - _TOKEN_REFRESH_BUFFER
     return token, expires_at
-
-
-def _feishu_oauth_get_code(app_id: str, port: int, scope: str = _DEFAULT_OAUTH_SCOPE) -> Tuple[str, str]:
-    redirect_uri = f'http://localhost:{port}/callback'
-    result: Dict[str, str] = {}
-    done = threading.Event()
-
-    class _CallbackHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            qs = parse_qs(urlparse(self.path).query)
-            if 'code' in qs:
-                result['code'] = qs['code'][0]
-                body = b'<html><body>Authorization successful. You can close this tab.</body></html>'
-                self.send_response(200)
-                self.send_header('Content-Type', 'text/html; charset=utf-8')
-                self.end_headers()
-                self.wfile.write(body)
-            else:
-                result['error'] = qs.get('error', ['unknown'])[0]
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(b'Authorization failed.')
-            done.set()
-
-        def log_message(self, *args): pass  # suppress server access logs
-
-    try:
-        server = HTTPServer(('localhost', port), _CallbackHandler)
-    except OSError as e:
-        raise RuntimeError(
-            f'Cannot bind to localhost:{port} for Feishu OAuth callback. '
-            f'Please free the port or pass a different oauth_port. ({e})'
-        )
-
-    threading.Thread(target=server.handle_request, daemon=True).start()
-
-    auth_url = f'{_OAUTH_AUTHORIZE_URL}?' + urlencode({
-        'client_id': app_id,
-        'redirect_uri': redirect_uri,
-        'scope': scope,
-        'response_type': 'code',
-    })
-    LOG.success(
-        f'Feishu OAuth: open the link below in a browser to authorize access.\n'
-        f'  Prerequisites:\n'
-        f'    1. Register {redirect_uri} in your Feishu app Security Settings → Redirect URL.\n'
-        f'    2. Enable user-identity drive permissions (e.g. drive:drive) in Permission Management\n'
-        f'       and enable offline_access, then publish the app.\n\n'
-        f'  {auth_url}\n'
-    )
-
-    if not done.wait(timeout=_OAUTH_TIMEOUT):
-        server.server_close()
-        raise TimeoutError(f'Feishu OAuth timed out after {_OAUTH_TIMEOUT}s waiting for browser authorization.')
-    server.server_close()
-
-    if 'error' in result:
-        raise RuntimeError(f'Feishu OAuth authorization denied: {result["error"]}')
-    return result['code'], redirect_uri
 
 
 def _feishu_exchange_code(
@@ -219,45 +122,30 @@ class FeishuFSBase(LazyLLMFSBase):
                  oauth_port: int = 9981, oauth_scope: str = _DEFAULT_OAUTH_SCOPE,
                  asynchronous: bool = False, use_listings_cache: bool = False,
                  skip_instance_cache: bool = False, loop: Optional[Any] = None, dynamic_auth: bool = False):
-        if dynamic_auth:
-            if app_id:
-                raise ValueError('app_id must be None when dynamic_auth=True')
-            if app_secret:
-                raise ValueError('app_secret must be None when dynamic_auth=True')
-            if user_refresh_token:
-                raise ValueError('user_refresh_token must be None when dynamic_auth=True')
-            self._oauth_auto = False
-            self._user_refresh_token = ''
-            self._oauth_port = oauth_port
-            self._oauth_scope = oauth_scope
-            super().__init__(
-                token={},
-                base_url=base_url or _API_BASE,
-                asynchronous=asynchronous,
-                use_listings_cache=use_listings_cache,
-                skip_instance_cache=skip_instance_cache,
-                loop=loop,
-                dynamic_auth=True,
-            )
-            self._space_id = (space_id or '').strip() if space_id is not None else ''
-            return
-        if not app_id or not app_secret:
-            app_id, app_secret = config['feishu_app_id'] or app_id, config['feishu_app_secret']
-        assert app_id and app_secret, 'feishu_app_id and feishu_app_secret are required'
-        # _secret_key stores app credentials; _user_refresh_token / _oauth_port managed separately
-        self._oauth_auto: bool = (user_refresh_token == 'auto')
-        self._user_refresh_token: str = user_refresh_token or ''
+        if dynamic_auth and (app_id or app_secret or user_refresh_token):
+            raise ValueError('app_id/app_secret/user_refresh_token must be None when dynamic_auth=True')
+        if not dynamic_auth:
+            app_id = app_id or config['feishu_app_id']
+            app_secret = app_secret or config['feishu_app_secret']
+            assert app_id and app_secret, 'feishu_app_id and feishu_app_secret are required'
         self._oauth_port: int = oauth_port
         self._oauth_scope: str = oauth_scope
+        self._init_user_refresh_token: str = '' if dynamic_auth else (user_refresh_token or '')
         super().__init__(
-            token={'app_id': app_id, 'app_secret': app_secret},
+            token={} if dynamic_auth else {'app_id': app_id, 'app_secret': app_secret},
             base_url=base_url or _API_BASE,
-            asynchronous=asynchronous,
-            use_listings_cache=use_listings_cache,
-            skip_instance_cache=skip_instance_cache,
-            loop=loop,
+            asynchronous=asynchronous, use_listings_cache=use_listings_cache,
+            skip_instance_cache=skip_instance_cache, loop=loop,
+            dynamic_auth=dynamic_auth,
         )
         self._space_id = (space_id or '').strip() if space_id is not None else ''
+
+    def _make_credential(self, token: Any, dynamic_auth: bool):
+        if not dynamic_auth and self._init_user_refresh_token:
+            rt = self._init_user_refresh_token
+            return Credential(kind='oauth2', secret_key=token, refresh_token=rt,
+                              oauth_auto=(rt == 'auto'))
+        return super()._make_credential(token, dynamic_auth)
 
     @property
     def _app_id(self) -> str: return self._secret_key.get('app_id', '')
@@ -265,46 +153,42 @@ class FeishuFSBase(LazyLLMFSBase):
     @property
     def _app_secret(self) -> str: return self._secret_key.get('app_secret', '')
 
-    def _setup_auth(self) -> None:
-        self._session.headers.update({
-            'Content-Type': 'application/json; charset=utf-8',
-        })
-
-    def _do_oauth(self, token_key: str) -> Tuple[str, Optional[float]]:
-        code, redirect_uri = _feishu_oauth_get_code(self._app_id, self._oauth_port, self._oauth_scope)
-        token, expires_at, self._user_refresh_token = _feishu_exchange_code(
-            self._session, self._app_id, self._app_secret, code, redirect_uri)
-        _save_persisted_token(token_key, self._user_refresh_token)
-        return token, expires_at
-
-    def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
-        token_key = f'feishu:{self._app_id}'
-        if self._user_refresh_token == 'auto':
-            persisted = _load_persisted_token(token_key)
-            if persisted:
-                self._user_refresh_token = persisted
-            else:
-                return self._do_oauth(token_key)
-        if self._user_refresh_token:
-            try:
-                token, expires_at, self._user_refresh_token = _feishu_refresh_user_token(
-                    self._session, self._app_id, self._app_secret, self._user_refresh_token)
-                _save_persisted_token(token_key, self._user_refresh_token)
-                return token, expires_at
-            except Exception:
-                if not self._oauth_auto:
-                    raise
-                LOG.warning(f'Feishu refresh_token for {self._app_id} is invalid, re-authenticating via OAuth.')
-                self._user_refresh_token = ''
-                _save_persisted_token(token_key, '')
-                return self._do_oauth(token_key)
-        return _feishu_acquire_access_token(self._session, self._app_id, self._app_secret)
-
-    def _apply_access_token(self, token: str) -> None:
-        self._access_token = token
+    @property
+    def _user_refresh_token(self) -> str:
+        return self._credential.refresh_token
 
     def get_user_refresh_token(self) -> str:
         return self._user_refresh_token
+
+    def _setup_auth(self) -> None:
+        self._session.headers.update({'Content-Type': 'application/json; charset=utf-8'})
+
+    def _get_persist_key(self) -> str:
+        return f'feishu:{self._app_id}'
+
+    def _do_refresh_token(self, refresh_token: str) -> Tuple[str, Optional[float], str]:
+        return _feishu_refresh_user_token(self._session, self._app_id, self._app_secret, refresh_token)
+
+    def _do_acquire_without_refresh(self) -> Tuple[str, Optional[float], str]:
+        token, expires_at = _feishu_acquire_access_token(self._session, self._app_id, self._app_secret)
+        return token, expires_at, ''
+
+    def _do_oauth_flow(self) -> Tuple[str, Optional[float], str]:
+        redirect_uri = f'http://localhost:{self._oauth_port}/callback'
+        authorize_url = f'{_OAUTH_AUTHORIZE_URL}?' + urlencode({
+            'client_id': self._app_id, 'redirect_uri': redirect_uri,
+            'scope': self._oauth_scope, 'response_type': 'code',
+        })
+        LOG.success(
+            f'Feishu OAuth: open the link below in a browser to authorize access.\n'
+            f'  Prerequisites:\n'
+            f'    1. Register {redirect_uri} in your Feishu app Security Settings -> Redirect URL.\n'
+            f'    2. Enable user-identity drive permissions (e.g. drive:drive) in Permission Management\n'
+            f'       and enable offline_access, then publish the app.\n\n'
+            f'  {authorize_url}\n'
+        )
+        code = self._run_local_oauth_server(self._oauth_port, _OAUTH_TIMEOUT)
+        return _feishu_exchange_code(self._session, self._app_id, self._app_secret, code, redirect_uri)
 
     def _drive_root_folder_token(self) -> str:
         if not getattr(self, '_cached_drive_root_token', ''):

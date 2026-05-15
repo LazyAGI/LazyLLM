@@ -1,7 +1,10 @@
 import re
 from html import unescape
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
+from lazyllm.common import (
+    AuthStrategy, BearerTokenStrategy, Credential, CredentialMixin,
+)
 from lazyllm.module import ModuleBase
 from lazyllm.module.module import ModuleExecutionError
 from lazyllm.thirdparty import httpx
@@ -35,12 +38,20 @@ def _make_result(title: str, url: str, snippet: str = '', source: str = '', **ex
 
 
 # TODO: add tests after key is ready
-class SearchBase(ModuleBase):
+class SearchBase(ModuleBase, CredentialMixin):
     __public_apis__ = ['search', 'get_content', 'get_contents']
 
-    def __init__(self, source_name: str = '', **kwargs):
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        source_name: str = '',
+        api_key: Optional[str] = None,
+        auth_strategy: Optional[AuthStrategy] = None,
+        **kwargs,
+    ):
+        ModuleBase.__init__(self, **kwargs)
         self._source_name = source_name or self.__class__.__name__.replace('Search', '').lower()
+        credential = Credential(kind='static', secret_key=api_key or '')
+        self.__init_credential__(credential, strategy=auth_strategy or BearerTokenStrategy())
 
     @property
     def source_name(self) -> str:

@@ -9,8 +9,7 @@ class BochaSearch(SearchBase):
 
     def __init__(self, api_key: str, base_url: str = 'https://api.bochaai.com',
                  timeout: int = 15, source_name: str = 'bocha'):
-        super().__init__(source_name=source_name)
-        self._api_key = api_key
+        super().__init__(source_name=source_name, api_key=api_key)
         self._base_url = base_url.rstrip('/')
         self._timeout = timeout
 
@@ -18,7 +17,7 @@ class BochaSearch(SearchBase):
                freshness: Optional[str] = None,
                summary: bool = False) -> List[dict]:
         url = f'{self._base_url}/v1/web-search'
-        headers = {'Authorization': f'Bearer {self._api_key}', 'Content-Type': 'application/json'}
+        headers = self.inject_auth_header({'Content-Type': 'application/json'})
         body = {'query': query, 'count': min(count, 20), 'summary': summary}
         if freshness:
             body['freshness'] = freshness

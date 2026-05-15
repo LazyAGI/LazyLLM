@@ -448,13 +448,13 @@ Args:
     path (str): Path to watch.
 ''')
 
-_add_fs_chinese('LazyLLMFSBase._ensure_token', '''\
-Token 刷新钩子：子类可覆盖。基类默认实现为 no-op。
-每次 _request 发请求前会调用本方法；使用会过期的 access token 的子类应覆盖本方法，在 token 即将过期或已过期时重新获取并更新 session 认证信息。
+_add_fs_chinese('LazyLLMFSBase.ensure_token', '''\
+Token 刷新钩子：基类自动管理。
+每次 inject_auth_header / _request 发请求前会调用本方法；当 access token 即将过期或未初始化时，会通过 _do_refresh_token / _do_acquire_without_refresh / _do_oauth_flow 重新获取。
 ''')
-_add_fs_english('LazyLLMFSBase._ensure_token', '''\
-Token refresh hook; subclasses may override. Default implementation is a no-op.
-Called before each _request; subclasses that use expiring access tokens should override to refresh the token and update session auth when needed.
+_add_fs_english('LazyLLMFSBase.ensure_token', '''\
+Token refresh hook; managed by the base class.
+Called before each inject_auth_header / _request; refreshes the token via _do_refresh_token / _do_acquire_without_refresh / _do_oauth_flow when the access token is missing or about to expire.
 ''')
 
 _add_fs_chinese('LazyLLMFSBase._setup_auth', '''\

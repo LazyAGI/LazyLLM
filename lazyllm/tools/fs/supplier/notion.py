@@ -32,8 +32,6 @@ class NotionFS(LazyLLMFSBase):
             'Notion-Version': _NOTION_VERSION,
             'Content-Type': 'application/json',
         })
-        if not self._dynamic_auth:
-            self._apply_access_token(self._secret_key)
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         parts = self._parse_path(path)

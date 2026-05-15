@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 
+from lazyllm.common import ApiKeyHeaderStrategy
 from lazyllm.thirdparty import httpx
 
 from .base import SearchBase, _make_result
@@ -9,8 +10,10 @@ class SemanticScholarSearch(SearchBase):
 
     def __init__(self, api_key: Optional[str] = None,
                  timeout: int = 15, source_name: str = 'semantic_scholar'):
-        super().__init__(source_name=source_name)
-        self._api_key = api_key
+        super().__init__(
+            source_name=source_name, api_key=api_key,
+            auth_strategy=ApiKeyHeaderStrategy('x-api-key'),
+        )
         self._timeout = timeout
         self._base = 'https://api.semanticscholar.org/graph/v1'
 
@@ -23,9 +26,7 @@ class SemanticScholarSearch(SearchBase):
                 return snippet
             return super().get_content(item)
         url = f'{self._base}/paper/{paper_id}'
-        headers = {}
-        if self._api_key:
-            headers['x-api-key'] = self._api_key
+        headers = self.inject_auth_header()
         try:
             resp = httpx.get(
                 url,
@@ -47,9 +48,7 @@ class SemanticScholarSearch(SearchBase):
             'limit': min(limit, 100),
             'fields': fields or 'title,url,abstract,authors,year,citationCount',
         }
-        headers = {}
-        if self._api_key:
-            headers['x-api-key'] = self._api_key
+        headers = self.inject_auth_header()
         resp = httpx.get(url, params=params, headers=headers or None, timeout=self._timeout)
         resp.raise_for_status()
         data = resp.json()
