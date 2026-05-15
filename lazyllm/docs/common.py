@@ -1639,3 +1639,296 @@ def unstable_function():
 result = unstable_function()
 print(result)
 ''')
+
+# ---------------------------------------------------------------------------
+# auth.py — Credential, AuthStrategy, BearerTokenStrategy,
+#            ApiKeyHeaderStrategy, QueryParamStrategy
+# ---------------------------------------------------------------------------
+
+add_chinese_doc('Credential', '''\
+不可变的认证凭据数据类，描述一次认证所需的全部信息。
+
+Args:
+    kind (str): 凭据类型，取值为 'static'（静态 token）、'dynamic'（运行时注入）、
+        'oauth2'（OAuth2 授权码流程）或 'app_credentials'（应用凭证，无 refresh_token）。
+    secret_key (Any): 长期凭据，语义由子类决定；静态模式下通常为 API key 字符串或列表。
+    access_token (str): 短期访问令牌，oauth2/app_credentials 模式下由框架自动填充。
+    token_expire_at (float, optional): access_token 的过期时间戳（Unix 秒）；None 表示永不过期。
+    refresh_token (str): OAuth2 刷新令牌；'auto' 表示从持久化存储中读取。
+    oauth_auto (bool): 当 refresh_token 失效时是否自动触发 OAuth 授权流程，默认 False。
+''')
+
+add_english_doc('Credential', '''\
+Immutable authentication credential dataclass describing all information needed for one auth context.
+
+Args:
+    kind (str): Credential type; one of 'static' (static token), 'dynamic' (runtime injection),
+        'oauth2' (OAuth2 authorization code flow), or 'app_credentials' (app credentials, no refresh_token).
+    secret_key (Any): Long-lived credential; semantics defined by the subclass; usually an API key string or list in static mode.
+    access_token (str): Short-lived access token; filled automatically by the framework in oauth2/app_credentials mode.
+    token_expire_at (float, optional): Expiry timestamp (Unix seconds) for access_token; None means non-expiring.
+    refresh_token (str): OAuth2 refresh token; 'auto' means load from persistent storage.
+    oauth_auto (bool): Whether to automatically trigger the OAuth flow when refresh_token is invalid; default False.
+''')
+
+add_example('Credential', '''\
+>>> from lazyllm.common import Credential
+>>> cred = Credential(kind='static', secret_key='sk-xxx')
+>>> cred.kind
+'static'
+>>> cred.secret_key
+'sk-xxx'
+''')
+
+add_chinese_doc('AuthStrategy', '''\
+认证策略协议（Protocol），定义如何将 token 注入 HTTP 请求头或查询参数。
+
+实现该协议的类需提供：
+    build_header(token) → Dict[str, str]：返回要合并到请求头的字段。
+    build_params(token) → Dict[str, str]：返回要合并到查询参数的字段。
+
+内置实现：BearerTokenStrategy、ApiKeyHeaderStrategy、QueryParamStrategy。
+''')
+
+add_english_doc('AuthStrategy', '''\
+Authentication strategy protocol defining how to inject a token into HTTP request headers or query parameters.
+
+Implementations must provide:
+    build_header(token) → Dict[str, str]: Returns fields to merge into request headers.
+    build_params(token) → Dict[str, str]: Returns fields to merge into query parameters.
+
+Built-in implementations: BearerTokenStrategy, ApiKeyHeaderStrategy, QueryParamStrategy.
+''')
+
+add_chinese_doc('BearerTokenStrategy', '''\
+将 token 以 Bearer 方式注入 Authorization 请求头的认证策略。
+
+build_header 返回 {'Authorization': 'Bearer <token>'}（token 为空时返回空 dict）。
+build_params 始终返回空 dict。
+''')
+
+add_english_doc('BearerTokenStrategy', '''\
+Authentication strategy that injects the token as a Bearer Authorization header.
+
+build_header returns {'Authorization': 'Bearer <token>'} (empty dict when token is empty).
+build_params always returns an empty dict.
+''')
+
+add_example('BearerTokenStrategy', '''\
+>>> from lazyllm.common import BearerTokenStrategy
+>>> s = BearerTokenStrategy()
+>>> s.build_header('my-token')
+{'Authorization': 'Bearer my-token'}
+>>> s.build_header('')
+{}
+''')
+
+add_chinese_doc('ApiKeyHeaderStrategy', '''\
+将 token 注入自定义请求头的认证策略。
+
+Args:
+    header_name (str): 请求头字段名，如 'X-Auth-Token'。
+    value_template (str, optional): 值模板字符串，含 {token} 占位符；未传时直接使用 token 原值。
+
+build_header 返回 {header_name: value}（token 为空时返回空 dict）。
+build_params 始终返回空 dict。
+''')
+
+add_english_doc('ApiKeyHeaderStrategy', '''\
+Authentication strategy that injects the token into a custom request header.
+
+Args:
+    header_name (str): Header field name, e.g. 'X-Auth-Token'.
+    value_template (str, optional): Value template string containing a {token} placeholder;
+        when omitted the token value is used as-is.
+
+build_header returns {header_name: value} (empty dict when token is empty).
+build_params always returns an empty dict.
+''')
+
+add_example('ApiKeyHeaderStrategy', '''\
+>>> from lazyllm.common import ApiKeyHeaderStrategy
+>>> s = ApiKeyHeaderStrategy('X-Auth-Token')
+>>> s.build_header('my-key')
+{'X-Auth-Token': 'my-key'}
+>>> s2 = ApiKeyHeaderStrategy('Authorization', 'token {token}')
+>>> s2.build_header('abc')
+{'Authorization': 'token abc'}
+''')
+
+add_chinese_doc('QueryParamStrategy', '''\
+将 token 注入 URL 查询参数的认证策略。
+
+Args:
+    param_name (str): 查询参数名，如 'api_key'。
+
+build_header 始终返回空 dict。
+build_params 返回 {param_name: token}（token 为空时返回空 dict）。
+''')
+
+add_english_doc('QueryParamStrategy', '''\
+Authentication strategy that injects the token as a URL query parameter.
+
+Args:
+    param_name (str): Query parameter name, e.g. 'api_key'.
+
+build_header always returns an empty dict.
+build_params returns {param_name: token} (empty dict when token is empty).
+''')
+
+add_example('QueryParamStrategy', '''\
+>>> from lazyllm.common import QueryParamStrategy
+>>> s = QueryParamStrategy('api_key')
+>>> s.build_params('my-key')
+{'api_key': 'my-key'}
+>>> s.build_params('')
+{}
+''')
+
+# ---------------------------------------------------------------------------
+# credential_mixin.py — CredentialMixin
+# ---------------------------------------------------------------------------
+
+add_chinese_doc('CredentialMixin', '''\
+认证凭据管理 Mixin，为任意类提供统一的 token 生命周期管理能力。
+
+混入后需在 __init__ 中调用 __init_credential__(credential, strategy) 完成初始化。
+支持四种凭据模式：static（静态 API key）、dynamic（运行时注入）、
+oauth2（OAuth2 授权码 + refresh_token）、app_credentials（应用凭证，无 refresh_token）。
+
+子类扩展约定：
+    - kind="app_credentials"：实现 _do_acquire_without_refresh()
+    - kind="oauth2"（有 refresh_token）：实现 _do_refresh_token()
+    - kind="oauth2"（需浏览器授权）：实现 _do_oauth_flow()，可调用 _run_local_oauth_server() 辅助
+    - kind="dynamic"：实现 _resolve_dynamic_token()
+''')
+
+add_english_doc('CredentialMixin', '''\
+Authentication credential management mixin that provides unified token lifecycle management for any class.
+
+After mixing in, call __init_credential__(credential, strategy) in __init__ to initialize.
+Supports four credential modes: static (static API key), dynamic (runtime injection),
+oauth2 (OAuth2 authorization code + refresh_token), and app_credentials (app credentials, no refresh_token).
+
+Subclass extension conventions:
+    - kind="app_credentials": implement _do_acquire_without_refresh()
+    - kind="oauth2" (with refresh_token): implement _do_refresh_token()
+    - kind="oauth2" (browser auth needed): implement _do_oauth_flow(); may use _run_local_oauth_server()
+    - kind="dynamic": implement _resolve_dynamic_token()
+''')
+
+add_chinese_doc('CredentialMixin.get_current_token', '''\
+返回当前有效的 token 字符串。
+
+- static 模式：返回 secret_key（列表时随机选一个）。
+- dynamic 模式：调用 _resolve_dynamic_token() 获取运行时 token。
+- oauth2 / app_credentials 模式：返回已缓存的 access_token。
+
+Returns:
+    str: 当前 token，无可用 token 时返回空字符串。
+''')
+
+add_english_doc('CredentialMixin.get_current_token', '''\
+Return the current effective token string.
+
+- static mode: returns secret_key (randomly picks one if it is a list).
+- dynamic mode: calls _resolve_dynamic_token() to get the runtime token.
+- oauth2 / app_credentials mode: returns the cached access_token.
+
+Returns:
+    str: Current token, or empty string when no token is available.
+''')
+
+add_chinese_doc('CredentialMixin.ensure_token', '''\
+确保当前 token 有效，必要时自动刷新。
+
+- dynamic 模式：检查 _resolve_dynamic_token() 是否非空，否则抛出 ValueError。
+- oauth2 / app_credentials 模式：若 access_token 缺失或即将过期，触发 _refresh_credential()。
+- static 模式：无操作。
+''')
+
+add_english_doc('CredentialMixin.ensure_token', '''\
+Ensure the current token is valid, refreshing it automatically when necessary.
+
+- dynamic mode: checks that _resolve_dynamic_token() is non-empty; raises ValueError otherwise.
+- oauth2 / app_credentials mode: triggers _refresh_credential() when access_token is missing or about to expire.
+- static mode: no-op.
+''')
+
+add_chinese_doc('CredentialMixin.inject_auth_header', '''\
+将认证信息注入请求头，返回合并后的新 dict（不修改传入的 headers）。
+
+调用前会先执行 ensure_token()；认证字段由 AuthStrategy.build_header() 生成，优先级高于传入的 headers。
+
+Args:
+    headers (Dict[str, str], optional): 已有请求头；未传时视为空 dict。
+
+Returns:
+    Dict[str, str]: 合并了认证字段的新请求头 dict。
+''')
+
+add_english_doc('CredentialMixin.inject_auth_header', '''\
+Inject authentication into request headers and return a new merged dict (the input headers are not mutated).
+
+Calls ensure_token() first; auth fields from AuthStrategy.build_header() take priority over the supplied headers.
+
+Args:
+    headers (Dict[str, str], optional): Existing headers; treated as empty dict when omitted.
+
+Returns:
+    Dict[str, str]: New headers dict with auth fields merged in.
+''')
+
+add_chinese_doc('CredentialMixin.inject_auth_params', '''\
+将认证信息注入查询参数，返回合并后的新 dict（不修改传入的 params）。
+
+调用前会先执行 ensure_token()；认证字段由 AuthStrategy.build_params() 生成，优先级高于传入的 params。
+
+Args:
+    params (Dict[str, str], optional): 已有查询参数；未传时视为空 dict。
+
+Returns:
+    Dict[str, str]: 合并了认证字段的新查询参数 dict。
+''')
+
+add_english_doc('CredentialMixin.inject_auth_params', '''\
+Inject authentication into query parameters and return a new merged dict (the input params are not mutated).
+
+Calls ensure_token() first; auth fields from AuthStrategy.build_params() take priority over the supplied params.
+
+Args:
+    params (Dict[str, str], optional): Existing query parameters; treated as empty dict when omitted.
+
+Returns:
+    Dict[str, str]: New params dict with auth fields merged in.
+''')
+
+add_chinese_doc('CredentialMixin.override_credential', '''\
+上下文管理器：在当前协程/线程范围内临时替换凭据，退出后自动恢复。
+
+可通过 secret_key 快速替换静态 key，也可传入完整的 Credential 对象。
+两个参数互斥，同时传入时 credential 优先。
+
+Args:
+    secret_key (Any, optional): 临时替换的 secret_key，其余字段保持不变。
+    credential (Credential, optional): 完整替换的凭据对象。
+
+Example:
+    with obj.override_credential(secret_key='tmp-key'):
+        result = obj.some_api_call()
+''')
+
+add_english_doc('CredentialMixin.override_credential', '''\
+Context manager: temporarily replace the credential within the current coroutine/thread scope; restores automatically on exit.
+
+Use secret_key for a quick static key swap, or pass a full Credential object for a complete replacement.
+The two parameters are mutually exclusive; credential takes priority when both are supplied.
+
+Args:
+    secret_key (Any, optional): Temporary secret_key replacement; other fields remain unchanged.
+    credential (Credential, optional): Full replacement credential object.
+
+Example:
+    with obj.override_credential(secret_key='tmp-key'):
+        result = obj.some_api_call()
+''')

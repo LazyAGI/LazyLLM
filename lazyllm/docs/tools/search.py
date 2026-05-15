@@ -9,15 +9,25 @@ add_english_doc = functools.partial(utils.add_english_doc, module=_tools_module)
 add_example = functools.partial(utils.add_example, module=_tools_module)
 
 add_chinese_doc('SearchBase', '''
-所有搜索工具的基类，定义统一接口与返回格式。
+所有搜索工具的基类，定义统一接口与返回格式。混入 CredentialMixin 提供统一的 API key 管理。
 
 子类需实现 search，将各后端 API 的原始响应规范为包含 title、url、snippet、source（及可选 extra）的字典列表。
+
+Args:
+    source_name (str): 结果中的来源标识；未传时自动从类名推断（去掉 "Search" 后缀并转小写）。
+    api_key (str, optional): API 密钥；传入后以 static 模式存入 CredentialMixin，由 inject_auth_header 自动注入请求头。
+    auth_strategy (AuthStrategy, optional): 认证策略；未传时默认使用 BearerTokenStrategy。
 ''')
 
 add_english_doc('SearchBase', '''
-Base class for all search tools with unified interface and result format.
+Base class for all search tools with unified interface and result format. Mixes in CredentialMixin for unified API key management.
 
 Subclasses must implement search and normalize raw API responses to a list of dicts with keys: title, url, snippet, source, and optionally extra.
+
+Args:
+    source_name (str): Source identifier in results; inferred from the class name (strips "Search" suffix, lowercased) when omitted.
+    api_key (str, optional): API key; stored in CredentialMixin in static mode and injected into request headers automatically via inject_auth_header.
+    auth_strategy (AuthStrategy, optional): Authentication strategy; defaults to BearerTokenStrategy when omitted.
 ''')
 
 add_example('SearchBase', '''
