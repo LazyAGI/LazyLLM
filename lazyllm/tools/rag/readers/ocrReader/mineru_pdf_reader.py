@@ -226,7 +226,7 @@ class MineruPDFReader(_OcrReaderBase):
             block = self._adapt_one(item)
             if block is not None:
                 if self._service_variant == ServiceVariant.OFFLINE \
-                    and self._patch_applied and 'lines' in item:
+                   and self._patch_applied and 'lines' in item:
                     block.lines = self._normalize_content(item['lines'])
                 blocks.append(block)
         return blocks
