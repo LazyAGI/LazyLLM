@@ -1700,6 +1700,46 @@ Implementations must provide:
 Built-in implementations: BearerTokenStrategy, ApiKeyHeaderStrategy, QueryParamStrategy.
 ''')
 
+add_chinese_doc('AuthStrategy.build_header', '''\
+根据给定的 token 构造要注入到 HTTP 请求头中的字段。
+
+Args:
+    token (str): 当前有效的访问令牌。
+
+Returns:
+    Dict[str, str]: 要合并到请求头的键值对；若无需注入则返回空 dict。
+''')
+
+add_english_doc('AuthStrategy.build_header', '''\
+Build the HTTP request header fields to inject for the given token.
+
+Args:
+    token (str): The current valid access token.
+
+Returns:
+    Dict[str, str]: Key-value pairs to merge into the request headers; empty dict if nothing to inject.
+''')
+
+add_chinese_doc('AuthStrategy.build_params', '''\
+根据给定的 token 构造要注入到 URL 查询参数中的字段。
+
+Args:
+    token (str): 当前有效的访问令牌。
+
+Returns:
+    Dict[str, str]: 要合并到查询参数的键值对；若无需注入则返回空 dict。
+''')
+
+add_english_doc('AuthStrategy.build_params', '''\
+Build the URL query parameter fields to inject for the given token.
+
+Args:
+    token (str): The current valid access token.
+
+Returns:
+    Dict[str, str]: Key-value pairs to merge into the query parameters; empty dict if nothing to inject.
+''')
+
 add_chinese_doc('BearerTokenStrategy', '''\
 将 token 以 Bearer 方式注入 Authorization 请求头的认证策略。
 
