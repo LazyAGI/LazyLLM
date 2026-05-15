@@ -1,8 +1,10 @@
 import threading
+import copy
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, List, Optional, Union
 
 from lazyllm import globals
+from lazyllm.common import LOG
 from lazyllm.common.globals import _GlobalConfig
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from lazyllm.module import ModuleBase
@@ -51,6 +53,22 @@ class _DynamicSourceRouterMixin(ModuleBase):
         self._suppliers: Dict[tuple, Any] = {}
         self._lock = threading.Lock()
 
+    def __copy__(self):
+        '''Shallow-copy dynamic router modules without re-entering __new__.
+
+        ServerModule.share() uses copy.copy().  Dynamic online modules have a
+        custom __new__ that routes non-dynamic construction directly to a
+        concrete supplier, so calling __new__ with default args during copy can
+        accidentally resolve a static/default provider.  Bypass __new__ and keep
+        the router state intact; supplier cache is intentionally reset so copied
+        modules can receive their own prompt/formatter/stream settings.
+        '''
+        new = object.__new__(self.__class__)
+        new.__dict__ = copy.copy(self.__dict__)
+        new._suppliers = {}
+        new._lock = threading.Lock()
+        return new
+
     def _build_supplier(self, source: str, skip_auth: bool):
         raise NotImplementedError
 
@@ -65,7 +83,14 @@ class _DynamicSourceRouterMixin(ModuleBase):
         if supplier_key not in self._suppliers:
             with self._lock:
                 if supplier_key not in self._suppliers:
-                    self._suppliers[supplier_key] = self._build_supplier(source, skip_auth)
+                    supplier = self._build_supplier(source, skip_auth)
+                    self._suppliers[supplier_key] = supplier
+                    LOG.info(
+                        f'[LazyLLM] [DYNAMIC_MODEL_SUPPLIER] '
+                        f'[slot={self._dynamic_module_slot}] [module={getattr(self, "name", "") or ""}] '
+                        f'[source={source}] [model={bucket.get("model", "")}] [url={bucket.get("url", "")}] '
+                        f'[skip_auth={skip_auth}] [supplier={type(supplier).__name__}]'
+                    )
         return self._suppliers[supplier_key]
 
     _URL_ALIASES = frozenset(('base_url', 'embed_url'))
