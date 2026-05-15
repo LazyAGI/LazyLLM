@@ -69,6 +69,21 @@ class _DynamicSourceRouterMixin(ModuleBase):
         new._lock = threading.Lock()
         return new
 
+    @classmethod
+    def rebuild(cls, state):
+        new = object.__new__(cls)
+        new.__dict__.update(state)
+        new._suppliers = {}
+        new._lock = threading.Lock()
+        return new
+
+    def __reduce__(self):
+        '''Drop runtime-only state before cloudpickle serializes a router.'''
+        state = self.__dict__.copy()
+        state['_suppliers'] = {}
+        state['_lock'] = None
+        return self.__class__.rebuild, (state,)
+
     def _build_supplier(self, source: str, skip_auth: bool):
         raise NotImplementedError
 
