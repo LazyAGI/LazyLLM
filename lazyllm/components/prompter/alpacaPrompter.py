@@ -5,14 +5,19 @@ class AlpacaPrompter(LazyLLMPrompterBase):
     def __init__(self, instruction: Union[None, str, Dict[str, str]] = None, extra_keys: Union[None, List[str]] = None,
                  show: bool = False, tools: Optional[List] = None):
         super(__class__, self).__init__(show, tools=tools)
+        extra_keys_template = LazyLLMPrompterBase._get_extro_key_template(extra_keys)
+        _prefix = ('Below is an instruction that describes a task, paired with extra messages such as '
+                   'input that provides further context if possible. Write a response that appropriately '
+                   'completes the request.\n\n### Instruction:\n')
         if isinstance(instruction, dict):
+            user_suffix = ('\n\n' + extra_keys_template) if extra_keys_template else ''
             splice_struction = instruction.get('system', '') + \
-                AlpacaPrompter.ISA + instruction.get('user', '') + AlpacaPrompter.ISE
+                AlpacaPrompter.ISA + instruction.get('user', '') + user_suffix + AlpacaPrompter.ISE
             instruction = splice_struction
-        instruction_template = ('Below is an instruction that describes a task, paired with extra messages such as '
-                                'input that provides further context if possible. Write a response that appropriately '
-                                f'completes the request.\n\n### Instruction:\n{instruction if instruction else ""}'
-                                '\n\n' + LazyLLMPrompterBase._get_extro_key_template(extra_keys))
+            instruction_template = _prefix + instruction
+        else:
+            instruction_template = (_prefix + (instruction if instruction else '')
+                                    + '\n\n' + extra_keys_template)
         self._init_prompt('{system}\n{instruction}\n{tools}\n{user}### Response:\n',
                           instruction_template,
                           '### Response:\n')

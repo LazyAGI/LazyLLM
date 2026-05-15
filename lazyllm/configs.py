@@ -105,7 +105,7 @@ class Config(metaclass=_ConfigMeta):
     def getenv(self, name, type, default=None):
         r = os.getenv(f'{self._prefix}_{name.upper()}', default)
         if type == bool:
-            return r in (True, 'TRUE', 'True', 1, 'ON', '1')
+            return r in (True, 'TRUE', 'true', 'True', 1, 'ON', 'On', 'on', '1', 'yes', 'Yes', 'Y', 'y')
         return type(r) if r is not None else r
 
     @staticmethod

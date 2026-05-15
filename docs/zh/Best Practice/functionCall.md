@@ -123,6 +123,53 @@ fc_register("tool")(get_current_weather, "another_get_current_weather")
 
 这样上面的函数 `get_current_weather` 就被注册成了名为 `another_get_current_weather` 的工具。
 
+### 传入对象实例作为工具
+
+除了注册函数，还可以直接把一个对象实例传给 `ToolManager`（或 Agent 的 `tools` 参数）。LazyLLM 会自动把该实例的公开方法（由 `__public_apis__` 声明）包装成独立工具，工具名格式为 `{类名}_{方法名}`。
+
+以 `GoogleSearch` 为例：
+
+```python
+import lazyllm
+from lazyllm.tools import ReactAgent
+
+class GoogleSearch:
+    __public_apis__ = ['lookup']
+
+    def lookup(self, query: str, max_results: int = 5) -> str:
+        '''Search Google for the given query.
+
+        Args:
+            query (str): The search query string.
+            max_results (int): Maximum number of results to return.
+
+        Returns:
+            str: Search results as formatted text.
+        '''
+        # 实际实现中调用 Google Search API
+        return f'results for: {query}'
+
+gs = GoogleSearch()
+llm = lazyllm.OnlineChatModule()
+agent = ReactAgent(llm, tools=[gs])
+ret = agent('Search for the latest version of LazyLLM')
+print(ret)
+```
+
+`GoogleSearch` 实例被传入后，LazyLLM 内部会：
+
+1. 将 `gs` 包装为 `InstanceToolGroup`，遍历 `__public_apis__` 中的每个方法。
+2. 为 `lookup` 创建 `MethodModuleTool`，工具名为 `GoogleSearch_lookup`，并将 `gs.lookup` 作为绑定方法保存。
+3. 向 LLM 暴露的工具描述中只有 `GoogleSearch_lookup`，LLM 无需感知背后的实例。
+4. 执行时，`ToolManager` 通过 `_tool_call['GoogleSearch_lookup']` 找到 `InstanceToolGroup`，再取出 `MethodModuleTool`，最终调用 `gs.lookup(**kwargs)`。
+
+如果一个实例的某些方法只在特定条件下可用（例如需要 API Key），可以在传入时附带 `key_source` 参数，`ToolManager` 会在生成工具描述时自动跳过未满足条件的实例：
+
+```python
+# 仅当环境变量 GOOGLE_API_KEY 存在时，才向 LLM 暴露 GoogleSearch 的工具
+agent = ReactAgent(llm, tools=[(gs, 'env.GOOGLE_API_KEY')])
+```
+
 如果我们不打算把工具注册为全局可见，也可以在调用 FunctionCall 的时候直接传入工具本身，像这样：
 
 ```python

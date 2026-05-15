@@ -2,7 +2,6 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import pipeline, loop, locals, package, FileSystemQueue, colored_text, once_wrapper
 from .toolsManager import ToolManager
-from .skill_manager import SKILLS_PROMPT
 from typing import List, Any, Dict, Union, Callable, Optional
 from .base import LazyLLMAgentBase
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
@@ -71,7 +70,7 @@ class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None, _tool_manager: Optional[ToolManager] = None,
-                 skill_manager=None, workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
+                 skill_manager=None, sandbox: Optional[LazyLLMSandboxBase] = None,
                  keep_full_turns: int = 0):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
@@ -82,25 +81,13 @@ class FunctionCall(ModuleBase):
             self._tools_manager = _tool_manager
             self._sandbox = _tool_manager.sandbox
         self._skill_manager = skill_manager
-        self._workspace = workspace
         self._keep_full_turns = keep_full_turns
         prompt = _prompt or FC_PROMPT
-        if self._workspace:
-            prompt = (
-                f'{prompt}\n\n## Workspace\n'
-                f'- Default workspace: `{self._workspace}`\n'
-                '- Prefer creating/updating files under this workspace.\n'
-                '- Use absolute paths under this workspace when creating files.\n'
-            )
-        if self._skill_manager:
-            prompt = f'{prompt}\n\n{SKILLS_PROMPT}'
-            self._prompter = ChatPrompter(
-                instruction=prompt,
-                tools=self._tools_manager.tools_description,
-                extra_keys=['available_skills']
-            )
-        else:
-            self._prompter = ChatPrompter(instruction=prompt, tools=self._tools_manager.tools_description)
+        self._prompter = ChatPrompter(
+            instruction={'system': prompt, 'user': ''},
+            tools=lambda: self._tools_manager.tools_description,
+            skills=self._skill_manager.build_prompt() if self._skill_manager else '',
+        )
         self._llm = llm.share(
             prompt=self._prompter,
             format=FunctionCallFormatter(),
@@ -124,8 +111,6 @@ class FunctionCall(ModuleBase):
     def _build_history(self, input: Union[str, dict, list]):
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
-        if self._skill_manager and isinstance(input, dict) and input.get('available_skills'):
-            workspace['available_skills'] = input['available_skills']
         if isinstance(input, str):
             workspace['history'].append({'role': 'user', 'content': input})
         elif isinstance(input, dict) and 'input' in input:
@@ -158,9 +143,6 @@ class FunctionCall(ModuleBase):
         if self._keep_full_turns > 0:
             chat_history = _compact_chat_history(chat_history, self._keep_full_turns)
         locals['chat_history'][self._llm._module_id] = chat_history
-        if self._skill_manager and isinstance(input, dict) and 'available_skills' not in input:
-            available = workspace.get('available_skills')
-            if available: input['available_skills'] = available
         return input
 
     def _post_action(self, llm_output: Dict[str, Any]):
@@ -211,10 +193,10 @@ class FunctionCallAgent(LazyLLMAgentBase):
                          enable_builtin_tools=enable_builtin_tools)
         assert self._llm is not None, 'llm cannot be empty.'
         self._assert_tools()
-        prompt = FC_PROMPT
+        prompt = self._append_workspace_prompt(FC_PROMPT)
         self._fc = FunctionCall(llm=self._llm, return_trace=return_trace, stream=stream,
                                 _prompt=prompt, _tool_manager=self._tools_manager,
-                                skill_manager=self._skill_manager, workspace=self.workspace)
+                                skill_manager=self._skill_manager)
         self._fc._llm.used_by(self._module_id)
 
     @once_wrapper(reset_on_pickle=True)
@@ -223,7 +205,6 @@ class FunctionCallAgent(LazyLLMAgentBase):
         self._agent = agent
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
-        query = self._wrap_user_input_with_skills(query)
         if llm_chat_history is not None:
             return (query, llm_chat_history)
         return query

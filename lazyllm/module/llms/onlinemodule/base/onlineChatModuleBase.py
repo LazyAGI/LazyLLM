@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 from operator import itemgetter as itemget
 
 import lazyllm
-from lazyllm import globals, pipeline
+from lazyllm import globals, pipeline, config
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
@@ -40,7 +40,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
         super().prompt('' if prompt is None else prompt, history=history)
-        self._prompt._set_model_configs(system=self._get_system_prompt())
+        if not config['disable_system_prompt']:
+            self._prompt._set_model_configs(system=self._get_system_prompt())
         return self
 
     def _get_system_prompt(self):

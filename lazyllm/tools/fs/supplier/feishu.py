@@ -322,14 +322,16 @@ class FeishuFSBase(LazyLLMFSBase):
         num_blocks = resp_data.get('data', {}).get('block_num', 1)
         for i in range(num_blocks):
             chunk = data[i * block_size: (i + 1) * block_size]
-            self._request('POST', f'{self._base_url}/drive/v1/files/upload_part',
-                          files={
-                              'upload_id': (None, upload_id),
-                              'seq': (None, str(i)),
-                              'size': (None, str(len(chunk))),
-                              'file': (name, chunk, 'application/octet-stream'),
-                          },
-                          headers={'Content-Type': None})
+            self._request(
+                'POST', f'{self._base_url}/drive/v1/files/upload_part',
+                files={
+                    'upload_id': (None, upload_id),
+                    'seq': (None, str(i)),
+                    'size': (None, str(len(chunk))),
+                    'file': (name, chunk, 'application/octet-stream'),
+                },
+                headers={'Content-Type': None},
+            )
         result = self._post(f'{self._base_url}/drive/v1/files/upload_finish',
                             json={'upload_id': upload_id, 'block_num': num_blocks})
         return result.get('data', {}).get('file_token', '')
