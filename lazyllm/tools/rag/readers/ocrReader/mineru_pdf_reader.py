@@ -216,7 +216,7 @@ class MineruPDFReader(_OcrReaderBase):
 
     @override
     def _adapt_json_to_IR(self, raw) -> List[Block]:
-        if self._patch_applied:
+        if self._service_variant == ServiceVariant.OFFLINE and self._patch_applied:
             content_list = raw['result'][0]['content_list']
         else:
             content_list = raw
@@ -225,7 +225,8 @@ class MineruPDFReader(_OcrReaderBase):
         for item in content_list:
             block = self._adapt_one(item)
             if block is not None:
-                if self._patch_applied and 'lines' in item:
+                if self._service_variant == ServiceVariant.OFFLINE \
+                    and self._patch_applied and 'lines' in item:
                     block.lines = self._normalize_content(item['lines'])
                 blocks.append(block)
         return blocks
