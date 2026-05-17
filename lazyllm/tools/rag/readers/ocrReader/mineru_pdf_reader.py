@@ -195,7 +195,13 @@ class MineruPDFReader(_OcrReaderBase):
 
     @override
     def _adapt_json_to_IR(self, raw) -> List[Block]:
-        if self._patch_applied:
+        # Online API (zip extraction) returns a list directly.
+        # Patch-deployed local server returns {'result': [{'content_list': [...]}]}.
+        # Prefer structural detection over the patch_applied flag so that
+        # online-API responses are handled correctly regardless of configuration.
+        if isinstance(raw, list):
+            content_list = raw
+        elif self._patch_applied and isinstance(raw, dict):
             content_list = raw['result'][0]['content_list']
         else:
             content_list = raw
