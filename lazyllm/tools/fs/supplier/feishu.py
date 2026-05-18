@@ -2,12 +2,12 @@
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, unquote
 
 import requests
 
 
-from lazyllm import LOG, config
+from lazyllm import LOG, config, globals as lazyllm_globals
 from lazyllm.common import Credential
 from lazyllm.thirdparty import mistune
 
@@ -15,6 +15,13 @@ from ..base import LazyLLMFSBase, CloudFSBufferedFile
 
 config.add('feishu_app_id', str, None, 'FEISHU_APP_ID', description='Feishu App ID for tenant_access_token.')
 config.add('feishu_app_secret', str, None, 'FEISHU_APP_SECRET', description='Feishu App Secret for tenant_access_token.')
+lazyllm_globals.config.add(
+    'feishu_wiki_space_id', str, None, 'FEISHU_WIKI_SPACE_ID',
+    description='Default Feishu wiki space_id for tree ops (ls/mkdir) when not set in URI.',
+)
+
+_SPACE_ID_DYNAMIC = 'dynamic'
+_FEISHU_URL_RE = re.compile(r'/(wiki|docx|docs)/([A-Za-z0-9_-]+)', re.IGNORECASE)
 
 
 _API_BASE = 'https://open.feishu.cn/open-apis'
@@ -31,6 +38,22 @@ _DEFAULT_OAUTH_SCOPE = (
     'drive:drive drive:drive:readonly drive:drive.metadata:readonly '
     'wiki:wiki wiki:wiki:readonly wiki:node:retrieve docx:document'
 )
+
+
+def _parse_feishu_browser_url(url: str) -> Optional[Dict[str, str]]:
+    clean = url.split('?')[0].split('#')[0].rstrip('/')
+    m = _FEISHU_URL_RE.search(clean)
+    if not m:
+        return None
+    type_part = m.group(1).lower()
+    token = m.group(2)
+    if type_part == 'wiki':
+        return {'kind': 'wiki_node', 'token': token}
+    if type_part == 'docx':
+        return {'kind': 'docx', 'token': token}
+    if type_part == 'docs':
+        return {'kind': 'doc', 'token': token}
+    return None
 
 
 def _feishu_acquire_access_token(
@@ -528,8 +551,10 @@ class FeishuFS(FeishuFSBase):
                 asynchronous: bool = False, use_listings_cache: bool = False,
                 skip_instance_cache: bool = False, loop: Optional[Any] = None,
                 dynamic_auth: bool = False) -> LazyLLMFSBase:
-        if space_id is not None and str(space_id).strip():
-            return FeishuWikiFS(base_url=base_url, app_id=app_id, app_secret=app_secret, space_id=space_id,
+        sid = (space_id or '').strip() if space_id is not None else ''
+        if sid:
+            wiki_sid = '' if sid == _SPACE_ID_DYNAMIC else sid
+            return FeishuWikiFS(base_url=base_url, app_id=app_id, app_secret=app_secret, space_id=wiki_sid,
                                 user_refresh_token=user_refresh_token, oauth_port=oauth_port,
                                 oauth_scope=oauth_scope, asynchronous=asynchronous,
                                 use_listings_cache=use_listings_cache,
@@ -724,7 +749,7 @@ class FeishuWikiFS(FeishuFSBase):
     _fs_protocol_key = 'feishu'
 
     def _create_docx_node(self, title: str, parent_token: str = '') -> str:
-        url = f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes'
+        url = f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes'
         payload: Dict[str, Any] = {'obj_type': 'docx', 'node_type': 'origin', 'title': title}
         if parent_token:
             payload['parent_node_token'] = parent_token
@@ -745,12 +770,20 @@ class FeishuWikiFS(FeishuFSBase):
             } for chunk in chunks[i:i + 50]]
             self._post(url, json={'index': 0, 'children': children})
 
+    def _effective_space_id(self) -> str:
+        if self._space_id:
+            return self._space_id
+        return (lazyllm_globals.config['feishu_wiki_space_id'] or '').strip()
+
     def _require_space_id(self) -> None:
-        if not self._space_id:
-            raise ValueError('space_id is required for FeishuWikiFS')
+        if not self._effective_space_id():
+            raise ValueError(
+                "space_id is required for FeishuWikiFS: pass space_id='wikcn...' to the constructor, "
+                "set globals.config['feishu_wiki_space_id'], or use feishu@<space_id>:/ URI"
+            )
 
     def _list_nodes_raw(self, parent_token: str = '') -> List[Dict[str, Any]]:
-        url = f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes'
+        url = f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes'
         params: Dict[str, Any] = {'page_size': 50}
         if parent_token:
             params['parent_node_token'] = parent_token
@@ -766,6 +799,7 @@ class FeishuWikiFS(FeishuFSBase):
         return results
 
     def _resolve_path_to_token(self, path: str) -> str:
+        self._require_space_id()
         parts = [p for p in path.strip('/').split('/') if p]
         if not parts:
             return ''
@@ -806,7 +840,7 @@ class FeishuWikiFS(FeishuFSBase):
             payload['target_parent_token'] = parent_token
         if title:
             payload['title'] = title
-        self._post(f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes/{src_token}/copy', json=payload)
+        self._post(f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes/{src_token}/copy', json=payload)
 
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         src_token = self._resolve_path_to_token(path1)
@@ -818,13 +852,57 @@ class FeishuWikiFS(FeishuFSBase):
         payload: Dict[str, Any] = {}
         if parent_token:
             payload['target_parent_token'] = parent_token
-        self._post(f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes/{src_token}/move', json=payload)
+        self._post(f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes/{src_token}/move', json=payload)
+
+    def _resolve_link_content(self, parsed: Dict[str, str]) -> bytes:
+        kind = parsed['kind']
+        token = parsed['token']
+        if kind == 'wiki_node':
+            node = self._get_node(token)
+            obj_type = node.get('obj_type')
+            obj_token = node.get('obj_token') or ''
+            if not obj_type or not obj_token:
+                return b''
+            if obj_type in {'doc', 'docx'}:
+                return self._download_doc_raw(obj_token, obj_type=obj_type)
+            if obj_type == 'file':
+                return self._download_file_raw(obj_token)
+            raise NotImplementedError(
+                f'Feishu wiki node obj_type {obj_type!r} is not yet supported for link-based fetch'
+            )
+        if kind == 'docx':
+            return self._download_doc_raw(token, obj_type='docx')
+        if kind == 'doc':
+            return self._download_doc_raw(token, obj_type='doc')
+        raise NotImplementedError(f'Unsupported link kind: {kind!r}')
+
+    def fetch_url(self, url: str) -> bytes:
+        parsed = _parse_feishu_browser_url(url)
+        if not parsed:
+            raise ValueError(f'Cannot parse Feishu browser URL: {url!r}')
+        return self._resolve_link_content(parsed)
 
     def _fetch_wiki_content(self, path: str) -> bytes:
-        token = self._resolve_path_to_token(path)
-        if not token:
+        norm = path.lstrip('/')
+        if norm.startswith('~link/'):
+            url = unquote(norm[len('~link/'):])
+            parsed = _parse_feishu_browser_url(url)
+            if not parsed:
+                raise ValueError(f'Cannot parse Feishu browser URL from path: {path!r}')
+            return self._resolve_link_content(parsed)
+        if norm.startswith('~node/'):
+            token = norm[len('~node/'):].split('/')[0]
+            return self._resolve_link_content({'kind': 'wiki_node', 'token': token})
+        if norm.startswith('~docx/'):
+            token = norm[len('~docx/'):].split('/')[0]
+            return self._download_doc_raw(token, obj_type='docx')
+        if norm.startswith('~doc/'):
+            token = norm[len('~doc/'):].split('/')[0]
+            return self._download_doc_raw(token, obj_type='doc')
+        node_token = self._resolve_path_to_token(path)
+        if not node_token:
             return b''
-        node = self._get_node(token)
+        node = self._get_node(node_token)
         obj_type = node.get('obj_type')
         obj_token = node.get('obj_token') or ''
         if not obj_type or not obj_token:
@@ -848,6 +926,9 @@ class FeishuWikiFS(FeishuFSBase):
         if 'r' in mode:
             return FeishuWikiFile(self, path, mode=mode, block_size=block_size or self.blocksize,
                                   autocommit=autocommit, cache_options=cache_options)
+        norm = path.lstrip('/')
+        if norm.startswith(('~link/', '~node/', '~docx/', '~doc/')):
+            raise NotImplementedError('FeishuWikiFS: write mode is not supported for link/node paths')
         return CloudFSBufferedFile(self, path, mode=mode, block_size=block_size or self.blocksize,
                                    autocommit=autocommit, cache_options=cache_options)
 
@@ -857,7 +938,7 @@ class FeishuWikiFS(FeishuFSBase):
             return
         title = parts[-1]
         parent_token = self._resolve_path_to_token('/' + '/'.join(parts[:-1])) if len(parts) > 1 else ''
-        url = f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes'
+        url = f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes'
         payload: Dict[str, Any] = {'title': title, 'obj_type': 'docx', 'node_type': 'origin'}
         if parent_token:
             payload['parent_node_token'] = parent_token
@@ -867,7 +948,7 @@ class FeishuWikiFS(FeishuFSBase):
         token = self._resolve_path_to_token(path)
         if not token:
             raise FileNotFoundError(path)
-        self._delete(f'{self._base_url}/wiki/v2/spaces/{self._space_id}/nodes/{token}')
+        self._delete(f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes/{token}')
 
     def rmdir(self, path: str) -> None:
         self.rm_file(path)
@@ -920,6 +1001,10 @@ class FeishuWikiFS(FeishuFSBase):
     def _get_node(self, token: str) -> Dict[str, Any]:
         data = self._get(f'{self._base_url}/wiki/v2/spaces/get_node', params={'token': token})
         node = data.get('data', {}).get('node') or data.get('data', {})
+        if node and not self._space_id:
+            sid = (node.get('space_id') or '').strip()
+            if sid:
+                self._space_id = sid
         return node or {}
 
     def get_document_id(self, path: str) -> str:

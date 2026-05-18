@@ -815,6 +815,8 @@ _add_fs_chinese('FeishuFS', '''\
     app_id (str, optional): 企业自建应用的 App ID，用于换取 tenant_access_token 或刷新 user_access_token。
     app_secret (str, optional): 企业自建应用的 App Secret。
     space_id (str, optional): 若传入则会返回 FeishuWikiFS 实例，将指定知识库作为 FS。
+        传入真实 space_id（如 'wikcnKQ1k3pcuo5uSK4t8VN6kVf'）或传入 'dynamic'（运行时从
+        globals.config['feishu_wiki_space_id'] 或链接 get_node 响应中动态解析）。
     云盘上传：put_file 时若远程路径以 .md 结尾或传入 content_type='markdown'，会在目标目录创建 docx 并按 Markdown 解析写入（标题、列表、代码块等）；否则按二进制上传原文件。
     user_refresh_token (str, optional): OAuth2 refresh_token，用于以用户身份访问「我的空间」个人文件。
         - 传入真实 refresh_token：直接用于换取 user_access_token，每次刷新后内存中的 token 同步滚动。
@@ -873,6 +875,8 @@ Parameters:
     app_id (str, optional): App ID of the enterprise custom app, used to obtain tenant_access_token or refresh user_access_token.
     app_secret (str, optional): App Secret of the enterprise custom app.
     space_id (str, optional): When provided, returns a FeishuWikiFS instance targeting the given wiki space.
+        Pass a real space_id (e.g. 'wikcnKQ1k3pcuo5uSK4t8VN6kVf') or 'dynamic' to resolve the space
+        at runtime from globals.config['feishu_wiki_space_id'] or from the get_node response.
     Drive upload: when the remote path ends with .md or put_file(..., content_type='markdown'), a docx is created in the target folder and content is parsed as Markdown; otherwise the file is uploaded as binary.
     user_refresh_token (str, optional): OAuth2 refresh_token for accessing the user's personal drive ("My Space").
         - Pass a real refresh_token: used directly to obtain user_access_token; rolls forward in memory after each use.
@@ -933,7 +937,8 @@ How to configure:
        the token for persistence; pass it directly on subsequent runs to skip the OAuth step.
 ''')
 _add_fs_example('FeishuFS', '''\
->>> from lazyllm.tools.fs import FeishuFS
+>>> from lazyllm.tools.fs import FeishuFS, FS
+>>> import lazyllm
 >>> # tenant_access_token: access files shared with the app
 >>> fs = FeishuFS(app_id='cli_xxx', app_secret='xxx')
 >>> fs.ls('/')
@@ -948,37 +953,102 @@ _add_fs_example('FeishuFS', '''\
 >>> # use FeishuWikiFS implicitly by passing space_id (wiki space id)
 >>> wiki_fs = FeishuFS(app_id='cli_xxx', app_secret='xxx', space_id='wikcnKQ1k3pcuo5uSK4t8VN6kVf')
 >>> wiki_fs.ls('/')
+>>> # link-based read: pass space_id='dynamic', no space_id required for reading
+>>> wiki_dynamic = FeishuFS(app_id='cli_xxx', app_secret='xxx', space_id='dynamic')
+>>> content = wiki_dynamic.fetch_url('https://xxx.feishu.cn/wiki/MCjOwGxwSimztPkO5X6cv8uxnwb')
+>>> # FS convenience: bare feishu URL is auto-detected and routed to wiki
+>>> lazyllm.globals.config['feishu_wiki_space_id'] = 'wikcnKQ1k3pcuo5uSK4t8VN6kVf'  # for ls
+>>> text = FS.read_bytes('https://xxx.feishu.cn/wiki/MCjOwGxwSimztPkO5X6cv8uxnwb').decode()
+>>> text = FS.read_bytes('feishu:/~node/MCjOwGxwSimztPkO5X6cv8uxnwb').decode()
+>>> text = FS.read_bytes('feishu@dynamic:/~node/MCjOwGxwSimztPkO5X6cv8uxnwb').decode()
 ''')
 
 # FeishuWikiFS
 _add_fs_chinese('FeishuWikiFS', '''\
-飞书知识库文件系统：使用飞书开放平台 Wiki API，将指定知识库（space）映射为文件系统。目录对应 Wiki 目录/节点，文件对应文档或附件。支持 ls、info、open（读/写）、mkdir、rm_file、put_file；并支持文档块级文本编辑：get_document_id、get_doc_blocks、update_doc_block_text。
+飞书知识库文件系统：使用飞书开放平台 Wiki API，将指定知识库（space）映射为文件系统。目录对应 Wiki 目录/节点，文件对应文档或附件。支持 ls、info、open（读/写）、mkdir、rm_file、put_file、fetch_url；并支持文档块级文本编辑：get_document_id、get_doc_blocks、update_doc_block_text。
 
 使用方式:
     构造参数:
         base_url (str, optional): 飞书开放平台根地址，默认使用官方地址即可。
         app_id (str, optional): 企业自建应用的 App ID。
         app_secret (str, optional): 企业自建应用的 App Secret。
-        space_id (str): 知识空间 ID，例如 'wikcnKQ1k3pcuo5uSK4t8VN6kVf'。
+        space_id (str): 知识空间 ID（如 'wikcnKQ1k3pcuo5uSK4t8VN6kVf'），或传入 'dynamic' 以懒解析。
 
     1. 与 FeishuFS 共享同一套鉴权方式：推荐 app_id + app_secret，由 FS 自动获取 tenant_access_token。
-    2. 必须传入 space_id（知识空间 ID），例如 'wikcnKQ1k3pcuo5uSK4t8VN6kVf'。
+    2. space_id 解析优先级（每次需要时按序查找）：
+       a. 构造时传入的真实 space_id；
+       b. globals.config['feishu_wiki_space_id']（运行时设置）；
+       c. 调用 get_node 接口时从响应回填（仅读文档时可省略 space_id）。
+       ls/mkdir/copy/move 等树形操作必须能解析到有效 space_id，否则抛出 ValueError。
     3. 根路径 '/' 对应知识库根节点；路径为 Wiki 节点路径；open 会根据节点类型拉取文档纯文本或附件二进制；put_file 会新建 docx 并写入内容。当远程路径以 .md 结尾或 put_file(..., content_type='markdown') 时，会按 Markdown 解析并保持标题、列表、代码块、引用等格式；否则按纯文本追加段落。
+
+链接直读路径（只读，无需 space_id）:
+    支持以下路径前缀，直接通过飞书 token 或链接拉取内容，不需要标题路径或 space_id：
+    - ~node/<node_token>       wiki 节点 token，如 feishu:/~node/MCjOwG...
+    - ~link/<urlencoded_url>   飞书浏览器链接（URL 编码），如 feishu:/~link/https%3A%2F%2F...
+    - ~docx/<document_id>      docx 文档 id
+    - ~doc/<doc_token>         旧版 doc token
+    也可以直接传入裸 URL（feishu:/ 协议会自动识别 feishu.cn / larksuite.com 链接）。
+    写模式（open write / put_file）不支持 ~ 路径，会抛出 NotImplementedError。
 
 保持原格式（表格、标题等）:
     - 通过 open/raw_content 下载到的是纯文本，put_file 会新建文档并只追加段落，因此「下载-修改-上传」会丢失表格等格式。
     - 若要保留原格式，请使用块级编辑：先 get_doc_blocks(path) 获取文档块列表（含 block_id、block_type、plain_text），再对需要修改的文本块调用 update_doc_block_text(path, block_id, new_text)。仅修改目标文本块，表格等其它块不会被改动。
 ''')
 _add_fs_english('FeishuWikiFS', '''\
-Feishu Wiki FS: Feishu Open Platform Wiki API; maps a wiki space into a filesystem. Directories are wiki folders/nodes; files are documents or attachments. Supports ls, info, open (r/w), mkdir, rm_file, put_file, and block-level text edit: get_document_id, get_doc_blocks, update_doc_block_text.
+Feishu Wiki FS: Feishu Open Platform Wiki API; maps a wiki space into a filesystem. Directories are wiki folders/nodes; files are documents or attachments. Supports ls, info, open (r/w), mkdir, rm_file, put_file, fetch_url, and block-level text edit: get_document_id, get_doc_blocks, update_doc_block_text.
 
 Usage:
-    1. Shares the same auth model as FeishuFS; space_id (wiki space ID) is required.
-    2. '/' is the wiki root; paths are wiki node paths; open returns document plain text or file binary; put_file creates a new docx. When the remote path ends with .md or put_file(..., content_type='markdown'), content is parsed as Markdown and rendered as headings, lists, code blocks, quotes, etc.; otherwise appended as plain text paragraphs.
+    1. Shares the same auth model as FeishuFS; space_id is a wiki space ID or 'dynamic' for lazy resolution.
+    2. space_id resolution order (checked on each operation):
+       a. Real space_id passed to the constructor;
+       b. globals.config['feishu_wiki_space_id'] (set at runtime);
+       c. Backfilled from the get_node response (no space_id required for link-based reads).
+       Tree operations (ls/mkdir/copy/move) require a resolvable space_id; otherwise ValueError is raised.
+    3. '/' is the wiki root; paths are wiki node paths; open returns document plain text or file binary; put_file creates a new docx. When the remote path ends with .md or put_file(..., content_type='markdown'), content is parsed as Markdown and rendered as headings, lists, code blocks, quotes, etc.; otherwise appended as plain text paragraphs.
+
+Link-based read paths (read-only, no space_id required):
+    The following path prefixes bypass title-based resolution and fetch content directly by token:
+    - ~node/<node_token>       wiki node token, e.g. feishu:/~node/MCjOwG...
+    - ~link/<urlencoded_url>   URL-encoded Feishu browser link, e.g. feishu:/~link/https%3A%2F%2F...
+    - ~docx/<document_id>      docx document id
+    - ~doc/<doc_token>         legacy doc token
+    Bare Feishu URLs (feishu.cn / larksuite.com) are also accepted and routed automatically.
+    Write mode (open write / put_file) on ~ paths raises NotImplementedError.
 
 Preserving format (tables, headings, etc.):
     - open/raw_content returns plain text only; put_file creates a new doc and appends paragraphs, so download-modify-upload loses tables and other structure.
     - To preserve format, use block-level edit: get_doc_blocks(path) to list blocks (block_id, block_type, plain_text), then update_doc_block_text(path, block_id, new_text) for the blocks you need to change; other blocks (e.g. tables) are left unchanged.
+''')
+_add_fs_chinese('FeishuWikiFS.fetch_url', '''\
+通过飞书浏览器链接直接拉取文档内容（只读），无需 space_id 也无需标题路径。
+
+支持的链接格式：
+    - https://<host>/wiki/<node_token>   知识库节点链接
+    - https://<host>/docx/<document_id>  新版文档直链
+    - https://<host>/docs/<doc_token>    旧版文档直链
+host 支持 *.feishu.cn 和 *.larksuite.com，query 参数会被忽略。
+
+Args:
+    url (str): 飞书浏览器链接。
+
+Returns:
+    bytes: 文档纯文本内容（UTF-8 编码）；附件类型返回二进制。
+''')
+_add_fs_english('FeishuWikiFS.fetch_url', '''\
+Fetch document content directly from a Feishu browser URL (read-only), without requiring space_id or a title path.
+
+Supported URL formats:
+    - https://<host>/wiki/<node_token>   wiki node link
+    - https://<host>/docx/<document_id>  new-style docx direct link
+    - https://<host>/docs/<doc_token>    legacy doc direct link
+host supports *.feishu.cn and *.larksuite.com; query parameters are ignored.
+
+Args:
+    url (str): Feishu browser URL.
+
+Returns:
+    bytes: Document plain text content (UTF-8 encoded); binary for file attachments.
 ''')
 _add_fs_chinese('FeishuWikiFS.get_document_id', '''\
 返回 Wiki 文档节点对应的飞书 docx document_id（即 obj_token）。path 必须指向 doc 或 docx 类型节点，否则抛出 ValueError。
