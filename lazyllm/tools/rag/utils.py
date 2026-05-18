@@ -1,6 +1,7 @@
 import hashlib
 import os
 import shutil
+import time
 
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -197,34 +198,62 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
                              f'invalid embedding at index {idx}: empty {type(vec).__name__}')
 
     def _process_key(k: str, knodes: List[DocNode]):
-        try:
-            fn = embed[k]
-            if _check_batch(fn) and not any(isinstance(n, ImageDocNode) for n in knodes):
-                texts = [n.get_text(MetadataMode.EMBED) for n in knodes]
-                vecs = fn(texts)
-                if len(vecs) != len(texts):
-                    raise ValueError(f'[LazyLLM - parallel_do_embedding][{k}] batch size mismatch: '
-                                     f'[text_num:{len(texts)}] vs [vec_num:{len(vecs)}]')
-                for idx, (n, v) in enumerate(zip(knodes, vecs)):
-                    _check_empty_embedding_item(v, k, idx)
-                    n.set_embedding(k, v)
-                return
+        max_retries = 3
+        base_delay = 2.0
+        last_exc = None
 
-            if max_workers_per_key == 1:
+        for attempt in range(max_retries + 1):
+            try:
+                fn = embed[k]
+                if _check_batch(fn) and not any(isinstance(n, ImageDocNode) for n in knodes):
+                    texts = [n.get_text(MetadataMode.EMBED) for n in knodes]
+                    vecs = fn(texts)
+                    if len(vecs) != len(texts):
+                        raise ValueError(f'[LazyLLM - parallel_do_embedding][{k}] batch size mismatch: '
+                                         f'[text_num:{len(texts)}] vs [vec_num:{len(vecs)}]')
+                    for idx, (n, v) in enumerate(zip(knodes, vecs)):
+                        _check_empty_embedding_item(v, k, idx)
+                        n.set_embedding(k, v)
+                    return
+
+                if max_workers_per_key == 1:
+                    for n in knodes:
+                        n.do_embedding({k: fn})
+                else:
+                    with ThreadPoolExecutor(max_workers=max_workers_per_key) as ex2:
+                        futs = [ex2.submit(n.do_embedding, {k: fn}) for n in knodes]
+                        for fut in as_completed(futs):
+                            fut.result()
+                return
+            except Exception as e:
+                last_exc = e
+                # Only retry on transient network / http errors
+                transient = False
+                for token in ('Connection', 'IncompleteRead', 'Timeout', 'RemoteDisconnected',
+                              'ConnectionError', 'ReadTimeout', 'timeout', 'Too Many Requests',
+                              'Service Unavailable', 'Internal Server Error', 'Bad Gateway',
+                              'rate limit', 'ChunkedEncodingError', 'ProtocolError'):
+                    if token.lower() in str(e).lower() or token.lower() in type(e).__name__.lower():
+                        transient = True
+                        break
+                if not transient or attempt >= max_retries:
+                    break
+                delay = base_delay ** attempt
+                lazyllm.LOG.warning(
+                    f'[LazyLLM - parallel_do_embedding][{k}] transient error (attempt {attempt + 1}/{max_retries + 1}), '
+                    f'retrying in {delay:.1f}s: {e}')
+                time.sleep(delay)
+                # Reset embedding state for retry
                 for n in knodes:
-                    n.do_embedding({k: fn})
-            else:
-                with ThreadPoolExecutor(max_workers=max_workers_per_key) as ex2:
-                    futs = [ex2.submit(n.do_embedding, {k: fn}) for n in knodes]
-                    for fut in as_completed(futs):
-                        fut.result()
-        except Exception as e:
-            lazyllm.LOG.error(f'[LazyLLM - parallel_do_embedding][{k}] error: {e}')
-            for n in knodes:
-                if k in n.embedding_state:
-                    with n._lock:
-                        n.embedding_state.remove(k)
-            raise e
+                    if k not in n.embedding_state:
+                        n.embedding_state.add(k)
+
+        lazyllm.LOG.error(f'[LazyLLM - parallel_do_embedding][{k}] error after {max_retries + 1} attempts: {last_exc}')
+        for n in knodes:
+            if k in n.embedding_state:
+                with n._lock:
+                    n.embedding_state.remove(k)
+        raise last_exc
 
     with ThreadPoolExecutor(max_workers=min(max_workers, len(tasks_by_key))) as ex:
         futs = [ex.submit(_process_key, k, k_nodes) for k, k_nodes in tasks_by_key.items()]
