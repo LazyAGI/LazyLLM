@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Set, Callable
 from typing_extensions import override
 
 import lazyllm
+from lazyllm.common import retry_transient
 from lazyllm.tools.http_request import post_sync, get_sync
 from lazyllm import LOG
 
@@ -66,7 +67,8 @@ class MineruPDFReader(_OcrReaderBase):
         merged_info = dict(extra_info) if extra_info else {}
         if task_dir is not None:
             merged_info['image_cache_dir'] = str(task_dir)
-        return self._build_nodes_from_response(response_text, file_path, merged_info)
+        nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
+        return nodes
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
         if self._patch_applied:
@@ -104,12 +106,18 @@ class MineruPDFReader(_OcrReaderBase):
         splits = self._split_large_pdf(file_str)
 
         if len(splits) == 1:
-            return self._fetch_async_by_upload(splits[0][0])
+            return retry_transient(
+                lambda: self._fetch_async_by_upload(splits[0][0]),
+                log_prefix=f'[MineruPDFReader] {os.path.basename(file_str)} ')
 
         results = {}
         with ThreadPoolExecutor(max_workers=min(len(splits), 5)) as executor:
             futures = {
-                executor.submit(self._fetch_async_by_upload, sub_path): start_page
+                executor.submit(
+                    lambda sp=sub_path: retry_transient(
+                        lambda: self._fetch_async_by_upload(sp),
+                        log_prefix=f'[MineruPDFReader] {os.path.basename(sp)} '),
+                ): start_page
                 for sub_path, start_page in splits
             }
             for future in as_completed(futures):
@@ -128,33 +136,26 @@ class MineruPDFReader(_OcrReaderBase):
             if first_task_dir is None:
                 first_task_dir = task_dir
             content = json.loads(json_str)
-            if self._patch_applied:
-                items = content['result'][0]['content_list']
-            else:
-                items = content
+            items = content
 
             for item in items:
                 if 'page_idx' in item:
                     item['page_idx'] += start_page
                 all_content.append(item)
 
-        if self._patch_applied:
-            first_content = json.loads(results[sorted_pages[0]][0])
-            first_content['result'][0]['content_list'] = all_content
-            merged_json = json.dumps(first_content)
-        else:
-            merged_json = json.dumps(all_content)
+        merged_json = json.dumps(all_content)
 
         return merged_json, first_task_dir
 
     def _fetch_async_by_upload(self, file_path: str):
         '''Upload a local file via batch presigned URL and fetch result.'''
+        fname = os.path.basename(file_path)
 
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self._api_key}'}
 
         # Step 1: Request presigned upload URL
         payload = {
-            'files': [{'name': os.path.basename(file_path)}],
+            'files': [{'name': fname}],
             'model_version': 'vlm',
         }
         resp = post_sync(
