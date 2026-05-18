@@ -1,6 +1,7 @@
 import re
 from typing import Any, Dict, List, Optional
 
+from lazyllm.common import QueryParamStrategy
 from lazyllm.thirdparty import httpx
 
 from .base import SearchBase, _html_to_text, _make_result
@@ -10,9 +11,11 @@ class StackOverflowSearch(SearchBase):
 
     def __init__(self, site: str = 'stackoverflow', key: Optional[str] = None,
                  timeout: int = 10, source_name: str = 'stackoverflow'):
-        super().__init__(source_name=source_name)
+        super().__init__(
+            source_name=source_name, api_key=key,
+            auth_strategy=QueryParamStrategy('key'),
+        )
         self._site = site
-        self._key = key
         self._timeout = timeout
 
     def get_content(self, item: Dict[str, Any]) -> str:
@@ -22,9 +25,7 @@ class StackOverflowSearch(SearchBase):
             return super().get_content(item)
         qid = m.group(1)
         api_url = f'https://api.stackexchange.com/2.3/questions/{qid}'
-        params = {'site': self._site, 'filter': 'withbody'}
-        if self._key:
-            params['key'] = self._key
+        params = self.inject_auth_params({'site': self._site, 'filter': 'withbody'})
         try:
             resp = httpx.get(api_url, params=params, timeout=self._timeout)
             resp.raise_for_status()
@@ -56,15 +57,13 @@ class StackOverflowSearch(SearchBase):
     def search(self, query: str, count: int = 10,
                sort: str = 'relevance') -> List[dict]:
         url = 'https://api.stackexchange.com/2.3/search/advanced'
-        params = {
+        params = self.inject_auth_params({
             'order': 'desc',
             'sort': sort,
             'q': query,
             'site': self._site,
             'pagesize': min(count, 100),
-        }
-        if self._key:
-            params['key'] = self._key
+        })
         resp = httpx.get(url, params=params, timeout=self._timeout)
         resp.raise_for_status()
         data = resp.json()

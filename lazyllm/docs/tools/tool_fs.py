@@ -18,7 +18,7 @@ _add_feishu_english = functools.partial(utils.add_english_doc, module=_feishu_mo
 
 # LazyLLMFSBase
 _add_fs_chinese('LazyLLMFSBase', '''\
-云文件系统统一基类，继承 fsspec.AbstractFileSystem，借助 registry 注册各平台实现。
+云文件系统统一基类，继承 fsspec.AbstractFileSystem，借助 registry 注册各平台实现。混入 CredentialMixin 提供统一的 token 生命周期管理。
 子类需实现：_setup_auth、ls、info、_open、_download_range、_upload_data 等；可选实现 rm_file、mkdir。
 目录监听逻辑由 CloudFsWatchdog 提供，FS 子类仅需提供必要的 webhook 能力（若有）。
 
@@ -29,9 +29,10 @@ Args:
     use_listings_cache (bool): 是否缓存目录列表，对应 fsspec.AbstractFileSystem.use_listings_cache，默认 False。
     skip_instance_cache (bool): 是否跳过实例缓存，对应 fsspec.AbstractFileSystem.skip_instance_cache，默认 False。
     loop (Any, optional): 异步事件循环对象，一般仅在异步环境下需要显式传入。
+    auth_strategy (AuthStrategy, optional): 认证策略，决定 token 如何注入请求头或查询参数；未传时默认使用 BearerTokenStrategy。
 ''')
 _add_fs_english('LazyLLMFSBase', '''\
-Unified cloud filesystem base; extends fsspec.AbstractFileSystem; implementations registered via registry.
+Unified cloud filesystem base; extends fsspec.AbstractFileSystem; implementations registered via registry. Mixes in CredentialMixin for unified token lifecycle management.
 Subclasses implement _setup_auth, ls, info, _open, _download_range, _upload_data; optionally rm_file, mkdir.
 Directory watching is handled by CloudFsWatchdog; FS subclasses only expose webhook capabilities when supported.
 
@@ -42,6 +43,7 @@ Args:
     use_listings_cache (bool): Whether to cache directory listings; forwarded to fsspec.AbstractFileSystem.use_listings_cache; default False.
     skip_instance_cache (bool): Whether to skip the filesystem instance cache; forwarded to fsspec.AbstractFileSystem.skip_instance_cache; default False.
     loop (Any, optional): Event loop object for async environments.
+    auth_strategy (AuthStrategy, optional): Authentication strategy controlling how the token is injected into request headers or query parameters; defaults to BearerTokenStrategy when omitted.
 ''')
 _add_fs_example('LazyLLMFSBase', '''\
 >>> from lazyllm.tools.fs import CloudFS
@@ -448,13 +450,13 @@ Args:
     path (str): Path to watch.
 ''')
 
-_add_fs_chinese('LazyLLMFSBase._ensure_token', '''\
-Token 刷新钩子：子类可覆盖。基类默认实现为 no-op。
-每次 _request 发请求前会调用本方法；使用会过期的 access token 的子类应覆盖本方法，在 token 即将过期或已过期时重新获取并更新 session 认证信息。
+_add_fs_chinese('LazyLLMFSBase.ensure_token', '''\
+Token 刷新钩子：基类自动管理。
+每次 inject_auth_header / _request 发请求前会调用本方法；当 access token 即将过期或未初始化时，会通过 _do_refresh_token / _do_acquire_without_refresh / _do_oauth_flow 重新获取。
 ''')
-_add_fs_english('LazyLLMFSBase._ensure_token', '''\
-Token refresh hook; subclasses may override. Default implementation is a no-op.
-Called before each _request; subclasses that use expiring access tokens should override to refresh the token and update session auth when needed.
+_add_fs_english('LazyLLMFSBase.ensure_token', '''\
+Token refresh hook; managed by the base class.
+Called before each inject_auth_header / _request; refreshes the token via _do_refresh_token / _do_acquire_without_refresh / _do_oauth_flow when the access token is missing or about to expire.
 ''')
 
 _add_fs_chinese('LazyLLMFSBase._setup_auth', '''\
