@@ -16,9 +16,10 @@ def _is_qwen_multimodal_embed_model(model_name: Optional[str]) -> bool:
     if not model_name:
         return False
     model_name = model_name.lower()
-    return (model_name.endswith('vl-embedding') or
-            'embedding-vision' in model_name or
-            model_name.startswith('multimodal-embedding'))
+    return (model_name.endswith('vl-embedding')
+            or 'embedding-vision' in model_name
+            or model_name.startswith('multimodal-embedding')
+        )
 
 
 def _is_siliconflow_multimodal_embed_model(model_name: Optional[str]) -> bool:
