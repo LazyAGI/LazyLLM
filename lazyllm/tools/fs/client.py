@@ -3,9 +3,12 @@ import re
 import threading
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
+from urllib.parse import quote
 from lazyllm import globals
 
 _PROTOCOL_RE = re.compile(r'^([a-zA-Z][a-zA-Z0-9+\-.]*)(@[^:/]+)?:/(.*)$')
+_FEISHU_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
+_FEISHU_WIKI_PATH_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
 
 
 def _lookup_fs_cls(protocol: str):
@@ -21,6 +24,15 @@ def _lookup_fs_cls(protocol: str):
     return cls
 
 
+def _feishu_needs_wiki(space_id: Optional[str], real_path: str) -> bool:
+    if space_id:
+        return True
+    norm = real_path.lstrip('/')
+    if any(norm.startswith(p) for p in _FEISHU_WIKI_PATH_PREFIXES):
+        return True
+    return bool((globals.config.get('feishu_wiki_space_id') or '').strip())
+
+
 class _FSRouter:
 
     def __init__(self) -> None:
@@ -28,16 +40,26 @@ class _FSRouter:
         self._lock = threading.Lock()
 
     def _parse(self, path: str):
+        if _FEISHU_BARE_URL_RE.match(path):
+            return 'feishu', 'dynamic', '/~link/' + quote(path, safe='')
         m = _PROTOCOL_RE.match(path)
         if not m:
             return 'file', None, path
         protocol = m.group(1).lower()
         at_id = m.group(2)
         rest = '/' + m.group(3)
-        return protocol, (at_id[1:] if at_id else None), rest
+        space_id = at_id[1:] if at_id else None
+        if protocol == 'feishu' and space_id is None:
+            norm = rest.lstrip('/')
+            if any(norm.startswith(p) for p in _FEISHU_WIKI_PATH_PREFIXES):
+                space_id = 'dynamic'
+        return protocol, space_id, rest
 
-    def _get_or_create_fs(self, protocol: str, space_id: Optional[str]) -> Any:
-        key = (protocol, space_id)
+    def _get_or_create_fs(self, protocol: str, space_id: Optional[str], real_path: str = '') -> Any:
+        effective_space = space_id
+        if protocol == 'feishu' and effective_space is None and _feishu_needs_wiki(None, real_path):
+            effective_space = 'dynamic'
+        key = (protocol, effective_space)
         if key not in self._instances:
             with self._lock:
                 if key not in self._instances:
@@ -45,8 +67,8 @@ class _FSRouter:
                     import inspect
                     init_params = inspect.signature(cls.__init__).parameters
                     kwargs: Dict[str, Any] = {'dynamic_auth': True}
-                    if space_id and 'space_id' in init_params:
-                        kwargs['space_id'] = space_id
+                    if effective_space and 'space_id' in init_params:
+                        kwargs['space_id'] = effective_space
                     self._instances[key] = cls(**kwargs)
         return self._instances[key]
 
@@ -56,7 +78,7 @@ class _FSRouter:
             import fsspec.implementations.local as _local_fs
             fs = _local_fs.LocalFileSystem()
             return getattr(fs, method)(real_path, *args, **kwargs)
-        fs = self._get_or_create_fs(protocol, space_id)
+        fs = self._get_or_create_fs(protocol, space_id, real_path)
         return getattr(fs, method)(real_path, *args, **kwargs)
 
     def open(self, path: str, mode: str = 'rb', **kwargs) -> Any:
