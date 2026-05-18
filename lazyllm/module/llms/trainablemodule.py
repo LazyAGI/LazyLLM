@@ -421,9 +421,16 @@ class TrainableModule(UrlModule):
 
         return content, tool_calls
 
+    def _resolve_tools(self):
+        from ...components.prompter.builtinPrompt import _DynamicValue
+        tools = self._tools
+        if isinstance(tools, _DynamicValue):
+            tools = tools.resolve(None, None)
+        return tools or []
+
     def _parse_tools(self, output: str) -> tuple[str, List[Dict]]:
         tool_calls = []
-        tools = {tool['function']['name'] for tool in self._tools}
+        tools = {tool['function']['name'] for tool in self._resolve_tools()}
         lines = output.strip().split('\n')
         content = []
         is_tool_call = False

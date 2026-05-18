@@ -11,9 +11,10 @@ import lazyllm
 from ..client import Git
 from .checkpoint import _ReviewCheckpoint, ReviewStage
 from .pre_analysis import _run_pre_analysis, _pre_round_pr_summary
-from .rounds import _run_four_rounds, infer_usage_scenarios, _rscenario_call_chain, _post_merge_dedup
+from .rounds import _run_review_pipeline, infer_usage_scenarios, _rscenario_call_chain, _post_merge_dedup
 from .poster import _fetch_existing_pr_comments, _post_review_comments, _build_commentable_lines, _filter_commentable
 from .output import write_review_json
+from .report import build_report, write_report
 from .utils import (
     _get_default_llm, _ensure_non_streaming_llm, _get_model_name,
     _get_head_sha_from_pr, _parse_unified_diff, _Progress,
@@ -226,8 +227,8 @@ def review(  # noqa: C901
         if not diff_res.get('success'):
             raise RuntimeError(f'Failed to get PR #{pr_number} diff: {diff_res.get("message", "unknown")}')
         diff_text = diff_res.get('diff', '')
-        if max_diff_chars and len(diff_text) > max_diff_chars:
-            diff_text, truncated_diff = _truncate_diff_at_file_boundary(diff_text, max_diff_chars)
+        # Never truncate diff_text — each round handles oversized content internally
+        # via sliding windows, per-file batching, or skeleton extraction.
         ckpt.save('diff_text', diff_text)
         if head_sha:
             ckpt.save('head_sha', head_sha)
@@ -238,25 +239,11 @@ def review(  # noqa: C901
     prog_main.update(f'diff parsed: {len(hunks)} hunks')
 
     # build diff stats and decide review strategy
-    diff_stats = _compute_diff_stats(diff_text, hunks, truncated_diff, False)
+    diff_stats = _compute_diff_stats(diff_text, hunks, False, False)
     strategy = _decide_review_strategy(diff_stats)
 
-    # build meta warning issues for truncation
+    # no truncation meta warnings — diff is never truncated at the runner level
     meta_warnings: List[Dict[str, Any]] = []
-    if truncated_diff:
-        meta_warnings.append({
-            'type': 'meta',
-            'severity': 'normal',
-            'bug_category': 'maintainability',
-            'path': '',
-            'line': 0,
-            'problem': (
-                f'Review may be incomplete: diff exceeded {max_diff_chars} chars and was truncated '
-                f'at a file boundary. Files beyond the limit were skipped entirely.'
-            ),
-            'suggestion': 'Consider increasing max_diff_chars or splitting the PR.',
-            'source': 'meta',
-        })
 
     llm = _get_default_llm() if llm is None else llm
     llm = _ensure_non_streaming_llm(llm)
@@ -291,27 +278,37 @@ def review(  # noqa: C901
 
     # run lint analysis (independent of LLM rounds)
     lint_issues: List[Dict[str, Any]] = []
+    dep_issues: List[Dict[str, Any]] = []
     if clone_dir and os.path.isdir(clone_dir):
         try:
             from .lint_runner import _run_lint_analysis
             lint_issues = _run_lint_analysis(diff_text, clone_dir)
         except Exception as e:
             lazyllm.LOG.warning(f'Lint analysis failed: {e}')
+        try:
+            from .dep_checker import _run_dep_analysis
+            dep_issues = _run_dep_analysis(diff_text, clone_dir, arch_doc=arch_doc)
+        except Exception as e:
+            lazyllm.LOG.warning(f'Dep analysis failed: {e}')
 
-    # ── RScene + RChain: run in parallel with _run_four_rounds ──
+    # ── RScene + RChain: run in parallel with _run_review_pipeline ──
     # RScene infers usage scenarios; RChain does call-chain + usability review.
-    # Both run concurrently with the main R1→R2→R3 chain.
+    # Both run concurrently with the main RHunkScan→RArchReview→RAgentVerify chain.
     usage_scenarios: List[Dict[str, Any]] = []
     rchain_issues: List[Dict[str, Any]] = []
 
     def _run_rscene_rchain() -> tuple:
         if not clone_dir or not os.path.isdir(clone_dir):
             return [], []
+        # Shared symbol_cache between RScene and RChain: symbols explored by RScene are
+        # immediately available to RChain, avoiding redundant LLM summarisation calls.
+        shared_symbol_cache: Dict[str, Any] = {}
         try:
             scenarios = infer_usage_scenarios(
                 llm, diff_text, arch_doc, pr_summary, clone_dir,
                 ckpt=ckpt, language=language, strategy=strategy,
                 owner_repo=repo, arch_cache_path=arch_cache_path,
+                symbol_cache=shared_symbol_cache,
             )
         except Exception as e:
             lazyllm.LOG.warning(f'RScene failed: {e}')
@@ -323,6 +320,7 @@ def review(  # noqa: C901
                 llm, scenarios, diff_text, arch_doc, pr_summary, clone_dir,
                 ckpt=ckpt, language=language, strategy=strategy,
                 owner_repo=repo, arch_cache_path=arch_cache_path,
+                symbol_cache=shared_symbol_cache,
             )
         except Exception as e:
             lazyllm.LOG.warning(f'RChain failed: {e}')
@@ -333,6 +331,7 @@ def review(  # noqa: C901
     if cached_final is not None:
         final_comments = cached_final
         r3_metrics: Dict[str, Any] = {}
+        _round_report_data: Dict[str, Any] = {}
         _Progress('All review rounds').done('loaded from checkpoint')
         # Still try to load cached RScene/RChain results
         usage_scenarios = ckpt.get('rscene_all') or []
@@ -340,25 +339,27 @@ def review(  # noqa: C901
     else:
         with _cf.ThreadPoolExecutor(max_workers=2) as _pool:
             _fut_main = _pool.submit(
-                _run_four_rounds,
+                _run_review_pipeline,
                 llm, hunks, diff_text, arch_doc, review_spec, pr_summary, ckpt,
                 clone_dir=clone_dir, existing_comments=existing_comments, language=language,
                 agent_instructions=agent_instructions, strategy=strategy,
-                lint_issues=lint_issues, owner_repo=repo, arch_cache_path=arch_cache_path,
+                lint_issues=lint_issues, dep_issues=dep_issues,
+                owner_repo=repo, arch_cache_path=arch_cache_path,
             )
             _fut_rscene = _pool.submit(_run_rscene_rchain)
-            final_comments, r3_metrics = _fut_main.result()
-            usage_scenarios, rchain_issues = _fut_rscene.result()
+        final_comments, ragent_verify_metrics, _round_report_data = _fut_main.result()
+        r3_metrics = ragent_verify_metrics
+        usage_scenarios, rchain_issues = _fut_rscene.result()
         final_comments = meta_warnings + final_comments
         ckpt.save('final_comments', final_comments)
-        ckpt.mark_stage_done(ReviewStage.FINAL)
+        ckpt.mark_stage_done(ReviewStage.RDedupMerge)
 
     # run RCov test coverage check with checkpoint support
     # RCov runs after RScene so it can use inferred scenarios to check coverage
     _rcov_ran = False
     rcov_issues: List[Dict[str, Any]] = []
     _cached_rcov = ckpt.get('rcov_issues')
-    if ckpt.should_use_cache(ReviewStage.RCOV) and _cached_rcov is not None:
+    if ckpt.should_use_cache(ReviewStage.RCov) and _cached_rcov is not None:
         rcov_issues = _cached_rcov if _cached_rcov else []
         lazyllm.LOG.info(f'RCov: loaded {len(rcov_issues)} issue(s) from checkpoint')
     elif clone_dir and os.path.isdir(clone_dir):
@@ -384,7 +385,7 @@ def review(  # noqa: C901
             finally:
                 _exe.shutdown(wait=False)
             ckpt.save('rcov_issues', rcov_issues)
-            ckpt.mark_stage_done(ReviewStage.RCOV)
+            ckpt.mark_stage_done(ReviewStage.RCov)
         except _cf.TimeoutError:
             lazyllm.LOG.warning(f'RCov analysis timed out after {_rcov_timeout}s, skipping')
         except ImportError as e:
@@ -392,7 +393,7 @@ def review(  # noqa: C901
         except Exception as e:
             lazyllm.LOG.error(f'RCov analysis failed unexpectedly: {e}')
 
-    # cross-source dedup/merge: final (R1-R4) + rchain + rcov → unified list
+    # cross-source dedup/merge: final (RHunkScan-RDedupMerge) + rchain + rcov → unified list
     # Uses LLM to detect duplicates and merge complementary issues across sources.
     _cached_merged = ckpt.get('merged_comments')
     if ckpt.should_use_cache(ReviewStage.MERGE) and _cached_merged is not None:
@@ -413,6 +414,8 @@ def review(  # noqa: C901
         shutil.rmtree(clone_subdir, ignore_errors=True)
 
     posted = 0
+    _posted_inline = 0
+    _posted_general = 0
     if post_to_github and head_sha:
         if ckpt.should_use_cache(ReviewStage.UPLOAD):
             _Progress('Upload: posting review comments').done('loaded from checkpoint (already uploaded)')
@@ -440,6 +443,8 @@ def review(  # noqa: C901
                 backend_inst, pr_number, head_sha, postable, model_name,
                 review_body=review_body, ckpt=ckpt, general_comments=general,
             )
+            _posted_inline = len(postable)
+            _posted_general = len(general)
             if upload_all_ok:
                 ckpt.mark_stage_done(ReviewStage.UPLOAD)
             else:
@@ -449,20 +454,21 @@ def review(  # noqa: C901
     stats = _category_stats(all_comments)
     summary = (
         f'PR #{pr_number} "{getattr(pr, "title", "")}" — '
-        f'{n} issue(s) found across review rounds (R1–R4, RCov, lint). '
+        f'{n} issue(s) found across review rounds (RHunkScan–RDedupMerge, RCov, lint). '
         f'{posted} comment(s) posted to GitHub.'
     )
     prog_main.done(summary)
 
     metrics = {
-        'r3_mode': 'skip' if not strategy.enable_r3 else 'mixed',
-        'r3_files_chunk': r3_metrics.get('r3_files_chunk', 0),
-        'r3_files_group': r3_metrics.get('r3_files_group', 0),
-        'r3_files_skipped': r3_metrics.get('r3_files_skipped', 0),
-        'r3_chunks_total': r3_metrics.get('r3_chunks_total', 0),
+        'ragent_verify_mode': 'skip' if not strategy.enable_r3 else 'mixed',
+        'ragent_verify_files_chunk': r3_metrics.get('r3_files_chunk', 0),
+        'ragent_verify_files_group': r3_metrics.get('r3_files_group', 0),
+        'ragent_verify_files_skipped': r3_metrics.get('r3_files_skipped', 0),
+        'ragent_verify_chunks_total': r3_metrics.get('r3_chunks_total', 0),
         'truncated_diff_flag': truncated_diff,
         'truncated_hunks_flag': False,  # hunks are processed in sliding windows; per-hunk truncation is not applied
         'lint_issues_count': len(lint_issues),
+        'dep_issues_count': len(dep_issues),
         'rcov_issues_count': len(rcov_issues) if (_rcov_ran or ckpt.get('rcov_issues') is not None) else None,
         'rcov_ran': _rcov_ran,
     }
@@ -482,4 +488,45 @@ def review(  # noqa: C901
     if output_path:
         write_review_json(result, output_path)
         lazyllm.LOG.info(f'Review result written to {output_path}')
+
+    # ── Generate local Markdown report ──
+    try:
+        _rchain_metrics = ckpt.get('rchain_metrics') or {}
+        _report_path = os.path.join(pr_dir, 'report.md')
+        _report = build_report(
+            pr_identifier=_ckpt_key,
+            repo=repo,
+            pr_title=getattr(pr, 'title', '') or '',
+            source_branch=getattr(pr, 'source_branch', '') or '',
+            target_branch=getattr(pr, 'target_branch', '') or '',
+            model_name=model_name,
+            report_path=_report_path,
+            post_to_github=post_to_github,
+            rhunk_scan_issues=_round_report_data.get('rhunk_scan_issues', []),
+            rarch_review_issues=_round_report_data.get('rarch_review_issues', []),
+            rmod_issues=_round_report_data.get('rmod_issues', []),
+            lint_issues=lint_issues,
+            dep_issues=dep_issues,
+            ragent_verify_output=_round_report_data.get('ragent_verify_issues', []),
+            ragent_verify_discarded_keys=_round_report_data.get('ragent_verify_discarded_keys', set()),
+            ragent_verify_files_skipped=_round_report_data.get('ragent_verify_files_skipped', []),
+            rdedup_merge_input=_round_report_data.get('rdedup_merge_input', []),
+            rdedup_merge_output=_round_report_data.get('rdedup_merge_output', []),
+            rchain_issues=rchain_issues,
+            rcov_issues=rcov_issues,
+            postmerge_input=final_comments + rchain_issues + rcov_issues,
+            postmerge_output=all_comments,
+            final_issues=all_comments,
+            posted_inline=_posted_inline,
+            posted_general=_posted_general,
+            diff_truncated=truncated_diff,
+            rcov_timed_out=not _rcov_ran and (ckpt.get('rcov_issues') is None),
+            rchain_metrics=_rchain_metrics,
+        )
+        write_report(_report)
+        lazyllm.LOG.info(f'Review report written to {_report_path}')
+        result['report_path'] = _report_path
+    except Exception as _report_err:
+        lazyllm.LOG.warning(f'Failed to generate review report: {_report_err}')
+
     return result

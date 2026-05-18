@@ -1,9 +1,10 @@
 from typing import Dict, Union, Any, List, Callable, Optional
 from ...common import LazyLLMRegisterMetaClass
-from lazyllm import LOG
+from lazyllm import LOG, config
 import json5 as json
 from functools import reduce
 import copy
+import inspect
 import re
 
 FC_PROMPT = '''{tool_start_token}tool name (one of {tool_names})
@@ -15,16 +16,34 @@ FC_PROMPT = '''{tool_start_token}tool name (one of {tool_names})
 FC_PROMPT_PLACEHOLDER = '<!lazyllm-fc-prompt!>'
 
 
+class _DynamicValue:
+    def __init__(self, func: Callable):
+        params = inspect.signature(func).parameters
+        self._func = func
+        self._use_query = 'query' in params
+        self._use_history = 'history' in params
+
+    def resolve(self, input, history):
+        kwargs = {}
+        if self._use_query: kwargs['query'] = input
+        if self._use_history: kwargs['history'] = history
+        return self._func(**kwargs)
+
+
+_DEFULT_CONFIG = 'You are an AI-Agent developed by LazyLLM.'
+config.add('disable_system_prompt', bool, False, 'DISABLE_SYSTEM_PROMPT',
+           description='Whether to disable default system prompt.')
+
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     ISA = '<!lazyllm-spliter!>'
     ISE = '</!lazyllm-spliter!>'
 
     def __init__(self, show=False, tools=None, skills=None, history=None, *, enable_system: bool = True):
-        self._set_model_configs(system='You are an AI-Agent developed by LazyLLM.', sos='',
-                                soh='', soa='', eos='', eoh='', eoa='')
+        self._set_model_configs(system=_DEFULT_CONFIG if not config['disable_system_prompt'] else '',
+                                sos='', soh='', soa='', eos='', eoh='', eoa='')
         self._show = show
-        self._tools = tools
-        self._skills = skills or ''
+        self._tools = _DynamicValue(tools) if callable(tools) else tools
+        self._skills = _DynamicValue(skills) if callable(skills) else (skills or '')
         self._pre_hook = None
         self._history = history or []
         self._enable_system = enable_system
@@ -65,6 +84,9 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         for name in ['system', 'sos', 'soh', 'soa', 'eos', 'eoh', 'eoa', 'soe', 'eoe', 'tool_start_token',
                      'tool_end_token', 'tool_args_token']:
             if local[name] is not None: setattr(self, f'_{name}', local[name])
+
+    def _resolve_dynamic(self, value, input, history):
+        return value.resolve(input, history) if isinstance(value, _DynamicValue) else value
 
     def _get_tools(self, tools, *, for_chat_api: bool):
         return tools if for_chat_api else '### Function-call Tools. \n\n' +\
@@ -146,7 +168,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     def _check_values(self, instruction, input, history, tools): pass
 
     # Used for TrainableModule(local deployed)
-    def _generate_prompt_impl(self, instruction, input, user, history, tools, label):
+    def _generate_prompt_impl(self, instruction, input, user, history, tools, label, skills):
         is_tool = False
         if isinstance(input, dict):
             input = input.get('content', '')
@@ -155,15 +177,15 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             is_tool = any(item.get('role') == 'tool' for item in input)
             input = '\n'.join([item.get('content', '') for item in input])
         params = dict(system=self._system, instruction=instruction, input=input, user=user, history=history, tools=tools,
-                      skills=self._skills, sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa,
+                      skills=skills, sos=self._sos, eos=self._eos, soh=self._soh, eoh=self._eoh, soa=self._soa,
                       eoa=self._eoa)
         if is_tool:
             params['soh'] = getattr(self, '_soe', self._soh)
             params['eoh'] = getattr(self, '_eoe', self._eoh)
-        return self._template.format(**params) + (label if label else '')
+        return (self._template.format(**params) + (label if label else '')).lstrip('\n')
 
     # Used for OnlineChatModule
-    def _generate_prompt_dict_impl(self, instruction, input, user, history, tools, label):
+    def _generate_prompt_dict_impl(self, instruction, input, user, history, tools, label, skills):
         if not history: history = []
         if isinstance(input, str):
             history.append({'role': 'user', 'content': input})
@@ -181,13 +203,13 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             history[-1]['content'] = user + history[-1]['content']
 
         if self._enable_system:
-            system_content = '\n\n'.join(p for p in (instruction or self._system, self._skills) if p)
+            system_content = '\n'.join(p for p in (self._system, instruction, skills) if p)
             history.insert(0, {'role': 'system', 'content': system_content})
         return dict(messages=history, tools=tools) if tools else dict(messages=history)
 
     # Used for OnlineChatModule with Anthropic-format API
-    def _generate_prompt_anthropic_impl(self, instruction, input, user, history, tools, label):
-        result = self._generate_prompt_dict_impl(instruction, input, user, history, tools, label)
+    def _generate_prompt_anthropic_impl(self, instruction, input, user, history, tools, label, skills):
+        result = self._generate_prompt_dict_impl(instruction, input, user, history, tools, label, skills)
         messages = result.get('messages', [])
         system_text = None
         non_system = []
@@ -215,7 +237,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             pattern = re.compile(r'%s(.*)%s' % (LazyLLMPrompterBase.ISA, LazyLLMPrompterBase.ISE), re.DOTALL)
             ret = re.split(pattern, instruction)
             system_instruction = ret[0]
-            user_instruction = ret[1] + (ret[2] if len(ret) > 2 else '')
+            user_instruction = ret[1]
 
         return system_instruction, user_instruction
 
@@ -231,7 +253,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         input = copy.deepcopy(input)
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
-        tools = tools or self._tools
+        tools = self._resolve_dynamic(tools or self._tools, input, history)
+        skills = self._resolve_dynamic(self._skills, input, history)
         for_chat_api = bool(format)
         instruction, input = self._get_instruction_and_input(input, for_chat_api=for_chat_api, tools=tools)
         history = self._get_histories(history, for_chat_api=for_chat_api)
@@ -244,7 +267,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             func = self._generate_prompt_dict_impl
         else:
             func = self._generate_prompt_impl
-        result = func(instruction, input, user_instruction, history, tools, label)
+        result = func(instruction, input, user_instruction, history, tools, label, skills)
         if self._show or show: LOG.info(result)
         return result
 

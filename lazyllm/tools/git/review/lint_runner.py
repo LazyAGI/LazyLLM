@@ -29,10 +29,23 @@ _SEVERITY_PATTERNS = {
 }
 
 
+_warned_missing_tools: set = set()
+
+
 def _find_lint_tool(ext: str) -> str:
     for tool in _LINT_TOOLS.get(ext, []):
         if shutil.which(tool):
             return tool
+    candidates = _LINT_TOOLS.get(ext, [])
+    if candidates:
+        for tool in candidates:
+            if tool not in _warned_missing_tools:
+                lazyllm.LOG.warning(
+                    f'Lint tool "{tool}" not found in PATH for .{ext} files; '
+                    f'lint analysis will be skipped for this file type. '
+                    f'Install with: pip install {tool} (or equivalent).'
+                )
+                _warned_missing_tools.add(tool)
     return ''
 
 

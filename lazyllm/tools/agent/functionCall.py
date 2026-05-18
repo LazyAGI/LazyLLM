@@ -85,7 +85,7 @@ class FunctionCall(ModuleBase):
         prompt = _prompt or FC_PROMPT
         self._prompter = ChatPrompter(
             instruction={'system': prompt, 'user': ''},
-            tools=self._tools_manager.tools_description,
+            tools=lambda: self._tools_manager.tools_description,
             skills=self._skill_manager.build_prompt() if self._skill_manager else '',
         )
         self._llm = llm.share(

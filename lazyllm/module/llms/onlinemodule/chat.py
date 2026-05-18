@@ -73,4 +73,7 @@ class OnlineChatModule(_DynamicSourceRouterMixin, LLMBase, metaclass=_ChatModule
             'base_url': self._base_url, 'model': self._model_name, 'stream': self._stream, 'type': self._type,
             'static_params': self._static_params, 'skip_auth': skip_auth, 'api_key': self._api_key,
             'return_trace': self._return_trace, **self._kwargs}
-        return getattr(lazyllm.online.chat, source)(**params)
+        supplier = getattr(lazyllm.online.chat, source)(**params)
+        supplier.prompt(getattr(self, '_prompt', None))
+        supplier.formatter(getattr(self, '_formatter', None))
+        return supplier
