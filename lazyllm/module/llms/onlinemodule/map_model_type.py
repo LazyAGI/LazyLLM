@@ -444,17 +444,18 @@ MODEL_MAPPING = {
     'deepseek-v4-pro': 'llm',
 
     # ===== SiliconFlow =====
+    'qwen/qwen3-vl-embedding-8b': 'cross_modal_embed',
     'qwen/qwen-image-edit': 'image_editing',
     'qwen/qwen-image-edit-2509': 'image_editing',
 }
 _TOKEN_MAP = {
+    'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision', 'vl-embedding'),
     'embed': ('embedding', 'embed'),
     'stt': ('whisper', 'paraformer', 'asr', 'stt', 'transcribe'),
     'tts': ('tts', 'cosyvoice', 'nova-tts'),
     'vlm': ('qwen-vl', 'vl', 'vision', 'caption', 'omni', 'vlm', 'seed'),
     'ocr': ('ocr',),
     'rerank': ('rerank',),
-    'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision'),
     'sd': ('dall', 'wan', 'sora', 'image', 'video', 't2i', 't2v'),
     'image_editing': ('image-edit', 'seededit', 'i2i', 'seedream-3', 'seedream-4'),
 }

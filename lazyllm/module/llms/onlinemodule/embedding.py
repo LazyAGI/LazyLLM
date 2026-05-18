@@ -6,8 +6,23 @@ from lazyllm.common.bind import _MetaBind
 from .base import OnlineEmbeddingModuleBase
 from .base.utils import select_source_with_default_key, resolve_online_params
 from .supplier.doubao import DoubaoEmbed, DoubaoMultimodalEmbed
+from .supplier.qwen import QwenMultimodalEmbed
+from .supplier.siliconflow import SiliconFlowMultimodalEmbed
 from .map_model_type import get_model_type
 from .dynamic_router import _DynamicSourceRouterMixin, dynamic_model_config_context
+
+
+def _is_qwen_multimodal_embed_model(model_name: Optional[str]) -> bool:
+    if not model_name:
+        return False
+    model_name = model_name.lower()
+    return (model_name.endswith('vl-embedding') or
+            'embedding-vision' in model_name or
+            model_name.startswith('multimodal-embedding'))
+
+
+def _is_siliconflow_multimodal_embed_model(model_name: Optional[str]) -> bool:
+    return bool(model_name and model_name.lower() == 'qwen/qwen3-vl-embedding-8b')
 
 
 def dynamic_embed_config(
@@ -36,6 +51,8 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
     @staticmethod
     def _resolve_type_name(type_name: Optional[str], embed_model_name: Optional[str]) -> str:
         if type_name is not None:
+            if type_name == LLMType.CROSS_MODAL_EMBED:
+                return 'embed'
             return type_name
         resolved = get_model_type(embed_model_name) if embed_model_name else 'embed'
         return resolved if resolved in ('embed', 'rerank') else 'embed'
@@ -45,6 +62,10 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
         if type_name == 'embed':
             if source == 'doubao' and embed_model_name and embed_model_name.startswith('doubao-embedding-vision'):
                 return DoubaoMultimodalEmbed(**params)
+            if source == 'qwen' and _is_qwen_multimodal_embed_model(embed_model_name):
+                return QwenMultimodalEmbed(**params)
+            if source == 'siliconflow' and _is_siliconflow_multimodal_embed_model(embed_model_name):
+                return SiliconFlowMultimodalEmbed(**params)
             if source == 'doubao':
                 return DoubaoEmbed(**params)
             return getattr(lazyllm.online.embed, source)(**params)

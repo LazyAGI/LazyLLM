@@ -19,7 +19,7 @@ special_models = {
     'ocr': {},
     'embed': {'embeddinggemma-300m', 'all-roberta-large-v1'},
     'rerank': {'gte-multilingual-reranker-base', 'gte-rerank-v2'},
-    'cross_modal_embed': {'vlm2vec-full', 'siglip-base-patch16-224'},
+    'cross_modal_embed': {'vlm2vec-full', 'siglip-base-patch16-224', 'qwen3-vl-embedding-8b'},
 }
 
 def special_model_rule(model_name: str) -> Optional[str]:
