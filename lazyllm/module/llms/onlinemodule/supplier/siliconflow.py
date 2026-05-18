@@ -57,6 +57,9 @@ class SiliconFlowMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
     def __init__(self, embed_url: Optional[str] = None, embed_model_name: Optional[str] = None,
                  api_key: str = None, batch_size: int = 1, **kw):
         kw.pop('type', None)
+        if batch_size != 1:
+            LOG.warning('SiliconFlowMultimodalEmbed does not support batch_size > 1; resetting batch_size to 1.')
+            batch_size = 1
         embed_url = embed_url or 'https://api.siliconflow.cn/v1/embeddings'
         embed_model_name = embed_model_name or SiliconFlowMultimodalEmbed.MODEL_NAME
         super().__init__(embed_url, api_key or self._default_api_key(),
@@ -87,10 +90,7 @@ class SiliconFlowMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
             if len(input) == 0:
                 raise ValueError('Input list cannot be empty')
             if any(isinstance(item, list) for item in input):
-                LOG.warning('SiliconFlowMultimodalEmbed expects a 1D input list; using the first item.')
-                input = input[0]
-                if not isinstance(input, list) or len(input) == 0:
-                    raise ValueError('Input list cannot be empty')
+                raise ValueError('SiliconFlowMultimodalEmbed expects a 1D input list')
             if not all(isinstance(item, (str, dict)) for item in input):
                 raise ValueError('Input list must contain strings or dictionaries')
         else:

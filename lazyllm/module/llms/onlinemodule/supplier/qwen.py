@@ -355,6 +355,9 @@ class QwenMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
                  **kw):
         _ensure_dashscope_urls_initialized()
         kw.pop('type', None)
+        if batch_size != 1:
+            LOG.warning('QwenMultimodalEmbed does not support batch_size > 1; resetting batch_size to 1.')
+            batch_size = 1
         if embed_url and embed_url != _DASHSCOPE_DEFAULT_HTTP_URL:
             LOG.warning('QwenMultimodalEmbed ignores `embed_url`; use `set_dashscope_urls` instead.')
         embed_url = embed_url or _DASHSCOPE_DEFAULT_HTTP_URL
@@ -376,10 +379,7 @@ class QwenMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
             if len(input) == 0:
                 raise ValueError('Input list cannot be empty')
             if any(isinstance(item, list) for item in input):
-                LOG.warning('QwenMultimodalEmbed expects a 1D input list; using the first item.')
-                input = input[0]
-                if not isinstance(input, list) or len(input) == 0:
-                    raise ValueError('Input list cannot be empty')
+                raise ValueError('QwenMultimodalEmbed expects a 1D input list of dictionaries')
             if not all(isinstance(item, dict) for item in input):
                 raise ValueError('Input list must contain dictionaries')
             return input
