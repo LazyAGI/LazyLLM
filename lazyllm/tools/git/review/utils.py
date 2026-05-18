@@ -3,6 +3,7 @@ import json
 import re
 import sys
 import time
+import traceback as _tb
 from typing import Any, Dict, List, Optional, Tuple
 
 import lazyllm
@@ -302,7 +303,18 @@ def _llm_call_with_retry(llm: Any, prompt: str, parse_json: bool = True) -> Any:
             return [parsed] if isinstance(parsed, dict) else []
         # JSON parse failed — could be a truncated response; retry if budget allows
         if delay is None:
-            lazyllm.LOG.warning(f'JSON parse/repair failed after all retries. Raw snippet: {raw_response[:300]}')
+            caller_frames = _tb.format_stack()
+            # Summarise the 3 most-relevant frames (skip this file's own frames)
+            caller_summary = ''.join(
+                f for f in caller_frames[-6:-1]
+                if 'utils.py' not in f
+            )[:400]
+            lazyllm.LOG.warning(
+                f'JSON parse/repair failed after all retries.\n'
+                f'  Prompt head: {prompt[:200]!r}\n'
+                f'  Raw snippet: {raw_response[:300]!r}\n'
+                f'  Caller:\n{caller_summary}'
+            )
             return []
         lazyllm.LOG.warning(
             f'JSON parse failed (attempt {attempt + 1}/{len(delays) - 1}), retrying. '
@@ -423,7 +435,20 @@ def _normalize_comment_item(
     item: Dict[str, Any], new_start: int = 0, end_line: Optional[int] = None,
     default_path: str = '', default_category: str = 'logic',
     allow_null_line: bool = False,
+    demote_on_out_of_range: bool = False,
 ) -> Optional[Dict[str, Any]]:
+    '''Normalize a raw LLM issue dict into a clean comment dict.
+
+    Args:
+        demote_on_out_of_range: When True, issues whose ``line`` falls outside the diff
+            range are *demoted* to ``line=None`` (file-level general comments) instead of
+            being silently discarded.  Set this to True for architectural / holistic stages
+            (R2, RMod, dep_check) where an issue may legitimately reference code that is not
+            part of the current diff.
+    '''
+    if not isinstance(item, dict):
+        lazyllm.LOG.info(f'[NORMALIZE_SKIP] non-dict item (type={type(item).__name__}): {str(item)[:200]}')
+        return None
     # LLM sometimes outputs 'description' instead of 'problem' (especially in R4)
     if item.get('problem') is None and item.get('description') is not None:
         item = dict(item, problem=item['description'])
@@ -432,7 +457,14 @@ def _normalize_comment_item(
         return None
     line = _normalize_line(item.get('line'), new_start, end_line, allow_null_line, str(item)[:200])
     if line is _SKIP:
-        return None
+        if demote_on_out_of_range:
+            # Demote to a file-level general comment rather than discarding.
+            line = None
+            lazyllm.LOG.info(
+                f'[NORMALIZE_DEMOTE] line out of range, demoted to general comment: {str(item)[:200]}'
+            )
+        else:
+            return None
     category = item.get('bug_category') or default_category
     if category not in _VALID_CATEGORIES:
         category = default_category
@@ -471,3 +503,38 @@ def _build_review_body(
         f'---\n'
         f'auto reviewed by BOT ({model_name})'
     )
+
+
+# ---------------------------------------------------------------------------
+# Safe template formatting (moved here from rounds/common to avoid circular imports)
+# ---------------------------------------------------------------------------
+
+_LBRACE_SENTINEL = '\x00__LB__\x00'
+_RBRACE_SENTINEL = '\x00__RB__\x00'
+
+
+def _escape_braces(text: str) -> str:
+    '''Escape curly braces in user/code content so str.format() won't interpret them.'''
+    return text.replace('{', '{{').replace('}', '}}')
+
+
+def _safe_format(template: str, **kwargs: Any) -> str:
+    '''Template substitution immune to braces in parameter values.
+
+    Strategy:
+    1. Protect template literal braces ({{ / }}) with sentinels.
+    2. Replace placeholders via str.replace — values can contain {{ }} safely.
+       Any sentinel strings that appear inside a value are pre-escaped so they
+       are not accidentally expanded during the final restore step.
+    3. Restore sentinels back to literal { / }.
+    '''
+    protected = template.replace('{{', _LBRACE_SENTINEL).replace('}}', _RBRACE_SENTINEL)
+    for key, val in kwargs.items():
+        placeholder = '{' + key + '}'
+        safe_val = (
+            str(val)
+            .replace(_LBRACE_SENTINEL, '{')
+            .replace(_RBRACE_SENTINEL, '}')
+        )
+        protected = protected.replace(placeholder, safe_val)
+    return protected.replace(_LBRACE_SENTINEL, '{').replace(_RBRACE_SENTINEL, '}')

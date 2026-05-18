@@ -20,8 +20,12 @@ TOTAL_CALL_BUDGET = 60
 # R3 throttle limits (agent verification round)
 R3_MAX_FILES = 20
 R3_MAX_CHUNKS_PER_FILE = 3
-# Hard upper bound on chunks per file regardless of strategy (prevents runaway LLM calls)
+# Hard upper bound on chunks per file regardless of strategy (prevents runaway LLM calls).
+# Only triggers when *both* chunk count > R3_MAX_CHUNKS_HARD *and* effective diff lines >
+# R3_MAX_CHUNKS_HARD_LINES. Files with many small hunks (e.g. lots of 2-line tweaks) are
+# processed in full even when chunk count exceeds the hard limit.
 R3_MAX_CHUNKS_HARD = 8
+R3_MAX_CHUNKS_HARD_LINES = 800
 
 # R3 unit diff budget: max combined diff chars per review unit (anchor + absorbed small files)
 R3_UNIT_DIFF_BUDGET = 40000
@@ -30,6 +34,7 @@ R3_UNIT_DIFF_BUDGET = 40000
 R2_MAX_FILES = R3_MAX_FILES
 R2_MAX_CHUNKS_PER_FILE = R3_MAX_CHUNKS_PER_FILE
 R2_MAX_CHUNKS_HARD = R3_MAX_CHUNKS_HARD
+R2_MAX_CHUNKS_HARD_LINES = R3_MAX_CHUNKS_HARD_LINES
 R2_UNIT_DIFF_BUDGET = R3_UNIT_DIFF_BUDGET
 
 # R1 window limits: split large hunk lists into windows to avoid truncation
@@ -90,12 +95,25 @@ def clip_text(text: str, max_chars: int) -> str:
     return text[:max_chars] + '\n...(truncated)'
 
 
-def clip_diff_by_hunk_budget(diff_text: str, max_chars: int) -> str:
+def clip_diff_by_hunk_budget(diff_text: str, max_chars: int) -> Tuple[str, List[str]]:
+    '''Clip a unified diff to stay within *max_chars*.
+
+    Returns:
+        (clipped_diff, dropped_files) where *dropped_files* is the list of file
+        paths whose diffs were entirely omitted due to the budget.  Callers should
+        log a warning and record these in metrics / meta_warnings when non-empty.
+    '''
     if len(diff_text) <= max_chars:
-        return diff_text
+        return diff_text, []
+
+    # Identify which files are present in the full diff so we can report the ones dropped.
+    _file_header_re = re.compile(r'^diff --git a/.+ b/(.+)$', re.MULTILINE)
+    all_files: List[str] = _file_header_re.findall(diff_text)
+
     parts = diff_text.split('@@')
     if len(parts) <= 1:
-        return diff_text[:max_chars]
+        return diff_text[:max_chars], all_files
+
     out: List[str] = []
     cur = 0
     for i, p in enumerate(parts):
@@ -104,7 +122,13 @@ def clip_diff_by_hunk_budget(diff_text: str, max_chars: int) -> str:
             break
         out.append(block)
         cur += len(block)
-    return ''.join(out) if out else diff_text[:max_chars]
+    clipped = ''.join(out) if out else diff_text[:max_chars]
+
+    # Determine which files survived the clip.
+    kept_files: List[str] = _file_header_re.findall(clipped)
+    kept_set = set(kept_files)
+    dropped_files = [f for f in all_files if f not in kept_set]
+    return clipped, dropped_files
 
 
 def compress_diff_for_agent_heuristic(diff_text: str, max_chars: int) -> str:
