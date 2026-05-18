@@ -55,11 +55,10 @@ class SiliconFlowMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
     MODEL_NAME = 'Qwen/Qwen3-VL-Embedding-8B'
 
     def __init__(self, embed_url: Optional[str] = None, embed_model_name: Optional[str] = None,
-                 api_key: str = None, batch_size: int = 1, dimensions: Optional[int] = None, **kw):
+                 api_key: str = None, batch_size: int = 1, **kw):
         kw.pop('type', None)
         embed_url = embed_url or 'https://api.siliconflow.cn/v1/embeddings'
         embed_model_name = embed_model_name or SiliconFlowMultimodalEmbed.MODEL_NAME
-        self._dimensions = dimensions
         super().__init__(embed_url, api_key or self._default_api_key(),
                          embed_model_name, batch_size=batch_size, **kw)
 
@@ -97,8 +96,6 @@ class SiliconFlowMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
             'input': input,
             'model': self._embed_model_name
         }
-        if self._dimensions is not None:
-            json_data['dimensions'] = self._dimensions
         if len(kwargs) > 0:
             json_data.update(kwargs)
         return json_data
