@@ -375,6 +375,11 @@ class QwenMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
         if isinstance(input, list):
             if len(input) == 0:
                 raise ValueError('Input list cannot be empty')
+            if any(isinstance(item, list) for item in input):
+                LOG.warning('QwenMultimodalEmbed expects a 1D input list; using the first item.')
+                input = input[0]
+                if not isinstance(input, list) or len(input) == 0:
+                    raise ValueError('Input list cannot be empty')
             if not all(isinstance(item, dict) for item in input):
                 raise ValueError('Input list must contain dictionaries')
             return input
