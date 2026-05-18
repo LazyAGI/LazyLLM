@@ -1,6 +1,6 @@
 from .logger import LOG
 from .common import package, kwargs, arguments, LazyLLMCMD, timeout, final, ReadOnlyWrapper, DynamicDescriptor, override
-from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensitiveDict, retry
+from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensitiveDict, retry, retry_transient
 from .common import ReprRule, make_repr, modify_repr, is_valid_url, is_valid_path, SingletonMeta, SingletonABCMeta
 from .common import once_flag, call_once, once_wrapper, singleton, reset_on_pickle, Finalizer, TempPathGenerator
 from .inspection import _get_callsite
@@ -60,6 +60,7 @@ __all__ = [
     'redis_client',
     'TempPathGenerator',
     'retry',
+    'retry_transient',
 
     # exception
     '_trim_traceback',

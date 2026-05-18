@@ -550,3 +550,62 @@ def retry(func: Optional[Callable] = None, *, stop_after_attempt: Optional[int] 
             raise last_exc
         return wrapper
     return decorator(func) if callable(func) else decorator
+
+
+def retry_transient(func=None, *, max_retries=3, base_delay=2.0, log_prefix='', on_retry=None):
+    '''Retry on transient network/HTTP errors with exponential backoff.
+
+    Can be used as a decorator or as a direct callable wrapper.
+
+    Decorator usage::
+
+        @retry_transient(max_retries=3, base_delay=2.0)
+        def my_func():
+            ...
+
+    Direct call usage::
+
+        result = retry_transient(lambda: do_something(), log_prefix='[MyModule] ')
+
+    Args:
+        func: Callable to wrap. If provided, executes immediately.
+        max_retries: Maximum number of retries (default 3).
+        base_delay: Base seconds for exponential backoff. Delay = base_delay ** attempt (default 2.0).
+        log_prefix: Prefix string for warning logs.
+        on_retry: Optional callback(attempt, exception) invoked before each retry sleep.
+    '''
+    _transient_tokens = (
+        'Connection', 'IncompleteRead', 'Timeout', 'RemoteDisconnected',
+        'ConnectionError', 'ReadTimeout', 'timeout', 'SSLEOFError',
+        'SSLError', 'ProtocolError', 'ChunkedEncodingError',
+        'Too Many Requests', 'Service Unavailable', 'Internal Server Error',
+        'Bad Gateway', 'rate limit', 'Max retries exceeded',
+    )
+
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            from .logger import LOG
+            last_exc = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    last_exc = e
+                    if not any(t.lower() in str(e).lower() or t.lower() in type(e).__name__.lower()
+                               for t in _transient_tokens):
+                        raise
+                    if attempt >= max_retries:
+                        break
+                    delay = base_delay ** (attempt + 1)
+                    LOG.warning(f'{log_prefix}transient error (attempt {attempt + 1}/{max_retries + 1}), '
+                                f'retrying in {delay:.1f}s: {e}')
+                    if on_retry:
+                        on_retry(attempt + 1, e)
+                    time.sleep(delay)
+            raise last_exc
+        return wrapper
+
+    if func is not None:
+        return decorator(func)()
+    return decorator

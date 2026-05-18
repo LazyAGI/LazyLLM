@@ -6,11 +6,14 @@ import zipfile
 import requests
 import time
 
+from concurrent.futures import as_completed
+from lazyllm.common.threading import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Callable
 from typing_extensions import override
 
 import lazyllm
+from lazyllm.common import retry_transient
 from lazyllm.tools.http_request import post_sync, get_sync
 from lazyllm import LOG
 
@@ -26,7 +29,7 @@ lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='T
 
 
 class MineruPDFReader(_OcrReaderBase):
-    def __init__(self, url: str = 'https://mineru.net/api/v4/extract/task',
+    def __init__(self,
                  backend: str = 'hybrid-auto-engine',
                  upload_mode: bool = False,
                  extract_table: bool = True,
@@ -39,14 +42,13 @@ class MineruPDFReader(_OcrReaderBase):
                  dropped_types: Optional[Set[str]] = None,
                  patch_applied: bool = False,
                  **kwargs):
-        super().__init__(url=url,
-                         dropped_types=dropped_types or {
-                             'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
-                         return_trace=return_trace,
-                         post_func=post_func,
-                         image_cache_dir=kwargs.pop('image_cache_dir', os.path.join(
-                             lazyllm.config['home'], 'mineru_cache')),
-                         **kwargs)
+        super().__init__(dropped_types=dropped_types or {
+            'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
+            return_trace=return_trace,
+            post_func=post_func,
+            image_cache_dir=kwargs.pop('image_cache_dir', os.path.join(
+                lazyllm.config['home'], 'mineru_cache')),
+            **kwargs)
         self._backend = backend
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
@@ -54,10 +56,9 @@ class MineruPDFReader(_OcrReaderBase):
         self._api_key = lazyllm.config['mineru_api_key']
 
     @override
-    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True,
-                   **kwargs) -> List['DocNode']:
-        file_path = (file if isinstance(file, str) and file.startswith(('http://', 'https://'))
-                     else Path(file))
+    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True
+                   ) -> List['DocNode']:
+        file_path = Path(file)
         if self._service_variant == ServiceVariant.OFFLINE:
             response_text = self._fetch_sync(file_path, use_cache)
             task_dir = None
@@ -66,7 +67,8 @@ class MineruPDFReader(_OcrReaderBase):
         merged_info = dict(extra_info) if extra_info else {}
         if task_dir is not None:
             merged_info['image_cache_dir'] = str(task_dir)
-        return self._build_nodes_from_response(response_text, file_path, merged_info)
+        nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
+        return nodes
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
         if self._patch_applied:
@@ -99,21 +101,61 @@ class MineruPDFReader(_OcrReaderBase):
         response = post_sync(self._url, json_payload=payload, timeout=self._timeout)
         return response.text
 
-    def _fetch_async(self, file, use_cache: bool):
+    def _fetch_async(self, file, use_cache: bool = True):
         file_str = str(file)
+        splits = self._split_large_pdf(file_str)
 
-        if file_str.startswith(('http://', 'https://')):
-            return self._fetch_async_by_url(file_str)
-        return self._fetch_async_by_upload(file_str)
+        if len(splits) == 1:
+            return retry_transient(
+                lambda: self._fetch_async_by_upload(splits[0][0]),
+                log_prefix=f'[MineruPDFReader] {os.path.basename(file_str)} ')
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=min(len(splits), 5)) as executor:
+            futures = {
+                executor.submit(
+                    lambda sp=sub_path: retry_transient(
+                        lambda: self._fetch_async_by_upload(sp),
+                        log_prefix=f'[MineruPDFReader] {os.path.basename(sp)} '),
+                ): start_page
+                for sub_path, start_page in splits
+            }
+            for future in as_completed(futures):
+                start_page = futures[future]
+                results[start_page] = future.result()
+
+        return self._merge_split_results(results)
+
+    def _merge_split_results(self, results: dict):
+        sorted_pages = sorted(results.keys())
+        all_content = []
+        first_task_dir = None
+
+        for start_page in sorted_pages:
+            json_str, task_dir = results[start_page]
+            if first_task_dir is None:
+                first_task_dir = task_dir
+            content = json.loads(json_str)
+            items = content
+
+            for item in items:
+                if 'page_idx' in item:
+                    item['page_idx'] += start_page
+                all_content.append(item)
+
+        merged_json = json.dumps(all_content)
+
+        return merged_json, first_task_dir
 
     def _fetch_async_by_upload(self, file_path: str):
         '''Upload a local file via batch presigned URL and fetch result.'''
+        fname = os.path.basename(file_path)
 
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self._api_key}'}
 
         # Step 1: Request presigned upload URL
         payload = {
-            'files': [{'name': os.path.basename(file_path)}],
+            'files': [{'name': fname}],
             'model_version': 'vlm',
         }
         resp = post_sync(
@@ -153,26 +195,6 @@ class MineruPDFReader(_OcrReaderBase):
 
         raise TimeoutError('[MineruPDFReader] Batch polling timed out')
 
-    def _fetch_async_by_url(self, file_url: str):
-        '''Submit a remote URL for extraction and fetch result.'''
-        payload = {
-            'return_md': True,
-            'return_content_list': True,
-            'model_version': 'vlm',
-            'url': file_url,
-        }
-        result = post_async(
-            submit_url=self._url,
-            status_url=self._url.rstrip('/') + '/{task_id}',
-            json_payload=payload,
-            headers={'Authorization': f'Bearer {self._api_key}'},
-            timeout=self._timeout,
-            result_extractor=lambda resp: resp.json().get('data', {}).get('full_zip_url'),
-        )
-        zip_resp = requests.get(result, timeout=self._timeout or 120)
-        zip_resp.raise_for_status()
-        return self._extract_content_from_zip(zip_resp.content)
-
     def _extract_content_from_zip(self, zip_bytes: bytes):
         task_dir = self._image_cache_dir / str(uuid.uuid4())
         task_dir.mkdir(parents=True, exist_ok=True)
@@ -197,11 +219,7 @@ class MineruPDFReader(_OcrReaderBase):
     def _adapt_json_to_IR(self, raw) -> List[Block]:
         # Online API (zip extraction) returns a list directly.
         # Patch-deployed local server returns {'result': [{'content_list': [...]}]}.
-        # Prefer structural detection over the patch_applied flag so that
-        # online-API responses are handled correctly regardless of configuration.
-        if isinstance(raw, list):
-            content_list = raw
-        elif self._patch_applied and isinstance(raw, dict):
+        if self._service_variant == ServiceVariant.OFFLINE and self._patch_applied:
             content_list = raw['result'][0]['content_list']
         else:
             content_list = raw
@@ -210,12 +228,13 @@ class MineruPDFReader(_OcrReaderBase):
         for item in content_list:
             block = self._adapt_one(item)
             if block is not None:
-                if self._patch_applied and 'lines' in item:
+                if self._service_variant == ServiceVariant.OFFLINE \
+                   and self._patch_applied and 'lines' in item:
                     block.lines = self._normalize_content(item['lines'])
                 blocks.append(block)
         return blocks
 
-    def _normalize_content(self, content) -> List[str]:
+    def _normalize_content(self, content) -> List:
         if isinstance(content, str):
             return [content.encode('utf-8', 'replace').decode('utf-8')]
         elif isinstance(content, list):
@@ -224,7 +243,13 @@ class MineruPDFReader(_OcrReaderBase):
                 if isinstance(item, str):
                     result.append(item.encode('utf-8', 'replace').decode('utf-8'))
                 elif isinstance(item, dict):
-                    result.append(item.get('content', '').encode('utf-8', 'replace').decode('utf-8'))
+                    normalized = dict(item)
+                    if 'content' in normalized and isinstance(normalized['content'], str):
+                        normalized['content'] = normalized['content'].encode(
+                            'utf-8', 'replace').decode('utf-8')
+                    result.append(normalized)
+                else:
+                    result.append(item)
             return result
         raise TypeError(f'Not supported type: {type(content)}.')
 

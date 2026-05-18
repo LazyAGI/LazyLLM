@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 import lazyllm
 from lazyllm import config
-from lazyllm.common import override
+from lazyllm.common import override, retry_transient
 from lazyllm.thirdparty import tarfile
 
 from .doc_node import DocNode, MetadataMode, ImageDocNode
@@ -197,7 +197,17 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
                              f'invalid embedding at index {idx}: empty {type(vec).__name__}')
 
     def _process_key(k: str, knodes: List[DocNode]):
-        try:
+        max_retries = 3
+
+        def _reset_embed_state(_attempt, _exc):
+            for n in knodes:
+                if k not in n.embedding_state:
+                    n.embedding_state.add(k)
+
+        @retry_transient(max_retries=max_retries, base_delay=2.0,
+                         log_prefix=f'[LazyLLM - parallel_do_embedding][{k}] ',
+                         on_retry=_reset_embed_state)
+        def _do_embed():
             fn = embed[k]
             if _check_batch(fn) and not any(isinstance(n, ImageDocNode) for n in knodes):
                 texts = [n.get_text(MetadataMode.EMBED) for n in knodes]
@@ -218,13 +228,16 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
                     futs = [ex2.submit(n.do_embedding, {k: fn}) for n in knodes]
                     for fut in as_completed(futs):
                         fut.result()
+
+        try:
+            _do_embed()
         except Exception as e:
-            lazyllm.LOG.error(f'[LazyLLM - parallel_do_embedding][{k}] error: {e}')
+            lazyllm.LOG.error(f'[LazyLLM - parallel_do_embedding][{k}] error after {max_retries + 1} attempts: {e}')
             for n in knodes:
                 if k in n.embedding_state:
                     with n._lock:
                         n.embedding_state.remove(k)
-            raise e
+            raise
 
     with ThreadPoolExecutor(max_workers=min(max_workers, len(tasks_by_key))) as ex:
         futs = [ex.submit(_process_key, k, k_nodes) for k, k_nodes in tasks_by_key.items()]
