@@ -1,13 +1,14 @@
+import os
 import requests
 from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
-    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase,
-    LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
+    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
+    LazyLLMOnlineRerankModuleBase, LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
 )
 from lazyllm.components.formatter import encode_query_with_filepaths
-from lazyllm.components.utils.file_operate import bytes_to_file
+from lazyllm.components.utils.file_operate import bytes_to_file, _image_to_base64
 from ..fileHandler import FileHandlerBase
 from lazyllm import LOG
 
@@ -48,6 +49,70 @@ class SiliconFlowEmbed(LazyLLMOnlineEmbedModuleBase):
         embed_model_name = embed_model_name or 'BAAI/bge-large-zh-v1.5'
         super().__init__(embed_url, api_key or self._default_api_key(),
                          embed_model_name, batch_size=batch_size, **kw)
+
+
+class SiliconFlowMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
+    MODEL_NAME = 'Qwen/Qwen3-VL-Embedding-8B'
+
+    def __init__(self, embed_url: Optional[str] = None, embed_model_name: Optional[str] = None,
+                 api_key: str = None, batch_size: int = 1, **kw):
+        kw.pop('type', None)
+        if batch_size != 1:
+            LOG.warning('SiliconFlowMultimodalEmbed does not support batch_size > 1; resetting batch_size to 1.')
+            batch_size = 1
+        embed_url = embed_url or 'https://api.siliconflow.cn/v1/embeddings'
+        embed_model_name = embed_model_name or SiliconFlowMultimodalEmbed.MODEL_NAME
+        super().__init__(embed_url, api_key or self._default_api_key(),
+                         embed_model_name, batch_size=batch_size, **kw)
+
+    @staticmethod
+    def _format_image(image: str) -> str:
+        if image.startswith(('http://', 'https://', 'data:')):
+            return image
+        if not os.path.exists(image):
+            return image
+        image_base64, mime = _image_to_base64(image)
+        if not image_base64 or not mime:
+            raise ValueError(f'Unsupported image file: {image}')
+        return f'data:{mime};base64,{image_base64}'
+
+    @classmethod
+    def _format_input_item(cls, item: Union[str, Dict]) -> Union[str, Dict]:
+        if isinstance(item, dict) and 'image' in item:
+            item = item.copy()
+            item['image'] = cls._format_image(item['image'])
+        return item
+
+    def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict:
+        if isinstance(input, str):
+            input = [input]
+        elif isinstance(input, list):
+            if len(input) == 0:
+                raise ValueError('Input list cannot be empty')
+            if any(isinstance(item, list) for item in input):
+                raise ValueError('SiliconFlowMultimodalEmbed expects a 1D input list')
+            if not all(isinstance(item, (str, dict)) for item in input):
+                raise ValueError('Input list must contain strings or dictionaries')
+        else:
+            raise ValueError('Input must be either a string or a list')
+        input = [self._format_input_item(item) for item in input]
+
+        json_data = {
+            'input': input,
+            'model': self._embed_model_name
+        }
+        if len(kwargs) > 0:
+            json_data.update(kwargs)
+        return json_data
+
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
+        data = response.get('data', [])
+        if not data:
+            raise ValueError('No data found in response')
+        embeddings = [res.get('embedding', []) for res in data]
+        if len(embeddings) == 1:
+            return embeddings[0]
+        return embeddings
 
 
 class SiliconFlowRerank(LazyLLMOnlineRerankModuleBase):

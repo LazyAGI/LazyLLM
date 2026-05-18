@@ -2638,6 +2638,47 @@ Args:
     api_key (str, optional): API key. Defaults to 'qwen_api_key' from configuration
 """)
 
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenMultimodalEmbed', """\
+通义千问在线多模态嵌入模块。
+
+该类继承自 OnlineEmbeddingModuleBase，通过 DashScope MultiModalEmbedding 接口将文本、图像或图文组合转换为统一向量表示。单次多模态请求返回一条向量，输出格式与 QwenEmbed 处理单条文本时保持一致。
+
+Args:
+    embed_url (str, optional): DashScope API URL。默认使用 DashScope 官方 API 地址。
+    embed_model_name (str, optional): 多模态嵌入模型名称，默认从配置项 'qwen_multimodal_embed_model_name' 读取，未配置时使用 'qwen2.5-vl-embedding'。
+    api_key (str, optional): API 密钥。默认从配置项 'qwen_api_key' 中读取。
+    batch_size (int, optional): 批处理大小，默认为 1。
+    return_trace (bool, optional): 是否返回追踪信息，默认为 False。
+    skip_auth (bool, optional): 是否跳过鉴权，默认为 False。
+""")
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenMultimodalEmbed', """\
+Qwen online multimodal embedding module.
+
+This class inherits from OnlineEmbeddingModuleBase and calls the DashScope MultiModalEmbedding API to convert text, image, or text-image inputs into a unified vector representation. A single multimodal request returns one vector, matching the output format of QwenEmbed for a single text input.
+
+Args:
+    embed_url (str, optional): DashScope API URL. Defaults to the official DashScope API address.
+    embed_model_name (str, optional): Multimodal embedding model name. Defaults to 'qwen_multimodal_embed_model_name' from config, or 'qwen2.5-vl-embedding' if unset.
+    api_key (str, optional): API key. Defaults to 'qwen_api_key' from configuration.
+    batch_size (int, optional): Batch size, defaults to 1.
+    return_trace (bool, optional): Whether to return trace information, defaults to False.
+    skip_auth (bool, optional): Whether to skip authentication, defaults to False.
+""")
+
+add_example('llms.onlinemodule.supplier.qwen.QwenMultimodalEmbed', """\
+>>> import lazyllm
+>>> embed = lazyllm.OnlineModule(
+...     model='qwen2.5-vl-embedding',
+...     source='qwen',
+...     type='cross_modal_embed',
+... )
+>>> vector = embed([
+...     {'text': '这是一只猫'},
+...     {'image': '/path/to/cat.jpg'},
+... ])
+""")
+
 add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenChat', """\
 通义千问模型模块，继承自OnlineChatModuleBase和FileHandlerBase。
 
@@ -2988,6 +3029,44 @@ Args:
     api_key (str, optional): API key, defaults to lazyllm.config['siliconflow_api_key']
     batch_size (int, optional): Batch size for processing, defaults to 16
     **kw: Additional embedding module parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowMultimodalEmbed', """\
+SiliconFlow 多模态向量嵌入模块，继承自 OnlineEmbeddingModuleBase。
+
+提供基于 SiliconFlow 平台的多模态嵌入功能，使用 "Qwen/Qwen3-VL-Embedding-8B" 将文本、图像或图文组合转换为统一向量表示。单条输入返回一条向量；本地图片路径会自动转换为 base64 data URI。
+
+Args:
+    embed_url (str, optional): 嵌入 API 的 URL，默认为 "https://api.siliconflow.cn/v1/embeddings"。
+    embed_model_name (str, optional): 使用的多模态嵌入模型名称，默认为 "Qwen/Qwen3-VL-Embedding-8B"。
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['siliconflow_api_key'] 中读取。
+    batch_size (int, optional): 批处理大小，默认为 1。
+    **kw: 其他嵌入模块参数。
+""")
+
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowMultimodalEmbed', """\
+SiliconFlow multimodal embedding module, inherits from OnlineEmbeddingModuleBase.
+
+Provides multimodal embedding functionality via the SiliconFlow platform, using "Qwen/Qwen3-VL-Embedding-8B" to convert text, image, or text-image inputs into a unified vector representation. A single input returns one vector; local image paths are converted to base64 data URIs automatically.
+
+Args:
+    embed_url (str, optional): Embedding API URL, defaults to "https://api.siliconflow.cn/v1/embeddings".
+    embed_model_name (str, optional): Name of the multimodal embedding model to use, defaults to "Qwen/Qwen3-VL-Embedding-8B".
+    api_key (str, optional): API key, defaults to lazyllm.config['siliconflow_api_key'].
+    batch_size (int, optional): Batch size, defaults to 1.
+    **kw: Additional embedding module parameters.
+""")
+
+add_example('llms.onlinemodule.supplier.siliconflow.SiliconFlowMultimodalEmbed', """\
+>>> import lazyllm
+>>> embed = lazyllm.OnlineModule(
+...     model='Qwen/Qwen3-VL-Embedding-8B',
+...     source='siliconflow',
+...     type='cross_modal_embed',
+... )
+>>> vector = embed([
+...     {'image': '/path/to/cat.jpg'},
+... ])
 """)
 
 add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowRerank', """\
