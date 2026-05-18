@@ -553,7 +553,7 @@ def retry(func: Optional[Callable] = None, *, stop_after_attempt: Optional[int] 
 
 
 def retry_transient(func=None, *, max_retries=3, base_delay=2.0, log_prefix='', on_retry=None):
-    """Retry on transient network/HTTP errors with exponential backoff.
+    '''Retry on transient network/HTTP errors with exponential backoff.
 
     Can be used as a decorator or as a direct callable wrapper.
 
@@ -573,7 +573,7 @@ def retry_transient(func=None, *, max_retries=3, base_delay=2.0, log_prefix='', 
         base_delay: Base seconds for exponential backoff. Delay = base_delay ** attempt (default 2.0).
         log_prefix: Prefix string for warning logs.
         on_retry: Optional callback(attempt, exception) invoked before each retry sleep.
-    """
+    '''
     _transient_tokens = (
         'Connection', 'IncompleteRead', 'Timeout', 'RemoteDisconnected',
         'ConnectionError', 'ReadTimeout', 'timeout', 'SSLEOFError',
