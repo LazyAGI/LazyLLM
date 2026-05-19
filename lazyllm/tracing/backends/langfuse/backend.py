@@ -1,6 +1,5 @@
 import json
 import time
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode, urlparse
 
@@ -8,10 +7,11 @@ import requests
 
 from lazyllm.common import LOG
 from lazyllm.thirdparty import opentelemetry
+from lazyllm.tracing.backends.base import ConsumeBackend, TracingBackend
+from lazyllm.tracing.backends.utils import extract_trace_metadata, iso_to_epoch
 from lazyllm.tracing.datamodel.raw import RawSpanRecord, RawTracePayload, RawTraceRecord
 from lazyllm.tracing.errors import ConsumeBackendError, TraceNotFound
 from lazyllm.tracing.semantics import SemanticType, is_valid_span_id
-from lazyllm.tracing.backends.base import ConsumeBackend, TracingBackend
 from .config import (
     build_basic_auth_header,
     build_otlp_traces_endpoint,
@@ -59,12 +59,6 @@ class LangfuseBackend(TracingBackend):
             attrs['langfuse.trace.input'] = otel_attrs['lazyllm.io.input']
         if 'lazyllm.io.output' in otel_attrs:
             attrs['langfuse.trace.output'] = otel_attrs['lazyllm.io.output']
-
-    def _copy_trace_metadata(self, attrs: Dict[str, Any], otel_attrs: Dict[str, Any]) -> None:
-        prefix = 'lazyllm.trace.metadata.'
-        for key, value in otel_attrs.items():
-            if key.startswith(prefix):
-                attrs[f'langfuse.trace.metadata.{key[len(prefix):]}'] = value
 
     def build_exporter(self):
         cfg = read_langfuse_connection()
@@ -118,7 +112,7 @@ class LangfuseBackend(TracingBackend):
 
         if is_root_span:
             self._copy_trace_attrs(attrs, otel_attrs)
-            self._copy_trace_metadata(attrs, otel_attrs)
+            attrs.update(extract_trace_metadata(otel_attrs, target_prefix='langfuse.trace.metadata.'))
 
         return attrs
 
@@ -143,19 +137,6 @@ class LangfuseConsumeBackend(ConsumeBackend):
         'metadata',
         'observations',
     })
-
-    def _iso_to_epoch(self, value: Optional[str]) -> Optional[float]:
-        if not value or not isinstance(value, str):
-            return None
-        text = value.replace('Z', '+00:00')
-        try:
-            dt = datetime.fromisoformat(text)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt.timestamp()
-        except ValueError:
-            LOG.warning(f'Failed to parse Langfuse timestamp: {value!r}')
-            return None
 
     def _raw_span_from_obs(self, trace_id: str, obs: Dict[str, Any]) -> RawSpanRecord:
         if 'id' not in obs:
@@ -191,9 +172,9 @@ class LangfuseConsumeBackend(ConsumeBackend):
             attributes.setdefault('gen_ai.request.model', obs['model'])
 
         name = obs.get('name') or ''
-        st = self._iso_to_epoch(obs.get('startTime'))
-        if st is None:
-            raise ValueError('observation missing startTime')
+        st = iso_to_epoch(obs.get('startTime'))
+        raw_end_time = obs.get('endTime')
+        end_time = iso_to_epoch(raw_end_time) if raw_end_time else None
 
         return RawSpanRecord(
             trace_id=trace_id,
@@ -201,7 +182,7 @@ class LangfuseConsumeBackend(ConsumeBackend):
             parent_span_id=parent_span_id,
             name=name,
             start_time=st,
-            end_time=self._iso_to_epoch(obs.get('endTime')),
+            end_time=end_time,
             status='error' if obs.get('level') == 'ERROR' else 'ok',
             attributes=attributes,
             input=obs.get('input'),
@@ -392,6 +373,8 @@ class LangfuseConsumeBackend(ConsumeBackend):
             if key not in self._PROMOTED_TRACE_FIELDS
         }
         try:
+            raw_start_time = body.get('timestamp')
+            start_time = iso_to_epoch(raw_start_time) if raw_start_time else None
             return RawTraceRecord(
                 trace_id=str(tid),
                 name=body.get('name'),
@@ -401,7 +384,7 @@ class LangfuseConsumeBackend(ConsumeBackend):
                 metadata=dict(metadata),
                 input=body.get('input'),
                 output=body.get('output'),
-                start_time=self._iso_to_epoch(body.get('timestamp')),
+                start_time=start_time,
                 end_time=None,
                 status=None,
                 raw=trace_raw,

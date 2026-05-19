@@ -28,7 +28,7 @@ class S3FS(LazyLLMFSBase):
                  **storage_options):
         if dynamic_auth:
             self._access_key = ''
-            self._secret_key = ''
+            self._aws_secret = ''
             self._endpoint_url = endpoint_url or None
             self._region_name = region_name or None
             self._s3_client = None
@@ -40,7 +40,7 @@ class S3FS(LazyLLMFSBase):
         endpoint_url = endpoint_url or config['s3_endpoint_url'] or ''
         region_name = region_name or config['s3_region_name'] or os.environ.get('AWS_DEFAULT_REGION') or ''
         self._access_key = access_key
-        self._secret_key = secret_key
+        self._aws_secret = secret_key
         self._endpoint_url = endpoint_url or None
         self._region_name = region_name or None
         self._s3_client = None
@@ -52,8 +52,8 @@ class S3FS(LazyLLMFSBase):
         kwargs: Dict[str, Any] = {}
         if self._access_key:
             kwargs['aws_access_key_id'] = self._access_key
-        if self._secret_key:
-            kwargs['aws_secret_access_key'] = self._secret_key
+        if self._aws_secret:
+            kwargs['aws_secret_access_key'] = self._aws_secret
         if self._endpoint_url:
             kwargs['endpoint_url'] = self._endpoint_url
         if self._region_name:

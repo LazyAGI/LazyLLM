@@ -25,6 +25,10 @@ class HybridStore(LazyLLMStoreBase):
         self.vector_store.connect(*args, **kwargs)
 
     @override
+    def try_read_dims_from_schema(self, collections: List[str]):
+        return self.vector_store.try_read_dims_from_schema(collections)
+
+    @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         segments = [{k: v for k, v in segment.items() if k != 'embedding'} for segment in data]
         return self.segment_store.upsert(collection_name=collection_name, data=segments) and \

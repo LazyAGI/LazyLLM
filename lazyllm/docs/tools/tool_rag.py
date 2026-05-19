@@ -4011,6 +4011,41 @@ Args:
     description (Optional[str]): Description of the algorithm, defaults to None.
 """)
 
+add_chinese_doc('rag.parsing_service.server.DocumentProcessor.register_new_node_group', """
+向已注册的算法动态追加一个新的节点组（node group）。
+
+该方法会将节点组信息持久化到数据库，并将其 ID 追加到指定算法的 ``node_group_ids`` 列表中，
+使 Worker 在下次轮询时能够发现并加载该节点组。通常由 ``Document`` 模块在运行时动态绑定新的
+切分/转换策略时调用，一般无需手动调用。
+
+Args:
+    name (str): 节点组名称，作为唯一标识符。
+    config (Dict): 节点组配置，包含 ``transform``/``args``、``parent``、``ref``、``group_type`` 等字段。
+    algo_name (str): 目标算法的唯一标识，节点组 ID 将被追加到该算法的 ``node_group_ids`` 中。
+
+Returns:
+    str: 新创建或已存在的节点组 ID。
+""")
+
+add_english_doc('rag.parsing_service.server.DocumentProcessor.register_new_node_group', """
+Dynamically append a new node group to an already-registered algorithm.
+
+The node group is persisted to the database and its ID is appended to the target algorithm's
+``node_group_ids`` list so that workers can discover and load it on the next poll cycle.
+This is typically called by the ``Document`` module when a new chunking or transformation
+strategy is bound at runtime, and generally does not need to be called manually.
+
+Args:
+    name (str): Node group name used as a unique identifier.
+    config (Dict): Node group configuration containing fields such as ``transform``/``args``,
+        ``parent``, ``ref``, and ``group_type``.
+    algo_name (str): Unique identifier of the target algorithm whose ``node_group_ids``
+        list will receive the new node group ID.
+
+Returns:
+    str: The ID of the newly created or already-existing node group.
+""")
+
 add_chinese_doc('rag.parsing_service.server.DocumentProcessor.drop_algorithm', """
 从文档处理服务中移除指定算法， 该方法会自动从数据库中删除算法信息，后续无法使用该算法处理文档。
 
@@ -7364,6 +7399,41 @@ Args:
     filters (Optional[Dict[str, Union[str, int, List, Set]]]): Metadata filter conditions.
     embed_key (Optional[str]): Embedding key.
     **kwargs: Additional parameters.
+''')
+
+add_chinese_doc('rag.LazyLLMStoreBase.try_read_dims_from_schema', '''\
+尝试从已有的后端 schema 中读取 embedding 维度和数据类型信息。
+
+在调用 ``connect()`` 之前，通过检查后端已存在的 collection schema 来推断
+``embed_dims`` 和 ``embed_datatypes``，从而避免在初始化阶段调用 embedding 函数。
+基类默认返回空字典（不支持自省），子类在向量后端支持 schema 描述时可覆盖此方法。
+
+Args:
+    collections (List[str]): 需要检查的 collection 名称列表。
+
+Returns:
+    Tuple[Dict[str, int], Dict[str, DataType]]:
+        - 第一个元素为 embed key 到维度的映射（稀疏向量无维度，不包含在内）。
+        - 第二个元素为 embed key 到 ``DataType`` 的映射。
+''')
+
+add_english_doc('rag.LazyLLMStoreBase.try_read_dims_from_schema', '''\
+Try to read embedding dimensions and data types from an existing backend schema.
+
+Before ``connect()`` is called, this method inspects the backend's existing collection
+schemas to infer ``embed_dims`` and ``embed_datatypes``, avoiding the need to invoke
+embedding functions during initialisation. The base-class implementation returns empty
+dicts (no introspection supported); subclasses override this when the vector backend
+can describe collections before ``connect()``.
+
+Args:
+    collections (List[str]): List of collection names to inspect.
+
+Returns:
+    Tuple[Dict[str, int], Dict[str, DataType]]:
+        - First element: mapping from embed key to dimension
+          (sparse vectors have no fixed dimension and are omitted).
+        - Second element: mapping from embed key to ``DataType``.
 ''')
 
 add_chinese_doc('rag.doc_impl.DocImpl', '''\

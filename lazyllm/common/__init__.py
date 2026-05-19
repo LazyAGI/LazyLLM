@@ -17,6 +17,9 @@ from .globals import (globals, locals, LazyLlmResponse, LazyLlmRequest, encode_r
 from .bind import Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, Placeholder
 from .queue import RecentQueue, FileSystemQueue
 from .utils import compile_func, obj2str, str2obj, str2bool, dump_obj, load_obj
+from .auth import (Credential, AuthStrategy, BearerTokenStrategy,
+                   ApiKeyHeaderStrategy, QueryParamStrategy)
+from .credential_mixin import CredentialMixin
 
 __all__ = [
     # registry
@@ -122,4 +125,12 @@ __all__ = [
     # queue
     'RecentQueue',
     'FileSystemQueue',
+
+    # auth
+    'Credential',
+    'AuthStrategy',
+    'BearerTokenStrategy',
+    'ApiKeyHeaderStrategy',
+    'QueryParamStrategy',
+    'CredentialMixin',
 ]

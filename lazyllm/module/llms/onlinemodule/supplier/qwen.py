@@ -7,9 +7,11 @@ from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
-    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase,
-    LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
+    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
+    LazyLLMOnlineRerankModuleBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
+    LazyLLMOnlineTTSModuleBase
 )
+from ..base.utils import resolve_online_params
 from ..fileHandler import FileHandlerBase
 from http import HTTPStatus
 from lazyllm.thirdparty import dashscope
@@ -339,6 +341,79 @@ class QwenEmbed(LazyLLMOnlineEmbedModuleBase):
             return embeddings[0].get('embedding', [])
         else:
             return [res.get('embedding', []) for res in embeddings]
+
+
+class QwenMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
+
+    def __init__(self,
+                 embed_url: Optional[str] = None,
+                 embed_model_name: Optional[str] = None,
+                 api_key: str = None,
+                 batch_size: int = 1,
+                 return_trace: bool = False,
+                 skip_auth: bool = False,
+                 **kw):
+        _ensure_dashscope_urls_initialized()
+        kw.pop('type', None)
+        if batch_size != 1:
+            LOG.warning('QwenMultimodalEmbed does not support batch_size > 1; resetting batch_size to 1.')
+            batch_size = 1
+        if embed_url and embed_url != _DASHSCOPE_DEFAULT_HTTP_URL:
+            LOG.warning('QwenMultimodalEmbed ignores `embed_url`; use `set_dashscope_urls` instead.')
+        embed_url = embed_url or _DASHSCOPE_DEFAULT_HTTP_URL
+        embed_model_name = (embed_model_name or lazyllm.config['qwen_multimodal_embed_model_name']
+                            or 'qwen2.5-vl-embedding')
+        super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name,
+                         skip_auth=skip_auth, return_trace=return_trace, batch_size=batch_size, **kw)
+
+    @staticmethod
+    def _get_response_value(response, key: str, default=None):
+        if isinstance(response, dict):
+            return response.get(key, default)
+        return getattr(response, key, default)
+
+    def _encapsulated_data(self, input: Union[List, str], **kwargs):
+        if isinstance(input, str):
+            return [{'text': input}]
+        if isinstance(input, list):
+            if len(input) == 0:
+                raise ValueError('Input list cannot be empty')
+            if any(isinstance(item, list) for item in input):
+                raise ValueError('QwenMultimodalEmbed expects a 1D input list of dictionaries')
+            if not all(isinstance(item, dict) for item in input):
+                raise ValueError('Input list must contain dictionaries')
+            return input
+        raise ValueError('Input must be either a string or a list of dictionaries')
+
+    def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs) -> List[float]:
+        model, _, url, kwargs = resolve_online_params(
+            model, None, url, kwargs,
+            model_aliases=('model_name', 'embed_model_name', 'embed_name'),
+            url_aliases=('base_url', 'embed_url'))
+        if url and url != self._embed_url:
+            LOG.warning('QwenMultimodalEmbed ignores runtime `url`; use `set_dashscope_urls` instead.')
+        call_params = {
+            'model': model or self._embed_model_name,
+            'input': self._encapsulated_data(input),
+            **kwargs
+        }
+        if self._api_key:
+            call_params['api_key'] = self._api_key
+        response = dashscope.MultiModalEmbedding.call(**call_params)
+        if self._get_response_value(response, 'status_code') != HTTPStatus.OK:
+            message = self._get_response_value(response, 'message', 'Unknown error')
+            raise RuntimeError(f'Qwen multimodal embedding failed: {message}')
+        return self._parse_response(response, input=input)
+
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> List[float]:
+        output = self._get_response_value(response, 'output', {})
+        embeddings = self._get_response_value(output, 'embeddings', [])
+        if not embeddings:
+            raise ValueError('No embeddings found in response')
+        embedding = self._get_response_value(embeddings[0], 'embedding', [])
+        if not embedding:
+            raise ValueError('No embedding found in response')
+        return embedding
 
 
 class QwenRerank(LazyLLMOnlineRerankModuleBase):

@@ -6,6 +6,7 @@ from .base import SearchBase, _make_result
 class TencentSearch(SearchBase):
 
     def __init__(self, secret_id: str, secret_key: str, source_name: str = 'tencent'):
+        # Tencent SDK signs requests internally; no SearchBase strategy needed.
         super().__init__(source_name=source_name)
         from tencentcloud.common.common_client import CommonClient
         from tencentcloud.common import credential

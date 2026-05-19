@@ -76,16 +76,14 @@ class OneDriveFS(LazyLLMFSBase):
             'Content-Type': 'application/json',
         })
 
-    def _acquire_access_token(self) -> Tuple[str, Optional[float]]:
+    def _do_acquire_without_refresh(self) -> Tuple[str, Optional[float], str]:
         if not self._client_id or not self._client_secret:
-            return '', None
+            raise ValueError(f'{type(self).__name__} failed to acquire access token: '
+                             'client_id/client_secret are not configured.')
         token, expires_at = self._acquire_app_token_with_expiry(
             self._client_id, self._client_secret, self._tenant_id,
         )
-        return token, expires_at
-
-    def _apply_access_token(self, token: str) -> None:
-        self._access_token = token
+        return token, expires_at, ''
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         url = self._make_children_url(path)

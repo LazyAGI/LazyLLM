@@ -1,5 +1,6 @@
 from typing import Optional, Dict, Any, List
 
+from lazyllm.common import QueryParamStrategy
 from lazyllm.tools.tools import HttpTool
 
 from .base import SearchBase, _make_result
@@ -10,7 +11,10 @@ class GoogleSearch(SearchBase):
     def __init__(self, custom_search_api_key: str, search_engine_id: str,
                  timeout: int = 10, proxies: Optional[Dict[str, str]] = None,
                  source_name: str = 'google'):
-        super().__init__(source_name=source_name)
+        super().__init__(
+            source_name=source_name, api_key=custom_search_api_key,
+            auth_strategy=QueryParamStrategy('key'),
+        )
         params = {
             'key': custom_search_api_key,
             'cx': '{{search_engine_id}}',

@@ -18,6 +18,17 @@ from ..prompts import LLMTransformParserPrompts
 from .base import NodeTransform
 from .sentence import SentenceSplitter
 
+def _normalize_for_sig(v):
+    if isinstance(v, float): return int(round(v)) if abs(v - round(v)) < 1e-8 else f'{v:.8f}'
+    if isinstance(v, dict): return {k: _normalize_for_sig(val) for k, val in sorted(v.items())}
+    if isinstance(v, (list, tuple)): return [_normalize_for_sig(i) for i in v]
+    return v
+
+
+def _calculate_signature(v):
+    return hashlib.sha256(json.dumps(_normalize_for_sig(v)).encode()).hexdigest()[:16]
+
+
 def _callable_sig(f: Optional[Callable], name_override: Optional[str] = None) -> str:
     if f is None:
         return '__default__'
@@ -73,12 +84,9 @@ class TransformArgs():
                 sig_dict = {'type': type(f).__name__, 'params': f.sig_fields()}
                 if self.pattern is not None:
                     sig_dict['pattern'] = _callable_sig(self.pattern) if callable(self.pattern) else self.pattern
-                return hashlib.sha256(json.dumps(sig_dict, sort_keys=True).encode()).hexdigest()[:16]
-            return hashlib.sha256(json.dumps({
-                'type': '__callable__',
-                'func': _callable_sig(f, self.name),
-                'trans_node': self.trans_node,
-            }, sort_keys=True).encode()).hexdigest()[:16]
+                return _calculate_signature(sig_dict)
+            return _calculate_signature({'type': '__callable__', 'func': _callable_sig(f, self.name),
+                                         'trans_node': self.trans_node})
 
         instance = cls(**kw) if cls is not None else None
         if instance is not None:
@@ -87,7 +95,7 @@ class TransformArgs():
             sig_dict = {'type': type_name}
         if self.pattern is not None:
             sig_dict['pattern'] = _callable_sig(self.pattern) if callable(self.pattern) else self.pattern
-        return hashlib.sha256(json.dumps(sig_dict, sort_keys=True).encode()).hexdigest()[:16]
+        return _calculate_signature(sig_dict)
 
 
 def build_nodes_from_splits(

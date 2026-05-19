@@ -56,23 +56,25 @@ class OnesFS(LazyLLMFSBase):
     def _setup_auth(self) -> None:
         self._session.headers.update({'Content-Type': 'application/json'})
 
-    def _get_auth_header(self) -> Optional[Dict[str, str]]:
+    def inject_auth_header(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        out = dict(headers or {})
         if self._dynamic_auth:
             raw = self._dynamic_token
             if not raw:
-                return None
+                return out
             if ':' in raw:
                 uid, tok = raw.split(':', 1)
             else:
                 uid, tok = self._user_id, raw
-            h = {'Ones-Auth-Token': tok}
-            if uid:
-                h['Ones-User-Id'] = uid
-            return h
-        h = {'Ones-Auth-Token': self._secret_key}
-        if self._user_id:
-            h['Ones-User-Id'] = self._user_id
-        return h if self._secret_key else None
+        else:
+            tok = self._secret_key or ''
+            uid = self._user_id
+            if not tok:
+                return out
+        out['Ones-Auth-Token'] = tok
+        if uid:
+            out['Ones-User-Id'] = uid
+        return out
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
         parts = self._parse_path(path)

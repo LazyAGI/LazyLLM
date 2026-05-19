@@ -13,7 +13,7 @@ from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment
                          BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID)
 from .hybrid import HybridStore, MapStore
 from ..default_index import DefaultIndex
-from ..utils import parallel_do_embedding
+from ..utils import parallel_do_embedding, is_sparse
 
 from ..doc_node import DocNode, QADocNode, ImageDocNode, JsonDocNode, RichDocNode
 from ..index_base import IndexBase
@@ -125,8 +125,40 @@ class _DocumentStore(object):
         # should not reach here
         raise RuntimeError('Unexpected store creation state')
 
+    def _embed_specs_need_resolution(self) -> bool:
+        if not self._embed:
+            return False
+        dims = self._embed_dims or {}
+        dtypes = self._embed_datatypes or {}
+        for k in self._embed:
+            if k not in dtypes:
+                return True
+            if dtypes[k] != DataType.SPARSE_FLOAT_VECTOR and k not in dims:
+                return True
+        return False
+
+    def _resolve_embed_dims(self):
+        collections = [self._gen_collection_name(group) for group in self.activated_groups()]
+        dims, datatypes = self._impl.try_read_dims_from_schema(collections)
+        if dims or datatypes:
+            LOG.info('[_DocumentStore] Inferred embed dims from existing store schema')
+        missing_keys = [k for k in (self._embed or {}) if k not in datatypes]
+        if missing_keys:
+            LOG.info(f'[_DocumentStore] Resolving embed dims by calling embed functions for keys: {missing_keys}')
+            for k in missing_keys:
+                embedding = self._embed[k]('a')
+                if is_sparse(embedding):
+                    datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
+                else:
+                    dims[k] = len(embedding)
+                    datatypes[k] = DataType.FLOAT_VECTOR
+        return dims, datatypes
+
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):
+        if self._embed_specs_need_resolution():
+            self._embed_dims, self._embed_datatypes = self._resolve_embed_dims()
+
         if self._impl.capability == StoreCapability.VECTOR or self._impl.capability == StoreCapability.ALL:
             self._impl.connect(
                 embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,

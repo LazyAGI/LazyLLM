@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+from lazyllm.common import QueryParamStrategy
 from lazyllm.thirdparty import httpx
 
 from .base import SearchBase, _make_result
@@ -9,15 +10,15 @@ class GoogleBooksSearch(SearchBase):
 
     def __init__(self, api_key: Optional[str] = None,
                  timeout: int = 10, source_name: str = 'google_books'):
-        super().__init__(source_name=source_name)
-        self._api_key = api_key
+        super().__init__(
+            source_name=source_name, api_key=api_key,
+            auth_strategy=QueryParamStrategy('key'),
+        )
         self._timeout = timeout
         self._url = 'https://www.googleapis.com/books/v1/volumes'
 
     def search(self, query: str, max_results: int = 10) -> List[dict]:
-        params = {'q': query, 'maxResults': min(max_results, 40)}
-        if self._api_key:
-            params['key'] = self._api_key
+        params = self.inject_auth_params({'q': query, 'maxResults': min(max_results, 40)})
         resp = httpx.get(self._url, params=params, timeout=self._timeout)
         resp.raise_for_status()
         data = resp.json()

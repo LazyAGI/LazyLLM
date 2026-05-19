@@ -33,6 +33,7 @@ from ..utils import BaseResponse, ensure_call_endpoint, _get_default_db_config, 
 from ..doc_to_db import SchemaExtractor
 from ...sql import SqlManager
 
+
 lazyllm.config.add(
     'algo_register_policy', str, '', 'ALGO_REGISTER_POLICY',
     description=(
@@ -347,10 +348,9 @@ class DocumentProcessor(ModuleBase):
                         )
             self._schema_extractors[ext_name] = schema_extractor
 
-        def _validate_reader(self, reader):
+        def _validate_reader(self, reader, policy: str = 'none'):
             if reader is None:
                 return
-            policy = lazyllm.config['algo_register_policy'].strip().lower()
             incoming_sig = reader.signature()
 
             if self._reader is None:
@@ -364,6 +364,7 @@ class DocumentProcessor(ModuleBase):
                 )
                 self._reader = reader
             elif policy == 'update':
+                # mirror inner changes, cannot change reader signature
                 if self._reader.signature() != incoming_sig:
                     raise ValueError(
                         f'[DocumentProcessor] update policy: reader signature mismatch '
@@ -380,17 +381,18 @@ class DocumentProcessor(ModuleBase):
 
         def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader,
                                node_groups: Dict[str, Dict], schema_extractor: Optional[SchemaExtractor] = None,
-                               display_name: Optional[str] = None, description: Optional[str] = None):
+                               display_name: Optional[str] = None, description: Optional[str] = None,
+                               policy: str = 'none'):
             # NOTE: name is the algorithm id, display_name is the algorithm display name
             self._lazy_init()
             LOG.info(f'[DocumentProcessor] Register algorithm: name={name}, display_name={display_name}')
             self._register_schema_extractor(name, schema_extractor)
-            self._validate_reader(reader)
+            self._validate_reader(reader, policy)
             try:
                 # Upsert node groups and algorithm in a single transaction to ensure atomicity.
                 info_pickle = dump_obj({'reader': reader, 'store': store})
                 with self._db_manager.get_session() as session:
-                    node_group_ids = self._upsert_node_groups(node_groups, session=session)
+                    node_group_ids = self._upsert_node_groups(node_groups, policy=policy, session=session)
                     ng_ids_json = json.dumps(node_group_ids)
                     AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
                     existing = session.query(AlgoInfo).filter(AlgoInfo.id == name).first()
@@ -422,52 +424,55 @@ class DocumentProcessor(ModuleBase):
                 LOG.error(f'[DocumentProcessor] Failed to register algorithm: {e}, {traceback.format_exc()}')
                 raise
 
-        def _upsert_node_groups(self, node_groups: Dict[str, Dict], session=None) -> List[str]:
-            from ..doc_impl import _compute_node_group_signature, NodeGroupType
+        def _upsert_single_node_group(self, sess, ng_name: str, sig: str, cfg: Dict, policy: str) -> str:
+            '''Upsert one node group row; return its id. Raises on signature conflict unless policy==force.'''
             NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
-            policy = lazyllm.config['algo_register_policy'].strip().lower()
+            existing = sess.query(NodeGroupInfo).filter(NodeGroupInfo.name == ng_name).first()
+            if existing:
+                if existing.signature != sig:
+                    if policy == 'force':
+                        LOG.warning(f'[DocumentProcessor] force policy: overwriting node group {ng_name!r} '
+                                    f'(old_sig={existing.signature}, new_sig={sig})')
+                        existing.signature, existing.info_pickle = sig, dump_obj(cfg)
+                        existing.updated_at = datetime.now()
+                    else:
+                        raise ValueError(f'Node group {ng_name!r} already registered with different signature '
+                                         f'(existing={existing.signature}, new={sig}). Use a different name or version.')
+                return existing.id
+            ng_id = str(uuid4())
+            sess.add(NodeGroupInfo(id=ng_id, name=ng_name, signature=sig, info_pickle=dump_obj(cfg),
+                                   created_at=datetime.now(), updated_at=datetime.now()))
+            LOG.info(f'[DocumentProcessor] Node group {ng_name!r} registered with id={ng_id}')
+            return ng_id
+
+        def _upsert_node_groups(self, node_groups: Dict[str, Dict], policy: str = 'none', session=None) -> List[str]:
+            # TODO(wangzhohng): resolve circular import and moving these imports to the top of the file
+            from ..doc_impl import _compute_node_group_signature, NodeGroupType
+            from .impl import _NodeGroupDependencyGraph
+            from ..store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+
+            _BUILTIN_GROUPS = {LAZY_ROOT_NAME, LAZY_IMAGE_GROUP}
             reader_sig = self._reader.signature() if self._reader is not None else ''
-            # Build signatures in topological order (parent before child)
+            # Build signatures in true topological order (parent before child)
             name_to_id: Dict[str, str] = {}
             name_to_sig: Dict[str, str] = {}
-            ordered_names = list(node_groups.keys())
+            ordered_names = _NodeGroupDependencyGraph(node_groups, list(node_groups.keys())).topological_order
 
             def _upsert_in_session(sess):
                 for ng_name in ordered_names:
                     cfg = node_groups[ng_name]
                     parent = cfg.get('parent', 'root')
                     ref = cfg.get('ref')
-                    parent_sig = name_to_sig.get(parent, reader_sig)
+                    parent_sig = '' if not parent or parent == LAZY_ROOT_NAME else name_to_sig.get(parent, reader_sig)
                     ref_sig = name_to_sig.get(ref, '') if ref else ''
                     transform = cfg.get('transform') or cfg.get('args')
                     group_type = cfg.get('group_type', NodeGroupType.CHUNK)
                     sig = _compute_node_group_signature(ng_name, transform, parent_sig, ref_sig, group_type)
                     name_to_sig[ng_name] = sig
-                    existing = sess.query(NodeGroupInfo).filter(NodeGroupInfo.name == ng_name).first()
-                    if existing:
-                        if existing.signature != sig:
-                            if policy == 'force':
-                                LOG.warning(
-                                    f'[DocumentProcessor] force policy: overwriting node group {ng_name!r} '
-                                    f'(old_sig={existing.signature}, new_sig={sig})'
-                                )
-                                existing.signature = sig
-                                existing.info_pickle = dump_obj(cfg)
-                                existing.updated_at = datetime.now()
-                            else:
-                                raise ValueError(
-                                    f'Node group {ng_name!r} already registered with different signature '
-                                    f'(existing={existing.signature}, new={sig}). '
-                                    'Use a different name or version.'
-                                )
-                        name_to_id[ng_name] = existing.id
-                    else:
-                        ng_id = str(uuid4())  # random id for new node group
-                        sess.add(NodeGroupInfo(
-                            id=ng_id, name=ng_name, signature=sig,
-                            info_pickle=dump_obj(cfg), created_at=datetime.now(), updated_at=datetime.now(),
-                        ))
-                        name_to_id[ng_name] = ng_id
+                    # Built-in groups (lazyllm_root, image) may have signature drift across versions;
+                    # always upsert them without signature validation.
+                    effective_policy = 'force' if ng_name in _BUILTIN_GROUPS else policy
+                    name_to_id[ng_name] = self._upsert_single_node_group(sess, ng_name, sig, cfg, effective_policy)
 
             if session is not None:
                 _upsert_in_session(session)
@@ -476,32 +481,27 @@ class DocumentProcessor(ModuleBase):
                     _upsert_in_session(sess)
             return [name_to_id[n] for n in ordered_names]
 
-        def register_new_node_group(self, name: str, config: Dict, session=None) -> str:
+        def register_new_node_group(self, name: str, config: Dict, algo_name: str, session=None) -> str:
             self._lazy_init()
             LOG.info(f'[DocumentProcessor] Register new node group: name={name}')
             try:
                 from ..doc_impl import _compute_node_group_signature, NodeGroupType
-                NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                policy = lazyllm.config['algo_register_policy'].strip().lower()
                 transform = config.get('transform') or config.get('args')
                 group_type = config.get('group_type', NodeGroupType.CHUNK)
                 sig = _compute_node_group_signature(name, transform, '', '', group_type)
 
                 def _do_register(sess):
-                    existing = sess.query(NodeGroupInfo).filter(NodeGroupInfo.name == name).first()
-                    if existing:
-                        if existing.signature != sig:
-                            raise ValueError(
-                                f'Node group {name!r} already registered with different signature '
-                                f'(existing={existing.signature}, new={sig}).'
-                            )
-                        LOG.info(f'[DocumentProcessor] Node group {name!r} already exists, reusing id={existing.id}')
-                        return existing.id
-                    ng_id = str(uuid4())  # random id for new node group
-                    sess.add(NodeGroupInfo(
-                        id=ng_id, name=name, signature=sig,
-                        info_pickle=dump_obj(config), created_at=datetime.now(), updated_at=datetime.now(),
-                    ))
-                    LOG.info(f'[DocumentProcessor] Node group {name!r} registered with id={ng_id}')
+                    ng_id = self._upsert_single_node_group(sess, name, sig, config, policy)
+                    # Append the id to the caller's algorithm node_group_ids so workers can discover it.
+                    AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
+                    algo = sess.query(AlgoInfo).filter(AlgoInfo.id == algo_name).first()
+                    if not algo: raise ValueError(f'Algorithm {algo_name} not found')
+                    ids = json.loads(algo.node_group_ids or '[]')
+                    if ng_id not in ids:
+                        ids.append(ng_id)
+                        algo.node_group_ids = json.dumps(ids)
+                        algo.updated_at = datetime.now()
                     return ng_id
 
                 if session is not None:
@@ -1176,6 +1176,9 @@ class DocumentProcessor(ModuleBase):
         assert isinstance(reader, DirectoryReader), 'Only DirectoryReader can be registered to processor'
         self._dispatch('register_algorithm', name, store, reader, node_groups, schema_extractor,
                        display_name, description, **kwargs)
+
+    def register_new_node_group(self, name: str, config: Dict, algo_name: str) -> str:
+        return self._dispatch('register_new_node_group', name, config, algo_name)
 
     def drop_algorithm(self, name: str) -> None:
         return self._dispatch('drop_algorithm', name)
