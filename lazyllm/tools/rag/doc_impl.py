@@ -8,7 +8,7 @@ from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
 from lazyllm import LOG, once_wrapper, config
 from lazyllm.module import LLMBase
 from .transform import (NodeTransform, SentenceSplitter,
-                        TransformArgs, TransformArgs as TArgs, _transmap)
+                        TransformArgs, TransformArgs as TArgs, _transmap, _normalize_for_sig)
 from .index_base import IndexBase
 from .store import (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, LazyLLMStoreBase)
 from .store.store_base import DEFAULT_KB_ID
@@ -59,13 +59,9 @@ def _compute_node_group_signature(name: str, transform, parent_sig: str, ref_sig
         transform_sig = transform.signature()
     else:
         transform_sig = _elem_sig(transform)
-    payload = json.dumps({
-        'name': name,
-        'parent_sig': parent_sig,
-        'ref_sig': ref_sig,
-        'transform_sig': transform_sig,
-        'group_type': group_type.name if isinstance(group_type, NodeGroupType) else str(group_type),
-    }, sort_keys=True)
+    payload = json.dumps(_normalize_for_sig(
+        {'name': name, 'parent_sig': parent_sig, 'ref_sig': ref_sig, 'transform_sig': transform_sig,
+         'group_type': group_type.name if isinstance(group_type, NodeGroupType) else str(group_type)}))
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 class StorePlaceholder:
@@ -341,7 +337,7 @@ class DocImpl:
                     transform=transform, parent=parent, trans_node=trans_node,
                     num_workers=num_workers, display_name=display_name,
                     group_type=group_type, ref=ref, **kwargs,
-                ))
+                ), algo_name=self._algo_name)
                 # Also update local node_groups so in-process callers see the new group.
                 DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                                 trans_node=trans_node, num_workers=num_workers,
