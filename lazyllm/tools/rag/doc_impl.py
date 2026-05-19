@@ -214,8 +214,10 @@ class DocImpl:
                 raise TypeError(
                     f'processor must be a DocumentProcessor instance, got {type(self._processor).__name__!r}'
                 )
+            policy = config['algo_register_policy'].strip().lower()
             self._processor.register_algorithm(self._algo_name, self._store, self._reader, self.node_groups,
-                                               self._schema_extractor, self._display_name, self._description)
+                                               self._schema_extractor, self._display_name, self._description,
+                                               policy=policy)
         else:
             self._processor = _Processor(self._store, self._build_schema_extractors_dict())
 
