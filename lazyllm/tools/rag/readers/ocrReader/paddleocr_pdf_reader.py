@@ -23,6 +23,7 @@ lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='T
 
 class PaddleOCRPDFReader(_OcrReaderBase):
     def __init__(self,
+                 url: Optional[str] = None,
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  format_block_content: bool = True,
                  use_layout_detection: bool = True,
@@ -34,7 +35,8 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                  images_dir: str = None,
                  dropped_types: Optional[Set[str]] = None,
                  **kwargs):
-        super().__init__(dropped_types=drop_types or dropped_types or {
+        super().__init__(url=url,
+                         dropped_types=drop_types or dropped_types or {
                          'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                          return_trace=return_trace,
                          image_cache_dir=images_dir or os.path.join(
