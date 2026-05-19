@@ -577,7 +577,7 @@ def retry_transient(func=None, *, max_retries=3, base_delay=2.0, log_prefix='', 
     _transient_tokens = (
         'Connection', 'IncompleteRead', 'Timeout', 'RemoteDisconnected',
         'ConnectionError', 'ReadTimeout', 'timeout', 'SSLEOFError',
-        'SSLError', 'ProtocolError', 'ChunkedEncodingError',
+        'SSLZeroReturnError', 'ProtocolError', 'ChunkedEncodingError',
         'Too Many Requests', 'Service Unavailable', 'Internal Server Error',
         'Bad Gateway', 'rate limit', 'Max retries exceeded',
     )
