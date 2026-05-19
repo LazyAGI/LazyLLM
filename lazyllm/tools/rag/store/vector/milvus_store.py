@@ -7,7 +7,7 @@ from queue import Queue, Empty, Full
 from packaging import version
 from urllib import parse
 from pathlib import Path
-from typing import Dict, List, Union, Optional, Set
+from typing import Dict, List, Tuple, Union, Optional, Set
 
 from lazyllm import LOG
 from lazyllm.thirdparty import pymilvus
@@ -89,6 +89,41 @@ class MilvusStore(LazyLLMStoreBase):
         p = Path(self._uri)
         p = p if p.suffix else (p / 'milvus.db')
         return str(p.resolve(strict=False))
+
+    @override
+    def try_read_dims_from_schema(self, collections: List[str]) -> Tuple[Dict[str, int], Dict[str, DataType]]:
+        embed_dims, embed_datatypes = {}, {}
+        if not self._uri:
+            return embed_dims, embed_datatypes
+        try:
+            tmp = pymilvus.MilvusClient(uri=self._uri, **self._client_kwargs)
+            if self._is_remote and self._db_name:
+                tmp.using_database(self._db_name)
+            try:
+                sparse_dt = pymilvus.DataType.SPARSE_FLOAT_VECTOR
+                sparse_ids = {sparse_dt, getattr(sparse_dt, 'value', None)}
+                for collection_name in collections:
+                    if not tmp.has_collection(collection_name):
+                        continue
+                    desc = tmp.describe_collection(collection_name=collection_name)
+                    for field in desc.get('fields', []):
+                        name = field.get('name', '') or ''
+                        if not name.startswith(EMBED_PREFIX):
+                            continue
+                        key = name[len(EMBED_PREFIX):]
+                        raw_dtype = field.get('type', field.get('dtype'))
+                        params = field.get('params') or {}
+                        dim = params.get('dim')
+                        if raw_dtype in sparse_ids:
+                            embed_datatypes[key] = DataType.SPARSE_FLOAT_VECTOR
+                        elif dim is not None:
+                            embed_dims[key] = int(dim)
+                            embed_datatypes[key] = DataType.FLOAT_VECTOR
+            finally:
+                tmp.close()
+        except Exception as e:
+            LOG.warning(f'[Milvus] Could not read embed dims from schema: {e}')
+        return embed_dims, embed_datatypes
 
     @override
     def connect(self, embed_dims: Optional[Dict[str, int]] = None,

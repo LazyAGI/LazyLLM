@@ -1,23 +1,21 @@
 import os
 import hashlib
-import json
 import re
 from enum import Enum
 from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
 from lazyllm import LOG, once_wrapper, config
 from lazyllm.module import LLMBase
-from .transform import (NodeTransform, SentenceSplitter,
-                        TransformArgs, TransformArgs as TArgs, _transmap)
+from .transform import (NodeTransform, SentenceSplitter, TransformArgs, TransformArgs as TArgs,
+                        _transmap, _normalize_for_sig, _calculate_signature)
 from .index_base import IndexBase
 from .store import (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, LazyLLMStoreBase)
 from .store.store_base import DEFAULT_KB_ID
 from .store.document_store import _DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import RAG_DEFAULT_GROUP_NAME, gen_docid, is_sparse, _get_default_db_config
+from .utils import RAG_DEFAULT_GROUP_NAME, gen_docid, _get_default_db_config
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
-from .data_type import DataType
 from .parsing_service import _Processor, DocumentProcessor
 from .embed_wrapper import _EmbedWrapper
 from .doc_to_db import SchemaExtractor
@@ -60,14 +58,9 @@ def _compute_node_group_signature(name: str, transform, parent_sig: str, ref_sig
         transform_sig = transform.signature()
     else:
         transform_sig = _elem_sig(transform)
-    payload = json.dumps({
-        'name': name,
-        'parent_sig': parent_sig,
-        'ref_sig': ref_sig,
-        'transform_sig': transform_sig,
-        'group_type': group_type.name if isinstance(group_type, NodeGroupType) else str(group_type),
-    }, sort_keys=True)
-    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+    return _calculate_signature(_normalize_for_sig(
+        {'name': name, 'parent_sig': parent_sig, 'ref_sig': ref_sig, 'transform_sig': transform_sig,
+         'group_type': group_type.name if isinstance(group_type, NodeGroupType) else str(group_type)}))
 
 class StorePlaceholder:
     pass
@@ -186,19 +179,11 @@ class DocImpl:
         if store is None and self._processor is not None:
             store = getattr(self._processor, '_store_conf', None)
         self._store = store or {'type': 'map'}
-        embed_dims, embed_datatypes = {}, {}
-        for k, e in self.embed.items():
-            embedding = e('a')
-            if is_sparse(embedding):
-                embed_datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
-            else:
-                embed_dims[k] = len(embedding)
-                embed_datatypes[k] = DataType.FLOAT_VECTOR
-
+        # embed dims/datatypes are resolved in _DocumentStore._lazy_init()
         self._store.pop('metadata_store', None)
         self._store = _DocumentStore(store=self._store,
                                      group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                     embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                     embed_dims={}, embed_datatypes={},
                                      global_metadata_desc=self._global_metadata_desc)
         self._store.activate_group(self._activated_groups)
 
@@ -229,8 +214,10 @@ class DocImpl:
                 raise TypeError(
                     f'processor must be a DocumentProcessor instance, got {type(self._processor).__name__!r}'
                 )
+            policy = config['algo_register_policy'].strip().lower()
             self._processor.register_algorithm(self._algo_name, self._store, self._reader, self.node_groups,
-                                               self._schema_extractor, self._display_name, self._description)
+                                               self._schema_extractor, self._display_name, self._description,
+                                               policy=policy)
         else:
             self._processor = _Processor(self._store, self._build_schema_extractors_dict())
 
@@ -350,7 +337,7 @@ class DocImpl:
                     transform=transform, parent=parent, trans_node=trans_node,
                     num_workers=num_workers, display_name=display_name,
                     group_type=group_type, ref=ref, **kwargs,
-                ))
+                ), algo_name=self._algo_name)
                 # Also update local node_groups so in-process callers see the new group.
                 DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                                 trans_node=trans_node, num_workers=num_workers,
