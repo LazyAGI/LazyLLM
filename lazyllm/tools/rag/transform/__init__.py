@@ -1,6 +1,6 @@
 from .base import MetadataMode, NodeTransform
-from .factory import (make_transform, AdaptiveTransform, FuncNodeTransform,
-                      LLMParser, TransformArgs, build_nodes_from_splits, _transmap, _normalize_for_sig)
+from .factory import (make_transform, AdaptiveTransform, FuncNodeTransform, LLMParser, TransformArgs,
+                      build_nodes_from_splits, _transmap, _normalize_for_sig, _calculate_signature)
 from .sentence import SentenceSplitter
 from .character import CharacterSplitter
 from .recursive import RecursiveSplitter
@@ -21,5 +21,5 @@ __all__ = [
     'RecursiveSplitter', 'build_nodes_from_splits', 'MarkdownSplitter', 'CodeSplitter',
     'JSONSplitter', 'YAMLSplitter', 'HTMLSplitter', 'XMLSplitter', 'GeneralCodeSplitter', 'JSONLSplitter',
     'RichTransform', 'LayoutNodeParser', 'TreeBuilderParser', 'TreeFixerParser', 'GroupNodeParser',
-    'RuleSet', 'Rule', 'ContentFiltParser', '_transmap', '_normalize_for_sig'
+    'RuleSet', 'Rule', 'ContentFiltParser', '_transmap', '_normalize_for_sig', '_calculate_signature'
 ]
