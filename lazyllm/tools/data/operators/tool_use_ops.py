@@ -353,12 +353,21 @@ class ToolUseToSFTFormatter(ToolUseOps):
     FORMAT_ALPACA = 'alpaca'
     FORMAT_CHATML = 'chatml'
 
-    def __init__(self, format_type=FORMAT_CHATML, system_prompt=None, **kwargs):
+    def __init__(
+        self,
+        format_type=FORMAT_CHATML,
+        system_prompt=None,
+        input_key='conversation',
+        output_key=None,
+        **kwargs,
+    ):
         if format_type not in (self.FORMAT_ALPACA, self.FORMAT_CHATML):
             raise ValueError(f'Unknown format_type: {format_type!r}')
         super().__init__(**kwargs)
         self.format_type = format_type
         self.system_prompt = system_prompt or 'You are a helpful assistant that can use tools to help users.'
+        self.input_key = input_key
+        self.output_key = output_key
 
     def _format_functions(self, functions):
         if not functions:
@@ -368,7 +377,13 @@ class ToolUseToSFTFormatter(ToolUseOps):
     def _unpack_data(self, data):
         content = data.get('content', '')
         functions = data.get('functions', [])
-        messages = data.get('conversation', {}).get('messages', [])
+        conversation = data.get(self.input_key, {})
+        if isinstance(conversation, dict):
+            messages = conversation.get('messages', [])
+        elif isinstance(conversation, list):
+            messages = conversation
+        else:
+            messages = []
         return content, functions, messages
 
     def _convert_to_alpaca(self, data):
@@ -435,12 +450,19 @@ class ToolUseToSFTFormatter(ToolUseOps):
 
         assert isinstance(data, dict)
 
-        if 'conversation' not in data or 'functions' not in data:
+        if self.input_key not in data or 'functions' not in data:
             return []
 
         if self.format_type == self.FORMAT_ALPACA:
-            return self._convert_to_alpaca(data)
-        return self._convert_to_chatml(data)
+            formatted = self._convert_to_alpaca(data)
+        else:
+            formatted = self._convert_to_chatml(data)
+
+        if not self.output_key:
+            return formatted
+
+        data[self.output_key] = formatted
+        return data
 
 
 class ToolUseQualityFilter(ToolUseOps):
