@@ -109,16 +109,18 @@ class MineruPDFReader(_OcrReaderBase):
 
         if len(splits) == 1:
             return retry_transient(
-                lambda: self._fetch_async_by_upload(splits[0][0], task_dir=task_dir),
-                log_prefix=f'[MineruPDFReader] {os.path.basename(file_str)} ')
+                self._fetch_async_by_upload,
+                log_prefix=f'[MineruPDFReader] {os.path.basename(file_str)} ')(
+                    splits[0][0], task_dir=task_dir)
 
         results = {}
         with ThreadPoolExecutor(max_workers=min(len(splits), 5)) as executor:
             futures = {
                 executor.submit(
-                    lambda sp=sub_path: retry_transient(
-                        lambda: self._fetch_async_by_upload(sp, task_dir=task_dir),
-                        log_prefix=f'[MineruPDFReader] {os.path.basename(sp)} '),
+                    retry_transient(
+                        self._fetch_async_by_upload,
+                        log_prefix=f'[MineruPDFReader] {os.path.basename(sub_path)} '),
+                    sub_path, task_dir=task_dir,
                 ): start_page
                 for sub_path, start_page in splits
             }

@@ -1649,7 +1649,7 @@ add_chinese_doc('retry_transient', '''\
 支持两种使用方式：
 
 - 装饰器模式：``@retry_transient(max_retries=3)``
-- 直接调用模式：``retry_transient(lambda: do_something(), log_prefix='[MyModule] ')``
+- 直接调用模式：``retry_transient(do_something, log_prefix='[MyModule] ')(arg1, arg2)``
 
 Args:
     func (Callable, optional): 需要重试包装的可调用对象。传入时立即执行并返回结果；不传时返回装饰器。
@@ -1669,7 +1669,7 @@ certificate verification failures are raised immediately, avoiding wasted retry 
 Two usage modes are supported:
 
 - Decorator mode: ``@retry_transient(max_retries=3)``
-- Direct-call mode: ``retry_transient(lambda: do_something(), log_prefix='[MyModule] ')``
+- Direct-call mode: ``retry_transient(do_something, log_prefix='[MyModule] ')(arg1, arg2)``
 
 Args:
     func (Callable, optional): The callable to wrap. If provided, executes immediately and returns the result.
@@ -1692,14 +1692,14 @@ add_example('retry_transient', '''\
 ...     resp.raise_for_status()
 ...     return resp.json()
 ...
->>> # Direct call usage — wraps a lambda with a state-reset callback
+>>> # Direct call usage — wraps a function with args and a state-reset callback
 >>> def reset_state(attempt, exc):
 ...     print(f'Resetting before retry {attempt}')
 ...
 >>> result = retry_transient(
-...     lambda: fetch_data(),
+...     fetch_data,
 ...     max_retries=5,
 ...     log_prefix='[Ingestion] ',
 ...     on_retry=reset_state,
-... )
+... )()
 ''')

@@ -586,5 +586,5 @@ def retry_transient(func=None, *, max_retries=3, base_delay=2.0, log_prefix='', 
         return wrapper
 
     if func is not None:
-        return decorator(func)()
+        return decorator(func)
     return decorator
