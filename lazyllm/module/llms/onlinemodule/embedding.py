@@ -59,7 +59,8 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
     def __new__(cls, model: str = None, source: str = None, url: str = None,
                 return_trace: bool = False, api_key: str = None, dynamic_auth: bool = False,
                 skip_auth: bool = False, id: Optional[str] = None, name: Optional[str] = None,
-                group_id: Optional[str] = None, type: Optional[str] = None, batch_size: int = 32, **kwargs):
+                group_id: Optional[str] = None, type: Optional[str] = None, batch_size: int = 32,
+                num_worker: int = 4, **kwargs):
         model, source, url, kwargs = resolve_online_params(
             model, source, url, kwargs,
             model_aliases=('embed_model_name', 'model_name'), url_aliases=('embed_url', 'base_url'),
@@ -79,13 +80,15 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
         if skip_auth and not url:
             raise ValueError('url must be set for local serving.')
         params = {'embed_url': url, 'embed_model_name': model, 'return_trace': return_trace,
-                  'batch_size': batch_size, 'api_key': api_key, 'skip_auth': skip_auth, **kwargs}
+                  'batch_size': batch_size, 'num_worker': num_worker,
+                  'api_key': api_key, 'skip_auth': skip_auth, **kwargs}
         return OnlineEmbeddingModule._create_supplier(source, type_name, model, params)
 
     def __init__(self, model: str = None, source: str = None, url: str = None,
                  return_trace: bool = False, api_key: str = None, dynamic_auth: bool = False,
                  skip_auth: bool = False, id: Optional[str] = None, name: Optional[str] = None,
-                 group_id: Optional[str] = None, type: Optional[str] = None, batch_size: int = 32, **kwargs):
+                 group_id: Optional[str] = None, type: Optional[str] = None, batch_size: int = 32,
+                 num_worker: int = 4, **kwargs):
         model, source, url, kwargs = resolve_online_params(
             model, source, url, kwargs,
             model_aliases=('embed_model_name', 'model_name'), url_aliases=('embed_url', 'base_url'),
@@ -96,6 +99,7 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
         self._type = OnlineEmbeddingModule._resolve_type_name(type, model)
         self._skip_auth = skip_auth
         self._kwargs = kwargs
+        self._kwargs.setdefault('num_worker', num_worker)
         self._batch_size = batch_size
         self._init_dynamic_auth(api_key, dynamic_auth)
 
