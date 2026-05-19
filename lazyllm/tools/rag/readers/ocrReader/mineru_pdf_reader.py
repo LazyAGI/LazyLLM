@@ -61,15 +61,22 @@ class MineruPDFReader(_OcrReaderBase):
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True
                    ) -> List['DocNode']:
         file_path = Path(file)
+        _t0 = time.time()
         if self._service_variant == ServiceVariant.OFFLINE:
             response_text = self._fetch_sync(file_path, use_cache)
             task_dir = None
         else:
             response_text, task_dir = self._fetch_async(file_path, use_cache)
+        _t_fetch = time.time() - _t0
         merged_info = dict(extra_info) if extra_info else {}
         if task_dir is not None:
             merged_info['image_cache_dir'] = str(task_dir)
-        return self._build_nodes_from_response(response_text, file_path, merged_info)
+        _t1 = time.time()
+        nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
+        _t_build = time.time() - _t1
+        LOG.info(f'[BENCHMARK] file={file_path.name} phase=fetch elapsed={_t_fetch:.3f}s')
+        LOG.info(f'[BENCHMARK] file={file_path.name} phase=parse elapsed={_t_build:.3f}s')
+        return nodes
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
         if self._patch_applied:
@@ -154,7 +161,6 @@ class MineruPDFReader(_OcrReaderBase):
     def _fetch_async_by_upload(self, file_path: str, task_dir: Optional['Path'] = None):
         '''Upload a local file via batch presigned URL and fetch result.'''
         fname = os.path.basename(file_path)
-
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self._api_key}'}
 
         # Step 1: Request presigned upload URL
@@ -173,11 +179,15 @@ class MineruPDFReader(_OcrReaderBase):
         file_url = data['data']['file_urls'][0]
 
         # Step 2: Upload file to OSS
+        _t2 = time.time()
         with open(file_path, 'rb') as f:
             upload_resp = requests.put(file_url, data=f, timeout=self._timeout or 300)
             upload_resp.raise_for_status()
+        _t_upload = time.time() - _t2
+        LOG.info(f'[BENCHMARK] file={fname} phase=upload elapsed={_t_upload:.3f}s')
 
         # Step 3: Poll batch results
+        _t3 = time.time()
         status_url = f'https://mineru.net/api/v4/extract-results/batch/{batch_id}'
         for _ in range(120):
             status_resp = requests.get(status_url, headers=headers, timeout=self._timeout or 30)
@@ -190,6 +200,8 @@ class MineruPDFReader(_OcrReaderBase):
                     full_zip_url = extract_result[0].get('full_zip_url')
                     zip_resp = requests.get(full_zip_url, timeout=self._timeout or 120)
                     zip_resp.raise_for_status()
+                    _t_wait = time.time() - _t3
+                    LOG.info(f'[BENCHMARK] file={fname} phase=wait elapsed={_t_wait:.3f}s')
                     return self._extract_content_from_zip(zip_resp.content, task_dir=task_dir)
                 elif state == 'failed':
                     raise RuntimeError(

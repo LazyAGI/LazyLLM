@@ -1,6 +1,7 @@
 import hashlib
 import os
 import re
+import time
 import traceback
 import lazyllm
 from collections import defaultdict
@@ -273,11 +274,14 @@ class _DocumentStore(object):
                 LOG.warning(f'[_DocumentStore] Embed is provided'
                             f' but store {self.impl} does not support embedding')
             if self.impl.need_embedding and not copy:
+                _t_emb = time.time()
                 parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
+                LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s nodes={len(nodes)}')
             group_segments = defaultdict(list)
             for node in nodes:
                 group_segments[node._group].append(self._serialize_node(node))
             # upsert batch segments
+            _t_store = time.time()
             for group, segments in group_segments.items():
                 if not self.is_group_active(group):
                     LOG.warning(f'[_DocumentStore] Group {group} is not active, skip')
@@ -287,6 +291,7 @@ class _DocumentStore(object):
             # update indices
             for index in self._indices.values():
                 index.update(nodes)
+            LOG.info(f'[BENCHMARK] phase=store elapsed={time.time() - _t_store:.3f}s nodes={len(nodes)}')
         except Exception as e:
             LOG.error(f'[_DocumentStore] Failed to update nodes: {e}')
             LOG.error(traceback.format_exc())
