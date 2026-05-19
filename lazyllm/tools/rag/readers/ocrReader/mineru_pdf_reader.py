@@ -104,10 +104,11 @@ class MineruPDFReader(_OcrReaderBase):
     def _fetch_async(self, file, use_cache: bool = True):
         file_str = str(file)
         splits = self._split_large_pdf(file_str)
+        task_dir = self._image_cache_dir / str(uuid.uuid4())
 
         if len(splits) == 1:
             return retry_transient(
-                lambda: self._fetch_async_by_upload(splits[0][0]),
+                lambda: self._fetch_async_by_upload(splits[0][0], task_dir=task_dir),
                 log_prefix=f'[MineruPDFReader] {os.path.basename(file_str)} ')
 
         results = {}
@@ -115,7 +116,7 @@ class MineruPDFReader(_OcrReaderBase):
             futures = {
                 executor.submit(
                     lambda sp=sub_path: retry_transient(
-                        lambda: self._fetch_async_by_upload(sp),
+                        lambda: self._fetch_async_by_upload(sp, task_dir=task_dir),
                         log_prefix=f'[MineruPDFReader] {os.path.basename(sp)} '),
                 ): start_page
                 for sub_path, start_page in splits
@@ -147,7 +148,7 @@ class MineruPDFReader(_OcrReaderBase):
 
         return merged_json, first_task_dir
 
-    def _fetch_async_by_upload(self, file_path: str):
+    def _fetch_async_by_upload(self, file_path: str, task_dir: Optional['Path'] = None):
         '''Upload a local file via batch presigned URL and fetch result.'''
         fname = os.path.basename(file_path)
 
@@ -186,7 +187,7 @@ class MineruPDFReader(_OcrReaderBase):
                     full_zip_url = extract_result[0].get('full_zip_url')
                     zip_resp = requests.get(full_zip_url, timeout=self._timeout or 120)
                     zip_resp.raise_for_status()
-                    return self._extract_content_from_zip(zip_resp.content)
+                    return self._extract_content_from_zip(zip_resp.content, task_dir=task_dir)
                 elif state == 'failed':
                     raise RuntimeError(
                         f'[MineruPDFReader] Batch task failed: '
@@ -195,24 +196,22 @@ class MineruPDFReader(_OcrReaderBase):
 
         raise TimeoutError('[MineruPDFReader] Batch polling timed out')
 
-    def _extract_content_from_zip(self, zip_bytes: bytes):
-        task_dir = self._image_cache_dir / str(uuid.uuid4())
+    def _extract_content_from_zip(self, zip_bytes: bytes, task_dir: Optional['Path'] = None):
+        if task_dir is None:
+            task_dir = self._image_cache_dir / str(uuid.uuid4())
         task_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             for member in zf.infolist():
                 member_path = Path(member.filename)
                 if member_path.is_absolute() or '..' in member_path.parts:
                     raise ValueError(f'Path traversal detected in zip: {member.filename}')
-            zf.extractall(task_dir)
-
-        matches = list(task_dir.rglob('*_content_list.json'))
-        if len(matches) != 1:
-            raise ValueError(
-                f'Expected exactly one \'*_content_list.json\' in {task_dir}, '
-                f'found {len(matches)}'
-            )
-        with open(matches[0], 'r', encoding='utf-8') as f:
-            content = json.load(f)
+            json_members = [m for m in zf.infolist() if m.filename.endswith('_content_list.json')]
+            if not json_members:
+                raise ValueError(f'No *_content_list.json found in zip')
+            content = json.loads(zf.read(json_members[0]))
+            for member in zf.infolist():
+                if not member.filename.endswith('_content_list.json'):
+                    zf.extract(member, task_dir)
         return json.dumps(content), task_dir
 
     @override
