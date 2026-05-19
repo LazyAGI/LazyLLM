@@ -550,3 +550,41 @@ def retry(func: Optional[Callable] = None, *, stop_after_attempt: Optional[int] 
             raise last_exc
         return wrapper
     return decorator(func) if callable(func) else decorator
+
+
+def retry_transient(func=None, *, max_retries=3, base_delay=2.0, log_prefix='', on_retry=None):
+    _transient_tokens = (
+        'Connection', 'IncompleteRead', 'Timeout', 'RemoteDisconnected',
+        'ConnectionError', 'ReadTimeout', 'timeout', 'SSLEOFError',
+        'SSLZeroReturnError', 'ProtocolError', 'ChunkedEncodingError',
+        'Too Many Requests', 'Service Unavailable', 'Internal Server Error',
+        'Bad Gateway', 'rate limit', 'Max retries exceeded',
+    )
+
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            from .logger import LOG
+            last_exc = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    last_exc = e
+                    if not any(t.lower() in str(e).lower() or t.lower() in type(e).__name__.lower()
+                               for t in _transient_tokens):
+                        raise
+                    if attempt >= max_retries:
+                        break
+                    delay = base_delay ** (attempt + 1)
+                    LOG.warning(f'{log_prefix}transient error (attempt {attempt + 1}/{max_retries + 1}), '
+                                f'retrying in {delay:.1f}s: {e}')
+                    if on_retry:
+                        on_retry(attempt + 1, e)
+                    time.sleep(delay)
+            raise last_exc
+        return wrapper
+
+    if func is not None:
+        return decorator(func)
+    return decorator

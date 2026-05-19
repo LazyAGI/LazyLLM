@@ -1640,6 +1640,70 @@ result = unstable_function()
 print(result)
 ''')
 
+add_chinese_doc('retry_transient', '''\
+一个针对临时性（transient）网络/HTTP 错误进行重试的装饰器 / 直接调用工具，支持指数退避。
+
+与 :func:`retry` 不同，本函数仅对网络瞬断、超时、服务暂时不可用等临时性错误进行重试；
+对于参数错误、证书验证失败等永久性错误，会立即抛出异常，不会浪费重试次数。
+
+支持两种使用方式：
+
+- 装饰器模式：``@retry_transient(max_retries=3)``
+- 直接调用模式：``retry_transient(do_something, log_prefix='[MyModule] ')(arg1, arg2)``
+
+Args:
+    func (Callable, optional): 需要重试包装的可调用对象。传入时立即执行并返回结果；不传时返回装饰器。
+    max_retries (int): 最大重试次数（包含首次执行），默认 3。
+    base_delay (float): 指数退避的基数（秒），delay = base_delay ** attempt，默认 2.0。
+    log_prefix (str): 重试时的日志前缀，用于区分调用来源。
+    on_retry (Callable, optional): 每次重试前调用的回调函数，签名为 ``on_retry(attempt: int, exc: Exception)``。
+''')
+
+add_english_doc('retry_transient', '''\
+A decorator / direct-call utility that retries only on transient network/HTTP errors with exponential backoff.
+
+Unlike :func:`retry`, this function retries only on temporary failures such as network interruptions,
+timeouts, and temporary service unavailability. Permanent errors such as invalid arguments or SSL
+certificate verification failures are raised immediately, avoiding wasted retry attempts.
+
+Two usage modes are supported:
+
+- Decorator mode: ``@retry_transient(max_retries=3)``
+- Direct-call mode: ``retry_transient(do_something, log_prefix='[MyModule] ')(arg1, arg2)``
+
+Args:
+    func (Callable, optional): The callable to wrap. If provided, executes immediately and returns the result.
+        If omitted, returns a decorator.
+    max_retries (int): Maximum number of execution attempts (including the first). Defaults to 3.
+    base_delay (float): Base seconds for exponential backoff, delay = base_delay ** attempt. Defaults to 2.0.
+    log_prefix (str): Prefix string prepended to warning logs during retries.
+    on_retry (Callable, optional): A callback invoked before each retry sleep, with the signature
+        ``on_retry(attempt: int, exc: Exception)``.
+''')
+
+add_example('retry_transient', '''\
+>>> from lazyllm.common import retry_transient
+>>> import requests
+>>>
+>>> # Decorator usage — retries on transient HTTP errors
+>>> @retry_transient(max_retries=3, base_delay=2.0, log_prefix='[API] ')
+... def fetch_data():
+...     resp = requests.get('https://api.example.com/data', timeout=10)
+...     resp.raise_for_status()
+...     return resp.json()
+...
+>>> # Direct call usage — wraps a function with args and a state-reset callback
+>>> def reset_state(attempt, exc):
+...     print(f'Resetting before retry {attempt}')
+...
+>>> result = retry_transient(
+...     fetch_data,
+...     max_retries=5,
+...     log_prefix='[Ingestion] ',
+...     on_retry=reset_state,
+... )()
+''')
+
 # ---------------------------------------------------------------------------
 # auth.py — Credential, AuthStrategy, BearerTokenStrategy,
 #            ApiKeyHeaderStrategy, QueryParamStrategy
