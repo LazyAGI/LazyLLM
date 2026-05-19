@@ -5,7 +5,7 @@ from typing import Optional, Callable, Set, List, Dict, Tuple
 from pathlib import Path
 from enum import Enum
 
-from lazyllm.thirdparty import bs4
+from lazyllm.thirdparty import bs4, pypdf
 from ..readerBase import _RichReader
 from ...doc_node import DocNode
 from .ocr_ir import Block, Cell
@@ -64,7 +64,6 @@ class _OcrReaderBase(_RichReader, _Adapter):
         Returns a list of (sub_file_path, start_page_index) tuples, ordered by page.
         If the original file is small enough, returns [(pdf_path, 0)].
         '''
-        from pypdf import PdfReader, PdfWriter
 
         max_size_bytes = max_size_mb * 1024 * 1024
         original_size = os.path.getsize(pdf_path)
@@ -85,7 +84,7 @@ class _OcrReaderBase(_RichReader, _Adapter):
             shutil.rmtree(splits_dir)
         splits_dir.mkdir(parents=True, exist_ok=True)
 
-        reader = PdfReader(pdf_path)
+        reader = pypdf.PdfReader(pdf_path)
         total_pages = len(reader.pages)
         basename = Path(pdf_path).stem
 
@@ -105,7 +104,7 @@ class _OcrReaderBase(_RichReader, _Adapter):
         final_result = []
         while chunks:
             page_indices, offset = chunks.pop(0)
-            writer = PdfWriter()
+            writer = pypdf.PdfWriter()
             for i in page_indices:
                 writer.add_page(reader.pages[i])
 

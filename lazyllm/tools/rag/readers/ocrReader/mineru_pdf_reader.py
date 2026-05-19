@@ -69,8 +69,7 @@ class MineruPDFReader(_OcrReaderBase):
         merged_info = dict(extra_info) if extra_info else {}
         if task_dir is not None:
             merged_info['image_cache_dir'] = str(task_dir)
-        nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
-        return nodes
+        return self._build_nodes_from_response(response_text, file_path, merged_info)
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
         if self._patch_applied:
