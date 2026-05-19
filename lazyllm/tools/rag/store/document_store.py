@@ -141,15 +141,16 @@ class _DocumentStore(object):
         dims, datatypes = self._impl.try_read_dims_from_schema(collections)
         if dims or datatypes:
             LOG.info('[_DocumentStore] Inferred embed dims from existing store schema')
-            return dims, datatypes
-        dims, datatypes = {}, {}
-        for k, e in (self._embed or {}).items():
-            embedding = e('a')
-            if is_sparse(embedding):
-                datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
-            else:
-                dims[k] = len(embedding)
-                datatypes[k] = DataType.FLOAT_VECTOR
+        missing_keys = [k for k in (self._embed or {}) if k not in datatypes]
+        if missing_keys:
+            LOG.info(f'[_DocumentStore] Resolving embed dims by calling embed functions for keys: {missing_keys}')
+            for k in missing_keys:
+                embedding = self._embed[k]('a')
+                if is_sparse(embedding):
+                    datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
+                else:
+                    dims[k] = len(embedding)
+                    datatypes[k] = DataType.FLOAT_VECTOR
         return dims, datatypes
 
     @once_wrapper(reset_on_pickle=True)
