@@ -207,7 +207,7 @@ class MineruPDFReader(_OcrReaderBase):
                     raise ValueError(f'Path traversal detected in zip: {member.filename}')
             json_members = [m for m in zf.infolist() if m.filename.endswith('_content_list.json')]
             if not json_members:
-                raise ValueError(f'No *_content_list.json found in zip')
+                raise ValueError('No *_content_list.json found in zip')
             content = json.loads(zf.read(json_members[0]))
             for member in zf.infolist():
                 if not member.filename.endswith('_content_list.json'):
@@ -218,7 +218,9 @@ class MineruPDFReader(_OcrReaderBase):
     def _adapt_json_to_IR(self, raw) -> List[Block]:
         # Online API (zip extraction) returns a list directly.
         # Patch-deployed local server returns {'result': [{'content_list': [...]}]}.
-        if self._service_variant == ServiceVariant.OFFLINE and self._patch_applied:
+        # Prefer structural detection over the patch_applied flag so that
+        # online-API responses are handled correctly regardless of configuration.
+        if self._patch_applied and isinstance(raw, dict):
             content_list = raw['result'][0]['content_list']
         else:
             content_list = raw
