@@ -1,14 +1,13 @@
 import os
 import hashlib
-import json
 import re
 from enum import Enum
 from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
 from lazyllm import LOG, once_wrapper, config
 from lazyllm.module import LLMBase
-from .transform import (NodeTransform, SentenceSplitter,
-                        TransformArgs, TransformArgs as TArgs, _transmap, _normalize_for_sig)
+from .transform import (NodeTransform, SentenceSplitter, TransformArgs, TransformArgs as TArgs,
+                        _transmap, _normalize_for_sig, _calculate_signature)
 from .index_base import IndexBase
 from .store import (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, LazyLLMStoreBase)
 from .store.store_base import DEFAULT_KB_ID
@@ -59,10 +58,9 @@ def _compute_node_group_signature(name: str, transform, parent_sig: str, ref_sig
         transform_sig = transform.signature()
     else:
         transform_sig = _elem_sig(transform)
-    payload = json.dumps(_normalize_for_sig(
+    return _calculate_signature(_normalize_for_sig(
         {'name': name, 'parent_sig': parent_sig, 'ref_sig': ref_sig, 'transform_sig': transform_sig,
          'group_type': group_type.name if isinstance(group_type, NodeGroupType) else str(group_type)}))
-    return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 class StorePlaceholder:
     pass
