@@ -2,8 +2,14 @@ from importlib import import_module
 from threading import Lock
 from typing import Dict, Tuple, Type
 
-_TRACE_BACKEND_SPECS = (('langfuse', '.langfuse.backend', 'LangfuseBackend'),)
-_CONSUME_BACKEND_SPECS = (('langfuse', '.langfuse', 'LangfuseConsumeBackend'),)
+_TRACE_BACKEND_SPECS = (
+    ('langfuse', '.langfuse.backend', 'LangfuseBackend'),
+    ('local', '.local.backend', 'LocalBackend'),
+)
+_CONSUME_BACKEND_SPECS = (
+    ('langfuse', '.langfuse', 'LangfuseConsumeBackend'),
+    ('local', '.local', 'LocalConsumeBackend'),
+)
 
 
 def _load_backend_classes(specs: Tuple[Tuple[str, str, str], ...]) -> Tuple[Dict[str, Type], Dict[str, Exception]]:
@@ -15,7 +21,7 @@ def _load_backend_classes(specs: Tuple[Tuple[str, str, str], ...]) -> Tuple[Dict
             module = import_module(module_path, package=__package__)
             backend_cls = getattr(module, class_name)
             classes[backend_cls.name] = backend_cls
-        except ImportError as exc:
+        except (ImportError, AttributeError) as exc:
             import_errors[backend_name] = exc
 
     return classes, import_errors
