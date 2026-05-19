@@ -2,7 +2,7 @@ import re
 
 from abc import ABC, abstractmethod
 from enum import IntFlag, auto
-from typing import Optional, List, Union, Set, Dict, Any
+from typing import Optional, List, Union, Set, Dict, Any, Tuple
 from lazyllm.common import LazyLLMRegisterMetaABCClass
 from pydantic import BaseModel, Field
 
@@ -102,3 +102,11 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
         raise NotImplementedError
+
+    def try_read_dims_from_schema(self, collections: List[str]) -> Tuple[Dict[str, int], Dict[str, DataType]]:
+        '''Try to read embed_dims and embed_datatypes from existing backend schema.
+
+        Default: no introspection supported. Subclasses override when the vector backend
+        can describe collections before connect().
+        '''
+        return {}, {}
