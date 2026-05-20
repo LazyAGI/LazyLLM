@@ -84,7 +84,7 @@ class _OcrReaderBase(_RichReader, _Adapter):
             pdf_files = sorted(splits_dir.glob('*.pdf'))
             if pdf_files and all(
                 os.path.getsize(f) <= max_size_bytes
-                and len(pypdf.PdfReader(str(f)).pages) <= max_pages
+                and _OcrReaderBase._parse_page_count(f.name) <= max_pages
                 for f in pdf_files
             ):
                 return [(str(f), _OcrReaderBase._parse_page_start(f.name)) for f in pdf_files]
@@ -142,6 +142,13 @@ class _OcrReaderBase(_RichReader, _Adapter):
         import re
         match = re.search(r'_part_(\d+)-\d+\.pdf$', filename)
         return int(match.group(1)) if match else 0
+
+    @staticmethod
+    def _parse_page_count(filename: str) -> int:
+        '''Parse page count from split filename, e.g. 'doc_part_0-50.pdf' -> 50.'''
+        import re
+        match = re.search(r'_part_\d+-(\d+)\.pdf$', filename)
+        return int(match.group(1)) - _OcrReaderBase._parse_page_start(filename) if match else 0
 
     def _fetch_response(self, file: Path, use_cache: bool = False) -> str:
         '''Fetch raw response string from the OCR service.'''
