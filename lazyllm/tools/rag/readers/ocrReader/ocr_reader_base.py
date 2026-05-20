@@ -83,8 +83,8 @@ class _OcrReaderBase(_RichReader, _Adapter):
         if splits_dir.exists():
             pdf_files = sorted(splits_dir.glob('*.pdf'))
             if pdf_files and all(
-                os.path.getsize(f) <= max_size_bytes and
-                len(pypdf.PdfReader(str(f)).pages) <= max_pages
+                os.path.getsize(f) <= max_size_bytes \
+                and len(pypdf.PdfReader(str(f)).pages) <= max_pages
                 for f in pdf_files
             ):
                 return [(str(f), _OcrReaderBase._parse_page_start(f.name)) for f in pdf_files]
