@@ -32,11 +32,18 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
     def format(self, msg):
         if _is_chat_message(msg):
             if msg.get('tool_calls'):
-                # When tool_calls are present, the full dict must be returned so that
-                # reasoning_content is preserved for provider-compatible history replay.
-                # DeepSeek (and compatible providers) reject multi-turn tool-calling
-                # requests whose previous assistant turn omits reasoning_content.
-                return msg
+                # The base formatter collapses chat messages to plain text, which drops
+                # `tool_calls` and `reasoning_content`. Tool-calling models must be
+                # configured with `FunctionCallFormatter`, which keeps those structured
+                # fields so a provider-compatible multi-turn history can be replayed
+                # (e.g. DeepSeek rejects a tool-calling request whose previous assistant
+                # turn omits `reasoning_content`). Warn rather than drop them silently.
+                lazyllm.LOG.warning(
+                    f'{type(self).__name__}: formatting an assistant message that '
+                    'contains `tool_calls`; `tool_calls` and `reasoning_content` will be '
+                    'dropped. Configure the model with `FunctionCallFormatter` for tool '
+                    'calling.'
+                )
             if reasoning_content := msg.get('reasoning_content'):
                 msg = f'<think>{reasoning_content}</think>' + msg['content']
             else:
@@ -159,6 +166,15 @@ class EmptyFormatter(LazyLLMFormatterBase):
         return msg
 
 class FunctionCallFormatter(LazyLLMFormatterBase):
+    '''Formatter for tool-calling (FunctionCall) models.
+
+    Unlike the base formatter, which collapses an assistant message to plain text,
+    this keeps the structured ``role`` / ``content`` / ``tool_calls`` /
+    ``reasoning_content`` fields. Any model that produces ``tool_calls`` must be
+    configured with this formatter so that a provider-compatible multi-turn history
+    can be replayed (e.g. DeepSeek rejects a tool-calling request whose previous
+    assistant turn omits ``reasoning_content``).
+    '''
     def format(self, msg):
         assert isinstance(msg, dict), 'FunctionCallFormatter only supports dict input.'
         return {k: msg[k] for k in ('role', 'content', 'tool_calls', 'reasoning_content') if k in msg}

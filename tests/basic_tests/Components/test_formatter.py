@@ -5,14 +5,21 @@ import pytest
 
 class TestFormatter(object):
 
-    def test_empty_formatter_preserves_dict_when_tool_calls_present(self):
-        # When tool_calls are present the full assistant dict must be returned so
-        # that reasoning_content survives for provider-compatible history replay
-        # (e.g. DeepSeek rejects the next request if reasoning_content is missing).
-        ef = formatter.EmptyFormatter
+    def test_empty_formatter_warns_when_tool_calls_present(self, monkeypatch):
+        # The base / Empty formatter collapses chat messages to plain text, dropping
+        # `tool_calls` and `reasoning_content`. It must not do so silently: a warning
+        # has to point the user at `FunctionCallFormatter`, which is the formatter
+        # tool-calling models should be configured with.
+        warnings_seen = []
+
+        class _FakeLog:
+            def warning(self, msg, *args, **kwargs):
+                warnings_seen.append(msg)
+
+        monkeypatch.setattr(lazyllm, 'LOG', _FakeLog())
         msg = {
             'role': 'assistant',
-            'content': '',
+            'content': 'done',
             'reasoning_content': 'I should look up the weather.',
             'tool_calls': [{
                 'id': 'call_1',
@@ -20,11 +27,11 @@ class TestFormatter(object):
                 'function': {'name': 'get_weather', 'arguments': '{"city":"Beijing"}'},
             }],
         }
-        result = ef()(msg)
-        assert isinstance(result, dict)
-        assert result['reasoning_content'] == 'I should look up the weather.'
-        assert result['tool_calls'] == msg['tool_calls']
-        assert result['content'] == ''
+        result = formatter.EmptyFormatter()(msg)
+        # The base formatter still collapses to text (its documented behaviour) ...
+        assert isinstance(result, str)
+        # ... but emits a warning naming the formatter that preserves the fields.
+        assert any('FunctionCallFormatter' in w for w in warnings_seen)
 
     def test_empty_formatter_wraps_reasoning_content_when_no_tool_calls(self):
         ef = formatter.EmptyFormatter
