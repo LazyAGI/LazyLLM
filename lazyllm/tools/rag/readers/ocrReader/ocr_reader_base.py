@@ -55,20 +55,26 @@ class _OcrReaderBase(_RichReader, _Adapter):
         self._dropped_types = dropped_types if dropped_types is not None else set()
 
     @staticmethod
-    def _split_large_pdf(pdf_path: str, max_size_mb: int = 200) -> List[Tuple[str, int]]:
-        '''Split a large PDF into equal-page parts until each is under max_size_mb.
+    def _split_large_pdf(pdf_path: str, max_size_mb: int = 200,
+                         max_pages: int = 200) -> List[Tuple[str, int]]:
+        '''Split a large PDF into parts, each under max_size_mb and max_pages.
 
         Split files are placed in {pdf_path}.splits/ directory.
-        If already split and sizes are valid, reuse existing files.
+        If already split and sizes/pages are valid, reuse existing files.
 
         Returns a list of (sub_file_path, start_page_index) tuples, ordered by page.
-        If the original file is small enough, returns [(pdf_path, 0)].
+        If the original file fits both limits, returns [(pdf_path, 0)].
         '''
 
         max_size_bytes = max_size_mb * 1024 * 1024
         original_size = os.path.getsize(pdf_path)
 
-        if original_size <= max_size_bytes:
+        reader = pypdf.PdfReader(pdf_path)
+        total_pages = len(reader.pages)
+
+        need_split = original_size > max_size_bytes or total_pages > max_pages
+
+        if not need_split:
             return [(pdf_path, 0)]
 
         splits_dir = Path(f'{pdf_path}.splits')
@@ -76,7 +82,11 @@ class _OcrReaderBase(_RichReader, _Adapter):
         # Check cache
         if splits_dir.exists():
             pdf_files = sorted(splits_dir.glob('*.pdf'))
-            if pdf_files and all(os.path.getsize(f) <= max_size_bytes for f in pdf_files):
+            if pdf_files and all(
+                os.path.getsize(f) <= max_size_bytes and
+                len(pypdf.PdfReader(str(f)).pages) <= max_pages
+                for f in pdf_files
+            ):
                 return [(str(f), _OcrReaderBase._parse_page_start(f.name)) for f in pdf_files]
 
         # Clear and re-split
@@ -84,15 +94,15 @@ class _OcrReaderBase(_RichReader, _Adapter):
             shutil.rmtree(splits_dir)
         splits_dir.mkdir(parents=True, exist_ok=True)
 
-        reader = pypdf.PdfReader(pdf_path)
-        total_pages = len(reader.pages)
         basename = Path(pdf_path).stem
 
-        # Calculate number of parts: floor(size / max_size) + 1
-        num_parts = original_size // max_size_bytes + 1
+        # Calculate number of parts needed to satisfy BOTH size and page limits
+        size_parts = max(1, (original_size + max_size_bytes - 1) // max_size_bytes)
+        page_parts = max(1, (total_pages + max_pages - 1) // max_pages)
+        num_parts = max(size_parts, page_parts)
         pages_per_part = max(1, total_pages // num_parts)
 
-        # Build initial chunks as (list_of_page_indices, start_offset)
+        # Build initial chunks
         chunks = []
         start_page = 0
         while start_page < total_pages:
@@ -100,7 +110,7 @@ class _OcrReaderBase(_RichReader, _Adapter):
             chunks.append((list(range(start_page, end_page)), start_page))
             start_page = end_page
 
-        # Iteratively split oversized chunks until all are under max_size_bytes
+        # Iteratively split until all chunks satisfy both limits
         final_result = []
         while chunks:
             page_indices, offset = chunks.pop(0)
@@ -113,14 +123,16 @@ class _OcrReaderBase(_RichReader, _Adapter):
             with open(part_path, 'wb') as f:
                 writer.write(f)
 
-            if os.path.getsize(part_path) <= max_size_bytes or len(page_indices) == 1:
+            part_size_ok = os.path.getsize(part_path) <= max_size_bytes
+            part_pages_ok = len(page_indices) <= max_pages
+            if (part_size_ok and part_pages_ok) or len(page_indices) == 1:
                 final_result.append((str(part_path), offset))
             else:
-                # Oversized and multi-page: split in half and re-queue
+                # Oversized or too many pages: split in half and re-queue
                 mid = len(page_indices) // 2
                 chunks.insert(0, (page_indices[mid:], offset + mid))
                 chunks.insert(0, (page_indices[:mid], offset))
-                os.remove(part_path)  # Remove the oversized temp file
+                os.remove(part_path)
 
         return sorted(final_result, key=lambda x: x[1])
 
