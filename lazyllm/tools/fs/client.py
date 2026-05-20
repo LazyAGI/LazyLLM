@@ -99,8 +99,8 @@ class _FSRouter:
     def exists(self, path: str, **kwargs) -> bool:
         return self._dispatch('exists', path, **kwargs)
 
-    def read_bytes(self, path: str) -> bytes:
-        return self._dispatch('read_bytes', path)
+    def read_bytes(self, path: str, **kwargs) -> bytes:
+        return self._dispatch('read_bytes', path, **kwargs)
 
     def read_file(self, path: str) -> str:
         return self._dispatch('read_file', path)

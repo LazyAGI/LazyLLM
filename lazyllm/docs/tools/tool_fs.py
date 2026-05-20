@@ -1021,7 +1021,7 @@ Preserving format (tables, headings, etc.):
     - To preserve format, use block-level edit: get_doc_blocks(path) to list blocks (block_id, block_type, plain_text), then update_doc_block_text(path, block_id, new_text) for the blocks you need to change; other blocks (e.g. tables) are left unchanged.
 ''')
 _add_fs_chinese('FeishuWikiFS.fetch_url', '''\
-通过飞书浏览器链接直接拉取文档内容（只读），无需 space_id 也无需标题路径。
+通过飞书浏览器链接直接拉取文档内容（只读），无需 space_id 也无需标题路径。已废弃，推荐使用 read_bytes(url) 或 open(url)。
 
 支持的链接格式：
     - https://<host>/wiki/<node_token>   知识库节点链接
@@ -1036,7 +1036,7 @@ Returns:
     bytes: 文档纯文本内容（UTF-8 编码）；附件类型返回二进制。
 ''')
 _add_fs_english('FeishuWikiFS.fetch_url', '''\
-Fetch document content directly from a Feishu browser URL (read-only), without requiring space_id or a title path.
+Fetch document content directly from a Feishu browser URL (read-only), without requiring space_id or a title path. Deprecated; prefer read_bytes(url) or open(url).
 
 Supported URL formats:
     - https://<host>/wiki/<node_token>   wiki node link
@@ -1049,6 +1049,72 @@ Args:
 
 Returns:
     bytes: Document plain text content (UTF-8 encoded); binary for file attachments.
+''')
+_add_fs_chinese('FeishuWikiFS.read_bytes', '''\
+读取路径对应文档的完整内容（字节）。支持裸飞书 URL、~link/~node/~docx/~doc 路径及标题路径。
+
+Args:
+    path (str): 文档路径或飞书 URL。
+    include_references (bool): 为 True 时在正文末尾追加引用附录（lazyllm-feishu-references 格式），默认 False。
+
+Returns:
+    bytes: 文档内容（UTF-8 编码）；include_references=True 时末尾含引用附录。
+''')
+_add_fs_english('FeishuWikiFS.read_bytes', '''\
+Read the full content of the document at path as bytes. Supports bare Feishu URLs, ~link/~node/~docx/~doc paths, and title paths.
+
+Args:
+    path (str): Document path or Feishu URL.
+    include_references (bool): When True, appends a reference appendix (lazyllm-feishu-references format) after the body; default False.
+
+Returns:
+    bytes: Document content (UTF-8 encoded); with reference appendix when include_references=True.
+''')
+_add_fs_chinese('FeishuWikiFS.ls', '''\
+列出路径下的子节点。支持裸飞书 wiki URL、~link/<encoded_url>、~node/<token> 路径及标题路径。
+
+- 传入 wiki URL 或 ~node 路径时，列举该节点的直接子节点（不拉取子文档正文）。
+- 节点无子页（has_child=false）时返回空列表，不报错。
+- 传入 docx/docs 直链（非 wiki 节点）时抛出 ValueError。
+
+Args:
+    path (str): 目录路径、wiki URL 或 ~node/~link 路径。
+    detail (bool): True 时返回 dict 列表（含 creator/owner/node_token 等）；False 时返回名称列表。
+
+Returns:
+    list: detail=True 时为 dict 列表；detail=False 时为 name 列表。
+''')
+_add_fs_english('FeishuWikiFS.ls', '''\
+List child nodes at path. Supports bare Feishu wiki URLs, ~link/<encoded_url>, ~node/<token> paths, and title paths.
+
+- For wiki URLs or ~node paths, lists direct child nodes (does not fetch document content).
+- Returns empty list when the node has no children (has_child=false); does not raise.
+- Raises ValueError for docx/docs direct links (non-wiki nodes).
+
+Args:
+    path (str): Directory path, wiki URL, or ~node/~link path.
+    detail (bool): If True return list of dicts (with creator/owner/node_token etc.); if False return list of names.
+
+Returns:
+    list: List of dicts if detail=True else list of names.
+''')
+_add_fs_chinese('FeishuWikiFS.info', '''\
+获取路径对应节点的元信息。支持裸飞书 wiki URL、~link/~node 路径及标题路径。
+
+Args:
+    path (str): 节点路径、wiki URL 或 ~node/~link 路径。
+
+Returns:
+    dict: 含 name、size、type、mtime、title、obj_type、node_token、creator、owner 等字段。
+''')
+_add_fs_english('FeishuWikiFS.info', '''\
+Get metadata for the node at path. Supports bare Feishu wiki URLs, ~link/~node paths, and title paths.
+
+Args:
+    path (str): Node path, wiki URL, or ~node/~link path.
+
+Returns:
+    dict: Contains name, size, type, mtime, title, obj_type, node_token, creator, owner, etc.
 ''')
 _add_fs_chinese('FeishuWikiFS.get_document_id', '''\
 返回 Wiki 文档节点对应的飞书 docx document_id（即 obj_token）。path 必须指向 doc 或 docx 类型节点，否则抛出 ValueError。
