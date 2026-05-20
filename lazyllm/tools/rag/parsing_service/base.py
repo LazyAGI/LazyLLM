@@ -43,6 +43,8 @@ class AddDocRequest(BaseModel):
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
     callback_url: Optional[str] = None
+    # per-request model config injected by backend (e.g. embed_main).
+    llm_config: Optional[Dict[str, Any]] = None
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None

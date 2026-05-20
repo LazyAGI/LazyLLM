@@ -3,7 +3,7 @@ import os
 import shutil
 
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from typing import (Any, Callable, Dict, Generator, List, Optional, Set, Tuple,
                     Union)
 from urllib.parse import urlsplit, urlunsplit
@@ -16,6 +16,7 @@ from pydantic import BaseModel
 import lazyllm
 from lazyllm import config
 from lazyllm.common import override, retry_transient
+from lazyllm.common.threading import ThreadPoolExecutor
 from lazyllm.thirdparty import tarfile
 
 from .doc_node import DocNode, MetadataMode, ImageDocNode
