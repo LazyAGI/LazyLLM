@@ -1,6 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import unittest
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 from lazyllm.tools.fs.supplier.feishu import (
     _parse_feishu_browser_url,
@@ -524,4 +524,3 @@ class TestNodeToEntryCreatorOwner(unittest.TestCase):
         self.assertEqual(entry['creator'], '')
         self.assertEqual(entry['owner'], '')
         self.assertEqual(entry['node_creator'], '')
-
