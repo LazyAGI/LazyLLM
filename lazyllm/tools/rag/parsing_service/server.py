@@ -723,10 +723,10 @@ class DocumentProcessor(ModuleBase):
                 return None
             if init:
                 try:
-                    store._lazy_init()
+                    store._seg_init()
                     self._store = store
                 except Exception as e:
-                    LOG.warning(f'[DocumentProcessor] _get_or_init_store: _lazy_init failed: {e}')
+                    LOG.warning(f'[DocumentProcessor] _get_or_init_store: _seg_init failed: {e}')
                     return None
             return store
 
