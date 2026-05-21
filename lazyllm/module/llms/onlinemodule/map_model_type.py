@@ -450,12 +450,12 @@ MODEL_MAPPING = {
 }
 _TOKEN_MAP = {
     'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision', 'vl-embedding'),
+    'rerank': ('rerank',),
     'embed': ('embedding', 'embed'),
+    'ocr': ('ocr',),
     'stt': ('whisper', 'paraformer', 'asr', 'stt', 'transcribe'),
     'tts': ('tts', 'cosyvoice', 'nova-tts'),
     'vlm': ('qwen-vl', 'vl', 'vision', 'caption', 'omni', 'vlm', 'seed'),
-    'ocr': ('ocr',),
-    'rerank': ('rerank',),
     'sd': ('dall', 'wan', 'sora', 'image', 'video', 't2i', 't2v'),
     'image_editing': ('image-edit', 'seededit', 'i2i', 'seedream-3', 'seedream-4'),
 }
@@ -492,11 +492,21 @@ NORMALIZED_MODEL_MAPPING: Dict[str, str] = {
     _normalize_key(k): v for k, v in MODEL_MAPPING.items()
 }
 
+_VISUAL_TOKENS = ('vl', 'vision', 'visual', 'multimodal')
+_EMBED_TOKENS = ('embedding', 'embed')
+
 def feature_keyword_rule(model_name: str) -> Optional[str]:
     '''Identify the model type by normalized name or keyword match.'''
     stripped_input = _normalize_key(model_name)
     if stripped_input in NORMALIZED_MODEL_MAPPING:
         return NORMALIZED_MODEL_MAPPING[stripped_input]
+
+    # Combination rule: names containing both a visual token and an embedding token
+    # are cross-modal embeddings, regardless of other tokens like 'image'.
+    has_visual = any(_contains_token(stripped_input, t) for t in _VISUAL_TOKENS)
+    has_embed = any(_contains_token(stripped_input, t) for t in _EMBED_TOKENS)
+    if has_visual and has_embed:
+        return 'cross_modal_embed'
 
     for model_type, tokens in _TOKEN_MAP.items():
         for tok in tokens:

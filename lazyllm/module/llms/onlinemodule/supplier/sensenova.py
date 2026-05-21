@@ -245,6 +245,11 @@ class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
             api_key = self._get_api_key(api_key, secret_key)
         super().__init__(embed_url, api_key, embed_model_name, batch_size=batch_size, **kw)
 
+    def _get_embed_url(self, url: str) -> str:
+        url, done = self._normalize_embed_url(url)
+        if done: return url
+        return urljoin(url, 'v1/llm/embeddings')
+
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
         embeddings = response.get('embeddings', [])
         if not embeddings:

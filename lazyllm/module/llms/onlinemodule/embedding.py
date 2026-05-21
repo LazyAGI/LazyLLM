@@ -53,13 +53,21 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
     def _resolve_type_name(type_name: Optional[str], embed_model_name: Optional[str]) -> str:
         if type_name is not None:
             if type_name == LLMType.CROSS_MODAL_EMBED:
-                return 'embed'
+                return 'cross_modal_embed'
             return type_name
         resolved = get_model_type(embed_model_name) if embed_model_name else 'embed'
-        return resolved if resolved in ('embed', 'rerank') else 'embed'
+        return resolved if resolved in ('embed', 'rerank', 'cross_modal_embed') else 'embed'
 
     @staticmethod
     def _create_supplier(source: str, type_name: str, embed_model_name: str, params: dict):
+        if type_name == 'cross_modal_embed':
+            if source == 'doubao':
+                return DoubaoMultimodalEmbed(**params)
+            if source == 'qwen':
+                return QwenMultimodalEmbed(**params)
+            if source == 'siliconflow':
+                return SiliconFlowMultimodalEmbed(**params)
+            raise ValueError(f'Source {source!r} does not support CROSS_MODAL_EMBED.')
         if type_name == 'embed':
             if source == 'doubao' and embed_model_name and embed_model_name.startswith('doubao-embedding-vision'):
                 return DoubaoMultimodalEmbed(**params)
@@ -92,7 +100,7 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
         if source is None and api_key is not None:
             raise ValueError('No source is given but an api_key is provided.')
         type_name = OnlineEmbeddingModule._resolve_type_name(type, model)
-        if type_name == 'embed':
+        if type_name in ('embed', 'cross_modal_embed'):
             source, default_key = select_source_with_default_key(lazyllm.online.embed, source, LLMType.EMBED)
         elif type_name == 'rerank':
             source, default_key = select_source_with_default_key(lazyllm.online.rerank, source, LLMType.RERANK)
@@ -118,6 +126,8 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
         _DynamicSourceRouterMixin.__init__(self, id=id, name=name, group_id=group_id, return_trace=return_trace)
         self._embed_url = url
         self._embed_model_name = model
+        if source == 'dynamic' and type is None:
+            raise ValueError('type must be explicitly provided when source is dynamic.')
         self._type = OnlineEmbeddingModule._resolve_type_name(type, model)
         self._skip_auth = skip_auth
         self._kwargs = kwargs
@@ -128,5 +138,5 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
     def _build_supplier(self, source: str, skip_auth: bool):
         params = {'embed_url': self._embed_url, 'embed_model_name': self._embed_model_name,
                   'return_trace': self._return_trace, 'batch_size': self._batch_size,
-                  'type': self._type, 'api_key': self._api_key, 'skip_auth': skip_auth, **self._kwargs}
+                  'api_key': self._api_key, 'skip_auth': skip_auth, **self._kwargs}
         return OnlineEmbeddingModule._create_supplier(source, self._type, self._embed_model_name, params)

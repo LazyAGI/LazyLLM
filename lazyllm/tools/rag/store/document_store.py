@@ -336,6 +336,11 @@ class _DocumentStore(object):
         # remove the nodes of the whole file -- doc ids only
         # remove the nodes of a certain group for one file -- doc ids and group (kb_id is optional)
         # forbid to remove the nodes from multiple kb
+        # If the store has never been successfully initialized (e.g. the document was never
+        # parsed), there is nothing to delete in the vector DB.  Skip gracefully.
+        if not self._lazy_init.flag:
+            LOG.info('[_DocumentStore] remove_nodes: store not yet initialized, nothing to delete')
+            return
         try:
             criteria = {}
             if uids:
@@ -553,7 +558,7 @@ class _DocumentStore(object):
 
     def register_index(self, type: str, index: IndexBase) -> None:
         assert self._impl.supports_index_registration, \
-            f'[_DocumentStore] Store {type(self.impl)} does not support index registration'
+            f'[_DocumentStore] Store {type(self._impl)} does not support index registration'
         self._indices[type] = index
 
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:

@@ -311,6 +311,13 @@ class QwenEmbed(LazyLLMOnlineEmbedModuleBase):
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name,
                          batch_size=batch_size, **kw)
 
+    def _get_embed_url(self, url: str) -> str:
+        url, done = self._normalize_embed_url(url)
+        if done: return url
+        if url.rstrip('/').endswith('api/v1'):
+            return urljoin(url, 'services/embeddings/text-embedding/text-embedding')
+        return urljoin(url, 'api/v1/services/embeddings/text-embedding/text-embedding')
+
     def _encapsulated_data(self, text: Union[List, str], **kwargs):
         if isinstance(text, str):
             json_data = {
@@ -426,6 +433,13 @@ class QwenRerank(LazyLLMOnlineRerankModuleBase):
                                   'rerank/text-rerank/text-rerank')
         embed_model_name = embed_model_name or 'gte-rerank-v2'
         super().__init__(embed_url, api_key or self._default_api_key(), embed_model_name, **kw)
+
+    def _get_embed_url(self, url: str) -> str:
+        url, done = self._normalize_embed_url(url)
+        if done: return url
+        if url.rstrip('/').endswith('api/v1'):
+            return urljoin(url, 'services/rerank/text-rerank/text-rerank')
+        return urljoin(url, 'api/v1/services/rerank/text-rerank/text-rerank')
 
     @property
     def type(self):

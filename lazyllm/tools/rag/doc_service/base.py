@@ -96,6 +96,7 @@ class DocItemsRequest(BaseModel):
     kb_id: str = '__default__'
     source_type: Optional[SourceType] = None
     idempotency_key: Optional[str] = None
+    llm_config: Optional[Dict[str, Any]] = None
 
     @model_validator(mode='after')
     def validate_items(self):
@@ -114,6 +115,7 @@ class ReparseRequest(BaseModel):
     # algo_ids and ng_names are mutually exclusive; omit both to reparse all algos/ngs
     algo_ids: Optional[List[str]] = None
     ng_names: Optional[List[str]] = None
+    llm_config: Optional[Dict[str, Any]] = None
     idempotency_key: Optional[str] = None
 
     @model_validator(mode='after')

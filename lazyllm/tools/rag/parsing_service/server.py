@@ -707,16 +707,27 @@ class DocumentProcessor(ModuleBase):
                 LOG.error(f'[DocumentProcessor] Failed to get group info: {e}, {traceback.format_exc()}')
                 raise fastapi.HTTPException(status_code=500, detail=f'Failed to get group info: {str(e)}')
 
-        def _get_or_init_store(self, algorithm: dict) -> Optional['_DocumentStore']:
-            '''Return the global _DocumentStore, lazily loaded from DB info_pickle and initialized once.'''
+        def _get_or_init_store(self, algorithm: dict, init: bool = False) -> Optional['_DocumentStore']:
+            '''Return the global _DocumentStore, lazily loaded from DB info_pickle.
+
+            When init=True the store is fully initialized (connects to the vector DB and
+            resolves embed dims).  Callers that only need metadata (e.g. activated_groups)
+            should pass init=False (the default) to avoid triggering embed model calls
+            before inject_model_config has been called.
+            '''
             if self._store is not None:
                 return self._store
             info = load_obj(algorithm.get('info_pickle'))
             store: Optional[_DocumentStore] = info.get('store') if isinstance(info, dict) else None
             if store is None:
                 return None
-            store._lazy_init()
-            self._store = store
+            if init:
+                try:
+                    store._lazy_init()
+                    self._store = store
+                except Exception as e:
+                    LOG.warning(f'[DocumentProcessor] _get_or_init_store: _lazy_init failed: {e}')
+                    return None
             return store
 
         def _load_reader_from_db(self) -> Optional[DirectoryReader]:
@@ -773,7 +784,7 @@ class DocumentProcessor(ModuleBase):
             algorithm = self._get_algo(algo_id)
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
-            store = self._get_or_init_store(algorithm)
+            store = self._get_or_init_store(algorithm, init=True)
             if store is None:
                 raise fastapi.HTTPException(status_code=503, detail='Store not initialized for algo')
             node_groups = algorithm.get('node_groups') or {}  # {name: cfg} built by _get_algo

@@ -29,13 +29,20 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
         params: Dict[str, Any] = dict(kwargs)
         resolved_type = type or params.pop('function', None)
         if not resolved_type:
+            if source == 'dynamic':
+                raise ValueError('type must be explicitly provided when source is dynamic.')
             resolved_type = (get_model_type(model) or 'llm') if model else 'llm'
         resolved_type = resolved_type.lower()
 
         if resolved_type in self._EMBED_TYPES:
             embed_kwargs = params.copy()
             embed_kwargs.pop('function', None)
-            embed_kwargs.setdefault('type', 'rerank' if resolved_type == LLMType.RERANK else 'embed')
+            if resolved_type == LLMType.RERANK:
+                embed_kwargs.setdefault('type', 'rerank')
+            elif resolved_type == LLMType.CROSS_MODAL_EMBED:
+                embed_kwargs.setdefault('type', 'cross_modal_embed')
+            else:
+                embed_kwargs.setdefault('type', 'embed')
             return OnlineEmbeddingModule(model=model, source=source, url=url, **embed_kwargs)
 
         if resolved_type in list(self._MULTI_TYPE_TO_FUNCTION.keys()):

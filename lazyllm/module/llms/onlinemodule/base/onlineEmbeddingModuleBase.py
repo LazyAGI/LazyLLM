@@ -1,6 +1,7 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
+from urllib.parse import urljoin
 from lazyllm import LOG
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .utils import LazyLLMOnlineBase, resolve_online_params
@@ -10,6 +11,8 @@ from lazyllm.components.utils.downloader import ModelManager
 class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
     NO_PROXY = True
     __lazyllm_registry_disable__ = True
+    RAW_URL_PREFIX = '!'
+    _EMBED_SUFFIXES = ('embeddings', 'embed', 'sparse_embed', 'rerank')
 
     def __init__(self, embed_url: str, api_key: str, embed_model_name: str, skip_auth: bool = False,
                  return_trace: bool = False, batch_size: int = 32, num_worker: int = 1, timeout: int = 60):
@@ -31,6 +34,19 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
     def type(self):
         return 'EMBED'
 
+    def _normalize_embed_url(self, url: str) -> Tuple[str, bool]:
+        if url.startswith(self.RAW_URL_PREFIX):
+            return url[len(self.RAW_URL_PREFIX):], True
+        if any(url.rstrip('/').endswith(s) for s in self._EMBED_SUFFIXES):
+            return url, True
+        return url, False
+
+    def _get_embed_url(self, url: str) -> str:
+        url, done = self._normalize_embed_url(url)
+        if done: return url
+        suffix = 'rerank' if self.type == 'RERANK' else 'embeddings'
+        return urljoin(url, suffix)
+
     @property
     def batch_size(self):
         return self._batch_size
@@ -45,7 +61,7 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
             model, None, url, kwargs,
             model_aliases=('model_name', 'embed_model_name', 'embed_name'),
             url_aliases=('base_url', 'embed_url'))
-        runtime_url = url or self._embed_url
+        runtime_url = self._get_embed_url(url) if url else self._embed_url
         runtime_model = model or self._embed_model_name
 
         if runtime_model is not None:
@@ -60,7 +76,9 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
                 if r.status_code == 200:
                     return self._parse_response(r.json(), input=input)
                 else:
-                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+                    err_body = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
+                    LOG.error(f'[OnlineEmbeddingModuleBase] HTTP {r.status_code} url={runtime_url!r} body={err_body!r}')
+                    raise requests.RequestException(err_body)
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
         if isinstance(input, str):

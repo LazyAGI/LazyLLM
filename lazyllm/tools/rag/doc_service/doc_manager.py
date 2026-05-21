@@ -727,7 +727,8 @@ class DocManager:
                             file_path: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None,
                             parser_kb_id: Optional[str] = None,
                             transfer_params: Optional[Dict[str, Any]] = None,
-                            node_group_ids_to_delete: Optional[List[str]] = None):
+                            node_group_ids_to_delete: Optional[List[str]] = None,
+                            llm_config: Optional[Dict[str, Any]] = None):
         if task_type in (TaskType.DOC_ADD, TaskType.DOC_REPARSE, TaskType.DOC_TRANSFER):
             if not file_path:
                 raise RuntimeError(f'file_path is required for task_type {task_type.value}')
@@ -735,7 +736,8 @@ class DocManager:
                 task_id, parser_kb_id or kb_id, doc_id, file_path, metadata,
                 ng_names=ng_names, extractor_names=extractor_names,
                 task_type=task_type.value,
-                callback_url=self._callback_url, transfer_params=transfer_params)
+                callback_url=self._callback_url, transfer_params=transfer_params,
+                llm_config=llm_config)
         elif task_type == TaskType.DOC_UPDATE_META:
             task_resp = self._parser_client.update_meta(
                 task_id, kb_id, doc_id, metadata, file_path, callback_url=self._callback_url)
@@ -755,7 +757,8 @@ class DocManager:
                       metadata: Optional[Dict[str, Any]] = None, ng_names: Optional[List[str]] = None,
                       cleanup_policy: Optional[str] = None, parser_kb_id: Optional[str] = None,
                       transfer_params: Optional[Dict[str, Any]] = None,
-                      extra_message: Optional[Dict[str, Any]] = None, parser_doc_id: Optional[str] = None):
+                      extra_message: Optional[Dict[str, Any]] = None, parser_doc_id: Optional[str] = None,
+                      llm_config: Optional[Dict[str, Any]] = None):
         algo_ids = algo_ids or []
         algo_id = algo_ids[0] if algo_ids else None
         task_id = str(uuid4())
@@ -793,7 +796,8 @@ class DocManager:
                 ng_names=resolved_ng_names, extractor_names=resolved_extractor_names,
                 file_path=file_path, metadata=metadata,
                 parser_kb_id=parser_kb_id, transfer_params=transfer_params,
-                node_group_ids_to_delete=exclusive_ng_ids)
+                node_group_ids_to_delete=exclusive_ng_ids,
+                llm_config=llm_config)
         except Exception as exc:
             finished_at = datetime.now()
             error_msg = str(exc)
@@ -954,7 +958,8 @@ class DocManager:
             try:
                 task_id, snapshot = self._enqueue_task(
                     doc_id, request.kb_id, TaskType.DOC_ADD, algo_ids=algo_ids,
-                    idempotency_key=request.idempotency_key, file_path=file_path, metadata=metadata)
+                    idempotency_key=request.idempotency_key, file_path=file_path, metadata=metadata,
+                    llm_config=getattr(request, 'llm_config', None))
             except Exception as exc:
                 snapshot = self._get_parse_snapshot(doc_id, request.kb_id) or {}
                 doc = self._get_doc(doc_id) or doc
@@ -980,6 +985,7 @@ class DocManager:
             kb_id=request.kb_id,
             source_type=request.source_type or SourceType.EXTERNAL,
             idempotency_key=request.idempotency_key,
+            llm_config=request.llm_config,
         ))
 
     def reparse(self, request: ReparseRequest) -> List[str]:
@@ -1012,6 +1018,7 @@ class DocManager:
                 file_path=item['file_path'],
                 metadata=item['metadata'],
                 ng_names=ng_names,
+                llm_config=request.llm_config,
             )
             task_ids.append(task_id)
         return task_ids
