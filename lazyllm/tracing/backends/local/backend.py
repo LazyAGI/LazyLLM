@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from filelock import FileLock, Timeout
 
@@ -47,13 +47,13 @@ def _local_file_timestamp(otel_time: Any) -> Optional[str]:
     if not isinstance(otel_time, str) or not otel_time:
         return None
     try:
-        text = otel_time.removesuffix('Z') + '+00:00' if otel_time.endswith('Z') else otel_time
+        text = otel_time[:-1] + '+00:00' if otel_time.endswith('Z') else otel_time
         return datetime.fromisoformat(text).astimezone().strftime('%Y%m%d%H%M%S')
     except ValueError:
         return None
 
 
-def _span_to_json_line(span: 'opentelemetry.sdk.trace.ReadableSpan') -> tuple[str, Optional[str]]:
+def _span_to_json_line(span: 'opentelemetry.sdk.trace.ReadableSpan') -> Tuple[str, Optional[str]]:
     raw = span.to_json(indent=None)
     payload = json.loads(raw)
     if not isinstance(payload, dict):
