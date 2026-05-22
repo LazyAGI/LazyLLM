@@ -1,6 +1,7 @@
 import atexit
 import contextvars
 import functools
+import inspect
 import json
 import threading
 from typing import Any, Dict, Optional
@@ -456,6 +457,33 @@ def _extract_trace_config(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     return {k: kwargs.pop(k) for k in list(kwargs) if k in _TRACE_CONFIG_KEYS}
 
 
+def _wrap_asyncgen_with_trace(result, old_ctx: LazyTraceContext, stream_ctx: LazyTraceContext):
+    async def wrapped():
+        set_trace_context(stream_ctx)
+        try:
+            async for item in result:
+                yield item
+        finally:
+            set_trace_context(old_ctx)
+    return wrapped()
+
+
+def _wrap_generator_with_trace(result, old_ctx: LazyTraceContext, stream_ctx: LazyTraceContext):
+    def wrapped():
+        set_trace_context(stream_ctx)
+        try:
+            yield from result
+        finally:
+            set_trace_context(old_ctx)
+    return wrapped()
+
+
+def _close_stream_span(span, result):
+    if span:
+        set_span_output(span, {'stream': True, 'type': type(result).__name__})
+        finish_span(span)
+
+
 def _run_with_trace(func, args, kwargs, trace_config):
     trace_id = trace_config.get('trace_id')
     parent_span_id = trace_config.get('parent_span_id')
@@ -490,6 +518,16 @@ def _run_with_trace(func, args, kwargs, trace_config):
 
     try:
         result = func(*args, **kwargs)
+        if inspect.isasyncgen(result):
+            stream_ctx = get_trace_context()
+            _close_stream_span(span, result)
+            span = None
+            return _wrap_asyncgen_with_trace(result, old_ctx, stream_ctx)
+        if inspect.isgenerator(result):
+            stream_ctx = get_trace_context()
+            _close_stream_span(span, result)
+            span = None
+            return _wrap_generator_with_trace(result, old_ctx, stream_ctx)
         if span:
             set_span_output(span, result)
         return result
