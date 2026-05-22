@@ -22,6 +22,10 @@ lazyllm_globals.config.add(
 
 _SPACE_ID_DYNAMIC = 'dynamic'
 _FEISHU_URL_RE = re.compile(r'/(wiki|docx|docs)/([A-Za-z0-9_-]+)', re.IGNORECASE)
+_FEISHU_BARE_HOST_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
+_FEISHU_WIKI_TILDE_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
+_FEISHU_REF_FOOTER_START = '\n--- lazyllm-feishu-references ---\n'
+_FEISHU_REF_FOOTER_END = '--- end lazyllm-feishu-references ---\n'
 
 
 _API_BASE = 'https://open.feishu.cn/open-apis'
@@ -54,6 +58,70 @@ def _parse_feishu_browser_url(url: str) -> Optional[Dict[str, str]]:
     if type_part == 'docs':
         return {'kind': 'doc', 'token': token}
     return None
+
+
+def _is_wiki_locator_path(path: str) -> bool:
+    norm = path.lstrip('/')
+    if any(norm.startswith(p) for p in _FEISHU_WIKI_TILDE_PREFIXES):
+        return True
+    return bool(_FEISHU_BARE_HOST_RE.match(path))
+
+
+def _iter_docx_elements(blocks: List[Dict[str, Any]]):
+    for block in blocks:
+        bt = block.get('block_type')
+        if bt in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15):
+            key = {2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
+                   7: 'heading5', 8: 'heading6', 9: 'heading7', 10: 'heading8', 11: 'heading9',
+                   12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote'}.get(bt, 'text')
+            for el in (block.get(key) or {}).get('elements') or []:
+                yield el
+        elif bt == 48:
+            yield {'link_preview': block.get('link_preview') or {}}
+
+
+def _ref_from_element(el: Dict[str, Any]) -> Optional[str]:
+    if 'mention_doc' in el:
+        md = el['mention_doc']
+        url = md.get('url') or ''
+        if url:
+            return url
+        token = md.get('token') or ''
+        obj_type = md.get('obj_type') or ''
+        if token and obj_type:
+            path_seg = 'wiki' if obj_type == 'wiki_node' else ('docx' if obj_type == 'docx' else 'docs')
+            return f'https://open.feishu.cn/{path_seg}/{token}'
+    if 'text_run' in el:
+        link = (el['text_run'].get('text_element_style') or {}).get('link') or {}
+        url = link.get('url') or ''
+        if url and _FEISHU_BARE_HOST_RE.match(url):
+            return url
+    if 'link_preview' in el:
+        url = el['link_preview'].get('url') or ''
+        if url and _FEISHU_BARE_HOST_RE.match(url):
+            return url
+    return None
+
+
+def _dedupe_refs(refs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen: set = set()
+    out: List[Dict[str, Any]] = []
+    for r in refs:
+        key = r.get('url', '')
+        if key and key not in seen:
+            seen.add(key)
+            out.append(r)
+    return out
+
+
+def _format_references_footer(refs: List[Dict[str, Any]]) -> str:
+    if not refs:
+        return ''
+    lines = [_FEISHU_REF_FOOTER_START]
+    for i, r in enumerate(refs, 1):
+        lines.append(f'[{i}] {r.get("ref_type", "hyperlink")} | {r.get("url", "")}\n')
+    lines.append(_FEISHU_REF_FOOTER_END)
+    return ''.join(lines)
 
 
 def _feishu_acquire_access_token(
@@ -734,8 +802,8 @@ class FeishuFS(FeishuFSBase):
 
 class FeishuWikiFile(CloudFSBufferedFile):
 
-    def __init__(self, fs: 'FeishuWikiFS', path: str, **kwargs) -> None:
-        content = fs._fetch_wiki_content(path)
+    def __init__(self, fs: 'FeishuWikiFS', path: str, include_references: bool = False, **kwargs) -> None:
+        content = fs._fetch_wiki_content(path, include_references=include_references)
         self._wiki_content: bytes = content
         super().__init__(fs, path, size=len(content), **kwargs)
 
@@ -812,7 +880,65 @@ class FeishuWikiFS(FeishuFSBase):
             current_token = match.get('node_token') or ''
         return current_token
 
+    def resolve_wiki_ref(self, url_or_path: str) -> Dict[str, Any]:
+        norm = url_or_path.lstrip('/')
+        if norm.startswith('~link/'):
+            url = unquote(norm[len('~link/'):])
+            parsed = _parse_feishu_browser_url(url)
+            if not parsed:
+                raise ValueError(f'Cannot parse Feishu browser URL: {url!r}')
+            if parsed['kind'] == 'wiki_node':
+                node = self._get_node(parsed['token'])
+                return self._node_to_ref_dict(node, parsed['token'])
+            return {'node_token': '', 'space_id': '', 'title': '', 'obj_type': parsed['kind'],
+                    'obj_token': parsed['token'], 'has_child': False}
+        if norm.startswith('~node/'):
+            token = norm[len('~node/'):].rstrip('/').split('/')[0]
+            node = self._get_node(token)
+            return self._node_to_ref_dict(node, token)
+        if _FEISHU_BARE_HOST_RE.match(url_or_path):
+            parsed = _parse_feishu_browser_url(url_or_path)
+            if not parsed:
+                raise ValueError(f'Cannot parse Feishu browser URL: {url_or_path!r}')
+            if parsed['kind'] == 'wiki_node':
+                node = self._get_node(parsed['token'])
+                return self._node_to_ref_dict(node, parsed['token'])
+            return {'node_token': '', 'space_id': '', 'title': '', 'obj_type': parsed['kind'],
+                    'obj_token': parsed['token'], 'has_child': False}
+        node_token = self._resolve_path_to_token(url_or_path)
+        node = self._get_node(node_token)
+        return self._node_to_ref_dict(node, node_token)
+
+    @staticmethod
+    def _node_to_ref_dict(node: Dict[str, Any], fallback_token: str = '') -> Dict[str, Any]:
+        node_token = node.get('node_token') or fallback_token
+        return {
+            'node_token': node_token,
+            'space_id': node.get('space_id') or '',
+            'title': node.get('title') or '',
+            'obj_type': node.get('obj_type') or '',
+            'obj_token': node.get('obj_token') or '',
+            'has_child': bool(node.get('has_child')),
+            'creator': node.get('creator') or '',
+            'owner': node.get('owner') or '',
+            'node_creator': node.get('node_creator') or '',
+        }
+
+    def _list_child_nodes(self, node_token: str) -> List[Dict[str, Any]]:
+        return self._list_nodes_raw(node_token)
+
     def ls(self, path: str = '/', detail: bool = True, **kwargs) -> List:
+        if _is_wiki_locator_path(path):
+            ref = self.resolve_wiki_ref(path)
+            node_token = ref.get('node_token') or ''
+            obj_type = ref.get('obj_type') or ''
+            if not node_token:
+                if obj_type in ('docx', 'doc'):
+                    raise ValueError(f'ls: only wiki nodes can be listed; got obj_type={obj_type!r} for {path!r}')
+                return []
+            items = self._list_child_nodes(node_token)
+            entries = [self._node_to_entry(item) for item in items]
+            return entries if detail else [e['name'] for e in entries]
         self._require_space_id()
         node_token = self._resolve_path_to_token(path)
         items = self._list_nodes_raw(node_token)
@@ -820,6 +946,13 @@ class FeishuWikiFS(FeishuFSBase):
         return entries if detail else [e['name'] for e in entries]
 
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
+        if _is_wiki_locator_path(path):
+            ref = self.resolve_wiki_ref(path)
+            node_token = ref.get('node_token') or ''
+            if not node_token:
+                return self._entry(path, ftype='directory')
+            node = self._get_node(node_token)
+            return self._node_to_entry(node, default_name=ref.get('title') or path)
         token = self._resolve_path_to_token(path)
         if not token:
             return self._entry('/', ftype='directory')
@@ -882,49 +1015,102 @@ class FeishuWikiFS(FeishuFSBase):
             raise ValueError(f'Cannot parse Feishu browser URL: {url!r}')
         return self._resolve_link_content(parsed)
 
-    def _fetch_wiki_content(self, path: str) -> bytes:
+    def _resolve_doc_token_from_path(self, path: str) -> Tuple[str, str]:
+        norm = path.lstrip('/')
+        if norm.startswith('~link/'):
+            url = unquote(norm[len('~link/'):])
+            parsed = _parse_feishu_browser_url(url)
+            if not parsed:
+                return '', ''
+            if parsed['kind'] == 'wiki_node':
+                node = self._get_node(parsed['token'])
+                return node.get('obj_token') or '', node.get('obj_type') or ''
+            return parsed['token'], parsed['kind']
+        if norm.startswith('~node/'):
+            token = norm[len('~node/'):].rstrip('/').split('/')[0]
+            node = self._get_node(token)
+            return node.get('obj_token') or '', node.get('obj_type') or ''
+        if norm.startswith('~docx/'):
+            return norm[len('~docx/'):].split('/')[0], 'docx'
+        if norm.startswith('~doc/'):
+            return norm[len('~doc/'):].split('/')[0], 'doc'
+        return '', ''
+
+    def _list_document_references(self, path: str) -> List[Dict[str, Any]]:
+        doc_token, obj_type = self._resolve_doc_token_from_path(path)
+        if not doc_token or obj_type not in ('doc', 'docx'):
+            return []
+        try:
+            blocks = self._get_doc_blocks_raw(doc_token, with_descendants=True)
+        except Exception as exc:
+            LOG.warning(f'_list_document_references: failed to get blocks for {path!r}: {exc}')
+            return []
+        refs: List[Dict[str, Any]] = []
+        for el in _iter_docx_elements(blocks):
+            url = _ref_from_element(el)
+            if url:
+                parsed = _parse_feishu_browser_url(url)
+                ref_type = 'mention_doc' if 'mention_doc' in el else (
+                    'link_preview' if 'link_preview' in el else 'hyperlink')
+                refs.append({'url': url, 'ref_type': ref_type,
+                             'kind': parsed['kind'] if parsed else 'external'})
+        return _dedupe_refs(refs)
+
+    def _fetch_wiki_content(self, path: str, include_references: bool = False) -> bytes:
         norm = path.lstrip('/')
         if norm.startswith('~link/'):
             url = unquote(norm[len('~link/'):])
             parsed = _parse_feishu_browser_url(url)
             if not parsed:
                 raise ValueError(f'Cannot parse Feishu browser URL from path: {path!r}')
-            return self._resolve_link_content(parsed)
-        if norm.startswith('~node/'):
-            token = norm[len('~node/'):].split('/')[0]
-            return self._resolve_link_content({'kind': 'wiki_node', 'token': token})
-        if norm.startswith('~docx/'):
+            body = self._resolve_link_content(parsed)
+        elif norm.startswith('~node/'):
+            token = norm[len('~node/'):].rstrip('/').split('/')[0]
+            body = self._resolve_link_content({'kind': 'wiki_node', 'token': token})
+        elif norm.startswith('~docx/'):
             token = norm[len('~docx/'):].split('/')[0]
-            return self._download_doc_raw(token, obj_type='docx')
-        if norm.startswith('~doc/'):
+            body = self._download_doc_raw(token, obj_type='docx')
+        elif norm.startswith('~doc/'):
             token = norm[len('~doc/'):].split('/')[0]
-            return self._download_doc_raw(token, obj_type='doc')
-        node_token = self._resolve_path_to_token(path)
-        if not node_token:
-            return b''
-        node = self._get_node(node_token)
-        obj_type = node.get('obj_type')
-        obj_token = node.get('obj_token') or ''
-        if not obj_type or not obj_token:
-            return b''
-        if obj_type in {'doc', 'docx'}:
-            return self._download_doc_raw(obj_token, obj_type=obj_type)
-        if obj_type == 'file':
-            return self._download_file_raw(obj_token)
-        return b''
+            body = self._download_doc_raw(token, obj_type='doc')
+        else:
+            node_token = self._resolve_path_to_token(path)
+            if not node_token:
+                return b''
+            node = self._get_node(node_token)
+            obj_type = node.get('obj_type')
+            obj_token = node.get('obj_token') or ''
+            if not obj_type or not obj_token:
+                return b''
+            if obj_type in {'doc', 'docx'}:
+                body = self._download_doc_raw(obj_token, obj_type=obj_type)
+            elif obj_type == 'file':
+                body = self._download_file_raw(obj_token)
+            else:
+                return b''
+        if include_references:
+            refs = self._list_document_references(path)
+            footer = _format_references_footer(refs)
+            if footer:
+                body = body + footer.encode('utf-8')
+        return body
 
     def cat_file(self, path: str, start: Optional[int] = None, end: Optional[int] = None,
                  **kwargs) -> bytes:
         data = self._fetch_wiki_content(path)
         return data[start:end] if (start is not None or end is not None) else data
 
+    def read_bytes(self, path: str, include_references: bool = False) -> bytes:
+        return self._fetch_wiki_content(path, include_references=include_references)
+
     def _open(self, path: str, mode: str = 'rb', block_size: Optional[int] = None,
               autocommit: bool = True, cache_options: Optional[Dict] = None,
-              **kwargs) -> CloudFSBufferedFile:
+              include_references: bool = False, **kwargs) -> CloudFSBufferedFile:
         if 'b' not in mode:
             raise ValueError('FeishuWikiFS only supports binary mode')
         if 'r' in mode:
-            return FeishuWikiFile(self, path, mode=mode, block_size=block_size or self.blocksize,
+            return FeishuWikiFile(self, path, include_references=include_references,
+                                  mode=mode, block_size=block_size or self.blocksize,
                                   autocommit=autocommit, cache_options=cache_options)
         norm = path.lstrip('/')
         if norm.startswith(('~link/', '~node/', '~docx/', '~doc/')):
@@ -1090,4 +1276,6 @@ class FeishuWikiFS(FeishuFSBase):
             name=title, size=size, ftype='directory' if is_dir else 'file',
             mtime=mtime, title=title, obj_type=obj_type,
             obj_token=node.get('obj_token'), node_token=node_token,
+            creator=node.get('creator') or '', owner=node.get('owner') or '',
+            node_creator=node.get('node_creator') or '',
         )
