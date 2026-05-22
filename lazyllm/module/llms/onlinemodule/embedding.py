@@ -67,7 +67,7 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
                 return QwenMultimodalEmbed(**params)
             if source == 'siliconflow':
                 return SiliconFlowMultimodalEmbed(**params)
-            raise ValueError(f'Source {source!r} does not support CROSS_MODAL_EMBED.')
+            return getattr(lazyllm.online.embed, source)(**params)
         if type_name == 'embed':
             if source == 'doubao' and embed_model_name and embed_model_name.startswith('doubao-embedding-vision'):
                 return DoubaoMultimodalEmbed(**params)
