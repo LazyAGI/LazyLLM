@@ -10,8 +10,7 @@ from ..base import (
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file, _image_to_base64
 from ..fileHandler import FileHandlerBase
-from lazyllm import LOG
-
+from lazyllm import LOG, config
 
 class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2',
@@ -150,6 +149,23 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
                          model=model or SiliconFlowText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
 
+    def _get_image_data_from_url(self, url: str, timeout: int = 30) -> bytes:
+        '''
+        Override parent implementation because SiliconFlow S3 temporary URLs
+        may return application/octet-stream instead of image/* content type.
+        '''
+        self._validate_url_security(url)
+
+        resp = requests.get(
+            url,
+            timeout=timeout,
+            allow_redirects=True
+        )
+        resp.raise_for_status()
+        data = resp.content
+        self._validate_image_data(data, url)
+        return data
+
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
         url = f'{(base_url or self._base_url)}{endpoint}'
         try:
@@ -196,7 +212,8 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
         image_bytes = [data for _, data in image_results]
         if not image_bytes:
             raise Exception('Failed to download any images')
-        file_paths = bytes_to_file(image_bytes)
+        ai_img_path = os.path.join(config['temp_dir'], 'ai_img')
+        file_paths = bytes_to_file(image_bytes, target_dir=ai_img_path)
         return encode_query_with_filepaths(None, file_paths)
 
 
