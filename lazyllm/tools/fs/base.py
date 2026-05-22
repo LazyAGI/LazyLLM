@@ -226,3 +226,6 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
 
 globals.config.add('dynamic_fs_auth', dict, None, 'DYNAMIC_FS_AUTH',
                    description='Per-source dynamic FS auth: {source: token}.')
+globals.config.add('dynamic_tool_auth', dict, None, 'DYNAMIC_TOOL_AUTH',
+                   description='Per-tool dynamic auth: {tool_name: token}. '
+                   'Used by search engines and other API-key-based tools.')
