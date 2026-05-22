@@ -171,7 +171,7 @@ class LLMBase(object):
               stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None,
               copy_static_params: bool = False):
         new = copy.copy(self)
-        new._hooks = set()
+        new._hooks = self._hooks.copy()
         new._set_mid()
         if prompt is not None: new.prompt(prompt, history=history)
         if format is not None: new.formatter(format)
