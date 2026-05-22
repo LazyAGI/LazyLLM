@@ -548,8 +548,8 @@ class _DocumentStore(object):
             for embed_key in embed_keys:
                 query_embedding = self._embed.get(embed_key)(query)
                 search_res = self.vec_impl.search(collection_name=self._gen_collection_name(group_name),
-                                              query=query, query_embedding=query_embedding,
-                                              topk=topk, filters=filters, embed_key=embed_key, **kwargs)
+                                                  query=query, query_embedding=query_embedding,
+                                                  topk=topk, filters=filters, embed_key=embed_key, **kwargs)
                 if search_res:
                     sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float)\
                         else similarity_cut_off[embed_key]
@@ -559,7 +559,7 @@ class _DocumentStore(object):
             if self.vec_impl.capability == StoreCapability.VECTOR:
                 raise ValueError('[_DocumentStore] Text search is not supported when no segment store is provided')
             segments.extend(self.vec_impl.search(collection_name=self._gen_collection_name(group_name),
-                                             query=query, topk=topk, filters=filters, **kwargs))
+                                                 query=query, topk=topk, filters=filters, **kwargs))
         return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
 
     def _validate_query_params(self, group_name: str, similarity: str,
