@@ -10,9 +10,7 @@ from ..base import (
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file, _image_to_base64
 from ..fileHandler import FileHandlerBase
-from lazyllm import LOG
 from lazyllm import LOG, config
-import os
 
 class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2',
