@@ -2756,6 +2756,76 @@ Args:
     **kwargs: Keyword arguments passed to store connection methods.
 ''')
 
+add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore.seg_connect', '''\
+连接底层分段存储。
+
+与 ``connect()`` 不同，``seg_connect()`` 仅初始化 ``segment_store``，不会触发向量存储的连接逻辑。
+``DocumentStore`` 在 ``_seg_init()`` 阶段调用此方法，通常传入 ``global_metadata_desc`` 以注册全局元数据字段。
+
+Args:
+    *args: 传递给 ``segment_store.connect()`` 的位置参数。
+    **kwargs: 传递给 ``segment_store.connect()`` 的关键字参数，常见包括
+        ``global_metadata_desc``（全局元数据 schema 描述）。
+
+**Returns:**\n
+- None
+''')
+
+add_english_doc('rag.store.hybrid.hybrid_store.HybridStore.seg_connect', '''\
+Connect to the underlying segment store only.
+
+Unlike ``connect()``, ``seg_connect()`` initialises only ``segment_store`` and does not
+trigger vector-store connection logic. ``DocumentStore`` calls this method during ``_seg_init()``,
+typically passing ``global_metadata_desc`` to register global metadata fields.
+
+Args:
+    *args: Positional arguments forwarded to ``segment_store.connect()``.
+    **kwargs: Keyword arguments forwarded to ``segment_store.connect()``. Common keys include
+        ``global_metadata_desc`` (global metadata schema description).
+
+**Returns:**\n
+- None
+''')
+
+add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore.vec_connect', '''\
+连接底层向量存储。
+
+与 ``connect()`` 不同，``vec_connect()`` 仅初始化 ``vector_store``，不会触发分段存储的连接逻辑。
+``DocumentStore`` 在 ``_vec_init()`` 阶段调用此方法，通常传入 ``embed_dims``、``embed_datatypes``、
+``collections`` 和 ``global_metadata_desc``，以便向量后端创建或校验 collection schema。
+
+Args:
+    *args: 传递给 ``vector_store.connect()`` 的位置参数。
+    **kwargs: 传递给 ``vector_store.connect()`` 的关键字参数，常见包括
+        ``embed_dims``（各 embed key 的向量维度）、
+        ``embed_datatypes``（各 embed key 的数据类型）、
+        ``global_metadata_desc``（全局元数据 schema 描述）、
+        ``collections``（需要预创建的 collection 名称列表）。
+
+**Returns:**\n
+- None
+''')
+
+add_english_doc('rag.store.hybrid.hybrid_store.HybridStore.vec_connect', '''\
+Connect to the underlying vector store only.
+
+Unlike ``connect()``, ``vec_connect()`` initialises only ``vector_store`` and does not
+trigger segment-store connection logic. ``DocumentStore`` calls this method during ``_vec_init()``,
+typically passing ``embed_dims``, ``embed_datatypes``, ``collections``, and
+``global_metadata_desc`` so the vector backend can create or validate collection schemas.
+
+Args:
+    *args: Positional arguments forwarded to ``vector_store.connect()``.
+    **kwargs: Keyword arguments forwarded to ``vector_store.connect()``. Common keys include
+        ``embed_dims`` (vector dimension per embed key),
+        ``embed_datatypes`` (data type per embed key),
+        ``global_metadata_desc`` (global metadata schema description),
+        ``collections`` (collection names to pre-create).
+
+**Returns:**\n
+- None
+''')
+
 add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore.upsert', '''\
 向存储中插入或更新数据。
 
@@ -7321,6 +7391,104 @@ Establish connection to the storage backend.
 Args:
     *args: Variable positional arguments.
     **kwargs: Variable keyword arguments.
+''')
+
+add_chinese_doc('rag.LazyLLMStoreBase.seg_connect', '''\
+按存储能力连接分段存储后端。
+
+``seg_connect()`` 是 ``connect()`` 的能力感知入口，用于将分段存储与向量存储的初始化解耦。
+``DocumentStore`` 在 ``_seg_init()`` 阶段调用此方法，通常仅传入 ``global_metadata_desc``。
+
+行为规则：
+
+- 若 ``capability`` 包含 ``StoreCapability.SEGMENT``（如 MapStore、ElasticSearchStore），
+  则委托给 ``connect(*args, **kwargs)``。
+- 若 ``capability`` 仅包含 ``StoreCapability.VECTOR``（如 MilvusStore、ChromaStore），
+  则为空操作（no-op），不会建立连接。
+
+Args:
+    *args: 传递给 ``connect()`` 的位置参数。
+    **kwargs: 传递给 ``connect()`` 的关键字参数，常见包括
+        ``global_metadata_desc``（全局元数据 schema 描述）。
+
+**Returns:**\n
+- None
+''')
+
+add_english_doc('rag.LazyLLMStoreBase.seg_connect', '''\
+Connect to the segment storage backend based on store capability.
+
+``seg_connect()`` is a capability-aware entry point of ``connect()``, used to decouple
+segment-store and vector-store initialisation. ``DocumentStore`` calls this method during
+``_seg_init()``, typically passing only ``global_metadata_desc``.
+
+Behaviour:
+
+- If ``capability`` includes ``StoreCapability.SEGMENT`` (e.g. MapStore, ElasticSearchStore),
+  delegates to ``connect(*args, **kwargs)``.
+- If ``capability`` includes only ``StoreCapability.VECTOR`` (e.g. MilvusStore, ChromaStore),
+  this is a no-op and no connection is established.
+
+Args:
+    *args: Positional arguments forwarded to ``connect()``.
+    **kwargs: Keyword arguments forwarded to ``connect()``. Common keys include
+        ``global_metadata_desc`` (global metadata schema description).
+
+**Returns:**\n
+- None
+''')
+
+add_chinese_doc('rag.LazyLLMStoreBase.vec_connect', '''\
+按存储能力连接向量存储后端。
+
+``vec_connect()`` 是 ``connect()`` 的能力感知入口，用于将向量存储与分段存储的初始化解耦。
+``DocumentStore`` 在 ``_vec_init()`` 阶段调用此方法，通常传入 ``embed_dims``、
+``embed_datatypes``、``collections`` 和 ``global_metadata_desc``。
+
+行为规则：
+
+- 若 ``capability`` 包含 ``StoreCapability.VECTOR``（如 MilvusStore、ChromaStore、MapStore），
+  则委托给 ``connect(*args, **kwargs)``。
+- 若 ``capability`` 仅包含 ``StoreCapability.SEGMENT``（如 ElasticSearchStore、OpenSearchStore），
+  则为空操作（no-op），不会建立连接。
+
+Args:
+    *args: 传递给 ``connect()`` 的位置参数。
+    **kwargs: 传递给 ``connect()`` 的关键字参数，常见包括
+        ``embed_dims``（各 embed key 的向量维度）、
+        ``embed_datatypes``（各 embed key 的数据类型）、
+        ``global_metadata_desc``（全局元数据 schema 描述）、
+        ``collections``（需要预创建的 collection 名称列表）。
+
+**Returns:**\n
+- None
+''')
+
+add_english_doc('rag.LazyLLMStoreBase.vec_connect', '''\
+Connect to the vector storage backend based on store capability.
+
+``vec_connect()`` is a capability-aware entry point of ``connect()``, used to decouple
+vector-store and segment-store initialisation. ``DocumentStore`` calls this method during
+``_vec_init()``, typically passing ``embed_dims``, ``embed_datatypes``, ``collections``,
+and ``global_metadata_desc``.
+
+Behaviour:
+
+- If ``capability`` includes ``StoreCapability.VECTOR`` (e.g. MilvusStore, ChromaStore, MapStore),
+  delegates to ``connect(*args, **kwargs)``.
+- If ``capability`` includes only ``StoreCapability.SEGMENT`` (e.g. ElasticSearchStore,
+  OpenSearchStore), this is a no-op and no connection is established.
+
+Args:
+    *args: Positional arguments forwarded to ``connect()``.
+    **kwargs: Keyword arguments forwarded to ``connect()``. Common keys include
+        ``embed_dims`` (vector dimension per embed key),
+        ``embed_datatypes`` (data type per embed key),
+        ``global_metadata_desc`` (global metadata schema description),
+        ``collections`` (collection names to pre-create).
+
+**Returns:**\n
+- None
 ''')
 
 add_chinese_doc('rag.LazyLLMStoreBase.upsert', '''\

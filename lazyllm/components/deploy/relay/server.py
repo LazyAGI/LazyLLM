@@ -98,6 +98,8 @@ def security_check(f: Callable):
 @security_check
 async def lazyllm_call(request: fastapi.Request):
     try:
+        globals._init_sid(request.headers.get('Session-ID'))
+        globals.unpickle_and_update_data(request.headers.get('Global-Parameters'))
         fname, call_args, call_kwargs = await request.json()
         call_args, call_kwargs = load_obj(call_args), load_obj(call_kwargs)
         r = await async_wrapper(getattr(func, fname), *call_args, **call_kwargs)

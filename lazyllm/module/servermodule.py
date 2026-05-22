@@ -380,7 +380,12 @@ class ServerModule(UrlModule):
     def _call(self, fname, *args, **kwargs):
         args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
         url = urljoin(self._url.rsplit('/', 1)[0], '_call')
-        r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
+        headers = {
+            'Content-Type': 'application/json',
+            'Global-Parameters': globals.pickled_data,
+            'Session-ID': globals._sid,
+        }
+        r = requests.post(url, json=(fname, args, kwargs), headers=headers)
         if r.status_code != 200:
             try:
                 error_info = r.json()

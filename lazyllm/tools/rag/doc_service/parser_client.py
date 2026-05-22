@@ -33,7 +33,8 @@ class ParserClient:
                 metadata: Optional[Dict[str, Any]] = None, ng_names: Optional[List[str]] = None,
                 extractor_names: Optional[List[str]] = None,
                 task_type: Optional[str] = None,
-                callback_url: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None):
+                callback_url: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None,
+                llm_config: Optional[Dict[str, Any]] = None):
         req = ParsingAddDocRequest(
             task_id=task_id,
             ng_names=ng_names,
@@ -42,6 +43,7 @@ class ParserClient:
             kb_id=kb_id,
             callback_url=callback_url,
             feedback_url=callback_url,
+            llm_config=llm_config,
             file_infos=[ParsingFileInfo(
                 file_path=file_path,
                 doc_id=doc_id,

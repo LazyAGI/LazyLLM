@@ -103,6 +103,18 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
         raise NotImplementedError
 
+    def seg_connect(self, *args, **kwargs):
+        # For pure SEGMENT stores: seg_connect == connect.
+        # For pure VECTOR stores: seg_connect is a no-op.
+        if self.capability & StoreCapability.SEGMENT:
+            self.connect(*args, **kwargs)
+
+    def vec_connect(self, *args, **kwargs):
+        # For pure VECTOR stores: vec_connect == connect.
+        # For pure SEGMENT stores: vec_connect is a no-op.
+        if self.capability & StoreCapability.VECTOR:
+            self.connect(*args, **kwargs)
+
     def try_read_dims_from_schema(self, collections: List[str]) -> Tuple[Dict[str, int], Dict[str, DataType]]:
         '''Try to read embed_dims and embed_datatypes from existing backend schema.
 

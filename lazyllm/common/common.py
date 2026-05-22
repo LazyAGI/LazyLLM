@@ -345,12 +345,14 @@ class once_flag(object):
 def call_once(flag: once_flag, func: Callable, *args, **kw):
     with flag._lock:
         if not flag:
+            flag._exc = None
             try:
-                return func(*args, **kw)
+                r = func(*args, **kw)
+                flag.set()
+                return r
             except Exception as e:
                 flag.set_exception(e)
-            finally:
-                flag.set()
+                raise
         if flag._exc:
             raise flag._exc
     return None

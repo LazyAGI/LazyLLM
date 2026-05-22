@@ -642,6 +642,13 @@ class DocumentProcessorWorker(ModuleBase):
                 }
                 if from_queue:
                     self._start_lease_renewal(task_id)
+
+                # Inject per-request model config (e.g. embed_main) into the current
+                # thread's lazyllm session so that dynamic-source modules can resolve
+                # the correct supplier during _lazy_init and embedding.
+                from lazyllm import inject_model_config as _inject_model_config
+                _inject_model_config(payload.get('llm_config'))
+
                 ng_names = payload.get('ng_names')  # None means all node groups
                 extractor_names = payload.get('extractor_names')  # None means all extractors
 

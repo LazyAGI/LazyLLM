@@ -20,9 +20,17 @@ class HybridStore(LazyLLMStoreBase):
         return self.segment_store.dir
 
     @override
-    def connect(self, *args, **kwargs):
+    def seg_connect(self, *args, **kwargs):
         self.segment_store.connect(*args, **kwargs)
+
+    @override
+    def vec_connect(self, *args, **kwargs):
         self.vector_store.connect(*args, **kwargs)
+
+    @override
+    def connect(self, *args, **kwargs):
+        self.seg_connect(*args, **kwargs)
+        self.vec_connect(*args, **kwargs)
 
     @override
     def try_read_dims_from_schema(self, collections: List[str]):
