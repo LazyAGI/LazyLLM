@@ -447,6 +447,8 @@ MODEL_MAPPING = {
     'qwen/qwen3-vl-embedding-8b': 'cross_modal_embed',
     'qwen/qwen-image-edit': 'image_editing',
     'qwen/qwen-image-edit-2509': 'image_editing',
+    # free text2image model
+    'Kwai-Kolors/Kolors': 'image_editing'
 }
 _TOKEN_MAP = {
     'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision', 'vl-embedding'),
@@ -457,7 +459,7 @@ _TOKEN_MAP = {
     'tts': ('tts', 'cosyvoice', 'nova-tts'),
     'vlm': ('qwen-vl', 'vl', 'vision', 'caption', 'omni', 'vlm', 'seed'),
     'sd': ('dall', 'wan', 'sora', 'image', 'video', 't2i', 't2v'),
-    'image_editing': ('image-edit', 'seededit', 'i2i', 'seedream-3', 'seedream-4'),
+    'image_editing': ('image-edit', 'seededit', 'i2i', 'seedream-3', 'seedream-4', 'Kolors'),
 }
 _SUFFIX_RE = re.compile(
     r'(?:'
