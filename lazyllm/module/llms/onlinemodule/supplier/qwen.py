@@ -385,9 +385,10 @@ class QwenMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
             return image
         if not os.path.exists(image):
             return image
-        image_base64, mime = _image_to_base64(image)
-        if not image_base64 or not mime:
+        res = _image_to_base64(image)
+        if not res or not res[0] or not res[1]:
             raise ValueError(f'Unsupported image file: {image}')
+        image_base64, mime = res
         return f'data:{mime};base64,{image_base64}'
 
     @classmethod
