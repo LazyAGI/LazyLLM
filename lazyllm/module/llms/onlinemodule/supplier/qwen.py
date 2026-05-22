@@ -15,7 +15,7 @@ from ..base.utils import resolve_online_params
 from ..fileHandler import FileHandlerBase
 from http import HTTPStatus
 from lazyllm.thirdparty import dashscope
-from lazyllm.components.utils.file_operate import bytes_to_file
+from lazyllm.components.utils.file_operate import bytes_to_file, _image_to_base64
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm import LOG
 
@@ -379,18 +379,43 @@ class QwenMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
             return response.get(key, default)
         return getattr(response, key, default)
 
+    @staticmethod
+    def _format_image(image: str) -> str:
+        if image.startswith(('http://', 'https://', 'data:')):
+            return image
+        if not os.path.exists(image):
+            return image
+        image_base64, mime = _image_to_base64(image)
+        if not image_base64 or not mime:
+            raise ValueError(f'Unsupported image file: {image}')
+        return f'data:{mime};base64,{image_base64}'
+
+    @classmethod
+    def _format_input_item(cls, item: Union[str, Dict], modality: Optional[str] = None) -> Dict:
+        if isinstance(item, dict):
+            if 'image' in item:
+                item = item.copy()
+                item['image'] = cls._format_image(item['image'])
+            return item
+        if not isinstance(item, str):
+            raise ValueError('Each input item must be a string or dictionary')
+        if modality == 'image' or item.startswith(('http://', 'https://', 'data:')):
+            return {'image': cls._format_image(item)}
+        return {'text': item}
+
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
+        modality = kwargs.get('modality')
         if isinstance(input, str):
-            return [{'text': input}]
+            return [self._format_input_item(input, modality=modality)]
         if isinstance(input, list):
             if len(input) == 0:
                 raise ValueError('Input list cannot be empty')
             if any(isinstance(item, list) for item in input):
-                raise ValueError('QwenMultimodalEmbed expects a 1D input list of dictionaries')
-            if not all(isinstance(item, dict) for item in input):
-                raise ValueError('Input list must contain dictionaries')
-            return input
-        raise ValueError('Input must be either a string or a list of dictionaries')
+                raise ValueError('QwenMultimodalEmbed expects a 1D input list')
+            if not all(isinstance(item, (str, dict)) for item in input):
+                raise ValueError('Input list must contain strings or dictionaries')
+            return [self._format_input_item(item, modality=modality) for item in input]
+        raise ValueError('Input must be either a string or a list of strings/dictionaries')
 
     def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs) -> List[float]:
         model, _, url, kwargs = resolve_online_params(
