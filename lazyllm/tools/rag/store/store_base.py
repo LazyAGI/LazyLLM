@@ -7,6 +7,7 @@ from lazyllm.common import LazyLLMRegisterMetaABCClass
 from pydantic import BaseModel, Field
 
 from ..data_type import DataType
+from ..utils import is_sparse
 from ..global_metadata import (
     GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_FILE_NAME,
     RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE, RAG_DOC_CREATION_DATE,
@@ -69,6 +70,25 @@ class StoreCapability(IntFlag):
     SEGMENT = auto()
     VECTOR = auto()
     ALL = SEGMENT | VECTOR
+
+
+class EmbedResolveMixin:
+    '''Mixin for stores that lazily resolve embed dims/datatypes when creating a new collection.
+    Requires the host class to have _embed, _embed_dims, _embed_datatypes attributes.'''
+
+    def _resolve_missing_embed_specs(self, embed_keys: Set[str]) -> None:
+        # Must be called inside _ddl_lock to be thread-safe.
+        for k in embed_keys:
+            if k in self._embed_datatypes:
+                continue
+            if not self._embed or k not in self._embed:
+                raise ValueError(f'Cannot resolve embed specs for key {k!r}: embed function not available')
+            embedding = self._embed[k]('a')
+            if is_sparse(embedding):
+                self._embed_datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
+            else:
+                self._embed_dims[k] = len(embedding)
+                self._embed_datatypes[k] = DataType.FLOAT_VECTOR
 
 
 class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):

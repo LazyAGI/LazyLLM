@@ -1,13 +1,14 @@
 import os
 import re
 import traceback
+import threading
 
-from typing import Dict, List, Optional, Set, Union, Any
+from typing import Dict, List, Optional, Set, Union, Any, Callable
 from collections import defaultdict
 from urllib.parse import urlparse
 from pathlib import Path
 
-from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX)
+from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX, EmbedResolveMixin)
 from ...data_type import DataType
 from ...global_metadata import GlobalMetadataDesc
 
@@ -25,7 +26,7 @@ DEFAULT_INDEX_CONFIG = {
 }
 
 
-class ChromaStore(LazyLLMStoreBase):
+class ChromaStore(EmbedResolveMixin, LazyLLMStoreBase):
     capability = StoreCapability.VECTOR
     need_embedding = True
     supports_index_registration = False
@@ -80,10 +81,13 @@ class ChromaStore(LazyLLMStoreBase):
     @override
     def connect(self, embed_dims: Optional[Dict[str, int]] = None,
                 embed_datatypes: Optional[Dict[str, DataType]] = None,
+                embed: Optional[Dict[str, Callable]] = None,
                 global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
         self._global_metadata_desc = global_metadata_desc or {}
         self._embed_dims = embed_dims or {}
         self._embed_datatypes = embed_datatypes or {}
+        self._embed = embed or {}
+        self._ddl_lock = threading.Lock()
         for k, v in self._global_metadata_desc.items():
             if v.data_type not in [DataType.VARCHAR, DataType.INT32, DataType.FLOAT, DataType.BOOLEAN]:
                 raise ValueError(f'[Chroma Store] Unsupported data type {v.data_type} for global metadata {k}'
@@ -110,6 +114,8 @@ class ChromaStore(LazyLLMStoreBase):
             if not data_embeddings: return
             embed_keys = list(data_embeddings.keys())
             for embed_key in embed_keys:
+                with self._ddl_lock:
+                    self._resolve_missing_embed_specs({embed_key})
                 if embed_key not in self._embed_datatypes:
                     raise ValueError(f'Embed key {embed_key} not found in embed_datatypes')
                 collection = self._client.get_or_create_collection(
