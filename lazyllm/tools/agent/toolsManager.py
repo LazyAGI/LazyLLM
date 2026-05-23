@@ -497,7 +497,13 @@ class ToolManager(ModuleBase):
                 callables.append(self._sandbox)
                 call_arguments.append(self._build_sandbox_args(tool, args_or_err))
             else:
-                callables.append(tool)
+                def _safe_call(args, _tool=tool):
+                    try:
+                        return _tool(args)
+                    except Exception as e:
+                        lazyllm.LOG.warning(f'Tool {_tool.name} raised an exception: {e}')
+                        return f'[Tool Error] {type(e).__name__}: {e}'
+                callables.append(_safe_call)
                 call_arguments.append(args_or_err)
 
         tool_diverter = lazyllm.diverter(tuple(callables))
