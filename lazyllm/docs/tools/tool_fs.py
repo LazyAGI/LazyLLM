@@ -245,6 +245,21 @@ Returns:
     str: File text content.
 ''')
 
+_add_fs_chinese('LazyLLMFSBase.write_file', '''\
+将字节数据完整写入指定路径。覆盖已存在文件；内部调用 _upload_data。
+
+Args:
+    path (str): 远程文件路径。
+    data (bytes): 要写入的完整内容。
+''')
+_add_fs_english('LazyLLMFSBase.write_file', '''\
+Write bytes to the given path, overwriting if exists. Uses _upload_data internally.
+
+Args:
+    path (str): Remote file path.
+    data (bytes): Full content to write.
+''')
+
 _add_fs_chinese('LazyLLMFSBase.write', '''\
 将文本内容以 UTF-8 编码写入指定路径。覆盖已存在文件；内部调用 _upload_data。
 
