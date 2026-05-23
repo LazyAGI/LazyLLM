@@ -166,15 +166,6 @@ class EmptyFormatter(LazyLLMFormatterBase):
         return msg
 
 class FunctionCallFormatter(LazyLLMFormatterBase):
-    '''Formatter for tool-calling (FunctionCall) models.
-
-    Unlike the base formatter, which collapses an assistant message to plain text,
-    this keeps the structured ``role`` / ``content`` / ``tool_calls`` /
-    ``reasoning_content`` fields. Any model that produces ``tool_calls`` must be
-    configured with this formatter so that a provider-compatible multi-turn history
-    can be replayed (e.g. DeepSeek rejects a tool-calling request whose previous
-    assistant turn omits ``reasoning_content``).
-    '''
     def format(self, msg):
         assert isinstance(msg, dict), 'FunctionCallFormatter only supports dict input.'
         return {k: msg[k] for k in ('role', 'content', 'tool_calls', 'reasoning_content') if k in msg}
