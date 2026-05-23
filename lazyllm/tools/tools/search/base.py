@@ -2,6 +2,7 @@ import re
 from html import unescape
 from typing import List, Dict, Any, Optional
 
+from lazyllm import globals as lazyllm_globals
 from lazyllm.common import (
     AuthStrategy, BearerTokenStrategy, Credential, CredentialMixin,
 )
@@ -46,12 +47,20 @@ class SearchBase(ModuleBase, CredentialMixin):
         source_name: str = '',
         api_key: Optional[str] = None,
         auth_strategy: Optional[AuthStrategy] = None,
+        dynamic_auth: bool = False,
         **kwargs,
     ):
         ModuleBase.__init__(self, **kwargs)
         self._source_name = source_name or self.__class__.__name__.replace('Search', '').lower()
-        credential = Credential(kind='static', secret_key=api_key or '')
+        if dynamic_auth or api_key is None:
+            credential = Credential(kind='dynamic')
+        else:
+            credential = Credential(kind='static', secret_key=api_key)
         self.__init_credential__(credential, strategy=auth_strategy or BearerTokenStrategy())
+
+    def _resolve_dynamic_token(self) -> str:
+        mapping = lazyllm_globals.config['dynamic_tool_auth'] or {}
+        return mapping.get(self._source_name, '')
 
     @property
     def source_name(self) -> str:

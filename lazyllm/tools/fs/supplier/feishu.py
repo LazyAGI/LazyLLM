@@ -1056,8 +1056,11 @@ class FeishuWikiFS(FeishuFSBase):
                              'kind': parsed['kind'] if parsed else 'external'})
         return _dedupe_refs(refs)
 
-    def _fetch_wiki_content(self, path: str, include_references: bool = False) -> bytes:
+    def _fetch_wiki_content(self, path: str, include_references: bool = False) -> bytes:  # noqa C901
         norm = path.lstrip('/')
+        # Bare feishu URL (https://xxx.feishu.cn/...) — convert to ~link/ path
+        if _FEISHU_BARE_HOST_RE.match(path):
+            norm = f'~link/{path}'
         if norm.startswith('~link/'):
             url = unquote(norm[len('~link/'):])
             parsed = _parse_feishu_browser_url(url)

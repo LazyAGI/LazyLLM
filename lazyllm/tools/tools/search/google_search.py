@@ -8,15 +8,16 @@ from .base import SearchBase, _make_result
 
 class GoogleSearch(SearchBase):
 
-    def __init__(self, custom_search_api_key: str, search_engine_id: str,
+    def __init__(self, custom_search_api_key: Optional[str] = None, search_engine_id: str = '',
                  timeout: int = 10, proxies: Optional[Dict[str, str]] = None,
                  source_name: str = 'google'):
         super().__init__(
             source_name=source_name, api_key=custom_search_api_key,
             auth_strategy=QueryParamStrategy('key'),
+            dynamic_auth=(custom_search_api_key is None),
         )
         params = {
-            'key': custom_search_api_key,
+            'key': custom_search_api_key or '',
             'cx': '{{search_engine_id}}',
             'q': '{{query}}',
             'dateRestrict': '{{date_restrict}}',
