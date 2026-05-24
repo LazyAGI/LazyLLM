@@ -138,12 +138,8 @@ class _DocumentStore(object):
         )
         if schema_dims or schema_datatypes:
             LOG.info('[_DocumentStore] Inferred embed dims from existing store schema')
-        merged_dims = dict(self._embed_dims or {})
-        merged_dims.update(schema_dims)
-        merged_datatypes = dict(self._embed_datatypes or {})
-        merged_datatypes.update(schema_datatypes)
-        self._embed_dims = merged_dims
-        self._embed_datatypes = merged_datatypes
+        self._embed_dims = dict(**(self._embed_dims or {}), **schema_dims)
+        self._embed_datatypes = dict(**(self._embed_datatypes or {}), **schema_datatypes)
         self._impl.vec_connect(
             embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
             embed=self._embed,
