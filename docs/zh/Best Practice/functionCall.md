@@ -419,6 +419,8 @@ config['sandbox_fusion_base_url'] = 'http://your-sandbox-host:port'
 
     - 工具调用的信息里面，除了工具的 `name` 和 `arguments` 之外，还有 `id` 、`type` 和 `function` 字段。
 
+    - 任何会产生 `tool_calls` 的模型都必须配置 `FunctionCallFormatter`。基础 formatter（以及 `EmptyFormatter`）会把 assistant 消息压成纯文本，从而丢弃 `tool_calls` 和 `reasoning_content`，导致无法回放与服务商兼容的多轮历史 —— 例如 DeepSeek 思考模型会拒绝上一轮 assistant 缺少 `reasoning_content` 的工具调用请求。基础 formatter 在遇到这类消息时会打印一条 warning。
+
 
 ### FunctionCall 的输出流程
 

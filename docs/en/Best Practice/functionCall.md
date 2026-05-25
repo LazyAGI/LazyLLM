@@ -376,6 +376,8 @@ The design process of [FunctionCall][lazyllm.tools.agent.FunctionCall] is carrie
 
     - In the tool call information, besides the tool name and arguments, there are also the id, type, and function fields.
 
+    - Any model that produces `tool_calls` must be configured with `FunctionCallFormatter`. The base formatter (and `EmptyFormatter`) collapses an assistant message to plain text and drops `tool_calls` and `reasoning_content`, so a provider-compatible multi-turn history can no longer be replayed — for example, DeepSeek thinking models reject a tool-calling request whose previous assistant turn omits `reasoning_content`. The base formatter logs a warning if it is used on such a message.
+
 ### FunctionCall Output Flow
 
 [FunctionCall][lazyllm.tools.agent.FunctionCall] handles single-turn tool calls.
