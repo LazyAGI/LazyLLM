@@ -11,6 +11,23 @@ document.addEventListener("DOMContentLoaded", function() {
   
   console.log(`[i18n] Current Raw Pathname: ${currentPath}`);
 
+  function getCurrentSegment(path) {
+    for (const segment of Object.values(routeMap)) {
+      if (path.startsWith(`/${segment}/`)) {
+        return segment;
+      }
+    }
+    return null;
+  }
+
+  function getTargetUrl(targetSegment) {
+    const freshPath = window.location.pathname;
+    const currentSegment = getCurrentSegment(freshPath);
+    if (!currentSegment) return null;
+    const freshNewPath = freshPath.replace(`/${currentSegment}/`, `/${targetSegment}/`);
+    return window.location.origin + freshNewPath + window.location.search + window.location.hash;
+  }
+
   document.querySelectorAll('a[lang], a[hreflang]').forEach(link => {
     const targetLang = link.getAttribute('lang') || link.getAttribute('hreflang');
     
@@ -18,13 +35,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     const targetSegment = routeMap[targetLang];
     
-    let currentSegment = null;
-    for (const segment of Object.values(routeMap)) {
-      if (currentPath.startsWith(`/${segment}/`)) {
-        currentSegment = segment;
-        break;
-      }
-    }
+    let currentSegment = getCurrentSegment(currentPath);
 
     if (currentSegment) {
         if (currentSegment === targetSegment) {
@@ -63,7 +74,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 const freshSearch = window.location.search;
 
                 // Construct target base URL
-                const freshNewPath = freshPath.replace(`/${currentSegment}/`, `/${targetSegment}/`);
+                const freshCurrentSegment = getCurrentSegment(freshPath) || currentSegment;
+                const freshNewPath = freshPath.replace(`/${freshCurrentSegment}/`, `/${targetSegment}/`);
                 const targetBaseUrl = window.location.origin + freshNewPath + freshSearch;
 
                 if (freshHash) {
@@ -104,5 +116,13 @@ document.addEventListener("DOMContentLoaded", function() {
             });
         }
     }
+  });
+
+  document.querySelectorAll('a[href^="/en/"], a[href^="/zh-cn/"]').forEach(link => {
+    const href = link.getAttribute('href');
+    const targetSegment = href.startsWith('/en/') ? 'en' : 'zh-cn';
+    const finalUrl = getTargetUrl(targetSegment);
+    if (!finalUrl) return;
+    link.href = finalUrl;
   });
 });
