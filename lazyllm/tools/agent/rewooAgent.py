@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Any, Optional, Union
 import re
 import json
 
@@ -40,10 +40,13 @@ class ReWOOAgent(LazyLLMAgentBase):
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Union[bool, str, List[str], None] = None, desc: str = '',
-                 workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None):
+                 workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
+                 fs: Optional[Any] = None, skills_dir: Optional[str] = None,
+                 enable_builtin_tools: bool = True):
         super().__init__(llm=llm, tools=tools, return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls, skills=skills, desc=desc,
-                         workspace=workspace, sandbox=sandbox)
+                         workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
+                         enable_builtin_tools=enable_builtin_tools)
         if llm is None and plan_llm is None and solve_llm is None:
             raise ValueError('Either specify llm, or provide plan_llm/solve_llm.')
         if llm is None:
@@ -57,18 +60,16 @@ class ReWOOAgent(LazyLLMAgentBase):
             if solve_llm is None:
                 solve_llm = llm
         self._assert_tools()
-        extra_keys = ['available_skills'] if self._skill_manager else None
-        planner_prompt = self._append_skills_prompt(self._build_planner_prompt_template())
-        solver_prompt = self._append_workspace_prompt(
-            self._append_skills_prompt(S_PROMPT_TEMPLATE)
-        )
+        skills_prompt = self._skill_manager.build_prompt() if self._skill_manager else ''
+        planner_prompt = self._build_planner_prompt_template()
+        solver_prompt = self._append_workspace_prompt(S_PROMPT_TEMPLATE)
         self._planner = plan_llm.share(
-            prompt=ChatPrompter(instruction=planner_prompt, extra_keys=extra_keys),
+            prompt=ChatPrompter(instruction={'system': planner_prompt, 'user': ''}, skills=skills_prompt),
             stream=dict(prefix='\nI will give a plan first:\n', prefix_color=Color.blue, color=Color.green)
             if stream else False
         )
         self._solver = solve_llm.share(
-            prompt=ChatPrompter(instruction=solver_prompt, extra_keys=extra_keys),
+            prompt=ChatPrompter(instruction={'system': solver_prompt, 'user': ''}, skills=skills_prompt),
             stream=dict(prefix='\nI will solve the problem:\n', prefix_color=Color.blue, color=Color.green)
             if stream else False
         )
@@ -92,7 +93,7 @@ class ReWOOAgent(LazyLLMAgentBase):
 
     def _build_planner_input(self, input: str):
         locals['chat_history'][self._planner._module_id] = []
-        return self._wrap_user_input_with_skills(input)
+        return input
 
     def _parse_and_call_tool(self, tool_call: str, evidence: Dict[str, str]):
         tool_name, tool_arguments = tool_call.split('[', 1)
@@ -124,10 +125,7 @@ class ReWOOAgent(LazyLLMAgentBase):
 
     def _build_solver_input(self, worker_evidences, input):
         locals['chat_history'][self._solver._module_id] = []
-        payload = {'input': input, 'objective': input, 'worker_evidences': worker_evidences}
-        if self._skill_manager:
-            return self._skill_manager.wrap_input(payload, input)
-        return payload
+        return {'input': input, 'objective': input, 'worker_evidences': worker_evidences}
 
     def _pre_process(self, query: str):
         locals['_lazyllm_agent']['workspace'] = {'tool_call_trace': []}

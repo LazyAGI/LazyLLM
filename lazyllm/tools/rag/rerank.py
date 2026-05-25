@@ -99,7 +99,8 @@ class ModuleReranker(Reranker):
         super().__init__(name, target, output_format, join, **kwargs)
         assert model is not None, 'Reranker model must be specified as a model name or a callable.'
         if isinstance(model, str):
-            self._reranker = lazyllm.TrainableModule(model)
+            self._model_name = model
+            self._reranker = lazyllm.TrainableModule(model, type='rerank')
         else:
             self._reranker = model
 

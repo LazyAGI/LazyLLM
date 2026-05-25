@@ -1,29 +1,66 @@
-import json
-import threading
-import time
+import os
+import hashlib
+import re
 from enum import Enum
 from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
-from lazyllm import LOG, once_wrapper
+from lazyllm import LOG, once_wrapper, config
 from lazyllm.module import LLMBase
-from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
-                        TransformArgs, TransformArgs as TArgs)
+from .transform import (NodeTransform, SentenceSplitter, TransformArgs, TransformArgs as TArgs,
+                        _transmap, _normalize_for_sig, _calculate_signature)
 from .index_base import IndexBase
 from .store import (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, LazyLLMStoreBase)
 from .store.store_base import DEFAULT_KB_ID
 from .store.document_store import _DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, is_sparse, _get_default_db_config
+from .utils import RAG_DEFAULT_GROUP_NAME, gen_docid, _get_default_db_config
 from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
-from .data_type import DataType
 from .parsing_service import _Processor, DocumentProcessor
 from .embed_wrapper import _EmbedWrapper
 from .doc_to_db import SchemaExtractor
 from dataclasses import dataclass
-from itertools import repeat
 
-_transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
+_VERSION_RE = re.compile(
+    r'^([0-9]+!)?[0-9]+(\.[0-9]+)*([-_\.]?(a|b|rc|alpha|beta|preview)[0-9]*)?(\.post[0-9]+)?(\.dev[0-9]+)?$',
+    re.IGNORECASE,
+)
+
+
+def _callable_sig_for_doc_impl(t) -> str:
+    import inspect as _inspect
+    qualname = getattr(t, '__qualname__', None)
+    module = getattr(t, '__module__', None)
+    if qualname and '<lambda>' not in qualname:
+        return f'{module}.{qualname}' if module else qualname
+    try:
+        src = _inspect.getsource(t).strip()
+        return '__lambda__::' + hashlib.sha256(src.encode()).hexdigest()[:16]
+    except (OSError, TypeError):
+        return repr(t)
+
+
+def _compute_node_group_signature(name: str, transform, parent_sig: str, ref_sig: str,
+                                  group_type: 'NodeGroupType') -> str:
+    def _elem_sig(t) -> str:
+        if isinstance(t, TransformArgs):
+            return t.signature()
+        if isinstance(t, str):
+            cls = _transmap.get(t.lower())
+            return cls.__name__ if cls else t
+        if callable(t):
+            return _callable_sig_for_doc_impl(t)
+        return repr(t)
+
+    if isinstance(transform, (list, tuple)):
+        transform_sig = [_elem_sig(t) for t in transform]
+    elif isinstance(transform, TransformArgs):
+        transform_sig = transform.signature()
+    else:
+        transform_sig = _elem_sig(transform)
+    return _calculate_signature(_normalize_for_sig(
+        {'name': name, 'parent_sig': parent_sig, 'ref_sig': ref_sig, 'transform_sig': transform_sig,
+         'group_type': group_type.name if isinstance(group_type, NodeGroupType) else str(group_type)}))
 
 class StorePlaceholder:
     pass
@@ -69,8 +106,8 @@ class DocImpl:
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
 
-    def __init__(self, embed: Dict[str, Callable], dlm: Optional[DocListManager] = None,
-                 doc_files: Optional[str] = None, kb_group_name: Optional[str] = None,
+    def __init__(self, embed: Dict[str, Callable], dataset_path: Optional[str] = None,
+                 doc_files: Optional[List[str]] = None, kb_group_name: Optional[str] = None,
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  store: Optional[Union[Dict, LazyLLMStoreBase]] = None,
                  processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None,
@@ -78,8 +115,9 @@ class DocImpl:
                  schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
-        self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
-        self._dlm, self._doc_files = dlm, doc_files
+        self._kb_group_name = kb_group_name or RAG_DEFAULT_GROUP_NAME
+        self._dataset_path = dataset_path
+        self._doc_files = doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {
             LAZY_ROOT_NAME: dict(parent=None, display_name='Original Source', group_type=NodeGroupType.ORIGINAL),
@@ -137,20 +175,15 @@ class DocImpl:
         return self._store
 
     def _create_store(self):
-        self._store = self._store or {'type': 'map'}
-        embed_dims, embed_datatypes = {}, {}
-        for k, e in self.embed.items():
-            embedding = e('a')
-            if is_sparse(embedding):
-                embed_datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
-            else:
-                embed_dims[k] = len(embedding)
-                embed_datatypes[k] = DataType.FLOAT_VECTOR
-
+        store = self._store
+        if store is None and self._processor is not None:
+            store = getattr(self._processor, '_store_conf', None)
+        self._store = store or {'type': 'map'}
+        # embed dims/datatypes are resolved in _DocumentStore._lazy_init()
         self._store.pop('metadata_store', None)
-        self._store = _DocumentStore(algo_name=self._algo_name, store=self._store,
+        self._store = _DocumentStore(store=self._store,
                                      group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                     embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                     embed_dims={}, embed_datatypes={},
                                      global_metadata_desc=self._global_metadata_desc)
         self._store.activate_group(self._activated_groups)
 
@@ -173,30 +206,34 @@ class DocImpl:
         self._init_node_groups()
         self._create_schema_extractor()
         self._create_store()
-        cloud = not (self._dlm or self._doc_files is not None)
+        cloud = not (self._dataset_path or self._doc_files is not None)
 
         self._resolve_index_pending_registrations()
         if self._processor:
-            assert cloud and isinstance(self._processor, DocumentProcessor)
+            if not isinstance(self._processor, DocumentProcessor):
+                raise TypeError(
+                    f'processor must be a DocumentProcessor instance, got {type(self._processor).__name__!r}'
+                )
+            policy = config['algo_register_policy'].strip().lower()
             self._processor.register_algorithm(self._algo_name, self._store, self._reader, self.node_groups,
-                                               self._schema_extractor, self._display_name, self._description)
+                                               self._schema_extractor, self._display_name, self._description,
+                                               policy=policy)
         else:
-            self._processor = _Processor(self._algo_name, self._store, self._reader, self.node_groups,
-                                         self._schema_extractor, self._display_name, self._description)
+            self._processor = _Processor(self._store, self._build_schema_extractors_dict())
 
-        # init files when `cloud` is False
-        if not cloud and self._store.is_group_empty(LAZY_ROOT_NAME):
-            ids, pathes, metadatas = self._list_files(upload_status=DocListManager.Status.success)
-            self._processor.add_doc(pathes, ids, metadatas)
-            if pathes and self._dlm:
-                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
-                                          new_status=DocListManager.Status.success)
-        if self._dlm:
-            self._init_monitor_event = threading.Event()
-            self._daemon = threading.Thread(target=self.worker)
-            self._daemon.daemon = True
-            self._daemon.start()
-            self._init_monitor_event.wait()
+        # `cloud` is True iff both dataset_path and doc_files are absent. Otherwise do a
+        # one-time ingest: DocImpl only owns the scan in map-store flows now (persistent
+        # store + dataset_path auto-upgrades to DocServer; DocumentProcessor + dataset_path
+        # is rejected at Document.__init__), so re-scan on every process start is harmless
+        # and matches the empty map store. No background monitor is started.
+        if not cloud:
+            self._ingest_local_dataset()
+
+    def _build_schema_extractors_dict(self):
+        if self._schema_extractor is None:
+            return {}
+        ext_name = getattr(self._schema_extractor, 'name', None) or self._algo_name
+        return {ext_name: self._schema_extractor}
 
     def _resolve_index_pending_registrations(self):
         for index_type, index_cls, index_args, index_kwargs in self._index_pending_registrations:
@@ -227,7 +264,23 @@ class DocImpl:
                                        num_workers=num_workers, kwargs=kwargs)
 
         if name in groups:
-            LOG.warning(f'Duplicate group name: {name}')
+            existing = groups[name]
+            existing_sig = existing.get('signature', '')
+            parent_sig = groups.get(parent, {}).get('signature', '') if parent != LAZY_ROOT_NAME else ''
+            ref_sig = groups.get(ref, {}).get('signature', '') if ref else ''
+            new_sig = _compute_node_group_signature(name, transforms, parent_sig, ref_sig, group_type)
+            if existing_sig and existing_sig == new_sig:
+                LOG.info(f'Node group {name!r} already registered with same signature, skipping.')
+                return
+            if existing_sig and existing_sig != new_sig:
+                raise ValueError(
+                    f'Node group {name!r} already exists with a different signature '
+                    f'(existing={existing_sig}, new={new_sig}). '
+                    'Use a different name or version to create a distinct node group.'
+                )
+            # existing_sig is empty (legacy data without signature): update in-place
+            LOG.warning('Node group %r has no signature (legacy data), updating in-place '
+                        'with new signature %r', name, new_sig)
         for t in (transforms if isinstance(transform, list) else [transforms]):
             if isinstance(t.f, str):
                 t.f = _transmap[t.f.lower()]
@@ -239,8 +292,11 @@ class DocImpl:
                     'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
             else:
                 assert callable(t.f), f'transform should be callable, but get {t.f}'
+        parent_sig = groups.get(parent, {}).get('signature', '') if parent != LAZY_ROOT_NAME else ''
+        ref_sig = groups.get(ref, {}).get('signature', '') if ref else ''
+        signature = _compute_node_group_signature(name, transforms, parent_sig, ref_sig, group_type)
         groups[name] = dict(transform=transforms, parent=parent, display_name=display_name or name,
-                            group_type=group_type, ref=ref)
+                            group_type=group_type, ref=ref, signature=signature)
 
     @classmethod
     def _create_builtin_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME,
@@ -255,15 +311,39 @@ class DocImpl:
     def create_global_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                                  trans_node: Optional[bool] = None, num_workers: int = 0,
                                  display_name: Optional[str] = None,
-                                 group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None, **kwargs) -> None:
+                                 group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None,
+                                 version: Optional[str] = None, **kwargs) -> None:
+        if version is not None:
+            if not _VERSION_RE.match(version):
+                raise ValueError(f'Invalid version {version!r}. Must follow PEP 440 (e.g. 1.0, 1.1.1, 1.1.1a0).')
+            name = f'{name}@v{version}'
         DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
                                         group_type=group_type, ref=ref, **kwargs)
 
     def create_node_group(self, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                           trans_node: Optional[bool] = None, num_workers: int = 0, display_name: Optional[str] = None,
-                          group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None, **kwargs) -> None:
-        assert not self._lazy_init.flag, 'Cannot add node group after document started'
+                          group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None,
+                          version: Optional[str] = None, **kwargs) -> None:
+        # NOTE: if parent itself is versioned, pass the full versioned name (e.g. "chunks@v1.0");
+        # the version param does NOT auto-append a version suffix to parent.
+        if version is not None:
+            if not _VERSION_RE.match(version):
+                raise ValueError(f'Invalid version {version!r}. Must follow PEP 440 (e.g. 1.0, 1.1.1, 1.1.1a0).')
+            name = f'{name}@v{version}'
+        if self._lazy_init.flag:
+            if isinstance(self._processor, DocumentProcessor):
+                self._processor.register_new_node_group(name, dict(
+                    transform=transform, parent=parent, trans_node=trans_node,
+                    num_workers=num_workers, display_name=display_name,
+                    group_type=group_type, ref=ref, **kwargs,
+                ), algo_name=self._algo_name)
+                # Also update local node_groups so in-process callers see the new group.
+                DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
+                                                trans_node=trans_node, num_workers=num_workers,
+                                                display_name=display_name, group_type=group_type, ref=ref, **kwargs)
+                return
+            raise RuntimeError('Cannot add node group after document started in standalone mode')
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
                                         group_type=group_type, ref=ref, **kwargs)
@@ -298,93 +378,52 @@ class DocImpl:
         self._local_file_reader[pattern] = func
         self._reader._lazy_init.flag.reset()
 
-    def _add_doc_to_store_with_status(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]],
-                                      cond_status_list: Optional[List[str]] = None):
-        success_ids, failed_ids = [], []
-        for filepath, doc_id, metadata in zip(input_files, ids or repeat(None), metadatas or repeat(None)):
+    def _add_doc_to_store(self, input_files: List[str], ids: List[str],
+                          metadatas: List[Dict[str, Any]]) -> Set[str]:
+        '''Add documents to store. Returns the set of doc_ids that were successfully added.'''
+        success_ids: Set[str] = set()
+        for filepath, doc_id, metadata in zip(input_files, ids, metadatas):
+            filepath = os.path.abspath(filepath)
             try:
-                self._add_doc_to_store(input_files=[filepath], ids=[doc_id] if doc_id is not None else None,
-                                       metadatas=[metadata] if metadata is not None else None)
-                success_ids.append(doc_id)
+                self._processor.add_doc([filepath], self.node_groups, self._reader,
+                                        [doc_id], [metadata] if metadata is not None else None)
+                success_ids.add(doc_id)
             except Exception as e:
                 LOG.error(f'Error adding document {doc_id} ({filepath}) to store: {e}')
-                failed_ids.append(doc_id)
+        return success_ids
 
-        if success_ids:
-            self._dlm.update_kb_group(cond_file_ids=success_ids, cond_group=self._kb_group_name,
-                                      cond_status_list=cond_status_list, new_status=DocListManager.Status.success)
-        if failed_ids:
-            self._dlm.update_kb_group(cond_file_ids=failed_ids, cond_group=self._kb_group_name,
-                                      cond_status_list=cond_status_list, new_status=DocListManager.Status.failed)
+    def _list_dataset_files(self) -> List[str]:
+        from .doc_service.utils import list_dataset_files
+        return list_dataset_files(self._dataset_path)
 
-    def _batch_call(self, func: Callable, *args, batch_size: int = 10, **kwargs):
-        batch_count = next((len(arg) for arg in args if isinstance(arg, (tuple, list))), 0)
-        for i in range(0, batch_count, batch_size):
-            func(*[arg[i:i + batch_size] if isinstance(arg, (list, tuple)) else arg for arg in args], **kwargs)
+    def _list_local_files(self) -> Tuple[List[str], List[str], List[Dict[str, Any]]]:
+        paths = ([self._resolve_doc_file_path(path) for path in self._doc_files]
+                 if self._doc_files is not None else self._list_dataset_files())
+        ids = [gen_docid(path) for path in paths]
+        return ids, paths, [{} for _ in paths]
 
-    def worker(self):
-        is_first_run = True
-        while True:
-            # Apply meta changes
-            rows = self._dlm.fetch_docs_changed_meta(self._kb_group_name)
-            for row in rows:
-                new_meta_dict = json.loads(row[1]) if row[1] else {}
-                self._processor.update_doc_meta(doc_id=row[0], metadata=new_meta_dict)
+    @staticmethod
+    def _resolve_doc_file_path(path: str) -> str:
+        # Normalize absolute paths too, matching the prior os.path.abspath(...)
+        # behavior so gen_docid produces a stable id regardless of whether the
+        # caller used "/abs/./x" vs "/abs/x" or mixed separators on Windows.
+        if os.path.isabs(path):
+            return os.path.abspath(path)
+        if config['data_path']:
+            candidate = os.path.join(config['data_path'], path)
+            if os.path.exists(candidate):
+                return os.path.abspath(candidate)
+        return os.path.abspath(path)
 
-            # Step 1: do doc-parsing, highest priority
-            docs = self._dlm.get_docs_need_reparse(group=self._kb_group_name)
-            if docs:
-                filepaths = [doc.path for doc in docs]
-                ids = [doc.doc_id for doc in docs]
-                metadatas = [json.loads(doc.meta) if doc.meta else None for doc in docs]
-                # update status and need_reparse
-                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
-                                          new_status=DocListManager.Status.working, new_need_reparse=False)
-                self._delete_doc_from_store(doc_ids=ids)
-                self._batch_call(self._add_doc_to_store_with_status, filepaths, ids, metadatas, batch_size=10)
-
-            # Step 2: After doc is deleted from related kb_group, delete doc from db
-            if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
-                self._dlm.delete_unreferenced_doc()
-
-            # Step 3: do doc-deleting
-            ids, files, metadatas = self._list_files(status=DocListManager.Status.deleting)
-            if files:
-                self._delete_doc_from_store(doc_ids=ids)
-                self._dlm.delete_files_from_kb_group(ids, self._kb_group_name)
-
-            # Step 4: do doc-adding
-            ids, files, metadatas = self._list_files(status=DocListManager.Status.waiting,
-                                                     upload_status=DocListManager.Status.success)
-            if files:
-                self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
-                                          new_status=DocListManager.Status.working)
-                self._batch_call(self._add_doc_to_store_with_status,
-                                 files, ids, metadatas, cond_status_list=[DocListManager.Status.working])
-
-            if is_first_run:
-                self._init_monitor_event.set()
-            is_first_run = False
-            time.sleep(10)
-
-    def _list_files(
-            self, status: Union[str, List[str]] = DocListManager.Status.all,
-            upload_status: Union[str, List[str]] = DocListManager.Status.all
-    ) -> Tuple[List[str], List[str], List[Dict]]:
-        if self._doc_files is not None: return None, self._doc_files, None
-        if not self._dlm: return [], [], []
-        ids, paths, metadatas = [], [], []
-        for row in self._dlm.list_kb_group_files(group=self._kb_group_name, status=status,
-                                                 upload_status=upload_status, details=True):
-            ids.append(row[0])
-            paths.append(row[1])
-            metadatas.append(json.loads(row[3]) if row[3] else {})
-        return ids, paths, metadatas
-
-    def _add_doc_to_store(self, input_files: List[str], ids: Optional[List[str]] = None,
-                          metadatas: Optional[List[Dict[str, Any]]] = None):
-        if not input_files: return
-        self._processor.add_doc(input_files, ids, metadatas)
+    def _ingest_local_dataset(self):
+        '''One-time ingest at `_lazy_init`: load every file in `dataset_path` /
+        `doc_files` into the store. No background polling / diff tracking —
+        directory change detection now lives in DocServer's SQL-backed scan
+        (persistent stores auto-upgrade to it).
+        '''
+        ids, paths, metadatas = self._list_local_files()
+        if paths:
+            self._add_doc_to_store(paths, ids, metadatas)
 
     def _delete_doc_from_store(self, doc_ids: List[str] = None) -> None:
         self._processor.delete_doc(doc_ids=doc_ids)
@@ -408,7 +447,7 @@ class DocImpl:
                 if parent in self._activated_groups: break
                 self._store.activate_group(parent)
                 self._activated_groups.add(parent)
-            if self._store.is_group_empty(group_name): self._processor.reparse(group_name)
+            if self._store.is_group_empty(group_name): self._processor.reparse(group_name, self.node_groups)
 
     def active_node_groups(self):
         return {k: v for k, v in self._activated_embeddings.items() if k in self._activated_groups}
@@ -429,7 +468,7 @@ class DocImpl:
                                          similarity_cut_off=similarity_cut_off, topk=topk, embed_keys=embed_keys,
                                          filters=filters, **similarity_kws, **kwargs)
         except Exception as e:
-            raise RuntimeError(f'index type `{index}` of store `{type(self._store.impl)}` query failed: {e}')
+            raise RuntimeError(f'index type `{index}` of store `{type(self._store._impl)}` query failed: {e}')
 
         for n in nodes:
             n._store = self._store
@@ -546,16 +585,19 @@ class DocImpl:
         if not self._schema_extractor:
             raise AttributeError('No schema extractor for this Document.')
         self._create_schema_extractor()
-        set_id = self._schema_extractor.register_schema_set_to_kb(algo_id=self._algo_name, schema_set=schema_set,
-                                                                  kb_id=kb_id, force_refresh=force_refresh)
+        set_id = self._schema_extractor.register_schema_set(schema_set=schema_set, force_refresh=force_refresh)
         return set_id
 
     def _get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                   group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
-                   ) -> List[DocNode]:
+                   group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None,
+                   limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
+                   sort_by_number: bool = False) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
         self._lazy_init()
-        return self._store.get_nodes(uids=uids, doc_ids=doc_ids, group=group,
-                                     kb_id=kb_id, numbers=numbers, display=True)
+        return self._store.get_nodes(
+            uids=uids, doc_ids=doc_ids, group=group, kb_id=kb_id, numbers=numbers,
+            limit=limit, offset=offset, return_total=return_total,
+            sort_by_number=sort_by_number, display=True,
+        )
 
     def _get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
                           merge: bool = False) -> Union[List[DocNode], DocNode]:

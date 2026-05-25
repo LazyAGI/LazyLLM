@@ -6,6 +6,7 @@ from .onlinemodule import (
 )
 from .online_module import OnlineModule
 from .trainablemodule import TrainableModule
+from .model_config_inject import inject_model_config
 from lazyllm import namespace
 
 namespace.register_module(['AutoModel', 'OnlineModule', 'OnlineChatModule',
@@ -22,4 +23,5 @@ __all__ = [
     'TrainableModule',
     'OnlineMultiModalModule',
     'OnlineMultiModalBase',
+    'inject_model_config',
 ]

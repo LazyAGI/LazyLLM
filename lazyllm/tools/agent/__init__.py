@@ -7,6 +7,7 @@ from .rewooAgent import ReWOOAgent
 from .toolsManager import ModuleTool
 from .code_interpreter import code_interpreter
 from .skill_manager import SkillManager
+from .skill_hub import install_skill
 
 __all__ = [
     'ToolManager',
@@ -20,4 +21,5 @@ __all__ = [
     'ModuleTool',
     'code_interpreter',
     'SkillManager',
+    'install_skill',
 ]

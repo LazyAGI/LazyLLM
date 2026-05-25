@@ -440,21 +440,26 @@ MODEL_MAPPING = {
     # ===== DeepSeek =====
     'deepseek-chat': 'llm',
     'deepseek-reasoner': 'llm',
+    'deepseek-v4-flash': 'llm',
+    'deepseek-v4-pro': 'llm',
 
     # ===== SiliconFlow =====
+    'qwen/qwen3-vl-embedding-8b': 'cross_modal_embed',
     'qwen/qwen-image-edit': 'image_editing',
     'qwen/qwen-image-edit-2509': 'image_editing',
+    # free text2image model
+    'Kwai-Kolors/Kolors': 'image_editing'
 }
 _TOKEN_MAP = {
+    'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision', 'vl-embedding'),
+    'rerank': ('rerank',),
     'embed': ('embedding', 'embed'),
+    'ocr': ('ocr',),
     'stt': ('whisper', 'paraformer', 'asr', 'stt', 'transcribe'),
     'tts': ('tts', 'cosyvoice', 'nova-tts'),
     'vlm': ('qwen-vl', 'vl', 'vision', 'caption', 'omni', 'vlm', 'seed'),
-    'ocr': ('ocr',),
-    'rerank': ('rerank',),
-    'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision'),
     'sd': ('dall', 'wan', 'sora', 'image', 'video', 't2i', 't2v'),
-    'image_editing': ('image-edit', 'seededit', 'i2i', 'seedream-3', 'seedream-4'),
+    'image_editing': ('image-edit', 'seededit', 'i2i', 'seedream-3', 'seedream-4', 'Kolors'),
 }
 _SUFFIX_RE = re.compile(
     r'(?:'
@@ -489,11 +494,21 @@ NORMALIZED_MODEL_MAPPING: Dict[str, str] = {
     _normalize_key(k): v for k, v in MODEL_MAPPING.items()
 }
 
+_VISUAL_TOKENS = ('vl', 'vision', 'visual', 'multimodal')
+_EMBED_TOKENS = ('embedding', 'embed')
+
 def feature_keyword_rule(model_name: str) -> Optional[str]:
     '''Identify the model type by normalized name or keyword match.'''
     stripped_input = _normalize_key(model_name)
     if stripped_input in NORMALIZED_MODEL_MAPPING:
         return NORMALIZED_MODEL_MAPPING[stripped_input]
+
+    # Combination rule: names containing both a visual token and an embedding token
+    # are cross-modal embeddings, regardless of other tokens like 'image'.
+    has_visual = any(_contains_token(stripped_input, t) for t in _VISUAL_TOKENS)
+    has_embed = any(_contains_token(stripped_input, t) for t in _EMBED_TOKENS)
+    if has_visual and has_embed:
+        return 'cross_modal_embed'
 
     for model_type, tokens in _TOKEN_MAP.items():
         for tok in tokens:
@@ -506,9 +521,8 @@ def special_model_rule(model_name: str) -> Optional[str]:
 
 @functools.lru_cache
 def get_model_type(model_name: str) -> str:
+    if not model_name: return None
     model_name = model_name.lower()
-    if not model_name:
-        return 'llm'
     for rule in (special_model_rule, feature_keyword_rule):
         try:
             result = rule(model_name)

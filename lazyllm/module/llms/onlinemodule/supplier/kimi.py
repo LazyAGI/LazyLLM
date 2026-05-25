@@ -1,15 +1,16 @@
-import lazyllm
 from urllib.parse import urljoin
 import requests
+from typing import Optional
 from ..base import OnlineChatModuleBase
 
 
 class KimiChat(OnlineChatModuleBase):
 
-    def __init__(self, base_url: str = 'https://api.moonshot.cn/', model: str = 'moonshot-v1-8k',
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-
-        super().__init__(api_key=api_key or lazyllm.config['kimi_api_key'], base_url=base_url,
+        base_url = base_url or 'https://api.moonshot.cn/'
+        model = model or 'moonshot-v1-8k'
+        super().__init__(api_key=api_key or self._default_api_key(), base_url=base_url,
                          model_name=model, stream=stream, return_trace=return_trace, **kwargs)
 
     def _get_system_prompt(self):

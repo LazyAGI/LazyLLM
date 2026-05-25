@@ -91,22 +91,15 @@ def processYml(file):
 ...     print("Call the function processYml.")
 ...     return [DocNode(text=data)]
 ...
-doc1 = Document(dataset_path="your_files_path", create_ui=False)
-doc2 = Document(dataset_path="your_files_path", create_ui=False)
+doc1 = Document(dataset_path="your_files_path")
+doc2 = Document(dataset_path="your_files_path")
 doc1.add_reader("**/*.yml", YmlReader)
-print(doc1._impl._local_file_reader)
-{'**/*.yml': <class '__main__.YmlReader'>}
-print(doc2._impl._local_file_reader)
-{}
-files = ["your_yml_files"]
 Document.register_global_reader("**/*.yml", processYml)
-doc1._impl._reader.load_data(input_files=files)
-Call the class YmlReader.
-doc2._impl._reader.load_data(input_files=files)
-Call the function processYml.
 ```
 
-此外可以通过register_global_reader注册读取器，作用范围对于所有的 Document 对象都可见。
+此外可以通过register_global_reader注册读取器，作用范围对于所有的 Document 对象都可见。局部 add_reader
+只影响当前 Document，并且在匹配同一文件模式时优先于全局 reader。因此当两个 Document 实例同样读取 ``.yml`` 文件时，
+``doc1`` 会调用 ``YmlReader``，而 ``doc2`` 会回退到全局的 ``processYml``。
 
 ## 创建节点和组
 
@@ -212,5 +205,3 @@ query = "何为天道？"
 res = retriever(query=query)
 print(f"answer: {res}")
 ```
-
-

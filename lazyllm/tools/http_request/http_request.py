@@ -1,8 +1,11 @@
 import re
+
+import requests
 from lazyllm.thirdparty import httpx
 import json
 from lazyllm.module.module import ModuleBase
 from lazyllm.tools.http_request.http_executor_response import HttpExecutorResponse
+from lazyllm import LOG
 
 class HttpRequest(ModuleBase):
     def __init__(self, method, url, api_key, headers, params, body, timeout=10, proxies=None):
@@ -87,3 +90,35 @@ class HttpRequest(ModuleBase):
             'file': file_binary
         }
         return outputs
+
+
+def post_sync(url: str, payload: dict = None, files: dict = None, headers: dict = None,
+              json_payload: dict = None, timeout: int = 60,
+              raise_for_status: bool = True) -> requests.Response:
+    '''Execute a synchronous POST request with unified error handling.'''
+    try:
+        if json_payload is not None:
+            resp = requests.post(url, json=json_payload, headers=headers, timeout=timeout)
+        elif files is not None:
+            resp = requests.post(url, data=payload, files=files, headers=headers, timeout=timeout)
+        else:
+            resp = requests.post(url, data=payload, headers=headers, timeout=timeout)
+        if raise_for_status:
+            resp.raise_for_status()
+        return resp
+    except requests.exceptions.RequestException as e:
+        LOG.error(f'[HttpRequest] POST request to {url} failed: {e}')
+        raise
+
+
+def get_sync(url: str, headers: dict = None, timeout: int = 60,
+             raise_for_status: bool = True) -> requests.Response:
+    '''Execute a synchronous GET request with unified error handling.'''
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        if raise_for_status:
+            resp.raise_for_status()
+        return resp
+    except requests.exceptions.RequestException as e:
+        LOG.error(f'[HttpRequest] GET request to {url} failed: {e}')
+        raise

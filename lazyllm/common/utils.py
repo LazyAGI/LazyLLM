@@ -3,6 +3,7 @@ from os.path import expanduser, expandvars, isfile, join, normpath
 from typing import Union, Dict, Callable, Any, Optional
 import re
 import os
+import sys
 from contextlib import contextmanager
 import cloudpickle
 import ast
@@ -160,12 +161,63 @@ def str2bool(v: str) -> bool:
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+_TEST_MODULE_PREFIXES = ('test_', 'tmp.tests.')
+
+
+def _collect_test_modules(obj):
+    '''Return modules that need cloudpickle ``register_pickle_by_value``.
+
+    We only target dynamically-generated test modules (e.g. ``tmp.tests.*`` code
+    assembled at runtime) whose subprocess can't re-import them by name. Regular
+    file-backed test modules are intentionally skipped: the caller must already
+    arrange for subprocess import (via ``pythonpath=`` on ServerModule), and
+    pickling them by value balloons the command-line payload past the Windows
+    8191-char cmd limit (see PR 1069 ServerModule regression).
+    '''
+    modules = []
+    seen = set()
+    candidates = [obj]
+    if hasattr(obj, '__dict__'):
+        candidates.extend(obj.__dict__.values())
+    for candidate in candidates:
+        module_name = getattr(candidate, '__module__', None)
+        if not module_name:
+            continue
+        if not module_name.startswith(_TEST_MODULE_PREFIXES):
+            continue
+        module = sys.modules.get(module_name)
+        if module is None or module_name in seen:
+            continue
+        # File-backed modules are importable by name in the subprocess; no need
+        # to embed their source by value (and doing so is what blows past the
+        # Windows cmd-line limit).
+        module_file = getattr(module, '__file__', None)
+        if module_file and os.path.isfile(module_file):
+            continue
+        seen.add(module_name)
+        modules.append(module)
+    return modules
+
+
 def dump_obj(f):
     @contextmanager
     def env_helper():
-        os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'ON'
-        yield
-        os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'OFF'
+        original_cloudpickle_flag = os.environ.get('LAZYLLM_ON_CLOUDPICKLE')
+        registered_modules = []
+        try:
+            os.environ['LAZYLLM_ON_CLOUDPICKLE'] = 'ON'
+            modules = _collect_test_modules(f)
+            for module in modules:
+                cloudpickle.register_pickle_by_value(module)
+                registered_modules.append(module)
+            yield
+        finally:
+            for module in reversed(registered_modules):
+                cloudpickle.unregister_pickle_by_value(module)
+            if original_cloudpickle_flag is None:
+                os.environ.pop('LAZYLLM_ON_CLOUDPICKLE', None)
+            else:
+                os.environ['LAZYLLM_ON_CLOUDPICKLE'] = original_cloudpickle_flag
 
     with env_helper():
         return None if f is None else base64.b64encode(cloudpickle.dumps(f)).decode('utf-8')

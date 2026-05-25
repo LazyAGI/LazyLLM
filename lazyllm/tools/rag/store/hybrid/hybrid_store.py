@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Union, Set
 
+import lazyllm
 from lazyllm.common import override
 
 from ..store_base import LazyLLMStoreBase, StoreCapability
@@ -19,9 +20,21 @@ class HybridStore(LazyLLMStoreBase):
         return self.segment_store.dir
 
     @override
-    def connect(self, *args, **kwargs):
+    def seg_connect(self, *args, **kwargs):
         self.segment_store.connect(*args, **kwargs)
+
+    @override
+    def vec_connect(self, *args, **kwargs):
         self.vector_store.connect(*args, **kwargs)
+
+    @override
+    def connect(self, *args, **kwargs):
+        self.seg_connect(*args, **kwargs)
+        self.vec_connect(*args, **kwargs)
+
+    @override
+    def try_read_dims_from_schema(self, collections: List[str]):
+        return self.vector_store.try_read_dims_from_schema(collections)
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
@@ -34,12 +47,29 @@ class HybridStore(LazyLLMStoreBase):
         return self.segment_store.delete(collection_name=collection_name, criteria=criteria, **kwargs) and \
             self.vector_store.delete(collection_name=collection_name, criteria=criteria, **kwargs)
 
+    def drop_collection(self, collection_name: str) -> bool:
+        ok = True
+        for store in (self.segment_store, self.vector_store):
+            if hasattr(store, 'drop_collection'):
+                result = store.drop_collection(collection_name)
+                ok = bool(result) and ok
+            else:
+                lazyllm.LOG.warning(
+                    f'[HybridStore] {type(store).__name__} does not implement '
+                    f'drop_collection; skipping for collection {collection_name!r}'
+                )
+        return ok
+
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         res_segments = self.segment_store.get(collection_name=collection_name, criteria=criteria, **kwargs)
-        if not res_segments: return []
+        total = None
+        if isinstance(res_segments, tuple):
+            res_segments, total = res_segments
+        if not res_segments:
+            return ([], total or 0) if total is not None else []
         uids = [item.get('uid') for item in res_segments]
-        res_vectors = self.vector_store.get(collection_name=collection_name, criteria={'uid': uids}, **kwargs)
+        res_vectors = self.vector_store.get(collection_name=collection_name, criteria={'uid': uids})
 
         data = {}
         for item in res_segments:
@@ -50,7 +80,8 @@ class HybridStore(LazyLLMStoreBase):
             else:
                 raise ValueError(f'[HybridStore - get] uid {item["uid"]} in vector store'
                                  ' but not found in segment store')
-        return list(data.values())
+        ordered = [data[item.get('uid')] for item in res_segments if item.get('uid') in data]
+        return (ordered, total) if total is not None else ordered
 
     @override
     def search(self, collection_name: str, query: str, query_embedding: Optional[Union[dict, List[float]]] = None,

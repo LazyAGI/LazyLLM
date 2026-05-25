@@ -1,3 +1,4 @@
+import asyncio
 import re
 import time
 import json
@@ -6,7 +7,7 @@ import requests
 import uuid
 import pickle
 import codecs
-from typing import Callable, Dict, List, Union, Optional, Tuple
+from typing import Callable, Dict, List, Union, Optional, Tuple, TypedDict
 import copy
 from dataclasses import dataclass
 
@@ -52,12 +53,79 @@ def _parse_interleaved_input(input_list: List) -> Tuple[str, List[str]]:
     return ''.join(text_parts), image_paths
 
 
+class StaticParams(TypedDict, total=False):
+    temperature: float
+    top_p: float
+    top_k: int
+    max_tokens: int
+    frequency_penalty: float  # Note some online api use 'repetition_penalty'
+
+
+_g_stream_thread_pool = lazyllm.ThreadPoolExecutor(max_workers=lazyllm.config['thread_pool_worker_num'])
+
+
+class StreamCallHelper:
+    def __init__(self, impl: Callable, interval: float = 0.1):
+        self._impl = impl
+        self._sleep_interval = interval
+
+    def _submit(self, *args, **kwargs):
+        lazyllm.globals._init_sid()
+        lazyllm.FileSystemQueue().clear()
+        return _g_stream_thread_pool.submit(self._impl, *args, **kwargs)
+
+    @staticmethod
+    def _finalize(future, str_total: str):
+        result = future.result()
+        lazyllm.FileSystemQueue().clear()
+        if isinstance(result, str):
+            return None if str_total.endswith(result) else result
+        return str(result)
+
+    def __call__(self, *args, **kwargs):
+        future = self._submit(*args, **kwargs)
+        str_total = ''
+        while not future.done():
+            if value := lazyllm.FileSystemQueue().dequeue():
+                chunk = ''.join(value)
+                str_total += chunk
+                yield chunk
+            else:
+                time.sleep(self._sleep_interval)
+        # drain any remaining queue entries after future completes
+        while value := lazyllm.FileSystemQueue().dequeue():
+            chunk = ''.join(value)
+            str_total += chunk
+            yield chunk
+        if (tail := self._finalize(future, str_total)) is not None:
+            yield tail
+
+    async def astream(self, *args, **kwargs):
+        future = self._submit(*args, **kwargs)
+        str_total = ''
+        while not future.done():
+            if value := lazyllm.FileSystemQueue().dequeue():
+                chunk = ''.join(value)
+                str_total += chunk
+                yield chunk
+            else:
+                await asyncio.sleep(self._sleep_interval)
+        # drain any remaining queue entries after future completes
+        while value := lazyllm.FileSystemQueue().dequeue():
+            chunk = ''.join(value)
+            str_total += chunk
+            yield chunk
+        if (tail := self._finalize(future, str_total)) is not None:
+            yield tail
+
+
 class LLMBase(object):
-    def __init__(self, stream: Union[bool, Dict[str, str]] = False,
-                 init_prompt: bool = True, type: Optional[Union[str, LLMType]] = None):
+    def __init__(self, stream: Union[bool, Dict[str, str]] = False, init_prompt: bool = True,
+                 type: Optional[Union[str, LLMType]] = None, static_params: Optional[StaticParams] = None):
         self._stream = stream
         self._type = LLMType(type) if type else LLMType.LLM
         if init_prompt: self.prompt()
+        self._static_params = static_params or {}
         __class__.formatter(self)
 
     def _get_files(self, input, lazyllm_files):
@@ -100,13 +168,15 @@ class LLMBase(object):
         return self
 
     def share(self, prompt: Optional[Union[str, dict, PrompterBase]] = None, format: Optional[FormatterBase] = None,
-              stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None):
+              stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None,
+              copy_static_params: bool = False):
         new = copy.copy(self)
         new._hooks = set()
         new._set_mid()
         if prompt is not None: new.prompt(prompt, history=history)
         if format is not None: new.formatter(format)
         if stream is not None: new.stream = stream
+        if copy_static_params: new._static_params = copy.deepcopy(self._static_params)
         return new
 
     @property
@@ -120,6 +190,23 @@ class LLMBase(object):
     @stream.setter
     def stream(self, v: Union[bool, Dict[str, str]]):
         self._stream = v
+
+    async def astream_call(self, *args, **kwargs):
+        '''Async generator that yields tokens as they arrive. Suitable for FastAPI/asyncio contexts.'''
+        llm = self.share()
+        kwargs.setdefault('stream_output', True)
+        async for chunk in StreamCallHelper(llm).astream(*args, **kwargs):
+            yield chunk
+
+    @property
+    def static_params(self) -> StaticParams:
+        return self._static_params
+
+    @static_params.setter
+    def static_params(self, value: StaticParams):
+        if not isinstance(value, dict):
+            raise TypeError('static_params must be a dict (TypedDict)')
+        self._static_params = value
 
     def __or__(self, other):
         if not isinstance(other, FormatterBase):
@@ -219,7 +306,7 @@ class UrlModule(ModuleBase, LLMBase, _UrlHelper):
         return super(__class__, self).__call__(*args, **kw)
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'Url', name=self._module_name, url=self._url,
+        return lazyllm.make_repr('Module', 'Url', name=self.name, url=self._url,
                                  stream=self._stream, return_trace=self._return_trace)
 
 
@@ -293,7 +380,12 @@ class ServerModule(UrlModule):
     def _call(self, fname, *args, **kwargs):
         args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
         url = urljoin(self._url.rsplit('/', 1)[0], '_call')
-        r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
+        headers = {
+            'Content-Type': 'application/json',
+            'Global-Parameters': globals.pickled_data,
+            'Session-ID': globals._sid,
+        }
+        r = requests.post(url, json=(fname, args, kwargs), headers=headers)
         if r.status_code != 200:
             try:
                 error_info = r.json()
@@ -329,5 +421,5 @@ class ServerModule(UrlModule):
                 return self._formatter(temp_output)
 
     def __repr__(self):
-        return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
+        return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self.name,
                                  stream=self._stream, return_trace=self._return_trace)

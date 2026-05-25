@@ -31,14 +31,15 @@ import lazyllm
 prompter.generate_prompt(dict(context='背景', input='输入'))
 
 # {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\n\n ### Instruction:\n你是一个由LazyLLM开发的知识问答助手，你的任务是根据提供的上下文信息来回答用户的问题。上下文信息是背景，用户的问题是输入，现在请你做出回答。\n\n'}, {'role': 'user', 'content': ''}]}
-prompter.generate_prompt(dict(context='背景', input='输入'), return_dict=True)
+prompter.generate_prompt(dict(context='背景', input='输入'), format='openai')
 ```
 
 In the example above, the ``generate_prompt`` function accepts a ``dict`` as input, filling in the slots in the ``instruction`` template with the provided values.
 
 !!! Note
 
-    - In the code above, there's a parameter ``return_dict`` worth noting. When ``return_dict`` is set to True, it returns a dictionary in the OpenAI format for online models.
+    - In the code above, there's a parameter ``format`` worth noting. When ``format='openai'``, it returns a dictionary in the OpenAI Chat Completions format for online models.
+    - The legacy ``return_dict=True`` remains supported (equivalent to ``format='openai'``, with a deprecation warning); prefer ``format`` in new code.
     - Typically, you just need to assign the Prompter to a ``TrainableModule`` or ``OnlineChatModule`` without worrying about the ``generate_prompt`` function.
 
 ### Design Concept of LazyLLM Prompter
@@ -221,7 +222,7 @@ The tool will be read after step 4 in [Prompt Generation Process Analysis](#anal
         >>> import lazyllm
         >>> tools=[dict(type='function', function=dict(name='example'))]
          >>> prompter = lazyllm.AlpacaPrompter('你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用', extra_keys='input', tools=tools)
-        >>> prompter.generate_prompt('帮我查询一下今天的天气', return_dict=True)
+        >>> prompter.generate_prompt('帮我查询一下今天的天气', format='openai')
         {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\n\\n ### Instruction:\\n你是一个工具调用的Agent，我会给你提供一些工具，请根据用户输入，帮我选择最合适的工具并使用\\n\\nHere are some extra messages you can referred to:\\n\\n### input:\\n帮我查询一下今天的天气\\n\\n'}, {'role': 'user', 'content': ''}],
         'tools': [{'type': 'function', 'function': {'name': 'example'}}]}
 
@@ -234,9 +235,9 @@ If we want the model to have multi-turn conversation capabilities, we need to co
 >>> prompter = lazyllm.ChatPrompter('你是一个对话机器人，现在你要和用户进行友好的对话')
 >>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']])
 '<|start_system|>You are an AI-Agent developed by LazyLLM.你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n<|end_system|>\\n\\n<|Human|>:你好<|Assistant|>:你好，我是一个对话机器人，有什么能为您服务的\\n<|Human|>:\\n我们聊会儿天吧\\n<|Assistant|>:\\n'
->>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']], return_dict=True)
+>>> prompter.generate_prompt('我们聊会儿天吧', history=[['你好', '你好，我是一个对话机器人，有什么能为您服务的']], format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
->>> prompter.generate_prompt('我们聊会儿天吧', history=[dict(role='user', content='你好'), dict(role='assistant', content='你好，我是一个对话机器人，有什么能为您服务的')], return_dict=True)
+>>> prompter.generate_prompt('我们聊会儿天吧', history=[dict(role='user', content='你好'), dict(role='assistant', content='你好，我是一个对话机器人，有什么能为您服务的')], format='openai')
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\n你是一个对话机器人，现在你要和用户进行友好的对话\\n\\n'}, {'role': 'user', 'content': '你好'}, {'role': 'assistant', 'content': '你好，我是一个对话机器人，有什么能为您服务的'}, {'role': 'user', 'content': '我们聊会儿天吧'}]}
 ```
 
@@ -245,12 +246,12 @@ The conversation history will be read in step 4 of [Prompt Generation Process An
 !!! Note
 
     - Only ``ChatPrompter`` supports passing in conversation history.
-    - When the input is in the format ``[[a, b], ...]``, both ``return_dict`` set to ``True`` or ``False`` are supported, whereas when the input is in the format ``[dict, dict]``, only ``return_dict`` set to ``True`` is supported.
+    - When the input is in the format ``[[a, b], ...]``, both ``format='openai'`` (or default ``None`` for string concatenation) are supported, whereas when the input is in the format ``[dict, dict]``, only API message formats such as ``format='openai'`` are supported.
 
 #### Used with OnlineChatModule
 
-When the ``Prompter`` is used with the ``OnlineChatModule``, ``OnlineChatModule.__call__`` will call ``Prompter.generate_prompt`` and ``pass __input``,
-``history``, and ``tools`` to ``generate_prompt``. At this time, the ``return_dict`` of ``generate_prompt`` will be set to ``True``. Below is an example:
+When the ``Prompter`` is used with the ``OnlineChatModule``, ``OnlineChatModule.__call__`` will call ``Prompter.generate_prompt`` and pass ``__input``,
+``history``, and ``tools`` to ``generate_prompt``. The module sets ``format`` to ``'openai'`` or ``'anthropic'`` as appropriate. Below is an example:
 
 ```python
 import lazyllm
@@ -262,8 +263,8 @@ module(dict(context='背景', input='输入'))
 
 #### Used with TrainableModule
 
-When the ``Prompter`` is used with the ``TrainableModule``, ``TrainableModule.__call__`` will call ``Prompter.generate_prompt`` and ``pass __input``,
-``history``, and ``tools`` to ``generate_prompt``. At this time, the ``return_dict`` of ``generate_prompt`` will be set to ``True``. Below is an example:
+When the ``Prompter`` is used with the ``TrainableModule``, ``TrainableModule.__call__`` will call ``Prompter.generate_prompt`` and pass ``__input``,
+``history``, and ``tools`` to ``generate_prompt``. ``format`` stays at the default (``None``), producing the concatenated string for local inference. Below is an example:
 
 ```python
 import lazyllm

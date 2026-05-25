@@ -49,7 +49,7 @@ class TestSchemaExtractor(unittest.TestCase):
         class SchemaSet1(BaseModel):
             name: str = Field(description='Name of the people', default='unknown')
             age: int = Field(description='Age of the people', default=0)
-        self.extractor.register_schema_set_to_kb(schema_set=SchemaSet1)
+        self.extractor.register_schema_set(schema_set=SchemaSet1)
         res = self.extractor('Tom is a boy, he is eleven.')
         assert isinstance(res, ExtractResult)
         assert res.data.get('name', '') == 'Tom'
@@ -69,6 +69,6 @@ class TestSchemaExtractor(unittest.TestCase):
         )
         doc.register_schema_set(schema_set=TestSchema, force_refresh=True)
         doc.start()
-        sqlcall = SqlCall.create_from_document(document=doc, llm=self.llm.share())
+        sqlcall = SqlCall(llm=self.llm.share(), sql_manager=doc.get_sql_manager())
         result = sqlcall('what is the profit of Tesla?')
         assert '14.997' in result

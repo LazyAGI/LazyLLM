@@ -1,4 +1,7 @@
+import hashlib
 import os
+import re
+import time
 import traceback
 import lazyllm
 from collections import defaultdict
@@ -10,7 +13,7 @@ from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment
                          BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID)
 from .hybrid import HybridStore, MapStore
 from ..default_index import DefaultIndex
-from ..utils import parallel_do_embedding
+from ..utils import parallel_do_embedding, is_sparse
 
 from ..doc_node import DocNode, QADocNode, ImageDocNode, JsonDocNode, RichDocNode
 from ..index_base import IndexBase
@@ -20,11 +23,13 @@ from ..similarity import registered_similarities
 
 
 class _DocumentStore(object):
-    def __init__(self, algo_name: str, store: Union[Dict, LazyLLMStoreBase],
+    _COLLECTION_NAME_PATTERN = re.compile(r'[^a-z0-9_]+')
+    _COLLECTION_NAME_MAX_LEN = 255
+
+    def __init__(self, store: Union[Dict, LazyLLMStoreBase],
                  group_embed_keys: Optional[Dict[str, Set[str]]] = None, embed: Optional[Dict[str, Callable]] = None,
                  embed_dims: Optional[Dict[str, int]] = None, embed_datatypes: Optional[Dict[str, DataType]] = None,
                  global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None):
-        self._algo_name = algo_name
         self._group_embed_keys = group_embed_keys
         self._embed = embed
         self._embed_dims = embed_dims
@@ -120,20 +125,166 @@ class _DocumentStore(object):
         # should not reach here
         raise RuntimeError('Unexpected store creation state')
 
+    def _embed_specs_need_resolution(self) -> bool:
+        if not self._embed:
+            return False
+        dims = self._embed_dims or {}
+        dtypes = self._embed_datatypes or {}
+        for k in self._embed:
+            if k not in dtypes:
+                return True
+            if dtypes[k] != DataType.SPARSE_FLOAT_VECTOR and k not in dims:
+                return True
+        return False
+
+    def _resolve_embed_dims(self):
+        collections = [self._gen_collection_name(group) for group in self.activated_groups()]
+        dims, datatypes = self._impl.try_read_dims_from_schema(collections)
+        if dims or datatypes:
+            LOG.info('[_DocumentStore] Inferred embed dims from existing store schema')
+        missing_keys = [k for k in (self._embed or {}) if k not in datatypes]
+        if missing_keys:
+            LOG.info(f'[_DocumentStore] Resolving embed dims by calling embed functions for keys: {missing_keys}')
+            for k in missing_keys:
+                try:
+                    embedding = self._embed[k]('a')
+                except Exception as e:
+                    LOG.warning(f'[_DocumentStore] Skipping embed dim resolution for key {k!r}: {e}')
+                    continue
+                if is_sparse(embedding):
+                    datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
+                else:
+                    dims[k] = len(embedding)
+                    datatypes[k] = DataType.FLOAT_VECTOR
+        return dims, datatypes
+
+    def _patch_embed_dims_for_keys(self, embed_keys: Set[str]) -> None:
+        # Resolve dims for any embed_key that is still missing from _embed_datatypes.
+        # Called just before upsert so that the embed model is guaranteed to be available.
+        missing = [k for k in embed_keys if k not in (self._embed_datatypes or {})]
+        if not missing:
+            return
+        LOG.info(f'[_DocumentStore] Patching embed dims for keys: {missing}')
+        dims = dict(self._embed_dims or {})
+        datatypes = dict(self._embed_datatypes or {})
+        for k in missing:
+            embedding = self._embed[k]('a')
+            if is_sparse(embedding):
+                datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
+            else:
+                dims[k] = len(embedding)
+                datatypes[k] = DataType.FLOAT_VECTOR
+        self._embed_dims = dims
+        self._embed_datatypes = datatypes
+        # Sync the resolved dims into the underlying vector store so upsert can build the schema.
+        if hasattr(self._impl, 'vector_store'):
+            vs = self._impl.vector_store
+        else:
+            vs = self._impl
+        if hasattr(vs, '_embed_dims'):
+            vs._embed_dims = dims
+            vs._embed_datatypes = datatypes
+
     @once_wrapper(reset_on_pickle=True)
-    def _lazy_init(self):
-        if self._impl.capability == StoreCapability.VECTOR or self._impl.capability == StoreCapability.ALL:
-            self._impl.connect(
-                embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
-                global_metadata_desc=self._global_metadata_desc,
-                collections=[self._gen_collection_name(group) for group in self.activated_groups()]
-            )
-        elif self._impl.capability == StoreCapability.SEGMENT:
-            self._impl.connect(global_metadata_desc=self._global_metadata_desc)
+    def _seg_init(self):
+        self._impl.seg_connect(global_metadata_desc=self._global_metadata_desc)
+
+    @once_wrapper(reset_on_pickle=True)
+    def _vec_init(self):
+        if not (self._impl.capability & StoreCapability.VECTOR):
+            return
+        if self._embed_specs_need_resolution():
+            self._embed_dims, self._embed_datatypes = self._resolve_embed_dims()
+        self._impl.vec_connect(
+            embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
+            global_metadata_desc=self._global_metadata_desc,
+            collections=[self._gen_collection_name(group) for group in self.activated_groups()]
+        )
+
+    def _collection_exists(self, collection_name: str) -> bool:
+        impl = self._impl
+        # HybridStore: check segment store (MapStore/SQLite) and vector store separately
+        if hasattr(impl, 'segment_store') and hasattr(impl, 'vector_store'):
+            return (self._collection_exists_in(impl.segment_store, collection_name)
+                    or self._collection_exists_in(impl.vector_store, collection_name))
+        return self._collection_exists_in(impl, collection_name)
+
+    def _collection_exists_in(self, store, collection_name: str) -> bool:
+        try:
+            if hasattr(store, '_client_context'):
+                return self._exists_milvus(store, collection_name)
+            if hasattr(store, '_client') and hasattr(store, '_embed_datatypes'):
+                return self._exists_chroma(store, collection_name)
+            if hasattr(store, '_uri') and store._uri:
+                return self._exists_sqlite(store._uri, collection_name)
+            if hasattr(store, '_collection2uids'):
+                return collection_name in store._collection2uids
+            if hasattr(store, '_client') and hasattr(store._client, 'indices'):
+                return store._client.indices.exists(index=collection_name)
+        except Exception as e:
+            LOG.debug(f'[_DocumentStore] _collection_exists_in check failed for {collection_name!r}: {e}')
+        return False
+
+    def _exists_milvus(self, store, collection_name: str) -> bool:
+        with store._client_context() as client:
+            return client.has_collection(collection_name)
+
+    def _exists_chroma(self, store, collection_name: str) -> bool:
+        for embed_key in (store._embed_datatypes or {}).keys():
+            sub = store._gen_collection_name(collection_name, embed_key)
+            try:
+                store._client.get_collection(sub)
+                return True
+            except Exception as e:
+                LOG.debug(f'[_DocumentStore] Chroma collection {sub!r} not found: {e}')
+        return False
+
+    def _exists_sqlite(self, uri: str, collection_name: str) -> bool:
+        import sqlite3 as _sqlite3
+        try:
+            conn = _sqlite3.connect(uri, timeout=3.0)
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                        (collection_name,))
+            exists = cur.fetchone() is not None
+            conn.close()
+            return exists
+        except Exception:
+            return False
+
+    def _get_store_type_and_uri(self) -> Tuple[Optional[str], Optional[str]]:
+        impl = self._impl
+        vec = getattr(impl, 'vector_store', impl)
+        seg = getattr(impl, 'segment_store', None)
+        store_type = type(vec).__name__.replace('Store', '').lower()
+        uri = getattr(vec, '_uri', None) or getattr(vec, 'dir', None)
+        if uri is None and seg is not None:
+            uri = getattr(seg, '_uri', None)
+        return store_type, uri
+
+    @staticmethod
+    def _normalize_collection_raw_name(raw_name: str) -> str:
+        normalized = _DocumentStore._COLLECTION_NAME_PATTERN.sub('_', raw_name).strip('_')
+        if not normalized:
+            normalized = 'col'
+        if normalized[0].isdigit():
+            normalized = f'col_{normalized}'
+        if normalized == raw_name and len(normalized) <= _DocumentStore._COLLECTION_NAME_MAX_LEN:
+            return normalized
+        digest = hashlib.sha1(raw_name.encode()).hexdigest()[:12]
+        max_prefix_len = _DocumentStore._COLLECTION_NAME_MAX_LEN - len(digest) - 1
+        prefix = normalized[:max_prefix_len].rstrip('_') or 'col'
+        return f'{prefix}_{digest}'
 
     @property
-    def impl(self):
-        self._lazy_init()
+    def seg_impl(self):
+        self._seg_init()
+        return self._impl
+
+    @property
+    def vec_impl(self):
+        self._seg_init()
+        self._vec_init()
         return self._impl
 
     def activate_group(self, groups: Union[str, List[str]]) -> bool:
@@ -144,6 +295,34 @@ class _DocumentStore(object):
                 self._activated_groups.add(group)
         return True
 
+    def activate_group_with_connect(self, group_name: str, embed_keys: Optional[List[str]] = None) -> bool:
+        if group_name not in self._activated_groups:
+            self._activated_groups.add(group_name)
+        if embed_keys:
+            self._group_embed_keys[group_name] = embed_keys
+        collection_name = self._gen_collection_name(group_name)
+        if hasattr(self.vec_impl, 'create_collection'):
+            try:
+                self.vec_impl.create_collection(collection_name)
+            except Exception as e:
+                LOG.warning(f'[_DocumentStore] create_collection({collection_name}) failed: {e}')
+                return False
+        return True
+
+    def drop_collection(self, group_name: str) -> bool:
+        collection_name = self._gen_collection_name(group_name)
+        ok = True
+        if hasattr(self.vec_impl, 'drop_collection'):
+            try:
+                self.vec_impl.drop_collection(collection_name)
+                LOG.info(f'[_DocumentStore] Dropped collection {collection_name} for group {group_name}')
+            except Exception as e:
+                LOG.warning(f'[_DocumentStore] drop_collection({collection_name}) failed: {e}')
+                ok = False
+        self._activated_groups.discard(group_name)
+        self._group_embed_keys.pop(group_name, None)
+        return ok
+
     def activated_groups(self) -> List[str]:
         return list(self._activated_groups)
 
@@ -151,41 +330,59 @@ class _DocumentStore(object):
         return group in self._activated_groups
 
     def is_group_empty(self, group: str) -> bool:
-        return not self.impl.get(self._gen_collection_name(group), {}, limit=10)
+        return not self.seg_impl.get(self._gen_collection_name(group), {}, limit=10)
 
-    def update_nodes(self, nodes: List[DocNode]):   # noqa: C901
+    def _upsert_segments(self, group: str, segments: List[dict]) -> None:
+        collection_name = self._gen_collection_name(group)
+        embed_keys = {k for seg in segments for k in (seg.get('embedding') or {}).keys()}
+        if embed_keys:
+            self._patch_embed_dims_for_keys(embed_keys)
+        if not self.vec_impl.upsert(collection_name, segments):
+            raise RuntimeError(f'[_DocumentStore] Failed to upsert segments for group {group}')
+
+    def update_nodes(self, nodes: List[DocNode], copy: bool = False):   # noqa: C901
         if not nodes:
             return
         try:
-            if self._embed and self.impl.capability == StoreCapability.SEGMENT:
-                LOG.warning(f'[_DocumentStore - {self._algo_name}] Embed is provided'
-                            f' but store {self.impl} does not support embedding')
-            if self.impl.need_embedding:
+            if self._embed and self.vec_impl.capability == StoreCapability.SEGMENT:
+                LOG.warning(f'[_DocumentStore] Embed is provided'
+                            f' but store {self.vec_impl} does not support embedding')
+            if self.vec_impl.need_embedding and not copy:
+                _t_emb = time.time()
                 parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
+                LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s nodes={len(nodes)}')
             group_segments = defaultdict(list)
             for node in nodes:
                 group_segments[node._group].append(self._serialize_node(node))
             # upsert batch segments
+            _t_store = time.time()
             for group, segments in group_segments.items():
                 if not self.is_group_active(group):
-                    LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
+                    LOG.warning(f'[_DocumentStore] Group {group} is not active, skip')
                     continue
                 for i in range(0, len(segments), INSERT_BATCH_SIZE):
-                    self.impl.upsert(self._gen_collection_name(group), segments[i:i + INSERT_BATCH_SIZE])
+                    self._upsert_segments(group, segments[i:i + INSERT_BATCH_SIZE])
             # update indices
             for index in self._indices.values():
                 index.update(nodes)
+            LOG.info(f'[BENCHMARK] phase=store elapsed={time.time() - _t_store:.3f}s nodes={len(nodes)}')
         except Exception as e:
-            LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to update nodes: {e}')
+            LOG.error(f'[_DocumentStore] Failed to update nodes: {e}')
             LOG.error(traceback.format_exc())
             raise
 
     def remove_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                     group: Optional[str] = None, kb_id: Optional[str] = None, **kwargs) -> None:
+                     group: Optional[str] = None, kb_id: Optional[str] = None,
+                     node_group_ids_to_delete: Optional[List[str]] = None, **kwargs) -> None:
         # remove a set of nodes by uids
         # remove the nodes of the whole file -- doc ids only
         # remove the nodes of a certain group for one file -- doc ids and group (kb_id is optional)
         # forbid to remove the nodes from multiple kb
+        # If the store has never been successfully initialized (e.g. the document was never
+        # parsed), there is nothing to delete in the vector DB.  Skip gracefully.
+        if not self._seg_init.flag:
+            LOG.info('[_DocumentStore] remove_nodes: store not yet initialized, nothing to delete')
+            return
         try:
             criteria = {}
             if uids:
@@ -195,41 +392,48 @@ class _DocumentStore(object):
             if kb_id:
                 criteria[RAG_KB_ID] = kb_id
             if not group:
-                groups = self._activated_groups
+                if node_group_ids_to_delete is not None:
+                    # Only delete data for the specified node groups (used for unbind_algo).
+                    groups = [g for g in self._activated_groups if g in node_group_ids_to_delete]
+                else:
+                    groups = self._activated_groups
             else:
                 groups = [group]
             for group in groups:
                 if not self.is_group_active(group):
-                    LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
+                    LOG.warning(f'[_DocumentStore] Group {group} is not active, skip')
                     continue
-                self.impl.delete(self._gen_collection_name(group), criteria)
+                self.seg_impl.delete(self._gen_collection_name(group), criteria)
             # update indices
             for index in self._indices.values():
                 index.remove(uids, group)
         except Exception as e:
-            LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to remove nodes: {e}')
+            LOG.error(f'[_DocumentStore] Failed to remove nodes: {e}')
             raise
 
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                   group: Optional[str] = None, kb_id: Optional[str] = None,
                   limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
-                  numbers: Optional[Set] = None, **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
+                  numbers: Optional[Set] = None, sort_by_number: bool = False,
+                  **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
         try:
             result = self.get_segments(uids=uids, doc_ids=doc_ids, group=group,
                                        kb_id=kb_id, numbers=numbers, limit=limit,
-                                       offset=offset, return_total=return_total, **kwargs)
+                                       offset=offset, return_total=return_total,
+                                       sort_by_number=sort_by_number, **kwargs)
             if return_total:
                 segments, total = result
                 return [self._deserialize_node(segment) for segment in segments], total
             return [self._deserialize_node(segment) for segment in result]
         except Exception as e:
-            LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get nodes: {e}')
+            LOG.error(f'[_DocumentStore] Failed to get nodes: {e}')
             raise
 
     def get_segments(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                      group: Optional[str] = None, kb_id: Optional[str] = None,
                      limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
-                     numbers: Optional[Set] = None, **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
+                     numbers: Optional[Set] = None, sort_by_number: bool = False,
+                     **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
         # get a set of segments by uids
         # get the segments of the whole file -- doc ids only
         # get the segments of a certain group for one file -- doc ids and group (kb_id is optional)
@@ -240,17 +444,33 @@ class _DocumentStore(object):
             limit, offset = self._normalize_pagination(limit, offset)
             criteria = self._build_get_criteria(uids, doc_ids, kb_id, numbers, kwargs.get('parent'))
             groups = self._resolve_groups(group)
+            if self._can_use_native_segment_pagination(groups, sort_by_number):
+                result = self.seg_impl.get(
+                    self._gen_collection_name(groups[0]),
+                    criteria,
+                    limit=limit,
+                    offset=offset,
+                    return_total=return_total,
+                    sort_by_number=sort_by_number,
+                    **kwargs,
+                )
+                if return_total:
+                    segments, total = result if isinstance(result, tuple) else (result, len(result))
+                    return segments, total
+                return result[0] if isinstance(result, tuple) else result
             segments = []
             for group in groups:
                 if not self.is_group_active(group):
-                    LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
+                    LOG.warning(f'[_DocumentStore] Group {group} is not active, skip')
                     continue
-                segments.extend(self.impl.get(self._gen_collection_name(group), criteria, **kwargs))
+                segments.extend(self.seg_impl.get(self._gen_collection_name(group), criteria, **kwargs))
+            if sort_by_number:
+                segments = self._sort_segments_by_number(segments)
             total = len(segments)
             segments = self._slice_segments(segments, limit, offset)
             return (segments, total) if return_total else segments
         except Exception as e:
-            LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get segments: {e}')
+            LOG.error(f'[_DocumentStore] Failed to get segments: {e}')
             raise
 
     def update_doc_meta(self, doc_id: str, metadata: dict, kb_id: str = None) -> None:
@@ -264,7 +484,7 @@ class _DocumentStore(object):
             segment['global_meta'].update(metadata)
             group_segments[segment.get('group')].append(segment)
         for group, segments in group_segments.items():
-            self.impl.upsert(self._gen_collection_name(group), segments)
+            self._upsert_segments(group, segments)
         LOG.info(f'[_DocumentStore] Updated metadata for doc_id: {doc_id} in dataset: {kb_id}')
         return
 
@@ -283,10 +503,20 @@ class _DocumentStore(object):
             return segments[offset:end]
         return segments
 
+    @staticmethod
+    def _sort_segments_by_number(segments: List[dict]) -> List[dict]:
+        return sorted(segments, key=lambda segment: (segment.get('number', 0), segment.get('uid', '')))
+
     def _resolve_groups(self, group: Optional[str]) -> List[str]:
         if not group:
             return sorted(self._activated_groups)
         return [group]
+
+    def _can_use_native_segment_pagination(self, groups: List[str], sort_by_number: bool) -> bool:
+        if len(groups) != 1 or not sort_by_number:
+            return False
+        store = getattr(self._impl, 'segment_store', self._impl)
+        return store.__class__.__name__ in {'MapStore', 'OpenSearchStore', 'ElasticSearchStore'}
 
     def _build_get_criteria(self, uids: Optional[List[str]], doc_ids: Optional[Set],
                             kb_id: Optional[str], numbers: Optional[Set] = None,
@@ -311,50 +541,50 @@ class _DocumentStore(object):
         embed_keys = self._validate_query_params(group_name, similarity_name, embed_keys)
         segments = []
         if embed_keys:
-            if self.impl.capability == StoreCapability.SEGMENT:
-                raise ValueError(f'[_DocumentStore - {self._algo_name}] Embed keys {embed_keys}'
+            if self.vec_impl.capability == StoreCapability.SEGMENT:
+                raise ValueError(f'[_DocumentStore] Embed keys {embed_keys}'
                                  ' are not supported when no vector store is provided')
             # vector search
             for embed_key in embed_keys:
                 query_embedding = self._embed.get(embed_key)(query)
-                search_res = self.impl.search(collection_name=self._gen_collection_name(group_name),
-                                              query=query, query_embedding=query_embedding,
-                                              topk=topk, filters=filters, embed_key=embed_key, **kwargs)
+                search_res = self.vec_impl.search(collection_name=self._gen_collection_name(group_name),
+                                                  query=query, query_embedding=query_embedding,
+                                                  topk=topk, filters=filters, embed_key=embed_key, **kwargs)
                 if search_res:
                     sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float)\
                         else similarity_cut_off[embed_key]
                     segments.extend([res for res in search_res if res.get('score', 0) >= sim_cut_off])
         else:
             # text search
-            if self.impl.capability == StoreCapability.VECTOR:
-                raise ValueError(f'[_DocumentStore - {self._algo_name}] Text search is not'
-                                 ' supported when no segment store is provided')
-            segments.extend(self.impl.search(collection_name=self._gen_collection_name(group_name),
-                                             query=query, topk=topk, filters=filters, **kwargs))
+            if self.vec_impl.capability == StoreCapability.VECTOR:
+                raise ValueError('[_DocumentStore] Text search is not supported when no segment store is provided')
+            segments.extend(self.vec_impl.search(collection_name=self._gen_collection_name(group_name),
+                                                 query=query, topk=topk, filters=filters, **kwargs))
         return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
 
     def _validate_query_params(self, group_name: str, similarity: str,
                                embed_keys: Optional[List[str]] = None, **kwargs):
-        assert self.is_group_active(group_name), f'[_DocumentStore - {self._algo_name}] Group {group_name} is not active'
+        assert self.is_group_active(group_name), f'[_DocumentStore] Group {group_name} is not active'
         if similarity:
             if similarity in registered_similarities:
                 _, mode, _ = registered_similarities[similarity]
-                if mode == 'embedding' and self.impl.capability == StoreCapability.SEGMENT:
-                    raise ValueError(f'[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported, '
+                if mode == 'embedding' and self._impl.capability == StoreCapability.SEGMENT:
+                    raise ValueError(f'[_DocumentStore] Similarity {similarity} is not supported, '
                                      f'embedding similarity is supported for vector or hybrid store')
-                elif mode == 'text' and self.impl.capability == StoreCapability.VECTOR:
-                    raise ValueError(f'[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported, '
+                elif mode == 'text' and self._impl.capability == StoreCapability.VECTOR:
+                    raise ValueError(f'[_DocumentStore] Similarity {similarity} is not supported, '
                                      'text similarity is supported for segment or hybrid store')
                 if mode == 'embedding' and embed_keys is None:
-                    embed_keys = list(self._embed.keys())
+                    group_keys = self._group_embed_keys.get(group_name) if self._group_embed_keys else None
+                    embed_keys = list(group_keys) if group_keys else list(self._embed.keys())
             else:
-                raise ValueError(f'[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported')
+                raise ValueError(f'[_DocumentStore] Similarity {similarity} is not supported')
 
         if embed_keys:
-            assert self.impl.capability != StoreCapability.SEGMENT, \
-                f'[_DocumentStore - {self._algo_name}] Embed {embed_keys} not supported when no vector store provided'
+            assert self._impl.capability != StoreCapability.SEGMENT, \
+                f'[_DocumentStore] Embed {embed_keys} not supported when no vector store provided'
             assert all(key in self._embed for key in embed_keys), \
-                f'[_DocumentStore - {self._algo_name}] Embed {embed_keys} not supported'
+                f'[_DocumentStore] Embed {embed_keys} not supported'
         return embed_keys
 
     def clear_cache(self, groups: Optional[List[str]] = None) -> None:
@@ -367,11 +597,11 @@ class _DocumentStore(object):
         else:
             raise TypeError(f'Invalid type {type(groups)} for groups, expected list of str')
         for group in groups:
-            self.impl.delete(self._gen_collection_name(group))
+            self.seg_impl.delete(self._gen_collection_name(group))
 
     def register_index(self, type: str, index: IndexBase) -> None:
         assert self._impl.supports_index_registration, \
-            f'[_DocumentStore - {self._algo_name}] Store {type(self.impl)} does not support index registration'
+            f'[_DocumentStore] Store {type(self._impl)} does not support index registration'
         self._indices[type] = index
 
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
@@ -383,12 +613,13 @@ class _DocumentStore(object):
             doc_id=node.global_metadata.get(RAG_DOC_ID),
             group=node._group,
             content=node.text,
-            meta=node.metadata,
-            global_meta=node.global_metadata,
+            meta=dict(node.metadata),
+            global_meta=dict(node.global_metadata),
             number=node.metadata.get('lazyllm_store_num', 0),
             kb_id=node.global_metadata.get(RAG_KB_ID, DEFAULT_KB_ID),
             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
+            copy_source=node._copy_source or {},
         )
         if node.parent:
             segment.parent = node.parent._uid if isinstance(node.parent, DocNode) else node.parent
@@ -434,9 +665,10 @@ class _DocumentStore(object):
             node = DocNode(**common_parm, content=data.get('content', ''))
         node.excluded_embed_metadata_keys = data.get('excluded_embed_metadata_keys', [])
         node.excluded_llm_metadata_keys = data.get('excluded_llm_metadata_keys', [])
+        node._copy_source = data.get('copy_source', None)
         if 'embedding' in data:
             node.embedding = {k: v for k, v in data.get('embedding', {}).items()}
         return node.with_sim_score(score) if score else node
 
     def _gen_collection_name(self, group: str) -> str:
-        return f'col_{self._algo_name}_{group}'.lower()
+        return self._normalize_collection_raw_name(f'col_{group}'.lower())

@@ -7,6 +7,8 @@ import io
 import json
 import shutil
 
+import pytest
+
 from lazyllm import config
 from lazyllm import TrainableModule
 from lazyllm.launcher import cleanup
@@ -21,10 +23,21 @@ def get_milvus_store_conf(rag_dir: str, kb_group_name: str = ''):
     if not os.path.exists(milvus_db_dir):
         os.makedirs(milvus_db_dir)
 
+    # ``manager=True`` RAG uses a DocServer + Worker subprocess architecture,
+    # so the vector store must be a deployed Milvus standalone (embedded
+    # milvus_lite local .db is single-writer and would race across
+    # processes; Document now rejects that combination explicitly).
+    # Use ``MILVUS_URI`` to override the default CI service endpoint.
+    # The db_name is randomized per call so each test invocation / rerun
+    # lands on a fresh Milvus database and the assertions don't leak across
+    # runs that share the same remote endpoint. See ``tearDown`` for the
+    # matching best-effort drop.
+    db_name = f'lazyllm_ci_{kb_group_name}_{uuid.uuid4().hex[:8]}'
     milvus_store_conf = {
         'type': 'milvus',
         'kwargs': {
-            'uri': os.path.join(milvus_db_dir, 'milvus.db'),
+            'uri': os.getenv('MILVUS_URI', 'http://10.119.26.205:19530'),
+            'db_name': db_name,
             'index_kwargs': [
                 {
                     'embed_key': 'dense',
@@ -35,6 +48,37 @@ def get_milvus_store_conf(rag_dir: str, kb_group_name: str = ''):
         },
     }
     return milvus_store_conf
+
+
+def _drop_milvus_db(store_conf):
+    '''Best-effort cleanup so repeated test runs against a shared remote
+    Milvus standalone don't accumulate per-run databases indefinitely.
+
+    ``MilvusClient.drop_database`` requires the database to be empty of
+    collections, so iterate and drop collections first. We connect with
+    ``db_name`` set so the collection listing / drops target the right DB.
+    Any pymilvus error (network down, db already gone, unsupported version)
+    is swallowed -- this is a hygiene step, not a correctness guarantee.
+    '''
+    try:
+        from pymilvus import MilvusClient
+        kwargs = store_conf.get('kwargs') or {}
+        uri = kwargs.get('uri')
+        db_name = kwargs.get('db_name')
+        if not uri or not db_name:
+            return
+        root = MilvusClient(uri=uri)
+        if db_name not in root.list_databases():
+            return
+        scoped = MilvusClient(uri=uri, db_name=db_name)
+        for col in scoped.list_collections():
+            try:
+                scoped.drop_collection(col)
+            except Exception:
+                pass
+        root.drop_database(db_name)
+    except Exception:
+        pass
 
 
 def get_milvus_index_conf(rag_dir: str, kb_group_name: str = str(uuid.uuid4())):  # noqa B008
@@ -74,6 +118,9 @@ def do_upload(manager_url: str, group: str):
     assert response.status_code == 200
 
 
+@pytest.mark.skip(reason='For local test')
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestMilvusFilter(unittest.TestCase):
     def setUp(self):
         self.root_dir = os.path.expanduser(os.path.join(config['home'], 'rag_for_example_ut'))
@@ -85,17 +132,22 @@ class TestMilvusFilter(unittest.TestCase):
         self.index_dir = os.path.join(self.doc_dir, 'index')
         os.makedirs(self.store_dir, exist_ok=True)
         os.makedirs(self.index_dir, exist_ok=True)
+        self._store_confs_to_drop = []
 
     def tearDown(self):
+        for store_conf in self._store_confs_to_drop:
+            _drop_milvus_db(store_conf)
         shutil.rmtree(self.rag_dir)
         cleanup()
 
     def test_filter_by_tag(self):
         Document.create_node_group('sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=100)
         CUSTOM_DOC_FIELDS = {'department': DocField(data_type=DataType.VARCHAR, max_size=65535, default_value=' ')}
+        store_conf = get_milvus_store_conf(self.doc_dir, 'law_kg')
+        self._store_confs_to_drop.append(store_conf)
         doc = Document(self.store_dir, name='law_kg', doc_fields=CUSTOM_DOC_FIELDS,
                        embed={'dense': TrainableModule('bge-m3')}, manager=True,
-                       store_conf=get_milvus_store_conf(self.doc_dir, 'law_kg'))
+                       store_conf=store_conf)
         retriever = Retriever(doc, group_name='sentences', topk=5, embed_keys=['dense'])
         doc.start()
         time.sleep(5)
@@ -110,6 +162,4 @@ class TestMilvusFilter(unittest.TestCase):
         nodes = retriever(query, filters={'department': 'dpt_123'})  # string instead of list
         assert len(nodes) == 1 and nodes[0].global_metadata['department'] == 'dpt_123'
 
-        # in case of re-run with old failing staus that will trigger reparsing, call release to clean db
-        doc._manager._dlm.release()
         doc.stop()

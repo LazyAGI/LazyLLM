@@ -1,6 +1,6 @@
-from .chat import OnlineChatModule
-from .embedding import OnlineEmbeddingModule
-from .multimodal import OnlineMultiModalModule
+from .chat import OnlineChatModule, dynamic_chat_config
+from .embedding import OnlineEmbeddingModule, dynamic_embed_config
+from .multimodal import OnlineMultiModalModule, dynamic_multimodal_config
 from .base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 import importlib
 
@@ -13,4 +13,7 @@ __all__ = [
     'OnlineChatModuleBase',
     'OnlineEmbeddingModuleBase',
     'OnlineMultiModalBase',
+    'dynamic_chat_config',
+    'dynamic_embed_config',
+    'dynamic_multimodal_config',
 ]

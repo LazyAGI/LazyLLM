@@ -9,13 +9,14 @@ from lazyllm.tools.rag.transform.markdown import _MdSplit
 from lazyllm.tools.rag.transform.layout import NO_GROUPING
 from lazyllm.tools.rag.transform.base import NodeTransform, _TextSplitterBase, _Split, _TokenTextSplitter
 from lazyllm.tools.rag.doc_node import DocNode, RichDocNode
-from lazyllm.tools.rag.global_metadata import RAG_DOC_ID
+from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 import pytest
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.document import Document
 from lazyllm.tools.rag.retriever import Retriever
 from lazyllm.tools.rag.store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
 from lazyllm.tools.rag.store.document_store import _DocumentStore
+from lazyllm.tools.rag.store.store_base import DEFAULT_KB_ID
 from lazyllm.tools.rag.parsing_service import _Processor
 from lazyllm.tools.rag.utils import gen_docid
 from lazyllm.tools.rag.global_metadata import RAG_KB_ID
@@ -1176,6 +1177,23 @@ class TestTextSplitterBase:
         metadata_size = splitter._get_metadata_size(node)
         assert metadata_size == 0
 
+    def test_get_metadata_size_respects_excluded_metadata_keys(self):
+        splitter = _TextSplitterBase(chunk_size=200, overlap=10)
+        node = DocNode(
+            text='Hello, world! This is a test.',
+            metadata={
+                'file_name': 'test.pdf',
+                'title': 'Section 1',
+                'lines': [{'content': 'x' * 2000, 'page': 1}],
+            },
+        )
+        node.excluded_embed_metadata_keys = ['lines']
+        node.excluded_llm_metadata_keys = ['lines']
+
+        metadata_size = splitter._get_metadata_size(node)
+
+        assert metadata_size < 200
+
     def test_transform_returns_chunks(self, doc_node):
         splitter = _TextSplitterBase(chunk_size=20, overlap=10)
         chunks = splitter([doc_node])
@@ -1621,7 +1639,7 @@ class TestTreeBuilderParser:
             DocNode(text='Level 2', metadata={'level': 2}),
         ]
         result = parser.forward(RichDocNode(nodes=nodes))
-        assert len(result) >= 1
+        assert len(result) == len(nodes)
 
 
 class TestTreeFixerParser:
@@ -1754,7 +1772,7 @@ class TestBatchForwardRefPath:
                 recorded_doc_ids_per_call.append([n.global_metadata.get(RAG_DOC_ID) for n in nodes])
                 return [DocNode(text=f'ref-{n.text}') for n in nodes]
 
-        store = _DocumentStore(algo_name='test_ref_path', store={'type': 'map'}, embed={})
+        store = _DocumentStore(store={'type': 'map'}, embed={})
         store.impl.need_embedding = False
         store.activate_group(LAZY_ROOT_NAME)
         store.activate_group('section')
@@ -1790,12 +1808,10 @@ class TestBatchForwardRefPath:
             }
 
             processor = _Processor(
-                algo_id='test_ref_path',
                 store=store,
-                reader=reader,
-                node_groups=node_groups,
             )
-            processor.add_doc(input_files=[p1, p2], ids=[id1, id2], metadatas=[{}, {}])
+            processor.add_doc(input_files=[p1, p2], node_groups=node_groups, reader=reader,
+                              ids=[id1, id2], metadatas=[{}, {}])
 
             assert len(recorded_groups_per_call) == 2
             assert recorded_groups_per_call[0] == ['section', 'section']
@@ -1806,3 +1822,121 @@ class TestBatchForwardRefPath:
             for p in (p1, p2):
                 if os.path.exists(p):
                     os.unlink(p)
+
+    def test_prepare_doc_inputs_handles_empty_input_files(self):
+        ids, metadatas, kb_id = _Processor._prepare_doc_inputs([])
+
+        assert ids == []
+        assert metadatas == []
+        assert kb_id == DEFAULT_KB_ID
+
+    def test_reparse_allows_missing_metadatas(self):
+        doc_path = '/tmp/reparse.txt'
+        doc_id = 'doc-1'
+        reader = MagicMock()
+        reader.load_data.return_value = {
+            LAZY_ROOT_NAME: [],
+            LAZY_IMAGE_GROUP: [],
+        }
+        store = MagicMock()
+        store.get_nodes.return_value = []
+        processor = _Processor(store=store)
+        processor.add_doc = MagicMock()
+
+        processor._reparse_docs(group_name=None, node_groups={}, reader=reader,
+                                doc_ids=[doc_id], doc_paths=[doc_path], metadatas=None)
+
+        reader.load_data.assert_called_once_with(
+            [doc_path],
+            [{RAG_DOC_ID: doc_id, RAG_DOC_PATH: doc_path, RAG_KB_ID: DEFAULT_KB_ID}],
+            split_nodes_by_type=True,
+        )
+        processor.add_doc.assert_called_once_with(
+            input_files=[doc_path],
+            ids=[doc_id],
+            metadatas=[{RAG_DOC_ID: doc_id, RAG_DOC_PATH: doc_path, RAG_KB_ID: DEFAULT_KB_ID}],
+            kb_id=DEFAULT_KB_ID,
+            node_groups={},
+            reader=reader,
+            preloaded_root_nodes=reader.load_data.return_value,
+        )
+
+
+class TestCallableSig:
+    def test_named_function_is_stable(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        def my_func(x):
+            return x + 1
+
+        sig1 = _callable_sig(my_func)
+        sig2 = _callable_sig(my_func)
+        assert sig1 == sig2
+        # nested function uses bytecode path
+        assert sig1.startswith('__bytecode__::')
+
+    def test_top_level_named_function_uses_qualname(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+        from lazyllm.tools.rag.transform import SentenceSplitter
+
+        sig = _callable_sig(SentenceSplitter.forward)
+        assert sig.startswith('lazyllm.')
+        assert '.' in sig  # module.qualname format
+
+    def test_lambda_in_file_is_stable(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        f = lambda x: x.endswith('.txt')  # noqa: E731
+        sig1 = _callable_sig(f)
+        sig2 = _callable_sig(f)
+        assert sig1 == sig2
+        assert sig1.startswith('__bytecode__::')
+
+    def test_same_lambda_body_same_sig(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        f1 = lambda x: x.endswith('.txt')  # noqa: E731
+        f2 = lambda x: x.endswith('.txt')  # noqa: E731
+        assert _callable_sig(f1) == _callable_sig(f2)
+
+    def test_different_lambda_body_different_sig(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        f1 = lambda x: x.endswith('.txt')  # noqa: E731
+        f2 = lambda x: x.endswith('.md')   # noqa: E731
+        assert _callable_sig(f1) != _callable_sig(f2)
+
+    def test_none_returns_default(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        assert _callable_sig(None) == '__default__'
+
+    def test_name_override(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        f = lambda x: x  # noqa: E731
+        assert _callable_sig(f, name_override='my_name') == 'my_name'
+
+    def test_pipeline_instance_is_stable(self):
+        from lazyllm.tools.rag.transform.factory import _callable_sig
+
+        pipeline = lazyllm.pipeline(SentenceSplitter(chunk_size=128, chunk_overlap=10))
+        sig1 = _callable_sig(pipeline)
+        sig2 = _callable_sig(pipeline)
+        assert sig1 == sig2
+        assert sig1 == '__unstable__'
+
+    def test_transform_args_signature_with_lambda_pattern(self):
+        ta1 = TransformArgs(f=SentenceSplitter, pattern=lambda x: x.endswith('.txt'),
+                            kwargs=dict(chunk_size=512))
+        ta2 = TransformArgs(f=SentenceSplitter, pattern=lambda x: x.endswith('.txt'),
+                            kwargs=dict(chunk_size=512))
+        assert ta1.signature() == ta2.signature()
+
+    def test_transform_args_signature_with_pipeline(self):
+        ta1 = TransformArgs(f=lazyllm.pipeline(SentenceSplitter(chunk_size=128, chunk_overlap=10)),
+                            trans_node=True)
+        ta2 = TransformArgs(f=lazyllm.pipeline(SentenceSplitter(chunk_size=128, chunk_overlap=10)),
+                            trans_node=True)
+        # both are __unstable__, so signatures are equal
+        assert ta1.signature() == ta2.signature()

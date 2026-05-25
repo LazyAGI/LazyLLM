@@ -1,6 +1,6 @@
 from .logger import LOG
 from .common import package, kwargs, arguments, LazyLLMCMD, timeout, final, ReadOnlyWrapper, DynamicDescriptor, override
-from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensitiveDict, retry
+from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensitiveDict, retry, retry_transient
 from .common import ReprRule, make_repr, modify_repr, is_valid_url, is_valid_path, SingletonMeta, SingletonABCMeta
 from .common import once_flag, call_once, once_wrapper, singleton, reset_on_pickle, Finalizer, TempPathGenerator
 from .inspection import _get_callsite
@@ -13,10 +13,13 @@ from .registry import LazyLLMRegisterMetaClass, LazyLLMRegisterMetaABCClass, _ge
 from .redis_client import redis_client
 from .deprecated import deprecated
 from .globals import (globals, locals, LazyLlmResponse, LazyLlmRequest, encode_request,
-                      decode_request, init_session, teardown_session, new_session)
+                      decode_request, init_session, teardown_session, new_session, SessionConfigableBase)
 from .bind import Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, Placeholder
 from .queue import RecentQueue, FileSystemQueue
 from .utils import compile_func, obj2str, str2obj, str2bool, dump_obj, load_obj
+from .auth import (Credential, AuthStrategy, BearerTokenStrategy,
+                   ApiKeyHeaderStrategy, QueryParamStrategy)
+from .credential_mixin import CredentialMixin
 
 __all__ = [
     # registry
@@ -57,6 +60,7 @@ __all__ = [
     'redis_client',
     'TempPathGenerator',
     'retry',
+    'retry_transient',
 
     # exception
     '_trim_traceback',
@@ -85,6 +89,7 @@ __all__ = [
     'init_session',
     'teardown_session',
     'new_session',
+    'SessionConfigableBase',
 
     # multiprocessing
     'ForkProcess',
@@ -120,4 +125,12 @@ __all__ = [
     # queue
     'RecentQueue',
     'FileSystemQueue',
+
+    # auth
+    'Credential',
+    'AuthStrategy',
+    'BearerTokenStrategy',
+    'ApiKeyHeaderStrategy',
+    'QueryParamStrategy',
+    'CredentialMixin',
 ]
