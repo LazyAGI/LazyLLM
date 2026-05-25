@@ -222,7 +222,8 @@ class _DocumentStore(object):
         if not self.vec_impl.upsert(collection_name, segments):
             raise RuntimeError(f'[_DocumentStore] Failed to upsert segments for group {group}')
 
-    def update_nodes(self, nodes: List[DocNode], copy: bool = False):   # noqa: C901
+    def update_nodes(self, nodes: List[DocNode], copy: bool = False,
+                     skip_embed_groups: Optional[Set[str]] = None):   # noqa: C901
         if not nodes:
             return
         try:
@@ -230,9 +231,13 @@ class _DocumentStore(object):
                 LOG.warning(f'[_DocumentStore] Embed is provided'
                             f' but store {self.vec_impl} does not support embedding')
             if self.vec_impl.need_embedding and not copy:
-                _t_emb = time.time()
-                parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
-                LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s nodes={len(nodes)}')
+                nodes_to_embed = [n for n in nodes if n._group not in skip_embed_groups] \
+                    if skip_embed_groups else nodes
+                if nodes_to_embed:
+                    _t_emb = time.time()
+                    parallel_do_embedding(self._embed, [], nodes_to_embed, self._group_embed_keys)
+                    LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s '
+                             f'nodes={len(nodes_to_embed)}')
             group_segments = defaultdict(list)
             for node in nodes:
                 group_segments[node._group].append(self._serialize_node(node))

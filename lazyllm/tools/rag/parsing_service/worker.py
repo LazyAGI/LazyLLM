@@ -357,6 +357,7 @@ class DocumentProcessorWorker(ModuleBase):
             file_infos = payload.get('file_infos')
             kb_id = payload.get('kb_id', None)
             ng_names_requested = payload.get('ng_names')  # None means full reparse
+            embed_only = payload.get('embed_only', False)
             reparse_doc_ids = []
             reparse_files = []
             reparse_metadatas = []
@@ -372,7 +373,15 @@ class DocumentProcessorWorker(ModuleBase):
                 self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
 
             try:
-                if ng_names_requested is None:
+                if embed_only:
+                    # embed_only: skip transform, only (re-)embed existing nodes
+                    for name in (ng_names_requested or list(node_groups.keys())):
+                        if name not in node_groups:
+                            LOG.warning(f'{self._log_prefix(task_id)} ng_name {name!r} not found, skipping')
+                            continue
+                        processor.reparse(group_name=name, node_groups=node_groups,
+                                          doc_ids=reparse_doc_ids, kb_id=kb_id, embed_only=True)
+                elif ng_names_requested is None:
                     # Full reparse: reload from source and rebuild all node groups.
                     processor.reparse(group_name=None, node_groups=node_groups,
                                       doc_ids=reparse_doc_ids, doc_paths=reparse_files,

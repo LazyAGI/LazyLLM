@@ -117,6 +117,7 @@ class ReparseRequest(BaseModel):
     ng_names: Optional[List[str]] = None
     llm_config: Optional[Dict[str, Any]] = None
     idempotency_key: Optional[str] = None
+    embed_only: bool = False  # when True, skip transform and only (re-)embed existing nodes
 
     @model_validator(mode='after')
     def validate_fields(self):

@@ -34,7 +34,7 @@ class ParserClient:
                 extractor_names: Optional[List[str]] = None,
                 task_type: Optional[str] = None,
                 callback_url: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None,
-                llm_config: Optional[Dict[str, Any]] = None):
+                llm_config: Optional[Dict[str, Any]] = None, embed_only: bool = False):
         req = ParsingAddDocRequest(
             task_id=task_id,
             ng_names=ng_names,
@@ -44,6 +44,7 @@ class ParserClient:
             callback_url=callback_url,
             feedback_url=callback_url,
             llm_config=llm_config,
+            embed_only=embed_only,
             file_infos=[ParsingFileInfo(
                 file_path=file_path,
                 doc_id=doc_id,
@@ -114,4 +115,10 @@ class ParserClient:
         if ng_names:
             params['ng_names'] = ng_names
         data = self._request('GET', '/doc/chunks', params=params)
+        return BaseResponse.model_validate(data)
+
+    def set_node_group_lazy_mode(self, algo_id: str, group_name: str,
+                                 lazy_mode: Optional[str] = None):
+        params = {'lazy_mode': lazy_mode} if lazy_mode is not None else {}
+        data = self._request('POST', f'/algo/{algo_id}/ng/{group_name}/lazy_mode', params=params)
         return BaseResponse.model_validate(data)
