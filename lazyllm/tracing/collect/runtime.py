@@ -3,6 +3,7 @@ import contextvars
 import functools
 import inspect
 import json
+import secrets
 import threading
 from contextlib import ExitStack, contextmanager, nullcontext
 from typing import Any, Dict, Optional
@@ -21,6 +22,7 @@ from .trace_config import collect_trace_config, resolve_semantic_type_for_target
 _TRACE_SERVICE_NAME = 'lazyllm'
 _current_trace: 'contextvars.ContextVar[Optional[LazyTrace]]' = contextvars.ContextVar(
     '_lazyllm_current_trace', default=None)
+_ZERO_SPAN_ID = '0' * 16
 
 
 def current_trace() -> Optional[LazyTrace]:
@@ -158,6 +160,21 @@ class TracingRuntime:
             return None
         return getattr(target, '_flow_id', None)
 
+    @staticmethod
+    def _synthetic_parent_span_id() -> str:
+        span_id = secrets.token_hex(8)
+        return span_id if span_id != _ZERO_SPAN_ID else '0000000000000001'
+
+    @staticmethod
+    def _span_context(*, trace_id: str, span_id: str, sampled: Optional[bool], is_remote: bool):
+        trace_flags_value = 0x00 if sampled is False else 0x01
+        return opentelemetry.trace.SpanContext(
+            trace_id=int(trace_id, 16),
+            span_id=int(span_id, 16),
+            is_remote=is_remote,
+            trace_flags=opentelemetry.trace.TraceFlags(trace_flags_value),
+        )
+
     def _populate_identity(
         self,
         span: LazySpan,
@@ -200,12 +217,11 @@ class TracingRuntime:
         if is_root_span and ctx.trace_id and ctx.parent_span_id:
             try:
                 # Reattach to the caller-provided parent context when enable_trace resumes an existing trace.
-                trace_flags_value = 0x00 if ctx.sampled is False else 0x01
-                parent_sc = opentelemetry.trace.SpanContext(
-                    trace_id=int(ctx.trace_id, 16),
-                    span_id=int(ctx.parent_span_id, 16),
+                parent_sc = self._span_context(
+                    trace_id=ctx.trace_id,
+                    span_id=ctx.parent_span_id,
+                    sampled=ctx.sampled,
                     is_remote=False,
-                    trace_flags=opentelemetry.trace.TraceFlags(trace_flags_value),
                 )
                 parent_context = opentelemetry.trace.set_span_in_context(
                     opentelemetry.trace.NonRecordingSpan(parent_sc)
@@ -217,6 +233,19 @@ class TracingRuntime:
                     f'Failed to reconstruct parent SpanContext '
                     f'(trace_id={ctx.trace_id!r}, parent_span_id={ctx.parent_span_id!r}): {exc}'
                 )
+        elif is_root_span and ctx.trace_id:
+            try:
+                parent_sc = self._span_context(
+                    trace_id=ctx.trace_id,
+                    span_id=self._synthetic_parent_span_id(),
+                    sampled=ctx.sampled,
+                    is_remote=True,
+                )
+                parent_context = opentelemetry.trace.set_span_in_context(
+                    opentelemetry.trace.NonRecordingSpan(parent_sc)
+                )
+            except (ValueError, TypeError) as exc:
+                LOG.warning(f'Failed to start root trace with caller trace_id={ctx.trace_id!r}: {exc}')
 
         span_cm = ExitStack()
         otel_span = span_cm.enter_context(
