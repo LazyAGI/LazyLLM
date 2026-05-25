@@ -40,8 +40,8 @@ _CloudFSMeta = type('_CloudFSMeta', (LazyLLMRegisterMetaABCClass, type(AbstractF
 
 class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta):
 
-    __public_apis__ = ['ls', 'info', 'open', 'mkdir', 'rm',
-                       'exists', 'read_bytes', 'read_file', 'write_file', 'move', 'copy']
+    __public_apis__ = ['ls', 'info', 'mkdir', 'rm',
+                       'exists', 'read', 'read_file', 'write', 'move', 'copy']
     protocol: str = 'cloudfs'
 
     def __init__(self, token: Any, base_url: Optional[str] = None, asynchronous: bool = False,
@@ -144,11 +144,17 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
         with self.open(path, 'rb') as fh:
             return fh.read()
 
+    def read(self, path: str) -> str:
+        return self.read_bytes(path).decode('utf-8')
+
     def read_file(self, path: str) -> str:
         return self.read_bytes(path).decode('utf-8')
 
     def write_file(self, path: str, data: bytes) -> None:
         self._upload_data(path, data)
+
+    def write(self, path: str, content: str) -> None:
+        self._upload_data(path, content.encode('utf-8'))
 
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         raise NotImplementedError(f'{self.__class__.__name__}.copy is not implemented')
@@ -226,3 +232,6 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
 
 globals.config.add('dynamic_fs_auth', dict, None, 'DYNAMIC_FS_AUTH',
                    description='Per-source dynamic FS auth: {source: token}.')
+globals.config.add('dynamic_tool_auth', dict, None, 'DYNAMIC_TOOL_AUTH',
+                   description='Per-tool dynamic auth: {tool_name: token}. '
+                   'Used by search engines and other API-key-based tools.')

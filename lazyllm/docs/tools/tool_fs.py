@@ -96,29 +96,23 @@ Returns:
     dict: At least name, size, type (file/directory); optional mtime etc.
 ''')
 
-_add_fs_chinese('LazyLLMFSBase.open', '''\
-以 fsspec 方式打开文件，返回可读/可写文件对象。内部调用子类实现的 _open。
+_add_fs_chinese('LazyLLMFSBase.read', '''\
+读取路径对应文件的完整内容并以 UTF-8 字符串返回。支持飞书 URL、~node/~link 等特殊路径。
 
 Args:
-    path (str): 文件路径。
-    mode (str): 如 'rb'、'wb'。
-    block_size (int, optional): 缓冲块大小。
-    **kwargs: 透传给 _open。
+    path (str): 文件路径或飞书 URL。
 
 Returns:
-    CloudFSBufferedFile: 支持区间读、整块写的缓冲文件对象。
+    str: 文件文本内容（UTF-8 解码）。
 ''')
-_add_fs_english('LazyLLMFSBase.open', '''\
-Open file in fsspec style; returns readable/writable file-like object. Uses subclass _open.
+_add_fs_english('LazyLLMFSBase.read', '''\
+Read the full content of the file at path and return as a UTF-8 string. Supports Feishu URLs and ~node/~link paths.
 
 Args:
-    path (str): File path.
-    mode (str): e.g. 'rb', 'wb'.
-    block_size (int, optional): Buffer block size.
-    **kwargs: Passed to _open.
+    path (str): File path or Feishu URL.
 
 Returns:
-    CloudFSBufferedFile: Buffered file supporting range read and chunk write.
+    str: File text content (UTF-8 decoded).
 ''')
 
 _add_fs_chinese('LazyLLMFSBase.mkdir', '''\
@@ -185,7 +179,6 @@ _add_fs_chinese('LazyLLMFSBase.rm', '''\
 Args:
     path (str): 文件或目录路径。
     recursive (bool): 目录是否递归删除。
-    maxdepth (int, optional): 未使用，保留兼容。
 ''')
 _add_fs_english('LazyLLMFSBase.rm', '''\
 Remove path; if directory and recursive=True, recursively delete then rmdir; else rm_file.
@@ -193,7 +186,6 @@ Remove path; if directory and recursive=True, recursively delete then rmdir; els
 Args:
     path (str): File or directory path.
     recursive (bool): Whether to recursively delete directory.
-    maxdepth (int, optional): Unused; kept for compatibility.
 ''')
 
 _add_fs_chinese('LazyLLMFSBase.exists', '''\
@@ -266,6 +258,21 @@ Write bytes to the given path, overwriting if exists. Uses _upload_data internal
 Args:
     path (str): Remote file path.
     data (bytes): Full content to write.
+''')
+
+_add_fs_chinese('LazyLLMFSBase.write', '''\
+将文本内容以 UTF-8 编码写入指定路径。覆盖已存在文件；内部调用 _upload_data。
+
+Args:
+    path (str): 远程文件路径。
+    content (str): 要写入的文本内容。
+''')
+_add_fs_english('LazyLLMFSBase.write', '''\
+Write text content encoded as UTF-8 to the given path, overwriting if exists. Uses _upload_data internally.
+
+Args:
+    path (str): Remote file path.
+    content (str): Text content to write.
 ''')
 
 _add_fs_chinese('LazyLLMFSBase.copy', '''\
@@ -963,6 +970,83 @@ _add_fs_example('FeishuFS', '''\
 >>> text = FS.read_bytes('feishu@dynamic:/~node/MCjOwGxwSimztPkO5X6cv8uxnwb').decode()
 ''')
 
+_add_feishu_chinese('FeishuFS.ls', '''\
+列出飞书云盘指定路径下的文件和文件夹。
+
+Args:
+    path (str): 云盘目录路径，'/' 表示根目录。
+    detail (bool): True 时返回详情 dict 列表；False 时仅返回名称列表。
+''')
+_add_feishu_english('FeishuFS.ls', '''\
+List files and folders at the given path in Feishu Drive.
+
+Args:
+    path (str): Drive directory path; '/' for root.
+    detail (bool): If True return list of dicts; if False return list of names.
+''')
+
+_add_feishu_chinese('FeishuFS.info', '''\
+获取飞书云盘指定路径的文件或文件夹元信息。
+
+Args:
+    path (str): 文件或文件夹路径。
+''')
+_add_feishu_english('FeishuFS.info', '''\
+Get metadata for a file or folder at the given path in Feishu Drive.
+
+Args:
+    path (str): File or folder path.
+''')
+
+_add_feishu_chinese('FeishuFS.mkdir', '''\
+在飞书云盘中创建文件夹。
+
+Args:
+    path (str): 要创建的文件夹路径，最后一段为文件夹名，前面各段为父路径。
+    create_parents (bool): 是否递归创建父目录（当前实现仅创建最后一级）。
+''')
+_add_feishu_english('FeishuFS.mkdir', '''\
+Create a folder in Feishu Drive.
+
+Args:
+    path (str): Path of the folder to create; the last segment is the folder name, preceding segments are the parent path.
+    create_parents (bool): Whether to create parent directories recursively (current implementation creates only the last level).
+''')
+
+_add_feishu_chinese('FeishuFS.move', '''\
+将飞书云盘中的文件或文件夹移动到目标路径。
+
+Args:
+    path1 (str): 源文件或文件夹路径。
+    path2 (str): 目标路径，前面各段为目标父路径。
+    recursive (bool): 是否递归移动（文件夹移动时一并移动子项）。
+''')
+_add_feishu_english('FeishuFS.move', '''\
+Move a file or folder to the target path in Feishu Drive.
+
+Args:
+    path1 (str): Source file or folder path.
+    path2 (str): Destination path; preceding segments are the target parent path.
+    recursive (bool): Whether to move recursively (folder move includes children).
+''')
+
+_add_feishu_chinese('FeishuFS.copy', '''\
+复制飞书云盘中的文件到目标路径（不支持文件夹复制）。
+
+Args:
+    path1 (str): 源文件路径。
+    path2 (str): 目标路径，最后一段为新文件名，前面各段为目标父路径。
+    recursive (bool): 是否递归复制（文件夹不支持，传 True 会抛出 NotImplementedError）。
+''')
+_add_feishu_english('FeishuFS.copy', '''\
+Copy a file to the target path in Feishu Drive (folder copy is not supported).
+
+Args:
+    path1 (str): Source file path.
+    path2 (str): Destination path; the last segment is the new file name, preceding segments are the target parent path.
+    recursive (bool): Whether to copy recursively (raises NotImplementedError for folders).
+''')
+
 # FeishuWikiFS
 _add_fs_chinese('FeishuWikiFS', '''\
 飞书知识库文件系统：使用飞书开放平台 Wiki API，将指定知识库（space）映射为文件系统。目录对应 Wiki 目录/节点，文件对应文档或附件。支持 ls、info、open（读/写）、mkdir、rm_file、put_file、fetch_url；并支持文档块级文本编辑：get_document_id、get_doc_blocks、update_doc_block_text。
@@ -1056,9 +1140,6 @@ _add_fs_chinese('FeishuWikiFS.read_bytes', '''\
 Args:
     path (str): 文档路径或飞书 URL。
     include_references (bool): 为 True 时在正文末尾追加引用附录（lazyllm-feishu-references 格式），默认 False。
-
-Returns:
-    bytes: 文档内容（UTF-8 编码）；include_references=True 时末尾含引用附录。
 ''')
 _add_fs_english('FeishuWikiFS.read_bytes', '''\
 Read the full content of the document at path as bytes. Supports bare Feishu URLs, ~link/~node/~docx/~doc paths, and title paths.
@@ -1066,9 +1147,25 @@ Read the full content of the document at path as bytes. Supports bare Feishu URL
 Args:
     path (str): Document path or Feishu URL.
     include_references (bool): When True, appends a reference appendix (lazyllm-feishu-references format) after the body; default False.
+''')
+
+_add_fs_chinese('FeishuWikiFS.read', '''\
+读取路径对应文档的完整内容并以 UTF-8 字符串返回。支持裸飞书 URL、~link/~node/~docx/~doc 路径及标题路径。
+
+Args:
+    path (str): 文档路径或飞书 URL。
 
 Returns:
-    bytes: Document content (UTF-8 encoded); with reference appendix when include_references=True.
+    str: 文档文本内容（UTF-8 解码）。
+''')
+_add_fs_english('FeishuWikiFS.read', '''\
+Read the full content of the document at path and return as a UTF-8 string. Supports bare Feishu URLs, ~link/~node/~docx/~doc paths, and title paths.
+
+Args:
+    path (str): Document path or Feishu URL.
+
+Returns:
+    str: Document text content (UTF-8 decoded).
 ''')
 _add_fs_chinese('FeishuWikiFS.ls', '''\
 列出路径下的子节点。支持裸飞书 wiki URL、~link/<encoded_url>、~node/<token> 路径及标题路径。
@@ -1080,9 +1177,6 @@ _add_fs_chinese('FeishuWikiFS.ls', '''\
 Args:
     path (str): 目录路径、wiki URL 或 ~node/~link 路径。
     detail (bool): True 时返回 dict 列表（含 creator/owner/node_token 等）；False 时返回名称列表。
-
-Returns:
-    list: detail=True 时为 dict 列表；detail=False 时为 name 列表。
 ''')
 _add_fs_english('FeishuWikiFS.ls', '''\
 List child nodes at path. Supports bare Feishu wiki URLs, ~link/<encoded_url>, ~node/<token> paths, and title paths.
@@ -1094,28 +1188,68 @@ List child nodes at path. Supports bare Feishu wiki URLs, ~link/<encoded_url>, ~
 Args:
     path (str): Directory path, wiki URL, or ~node/~link path.
     detail (bool): If True return list of dicts (with creator/owner/node_token etc.); if False return list of names.
-
-Returns:
-    list: List of dicts if detail=True else list of names.
 ''')
 _add_fs_chinese('FeishuWikiFS.info', '''\
 获取路径对应节点的元信息。支持裸飞书 wiki URL、~link/~node 路径及标题路径。
 
 Args:
     path (str): 节点路径、wiki URL 或 ~node/~link 路径。
-
-Returns:
-    dict: 含 name、size、type、mtime、title、obj_type、node_token、creator、owner 等字段。
 ''')
 _add_fs_english('FeishuWikiFS.info', '''\
 Get metadata for the node at path. Supports bare Feishu wiki URLs, ~link/~node paths, and title paths.
 
 Args:
     path (str): Node path, wiki URL, or ~node/~link path.
-
-Returns:
-    dict: Contains name, size, type, mtime, title, obj_type, node_token, creator, owner, etc.
 ''')
+_add_feishu_chinese('FeishuWikiFS.mkdir', '''\
+在知识库中创建新的 docx 节点（目录/文档）。
+
+Args:
+    path (str): 要创建的节点路径，最后一段为节点标题，前面各段为父路径。
+    create_parents (bool): 是否递归创建父节点（当前实现仅创建最后一级）。
+''')
+_add_feishu_english('FeishuWikiFS.mkdir', '''\
+Create a new docx node (directory/document) in the wiki space.
+
+Args:
+    path (str): Path of the node to create; the last segment is the node title, preceding segments are the parent path.
+    create_parents (bool): Whether to create parent nodes recursively (current implementation creates only the last level).
+''')
+
+_add_feishu_chinese('FeishuWikiFS.move', '''\
+将知识库节点移动到目标路径。
+
+Args:
+    path1 (str): 源节点路径。
+    path2 (str): 目标路径，最后一段为新标题，前面各段为目标父路径。
+    recursive (bool): 是否递归移动（当前实现不区分，节点含子节点时一并移动）。
+''')
+_add_feishu_english('FeishuWikiFS.move', '''\
+Move a wiki node to the target path.
+
+Args:
+    path1 (str): Source node path.
+    path2 (str): Destination path; the last segment is the new title, preceding segments are the target parent path.
+    recursive (bool): Whether to move recursively (current implementation moves the node including its children).
+''')
+
+_add_feishu_chinese('FeishuWikiFS.copy', '''\
+复制知识库节点到目标路径。
+
+Args:
+    path1 (str): 源节点路径。
+    path2 (str): 目标路径，最后一段为新标题，前面各段为目标父路径。
+    recursive (bool): 是否递归复制（当前实现不区分，节点含子节点时一并复制）。
+''')
+_add_feishu_english('FeishuWikiFS.copy', '''\
+Copy a wiki node to the target path.
+
+Args:
+    path1 (str): Source node path.
+    path2 (str): Destination path; the last segment is the new title, preceding segments are the target parent path.
+    recursive (bool): Whether to copy recursively (current implementation copies the node including its children).
+''')
+
 _add_fs_chinese('FeishuWikiFS.get_document_id', '''\
 返回 Wiki 文档节点对应的飞书 docx document_id（即 obj_token）。path 必须指向 doc 或 docx 类型节点，否则抛出 ValueError。
 
