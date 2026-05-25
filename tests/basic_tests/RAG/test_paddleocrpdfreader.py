@@ -1,274 +1,276 @@
-import os
 import json
+import os
 import pytest
-import tempfile
-import shutil
-import requests
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import lazyllm
-from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import PaddleOCRPDFReader
+from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import (
+    PaddleOCRPDFReader, JOB_URL, DEFAULT_MODEL,
+)
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.doc_node import RichDocNode
 from lazyllm.tools.rag.transform import RichTransform
 from lazyllm.tools.rag.transform.sentence import SentenceSplitter
 
 
-lazyllm.config.add('PADDLEOCRVL_URL', str, '', 'PADDLEOCRVL_URL')
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+def _make_job_response(layout_parsing_results: list) -> str:
+    """Build merged JSONL result matching _merge_jsonl_lines output."""
+    return json.dumps({'result': {'layoutParsingResults': layout_parsing_results}})
 
 
-def _is_url_accessible(base_url: str, timeout: float = 1.0) -> bool:
-    if not base_url or not base_url.strip():
-        return False
-
-    health_url = base_url.rstrip('/') + '/health'
-
-    try:
-        resp = requests.get(health_url, timeout=timeout)
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get('errorCode') == 0
-
-    except (requests.exceptions.RequestException, ValueError):
-        return False
+def _make_page_result(blocks: list, images: dict = None) -> dict:
+    return {
+        'markdown': {'images': images or {}},
+        'prunedResult': {'parsing_res_list': blocks},
+    }
 
 
 def _make_mock_response() -> str:
-    return json.dumps({
-        'result': {
-            'layoutParsingResults': [
-                {
-                    'markdown': {
-                        'images': {
-                            'test_img.png': 'http://mock-url/test_img.png'
-                        }
-                    },
-                    'prunedResult': {
-                        'parsing_res_list': [
-                            {'block_label': 'paragraph_title', 'block_content': '# Test Heading',
-                             'block_bbox': [0, 100, 400, 130]},
-                            {'block_label': 'text', 'block_content': 'This is test paragraph content.',
-                             'block_bbox': [0, 130, 400, 160]},
-                            {'block_label': 'image', 'block_content': '<img src="test_img.png"/>',
-                             'block_bbox': [0, 160, 400, 360]},
-                            {'block_label': 'table',
-                             'block_content': ('<table><tr><th>A</th><th>B</th></tr>'
-                                               '<tr><td>1</td><td>2</td></tr></table>'),
-                             'block_bbox': [0, 360, 400, 420]},
-                        ]
-                    }
-                }
-            ]
-        }
-    })
+    return _make_job_response([
+        _make_page_result([
+            {'block_label': 'paragraph_title', 'block_content': '# Test Heading',
+             'block_bbox': [0, 100, 400, 130]},
+            {'block_label': 'text', 'block_content': 'This is test paragraph content.',
+             'block_bbox': [0, 130, 400, 160]},
+            {'block_label': 'image', 'block_content': '',
+             'block_bbox': [100, 200, 300, 400]},
+            {'block_label': 'table',
+             'block_content': '<table><tr><th>A</th><th>B</th></tr>'
+                              '<tr><td>1</td><td>2</td></tr></table>',
+             'block_bbox': [0, 400, 400, 460]},
+        ], images={
+            'imgs/img_in_image_box_100_200_300_400.jpg': 'http://mock-url/test_img.jpg',
+        }),
+    ])
 
 
 def _make_test_pdf(tmp_path: Path) -> Path:
     pdf = tmp_path / 'test.pdf'
-    # Note: this is not a valid PDF, but sufficient for mock tests that
-    # never parse the file content.
     pdf.write_bytes(b'%PDF-1.4 fake pdf content for testing')
     return pdf
 
 
+def _mock_fetch_job_return(mock_response: str):
+    """Return a (merged_json_str, None) tuple matching _fetch_job signature."""
+    return mock_response, None
+
+
 # ---------------------------------------------------------------------------
-# Mock-based tests (no external service required)
+# Mock-based tests
 # ---------------------------------------------------------------------------
 
-class TestPaddleOCRPDFReaderMock(object):
-    '''Mock-based tests that verify parsing logic without external services.'''
+class TestPaddleOCRPDFReaderMock:
 
     def test_load_data_mock(self, tmp_path):
         pdf = _make_test_pdf(tmp_path)
-        reader = PaddleOCRPDFReader(url='http://mock-paddle')
+        reader = PaddleOCRPDFReader()
 
-        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
+        with patch.object(reader, '_fetch_async') as mock_fetch, \
              patch.object(PaddleOCRPDFReader, '_download_images'):
-            resp = MagicMock()
-            resp.text = _make_mock_response()
-            mock_post.return_value = resp
+            mock_fetch.return_value = _mock_fetch_job_return(_make_mock_response())
 
             docs = reader._load_data(pdf)
 
         assert isinstance(docs, list)
-        assert len(docs) > 0, 'Return result should not be empty'
+        assert len(docs) > 0
         types = {d.metadata.get('type') for d in docs}
         assert 'heading' in types
         assert 'paragraph' in types
         assert 'figure' in types
         assert 'table' in types
 
-    def test_load_data_with_images_dir_mock(self, tmp_path):
+    def test_resolve_image_by_bbox(self, tmp_path):
+        pdf = _make_test_pdf(tmp_path)
+        reader = PaddleOCRPDFReader()
+
+        with patch.object(reader, '_fetch_async') as mock_fetch, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
+            mock_fetch.return_value = _mock_fetch_job_return(_make_mock_response())
+
+            docs = reader._load_data(pdf)
+
+        image_nodes = [d for d in docs if d.metadata.get('type') == 'figure']
+        assert len(image_nodes) == 1
+        assert image_nodes[0].metadata['image_path'] is not None
+
+    def test_offline_rejected(self):
+        with pytest.raises(ValueError, match='only supports service_variant="online"'):
+            PaddleOCRPDFReader(service_variant='offline')
+
+    def test_split_doc_false(self, tmp_path):
+        pdf = _make_test_pdf(tmp_path)
+        reader = PaddleOCRPDFReader(split_doc=False)
+
+        with patch.object(reader, '_fetch_async') as mock_fetch, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
+            mock_fetch.return_value = _mock_fetch_job_return(_make_mock_response())
+
+            docs = reader._load_data(pdf)
+
+        assert isinstance(docs, list)
+        assert len(docs) > 0
+        assert isinstance(docs[0], DocNode)
+
+    def test_drop_types(self, tmp_path):
+        pdf = _make_test_pdf(tmp_path)
+        reader = PaddleOCRPDFReader(drop_types=['header', 'footer', 'aside_text'])
+
+        with patch.object(reader, '_fetch_async') as mock_fetch, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
+            mock_fetch.return_value = _mock_fetch_job_return(_make_mock_response())
+
+            docs = reader._load_data(pdf)
+
+        for d in docs:
+            if 'type' in d.metadata:
+                assert d.metadata['type'] not in ('header', 'footer', 'aside_text')
+
+    def test_images_dir(self, tmp_path):
         pdf = _make_test_pdf(tmp_path)
         images_dir = tmp_path / 'images'
-        reader = PaddleOCRPDFReader(url='http://mock-paddle', images_dir=str(images_dir))
+        reader = PaddleOCRPDFReader(images_dir=str(images_dir))
 
-        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
+        with patch.object(reader, '_fetch_async') as mock_fetch, \
              patch.object(PaddleOCRPDFReader, '_download_images'):
-            resp = MagicMock()
-            resp.text = _make_mock_response()
-            mock_post.return_value = resp
+            mock_fetch.return_value = _mock_fetch_job_return(_make_mock_response())
 
             docs = reader._load_data(pdf)
 
         assert isinstance(docs, list)
-        assert len(docs) > 0, 'Return result should not be empty'
+        assert len(docs) > 0
 
-    def test_load_data_with_split_doc_false_mock(self, tmp_path):
+    def test_merge_jsonl_lines(self):
+        jsonl = (
+            '{"result": {"layoutParsingResults": [{"a": 1}]}}\n'
+            '{"result": {"layoutParsingResults": [{"b": 2}, {"c": 3}]}}\n'
+        )
+        merged = PaddleOCRPDFReader._merge_jsonl_lines(jsonl)
+        data = json.loads(merged)
+        assert data['result']['layoutParsingResults'] == [{'a': 1}, {'b': 2}, {'c': 3}]
+
+    def test_merge_jsonl_lines_skips_empty(self):
+        jsonl = '\n{"result": {"layoutParsingResults": [{"x": 1}]}}\n\n'
+        merged = PaddleOCRPDFReader._merge_jsonl_lines(jsonl)
+        data = json.loads(merged)
+        assert len(data['result']['layoutParsingResults']) == 1
+
+    def test_resolve_image_single(self):
+        images = {'img.png': 'http://u'}
+        result = PaddleOCRPDFReader._resolve_image([0, 0, 100, 100], images)
+        assert result == ('img.png', 'http://u')
+
+    def test_resolve_image_by_bbox_match(self):
+        images = {
+            'imgs/img_in_image_box_10_20_30_40.jpg': 'http://a',
+            'imgs/img_in_image_box_50_60_70_80.jpg': 'http://b',
+        }
+        result = PaddleOCRPDFReader._resolve_image([50, 60, 70, 80], images)
+        assert result == ('imgs/img_in_image_box_50_60_70_80.jpg', 'http://b')
+
+    def test_resolve_image_empty_returns_none(self):
+        result = PaddleOCRPDFReader._resolve_image([0, 0, 100, 100], {})
+        assert result is None
+
+    def test_fetch_job_submits_and_polls(self, tmp_path):
+        """Verify _fetch_job calls the correct PaddleOCR Job API endpoints."""
         pdf = _make_test_pdf(tmp_path)
-        reader = PaddleOCRPDFReader(url='http://mock-paddle', split_doc=False)
 
         with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
-             patch.object(PaddleOCRPDFReader, '_download_images'):
-            resp = MagicMock()
-            resp.text = _make_mock_response()
-            mock_post.return_value = resp
+             patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.get_sync') as mock_get, \
+             patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.requests.get') as mock_requests_get:
+            # Submit response
+            submit_resp = mock_post.return_value
+            submit_resp.json.return_value = {'data': {'jobId': 'test-job-123'}}
 
-            docs = reader._load_data(pdf)
+            # Poll response (done)
+            poll_resp = mock_get.return_value
+            poll_resp.json.return_value = {
+                'data': {
+                    'state': 'done',
+                    'resultUrl': {'jsonUrl': 'http://mock/jsonl'},
+                }
+            }
 
-        assert isinstance(docs, list)
-        assert len(docs) > 0, 'Return result should not be empty'
-        # When split_doc=False the base _RichReader still returns a single
-        # merged node wrapped in a list.
-        assert isinstance(docs[0], DocNode)
+            # JSONL download response
+            jsonl_resp = mock_requests_get.return_value
+            jsonl_resp.text = '{"result": {"layoutParsingResults": [{"x": 1}]}}'
 
-    def test_load_data_with_different_init_parameters_mock(self, tmp_path):
-        pdf = _make_test_pdf(tmp_path)
+            reader = PaddleOCRPDFReader()
+            result, task_dir = reader._fetch_job(str(pdf))
 
-        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
-             patch.object(PaddleOCRPDFReader, '_download_images'):
-            resp = MagicMock()
-            resp.text = _make_mock_response()
-            mock_post.return_value = resp
+        # Verify submit called correctly
+        assert mock_post.called
+        submit_url = mock_post.call_args[0][0]
+        assert submit_url == JOB_URL
 
-            # format_block_content=False
-            reader1 = PaddleOCRPDFReader(url='http://mock-paddle', format_block_content=False)
-            docs1 = reader1._load_data(pdf)
-            assert isinstance(docs1, list) and len(docs1) > 0
+        # Verify poll called
+        assert mock_get.called
+        poll_url = mock_get.call_args[0][0]
+        assert 'test-job-123' in poll_url
 
-            # use_layout_detection=False
-            reader2 = PaddleOCRPDFReader(url='http://mock-paddle', use_layout_detection=False)
-            docs2 = reader2._load_data(pdf)
-            assert isinstance(docs2, list) and len(docs2) > 0
-
-            # use_chart_recognition=False
-            reader3 = PaddleOCRPDFReader(url='http://mock-paddle', use_chart_recognition=False)
-            docs3 = reader3._load_data(pdf)
-            assert isinstance(docs3, list) and len(docs3) > 0
-
-            # drop_types
-            reader4 = PaddleOCRPDFReader(
-                url='http://mock-paddle',
-                drop_types=['header', 'footer', 'aside_text']
-            )
-            docs4 = reader4._load_data(pdf)
-            assert isinstance(docs4, list) and len(docs4) > 0
-            for d in docs4:
-                if 'type' in d.metadata:
-                    assert d.metadata['type'] not in ['header', 'footer', 'aside_text']
+        # Verify result
+        data = json.loads(result)
+        assert data['result']['layoutParsingResults'] == [{'x': 1}]
+        assert task_dir is None
 
 
 # ---------------------------------------------------------------------------
-# Live-service tests (skip when service unavailable)
+# Live-service tests (skip when API key unavailable)
 # ---------------------------------------------------------------------------
 
-class TestPaddleOCRPDFReaderLive(object):
+class TestPaddleOCRPDFReaderLive:
+
     def setup_method(self):
-        self.url = lazyllm.config['PADDLEOCRVL_URL']
-        if not self.url or not self.url.strip():
-            pytest.skip('paddleocrvl_url is empty or not set')
-        if not _is_url_accessible(self.url):
-            pytest.skip(f'paddleocrvl_url is not accessible: {self.url}')
+        try:
+            self.api_key = lazyllm.config['paddle_api_key']
+        except KeyError:
+            self.api_key = os.environ.get('LAZYLLM_PADDLE_API_KEY', '')
+        if not self.api_key:
+            pytest.skip('LAZYLLM_PADDLE_API_KEY not set')
 
-        self.test_pdf = os.path.join(lazyllm.config['data_path'], 'ci_data/test_paddleocr/test_paddleocr.pdf')
-        self.temp_dir = tempfile.mkdtemp()
-
-    def teardown_method(self):
-        if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
-
-    def _skip_if_pdf_not_exist(self):
+        self.test_pdf = os.path.join(
+            lazyllm.config['data_path'], 'ci_data/test_paddleocr/test_paddleocr.pdf')
         if not os.path.exists(self.test_pdf):
-            pytest.skip(f'Test file does not exist: {self.test_pdf}')
+            pytest.skip(f'Test PDF not found: {self.test_pdf}')
 
-    def test_load_data_without_images_dir(self):
-        self._skip_if_pdf_not_exist()
-        reader = PaddleOCRPDFReader(url=self.url)
-        docs = reader._load_data(Path(self.test_pdf))
+    def test_load_data_online(self, tmp_path):
+        pdf = Path(self.test_pdf)
+
+        reader = PaddleOCRPDFReader()
+        docs = reader._load_data(pdf)
+
         assert isinstance(docs, list)
-        assert len(docs) > 0, 'Return result should not be empty'
-
-    def test_load_data_with_images_dir(self):
-        self._skip_if_pdf_not_exist()
-        images_dir = os.path.join(self.temp_dir, 'images')
-        reader = PaddleOCRPDFReader(url=self.url, images_dir=images_dir)
-        root_docs = reader._load_data(Path(self.test_pdf))
-        assert isinstance(root_docs, list)
-        assert len(root_docs) > 0, 'Return result should not be empty'
-        assert len(root_docs) == 1, 'Return result should be a single RichDocNode'
-        assert isinstance(root_docs[0], RichDocNode), 'Return result should be a RichDocNode'
-        docs = RichTransform()([root_docs[0]])
-        image_nodes = [doc for doc in docs if doc.metadata.get('type') == 'image']
-        assert len(image_nodes) > 0, 'Return result should contain image nodes'
-        for image_node in image_nodes:
-            image_path = image_node.metadata.get('image_path')
-            assert os.path.exists(image_path), f'Image path does not exist: {image_path}'
-
-    def test_load_data_with_split_doc_false(self):
-        self._skip_if_pdf_not_exist()
-        reader = PaddleOCRPDFReader(url=self.url, split_doc=False)
-        docs = reader._load_data(Path(self.test_pdf))
-        assert isinstance(docs, list)
-        assert len(docs) > 0, 'Return result should not be empty'
-        assert len(docs) == 1, 'When split_doc=False, should return only one node'
+        assert len(docs) > 0
         assert isinstance(docs[0], DocNode)
 
-    def test_richdocnode_compatible(self):
-        self._skip_if_pdf_not_exist()
-        split_reader = PaddleOCRPDFReader(url=self.url, split_doc=True)
-        docs = split_reader._load_data(Path(self.test_pdf))
-        assert isinstance(docs, list)
-        assert len(docs) == 1, 'When split_doc=True, should return only one node'
-        assert isinstance(docs[0], RichDocNode), 'Return result should be a RichDocNode'
+    def test_richdocnode_compatible(self, tmp_path):
+        pdf = Path(self.test_pdf)
 
-        splitted_nodes = SentenceSplitter(chunk_size=1024, chunk_overlap=10)([docs[0]])
-        assert isinstance(splitted_nodes, list)
-        assert len(splitted_nodes) > 0, 'Return result should not be empty'
-        assert isinstance(splitted_nodes[0], DocNode), 'Return result should be a DocNode'
+        reader = PaddleOCRPDFReader(split_doc=True)
+        docs = reader._load_data(pdf)
+
+        assert len(docs) == 1
+        assert isinstance(docs[0], RichDocNode)
+
+        split_nodes = SentenceSplitter(chunk_size=1024, chunk_overlap=10)([docs[0]])
+        assert isinstance(split_nodes, list)
+        assert len(split_nodes) > 0
 
         rich_nodes = RichTransform()([docs[0]])
         assert isinstance(rich_nodes, list)
-        assert len(rich_nodes) > 0, 'Return result should not be empty'
-        assert isinstance(rich_nodes[0], DocNode), 'Return result should be a DocNode'
-        assert rich_nodes[0].text == docs[0].nodes[0].text, 'Return result should be the same as the original node'
+        assert len(rich_nodes) > 0
 
-    def test_load_data_with_different_init_parameters(self):
-        self._skip_if_pdf_not_exist()
+    def test_split_doc_false_live(self, tmp_path):
+        pdf = Path(self.test_pdf)
 
-        reader1 = PaddleOCRPDFReader(url=self.url, format_block_content=False)
-        docs1 = reader1._load_data(Path(self.test_pdf))
-        docs1 = RichTransform()([docs1[0]])
-        assert isinstance(docs1, list)
-        assert len(docs1) > 0, 'Return result should not be empty when format_block_content=False'
+        reader = PaddleOCRPDFReader(split_doc=False)
+        docs = reader._load_data(pdf)
 
-        reader2 = PaddleOCRPDFReader(url=self.url, use_layout_detection=False)
-        docs2 = reader2._load_data(Path(self.test_pdf))
-        docs2 = RichTransform()([docs2[0]])
-        assert isinstance(docs2, list)
-        assert len(docs2) > 0 and len(docs2) < 15, 'Return result should not be empty when use_layout_detection=False'
-
-        reader3 = PaddleOCRPDFReader(url=self.url, use_chart_recognition=False)
-        docs3 = reader3._load_data(Path(self.test_pdf))
-        docs3 = RichTransform()([docs3[0]])
-        assert isinstance(docs3, list)
-        assert len(docs3) > 0, 'Return result should not be empty when use_chart_recognition=False'
-
-        reader4 = PaddleOCRPDFReader(url=self.url, drop_types=['header', 'footer', 'aside_text'])
-        docs4 = reader4._load_data(Path(self.test_pdf))
-        docs4 = RichTransform()([docs4[0]])
-        assert isinstance(docs4, list)
-        assert len(docs4) > 0, 'Return result should not be empty when using drop_types'
-        for doc in docs4:
-            if 'type' in doc.metadata:
-                assert doc.metadata['type'] not in ['header', 'footer', 'aside_text']
+        assert isinstance(docs, list)
+        assert len(docs) == 1
+        assert isinstance(docs[0], DocNode)
