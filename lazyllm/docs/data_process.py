@@ -157,7 +157,7 @@ op = Demo2.rich_content(input_key='text').set_output('./out_dir/results.jsonl')
 path = op([{'text': 'sample'}])
 print(path)  # ./out_dir/results.jsonl
 ```
-""")  
+""")
 
 add_chinese_doc('data.LazyLLMDataBase.forward', """\
 子类需要实现的方法，处理单条数据。返回值支持：
@@ -1421,7 +1421,7 @@ from lazyllm.tools.data import EnQA
 
 data = {'rewrite_querys': ['今天是个好天气', '今天天气不错', 'It is a nice day!'], 'diversity_querys': [{'rewritten_query': '今天是个好天气', 'diversity_score': 1}, {'rewritten_query': '今天天气不错', 'diversity_score': 1}, {'rewritten_query': 'It is a nice day!', 'diversity_score': 1}]}
 op = EnQA.post_processor(input_key='diversity_querys')
-print(op(data))  
+print(op(data))
 # [{'rewrite_querys': ['今天是个好天气', '今天天气不错', 'It is a nice day!'], 'rewritten_query': '今天是个好天气', 'diversity_score': 1}, {'rewrite_querys': ['今天是个好天气', '今天天气不错', 'It is a nice day!'], 'rewritten_query': '今天天气不错', 'diversity_score': 1}, {'rewrite_querys': ['今天是个好天气', '今天天气不错', 'It is a nice day!'], 'rewritten_query': 'It is a nice day!', 'diversity_score': 1}]
 ```
 """)
@@ -1450,7 +1450,7 @@ from lazyllm.tools.data import EnQA
 
 data = {'query': 'a and b', 'rewritten_query': 'b', 'diversity_score': 0}
 op = EnQA.diversity_filter(input_key='diversity_score', min_score=1)
-print(op(data))  # [None] (drop) 
+print(op(data))  # [None] (drop)
 # []
 ```
 """)
@@ -1519,7 +1519,7 @@ from lazyllm import OnlineChatModule
 llm = OnlineChatModule()
 op = MathQA.MathAnswerGenerator(input_key='question', output_key='answer', model=llm)
 data = [{'question': 'Solve 10 * 10'}]
-res = op(data) 
+res = op(data)
 print(res)
 # [{'question': 'Solve 10 * 10', 'answer': '首先，我们需要计算 \\(10 \times 10\\)。这是一个简单的乘法运算，其中两个乘数都是10。\n\n步骤1：写下乘数10和另一个乘数10。\n步骤2：将两个10相乘。\n\n计算过程如下：\n\\[ 10 \times 10 = 100 \\]\n\n因此，最终结果是 \\(\\boxed{100}\\)。', 'regenerate': False}]
 ```
@@ -1585,7 +1585,7 @@ from lazyllm.tools.data import MathQA
 
 op = MathQA.DifficultyEvaluatorBatch(input_key='difficulty')
 data = [{'difficulty': 'Easy'}, {'difficulty': 'Hard'}, {'difficulty': 'Easy'}]
-print(op(data))  
+print(op(data))
 # [{'Easy': 2, 'Hard': 1}]
 ```
 """)
@@ -1731,12 +1731,12 @@ from lazyllm import OnlineChatModule
 llm = OnlineChatModule()
 op = MathQA.QuestionFusionGenerator(input_key='new_question', list_key='question_list', output_key='new_answer', model=llm)
 data = {'question_list': [
-    {'question': '1加1等于几？', 'answer': '1+1 = 2'}, 
+    {'question': '1加1等于几？', 'answer': '1+1 = 2'},
     {'question': '2的平方等于几？', 'answer': '2*2 = 4'}]}
-res = op(data) 
+res = op(data)
 print(res)
-# [{'question_list': [{'question': '1加1等于几？', 'answer': '1+1 = 2'}, {'question': '2的平方等于几？', 'answer': '2*2 = 4'}], 
-# 'new_question': '如果1加1的结果与2的平方相比较，哪个更大？', 
+# [{'question_list': [{'question': '1加1等于几？', 'answer': '1+1 = 2'}, {'question': '2的平方等于几？', 'answer': '2*2 = 4'}],
+# 'new_question': '如果1加1的结果与2的平方相比较，哪个更大？',
 # 'new_answer': '首先，我们解决第一个问题：1加1等于几？计算得到 1+1 = 2。然后，解决第二个问题：2的平方等于几？计算得到 2*2 = 4。最后，我们比较这两个结果，2和4。显然，4大于2。所以，2的平方更大。'}]
 ```
 """)
@@ -1994,7 +1994,7 @@ print(res)
 """)
 
 add_chinese_doc('data.operators.text2qa_ops.IFDScorer', """\
-计算 Instruction Following Difficulty (IFD)：衡量模型在有无指令 context 下生成答案的难度比。  
+计算 Instruction Following Difficulty (IFD)：衡量模型在有无指令 context 下生成答案的难度比。
 IFD = CAS / DAS，其中 CAS 为给 instruction/context 后生成答案的平均 token loss，DAS 为不提供 instruction/context 时生成答案的平均 token loss。
 
 Args:
@@ -2009,7 +2009,7 @@ Args:
 """)
 
 add_english_doc('data.operators.text2qa_ops.IFDScorer', """\
-Compute Instruction Following Difficulty (IFD): measures how much more difficult it is for a model to generate an answer with an instruction/context versus without.  
+Compute Instruction Following Difficulty (IFD): measures how much more difficult it is for a model to generate an answer with an instruction/context versus without.
 IFD = CAS / DAS, where CAS is the mean token loss when the answer is generated with the instruction/context, and DAS is the mean token loss when generated directly.
 
 Args:
@@ -9098,7 +9098,7 @@ for row in rows:
 
 # pt_op
 add_chinese_doc('data.operators.pt_op.resolution_filter', """\
-按最小/最大宽高过滤图片，保留尺寸在指定范围内的图片路径。   
+按最小/最大宽高过滤图片，保留尺寸在指定范围内的图片路径。
 
 Args:
     data (dict): 单条数据字典
@@ -9529,7 +9529,7 @@ print(res[0]['context'], res[0]['lc'])
 add_chinese_doc('data.operators.cot_ops.wrong_filter', """\
 筛选样本的算子。
 
-- 如果输入字段为 True，则表示样本正确，保留原始数据用于后续处理。  
+- 如果输入字段为 True，则表示样本正确，保留原始数据用于后续处理。
 - 如果输入字段为 False，则表示样本错误，返回 []，被过滤掉。
 
 Args:
@@ -9540,7 +9540,7 @@ Args:
 add_english_doc('data.operators.cot_ops.wrong_filter', """\
 Sample filtering operator.
 
-- If the specified field is True, the sample is considered correct and the original data is retained for further processing.  
+- If the specified field is True, the sample is considered correct and the original data is retained for further processing.
 - If the specified field is False, the sample is considered wrong and returns [] (filtered out).
 
 Args:
@@ -9564,8 +9564,8 @@ print(op(data2))  # None, filtered out
 add_chinese_doc('data.operators.pdf_ops.multi_features_filter', """\
 多特征值平均分筛选算子。
 
-- 将 data[input_key] 中的所有值转换为浮点数后计算平均值。  
-- 如果平均值 >= threshold，则返回 None（保留数据用于后续处理）。  
+- 将 data[input_key] 中的所有值转换为浮点数后计算平均值。
+- 如果平均值 >= threshold，则返回 None（保留数据用于后续处理）。
 - 如果平均值 < threshold 或没有有效数值，则返回 []（过滤掉该样本）。
 
 Args:
@@ -9577,8 +9577,8 @@ Args:
 add_english_doc('data.operators.pdf_ops.multi_features_filter', """\
 Filter operator based on the average of multiple feature values.
 
-- Convert all values in data[input_key] to floats and compute the average.  
-- If average >= threshold, returns None (retained for further processing).  
+- Convert all values in data[input_key] to floats and compute the average.
+- If average >= threshold, returns None (retained for further processing).
 - If average < threshold or no valid values, returns [] (filtered out).
 
 Args:
@@ -9602,11 +9602,11 @@ print(Pdf2QA.multi_features_filter(data2, input_key='features', threshold=0.7))
 """)
 
 add_chinese_doc('data.operators.pdf_ops.PdfQAScorer', """\
-PDF QA 样本打分算子类。  
+PDF QA 样本打分算子类。
 
-- 接收文本块、生成的问题和答案、可选图片路径。  
-- 输出评分字段 output_key。  
-- 高度可配置，包括 input_key、query_key、answer_key、output_key、image_key、user_prompt、并发模式等。  
+- 接收文本块、生成的问题和答案、可选图片路径。
+- 输出评分字段 output_key。
+- 高度可配置，包括 input_key、query_key、answer_key、output_key、image_key、user_prompt、并发模式等。
 - 实例化后通过 __call__(data) 或 forward(data) 使用。
 
 Args:
@@ -9621,11 +9621,11 @@ Args:
 """)
 
 add_english_doc('data.operators.pdf_ops.PdfQAScorer', """\
-Operator class that scores PDF QA samples.  
+Operator class that scores PDF QA samples.
 
-- Receives text chunk, generated question & answer, optional image path.  
-- Outputs score in output_key.  
-- Highly configurable: input_key, query_key, answer_key, output_key, image_key, user_prompt, concurrency mode, etc.  
+- Receives text chunk, generated question & answer, optional image path.
+- Outputs score in output_key.
+- Highly configurable: input_key, query_key, answer_key, output_key, image_key, user_prompt, concurrency mode, etc.
 - Instantiate first, then call __call__(data) or forward(data).
 
 Args:
@@ -9808,10 +9808,10 @@ print('done')
 """)
 
 add_chinese_doc('data.operators.text2qa_ops.qa_score_filter', """\
-QA 样本评分过滤算子。  
+QA 样本评分过滤算子。
 
-- 根据指定评分字段 input_key 的值判断是否保留样本。  
-- score >= min_score 返回 None（保留用于后续处理）。  
+- 根据指定评分字段 input_key 的值判断是否保留样本。
+- score >= min_score 返回 None（保留用于后续处理）。
 - score < min_score 返回 []（过滤掉该样本）。
 
 Args:
@@ -9821,10 +9821,10 @@ Args:
 """)
 
 add_english_doc('data.operators.text2qa_ops.qa_score_filter', """\
-QA sample score filter operator.  
+QA sample score filter operator.
 
-- Keeps or filters a sample based on a score field input_key.  
-- Returns None if score >= min_score (retained).  
+- Keeps or filters a sample based on a score field input_key.
+- Returns None if score >= min_score (retained).
 - Returns [] if score < min_score (filtered out).
 
 Args:
@@ -9848,11 +9848,11 @@ print(Text2qa.qa_score_filter(data2, input_key='score', min_score=0.7))
 """)
 
 add_chinese_doc('data.operators.text2qa_ops.to_alpaca_sft', """\
-将 QA 样本转换为 Alpaca 风格的 SFT 数据格式。  
+将 QA 样本转换为 Alpaca 风格的 SFT 数据格式。
 
-- query_key 对应指令（instruction）  
-- context_key 对应输入（input）  
-- answer_key 对应输出（output）  
+- query_key 对应指令（instruction）
+- context_key 对应输入（input）
+- answer_key 对应输出（output）
 - 若 query 或 answer 缺失则返回 None（过滤掉）
 
 Args:
@@ -9863,11 +9863,11 @@ Args:
 """)
 
 add_english_doc('data.operators.text2qa_ops.to_alpaca_sft', """\
-Convert QA sample to Alpaca-style SFT format.  
+Convert QA sample to Alpaca-style SFT format.
 
-- query_key → instruction  
-- context_key → input  
-- answer_key → output  
+- query_key → instruction
+- context_key → input
+- answer_key → output
 - Returns None if query or answer is missing (filtered out)
 
 Args:
@@ -9889,12 +9889,12 @@ print(res)
 """)
 
 add_chinese_doc('data.operators.text2qa_ops.to_chat_sft', """\
-将 QA 样本转换为 Chat 风格 SFT 数据格式。  
+将 QA 样本转换为 Chat 风格 SFT 数据格式。
 
-- query_key 对应用户提问  
-- context_key 对应上下文，可选  
-- answer_key 对应助手回答  
-- 若 query 或 answer 缺失则返回 None（过滤掉）  
+- query_key 对应用户提问
+- context_key 对应上下文，可选
+- answer_key 对应助手回答
+- 若 query 或 answer 缺失则返回 None（过滤掉）
 - 返回格式包含 messages 列表，其中 role 分为 'user' 和 'assistant'
 
 Args:
@@ -9905,12 +9905,12 @@ Args:
 """)
 
 add_english_doc('data.operators.text2qa_ops.to_chat_sft', """\
-Convert QA sample to Chat-style SFT format.  
+Convert QA sample to Chat-style SFT format.
 
-- query_key → user question  
-- context_key → optional context  
-- answer_key → assistant answer  
-- Returns None if query or answer is missing (filtered out)  
+- query_key → user question
+- context_key → optional context
+- answer_key → assistant answer
+- Returns None if query or answer is missing (filtered out)
 - Returns messages list with roles 'user' and 'assistant'
 
 Args:
@@ -9941,16 +9941,16 @@ print(res)
 # =========================
 
 add_chinese_doc('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
-构建文本到 QA 的数据处理流水线（Pipeline）。  
+构建文本到 QA 的数据处理流水线（Pipeline）。
 
 该 pipeline 包含：
-1. 文本切分（TextToChunks）  
-2. 空白或噪声文本过滤（empty_or_noise_filter）  
-3. 非法 Unicode 清理（invalid_unicode_cleaner）  
-4. QA 生成（ChunkToQA）  
-5. QA 打分（QAScorer）  
-6. 根据分数过滤（qa_score_filter）  
-7. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）  
+1. 文本切分（TextToChunks）
+2. 空白或噪声文本过滤（empty_or_noise_filter）
+3. 非法 Unicode 清理（invalid_unicode_cleaner）
+4. QA 生成（ChunkToQA）
+5. QA 打分（QAScorer）
+6. 根据分数过滤（qa_score_filter）
+7. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）
 
 Args:
     text_key (str): 原始文本字段名，默认 'text'
@@ -9965,21 +9965,21 @@ Args:
     qa_prompt: QA 生成提示词
     threshold (float): QA 样本分数最低保留阈值，默认 1
 
-**Returns:**  
+**Returns:**
     一个可调用的 pipeline 对象，调用时会按顺序执行上述算子。
 """)
 
 add_english_doc('data.pipelines.text_pipelines.build_text2qa_pipeline', """\
-Build a text-to-QA data processing pipeline.  
+Build a text-to-QA data processing pipeline.
 
 The pipeline includes:
-1. Text chunking (TextToChunks)  
-2. Empty or noise text filtering (empty_or_noise_filter)  
-3. Invalid Unicode cleaning (invalid_unicode_cleaner)  
-4. QA generation (ChunkToQA)  
-5. QA scoring (QAScorer)  
-6. Filtering by score (qa_score_filter)  
-7. Conversion to Alpaca-style SFT data (to_alpaca_sft)  
+1. Text chunking (TextToChunks)
+2. Empty or noise text filtering (empty_or_noise_filter)
+3. Invalid Unicode cleaning (invalid_unicode_cleaner)
+4. QA generation (ChunkToQA)
+5. QA scoring (QAScorer)
+6. Filtering by score (qa_score_filter)
+7. Conversion to Alpaca-style SFT data (to_alpaca_sft)
 
 Args:
     text_key (str): original text field, default 'text'
@@ -9994,7 +9994,7 @@ Args:
     qa_prompt: prompt for QA generation
     threshold (float): minimum QA score to retain, default 1
 
-**Returns:**  
+**Returns:**
     A callable pipeline object that executes registered operators in sequence.
 """)
 
@@ -10156,87 +10156,87 @@ print(res)
 
 # 中文文档
 add_chinese_doc('data.pipelines.math_pipelines.build_math_cot_pipeline', """\
-构建数学问题 CoT（Chain-of-Thought）数据生成与处理流水线（Pipeline）。  
+构建数学问题 CoT（Chain-of-Thought）数据生成与处理流水线（Pipeline）。
 
 该 pipeline 包含以下步骤：
-1. CoT 生成（SelfConsistencyCoTGenerator）  
-2. 算式答案提取（boxed_answer_extractor）  
-3. 答案验证（answer_verify）  
-4. 答案长度过滤（ReasoningAnswerTokenLengthFilter）  
-5. 重复答案检测（DuplicateAnswerDetector）  
-6. （可选）QA 质量评分及过滤（QualityEvaluator + qa_score_filter）  
-7. （可选）难度评估（DifficultyEvaluator）  
-8. 错误答案过滤（wrong_filter）  
-9. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）  
+1. CoT 生成（SelfConsistencyCoTGenerator）
+2. 算式答案提取（boxed_answer_extractor）
+3. 答案验证（answer_verify）
+4. 答案长度过滤（ReasoningAnswerTokenLengthFilter）
+5. 重复答案检测（DuplicateAnswerDetector）
+6. （可选）QA 质量评分及过滤（QualityEvaluator + qa_score_filter）
+7. （可选）难度评估（DifficultyEvaluator）
+8. 错误答案过滤（wrong_filter）
+9. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）
 
 Args:
-    question_key (str): 问题字段名，默认 'question'  
-    reference_key (str): 参考答案或上下文字段名，默认 'reference'  
-    answer_key (str): CoT 生成答案字段名，默认 'answer'  
-    extracted_key (str): 提取后的数学答案字段名，默认 'math_answer'  
-    verify_key (str): 答案验证结果字段名，默认 'is_equal'  
+    question_key (str): 问题字段名，默认 'question'
+    reference_key (str): 参考答案或上下文字段名，默认 'reference'
+    answer_key (str): CoT 生成答案字段名，默认 'answer'
+    extracted_key (str): 提取后的数学答案字段名，默认 'math_answer'
+    verify_key (str): 答案验证结果字段名，默认 'is_equal'
 
-    model: 用于 CoT 生成或评分的模型实例  
-    num_samples (int): CoT 生成样本数量，默认 3  
-    cot_user_prompt: CoT 生成提示词  
+    model: 用于 CoT 生成或评分的模型实例
+    num_samples (int): CoT 生成样本数量，默认 3
+    cot_user_prompt: CoT 生成提示词
 
-    max_answer_token_length (int): 答案最大 token 长度，默认 10000  
-    tokenize (bool): 是否先进行分词，默认 False  
-    tokenizer: 分词器  
+    max_answer_token_length (int): 答案最大 token 长度，默认 10000
+    tokenize (bool): 是否先进行分词，默认 False
+    tokenizer: 分词器
 
-    min_repeat_len (int): 重复答案检测最小长度，默认 25  
-    repeat_threshold (int): 重复阈值，默认 3  
-    periodic_min_repeat (int): 周期性重复最小值，默认 3  
+    min_repeat_len (int): 重复答案检测最小长度，默认 25
+    repeat_threshold (int): 重复阈值，默认 3
+    periodic_min_repeat (int): 周期性重复最小值，默认 3
 
-    quality_user_prompt: QA 质量评分提示词  
-    difficulty_user_prompt: 难度评估提示词  
-    qa_scorer (bool): 是否启用 QA 质量评分模块  
-    difficulty_evaluator (bool): 是否启用难度评估模块  
+    quality_user_prompt: QA 质量评分提示词
+    difficulty_user_prompt: 难度评估提示词
+    qa_scorer (bool): 是否启用 QA 质量评分模块
+    difficulty_evaluator (bool): 是否启用难度评估模块
 
-**Returns:**  
+**Returns:**
     一个可调用的 pipeline 对象，调用时按顺序执行上述算子，并输出 Alpaca 风格 SFT 数据。
 """)
 
 # 英文文档
 add_english_doc('data.pipelines.math_pipelines.build_math_cot_pipeline', """\
-Build a Math Chain-of-Thought (CoT) data generation and processing pipeline.  
+Build a Math Chain-of-Thought (CoT) data generation and processing pipeline.
 
 The pipeline includes the following steps:
-1. CoT generation (SelfConsistencyCoTGenerator)  
-2. Math answer extraction (boxed_answer_extractor)  
-3. Answer verification (answer_verify)  
-4. Answer length filtering (ReasoningAnswerTokenLengthFilter)  
-5. Duplicate answer detection (DuplicateAnswerDetector)  
-6. (Optional) QA quality scoring and filtering (QualityEvaluator + qa_score_filter)  
-7. (Optional) Difficulty evaluation (DifficultyEvaluator)  
-8. Wrong answer filtering (wrong_filter)  
-9. Conversion to Alpaca-style SFT data (to_alpaca_sft)  
+1. CoT generation (SelfConsistencyCoTGenerator)
+2. Math answer extraction (boxed_answer_extractor)
+3. Answer verification (answer_verify)
+4. Answer length filtering (ReasoningAnswerTokenLengthFilter)
+5. Duplicate answer detection (DuplicateAnswerDetector)
+6. (Optional) QA quality scoring and filtering (QualityEvaluator + qa_score_filter)
+7. (Optional) Difficulty evaluation (DifficultyEvaluator)
+8. Wrong answer filtering (wrong_filter)
+9. Conversion to Alpaca-style SFT data (to_alpaca_sft)
 
 Args:
-    question_key (str): field for questions, default 'question'  
-    reference_key (str): field for reference answers or context, default 'reference'  
-    answer_key (str): field for CoT-generated answers, default 'answer'  
-    extracted_key (str): field for extracted math answers, default 'math_answer'  
-    verify_key (str): field for answer verification results, default 'is_equal'  
+    question_key (str): field for questions, default 'question'
+    reference_key (str): field for reference answers or context, default 'reference'
+    answer_key (str): field for CoT-generated answers, default 'answer'
+    extracted_key (str): field for extracted math answers, default 'math_answer'
+    verify_key (str): field for answer verification results, default 'is_equal'
 
-    model: model instance for CoT generation or scoring  
-    num_samples (int): number of CoT samples to generate, default 3  
-    cot_user_prompt: prompt used for CoT generation  
+    model: model instance for CoT generation or scoring
+    num_samples (int): number of CoT samples to generate, default 3
+    cot_user_prompt: prompt used for CoT generation
 
-    max_answer_token_length (int): maximum token length of answers, default 10000  
-    tokenize (bool): whether to tokenize first, default False  
-    tokenizer: tokenizer  
+    max_answer_token_length (int): maximum token length of answers, default 10000
+    tokenize (bool): whether to tokenize first, default False
+    tokenizer: tokenizer
 
-    min_repeat_len (int): minimum length for duplicate answer detection, default 25  
-    repeat_threshold (int): duplicate answer threshold, default 3  
-    periodic_min_repeat (int): periodic minimum repeat, default 3  
+    min_repeat_len (int): minimum length for duplicate answer detection, default 25
+    repeat_threshold (int): duplicate answer threshold, default 3
+    periodic_min_repeat (int): periodic minimum repeat, default 3
 
-    quality_user_prompt: prompt for QA quality scoring  
-    difficulty_user_prompt: prompt for difficulty evaluation  
-    qa_scorer (bool): whether to enable QA quality scoring  
-    difficulty_evaluator (bool): whether to enable difficulty evaluation  
+    quality_user_prompt: prompt for QA quality scoring
+    difficulty_user_prompt: prompt for difficulty evaluation
+    qa_scorer (bool): whether to enable QA quality scoring
+    difficulty_evaluator (bool): whether to enable difficulty evaluation
 
-**Returns:**  
+**Returns:**
     A callable pipeline object that executes registered operators in sequence and outputs Alpaca-style SFT data.
 """)
 
@@ -10288,59 +10288,59 @@ print(ppl(data))
 
 # 中文文档
 add_chinese_doc('data.pipelines.cot_pipelines.build_cot_pipeline', """\
-构建 CoT（Chain-of-Thought）数据生成与处理流水线（Pipeline）。  
+构建 CoT（Chain-of-Thought）数据生成与处理流水线（Pipeline）。
 
 该 pipeline 包含以下步骤：
-1. CoT 生成（CoTGenerator 或 SelfConsistencyCoTGenerator）  
-2. （可选）算式答案提取（boxed_answer_extractor 或 hash_answer_extractor）  
-3. （可选）答案验证（answer_verify）  
-4. （可选）错误答案过滤（wrong_filter）  
-5. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）  
+1. CoT 生成（CoTGenerator 或 SelfConsistencyCoTGenerator）
+2. （可选）算式答案提取（boxed_answer_extractor 或 hash_answer_extractor）
+3. （可选）答案验证（answer_verify）
+4. （可选）错误答案过滤（wrong_filter）
+5. 转换为 Alpaca 风格 SFT 数据（to_alpaca_sft）
 
 Args:
-    input_key (str): 输入问题字段名，默认 'query'  
-    reference_key (str): 参考答案或上下文字段名，默认 'reference'  
-    cot_key (str): CoT 生成答案字段名，默认 'cot_answer'  
-    extracted_key (str): 提取后的答案字段名，默认 'llm_extracted'  
-    verify_key (str): 答案验证结果字段名，默认 'is_equal'  
-    model: 用于 CoT 生成或评分的模型实例  
-    use_self_consistency (bool): 是否使用 Self-Consistency 生成器，默认 False  
-    num_samples (int): Self-Consistency 生成样本数量，默认 5  
-    user_prompt: CoT 生成提示词  
-    enable_verify (bool): 是否启用答案验证，默认 True  
-    boxed_answer (bool): 是否使用 boxed answer 提取器，默认 True  
-    hash_answer (bool): 是否使用 hash answer 提取器，默认 False  
+    input_key (str): 输入问题字段名，默认 'query'
+    reference_key (str): 参考答案或上下文字段名，默认 'reference'
+    cot_key (str): CoT 生成答案字段名，默认 'cot_answer'
+    extracted_key (str): 提取后的答案字段名，默认 'llm_extracted'
+    verify_key (str): 答案验证结果字段名，默认 'is_equal'
+    model: 用于 CoT 生成或评分的模型实例
+    use_self_consistency (bool): 是否使用 Self-Consistency 生成器，默认 False
+    num_samples (int): Self-Consistency 生成样本数量，默认 5
+    user_prompt: CoT 生成提示词
+    enable_verify (bool): 是否启用答案验证，默认 True
+    boxed_answer (bool): 是否使用 boxed answer 提取器，默认 True
+    hash_answer (bool): 是否使用 hash answer 提取器，默认 False
 
-**Returns:**  
+**Returns:**
     一个可调用的 pipeline 对象，按顺序执行算子，并输出 Alpaca 风格 SFT 数据。
 """)
 
 # 英文文档
 add_english_doc('data.pipelines.cot_pipelines.build_cot_pipeline', """\
-Build a Chain-of-Thought (CoT) data generation and processing pipeline.  
+Build a Chain-of-Thought (CoT) data generation and processing pipeline.
 
 The pipeline includes:
-1. CoT generation (CoTGenerator or SelfConsistencyCoTGenerator)  
-2. (Optional) Math/boxed answer extraction (boxed_answer_extractor or hash_answer_extractor)  
-3. (Optional) Answer verification (answer_verify)  
-4. (Optional) Wrong answer filtering (wrong_filter)  
-5. Conversion to Alpaca-style SFT data (to_alpaca_sft)  
+1. CoT generation (CoTGenerator or SelfConsistencyCoTGenerator)
+2. (Optional) Math/boxed answer extraction (boxed_answer_extractor or hash_answer_extractor)
+3. (Optional) Answer verification (answer_verify)
+4. (Optional) Wrong answer filtering (wrong_filter)
+5. Conversion to Alpaca-style SFT data (to_alpaca_sft)
 
 Args:
-    input_key (str): field for input questions, default 'query'  
-    reference_key (str): field for reference answers or context, default 'reference'  
-    cot_key (str): field for CoT-generated answers, default 'cot_answer'  
-    extracted_key (str): field for extracted answers, default 'llm_extracted'  
-    verify_key (str): field for answer verification results, default 'is_equal'  
-    model: model instance for CoT generation or scoring  
-    use_self_consistency (bool): whether to use Self-Consistency generator, default False  
-    num_samples (int): number of Self-Consistency samples to generate, default 5  
-    user_prompt: prompt used for CoT generation  
-    enable_verify (bool): whether to enable answer verification, default True  
-    boxed_answer (bool): whether to use boxed answer extractor, default True  
-    hash_answer (bool): whether to use hash answer extractor, default False  
+    input_key (str): field for input questions, default 'query'
+    reference_key (str): field for reference answers or context, default 'reference'
+    cot_key (str): field for CoT-generated answers, default 'cot_answer'
+    extracted_key (str): field for extracted answers, default 'llm_extracted'
+    verify_key (str): field for answer verification results, default 'is_equal'
+    model: model instance for CoT generation or scoring
+    use_self_consistency (bool): whether to use Self-Consistency generator, default False
+    num_samples (int): number of Self-Consistency samples to generate, default 5
+    user_prompt: prompt used for CoT generation
+    enable_verify (bool): whether to enable answer verification, default True
+    boxed_answer (bool): whether to use boxed answer extractor, default True
+    hash_answer (bool): whether to use hash answer extractor, default False
 
-**Returns:**  
+**Returns:**
     A callable pipeline object that executes operators sequentially and outputs Alpaca-style SFT data.
 """)
 
@@ -10378,8 +10378,8 @@ print(res)
 # Return alpaca sft format
 [
 {
-    "instruction": "This is the last day of 1899. What is the date tomorrow in MM/DD/YYYY?\nOptions:\n(A) 01/01/1900\n(B) 01/22/1900\n(C) 01/01/1899\n(D) 02/06/1900\n(E) 01/08/1900\n(F) 01/01/1827", 
-    "input": "A", 
+    "instruction": "This is the last day of 1899. What is the date tomorrow in MM/DD/YYYY?\nOptions:\n(A) 01/01/1900\n(B) 01/22/1900\n(C) 01/01/1899\n(D) 02/06/1900\n(E) 01/08/1900\n(F) 01/01/1827",
+    "input": "A",
     "output": "To solve this problem, we need to determine the date that follows the last day of 1899.\n\n1. The last day of 1899 is December 31, 1899.\n2. The day after December 31, 1899, is January 1, 1900.\n3. We need to express this date in the MM/DD/YYYY format.\n\nJanuary 1, 1900, in MM/DD/YYYY format is 01/01/1900.\n\nThus, the correct option is:\n\n#### A"}
 ]
 ```
