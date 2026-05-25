@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import lazyllm
 from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import (
-    PaddleOCRPDFReader, JOB_URL, DEFAULT_MODEL,
+    PaddleOCRPDFReader, JOB_URL,
 )
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.doc_node import RichDocNode
@@ -19,7 +19,7 @@ from lazyllm.tools.rag.transform.sentence import SentenceSplitter
 # ---------------------------------------------------------------------------
 
 def _make_job_response(layout_parsing_results: list) -> str:
-    """Build merged JSONL result matching _merge_jsonl_lines output."""
+    '''Build merged JSONL result matching _merge_jsonl_lines output.'''
     return json.dumps({'result': {'layoutParsingResults': layout_parsing_results}})
 
 
@@ -56,7 +56,7 @@ def _make_test_pdf(tmp_path: Path) -> Path:
 
 
 def _mock_fetch_job_return(mock_response: str):
-    """Return a (merged_json_str, None) tuple matching _fetch_job signature."""
+    '''Return a (merged_json_str, None) tuple matching _fetch_job signature.'''
     return mock_response, None
 
 
@@ -177,7 +177,7 @@ class TestPaddleOCRPDFReaderMock:
         assert result is None
 
     def test_fetch_job_submits_and_polls(self, tmp_path):
-        """Verify _fetch_job calls the correct PaddleOCR Job API endpoints."""
+        '''Verify _fetch_job calls the correct PaddleOCR Job API endpoints.'''
         pdf = _make_test_pdf(tmp_path)
 
         with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
