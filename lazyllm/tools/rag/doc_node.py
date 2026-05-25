@@ -368,9 +368,11 @@ class ImageDocNode(DocNode):
         self._modality = 'image'
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
+        content = self.get_content(MetadataMode.EMBED)
+        generate_embed = {}
         for k, e in embed.items():
-            emb = e(self.get_content(MetadataMode.EMBED), modality=self._modality)
-            generate_embed = {k: emb if emb and isinstance(emb[0], (int, float)) else emb[0]}
+            emb = e(content, modality=self._modality)
+            generate_embed[k] = emb[0] if emb and not isinstance(emb[0], (int, float)) else emb
 
         with self._lock:
             self.embedding = self.embedding or {}
