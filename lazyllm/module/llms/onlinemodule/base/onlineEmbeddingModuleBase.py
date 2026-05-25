@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from urllib.parse import urljoin
@@ -167,6 +167,25 @@ class LazyLLMOnlineEmbedModuleBase(OnlineEmbeddingModuleBase):
 
 class LazyLLMOnlineMultimodalEmbedModuleBase(OnlineEmbeddingModuleBase):
     __lazyllm_registry_key__ = LLMType.MULTIMODAL_EMBED
+
+    @staticmethod
+    def _format_embedding_for_modality(
+            result: Union[List[float], List[List[float]]],
+            modality: Optional[str]) -> Union[List[float], List[List[float]]]:
+        # ImageDocNode.do_embedding expects batch format: emb[0] is the full vector.
+        if modality != 'image':
+            return result
+        if not isinstance(result, list) or not result:
+            return result
+        if isinstance(result[0], (int, float)):
+            return [result]
+        return result
+
+    def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs
+                ) -> Union[List[float], List[List[float]]]:
+        modality = kwargs.pop('modality', None)
+        result = super().forward(input, url=url, model=model, **kwargs)
+        return self._format_embedding_for_modality(result, modality)
 
 class LazyLLMOnlineRerankModuleBase(OnlineEmbeddingModuleBase):
     __lazyllm_registry_key__ = LLMType.RERANK

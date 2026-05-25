@@ -417,7 +417,8 @@ class QwenMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
             return [self._format_input_item(item, modality=modality) for item in input]
         raise ValueError('Input must be either a string or a list of strings/dictionaries')
 
-    def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs) -> List[float]:
+    def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs
+                ) -> Union[List[float], List[List[float]]]:
         model, _, url, kwargs = resolve_online_params(
             model, None, url, kwargs,
             model_aliases=('model_name', 'embed_model_name', 'embed_name'),
@@ -436,7 +437,8 @@ class QwenMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
         if self._get_response_value(response, 'status_code') != HTTPStatus.OK:
             message = self._get_response_value(response, 'message', 'Unknown error')
             raise RuntimeError(f'Qwen multimodal embedding failed: {message}')
-        return self._parse_response(response, input=input)
+        result = self._parse_response(response, input=input)
+        return self._format_embedding_for_modality(result, modality)
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> List[float]:
         output = self._get_response_value(response, 'output', {})
