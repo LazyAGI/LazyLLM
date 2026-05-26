@@ -31,6 +31,19 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
 
     def format(self, msg):
         if _is_chat_message(msg):
+            if msg.get('tool_calls'):
+                # The base formatter collapses chat messages to plain text, which drops
+                # `tool_calls` and `reasoning_content`. Tool-calling models must be
+                # configured with `FunctionCallFormatter`, which keeps those structured
+                # fields so a provider-compatible multi-turn history can be replayed
+                # (e.g. DeepSeek rejects a tool-calling request whose previous assistant
+                # turn omits `reasoning_content`). Warn rather than drop them silently.
+                lazyllm.LOG.warning(
+                    f'{type(self).__name__}: formatting an assistant message that '
+                    'contains `tool_calls`; `tool_calls` and `reasoning_content` will be '
+                    'dropped. Configure the model with `FunctionCallFormatter` for tool '
+                    'calling.'
+                )
             if reasoning_content := msg.get('reasoning_content'):
                 msg = f'<think>{reasoning_content}</think>' + msg['content']
             else:

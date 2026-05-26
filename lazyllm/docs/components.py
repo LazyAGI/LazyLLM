@@ -2659,7 +2659,9 @@ add_example('EmptyFormatter', """\
 add_chinese_doc('formatter.formatterbase.FunctionCallFormatter', '''\
 函数调用格式化器，用于处理包含函数调用信息的消息字典。
 
-该格式化器专门用于处理函数调用场景下的模型输出，只提取字典中的 'role'、'content' 和 'tool_calls' 字段，过滤掉其他不需要的字段。
+该格式化器专门用于处理函数调用场景下的模型输出，保留字典中的 'role'、'content'、'tool_calls' 以及 'reasoning_content' 字段，过滤掉其他不需要的字段。
+
+与基础格式化器不同：基础格式化器会把 assistant 消息折叠为纯文本，从而丢弃 ``tool_calls`` 与 ``reasoning_content``。任何会产生 ``tool_calls`` 的模型都必须配置本格式化器，以便可以按 provider 兼容的方式回放多轮历史（例如 DeepSeek 在工具调用请求中，要求上一轮 assistant 消息保留 ``reasoning_content``，否则会拒绝请求）。当模型携带 ``tool_calls`` 却仍命中基础格式化器时，框架会输出 warning 日志，提示切换到本格式化器。
 
 主要用于 FunctionCall 等工具调用相关的功能模块。
 
@@ -2668,13 +2670,15 @@ Args:
 
 注意:
     - 输入必须是字典类型，否则会抛出断言错误
-    - 只保留字典中存在的 'role'、'content'、'tool_calls' 字段
+    - 只保留字典中存在的 'role'、'content'、'tool_calls'、'reasoning_content' 字段
 ''')
 
 add_english_doc('formatter.formatterbase.FunctionCallFormatter', '''\
 Function call formatter for processing message dictionaries containing function call information.
 
-This formatter is specifically designed for handling model outputs in function calling scenarios. It extracts only the 'role', 'content', and 'tool_calls' fields from the input dictionary, filtering out other unnecessary fields.
+This formatter is specifically designed for handling model outputs in function calling scenarios. It preserves the 'role', 'content', 'tool_calls', and 'reasoning_content' fields from the input dictionary, filtering out other unnecessary fields.
+
+Unlike the base formatter, which collapses an assistant message to plain text and therefore drops ``tool_calls`` and ``reasoning_content``, this keeps those structured fields. Any model that produces ``tool_calls`` must be configured with this formatter so that a provider-compatible multi-turn history can be replayed (e.g. DeepSeek rejects a tool-calling request whose previous assistant turn omits ``reasoning_content``). When a message carrying ``tool_calls`` still hits the base formatter, the framework emits a warning log suggesting that this formatter be used instead.
 
 Primarily used in function calling-related modules such as FunctionCall.
 
@@ -2683,7 +2687,7 @@ Args:
 
 Note:
     - Input must be a dictionary type, otherwise an assertion error will be raised
-    - Only preserves 'role', 'content', and 'tool_calls' fields if they exist in the dictionary
+    - Only preserves 'role', 'content', 'tool_calls', and 'reasoning_content' fields if they exist in the dictionary
 ''')
 
 add_example('formatter.formatterbase.FunctionCallFormatter', '''\
