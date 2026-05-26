@@ -245,10 +245,10 @@ class PaddleOCRPDFReader(_OcrReaderBase):
     @staticmethod
     def _resolve_image(block_bbox: List[float],
                        markdown_images: Dict[str, str]) -> Optional[tuple]:
-        """Resolve image src and URL from markdown_images by matching bbox in key.
+        '''Resolve image src and URL from markdown_images by matching bbox in key.
 
         Image keys follow the pattern: imgs/img_in_image_box_{x0}_{y0}_{x1}_{y1}.jpg
-        """
+        '''
         if not markdown_images:
             LOG.warning('[PaddleOCRPDFReader] image block has no markdown_images, skipped')
             return None
