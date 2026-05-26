@@ -23,10 +23,10 @@ _TEST_PDF_PATH = _TEST_PDF_DIR / 'test_paddleocr.pdf'
 
 
 def _helvetica_content(texts):
-    """Build a PDF content stream with positionable Helvetica text.
+    '''Build a PDF content stream with positionable Helvetica text.
 
     texts: list of (font_size, x, y, text) — y=0 is bottom of page.
-    """
+    '''
     lines = ['BT']
     for size, x, y, text in texts:
         escaped = text.replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
@@ -39,7 +39,7 @@ def _helvetica_content(texts):
 
 
 def _build_minimal_pdf(pages_texts, width=612, height=792):
-    """Build a valid multi-page PDF from lists of (font_size, x, y, text) tuples."""
+    '''Build a valid multi-page PDF from lists of (font_size, x, y, text) tuples.'''
     objects = {}
     font_obj = 6
 
@@ -107,7 +107,7 @@ def _build_minimal_pdf(pages_texts, width=612, height=792):
 
 
 def _make_test_pdf():
-    """Return path to a real 2-page PDF (cached)."""
+    '''Return path to a real 2-page PDF (cached).'''
     if _TEST_PDF_PATH.exists():
         return _TEST_PDF_PATH
 
