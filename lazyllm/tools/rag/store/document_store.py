@@ -432,9 +432,14 @@ class _DocumentStore(object):
                 raise ValueError(f'[_DocumentStore] Embed keys {embed_keys}'
                                  ' are not supported when no vector store is provided')
             # vector search
+            collection_name = self._gen_collection_name(group_name)
+            if not self.vec_impl.collection_exists(collection_name):
+                LOG.warning(f'[_DocumentStore] collection {collection_name!r} does not exist, '
+                            f'skipping vector search for group {group_name!r}')
+                return []
             for embed_key in embed_keys:
                 query_embedding = self._embed.get(embed_key)(query)
-                search_res = self.vec_impl.search(collection_name=self._gen_collection_name(group_name),
+                search_res = self.vec_impl.search(collection_name=collection_name,
                                                   query=query, query_embedding=query_embedding,
                                                   topk=topk, filters=filters, embed_key=embed_key, **kwargs)
                 if search_res:

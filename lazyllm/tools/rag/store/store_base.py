@@ -135,6 +135,16 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
         if self.capability & StoreCapability.VECTOR:
             self.connect(*args, **kwargs)
 
+    def collection_exists(self, collection_name: str) -> bool:
+        '''Return True when the collection exists in the backend.
+
+        Default: assume it exists so callers that do not override this method
+        keep their current behaviour.  Vector-store backends (e.g. Milvus)
+        should override to perform a real check so that embedding computation
+        can be skipped when the collection has not been created yet.
+        '''
+        return True
+
     def try_read_dims_from_schema(self, collections: List[str]) -> Tuple[Dict[str, int], Dict[str, DataType]]:
         '''Try to read embed_dims and embed_datatypes from existing backend schema.
 

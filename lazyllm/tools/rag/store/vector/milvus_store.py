@@ -567,6 +567,15 @@ class MilvusStore(EmbedResolveMixin, LazyLLMStoreBase):
         return res
 
     @override
+    def collection_exists(self, collection_name: str) -> bool:
+        try:
+            with self._client_context() as client:
+                return client.has_collection(collection_name)
+        except Exception as e:
+            LOG.warning(f'[Milvus Store - collection_exists] error checking {collection_name}: {e}')
+            return False
+
+    @override
     def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int,
                filters: Optional[Dict[str, Union[List, set]]] = None, embed_key: Optional[str] = None,
                filter_str: Optional[str] = '', **kwargs) -> List[dict]:

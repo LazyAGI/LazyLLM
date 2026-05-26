@@ -433,7 +433,16 @@ class DocumentProcessor(ModuleBase):
                     if policy == 'force':
                         LOG.warning(f'[DocumentProcessor] force policy: overwriting node group {ng_name!r} '
                                     f'(old_sig={existing.signature}, new_sig={sig})')
-                        existing.signature, existing.info_pickle = sig, dump_obj(cfg)
+                        # Preserve runtime-mutable fields (e.g. lazy_mode) that are stored in
+                        # info_pickle but are not part of the static node-group config.
+                        merged_cfg = dict(cfg)
+                        try:
+                            old_cfg = load_obj(existing.info_pickle)
+                            if isinstance(old_cfg, dict) and 'lazy_mode' in old_cfg:
+                                merged_cfg['lazy_mode'] = old_cfg['lazy_mode']
+                        except Exception:
+                            pass
+                        existing.signature, existing.info_pickle = sig, dump_obj(merged_cfg)
                         existing.updated_at = datetime.now()
                     else:
                         raise ValueError(f'Node group {ng_name!r} already registered with different signature '

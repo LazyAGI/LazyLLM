@@ -208,6 +208,18 @@ class ChromaStore(EmbedResolveMixin, LazyLLMStoreBase):
             LOG.error(traceback.format_exc())
 
     @override
+    def collection_exists(self, collection_name: str) -> bool:
+        # Chroma uses one sub-collection per embed_key; the group collection
+        # is considered to exist when at least one embed_key sub-collection exists.
+        for embed_key in self._embed_datatypes:
+            try:
+                self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
+                return True
+            except Exception:
+                continue
+        return False
+
+    @override
     def search(self, collection_name: str, query_embedding: List[float], embed_key: str, topk: Optional[int] = 10,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                **kwargs) -> List[dict]:
