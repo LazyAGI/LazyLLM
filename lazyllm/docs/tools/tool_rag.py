@@ -545,6 +545,10 @@ _add_bilingual_docs({
             '批量删除多个知识库。',
             'Delete multiple knowledge bases in one batch.'
         ),
+        'set_node_group_lazy_mode': (
+            '设置指定节点组的懒加载模式。',
+            'Set the lazy-loading mode for a specific node group.'
+        ),
         'close': (
             '释放底层数据库连接池等资源。',
             'Dispose of the underlying database connection pool and release resources.'
@@ -586,6 +590,10 @@ _add_bilingual_docs({
         'list_doc_chunks': (
             '获取指定文档在某个节点组下的 chunk 列表。',
             'Get parsed chunks for one document under a specific node group.'
+        ),
+        'set_node_group_lazy_mode': (
+            '设置指定节点组的懒加载模式。',
+            'Set the lazy-loading mode for a specific node group.'
         ),
     }.items()
 })
@@ -665,6 +673,10 @@ _add_bilingual_docs({
         'delete_kbs': (
             '批量删除多个知识库。',
             'Delete multiple knowledge bases in one batch.'
+        ),
+        'set_node_group_lazy_mode': (
+            '设置指定节点组的懒加载模式。',
+            'Set the lazy-loading mode for a specific node group.'
         ),
     }.items()
 })
@@ -4138,6 +4150,22 @@ add_english_doc('rag.parsing_service.server.DocumentProcessor.start', '''
 Start the document processing service.
 This method will start the service port and start the worker threads, and subsequent documents can be processed using this service.
 If the worker thread number is set to greater than 0 in the service, the worker threads will be started, otherwise only the service will be started.
+''')
+
+add_chinese_doc('rag.parsing_service.server.DocumentProcessor.set_node_group_lazy_mode', '''
+设置指定节点组的懒加载模式。
+
+Args:
+    group_name (str): 节点组名称。
+    lazy_mode (Optional[str]): 懒加载模式，可选值为 ``None``、``"embed"`` 或 ``"all"``。``None`` 表示禁用懒加载；``"embed"`` 表示跳过向量化步骤；``"all"`` 表示跳过解析和向量化步骤。
+''')
+
+add_english_doc('rag.parsing_service.server.DocumentProcessor.set_node_group_lazy_mode', '''
+Set the lazy-loading mode for a specific node group.
+
+Args:
+    group_name (str): Name of the node group.
+    lazy_mode (Optional[str]): Lazy-loading mode. Accepted values are ``None``, ``"embed"``, or ``"all"``. ``None`` disables lazy mode; ``"embed"`` skips the embedding step; ``"all"`` skips both parsing and embedding steps.
 ''')
 
 add_chinese_doc('rag.parsing_service.worker.DocumentProcessorWorker', '''
