@@ -117,8 +117,7 @@ class ParserClient:
         data = self._request('GET', '/doc/chunks', params=params)
         return BaseResponse.model_validate(data)
 
-    def set_node_group_lazy_mode(self, algo_id: str, group_name: str,
-                                 lazy_mode: Optional[str] = None):
+    def set_node_group_lazy_mode(self, group_name: str, lazy_mode: Optional[str] = None):
         params = {'lazy_mode': lazy_mode} if lazy_mode is not None else {}
-        data = self._request('POST', f'/algo/{algo_id}/ng/{group_name}/lazy_mode', params=params)
+        data = self._request('POST', f'/ng/{group_name}/lazy_mode', params=params)
         return BaseResponse.model_validate(data)

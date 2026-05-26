@@ -1077,14 +1077,12 @@ class DocServer(ModuleBase):
                 '/v1/kbs:delete', idempotency_key, payload, lambda: self._manager.delete_kbs(kb_ids)
             ))
 
-        @app.post('/v1/algo/{algo_id}/ng/{group_name}/lazy_mode')
-        def set_node_group_lazy_mode(self, algo_id: str, group_name: str,
+        @app.post('/v1/ng/{group_name}/lazy_mode')
+        def set_node_group_lazy_mode(self, group_name: str,
                                      lazy_mode: Optional[str] = None):
             self._lazy_init()
-            return self._run(lambda: self._manager.set_node_group_lazy_mode(algo_id, group_name, lazy_mode))
+            return self._run(lambda: self._manager.set_node_group_lazy_mode(group_name, lazy_mode))
 
-        @app.get('/v1/health')
-        
         @app.get('/v1/health')
         def health(self):
             self._lazy_init()
@@ -1331,6 +1329,5 @@ class DocServer(ModuleBase):
         '''Trigger dataset scanning for a local doc service after registrations are ready.'''
         return self._dispatch('enable_scanning')
 
-    def set_node_group_lazy_mode(self, algo_id: str, group_name: str,
-                                 lazy_mode: Optional[str] = None):
-        return self._dispatch('set_node_group_lazy_mode', algo_id, group_name, lazy_mode)
+    def set_node_group_lazy_mode(self, group_name: str, lazy_mode: Optional[str] = None):
+        return self._dispatch('set_node_group_lazy_mode', group_name, lazy_mode)

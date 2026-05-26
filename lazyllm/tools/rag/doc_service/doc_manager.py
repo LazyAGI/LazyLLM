@@ -1497,12 +1497,11 @@ class DocManager:
             LOG.warning(f'[DocService] Parser health check failed: {exc}')
         return {'status': 'ok', 'version': 'v1', 'deps': {'sql': True, 'parser': parser_ok}}
 
-    def set_node_group_lazy_mode(self, algo_id: str, group_name: str,
-                                 lazy_mode: Optional[str] = None) -> dict:
-        resp = self._parser_client.set_node_group_lazy_mode(algo_id, group_name, lazy_mode)
+    def set_node_group_lazy_mode(self, group_name: str, lazy_mode: Optional[str] = None) -> dict:
+        resp = self._parser_client.set_node_group_lazy_mode(group_name, lazy_mode)
         if resp.code != 200:
             raise DocServiceError('E_UPSTREAM_ERROR', resp.msg,
-                                  {'algo_id': algo_id, 'group_name': group_name, 'upstream_status': resp.code})
+                                  {'group_name': group_name, 'upstream_status': resp.code})
         return resp.data or {}
 
     def list_kbs(self, page: int = 1, page_size: int = 20, keyword: Optional[str] = None,

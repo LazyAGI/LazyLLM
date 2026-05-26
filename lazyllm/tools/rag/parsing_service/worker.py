@@ -349,11 +349,10 @@ class DocumentProcessorWorker(ModuleBase):
                     self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'FAILED', str(e))
                 raise e
 
-        def _exec_reparse_task(
-            self, processor: _Processor, task_id: str, payload: dict,
-            node_groups: Dict[str, Dict], name_to_id: Dict[str, str],
-            reader: Optional[DirectoryReader]
-        ):
+        # TODO: simplify this function
+        def _exec_reparse_task(self, processor: _Processor, task_id: str, payload: dict,  # noqa C901
+                               node_groups: Dict[str, Dict], name_to_id: Dict[str, str],
+                               reader: Optional[DirectoryReader]):
             file_infos = payload.get('file_infos')
             kb_id = payload.get('kb_id', None)
             ng_names_requested = payload.get('ng_names')  # None means full reparse
