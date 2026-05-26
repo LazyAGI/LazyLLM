@@ -433,7 +433,16 @@ class DocumentProcessor(ModuleBase):
                     if policy == 'force':
                         LOG.warning(f'[DocumentProcessor] force policy: overwriting node group {ng_name!r} '
                                     f'(old_sig={existing.signature}, new_sig={sig})')
-                        existing.signature, existing.info_pickle = sig, dump_obj(cfg)
+                        # Preserve runtime-mutable fields (e.g. lazy_mode) that are stored in
+                        # info_pickle but are not part of the static node-group config.
+                        merged_cfg = dict(cfg)
+                        try:
+                            old_cfg = load_obj(existing.info_pickle)
+                            if isinstance(old_cfg, dict) and 'lazy_mode' in old_cfg:
+                                merged_cfg['lazy_mode'] = old_cfg['lazy_mode']
+                        except Exception:
+                            pass
+                        existing.signature, existing.info_pickle = sig, dump_obj(merged_cfg)
                         existing.updated_at = datetime.now()
                     else:
                         raise ValueError(f'Node group {ng_name!r} already registered with different signature '
@@ -706,6 +715,56 @@ class DocumentProcessor(ModuleBase):
             except Exception as e:
                 LOG.error(f'[DocumentProcessor] Failed to get group info: {e}, {traceback.format_exc()}')
                 raise fastapi.HTTPException(status_code=500, detail=f'Failed to get group info: {str(e)}')
+
+        @app.post('/ng/{group_name}/lazy_mode')
+        def set_node_group_lazy_mode(self, group_name: str,
+                                     lazy_mode: Optional[str] = None):
+            self._lazy_init()
+            if self._shutdown:
+                raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
+            if lazy_mode not in (None, 'embed', 'all'):
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail=f'lazy_mode must be null, "embed" or "all", got {lazy_mode!r}',
+                )
+            try:
+                with self._db_manager.get_session() as session:
+                    NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                    row = session.query(NodeGroupInfo).filter(NodeGroupInfo.name == group_name).first()
+                    if row is None:
+                        raise fastapi.HTTPException(status_code=404, detail=f'Node group {group_name!r} not in DB')
+                    cfg = load_obj(row.info_pickle)
+                    cfg['lazy_mode'] = lazy_mode
+                    row.info_pickle = dump_obj(cfg)
+                    row.updated_at = datetime.now()
+                    session.add(row)
+                return BaseResponse(code=200, msg='success',
+                                    data={'group_name': group_name, 'lazy_mode': lazy_mode})
+            except fastapi.HTTPException:
+                raise
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to set lazy_mode: {e}, {traceback.format_exc()}')
+                raise fastapi.HTTPException(status_code=500, detail=f'Failed to set lazy_mode: {str(e)}')
+
+        @app.get('/ng/{group_name}/lazy_mode')
+        def get_node_group_lazy_mode(self, group_name: str):
+            self._lazy_init()
+            if self._shutdown:
+                raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
+            try:
+                with self._db_manager.get_session() as session:
+                    NodeGroupInfo = self._db_manager.get_table_orm_class('lazyllm_node_group')
+                    row = session.query(NodeGroupInfo).filter(NodeGroupInfo.name == group_name).first()
+                    if row is None:
+                        raise fastapi.HTTPException(status_code=404, detail=f'Node group {group_name!r} not in DB')
+                    cfg = load_obj(row.info_pickle)
+                    return BaseResponse(code=200, msg='success',
+                                        data={'group_name': group_name, 'lazy_mode': cfg.get('lazy_mode')})
+            except fastapi.HTTPException:
+                raise
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to get lazy_mode: {e}, {traceback.format_exc()}')
+                raise fastapi.HTTPException(status_code=500, detail=f'Failed to get lazy_mode: {str(e)}')
 
         def _get_or_init_store(self, algorithm: dict, init: bool = False) -> Optional['_DocumentStore']:
             '''Return the global _DocumentStore, lazily loaded from DB info_pickle.
@@ -1193,3 +1252,7 @@ class DocumentProcessor(ModuleBase):
 
     def drop_algorithm(self, name: str) -> None:
         return self._dispatch('drop_algorithm', name)
+
+    def set_node_group_lazy_mode(self, group_name: str,
+                                 lazy_mode: Optional[str] = None) -> None:
+        return self._dispatch('set_node_group_lazy_mode', group_name, lazy_mode)

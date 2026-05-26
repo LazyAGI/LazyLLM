@@ -7,6 +7,7 @@ from lazyllm.common import LazyLLMRegisterMetaABCClass
 from pydantic import BaseModel, Field
 
 from ..data_type import DataType
+from ..utils import is_sparse
 from ..global_metadata import (
     GlobalMetadataDesc, RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_FILE_NAME,
     RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE, RAG_DOC_CREATION_DATE,
@@ -71,6 +72,25 @@ class StoreCapability(IntFlag):
     ALL = SEGMENT | VECTOR
 
 
+class EmbedResolveMixin:
+    '''Mixin for stores that lazily resolve embed dims/datatypes when creating a new collection.
+    Requires the host class to have _embed, _embed_dims, _embed_datatypes attributes.'''
+
+    def _resolve_missing_embed_specs(self, embed_keys: Set[str]) -> None:
+        # Must be called inside _ddl_lock to be thread-safe.
+        for k in embed_keys:
+            if k in self._embed_datatypes:
+                continue
+            if not self._embed or k not in self._embed:
+                raise ValueError(f'Cannot resolve embed specs for key {k!r}: embed function not available')
+            embedding = self._embed[k]('a')
+            if is_sparse(embedding):
+                self._embed_datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
+            else:
+                self._embed_dims[k] = len(embedding)
+                self._embed_datatypes[k] = DataType.FLOAT_VECTOR
+
+
 class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
     capability: StoreCapability
     need_embedding: bool = True
@@ -114,6 +134,16 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
         # For pure SEGMENT stores: vec_connect is a no-op.
         if self.capability & StoreCapability.VECTOR:
             self.connect(*args, **kwargs)
+
+    def collection_exists(self, collection_name: str) -> bool:
+        '''Return True when the collection exists in the backend.
+
+        Default: assume it exists so callers that do not override this method
+        keep their current behaviour.  Vector-store backends (e.g. Milvus)
+        should override to perform a real check so that embedding computation
+        can be skipped when the collection has not been created yet.
+        '''
+        return True
 
     def try_read_dims_from_schema(self, collections: List[str]) -> Tuple[Dict[str, int], Dict[str, DataType]]:
         '''Try to read embed_dims and embed_datatypes from existing backend schema.

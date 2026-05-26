@@ -7,13 +7,13 @@ from queue import Queue, Empty, Full
 from packaging import version
 from urllib import parse
 from pathlib import Path
-from typing import Dict, List, Tuple, Union, Optional, Set
+from typing import Dict, List, Tuple, Union, Optional, Set, Callable
 
 from lazyllm import LOG
 from lazyllm.thirdparty import pymilvus
 from lazyllm.common import override
 
-from ..store_base import LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX, EMBED_PREFIX
+from ..store_base import LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX, EMBED_PREFIX, EmbedResolveMixin
 from ...data_type import DataType
 from ...global_metadata import GlobalMetadataDesc
 
@@ -64,7 +64,7 @@ class _ClientPool:
             c.close()
 
 
-class MilvusStore(LazyLLMStoreBase):
+class MilvusStore(EmbedResolveMixin, LazyLLMStoreBase):
     capability = StoreCapability.VECTOR
     need_embedding = True
     supports_index_registration = False
@@ -128,16 +128,17 @@ class MilvusStore(LazyLLMStoreBase):
     @override
     def connect(self, embed_dims: Optional[Dict[str, int]] = None,
                 embed_datatypes: Optional[Dict[str, DataType]] = None,
+                embed: Optional[Dict[str, Callable]] = None,
                 global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
         self._embed_dims = embed_dims or {}
         self._embed_datatypes = embed_datatypes or {}
+        self._embed = embed or {}
         self._global_metadata_desc = global_metadata_desc or {}
         self._set_constants()
 
         self._ddl_lock = threading.Lock()
         self._db_ready = False
         self._ensure_database()
-        self._index_kwargs = self.validate_milvus_embed_keys(self._index_kwargs)
 
         max_pool_size = int(self._client_kwargs.pop('max_pool_size', 8))
         self._client_pool = _ClientPool(self._new_client, max_size=max_pool_size)
@@ -238,15 +239,21 @@ class MilvusStore(LazyLLMStoreBase):
                     return True
 
                 if not collection_exists:
-                    embed_kwargs = {}
-                    for embed_key in required_embed_keys:
-                        assert self._embed_datatypes.get(embed_key), \
-                            f'cannot find embedding params for embed [{embed_key}]'
-                        if embed_key not in embed_kwargs:
-                            embed_kwargs[embed_key] = {'dtype': self._type2milvus[self._embed_datatypes[embed_key]]}
-                        if self._embed_dims.get(embed_key): embed_kwargs[embed_key]['dim'] = self._embed_dims[embed_key]
                     with self._ddl_lock:
                         if not client.has_collection(collection_name):
+                            self._resolve_missing_embed_specs(required_embed_keys)
+                            if self._index_kwargs is not None:
+                                self._index_kwargs = self.validate_milvus_embed_keys(self._index_kwargs)
+                            embed_kwargs = {}
+                            for embed_key in required_embed_keys:
+                                assert self._embed_datatypes.get(embed_key), \
+                                    f'cannot find embedding params for embed [{embed_key}]'
+                                if embed_key not in embed_kwargs:
+                                    embed_kwargs[embed_key] = {
+                                        'dtype': self._type2milvus[self._embed_datatypes[embed_key]]
+                                    }
+                                if self._embed_dims.get(embed_key):
+                                    embed_kwargs[embed_key]['dim'] = self._embed_dims[embed_key]
                             self._create_collection(client, collection_name, embed_kwargs)
 
                 for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
@@ -558,6 +565,15 @@ class MilvusStore(LazyLLMStoreBase):
                     raise ValueError(f'invalid criteria type: {type(vaule)}')
             res['filter'] = filter_str
         return res
+
+    @override
+    def collection_exists(self, collection_name: str) -> bool:
+        try:
+            with self._client_context() as client:
+                return client.has_collection(collection_name)
+        except Exception as e:
+            LOG.warning(f'[Milvus Store - collection_exists] error checking {collection_name}: {e}')
+            return False
 
     @override
     def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int,

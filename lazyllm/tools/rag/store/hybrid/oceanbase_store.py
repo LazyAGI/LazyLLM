@@ -4,7 +4,7 @@ import threading
 import traceback
 from contextlib import contextmanager
 from queue import Queue, Empty, Full
-from typing import Dict, List, Union, Optional
+from typing import Dict, List, Union, Optional, Callable
 from lazyllm.thirdparty import numpy as np
 import math
 import sqlalchemy
@@ -16,7 +16,7 @@ from lazyllm.common import override
 from ...data_type import DataType
 from ...global_metadata import GlobalMetadataDesc
 from ..store_base import (LazyLLMStoreBase, StoreCapability,
-                          GLOBAL_META_KEY_PREFIX, EMBED_PREFIX, SegmentType)
+                          GLOBAL_META_KEY_PREFIX, EMBED_PREFIX, SegmentType, EmbedResolveMixin)
 
 OCEANBASE_INDEX_TYPE_DEFAULTS = {
     'HNSW': {'metric_type': 'l2', 'params': {'M': 16, 'efConstruction': 200}},
@@ -62,7 +62,7 @@ class _ClientPool:
                 pass
 
 
-class OceanBaseStore(LazyLLMStoreBase):
+class OceanBaseStore(EmbedResolveMixin, LazyLLMStoreBase):
     capability = StoreCapability.ALL
     need_embedding = True
     supports_index_registration = True
@@ -116,9 +116,11 @@ class OceanBaseStore(LazyLLMStoreBase):
     @override
     def connect(self, embed_dims: Optional[Dict[str, int]] = None,
                 embed_datatypes: Optional[Dict[str, DataType]] = None,
+                embed: Optional[Dict[str, Callable]] = None,
                 global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
         self._embed_dims = embed_dims or {}
         self._embed_datatypes = embed_datatypes or {}
+        self._embed = embed or {}
         self._global_metadata_desc = global_metadata_desc or {}
         self._set_constants()
 
@@ -150,6 +152,7 @@ class OceanBaseStore(LazyLLMStoreBase):
             with self._client_context() as client:
                 with self._ddl_lock:
                     if not client.check_table_exists(collection_name):
+                        self._resolve_missing_embed_specs(all_embed_keys)
                         embed_kwargs = {}
                         if all_embed_keys:
                             for embed_key in all_embed_keys:
@@ -163,13 +166,6 @@ class OceanBaseStore(LazyLLMStoreBase):
                                     }
                                 if self._embed_dims.get(embed_key):
                                     embed_kwargs[embed_key]['dim'] = self._embed_dims[embed_key]
-                                else:
-                                    for item in data:
-                                        if 'embedding' in item and embed_key in item['embedding']:
-                                            emb = item['embedding'][embed_key]
-                                            if isinstance(emb, list) and len(emb) > 0:
-                                                embed_kwargs[embed_key]['dim'] = len(emb)
-                                                break
 
                         self._create_table_and_index(client, collection_name, embed_kwargs, range_part)
 

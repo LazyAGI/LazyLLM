@@ -728,7 +728,8 @@ class DocManager:
                             parser_kb_id: Optional[str] = None,
                             transfer_params: Optional[Dict[str, Any]] = None,
                             node_group_ids_to_delete: Optional[List[str]] = None,
-                            llm_config: Optional[Dict[str, Any]] = None):
+                            llm_config: Optional[Dict[str, Any]] = None,
+                            embed_only: bool = False):
         if task_type in (TaskType.DOC_ADD, TaskType.DOC_REPARSE, TaskType.DOC_TRANSFER):
             if not file_path:
                 raise RuntimeError(f'file_path is required for task_type {task_type.value}')
@@ -737,7 +738,7 @@ class DocManager:
                 ng_names=ng_names, extractor_names=extractor_names,
                 task_type=task_type.value,
                 callback_url=self._callback_url, transfer_params=transfer_params,
-                llm_config=llm_config)
+                llm_config=llm_config, embed_only=embed_only)
         elif task_type == TaskType.DOC_UPDATE_META:
             task_resp = self._parser_client.update_meta(
                 task_id, kb_id, doc_id, metadata, file_path, callback_url=self._callback_url)
@@ -758,7 +759,7 @@ class DocManager:
                       cleanup_policy: Optional[str] = None, parser_kb_id: Optional[str] = None,
                       transfer_params: Optional[Dict[str, Any]] = None,
                       extra_message: Optional[Dict[str, Any]] = None, parser_doc_id: Optional[str] = None,
-                      llm_config: Optional[Dict[str, Any]] = None):
+                      llm_config: Optional[Dict[str, Any]] = None, embed_only: bool = False):
         algo_ids = algo_ids or []
         algo_id = algo_ids[0] if algo_ids else None
         task_id = str(uuid4())
@@ -797,7 +798,7 @@ class DocManager:
                 file_path=file_path, metadata=metadata,
                 parser_kb_id=parser_kb_id, transfer_params=transfer_params,
                 node_group_ids_to_delete=exclusive_ng_ids,
-                llm_config=llm_config)
+                llm_config=llm_config, embed_only=embed_only)
         except Exception as exc:
             finished_at = datetime.now()
             error_msg = str(exc)
@@ -1019,6 +1020,7 @@ class DocManager:
                 metadata=item['metadata'],
                 ng_names=ng_names,
                 llm_config=request.llm_config,
+                embed_only=request.embed_only,
             )
             task_ids.append(task_id)
         return task_ids
@@ -1494,6 +1496,13 @@ class DocManager:
         except Exception as exc:
             LOG.warning(f'[DocService] Parser health check failed: {exc}')
         return {'status': 'ok', 'version': 'v1', 'deps': {'sql': True, 'parser': parser_ok}}
+
+    def set_node_group_lazy_mode(self, group_name: str, lazy_mode: Optional[str] = None) -> dict:
+        resp = self._parser_client.set_node_group_lazy_mode(group_name, lazy_mode)
+        if resp.code != 200:
+            raise DocServiceError('E_UPSTREAM_ERROR', resp.msg,
+                                  {'group_name': group_name, 'upstream_status': resp.code})
+        return resp.data or {}
 
     def list_kbs(self, page: int = 1, page_size: int = 20, keyword: Optional[str] = None,
                  status: Optional[List[str]] = None, owner_id: Optional[str] = None):
