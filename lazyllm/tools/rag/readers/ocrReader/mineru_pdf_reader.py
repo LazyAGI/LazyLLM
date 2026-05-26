@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 import uuid
 import zipfile
 import requests
@@ -10,6 +11,7 @@ from concurrent.futures import as_completed
 from lazyllm.common.threading import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Callable
+from urllib.parse import urlparse
 from typing_extensions import override
 
 import lazyllm
@@ -26,6 +28,12 @@ from .ocr_ir import (
 from .ocr_reader_base import _OcrReaderBase, ServiceVariant
 
 lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='The API key for Mineru')
+
+_IMAGE_REF_PATTERN = re.compile(
+    r'images/[^\s\)"\'\]<]+\.(?:jpg|jpeg|png|gif|bmp|webp|tiff|tif)',
+    re.IGNORECASE,
+)
+_OFFLINE_API_PATH = '/api/v1/pdf_parse'
 
 
 class MineruPDFReader(_OcrReaderBase):
@@ -56,6 +64,15 @@ class MineruPDFReader(_OcrReaderBase):
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._patch_applied = patch_applied
         self._api_key = lazyllm.config['mineru_api_key']
+        if self._service_variant == ServiceVariant.OFFLINE and self._url:
+            self._url = self._normalize_offline_url(self._url)
+
+    @staticmethod
+    def _normalize_offline_url(url: str) -> str:
+        raw = url.strip().rstrip('/')
+        if raw.endswith(_OFFLINE_API_PATH):
+            return raw
+        return f'{raw}{_OFFLINE_API_PATH}'
 
     @override
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True
@@ -64,6 +81,7 @@ class MineruPDFReader(_OcrReaderBase):
         _t0 = time.time()
         if self._service_variant == ServiceVariant.OFFLINE:
             response_text = self._fetch_sync(file_path, use_cache)
+            self._download_offline_images(response_text)
             task_dir = None
         else:
             response_text, task_dir = self._fetch_async(file_path, use_cache)
@@ -108,6 +126,116 @@ class MineruPDFReader(_OcrReaderBase):
         }
         response = post_sync(self._url, json_payload=payload, timeout=self._timeout)
         return response.text
+
+    @staticmethod
+    def _parse_service_endpoint(url: str) -> tuple:
+        raw = (url or '').strip().rstrip('/')
+        if not raw:
+            raise ValueError('[MineruPDFReader] url is required for offline image download')
+        if '://' not in raw:
+            raw = f'http://{raw}'
+        parsed = urlparse(raw)
+        host = parsed.hostname
+        port = parsed.port
+        scheme = parsed.scheme or 'http'
+        if not host and parsed.path:
+            reparsed = urlparse(f'http://{parsed.path.lstrip("/")}')
+            host = reparsed.hostname
+            port = reparsed.port
+        if not host:
+            raise ValueError(f'[MineruPDFReader] cannot parse host from url: {url!r}')
+        return scheme, host, port
+
+    def _image_base_url(self) -> str:
+        scheme, host, port = self._parse_service_endpoint(self._url)
+        if port:
+            return f'{scheme}://{host}:{port}'
+        return f'{scheme}://{host}'
+
+    @staticmethod
+    def _normalize_image_rel_path(path: str) -> str:
+        path = str(path).replace('\\', '/').strip()
+        if not path:
+            return ''
+        match = _IMAGE_REF_PATTERN.search(path)
+        if match:
+            return match.group(0)
+        if path.startswith('images/'):
+            return path.split('?')[0]
+        name = Path(path).name
+        if name and '.' in name:
+            return f'images/{name}'
+        return ''
+
+    def _offline_content_list(self, raw) -> List[dict]:
+        if self._patch_applied and isinstance(raw, dict):
+            return raw.get('result', [{}])[0].get('content_list', []) or []
+        if isinstance(raw, list):
+            return raw
+        return []
+
+    @staticmethod
+    def _add_image_paths_from_mapping(mapping: dict, rel_paths: Set[str]) -> None:
+        for key in ('img_path', 'image_path', 'image_url'):
+            normalized = MineruPDFReader._normalize_image_rel_path(mapping.get(key, ''))
+            if normalized:
+                rel_paths.add(normalized)
+
+    def _add_image_paths_from_item(self, item: dict, rel_paths: Set[str]) -> None:
+        self._add_image_paths_from_mapping(item, rel_paths)
+        for line in item.get('lines') or []:
+            if isinstance(line, dict):
+                self._add_image_paths_from_mapping(line, rel_paths)
+
+    def _collect_offline_image_paths(self, response_text: str) -> Set[str]:
+        rel_paths = set(_IMAGE_REF_PATTERN.findall(response_text))
+        try:
+            raw = json.loads(response_text)
+        except json.JSONDecodeError:
+            return rel_paths
+        for item in self._offline_content_list(raw):
+            if isinstance(item, dict):
+                self._add_image_paths_from_item(item, rel_paths)
+        return rel_paths
+
+    def _download_offline_images(self, response_text: str) -> None:
+        if not self._image_cache_dir or not response_text:
+            return
+        rel_paths = self._collect_offline_image_paths(response_text)
+        if not rel_paths:
+            LOG.warning('[MineruPDFReader] no image paths found in offline OCR response')
+            return
+        base_url = self._image_base_url().rstrip('/')
+        image_tasks = []
+        for rel_path in sorted(rel_paths):
+            save_path = self._image_cache_dir / rel_path
+            if save_path.is_file() and save_path.stat().st_size > 0:
+                continue
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            image_tasks.append((f'{base_url}/{rel_path}', save_path))
+        if not image_tasks:
+            return
+        LOG.info(
+            f'[MineruPDFReader] downloading {len(image_tasks)} offline images '
+            f'to {self._image_cache_dir} from {base_url}'
+        )
+        self._download_images(image_tasks)
+
+    @staticmethod
+    def _download_images(image_tasks: List[tuple]) -> None:
+        def _download_one(task: tuple) -> None:
+            img_url, save_path = task
+            try:
+                resp = requests.get(img_url, timeout=120)
+                resp.raise_for_status()
+                save_path.write_bytes(resp.content)
+            except Exception as exc:
+                LOG.warning(
+                    f'[MineruPDFReader] failed to download image {img_url} -> {save_path}: {exc}'
+                )
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            list(executor.map(_download_one, image_tasks))
 
     def _fetch_async(self, file, use_cache: bool = True):
         file_str = str(file)
