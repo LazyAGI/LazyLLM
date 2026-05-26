@@ -81,8 +81,9 @@ class MineruPDFReader(_OcrReaderBase):
         _t0 = time.time()
         if self._service_variant == ServiceVariant.OFFLINE:
             response_text = self._fetch_sync(file_path, use_cache)
-            self._download_offline_images(response_text)
-            task_dir = None
+            task_dir = self._image_cache_dir / str(uuid.uuid4())
+            task_dir.mkdir(parents=True, exist_ok=True)
+            self._download_offline_images(response_text, cache_dir=task_dir)
         else:
             response_text, task_dir = self._fetch_async(file_path, use_cache)
         _t_fetch = time.time() - _t0
@@ -154,9 +155,9 @@ class MineruPDFReader(_OcrReaderBase):
 
     @staticmethod
     def _normalize_image_rel_path(path: str) -> str:
-        path = str(path).replace('\\', '/').strip()
         if not path:
             return ''
+        path = str(path).replace('\\', '/').strip()
         match = _IMAGE_REF_PATTERN.search(path)
         if match:
             return match.group(0)
@@ -198,8 +199,8 @@ class MineruPDFReader(_OcrReaderBase):
                 self._add_image_paths_from_item(item, rel_paths)
         return rel_paths
 
-    def _download_offline_images(self, response_text: str) -> None:
-        if not self._image_cache_dir or not response_text:
+    def _download_offline_images(self, response_text: str, cache_dir: Path) -> None:
+        if not cache_dir or not response_text:
             return
         rel_paths = self._collect_offline_image_paths(response_text)
         if not rel_paths:
@@ -208,7 +209,7 @@ class MineruPDFReader(_OcrReaderBase):
         base_url = self._image_base_url().rstrip('/')
         image_tasks = []
         for rel_path in sorted(rel_paths):
-            save_path = self._image_cache_dir / rel_path
+            save_path = cache_dir / rel_path
             if save_path.is_file() and save_path.stat().st_size > 0:
                 continue
             save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -217,7 +218,7 @@ class MineruPDFReader(_OcrReaderBase):
             return
         LOG.info(
             f'[MineruPDFReader] downloading {len(image_tasks)} offline images '
-            f'to {self._image_cache_dir} from {base_url}'
+            f'to {cache_dir} from {base_url}'
         )
         self._download_images(image_tasks)
 
