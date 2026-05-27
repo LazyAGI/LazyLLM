@@ -148,12 +148,46 @@ jobs:
           echo "VIRTUAL_ENV=$VENV_DIR" >> $GITHUB_ENV
           echo "VENV_DIR=$VENV_DIR" >> $GITHUB_ENV
 
-      - name: Build doc
+      - name: Build doc (DIAGNOSE)
         run: |
           set -e
           pip install -e . --no-deps
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
+          echo "=== DIAGNOSE START ==="
+          echo "--- sys.meta_path ---"
+          python -c "import sys; [print(f'{i}: {type(f).__module__}.{type(f).__qualname__}') for i,f in enumerate(sys.meta_path)]"
+          echo ""
+          echo "--- find _lazyllm_editable files ---"
+          python -c "import site; print('venv site:', site.getsitepackages()); import sysconfig; print('user site:', site.getusersitepackages()); print('base prefix:', sysconfig.get_config_var('base'))" || true
+          find / -name "_lazyllm_editable.pth" -maxdepth 10 2>/dev/null | while read f; do echo "  .pth: $f"; cat "$f"; echo "---"; done
+          find / -name "_lazyllm_editable.py" -maxdepth 10 2>/dev/null | while read f; do echo "  .py: $f"; grep -o "'lazyllm\.tools\.git\.review[^']*'" "$f" 2>/dev/null || echo "  (no review entries)"; echo "---"; done
+          echo ""
+          echo "--- ScikitBuildRedirectingFinder details ---"
+          python -c "
+          import sys
+          for i, f in enumerate(sys.meta_path):
+              if 'ScikitBuild' in type(f).__name__:
+                  print(f'Position {i}:')
+                  fs = f.known_source_files
+                  print(f'  known_source_files count: {len(fs)}')
+                  print(f'  dir: {f.dir}')
+                  for k in ['lazyllm', 'lazyllm.tools.git', 'lazyllm.tools.git.review']:
+                      if k in fs:
+                          print(f'  {k} -> {fs[k]}')
+                  # Check pre_analysis specifically
+                  pa_key = 'lazyllm.tools.git.review.pre_analysis'
+                  if pa_key in fs:
+                      print(f'  {pa_key} -> {fs[pa_key]}')
+                  else:
+                      print(f'  {pa_key} NOT in mapping')
+          "
+          echo ""
+          echo "--- ls pre_analysis ---"
+          ls -la lazymllm/tools/git/review/pre_analysis* lazymllm/tools/git/review/pre_analysis/ 2>&1 || true
+          echo "--- ls review/__pycache__ ---"
+          ls -la lazymllm/tools/git/review/__pycache__/ 2>&1 || true
+          echo "=== DIAGNOSE END ==="
           LAZYLLM_INIT_DOC=True python -B docs/add_docstrings.py
 
       - name: Setup CI directory
