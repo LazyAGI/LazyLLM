@@ -151,7 +151,7 @@ jobs:
       - name: Build doc
         run: |
           set -e
-          pip install -e . --no-deps
+          python gen_editable.py "$VENV_DIR/lib/python3.10/site-packages"
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
           LAZYLLM_INIT_DOC=True python -B docs/add_docstrings.py
