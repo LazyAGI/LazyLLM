@@ -151,7 +151,7 @@ jobs:
       - name: Build doc
         run: |
           set -e
-          find "$VENV_DIR" -name "_lazyllm_editable*" -delete 2>/dev/null || true
+          pip install -e . --no-deps
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
           LAZYLLM_INIT_DOC=True python -B docs/add_docstrings.py
