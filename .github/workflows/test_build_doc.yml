@@ -19,7 +19,7 @@ jobs:
 
       - name: Setup Python venv
         run: |
-          VENV_DIR="/home/mnt/platform_ci/GitHub/.venv/_test_doc_fix_${{ runner.name }}"
+          VENV_DIR="~/GitHub/.venv/_test_doc_fix_${{ runner.name }}"
           rm -rf "$VENV_DIR"
           mkdir -p "$VENV_DIR"
           python -m venv --system-site-packages "$VENV_DIR"
