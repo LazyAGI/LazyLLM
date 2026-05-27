@@ -151,6 +151,7 @@ jobs:
       - name: Build doc
         run: |
           set -e
+          find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
           LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
