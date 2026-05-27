@@ -1,5 +1,8 @@
 import json
-from datetime import datetime
+import time
+import zipfile
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -13,7 +16,15 @@ from lazyllm.tracing.datamodel.raw import RawSpanRecord, RawTracePayload, RawTra
 from lazyllm.tracing.errors import ConsumeBackendError, TraceNotFound
 from lazyllm.tracing.semantics import is_valid_span_id, is_valid_trace_id
 
-from .config import read_local_storage_dir
+from .config import (
+    read_local_archive_retention_seconds,
+    read_local_archive_seconds,
+    read_local_storage_dir,
+)
+
+
+_TRACE_TIME_FORMAT = '%Y%m%d%H%M%S'
+_MAINTENANCE_LOCK_NAME = '.maintenance.lock'
 
 
 def _find_trace_path(storage_dir: Path, trace_id: str) -> Optional[Path]:
@@ -30,13 +41,164 @@ def _trace_path(storage_dir: Path, trace_id: str, timestamp: Optional[str] = Non
     path = _find_trace_path(storage_dir, trace_id)
     if path is not None:
         return path
-    timestamp = timestamp or datetime.now().strftime('%Y%m%d%H%M%S')
+    timestamp = timestamp or datetime.now().strftime(_TRACE_TIME_FORMAT)
     return storage_dir / f'{timestamp}_{trace_id}.jsonl'
 
 
-def _trace_lock(storage_dir: Path, trace_id: str, timeout_seconds: Optional[float] = None) -> FileLock:
-    timeout = timeout_seconds if timeout_seconds is not None else -1
-    return FileLock(str(storage_dir / f'.{trace_id}.lock'), timeout=timeout)
+def _maintenance_lock(storage_dir: Path, timeout_seconds: Optional[float] = None) -> FileLock:
+    timeout = timeout_seconds if timeout_seconds is not None else 0
+    return FileLock(str(storage_dir / _MAINTENANCE_LOCK_NAME), timeout=timeout)
+
+
+def _maintenance_active(storage_dir: Path) -> bool:
+    return (storage_dir / _MAINTENANCE_LOCK_NAME).exists()
+
+
+def _has_active_trace_locks(storage_dir: Path) -> bool:
+    for path in storage_dir.glob('.*.lock'):
+        if path.name == _MAINTENANCE_LOCK_NAME:
+            continue
+        lock = FileLock(str(path), timeout=0)
+        try:
+            lock.acquire()
+        except Timeout:
+            return True
+        else:
+            lock.release()
+    return False
+
+
+@contextmanager
+def _local_trace_lock(storage_dir: Path, trace_id: str, timeout_seconds: Optional[float] = None):
+    deadline = None if timeout_seconds is None or timeout_seconds < 0 else time.monotonic() + timeout_seconds
+
+    while True:
+        while _maintenance_active(storage_dir):
+            if deadline is not None and time.monotonic() >= deadline:
+                raise ConsumeBackendError(f'timed out waiting for local trace maintenance lock: {trace_id}')
+            time.sleep(0.01)
+
+        timeout = -1 if deadline is None else max(0, deadline - time.monotonic())
+        trace_lock = FileLock(str(storage_dir / f'.{trace_id}.lock'), timeout=timeout)
+        try:
+            with trace_lock:
+                if _maintenance_active(storage_dir):
+                    if deadline is not None and time.monotonic() >= deadline:
+                        raise ConsumeBackendError(
+                            f'timed out waiting for local trace maintenance lock: {trace_id}'
+                        )
+                    time.sleep(0.01)
+                    continue
+                yield
+                return
+        except Timeout as exc:
+            raise ConsumeBackendError(f'timed out waiting for local trace file lock: {trace_id}') from exc
+
+
+def _parse_prefix_time(path: Path) -> Optional[datetime]:
+    prefix = path.name.split('_', 1)[0] if path.suffix == '.jsonl' else path.stem
+    try:
+        return datetime.strptime(prefix, _TRACE_TIME_FORMAT)
+    except ValueError:
+        LOG.warning(f'Invalid local trace timestamp prefix: {path.name}')
+        return None
+
+
+def _is_older_than(path: Path, now: datetime, seconds: int) -> bool:
+    timestamp = _parse_prefix_time(path)
+    return timestamp is not None and timestamp <= now - timedelta(seconds=seconds)
+
+
+def _next_archive_path(storage_dir: Path, now: datetime) -> Path:
+    timestamp = now
+    while True:
+        # Keep archive names timestamp-sortable; on same-second collisions, try the next second.
+        path = storage_dir / f'{timestamp.strftime(_TRACE_TIME_FORMAT)}.zip'
+        if not path.exists() and not path.with_suffix('.zip.tmp').exists():
+            return path
+        timestamp += timedelta(seconds=1)
+
+
+def _warn_duplicate_trace_ids(paths: List[Path]) -> None:
+    trace_files: Dict[str, List[str]] = {}
+    for path in paths:
+        if path.name.endswith('.jsonl') and '_' in path.name:
+            trace_id = path.name.rsplit('_', 1)[1][:-len('.jsonl')]
+            trace_files.setdefault(trace_id, []).append(path.name)
+    for trace_id, names in trace_files.items():
+        if len(names) > 1:
+            LOG.warning(f'Found duplicate local trace files for trace_id={trace_id!r}: {names}')
+
+
+def _archive_old_jsonl(storage_dir: Path, now: datetime, archive_seconds: int) -> List[str]:
+    jsonl_paths = sorted(
+        path for path in storage_dir.glob('*.jsonl')
+        if _is_older_than(path, now, archive_seconds)
+    )
+    if not jsonl_paths:
+        return []
+
+    _warn_duplicate_trace_ids(jsonl_paths)
+    archive_path = _next_archive_path(storage_dir, now)
+    tmp_path = archive_path.with_suffix('.zip.tmp')
+    try:
+        with zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED) as zip_file:
+            for path in jsonl_paths:
+                zip_file.write(path, arcname=path.name)
+        tmp_path.replace(archive_path)  # Publish the completed archive atomically.
+        for path in jsonl_paths:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+    return [path.name for path in jsonl_paths]
+
+
+def _delete_expired_archives(storage_dir: Path, now: datetime, retention_seconds: int) -> List[str]:
+    deleted = []
+    for path in sorted(storage_dir.glob('*.zip')):
+        if not _is_older_than(path, now, retention_seconds):
+            continue
+        try:
+            path.unlink()
+            deleted.append(path.name)
+        except FileNotFoundError:
+            pass
+    return deleted
+
+
+def maintain_local_traces(storage_dir: Optional[Path] = None) -> Dict[str, List[str]]:
+    target_dir = Path(storage_dir) if storage_dir is not None else read_local_storage_dir()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    result = {'compressed_jsonl': [], 'deleted_zip': []}
+
+    try:
+        with _maintenance_lock(target_dir):
+            if _has_active_trace_locks(target_dir):
+                LOG.warning(f'Skipping local trace maintenance because trace lock is busy: {target_dir}')
+                return result
+            now = datetime.now()
+            archive_seconds = read_local_archive_seconds()
+            jsonl_times = [
+                timestamp
+                for path in target_dir.glob('*.jsonl')
+                if (timestamp := _parse_prefix_time(path)) is not None
+            ]
+            if jsonl_times and min(jsonl_times) <= now - timedelta(seconds=archive_seconds):
+                result['compressed_jsonl'] = _archive_old_jsonl(target_dir, now, archive_seconds)
+            result['deleted_zip'] = _delete_expired_archives(
+                target_dir,
+                now,
+                read_local_archive_retention_seconds(),
+            )
+    except Timeout:
+        LOG.warning(f'Skipping local trace maintenance because lock is busy: {target_dir}')
+
+    return result
 
 
 def _strip_otel_id_prefix(value):
@@ -158,14 +320,51 @@ def _read_trace_file(
     timeout_seconds: Optional[float],
 ) -> tuple[str, List[str]]:
     try:
-        with _trace_lock(storage_dir, trace_id, timeout_seconds=timeout_seconds):
+        with _local_trace_lock(storage_dir, trace_id, timeout_seconds=timeout_seconds):
             path = _find_trace_path(storage_dir, trace_id)
             if path is None:
-                raise TraceNotFound(trace_id)
-            with path.open('r', encoding='utf-8') as file_obj:
-                return path.name, file_obj.readlines()
+                return _read_archived_trace_file(storage_dir, trace_id)
+            try:
+                with path.open('r', encoding='utf-8') as file_obj:
+                    return path.name, file_obj.readlines()
+            except FileNotFoundError:
+                return _read_archived_trace_file(storage_dir, trace_id)
     except Timeout as exc:
         raise ConsumeBackendError(f'timed out waiting for local trace file lock: {trace_id}') from exc
+
+
+def _read_archived_trace_file(storage_dir: Path, trace_id: str) -> tuple[str, List[str]]:
+    archive_paths = [
+        (timestamp, path)
+        for path in storage_dir.glob('*.zip')
+        if (timestamp := _parse_prefix_time(path)) is not None
+    ]
+    for _, archive_path in sorted(archive_paths, key=lambda item: item[0], reverse=True):
+        try:
+            with zipfile.ZipFile(archive_path) as zip_file:
+                matched_names = sorted(
+                    (
+                        name for name in zip_file.namelist()
+                        if name.endswith(f'_{trace_id}.jsonl')
+                    ),
+                    reverse=True,
+                )
+                if not matched_names:
+                    continue
+                if len(matched_names) > 1:
+                    LOG.warning(
+                        f'Found multiple archived local trace files for trace_id={trace_id!r} '
+                        f'in {archive_path.name}: {matched_names}'
+                    )
+                name = matched_names[0]
+                with zip_file.open(name) as file_obj:
+                    lines = [line.decode('utf-8') for line in file_obj.readlines()]
+                return f'{archive_path.name}:{name}', lines
+        except (FileNotFoundError, zipfile.BadZipFile) as exc:
+            LOG.warning(f'Failed to read local trace archive {archive_path.name}: {exc}')
+
+    LOG.warning(f'trace_id does not exist or has been cleaned: {trace_id}')
+    raise TraceNotFound(trace_id)
 
 
 def _raw_spans_from_lines(path_name: str, lines: List[str]) -> List[RawSpanRecord]:
@@ -221,13 +420,18 @@ class LocalFileSpanExporter(opentelemetry.sdk.trace.export.SpanExporter):
 
         try:
             for trace_id, lines in grouped.items():
-                with _trace_lock(self.storage_dir, trace_id):
+                with _local_trace_lock(self.storage_dir, trace_id):
                     path = _trace_path(self.storage_dir, trace_id, timestamps.get(trace_id))
                     with path.open('a', encoding='utf-8') as file_obj:
                         file_obj.writelines(f'{line}\n' for line in lines)
         except Exception as exc:
             LOG.warning(f'LocalFileSpanExporter failed to write spans: {exc}')
             return SpanExportResult.FAILURE
+
+        try:
+            maintain_local_traces(self.storage_dir)
+        except Exception as exc:
+            LOG.warning(f'LocalFileSpanExporter failed to maintain local traces: {exc}')
 
         return SpanExportResult.SUCCESS
 
