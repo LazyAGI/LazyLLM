@@ -222,6 +222,26 @@ class MineruPDFReader(_OcrReaderBase):
         return roots
 
     @staticmethod
+    def _is_path_under_base(candidate: Path, base_dir: Path) -> bool:
+        try:
+            base = os.path.realpath(base_dir)
+            resolved = os.path.realpath(candidate)
+        except OSError:
+            return False
+        return resolved == base or resolved.startswith(base + os.sep)
+
+    @staticmethod
+    def _resolve_path_under_base(base_dir: Path, rel_path: str) -> Optional[Path]:
+        try:
+            base = os.path.realpath(base_dir)
+            joined = os.path.realpath(base_dir / rel_path)
+        except OSError:
+            return None
+        if joined == base or joined.startswith(base + os.sep):
+            return Path(joined)
+        return None
+
+    @staticmethod
     def _disk_image_candidates(rel_path: str, search_roots: List[Path]) -> List[Path]:
         rel = rel_path.replace('\\', '/').lstrip('/')
         name = Path(rel).name
@@ -229,6 +249,8 @@ class MineruPDFReader(_OcrReaderBase):
         seen = set()
         for root in search_roots:
             for candidate in (root / rel, root / name, root / 'images' / name):
+                if not MineruPDFReader._is_path_under_base(candidate, root):
+                    continue
                 key = str(candidate)
                 if key not in seen:
                     seen.add(key)
@@ -238,8 +260,11 @@ class MineruPDFReader(_OcrReaderBase):
     @staticmethod
     def _first_existing_file(paths: List[Path]) -> Optional[Path]:
         for path in paths:
-            if path.is_file() and path.stat().st_size > 0:
-                return path
+            try:
+                if path.is_file() and path.stat().st_size > 0:
+                    return path
+            except OSError:
+                continue
         return None
 
     @staticmethod
@@ -266,9 +291,17 @@ class MineruPDFReader(_OcrReaderBase):
         image_tasks = []
         copied = 0
         for rel_path in sorted(rel_paths):
-            save_path = cache_dir / rel_path
-            if save_path.is_file() and save_path.stat().st_size > 0:
+            save_path = self._resolve_path_under_base(cache_dir, rel_path)
+            if save_path is None:
+                LOG.warning(
+                    f'[MineruPDFReader] path traversal detected in image path: {rel_path}'
+                )
                 continue
+            try:
+                if save_path.is_file() and save_path.stat().st_size > 0:
+                    continue
+            except OSError:
+                pass
             if disk_roots:
                 src = self._first_existing_file(
                     self._disk_image_candidates(rel_path, disk_roots)
