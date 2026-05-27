@@ -69,12 +69,7 @@ class MineruPDFReader(_OcrReaderBase):
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._patch_applied = patch_applied
         self._api_key = lazyllm.config['mineru_api_key']
-        mineru_image_dir = kwargs.pop('mineru_image_dir', None)
-        if mineru_image_dir is None:
-            mineru_image_dir = (
-                os.environ.get('MINERU_IMAGE_SAVE_DIR')
-                or lazyllm.config['mineru_image_save_dir']
-            )
+        mineru_image_dir = kwargs.pop('mineru_image_dir', lazyllm.config['mineru_image_save_dir'])
         self._mineru_image_dir = Path(mineru_image_dir) if mineru_image_dir else None
         if self._service_variant == ServiceVariant.OFFLINE and self._url:
             self._url = self._normalize_offline_url(self._url)
@@ -145,14 +140,15 @@ class MineruPDFReader(_OcrReaderBase):
         raw = (url or '').strip().rstrip('/')
         if not raw:
             raise ValueError('[MineruPDFReader] url is required for offline image download')
+        # Scheme-less host:port (e.g. localhost:8000) defaults to http; use https:// explicitly for TLS.
         if '://' not in raw:
             raw = f'http://{raw}'
         parsed = urlparse(raw)
+        scheme = parsed.scheme or 'http'
         host = parsed.hostname
         port = parsed.port
-        scheme = parsed.scheme or 'http'
         if not host and parsed.path:
-            reparsed = urlparse(f'http://{parsed.path.lstrip("/")}')
+            reparsed = urlparse(f'{scheme}://{parsed.path.lstrip("/")}')
             host = reparsed.hostname
             port = reparsed.port
         if not host:
