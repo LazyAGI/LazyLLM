@@ -2,6 +2,7 @@ import io
 import json
 import os
 import re
+import shutil
 import uuid
 import zipfile
 import requests
@@ -28,6 +29,10 @@ from .ocr_ir import (
 from .ocr_reader_base import _OcrReaderBase, ServiceVariant
 
 lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='The API key for Mineru')
+lazyllm.config.add(
+    'mineru_image_save_dir', str, None, 'MINERU_IMAGE_SAVE_DIR',
+    description='MinerU server image save root (images under <dir>/images/).',
+)
 
 _IMAGE_REF_PATTERN = re.compile(
     r'images/[^\s\)"\'\]<]+\.(?:jpg|jpeg|png|gif|bmp|webp|tiff|tif)',
@@ -64,6 +69,13 @@ class MineruPDFReader(_OcrReaderBase):
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._patch_applied = patch_applied
         self._api_key = lazyllm.config['mineru_api_key']
+        mineru_image_dir = kwargs.pop('mineru_image_dir', None)
+        if mineru_image_dir is None:
+            mineru_image_dir = (
+                os.environ.get('MINERU_IMAGE_SAVE_DIR')
+                or lazyllm.config['mineru_image_save_dir']
+            )
+        self._mineru_image_dir = Path(mineru_image_dir) if mineru_image_dir else None
         if self._service_variant == ServiceVariant.OFFLINE and self._url:
             self._url = self._normalize_offline_url(self._url)
 
@@ -199,6 +211,49 @@ class MineruPDFReader(_OcrReaderBase):
                 self._add_image_paths_from_item(item, rel_paths)
         return rel_paths
 
+    def _offline_disk_search_roots(self) -> List[Path]:
+        if self._mineru_image_dir is None:
+            return []
+        root = self._mineru_image_dir
+        roots = [root]
+        images_dir = root / 'images'
+        if images_dir.is_dir() and images_dir not in roots:
+            roots.append(images_dir)
+        return roots
+
+    @staticmethod
+    def _disk_image_candidates(rel_path: str, search_roots: List[Path]) -> List[Path]:
+        rel = rel_path.replace('\\', '/').lstrip('/')
+        name = Path(rel).name
+        candidates = []
+        seen = set()
+        for root in search_roots:
+            for candidate in (root / rel, root / name, root / 'images' / name):
+                key = str(candidate)
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append(candidate)
+        return candidates
+
+    @staticmethod
+    def _first_existing_file(paths: List[Path]) -> Optional[Path]:
+        for path in paths:
+            if path.is_file() and path.stat().st_size > 0:
+                return path
+        return None
+
+    @staticmethod
+    def _copy_image_from_disk(src: Path, dest: Path) -> bool:
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            return True
+        except OSError as exc:
+            LOG.warning(
+                f'[MineruPDFReader] failed to copy image {src} -> {dest}: {exc}'
+            )
+            return False
+
     def _download_offline_images(self, response_text: str, cache_dir: Path) -> None:
         if not cache_dir or not response_text:
             return
@@ -206,14 +261,27 @@ class MineruPDFReader(_OcrReaderBase):
         if not rel_paths:
             LOG.warning('[MineruPDFReader] no image paths found in offline OCR response')
             return
+        disk_roots = self._offline_disk_search_roots()
         base_url = self._image_base_url().rstrip('/')
         image_tasks = []
+        copied = 0
         for rel_path in sorted(rel_paths):
             save_path = cache_dir / rel_path
             if save_path.is_file() and save_path.stat().st_size > 0:
                 continue
+            if disk_roots:
+                src = self._first_existing_file(
+                    self._disk_image_candidates(rel_path, disk_roots)
+                )
+                if src is not None and self._copy_image_from_disk(src, save_path):
+                    copied += 1
+                    continue
             save_path.parent.mkdir(parents=True, exist_ok=True)
             image_tasks.append((f'{base_url}/{rel_path}', save_path))
+        if copied:
+            LOG.info(
+                f'[MineruPDFReader] copied {copied} offline images from disk to {cache_dir}'
+            )
         if not image_tasks:
             return
         LOG.info(
