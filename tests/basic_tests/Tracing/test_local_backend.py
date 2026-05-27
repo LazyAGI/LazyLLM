@@ -1,9 +1,14 @@
 import json
+import threading
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 
 import pytest
+from filelock import FileLock
 
+from lazyllm import config
 from lazyllm.thirdparty import opentelemetry
 
 
@@ -167,3 +172,78 @@ def test_consume_backend_rebuilds_raw_payload_from_local_jsonl(tmp_path):
     assert structured.trace_id == trace_id
     assert structured.execution_tree.name == 'root'
     assert structured.execution_tree.children[0].name == 'child'
+
+
+def test_local_backend_maintains_expired_trace_files_and_keeps_fresh_jsonl(tmp_path):
+    from lazyllm.tracing.backends.local import LocalConsumeBackend, maintain_local_traces
+
+    trace_id = _emit_real_trace(tmp_path, 'archived-root', child_names=('archived-child',))
+    fresh_trace_id = _emit_real_trace(tmp_path, 'fresh-root')
+
+    original_file = next(tmp_path.glob(f'*_{trace_id}.jsonl'))
+    old_prefix = (datetime.now() - timedelta(seconds=20)).strftime('%Y%m%d%H%M%S')
+    archived_source = tmp_path / f'{old_prefix}_{trace_id}.jsonl'
+    original_file.rename(archived_source)
+    fresh_source = next(tmp_path.glob(f'*_{fresh_trace_id}.jsonl'))
+
+    expired_zip = tmp_path / f'{(datetime.now() - timedelta(seconds=60)).strftime("%Y%m%d%H%M%S")}.zip'
+    with zipfile.ZipFile(expired_zip, 'w') as zip_file:
+        zip_file.writestr('expired.jsonl', '')
+
+    with config.temp('trace_local_archive_seconds', 10), \
+            config.temp('trace_local_archive_retention_seconds', 30):
+        result = maintain_local_traces(tmp_path)
+        payload = LocalConsumeBackend(storage_dir=tmp_path).fetch_trace_payload(trace_id)
+        fresh_payload = LocalConsumeBackend(storage_dir=tmp_path).fetch_trace_payload(fresh_trace_id)
+
+    zip_files = list(tmp_path.glob('*.zip'))
+
+    assert result['compressed_jsonl'] == [archived_source.name]
+    assert result['deleted_zip'] == [expired_zip.name]
+    assert not archived_source.exists()
+    assert fresh_source.exists()
+    assert expired_zip not in zip_files
+    assert len(zip_files) == 1
+
+    with zipfile.ZipFile(zip_files[0]) as zip_file:
+        assert zip_file.namelist() == [archived_source.name]
+
+    assert payload.trace.trace_id == trace_id
+    assert payload.trace.name == 'archived-root'
+    assert {span.name for span in payload.spans} == {'archived-root', 'archived-child'}
+    assert fresh_payload.trace.trace_id == fresh_trace_id
+    assert fresh_payload.trace.name == 'fresh-root'
+
+
+def test_local_backend_maintenance_skips_during_frequent_trace_reads(tmp_path):
+    from lazyllm.tracing.backends.local import LocalConsumeBackend, maintain_local_traces
+
+    trace_id = _emit_real_trace(tmp_path, 'locked-root')
+    original_file = next(tmp_path.glob(f'*_{trace_id}.jsonl'))
+    old_prefix = (datetime.now() - timedelta(seconds=20)).strftime('%Y%m%d%H%M%S')
+    old_file = tmp_path / f'{old_prefix}_{trace_id}.jsonl'
+    original_file.rename(old_file)
+
+    backend = LocalConsumeBackend(storage_dir=tmp_path)
+    stop = threading.Event()
+    read_errors = []
+
+    def read_trace_repeatedly():
+        while not stop.is_set():
+            try:
+                backend.fetch_trace_payload(trace_id)
+            except Exception as exc:
+                read_errors.append(exc)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        reader = pool.submit(read_trace_repeatedly)
+        with FileLock(str(tmp_path / f'.{trace_id}.lock')):
+            with config.temp('trace_local_archive_seconds', 10):
+                result = maintain_local_traces(tmp_path)
+        stop.set()
+        reader.result(timeout=1)
+
+    assert not read_errors
+    assert result == {'compressed_jsonl': [], 'deleted_zip': []}
+    assert old_file.exists()
+    assert not list(tmp_path.glob('*.zip'))
