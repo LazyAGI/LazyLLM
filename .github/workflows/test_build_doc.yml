@@ -8,7 +8,7 @@ on:
 
 jobs:
   test_build_doc:
-    runs-on: tps_sco_nv_8
+    runs-on: tps_sco_nv_yzh
     timeout-minutes: 20
     steps:
       - name: Checkout code
