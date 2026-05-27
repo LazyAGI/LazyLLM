@@ -151,10 +151,11 @@ jobs:
       - name: Build doc
         run: |
           set -e
+          find . -name "*.pyc" -delete 2>/dev/null || true
           find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
-          LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
+          LAZYLLM_INIT_DOC=True python -B docs/add_docstrings.py
 
       - name: Setup CI directory
         run: |
@@ -164,7 +165,7 @@ jobs:
           rm -rf ${{ env.CI_PATH }}/* ${{ env.CI_PATH }}/.[!.]*
           mv $GITHUB_WORKSPACE/* $GITHUB_WORKSPACE/.[!.]* ${{ env.CI_PATH }}/
           cd ${{ env.CI_PATH }}
-          
+
           pip install -r tests/requirements.txt
           pip install -r tests/requirements_linux.txt
 
