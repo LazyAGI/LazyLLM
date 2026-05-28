@@ -384,6 +384,7 @@ class _Processor:
                          preloaded_root_nodes=preloaded_root_nodes)
             LOG.info(f'Reparse docs {doc_ids} from store done')
         else:
+            LOG.info(f'[reparse] docs group={group_name!r} doc_ids={doc_ids!r} kb_id={kb_id!r}')
             p_nodes = self._store.get_nodes(group=node_groups[group_name]['parent'],
                                             kb_id=kb_id, doc_ids=doc_ids)
             # TODO: reparse recursively

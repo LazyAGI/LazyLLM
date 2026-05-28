@@ -444,6 +444,9 @@ class DocumentProcessorWorker(ModuleBase):
                 reparse_files.append(file_info.get('file_path'))
                 reparse_metadatas.append(file_info.get('metadata'))
 
+            LOG.info(f'{self._log_prefix(task_id)} Execute reparse task: doc_ids={reparse_doc_ids!r}, '
+                     f'ng_names={ng_names_requested!r}, embed_only={embed_only}, kb_id={kb_id!r}')
+
             exec_ng_ids = [ng_id for name, ng_id in name_to_id.items()
                            if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
             if kb_id and exec_ng_ids:
@@ -480,6 +483,8 @@ class DocumentProcessorWorker(ModuleBase):
                             if name not in node_groups:
                                 LOG.warning(f'{self._log_prefix(task_id)} ng_name {name!r} not found, skipping')
                                 continue
+                            LOG.info(f'{self._log_prefix(task_id)} [reparse] dispatch group={name!r} '
+                                     f'doc_ids={reparse_doc_ids!r} kb_id={kb_id!r}')
                             processor.reparse(group_name=name, node_groups=node_groups,
                                               doc_ids=reparse_doc_ids, doc_paths=reparse_files,
                                               metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)

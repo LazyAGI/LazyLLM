@@ -995,6 +995,8 @@ class DocManager:
             ng_names: Optional[List[str]] = list(request.ng_names)
             ng_ids = self._resolve_ng_ids_for_names(request.kb_id, ng_names)
             if not ng_ids:
+                LOG.error(f'[reparse] kb={request.kb_id!r} ng_names={request.ng_names!r}: '
+                          f'none of the requested node groups were found')
                 raise DocServiceError('E_INVALID_PARAM', 'none of the requested ng_names '
                                       f'{request.ng_names!r} were found in kb {request.kb_id!r}')
         else:
@@ -1023,6 +1025,8 @@ class DocManager:
                 embed_only=request.embed_only,
             )
             task_ids.append(task_id)
+        LOG.info(f'[reparse] kb={request.kb_id!r} doc_ids={request.doc_ids!r} '
+                 f'ng_names={ng_names!r} task_ids={task_ids!r}')
         return task_ids
 
     def _resolve_ng_ids_for_names(self, kb_id: str, ng_names: List[str]) -> List[str]:
