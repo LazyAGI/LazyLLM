@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Check for stale _lazyllm_editable.pth files outside the venv that may redirect
-lazyllm imports to a wrong workspace."""
+'''Check for stale _lazyllm_editable.pth files outside the venv that may redirect
+lazyllm imports to a wrong workspace.'''
 import os
 import sys
 import glob
