@@ -490,7 +490,8 @@ class ToolManager(ModuleBase):
             workspace = {}
         active_groups = set(workspace.get('_active_groups', []))
         return [x for item in self._tools_desc
-                for x in (item(active_groups=active_groups) if callable(item) else [item])]
+                for x in (item.get_description(active_groups=active_groups)
+                          if isinstance(item, ToolGroup) else item() if callable(item) else [item])]
 
     @property
     def tools_info(self):
@@ -528,7 +529,7 @@ class ToolManager(ModuleBase):
         format_tools = []
         for item in self._tools:
             if isinstance(item, ToolGroup):
-                format_tools.append(item.get_description)
+                format_tools.append(item)
             else:
                 try:
                     format_tools.append(_build_tool_desc(item))
