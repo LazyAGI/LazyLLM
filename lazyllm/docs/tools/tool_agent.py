@@ -2241,3 +2241,74 @@ Args:
     method_name (str): The name of the method to wrap.
     key_source (Union[str, Callable, List[Union[str, Callable]], None]): Reserved parameter, currently unused. Defaults to None.
 ''')
+
+add_toolsmgr_chinese_doc('ToolGroup.get_flat_tools', '''\
+返回该工具组（及所有子工具组）中所有工具的扁平化字典，键为工具名，值为对应的 ``ModuleTool`` 实例。
+
+在 lazy 模式下，gateway 工具本身也会作为一个条目包含在结果中，以便 ``ToolManager`` 能够在收到 LLM 的 gateway 调用时正确路由。
+子工具组会被递归展开，最终结果中只包含叶子工具（``ModuleTool``）和各级 gateway 工具。
+
+Returns:
+    Dict[str, ModuleTool]: 工具名到 ``ModuleTool`` 实例的映射字典。
+''')
+
+add_toolsmgr_english_doc('ToolGroup.get_flat_tools', '''\
+Returns a flat dictionary of all tools in this group (and all nested sub-groups), mapping tool name to the corresponding ``ModuleTool`` instance.
+
+In lazy mode, the gateway tool itself is also included as an entry so that ``ToolManager`` can correctly route gateway calls from the LLM.
+Sub-groups are recursively expanded; the final result contains only leaf tools (``ModuleTool``) and gateway tools at each level.
+
+Returns:
+    Dict[str, ModuleTool]: A mapping from tool name to ``ModuleTool`` instance.
+''')
+
+add_toolsmgr_chinese_doc('ToolGroup.get_description', '''\
+返回当前工具组在给定激活状态下应向 LLM 暴露的工具描述列表（OpenAI function calling 格式）。
+
+- 若工具组处于 lazy 模式且尚未被激活（即 ``name`` 不在 ``active_groups`` 中），则只返回 gateway 工具的描述（一个元素的列表）。
+- 若工具组处于 eager 模式，或已被激活，则递归展开所有子工具的描述并返回。
+
+Args:
+    active_groups (Optional[Set[str]]): 当前已激活的工具组名称集合。为 ``None`` 时视为空集合（无任何组被激活）。
+
+Returns:
+    List[Dict]: 工具描述列表，每个元素符合 OpenAI function calling schema。
+''')
+
+add_toolsmgr_english_doc('ToolGroup.get_description', '''\
+Returns the list of tool descriptions (in OpenAI function calling format) that should be exposed to the LLM given the current activation state.
+
+- If the group is in lazy mode and has not yet been activated (i.e. ``name`` is not in ``active_groups``), only the gateway tool description is returned (a single-element list).
+- If the group is in eager mode, or has been activated, all child tool descriptions are recursively expanded and returned.
+
+Args:
+    active_groups (Optional[Set[str]]): The set of currently activated tool group names. Treated as an empty set when ``None`` (no groups activated).
+
+Returns:
+    List[Dict]: A list of tool descriptions, each conforming to the OpenAI function calling schema.
+''')
+
+add_toolsmgr_chinese_doc('ToolGroup.make_gateway_tool', '''\
+为该工具组创建并返回一个 gateway ``ModuleTool``。
+
+gateway 工具的名称为 ``get_<name>_methods``，调用时会将该工具组名称追加到当前 session 的 ``_active_groups`` 列表中，
+并返回一条提示字符串，告知 LLM 该组已激活以及可用的子工具名称列表。
+
+该方法在 ``ToolGroup.__init__`` 中自动调用（当 ``lazy=True`` 时），通常不需要手动调用。
+
+Returns:
+    ModuleTool: 代表该工具组入口的 gateway 工具实例。
+''')
+
+add_toolsmgr_english_doc('ToolGroup.make_gateway_tool', '''\
+Creates and returns a gateway ``ModuleTool`` for this tool group.
+
+The gateway tool is named ``get_<name>_methods``. When called, it appends the group name to the ``_active_groups``
+list in the current session workspace and returns a message string informing the LLM that the group has been
+activated along with the list of available child tool names.
+
+This method is called automatically in ``ToolGroup.__init__`` when ``lazy=True`` and does not normally need to be invoked manually.
+
+Returns:
+    ModuleTool: The gateway tool instance representing the entry point of this tool group.
+''')
