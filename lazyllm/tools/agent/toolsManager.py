@@ -315,15 +315,12 @@ class ToolGroup:
             else None if prefix is False or prefix is None else prefix
         effective_prefix = f'{_outer_prefix}_{own_prefix}' if _outer_prefix and own_prefix \
             else (_outer_prefix or own_prefix)
-        self._children: List[Union['ModuleTool', 'ToolGroup']] = []
-        for item in tools:
-            built = _build_tool_from_element(item, _outer_prefix=effective_prefix)
-            if built is None:
-                raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, '
-                                f'got {type(item)}')
-            self._children.append(built)
-        self._gateway_tool: Optional['ModuleTool'] = self.make_gateway_tool() if lazy else None
+        self._children: List[Union['ModuleTool', 'ToolGroup']] = [
+            _build_tool_from_element(item, _outer_prefix=effective_prefix) for item in tools]
         self._precompute_descs(effective_prefix)
+        self._gateway_tool: Optional['ModuleTool'] = self.make_gateway_tool() if lazy else None
+        if self._gateway_desc is None and self._gateway_tool is not None:
+            self._gateway_desc = _build_tool_desc(self._gateway_tool)
 
     def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
         result: Dict[str, ModuleTool] = {}
@@ -337,8 +334,7 @@ class ToolGroup:
         return result
 
     def _precompute_descs(self, effective_prefix: Optional[str] = None):
-        self._gateway_desc: Optional[Dict] = _build_tool_desc(self._gateway_tool) \
-            if self._gateway_tool is not None else None
+        self._gateway_desc: Optional[Dict] = None
         self._expanded_descs: List[Union[Dict, 'ToolGroup']] = []
         self._leaf_names: List[str] = []
         for child in self._children:
@@ -438,8 +434,17 @@ TOOL_CALL_FORMAT_EXAMPLE = (
 
 def _build_tool_from_element(
         element: Any, _outer_prefix: Optional[str] = None) -> Optional[Union['ModuleTool', 'ToolGroup']]:
+    if isinstance(element, str):
+        return _load_tool_by_name(element)
     if isinstance(element, (ToolGroup, ModuleTool)):
         return element
+    if isinstance(element, tuple) and len(element) == 2:
+        instance, key_source = element
+        if not hasattr(instance, '__public_apis__'):
+            raise ValueError(f'Instance {instance!r} does not have __public_apis__')
+        return InstanceToolGroup(instance, key_source)
+    if hasattr(element, '__public_apis__') and not isinstance(element, (ToolGroup, ModuleTool)):
+        return InstanceToolGroup(element)
     if isinstance(element, dict):
         assert 'name' in element, "ToolGroup dict must have a 'name' field"
         assert 'tools' in element, "ToolGroup dict must have a 'tools' field"
@@ -455,38 +460,23 @@ def _build_tool_from_element(
     raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, got {type(element)}')
 
 
+def _load_tool_by_name(name: str) -> 'ModuleTool':
+    name = name.strip()
+    if '.' not in name: return getattr(lazyllm.tool, name)()
+    target = lazyllm
+    for part in name.split('.'):
+        if not part: raise ValueError(f'invalid tool name: {name}')
+        target = getattr(target, part)
+    return target()
+
+
 class ToolManager(ModuleBase):
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
         super().__init__(return_trace=return_trace)
-        self._tools = self._load_tools(tools)
+        self._tools = [_build_tool_from_element(element) for element in tools]
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
         self._sandbox = sandbox
-
-    def _load_tool_by_name(self, name: str) -> 'ModuleTool':
-        name = name.strip()
-        if '.' not in name: return getattr(lazyllm.tool, name)()
-        target = lazyllm
-        for part in name.split('.'):
-            if not part: raise ValueError(f'invalid tool name: {name}')
-            target = getattr(target, part)
-        return target()
-
-    def _load_tools(self, tools: List[Union[str, Callable]]):
-        _tools = []
-        for element in tools:
-            if isinstance(element, str):
-                _tools.append(self._load_tool_by_name(element))
-            elif isinstance(element, tuple) and len(element) == 2:
-                instance, key_source = element
-                if not hasattr(instance, '__public_apis__'):
-                    raise ValueError(f'Instance {instance!r} does not have __public_apis__')
-                _tools.append(InstanceToolGroup(instance, key_source))
-            elif hasattr(element, '__public_apis__') and not isinstance(element, (ToolGroup, ModuleTool)):
-                _tools.append(InstanceToolGroup(element))
-            else:
-                _tools.append(_build_tool_from_element(element))
-        return _tools
 
     @property
     def all_tools(self) -> List[ModuleTool]:

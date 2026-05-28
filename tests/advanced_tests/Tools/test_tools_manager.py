@@ -444,8 +444,9 @@ class TestToolGroup:
         t1, t2 = self._tool('alpha'), self._tool('beta')
         grp = ToolGroup(tools=[t1, t2], name='grp', desc='Group')
         flat = grp.get_flat_tools()
-        assert 'alpha' in flat
-        assert 'beta' in flat
+        # default prefix=True, so tool names are prefixed with group name
+        assert 'grp_alpha' in flat
+        assert 'grp_beta' in flat
 
     def test_toolgroup_get_description_lazy(self):
         t1 = self._tool('alpha')
@@ -453,15 +454,18 @@ class TestToolGroup:
         descs = grp.get_description()
         assert len(descs) == 1
         assert descs[0]['function']['name'] == 'get_grp_methods'
-        assert descs[0]['function']['description'] == 'My group'
+        # desc = "Get available methods of grp. My group"
+        assert 'Get available methods of grp' in descs[0]['function']['description']
+        assert 'My group' in descs[0]['function']['description']
 
     def test_toolgroup_get_description_eager(self):
         t1, t2 = self._tool('alpha'), self._tool('beta')
         grp = ToolGroup(tools=[t1, t2], name='grp', desc='Group', lazy=False)
         descs = grp.get_description()
         names = [d['function']['name'] for d in descs]
-        assert 'alpha' in names
-        assert 'beta' in names
+        # default prefix=True, so tool names are prefixed with group name
+        assert 'grp_alpha' in names
+        assert 'grp_beta' in names
 
     def test_toolgroup_isolation_across_sessions(self):
         t1, t2 = self._tool('alpha'), self._tool('beta')
@@ -486,3 +490,61 @@ class TestToolGroup:
         assert 'get_grp_methods' in names
         assert 'grp_a' not in names
         assert 'grp_b' not in names
+
+    def test_prefix_true_adds_group_name_to_tool_names(self):
+        t1, t2 = self._tool('alpha'), self._tool('beta')
+        tm = ToolManager([dict(name='grp', desc='Group', lazy=False, prefix=True, tools=[t1, t2])])
+        names = [d['function']['name'] for d in tm.tools_description]
+        assert 'grp_alpha' in names
+        assert 'grp_beta' in names
+        assert 'alpha' not in names
+        assert 'beta' not in names
+
+    def test_prefix_false_keeps_original_tool_names(self):
+        t1, t2 = self._tool('alpha'), self._tool('beta')
+        tm = ToolManager([dict(name='grp', desc='Group', lazy=False, prefix=False, tools=[t1, t2])])
+        names = [d['function']['name'] for d in tm.tools_description]
+        assert 'alpha' in names
+        assert 'beta' in names
+        assert 'grp_alpha' not in names
+
+    def test_prefix_false_tool_callable_by_original_name(self):
+        t1 = self._tool('alpha')
+        tm = ToolManager([dict(name='grp', desc='Group', lazy=False, prefix=False, tools=[t1])])
+        assert 'alpha' in tm._tool_call
+        assert 'grp_alpha' not in tm._tool_call
+
+    def test_gateway_available_tools_lists_direct_children_only(self):
+        # 嵌套时 gateway 的 Available tools 只列直接子工具名，不递归展开子 group 的叶子
+        t1 = self._tool('tool_aaa')
+        t2, t3 = self._tool('tool_bbb'), self._tool('tool_ccc')
+        tm = ToolManager([dict(name='outer', desc='Outer', tools=[
+            t1,
+            dict(name='inner', desc='Inner', tools=[t2, t3]),
+        ])])
+        result = tm._tool_call['get_outer_methods']({})
+        assert 'tool_aaa' in result
+        assert 'get_inner_methods' in result
+        assert 'tool_bbb' not in result
+        assert 'tool_ccc' not in result
+
+    def test_eager_inner_leaf_names_included_in_outer_gateway(self):
+        # 非 lazy 子 group 的叶子名直接出现在父 gateway 的 Available tools 里
+        t1, t2, t3 = self._tool('a'), self._tool('b'), self._tool('c')
+        tm = ToolManager([dict(name='outer', desc='Outer', tools=[
+            t1,
+            dict(name='inner', desc='Inner', lazy=False, tools=[t2, t3]),
+        ])])
+        result = tm._tool_call['get_outer_methods']({})
+        assert 'a' in result
+        assert 'b' in result
+        assert 'c' in result
+        assert 'get_inner_methods' not in result
+
+    def test_prefix_propagates_to_nested_group_leaf_names(self):
+        t1 = self._tool('leaf')
+        tm = ToolManager([dict(name='outer', desc='Outer', lazy=False, prefix=True, tools=[
+            dict(name='inner', desc='Inner', lazy=False, prefix=True, tools=[t1]),
+        ])])
+        names = [d['function']['name'] for d in tm.tools_description]
+        assert 'outer_inner_leaf' in names
