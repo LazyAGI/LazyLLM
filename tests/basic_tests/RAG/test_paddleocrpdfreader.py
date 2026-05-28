@@ -2,7 +2,7 @@ import json
 import os
 import pytest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import lazyllm
 from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import (
@@ -291,21 +291,20 @@ class TestPaddleOCRPDFReaderMock:
         pdf = _make_test_pdf()
 
         with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
-             patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.get_sync') as mock_get, \
-             patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.requests.get') as mock_requests_get:
+             patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.get_sync') as mock_get:
             submit_resp = mock_post.return_value
             submit_resp.json.return_value = {'data': {'jobId': 'test-job-123'}}
 
-            poll_resp = mock_get.return_value
-            poll_resp.json.return_value = {
+            poll_resp_mock = MagicMock()
+            poll_resp_mock.json.return_value = {
                 'data': {
                     'state': 'done',
                     'resultUrl': {'jsonUrl': 'http://mock/jsonl'},
                 }
             }
-
-            jsonl_resp = mock_requests_get.return_value
-            jsonl_resp.text = '{"result": {"layoutParsingResults": [{"x": 1}]}}'
+            jsonl_resp_mock = MagicMock()
+            jsonl_resp_mock.text = '{"result": {"layoutParsingResults": [{"x": 1}]}}'
+            mock_get.side_effect = [poll_resp_mock, jsonl_resp_mock]
 
             reader = PaddleOCRPDFReader()
             result, task_dir = reader._fetch_job(str(pdf))
@@ -314,8 +313,8 @@ class TestPaddleOCRPDFReaderMock:
         submit_url = mock_post.call_args[0][0]
         assert submit_url == JOB_URL
 
-        assert mock_get.called
-        poll_url = mock_get.call_args[0][0]
+        assert mock_get.call_count >= 1
+        poll_url = mock_get.call_args_list[0][0][0]
         assert 'test-job-123' in poll_url
 
         data = json.loads(result)

@@ -903,7 +903,11 @@ jobs:
 
       - name: Install C++ extension artifacts into workspace
         run: |
-          cmake --install build --prefix . --component lazyllm_cpp
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cmake --install build --config Release --prefix . --component lazyllm_cpp
+          else
+            cmake --install build --prefix . --component lazyllm_cpp
+          fi
           ls -al lazyllm | grep -E "lazyllm_cpp|cpp_lib" || true
 
       - name: Compute pytest marker

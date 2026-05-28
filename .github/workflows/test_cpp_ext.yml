@@ -78,6 +78,14 @@ jobs:
 
       - name: Run RAG tests
         run: |
+          echo "=== Dataset structure ==="
+          echo "LAZYLLM_DATA_PATH=$LAZYLLM_DATA_PATH"
+          ls -la "$LAZYLLM_DATA_PATH" || true
+          echo "--- rag_master ---"
+          ls -la "$LAZYLLM_DATA_PATH/rag_master" 2>&1 || true
+          echo "--- rag_master/default ---"
+          ls -la "$LAZYLLM_DATA_PATH/rag_master/default" 2>&1 || true
+          echo "=== Running tests ==="
           python -m pytest -v --order-scope=class -m "not skip_on_linux" tests/basic_tests/RAG
 
   cpp_ext_other:
@@ -135,7 +143,11 @@ jobs:
 
       - name: Install C++ extension artifacts into workspace
         run: |
-          cmake --install build --prefix . --component lazyllm_cpp
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cmake --install build --config Release --prefix . --component lazyllm_cpp
+          else
+            cmake --install build --prefix . --component lazyllm_cpp
+          fi
           ls -al lazyllm | grep -E "lazyllm_cpp|cpp_lib" || true
 
       - name: Compute pytest marker
