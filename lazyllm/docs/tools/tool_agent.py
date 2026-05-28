@@ -121,10 +121,23 @@ Args:
 add_chinese_doc('ToolManager', '''\
 ToolManager是一个工具管理类，用于提供工具信息和工具调用给function call。
 
-此管理类构造时需要传入工具名字符串列表。此处工具名可以是LazyLLM提供的，也可以是用户自定义的，如果是用户自定义的，首先需要注册进LazyLLM中才可以使用。在注册时直接使用 `fc_register` 注册器，该注册器已经建立 `tool` group，所以使用该工具管理类时，所有函数都统一注册进 `tool` 分组即可。待注册的函数需要对函数参数进行注解，并且需要对函数增加功能描述，以及参数类型和作用描述。以方便工具管理类能对函数解析传给LLM使用。
+此管理类构造时需要传入工具列表。工具可以是以下几种形式：
+
+- 工具名字符串（已通过 ``fc_register`` 注册的工具）
+- 可调用对象（函数或 ``ModuleTool`` 实例）
+- 带有 ``__public_apis__`` 的对象实例（自动包装为 ``InstanceToolGroup``）
+- ``(instance, key_source)`` 元组（带凭据来源的实例工具组）
+- ``dict``：直接定义一个工具组，格式为 ``dict(name='grp', desc='...', tools=[...], lazy=True)``，其中 ``name`` 和 ``tools`` 为必填字段。
+
+工具组（``ToolGroup``）支持两种模式：
+
+- **lazy 模式**（默认）：初始只向 LLM 暴露一个 ``get_<name>_methods`` 工具；LLM 调用该工具后，该组的子工具描述会动态注入 system prompt，LLM 在下一轮中再选择并调用具体工具。适合工具数量多、希望减少上下文长度的场景。
+- **eager 模式**（``lazy=False``）：直接把所有子工具描述展开注入 system prompt，与旧行为一致。
+
+工具组支持多级嵌套，子节点可以是普通工具或另一个工具组（通过嵌套 ``dict`` 定义）。
 
 Args:
-    tools (List[str]): 工具名称字符串列表。
+    tools (List): 工具列表，每个元素支持字符串、Callable、ModuleTool、带 ``__public_apis__`` 的实例、``(instance, key_source)`` 元组，或 ``dict`` 工具组。
     return_trace (bool): 是否返回中间步骤和工具调用信息。
     sandbox (LazyLLMSandboxBase | None): 沙箱实例。若提供，则当工具的 ``execute_in_sandbox`` 为 True 时，工具将在此沙箱中执行，并自动处理文件上传/下载。
 ''')
@@ -132,10 +145,23 @@ Args:
 add_english_doc('ToolManager', '''\
 ToolManager is a tool management class used to provide tool information and tool calls to function call.
 
-When constructing this management class, you need to pass in a list of tool name strings. The tool name here can be provided by LazyLLM or user-defined. If it is user-defined, it must first be registered in LazyLLM before it can be used. When registering, directly use the `fc_register` registrar, which has established the `tool` group, so when using the tool management class, all functions can be uniformly registered in the `tool` group. The function to be registered needs to annotate the function parameters, and add a functional description to the function, as well as the parameter type and function description. This is to facilitate the tool management class to parse the function and pass it to LLM for use.
+When constructing this management class, you pass in a list of tools. Each element can be one of the following:
+
+- A tool name string (a tool registered via ``fc_register``)
+- A callable (plain function or ``ModuleTool`` instance)
+- An object instance with ``__public_apis__`` (automatically wrapped as ``InstanceToolGroup``)
+- A ``(instance, key_source)`` tuple (instance tool group with a runtime credential source)
+- A ``dict``: defines a tool group inline, with the format ``dict(name='grp', desc='...', tools=[...], lazy=True)``. ``name`` and ``tools`` are required fields.
+
+Tool groups (``ToolGroup``) support two modes:
+
+- **lazy mode** (default): Initially only a ``get_<name>_methods`` gateway tool is exposed to the LLM. After the LLM calls it, the child tool descriptions are dynamically injected into the system prompt, and the LLM selects and calls the actual tool in the next turn. Suitable when there are many tools and you want to reduce context length.
+- **eager mode** (``lazy=False``): All child tool descriptions are expanded and injected into the system prompt immediately, matching the previous behavior.
+
+Tool groups support multi-level nesting; child nodes can be plain tools or another tool group (defined via a nested ``dict``).
 
 Args:
-    tools (List[str]): A list of tool name strings.
+    tools (List): Tool list. Each element can be a string, Callable, ModuleTool, an instance with ``__public_apis__``, a ``(instance, key_source)`` tuple, or a ``dict`` tool group.
     return_trace (bool): If True, return intermediate steps and tool calls.
     sandbox (LazyLLMSandboxBase | None): A sandbox instance. When provided, tools with ``execute_in_sandbox`` set to True will be executed inside this sandbox, with automatic file upload/download handling.
 
@@ -190,6 +216,36 @@ add_example('ToolManager', """\
 >>> tm = ToolManager(tools)
 >>> print(tm([{'name': 'get_n_day_weather_forecast', 'arguments': {'location': 'Beijing', 'num_days': 3}}])[0])
 '{"location": "Beijing", "temperature": "85", "unit": "fahrenheit", "num_days": 3}'
+
+>>> # Using dict to define a lazy tool group (reduces initial context length)
+>>> def search_web(query: str) -> str:
+...     '''Search the web.
+...
+...     Args:
+...         query (str): Search query.
+...
+...     Returns:
+...         str: Search results.
+...     '''
+...     return f'results for {query}'
+...
+>>> def search_news(query: str) -> str:
+...     '''Search news articles.
+...
+...     Args:
+...         query (str): News search query.
+...
+...     Returns:
+...         str: News results.
+...     '''
+...     return f'news for {query}'
+...
+>>> tm2 = ToolManager([
+...     dict(name='search', desc='Web and news search tools', tools=[search_web, search_news]),
+... ])
+>>> # Initially only the gateway tool is visible
+>>> [d['function']['name'] for d in tm2.tools_description]
+['get_search_methods']
 """)
 
 add_agent_chinese_doc('register', '''\
@@ -798,7 +854,7 @@ ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程
 
 Args:
     llm: 大语言模型实例，用于生成推理和工具调用决策
-    tools (List): 可用工具列表，每个元素支持以下四种形式：
+    tools (List): 可用工具列表，每个元素支持以下几种形式：
 
         - ``str``：已注册工具的名称，如 ``"multiply_tool"``。
         - ``Callable``：直接传入函数，会被临时注册为工具。
@@ -810,6 +866,10 @@ Args:
           ``key_source`` 支持字符串（``'env.XXX'``、``'config.xxx'``、``'globals.config.xxx'``，无 ``.`` 时等价于 ``globals.config.xxx``）、
           callable（如 ``lambda inst: inst._key``）或上述类型的列表（任一满足即可）；
           凭据不存在时，该实例的所有工具均从 LLM 可见列表中隐藏，LLM 不会尝试调用它们。
+        - ``dict``：直接定义一个工具组，格式为 ``dict(name='grp', desc='描述', tools=[...], lazy=True)``。
+          ``name`` 和 ``tools`` 为必填字段；``lazy=True``（默认）时初始只暴露 ``get_<name>_methods`` gateway 工具，
+          LLM 调用后子工具描述动态注入 system prompt；``lazy=False`` 时直接展开所有子工具。
+          支持多级嵌套，子 ``tools`` 列表中可以再嵌套 ``dict`` 工具组。
 
     max_retries (int): 工具调用循环的最大轮次，超出后若 `force_summarize=True` 则触发强制总结，否则抛出异常，默认为5
     return_trace (bool): 是否返回完整的执行轨迹，用于调试和分析，默认为False
@@ -830,7 +890,7 @@ ReactAgent follows the `Thought->Action->Observation->Thought...->Finish` loop t
 
 Args:
     llm: The large language model instance used for reasoning and tool-call decisions.
-    tools (List): List of available tools. Each element can be one of four forms:
+    tools (List): List of available tools. Each element can be one of the following:
 
         - ``str``: Name of a registered tool, e.g. ``"multiply_tool"``.
         - ``Callable``: A plain function passed directly; it is temporarily registered as a tool.
@@ -842,6 +902,10 @@ Args:
           ``key_source`` accepts a string (``'env.XXX'``, ``'config.xxx'``, ``'globals.config.xxx'``; no dot means ``globals.config.xxx``),
           a callable (e.g. ``lambda inst: inst._key``), or a list of the above (available if any resolves to a non-empty value).
           When the credential is absent, all tools from that instance are hidden from the LLM's visible tool list and will not be called.
+        - ``dict``: Defines a tool group inline, with the format ``dict(name='grp', desc='...', tools=[...], lazy=True)``.
+          ``name`` and ``tools`` are required fields. When ``lazy=True`` (default), only a ``get_<name>_methods`` gateway tool is initially
+          exposed; after the LLM calls it, child tool descriptions are dynamically injected into the system prompt. When ``lazy=False``,
+          all child tools are expanded immediately. Multi-level nesting is supported by embedding ``dict`` groups inside ``tools``.
 
     max_retries (int): Maximum number of tool-call loop iterations. When exceeded, the force-summarize fallback is triggered (if enabled) or an exception is raised. Defaults to 5.
     return_trace (bool): Whether to return the full execution trace for debugging and analysis. Defaults to False.
@@ -1996,7 +2060,7 @@ add_toolsmgr_chinese_doc('InstanceToolGroup.get_description', '''\
 返回该工具组的 OpenAI function calling 格式描述列表。
 
 若 should_skip() 返回 True（凭据不可用），则返回空列表，LLM 不会感知到该组内的任何工具；
-否则返回所有工具的描述列表，每个元素为符合 OpenAI function calling 规范的字典。
+否则以 lazy 模式返回 gateway 工具描述（``get_<name>_methods``），LLM 调用后子工具描述动态注入 system prompt。
 
 Returns:
     List[Dict]: 工具描述字典列表。当凭据不可用时返回空列表。
@@ -2006,10 +2070,150 @@ add_toolsmgr_english_doc('InstanceToolGroup.get_description', '''\
 Returns the list of tool descriptions in OpenAI function calling format for this tool group.
 
 If should_skip() returns True (credential unavailable), an empty list is returned so the LLM is unaware of any tools in this group;
-otherwise returns the description list for all tools, where each element is a dict conforming to the OpenAI function calling specification.
+otherwise returns the gateway tool description (``get_<name>_methods``) in lazy mode; child tool descriptions are dynamically injected into the system prompt after the LLM calls the gateway.
 
 Returns:
     List[Dict]: List of tool description dicts. Returns an empty list when the credential is unavailable.
+''')
+
+add_toolsmgr_chinese_doc('ToolGroup', '''\
+工具组类，用于将多个工具（或子工具组）组织为一个有名称的集合，并以 lazy 或 eager 模式向 LLM 暴露。
+
+支持两种模式：
+
+- **lazy 模式**（默认，``lazy=True``）：初始只向 LLM 暴露一个 ``get_<name>_methods`` gateway 工具。
+  LLM 调用该工具后，子工具描述动态注入 system prompt，LLM 在下一轮中再选择并调用具体工具。
+  适合工具数量多、希望减少初始上下文长度的场景。
+- **eager 模式**（``lazy=False``）：直接把所有子工具描述展开注入 system prompt，与旧行为一致。
+
+支持多级嵌套：子 ``tools`` 列表中可以包含普通工具（函数、``ModuleTool``）或另一个 ``ToolGroup``（通过嵌套 ``dict`` 定义）。
+
+通常不需要直接实例化 ``ToolGroup``，而是通过向 ``ToolManager``（或 Agent 的 ``tools`` 参数）传入 ``dict`` 来隐式创建：
+
+.. code-block:: python
+
+    tools = [
+        tool1,
+        dict(name='search', desc='搜索工具集', tools=[search_web, search_news]),
+        dict(name='advanced', desc='高级工具', tools=[
+            tool2,
+            dict(name='sub_ops', desc='子工具集', lazy=False, tools=[tool3, tool4]),
+        ]),
+    ]
+
+Args:
+    tools (List): 子工具列表，每个元素可以是函数、``ModuleTool`` 实例、``ToolGroup`` 实例，或嵌套 ``dict``（格式同上）。
+    name (str): 工具组名称，必填。用于生成 gateway 工具名 ``get_<name>_methods``，以及在激活后标识该组。
+    desc (str): 工具组描述，会作为 gateway 工具的 description 展示给 LLM。
+    lazy (bool): 是否使用 lazy 模式，默认 True。
+    key_source: 凭据来源，格式与 ``InstanceToolGroup`` 的 ``key_source`` 参数相同。凭据不可用时整个工具组从 LLM 可见列表中隐藏。
+''')
+
+add_toolsmgr_english_doc('ToolGroup', '''\
+Tool group class that organizes multiple tools (or sub-groups) into a named collection and exposes them to the LLM in lazy or eager mode.
+
+Two modes are supported:
+
+- **lazy mode** (default, ``lazy=True``): Initially only a ``get_<name>_methods`` gateway tool is exposed to the LLM.
+  After the LLM calls it, child tool descriptions are dynamically injected into the system prompt, and the LLM selects and calls the actual tool in the next turn.
+  Suitable when there are many tools and you want to reduce the initial context length.
+- **eager mode** (``lazy=False``): All child tool descriptions are expanded and injected into the system prompt immediately, matching the previous behavior.
+
+Multi-level nesting is supported: the ``tools`` list can contain plain tools (functions, ``ModuleTool``) or another ``ToolGroup`` (defined via a nested ``dict``).
+
+Typically you do not instantiate ``ToolGroup`` directly; instead, pass a ``dict`` to ``ToolManager`` (or the Agent's ``tools`` parameter) to create one implicitly:
+
+.. code-block:: python
+
+    tools = [
+        tool1,
+        dict(name='search', desc='Search tools', tools=[search_web, search_news]),
+        dict(name='advanced', desc='Advanced tools', tools=[
+            tool2,
+            dict(name='sub_ops', desc='Sub-tools', lazy=False, tools=[tool3, tool4]),
+        ]),
+    ]
+
+Args:
+    tools (List): Child tool list. Each element can be a function, ``ModuleTool`` instance, ``ToolGroup`` instance, or a nested ``dict`` (same format as above).
+    name (str): Tool group name. Required. Used to generate the gateway tool name ``get_<name>_methods`` and to identify the group after activation.
+    desc (str): Tool group description, shown to the LLM as the gateway tool's description.
+    lazy (bool): Whether to use lazy mode. Defaults to True.
+    key_source: Credential source, same format as the ``key_source`` parameter of ``InstanceToolGroup``. When the credential is unavailable, the entire tool group is hidden from the LLM.
+''')
+
+add_toolsmgr_example('ToolGroup', '''\
+>>> import lazyllm
+>>> from lazyllm.tools import ToolManager
+>>> from lazyllm import init_session, locals as lazyllm_locals
+>>>
+>>> def search_web(query: str) -> str:
+...     """Search the web.
+...
+...     Args:
+...         query (str): Search query.
+...
+...     Returns:
+...         str: Search results.
+...     """
+...     return f"web results for {query}"
+...
+>>> def search_news(query: str) -> str:
+...     """Search news articles.
+...
+...     Args:
+...         query (str): News search query.
+...
+...     Returns:
+...         str: News results.
+...     """
+...     return f"news for {query}"
+...
+>>> # Lazy mode (default): only gateway tool is visible initially
+>>> tm = ToolManager([
+...     dict(name='search', desc='Web and news search tools', tools=[search_web, search_news]),
+... ])
+>>> [d['function']['name'] for d in tm.tools_description]
+['get_search_methods']
+>>>
+>>> # After the LLM calls the gateway tool, child tools become visible
+>>> init_session()
+>>> lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+>>> gateway = tm._tool_call['get_search_methods']
+>>> result = gateway({})
+>>> print(result)
+Activated tool group "search". Available tools: search_web, search_news
+>>> [d['function']['name'] for d in tm.tools_description]
+['get_search_methods', 'search_web', 'search_news']
+>>>
+>>> # Eager mode: all tools visible immediately
+>>> tm2 = ToolManager([
+...     dict(name='search', desc='Search tools', lazy=False, tools=[search_web, search_news]),
+... ])
+>>> [d['function']['name'] for d in tm2.tools_description]
+['search_web', 'search_news']
+>>>
+>>> # Multi-level nesting
+>>> def calc_add(a: str, b: str) -> str:
+...     """Add two numbers.
+...
+...     Args:
+...         a (str): First number.
+...         b (str): Second number.
+...
+...     Returns:
+...         str: Sum.
+...     """
+...     return str(int(a) + int(b))
+...
+>>> tm3 = ToolManager([
+...     dict(name='outer', desc='Outer group', tools=[
+...         search_web,
+...         dict(name='inner', desc='Inner group', tools=[search_news, calc_add]),
+...     ]),
+... ])
+>>> [d['function']['name'] for d in tm3.tools_description]
+['get_outer_methods']
 ''')
 
 add_toolsmgr_chinese_doc('MethodModuleTool', '''\
