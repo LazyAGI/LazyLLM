@@ -309,56 +309,46 @@ def _build_tool_desc(tool: 'ModuleTool') -> Dict:
 
 class ToolGroup:
     def __init__(self, tools: List[Any], name: str, desc: str = '', lazy: bool = True,
-                 key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
-        self._name = name
-        self._desc = desc
-        self._lazy = lazy
-        self._key_source = key_source
+                 prefix: Optional[Union[bool, str]] = None):
+        self._name, self._desc, self._lazy = name, desc, lazy
+        self._prefix: Optional[str] = name if prefix is True or prefix == '' \
+            else None if prefix is False or prefix is None else prefix
         self._children: List[Union['ModuleTool', 'ToolGroup']] = []
         self._gateway_tool: Optional['ModuleTool'] = None
         for item in tools:
             built = _build_tool_from_element(item)
-            if built is not None:
-                self._children.append(built)
-            else:
+            if built is None:
                 raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, '
                                 f'got {type(item)}')
+            self._children.append(built)
 
     def should_skip(self) -> bool:
-        if self._key_source is None: return False
-        sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
-        return not any(bool(self._resolve_one_key(src)) for src in sources)
+        return False
 
-    def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
-        if callable(source): return source(self) or None
-        try:
-            if '.' not in source:
-                return lazyllm.globals.config[source] or None
-            prefix, _, attr = source.partition('.')
-            if prefix == 'env': return os.environ.get(attr) or None
-            elif prefix == 'config': return lazyllm.config[attr] or None
-            elif prefix == 'globals':
-                if attr.startswith('config.'): return lazyllm.globals.config[attr[len('config.'):]] or None
-                else: return lazyllm.globals[attr] or None
-        except Exception: pass
-        return None
-
-    def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
+    def get_flat_tools(self, _prefix: Optional[str] = None) -> Dict[str, 'ModuleTool']:
+        effective = f'{_prefix}_{self._prefix}' if _prefix and self._prefix \
+            else (_prefix or self._prefix)
         result: Dict[str, ModuleTool] = {}
         for child in self._children:
             if isinstance(child, ToolGroup):
-                result.update(child.get_flat_tools())
+                result.update(child.get_flat_tools(effective))
             else:
-                result[child.name] = child
+                key = f'{effective}_{child.name}' if effective else child.name
+                result[key] = child
         return result
 
-    def get_child_descriptions(self) -> List[Dict]:
+    def get_child_descriptions(self, _prefix: Optional[str] = None) -> List[Dict]:
+        effective = f'{_prefix}_{self._prefix}' if _prefix and self._prefix \
+            else (_prefix or self._prefix)
         descs = []
         for child in self._children:
             if isinstance(child, ToolGroup):
-                descs.extend(child.get_description())
+                descs.extend(child.get_description(_prefix=effective))
             else:
-                descs.append(_build_tool_desc(child))
+                desc = _build_tool_desc(child)
+                if effective:
+                    desc['function']['name'] = f'{effective}_{child.name}'
+                descs.append(desc)
         return descs
 
     def get_gateway_desc(self) -> Dict:
@@ -371,10 +361,9 @@ class ToolGroup:
             }
         }
 
-    def get_description(self) -> List[Dict]:
-        if self.should_skip(): return []
+    def get_description(self, _prefix: Optional[str] = None) -> List[Dict]:
         if not self._lazy:
-            return self.get_child_descriptions()
+            return self.get_child_descriptions(_prefix)
         return [self.get_gateway_desc()]
 
     def make_gateway_tool(self, manager: 'ToolManager') -> 'ModuleTool':
@@ -410,17 +399,17 @@ class InstanceToolGroup(ToolGroup):
                  key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
         if key_source is None: key_source = getattr(type(instance), '__key_source__', None)
         self._instance = instance
+        self._key_source = key_source
         tools = [MethodModuleTool(instance, m) for m in instance.__public_apis__]
         name = instance.__class__.__name__
         desc = getattr(type(instance), '__doc__', '') or ''
-        super().__init__(tools=tools, name=name, desc=desc, lazy=True, key_source=key_source)
+        super().__init__(tools=tools, name=name, desc=desc, lazy=True)
 
     @property
     def _tools(self) -> Dict[str, 'ModuleTool']:
         return {child.name: child for child in self._children if isinstance(child, ModuleTool)}
 
-    def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
-        if callable(source): return source(self._instance) or None
+    def _resolve_key_by_string(self, source: str) -> Optional[str]:
         try:
             if '.' not in source:
                 return lazyllm.globals.config[source] or None
@@ -432,6 +421,19 @@ class InstanceToolGroup(ToolGroup):
                 else: return lazyllm.globals[attr] or None
         except Exception: pass
         return None
+
+    def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
+        if callable(source): return source(self._instance) or None
+        return self._resolve_key_by_string(source)
+
+    def should_skip(self) -> bool:
+        if self._key_source is None: return False
+        sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
+        return not any(bool(self._resolve_one_key(src)) for src in sources)
+
+    def get_description(self, _prefix: Optional[str] = None) -> List[Dict]:
+        if self.should_skip(): return []
+        return super().get_description(_prefix)
 
 
 TOOL_CALL_FORMAT_EXAMPLE = (
@@ -448,13 +450,14 @@ def _build_tool_from_element(element: Any) -> Optional[Union['ModuleTool', 'Tool
         assert 'tools' in element, "ToolGroup dict must have a 'tools' field"
         assert 'desc' in element, "ToolGroup dict must have a 'desc' field"
         return ToolGroup(tools=element['tools'], name=element['name'],
-                         desc=element['desc'], lazy=element.get('lazy', True))
+                         desc=element['desc'], lazy=element.get('lazy', True),
+                         prefix=element.get('prefix', None))
     if callable(element):
         register('tmp_tool')(element)
         tool = getattr(lazyllm.tmp_tool, element.__name__)()
         lazyllm.tmp_tool.remove(element.__name__)
         return tool
-    return None
+    raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, got {type(element)}')
 
 
 class ToolManager(ModuleBase):
@@ -487,9 +490,7 @@ class ToolManager(ModuleBase):
             elif hasattr(element, '__public_apis__') and not isinstance(element, (ToolGroup, ModuleTool)):
                 _tools.append(InstanceToolGroup(element))
             else:
-                built = _build_tool_from_element(element)
-                if built is not None:
-                    _tools.append(built)
+                _tools.append(_build_tool_from_element(element))
         return _tools
 
     @property
