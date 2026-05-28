@@ -85,6 +85,8 @@ jobs:
           ls -la "$LAZYLLM_DATA_PATH/rag_master" 2>&1 || true
           echo "--- rag_master/default ---"
           ls -la "$LAZYLLM_DATA_PATH/rag_master/default" 2>&1 || true
+          echo "--- rag_master/default/__data ---"
+          ls -laR "$LAZYLLM_DATA_PATH/rag_master/default/__data" 2>&1 || true
           echo "=== Running tests ==="
           python -m pytest -v --order-scope=class -m "not skip_on_linux" tests/basic_tests/RAG
 
@@ -144,7 +146,7 @@ jobs:
       - name: Install C++ extension artifacts into workspace
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cmake --install build --config Release --prefix . --component lazyllm_cpp
+            cmake --install build --config Debug --prefix . --component lazyllm_cpp
           else
             cmake --install build --prefix . --component lazyllm_cpp
           fi

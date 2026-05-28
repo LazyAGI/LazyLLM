@@ -904,7 +904,7 @@ jobs:
       - name: Install C++ extension artifacts into workspace
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            cmake --install build --config Release --prefix . --component lazyllm_cpp
+            cmake --install build --config Debug --prefix . --component lazyllm_cpp
           else
             cmake --install build --prefix . --component lazyllm_cpp
           fi
