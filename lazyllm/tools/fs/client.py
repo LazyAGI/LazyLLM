@@ -9,6 +9,8 @@ from lazyllm import globals
 _PROTOCOL_RE = re.compile(r'^([a-zA-Z][a-zA-Z0-9+\-.]*)(@[^:/]+)?:/(.*)$')
 _FEISHU_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
 _FEISHU_WIKI_PATH_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
+_NOTION_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:notion\.so|notion\.site)/', re.IGNORECASE)
+_NOTION_LINK_PATH_PREFIXES = ('~link/', '~page/', '~database/', '~block/')
 
 
 def _lookup_fs_cls(protocol: str):
@@ -42,6 +44,8 @@ class _FSRouter:
     def _parse(self, path: str):
         if _FEISHU_BARE_URL_RE.match(path):
             return 'feishu', 'dynamic', '/~link/' + quote(path, safe='')
+        if _NOTION_BARE_URL_RE.match(path):
+            return 'notion', 'dynamic', '/~link/' + quote(path, safe='')
         m = _PROTOCOL_RE.match(path)
         if not m:
             return 'file', None, path
@@ -52,6 +56,10 @@ class _FSRouter:
         if protocol == 'feishu' and space_id is None:
             norm = rest.lstrip('/')
             if any(norm.startswith(p) for p in _FEISHU_WIKI_PATH_PREFIXES):
+                space_id = 'dynamic'
+        if protocol == 'notion' and space_id is None:
+            norm = rest.lstrip('/')
+            if any(norm.startswith(p) for p in _NOTION_LINK_PATH_PREFIXES):
                 space_id = 'dynamic'
         return protocol, space_id, rest
 
