@@ -315,7 +315,6 @@ class ToolGroup:
             else None if prefix is False or prefix is None else prefix
         effective_prefix = f'{_outer_prefix}_{own_prefix}' if _outer_prefix and own_prefix \
             else (_outer_prefix or own_prefix)
-        self._effective_prefix = effective_prefix
         self._children: List[Union['ModuleTool', 'ToolGroup']] = []
         for item in tools:
             built = _build_tool_from_element(item, _outer_prefix=effective_prefix)
@@ -324,44 +323,46 @@ class ToolGroup:
                                 f'got {type(item)}')
             self._children.append(built)
         self._gateway_tool: Optional['ModuleTool'] = self.make_gateway_tool() if lazy else None
+        self._precompute_descs(effective_prefix)
 
     def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
         result: Dict[str, ModuleTool] = {}
         if self._gateway_tool is not None:
             result[self._gateway_tool.name] = self._gateway_tool
-        for child in self._children:
+        for child, precomputed in zip(self._children, self._expanded_descs):
             if isinstance(child, ToolGroup):
                 result.update(child.get_flat_tools())
             else:
-                key = f'{self._effective_prefix}_{child.name}' if self._effective_prefix else child.name
-                result[key] = child
+                result[precomputed['function']['name']] = child
         return result
 
-    def get_child_descriptions(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
-        descs = []
+    def _precompute_descs(self, effective_prefix: Optional[str] = None):
+        self._gateway_desc: Optional[Dict] = _build_tool_desc(self._gateway_tool) \
+            if self._gateway_tool is not None else None
+        self._expanded_descs: List[Union[Dict, 'ToolGroup']] = []
+        self._leaf_names: List[str] = []
         for child in self._children:
             if isinstance(child, ToolGroup):
-                descs.extend(child.get_description(active_groups=active_groups))
+                self._expanded_descs.append(child)
+                if child._lazy:
+                    self._leaf_names.append(child._gateway_tool.name)
+                else:
+                    self._leaf_names.extend(child._leaf_names)
             else:
                 desc = _build_tool_desc(child)
-                if self._effective_prefix:
-                    desc['function']['name'] = f'{self._effective_prefix}_{child.name}'
-                descs.append(desc)
-        return descs
+                final_name = f'{effective_prefix}_{child.name}' if effective_prefix else child.name
+                desc['function']['name'] = final_name
+                self._expanded_descs.append(desc)
+                self._leaf_names.append(final_name)
 
     def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
         if not self._lazy or (active_groups is not None and self._name in active_groups):
-            return self.get_child_descriptions(active_groups)
-        return [_build_tool_desc(self._gateway_tool)]
+            return [x for item in self._expanded_descs
+                    for x in (item.get_description(active_groups) if isinstance(item, ToolGroup) else [item])]
+        return [self._gateway_desc]
 
     def _collect_leaf_names(self) -> List[str]:
-        names = []
-        for child in self._children:
-            if isinstance(child, ToolGroup):
-                names.extend(child._collect_leaf_names())
-            else:
-                names.append(f'{self._effective_prefix}_{child.name}' if self._effective_prefix else child.name)
-        return names
+        return self._leaf_names
 
     def make_gateway_tool(self) -> 'ModuleTool':
         group_name = self._name
@@ -524,15 +525,11 @@ class ToolManager(ModuleBase):
         if isinstance(self._tools, List):
             self._tool_call: Dict[str, ModuleTool] = {}
             for item in self._tools:
-                if isinstance(item, ToolGroup):
-                    for name, tool in item.get_flat_tools().items():
-                        if name in self._tool_call:
-                            raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
-                        self._tool_call[name] = tool
-                else:
-                    if item.name in self._tool_call:
-                        raise ValueError(f'Duplicate tool name [{item.name}]. Tool names must be unique.')
-                    self._tool_call[item.name] = item
+                items = item.get_flat_tools() if isinstance(item, ToolGroup) else {item.name: item}
+                for name, tool in items.items():
+                    if name in self._tool_call:
+                        raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
+                    self._tool_call[name] = tool
 
     def _transform_to_openai_function(self):
         if not isinstance(self._tools, List):
