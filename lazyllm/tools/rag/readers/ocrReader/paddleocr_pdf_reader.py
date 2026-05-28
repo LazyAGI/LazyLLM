@@ -143,8 +143,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                 _t_wait = time.time() - _t_poll
                 LOG.info(f'[BENCHMARK] file={fname} phase=wait elapsed={_t_wait:.3f}s')
 
-                jsonl_resp = requests.get(jsonl_url, timeout=self._timeout or 120)
-                jsonl_resp.raise_for_status()
+                jsonl_resp = get_sync(jsonl_url, timeout=self._timeout or 120)
                 merged = self._merge_jsonl_lines(jsonl_resp.text)
                 return merged, None
 
