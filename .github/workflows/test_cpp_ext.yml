@@ -70,4 +70,5 @@ jobs:
 
       - name: Run RAG tests
         run: |
+          pip install pytest
           python -m pytest -v --order-scope=class -m "$PYTEST_MARKER" tests/basic_tests/RAG
