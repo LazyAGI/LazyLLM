@@ -152,8 +152,8 @@ def _delete_expired_archives(storage_dir: Path, now: datetime, retention_seconds
         try:
             path.unlink()
             deleted.append(path.name)
-        except FileNotFoundError:
-            pass
+        except OSError as exc:
+            LOG.warning(f'Failed to delete expired archive {path.name}: {exc}')
     return deleted
 
 
@@ -303,18 +303,15 @@ def _read_trace_file(
     trace_id: str,
     timeout_seconds: Optional[float],
 ) -> tuple[str, List[str]]:
-    try:
-        with _local_trace_lock(storage_dir, trace_id, timeout_seconds=timeout_seconds):
-            path = _find_trace_path(storage_dir, trace_id)
-            if path is None:
-                return _read_archived_trace_file(storage_dir, trace_id)
-            try:
-                with path.open('r', encoding='utf-8') as file_obj:
-                    return path.name, file_obj.readlines()
-            except FileNotFoundError:
-                return _read_archived_trace_file(storage_dir, trace_id)
-    except Timeout as exc:
-        raise ConsumeBackendError(f'timed out waiting for local trace file lock: {trace_id}') from exc
+    with _local_trace_lock(storage_dir, trace_id, timeout_seconds=timeout_seconds):
+        path = _find_trace_path(storage_dir, trace_id)
+        if path is None:
+            return _read_archived_trace_file(storage_dir, trace_id)
+        try:
+            with path.open('r', encoding='utf-8') as file_obj:
+                return path.name, file_obj.readlines()
+        except FileNotFoundError:
+            return _read_archived_trace_file(storage_dir, trace_id)
 
 
 def _read_archived_trace_file(storage_dir: Path, trace_id: str) -> tuple[str, List[str]]:
