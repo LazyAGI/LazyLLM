@@ -61,7 +61,6 @@
 - 课程体系:
   - 概述: Tutorial/index.md
   - 从数据到大模型:
-    - 课程简介: Tutorial/from-data-to-llm/index.md
     - 课程大纲: Tutorial/from-data-to-llm/outline.md
     - 第一部分：大模型基础:
       - 第1课时：Transformer 核心与 Self-Attention 深度剖析: Tutorial/from-data-to-llm/chapter1/1.md

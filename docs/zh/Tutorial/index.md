@@ -8,9 +8,6 @@
 
 ### 从数据到大模型
 
-- [LLM 模型训练与数据工程](from-data-to-llm/index.md)
-  覆盖从数据工程、预训练、指令微调、对齐训练到 RAG 数据工程的 28 课时体系化教程。
-
 - [第1讲 Transformer 核心与 Self-Attention 深度剖析](from-data-to-llm/chapter1/1.md)
   从注意力机制、位置编码到 Transformer 结构，理解大模型架构的基础。
 
