@@ -87,6 +87,23 @@ jobs:
           ls -la "$LAZYLLM_DATA_PATH/rag_master/default" 2>&1 || true
           echo "--- rag_master/default/__data ---"
           ls -laR "$LAZYLLM_DATA_PATH/rag_master/default/__data" 2>&1 || true
+          echo "=== Quick Document pipeline diagnostic ==="
+          python -c "
+          import lazyllm
+          from lazyllm.tools.rag import Document, Retriever
+          from lazyllm.tools.rag.transform import SentenceSplitter
+          doc = Document(dataset_path='rag_master', manager=False)
+          doc.create_node_group(name='diag', transform=SentenceSplitter, chunk_size=128, chunk_overlap=10)
+          doc.activate_groups('diag')
+          print('Starting...')
+          doc.start()
+          print('Start done')
+          r = Retriever(doc, group_name='diag', similarity='bm25', topk=3)
+          result = r(query='天道')
+          print(f'Results: {len(result)}')
+          for n in result:
+              print(f'  {n.text[:80]}')
+          "
           echo "=== Running tests ==="
           python -m pytest -v --order-scope=class -m "not skip_on_linux" tests/basic_tests/RAG
 
