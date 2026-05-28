@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import pytest
-from filelock import FileLock
 
 from lazyllm import config
 from lazyllm.thirdparty import opentelemetry
@@ -215,7 +214,7 @@ def test_local_backend_maintains_expired_trace_files_and_keeps_fresh_jsonl(tmp_p
     assert fresh_payload.trace.name == 'fresh-root'
 
 
-def test_local_backend_maintenance_skips_during_frequent_trace_reads(tmp_path):
+def test_local_backend_maintenance_skips_during_frequent_trace_reads(tmp_path, monkeypatch):
     from lazyllm.tracing.backends.local import LocalConsumeBackend, maintain_local_traces
 
     trace_id = _emit_real_trace(tmp_path, 'locked-root')
@@ -225,25 +224,31 @@ def test_local_backend_maintenance_skips_during_frequent_trace_reads(tmp_path):
     original_file.rename(old_file)
 
     backend = LocalConsumeBackend(storage_dir=tmp_path)
-    stop = threading.Event()
-    read_errors = []
+    read_started = threading.Event()
+    release_read = threading.Event()
+    original_open = type(old_file).open
 
-    def read_trace_repeatedly():
-        while not stop.is_set():
-            try:
-                backend.fetch_trace_payload(trace_id)
-            except Exception as exc:
-                read_errors.append(exc)
+    def blocked_open(path, *args, **kwargs):
+        mode = args[0] if args else kwargs.get('mode', 'r')
+        if path == old_file and 'r' in mode:
+            read_started.set()
+            if not release_read.wait(timeout=2):
+                raise AssertionError('timed out waiting to release blocked local trace read')
+        return original_open(path, *args, **kwargs)
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        reader = pool.submit(read_trace_repeatedly)
-        with FileLock(str(tmp_path / f'.{trace_id}.lock')):
-            with config.temp('trace_local_archive_seconds', 10):
-                result = maintain_local_traces(tmp_path)
-        stop.set()
-        reader.result(timeout=1)
+    monkeypatch.setattr(type(old_file), 'open', blocked_open)
 
-    assert not read_errors
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        readers = [pool.submit(backend.fetch_trace_payload, trace_id) for _ in range(8)]
+        assert read_started.wait(timeout=2)
+        with config.temp('trace_local_archive_seconds', 10):
+            result = maintain_local_traces(tmp_path)
+            release_read.set()
+            for reader in readers:
+                assert reader.result(timeout=2).trace.trace_id == trace_id
+            result_after = maintain_local_traces(tmp_path)
+
     assert result == {'compressed_jsonl': [], 'deleted_zip': []}
-    assert old_file.exists()
-    assert not list(tmp_path.glob('*.zip'))
+    assert result_after['compressed_jsonl'] == [old_file.name]
+    assert not old_file.exists()
+    assert len(list(tmp_path.glob('*.zip'))) == 1
