@@ -10,7 +10,7 @@ from lazyllm.common.utils import SecurityVisitor
 from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
-from lazyllm import LOG
+from lazyllm import LOG, locals as lazyllm_locals
 from typing import *  # noqa F403, to import all types for compile_func(), do not remove
 
 # ---------------------------------------------------------------------------- #
@@ -305,24 +305,132 @@ def _build_tool_desc(tool: 'ModuleTool') -> Dict:
     }
 
 
-class InstanceToolGroup:
-    def __init__(self, instance: Any,
+class ToolGroup:
+    def __init__(self, tools: List[Any], name: str, desc: str = '', lazy: bool = True,
                  key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
-        self._instance = instance
-        if key_source is None: key_source = getattr(type(instance), '__key_source__', None)
+        self._name = name
+        self._desc = desc
+        self._lazy = lazy
         self._key_source = key_source
-        self._tools: Dict[str, MethodModuleTool] = {
-            (instance.__class__.__name__ if m == '__call__' else f'{instance.__class__.__name__}_{m}'):
-            MethodModuleTool(instance, m) for m in instance.__public_apis__}
-        self._tool_descs: List[Dict] = [_build_tool_desc(t) for t in self._tools.values()]
+        self._children: List[Union['ModuleTool', 'ToolGroup']] = []
+        self._gateway_tool: Optional['ModuleTool'] = None
+        for item in tools:
+            if isinstance(item, dict):
+                assert 'name' in item, "ToolGroup dict must have a 'name' field"
+                assert 'tools' in item, "ToolGroup dict must have a 'tools' field"
+                self._children.append(ToolGroup(
+                    tools=item['tools'], name=item['name'],
+                    desc=item.get('desc', ''), lazy=item.get('lazy', True),
+                ))
+            elif isinstance(item, ToolGroup):
+                self._children.append(item)
+            elif isinstance(item, ModuleTool):
+                self._children.append(item)
+            elif callable(item):
+                if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
+                    register.new_group('tmp_tool')
+                register('tmp_tool')(item)
+                tool = getattr(lazyllm.tmp_tool, item.__name__)()
+                lazyllm.tmp_tool.remove(item.__name__)
+                self._children.append(tool)
+            else:
+                raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, '
+                                f'got {type(item)}')
 
     def should_skip(self) -> bool:
         if self._key_source is None: return False
         sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
         return not any(bool(self._resolve_one_key(src)) for src in sources)
 
+    def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
+        if callable(source): return source(self) or None
+        try:
+            if '.' not in source:
+                return lazyllm.globals.config[source] or None
+            prefix, _, attr = source.partition('.')
+            if prefix == 'env': return os.environ.get(attr) or None
+            elif prefix == 'config': return lazyllm.config[attr] or None
+            elif prefix == 'globals':
+                if attr.startswith('config.'): return lazyllm.globals.config[attr[len('config.'):]] or None
+                else: return lazyllm.globals[attr] or None
+        except Exception: pass
+        return None
+
+    def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
+        result: Dict[str, ModuleTool] = {}
+        for child in self._children:
+            if isinstance(child, ToolGroup):
+                result.update(child.get_flat_tools())
+            else:
+                result[child.name] = child
+        return result
+
+    def get_child_descriptions(self) -> List[Dict]:
+        descs = []
+        for child in self._children:
+            if isinstance(child, ToolGroup):
+                descs.extend(child.get_description())
+            else:
+                descs.append(_build_tool_desc(child))
+        return descs
+
+    def get_gateway_desc(self) -> Dict:
+        return {
+            'type': 'function',
+            'function': {
+                'name': f'get_{self._name}_methods',
+                'description': self._desc or f'Get available methods of {self._name}.',
+                'parameters': {'type': 'object', 'properties': {}, 'required': []},
+            }
+        }
+
     def get_description(self) -> List[Dict]:
-        return [] if self.should_skip() else self._tool_descs
+        if self.should_skip(): return []
+        if not self._lazy:
+            return self.get_child_descriptions()
+        return [self.get_gateway_desc()]
+
+    def make_gateway_tool(self, manager: 'ToolManager') -> 'ModuleTool':
+        group_name = self._name
+        module_id = manager._module_id
+        child_names = list(self.get_flat_tools().keys())
+
+        def _gateway_apply() -> str:
+            active_key = f'_active_groups_{module_id}'
+            workspace = lazyllm_locals['_lazyllm_agent'].get('workspace', {})
+            active = workspace.setdefault(active_key, [])
+            if group_name not in active:
+                active.append(group_name)
+            return (f'Activated tool group "{group_name}". '
+                    f'Available tools: {", ".join(child_names)}')
+
+        _gateway_apply.__doc__ = (
+            f'Get available methods of {group_name}.\n\n'
+            f'Returns:\n    str: List of available tool names in this group.'
+        )
+        _gateway_apply.__name__ = f'get_{group_name}_methods'
+
+        register('tmp_tool')(_gateway_apply)
+        tool_cls = getattr(lazyllm.tmp_tool, _gateway_apply.__name__)
+        tool = tool_cls()
+        lazyllm.tmp_tool.remove(_gateway_apply.__name__)
+        self._gateway_tool = tool
+        return tool
+
+
+class InstanceToolGroup(ToolGroup):
+    def __init__(self, instance: Any,
+                 key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
+        if key_source is None: key_source = getattr(type(instance), '__key_source__', None)
+        self._instance = instance
+        tools = [MethodModuleTool(instance, m) for m in instance.__public_apis__]
+        name = instance.__class__.__name__
+        desc = getattr(type(instance), '__doc__', '') or ''
+        super().__init__(tools=tools, name=name, desc=desc, lazy=True, key_source=key_source)
+
+    @property
+    def _tools(self) -> Dict[str, 'ModuleTool']:
+        return {child.name: child for child in self._children if isinstance(child, ModuleTool)}
 
     def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
         if callable(source): return source(self._instance) or None
@@ -370,8 +478,17 @@ class ToolManager(ModuleBase):
         for element in tools:
             if isinstance(element, str):
                 _tools.append(self._load_tool_by_name(element))
+            elif isinstance(element, ToolGroup):
+                _tools.append(element)
             elif isinstance(element, ModuleTool):
                 _tools.append(element)
+            elif isinstance(element, dict):
+                assert 'name' in element, "ToolGroup dict must have a 'name' field"
+                assert 'tools' in element, "ToolGroup dict must have a 'tools' field"
+                _tools.append(ToolGroup(
+                    tools=element['tools'], name=element['name'],
+                    desc=element.get('desc', ''), lazy=element.get('lazy', True),
+                ))
             elif isinstance(element, tuple) and len(element) == 2:
                 instance, key_source = element
                 if not hasattr(instance, '__public_apis__'):
@@ -393,7 +510,16 @@ class ToolManager(ModuleBase):
 
     @property
     def tools_description(self) -> List[Dict]:
-        return [x for item in self._tools_desc for x in (item() if callable(item) else [item])]
+        static = [x for item in self._tools_desc for x in (item() if callable(item) else [item])]
+        active_key = f'_active_groups_{self._module_id}'
+        try:
+            workspace = lazyllm_locals['_lazyllm_agent'].get('workspace', {})
+        except Exception:
+            workspace = {}
+        active_groups = workspace.get(active_key, [])
+        extra = [desc for gname in active_groups if gname in self._tool_groups
+                 for desc in self._tool_groups[gname].get_child_descriptions()]
+        return static + extra
 
     @property
     def tools_info(self):
@@ -417,12 +543,37 @@ class ToolManager(ModuleBase):
     def _format_tools(self):
         if isinstance(self._tools, List):
             self._tool_call: Dict[str, ModuleTool] = {}
+            self._tool_groups: Dict[str, ToolGroup] = {}
             for item in self._tools:
-                items = item._tools if isinstance(item, InstanceToolGroup) else {item.name: item}
-                for name, tool in items.items():
-                    if name in self._tool_call:
-                        raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
-                    self._tool_call[name] = tool
+                if isinstance(item, ToolGroup):
+                    for name, tool in item.get_flat_tools().items():
+                        if name in self._tool_call:
+                            raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
+                        self._tool_call[name] = tool
+                    if item._lazy and not item.should_skip():
+                        gateway = item.make_gateway_tool(self)
+                        if gateway.name in self._tool_call:
+                            raise ValueError(
+                                f'Duplicate tool name [{gateway.name}]. Tool names must be unique.')
+                        self._tool_call[gateway.name] = gateway
+                        self._tool_groups[item._name] = item
+                        self._register_sub_groups(item)
+                else:
+                    if item.name in self._tool_call:
+                        raise ValueError(f'Duplicate tool name [{item.name}]. Tool names must be unique.')
+                    self._tool_call[item.name] = item
+
+    def _register_sub_groups(self, group: ToolGroup):
+        for child in group._children:
+            if isinstance(child, ToolGroup):
+                if child._lazy:
+                    gateway = child.make_gateway_tool(self)
+                    if gateway.name not in self._tool_call:
+                        self._tool_call[gateway.name] = gateway
+                    self._tool_groups[child._name] = child
+                    self._register_sub_groups(child)
+                else:
+                    self._register_sub_groups(child)
 
     def _transform_to_openai_function(self):
         if not isinstance(self._tools, List):
@@ -430,7 +581,7 @@ class ToolManager(ModuleBase):
 
         format_tools = []
         for item in self._tools:
-            if isinstance(item, InstanceToolGroup):
+            if isinstance(item, ToolGroup):
                 format_tools.append(item.get_description)
             else:
                 try:

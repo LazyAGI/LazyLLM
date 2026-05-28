@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         ModuleTool,
         SkillManager,
         install_skill,
+        TodoWrite,
     )
     from .sandbox import LazyLLMSandboxBase, DummySandbox, SandboxFusion
     from .classifier import IntentClassifier
@@ -95,6 +96,7 @@ _SUBMOD_MAP = {
         'ReWOOAgent',
         'SkillManager',
         'install_skill',
+        'TodoWrite',
     ],
     'sandbox': [
         'LazyLLMSandboxBase',
