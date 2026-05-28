@@ -309,63 +309,58 @@ def _build_tool_desc(tool: 'ModuleTool') -> Dict:
 
 class ToolGroup:
     def __init__(self, tools: List[Any], name: str, desc: str = '', lazy: bool = True,
-                 prefix: Optional[Union[bool, str]] = None):
+                 prefix: Optional[Union[bool, str]] = True, _outer_prefix: Optional[str] = None):
         self._name, self._desc, self._lazy = name, desc, lazy
-        self._prefix: Optional[str] = name if prefix is True or prefix == '' \
+        own_prefix: Optional[str] = name if prefix is True or prefix == '' \
             else None if prefix is False or prefix is None else prefix
+        effective_prefix = f'{_outer_prefix}_{own_prefix}' if _outer_prefix and own_prefix \
+            else (_outer_prefix or own_prefix)
+        self._effective_prefix = effective_prefix
         self._children: List[Union['ModuleTool', 'ToolGroup']] = []
         for item in tools:
-            built = _build_tool_from_element(item)
+            built = _build_tool_from_element(item, _outer_prefix=effective_prefix)
             if built is None:
                 raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, '
                                 f'got {type(item)}')
             self._children.append(built)
         self._gateway_tool: Optional['ModuleTool'] = self.make_gateway_tool() if lazy else None
 
-    def get_flat_tools(self, _prefix: Optional[str] = None) -> Dict[str, 'ModuleTool']:
-        effective = f'{_prefix}_{self._prefix}' if _prefix and self._prefix \
-            else (_prefix or self._prefix)
+    def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
         result: Dict[str, ModuleTool] = {}
         if self._gateway_tool is not None:
             result[self._gateway_tool.name] = self._gateway_tool
         for child in self._children:
             if isinstance(child, ToolGroup):
-                result.update(child.get_flat_tools(effective))
+                result.update(child.get_flat_tools())
             else:
-                key = f'{effective}_{child.name}' if effective else child.name
+                key = f'{self._effective_prefix}_{child.name}' if self._effective_prefix else child.name
                 result[key] = child
         return result
 
-    def get_child_descriptions(self, _prefix: Optional[str] = None,
-                               active_groups: Optional[Set[str]] = None) -> List[Dict]:
-        effective = f'{_prefix}_{self._prefix}' if _prefix and self._prefix \
-            else (_prefix or self._prefix)
+    def get_child_descriptions(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
         descs = []
         for child in self._children:
             if isinstance(child, ToolGroup):
-                descs.extend(child.get_description(_prefix=effective, active_groups=active_groups))
+                descs.extend(child.get_description(active_groups=active_groups))
             else:
                 desc = _build_tool_desc(child)
-                if effective:
-                    desc['function']['name'] = f'{effective}_{child.name}'
+                if self._effective_prefix:
+                    desc['function']['name'] = f'{self._effective_prefix}_{child.name}'
                 descs.append(desc)
         return descs
 
-    def get_description(self, _prefix: Optional[str] = None,
-                        active_groups: Optional[Set[str]] = None) -> List[Dict]:
+    def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
         if not self._lazy or (active_groups is not None and self._name in active_groups):
-            return self.get_child_descriptions(_prefix, active_groups)
+            return self.get_child_descriptions(active_groups)
         return [_build_tool_desc(self._gateway_tool)]
 
-    def _collect_leaf_names(self, _prefix: Optional[str] = None) -> List[str]:
-        effective = f'{_prefix}_{self._prefix}' if _prefix and self._prefix \
-            else (_prefix or self._prefix)
+    def _collect_leaf_names(self) -> List[str]:
         names = []
         for child in self._children:
             if isinstance(child, ToolGroup):
-                names.extend(child._collect_leaf_names(effective))
+                names.extend(child._collect_leaf_names())
             else:
-                names.append(f'{effective}_{child.name}' if effective else child.name)
+                names.append(f'{self._effective_prefix}_{child.name}' if self._effective_prefix else child.name)
         return names
 
     def make_gateway_tool(self) -> 'ModuleTool':
@@ -429,10 +424,9 @@ class InstanceToolGroup(ToolGroup):
         sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
         return not any(bool(self._resolve_one_key(src)) for src in sources)
 
-    def get_description(self, _prefix: Optional[str] = None,
-                        active_groups: Optional[Set[str]] = None) -> List[Dict]:
+    def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
         if self.should_skip(): return []
-        return super().get_description(_prefix, active_groups)
+        return super().get_description(active_groups)
 
 
 TOOL_CALL_FORMAT_EXAMPLE = (
@@ -441,16 +435,17 @@ TOOL_CALL_FORMAT_EXAMPLE = (
 )
 
 
-def _build_tool_from_element(element: Any) -> Optional[Union['ModuleTool', 'ToolGroup']]:
+def _build_tool_from_element(
+        element: Any, _outer_prefix: Optional[str] = None) -> Optional[Union['ModuleTool', 'ToolGroup']]:
     if isinstance(element, (ToolGroup, ModuleTool)):
         return element
     if isinstance(element, dict):
         assert 'name' in element, "ToolGroup dict must have a 'name' field"
         assert 'tools' in element, "ToolGroup dict must have a 'tools' field"
         assert 'desc' in element, "ToolGroup dict must have a 'desc' field"
-        return ToolGroup(tools=element['tools'], name=element['name'],
-                         desc=element['desc'], lazy=element.get('lazy', True),
-                         prefix=element.get('prefix', None))
+        return ToolGroup(tools=element['tools'], name=element['name'], desc=element['desc'],
+                         lazy=element.get('lazy', True), prefix=element.get('prefix', None),
+                         _outer_prefix=_outer_prefix)
     if callable(element):
         register('tmp_tool')(element)
         tool = getattr(lazyllm.tmp_tool, element.__name__)()
