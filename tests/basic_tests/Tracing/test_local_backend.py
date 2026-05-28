@@ -248,10 +248,8 @@ def test_local_backend_maintenance_waits_during_frequent_trace_reads(tmp_path, m
         readers = [pool.submit(backend.fetch_trace_payload, trace_id) for _ in range(reader_count)]
         assert read_started.wait(timeout=2)
         with config.temp('trace_local_archive_seconds', 10):
-            from lazyllm.tracing.errors import ConsumeBackendError
-
-            with pytest.raises(ConsumeBackendError):
-                maintain_local_traces(tmp_path, timeout_seconds=0.01)
+            result = maintain_local_traces(tmp_path, timeout_seconds=0.01)
+            assert result == {'compressed_jsonl': [], 'deleted_zip': []}
             assert old_file.exists()
             assert not list(tmp_path.glob('*.zip'))
             release_read.set()

@@ -1,6 +1,6 @@
 import json
 import zipfile
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -112,36 +112,38 @@ def _archive_old_jsonl(
     _warn_duplicate_trace_ids(jsonl_paths)
     archive_path = _next_archive_path(storage_dir, now)
     tmp_path = archive_path.with_suffix('.zip.tmp')
-    locked_paths: List[Path] = []
+    archived_paths: List[Path] = []
     try:
-        with ExitStack() as stack:
-            locked_trace_ids = set()
+        with zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED) as zip_file:
             for path in jsonl_paths:
                 if '_' not in path.name:
                     LOG.warning(f'Invalid local trace file name: {path.name}')
                     continue
-                trace_id = path.name.rsplit('_', 1)[1][:-len('.jsonl')]
-                if trace_id not in locked_trace_ids:
-                    stack.enter_context(_local_trace_lock(storage_dir, trace_id, timeout_seconds))
-                    locked_trace_ids.add(trace_id)
-                locked_paths.append(path)
-            if not locked_paths:
-                return []
-
-            with zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED) as zip_file:
-                for path in locked_paths:
-                    zip_file.write(path, arcname=path.name)
-            tmp_path.replace(archive_path)  # Publish the completed archive atomically.
-            for path in locked_paths:
+                _, trace_id = path.stem.split('_', 1)
                 try:
-                    path.unlink()
-                except FileNotFoundError:
-                    pass
+                    with _local_trace_lock(storage_dir, trace_id, timeout_seconds):
+                        zip_file.write(path, arcname=path.name)
+                    archived_paths.append(path)
+                except ConsumeBackendError as exc:
+                    LOG.warning(f'Skipping archiving for trace {trace_id} due to lock timeout: {exc}')
+
+        if not archived_paths:
+            tmp_path.unlink(missing_ok=True)
+            return []
+
+        tmp_path.replace(archive_path)  # Publish the completed archive atomically.
+        for path in archived_paths:
+            _, trace_id = path.stem.split('_', 1)
+            try:
+                with _local_trace_lock(storage_dir, trace_id, timeout_seconds):
+                    path.unlink(missing_ok=True)
+            except OSError as exc:
+                LOG.warning(f'Failed to delete archived trace file {path.name}: {exc}')
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
 
-    return [path.name for path in locked_paths]
+    return [path.name for path in archived_paths]
 
 
 def _delete_expired_archives(storage_dir: Path, now: datetime, retention_seconds: int) -> List[str]:
