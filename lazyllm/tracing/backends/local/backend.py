@@ -1,7 +1,6 @@
 import json
-import time
 import zipfile
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -25,6 +24,7 @@ from .config import (
 
 _TRACE_TIME_FORMAT = '%Y%m%d%H%M%S'
 _MAINTENANCE_LOCK_NAME = '.maintenance.lock'
+_DEFAULT_MAINTENANCE_TIMEOUT_SECONDS = 2
 
 
 def _find_trace_path(storage_dir: Path, trace_id: str) -> Optional[Path]:
@@ -46,39 +46,19 @@ def _trace_path(storage_dir: Path, trace_id: str, timestamp: Optional[str] = Non
 
 
 def _maintenance_lock(storage_dir: Path, timeout_seconds: Optional[float] = None) -> FileLock:
-    timeout = timeout_seconds if timeout_seconds is not None else 0
+    timeout = timeout_seconds if timeout_seconds is not None else _DEFAULT_MAINTENANCE_TIMEOUT_SECONDS
     return FileLock(str(storage_dir / _MAINTENANCE_LOCK_NAME), timeout=timeout)
-
-
-def _maintenance_active(storage_dir: Path) -> bool:
-    return (storage_dir / _MAINTENANCE_LOCK_NAME).exists()
 
 
 @contextmanager
 def _local_trace_lock(storage_dir: Path, trace_id: str, timeout_seconds: Optional[float] = None):
-    deadline = None if timeout_seconds is None or timeout_seconds < 0 else time.monotonic() + timeout_seconds
-
-    while True:
-        while _maintenance_active(storage_dir):
-            if deadline is not None and time.monotonic() >= deadline:
-                raise ConsumeBackendError(f'timed out waiting for local trace maintenance lock: {trace_id}')
-            time.sleep(0.01)
-
-        timeout = -1 if deadline is None else max(0, deadline - time.monotonic())
-        trace_lock = FileLock(str(storage_dir / f'.{trace_id}.lock'), timeout=timeout)
-        try:
-            with trace_lock:
-                if _maintenance_active(storage_dir):
-                    if deadline is not None and time.monotonic() >= deadline:
-                        raise ConsumeBackendError(
-                            f'timed out waiting for local trace maintenance lock: {trace_id}'
-                        )
-                    time.sleep(0.01)
-                    continue
-                yield
-                return
-        except Timeout as exc:
-            raise ConsumeBackendError(f'timed out waiting for local trace file lock: {trace_id}') from exc
+    timeout = -1 if timeout_seconds is None or timeout_seconds < 0 else timeout_seconds
+    trace_lock = FileLock(str(storage_dir / f'.{trace_id}.lock'), timeout=timeout)
+    try:
+        with trace_lock:
+            yield
+    except Timeout as exc:
+        raise ConsumeBackendError(f'timed out waiting for local trace file lock: {trace_id}') from exc
 
 
 def _parse_prefix_time(path: Path) -> Optional[datetime]:
@@ -116,7 +96,12 @@ def _warn_duplicate_trace_ids(paths: List[Path]) -> None:
             LOG.warning(f'Found duplicate local trace files for trace_id={trace_id!r}: {names}')
 
 
-def _archive_old_jsonl(storage_dir: Path, now: datetime, archive_seconds: int) -> List[str]:
+def _archive_old_jsonl(
+    storage_dir: Path,
+    now: datetime,
+    archive_seconds: int,
+    timeout_seconds: Optional[float] = None,
+) -> List[str]:
     jsonl_paths = sorted(
         path for path in storage_dir.glob('*.jsonl')
         if _is_older_than(path, now, archive_seconds)
@@ -127,21 +112,36 @@ def _archive_old_jsonl(storage_dir: Path, now: datetime, archive_seconds: int) -
     _warn_duplicate_trace_ids(jsonl_paths)
     archive_path = _next_archive_path(storage_dir, now)
     tmp_path = archive_path.with_suffix('.zip.tmp')
+    locked_paths: List[Path] = []
     try:
-        with zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED) as zip_file:
+        with ExitStack() as stack:
+            locked_trace_ids = set()
             for path in jsonl_paths:
-                zip_file.write(path, arcname=path.name)
-        tmp_path.replace(archive_path)  # Publish the completed archive atomically.
-        for path in jsonl_paths:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
+                if '_' not in path.name:
+                    LOG.warning(f'Invalid local trace file name: {path.name}')
+                    continue
+                trace_id = path.name.rsplit('_', 1)[1][:-len('.jsonl')]
+                if trace_id not in locked_trace_ids:
+                    stack.enter_context(_local_trace_lock(storage_dir, trace_id, timeout_seconds))
+                    locked_trace_ids.add(trace_id)
+                locked_paths.append(path)
+            if not locked_paths:
+                return []
+
+            with zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED) as zip_file:
+                for path in locked_paths:
+                    zip_file.write(path, arcname=path.name)
+            tmp_path.replace(archive_path)  # Publish the completed archive atomically.
+            for path in locked_paths:
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
 
-    return [path.name for path in jsonl_paths]
+    return [path.name for path in locked_paths]
 
 
 def _delete_expired_archives(storage_dir: Path, now: datetime, retention_seconds: int) -> List[str]:
@@ -159,7 +159,7 @@ def _delete_expired_archives(storage_dir: Path, now: datetime, retention_seconds
 
 def maintain_local_traces(
     storage_dir: Optional[Path] = None,
-    timeout_seconds: Optional[float] = 2,
+    timeout_seconds: Optional[float] = _DEFAULT_MAINTENANCE_TIMEOUT_SECONDS,
 ) -> Dict[str, List[str]]:
     target_dir = Path(storage_dir) if storage_dir is not None else read_local_storage_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -167,25 +167,13 @@ def maintain_local_traces(
 
     try:
         with _maintenance_lock(target_dir, timeout_seconds):
-            for path in target_dir.glob('.*.lock'):
-                if path.name == _MAINTENANCE_LOCK_NAME:
-                    continue
-                lock = FileLock(str(path), timeout=timeout_seconds)
-                try:
-                    lock.acquire()
-                except Timeout as exc:
-                    raise ConsumeBackendError(f'timed out waiting for local trace lock: {path.name}') from exc
-                else:
-                    lock.release()
             now = datetime.now()
-            archive_seconds = read_local_archive_seconds()
-            jsonl_times = [
-                timestamp
-                for path in target_dir.glob('*.jsonl')
-                if (timestamp := _parse_prefix_time(path)) is not None
-            ]
-            if jsonl_times and min(jsonl_times) <= now - timedelta(seconds=archive_seconds):
-                result['compressed_jsonl'] = _archive_old_jsonl(target_dir, now, archive_seconds)
+            result['compressed_jsonl'] = _archive_old_jsonl(
+                target_dir,
+                now,
+                read_local_archive_seconds(),
+                timeout_seconds=timeout_seconds,
+            )
             result['deleted_zip'] = _delete_expired_archives(
                 target_dir,
                 now,
