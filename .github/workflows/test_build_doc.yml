@@ -28,45 +28,15 @@ jobs:
           echo "VIRTUAL_ENV=$VENV_DIR" >> $GITHUB_ENV
           echo "VENV_DIR=$VENV_DIR" >> $GITHUB_ENV
 
-      - name: Generate editable redirect files
-        run: |
-          set -e
-          python gen_editable.py "$VENV_DIR/lib/python3.10/site-packages"
-
-      - name: Build doc (with diagnostics)
+      - name: Build doc
         run: |
           set -e
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
-          echo "=== DIAGNOSE START ==="
-          echo "--- sys.meta_path ---"
-          python -c "import sys; [print(f'{i}: {type(f).__module__}.{type(f).__qualname__}') for i,f in enumerate(sys.meta_path)]"
-          echo "--- find _lazyllm_editable files ---"
-          find / -name "_lazyllm_editable.pth" -maxdepth 10 2>/dev/null | while read f; do echo "pth: $f"; cat "$f"; done
-          find / -name "_lazyllm_editable.py" -maxdepth 10 2>/dev/null | while read f; do echo "py: $f"; grep -o "'lazyllm\.tools\.git\.review[^']*'" "$f" 2>/dev/null || echo "(no review entries)"; done
-          echo "--- ScikitBuildRedirectingFinder details ---"
-          python -c "
-          import sys
-          for i, f in enumerate(sys.meta_path):
-              if 'ScikitBuild' in type(f).__name__:
-                  print(f'Position {i}:')
-                  print(f'  dir: {f.dir}')
-                  print(f'  known_source_files count: {len(f.known_source_files)}')
-                  for k in ['lazyllm', 'lazyllm.tools.git', 'lazyllm.tools.git.review']:
-                      if k in f.known_source_files:
-                          print(f'  {k} -> {f.known_source_files[k]}')
-                  pa = 'lazyllm.tools.git.review.pre_analysis'
-                  if pa in f.known_source_files:
-                      print(f'  {pa} -> {f.known_source_files[pa]}')
-                  else:
-                      print(f'  {pa} NOT in mapping')
-          "
-          echo "--- pre_analysis on disk ---"
-          ls -la lazymllm/tools/git/review/pre_analysis.py 2>&1 || true
-          ls -la lazymllm/tools/git/review/pre_analysis/ 2>&1 || true
-          echo "--- review __pycache__ ---"
-          ls -la lazymllm/tools/git/review/__pycache__/pre_analysis* 2>&1 || true
-          echo "=== DIAGNOSE END ==="
           echo "--- running doc build ---"
-          LAZYLLM_INIT_DOC=True python -B docs/add_docstrings.py
+          LAZYLLM_INIT_DOC=True python -B -c "
+          import sys
+          sys.meta_path = [f for f in sys.meta_path if 'ScikitBuild' not in type(f).__module__]
+          exec(open('docs/add_docstrings.py').read())
+          "
           echo "SUCCESS"
