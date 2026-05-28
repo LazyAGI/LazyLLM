@@ -64,7 +64,7 @@ class FileSystemQueue(ABC):
                     if cls is __class__:
                         __class__.__queue_pool__[klass] = cls.__default_queue__(*args, **kw)
                     else:
-                        __class__.__queue_pool__[klass] = super().__new__(cls)
+                        __class__.__queue_pool__[klass] = object.__new__(cls)
         return __class__.__queue_pool__[klass]
 
     @classmethod
