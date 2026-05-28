@@ -31,12 +31,8 @@ jobs:
       - name: Build doc
         run: |
           set -e
+          python .github/scripts/check_stale_editable.py
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
-          echo "--- running doc build ---"
-          LAZYLLM_INIT_DOC=True python -B -c "
-          import sys
-          sys.meta_path = [f for f in sys.meta_path if 'ScikitBuild' not in type(f).__module__]
-          exec(open('docs/add_docstrings.py').read())
-          "
+          LAZYLLM_INIT_DOC=True python -B docs/add_docstrings.py
           echo "SUCCESS"
