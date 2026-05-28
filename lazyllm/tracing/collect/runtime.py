@@ -1,8 +1,11 @@
 import atexit
 import contextvars
 import functools
+import inspect
 import json
+import secrets
 import threading
+from contextlib import ExitStack, contextmanager, nullcontext
 from typing import Any, Dict, Optional
 
 from lazyllm.common import LOG
@@ -19,6 +22,7 @@ from .trace_config import collect_trace_config, resolve_semantic_type_for_target
 _TRACE_SERVICE_NAME = 'lazyllm'
 _current_trace: 'contextvars.ContextVar[Optional[LazyTrace]]' = contextvars.ContextVar(
     '_lazyllm_current_trace', default=None)
+_ZERO_SPAN_ID = '0' * 16
 
 
 def current_trace() -> Optional[LazyTrace]:
@@ -156,6 +160,21 @@ class TracingRuntime:
             return None
         return getattr(target, '_flow_id', None)
 
+    @staticmethod
+    def _synthetic_parent_span_id() -> str:
+        span_id = secrets.token_hex(8)
+        return span_id if span_id != _ZERO_SPAN_ID else '0000000000000001'
+
+    @staticmethod
+    def _span_context(*, trace_id: str, span_id: str, sampled: Optional[bool], is_remote: bool):
+        trace_flags_value = 0x00 if sampled is False else 0x01
+        return opentelemetry.trace.SpanContext(
+            trace_id=int(trace_id, 16),
+            span_id=int(span_id, 16),
+            is_remote=is_remote,
+            trace_flags=opentelemetry.trace.TraceFlags(trace_flags_value),
+        )
+
     def _populate_identity(
         self,
         span: LazySpan,
@@ -198,12 +217,11 @@ class TracingRuntime:
         if is_root_span and ctx.trace_id and ctx.parent_span_id:
             try:
                 # Reattach to the caller-provided parent context when enable_trace resumes an existing trace.
-                trace_flags_value = 0x00 if ctx.sampled is False else 0x01
-                parent_sc = opentelemetry.trace.SpanContext(
-                    trace_id=int(ctx.trace_id, 16),
-                    span_id=int(ctx.parent_span_id, 16),
+                parent_sc = self._span_context(
+                    trace_id=ctx.trace_id,
+                    span_id=ctx.parent_span_id,
+                    sampled=ctx.sampled,
                     is_remote=False,
-                    trace_flags=opentelemetry.trace.TraceFlags(trace_flags_value),
                 )
                 parent_context = opentelemetry.trace.set_span_in_context(
                     opentelemetry.trace.NonRecordingSpan(parent_sc)
@@ -215,9 +233,24 @@ class TracingRuntime:
                     f'Failed to reconstruct parent SpanContext '
                     f'(trace_id={ctx.trace_id!r}, parent_span_id={ctx.parent_span_id!r}): {exc}'
                 )
+        elif is_root_span and ctx.trace_id:
+            try:
+                parent_sc = self._span_context(
+                    trace_id=ctx.trace_id,
+                    span_id=self._synthetic_parent_span_id(),
+                    sampled=ctx.sampled,
+                    is_remote=True,
+                )
+                parent_context = opentelemetry.trace.set_span_in_context(
+                    opentelemetry.trace.NonRecordingSpan(parent_sc)
+                )
+            except (ValueError, TypeError) as exc:
+                LOG.warning(f'Failed to start root trace with caller trace_id={ctx.trace_id!r}: {exc}')
 
-        span_cm = self._tracer.start_as_current_span(span_name, context=parent_context)
-        otel_span = span_cm.__enter__()
+        span_cm = ExitStack()
+        otel_span = span_cm.enter_context(
+            self._tracer.start_as_current_span(span_name, context=parent_context, end_on_exit=False)
+        )
         span_context = otel_span.get_span_context()
         trace_id_hex = f'{span_context.trace_id:032x}'
         span_id_hex = f'{span_context.span_id:016x}'
@@ -399,7 +432,8 @@ class TracingRuntime:
             otel_span.set_status(status_cls(status_code.ERROR, str(span.error)))
             otel_span.record_exception(span.error)
 
-        span._otel_span_cm.__exit__(None, None, None)
+        _detach_span_context(span)
+        otel_span.end()
 
         if trace_matches:
             active_trace._record_span_end(span)
@@ -456,6 +490,81 @@ def _extract_trace_config(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     return {k: kwargs.pop(k) for k in list(kwargs) if k in _TRACE_CONFIG_KEYS}
 
 
+def _detach_span_context(span):
+    span_cm = span._otel_span_cm if span else None
+    if span_cm is not None:
+        span_cm.close()
+        span._otel_span_cm = None
+
+
+@contextmanager
+def _stream_trace_scope(stream_ctx: LazyTraceContext, stream_trace, span):
+    old_ctx = get_trace_context()
+    old_trace = _current_trace.get()
+    span_cm = nullcontext()
+    set_trace_context(stream_ctx)
+    _current_trace.set(stream_trace)
+    if span:
+        span_cm = opentelemetry.trace.use_span(span._otel_span, end_on_exit=False)
+    try:
+        with span_cm:
+            yield
+    except Exception as e:
+        if span:
+            set_span_error(span, e)
+        raise
+    finally:
+        _current_trace.set(old_trace)
+        set_trace_context(old_ctx)
+
+
+def _finalize_stream_span(result, stream_ctx: LazyTraceContext, stream_trace, span):
+    if not span:
+        return
+    with _stream_trace_scope(stream_ctx, stream_trace, span):
+        if span.error is None:
+            set_span_output(span, {'stream': True, 'type': type(result).__name__})
+        finish_span(span)
+
+
+def _wrap_asyncgen_with_trace(result, stream_ctx: LazyTraceContext, stream_trace, span):
+    async def wrapped():
+        sentinel = object()
+        try:
+            while True:
+                with _stream_trace_scope(stream_ctx, stream_trace, span):
+                    item = await anext(result, sentinel)
+                if item is sentinel:
+                    return
+                yield item
+        finally:
+            try:
+                with _stream_trace_scope(stream_ctx, stream_trace, span):
+                    await result.aclose()
+            finally:
+                _finalize_stream_span(result, stream_ctx, stream_trace, span)
+    return wrapped()
+
+
+def _wrap_generator_with_trace(result, stream_ctx: LazyTraceContext, stream_trace, span):
+    def wrapped():
+        sentinel = object()
+        try:
+            while True:
+                with _stream_trace_scope(stream_ctx, stream_trace, span):
+                    item = next(result, sentinel)
+                if item is sentinel:
+                    return
+                yield item
+        finally:
+            try:
+                with _stream_trace_scope(stream_ctx, stream_trace, span):
+                    result.close()
+            finally:
+                _finalize_stream_span(result, stream_ctx, stream_trace, span)
+    return wrapped()
+
+
 def _run_with_trace(func, args, kwargs, trace_config):
     trace_id = trace_config.get('trace_id')
     parent_span_id = trace_config.get('parent_span_id')
@@ -465,6 +574,7 @@ def _run_with_trace(func, args, kwargs, trace_config):
     module_trace = trace_config.get('module_trace')
 
     old_ctx = get_trace_context()
+    old_trace = _current_trace.get()
     new_ctx_data = old_ctx.to_dict()
 
     new_ctx_data['trace_id'] = trace_id
@@ -490,6 +600,21 @@ def _run_with_trace(func, args, kwargs, trace_config):
 
     try:
         result = func(*args, **kwargs)
+        stream_wrapper = None
+        if inspect.isasyncgen(result):
+            stream_wrapper = _wrap_asyncgen_with_trace
+        elif inspect.isgenerator(result):
+            stream_wrapper = _wrap_generator_with_trace
+
+        if stream_wrapper:
+            stream_ctx = get_trace_context()
+            stream_trace = _current_trace.get()
+            stream_span = span
+            _detach_span_context(span)
+            _current_trace.set(old_trace)
+            span = None
+            return stream_wrapper(result, stream_ctx, stream_trace, stream_span)
+
         if span:
             set_span_output(span, result)
         return result

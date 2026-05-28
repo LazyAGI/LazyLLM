@@ -246,7 +246,8 @@ class DocImpl:
     def _create_node_group_impl(cls, group_name, name, transform: Union[str, Callable],
                                 parent: str = LAZY_ROOT_NAME, *, trans_node: Optional[bool] = None,
                                 num_workers: int = 0, display_name: Optional[str] = None,
-                                group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None, **kwargs):
+                                group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None,
+                                lazy_mode: Optional[str] = None, **kwargs):
         group_name, parent = str(group_name), str(parent)
         groups = getattr(cls, group_name)
 
@@ -292,39 +293,41 @@ class DocImpl:
                     'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
             else:
                 assert callable(t.f), f'transform should be callable, but get {t.f}'
+        assert lazy_mode in (None, 'embed', 'all'), \
+            f'lazy_mode must be None, "embed" or "all", got {lazy_mode!r}'
         parent_sig = groups.get(parent, {}).get('signature', '') if parent != LAZY_ROOT_NAME else ''
         ref_sig = groups.get(ref, {}).get('signature', '') if ref else ''
         signature = _compute_node_group_signature(name, transforms, parent_sig, ref_sig, group_type)
         groups[name] = dict(transform=transforms, parent=parent, display_name=display_name or name,
-                            group_type=group_type, ref=ref, signature=signature)
+                            group_type=group_type, ref=ref, signature=signature, lazy_mode=lazy_mode)
 
     @classmethod
     def _create_builtin_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME,
                                    *, trans_node: Optional[bool] = None, num_workers: int = 0,
                                    display_name: Optional[str] = None, group_type: NodeGroupType = NodeGroupType.CHUNK,
-                                   **kwargs) -> None:
+                                   lazy_mode: Optional[str] = None, **kwargs) -> None:
         DocImpl._create_node_group_impl(cls, '_builtin_node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
-                                        group_type=group_type, **kwargs)
+                                        group_type=group_type, lazy_mode=lazy_mode, **kwargs)
 
     @classmethod
     def create_global_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                                  trans_node: Optional[bool] = None, num_workers: int = 0,
                                  display_name: Optional[str] = None,
                                  group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None,
-                                 version: Optional[str] = None, **kwargs) -> None:
+                                 version: Optional[str] = None, lazy_mode: Optional[str] = None, **kwargs) -> None:
         if version is not None:
             if not _VERSION_RE.match(version):
                 raise ValueError(f'Invalid version {version!r}. Must follow PEP 440 (e.g. 1.0, 1.1.1, 1.1.1a0).')
             name = f'{name}@v{version}'
         DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
-                                        group_type=group_type, ref=ref, **kwargs)
+                                        group_type=group_type, ref=ref, lazy_mode=lazy_mode, **kwargs)
 
     def create_node_group(self, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                           trans_node: Optional[bool] = None, num_workers: int = 0, display_name: Optional[str] = None,
                           group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None,
-                          version: Optional[str] = None, **kwargs) -> None:
+                          version: Optional[str] = None, lazy_mode: Optional[str] = None, **kwargs) -> None:
         # NOTE: if parent itself is versioned, pass the full versioned name (e.g. "chunks@v1.0");
         # the version param does NOT auto-append a version suffix to parent.
         if version is not None:
@@ -336,17 +339,18 @@ class DocImpl:
                 self._processor.register_new_node_group(name, dict(
                     transform=transform, parent=parent, trans_node=trans_node,
                     num_workers=num_workers, display_name=display_name,
-                    group_type=group_type, ref=ref, **kwargs,
+                    group_type=group_type, ref=ref, lazy_mode=lazy_mode, **kwargs,
                 ), algo_name=self._algo_name)
                 # Also update local node_groups so in-process callers see the new group.
                 DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                                 trans_node=trans_node, num_workers=num_workers,
-                                                display_name=display_name, group_type=group_type, ref=ref, **kwargs)
+                                                display_name=display_name, group_type=group_type, ref=ref,
+                                                lazy_mode=lazy_mode, **kwargs)
                 return
             raise RuntimeError('Cannot add node group after document started in standalone mode')
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
-                                        group_type=group_type, ref=ref, **kwargs)
+                                        group_type=group_type, ref=ref, lazy_mode=lazy_mode, **kwargs)
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):

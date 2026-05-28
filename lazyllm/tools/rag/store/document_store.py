@@ -13,7 +13,7 @@ from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment
                          BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID)
 from .hybrid import HybridStore, MapStore
 from ..default_index import DefaultIndex
-from ..utils import parallel_do_embedding, is_sparse
+from ..utils import parallel_do_embedding
 
 from ..doc_node import DocNode, QADocNode, ImageDocNode, JsonDocNode, RichDocNode
 from ..index_base import IndexBase
@@ -125,66 +125,6 @@ class _DocumentStore(object):
         # should not reach here
         raise RuntimeError('Unexpected store creation state')
 
-    def _embed_specs_need_resolution(self) -> bool:
-        if not self._embed:
-            return False
-        dims = self._embed_dims or {}
-        dtypes = self._embed_datatypes or {}
-        for k in self._embed:
-            if k not in dtypes:
-                return True
-            if dtypes[k] != DataType.SPARSE_FLOAT_VECTOR and k not in dims:
-                return True
-        return False
-
-    def _resolve_embed_dims(self):
-        collections = [self._gen_collection_name(group) for group in self.activated_groups()]
-        dims, datatypes = self._impl.try_read_dims_from_schema(collections)
-        if dims or datatypes:
-            LOG.info('[_DocumentStore] Inferred embed dims from existing store schema')
-        missing_keys = [k for k in (self._embed or {}) if k not in datatypes]
-        if missing_keys:
-            LOG.info(f'[_DocumentStore] Resolving embed dims by calling embed functions for keys: {missing_keys}')
-            for k in missing_keys:
-                try:
-                    embedding = self._embed[k]('a')
-                except Exception as e:
-                    LOG.warning(f'[_DocumentStore] Skipping embed dim resolution for key {k!r}: {e}')
-                    continue
-                if is_sparse(embedding):
-                    datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
-                else:
-                    dims[k] = len(embedding)
-                    datatypes[k] = DataType.FLOAT_VECTOR
-        return dims, datatypes
-
-    def _patch_embed_dims_for_keys(self, embed_keys: Set[str]) -> None:
-        # Resolve dims for any embed_key that is still missing from _embed_datatypes.
-        # Called just before upsert so that the embed model is guaranteed to be available.
-        missing = [k for k in embed_keys if k not in (self._embed_datatypes or {})]
-        if not missing:
-            return
-        LOG.info(f'[_DocumentStore] Patching embed dims for keys: {missing}')
-        dims = dict(self._embed_dims or {})
-        datatypes = dict(self._embed_datatypes or {})
-        for k in missing:
-            embedding = self._embed[k]('a')
-            if is_sparse(embedding):
-                datatypes[k] = DataType.SPARSE_FLOAT_VECTOR
-            else:
-                dims[k] = len(embedding)
-                datatypes[k] = DataType.FLOAT_VECTOR
-        self._embed_dims = dims
-        self._embed_datatypes = datatypes
-        # Sync the resolved dims into the underlying vector store so upsert can build the schema.
-        if hasattr(self._impl, 'vector_store'):
-            vs = self._impl.vector_store
-        else:
-            vs = self._impl
-        if hasattr(vs, '_embed_dims'):
-            vs._embed_dims = dims
-            vs._embed_datatypes = datatypes
-
     @once_wrapper(reset_on_pickle=True)
     def _seg_init(self):
         self._impl.seg_connect(global_metadata_desc=self._global_metadata_desc)
@@ -193,74 +133,19 @@ class _DocumentStore(object):
     def _vec_init(self):
         if not (self._impl.capability & StoreCapability.VECTOR):
             return
-        if self._embed_specs_need_resolution():
-            self._embed_dims, self._embed_datatypes = self._resolve_embed_dims()
+        schema_dims, schema_datatypes = self._impl.try_read_dims_from_schema(
+            [self._gen_collection_name(group) for group in self.activated_groups()]
+        )
+        if schema_dims or schema_datatypes:
+            LOG.info('[_DocumentStore] Inferred embed dims from existing store schema')
+        self._embed_dims = dict(**(self._embed_dims or {}), **schema_dims)
+        self._embed_datatypes = dict(**(self._embed_datatypes or {}), **schema_datatypes)
         self._impl.vec_connect(
             embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
+            embed=self._embed,
             global_metadata_desc=self._global_metadata_desc,
             collections=[self._gen_collection_name(group) for group in self.activated_groups()]
         )
-
-    def _collection_exists(self, collection_name: str) -> bool:
-        impl = self._impl
-        # HybridStore: check segment store (MapStore/SQLite) and vector store separately
-        if hasattr(impl, 'segment_store') and hasattr(impl, 'vector_store'):
-            return (self._collection_exists_in(impl.segment_store, collection_name)
-                    or self._collection_exists_in(impl.vector_store, collection_name))
-        return self._collection_exists_in(impl, collection_name)
-
-    def _collection_exists_in(self, store, collection_name: str) -> bool:
-        try:
-            if hasattr(store, '_client_context'):
-                return self._exists_milvus(store, collection_name)
-            if hasattr(store, '_client') and hasattr(store, '_embed_datatypes'):
-                return self._exists_chroma(store, collection_name)
-            if hasattr(store, '_uri') and store._uri:
-                return self._exists_sqlite(store._uri, collection_name)
-            if hasattr(store, '_collection2uids'):
-                return collection_name in store._collection2uids
-            if hasattr(store, '_client') and hasattr(store._client, 'indices'):
-                return store._client.indices.exists(index=collection_name)
-        except Exception as e:
-            LOG.debug(f'[_DocumentStore] _collection_exists_in check failed for {collection_name!r}: {e}')
-        return False
-
-    def _exists_milvus(self, store, collection_name: str) -> bool:
-        with store._client_context() as client:
-            return client.has_collection(collection_name)
-
-    def _exists_chroma(self, store, collection_name: str) -> bool:
-        for embed_key in (store._embed_datatypes or {}).keys():
-            sub = store._gen_collection_name(collection_name, embed_key)
-            try:
-                store._client.get_collection(sub)
-                return True
-            except Exception as e:
-                LOG.debug(f'[_DocumentStore] Chroma collection {sub!r} not found: {e}')
-        return False
-
-    def _exists_sqlite(self, uri: str, collection_name: str) -> bool:
-        import sqlite3 as _sqlite3
-        try:
-            conn = _sqlite3.connect(uri, timeout=3.0)
-            cur = conn.cursor()
-            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                        (collection_name,))
-            exists = cur.fetchone() is not None
-            conn.close()
-            return exists
-        except Exception:
-            return False
-
-    def _get_store_type_and_uri(self) -> Tuple[Optional[str], Optional[str]]:
-        impl = self._impl
-        vec = getattr(impl, 'vector_store', impl)
-        seg = getattr(impl, 'segment_store', None)
-        store_type = type(vec).__name__.replace('Store', '').lower()
-        uri = getattr(vec, '_uri', None) or getattr(vec, 'dir', None)
-        if uri is None and seg is not None:
-            uri = getattr(seg, '_uri', None)
-        return store_type, uri
 
     @staticmethod
     def _normalize_collection_raw_name(raw_name: str) -> str:
@@ -334,13 +219,11 @@ class _DocumentStore(object):
 
     def _upsert_segments(self, group: str, segments: List[dict]) -> None:
         collection_name = self._gen_collection_name(group)
-        embed_keys = {k for seg in segments for k in (seg.get('embedding') or {}).keys()}
-        if embed_keys:
-            self._patch_embed_dims_for_keys(embed_keys)
         if not self.vec_impl.upsert(collection_name, segments):
             raise RuntimeError(f'[_DocumentStore] Failed to upsert segments for group {group}')
 
-    def update_nodes(self, nodes: List[DocNode], copy: bool = False):   # noqa: C901
+    def update_nodes(self, nodes: List[DocNode], copy: bool = False,
+                     skip_embed_groups: Optional[Set[str]] = None):   # noqa: C901
         if not nodes:
             return
         try:
@@ -348,9 +231,13 @@ class _DocumentStore(object):
                 LOG.warning(f'[_DocumentStore] Embed is provided'
                             f' but store {self.vec_impl} does not support embedding')
             if self.vec_impl.need_embedding and not copy:
-                _t_emb = time.time()
-                parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
-                LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s nodes={len(nodes)}')
+                nodes_to_embed = [n for n in nodes if n._group not in skip_embed_groups] \
+                    if skip_embed_groups else nodes
+                if nodes_to_embed:
+                    _t_emb = time.time()
+                    parallel_do_embedding(self._embed, [], nodes_to_embed, self._group_embed_keys)
+                    LOG.info(f'[BENCHMARK] phase=embed elapsed={time.time() - _t_emb:.3f}s '
+                             f'nodes={len(nodes_to_embed)}')
             group_segments = defaultdict(list)
             for node in nodes:
                 group_segments[node._group].append(self._serialize_node(node))
@@ -545,9 +432,14 @@ class _DocumentStore(object):
                 raise ValueError(f'[_DocumentStore] Embed keys {embed_keys}'
                                  ' are not supported when no vector store is provided')
             # vector search
+            collection_name = self._gen_collection_name(group_name)
+            if not self.vec_impl.collection_exists(collection_name):
+                LOG.warning(f'[_DocumentStore] collection {collection_name!r} does not exist, '
+                            f'skipping vector search for group {group_name!r}')
+                return []
             for embed_key in embed_keys:
                 query_embedding = self._embed.get(embed_key)(query)
-                search_res = self.vec_impl.search(collection_name=self._gen_collection_name(group_name),
+                search_res = self.vec_impl.search(collection_name=collection_name,
                                                   query=query, query_embedding=query_embedding,
                                                   topk=topk, filters=filters, embed_key=embed_key, **kwargs)
                 if search_res:

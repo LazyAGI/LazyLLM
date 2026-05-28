@@ -164,10 +164,12 @@ class _Processor:
 
             store_start = time.time()
             if transfer_mode is None:
+                skip_embed = {g for g, cfg in node_groups.items() if cfg.get('lazy_mode') in ('embed', 'all')}
+                active_node_groups = {g: cfg for g, cfg in node_groups.items() if cfg.get('lazy_mode') != 'all'}
                 for k, v in root_nodes.items():
                     if not v: continue
-                    self._store.update_nodes(self._set_nodes_number(v))
-                    self._create_nodes_recursive(v, k, node_groups=node_groups, skip_ng_ids=skip_ng_ids)
+                    self._store.update_nodes(self._set_nodes_number(v), skip_embed_groups=skip_embed or None)
+                    self._create_nodes_recursive(v, k, node_groups=active_node_groups, skip_ng_ids=skip_ng_ids)
             else:
                 self._store.update_nodes(root_nodes, copy=True)
                 self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
@@ -238,12 +240,11 @@ class _Processor:
         graph = self._get_dependency_graph(node_groups)
         for group_name in graph.topological_order:
             group = node_groups.get(group_name)
-
-            if group['parent'] == p_name:
-                ref_path = graph.get_shortest_path(group['parent'], group.get('ref')) if group.get('ref') else []
-                nodes = self._create_nodes_impl(p_nodes, group_name, node_groups,
-                                                ref_path=ref_path, skip_ng_ids=skip_ng_ids)
-                if nodes: self._create_nodes_recursive(nodes, group_name, node_groups, skip_ng_ids=skip_ng_ids)
+            if group['parent'] != p_name: continue
+            ref_path = graph.get_shortest_path(group['parent'], group.get('ref')) if group.get('ref') else []
+            nodes = self._create_nodes_impl(p_nodes, group_name, node_groups,
+                                            ref_path=ref_path, skip_ng_ids=skip_ng_ids)
+            if nodes: self._create_nodes_recursive(nodes, group_name, node_groups, skip_ng_ids=skip_ng_ids)
 
     def _clone_node_for_transfer(
         self, node: DocNode, target_kb_id: str, target_doc_id: str, metadata: Dict[str, Any]
@@ -316,7 +317,8 @@ class _Processor:
         t = node_groups[group_name]['transform']
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
         nodes = transform.batch_forward(p_nodes, group_name, ref_path=ref_path)
-        self._store.update_nodes(self._set_nodes_number(nodes))
+        skip_embed = {g for g, cfg in node_groups.items() if cfg.get('lazy_mode') in ('embed', 'all')}
+        self._store.update_nodes(self._set_nodes_number(nodes), skip_embed_groups=skip_embed or None)
         return nodes
 
     def _get_or_create_nodes(self, group_name, node_groups: Dict[str, Dict],
@@ -329,12 +331,37 @@ class _Processor:
 
     def reparse(self, group_name: str, node_groups: Dict[str, Dict],
                 uids: Optional[List[str]] = None, doc_ids: Optional[List[str]] = None,
-                kb_id: Optional[str] = None, **kwargs):
-        if doc_ids:
+                kb_id: Optional[str] = None, embed_only: bool = False, **kwargs):
+        if embed_only:
+            self._reembed_group(group_name, node_groups, doc_ids=doc_ids, kb_id=kb_id)
+        elif doc_ids:
             self._reparse_docs(group_name=group_name, node_groups=node_groups,
                                doc_ids=doc_ids, kb_id=kb_id, **kwargs)
         else:
             self._get_or_create_nodes(group_name, node_groups, uids)
+
+    def _reembed_group(self, group_name: str, node_groups: Dict[str, Dict],
+                       doc_ids: Optional[List[str]] = None, kb_id: Optional[str] = None):
+        embed_keys = self._store._group_embed_keys.get(group_name) or set()
+        if not embed_keys:
+            raise ValueError(
+                f'Node group {group_name!r} has no embed keys. '
+                'Ensure embed model is configured before calling reparse(embed_only=True).'
+            )
+        nodes = self._store.get_nodes(group=group_name, doc_ids=doc_ids, kb_id=kb_id)
+        if not nodes:
+            # nodes not yet materialized — fall back to full reparse
+            if doc_ids:
+                self._reparse_docs(group_name=group_name, node_groups=node_groups,
+                                   doc_ids=doc_ids, kb_id=kb_id)
+            else:
+                self._get_or_create_nodes(group_name, node_groups, uids=None)
+            return
+        self._store.update_nodes(nodes)
+        for g in self._store.activated_groups():
+            cfg = node_groups.get(g, {})
+            if cfg.get('parent') == group_name and cfg.get('lazy_mode') != 'all':
+                self._reembed_group(g, node_groups, doc_ids=doc_ids, kb_id=kb_id)
 
     def _reparse_docs(self, group_name: Optional[str], node_groups: Dict[str, Dict],
                       doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict],
@@ -393,6 +420,8 @@ class _Processor:
                 raise ValueError(f'Node group "{group_name}" does not exist. Please check the group name '
                                  'or add a new one through `create_node_group`.')
             if group['parent'] == cur_name:
+                if group.get('lazy_mode') == 'all':
+                    continue
                 self._reparse_group_recursive(p_nodes=nodes, cur_name=group_name,
                                               node_groups=node_groups, doc_ids=doc_ids, kb_id=kb_id)
 
