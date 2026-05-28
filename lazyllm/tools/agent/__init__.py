@@ -8,7 +8,7 @@ from .toolsManager import ModuleTool
 from .code_interpreter import code_interpreter
 from .skill_manager import SkillManager
 from .skill_hub import install_skill
-from .todo_tool import TodoWrite
+from .todo_tool import todo_write
 
 __all__ = [
     'ToolManager',
@@ -23,5 +23,5 @@ __all__ = [
     'code_interpreter',
     'SkillManager',
     'install_skill',
-    'TodoWrite',
+    'todo_write',
 ]

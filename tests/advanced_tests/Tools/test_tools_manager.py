@@ -358,7 +358,7 @@ class TestToolGroup:
         assert 'beta' in result
 
         names = [d['function']['name'] for d in tm.tools_description]
-        assert 'get_grp_methods' in names
+        assert 'get_grp_methods' not in names
         assert 'alpha' in names
         assert 'beta' in names
 
@@ -389,7 +389,7 @@ class TestToolGroup:
         ])])
         tm._tool_call['get_outer_methods']({})
         names = [d['function']['name'] for d in tm.tools_description]
-        assert 'get_outer_methods' in names
+        assert 'get_outer_methods' not in names
         assert 'a' in names
         assert 'get_inner_methods' in names
         assert 'b' not in names
@@ -404,6 +404,9 @@ class TestToolGroup:
         tm._tool_call['get_outer_methods']({})
         tm._tool_call['get_inner_methods']({})
         names = [d['function']['name'] for d in tm.tools_description]
+        assert 'get_outer_methods' not in names
+        assert 'get_inner_methods' not in names
+        assert 'a' in names
         assert 'b' in names
         assert 'c' in names
 

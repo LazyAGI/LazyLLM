@@ -322,9 +322,6 @@ class ToolGroup:
                                 f'got {type(item)}')
             self._children.append(built)
 
-    def should_skip(self) -> bool:
-        return False
-
     def get_flat_tools(self, _prefix: Optional[str] = None) -> Dict[str, 'ModuleTool']:
         effective = f'{_prefix}_{self._prefix}' if _prefix and self._prefix \
             else (_prefix or self._prefix)
@@ -337,13 +334,14 @@ class ToolGroup:
                 result[key] = child
         return result
 
-    def get_child_descriptions(self, _prefix: Optional[str] = None) -> List[Dict]:
+    def get_child_descriptions(self, _prefix: Optional[str] = None,
+                               active_groups: Optional[Set[str]] = None) -> List[Dict]:
         effective = f'{_prefix}_{self._prefix}' if _prefix and self._prefix \
             else (_prefix or self._prefix)
         descs = []
         for child in self._children:
             if isinstance(child, ToolGroup):
-                descs.extend(child.get_description(_prefix=effective))
+                descs.extend(child.get_description(_prefix=effective, active_groups=active_groups))
             else:
                 desc = _build_tool_desc(child)
                 if effective:
@@ -361,9 +359,10 @@ class ToolGroup:
             }
         }
 
-    def get_description(self, _prefix: Optional[str] = None) -> List[Dict]:
-        if not self._lazy:
-            return self.get_child_descriptions(_prefix)
+    def get_description(self, _prefix: Optional[str] = None,
+                        active_groups: Optional[Set[str]] = None) -> List[Dict]:
+        if not self._lazy or (active_groups is not None and self._name in active_groups):
+            return self.get_child_descriptions(_prefix, active_groups)
         return [self.get_gateway_desc()]
 
     def make_gateway_tool(self, manager: 'ToolManager') -> 'ModuleTool':
@@ -431,9 +430,10 @@ class InstanceToolGroup(ToolGroup):
         sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
         return not any(bool(self._resolve_one_key(src)) for src in sources)
 
-    def get_description(self, _prefix: Optional[str] = None) -> List[Dict]:
+    def get_description(self, _prefix: Optional[str] = None,
+                        active_groups: Optional[Set[str]] = None) -> List[Dict]:
         if self.should_skip(): return []
-        return super().get_description(_prefix)
+        return super().get_description(_prefix, active_groups)
 
 
 TOOL_CALL_FORMAT_EXAMPLE = (
@@ -499,16 +499,14 @@ class ToolManager(ModuleBase):
 
     @property
     def tools_description(self) -> List[Dict]:
-        static = [x for item in self._tools_desc for x in (item() if callable(item) else [item])]
         active_key = f'_active_groups_{self._module_id}'
         try:
             workspace = lazyllm_locals['_lazyllm_agent'].get('workspace', {})
         except Exception:
             workspace = {}
-        active_groups = workspace.get(active_key, [])
-        extra = [desc for gname in active_groups if gname in self._tool_groups
-                 for desc in self._tool_groups[gname].get_child_descriptions()]
-        return static + extra
+        active_groups = set(workspace.get(active_key, []))
+        return [x for item in self._tools_desc
+                for x in (item(active_groups=active_groups) if callable(item) else [item])]
 
     @property
     def tools_info(self):
@@ -539,7 +537,7 @@ class ToolManager(ModuleBase):
                         if name in self._tool_call:
                             raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
                         self._tool_call[name] = tool
-                    if item._lazy and not item.should_skip():
+                    if item._lazy:
                         gateway = item.make_gateway_tool(self)
                         if gateway.name in self._tool_call:
                             raise ValueError(
