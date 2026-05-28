@@ -249,6 +249,8 @@ if 'tool' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('tool')
 if 'builtin_tools' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('builtin_tools')
+if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
+    register.new_group('tmp_tool')
 
 
 class MethodModuleTool(ModuleTool):
@@ -315,24 +317,9 @@ class ToolGroup:
         self._children: List[Union['ModuleTool', 'ToolGroup']] = []
         self._gateway_tool: Optional['ModuleTool'] = None
         for item in tools:
-            if isinstance(item, dict):
-                assert 'name' in item, "ToolGroup dict must have a 'name' field"
-                assert 'tools' in item, "ToolGroup dict must have a 'tools' field"
-                self._children.append(ToolGroup(
-                    tools=item['tools'], name=item['name'],
-                    desc=item.get('desc', ''), lazy=item.get('lazy', True),
-                ))
-            elif isinstance(item, ToolGroup):
-                self._children.append(item)
-            elif isinstance(item, ModuleTool):
-                self._children.append(item)
-            elif callable(item):
-                if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
-                    register.new_group('tmp_tool')
-                register('tmp_tool')(item)
-                tool = getattr(lazyllm.tmp_tool, item.__name__)()
-                lazyllm.tmp_tool.remove(item.__name__)
-                self._children.append(tool)
+            built = _build_tool_from_element(item)
+            if built is not None:
+                self._children.append(built)
             else:
                 raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, '
                                 f'got {type(item)}')
@@ -453,6 +440,23 @@ TOOL_CALL_FORMAT_EXAMPLE = (
 )
 
 
+def _build_tool_from_element(element: Any) -> Optional[Union['ModuleTool', 'ToolGroup']]:
+    if isinstance(element, (ToolGroup, ModuleTool)):
+        return element
+    if isinstance(element, dict):
+        assert 'name' in element, "ToolGroup dict must have a 'name' field"
+        assert 'tools' in element, "ToolGroup dict must have a 'tools' field"
+        assert 'desc' in element, "ToolGroup dict must have a 'desc' field"
+        return ToolGroup(tools=element['tools'], name=element['name'],
+                         desc=element['desc'], lazy=element.get('lazy', True))
+    if callable(element):
+        register('tmp_tool')(element)
+        tool = getattr(lazyllm.tmp_tool, element.__name__)()
+        lazyllm.tmp_tool.remove(element.__name__)
+        return tool
+    return None
+
+
 class ToolManager(ModuleBase):
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
         super().__init__(return_trace=return_trace)
@@ -471,37 +475,21 @@ class ToolManager(ModuleBase):
         return target()
 
     def _load_tools(self, tools: List[Union[str, Callable]]):
-        if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
-            register.new_group('tmp_tool')
-
         _tools = []
         for element in tools:
             if isinstance(element, str):
                 _tools.append(self._load_tool_by_name(element))
-            elif isinstance(element, ToolGroup):
-                _tools.append(element)
-            elif isinstance(element, ModuleTool):
-                _tools.append(element)
-            elif isinstance(element, dict):
-                assert 'name' in element, "ToolGroup dict must have a 'name' field"
-                assert 'tools' in element, "ToolGroup dict must have a 'tools' field"
-                _tools.append(ToolGroup(
-                    tools=element['tools'], name=element['name'],
-                    desc=element.get('desc', ''), lazy=element.get('lazy', True),
-                ))
             elif isinstance(element, tuple) and len(element) == 2:
                 instance, key_source = element
                 if not hasattr(instance, '__public_apis__'):
                     raise ValueError(f'Instance {instance!r} does not have __public_apis__')
                 _tools.append(InstanceToolGroup(instance, key_source))
-            elif hasattr(element, '__public_apis__'):
+            elif hasattr(element, '__public_apis__') and not isinstance(element, (ToolGroup, ModuleTool)):
                 _tools.append(InstanceToolGroup(element))
-            elif isinstance(element, Callable):
-                # just to convert `element` to the internal type in `Register`
-                register('tmp_tool')(element)
-                _tools.append(getattr(lazyllm.tmp_tool, element.__name__)())
-                lazyllm.tmp_tool.remove(element.__name__)
-
+            else:
+                built = _build_tool_from_element(element)
+                if built is not None:
+                    _tools.append(built)
         return _tools
 
     @property
