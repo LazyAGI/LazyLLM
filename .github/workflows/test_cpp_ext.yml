@@ -98,6 +98,18 @@ jobs:
           print('Starting...')
           doc.start()
           print('Start done')
+          # Check store contents
+          nodes = doc._manager._kbs['__default__'].fn()._store.get_nodes(group='diag', kb_id='__default__')
+          print(f'Stored nodes in diag: {len(nodes)}')
+          if nodes:
+              print(f'  First node text: {nodes[0].text[:100]!r}')
+          # Check BM25 internals
+          from lazyllm.tools.rag.component.bm25 import BM25
+          bm = BM25(None)
+          tokens = bm._tokenize('天道是什么')
+          print(f'Tokenize test \"天道是什么\": {tokens}')
+          import bm25s
+          print(f'bm25s version: {bm25s.__version__ if hasattr(bm25s, \"__version__\") else \"unknown\"}')
           r = Retriever(doc, group_name='diag', similarity='bm25', topk=3)
           result = r(query='天道')
           print(f'Results: {len(result)}')
