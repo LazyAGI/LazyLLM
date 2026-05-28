@@ -1,0 +1,62 @@
+name: TEST - C++ Extension
+
+on:
+  push:
+    branches:
+      - yzh/fix_paddleocr
+  workflow_dispatch:
+
+jobs:
+  cpp_ext_test:
+    name: C++ Build + RAG Tests (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHON_VERSION: "3.10"
+      PYTHONNOUSERSITE: "1"
+      PYTHONPATH: ${{ github.workspace }}
+      LAZYLLM_ENABLE_CPP_OVERRIDE: "1"
+      LAZYLLM_EXPECTED_LOG_MODULES: "all"
+      LAZYLLM_DEFAULT_LAUNCHER: "empty"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test requirements
+        run: |
+          pip install -r tests/requirements.txt
+          pip install -r tests/requirements_linux.txt
+
+      - name: Download test dataset
+        run: |
+          set -euo pipefail
+          DATA_DIR="$GITHUB_WORKSPACE/.ci_data"
+          rm -rf "$DATA_DIR"
+          export GIT_TERMINAL_PROMPT=0
+          git clone --depth 1 https://github.com/LazyAGI/LazyLLM-Data.git "$DATA_DIR"
+          echo "LAZYLLM_DATA_PATH=$DATA_DIR" >> "$GITHUB_ENV"
+
+      - name: Build and run C++ tests
+        run: |
+          pip install pybind11
+          bash csrc/scripts/build_test.sh
+
+      - name: Install C++ extension artifacts into workspace
+        run: |
+          cmake --install build --prefix . --component lazyllm_cpp
+          ls -al lazyllm | grep -E "lazyllm_cpp|cpp_lib" || true
+
+      - name: Run RAG tests
+        run: |
+          pytest -v --order-scope=class -m "not skip_on_linux" tests/basic_tests/RAG
