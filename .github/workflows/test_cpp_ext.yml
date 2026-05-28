@@ -35,6 +35,15 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
+      - name: Install test requirements
+        run: |
+          pip install -r tests/requirements.txt
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            pip install -r tests/requirements_linux.txt
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            pip install -r tests/requirements_mac.txt
+          fi
+
       - name: Download test dataset
         run: |
           set -euo pipefail
@@ -70,5 +79,4 @@ jobs:
 
       - name: Run RAG tests
         run: |
-          pip install pytest
           python -m pytest -v --order-scope=class -m "$PYTEST_MARKER" tests/basic_tests/RAG
