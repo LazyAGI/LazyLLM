@@ -54,20 +54,6 @@ def _maintenance_active(storage_dir: Path) -> bool:
     return (storage_dir / _MAINTENANCE_LOCK_NAME).exists()
 
 
-def _has_active_trace_locks(storage_dir: Path) -> bool:
-    for path in storage_dir.glob('.*.lock'):
-        if path.name == _MAINTENANCE_LOCK_NAME:
-            continue
-        lock = FileLock(str(path), timeout=0)
-        try:
-            lock.acquire()
-        except Timeout:
-            return True
-        else:
-            lock.release()
-    return False
-
-
 @contextmanager
 def _local_trace_lock(storage_dir: Path, trace_id: str, timeout_seconds: Optional[float] = None):
     deadline = None if timeout_seconds is None or timeout_seconds < 0 else time.monotonic() + timeout_seconds
@@ -171,16 +157,26 @@ def _delete_expired_archives(storage_dir: Path, now: datetime, retention_seconds
     return deleted
 
 
-def maintain_local_traces(storage_dir: Optional[Path] = None) -> Dict[str, List[str]]:
+def maintain_local_traces(
+    storage_dir: Optional[Path] = None,
+    timeout_seconds: Optional[float] = 2,
+) -> Dict[str, List[str]]:
     target_dir = Path(storage_dir) if storage_dir is not None else read_local_storage_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
     result = {'compressed_jsonl': [], 'deleted_zip': []}
 
     try:
-        with _maintenance_lock(target_dir):
-            if _has_active_trace_locks(target_dir):
-                LOG.warning(f'Skipping local trace maintenance because trace lock is busy: {target_dir}')
-                return result
+        with _maintenance_lock(target_dir, timeout_seconds):
+            for path in target_dir.glob('.*.lock'):
+                if path.name == _MAINTENANCE_LOCK_NAME:
+                    continue
+                lock = FileLock(str(path), timeout=timeout_seconds)
+                try:
+                    lock.acquire()
+                except Timeout as exc:
+                    raise ConsumeBackendError(f'timed out waiting for local trace lock: {path.name}') from exc
+                else:
+                    lock.release()
             now = datetime.now()
             archive_seconds = read_local_archive_seconds()
             jsonl_times = [
@@ -195,8 +191,8 @@ def maintain_local_traces(storage_dir: Optional[Path] = None) -> Dict[str, List[
                 now,
                 read_local_archive_retention_seconds(),
             )
-    except Timeout:
-        LOG.warning(f'Skipping local trace maintenance because lock is busy: {target_dir}')
+    except Timeout as exc:
+        raise ConsumeBackendError(f'timed out waiting for local trace maintenance lock: {target_dir}') from exc
 
     return result
 
@@ -427,11 +423,6 @@ class LocalFileSpanExporter(opentelemetry.sdk.trace.export.SpanExporter):
         except Exception as exc:
             LOG.warning(f'LocalFileSpanExporter failed to write spans: {exc}')
             return SpanExportResult.FAILURE
-
-        try:
-            maintain_local_traces(self.storage_dir)
-        except Exception as exc:
-            LOG.warning(f'LocalFileSpanExporter failed to maintain local traces: {exc}')
 
         return SpanExportResult.SUCCESS
 

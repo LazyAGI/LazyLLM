@@ -183,6 +183,11 @@ def test_local_backend_maintains_expired_trace_files_and_keeps_fresh_jsonl(tmp_p
     old_prefix = (datetime.now() - timedelta(seconds=20)).strftime('%Y%m%d%H%M%S')
     archived_source = tmp_path / f'{old_prefix}_{trace_id}.jsonl'
     original_file.rename(archived_source)
+    with config.temp('trace_local_archive_seconds', 10):
+        _emit_real_trace(tmp_path, 'export-does-not-maintain')
+    assert archived_source.exists()
+    assert not list(tmp_path.glob('*.zip'))
+
     fresh_source = next(tmp_path.glob(f'*_{fresh_trace_id}.jsonl'))
 
     expired_zip = tmp_path / f'{(datetime.now() - timedelta(seconds=60)).strftime("%Y%m%d%H%M%S")}.zip'
@@ -214,7 +219,7 @@ def test_local_backend_maintains_expired_trace_files_and_keeps_fresh_jsonl(tmp_p
     assert fresh_payload.trace.name == 'fresh-root'
 
 
-def test_local_backend_maintenance_skips_during_frequent_trace_reads(tmp_path, monkeypatch):
+def test_local_backend_maintenance_waits_during_frequent_trace_reads(tmp_path, monkeypatch):
     from lazyllm.tracing.backends.local import LocalConsumeBackend, maintain_local_traces
 
     trace_id = _emit_real_trace(tmp_path, 'locked-root')
@@ -238,17 +243,22 @@ def test_local_backend_maintenance_skips_during_frequent_trace_reads(tmp_path, m
 
     monkeypatch.setattr(type(old_file), 'open', blocked_open)
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        readers = [pool.submit(backend.fetch_trace_payload, trace_id) for _ in range(8)]
+    reader_count = 8
+    with ThreadPoolExecutor(max_workers=reader_count) as pool:
+        readers = [pool.submit(backend.fetch_trace_payload, trace_id) for _ in range(reader_count)]
         assert read_started.wait(timeout=2)
         with config.temp('trace_local_archive_seconds', 10):
-            result = maintain_local_traces(tmp_path)
+            from lazyllm.tracing.errors import ConsumeBackendError
+
+            with pytest.raises(ConsumeBackendError):
+                maintain_local_traces(tmp_path, timeout_seconds=0.01)
+            assert old_file.exists()
+            assert not list(tmp_path.glob('*.zip'))
             release_read.set()
             for reader in readers:
                 assert reader.result(timeout=2).trace.trace_id == trace_id
-            result_after = maintain_local_traces(tmp_path)
+            result = maintain_local_traces(tmp_path, timeout_seconds=0.5)
 
-    assert result == {'compressed_jsonl': [], 'deleted_zip': []}
-    assert result_after['compressed_jsonl'] == [old_file.name]
+    assert result['compressed_jsonl'] == [old_file.name]
     assert not old_file.exists()
     assert len(list(tmp_path.glob('*.zip'))) == 1
