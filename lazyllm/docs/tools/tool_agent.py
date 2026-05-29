@@ -2324,3 +2324,159 @@ This method is called automatically in ``ToolGroup.__init__`` when ``lazy=True``
 Returns:
     ModuleTool: The gateway tool instance representing the entry point of this tool group.
 ''')
+
+add_toolsmgr_chinese_doc('ToolContainer', '''\
+内部抽象基类，定义工具容器的统一接口。``ToolGroup`` 和 ``ToolGroupWrapper`` 均继承自该类。
+''')
+
+add_toolsmgr_english_doc('ToolContainer', '''\
+Internal abstract base class that defines the unified interface for tool containers.
+Both ``ToolGroup`` and ``ToolGroupWrapper`` inherit from this class.
+''')
+
+add_toolsmgr_chinese_doc('ToolContainer.get_flat_tools', '''\
+返回该容器内所有工具的扁平化字典，键为工具名称，值为对应的 ``ModuleTool`` 实例。
+
+Returns:
+    Dict[str, ModuleTool]: 工具名到工具实例的映射。
+''')
+
+add_toolsmgr_english_doc('ToolContainer.get_flat_tools', '''\
+Returns a flat dictionary of all tools in this container, keyed by tool name.
+
+Returns:
+    Dict[str, ModuleTool]: Mapping from tool name to ``ModuleTool`` instance.
+''')
+
+add_toolsmgr_chinese_doc('ToolContainer.get_description', '''\
+返回该容器内工具的描述列表，格式符合 OpenAI function calling schema。
+
+Args:
+    active_groups (Optional[Set[str]]): 当前已激活的工具组名称集合，用于 lazy 模式下决定是否展开子工具描述。
+
+Returns:
+    List[Dict]: 工具描述列表。
+''')
+
+add_toolsmgr_english_doc('ToolContainer.get_description', '''\
+Returns a list of tool descriptions conforming to the OpenAI function calling schema.
+
+Args:
+    active_groups (Optional[Set[str]]): Set of currently active group names, used in lazy mode to decide whether to expand child tool descriptions.
+
+Returns:
+    List[Dict]: List of tool description dicts.
+''')
+
+add_toolsmgr_chinese_doc('SkipMixin', '''\
+内部 Mixin 类，为工具组提供基于运行时凭据的跳过（skip）能力。
+
+``InstanceToolGroup`` 和 ``ToolGroupWrapper`` 均继承自该类。
+当 ``key_source`` 指定的凭据在运行时不可用时，``should_skip()`` 返回 ``True``，
+工具组的 ``get_description()`` 随即返回空列表，使该组对 LLM 不可见。
+''')
+
+add_toolsmgr_english_doc('SkipMixin', '''\
+Internal mixin class that provides runtime-credential-based skip capability for tool groups.
+
+Both ``InstanceToolGroup`` and ``ToolGroupWrapper`` inherit from this class.
+When the credential specified by ``key_source`` is unavailable at runtime, ``should_skip()`` returns ``True``
+and the tool group's ``get_description()`` returns an empty list, hiding the group from the LLM.
+''')
+
+add_toolsmgr_chinese_doc('SkipMixin.__init__', '''\
+初始化凭据来源。
+
+Args:
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): 运行时凭据来源。
+
+        - None（默认）：不检查凭据，工具始终可用。
+        - 字符串：``env.KEY``、``config.key``、``globals.config.key`` 或无 ``.`` 的裸键（等价于 ``globals.config.key``）。
+        - callable：接收 instance 作为参数，返回凭据字符串或空值。
+        - list：多个来源，任一非空即视为凭据可用（逻辑 OR）。
+''')
+
+add_toolsmgr_english_doc('SkipMixin.__init__', '''\
+Initialises the credential source.
+
+Args:
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): Runtime credential source.
+
+        - None (default): No credential check; tools are always available.
+        - String: ``env.KEY``, ``config.key``, ``globals.config.key``, or a bare key without a dot (equivalent to ``globals.config.key``).
+        - callable: Receives instance as argument and returns the credential string or an empty value.
+        - list: Multiple sources; tools are considered available if any source resolves to a non-empty value (logical OR).
+''')
+
+add_toolsmgr_chinese_doc('ToolGroupWrapper', '''\
+内部类，将任意工具或工具组包装为带凭据跳过能力的容器。
+
+当 ``(tool, key_source)`` 元组中的 ``tool`` 不带 ``__public_apis__``，或 ``dict`` 工具组指定了 ``key_source`` 时，
+框架会自动创建该对象。凭据不可用时，``get_description()`` 返回空列表，使内部工具对 LLM 不可见。
+
+Args:
+    tool (Any): 被包装的工具或工具组。
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): 运行时凭据来源，语义同 ``SkipMixin.__init__``。
+''')
+
+add_toolsmgr_english_doc('ToolGroupWrapper', '''\
+Internal class that wraps any tool or tool group with runtime-credential-based skip capability.
+
+Created automatically when the ``tool`` in a ``(tool, key_source)`` tuple does not have ``__public_apis__``,
+or when a ``dict`` tool group specifies a ``key_source`` field.
+When the credential is unavailable, ``get_description()`` returns an empty list, hiding the inner tools from the LLM.
+
+Args:
+    tool (Any): The tool or tool group to wrap.
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): Runtime credential source; same semantics as ``SkipMixin.__init__``.
+''')
+
+add_toolsmgr_chinese_doc('ToolGroupWrapper.__init__', '''\
+初始化包装器，绑定内部工具与凭据来源。
+
+Args:
+    tool (Any): 被包装的工具或工具组。
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): 运行时凭据来源，语义同 ``SkipMixin.__init__``。
+''')
+
+add_toolsmgr_english_doc('ToolGroupWrapper.__init__', '''\
+Initialises the wrapper, binding the inner tool and the credential source.
+
+Args:
+    tool (Any): The tool or tool group to wrap.
+    key_source (Union[str, Callable, List[Union[str, Callable]], None]): Runtime credential source; same semantics as ``SkipMixin.__init__``.
+''')
+
+add_toolsmgr_chinese_doc('ToolGroupWrapper.get_flat_tools', '''\
+返回内部工具容器的扁平化工具字典。
+
+Returns:
+    Dict[str, ModuleTool]: 工具名到工具实例的映射。
+''')
+
+add_toolsmgr_english_doc('ToolGroupWrapper.get_flat_tools', '''\
+Returns the flat tool dictionary from the inner tool container.
+
+Returns:
+    Dict[str, ModuleTool]: Mapping from tool name to ``ModuleTool`` instance.
+''')
+
+add_toolsmgr_chinese_doc('ToolGroupWrapper.get_description', '''\
+若凭据不可用则返回空列表；否则委托给内部工具或工具组返回其描述列表。
+
+Args:
+    active_groups (Optional[Set[str]]): 当前已激活的工具组名称集合。
+
+Returns:
+    List[Dict]: 工具描述列表，凭据不可用时为空列表。
+''')
+
+add_toolsmgr_english_doc('ToolGroupWrapper.get_description', '''\
+Returns an empty list when the credential is unavailable; otherwise delegates to the inner tool or tool group.
+
+Args:
+    active_groups (Optional[Set[str]]): Set of currently active group names.
+
+Returns:
+    List[Dict]: List of tool description dicts, or an empty list when the credential is absent.
+''')
