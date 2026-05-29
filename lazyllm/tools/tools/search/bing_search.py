@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from lazyllm.common import ApiKeyHeaderStrategy
 from lazyllm.thirdparty import httpx
@@ -8,17 +8,22 @@ from .base import SearchBase, _make_result
 
 class BingSearch(SearchBase):
 
-    def __init__(self, subscription_key: Optional[str] = None, endpoint: Optional[str] = None,
-                 timeout: int = 10, source_name: str = 'bing'):
+    def __init__(self, subscription_key: Optional[str] = None,
+                 base_url: str = 'https://api.bing.microsoft.com/v7.0/search',
+                 timeout: int = 10, source_name: str = 'bing', dynamic_auth: bool = False):
+        if dynamic_auth and subscription_key is not None:
+            raise ValueError('subscription_key must be None when dynamic_auth=True')
         super().__init__(
             source_name=source_name, api_key=subscription_key,
             auth_strategy=ApiKeyHeaderStrategy('Ocp-Apim-Subscription-Key'),
-            dynamic_auth=(subscription_key is None),
+            dynamic_auth=dynamic_auth,
         )
-        self._url = endpoint or 'https://api.bing.microsoft.com/v7.0/search'
+        self._url = base_url
         self._timeout = timeout
 
-    def search(self, query: str, count: int = 10) -> List[dict]:
+    def search(self, query: str, topk: int = 5, include_content: bool = False,
+               count: int = 10) -> List[Dict[str, Any]]:
+        limit = max(1, min(int(topk), 10))
         headers = self.inject_auth_header()
         params = {'q': query, 'count': min(count, 50)}
         resp = httpx.get(
@@ -33,7 +38,7 @@ class BingSearch(SearchBase):
             return []
         web = data.get('webPages') or {}
         items = web.get('value') or []
-        return [
+        results = [
             _make_result(
                 title=it.get('name', ''),
                 url=it.get('url', ''),
@@ -41,4 +46,8 @@ class BingSearch(SearchBase):
                 source=self.source_name,
             )
             for it in items
-        ]
+        ][:limit]
+        if include_content:
+            for item in results:
+                item['content'] = self.get_content(item)
+        return results

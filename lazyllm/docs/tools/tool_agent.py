@@ -777,22 +777,6 @@ Return the skill tool callables exposed by SkillManager.
 - List[Callable]: Skill tool callables.
 ''')
 
-add_chinese_doc('LazyLLMAgentBase.build_agent', '''\
-构建内部执行流程的工厂方法。
-
-说明：
-    该方法由子类实现，用于构建该 Agent 的内部工作流。
-    基类会在首次执行时调用它完成初始化。
-''')
-
-add_english_doc('LazyLLMAgentBase.build_agent', '''\
-Factory method for constructing the internal execution workflow.
-
-Notes:
-    This method should be implemented by subclasses to build the agent workflow.
-    The base class invokes it lazily on first use.
-''')
-
 add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
@@ -856,14 +840,6 @@ Args:
     force_summarize_context (str): Extra context injected into the force-summarize prompt (e.g. the original task description). Defaults to empty string.
     keep_full_turns (int): Number of most-recent tool results to keep intact during history compaction. Older results are truncated to 200 chars. Defaults to 0 (all results compacted).
 
-''')
-
-add_chinese_doc('ReactAgent.build_agent', '''\
-构建 ReactAgent 的内部推理与工具调用闭环。
-''')
-
-add_english_doc('ReactAgent.build_agent', '''\
-Build the internal reasoning and tool-calling loop for ReactAgent.
 ''')
 
 add_example('ReactAgent', """\
@@ -961,14 +937,6 @@ Args:
     workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
 ''')
 
-add_chinese_doc('PlanAndSolveAgent.build_agent', '''\
-构建 PlanAndSolveAgent 的规划与求解执行流程。
-''')
-
-add_english_doc('PlanAndSolveAgent.build_agent', '''\
-Build the planning and solving execution workflow for PlanAndSolveAgent.
-''')
-
 add_example('PlanAndSolveAgent', """\
 >>> import lazyllm
 >>> from lazyllm.tools import fc_register, PlanAndSolveAgent
@@ -1034,14 +1002,6 @@ Args:
     skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
     desc (str): Optional agent capability description.
     workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
-''')
-
-add_chinese_doc('ReWOOAgent.build_agent', '''\
-构建 ReWOOAgent 的 Planner/Worker/Solver 执行流程。
-''')
-
-add_english_doc('ReWOOAgent.build_agent', '''\
-Build the Planner/Worker/Solver workflow for ReWOOAgent.
 ''')
 
 add_chinese_doc('FunctionCallAgent.build_agent', '''\

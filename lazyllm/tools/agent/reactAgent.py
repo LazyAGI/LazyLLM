@@ -1,6 +1,6 @@
 from .base import LazyLLMAgentBase
-from lazyllm import loop, once_wrapper, LOG, locals
-from .functionCall import FunctionCall
+from .events import AGENT_FINISHED
+from lazyllm import LOG, locals
 from typing import List, Any, Dict, Optional, Union
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
@@ -80,7 +80,7 @@ class ReactAgent(LazyLLMAgentBase):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
-                         enable_builtin_tools=enable_builtin_tools)
+                         enable_builtin_tools=enable_builtin_tools, keep_full_turns=keep_full_turns)
         prompt = prompt or INSTRUCTION
         if self._return_last_tool_calls:
             prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
@@ -89,19 +89,43 @@ class ReactAgent(LazyLLMAgentBase):
         self._prompt = self._append_workspace_prompt(prompt)
         self._force_summarize = force_summarize
         self._force_summarize_context = force_summarize_context
-        self._keep_full_turns = keep_full_turns
 
-    @once_wrapper(reset_on_pickle=True)
-    def build_agent(self):
-        agent = loop(FunctionCall(llm=self._llm, _prompt=self._prompt, return_trace=self._return_trace,
-                                  stream=self._stream, _tool_manager=self._tools_manager,
-                                  skill_manager=self._skill_manager,
-                                  keep_full_turns=self._keep_full_turns),
-                     stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
-        self._agent = agent
+    def _pre_process(self, query, llm_chat_history=None):
+        return (query, llm_chat_history)
 
-    def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
-        return (query, llm_chat_history or [])
+    def _execute(self, input, callback=None):
+        self._init_tool_llm(prompt=self._prompt)
+        query, llm_chat_history = input if isinstance(input, tuple) else (input, None)
+
+        current = query
+        for retry_idx in range(self._max_retries):
+            history = llm_chat_history if retry_idx == 0 else None
+            result = self._run_tool_round(current, history, callback=callback)
+            if isinstance(result, str):
+                completed = self._pop_tool_calls()
+                if callback:
+                    callback(self._make_event(AGENT_FINISHED))
+                return completed if completed is not None else result
+            current = result
+
+        if self._force_summarize:
+            try:
+                agent_ctx = locals['_lazyllm_agent']
+            except (KeyError, TypeError):
+                agent_ctx = {}
+            history = agent_ctx.get('workspace', {}).get('history', []) if isinstance(agent_ctx, dict) else []
+            if history:
+                LOG.warning(f'ReactAgent reached max_retries={self._max_retries}, attempting force summarize.')
+                try:
+                    summary = self._force_summarize_from_history(history)
+                except Exception as e:
+                    LOG.warning(f'ReactAgent force-summarize call failed: {e}')
+                    summary = None
+                if summary is not None:
+                    return summary
+
+        raise ValueError(f'After retrying {self._max_retries} times, the react agent still failes to call '
+                         f'successfully.')
 
     def _force_summarize_from_history(self, history: list) -> Optional[str]:
         recent = history[-8:]
@@ -135,27 +159,3 @@ class ReactAgent(LazyLLMAgentBase):
             resp.get('content', '') if isinstance(resp, dict) else None
         )
         return summary if summary else None
-
-    def _post_process(self, ret):
-        if isinstance(ret, str):
-            completed = self._pop_tool_calls()
-            if completed is not None:
-                return completed
-            return ret
-        if self._force_summarize:
-            try:
-                agent_ctx = locals['_lazyllm_agent']
-            except (KeyError, TypeError):
-                agent_ctx = {}
-            history = agent_ctx.get('workspace', {}).get('history', []) if isinstance(agent_ctx, dict) else []
-            if history:
-                LOG.warning(f'ReactAgent reached max_retries={self._max_retries}, attempting force summarize.')
-                summary = None
-                try:
-                    summary = self._force_summarize_from_history(history)
-                except Exception as e:
-                    LOG.warning(f'ReactAgent force-summarize call failed: {e}')
-                if summary is not None:
-                    return summary
-        raise ValueError(f'After retrying {self._max_retries} times, the react agent still failes to call '
-                         f'successfully.')

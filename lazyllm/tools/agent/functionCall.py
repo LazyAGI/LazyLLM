@@ -66,6 +66,7 @@ def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -
     return result
 
 
+@deprecated('Use LazyLLMAgentBase._run_tool_round instead')
 class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,

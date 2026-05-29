@@ -16,8 +16,11 @@ from typing import *  # noqa F403, to import all types for compile_func(), do no
 # ---------------------------------------------------------------------------- #
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, verbose: bool = False, return_trace: bool = False, execute_in_sandbox: bool = True):
+    def __init__(self, verbose: bool = False, return_trace: bool = False, execute_in_sandbox: bool = True,
+                 apply_func: Optional[Callable] = None, schema_func: Optional[Callable] = None):
         super().__init__(return_trace=return_trace)
+        if apply_func is not None:
+            self.apply = apply_func
         self._verbose = verbose
         func = getattr(self.apply, '__func__', self.apply)
         if callable(func) and getattr(func, '__closure__', None):
@@ -34,7 +37,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._output_files_parm = None
         self._output_files = []
 
-        self._params_schema = self._load_function_schema(self.__class__.apply)
+        self._params_schema = self._load_function_schema(schema_func or self.__class__.apply)
 
     @staticmethod
     def _safe_eval_type(type_str: str, context: str) -> Any:
@@ -70,7 +73,10 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         func_return = func_type_hints.get('return')
         doc_return = doc_type_hints.get('return')
         if func_return is not None and doc_return is not None and func_return != doc_return:
-            raise TypeError('return info in docstring is different from that in function prototype.')
+            raise TypeError(
+                f'return info in docstring ({doc_return}) is different from '
+                f'function prototype ({func_return}) in {func.__name__}'
+            )
 
         signature = inspect.signature(func)
         has_var_args = any(
@@ -254,27 +260,21 @@ if 'builtin_tools' not in LazyLLMRegisterMetaClass.all_clses:
 class MethodModuleTool(ModuleTool):
     def __init__(self, instance: Any, method_name: str,
                  key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
-        self._instance = instance
-        self._method_name = method_name
         bound = getattr(instance, method_name)
 
         def _apply(**kwargs): return bound(**kwargs)
         _apply.__doc__ = bound.__doc__
         _apply.__name__ = method_name
 
-        self.apply = _apply
-        super().__init__(execute_in_sandbox=False)
+        super().__init__(execute_in_sandbox=False, apply_func=_apply, schema_func=bound)
+        self._instance = instance
+        self._method_name = method_name
         self._name = instance.__class__.__name__ if method_name == '__call__' \
             else f'{instance.__class__.__name__}_{method_name}'
-
-    def _load_function_schema(self, func: Callable) -> Type[BaseModel]:
-        return super()._load_function_schema(getattr(self._instance, self._method_name))
 
 
 def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
     tool_args = tool.args
-    assert len(tool_args) == len(parsed_docstring.params), ('The parameter description and the actual '
-                                                            'number of input parameters are inconsistent.')
     args_description = {param.arg_name: param.description for param in parsed_docstring.params}
     args = {}
     for k, v in tool_args.items():
@@ -285,9 +285,6 @@ def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
         desc = args_description.get(k, None)
         if desc:
             args[k].update({'description': desc})
-        else:
-            raise ValueError(f'The actual input parameter "{k}" is not found '
-                             f'in the parameter description of tool "{tool.name}".')
     return args
 
 

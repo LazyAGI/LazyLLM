@@ -165,11 +165,10 @@ add_chinese_doc('GoogleSearch.search', '''
 
 Args:
     query (str): 检索关键词。
+    topk (int): 返回给 LLM 的最大结果数，默认 5。
+    include_content (bool): 是否获取页面全文内容，默认 False。
     date_restrict (str): 内容时效，默认 "m1"（一个月内）。格式见 Google Custom Search API 文档。
     search_engine_id (str, optional): 检索用搜索引擎 id；为空则使用构造时传入的值。
-
-Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。
 ''')
 
 add_english_doc('GoogleSearch.search', '''
@@ -177,11 +176,10 @@ Execute Google search.
 
 Args:
     query (str): Search keywords.
+    topk (int): Maximum results to return to LLM, default 5.
+    include_content (bool): Whether to fetch full page content, default False.
     date_restrict (str): Content freshness, default "m1" (past month). See Google Custom Search API docs.
     search_engine_id (str, optional): Search engine ID; if empty, uses constructor value.
-
-Returns:
-    List[Dict[str, Any]]: List of results in unified format.
 ''')
 
 add_example('GoogleSearch.search', '''
@@ -192,10 +190,16 @@ res = google('machine learning', date_restrict='m1')
 
 add_chinese_doc('GoogleSearch.get_content', '''
 使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
 ''')
 
 add_english_doc('GoogleSearch.get_content', '''
 Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
 ''')
 
 add_chinese_doc('TencentSearch', '''
@@ -254,10 +258,16 @@ res = searcher('calculus')
 
 add_chinese_doc('TencentSearch.get_content', '''
 使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
 ''')
 
 add_english_doc('TencentSearch.get_content', '''
 Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
 ''')
 
 add_chinese_doc('BingSearch', '''
@@ -292,10 +302,16 @@ res = bing('python tutorial', count=5)
 
 add_chinese_doc('BingSearch.get_content', '''
 使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
 ''')
 
 add_english_doc('BingSearch.get_content', '''
 Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
 ''')
 
 add_chinese_doc('BingSearch.search', '''
@@ -303,10 +319,9 @@ add_chinese_doc('BingSearch.search', '''
 
 Args:
     query (str): 搜索关键词。
+    topk (int): 返回给 LLM 的最大结果数，默认 5。
+    include_content (bool): 是否获取页面全文内容，默认 False。
     count (int): 返回条数，默认 10，最大 50。
-
-Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。
 ''')
 
 add_english_doc('BingSearch.search', '''
@@ -314,10 +329,9 @@ Execute Bing web search.
 
 Args:
     query (str): Search query.
+    topk (int): Maximum results to return to LLM, default 5.
+    include_content (bool): Whether to fetch full page content, default False.
     count (int): Number of results, default 10, max 50.
-
-Returns:
-    List[Dict[str, Any]]: List of results in unified format.
 ''')
 
 add_chinese_doc('BochaSearch', '''
@@ -352,10 +366,16 @@ res = bocha('machine learning', count=5)
 
 add_chinese_doc('BochaSearch.get_content', '''
 使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
 ''')
 
 add_english_doc('BochaSearch.get_content', '''
 Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
 ''')
 
 add_chinese_doc('BochaSearch.search', '''
@@ -363,12 +383,11 @@ add_chinese_doc('BochaSearch.search', '''
 
 Args:
     query (str): 搜索内容。
+    topk (int): 返回给 LLM 的最大结果数，默认 5。
+    include_content (bool): 是否获取页面全文内容，默认 False。
     count (int): 结果数量，默认 10。
     freshness (str, optional): 时间范围，如 oneDay、oneWeek、oneMonth。
     summary (bool): 是否返回摘要，默认 False。
-
-Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。
 ''')
 
 add_english_doc('BochaSearch.search', '''
@@ -376,12 +395,11 @@ Execute Bocha web search.
 
 Args:
     query (str): Search query.
+    topk (int): Maximum results to return to LLM, default 5.
+    include_content (bool): Whether to fetch full page content, default False.
     count (int): Number of results, default 10.
     freshness (str, optional): Time range, e.g. oneDay, oneWeek, oneMonth.
     summary (bool): Whether to request summary, default False.
-
-Returns:
-    List[Dict[str, Any]]: List of results in unified format.
 ''')
 
 add_chinese_doc('StackOverflowSearch', '''
@@ -426,10 +444,16 @@ Returns:
 
 add_chinese_doc('StackOverflowSearch.get_content', '''
 通过 Stack Exchange API 获取问题正文及采纳答案正文（需 item 的 url 含 question id）；返回纯文本，失败时回退为请求 url 页面。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，url 中需含 question id。
 ''')
 
 add_english_doc('StackOverflowSearch.get_content', '''
 Fetches question body and accepted answer body via Stack Exchange API (requires question id in item url); returns plain text, falls back to fetching url on failure.
+
+Args:
+    item (Dict[str, Any]): Search result item whose url contains a question id.
 ''')
 
 add_english_doc('StackOverflowSearch.search', '''
@@ -497,10 +521,16 @@ Returns:
 
 add_chinese_doc('SemanticScholarSearch.get_content', '''
 优先用 extra.paperId 调 API 获取论文摘要；无 paperId 时返回 item.snippet，再失败则请求 url 页面。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，extra 中可含 paperId。
 ''')
 
 add_english_doc('SemanticScholarSearch.get_content', '''
 Uses extra.paperId to fetch abstract via API when available; otherwise returns item.snippet, then falls back to fetching url.
+
+Args:
+    item (Dict[str, Any]): Search result item; paperId in extra is used if available.
 ''')
 
 add_chinese_doc('GoogleBooksSearch', '''
@@ -532,10 +562,16 @@ res = books('deep learning', max_results=5)
 
 add_chinese_doc('GoogleBooksSearch.get_content', '''
 使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
 ''')
 
 add_english_doc('GoogleBooksSearch.get_content', '''
 Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
 ''')
 
 add_chinese_doc('GoogleBooksSearch.search', '''
@@ -608,10 +644,16 @@ Returns:
 
 add_chinese_doc('ArxivSearch.get_content', '''
 从 item.url 解析 arXiv id，调用 export API 获取完整摘要文本；失败时回退为请求 url 页面。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，url 中需含 arXiv id。
 ''')
 
 add_english_doc('ArxivSearch.get_content', '''
 Parses arXiv id from item.url, fetches full abstract via export API; falls back to fetching url on failure.
+
+Args:
+    item (Dict[str, Any]): Search result item whose url contains an arXiv id.
 ''')
 
 add_chinese_doc('WikipediaSearch', '''
@@ -648,9 +690,8 @@ add_chinese_doc('WikipediaSearch.search', '''
 Args:
     query (str): 搜索关键词。
     limit (int): 返回条数，默认 10，最大 500。
-
-Returns:
-    List[Dict[str, Any]]: 统一格式结果，extra 可含 pageid。
+    topk (int): 返回给 LLM 的最大结果数，默认 5。
+    include_content (bool): 是否获取页面全文内容，默认 False。
 ''')
 
 add_english_doc('WikipediaSearch.search', '''
@@ -659,9 +700,8 @@ Execute Wikipedia search.
 Args:
     query (str): Search query.
     limit (int): Number of results, default 10, max 500.
-
-Returns:
-    List[Dict[str, Any]]: Results in unified format; extra may include pageid.
+    topk (int): Maximum results to return to LLM, default 5.
+    include_content (bool): Whether to fetch full page content, default False.
 ''')
 
 add_example('WikipediaSearch.search', '''
@@ -672,8 +712,14 @@ res = wiki('machine learning', limit=5)
 
 add_chinese_doc('WikipediaSearch.get_content', '''
 当 item.extra 含 pageid 时，使用 MediaWiki API 获取词条全文（纯文本）；否则回退为请求 url 页面。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，extra 中可含 pageid。
 ''')
 
 add_english_doc('WikipediaSearch.get_content', '''
 When item.extra has pageid, fetches full page text via MediaWiki API; otherwise falls back to fetching url.
+
+Args:
+    item (Dict[str, Any]): Search result item; pageid in extra is used if available.
 ''')

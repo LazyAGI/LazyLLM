@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from lazyllm.thirdparty import httpx
 
@@ -7,15 +7,18 @@ from .base import SearchBase, _make_result
 
 class BochaSearch(SearchBase):
 
-    def __init__(self, api_key: str, base_url: str = 'https://api.bochaai.com',
-                 timeout: int = 15, source_name: str = 'bocha'):
-        super().__init__(source_name=source_name, api_key=api_key)
+    def __init__(self, api_key: Optional[str] = None, base_url: str = 'https://api.bochaai.com',
+                 timeout: int = 15, source_name: str = 'bocha', dynamic_auth: bool = False):
+        if dynamic_auth and api_key is not None:
+            raise ValueError('api_key must be None when dynamic_auth=True')
+        super().__init__(source_name=source_name, api_key=api_key, dynamic_auth=dynamic_auth)
         self._base_url = base_url.rstrip('/')
         self._timeout = timeout
 
-    def search(self, query: str, count: int = 10,
-               freshness: Optional[str] = None,
-               summary: bool = False) -> List[dict]:
+    def search(self, query: str, topk: int = 5, include_content: bool = False,
+               count: int = 10, freshness: Optional[str] = None,
+               summary: bool = False) -> List[Dict[str, Any]]:
+        limit = max(1, min(int(topk), 10))
         url = f'{self._base_url}/v1/web-search'
         headers = self.inject_auth_header({'Content-Type': 'application/json'})
         body = {'query': query, 'count': min(count, 20), 'summary': summary}
@@ -34,4 +37,8 @@ class BochaSearch(SearchBase):
                 url = it.get('url') or it.get('link') or ''
                 snippet = it.get('snippet') or it.get('description') or it.get('summary') or ''
                 out.append(_make_result(title=title, url=url, snippet=snippet, source=self.source_name))
-        return out
+        items = out[:limit]
+        if include_content:
+            for item in items:
+                item['content'] = self.get_content(item)
+        return items

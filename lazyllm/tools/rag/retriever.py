@@ -180,9 +180,10 @@ class Retriever(_RetrieverBase, _PostProcess):
 
     def forward(
             self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
-            **kwargs
+            topk: Optional[int] = None, **kwargs
     ) -> Union[List[DocNode], str]:
         self._lazy_init()
+        resolved_topk = self._topk if topk is None else topk
         all_nodes: List[DocNode] = []
         if self._per_doc_embed_keys:
             if len(self._embed_keys) != len(self._docs):
@@ -191,7 +192,7 @@ class Retriever(_RetrieverBase, _PostProcess):
             embed_keys = self._embed_keys[idx] if self._per_doc_embed_keys else self._embed_keys
             nodes = doc.forward(query=query, group_name=self._group_name, similarity=self._similarity,
                                 similarity_cut_off=self._similarity_cut_off, index=self._index,
-                                topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=embed_keys,
+                                topk=resolved_topk, similarity_kws=self._similarity_kw, embed_keys=embed_keys,
                                 filters=filters, **kwargs)
             if nodes and self._target and self._target != nodes[0]._group:
                 nodes = doc.find(self._target)(nodes)
@@ -230,11 +231,14 @@ class TempRetriever(_RetrieverBase, _PostProcess):
     def _get_retrievers(self, doc_files: List[str], init: bool = False):
         raise NotImplementedError('Please implement it at subclass')
 
-    def forward(self, files: Union[str, List[str]], query: str):
+    def forward(self, files: Union[str, List[str]], query: str, topk=None):
         if isinstance(files, str): files = [files]
         retrievers = self._get_retrievers(tuple(set(files)))
         r = lazyllm.parallel(*retrievers).sum
-        return self._post_process(r(query))
+        extra = {}
+        if topk is not None:
+            extra["topk"] = topk
+        return self._post_process(r(query, **extra))
 
 
 class TempDocRetriever(TempRetriever):

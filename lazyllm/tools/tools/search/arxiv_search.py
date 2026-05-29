@@ -8,10 +8,11 @@ from .base import SearchBase, _make_result
 
 class ArxivSearch(SearchBase):
 
-    def __init__(self, timeout: int = 15, source_name: str = 'arxiv'):
+    def __init__(self, base_url: str = 'https://export.arxiv.org/api/query',
+                 timeout: int = 15, source_name: str = 'arxiv'):
         super().__init__(source_name=source_name)
+        self._url = base_url
         self._timeout = timeout
-        self._url = 'https://export.arxiv.org/api/query'
 
     def get_content(self, item: Dict[str, Any]) -> str:
         url = item.get('url') or ''
@@ -40,8 +41,7 @@ class ArxivSearch(SearchBase):
                 return summary_el.text.strip().replace('\n', ' ')
         return super().get_content(item)
 
-    def search(self, query: str, max_results: int = 10,
-               sort_by: str = 'relevance') -> List[dict]:
+    def search(self, query: str, max_results: int = 5, sort_by: str = 'relevance') -> List[Dict[str, Any]]:
         params = {
             'search_query': f'all:{query}',
             'start': 0,
