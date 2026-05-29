@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from filelock import FileLock, Timeout
 
@@ -26,11 +26,11 @@ def _find_trace_path(storage_dir: Path, trace_id: str) -> Optional[Path]:
     return paths[0] if paths else None
 
 
-def _trace_path(storage_dir: Path, trace_id: str) -> Path:
+def _trace_path(storage_dir: Path, trace_id: str, timestamp: Optional[str] = None) -> Path:
     path = _find_trace_path(storage_dir, trace_id)
     if path is not None:
         return path
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    timestamp = timestamp or datetime.now().strftime('%Y%m%d%H%M%S')
     return storage_dir / f'{timestamp}_{trace_id}.jsonl'
 
 
@@ -43,12 +43,22 @@ def _strip_otel_id_prefix(value):
     return value[2:] if isinstance(value, str) and value.startswith('0x') else value
 
 
-def _span_to_json_line(span: 'opentelemetry.sdk.trace.ReadableSpan') -> str:
+def _local_file_timestamp(otel_time: Any) -> Optional[str]:
+    if not isinstance(otel_time, str) or not otel_time:
+        return None
+    try:
+        text = otel_time[:-1] + '+00:00' if otel_time.endswith('Z') else otel_time
+        return datetime.fromisoformat(text).astimezone().strftime('%Y%m%d%H%M%S')
+    except ValueError:
+        return None
+
+
+def _span_to_json_line(span: 'opentelemetry.sdk.trace.ReadableSpan') -> Tuple[str, Optional[str]]:
     raw = span.to_json(indent=None)
     payload = json.loads(raw)
     if not isinstance(payload, dict):
         raise TypeError(f'span.to_json() must return JSON object, got {type(payload).__name__}')
-    return json.dumps(payload, ensure_ascii=False)
+    return json.dumps(payload, ensure_ascii=False), _local_file_timestamp(payload.get('start_time'))
 
 
 def _choose_root_span(spans: List[RawSpanRecord]) -> Optional[RawSpanRecord]:
@@ -196,11 +206,15 @@ class LocalFileSpanExporter(opentelemetry.sdk.trace.export.SpanExporter):
             return SpanExportResult.FAILURE
 
         grouped: Dict[str, List[str]] = {}
+        timestamps: Dict[str, str] = {}
         try:
             for span in spans:
                 context = span.get_span_context()
                 trace_id = f'{context.trace_id:032x}'
-                grouped.setdefault(trace_id, []).append(_span_to_json_line(span))
+                line, timestamp = _span_to_json_line(span)
+                grouped.setdefault(trace_id, []).append(line)
+                if timestamp is not None:
+                    timestamps.setdefault(trace_id, timestamp)
         except Exception as exc:
             LOG.warning(f'LocalFileSpanExporter failed to serialize spans: {exc}')
             return SpanExportResult.FAILURE
@@ -208,7 +222,7 @@ class LocalFileSpanExporter(opentelemetry.sdk.trace.export.SpanExporter):
         try:
             for trace_id, lines in grouped.items():
                 with _trace_lock(self.storage_dir, trace_id):
-                    path = _trace_path(self.storage_dir, trace_id)
+                    path = _trace_path(self.storage_dir, trace_id, timestamps.get(trace_id))
                     with path.open('a', encoding='utf-8') as file_obj:
                         file_obj.writelines(f'{line}\n' for line in lines)
         except Exception as exc:

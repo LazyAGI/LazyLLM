@@ -121,6 +121,77 @@ class DocumentProcessorWorker(ModuleBase):
                 return result if isinstance(result, list) else [result]
             return _impl
 
+        def _cleanup_stale_tasks(self):  # noqa C901
+            '''On startup, reset stale state left by crashed workers:
+            1. WORKING tasks in lazyllm_waiting_task_queue whose lease has expired → WAITING
+            2. WORKING rows in lazyllm_doc_node_group_status that have no corresponding active
+               WORKING task in the waiting queue AND whose updated_at is older than
+               lease_duration * 2 → FAILED (safe in multi-worker environments: an active worker
+               would have updated the row within lease_duration seconds)
+            '''
+            try:
+                self._lazy_init()
+                now = datetime.now()
+                TableCls = self._waiting_task_queue._sql_manager.get_table_orm_class(
+                    self._waiting_task_queue._table_name
+                )
+                with self._waiting_task_queue._sql_manager.get_session() as session:
+                    stale = session.query(TableCls).filter(
+                        TableCls.status == TaskStatus.WORKING.value,
+                        (TableCls.lease_expires_at < now) | (TableCls.lease_expires_at.is_(None))
+                    ).all()
+                    if stale:
+                        for row in stale:
+                            row.status = TaskStatus.WAITING.value
+                            row.worker_id = None
+                            row.lease_expires_at = None
+                            row.updated_at = now
+                        LOG.warning(f'{self._log_prefix()} Reset {len(stale)} stale WORKING tasks '
+                                    f'in waiting queue to WAITING on startup')
+            except Exception as e:
+                LOG.error(f'{self._log_prefix()} Failed to cleanup stale waiting tasks: {e}')
+
+            try:
+                # Collect doc_ids that are actively being processed by a live worker
+                # (i.e. WORKING tasks in waiting_queue whose lease has NOT yet expired).
+                # ng_status WORKING rows for these docs must NOT be touched.
+                active_doc_ids: set = set()
+                TableCls = self._waiting_task_queue._sql_manager.get_table_orm_class(
+                    self._waiting_task_queue._table_name
+                )
+                with self._waiting_task_queue._sql_manager.get_session() as session:
+                    active_tasks = session.query(TableCls).filter(
+                        TableCls.status == TaskStatus.WORKING.value,
+                        TableCls.lease_expires_at >= datetime.now(),
+                    ).all()
+                    for task in active_tasks:
+                        try:
+                            payload = json.loads(task.message)
+                            for fi in payload.get('file_infos') or []:
+                                doc_id = fi.get('doc_id')
+                                if doc_id:
+                                    active_doc_ids.add(doc_id)
+                        except Exception:
+                            pass
+
+                NgStatus = self._db_manager.get_table_orm_class('lazyllm_doc_node_group_status')
+                with self._db_manager.get_session() as session:
+                    query = session.query(NgStatus).filter(NgStatus.status == 'WORKING')
+                    if active_doc_ids:
+                        query = query.filter(NgStatus.doc_id.notin_(active_doc_ids))
+                    stale_ng = query.all()
+                    if stale_ng:
+                        now_ts = datetime.now()
+                        for row in stale_ng:
+                            row.status = 'FAILED'
+                            row.error_msg = 'reset by worker startup cleanup (stale WORKING)'
+                            row.updated_at = now_ts
+                        LOG.warning(f'{self._log_prefix()} Reset {len(stale_ng)} stale WORKING '
+                                    f'node_group_status rows to FAILED on startup '
+                                    f'(skipped {len(active_doc_ids)} active doc_ids)')
+            except Exception as e:
+                LOG.error(f'{self._log_prefix()} Failed to cleanup stale ng_status rows: {e}')
+
         def _start_lease_renewal(self, task_id: str):
             if self._lease_renew_interval <= 0:
                 return
@@ -288,10 +359,12 @@ class DocumentProcessorWorker(ModuleBase):
             except Exception as e:
                 LOG.error(f'[Worker] _write_ng_status_batch failed: {e}')
 
-        def _wait_and_decide_ng(self, doc_ids: List[str], ng_ids: List[str], kb_id: str) -> tuple:
+        def _wait_and_decide_ng(self, doc_ids: List[str], ng_ids: List[str], kb_id: str,
+                                timeout: float = 3600.0) -> tuple:
             import time as _time
             skip_ng_ids: set = set()
             exec_ng_ids: set = set()
+            deadline = _time.monotonic() + timeout
             for ng_id in ng_ids:
                 while True:
                     with self._db_manager.get_session() as session:
@@ -303,6 +376,11 @@ class DocumentProcessorWorker(ModuleBase):
                         status_map = {r.doc_id: r.status for r in rows}
                     statuses = [status_map.get(d) for d in doc_ids]
                     if any(s == 'WORKING' for s in statuses):
+                        if _time.monotonic() > deadline:
+                            LOG.warning(f'{self._log_prefix()} _wait_and_decide_ng timed out '
+                                        f'after {timeout}s for ng_id={ng_id}, treating as exec')
+                            exec_ng_ids.add(ng_id)
+                            break
                         _time.sleep(1)
                         continue
                     if all(s == 'SUCCESS' for s in statuses):
@@ -349,14 +427,14 @@ class DocumentProcessorWorker(ModuleBase):
                     self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'FAILED', str(e))
                 raise e
 
-        def _exec_reparse_task(
-            self, processor: _Processor, task_id: str, payload: dict,
-            node_groups: Dict[str, Dict], name_to_id: Dict[str, str],
-            reader: Optional[DirectoryReader]
-        ):
+        # TODO: simplify this function
+        def _exec_reparse_task(self, processor: _Processor, task_id: str, payload: dict,  # noqa C901
+                               node_groups: Dict[str, Dict], name_to_id: Dict[str, str],
+                               reader: Optional[DirectoryReader]):
             file_infos = payload.get('file_infos')
             kb_id = payload.get('kb_id', None)
             ng_names_requested = payload.get('ng_names')  # None means full reparse
+            embed_only = payload.get('embed_only', False)
             reparse_doc_ids = []
             reparse_files = []
             reparse_metadatas = []
@@ -372,7 +450,15 @@ class DocumentProcessorWorker(ModuleBase):
                 self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
 
             try:
-                if ng_names_requested is None:
+                if embed_only:
+                    # embed_only: skip transform, only (re-)embed existing nodes
+                    for name in (ng_names_requested or list(node_groups.keys())):
+                        if name not in node_groups:
+                            LOG.warning(f'{self._log_prefix(task_id)} ng_name {name!r} not found, skipping')
+                            continue
+                        processor.reparse(group_name=name, node_groups=node_groups,
+                                          doc_ids=reparse_doc_ids, kb_id=kb_id, embed_only=True)
+                elif ng_names_requested is None:
                     # Full reparse: reload from source and rebuild all node groups.
                     processor.reparse(group_name=None, node_groups=node_groups,
                                       doc_ids=reparse_doc_ids, doc_paths=reparse_files,
@@ -855,6 +941,7 @@ class DocumentProcessorWorker(ModuleBase):
         def start(self):
             LOG.info(f'{self._log_prefix()} Starting worker...')
             self._lazy_init()
+            self._cleanup_stale_tasks()
             if self._worker_thread is not None and self._worker_thread.is_alive():
                 LOG.warning(f'{self._log_prefix()} Worker thread is already running')
                 return

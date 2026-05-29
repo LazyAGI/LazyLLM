@@ -110,7 +110,8 @@ class _ManagerHarness:
 
     def _patch_parser_client(self):
         def add_doc(task_id, kb_id, doc_id, file_path, metadata=None, ng_names=None,
-                    extractor_names=None, task_type=None, callback_url=None, transfer_params=None):
+                    extractor_names=None, task_type=None, callback_url=None, transfer_params=None,
+                    llm_config=None, embed_only=False):
             # Infer algo_id from ng_names using the ng→algo mapping populated by _patch_multi_algo.
             # Only exclusive ng_names (not shared across algos) are in the mapping.
             # Falls back to '__default__' when the mapping is empty (single-algo tests).

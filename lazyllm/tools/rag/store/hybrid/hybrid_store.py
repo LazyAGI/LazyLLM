@@ -84,6 +84,10 @@ class HybridStore(LazyLLMStoreBase):
         return (ordered, total) if total is not None else ordered
 
     @override
+    def collection_exists(self, collection_name: str) -> bool:
+        return self.vector_store.collection_exists(collection_name)
+
+    @override
     def search(self, collection_name: str, query: str, query_embedding: Optional[Union[dict, List[float]]] = None,
                topk: int = 10, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:

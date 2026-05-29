@@ -151,9 +151,10 @@ jobs:
       - name: Build doc
         run: |
           set -e
+          python .github/scripts/check_stale_editable.py
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
-          LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
+          LAZYLLM_INIT_DOC=True python -B docs/add_docstrings.py
 
       - name: Setup CI directory
         run: |
@@ -163,7 +164,7 @@ jobs:
           rm -rf ${{ env.CI_PATH }}/* ${{ env.CI_PATH }}/.[!.]*
           mv $GITHUB_WORKSPACE/* $GITHUB_WORKSPACE/.[!.]* ${{ env.CI_PATH }}/
           cd ${{ env.CI_PATH }}
-          
+
           pip install -r tests/requirements.txt
           pip install -r tests/requirements_linux.txt
 
@@ -902,7 +903,11 @@ jobs:
 
       - name: Install C++ extension artifacts into workspace
         run: |
-          cmake --install build --prefix . --component lazyllm_cpp
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            cmake --install build --config Debug --prefix . --component lazyllm_cpp
+          else
+            cmake --install build --prefix . --component lazyllm_cpp
+          fi
           ls -al lazyllm | grep -E "lazyllm_cpp|cpp_lib" || true
 
       - name: Compute pytest marker
@@ -917,8 +922,8 @@ jobs:
 
       - name: Run basic tests
         run: |
-          pytest -v --order-scope=class -m "$PYTEST_MARKER" tests/basic_tests
+          python -m pytest -v --order-scope=class -m "$PYTEST_MARKER" tests/basic_tests
 
       - name: Run advanced tests
         run: |
-          pytest -v --order-scope=class -m "$PYTEST_MARKER" tests/advanced_tests
+          python -m pytest -v --order-scope=class -m "$PYTEST_MARKER" tests/advanced_tests

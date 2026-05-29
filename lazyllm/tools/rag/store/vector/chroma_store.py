@@ -1,13 +1,14 @@
 import os
 import re
 import traceback
+import threading
 
-from typing import Dict, List, Optional, Set, Union, Any
+from typing import Dict, List, Optional, Set, Union, Any, Callable
 from collections import defaultdict
 from urllib.parse import urlparse
 from pathlib import Path
 
-from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX)
+from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX, EmbedResolveMixin)
 from ...data_type import DataType
 from ...global_metadata import GlobalMetadataDesc
 
@@ -25,7 +26,7 @@ DEFAULT_INDEX_CONFIG = {
 }
 
 
-class ChromaStore(LazyLLMStoreBase):
+class ChromaStore(EmbedResolveMixin, LazyLLMStoreBase):
     capability = StoreCapability.VECTOR
     need_embedding = True
     supports_index_registration = False
@@ -80,10 +81,13 @@ class ChromaStore(LazyLLMStoreBase):
     @override
     def connect(self, embed_dims: Optional[Dict[str, int]] = None,
                 embed_datatypes: Optional[Dict[str, DataType]] = None,
+                embed: Optional[Dict[str, Callable]] = None,
                 global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
         self._global_metadata_desc = global_metadata_desc or {}
         self._embed_dims = embed_dims or {}
         self._embed_datatypes = embed_datatypes or {}
+        self._embed = embed or {}
+        self._ddl_lock = threading.Lock()
         for k, v in self._global_metadata_desc.items():
             if v.data_type not in [DataType.VARCHAR, DataType.INT32, DataType.FLOAT, DataType.BOOLEAN]:
                 raise ValueError(f'[Chroma Store] Unsupported data type {v.data_type} for global metadata {k}'
@@ -110,6 +114,8 @@ class ChromaStore(LazyLLMStoreBase):
             if not data_embeddings: return
             embed_keys = list(data_embeddings.keys())
             for embed_key in embed_keys:
+                with self._ddl_lock:
+                    self._resolve_missing_embed_specs({embed_key})
                 if embed_key not in self._embed_datatypes:
                     raise ValueError(f'Embed key {embed_key} not found in embed_datatypes')
                 collection = self._client.get_or_create_collection(
@@ -200,6 +206,18 @@ class ChromaStore(LazyLLMStoreBase):
         except Exception as e:
             LOG.error(f'[ChromaStore - get] task fail: {e}')
             LOG.error(traceback.format_exc())
+
+    @override
+    def collection_exists(self, collection_name: str) -> bool:
+        # Chroma uses one sub-collection per embed_key; the group collection
+        # is considered to exist when at least one embed_key sub-collection exists.
+        for embed_key in self._embed_datatypes:
+            try:
+                self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
+                return True
+            except Exception:
+                continue
+        return False
 
     @override
     def search(self, collection_name: str, query_embedding: List[float], embed_key: str, topk: Optional[int] = 10,
