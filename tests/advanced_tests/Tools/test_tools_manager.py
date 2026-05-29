@@ -387,6 +387,11 @@ class TestToolGroup:
             t1,
             dict(name='inner', desc='Inner', tools=[t2, t3]),
         ])])
+        names = [d['function']['name'] for d in tm.tools_description]
+        assert 'a' not in names
+        assert 'b' not in names
+        assert 'c' not in names
+        assert 'get_inner_methods' not in names
         tm._tool_call['get_outer_methods']({})
         names = [d['function']['name'] for d in tm.tools_description]
         assert 'get_outer_methods' not in names
@@ -401,7 +406,15 @@ class TestToolGroup:
             t1,
             dict(name='inner', desc='Inner', tools=[t2, t3]),
         ])])
+        names = [d['function']['name'] for d in tm.tools_description]
+        assert 'a' not in names
+        assert 'b' not in names
+        assert 'c' not in names
+        assert 'get_inner_methods' not in names
         tm._tool_call['get_outer_methods']({})
+        names = [d['function']['name'] for d in tm.tools_description]
+        assert 'b' not in names
+        assert 'c' not in names
         tm._tool_call['get_inner_methods']({})
         names = [d['function']['name'] for d in tm.tools_description]
         assert 'get_outer_methods' not in names
@@ -416,6 +429,11 @@ class TestToolGroup:
             t1,
             dict(name='inner', desc='Inner', lazy=False, tools=[t2, t3]),
         ])])
+        names = [d['function']['name'] for d in tm.tools_description]
+        assert 'a' not in names
+        assert 'b' not in names
+        assert 'c' not in names
+        assert 'get_inner_methods' not in names
         tm._tool_call['get_outer_methods']({})
         names = [d['function']['name'] for d in tm.tools_description]
         assert 'a' in names
@@ -664,3 +682,125 @@ class TestSkipMixinNormalizeSource:
 
         mixin = SkipMixin(optional_arg)
         assert not mixin.should_skip()
+
+
+class TestShouldSkipTransitions:
+    def setup_method(self):
+        init_session()
+        lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+        # register test-only config keys once (idempotent via _supported_configs set)
+        lazyllm.globals.config.add('test_skip_api_key', str, None, 'TEST_SKIP_API_KEY',
+                                   description='test key for should_skip transitions')
+        lazyllm.globals.config.add('test_skip_dot_key', str, None, 'TEST_SKIP_DOT_KEY',
+                                   description='test key for globals.config.xxx format')
+        lazyllm.globals.config.add('mock_fs_token', str, None, 'MOCK_FS_TOKEN',
+                                   description='test key for CredentialMixin skip transitions')
+        lazyllm.globals.config.add('test_wrapper_cfg_key', str, None, 'TEST_WRAPPER_CFG_KEY',
+                                   description='test key for ToolGroupWrapper globals.config')
+
+    # ------------------------------------------------------------------ #
+    # InstanceToolGroup — globals.config string key_source (bare key)
+    # ------------------------------------------------------------------ #
+    def test_instance_group_globals_config_key_skip_then_available(self):
+        inst = MockSearchForTest()
+        grp = InstanceToolGroup(inst, 'test_skip_api_key')
+        assert grp.should_skip() is True
+        lazyllm.globals.config['test_skip_api_key'] = 'secret'
+        assert grp.should_skip() is False
+        lazyllm.globals.config['test_skip_api_key'] = None
+
+    def test_instance_group_globals_config_dot_prefix_skip_then_available(self):
+        inst = MockSearchForTest()
+        grp = InstanceToolGroup(inst, 'globals.config.test_skip_dot_key')
+        assert grp.should_skip() is True
+        lazyllm.globals.config['test_skip_dot_key'] = 'token-xyz'
+        assert grp.should_skip() is False
+        lazyllm.globals.config['test_skip_dot_key'] = None
+
+    # ------------------------------------------------------------------ #
+    # InstanceToolGroup — CredentialMixin auto key_source via __key_source__
+    # ------------------------------------------------------------------ #
+    def test_instance_group_credential_mixin_skip_then_available(self):
+        from lazyllm.common import CredentialMixin
+        from lazyllm.common.auth import Credential
+
+        class MockFS(CredentialMixin):
+            __public_apis__ = ['read']
+
+            def __init__(self):
+                self.__init_credential__(Credential(kind='dynamic'))
+
+            def _resolve_dynamic_token(self) -> str:
+                try:
+                    return lazyllm.globals.config['mock_fs_token'] or ''
+                except Exception:
+                    return ''
+
+            def read(self, path: str) -> str:
+                '''Read a file.
+
+                Args:
+                    path (str): File path.
+
+                Returns:
+                    str: File content.
+                '''
+                return ''
+
+        inst = MockFS()
+        grp = InstanceToolGroup(inst)
+        # no token yet → should skip
+        assert grp.should_skip() is True
+        # inject token via globals.config
+        lazyllm.globals.config['mock_fs_token'] = 'user-token-abc'
+        assert grp.should_skip() is False
+        lazyllm.globals.config['mock_fs_token'] = None
+
+    # ------------------------------------------------------------------ #
+    # ToolGroupWrapper — callable key_source, mutate state
+    # ------------------------------------------------------------------ #
+    def test_wrapper_callable_skip_then_available_via_state(self):
+        from lazyllm.tools.agent.toolsManager import ToolGroupWrapper
+        t = _make_tool_func('state_tool')
+        state = {'key': ''}
+        wrapper = ToolGroupWrapper(t, lambda _inst: state['key'])
+        assert wrapper.should_skip() is True
+        state['key'] = 'valid-key'
+        assert wrapper.should_skip() is False
+
+    # ------------------------------------------------------------------ #
+    # ToolGroupWrapper — globals.config string key_source
+    # ------------------------------------------------------------------ #
+    def test_wrapper_globals_config_skip_then_available(self):
+        from lazyllm.tools.agent.toolsManager import ToolGroupWrapper
+        t = _make_tool_func('cfg_tool')
+        wrapper = ToolGroupWrapper(t, 'test_wrapper_cfg_key')
+        assert wrapper.should_skip() is True
+        lazyllm.globals.config['test_wrapper_cfg_key'] = 'present'
+        assert wrapper.should_skip() is False
+        lazyllm.globals.config['test_wrapper_cfg_key'] = None
+
+    # ------------------------------------------------------------------ #
+    # dict tool group with key_source — via ToolManager
+    # ------------------------------------------------------------------ #
+    def test_dict_group_key_source_skip_then_available(self):
+        t1, t2 = _make_tool_func('da'), _make_tool_func('db')
+        state = {'key': ''}
+        tm = ToolManager([dict(name='dgrp', desc='D group', tools=[t1, t2],
+                               key_source=lambda _inst: state['key'])])
+        assert len(tm.tools_description) == 0
+        state['key'] = 'unlocked'
+        # lazy mode: gateway tool becomes visible
+        assert len(tm.tools_description) == 1
+        assert tm.tools_description[0]['function']['name'] == 'get_dgrp_methods'
+
+    # ------------------------------------------------------------------ #
+    # SkipMixin — multi-source: both empty → skip; one becomes non-empty → available
+    # ------------------------------------------------------------------ #
+    def test_skip_mixin_multi_source_both_empty_then_one_fills(self):
+        from lazyllm.tools.agent.toolsManager import SkipMixin
+        state = {'a': '', 'b': ''}
+        mixin = SkipMixin([lambda _: state['a'], lambda _: state['b']])
+        assert mixin.should_skip() is True
+        state['b'] = 'filled'
+        assert mixin.should_skip() is False
