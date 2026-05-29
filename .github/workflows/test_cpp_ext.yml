@@ -58,6 +58,8 @@ jobs:
           DocImpl._add_doc_to_store = traced_add
 
           doc = Document(dataset_path='rag_master', manager=False)
+          for kb_name, impl in doc._manager._iter_kbs().items():
+              print(f'dataset_path={impl._dataset_path!r} doc_files={impl._doc_files!r}')
           doc.create_node_group(name='diag', transform=SentenceSplitter, chunk_size=128, chunk_overlap=10)
           doc.activate_groups('diag')
           print('Starting...')
@@ -68,7 +70,6 @@ jobs:
               for g in impl._store._activated_groups:
                   nodes = impl._store.get_nodes(group=g, kb_id=kb_name) if hasattr(impl._store, 'get_nodes') else []
                   print(f'  {g}: {len(nodes) if nodes else 0} nodes')
-          print(f'Retriever...')
           r = Retriever(doc, group_name='diag', similarity='bm25', topk=3)
           result = r(query='天道')
           print(f'Results: {len(result)}')
