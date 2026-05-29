@@ -24,7 +24,7 @@ from .ocr_reader_base import _OcrReaderBase, ServiceVariant
 lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='The API key for PaddleOCR')
 
 JOB_URL = 'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs'
-DEFAULT_MODEL = 'PaddleOCR-VL-1.5'
+DEFAULT_MODEL = 'PaddleOCR-VL-1.6'
 MAX_SIZE_MB = 500
 MAX_PAGES = 100
 
