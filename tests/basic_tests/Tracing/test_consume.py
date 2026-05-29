@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from lazyllm.tracing.consume.reconstruction.extractors import extract_semantic
 from lazyllm.tracing.consume.reconstruction.extractors.utils import doc_node_summaries
 from lazyllm.tracing.consume.reconstruction.tree import rebuild
+from lazyllm.tracing.collect.runtime import _stringify_payload
 from lazyllm.tracing.datamodel.raw import RawSpanRecord, RawTraceRecord
 from lazyllm.tracing.semantics import SemanticType
 
@@ -92,6 +93,58 @@ def test_rebuild_complex_trace_with_error_orphan():
         'error', 'provider boom', 'gpt-test',
     )
     assert tree.children[1].raw_data.output == 'orphan-output'
+
+
+def test_rebuild_parses_string_raw_data_with_truncated_fields():
+    trace_id = '0' * 32
+    root_id = '1' * 16
+    trace_input = {'query': 'trace', 'context': 'x' * 20}
+    trace_output = {'answer': 'output', 'reasoning': 'y' * 20}
+    span_input = {'args': [{'query': 'question', 'context': 'z' * 20}], 'kwargs': {}}
+    span_output = {'answer': 'done', 'debug': 'w' * 20}
+
+    trace = RawTraceRecord(
+        trace_id=trace_id, name='string-raw-data', session_id=None, user_id=None,
+        tags=[], metadata={},
+        input=_stringify_payload(trace_input, limit=8),
+        output=_stringify_payload(trace_output, limit=8),
+        start_time=None, end_time=None, status=None, raw={},
+    )
+    root = span(
+        trace_id, root_id, None, 'workflow-root', 10.0, 11.0,
+        kind='flow',
+        input=_stringify_payload(span_input, limit=8),
+        output=_stringify_payload(span_output, limit=8),
+    )
+
+    structured = rebuild(trace, [root])
+
+    assert structured.execution_tree.raw_data.input == {
+        'args': [{'query': 'question', 'context': 'zzzzzzzz...<truncated>'}],
+        'kwargs': {},
+    }
+    assert structured.execution_tree.raw_data.output == {
+        'answer': 'done',
+        'debug': 'wwwwwwww...<truncated>',
+    }
+
+    virtual = rebuild(trace, [])
+    assert virtual.execution_tree.raw_data.input == {
+        'query': 'trace',
+        'context': 'xxxxxxxx...<truncated>',
+    }
+    assert virtual.execution_tree.raw_data.output == {
+        'answer': 'output',
+        'reasoning': 'yyyyyyyy...<truncated>',
+    }
+
+
+def test_payload_truncates_long_fields_before_stringify():
+    payload = {'short': 'ok', 'nested': {'long': 'x' * 20}}
+    encoded = _stringify_payload(payload, limit=8)
+
+    decoded = json.loads(encoded)
+    assert decoded == {'short': 'ok', 'nested': {'long': 'xxxxxxxx...<truncated>'}}
 
 
 def test_extractors_map_core_semantics():
