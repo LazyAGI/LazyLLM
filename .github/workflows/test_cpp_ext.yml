@@ -34,7 +34,9 @@ jobs:
           set -euo pipefail
           DATA_DIR="$GITHUB_WORKSPACE/.ci_data"
           rm -rf "$DATA_DIR"
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
           git clone --depth 1 https://github.com/LazyAGI/LazyLLM-Data.git "$DATA_DIR"
+          git config --global --unset url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf
           echo "LAZYLLM_DATA_PATH=$DATA_DIR" >> "$GITHUB_ENV"
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN || github.token }}
