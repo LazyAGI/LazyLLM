@@ -1773,7 +1773,7 @@ class TestBatchForwardRefPath:
                 return [DocNode(text=f'ref-{n.text}') for n in nodes]
 
         store = _DocumentStore(store={'type': 'map'}, embed={})
-        store.impl.need_embedding = False
+        store._impl.need_embedding = False
         store.activate_group(LAZY_ROOT_NAME)
         store.activate_group('section')
         store.activate_group('group_with_ref')

@@ -6,6 +6,7 @@ build-backend = "scikit_build_core.build"
 wheel.packages = ["lazyllm"]
 cmake.source-dir = "csrc"
 cmake.build-type = "Release"
+cmake.define.CMAKE_POLICY_VERSION_MINIMUM = "3.5"
 build.verbose = true
 
 [tool.cibuildwheel]
