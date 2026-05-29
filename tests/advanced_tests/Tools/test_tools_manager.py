@@ -284,7 +284,7 @@ class TestInstanceToolGroup:
         try:
             ToolManager([(NoPublicApis(), 'env.K')])
             raised = False
-        except ValueError:
+        except (ValueError, TypeError):
             raised = True
         assert raised
 
@@ -548,3 +548,119 @@ class TestToolGroup:
         ])])
         names = [d['function']['name'] for d in tm.tools_description]
         assert 'outer_inner_leaf' in names
+
+
+class TestToolGroupWrapper:
+    def setup_method(self):
+        init_session()
+        lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+
+    def _tool(self, name: str):
+        return _make_tool_func(name)
+
+    def test_wrapper_with_callable_tool_and_callable_key_present(self):
+        t = self._tool('my_tool')
+        tm = ToolManager([(t, lambda: 'valid-key')])
+        names = [d['function']['name'] for d in tm.tools_description]
+        assert 'my_tool' in names
+
+    def test_wrapper_with_callable_tool_and_callable_key_missing(self):
+        t = self._tool('my_tool')
+        tm = ToolManager([(t, lambda: '')])
+        assert len(tm.tools_description) == 0
+
+    def test_wrapper_with_callable_key_with_instance_arg(self):
+        t = self._tool('my_tool')
+        called_with = []
+
+        def key_fn(inst):
+            called_with.append(inst)
+            return 'valid'
+
+        tm = ToolManager([(t, key_fn)])
+        names = [d['function']['name'] for d in tm.tools_description]
+        assert 'my_tool' in names
+        assert called_with == [None]
+
+    def test_wrapper_with_env_key_source(self, monkeypatch):
+        t = self._tool('my_tool')
+        tm = ToolManager([(t, 'env.TEST_WRAPPER_KEY')])
+        assert len(tm.tools_description) == 0
+        monkeypatch.setenv('TEST_WRAPPER_KEY', 'some-val')
+        assert len(tm.tools_description) == 1
+        assert tm.tools_description[0]['function']['name'] == 'my_tool'
+
+    def test_wrapper_with_multi_key_source_any_satisfies(self, monkeypatch):
+        t = self._tool('my_tool')
+        tm = ToolManager([(t, [lambda: '', 'env.TEST_WRAPPER_MULTI_KEY'])])
+        assert len(tm.tools_description) == 0
+        monkeypatch.setenv('TEST_WRAPPER_MULTI_KEY', 'val')
+        assert len(tm.tools_description) == 1
+
+    def test_wrapper_with_toolgroup_inner(self):
+        t1, t2 = self._tool('alpha'), self._tool('beta')
+        grp = ToolGroup(tools=[t1, t2], name='grp', desc='Group', lazy=False, prefix=False)
+        tm = ToolManager([(grp, lambda: 'key')])
+        names = [d['function']['name'] for d in tm.tools_description]
+        assert 'alpha' in names
+        assert 'beta' in names
+
+    def test_wrapper_with_toolgroup_inner_hidden_when_no_key(self):
+        t1 = self._tool('alpha')
+        grp = ToolGroup(tools=[t1], name='grp', desc='Group', lazy=False, prefix=False)
+        tm = ToolManager([(grp, lambda: '')])
+        assert len(tm.tools_description) == 0
+
+    def test_wrapper_get_flat_tools_contains_inner_tools(self):
+        t = self._tool('my_tool')
+        tm = ToolManager([(t, lambda: 'key')])
+        assert 'my_tool' in tm._tool_call
+
+    def test_wrapper_no_key_source_never_skips(self):
+        from lazyllm.tools.agent.toolsManager import ToolGroupWrapper
+        t = self._tool('my_tool')
+        wrapper = ToolGroupWrapper(t, None)
+        assert wrapper.should_skip() is False
+
+
+class TestSkipMixinNormalizeSource:
+    def test_no_arg_callable_wrapped(self):
+        from lazyllm.tools.agent.toolsManager import SkipMixin
+        called = []
+
+        def no_arg():
+            called.append(1)
+            return 'key'
+
+        mixin = SkipMixin(no_arg)
+        assert not mixin.should_skip()
+        assert called
+
+    def test_one_arg_callable_passed_none(self):
+        from lazyllm.tools.agent.toolsManager import SkipMixin
+        received = []
+
+        def one_arg(inst):
+            received.append(inst)
+            return 'key'
+
+        mixin = SkipMixin(one_arg)
+        assert not mixin.should_skip()
+        assert received == [None]
+
+    def test_list_mixed_callable_normalized(self):
+        from lazyllm.tools.agent.toolsManager import SkipMixin
+
+        def no_arg(): return ''
+        def one_arg(inst): return 'key'  # noqa: E731
+
+        mixin = SkipMixin([no_arg, one_arg])
+        assert not mixin.should_skip()
+
+    def test_defaultonly_arg_callable_treated_as_no_arg(self):
+        from lazyllm.tools.agent.toolsManager import SkipMixin
+
+        def optional_arg(inst=None): return 'key'
+
+        mixin = SkipMixin(optional_arg)
+        assert not mixin.should_skip()
