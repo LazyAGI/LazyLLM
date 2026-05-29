@@ -394,10 +394,13 @@ class _Processor:
                                             kb_id=kb_id, doc_ids=doc_ids)
             # TODO: reparse recursively
             if not p_nodes:
-                raise ValueError(
-                    f'Cannot reparse group "{group_name}": parent group '
-                    f'"{node_groups[group_name]["parent"]}" has no nodes for docs {doc_ids}. '
-                    f'Run a full reparse (without specifying ng_names) to rebuild from source.')
+                LOG.warning(
+                    f'Parent group "{node_groups[group_name]["parent"]}" has no nodes for '
+                    f'docs {doc_ids}, falling back to full reparse from source.')
+                self._reparse_docs(group_name=None, node_groups=node_groups,
+                                   doc_ids=doc_ids, doc_paths=doc_paths,
+                                   metadatas=metadatas, kb_id=kb_id, reader=reader)
+                return
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name,
                                           node_groups=node_groups, doc_ids=doc_ids, kb_id=kb_id)
 
