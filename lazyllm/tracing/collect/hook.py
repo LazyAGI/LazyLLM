@@ -6,11 +6,21 @@ from lazyllm.hook import LazyLLMHook, register_builtin_hook_provider
 from .configs import resolve_default_module_trace, resolve_runtime_module_trace_disabled
 from .output_attrs import (
     collect_trace_output_attrs,
-    discard_pending_switch_ifs_stack,
+    enter_switch_ifs_matched_scope,
+    exit_switch_ifs_matched_scope,
     install_post_process_probe,
     remove_post_process_probe,
 )
-from .runtime import finish_span, set_span_attributes, set_span_error, set_span_output, set_span_usage, start_span
+from .runtime import (
+    finish_span,
+    get_trace_context,
+    set_span_attributes,
+    set_span_error,
+    set_span_output,
+    set_span_usage,
+    set_trace_context,
+    start_span,
+)
 
 
 def _unwrap_trace_subject(obj: Any) -> Any:
@@ -33,6 +43,8 @@ class LazyTracingHook(LazyLLMHook):
     def __init__(self, obj):
         self._obj = obj
         self._span = None
+        self._switch_ifs_matched_scope_token = None
+        self._previous_trace_context = None
 
     def _trace_target(self) -> Any:
         return _unwrap_trace_subject(self._obj)
@@ -62,8 +74,10 @@ class LazyTracingHook(LazyLLMHook):
         ):
             return
 
+        self._previous_trace_context = get_trace_context()
         self._span = start_span(span_kind=self._span_kind, target=t, args=args, kwargs=kwargs)
         if self._span is not None:
+            self._switch_ifs_matched_scope_token = enter_switch_ifs_matched_scope(self._obj)
             install_post_process_probe(self._obj)
 
     def post_hook(self, output):
@@ -88,12 +102,18 @@ class LazyTracingHook(LazyLLMHook):
         set_span_error(self._span, exc)
 
     def finalize(self):
-        remove_post_process_probe(self._obj)
-        if self._span is None:
-            return
-        discard_pending_switch_ifs_stack(self._obj)
-        finish_span(self._span)
-        self._span = None
+        try:
+            remove_post_process_probe(self._obj)
+            if self._span is None:
+                return
+            finish_span(self._span)
+        finally:
+            exit_switch_ifs_matched_scope(self._switch_ifs_matched_scope_token)
+            if self._previous_trace_context is not None:
+                set_trace_context(self._previous_trace_context)
+            self._switch_ifs_matched_scope_token = None
+            self._span = None
+            self._previous_trace_context = None
 
 
 def resolve_tracing_hooks(obj):

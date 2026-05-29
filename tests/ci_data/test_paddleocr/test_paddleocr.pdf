@@ -1,0 +1,97 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [8 0 R 11 0 R] /Count 2 >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+7 0 obj
+<< /Length 470 >>
+stream
+BT
+/F1 20 Tf
+50 732 Td
+(Test Title: PaddleOCR Integration Test) Tj
+T*
+/F1 12 Tf
+50 692 Td
+(This is the first paragraph of the test document.) Tj
+T*
+/F1 12 Tf
+50 672 Td
+(It contains text that PaddleOCR should recognize as a paragraph.) Tj
+T*
+/F1 16 Tf
+50 632 Td
+(Section 1.1) Tj
+T*
+/F1 12 Tf
+50 612 Td
+(This section discusses the detailed aspects of OCR testing.) Tj
+T*
+/F1 12 Tf
+50 592 Td
+(PaddleOCR is a powerful tool for document parsing and layout analysis.) Tj
+T*
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 7 0 R /Resources << /Font << /F1 6 0 R >> >> >>
+endobj
+10 0 obj
+<< /Length 473 >>
+stream
+BT
+/F1 18 Tf
+50 732 Td
+(Section 2: Additional Content) Tj
+T*
+/F1 12 Tf
+50 692 Td
+(The second page contains more content for multi-page testing.) Tj
+T*
+/F1 12 Tf
+50 672 Td
+(This ensures that multi-page PDF parsing works correctly.) Tj
+T*
+/F1 14 Tf
+50 632 Td
+(Subsection 2.1: Details) Tj
+T*
+/F1 12 Tf
+50 612 Td
+(Here are some detailed testing notes about the integration.) Tj
+T*
+/F1 12 Tf
+50 592 Td
+(The system should extract all headings and paragraphs accurately.) Tj
+T*
+ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 10 0 R /Resources << /Font << /F1 6 0 R >> >> >>
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000000 65535 f 
+0000000122 00000 n 
+0000000219 00000 n 
+0000000740 00000 n 
+0000000000 65535 f 
+0000000866 00000 n 
+0000001391 00000 n 
+trailer
+<< /Size 12 /Root 1 0 R >>
+startxref
+1519
+%%EOF

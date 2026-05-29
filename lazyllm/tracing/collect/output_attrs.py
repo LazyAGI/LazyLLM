@@ -1,7 +1,7 @@
 import contextvars
 import json
 import types
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from lazyllm.common import LOG
 from lazyllm.common import globals as llm_globals
@@ -14,11 +14,11 @@ _retriever_output_attrs_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = 
 _reranker_output_attrs_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
     contextvars.ContextVar('_lazyllm_reranker_output_attrs', default=None)
 )
-_switch_matched_stack: contextvars.ContextVar[Optional[List[Dict[str, Any]]]] = (
-    contextvars.ContextVar('_lazyllm_switch_matched_stack', default=None)
+_switch_matched_attrs_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
+    contextvars.ContextVar('_lazyllm_switch_matched_attrs', default=None)
 )
-_ifs_matched_stack: contextvars.ContextVar[Optional[List[Dict[str, Any]]]] = (
-    contextvars.ContextVar('_lazyllm_ifs_matched_stack', default=None)
+_ifs_matched_attrs_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
+    contextvars.ContextVar('_lazyllm_ifs_matched_attrs', default=None)
 )
 
 _POST_PROCESS_INSTALLED = '__lazyllm_trace_post_process_installed__'
@@ -86,58 +86,47 @@ def record_reranker_output_attrs(nodes: Any) -> None:
     )
 
 
+def enter_switch_ifs_matched_scope(target: Any) -> Optional[contextvars.Token]:
+    cls_name = type(target).__name__
+    if cls_name == 'Switch':
+        return _switch_matched_attrs_var.set({})
+    if cls_name == 'IFS':
+        return _ifs_matched_attrs_var.set({})
+    return None
+
+
+def exit_switch_ifs_matched_scope(token: Optional[contextvars.Token]):
+    if token is not None:
+        token.var.reset(token)
+
+
 def push_switch_matched_attrs(matched: Dict[str, Any]) -> None:
-    current = _switch_matched_stack.get() or []
-    _switch_matched_stack.set(current + [matched])
+    if _switch_matched_attrs_var.get() is not None:
+        _switch_matched_attrs_var.set(matched)
 
 
 def push_ifs_matched_attrs(matched: Dict[str, Any]) -> None:
-    current = _ifs_matched_stack.get() or []
-    _ifs_matched_stack.set(current + [matched])
+    if _ifs_matched_attrs_var.get() is not None:
+        _ifs_matched_attrs_var.set(matched)
 
 
 def _matched_dict_from_frame(matched: Dict[str, Any]) -> Dict[str, Any]:
     return {f'lazyllm.matched.{k}': v for k, v in matched.items()}
 
 
-def _peek_switch_matched_attrs() -> Dict[str, Any]:
-    stack = _switch_matched_stack.get()
-    if not stack:
+def _peek_matched_attrs(var: contextvars.ContextVar) -> Dict[str, Any]:
+    matched = var.get()
+    if not matched:
         return {}
-    return _matched_dict_from_frame(stack[-1])
+    return _matched_dict_from_frame(matched)
+
+
+def _peek_switch_matched_attrs() -> Dict[str, Any]:
+    return _peek_matched_attrs(_switch_matched_attrs_var)
 
 
 def _peek_ifs_matched_attrs() -> Dict[str, Any]:
-    stack = _ifs_matched_stack.get()
-    if not stack:
-        return {}
-    return _matched_dict_from_frame(stack[-1])
-
-
-def _pop_switch_matched_attrs() -> Dict[str, Any]:
-    stack = _switch_matched_stack.get()
-    if not stack:
-        return {}
-    matched = stack[-1]
-    _switch_matched_stack.set(stack[:-1] or None)
-    return _matched_dict_from_frame(matched)
-
-
-def _pop_ifs_matched_attrs() -> Dict[str, Any]:
-    stack = _ifs_matched_stack.get()
-    if not stack:
-        return {}
-    matched = stack[-1]
-    _ifs_matched_stack.set(stack[:-1] or None)
-    return _matched_dict_from_frame(matched)
-
-
-def discard_pending_switch_ifs_stack(target: Any) -> None:
-    cls_name = type(target).__name__
-    if cls_name == 'Switch':
-        _pop_switch_matched_attrs()
-    elif cls_name == 'IFS':
-        _pop_ifs_matched_attrs()
+    return _peek_matched_attrs(_ifs_matched_attrs_var)
 
 
 def _loop_output_attrs(target: Any) -> Dict[str, Any]:
