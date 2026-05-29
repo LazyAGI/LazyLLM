@@ -246,11 +246,11 @@ class LazyLLMAgentBase(ModuleBase):
         return self._post_action(llm_output, callback=callback)
 
     def _finalize_tool_result(self, result):
-        if isinstance(result, str):
-            workspace = locals['_lazyllm_agent'].pop('workspace', {})
-            locals['_lazyllm_agent']['completed'] = workspace.pop(
-                'tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
-            locals['_lazyllm_agent']['history'] = workspace.pop('history', [])
+        workspace = locals['_lazyllm_agent'].pop('workspace', {})
+        locals['_lazyllm_agent']['completed'] = workspace.pop(
+            'tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
+        locals['_lazyllm_agent']['history'] = workspace.pop('history', [])
+        if self._tool_llm is not None:
             locals['chat_history'][self._tool_llm._module_id] = []
         return result
 
@@ -261,10 +261,19 @@ class LazyLLMAgentBase(ModuleBase):
     def forward(self, *args, **kwargs):
         pre = self._pre_process(*args, **kwargs)
         if self._stream:
+            def _run_stream(emit):
+                try:
+                    self._execute(pre, callback=emit)
+                finally:
+                    self._finalize_tool_result(None)
             runner = StreamRunner(self.__class__.__name__)
-            runner.start(lambda emit: self._execute(pre, callback=emit))
+            runner.start(_run_stream)
             return runner
-        return self._execute(pre, callback=None)
+        try:
+            return self._finalize_tool_result(self._execute(pre, callback=None))
+        except Exception:
+            self._finalize_tool_result(None)
+            raise
 
     def _assert_tools(self):
         assert self._tools, 'tools cannot be empty.'
