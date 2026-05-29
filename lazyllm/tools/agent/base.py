@@ -208,7 +208,7 @@ class LazyLLMAgentBase(ModuleBase):
         return input
 
     def _post_action(self, llm_output: Dict[str, Any],
-                     event_callback: Optional[Callable[[AgentEvent], None]] = None):
+                     callback: Optional[Callable[[AgentEvent], None]] = None):
         if not llm_output.get('tool_calls'):
             if (match := re.search(r'Action:\s*Call\s+(\w+)\s+with\s+parameters\s+(\{.*?\})',
                                    llm_output['content'])):
@@ -220,12 +220,12 @@ class LazyLLMAgentBase(ModuleBase):
         if tool_calls := llm_output.get('tool_calls'):
             if isinstance(tool_calls, list):
                 [item.pop('index', None) for item in tool_calls]
-            if event_callback:
-                event_callback(AgentEvent(type=TOOL_CALLS, tool_calls=tool_calls,
+            if callback:
+                callback(AgentEvent(type=TOOL_CALLS, tool_calls=tool_calls,
                                           agent=self.__class__.__name__))
             tool_calls_results = self._tools_manager(tool_calls)
-            if event_callback:
-                event_callback(AgentEvent(
+            if callback:
+                callback(AgentEvent(
                     type=TOOL_RESULTS,
                     agent=self.__class__.__name__,
                     tool_results=self._normalize_tool_results(tool_calls, tool_calls_results),
@@ -239,11 +239,11 @@ class LazyLLMAgentBase(ModuleBase):
         return llm_output
 
     def _run_tool_round(self, input, llm_chat_history=None,
-                        event_callback: Optional[Callable[[AgentEvent], None]] = None):
+                        callback: Optional[Callable[[AgentEvent], None]] = None):
         self._ensure_agent_state(llm_chat_history=llm_chat_history)
         prepared = self._build_history(input)
         llm_output = self._tool_llm(prepared)
-        return self._post_action(llm_output, event_callback=event_callback)
+        return self._post_action(llm_output, callback=callback)
 
     def _finalize_tool_result(self, result):
         if isinstance(result, str):

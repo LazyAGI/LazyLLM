@@ -20,16 +20,6 @@ _POOL = lazyllm.ThreadPoolExecutor(max_workers=lazyllm.config['thread_pool_worke
 
 
 class StreamRunner:
-    """Runs target(emit) in background thread, merges FSQ + explicit events.
-
-    Usage:
-        runner = StreamRunner("MyAgent")
-        runner.start(lambda emit: agent._execute(input, callback=emit))
-        for event in runner:
-            handle(event)
-        result = runner.result
-    """
-
     def __init__(self, agent_name: str):
         self._agent_name = agent_name
         self._result = None
@@ -38,6 +28,9 @@ class StreamRunner:
         self._queue: Queue = Queue()
         self._saw_text = False
         self._saw_reasoning = False
+        self._buffer: list = []
+        self._emitted_reasoning_finished = False
+        self._emitted_text_finished = False
 
     def start(self, target: Callable[[Callable[[AgentEvent], None]], Any]):
         sid = lazyllm.globals._sid
@@ -60,20 +53,34 @@ class StreamRunner:
         self._queue.put(event)
 
     def __iter__(self):
-        while True:
-            yield from self._drain_queue()
-            yield from self._drain_fsq_text()
-            yield from self._drain_fsq_think()
-            if self._future.done():
-                break
-            time.sleep(_POLL_INTERVAL)
+        return self
 
-        if self._saw_reasoning:
-            yield self._mk(REASONING_FINISHED)
-        if self._saw_text:
-            yield self._mk(TEXT_FINISHED)
-        if self._error:
-            raise self._error
+    def __next__(self):
+        while True:
+            if self._buffer:
+                return self._buffer.pop(0)
+
+            self._buffer = (
+                list(self._drain_queue())
+                + list(self._drain_fsq_text())
+                + list(self._drain_fsq_think())
+            )
+
+            if self._buffer:
+                return self._buffer.pop(0)
+
+            if self._future.done():
+                if self._saw_reasoning and not self._emitted_reasoning_finished:
+                    self._emitted_reasoning_finished = True
+                    return self._mk(REASONING_FINISHED)
+                if self._saw_text and not self._emitted_text_finished:
+                    self._emitted_text_finished = True
+                    return self._mk(TEXT_FINISHED)
+                if self._error:
+                    raise self._error
+                raise StopIteration
+
+            time.sleep(_POLL_INTERVAL)
 
     @property
     def result(self):
