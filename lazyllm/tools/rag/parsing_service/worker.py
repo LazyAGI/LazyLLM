@@ -435,6 +435,7 @@ class DocumentProcessorWorker(ModuleBase):
             kb_id = payload.get('kb_id', None)
             ng_names_requested = payload.get('ng_names')  # None means full reparse
             embed_only = payload.get('embed_only', False)
+            reparse_mode = payload.get('reparse_mode')
             reparse_doc_ids = []
             reparse_files = []
             reparse_metadatas = []
@@ -445,7 +446,8 @@ class DocumentProcessorWorker(ModuleBase):
                 reparse_metadatas.append(file_info.get('metadata'))
 
             LOG.info(f'{self._log_prefix(task_id)} Execute reparse task: doc_ids={reparse_doc_ids!r}, '
-                     f'ng_names={ng_names_requested!r}, embed_only={embed_only}, kb_id={kb_id!r}')
+                     f'ng_names={ng_names_requested!r}, embed_only={embed_only}, '
+                     f'reparse_mode={reparse_mode!r}, kb_id={kb_id!r}')
 
             exec_ng_ids = [ng_id for name, ng_id in name_to_id.items()
                            if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
@@ -453,7 +455,44 @@ class DocumentProcessorWorker(ModuleBase):
                 self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
 
             try:
-                if embed_only:
+                if reparse_mode == 'slice_missing':
+                    missing_groups = []
+                    for name in ng_names_requested or []:
+                        if name not in node_groups:
+                            LOG.warning(f'{self._log_prefix(task_id)} ng_name {name!r} not found, skipping')
+                            continue
+                        nodes = processor.store.get_nodes(group=name, doc_ids=reparse_doc_ids, kb_id=kb_id)
+                        if not nodes:
+                            missing_groups.append(name)
+                    if not missing_groups:
+                        LOG.info(f'{self._log_prefix(task_id)} slice_missing: all requested groups '
+                                 'already have nodes, nothing to do')
+                    else:
+                        need_source = False
+                        for name in missing_groups:
+                            parent = node_groups[name].get('parent')
+                            if not parent:
+                                need_source = True
+                                break
+                            p_nodes = processor.store.get_nodes(
+                                group=parent, doc_ids=reparse_doc_ids, kb_id=kb_id)
+                            if not p_nodes:
+                                need_source = True
+                                break
+                        if need_source:
+                            LOG.info(f'{self._log_prefix(task_id)} slice_missing: upstream nodes missing, '
+                                     'full reparse from source')
+                            processor.reparse(group_name=None, node_groups=node_groups,
+                                              doc_ids=reparse_doc_ids, doc_paths=reparse_files,
+                                              metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
+                        else:
+                            for name in missing_groups:
+                                LOG.info(f'{self._log_prefix(task_id)} [reparse] slice_missing group={name!r} '
+                                         f'doc_ids={reparse_doc_ids!r} kb_id={kb_id!r}')
+                                processor.reparse(group_name=name, node_groups=node_groups,
+                                                  doc_ids=reparse_doc_ids, doc_paths=reparse_files,
+                                                  metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
+                elif embed_only:
                     # embed_only: skip transform, only (re-)embed existing nodes
                     for name in (ng_names_requested or list(node_groups.keys())):
                         if name not in node_groups:

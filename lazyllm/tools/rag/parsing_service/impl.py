@@ -80,6 +80,12 @@ class _Processor:
         return self._store
 
     @staticmethod
+    def _configured_active_groups(node_groups: Dict[str, Dict], active: List[str]) -> List[str]:
+        '''Groups that are both activated on the store and defined in node_groups.'''
+        configured = [g for g in active if g in node_groups]
+        return configured if configured else list(node_groups.keys())
+
+    @staticmethod
     def _prepare_doc_inputs(input_files: List[str], ids: Optional[List[str]] = None,
                             metadatas: Optional[List[Dict[str, Any]]] = None,
                             kb_id: Optional[str] = None) -> tuple[List[str], List[Dict[str, Any]], str]:
@@ -232,7 +238,8 @@ class _Processor:
     def _get_dependency_graph(self, node_groups: Dict[str, Dict]) -> _NodeGroupDependencyGraph:
         key = frozenset(node_groups.keys())
         if key not in self._dep_graph_cache:
-            self._dep_graph_cache[key] = _NodeGroupDependencyGraph(node_groups, self._store.activated_groups())
+            active = self._configured_active_groups(node_groups, self._store.activated_groups())
+            self._dep_graph_cache[key] = _NodeGroupDependencyGraph(node_groups, active)
         return self._dep_graph_cache[key]
 
     def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str,
@@ -264,11 +271,8 @@ class _Processor:
     def _copy_segments_recursive(self, ids: List[str], kb_id: str, target_kb_id: str, doc_id_map: Dict[str, tuple],
                                  p_uid_map: dict, p_name: str, node_groups: Dict[str, Dict],
                                  skip_ng_ids: Optional[set] = None):
-        for group_name in self._store.activated_groups():
-            group = node_groups.get(group_name)
-            if group is None:
-                raise ValueError(f'Node group {group_name} does not exist. Please check the group name '
-                                 'or add a new one through `create_node_group`.')
+        for group_name in self._configured_active_groups(node_groups, self._store.activated_groups()):
+            group = node_groups[group_name]
             if group['parent'] == p_name:
                 ng_cfg = node_groups.get(group_name, {})
                 ng_id = ng_cfg.get('id') or group_name
@@ -358,10 +362,11 @@ class _Processor:
                 self._get_or_create_nodes(group_name, node_groups, uids=None)
             return
         self._store.update_nodes(nodes)
-        for g in self._store.activated_groups():
-            cfg = node_groups.get(g, {})
-            if cfg.get('parent') == group_name and cfg.get('lazy_mode') != 'all':
-                self._reembed_group(g, node_groups, doc_ids=doc_ids, kb_id=kb_id)
+        for g in self._configured_active_groups(node_groups, self._store.activated_groups()):
+            cfg = node_groups[g]
+            if cfg.get('parent') != group_name or cfg.get('lazy_mode') == 'all':
+                continue
+            self._reembed_group(g, node_groups, doc_ids=doc_ids, kb_id=kb_id)
 
     def _reparse_docs(self, group_name: Optional[str], node_groups: Dict[str, Dict],
                       doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict],
@@ -415,16 +420,14 @@ class _Processor:
         except Exception:
             raise
 
-        for group_name in self._store.activated_groups():
-            group = node_groups.get(group_name)
-            if group is None:
-                raise ValueError(f'Node group "{group_name}" does not exist. Please check the group name '
-                                 'or add a new one through `create_node_group`.')
-            if group['parent'] == cur_name:
-                if group.get('lazy_mode') == 'all':
-                    continue
-                self._reparse_group_recursive(p_nodes=nodes, cur_name=group_name,
-                                              node_groups=node_groups, doc_ids=doc_ids, kb_id=kb_id)
+        for group_name in self._configured_active_groups(node_groups, self._store.activated_groups()):
+            group = node_groups[group_name]
+            if group['parent'] != cur_name:
+                continue
+            if group.get('lazy_mode') == 'all':
+                continue
+            self._reparse_group_recursive(p_nodes=nodes, cur_name=group_name,
+                                          node_groups=node_groups, doc_ids=doc_ids, kb_id=kb_id)
 
     def update_doc_meta(self, doc_id: str, metadata: dict, kb_id: str = None):
         try:
