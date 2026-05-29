@@ -4,8 +4,6 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
-import pytest
-
 from lazyllm import config
 from lazyllm.thirdparty import opentelemetry
 
