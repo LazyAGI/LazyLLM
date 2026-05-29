@@ -29,6 +29,16 @@ jobs:
           pip install -r tests/requirements.txt
           pip install -r tests/requirements_linux.txt
 
+      - name: Download test dataset (for BM25 diag)
+        run: |
+          set -euo pipefail
+          DATA_DIR="$GITHUB_WORKSPACE/.ci_data"
+          rm -rf "$DATA_DIR"
+          git clone --depth 1 https://github.com/LazyAGI/LazyLLM-Data.git "$DATA_DIR"
+          echo "LAZYLLM_DATA_PATH=$DATA_DIR" >> "$GITHUB_ENV"
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN || github.token }}
+
       - name: BM25 diagnostic
         run: |
           echo "=== BM25 diagnostic ==="
