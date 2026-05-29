@@ -45,9 +45,18 @@ jobs:
         run: |
           echo "=== BM25 diagnostic ==="
           python -c "
-          import lazyllm
+          import lazyllm, os
           from lazyllm.tools.rag import Document, Retriever
           from lazyllm.tools.rag.transform import SentenceSplitter
+          from lazyllm.tools.rag.doc_impl import DocImpl
+
+          # Monkey-patch _add_doc_to_store to trace
+          _orig_add = DocImpl._add_doc_to_store
+          def traced_add(self, input_files, ids, metadatas):
+              print(f'[_add_doc_to_store] files={len(input_files)} ids={ids[:2]}...')
+              return _orig_add(self, input_files, ids, metadatas)
+          DocImpl._add_doc_to_store = traced_add
+
           doc = Document(dataset_path='rag_master', manager=False)
           doc.create_node_group(name='diag', transform=SentenceSplitter, chunk_size=128, chunk_overlap=10)
           doc.activate_groups('diag')
@@ -55,18 +64,11 @@ jobs:
           doc.start()
           print('Start done')
           for kb_name, impl in doc._manager._iter_kbs().items():
-              print(f'KB: {kb_name}, store groups: {list(impl._store._activated_groups)}')
+              print(f'Store type: {type(impl._store._impl).__name__}')
               for g in impl._store._activated_groups:
-                  try:
-                      nodes = impl._store.get_nodes(group=g, kb_id=kb_name)
-                      print(f'  {g}: {len(nodes)} nodes')
-                      if nodes:
-                          print(f'  first node text: {nodes[0].text[:80]!r}')
-                  except Exception as e:
-                      print(f'  {g}: error {e}')
-          from lazyllm.tools.rag.component.bm25 import BM25
-          bm = BM25(None)
-          print(f'BM25 tokenize: {bm._tokenize(\"天道\")}')
+                  nodes = impl._store.get_nodes(group=g, kb_id=kb_name) if hasattr(impl._store, 'get_nodes') else []
+                  print(f'  {g}: {len(nodes) if nodes else 0} nodes')
+          print(f'Retriever...')
           r = Retriever(doc, group_name='diag', similarity='bm25', topk=3)
           result = r(query='天道')
           print(f'Results: {len(result)}')
