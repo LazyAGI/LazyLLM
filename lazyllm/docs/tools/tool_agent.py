@@ -125,9 +125,11 @@ ToolManager是一个工具管理类，用于提供工具信息和工具调用给
 
 - 工具名字符串（已通过 ``fc_register`` 注册的工具）
 - 可调用对象（函数或 ``ModuleTool`` 实例）
-- 带有 ``__public_apis__`` 的对象实例（自动包装为 ``InstanceToolGroup``）
+- 带有 ``__public_apis__`` 的对象实例（自动包装为 ``InstanceToolGroup``）；
+  若该类继承自 ``CredentialMixin``，则自动以 ``get_current_token()`` 作为凭据来源，token 为空时该组工具对 LLM 不可见。
 - ``(instance, key_source)`` 元组（带凭据来源的实例工具组）
-- ``dict``：直接定义一个工具组，格式为 ``dict(name='grp', desc='...', tools=[...], lazy=True)``，其中 ``name`` 和 ``tools`` 为必填字段。
+- ``dict``：直接定义一个工具组，格式为 ``dict(name='grp', desc='...', tools=[...], lazy=True)``，其中 ``name`` 和 ``tools`` 为必填字段；
+  可选字段 ``key_source`` 用于绑定运行时凭据来源，语义与 ``(instance, key_source)`` 元组中的 ``key_source`` 相同，凭据不存在时整组工具对 LLM 不可见。
 
 工具组（``ToolGroup``）支持两种模式：
 
@@ -149,9 +151,13 @@ When constructing this management class, you pass in a list of tools. Each eleme
 
 - A tool name string (a tool registered via ``fc_register``)
 - A callable (plain function or ``ModuleTool`` instance)
-- An object instance with ``__public_apis__`` (automatically wrapped as ``InstanceToolGroup``)
+- An object instance with ``__public_apis__`` (automatically wrapped as ``InstanceToolGroup``).
+  If the class inherits from ``CredentialMixin``, ``get_current_token()`` is automatically used as the credential source;
+  when the token is empty the entire tool group is hidden from the LLM.
 - A ``(instance, key_source)`` tuple (instance tool group with a runtime credential source)
 - A ``dict``: defines a tool group inline, with the format ``dict(name='grp', desc='...', tools=[...], lazy=True)``. ``name`` and ``tools`` are required fields.
+  The optional ``key_source`` field binds a runtime credential source with the same semantics as the ``key_source`` in a ``(instance, key_source)`` tuple;
+  when the credential is absent the entire group is hidden from the LLM.
 
 Tool groups (``ToolGroup``) support two modes:
 
@@ -860,7 +866,8 @@ Args:
         - ``Callable``：直接传入函数，会被临时注册为工具。
         - ``ModuleTool`` 实例：直接使用已构造好的工具对象。
         - 带有 ``__public_apis__`` 的对象实例：直接传入，框架自动将 ``__public_apis__`` 中的每个方法展开为独立工具。
-          若该类定义了 ``__key_source__`` 字段，则自动用作凭据来源；否则工具始终可用。
+          若该类继承自 ``CredentialMixin``，则自动以 ``get_current_token()`` 作为凭据来源，token 为空时该组工具对 LLM 不可见；
+          否则若该类定义了 ``__key_source__`` 字段，则以其作为凭据来源；两者均未定义时工具始终可用。
         - ``(instance, key_source)`` 元组：将带有 ``__public_apis__`` 的对象实例注册为一组工具，并绑定运行时凭据来源。
           ``instance`` 需声明 ``__public_apis__: List[str]``，其中每个方法名都会被展开为一个独立工具。
           ``key_source`` 支持字符串（``'env.XXX'``、``'config.xxx'``、``'globals.config.xxx'``，无 ``.`` 时等价于 ``globals.config.xxx``）、
@@ -869,6 +876,7 @@ Args:
         - ``dict``：直接定义一个工具组，格式为 ``dict(name='grp', desc='描述', tools=[...], lazy=True)``。
           ``name`` 和 ``tools`` 为必填字段；``lazy=True``（默认）时初始只暴露 ``get_<name>_methods`` gateway 工具，
           LLM 调用后子工具描述动态注入 system prompt；``lazy=False`` 时直接展开所有子工具。
+          可选字段 ``key_source`` 用于绑定运行时凭据来源，语义与 ``(instance, key_source)`` 元组中的 ``key_source`` 相同，凭据不存在时整组工具对 LLM 不可见。
           支持多级嵌套，子 ``tools`` 列表中可以再嵌套 ``dict`` 工具组。
 
     max_retries (int): 工具调用循环的最大轮次，超出后若 `force_summarize=True` 则触发强制总结，否则抛出异常，默认为5
@@ -896,7 +904,8 @@ Args:
         - ``Callable``: A plain function passed directly; it is temporarily registered as a tool.
         - ``ModuleTool`` instance: A pre-constructed tool object used as-is.
         - Object instance with ``__public_apis__``: Passed directly; each method in ``__public_apis__`` is expanded into a separate tool automatically.
-          If the class defines a ``__key_source__`` attribute, it is used as the credential source; otherwise the tools are always available.
+          If the class inherits from ``CredentialMixin``, ``get_current_token()`` is automatically used as the credential source and the group is hidden when the token is empty.
+          Otherwise, if the class defines a ``__key_source__`` attribute, it is used as the credential source; if neither is defined the tools are always available.
         - ``(instance, key_source)`` tuple: Registers an object instance that declares ``__public_apis__: List[str]`` as a group of tools, with a runtime credential source attached.
           Each method listed in ``__public_apis__`` is expanded into a separate tool.
           ``key_source`` accepts a string (``'env.XXX'``, ``'config.xxx'``, ``'globals.config.xxx'``; no dot means ``globals.config.xxx``),
@@ -905,7 +914,10 @@ Args:
         - ``dict``: Defines a tool group inline, with the format ``dict(name='grp', desc='...', tools=[...], lazy=True)``.
           ``name`` and ``tools`` are required fields. When ``lazy=True`` (default), only a ``get_<name>_methods`` gateway tool is initially
           exposed; after the LLM calls it, child tool descriptions are dynamically injected into the system prompt. When ``lazy=False``,
-          all child tools are expanded immediately. Multi-level nesting is supported by embedding ``dict`` groups inside ``tools``.
+          all child tools are expanded immediately.
+          The optional ``key_source`` field binds a runtime credential source with the same semantics as in a ``(instance, key_source)`` tuple;
+          when the credential is absent the entire group is hidden from the LLM.
+          Multi-level nesting is supported by embedding ``dict`` groups inside ``tools``.
 
     max_retries (int): Maximum number of tool-call loop iterations. When exceeded, the force-summarize fallback is triggered (if enabled) or an exception is raised. Defaults to 5.
     return_trace (bool): Whether to return the full execution trace for debugging and analysis. Defaults to False.

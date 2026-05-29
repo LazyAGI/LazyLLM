@@ -482,6 +482,10 @@ def _build_tool_from_element(
         return element
     if isinstance(element, (tuple, list)) and len(element) == 2:
         tool, key_source = element
+        if isinstance(tool, dict) and 'key_source' in tool:
+            raise ValueError(
+                f'key_source is specified both in the dict (dict["key_source"]={tool["key_source"]!r}) '
+                f'and as the second element of the tuple ({key_source!r}). Provide key_source in only one place.')
         if hasattr(tool, '__public_apis__'):
             return InstanceToolGroup(tool, key_source)
         return ToolGroupWrapper(tool, key_source)
@@ -491,9 +495,13 @@ def _build_tool_from_element(
         assert 'name' in element, "ToolGroup dict must have a 'name' field"
         assert 'tools' in element, "ToolGroup dict must have a 'tools' field"
         assert 'desc' in element, "ToolGroup dict must have a 'desc' field"
-        return ToolGroup(tools=element['tools'], name=element['name'], desc=element['desc'],
-                         lazy=element.get('lazy', True), prefix=element.get('prefix', None),
-                         _outer_prefix=_outer_prefix)
+        key_source = element.get('key_source', None)
+        group = ToolGroup(tools=element['tools'], name=element['name'], desc=element['desc'],
+                          lazy=element.get('lazy', True), prefix=element.get('prefix', None),
+                          _outer_prefix=_outer_prefix)
+        if key_source is not None:
+            return ToolGroupWrapper(group, key_source)
+        return group
     if callable(element):
         register('tmp_tool')(element)
         tool = getattr(lazyllm.tmp_tool, element.__name__)()
