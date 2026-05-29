@@ -50,12 +50,22 @@ jobs:
           from lazyllm.tools.rag.transform import SentenceSplitter
           from lazyllm.tools.rag.doc_impl import DocImpl
 
-          # Monkey-patch _add_doc_to_store to trace
-          _orig_add = DocImpl._add_doc_to_store
-          def traced_add(self, input_files, ids, metadatas):
-              print(f'[_add_doc_to_store] files={len(input_files)} ids={ids[:2]}...')
-              return _orig_add(self, input_files, ids, metadatas)
-          DocImpl._add_doc_to_store = traced_add
+          # Trace _list_local_files and _list_dataset_files
+          _orig_local = DocImpl._list_local_files
+          def traced_local(self):
+              result = _orig_local(self)
+              print(f'[_list_local_files] -> {len(result[0])} ids, {len(result[1])} paths')
+              if result[1]:
+                  print(f'  first: {result[1][0]}')
+              return result
+          DocImpl._list_local_files = traced_local
+
+          _orig_ds = DocImpl._list_dataset_files
+          def traced_ds(self):
+              result = _orig_ds(self)
+              print(f'[_list_dataset_files] dataset_path={self._dataset_path!r} -> {len(result)} files')
+              return result
+          DocImpl._list_dataset_files = traced_ds
 
           doc = Document(dataset_path='rag_master', manager=False)
           for kb_name, impl in doc._manager._iter_kbs().items():
