@@ -307,7 +307,12 @@ def _build_tool_desc(tool: 'ModuleTool') -> Dict:
     }
 
 
-class ToolGroup:
+class ToolContainer:
+    def get_flat_tools(self) -> Dict[str, 'ModuleTool']: raise NotImplementedError
+    def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]: raise NotImplementedError
+
+
+class ToolGroup(ToolContainer):
     def __init__(self, tools: List[Any], name: str, desc: str = '', lazy: bool = True,
                  prefix: Optional[Union[bool, str]] = True, _outer_prefix: Optional[str] = None):
         self._name, self._desc, self._lazy = name, desc, lazy
@@ -354,7 +359,7 @@ class ToolGroup:
     def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
         if not self._lazy or (active_groups is not None and self._name in active_groups):
             return [x for item in self._expanded_descs
-                    for x in (item.get_description(active_groups) if isinstance(item, ToolGroup) else [item])]
+                    for x in (item.get_description(active_groups) if isinstance(item, ToolContainer) else [item])]
         return [self._gateway_desc]
 
     def _collect_leaf_names(self) -> List[str]:
@@ -384,20 +389,26 @@ class ToolGroup:
         return tool
 
 
-class InstanceToolGroup(ToolGroup):
-    def __init__(self, instance: Any,
-                 key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
-        if key_source is None: key_source = getattr(type(instance), '__key_source__', None)
-        self._instance = instance
-        self._key_source = key_source
-        tools = [MethodModuleTool(instance, m) for m in instance.__public_apis__]
-        name = instance.__class__.__name__
-        desc = getattr(type(instance), '__doc__', '') or ''
-        super().__init__(tools=tools, name=name, desc=desc, lazy=True)
+class SkipMixin:
+    @staticmethod
+    def _normalize_source(src):
+        if callable(src):
+            try:
+                sig = inspect.signature(src)
+                params = [p for p in sig.parameters.values()
+                          if p.default is inspect.Parameter.empty
+                          and p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)]
+            except (ValueError, TypeError):
+                params = []
+            if not params:
+                return lambda _inst: src()
+        return src
 
-    @property
-    def _tools(self) -> Dict[str, 'ModuleTool']:
-        return {child.name: child for child in self._children if isinstance(child, ModuleTool)}
+    def __init__(self, key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
+        if isinstance(key_source, list):
+            self._key_source = [SkipMixin._normalize_source(s) for s in key_source]
+        else:
+            self._key_source = SkipMixin._normalize_source(key_source) if key_source is not None else None
 
     def _resolve_key_by_string(self, source: str) -> Optional[str]:
         try:
@@ -413,7 +424,7 @@ class InstanceToolGroup(ToolGroup):
         return None
 
     def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
-        if callable(source): return source(self._instance) or None
+        if callable(source): return source(getattr(self, '_instance', None)) or None
         return self._resolve_key_by_string(source)
 
     def should_skip(self) -> bool:
@@ -421,9 +432,40 @@ class InstanceToolGroup(ToolGroup):
         sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
         return not any(bool(self._resolve_one_key(src)) for src in sources)
 
+
+class InstanceToolGroup(SkipMixin, ToolGroup):
+    def __init__(self, instance: Any,
+                 key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
+        if key_source is None: key_source = getattr(type(instance), '__key_source__', None)
+        self._instance = instance
+        SkipMixin.__init__(self, key_source)
+        tools = [MethodModuleTool(instance, m) for m in instance.__public_apis__]
+        name = instance.__class__.__name__
+        desc = getattr(type(instance), '__doc__', '') or ''
+        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=True)
+
+    @property
+    def _tools(self) -> Dict[str, 'ModuleTool']:
+        return {child.name: child for child in self._children if isinstance(child, ModuleTool)}
+
     def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
         if self.should_skip(): return []
         return super().get_description(active_groups)
+
+
+class ToolGroupWrapper(SkipMixin, ToolContainer):
+    def __init__(self, tool: Any, key_source: Union[str, Callable, List[Union[str, Callable]], None]):
+        SkipMixin.__init__(self, key_source)
+        self._inner = _build_tool_from_element(tool)
+
+    def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
+        return self._inner.get_flat_tools() if isinstance(self._inner, ToolContainer) \
+            else {self._inner.name: self._inner}
+
+    def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
+        if self.should_skip(): return []
+        return self._inner.get_description(active_groups) if isinstance(self._inner, ToolContainer) \
+            else [_build_tool_desc(self._inner)]
 
 
 TOOL_CALL_FORMAT_EXAMPLE = (
@@ -438,11 +480,11 @@ def _build_tool_from_element(
         return _load_tool_by_name(element)
     if isinstance(element, (ToolGroup, ModuleTool)):
         return element
-    if isinstance(element, tuple) and len(element) == 2:
-        instance, key_source = element
-        if not hasattr(instance, '__public_apis__'):
-            raise ValueError(f'Instance {instance!r} does not have __public_apis__')
-        return InstanceToolGroup(instance, key_source)
+    if isinstance(element, (tuple, list)) and len(element) == 2:
+        tool, key_source = element
+        if hasattr(tool, '__public_apis__'):
+            return InstanceToolGroup(tool, key_source)
+        return ToolGroupWrapper(tool, key_source)
     if hasattr(element, '__public_apis__') and not isinstance(element, (ToolGroup, ModuleTool)):
         return InstanceToolGroup(element)
     if isinstance(element, dict):
@@ -491,7 +533,7 @@ class ToolManager(ModuleBase):
         active_groups = set(workspace.get('_active_groups', []))
         return [x for item in self._tools_desc
                 for x in (item.get_description(active_groups=active_groups)
-                          if isinstance(item, ToolGroup) else item() if callable(item) else [item])]
+                          if isinstance(item, ToolContainer) else item() if callable(item) else [item])]
 
     @property
     def tools_info(self):
@@ -516,7 +558,7 @@ class ToolManager(ModuleBase):
         if isinstance(self._tools, List):
             self._tool_call: Dict[str, ModuleTool] = {}
             for item in self._tools:
-                items = item.get_flat_tools() if isinstance(item, ToolGroup) else {item.name: item}
+                items = item.get_flat_tools() if isinstance(item, ToolContainer) else {item.name: item}
                 for name, tool in items.items():
                     if name in self._tool_call:
                         raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
@@ -528,7 +570,7 @@ class ToolManager(ModuleBase):
 
         format_tools = []
         for item in self._tools:
-            if isinstance(item, ToolGroup):
+            if isinstance(item, ToolContainer):
                 format_tools.append(item)
             else:
                 try:
