@@ -496,14 +496,24 @@ class MineruPDFReader(_OcrReaderBase):
         raise TypeError(f'Not supported type: {type(content)}.')
 
     def _adapt_one(self, item: dict) -> Optional[Block]:
-        ty = item['type']
+        ty = item.get('type')
+        if ty is None:
+            LOG.warning(f'[MineruPDFReader] content item missing type field, skipped: {item}')
+            return None
         if ty in self._dropped_types:
             return None
 
         text_level = item.get('text_level', -1)
         text = item.get('text', '')
-        page_idx = item['page_idx']
-        page = PageRef(index=page_idx, bbox=BBox.from_list(item['bbox']))
+        page_idx = item.get('page_idx')
+        if page_idx is None:
+            LOG.warning(f'[MineruPDFReader] content item missing page_idx field, skipped: {item}')
+            return None
+        bbox = item.get('bbox')
+        if bbox is None:
+            LOG.warning(f'[MineruPDFReader] content item missing bbox field, skipped: {item}')
+            return None
+        page = PageRef(index=page_idx, bbox=BBox.from_list(bbox))
 
         if ty == 'title':
             return HeadingBlock(page=page, level=text_level, text=text)
