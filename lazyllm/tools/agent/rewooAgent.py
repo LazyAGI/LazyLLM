@@ -4,7 +4,7 @@ import json
 
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
-from lazyllm import LOG, bind, Color, locals, ifs
+from lazyllm import LOG, Color, locals
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 from .base import LazyLLMAgentBase
 from .events import PLAN_STARTED, PLAN_FINISHED, TOOL_CALLS, TOOL_RESULTS

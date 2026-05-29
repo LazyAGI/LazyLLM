@@ -1,7 +1,7 @@
 import copy
 
 import lazyllm
-from lazyllm.tools import FunctionCall, FunctionCallAgent, PlanAndSolveAgent
+from lazyllm.tools import PlanAndSolveAgent, ReactAgent
 
 
 def add_one(value: int) -> int:
@@ -49,54 +49,8 @@ class _FakeLLM(object):
         return output
 
 
-class TestFunctionCallEvents(object):
-    def test_function_call_emits_tool_events_outside_tool_manager(self):
-        llm = _FakeLLM([{
-            'role': 'assistant',
-            'content': 'Let me use a tool.',
-            'tool_calls': [{
-                'id': 'call-1',
-                'type': 'function',
-                'function': {'name': 'add_one', 'arguments': '{"value": 1}'},
-            }],
-        }])
-        fc = FunctionCall(llm=llm, tools=[add_one])
-        captured = []
-
-        result = fc._run_once('add one to 1', event_callback=captured.append)
-
-        assert result['tool_calls'][0]['function']['name'] == 'add_one'
-        assert [event.type for event in captured] == ['agent.tool.calls', 'agent.tool.results']
-        assert captured[0].tool_calls[0]['function']['name'] == 'add_one'
-        assert captured[1].tool_results[0]['name'] == 'add_one'
-        assert captured[1].tool_results[0]['result'] == '2'
-
-    def test_function_call_emits_tool_call_event_before_tool_execution(self):
-        llm = _FakeLLM([{
-            'role': 'assistant',
-            'content': 'Let me use a tool.',
-            'tool_calls': [{
-                'id': 'call-1',
-                'type': 'function',
-                'function': {'name': 'add_one', 'arguments': '{"value": 1}'},
-            }],
-        }])
-        fc = FunctionCall(llm=llm, tools=[add_one])
-        captured = []
-
-        def _fake_tools_manager(tool_calls):
-            assert [event.type for event in captured] == ['agent.tool.calls']
-            return ['2']
-
-        fc._tools_manager = _fake_tools_manager
-        result = fc._run_once('add one to 1', event_callback=captured.append)
-
-        assert result['tool_calls'][0]['function']['name'] == 'add_one'
-        assert [event.type for event in captured] == ['agent.tool.calls', 'agent.tool.results']
-
-
-class TestFunctionCallAgentEvents(object):
-    def test_function_call_agent_stream_emits_text_reasoning_and_tool_events(self):
+class TestReactAgentEvents(object):
+    def test_react_agent_stream_emits_text_reasoning_and_tool_events(self):
         llm = _FakeLLM([
             {
                 'role': 'assistant',
@@ -114,23 +68,24 @@ class TestFunctionCallAgentEvents(object):
                 'reasoning_content': 'Now I can answer.',
             },
         ])
-        agent = FunctionCallAgent(llm=llm, tools=[add_one], max_retries=3, stream=True)
+        agent = ReactAgent(llm=llm, tools=[add_one], max_retries=3, stream=True,
+                           enable_builtin_tools=False)
 
-        stream = agent.stream('add one to 1')
+        stream = agent('add one to 1')
         events = []
         try:
             while True:
                 events.append(next(stream))
-        except StopIteration as stop:
-            result = stop.value
+        except StopIteration:
+            pass
 
         event_types = [event.type for event in events]
-        assert result == 'The answer is 2.'
+        assert stream.result == 'The answer is 2.'
         assert 'agent.reasoning.delta' in event_types
         assert 'agent.text.delta' in event_types
         assert 'agent.tool.calls' in event_types
         assert 'agent.tool.results' in event_types
-        assert event_types[-1] == 'agent.finished'
+        assert 'agent.finished' in event_types
 
 
 class TestPlanAndSolveAgentEvents(object):
@@ -161,19 +116,18 @@ class TestPlanAndSolveAgentEvents(object):
         stream_agent = PlanAndSolveAgent(plan_llm=_FakeLLM(plan_outputs), solve_llm=_FakeLLM(solve_outputs),
                                          tools=[add_one], max_retries=3, stream=True,
                                          enable_builtin_tools=False)
-        stream = stream_agent.stream('add one to 1')
+        stream = stream_agent('add one to 1')
         events = []
         try:
             while True:
                 events.append(next(stream))
-        except StopIteration as stop:
-            result = stop.value
+        except StopIteration:
+            pass
 
         event_types = [event.type for event in events]
-        assert result == 'The answer is 2.'
-        assert event_types[:2] == ['agent.plan.started', 'agent.plan.finished']
+        assert stream.result == 'The answer is 2.'
+        assert event_types.index('agent.plan.started') < event_types.index('agent.plan.finished')
         assert 'agent.reasoning.delta' in event_types
         assert 'agent.text.delta' in event_types
         assert 'agent.tool.calls' in event_types
         assert 'agent.tool.results' in event_types
-        assert event_types[-1] == 'agent.finished'

@@ -237,7 +237,7 @@ class TempRetriever(_RetrieverBase, _PostProcess):
         r = lazyllm.parallel(*retrievers).sum
         extra = {}
         if topk is not None:
-            extra["topk"] = topk
+            extra['topk'] = topk
         return self._post_process(r(query, **extra))
 
 

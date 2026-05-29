@@ -1,7 +1,7 @@
 from .base import LazyLLMAgentBase
 from .events import AGENT_FINISHED
 from lazyllm import LOG, locals
-from typing import List, Any, Dict, Optional, Union
+from typing import List, Any, Optional, Union
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 

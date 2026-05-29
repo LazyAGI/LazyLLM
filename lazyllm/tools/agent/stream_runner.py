@@ -1,7 +1,7 @@
 import re
 import time
 from queue import Empty, Queue
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 import lazyllm
 from lazyllm import FileSystemQueue, locals

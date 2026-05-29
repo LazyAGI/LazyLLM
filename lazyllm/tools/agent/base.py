@@ -222,7 +222,7 @@ class LazyLLMAgentBase(ModuleBase):
                 [item.pop('index', None) for item in tool_calls]
             if callback:
                 callback(AgentEvent(type=TOOL_CALLS, tool_calls=tool_calls,
-                                          agent=self.__class__.__name__))
+                                    agent=self.__class__.__name__))
             tool_calls_results = self._tools_manager(tool_calls)
             if callback:
                 callback(AgentEvent(
@@ -255,7 +255,7 @@ class LazyLLMAgentBase(ModuleBase):
         return result
 
     def _execute(self, input, callback=None):
-        """Subclasses implement their agent logic. callback(event) for streaming events."""
+        '''Subclasses implement their agent logic. callback(event) for streaming events.'''
         raise NotImplementedError
 
     def forward(self, *args, **kwargs):
