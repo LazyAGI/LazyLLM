@@ -30,7 +30,9 @@ For now, you can read the Chinese version here:
 FROM_DATA_TO_LLM_IFRAME_PATTERN = re.compile(
     r'(<iframe\s+src=")(?:\.\./)?assets/course_map\.html(")'
 )
-FROM_DATA_TO_LLM_IFRAME_BLOCK_PATTERN = re.compile(r'<iframe[^>]+course_map\.html[^>]*>')
+FROM_DATA_TO_LLM_IFRAME_BLOCK_PATTERN = re.compile(
+    r'<iframe[^>]+course_map\.html[^>]*>\s*</iframe>'
+)
 FROM_DATA_TO_LLM_ZH_INTRO = ''
 
 
