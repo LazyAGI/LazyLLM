@@ -115,9 +115,10 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
         locals['_lazyllm_agent']['workspace'] = {'tool_call_trace': []}
         self._init_tool_llm(prompt=self._tool_prompt, llm=self._solve_llm)
 
-        plan, steps = self._plan_query(input)
         if callback:
             callback(self._make_event(PLAN_STARTED))
+        plan, steps = self._plan_query(input)
+        if callback:
             callback(self._make_event(PLAN_FINISHED, text=plan, metadata={'plan': plan, 'steps': steps}))
 
         pre_steps = []

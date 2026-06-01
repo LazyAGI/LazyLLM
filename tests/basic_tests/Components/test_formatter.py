@@ -53,6 +53,22 @@ class TestFormatter(object):
         assert result['reasoning_content'] == 'Deciding which tool to call.'
         assert result['tool_calls'] == msg['tool_calls']
 
+    def test_function_call_formatter_removes_tool_call_index(self):
+        fc = formatter.FunctionCallFormatter
+        msg = {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [{
+                'index': 0,
+                'id': 'c1',
+                'type': 'function',
+                'function': {'name': 'search', 'arguments': '{}'},
+            }],
+        }
+        result = fc()(msg)
+        assert 'index' not in result['tool_calls'][0]
+        assert 'index' in msg['tool_calls'][0]
+
     def test_jsonlike_formatter_base(self):
         jsf = formatter.JsonLike
 

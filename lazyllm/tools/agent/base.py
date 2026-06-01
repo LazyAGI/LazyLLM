@@ -218,8 +218,6 @@ class LazyLLMAgentBase(ModuleBase):
                 except Exception:
                     pass
         if tool_calls := llm_output.get('tool_calls'):
-            if isinstance(tool_calls, list):
-                [item.pop('index', None) for item in tool_calls]
             if callback:
                 callback(AgentEvent(type=TOOL_CALLS, tool_calls=tool_calls,
                                     agent=self.__class__.__name__))
@@ -245,14 +243,13 @@ class LazyLLMAgentBase(ModuleBase):
         llm_output = self._tool_llm(prepared)
         return self._post_action(llm_output, callback=callback)
 
-    def _finalize_tool_result(self, result):
+    def _finalize_tool_result(self):
         workspace = locals['_lazyllm_agent'].pop('workspace', {})
         locals['_lazyllm_agent']['completed'] = workspace.pop(
             'tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
         locals['_lazyllm_agent']['history'] = workspace.pop('history', [])
         if self._tool_llm is not None:
             locals['chat_history'][self._tool_llm._module_id] = []
-        return result
 
     def _execute(self, input, callback=None):
         '''Subclasses implement their agent logic. callback(event) for streaming events.'''
@@ -260,20 +257,18 @@ class LazyLLMAgentBase(ModuleBase):
 
     def forward(self, *args, **kwargs):
         pre = self._pre_process(*args, **kwargs)
+
+        def _execute_with_finalize(emit=None):
+            try:
+                return self._execute(pre, callback=emit)
+            finally:
+                self._finalize_tool_result()
+
         if self._stream:
-            def _run_stream(emit):
-                try:
-                    self._execute(pre, callback=emit)
-                finally:
-                    self._finalize_tool_result(None)
             runner = StreamRunner(self.__class__.__name__)
-            runner.start(_run_stream)
+            runner.start(_execute_with_finalize)
             return runner
-        try:
-            return self._finalize_tool_result(self._execute(pre, callback=None))
-        except Exception:
-            self._finalize_tool_result(None)
-            raise
+        return _execute_with_finalize()
 
     def _assert_tools(self):
         assert self._tools, 'tools cannot be empty.'

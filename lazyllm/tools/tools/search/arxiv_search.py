@@ -41,7 +41,7 @@ class ArxivSearch(SearchBase):
                 return summary_el.text.strip().replace('\n', ' ')
         return super().get_content(item)
 
-    def search(self, query: str, max_results: int = 5, sort_by: str = 'relevance') -> List[Dict[str, Any]]:
+    def search(self, query: str, max_results: int = 5, sort_by: str = 'relevance') -> List[dict]:
         params = {
             'search_query': f'all:{query}',
             'start': 0,

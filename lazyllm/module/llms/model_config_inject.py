@@ -101,4 +101,4 @@ def inject_model_config(model_config: Optional[Dict[str, Any]]) -> None:
     for config_key, api_key_cfg in api_key_configs.items():
         lazyllm.globals.config[config_key] = api_key_cfg
     lazyllm.globals.config['dynamic_model_configs'] = cfg
-    LOG.debug(f'[inject_model_config] injected roles: {sorted(injected_roles)}')
+    LOG.info(f'[inject_model_config] injected roles: {sorted(injected_roles)}')
