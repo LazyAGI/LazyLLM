@@ -352,7 +352,6 @@ def call_once(flag: once_flag, func: Callable, *args, **kw):
                 return r
             except Exception as e:
                 flag.set_exception(e)
-                flag.set()
                 raise
         if flag._exc:
             raise flag._exc
