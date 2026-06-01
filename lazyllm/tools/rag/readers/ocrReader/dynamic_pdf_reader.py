@@ -96,11 +96,7 @@ class DynamicPDFReader(LazyLLMReaderBase):
     def _build_reader(self, normalized_type: str, normalized_url: str,
                       mineru_upload_mode: bool | None) -> LazyLLMReaderBase:
         if normalized_type in ('', 'none'):
-            return PDFReader(
-                post_func=self._post_func,
-                split_doc=True,
-                return_trace=self._return_trace,
-            )
+            return PDFReader(split_doc=True, return_trace=self._return_trace)
 
         if normalized_type == 'mineru':
             upload_mode = mineru_upload_mode
