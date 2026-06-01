@@ -4,10 +4,9 @@ import json
 
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
-from lazyllm import LOG, Color, locals
+from lazyllm import pipeline, LOG, bind, Color, locals, ifs, once_wrapper
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
-from .base import LazyLLMAgentBase
-from .events import PLAN_STARTED, PLAN_FINISHED, TOOL_CALLS, TOOL_RESULTS
+from .base import LazyLLMAgentBase, _write_agent_data
 
 
 P_PROMPT_PREFIX = ('For the following tasks, make plans that can solve the problem step-by-step. '
@@ -63,18 +62,27 @@ class ReWOOAgent(LazyLLMAgentBase):
         self._assert_tools()
         skills_prompt = self._skill_manager.build_prompt() if self._skill_manager else ''
         planner_prompt = self._build_planner_prompt_template()
-        self._tool_solver_prompt = self._append_workspace_prompt(S_PROMPT_TEMPLATE)
+        solver_prompt = self._append_workspace_prompt(S_PROMPT_TEMPLATE)
         self._planner = plan_llm.share(
             prompt=ChatPrompter(instruction={'system': planner_prompt, 'user': ''}, skills=skills_prompt),
             stream=dict(prefix='\nI will give a plan first:\n', prefix_color=Color.blue, color=Color.green)
             if stream else False
         )
         self._solver = solve_llm.share(
-            prompt=ChatPrompter(instruction={'system': self._tool_solver_prompt, 'user': ''},
-                                skills=skills_prompt),
+            prompt=ChatPrompter(instruction={'system': solver_prompt, 'user': ''}, skills=skills_prompt),
             stream=dict(prefix='\nI will solve the problem:\n', prefix_color=Color.blue, color=Color.green)
             if stream else False
         )
+
+    @once_wrapper(reset_on_pickle=True)
+    def build_agent(self):
+        with pipeline() as agent:
+            agent.planner_pre_action = self._build_planner_input
+            agent.planner = self._planner
+            agent.worker_evidences = self._get_worker_evidences
+            agent.solver_pre_action = self._build_solver_input | bind(input=agent.input)
+            agent.solver = ifs(self._return_last_tool_calls, lambda x: 'ok', self._solver)
+        self._agent = agent
 
     def _build_planner_prompt_template(self):
         prompt = P_PROMPT_PREFIX + 'Tools can be one of the following:\n'
@@ -83,25 +91,31 @@ class ReWOOAgent(LazyLLMAgentBase):
         prompt += P_FEWSHOT + '\n' + P_PROMPT_SUFFIX
         return prompt
 
-    def _parse_and_call_tool(self, tool_call: str, evidence: Dict[str, str], callback=None):
+    def _build_planner_input(self, input: str):
+        _write_agent_data('plan_started')
+        locals['chat_history'][self._planner._module_id] = []
+        return input
+
+    def _parse_and_call_tool(self, tool_call: str, evidence: Dict[str, str]):
         tool_name, tool_arguments = tool_call.split('[', 1)
         tool_arguments = tool_arguments.split(']')[0]
         for var in re.findall(r'#E\d+', tool_arguments):
             if var in evidence:
                 tool_arguments = tool_arguments.replace(var, str(evidence[var]))
         tool_calls = [{'function': {'name': tool_name, 'arguments': tool_arguments}}]
-        if callback:
-            callback(self._make_event(TOOL_CALLS, tool_calls=tool_calls))
+        if self._stream:
+            _write_agent_data('tool_calls', tool_calls=tool_calls)
         result = self._tools_manager(tool_calls)
-        if callback:
-            callback(self._make_event(TOOL_RESULTS,
-                                      tool_results=self._normalize_tool_results(tool_calls, result)))
+        if self._stream:
+            _write_agent_data('tool_results',
+                              tool_results=self._normalize_tool_results(tool_calls, result))
         locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
             {**tool_calls[0], 'tool_call_result': result[0]}
         )
         return json.dumps(result[0]).strip('\"')
 
-    def _get_worker_evidences(self, response: str, callback=None):
+    def _get_worker_evidences(self, response: str):
+        _write_agent_data('plan_finished', text=response)
         LOG.debug(f'planner plans: {response}')
         evidence = {}
         worker_evidences = ''
@@ -110,26 +124,22 @@ class ReWOOAgent(LazyLLMAgentBase):
                 worker_evidences += line + '\n'
             elif re.match(r'#E\d+\s*=', line.strip()):
                 e, tool_call = line.split('=', 1)
-                evidence[e.strip()] = self._parse_and_call_tool(tool_call.strip(), evidence, callback=callback)
+                evidence[e.strip()] = self._parse_and_call_tool(tool_call.strip(), evidence)
                 worker_evidences += f'Evidence:\n{evidence[e.strip()]}\n'
 
         LOG.debug(f'worker_evidences: {worker_evidences}')
         return worker_evidences
 
-    def _execute(self, input, callback=None):
-        locals['_lazyllm_agent']['workspace'] = {'tool_call_trace': []}
-
-        if callback:
-            callback(self._make_event(PLAN_STARTED))
-        locals['chat_history'][self._planner._module_id] = []
-        plan = self._planner(input)
-        if callback:
-            callback(self._make_event(PLAN_FINISHED, text=plan, metadata={'plan': plan}))
-
-        worker_evidences = self._get_worker_evidences(plan, callback=callback)
+    def _build_solver_input(self, worker_evidences, input):
         locals['chat_history'][self._solver._module_id] = []
-        solver_input = {'input': input, 'objective': input, 'worker_evidences': worker_evidences}
-        result = 'ok' if self._return_last_tool_calls else self._solver(solver_input)
+        return {'input': input, 'objective': input, 'worker_evidences': worker_evidences}
 
+    def _pre_process(self, query: str):
+        locals['_lazyllm_agent']['workspace'] = {'tool_call_trace': []}
+        return query
+
+    def _post_process(self, result):
         trace = self._pop_tool_calls()
-        return trace if trace is not None else result
+        if trace is not None:
+            return trace
+        return result

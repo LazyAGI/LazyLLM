@@ -8,14 +8,6 @@ add_example = functools.partial(utils.add_example, module=importlib.import_modul
 add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.agent'))
 add_agent_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent'))
 add_agent_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent'))
-add_stream_runner_chinese_doc = functools.partial(
-    utils.add_chinese_doc,
-    module=importlib.import_module('lazyllm.tools.agent.stream_runner'),
-)
-add_stream_runner_english_doc = functools.partial(
-    utils.add_english_doc,
-    module=importlib.import_module('lazyllm.tools.agent.stream_runner'),
-)
 add_toolsmgr_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 add_toolsmgr_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
 add_toolsmgr_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent.toolsManager'))
@@ -626,46 +618,6 @@ Args:
     memory: Reserved memory/context object.
     desc (str): Optional agent capability description.
     workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
-''')
-
-add_stream_runner_chinese_doc('StreamRunner', '''\
-StreamRunner 用于把 Agent 执行过程包装成可迭代的流式事件序列。
-它会在后台线程中运行目标函数，并持续收集普通文本输出、思考输出以及显式发出的 AgentEvent，
-供上层按事件顺序消费。
-
-Args:
-    agent_name (str): 当前 Agent 的名称。该名称会写入每个输出事件，便于前端或调用方区分事件来源。
-''')
-
-add_stream_runner_english_doc('StreamRunner', '''\
-StreamRunner wraps an agent execution into an iterable stream of events.
-It runs the target function in a background thread and continuously collects normal text output,
-reasoning output, and explicitly emitted AgentEvent objects for ordered consumption by callers.
-
-Args:
-    agent_name (str): Name of the current agent. The value is attached to every emitted event so the caller can identify the event source.
-''')
-
-add_stream_runner_chinese_doc('StreamRunner.start', '''\
-启动后台执行任务，并开始收集流式事件。
-该方法会初始化当前会话上下文，清空文本与思考队列，然后把 `target` 提交到线程池执行。
-`target` 在运行时可以通过传入的事件回调主动发出 `AgentEvent`，也可以借助文件队列输出文本或思考内容。
-
-Args:
-    target: 接收一个事件发送函数的可调用对象。调用形式为 `target(emit)`，
-        其中 `emit(event)` 可用于主动发送 `AgentEvent`；`target` 的返回值会保存在 `result` 属性中。
-''')
-
-add_stream_runner_english_doc('StreamRunner.start', '''\
-Start the background task and begin collecting streaming events.
-This method initializes the current session context, clears the text and reasoning queues,
-and submits `target` to the thread pool.
-During execution, `target` can actively emit `AgentEvent` objects through the provided callback,
-and can also write text or reasoning content through the file-system queues.
-
-Args:
-    target: A callable that accepts an event-emitter callback. It is invoked as `target(emit)`,
-        where `emit(event)` can be used to push `AgentEvent` objects proactively; the return value of `target` is stored in the `result` property.
 ''')
 
 add_chinese_doc('SkillManager', '''\

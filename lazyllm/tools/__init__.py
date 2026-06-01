@@ -120,7 +120,7 @@ _SUBMOD_MAP = {
         'QustionRewrite',
         'CodeGenerator'
     ],
-    'common': [],
+    'common': ['StreamCallHelper'],
     'eval': [
         'BaseEvaluator',
         'ResponseRelevancy',

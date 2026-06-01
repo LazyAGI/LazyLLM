@@ -1,10 +1,9 @@
 import re
 from lazyllm.module import ModuleBase
-from .base import LazyLLMAgentBase
-from .events import PLAN_STARTED, PLAN_FINISHED
+from .base import LazyLLMAgentBase, _write_agent_data
 from lazyllm.components import ChatPrompter
-from lazyllm import LOG, Color, locals
-from .functionCall import FC_PROMPT
+from lazyllm import loop, pipeline, _0, package, bind, LOG, Color, once_wrapper
+from .functionCall import FunctionCall, FC_PROMPT
 from typing import List, Any, Optional, Union
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 
@@ -58,7 +57,10 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
         self._plan_llm = plan_llm.share(prompt=self._planner_prompter, stream=self._planner_stream)\
             .used_by(self._module_id)
         self._solve_llm = solve_llm.share().used_by(self._module_id)
-        self._tool_prompt = self._append_workspace_prompt(FC_PROMPT)
+        prompt = self._append_workspace_prompt(FC_PROMPT)
+        self._fc = FunctionCall(llm=self._solve_llm, return_trace=return_trace, stream=stream,
+                                _prompt=prompt, _tool_manager=self._tools_manager,
+                                skill_manager=self._skill_manager)
 
     def _normalize_llms(self, llm, plan_llm, solve_llm):
         assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), (
@@ -79,18 +81,42 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
         self._planner_stream = dict(prefix='I will give a plan first:\n', prefix_color=Color.blue,
                                     color=Color.green) if self._stream else False
 
-    def _parse_plan_steps(self, plan: str) -> List[str]:
-        return [step for step in re.split('\n\\s*\\d+\\. ', plan)[1:] if step]
+    @once_wrapper(reset_on_pickle=True)
+    def build_agent(self):
+        with pipeline() as agent:
+            agent.plan = self._plan_query
+            agent.parse = (lambda text, query: package([], '', [v for v in re.split('\n\\s*\\d+\\. ', text)[1:]],
+                           query)) | bind(query=agent.input)
+            with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as agent.lp:
+                agent.lp.pre_action = self._pre_action
+                agent.lp.solve = loop(self._fc, stop_condition=lambda x: isinstance(x, str),
+                                      count=self._max_retries)
+                agent.lp.post_action = self._post_action | bind(agent.lp.input[0][0], _0,
+                                                                agent.lp.input[0][2],
+                                                                agent.lp.input[0][3])
 
-    def _build_solver_prompt_for_step(self, pre_steps: List[str], step: str, query: str) -> str:
+            agent.final_action = lambda pre, res, steps, query: res
+        self._agent = agent
+
+    def _plan_query(self, query: str):
+        _write_agent_data('plan_started')
+        plan = self._plan_llm(query)
+        steps = self._parse_plan_steps(plan)
+        _write_agent_data('plan_finished', text=plan, steps=steps)
+        return plan
+
+    def _pre_action(self, pre_steps, response, steps, query):
         solver_prompt = SOLVER_PROMPT.format(
             previous_steps='\n'.join(pre_steps),
-            current_task=step,
+            current_task=steps[0],
             objective=query,
         )
         if self._return_last_tool_calls:
             solver_prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
-        return solver_prompt
+        return package(solver_prompt, [])
+
+    def _parse_plan_steps(self, plan: str) -> List[str]:
+        return [step for step in re.split('\n\\s*\\d+\\. ', plan)[1:] if step]
 
     def _build_planner_prompt(self) -> str:
         tools_desc = []
@@ -102,36 +128,16 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
             return f'{PLANNER_PROMPT}\n\nAvailable tools:\n{tools_block}'
         return PLANNER_PROMPT
 
-    def _plan_query(self, query: str):
-        plan = self._plan_llm(query)
-        steps = self._parse_plan_steps(plan)
-        return plan, steps
+    def _post_action(self, pre_steps: List[str], response: str, steps: List[str], query: str):
+        assert isinstance(response, str), f'After retrying \
+            {self._max_retries} times, the solver still failes to call successfully.'
+        LOG.debug(f'current step: {steps[0]}, response: {response}')
+        current_res = f'- **SubTask**: {steps.pop(0)} **Response**: {response}'
+        pre_steps.append(current_res)
+        return package(pre_steps, response, steps, query)
 
-    def _execute(self, input, callback=None):
-        locals['_lazyllm_agent']['workspace'] = {'tool_call_trace': []}
-        self._init_tool_llm(prompt=self._tool_prompt, llm=self._solve_llm)
-
-        if callback:
-            callback(self._make_event(PLAN_STARTED))
-        plan, steps = self._plan_query(input)
-        if callback:
-            callback(self._make_event(PLAN_FINISHED, text=plan, metadata={'plan': plan, 'steps': steps}))
-
-        pre_steps = []
-        response = ''
-        for step in steps:
-            prompt = self._build_solver_prompt_for_step(pre_steps, step, input)
-            for retry_idx in range(self._max_retries):
-                history = [] if retry_idx == 0 else None
-                response = self._run_tool_round(prompt, history, callback=callback)
-                if isinstance(response, str):
-                    break
-                prompt = response
-            else:
-                raise AssertionError(f'After retrying {self._max_retries} times, '
-                                     f'the solver still failes to call successfully.')
-            LOG.debug(f'current step: {step}, response: {response}')
-            pre_steps.append(f'- **SubTask**: {step} **Response**: {response}')
-
+    def _post_process(self, result):
         completed = self._pop_tool_calls()
-        return completed if completed is not None else response
+        if completed is not None:
+            return completed
+        return result

@@ -13,6 +13,9 @@ PLAN_FINISHED = 'agent.plan.finished'
 AGENT_FINISHED = 'agent.finished'
 AGENT_FAILED = 'agent.failed'
 
+# --- Queue name ---
+TOOLS_EVENT_QUEUE = 'tools'
+
 
 @dataclass
 class AgentEvent:

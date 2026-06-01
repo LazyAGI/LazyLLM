@@ -1,7 +1,12 @@
 import copy
+import json
+import threading
+import time
+from types import SimpleNamespace
 
 import lazyllm
 from lazyllm.tools import PlanAndSolveAgent, ReactAgent
+from lazyllm.tools.agent.events import TOOLS_EVENT_QUEUE
 
 
 def add_one(value: int) -> int:
@@ -49,6 +54,41 @@ class _FakeLLM(object):
         return output
 
 
+class _SlowStreamingLLM(_FakeLLM):
+    def __init__(self, outputs, *, stream=False):
+        super().__init__(outputs, stream=stream)
+        self.release = threading.Event()
+
+    def share(self, prompt=None, format=None, stream=None, history=None, copy_static_params=False):
+        cloned = copy.copy(self)
+        if stream is not None:
+            cloned._stream = stream
+        return cloned
+
+    def __call__(self, input, **kwargs):
+        output = self._outputs[self._cursor]
+        self._cursor += 1
+        if self._stream:
+            lazyllm.FileSystemQueue.get_instance('think').enqueue(output.get('reasoning_content', ''))
+            time.sleep(0.05)
+            lazyllm.FileSystemQueue().enqueue(output.get('content', ''))
+            self.release.wait(timeout=1)
+        return output
+
+
+def _read_agent_events():
+    events = []
+    for raw in lazyllm.FileSystemQueue().dequeue():
+        if raw:
+            events.append(SimpleNamespace(type='agent.text.delta', delta=raw))
+    for raw in lazyllm.FileSystemQueue.get_instance('think').dequeue():
+        if raw:
+            events.append(SimpleNamespace(type='agent.reasoning.delta', delta=raw))
+    for raw_event in lazyllm.FileSystemQueue.get_instance(TOOLS_EVENT_QUEUE).dequeue():
+        events.append(SimpleNamespace(**json.loads(raw_event)))
+    return events
+
+
 class TestReactAgentEvents(object):
     def test_react_agent_stream_emits_text_reasoning_and_tool_events(self):
         llm = _FakeLLM([
@@ -71,21 +111,51 @@ class TestReactAgentEvents(object):
         agent = ReactAgent(llm=llm, tools=[add_one], max_retries=3, stream=True,
                            enable_builtin_tools=False)
 
-        stream = agent('add one to 1')
-        events = []
-        try:
-            while True:
-                events.append(next(stream))
-        except StopIteration:
-            pass
+        result = agent('add one to 1')
+        events = _read_agent_events()
 
         event_types = [event.type for event in events]
-        assert stream.result == 'The answer is 2.'
+        assert result == 'The answer is 2.'
         assert 'agent.reasoning.delta' in event_types
         assert 'agent.text.delta' in event_types
         assert 'agent.tool.calls' in event_types
         assert 'agent.tool.results' in event_types
-        assert 'agent.finished' in event_types
+
+    def test_react_agent_stream_writes_events_before_forward_returns(self):
+        llm = _SlowStreamingLLM([{
+            'role': 'assistant',
+            'content': 'The answer is already streaming.',
+            'reasoning_content': 'Thinking in real time.',
+        }])
+        agent = ReactAgent(llm=llm, tools=[add_one], max_retries=1, stream=True,
+                           enable_builtin_tools=False)
+        result_holder = {}
+        sid = lazyllm.globals._sid
+
+        def _run_agent():
+            lazyllm.globals._init_sid(sid)
+            lazyllm.locals._init_sid(sid)
+            result_holder['result'] = agent('stream now')
+
+        thread = threading.Thread(
+            target=_run_agent,
+        )
+        thread.start()
+
+        seen_types = []
+        deadline = time.time() + 1
+        while thread.is_alive() and time.time() < deadline:
+            events = _read_agent_events()
+            seen_types.extend(event.type for event in events)
+            if 'agent.reasoning.delta' in seen_types or 'agent.text.delta' in seen_types:
+                break
+            time.sleep(0.01)
+
+        assert thread.is_alive()
+        assert 'agent.reasoning.delta' in seen_types or 'agent.text.delta' in seen_types
+        llm.release.set()
+        thread.join(timeout=1)
+        assert result_holder['result'] == 'The answer is already streaming.'
 
 
 class TestPlanAndSolveAgentEvents(object):
@@ -116,16 +186,11 @@ class TestPlanAndSolveAgentEvents(object):
         stream_agent = PlanAndSolveAgent(plan_llm=_FakeLLM(plan_outputs), solve_llm=_FakeLLM(solve_outputs),
                                          tools=[add_one], max_retries=3, stream=True,
                                          enable_builtin_tools=False)
-        stream = stream_agent('add one to 1')
-        events = []
-        try:
-            while True:
-                events.append(next(stream))
-        except StopIteration:
-            pass
+        result = stream_agent('add one to 1')
+        events = _read_agent_events()
 
         event_types = [event.type for event in events]
-        assert stream.result == 'The answer is 2.'
+        assert result == 'The answer is 2.'
         assert event_types.index('agent.plan.started') < event_types.index('agent.plan.finished')
         assert 'agent.reasoning.delta' in event_types
         assert 'agent.text.delta' in event_types

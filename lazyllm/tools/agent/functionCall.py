@@ -3,7 +3,7 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import pipeline, loop, locals, package, FileSystemQueue, colored_text, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
-from .base import LazyLLMAgentBase
+from .base import LazyLLMAgentBase, _write_agent_data
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
@@ -66,7 +66,6 @@ def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -
     return result
 
 
-@deprecated('Use LazyLLMAgentBase._run_tool_round instead')
 class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,
@@ -82,6 +81,7 @@ class FunctionCall(ModuleBase):
             self._tools_manager = _tool_manager
             self._sandbox = _tool_manager.sandbox
         self._skill_manager = skill_manager
+        self._stream = stream
         self._keep_full_turns = keep_full_turns
         prompt = _prompt or FC_PROMPT
         self._prompter = ChatPrompter(
@@ -154,7 +154,14 @@ class FunctionCall(ModuleBase):
                                                               'arguments': json.loads(match.group(2))}}]
                 except Exception: pass
         if tool_calls := llm_output.get('tool_calls'):
+            if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
+            if self._stream:
+                _write_agent_data('tool_calls', tool_calls=tool_calls)
             tool_calls_results = self._tools_manager(tool_calls)
+            if self._stream:
+                _write_agent_data('tool_results',
+                                  tool_results=LazyLLMAgentBase._normalize_tool_results(tool_calls,
+                                                                                        tool_calls_results))
             locals['_lazyllm_agent']['workspace']['tool_call_trace'] = [
                 {**tool_call, 'tool_call_result': tool_result}
                 for tool_call, tool_result in zip(tool_calls, tool_calls_results)
