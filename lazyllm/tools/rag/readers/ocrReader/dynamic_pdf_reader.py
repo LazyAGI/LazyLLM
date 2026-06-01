@@ -4,7 +4,7 @@ import threading
 import lazyllm
 from lazyllm import LOG
 from ..pdfReader import PDFReader
-from ..readerBase import LazyLLMReaderBase, _RichReader
+from ..readerBase import LazyLLMReaderBase
 from .mineru_pdf_reader import MineruPDFReader
 from .paddleocr_pdf_reader import PaddleOCRPDFReader
 from .ocr_reader_base import read_dynamic_ocr_configs, read_static_api_key
@@ -27,6 +27,7 @@ class DynamicPDFReader(LazyLLMReaderBase):
         self._post_func = post_func
         self._timeout = timeout
         self._ocr_dynamic = ocr_dynamic
+        self._return_trace = return_trace
         self._reader_cache = {}
         self._reader_lock = threading.Lock()
 
@@ -95,7 +96,11 @@ class DynamicPDFReader(LazyLLMReaderBase):
     def _build_reader(self, normalized_type: str, normalized_url: str,
                       mineru_upload_mode: bool | None) -> LazyLLMReaderBase:
         if normalized_type in ('', 'none'):
-            return PDFReader()
+            return PDFReader(
+                post_func=self._post_func,
+                split_doc=True,
+                return_trace=self._return_trace,
+            )
 
         if normalized_type == 'mineru':
             upload_mode = mineru_upload_mode
@@ -164,7 +169,7 @@ class DynamicPDFReader(LazyLLMReaderBase):
             merged_info['mineru_api_key'] = mineru_key
         if paddle_key is not None:
             merged_info['paddle_api_key'] = paddle_key
-        # MinerU/Paddle readers apply post_func (e.g. NodeParser) in _RichReader.forward().
-        if isinstance(reader, _RichReader):
-            return reader.forward(file, extra_info=merged_info, use_cache=use_cache, **kwargs)
-        return reader._load_data(file, extra_info=merged_info, use_cache=use_cache, **kwargs)
+        # PDFReader._load_data only accepts file; OCR readers accept extra_info/use_cache.
+        if isinstance(reader, PDFReader):
+            return reader.forward(file)
+        return reader.forward(file, extra_info=merged_info, use_cache=use_cache, **kwargs)
