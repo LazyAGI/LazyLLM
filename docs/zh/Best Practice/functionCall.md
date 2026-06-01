@@ -160,8 +160,8 @@ print(ret)
 
 1. 将 `gs` 包装为 `InstanceToolGroup`，遍历 `__public_apis__` 中的每个方法。
 2. 为 `lookup` 创建 `MethodModuleTool`，工具名为 `GoogleSearch_lookup`，并将 `gs.lookup` 作为绑定方法保存。
-3. 向 LLM 暴露的工具描述中只有 `GoogleSearch_lookup`，LLM 无需感知背后的实例。
-4. 执行时，`ToolManager` 通过 `_tool_call['GoogleSearch_lookup']` 找到 `InstanceToolGroup`，再取出 `MethodModuleTool`，最终调用 `gs.lookup(**kwargs)`。
+3. 向 LLM 暴露的工具描述中只有 `get_GoogleSearch_methods` gateway 工具（lazy 模式）；LLM 调用该工具后，`GoogleSearch_lookup` 的描述才动态注入 system prompt。
+4. 执行时，`ToolManager` 通过 `_tool_call['GoogleSearch_lookup']` 找到 `MethodModuleTool`，最终调用 `gs.lookup(**kwargs)`。
 
 如果一个实例的某些方法只在特定条件下可用（例如需要 API Key），可以在传入时附带 `key_source` 参数，`ToolManager` 会在生成工具描述时自动跳过未满足条件的实例：
 
@@ -169,6 +169,42 @@ print(ret)
 # 仅当环境变量 GOOGLE_API_KEY 存在时，才向 LLM 暴露 GoogleSearch 的工具
 agent = ReactAgent(llm, tools=[(gs, 'env.GOOGLE_API_KEY')])
 ```
+
+### 分层工具组（ToolGroup）
+
+当工具数量较多时，把所有工具描述一次性注入 system prompt 会显著增加上下文长度，影响模型性能。LazyLLM 提供了 **分层工具组** 机制，通过向 `tools` 列表传入 `dict` 来定义工具组：
+
+```python
+tools = [
+    tool1,
+    dict(name='search', desc='搜索工具集', tools=[search_web, search_news]),
+    dict(name='advanced', desc='高级工具', tools=[
+        tool2,
+        dict(name='sub_ops', desc='子工具集', tools=[tool3, tool4]),
+    ]),
+]
+agent = ReactAgent(llm, tools=tools)
+```
+
+`dict` 格式说明：
+
+- `name`（必填）：工具组名称，用于生成 gateway 工具名 `get_<name>_methods`。
+- `tools`（必填）：子工具列表，可以是函数、`ModuleTool`、或嵌套 `dict`。
+- `desc`（可选）：工具组描述，展示给 LLM 作为 gateway 工具的说明。
+- `lazy`（可选，默认 `True`）：是否使用 lazy 模式。
+
+**lazy 模式**（默认）的工作流程：
+
+1. 初始 system prompt 只包含 `get_search_methods` 这一个 gateway 工具，不展开子工具。
+2. LLM 判断需要搜索时，先调用 `get_search_methods()`，返回：
+   ```
+   Activated tool group "search". Available tools: search_web, search_news
+   ```
+3. 下一轮 LLM 调用时，system prompt 自动包含 `search_web` 和 `search_news` 的完整描述，LLM 直接选择并调用。
+
+**eager 模式**（`lazy=False`）：直接把所有子工具描述展开注入 system prompt，与普通工具注册行为一致。
+
+多级嵌套时，每一层都遵循相同规则——激活外层 gateway 后，内层子组的 gateway 工具才会出现在 system prompt 中，依此类推。
 
 如果我们不打算把工具注册为全局可见，也可以在调用 FunctionCall 的时候直接传入工具本身，像这样：
 

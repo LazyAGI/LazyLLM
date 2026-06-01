@@ -26,6 +26,10 @@ class ImportEdge:
 
 # --- path resolution helpers ---
 
+def _relpath(path: str, start: str) -> str:
+    return os.path.relpath(path, start).replace('\\', '/')
+
+
 def _resolve_python_import(
     source_file: str, module: Optional[str], level: int, clone_dir: str,
 ) -> Optional[str]:
@@ -49,10 +53,10 @@ def _resolve_python_import(
     # try xxx.py then xxx/__init__.py
     as_file = candidate_dir + '.py'
     if os.path.isfile(as_file):
-        return os.path.relpath(as_file, clone_dir)
+        return _relpath(as_file, clone_dir)
     init_file = os.path.join(candidate_dir, '__init__.py')
     if os.path.isfile(init_file):
-        return os.path.relpath(init_file, clone_dir)
+        return _relpath(init_file, clone_dir)
     return None
 
 
@@ -65,16 +69,16 @@ def _resolve_js_import(source_file: str, raw_path: str, clone_dir: str) -> Optio
     extensions = ['.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs']
     # exact match with extension already present
     if os.path.isfile(base):
-        return os.path.relpath(base, clone_dir)
+        return _relpath(base, clone_dir)
     for ext in extensions:
         candidate = base + ext
         if os.path.isfile(candidate):
-            return os.path.relpath(candidate, clone_dir)
+            return _relpath(candidate, clone_dir)
     # directory index
     for idx in ['index.js', 'index.ts', 'index.jsx', 'index.tsx']:
         candidate = os.path.join(base, idx)
         if os.path.isfile(candidate):
-            return os.path.relpath(candidate, clone_dir)
+            return _relpath(candidate, clone_dir)
     return None
 
 
@@ -98,7 +102,7 @@ def _resolve_go_import(raw_path: str, clone_dir: str) -> Optional[str]:
     local = raw_path[len(mod_prefix):].lstrip('/')
     candidate = os.path.join(clone_dir, local)
     if os.path.isdir(candidate):
-        return os.path.relpath(candidate, clone_dir)
+        return _relpath(candidate, clone_dir)
     return None
 
 
@@ -112,7 +116,7 @@ def _resolve_java_import(raw_path: str, clone_dir: str) -> Optional[str]:
     for root in ['src/main/java', 'src', '']:
         candidate = os.path.join(clone_dir, root, rel) if root else os.path.join(clone_dir, rel)
         if os.path.isfile(candidate):
-            return os.path.relpath(candidate, clone_dir)
+            return _relpath(candidate, clone_dir)
     return None
 
 

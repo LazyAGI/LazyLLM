@@ -152,6 +152,7 @@ jobs:
         run: |
           set -e
           python .github/scripts/check_stale_editable.py
+          find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
           LAZYLLM_INIT_DOC=True python -B docs/add_docstrings.py
@@ -193,6 +194,7 @@ jobs:
       - name: Install package in editable mode
         run: |
           set -e
+          python .github/scripts/check_stale_editable.py
           pip install -e .
 
       - name: RunTests
@@ -868,6 +870,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}  # Push event: Roll back to checkout target's HEAD.
           submodules: false
 
       - name: Setup
@@ -885,7 +888,7 @@ jobs:
       - name: Download test dataset
         run: |
           set -euo pipefail
-          DATA_DIR="$GITHUB_WORKSPACE/.ci_data"
+          DATA_DIR="$GITHUB_WORKSPACE/ci_data"
           rm -rf "$DATA_DIR"
           export GIT_TERMINAL_PROMPT=0
           git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"

@@ -1,5 +1,4 @@
 import lazyllm
-import builtins
 from lazyllm import config
 from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind
 from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals, _get_callsite
@@ -32,9 +31,15 @@ class FlowException(HandledException):
 
 class _FuncWrap(object):
     def __init__(self, f):
-        self._f = f._f if isinstance(f, _FuncWrap) else f
+        self._f = f._f if type.__instancecheck__(_FuncWrap, f) else f
         self._hooks = []
         register_hooks(self, resolve_builtin_hooks(self))
+
+    # Make isinstance(func_wrap, T) equivalent to isinstance(func_wrap._f, T) for all T,
+    # while type(func_wrap) still returns _FuncWrap (so cloudpickle/pickle are unaffected).
+    @property
+    def __class__(self):
+        return type(self._f)
 
     @execution_with_hooks
     def __call__(self, *args, **kw): return self._f(*args, **kw)
@@ -49,15 +54,6 @@ class _FuncWrap(object):
         if __key != '_f':
             return getattr(self._f, __key)
         return super(__class__, self).__getattr__(__key)
-
-
-_oldins = isinstance
-def new_ins(obj, cls):
-    if _oldins(obj, _FuncWrap) and os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) != 'ON':
-        return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj._f, cls)
-    return _oldins(obj, cls)
-
-builtins.isinstance = new_ins
 
 def _is_function(f):
     return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,

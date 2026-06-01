@@ -79,7 +79,7 @@
 ---
 
 
-# 🧠 AI 参与情况 / AI Involvement
+# 🧠 AI 参与情况 / AI Involvement (需查看近期所有的对话历史填写)
 
 <!-- 本 PR 是否使用 AI 工具 / Whether AI tools were used in this PR -->
 - [ ] 未使用 AI / No AI used
@@ -100,81 +100,12 @@
 ```text
 ```
 
-## AI 初始输出质量 / Initial Output Quality
+## 一开始制定了什么方案
 
-* [ ] 一次正确 / Correct on first try
-* [ ] 部分正确 / Partially correct
-* [ ] 基本不可用 / Mostly unusable
+## 方案实施后存在什么问题
 
-## **问题点 / Issues：**
+## 我（用户）发现了哪些问题
 
-## 🔧 人工干预过程 / Human Intervention
+## 对这些问题优化后相比于之前有哪些优势
 
-<!-- 重点：这是核心 / Key section: this is the core -->
-
-### 第一次修正 / First Correction
-
-**修改后的 Prompt / 操作 / Updated Prompt or Action：**
-
-```text
-```
-
-### **原因 / Reason：**
-
-### 第二次修正（如有）/ Second Correction (if any)
-
-**修改后的 Prompt / 操作 / Updated Prompt or Action：**
-
-```text
-```
-
-### **原因 / Reason：**
-
-### 最终策略总结 / Final Strategy Summary
-
-<!-- 这一步非常关键：沉淀经验 / This step is critical: capture learnings -->
-
-*
-
----
-
-# 📊 AI vs 人工贡献占比 / AI vs Human Contribution
-
-<!-- 粗略评估 / Rough estimate -->
-
-* AI 生成代码占比 / AI-generated code：`%`
-* 人工修改占比 / Human modifications：`%`
-
-**主要人工修改点 / Key Human Modifications：**
-
-* [ ] 逻辑修正 / Logic fixes
-* [ ] 边界处理 / Edge case handling
-* [ ] 性能优化 / Performance optimization
-* [ ] 代码风格 / Code style
-* [ ] 架构调整 / Architecture adjustments
-
----
-
-# ⚠️ AI 问题记录 / AI Failure Cases
-
-<!-- 失败案例非常有价值 / Failure cases are very valuable -->
-
-### ❌ 失败 Prompt 示例 / Failed Prompt Example
-
-```text
-```
-
-### ❌ 问题表现 / Issue Description
-
-*
-
-### ✅ 改进后 Prompt / Improved Prompt
-
-```text
-```
-
-# 🧩 可复用经验 / Reusable Patterns
-
-* Prompt 模板 / Prompt template：
-* 常见坑 / Common pitfalls：
-* 推荐做法 / Recommended practices：
+## 哪些可以沉淀为自己后续的编码规范
