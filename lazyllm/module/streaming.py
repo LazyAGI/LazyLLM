@@ -16,10 +16,10 @@ class StreamCallHelper:
         self._adapter = adapter_factory(interval) if callable(adapter_factory) else None
 
     def _submit(self, *args, **kwargs):
-        lazyllm.globals._init_sid()
         if self._adapter:
             self._adapter.prepare()
         else:
+            lazyllm.globals._init_sid()
             lazyllm.FileSystemQueue().clear()
         return _g_stream_thread_pool.submit(self._impl, *args, **kwargs)
 
