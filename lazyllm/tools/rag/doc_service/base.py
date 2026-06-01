@@ -118,7 +118,7 @@ class ReparseRequest(BaseModel):
     llm_config: Optional[Dict[str, Any]] = None
     idempotency_key: Optional[str] = None
     embed_only: bool = False  # when True, skip transform and only (re-)embed existing nodes
-    reparse_mode: Optional[str] = None  # slice_missing | slice_and_embed | rebuild
+    reparse_mode: Optional[str] = None  # "slice_missing" to only rebuild groups missing nodes; otherwise None
 
     @model_validator(mode='after')
     def validate_fields(self):

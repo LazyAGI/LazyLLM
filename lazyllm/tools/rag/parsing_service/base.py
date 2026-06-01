@@ -44,7 +44,7 @@ class AddDocRequest(BaseModel):
     priority: Optional[int] = 0
     callback_url: Optional[str] = None
     embed_only: bool = False  # when True, skip transform and only (re-)embed existing nodes
-    reparse_mode: Optional[str] = None  # slice_missing | slice_and_embed → embed_only | rebuild → partial reparse
+    reparse_mode: Optional[str] = None  # "slice_missing" to only rebuild groups missing nodes; otherwise None
     # per-request model config injected by backend (e.g. embed_main).
     llm_config: Optional[Dict[str, Any]] = None
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future

@@ -394,6 +394,11 @@ class _Processor:
                                             kb_id=kb_id, doc_ids=doc_ids)
             # TODO: reparse recursively
             if not p_nodes:
+                if not reader:
+                    raise ValueError(
+                        f'Cannot reparse group "{group_name}": parent group '
+                        f'"{node_groups[group_name]["parent"]}" has no nodes for docs {doc_ids}, '
+                        f'and no reader is available to perform a full reparse from source.')
                 LOG.warning(
                     f'Parent group "{node_groups[group_name]["parent"]}" has no nodes for '
                     f'docs {doc_ids}, falling back to full reparse from source.')

@@ -456,8 +456,9 @@ class DocumentProcessorWorker(ModuleBase):
 
             try:
                 if reparse_mode == 'slice_missing':
+                    groups_to_check = ng_names_requested or list(node_groups.keys())
                     missing_groups = []
-                    for name in ng_names_requested or []:
+                    for name in groups_to_check:
                         if name not in node_groups:
                             LOG.warning(f'{self._log_prefix(task_id)} ng_name {name!r} not found, skipping')
                             continue
@@ -486,7 +487,19 @@ class DocumentProcessorWorker(ModuleBase):
                                               doc_ids=reparse_doc_ids, doc_paths=reparse_files,
                                               metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
                         else:
+                            # Only reparse top-most missing groups: if a parent is also missing,
+                            # its recursive reparse already covers the descendant.
+                            missing_set = set(missing_groups)
+                            top_missing = []
                             for name in missing_groups:
+                                ancestor = node_groups[name].get('parent')
+                                while ancestor:
+                                    if ancestor in missing_set:
+                                        break
+                                    ancestor = node_groups.get(ancestor, {}).get('parent')
+                                else:
+                                    top_missing.append(name)
+                            for name in top_missing:
                                 LOG.info(f'{self._log_prefix(task_id)} [reparse] slice_missing group={name!r} '
                                          f'doc_ids={reparse_doc_ids!r} kb_id={kb_id!r}')
                                 processor.reparse(group_name=name, node_groups=node_groups,
