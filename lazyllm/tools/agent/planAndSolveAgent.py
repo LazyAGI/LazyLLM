@@ -92,10 +92,6 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
             solver_prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
         return solver_prompt
 
-    def _record_step_result(self, pre_steps: List[str], step: str, response: str):
-        LOG.debug(f'current step: {step}, response: {response}')
-        pre_steps.append(f'- **SubTask**: {step} **Response**: {response}')
-
     def _build_planner_prompt(self) -> str:
         tools_desc = []
         for name, tool in self._tools_manager.tools_info.items():
@@ -134,7 +130,8 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
             else:
                 raise AssertionError(f'After retrying {self._max_retries} times, '
                                      f'the solver still failes to call successfully.')
-            self._record_step_result(pre_steps, step, response)
+            LOG.debug(f'current step: {step}, response: {response}')
+            pre_steps.append(f'- **SubTask**: {step} **Response**: {response}')
 
         completed = self._pop_tool_calls()
         return completed if completed is not None else response
