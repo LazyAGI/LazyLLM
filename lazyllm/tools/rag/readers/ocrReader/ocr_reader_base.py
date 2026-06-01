@@ -1,25 +1,47 @@
 import json
 import os
 import shutil
+from contextlib import nullcontext
 from typing import Optional, Callable, Set, List, Dict, Tuple
 from pathlib import Path
-from enum import Enum
+from urllib.parse import urlparse
 
+from lazyllm import globals as lazyllm_globals
 from lazyllm.thirdparty import bs4, pypdf
+from lazyllm.common import AuthStrategy, BearerTokenStrategy, CredentialMixin
 from ..readerBase import _RichReader
 from ...doc_node import DocNode
 from .ocr_ir import Block, Cell
 from .ocr_postprocessor import l1_normalize, l2_associate
 
 
-class ServiceVariant(str, Enum):
-    ONLINE = 'online'
-    OFFLINE = 'offline'
+MINERU_OFFICIAL_ONLINE_HOST = 'mineru.net'
+PADDLE_OFFICIAL_ONLINE_HOST_SUFFIX = 'aistudio-app.com'
+PADDLE_OFFICIAL_ONLINE_URL = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing'
 
-    @classmethod
-    def _missing_(cls, value):
-        supported = ', '.join(f'{m.value!r}' for m in cls)
-        raise ValueError(f'Invalid service_variant: {value!r}, only support: {supported}')
+
+def _parse_url_host(url: Optional[str]) -> str:
+    raw = (url or '').strip()
+    if not raw:
+        return ''
+    if '://' not in raw:
+        raw = f'http://{raw}'
+    return (urlparse(raw).hostname or '').lower()
+
+
+def is_mineru_official_online_url(url: Optional[str]) -> bool:
+    '''True when MinerU should use the official mineru.net upload API (not local HTTP).'''
+    host = _parse_url_host(url)
+    if not host:
+        return True
+    return host == MINERU_OFFICIAL_ONLINE_HOST or host.endswith(f'.{MINERU_OFFICIAL_ONLINE_HOST}')
+
+
+def is_paddle_official_online_url(url: Optional[str]) -> bool:
+    host = _parse_url_host(url)
+    if not host:
+        return True
+    return host.endswith(PADDLE_OFFICIAL_ONLINE_HOST_SUFFIX) or PADDLE_OFFICIAL_ONLINE_HOST_SUFFIX in host
 
 
 class _Adapter:
@@ -35,15 +57,22 @@ class _Adapter:
         raise NotImplementedError
 
 
-class _OcrReaderBase(_RichReader, _Adapter):
+class _OcrReaderBase(_RichReader, _Adapter, CredentialMixin):
     def __init__(self, url,
                  image_cache_dir: Path,
-                 service_variant: str = 'online',
                  dropped_types: Optional[Set[str]] = None,
                  split_doc: bool = True,
                  post_func: Optional[Callable] = None,
-                 return_trace: bool = True):
+                 return_trace: bool = True,
+                 token: Optional[str] = None,
+                 dynamic_auth: bool = False,
+                 auth_strategy: Optional[AuthStrategy] = None,
+                 auth_source_key: Optional[str] = None):
         super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
+        credential = self._default_credential(token, dynamic_auth)
+        self.__init_credential__(credential, strategy=auth_strategy or BearerTokenStrategy())
+        # auth_source_key links this reader to globals.config['dynamic_ocr_auth'][key].
+        self._auth_source_key = (auth_source_key or self.__class__.__name__.replace('PDFReader', '')).lower()
         self._url = url
         self._image_cache_dir = Path(image_cache_dir) if image_cache_dir is not None else None
         if self._image_cache_dir is not None:
@@ -51,8 +80,38 @@ class _OcrReaderBase(_RichReader, _Adapter):
             # Clear any stale contents from previous runs
             for item in self._image_cache_dir.iterdir():
                 shutil.rmtree(item) if item.is_dir() else item.unlink()
-        self._service_variant = ServiceVariant(service_variant)
         self._dropped_types = dropped_types if dropped_types is not None else set()
+
+    def _resolve_dynamic_token(self) -> str:
+        # Dynamic OCR auth is request/session scoped and injected via globals.config.
+        mapping = lazyllm_globals.config['dynamic_ocr_auth'] or {}
+        return mapping.get(self._auth_source_key, '')
+
+    def _missing_dynamic_token_error(self) -> str:
+        return (
+            f'dynamic_ocr_auth["{self._auth_source_key}"] is not set in globals.config; '
+            f'use inject_ocr_config(..., ocr_auth={{"{self._auth_source_key}": "..."}}) '
+            f'or set globals.config["dynamic_ocr_auth"] before OCR parsing'
+        )
+
+    def _effective_token(self, explicit_token: Optional[str] = None) -> str:
+        if explicit_token is None:
+            return self.get_current_token()
+        with self.override_credential(secret_key=explicit_token):
+            return self.get_current_token()
+
+    def _auth_headers(self, headers: Optional[Dict[str, str]] = None, *,
+                      explicit_token: Optional[str] = None) -> Dict[str, str]:
+        if explicit_token is None:
+            return self.inject_auth_header(headers)
+        with self.override_credential(secret_key=explicit_token):
+            return self.inject_auth_header(headers)
+
+    def _auth_scope(self, explicit_token: Optional[str] = None):
+        # Apply per-request token override only within one OCR parse call.
+        if explicit_token is None:
+            return nullcontext()
+        return self.override_credential(secret_key=explicit_token)
 
     @staticmethod
     def _split_large_pdf(pdf_path: str, max_size_mb: int = 200,

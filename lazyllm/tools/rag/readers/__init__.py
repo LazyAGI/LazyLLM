@@ -10,7 +10,7 @@ from .markdownReader import MarkdownReader
 from .mboxreader import MboxReader
 from .pandasReader import PandasCSVReader, PandasExcelReader
 from .videoAudioReader import VideoAudioReader
-from .ocrReader import MineruPDFReader, PaddleOCRPDFReader
+from .ocrReader import DynamicPDFReader, MineruPDFReader, PaddleOCRPDFReader
 
 __all__ = [
     'ReaderBase',
@@ -30,4 +30,5 @@ __all__ = [
     'VideoAudioReader',
     'MineruPDFReader',
     'PaddleOCRPDFReader',
+    'DynamicPDFReader',
 ]

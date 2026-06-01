@@ -733,7 +733,9 @@ class DocumentProcessorWorker(ModuleBase):
                 # thread's lazyllm session so that dynamic-source modules can resolve
                 # the correct supplier during _lazy_init and embedding.
                 from lazyllm import inject_model_config as _inject_model_config
+                from lazyllm import inject_ocr_config as _inject_ocr_config
                 _inject_model_config(payload.get('llm_config'))
+                _inject_ocr_config(payload.get('ocr_config'))
 
                 ng_names = payload.get('ng_names')  # None means all node groups
                 extractor_names = payload.get('extractor_names')  # None means all extractors

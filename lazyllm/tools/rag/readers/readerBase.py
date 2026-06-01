@@ -5,7 +5,7 @@ from lazyllm.thirdparty import torch
 from lazyllm import LOG, config
 
 from ....common import LazyLLMRegisterMetaClass
-from ..doc_node import DocNode, RichDocNode
+from ..doc_node import DocNode, ImageDocNode, RichDocNode
 from lazyllm.module import ModuleBase
 from pathlib import Path
 import locale
@@ -265,7 +265,14 @@ class _RichReader(LazyLLMReaderBase):
                 if kwargs.get('extra_info'):
                     n.global_metadata.update(kwargs['extra_info'])
         if self._split_doc:
-            return [RichDocNode(nodes, global_metadata=nodes[0].global_metadata if nodes else None)]
+            image_nodes = [n for n in nodes if isinstance(n, ImageDocNode)]
+            text_nodes = [n for n in nodes if not isinstance(n, ImageDocNode)]
+            gm = nodes[0].global_metadata if nodes else None
+            result: List[DocNode] = []
+            if text_nodes:
+                result.append(RichDocNode(text_nodes, global_metadata=gm))
+            result.extend(image_nodes)
+            return result
         else:
             if not nodes:
                 return []

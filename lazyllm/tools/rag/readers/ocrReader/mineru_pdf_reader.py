@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from typing_extensions import override
 
 import lazyllm
-from lazyllm.common import retry_transient
+from lazyllm.common import AuthStrategy, retry_transient
 from lazyllm.tools.http_request import post_sync, get_sync
 from lazyllm import LOG
 
@@ -26,14 +26,13 @@ from .ocr_ir import (
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock, ListBlock,
 )
-from .ocr_reader_base import _OcrReaderBase, ServiceVariant
+from .ocr_reader_base import _OcrReaderBase, is_mineru_official_online_url
 
 lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='The API key for Mineru')
 _IMAGE_REF_PATTERN = re.compile(
     r'images/[^\s\)"\'\]<]+\.(?:jpg|jpeg|png|gif|bmp|webp|tiff|tif)',
     re.IGNORECASE,
 )
-_OFFLINE_API_PATH = '/api/v1/pdf_parse'
 
 
 class MineruPDFReader(_OcrReaderBase):
@@ -50,7 +49,11 @@ class MineruPDFReader(_OcrReaderBase):
                  return_trace: bool = True,
                  dropped_types: Optional[Set[str]] = None,
                  patch_applied: bool = False,
+                 api_key: Optional[str] = None,
+                 dynamic_auth: bool = False,
+                 auth_strategy: Optional[AuthStrategy] = None,
                  **kwargs):
+        configured_api_key = api_key if api_key is not None else lazyllm.config['mineru_api_key']
         super().__init__(url=url,
                          dropped_types=dropped_types or {
                              'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
@@ -58,44 +61,59 @@ class MineruPDFReader(_OcrReaderBase):
                          post_func=post_func,
                          image_cache_dir=kwargs.pop('image_cache_dir', os.path.join(
                              lazyllm.config['home'], 'mineru_cache')),
+                         token=configured_api_key,
+                         dynamic_auth=dynamic_auth,
+                         auth_strategy=auth_strategy,
+                         auth_source_key='mineru',
                          **kwargs)
         self._backend = backend
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._patch_applied = patch_applied
-        self._api_key = lazyllm.config['mineru_api_key']
-        if self._service_variant == ServiceVariant.OFFLINE and self._url:
-            self._url = self._normalize_offline_url(self._url)
-
-    @staticmethod
-    def _normalize_offline_url(url: str) -> str:
-        raw = url.strip().rstrip('/')
-        if raw.endswith(_OFFLINE_API_PATH):
-            return raw
-        return f'{raw}{_OFFLINE_API_PATH}'
+        self._offline_mode = not is_mineru_official_online_url(self._url)
 
     @override
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True
                    ) -> List['DocNode']:
         file_path = Path(file)
-        _t0 = time.time()
-        if self._service_variant == ServiceVariant.OFFLINE:
-            response_text = self._fetch_sync(file_path, use_cache)
-            task_dir = self._image_cache_dir / str(uuid.uuid4())
-            task_dir.mkdir(parents=True, exist_ok=True)
-            self._download_offline_images(response_text, cache_dir=task_dir)
-        else:
-            response_text, task_dir = self._fetch_async(file_path, use_cache)
-        _t_fetch = time.time() - _t0
         merged_info = dict(extra_info) if extra_info else {}
-        if task_dir is not None:
-            merged_info['image_cache_dir'] = str(task_dir)
-        _t1 = time.time()
-        nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
-        _t_build = time.time() - _t1
-        LOG.info(f'[BENCHMARK] file={file_path.name} phase=fetch elapsed={_t_fetch:.3f}s')
-        LOG.info(f'[BENCHMARK] file={file_path.name} phase=parse elapsed={_t_build:.3f}s')
-        return nodes
+        # Resolution priority: request extra_info > dynamic_ocr_configs > globals.config.
+        request_api_key = self._resolve_api_key(merged_info)
+        # Keep token override scoped to this request to avoid cross-task leakage.
+        with self._auth_scope(request_api_key):
+            _t0 = time.time()
+            if self._offline_mode:
+                response_text = self._fetch_sync(file_path, use_cache)
+                task_dir = self._image_cache_dir / str(uuid.uuid4())
+                task_dir.mkdir(parents=True, exist_ok=True)
+                self._download_offline_images(response_text, cache_dir=task_dir)
+            else:
+                response_text, task_dir = self._fetch_async(file_path, use_cache)
+            _t_fetch = time.time() - _t0
+            if task_dir is not None:
+                merged_info['image_cache_dir'] = str(task_dir)
+            _t1 = time.time()
+            nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
+            _t_build = time.time() - _t1
+            LOG.info(f'[BENCHMARK] file={file_path.name} phase=fetch elapsed={_t_fetch:.3f}s')
+            LOG.info(f'[BENCHMARK] file={file_path.name} phase=parse elapsed={_t_build:.3f}s')
+            return nodes
+
+    def _resolve_api_key(self, extra_info: Optional[Dict] = None) -> Optional[str]:
+        info = extra_info or {}
+        explicit_key = info.get('mineru_api_key')
+        if explicit_key:
+            return explicit_key
+        dynamic_cfg = lazyllm.globals.config.get('dynamic_ocr_configs')
+        if isinstance(dynamic_cfg, dict):
+            dynamic_key = dynamic_cfg.get('mineru_api_key')
+            if dynamic_key:
+                return dynamic_key
+        dynamic_key = lazyllm.globals.config.get('mineru_api_key')
+        if dynamic_key:
+            return dynamic_key
+        # Fallback to CredentialMixin-managed static/dynamic token when no explicit key is injected.
+        return None
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
         if self._patch_applied:
@@ -328,7 +346,8 @@ class MineruPDFReader(_OcrReaderBase):
     def _fetch_async_by_upload(self, file_path: str, task_dir: Optional['Path'] = None):
         '''Upload a local file via batch presigned URL and fetch result.'''
         fname = os.path.basename(file_path)
-        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {self._api_key}'}
+        # Use unified auth injection so token format can be switched by strategy.
+        headers = self._auth_headers({'Content-Type': 'application/json'})
 
         # Step 1: Request presigned upload URL
         payload = {
@@ -411,8 +430,7 @@ class MineruPDFReader(_OcrReaderBase):
         for item in content_list:
             block = self._adapt_one(item)
             if block is not None:
-                if self._service_variant == ServiceVariant.OFFLINE \
-                   and self._patch_applied and 'lines' in item:
+                if self._offline_mode and self._patch_applied and 'lines' in item:
                     block.lines = self._normalize_content(item['lines'])
                 blocks.append(block)
         return blocks

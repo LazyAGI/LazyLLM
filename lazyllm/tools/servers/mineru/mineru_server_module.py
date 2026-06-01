@@ -740,18 +740,112 @@ class MineruServerBase:
 
         if self._image_save_dir:
             os.makedirs(self._image_save_dir, exist_ok=True)
+            LOG.info(
+                f'[MINERU] Offline image static route enabled: GET /images/* -> {self._image_save_dir}'
+            )
+
+    def _resolve_image_file_path(self, rel_path: str) -> Optional[Path]:
+        if not self._image_save_dir:
+            return None
+        normalized = str(rel_path or '').replace('\\', '/').strip().lstrip('/')
+        if not normalized or '..' in normalized.split('/'):
+            return None
+        if normalized.startswith('images/'):
+            normalized = normalized[len('images/'):]
+        try:
+            base = os.path.realpath(self._image_save_dir)
+            joined = os.path.realpath(os.path.join(self._image_save_dir, normalized))
+        except OSError:
+            return None
+        if joined == base or joined.startswith(base + os.sep):
+            return Path(joined)
+        return None
 
     @staticmethod
-    def _move_images_to_output(source_dir: Path, target_dir: Path):
-        for jpg_file in source_dir.glob('*.jpg'):
-            try:
-                shutil.move(str(jpg_file), str(target_dir / jpg_file.name))
-            except Exception:
-                with contextlib.suppress(Exception):
-                    shutil.copy2(
-                        str(jpg_file),
-                        str(target_dir / jpg_file.name)
+    def _image_basenames_from_content_list(content_list) -> set:
+        names = set()
+        if not isinstance(content_list, list):
+            return names
+        for item in content_list:
+            if not isinstance(item, dict):
+                continue
+            for key in ('img_path', 'image_path'):
+                val = item.get(key)
+                if val:
+                    names.add(Path(str(val).replace('\\', '/')).name)
+            for line in item.get('lines') or []:
+                if isinstance(line, dict) and line.get('image_path'):
+                    names.add(Path(str(line['image_path']).replace('\\', '/')).name)
+        return names
+
+    def _offline_images_available(self, content_list) -> bool:
+        if not self._image_save_dir or not content_list:
+            return True
+        base = Path(self._image_save_dir)
+        for name in self._image_basenames_from_content_list(content_list):
+            if not (base / name).is_file():
+                return False
+        return True
+
+    @classmethod
+    def _resolve_parse_dir(
+        cls, unique_dir: str, pdf_name: str, effective_backend: str, parse_method: str
+    ) -> Optional[str]:
+        base = os.path.join(unique_dir, pdf_name)
+        candidates = []
+        if effective_backend.startswith('vlm'):
+            candidates.append(os.path.join(base, 'vlm'))
+        if effective_backend.startswith('hybrid'):
+            candidates.append(os.path.join(base, f'hybrid_{parse_method}'))
+        candidates.append(os.path.join(base, parse_method))
+        if effective_backend == 'pipeline':
+            candidates.append(os.path.join(base, 'auto'))
+        seen = set()
+        for path in candidates:
+            if path in seen:
+                continue
+            seen.add(path)
+            if os.path.isdir(path):
+                return path
+        if os.path.isdir(base):
+            for name in sorted(os.listdir(base)):
+                sub = os.path.join(base, name)
+                if os.path.isdir(sub) and os.path.isdir(os.path.join(sub, 'images')):
+                    return sub
+        return None
+
+    @staticmethod
+    def _move_images_to_output(source_dir: Path, target_dir: Path) -> int:
+        if not source_dir.is_dir():
+            return 0
+        target_dir.mkdir(parents=True, exist_ok=True)
+        moved = 0
+        for pattern in ('*.jpg', '*.jpeg', '*.png'):
+            for img_file in source_dir.glob(pattern):
+                dest = target_dir / img_file.name
+                try:
+                    if dest.is_file() and dest.stat().st_size > 0:
+                        continue
+                    shutil.copy2(str(img_file), str(dest))
+                    moved += 1
+                except OSError as exc:
+                    LOG.warning(
+                        f'[MINERU] failed to publish offline image {img_file.name}: {exc}'
                     )
+        return moved
+
+    @classmethod
+    def _harvest_images_from_tree(cls, root_dir: str, target_dir: Path) -> int:
+        if not root_dir or target_dir is None:
+            return 0
+        root = Path(root_dir)
+        if not root.is_dir():
+            return 0
+        total = 0
+        for images_dir in root.glob('**/images'):
+            if images_dir.is_dir():
+                total += cls._move_images_to_output(images_dir, target_dir)
+        return total
 
     async def _read_parse_result(
         self, suffix: str, pdf_name: str, parse_dir: str
@@ -774,6 +868,13 @@ class MineruServerBase:
         return None
 
     # ------------------------------ Public API ------------------------------
+    @app.get('/images/{rel_path:path}')
+    async def serve_offline_image(self, rel_path: str):
+        image_path = self._resolve_image_file_path(rel_path)
+        if image_path is None or not image_path.is_file():
+            raise fastapi.HTTPException(status_code=404, detail='image not found')
+        return fastapi.responses.FileResponse(str(image_path))
+
     @app.post('/api/v1/pdf_parse')
     async def parse_pdf(  # noqa: C901
         self,
@@ -863,16 +964,31 @@ class MineruServerBase:
                     table_enable, formula_enable, lang=lang, parse_method=parse_method
                 )
                 if not files_to_process:
-                    hit_cnt = len([f for f in files if results[f]])
-                    hit_rate = hit_cnt / len(files) * 100
-                    LOG.info(
-                        f'[{req_id}] CACHE HIT: {hit_cnt}/{len(files)} files ({hit_rate:.1f}%)'
-                    )
-                    results_list = [results[f] for f in files]
-                    return fastapi.responses.JSONResponse(
-                        status_code=200,
-                        content={'result': results_list, 'unique_id': unique_id}
-                    )
+                    stale = [
+                        f for f in files
+                        if return_content_list
+                        and results.get(f, {}).get('content_list')
+                        and not self._offline_images_available(results[f]['content_list'])
+                    ]
+                    if stale:
+                        LOG.warning(
+                            f'[{req_id}] Parse cache hit but offline images missing for '
+                            f'{len(stale)} file(s), re-parsing'
+                        )
+                        files_to_process = stale
+                        for f in stale:
+                            results[f] = {}
+                    else:
+                        hit_cnt = len([f for f in files if results[f]])
+                        hit_rate = hit_cnt / len(files) * 100
+                        LOG.info(
+                            f'[{req_id}] CACHE HIT: {hit_cnt}/{len(files)} files ({hit_rate:.1f}%)'
+                        )
+                        results_list = [results[f] for f in files]
+                        return fastapi.responses.JSONResponse(
+                            status_code=200,
+                            content={'result': results_list, 'unique_id': unique_id}
+                        )
             elif use_cache and not cache_enabled:
                 LOG.warning(f'[{req_id}] CACHE_DIR not set; use_cache ignored.')
 
@@ -949,14 +1065,12 @@ class MineruServerBase:
             # 3) Collect outputs
             for src_path, pdf in zip(files_to_process, pdf_paths):
                 pdf_name = pdf.stem
-                if effective_backend.startswith('vlm'):
-                    parse_dir = os.path.join(unique_dir, pdf_name, 'vlm')
-                elif effective_backend.startswith('hybrid'):
-                    parse_dir = os.path.join(unique_dir, pdf_name, f'hybrid_{parse_method}')
-                else:
-                    parse_dir = os.path.join(unique_dir, pdf_name, parse_method)
+                parse_dir = await asyncio.to_thread(
+                    self._resolve_parse_dir,
+                    unique_dir, pdf_name, effective_backend, parse_method,
+                )
 
-                if await asyncio.to_thread(os.path.exists, parse_dir):
+                if parse_dir:
                     hash_id = await asyncio.to_thread(calculate_file_hash, src_path)
                     md_content = await self._read_parse_result('.md', pdf_name, parse_dir)
                     content_list = await self._read_parse_result(
@@ -974,11 +1088,16 @@ class MineruServerBase:
                         )
                         LOG.info(f'[{req_id}] Cached result for {src_path}')
                     if self._image_save_dir:
-                        source_dir = Path(f'{parse_dir}/images/')
                         target_dir = Path(self._image_save_dir)
-                        await asyncio.to_thread(
-                            self._move_images_to_output, source_dir, target_dir
+                        moved = await asyncio.to_thread(
+                            self._move_images_to_output,
+                            Path(parse_dir) / 'images',
+                            target_dir,
                         )
+                        if moved:
+                            LOG.info(
+                                f'[{req_id}] Published {moved} offline image(s) to {target_dir}'
+                            )
 
             # merge cached results for already-cached inputs (if any)
             final_results = [results[f] for f in files]
@@ -992,6 +1111,17 @@ class MineruServerBase:
                 status_code=500, content={'error': f'Failed to process file: {e}'}
             )
         finally:
+            if self._image_save_dir:
+                harvested = await asyncio.to_thread(
+                    self._harvest_images_from_tree,
+                    unique_dir,
+                    Path(self._image_save_dir),
+                )
+                if harvested:
+                    LOG.info(
+                        f'[{req_id}] Harvested {harvested} offline image(s) into '
+                        f'{self._image_save_dir}'
+                    )
             await asyncio.to_thread(shutil.rmtree, unique_dir, ignore_errors=True)
 
     async def _resolve_upload_files(
