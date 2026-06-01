@@ -870,6 +870,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}  # Push event: Roll back to checkout target's HEAD.
           submodules: false
 
       - name: Setup

@@ -107,11 +107,11 @@ class TestCommon(object):
         assert square(18) == 324
 
     def test_compile_func_dangerous_code(self):
-        func1 = '''def use_exec():\n    exec('print('This is unsafe')')'''
+        func1 = '''def use_exec():\n    exec('print("This is unsafe")')'''
         with pytest.raises(ValueError, match='⚠️ Detected dangerous function call: exec'):
             compile_func(func1)
 
-        func2 = '''def del_file():\n    eval('__import__('os').system('rm -rf /')')'''
+        func2 = '''def del_file():\n    eval('__import__("os").system("rm -rf /")')'''
         with pytest.raises(ValueError, match='⚠️ Detected dangerous function call: eval'):
             compile_func(func2)
 
@@ -119,12 +119,12 @@ class TestCommon(object):
         with pytest.raises(ValueError, match='⚠️ Detected dangerous function call: open'):
             compile_func(func3)
 
-        func4 = ('''def comiple_function():\n    code = compile('os.system('rm -rf /')', '''
+        func4 = ('''def comiple_function():\n    code = compile('os.system("rm -rf /")', '''
                  ''''<string>', 'exec')\n    exec(code)''')
         with pytest.raises(ValueError, match='⚠️ Detected dangerous function call: compile'):
             compile_func(func4)
 
-        func5 = '''def get_attr():\n    getattr(__builtins__, 'eval')('os.system('rm -rf /')')'''
+        func5 = '''def get_attr():\n    getattr(__builtins__, "eval")('os.system("rm -rf /")')'''
         with pytest.raises(ValueError, match='⚠️ Detected dangerous function call: getattr'):
             compile_func(func5)
 
