@@ -85,8 +85,6 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
     def build_agent(self):
         with pipeline() as agent:
             agent.plan = self._plan_query
-            agent.parse = (lambda text, query: package([], '', [v for v in re.split('\n\\s*\\d+\\. ', text)[1:]],
-                           query)) | bind(query=agent.input)
             with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as agent.lp:
                 agent.lp.pre_action = self._pre_action
                 agent.lp.solve = loop(self._fc, stop_condition=lambda x: isinstance(x, str),
@@ -103,7 +101,7 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
         plan = self._plan_llm(query)
         steps = self._parse_plan_steps(plan)
         _write_agent_data('plan_finished', text=plan, steps=steps)
-        return plan
+        return package([], '', steps, query)
 
     def _pre_action(self, pre_steps, response, steps, query):
         solver_prompt = SOLVER_PROMPT.format(
