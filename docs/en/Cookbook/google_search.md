@@ -59,13 +59,12 @@ from lazyllm.tools.tools import GoogleSearch
 
 ### Extracting Search Results
 
-Define the `extract_search_results` function to extract titles and links from the API response.
+Define the `extract_search_results` function to extract titles and links from the unified result list returned by `GoogleSearch`.
 
 ```python
-def extract_search_results(response_dict):
-    items = response_dict.get('items', [])
+def extract_search_results(items):
     results = [
-        {'title': item.get('title', ''), 'url': item.get('link', '')}
+        {'title': item.get('title', ''), 'url': item.get('url', '')}
         for item in items
     ]
     return pd.DataFrame(results)
@@ -148,10 +147,9 @@ from lazyllm.tools.tools import GoogleSearch
 api_key = 'AI******'
 engine_id = 'a3******'
 
-def extract_search_results(response_dict):
-    items = response_dict.get('items', [])
+def extract_search_results(items):
     results = [
-        {'title': item.get('title', ''), 'url': item.get('link', '')}
+        {'title': item.get('title', ''), 'url': item.get('url', '')}
         for item in items
     ]
     return pd.DataFrame(results)

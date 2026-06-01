@@ -43,9 +43,7 @@ class WikipediaSearch(SearchBase):
         page = pages.get(str(pageid)) or {}
         return (page.get('extract') or '').strip() or super().get_content(item)
 
-    def search(self, query: str, topk: int = 5, include_content: bool = False,
-               limit: int = 10) -> List[Dict[str, Any]]:
-        max_limit = max(1, min(int(topk), 10))
+    def search(self, query: str, limit: int = 10) -> List[dict]:
         params = {
             'action': 'query',
             'list': 'search',
@@ -71,8 +69,4 @@ class WikipediaSearch(SearchBase):
                 source=self.source_name,
                 pageid=it.get('pageid'),
             ))
-        items = out[:max_limit]
-        if include_content:
-            for item in items:
-                item['content'] = self.get_content(item)
-        return items
+        return out
