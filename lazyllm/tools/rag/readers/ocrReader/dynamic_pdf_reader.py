@@ -1,7 +1,6 @@
 from urllib.parse import urlparse
 import threading
 
-import lazyllm
 from lazyllm import LOG
 from ..pdfReader import PDFReader
 from ..readerBase import LazyLLMReaderBase
