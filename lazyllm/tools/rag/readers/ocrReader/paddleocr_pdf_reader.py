@@ -23,6 +23,8 @@ from .ocr_reader_base import (
     _OcrReaderBase,
     PADDLE_OFFICIAL_ONLINE_URL,
     is_paddle_official_online_url,
+    read_dynamic_ocr_configs,
+    read_static_api_key,
 )
 
 lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='The API key for PaddleOCR')
@@ -74,12 +76,12 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         explicit_key = info.get('paddle_api_key')
         if explicit_key:
             return explicit_key
-        dynamic_cfg = lazyllm.globals.config.get('dynamic_ocr_configs')
-        if isinstance(dynamic_cfg, dict):
+        dynamic_cfg = read_dynamic_ocr_configs()
+        if dynamic_cfg:
             dynamic_key = dynamic_cfg.get('paddle_api_key')
             if dynamic_key:
                 return dynamic_key
-        dynamic_key = lazyllm.globals.config.get('paddle_api_key')
+        dynamic_key = read_static_api_key('paddle_api_key')
         if dynamic_key:
             return dynamic_key
         return None

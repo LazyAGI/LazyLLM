@@ -7,6 +7,7 @@ from ..pdfReader import PDFReader
 from ..readerBase import LazyLLMReaderBase, _RichReader
 from .mineru_pdf_reader import MineruPDFReader
 from .paddleocr_pdf_reader import PaddleOCRPDFReader
+from .ocr_reader_base import read_dynamic_ocr_configs, read_static_api_key
 
 
 class DynamicPDFReader(LazyLLMReaderBase):
@@ -120,8 +121,8 @@ class DynamicPDFReader(LazyLLMReaderBase):
 
     def _resolve_options(self, extra_info: dict | None) -> tuple:
         info = {}
-        dynamic_cfg = lazyllm.globals.config.get('dynamic_ocr_configs')
-        if isinstance(dynamic_cfg, dict):
+        dynamic_cfg = read_dynamic_ocr_configs()
+        if dynamic_cfg:
             info.update({k: v for k, v in dynamic_cfg.items() if v is not None})
         if extra_info:
             info.update({k: v for k, v in extra_info.items() if v is not None})
@@ -132,9 +133,9 @@ class DynamicPDFReader(LazyLLMReaderBase):
         mineru_key = info.get('mineru_api_key')
         paddle_key = info.get('paddle_api_key')
         if mineru_key is None:
-            mineru_key = lazyllm.globals.config.get('mineru_api_key')
+            mineru_key = read_static_api_key('mineru_api_key')
         if paddle_key is None:
-            paddle_key = lazyllm.globals.config.get('paddle_api_key')
+            paddle_key = read_static_api_key('paddle_api_key')
         ocr_dynamic = self._coerce_bool(info.get('ocr_dynamic'))
         if ocr_dynamic is None:
             ocr_dynamic = self._ocr_dynamic

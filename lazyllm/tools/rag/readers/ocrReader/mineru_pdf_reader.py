@@ -26,7 +26,12 @@ from .ocr_ir import (
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock, ListBlock,
 )
-from .ocr_reader_base import _OcrReaderBase, is_mineru_official_online_url
+from .ocr_reader_base import (
+    _OcrReaderBase,
+    is_mineru_official_online_url,
+    read_dynamic_ocr_configs,
+    read_static_api_key,
+)
 
 lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='The API key for Mineru')
 _IMAGE_REF_PATTERN = re.compile(
@@ -104,12 +109,12 @@ class MineruPDFReader(_OcrReaderBase):
         explicit_key = info.get('mineru_api_key')
         if explicit_key:
             return explicit_key
-        dynamic_cfg = lazyllm.globals.config.get('dynamic_ocr_configs')
-        if isinstance(dynamic_cfg, dict):
+        dynamic_cfg = read_dynamic_ocr_configs()
+        if dynamic_cfg:
             dynamic_key = dynamic_cfg.get('mineru_api_key')
             if dynamic_key:
                 return dynamic_key
-        dynamic_key = lazyllm.globals.config.get('mineru_api_key')
+        dynamic_key = read_static_api_key('mineru_api_key')
         if dynamic_key:
             return dynamic_key
         # Fallback to CredentialMixin-managed static/dynamic token when no explicit key is injected.

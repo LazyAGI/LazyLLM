@@ -44,6 +44,20 @@ def is_paddle_official_online_url(url: Optional[str]) -> bool:
     return host.endswith(PADDLE_OFFICIAL_ONLINE_HOST_SUFFIX) or PADDLE_OFFICIAL_ONLINE_HOST_SUFFIX in host
 
 
+def read_dynamic_ocr_configs() -> Optional[Dict]:
+    try:
+        cfg = lazyllm_globals.config['dynamic_ocr_configs']
+    except Exception:
+        return None
+    return cfg if isinstance(cfg, dict) else None
+
+
+def read_static_api_key(key: str) -> Optional[str]:
+    import lazyllm
+    val = lazyllm.config[key]
+    return val if val else None
+
+
 class _Adapter:
     def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
         '''Adapt raw JSON response to intermediate block representation.
