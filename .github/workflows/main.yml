@@ -193,6 +193,7 @@ jobs:
       - name: Install package in editable mode
         run: |
           set -e
+          python .github/scripts/check_stale_editable.py
           pip install -e .
 
       - name: RunTests
