@@ -887,7 +887,7 @@ jobs:
       - name: Download test dataset
         run: |
           set -euo pipefail
-          DATA_DIR="$GITHUB_WORKSPACE/.ci_data"
+          DATA_DIR="$GITHUB_WORKSPACE/ci_data"
           rm -rf "$DATA_DIR"
           export GIT_TERMINAL_PROMPT=0
           git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
