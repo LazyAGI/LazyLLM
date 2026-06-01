@@ -647,7 +647,7 @@ Args:
     sort_by (str): 排序字段，默认 "relevance"。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式结果，extra 可含 authors、published。
+    List[dict]: 统一格式结果，extra 可含 authors、published。
 ''')
 
 add_english_doc('ArxivSearch.search', '''
@@ -659,7 +659,7 @@ Args:
     sort_by (str): Sort field, default "relevance".
 
 Returns:
-    List[Dict[str, Any]]: Results in unified format; extra may include authors, published.
+    List[dict]: Results in unified format; extra may include authors, published.
 ''')
 
 add_chinese_doc('ArxivSearch.get_content', '''
@@ -712,7 +712,7 @@ Args:
     limit (int): 返回条数，默认 10，最大 500。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。extra 中包含 pageid，可用于 get_content 获取词条全文。
+    List[dict]: 统一格式的搜索结果列表。extra 中包含 pageid，可用于 get_content 获取词条全文。
 ''')
 
 add_english_doc('WikipediaSearch.search', '''
@@ -723,7 +723,7 @@ Args:
     limit (int): Number of results, default 10, max 500.
 
 Returns:
-    List[Dict[str, Any]]: Search results in the unified format. extra contains pageid for get_content.
+    List[dict]: Search results in the unified format. extra contains pageid for get_content.
 ''')
 
 add_example('WikipediaSearch.search', '''
