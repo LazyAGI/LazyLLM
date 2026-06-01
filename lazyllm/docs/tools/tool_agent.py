@@ -2160,25 +2160,25 @@ add_toolsmgr_example('ToolGroup', '''\
 >>> from lazyllm import init_session, locals as lazyllm_locals
 >>>
 >>> def search_web(query: str) -> str:
-...     """Search the web.
+...     \"\"\"Search the web.
 ...
 ...     Args:
 ...         query (str): Search query.
 ...
 ...     Returns:
 ...         str: Search results.
-...     """
+...     \"\"\"
 ...     return f"web results for {query}"
 ...
 >>> def search_news(query: str) -> str:
-...     """Search news articles.
+...     \"\"\"Search news articles.
 ...
 ...     Args:
 ...         query (str): News search query.
 ...
 ...     Returns:
 ...         str: News results.
-...     """
+...     \"\"\"
 ...     return f"news for {query}"
 ...
 >>> # Lazy mode (default): only gateway tool is visible initially
@@ -2207,7 +2207,7 @@ Activated tool group "search". Available tools: search_web, search_news
 >>>
 >>> # Multi-level nesting
 >>> def calc_add(a: str, b: str) -> str:
-...     """Add two numbers.
+...     \"\"\"Add two numbers.
 ...
 ...     Args:
 ...         a (str): First number.
@@ -2215,7 +2215,7 @@ Activated tool group "search". Available tools: search_web, search_news
 ...
 ...     Returns:
 ...         str: Sum.
-...     """
+...     \"\"\"
 ...     return str(int(a) + int(b))
 ...
 >>> tm3 = ToolManager([
