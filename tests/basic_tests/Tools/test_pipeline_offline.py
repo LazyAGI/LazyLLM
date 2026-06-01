@@ -62,11 +62,12 @@ class TestF1bDeterministicDedup(unittest.TestCase):
 
     def test_same_path_line_category_keeps_highest_priority(self):
         from lazyllm.tools.git.review.rounds import _deterministic_dedup
+        problem = 'null pointer dereference when accessing foo.bar'
         issues = [
             {'path': 'x.py', 'line': 5, 'bug_category': 'logic', 'severity': 'normal',
-             'problem': 'r1 issue', 'source': 'r1'},
+             'problem': problem, 'source': 'r1'},
             {'path': 'x.py', 'line': 5, 'bug_category': 'logic', 'severity': 'normal',
-             'problem': 'r3 issue', 'source': 'r3'},
+             'problem': problem + ' in handler', 'source': 'r3'},
         ]
         result = _deterministic_dedup(issues)
         self.assertEqual(len(result), 1)

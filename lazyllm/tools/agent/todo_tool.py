@@ -13,19 +13,15 @@ _TODO_HEADER = (
 @register('builtin_tools', execute_in_sandbox=False)
 def todo_write(todos: List[Dict], merge: bool = False) -> str:
     '''Write or update the todo list for the current agent session.
-Use this tool to create a plan at the start of a task, and update progress as you work.
 
-Args:
-todos (List[Dict]): List of todo items to write or update. Each dict must contain:
-    id (str): Unique identifier for the todo item (e.g. "1", "setup-db").
-    content (str): Description of the task.
-    status (str): Current status, must be one of: pending, in_progress, completed, cancelled.
-    When merge=True, only include items you want to create or update; others are unchanged.
-merge (bool): If False (default), replace the entire todo list with the provided items.
-    If True, merge into the existing list: update items with matching id, add new ones.
+    Use this tool to create a plan at the start of a task, and update progress as you work.
 
-Returns:
-str: Confirmation message with the current state of the todo list.
+    Args:
+        todos (List[Dict]): Todo items to write or update; each dict needs id, content, status.
+        merge (bool): If False, replace the list; if True, merge by id. Defaults to False.
+
+    Returns:
+        str: Confirmation message with the current state of the todo list.
 '''
     for item in todos:
         if not all(k in item for k in ('id', 'content', 'status')):
