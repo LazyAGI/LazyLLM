@@ -3385,7 +3385,8 @@ add_chinese_doc('StreamCallHelper', '''\
 Args:
     impl (Callable): 需要流式执行的函数或可调用对象。
     interval (float): 轮询队列的时间间隔，单位为秒，默认为0.1。
-    sid (Optional[str]): 会话ID，用于隔离不同会话的队列数据，默认为None。
+    init_sid (Optional[bool]): 是否在后台任务提交前初始化 ``globals`` 和 ``locals`` 的会话ID，默认为True。
+        当调用对象内部已经显式初始化会话ID时，可设置为False，避免覆盖已有会话上下文。
 ''')
 
 add_english_doc('StreamCallHelper', '''\
@@ -3396,7 +3397,9 @@ Supports both a synchronous generator (``__call__``) and an async generator (``a
 Args:
     impl (Callable): The function or callable to execute in streaming mode.
     interval (float): Time interval (in seconds) to poll the internal queue. Defaults to 0.1.
-    sid (Optional[str]): Session ID used to isolate queue data across different sessions. Defaults to None.
+    init_sid (Optional[bool]): Whether to initialize the ``globals`` and ``locals`` session IDs before
+        submitting the background task. Defaults to True. Set it to False when the callable initializes
+        the session ID itself to avoid overwriting an existing session context.
 ''')
 
 add_chinese_doc('StreamCallHelper.astream', '''\

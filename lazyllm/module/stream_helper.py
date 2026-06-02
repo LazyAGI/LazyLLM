@@ -16,18 +16,16 @@ def _clean_chunk(text: str) -> str:
 
 
 class StreamCallHelper:
-    def __init__(self, impl: Callable, interval: float = 0.1, *, sid: Optional[str] = None):
+    def __init__(self, impl: Callable, interval: float = 0.1, *, init_sid: Optional[bool] = True):
         self._impl = impl
         self._sleep_interval = interval
-        self._sid = sid
+        self.init_sid = init_sid
         self.future = None
 
     def _submit(self, *args, **kwargs):
-        if self._sid:
-            lazyllm.globals._init_sid(sid=self._sid)
-            lazyllm.locals._init_sid(sid=self._sid)
-        else:
+        if self.init_sid:
             lazyllm.globals._init_sid()
+            lazyllm.locals._init_sid()
         lazyllm.FileSystemQueue().clear()
         self.future = _g_stream_thread_pool.submit(self._impl, *args, **kwargs)
         return self.future
