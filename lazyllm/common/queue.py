@@ -14,7 +14,7 @@ from filelock import SoftFileLock
 config.add(
     'default_fsqueue', str, 'sqlite', 'DEFAULT_FSQUEUE',
     options=['sqlite', 'redis'],
-    description='The default FileSystemQueue backend to use (sqlite/redis).',
+    description='The default FileSystemQueue backend to use.',
 )
 config.add('fsqredis_url', str, '', 'FSQREDIS_URL',
            description='The URL of the Redis server for the file system queue.')

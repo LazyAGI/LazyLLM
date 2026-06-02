@@ -53,7 +53,7 @@ def get_all_examples():   # Examples are not always exported, so process them in
 lazyllm.config.add(
     'language', str, 'ENGLISH', 'LANGUAGE',
     options=['ENGLISH', 'CHINESE'],
-    description='The language of the documentation (ENGLISH/CHINESE).',
+    description='The language for generated documentation. Case-insensitive.',
 )
 
 def _set_doc(obj, doc):

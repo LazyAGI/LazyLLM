@@ -135,7 +135,7 @@ def _detect_backend_gh_cli() -> Tuple[Optional[str], Optional[str]]:
 config.add(
     'git_backend', str, None, 'GIT_BACKEND',
     options=['github', 'gitlab', 'gitee', 'gitcode', 'local'],
-    description='Default git backend (github/gitlab/gitee/gitcode/local). None for auto-detect.',
+    description='Default git backend for repository operations. None means auto-detect from environment.',
 )
 
 class Git:

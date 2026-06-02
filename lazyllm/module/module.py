@@ -27,7 +27,7 @@ lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser(lazyllm.con
 lazyllm.config.add(
     'cache_strategy', str, 'memory', 'CACHE_STRATEGY',
     options=['memory', 'file', 'sqlite', 'redis'],
-    description='The default cache strategy to use (memory/file/sqlite/redis).',
+    description='The default cache strategy to use.',
 )
 lazyllm.config.add('cache_mode', str, 'RW', 'CACHE_MODE', options=['RW', 'RO', 'WO', 'NONE'],
                    description='The default cache mode to use(Read and Write, Read Only, Write Only, None).')
