@@ -43,10 +43,9 @@ def _trace_path(storage_dir: Path, trace_id: str, timestamp: Optional[str] = Non
     path = _find_trace_path(storage_dir, trace_id)
     if path is not None:
         return path
-    index = _read_archive_index(storage_dir)
-    indexed_entry = _archive_index_entry(index, trace_id)
-    if indexed_entry is not None:
-        archive_name, member_name = indexed_entry
+    archived_entry = _find_archived_trace_entry(storage_dir, trace_id)
+    if archived_entry is not None:
+        archive_name, member_name = archived_entry
         restored_path = storage_dir / f'{datetime.now().strftime(_TRACE_TIME_FORMAT)}_{trace_id}.jsonl'
         tmp_path = restored_path.with_suffix('.jsonl.tmp')
         try:
@@ -59,7 +58,7 @@ def _trace_path(storage_dir: Path, trace_id: str, timestamp: Optional[str] = Non
         except (KeyError, OSError, zipfile.BadZipFile) as exc:
             tmp_path.unlink(missing_ok=True)
             LOG.warning(
-                f'Failed to restore indexed local trace archive '
+                f'Failed to restore local trace archive '
                 f'{archive_name}:{member_name}: {exc}'
             )
     timestamp = timestamp or datetime.now().strftime(_TRACE_TIME_FORMAT)
@@ -173,6 +172,55 @@ def _archive_index_entry(index: Dict[str, Any], trace_id: str) -> Optional[Tuple
     return None
 
 
+def _find_archived_trace_entry(storage_dir: Path, trace_id: str) -> Optional[Tuple[str, str]]:
+    indexed_entry = _archive_index_entry(_read_archive_index(storage_dir), trace_id)
+    if indexed_entry is not None:
+        archive_name, member_name = indexed_entry
+        try:
+            with zipfile.ZipFile(storage_dir / archive_name) as zip_file:
+                if member_name in zip_file.namelist():
+                    return indexed_entry
+        except (OSError, zipfile.BadZipFile) as exc:
+            LOG.warning(
+                f'Failed to inspect indexed local trace archive '
+                f'{archive_name}:{member_name}: {exc}'
+            )
+
+    archive_paths = [
+        (timestamp, path)
+        for path in storage_dir.glob('*.zip')
+        if (timestamp := _parse_prefix_time(path)) is not None
+    ]
+    for _, archive_path in sorted(archive_paths, key=lambda item: item[0], reverse=True):
+        try:
+            with zipfile.ZipFile(archive_path) as zip_file:
+                matched_names = sorted(
+                    (
+                        name for name in zip_file.namelist()
+                        if name.endswith(f'_{trace_id}.jsonl')
+                    ),
+                    reverse=True,
+                )
+            if not matched_names:
+                continue
+            if len(matched_names) > 1:
+                LOG.warning(
+                    f'Found multiple archived local trace files for trace_id={trace_id!r} '
+                    f'in {archive_path.name}: {matched_names}'
+                )
+            name = matched_names[0]
+            _update_archive_index(
+                storage_dir,
+                lambda index, archive_path=archive_path, name=name: index.update({
+                    trace_id: {'archive': archive_path.name, 'member': name},
+                }),
+            )
+            return archive_path.name, name
+        except (OSError, zipfile.BadZipFile) as exc:
+            LOG.warning(f'Failed to inspect local trace archive {archive_path.name}: {exc}')
+    return None
+
+
 def _write_archive_zip(
     storage_dir: Path,
     tmp_path: Path,
@@ -233,6 +281,8 @@ def _archive_old_jsonl(
                             trace_id: {'archive': archive_path.name, 'member': path.name},
                         }),
                     )
+            except ConsumeBackendError as exc:
+                LOG.warning(f'Skipping deletion for archived trace file {path.name} due to lock timeout: {exc}')
             except OSError as exc:
                 LOG.warning(f'Failed to delete archived trace file {path.name}: {exc}')
     except Exception:
@@ -422,9 +472,9 @@ def _read_trace_file(
 
 
 def _read_archived_trace_file(storage_dir: Path, trace_id: str) -> tuple[str, List[str]]:
-    indexed_entry = _archive_index_entry(_read_archive_index(storage_dir), trace_id)
-    if indexed_entry is not None:
-        archive_name, member_name = indexed_entry
+    archived_entry = _find_archived_trace_entry(storage_dir, trace_id)
+    if archived_entry is not None:
+        archive_name, member_name = archived_entry
         try:
             with zipfile.ZipFile(storage_dir / archive_name) as zip_file:
                 with zip_file.open(member_name) as file_obj:
@@ -432,44 +482,9 @@ def _read_archived_trace_file(storage_dir: Path, trace_id: str) -> tuple[str, Li
             return f'{archive_name}:{member_name}', lines
         except (KeyError, OSError, zipfile.BadZipFile) as exc:
             LOG.warning(
-                f'Failed to read indexed local trace archive '
+                f'Failed to read local trace archive '
                 f'{archive_name}:{member_name}: {exc}'
             )
-
-    archive_paths = [
-        (timestamp, path)
-        for path in storage_dir.glob('*.zip')
-        if (timestamp := _parse_prefix_time(path)) is not None
-    ]
-    for _, archive_path in sorted(archive_paths, key=lambda item: item[0], reverse=True):
-        try:
-            with zipfile.ZipFile(archive_path) as zip_file:
-                matched_names = sorted(
-                    (
-                        name for name in zip_file.namelist()
-                        if name.endswith(f'_{trace_id}.jsonl')
-                    ),
-                    reverse=True,
-                )
-                if not matched_names:
-                    continue
-                if len(matched_names) > 1:
-                    LOG.warning(
-                        f'Found multiple archived local trace files for trace_id={trace_id!r} '
-                        f'in {archive_path.name}: {matched_names}'
-                    )
-                name = matched_names[0]
-                with zip_file.open(name) as file_obj:
-                    lines = [line.decode('utf-8') for line in file_obj.readlines()]
-                _update_archive_index(
-                    storage_dir,
-                    lambda index, archive_path=archive_path, name=name: index.update({
-                        trace_id: {'archive': archive_path.name, 'member': name},
-                    }),
-                )
-                return f'{archive_path.name}:{name}', lines
-        except (FileNotFoundError, zipfile.BadZipFile) as exc:
-            LOG.warning(f'Failed to read local trace archive {archive_path.name}: {exc}')
 
     LOG.warning(f'trace_id does not exist or has been cleaned: {trace_id}')
     raise TraceNotFound(trace_id)

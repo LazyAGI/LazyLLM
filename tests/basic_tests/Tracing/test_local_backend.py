@@ -188,6 +188,7 @@ def test_local_backend_restores_archived_trace_before_late_append(tmp_path):
     index_path = tmp_path / '.archive_index.json'
     assert not list(tmp_path.glob(f'*_{trace_id}.jsonl'))
     assert trace_id in json.loads(index_path.read_text(encoding='utf-8'))
+    index_path.unlink()
 
     with _tracer_with_exporter(tmp_path) as tracer:
         parent_context = opentelemetry.trace.set_span_in_context(
