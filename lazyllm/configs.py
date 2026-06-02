@@ -194,13 +194,11 @@ class Config(metaclass=_ConfigMeta):
         if post_action is not None:
             post_action(self._impl.get(name))
 
+    def _normalize_name(self, n: str):
+        return (n.decode('utf-8') if isinstance(n, bytes) else n).lower().removeprefix(f'{self._prefix.lower()}_')
+
     def __setitem__(self, name: str, value):
-        '''Set a config value at runtime, triggering alias resolution, options validation,
-        and post_action.
-        '''
-        if isinstance(name, bytes): name = name.decode('utf-8')
-        name = name.lower()
-        if name.startswith(f'{self._prefix.lower()}_'): name = name[len(self._prefix) + 1:]
+        name = self._normalize_name(name)
         if name not in self._impl:
             raise KeyError(
                 f'Unknown config key: "{name}". '
@@ -215,9 +213,7 @@ class Config(metaclass=_ConfigMeta):
         self._fire_post_action(name)
 
     def __getitem__(self, name):
-        if isinstance(name, bytes): name = name.decode('utf-8')
-        name = name.lower()
-        if name.startswith(f'{self._prefix.lower()}_'): name = name[len(self._prefix) + 1:]
+        name = self._normalize_name(name)
         try:
             return self._impl[name]
         except KeyError:
