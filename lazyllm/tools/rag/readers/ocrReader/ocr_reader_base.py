@@ -17,7 +17,7 @@ from .ocr_postprocessor import l1_normalize, l2_associate
 
 MINERU_OFFICIAL_ONLINE_HOST = 'mineru.net'
 PADDLE_OFFICIAL_ONLINE_HOST_SUFFIX = 'aistudio-app.com'
-PADDLE_OFFICIAL_ONLINE_URL = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing'
+PADDLE_OFFICIAL_ONLINE_URL = 'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs'
 
 
 def _parse_url_host(url: Optional[str]) -> str:
