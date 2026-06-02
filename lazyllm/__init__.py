@@ -22,14 +22,9 @@ from .prompt_templates import ActorPrompt, DataPrompt
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, SkillManager,
-<<<<<<< cst/dynamic_reader
                         FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                         inject_ocr_config,
                         LLMParser)
-=======
-                        FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent,
-                        SentenceSplitter, LLMParser)
->>>>>>> main
     from .tracing import (TracingSetupError, LazyTraceContext, get_trace_context, set_trace_context,
                           enable_trace)
 from .patch import patch_os_env
@@ -98,11 +93,8 @@ __all__ = [
     'OnlineMultiModalModule',
     'AutoModel',
     'inject_model_config',
-<<<<<<< cst/dynamic_reader
     'inject_ocr_config',
-=======
     'StreamCallHelper',
->>>>>>> main
 
     # hook
     'LazyLLMHook',
