@@ -8,6 +8,8 @@ from lazyllm.tools.fs.supplier.notion import (
     _normalize_notion_id,
     _parse_notion_browser_url,
 )
+from lazyllm.tools.fs.base import LinkDocumentFSBase
+from lazyllm.tools.agent.toolsManager import ToolManager
 
 
 PAGE_RAW = '0123456789abcdef0123456789abcdef'
@@ -16,6 +18,8 @@ CHILD_RAW = 'fedcba9876543210fedcba9876543210'
 CHILD_ID = 'fedcba98-7654-3210-fedc-ba9876543210'
 DB_RAW = '11111111222233334444555555555555'
 DB_ID = '11111111-2222-3333-4444-555555555555'
+BLOCK_RAW = 'aaaaaaaaaaaabbbbccccdddddddddddd'
+BLOCK_ID = 'aaaaaaaa-aaaa-bbbb-cccc-dddddddddddd'
 
 
 class TestParseNotionBrowserUrl(unittest.TestCase):
@@ -70,6 +74,12 @@ class TestFSRouterParseNotion(unittest.TestCase):
         self.assertEqual(space_id, 'dynamic')
         self.assertEqual(real_path, f'/~page/{PAGE_RAW}')
 
+    def test_link_path_helper_round_trip(self):
+        url = f'https://www.notion.so/Project-Plan-{PAGE_RAW}?pvs=4'
+        path = LinkDocumentFSBase.to_link_path(url)
+        self.assertTrue(LinkDocumentFSBase.is_link_path(path))
+        self.assertEqual(LinkDocumentFSBase.decode_link_path(path), url)
+
 
 class TestNotionDynamicAuth(unittest.TestCase):
 
@@ -81,6 +91,19 @@ class TestNotionDynamicAuth(unittest.TestCase):
         with dynamic_fs_config({'notion': 'secret-token'}):
             headers = fs.inject_auth_header()
         self.assertEqual(headers['Authorization'], 'Bearer secret-token')
+
+
+class TestNotionToolRegistration(unittest.TestCase):
+
+    def test_document_flow_tools_are_registered(self):
+        fs = NotionFS(dynamic_auth=True)
+        manager = ToolManager([(fs, lambda _instance: 'secret-token')])
+        names = {item['function']['name'] for item in manager.tools_description}
+
+        self.assertIn('NotionFS_resolve_link', names)
+        self.assertIn('NotionFS_read_with_references', names)
+        self.assertIn('NotionFS_get_doc_blocks', names)
+        self.assertNotIn('NotionFS_copy', names)
 
 
 class TestNotionMarkdownFetch(unittest.TestCase):
@@ -139,6 +162,7 @@ class TestNotionMarkdownFetch(unittest.TestCase):
 
         fs._retrieve_page = retrieve_page
         fs._list_children_raw = list_children
+        fs._retrieve_page_markdown = lambda _page_id: None
         return fs
 
     def test_fetch_bare_link_as_markdown(self):
@@ -157,6 +181,36 @@ class TestNotionMarkdownFetch(unittest.TestCase):
         child = [e for e in entries if e.get('block_type') == 'child_page'][0]
         self.assertEqual(child['notion_path'], f'notion:/~page/{CHILD_ID}')
         self.assertEqual(child['title'], 'Child Notes')
+
+    def test_include_references_adds_footer(self):
+        fs = self._make_fs()
+
+        def list_children(block_id):
+            if block_id == PAGE_ID:
+                return [{
+                    'id': BLOCK_ID,
+                    'type': 'paragraph',
+                    'paragraph': {
+                        'rich_text': [
+                            {
+                                'plain_text': 'linked',
+                                'href': f'https://www.notion.so/Child-{CHILD_RAW}',
+                            },
+                            {
+                                'type': 'mention',
+                                'plain_text': 'Child Notes',
+                                'mention': {'type': 'page', 'page': {'id': CHILD_ID}},
+                            },
+                        ],
+                    },
+                }]
+            return []
+
+        fs._list_children_raw = list_children
+        text = fs.read_bytes(f'/~page/{PAGE_RAW}', include_references=True).decode('utf-8')
+        self.assertIn('--- lazyllm-notion-references ---', text)
+        self.assertIn(f'https://www.notion.so/Child-{CHILD_RAW}', text)
+        self.assertIn(f'notion:/~page/{CHILD_ID}', text)
 
 
 class TestNotionDatabaseMarkdown(unittest.TestCase):
@@ -177,11 +231,123 @@ class TestNotionDatabaseMarkdown(unittest.TestCase):
             },
         }]
         fs._list_children_raw = lambda _block_id: []
+        fs._retrieve_page_markdown = lambda _page_id: None
         text = fs.read_bytes(f'/~database/{DB_RAW}').decode('utf-8')
         self.assertIn('# Roadmap DB', text)
         self.assertIn('## Q2 Plan', text)
         linked = fs.fetch_url(f'https://www.notion.so/Roadmap-{DB_RAW}').decode('utf-8')
         self.assertIn('# Roadmap DB', linked)
+
+
+class TestNotionWriteAndBlocks(unittest.TestCase):
+
+    def test_replace_page_markdown_uses_markdown_endpoint(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        fs._patch = lambda url, **kwargs: calls.append((url, kwargs)) or {'ok': True}
+        fs.replace_page_markdown(PAGE_RAW, '# Hello')
+
+        self.assertEqual(calls[0][0], f'https://api.notion.com/v1/pages/{PAGE_ID}/markdown')
+        self.assertEqual(calls[0][1]['headers']['Notion-Version'], '2026-03-11')
+        self.assertEqual(calls[0][1]['json']['type'], 'replace_content')
+        self.assertEqual(calls[0][1]['json']['replace_content']['new_str'], '# Hello')
+
+    def test_upload_markdown_replaces_page_markdown(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        fs.replace_page_markdown = lambda page_id, markdown: calls.append((page_id, markdown))
+        fs._upload_data(f'/~page/{PAGE_RAW}', b'# New body', content_type='markdown')
+        self.assertEqual(calls, [(PAGE_ID, '# New body')])
+
+    def test_upload_text_appends_all_chunks(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        fs._patch = lambda url, **kwargs: calls.append((url, kwargs)) or {}
+        fs._upload_data(f'/~block/{BLOCK_RAW}', ('a' * 2500).encode('utf-8'))
+
+        self.assertEqual(calls[0][0], f'https://api.notion.com/v1/blocks/{BLOCK_ID}/children')
+        children = calls[0][1]['json']['children']
+        self.assertEqual(len(children), 2)
+        self.assertEqual(len(children[0]['paragraph']['rich_text'][0]['text']['content']), 2000)
+        self.assertEqual(len(children[1]['paragraph']['rich_text'][0]['text']['content']), 500)
+
+    def test_move_posts_move_and_renames(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        fs._post = lambda url, **kwargs: calls.append(('post', url, kwargs)) or {}
+        fs.update_page_title = lambda page_id, title: calls.append(('rename', page_id, title))
+
+        fs.move(f'/~page/{PAGE_RAW}', f'/~page/{CHILD_RAW}/New Title')
+
+        self.assertEqual(calls[0][1], f'https://api.notion.com/v1/pages/{PAGE_ID}/move')
+        self.assertEqual(calls[0][2]['json']['parent']['page_id'], CHILD_ID)
+        self.assertEqual(calls[0][2]['headers']['Notion-Version'], '2026-03-11')
+        self.assertEqual(calls[1], ('rename', PAGE_ID, 'New Title'))
+
+    def test_get_document_id_and_doc_blocks(self):
+        fs = NotionFS(token='secret-token')
+        fs._list_children_raw = lambda block_id: [{
+            'id': BLOCK_ID,
+            'type': 'paragraph',
+            'parent': {'type': 'page_id', 'page_id': PAGE_ID},
+            'paragraph': {'rich_text': [{'plain_text': 'Hello'}]},
+        }] if block_id == PAGE_ID else []
+
+        self.assertEqual(fs.get_document_id(f'/~page/{PAGE_RAW}'), PAGE_ID)
+        blocks = fs.get_doc_blocks(f'/~page/{PAGE_RAW}')
+        self.assertEqual(blocks[0]['block_id'], BLOCK_ID)
+        self.assertEqual(blocks[0]['block_type'], 'paragraph')
+        self.assertEqual(blocks[0]['plain_text'], 'Hello')
+        self.assertEqual(blocks[0]['parent_id'], PAGE_ID)
+
+    def test_update_doc_block_text_patches_rich_text(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        fs._retrieve_block = lambda block_id: {
+            'id': block_id,
+            'type': 'paragraph',
+            'paragraph': {'rich_text': [{'plain_text': 'Old'}]},
+        }
+        fs._patch = lambda url, **kwargs: calls.append((url, kwargs)) or {}
+        fs.update_doc_block_text(f'/~page/{PAGE_RAW}', BLOCK_RAW, 'New text')
+
+        self.assertEqual(calls[0][0], f'https://api.notion.com/v1/blocks/{BLOCK_ID}')
+        rich = calls[0][1]['json']['paragraph']['rich_text']
+        self.assertEqual(rich[0]['text']['content'], 'New text')
+
+    def test_resolve_notion_ref(self):
+        fs = NotionFS(token='secret-token')
+        fs._retrieve_page = lambda _page_id: {
+            'id': PAGE_ID,
+            'object': 'page',
+            'properties': {'Name': {'type': 'title', 'title': [{'plain_text': 'Project Plan'}]}},
+        }
+        result = fs.resolve_notion_ref(f'https://www.notion.so/Project-{PAGE_RAW}')
+        self.assertEqual(result['object_id'], PAGE_ID)
+        self.assertEqual(result['object_type'], 'page')
+        self.assertEqual(result['title'], 'Project Plan')
+
+    def test_resolve_link_returns_standard_fields(self):
+        fs = NotionFS(token='secret-token')
+        fs._retrieve_page = lambda _page_id: {
+            'id': PAGE_ID,
+            'object': 'page',
+            'properties': {'Name': {'type': 'title', 'title': [{'plain_text': 'Project Plan'}]}},
+        }
+        result = fs.resolve_link(f'https://www.notion.so/Project-{PAGE_RAW}')
+        self.assertEqual(result['provider'], 'notion')
+        self.assertEqual(result['object_id'], PAGE_ID)
+        self.assertEqual(result['object_type'], 'page')
+        self.assertEqual(result['title'], 'Project Plan')
+
+    def test_read_with_references_uses_standard_document_flow(self):
+        fs = NotionFS(token='secret-token')
+        fs.read_bytes = lambda path, include_references=False: (
+            f'{path}|refs={include_references}'.encode('utf-8')
+        )
+
+        self.assertEqual(fs.read_with_references('/~page/' + PAGE_RAW),
+                         '/~page/' + PAGE_RAW + '|refs=True')
 
 
 if __name__ == '__main__':

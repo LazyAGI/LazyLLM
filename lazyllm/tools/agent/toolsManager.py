@@ -265,7 +265,7 @@ class MethodModuleTool(ModuleTool):
         bound = getattr(instance, method_name)
 
         def _apply(**kwargs): return bound(**kwargs)
-        _apply.__doc__ = bound.__doc__
+        _apply.__doc__ = bound.__doc__ or self._find_inherited_docstring(instance, method_name)
         _apply.__name__ = method_name
 
         super().__init__(execute_in_sandbox=False, apply_func=_apply, schema_func=bound)
@@ -273,6 +273,17 @@ class MethodModuleTool(ModuleTool):
         self._method_name = method_name
         self._name = instance.__class__.__name__ if method_name == '__call__' \
             else f'{instance.__class__.__name__}_{method_name}'
+
+    @staticmethod
+    def _find_inherited_docstring(instance: Any, method_name: str) -> Optional[str]:
+        for cls in type(instance).__mro__[1:]:
+            member = cls.__dict__.get(method_name)
+            if member is not None and getattr(member, '__doc__', None):
+                return member.__doc__
+        return None
+
+    def _load_function_schema(self, func: Callable) -> Type[BaseModel]:
+        return super()._load_function_schema(getattr(self._instance, self._method_name))
 
 
 def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):

@@ -9,6 +9,7 @@ from lazyllm.tools.fs.supplier.feishu import (
     FeishuWikiFS,
 )
 from lazyllm.tools.fs.client import _FSRouter, _feishu_needs_wiki, _FEISHU_WIKI_PATH_PREFIXES
+from lazyllm.tools.agent.toolsManager import ToolManager
 
 
 class TestParseFeishuBrowserUrl(unittest.TestCase):
@@ -247,6 +248,38 @@ class TestFSRouterParse(unittest.TestCase):
         self.assertEqual(protocol, 'feishu')
         self.assertIsNone(space_id)
         self.assertEqual(real_path, '/folder/file.txt')
+
+
+class TestFeishuToolRegistration(unittest.TestCase):
+
+    def test_document_flow_tools_are_registered(self):
+        fs = FeishuFS(space_id='dynamic', dynamic_auth=True)
+        manager = ToolManager([(fs, lambda _instance: 'secret-token')])
+        names = {item['function']['name'] for item in manager.tools_description}
+
+        self.assertIn('FeishuWikiFS_resolve_link', names)
+        self.assertIn('FeishuWikiFS_read_with_references', names)
+        self.assertIn('FeishuWikiFS_get_doc_blocks', names)
+        self.assertIn('FeishuWikiFS_copy', names)
+
+    def test_resolve_link_returns_standard_fields(self):
+        fs = FeishuFS(space_id='dynamic', dynamic_auth=True)
+        fs._get_node = MagicMock(return_value={
+            'node_token': 'node-1',
+            'space_id': 'space-1',
+            'title': 'Project Plan',
+            'obj_type': 'docx',
+            'obj_token': 'doc-1',
+            'has_child': True,
+        })
+
+        result = fs.resolve_link('/~node/node-1')
+
+        self.assertEqual(result['provider'], 'feishu')
+        self.assertEqual(result['object_id'], 'node-1')
+        self.assertEqual(result['object_type'], 'docx')
+        self.assertEqual(result['title'], 'Project Plan')
+        self.assertTrue(result['has_child'])
 
 
 class TestFeishuNeedsWiki(unittest.TestCase):

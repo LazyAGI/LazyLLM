@@ -3,8 +3,8 @@ import re
 import threading
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
-from urllib.parse import quote
 from lazyllm import globals
+from lazyllm.tools.fs.base import LinkDocumentFSBase
 
 _PROTOCOL_RE = re.compile(r'^([a-zA-Z][a-zA-Z0-9+\-.]*)(@[^:/]+)?:/(.*)$')
 _FEISHU_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
@@ -43,9 +43,9 @@ class _FSRouter:
 
     def _parse(self, path: str):
         if _FEISHU_BARE_URL_RE.match(path):
-            return 'feishu', 'dynamic', '/~link/' + quote(path, safe='')
+            return 'feishu', 'dynamic', LinkDocumentFSBase.to_link_path(path)
         if _NOTION_BARE_URL_RE.match(path):
-            return 'notion', 'dynamic', '/~link/' + quote(path, safe='')
+            return 'notion', 'dynamic', LinkDocumentFSBase.to_link_path(path)
         m = _PROTOCOL_RE.match(path)
         if not m:
             return 'file', None, path
