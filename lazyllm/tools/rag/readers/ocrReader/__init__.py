@@ -6,7 +6,6 @@ from .ocr_ir import (
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock, ListBlock,
 )
-from .ocr_reader_base import is_mineru_official_online_url, is_paddle_official_online_url
 from .ocr_postprocessor import l1_normalize, l2_associate
 
 __all__ = [
@@ -16,7 +15,5 @@ __all__ = [
     'Block', 'BBox', 'PageRef', 'Cell', 'SectionPath',
     'HeadingBlock', 'ParagraphBlock', 'TableBlock', 'FormulaBlock',
     'FigureBlock', 'CodeBlock', 'ListBlock',
-    'is_mineru_official_online_url',
-    'is_paddle_official_online_url',
     'l1_normalize', 'l2_associate',
 ]

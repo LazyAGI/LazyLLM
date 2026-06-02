@@ -210,8 +210,8 @@ class TestPaddleOCRPDFReaderMock:
         assert len(image_nodes) == 1
         assert image_nodes[0].metadata['image_path'] is not None
 
-    def test_offline_rejected(self):
-        with pytest.raises(ValueError, match='only supports service_variant="online"'):
+    def test_service_variant_removed(self):
+        with pytest.raises(TypeError, match='service_variant'):
             PaddleOCRPDFReader(service_variant='offline')
 
     def test_split_doc_false(self):

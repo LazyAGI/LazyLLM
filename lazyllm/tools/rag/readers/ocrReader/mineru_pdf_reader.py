@@ -28,7 +28,7 @@ from .ocr_ir import (
 )
 from .ocr_reader_base import (
     _OcrReaderBase,
-    is_mineru_official_online_url,
+    _is_mineru_official_online_url,
     read_dynamic_ocr_configs,
     read_static_api_key,
 )
@@ -75,7 +75,7 @@ class MineruPDFReader(_OcrReaderBase):
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._patch_applied = patch_applied
-        self._offline_mode = not is_mineru_official_online_url(self._url)
+        self._offline_mode = not _is_mineru_official_online_url(self._url)
 
     @override
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True

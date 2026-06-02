@@ -22,7 +22,7 @@ from .ocr_ir import (
 from .ocr_reader_base import (
     _OcrReaderBase,
     PADDLE_OFFICIAL_ONLINE_URL,
-    is_paddle_official_online_url,
+    _is_paddle_official_online_url,
     read_dynamic_ocr_configs,
     read_static_api_key,
 )
@@ -53,7 +53,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                  auth_strategy: Optional[AuthStrategy] = None,
                  **kwargs):
         resolved_url = url
-        if is_paddle_official_online_url(url):
+        if _is_paddle_official_online_url(url):
             resolved_url = PADDLE_OFFICIAL_ONLINE_URL
         configured_api_key = api_key if api_key is not None else lazyllm.config['paddle_api_key']
         super().__init__(url=resolved_url,

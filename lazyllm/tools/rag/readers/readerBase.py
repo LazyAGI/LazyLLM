@@ -265,8 +265,13 @@ class _RichReader(LazyLLMReaderBase):
                 if kwargs.get('extra_info'):
                     n.global_metadata.update(kwargs['extra_info'])
         if self._split_doc:
-            image_nodes = [n for n in nodes if isinstance(n, ImageDocNode)]
-            text_nodes = [n for n in nodes if not isinstance(n, ImageDocNode)]
+            image_nodes = []
+            text_nodes = []
+            for node in nodes:
+                if isinstance(node, ImageDocNode):
+                    image_nodes.append(node)
+                else:
+                    text_nodes.append(node)
             gm = nodes[0].global_metadata if nodes else None
             result: List[DocNode] = []
             if text_nodes:

@@ -29,15 +29,14 @@ def _parse_url_host(url: Optional[str]) -> str:
     return (urlparse(raw).hostname or '').lower()
 
 
-def is_mineru_official_online_url(url: Optional[str]) -> bool:
-    '''True when MinerU should use the official mineru.net upload API (not local HTTP).'''
+def _is_mineru_official_online_url(url: Optional[str]) -> bool:
     host = _parse_url_host(url)
     if not host:
         return True
     return host == MINERU_OFFICIAL_ONLINE_HOST or host.endswith(f'.{MINERU_OFFICIAL_ONLINE_HOST}')
 
 
-def is_paddle_official_online_url(url: Optional[str]) -> bool:
+def _is_paddle_official_online_url(url: Optional[str]) -> bool:
     host = _parse_url_host(url)
     if not host:
         return True

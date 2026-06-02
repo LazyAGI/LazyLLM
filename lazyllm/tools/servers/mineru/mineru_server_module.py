@@ -820,18 +820,20 @@ class MineruServerBase:
             return 0
         target_dir.mkdir(parents=True, exist_ok=True)
         moved = 0
-        for pattern in ('*.jpg', '*.jpeg', '*.png'):
-            for img_file in source_dir.glob(pattern):
-                dest = target_dir / img_file.name
-                try:
-                    if dest.is_file() and dest.stat().st_size > 0:
-                        continue
-                    shutil.copy2(str(img_file), str(dest))
-                    moved += 1
-                except OSError as exc:
-                    LOG.warning(
-                        f'[MINERU] failed to publish offline image {img_file.name}: {exc}'
-                    )
+        image_suffixes = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif', '.tif', '.tiff'}
+        for img_file in source_dir.iterdir():
+            if not img_file.is_file() or img_file.suffix.lower() not in image_suffixes:
+                continue
+            dest = target_dir / img_file.name
+            try:
+                if dest.is_file() and dest.stat().st_size > 0:
+                    continue
+                shutil.copy2(str(img_file), str(dest))
+                moved += 1
+            except OSError as exc:
+                LOG.warning(
+                    f'[MINERU] failed to publish offline image {img_file.name}: {exc}'
+                )
         return moved
 
     @classmethod
