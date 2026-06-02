@@ -61,7 +61,7 @@ Args:
     **kwargs: 子类扩展参数。
 
 Returns:
-    list: detail=True 时为 dict 列表；detail=False 时为 name 列表。
+    List: detail=True 时为 dict 列表；detail=False 时为 name 列表。
 ''')
 _add_fs_english('LazyLLMFSBase.ls', '''\
 List directory entries at path. Must be implemented by subclass.
@@ -72,7 +72,7 @@ Args:
     **kwargs: Subclass-specific options.
 
 Returns:
-    list: List of dicts if detail=True else list of names.
+    List: List of dicts if detail=True else list of names.
 ''')
 
 _add_fs_chinese('LazyLLMFSBase.info', '''\
@@ -83,7 +83,7 @@ Args:
     **kwargs: 子类扩展参数。
 
 Returns:
-    dict: 至少包含 name, size, type（file/directory），可选 mtime 等。
+    Dict[str, Any]: 至少包含 name, size, type（file/directory），可选 mtime 等。
 ''')
 _add_fs_english('LazyLLMFSBase.info', '''\
 Get metadata for the path. Must be implemented by subclass.
@@ -93,7 +93,7 @@ Args:
     **kwargs: Subclass-specific options.
 
 Returns:
-    dict: At least name, size, type (file/directory); optional mtime etc.
+    Dict[str, Any]: At least name, size, type (file/directory); optional mtime etc.
 ''')
 
 _add_fs_chinese('LazyLLMFSBase.read', '''\
