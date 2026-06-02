@@ -931,11 +931,11 @@ jobs:
       - name: Compute pytest marker
         run: |
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            echo "PYTEST_MARKER=not skip_on_linux" >> "$GITHUB_ENV"
+            echo "PYTEST_MARKER=not skip_on_linux and not skip_on_cpp" >> "$GITHUB_ENV"
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            echo "PYTEST_MARKER=not skip_on_mac" >> "$GITHUB_ENV"
+            echo "PYTEST_MARKER=not skip_on_mac and not skip_on_cpp" >> "$GITHUB_ENV"
           else
-            echo "PYTEST_MARKER=not skip_on_win" >> "$GITHUB_ENV"
+            echo "PYTEST_MARKER=not skip_on_win and not skip_on_cpp" >> "$GITHUB_ENV"
           fi
 
       - name: Run basic tests
