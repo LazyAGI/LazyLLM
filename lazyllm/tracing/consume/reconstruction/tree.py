@@ -5,6 +5,7 @@ from typing import Dict, Iterable, List, Optional, Set
 from lazyllm.tracing.datamodel.raw import RawSpanRecord, RawTraceRecord
 from lazyllm.tracing.datamodel.structured import ExecutionStep, RawData, StructuredTrace, TraceMetadata
 from .extractors import extract_semantic
+from .extractors.utils import parse_jsonish
 
 
 _VALID_NODE_TYPES = frozenset({'flow', 'module', 'callable'})
@@ -53,7 +54,7 @@ def _build_step(span: RawSpanRecord) -> ExecutionStep:
             latency_ms,
         ),
         latency_ms=latency_ms,
-        raw_data=RawData(input=span.input, output=span.output),
+        raw_data=RawData(input=parse_jsonish(span.input), output=parse_jsonish(span.output)),
         semantic_data=extract_semantic(span),
         error_message=_error_message(span),
     )
@@ -136,7 +137,7 @@ def _virtual_root(
         start_time=start_time,
         end_time=_end_time_from_latency(start_time, latency_ms),
         latency_ms=latency_ms,
-        raw_data=RawData(input=trace.input, output=trace.output),
+        raw_data=RawData(input=parse_jsonish(trace.input), output=parse_jsonish(trace.output)),
         semantic_data=None,
         error_message=error_message,
         children=children,
