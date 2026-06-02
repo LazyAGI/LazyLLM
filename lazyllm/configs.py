@@ -2,7 +2,7 @@ import os
 from enum import Enum
 import json
 import threading
-from typing import List, Union, Optional
+from typing import Any, Callable, Dict, List, Union, Optional
 from contextlib import contextmanager
 from contextvars import ContextVar
 from asyncio import events
@@ -37,7 +37,9 @@ class _ConfigMeta(type):
         doc = (f'  - Description: {desc["description"]}, type: `{desc["type"].__name__}`, '
                'default: `{desc["default"]}`<br>\n')
         if (options := desc.get('options')):
-            doc += f'  - Options: {", ".join(options)}<br>\n'
+            doc += f'  - Options: {", ".join(str(o) for o in options)}<br>\n'
+        if (alias := desc.get('alias')):
+            doc += '  - Aliases: ' + ', '.join(f'{k} → {v}' for k, v in alias.items()) + '<br>\n'
         if (env := desc.get('env')):
             if isinstance(env, str):
                 doc += f'  - Environment Variable: {("LAZYLLM_" + env).upper()}<br>\n'
@@ -49,8 +51,11 @@ class _ConfigMeta(type):
 
     @staticmethod
     def add(name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
-            *, options: Optional[List] = None, description: Optional[str] = None):
-        update_params = dict(type=type, default=default, env=env, options=options, description=description)
+            *, options: Optional[List] = None, description: Optional[str] = None,
+            alias: Optional[Dict[str, Any]] = None,
+            post_action: Optional[Callable] = None):
+        update_params = dict(type=type, default=default, env=env, options=options, description=description,
+                             alias=alias, post_action=post_action)
         if name not in _ConfigMeta._registered_cfgs or _ConfigMeta._registered_cfgs[name] != update_params:
             _ConfigMeta._registered_cfgs[name] = update_params
             if not env: env = name.lower()
@@ -97,10 +102,12 @@ class Config(metaclass=_ConfigMeta):
             self._update_impl(name, cfg['type'], cfg['default'], cfg['env'])
 
     def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
-            *, options: Optional[List] = None, description: Optional[str] = None):
+            *, options: Optional[List] = None, description: Optional[str] = None,
+            alias: Optional[Dict[str, Any]] = None, post_action: Optional[Callable] = None):
         if (name := name.lower()) in Config.__dict__.keys():
             raise RuntimeError(f'{name} is attribute of Config, please change it!')
-        _ConfigMeta.add(name, type, default, env, options=options, description=description)
+        _ConfigMeta.add(name, type, default, env, options=options, description=description,
+                        alias=alias, post_action=post_action)
 
     def getenv(self, name, type, default=None):
         r = os.getenv(f'{self._prefix}_{name.upper()}', default)
@@ -122,9 +129,9 @@ class Config(metaclass=_ConfigMeta):
     @contextmanager
     def temp(self, name, value):
         old_value = self[name]
-        self._impl[name] = value
+        self[name] = value
         yield
-        self._impl[name] = old_value
+        self[name] = old_value
 
     def _update_impl(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None,
                      env: Union[str, dict, list] = None):
@@ -144,11 +151,69 @@ class Config(metaclass=_ConfigMeta):
             self._impl[name] = self.getenv(env, type, self._impl[name])
         if not isinstance(self._impl[name], type) and self._impl[name] is not None: raise TypeError(
             f'Invalid config type for {name}, type is {type}')
+        self._apply_alias_and_validate(name)
+        self._fire_post_action(name)
+
+    def _apply_alias_and_validate(self, name: str):
+        '''Resolve alias and validate options for the named config entry.'''
+        cfg_meta = _ConfigMeta._registered_cfgs.get(name, {})
+        raw_value = self._impl.get(name)
+
+        # Resolve alias (case-insensitive for strings)
+        alias = cfg_meta.get('alias')
+        if alias and isinstance(raw_value, str):
+            lower_val = raw_value.lower()
+            for ak, av in alias.items():
+                if ak.lower() == lower_val:
+                    self._impl[name] = av
+                    return  # alias resolved; skip options check on the original raw string
+
+        # options validation: None / '' are treated as "not configured" → revert to default
+        options = cfg_meta.get('options')
+        if options is not None:
+            current = self._impl.get(name)
+            if current is None or current == '':
+                self._impl[name] = cfg_meta.get('default')
+            else:
+                # case-insensitive comparison for string options
+                str_options = [str(o).lower() for o in options if isinstance(o, str)]
+                if isinstance(current, str) and str_options:
+                    if current.lower() not in str_options:
+                        raise ValueError(
+                            f'Invalid value {current!r} for config key {name!r}. '
+                            f'Allowed options: {options}')
+                elif current not in options:
+                    raise ValueError(
+                        f'Invalid value {current!r} for config key {name!r}. '
+                        f'Allowed options: {options}')
+
+    def _fire_post_action(self, name: str):
+        '''Call the registered post_action callback for the named config entry if set.'''
+        cfg_meta = _ConfigMeta._registered_cfgs.get(name, {})
+        post_action = cfg_meta.get('post_action')
+        if post_action is not None:
+            post_action(self._impl.get(name))
+
+    def _normalize_name(self, n: str):
+        return (n.decode('utf-8') if isinstance(n, bytes) else n).lower().removeprefix(f'{self._prefix.lower()}_')
+
+    def __setitem__(self, name: str, value):
+        name = self._normalize_name(name)
+        if name not in self._impl:
+            raise KeyError(
+                f'Unknown config key: "{name}". '
+                'Please register it via config.add(...) before access.'
+            )
+        cfg_meta = _ConfigMeta._registered_cfgs.get(name, {})
+        cfg_type = cfg_meta.get('type', type(value))
+        if not isinstance(value, cfg_type) and value is not None:
+            raise TypeError(f'Invalid config type for {name}, expected {cfg_type}')
+        self._impl[name] = value
+        self._apply_alias_and_validate(name)
+        self._fire_post_action(name)
 
     def __getitem__(self, name):
-        if isinstance(name, bytes): name = name.decode('utf-8')
-        name = name.lower()
-        if name.startswith(f'{self._prefix.lower()}_'): name = name[len(self._prefix) + 1:]
+        name = self._normalize_name(name)
         try:
             return self._impl[name]
         except KeyError:
@@ -210,14 +275,19 @@ class _NamespaceConfig(object):
     def _impl(self): return self._config._impl
 
     def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
-            *, options: Optional[List] = None, description: Optional[str] = None):
+            *, options: Optional[List] = None, description: Optional[str] = None,
+            alias: Optional[Dict[str, Any]] = None, post_action: Optional[Callable] = None):
         if (name := name.lower()) in Config.__dict__.keys() or name in _NamespaceConfig.__dict__.keys():
             raise RuntimeError(f'{name} is attribute of Config, please change it!')
-        _ConfigMeta.add(name, type, default, env, options=options, description=description)
+        _ConfigMeta.add(name, type, default, env, options=options, description=description,
+                        alias=alias, post_action=post_action)
         return self
 
     def __getitem__(self, __key):
         return self._config[__key]
+
+    def __setitem__(self, __key, value):
+        self._config[__key] = value
 
     def __getattr__(self, __key: str):
         try:

@@ -96,10 +96,12 @@ def test_parallel_tracing_propagates_context_across_threads(exporter):
 def test_loop_with_parallel_keeps_nested_parent_context(exporter):
     def increment(value):
         barrier(value)
+        time.sleep(0.02)
         return value + 1
 
     def keep_zero(value):
         barrier(value)
+        time.sleep(0.02)
         return 0
 
     with parallel(_concurrent=2) as branches:

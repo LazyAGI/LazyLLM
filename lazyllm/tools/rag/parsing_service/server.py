@@ -36,6 +36,7 @@ from ...sql import SqlManager
 
 lazyllm.config.add(
     'algo_register_policy', str, '', 'ALGO_REGISTER_POLICY',
+    options=['force', 'update', 'empty', 'other', 'none'],
     description=(
         'Algorithm registration policy when re-registering an existing algo. '
         'force=overwrite reader and node groups unconditionally; '
