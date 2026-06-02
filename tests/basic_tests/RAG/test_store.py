@@ -1161,11 +1161,33 @@ class TestHybridStore(unittest.TestCase):
         self.assertEqual(len(res), 0)
 
 
+def _segment_store_server_available(backend: str, init_kwargs: dict) -> bool:
+    try:
+        if backend == 'elasticsearch':
+            from lazyllm.thirdparty import elasticsearch
+            client = elasticsearch.Elasticsearch(
+                hosts=init_kwargs.get('uris', 'localhost:9201'), request_timeout=5)
+            return client.ping()
+        if backend == 'opensearch':
+            from lazyllm.thirdparty import opensearchpy
+            client_kwargs = dict(init_kwargs.get('client_kwargs') or {})
+            opts = {'hosts': init_kwargs.get('uris', 'localhost:9200'), 'request_timeout': 5}
+            if client_kwargs.get('user') and client_kwargs.get('password'):
+                opts['http_auth'] = (client_kwargs.pop('user'), client_kwargs.pop('password'))
+            opts['verify_certs'] = client_kwargs.pop('verify_certs', False)
+            opts.update(client_kwargs)
+            return opensearchpy.OpenSearch(**opts).ping()
+    except Exception:
+        return False
+    return False
+
+
 STORE_TEMPLATES = {
     'elasticsearch': {
         'segment_store_type': 'elasticsearch',
         'init_kwargs': {'uris': os.getenv('ELASTICSEARCH_HOST', 'localhost:9201')},
-        'is_skip': False, 'skip_reason': 'To test elasticsearch store, please set up a elasticsearch server'},
+        'is_skip': False,
+        'skip_reason': 'Elasticsearch server is not reachable; set ELASTICSEARCH_HOST or start a local instance'},
     'opensearch': {
         'segment_store_type': 'opensearch',
         'init_kwargs': {'uris': os.getenv('OPENSEARCH_HOST', 'localhost:9200'),
@@ -1173,7 +1195,8 @@ STORE_TEMPLATES = {
                             'user': os.getenv('OPENSEARCH_USER', 'admin'),
                             'password': os.getenv('OPENSEARCH_INITIAL_ADMIN_PASSWORD'),
                             'verify_certs': False}},
-        'is_skip': False, 'skip_reason': 'To test opensearch store, please set up a opensearch server'},
+        'is_skip': False,
+        'skip_reason': 'OpenSearch server is not reachable; set OPENSEARCH_HOST or start a local instance'},
 }
 
 GLOBAL_META_SCENARIOS = {
@@ -1216,6 +1239,8 @@ class TestSegmentStore:
         init_kwargs = env['init_kwargs']
         global_meta_desc = env['global_meta_desc']
         if env.get('skip'):
+            pytest.skip(env.get('skip_reason'))
+        if not _segment_store_server_available(backend, init_kwargs):
             pytest.skip(env.get('skip_reason'))
         store = make_store_instance(backend, init_kwargs, global_meta_desc)
         prefix = f'test_col_{backend}_{scenario}'
