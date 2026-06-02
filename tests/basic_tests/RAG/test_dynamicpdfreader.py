@@ -67,3 +67,18 @@ class TestDynamicPDFReader:
 
         assert ocr_type == 'mineru'
         assert ocr_url == 'http://extra-url'
+
+    def test_mineru_key_without_url_falls_back_to_official(self):
+        reader = DynamicPDFReader(ocr_type='mineru')
+        with patch(
+            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_dynamic_ocr_configs'
+        ) as mock_dynamic, patch(
+            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_static_api_key'
+        ) as mock_static:
+            mock_dynamic.return_value = None
+            mock_static.side_effect = lambda key: 'mineru-key' if key == 'mineru_api_key' else None
+
+            ocr_type, ocr_url, _, _, _ = reader._resolve_options({})
+
+        assert ocr_type == 'mineru'
+        assert ocr_url == 'https://mineru.net'

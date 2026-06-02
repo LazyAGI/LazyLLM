@@ -8,6 +8,8 @@ from .mineru_pdf_reader import MineruPDFReader
 from .paddleocr_pdf_reader import PaddleOCRPDFReader
 from .ocr_reader_base import read_dynamic_ocr_configs, read_static_api_key
 
+MINERU_ONLINE_FALLBACK_URL = 'https://mineru.net'
+
 
 class DynamicPDFReader(LazyLLMReaderBase):
 
@@ -141,6 +143,8 @@ class DynamicPDFReader(LazyLLMReaderBase):
             ocr_dynamic = self._ocr_dynamic
         if ocr_dynamic:
             ocr_type = self._resolve_dynamic_type(ocr_type, mineru_key, paddle_key)
+        if ocr_type == 'mineru' and not self._has_value(ocr_url) and self._has_value(mineru_key):
+            ocr_url = MINERU_ONLINE_FALLBACK_URL
         return ocr_type, ocr_url, mineru_upload_mode, mineru_key, paddle_key
 
     def _load_data(self, file, extra_info=None, use_cache: bool = True, **kwargs):
