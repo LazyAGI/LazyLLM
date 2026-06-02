@@ -1286,7 +1286,7 @@ Args:
     with_descendants (bool): Whether to include all descendant blocks; default True.
 
 Returns:
-    list: Each item is a dict with block_id, block_type, parent_id; text blocks also have plain_text.
+    List[Dict[str, Any]]: Each item is a dict with block_id, block_type, parent_id; text blocks also have plain_text.
 ''')
 _add_fs_chinese('FeishuWikiFS.update_doc_block_text', '''\
 更新文档中指定块的文本内容。仅适用于支持文本的块（如 Text、Heading、Bullet 等）；表格等块不支持，调用会由飞书 API 报错。
