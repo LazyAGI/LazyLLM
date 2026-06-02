@@ -15,7 +15,8 @@ add_chinese_doc('SearchBase', '''
 
 Args:
     source_name (str): 结果中的来源标识；未传时自动从类名推断（去掉 "Search" 后缀并转小写）。
-    api_key (str, optional): API 密钥；传入后以 static 模式存入 CredentialMixin，由 inject_auth_header 自动注入请求头。
+    api_key (str, optional): API 密钥；传入后以 static 模式存入 CredentialMixin；为空时使用 dynamic 模式，
+        从 lazyllm.config['dynamic_tool_auth'] 中按 source_name 读取运行时密钥。
     auth_strategy (AuthStrategy, optional): 认证策略；未传时默认使用 BearerTokenStrategy。
 ''')
 
@@ -26,7 +27,8 @@ Subclasses must implement search and normalize raw API responses to a list of di
 
 Args:
     source_name (str): Source identifier in results; inferred from the class name (strips "Search" suffix, lowercased) when omitted.
-    api_key (str, optional): API key; stored in CredentialMixin in static mode and injected into request headers automatically via inject_auth_header.
+    api_key (str, optional): API key; stored in CredentialMixin in static mode when provided. When omitted,
+        dynamic mode reads the runtime key from lazyllm.config['dynamic_tool_auth'] by source_name.
     auth_strategy (AuthStrategy, optional): Authentication strategy; defaults to BearerTokenStrategy when omitted.
 ''')
 
@@ -130,7 +132,7 @@ add_chinese_doc('GoogleSearch', '''
 3. 打开 Programmable Search Engine https://programmablesearchengine.google.com/ 创建搜索引擎，在 "控制面板" 中可查看 "搜索引擎 ID"（cx），即 search_engine_id。
 
 Args:
-    custom_search_api_key (str): 用户申请的 Google API key。
+    custom_search_api_key (str, optional): 用户申请的 Google API key；为空时从 dynamic_tool_auth["google"] 读取。
     search_engine_id (str): 用户创建的检索用搜索引擎 id。
     timeout (int): 请求超时秒数，默认 10。
     proxies (Dict[str, str], optional): 代理配置，格式见 https://www.python-httpx.org/advanced/proxies。
@@ -146,7 +148,7 @@ How to get API key and search engine ID:
 3. Go to Programmable Search Engine https://programmablesearchengine.google.com/ to create a search engine; the "Search engine ID" (cx) is in the control panel.
 
 Args:
-    custom_search_api_key (str): Google API key.
+    custom_search_api_key (str, optional): Google API key; when omitted, reads dynamic_tool_auth["google"].
     search_engine_id (str): Search engine ID for retrieval.
     timeout (int): Request timeout in seconds, default 10.
     proxies (Dict[str, str], optional): Proxy config, see https://www.python-httpx.org/advanced/proxies.
@@ -169,7 +171,7 @@ Args:
     search_engine_id (str, optional): 检索用搜索引擎 id；为空则使用构造时传入的值。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。
+    List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
 add_english_doc('GoogleSearch.search', '''
@@ -181,7 +183,7 @@ Args:
     search_engine_id (str, optional): Search engine ID; if empty, uses constructor value.
 
 Returns:
-    List[Dict[str, Any]]: List of results in unified format.
+    List[Dict[str, Any]]: Search results in the unified format. Each item contains title, url, snippet, and source.
 ''')
 
 add_example('GoogleSearch.search', '''
@@ -192,10 +194,16 @@ res = google('machine learning', date_restrict='m1')
 
 add_chinese_doc('GoogleSearch.get_content', '''
 使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
 ''')
 
 add_english_doc('GoogleSearch.get_content', '''
 Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
 ''')
 
 add_chinese_doc('TencentSearch', '''
@@ -254,10 +262,16 @@ res = searcher('calculus')
 
 add_chinese_doc('TencentSearch.get_content', '''
 使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
 ''')
 
 add_english_doc('TencentSearch.get_content', '''
 Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
 ''')
 
 add_chinese_doc('BingSearch', '''
@@ -269,7 +283,7 @@ Azure Bing Web Search API v7 封装。需要订阅密钥。
 3. 官方文档与定价：https://learn.microsoft.com/en-us/bing/search-apis/bing-web-search/overview 。
 
 Args:
-    subscription_key (str): Azure 订阅密钥。
+    subscription_key (str, optional): Azure 订阅密钥；为空时从 dynamic_tool_auth["bing"] 读取。
     endpoint (str, optional): API 端点，默认 https://api.bing.microsoft.com/v7.0/search。
     timeout (int): 请求超时秒数，默认 10。
     source_name (str): 结果来源标识，默认 "bing"。
@@ -282,6 +296,12 @@ How to get subscription key:
 1. Log in to Azure Portal https://portal.azure.com/ .
 2. Create a "Bing Search v7" resource (or "Cognitive Services" multi-service resource); under "Keys and endpoint" you will see key1/key2, use either as subscription_key.
 3. Docs and pricing: https://learn.microsoft.com/en-us/bing/search-apis/bing-web-search/overview .
+
+Args:
+    subscription_key (str, optional): Azure subscription key; when omitted, reads dynamic_tool_auth["bing"].
+    endpoint (str, optional): API endpoint, default https://api.bing.microsoft.com/v7.0/search.
+    timeout (int): Request timeout in seconds, default 10.
+    source_name (str): Source identifier in results, default "bing".
 ''')
 
 add_example('BingSearch', '''
@@ -292,10 +312,16 @@ res = bing('python tutorial', count=5)
 
 add_chinese_doc('BingSearch.get_content', '''
 使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
 ''')
 
 add_english_doc('BingSearch.get_content', '''
 Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
 ''')
 
 add_chinese_doc('BingSearch.search', '''
@@ -306,7 +332,7 @@ Args:
     count (int): 返回条数，默认 10，最大 50。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。
+    List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
 add_english_doc('BingSearch.search', '''
@@ -317,7 +343,7 @@ Args:
     count (int): Number of results, default 10, max 50.
 
 Returns:
-    List[Dict[str, Any]]: List of results in unified format.
+    List[Dict[str, Any]]: Search results in the unified format. Each item contains title, url, snippet, and source.
 ''')
 
 add_chinese_doc('BochaSearch', '''
@@ -329,7 +355,7 @@ add_chinese_doc('BochaSearch', '''
 3. 创建密钥即可得到 api_key，用于请求头 Authorization: Bearer <api_key>。
 
 Args:
-    api_key (str): 博查 API key。
+    api_key (str, optional): 博查 API key；为空时从 dynamic_tool_auth["bocha"] 读取。
     base_url (str): API 根地址，默认 https://api.bochaai.com。
     timeout (int): 请求超时秒数，默认 15。
     source_name (str): 结果来源标识，默认 "bocha"。
@@ -342,6 +368,12 @@ How to get API key:
 1. Go to Bocha AI Open Platform https://open.bochaai.com/ .
 2. Sign in (e.g. via WeChat or account), go to "API Keys" / "API 密钥管理".
 3. Create a key to get api_key; use it as Authorization: Bearer <api_key> in requests.
+
+Args:
+    api_key (str, optional): Bocha API key; when omitted, reads dynamic_tool_auth["bocha"].
+    base_url (str): API base URL, default https://api.bochaai.com.
+    timeout (int): Request timeout in seconds, default 15.
+    source_name (str): Source identifier in results, default "bocha".
 ''')
 
 add_example('BochaSearch', '''
@@ -352,10 +384,16 @@ res = bocha('machine learning', count=5)
 
 add_chinese_doc('BochaSearch.get_content', '''
 使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
 ''')
 
 add_english_doc('BochaSearch.get_content', '''
 Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
 ''')
 
 add_chinese_doc('BochaSearch.search', '''
@@ -363,12 +401,12 @@ add_chinese_doc('BochaSearch.search', '''
 
 Args:
     query (str): 搜索内容。
-    count (int): 结果数量，默认 10。
+    count (int): 结果数量，默认 10，最大 20。
     freshness (str, optional): 时间范围，如 oneDay、oneWeek、oneMonth。
     summary (bool): 是否返回摘要，默认 False。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。
+    List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
 add_english_doc('BochaSearch.search', '''
@@ -376,12 +414,12 @@ Execute Bocha web search.
 
 Args:
     query (str): Search query.
-    count (int): Number of results, default 10.
+    count (int): Number of results, default 10, max 20.
     freshness (str, optional): Time range, e.g. oneDay, oneWeek, oneMonth.
     summary (bool): Whether to request summary, default False.
 
 Returns:
-    List[Dict[str, Any]]: List of results in unified format.
+    List[Dict[str, Any]]: Search results in the unified format. Each item contains title, url, snippet, and source.
 ''')
 
 add_chinese_doc('StackOverflowSearch', '''
@@ -426,10 +464,16 @@ Returns:
 
 add_chinese_doc('StackOverflowSearch.get_content', '''
 通过 Stack Exchange API 获取问题正文及采纳答案正文（需 item 的 url 含 question id）；返回纯文本，失败时回退为请求 url 页面。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，url 中需含 question id。
 ''')
 
 add_english_doc('StackOverflowSearch.get_content', '''
 Fetches question body and accepted answer body via Stack Exchange API (requires question id in item url); returns plain text, falls back to fetching url on failure.
+
+Args:
+    item (Dict[str, Any]): Search result item whose url contains a question id.
 ''')
 
 add_english_doc('StackOverflowSearch.search', '''
@@ -497,10 +541,16 @@ Returns:
 
 add_chinese_doc('SemanticScholarSearch.get_content', '''
 优先用 extra.paperId 调 API 获取论文摘要；无 paperId 时返回 item.snippet，再失败则请求 url 页面。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，extra 中可含 paperId。
 ''')
 
 add_english_doc('SemanticScholarSearch.get_content', '''
 Uses extra.paperId to fetch abstract via API when available; otherwise returns item.snippet, then falls back to fetching url.
+
+Args:
+    item (Dict[str, Any]): Search result item; paperId in extra is used if available.
 ''')
 
 add_chinese_doc('GoogleBooksSearch', '''
@@ -532,10 +582,16 @@ res = books('deep learning', max_results=5)
 
 add_chinese_doc('GoogleBooksSearch.get_content', '''
 使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
 ''')
 
 add_english_doc('GoogleBooksSearch.get_content', '''
 Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
 ''')
 
 add_chinese_doc('GoogleBooksSearch.search', '''
@@ -591,7 +647,7 @@ Args:
     sort_by (str): 排序字段，默认 "relevance"。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式结果，extra 可含 authors、published。
+    List[dict]: 统一格式结果，extra 可含 authors、published。
 ''')
 
 add_english_doc('ArxivSearch.search', '''
@@ -603,15 +659,21 @@ Args:
     sort_by (str): Sort field, default "relevance".
 
 Returns:
-    List[Dict[str, Any]]: Results in unified format; extra may include authors, published.
+    List[dict]: Results in unified format; extra may include authors, published.
 ''')
 
 add_chinese_doc('ArxivSearch.get_content', '''
 从 item.url 解析 arXiv id，调用 export API 获取完整摘要文本；失败时回退为请求 url 页面。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，url 中需含 arXiv id。
 ''')
 
 add_english_doc('ArxivSearch.get_content', '''
 Parses arXiv id from item.url, fetches full abstract via export API; falls back to fetching url on failure.
+
+Args:
+    item (Dict[str, Any]): Search result item whose url contains an arXiv id.
 ''')
 
 add_chinese_doc('WikipediaSearch', '''
@@ -650,7 +712,7 @@ Args:
     limit (int): 返回条数，默认 10，最大 500。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式结果，extra 可含 pageid。
+    List[dict]: 统一格式的搜索结果列表。extra 中包含 pageid，可用于 get_content 获取词条全文。
 ''')
 
 add_english_doc('WikipediaSearch.search', '''
@@ -661,7 +723,7 @@ Args:
     limit (int): Number of results, default 10, max 500.
 
 Returns:
-    List[Dict[str, Any]]: Results in unified format; extra may include pageid.
+    List[dict]: Search results in the unified format. extra contains pageid for get_content.
 ''')
 
 add_example('WikipediaSearch.search', '''
@@ -672,8 +734,14 @@ res = wiki('machine learning', limit=5)
 
 add_chinese_doc('WikipediaSearch.get_content', '''
 当 item.extra 含 pageid 时，使用 MediaWiki API 获取词条全文（纯文本）；否则回退为请求 url 页面。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，extra 中可含 pageid。
 ''')
 
 add_english_doc('WikipediaSearch.get_content', '''
 When item.extra has pageid, fetches full page text via MediaWiki API; otherwise falls back to fetching url.
+
+Args:
+    item (Dict[str, Any]): Search result item; pageid in extra is used if available.
 ''')

@@ -177,7 +177,18 @@ private:
         }
 
         static std::filesystem::path get_module_dir() {
-#if defined(__linux__) || defined(__APPLE__)
+#ifdef _WIN32
+            HMODULE module = nullptr;
+            if (GetModuleHandleExW(
+                    GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                        | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                    reinterpret_cast<LPCWSTR>(&get_module_dir), &module)) {
+                wchar_t path[MAX_PATH] = {0};
+                if (GetModuleFileNameW(module, path, MAX_PATH)) {
+                    return std::filesystem::path(path).parent_path();
+                }
+            }
+#elif defined(__linux__) || defined(__APPLE__)
             Dl_info info;
             if (dladdr(reinterpret_cast<void*>(&get_module_dir), &info)) {
                 return std::filesystem::path(info.dli_fname).parent_path();

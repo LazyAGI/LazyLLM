@@ -71,6 +71,7 @@ markers = [
     "skip_on_win: mark tests to skip on Windows",
     "skip_on_mac: mark tests to skip on macOS",
     "skip_on_linux: mark tests to skip on Linux",
+    "skip_on_cpp: mark tests to skip in C++ Build + Python Regression job",
 ]
 order_group_scope = "class"
 

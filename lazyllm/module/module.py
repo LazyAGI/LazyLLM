@@ -10,6 +10,7 @@ from ..components.formatter.formatterbase import file_content_hash, transform_pa
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
+import json
 from ..hook import LazyLLMHook, LazyLLMFuncHook, execution_with_hooks, register_hooks, resolve_builtin_hooks
 from lazyllm import FileSystemQueue
 from contextlib import contextmanager
@@ -353,8 +354,9 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
             module_cache.set(self.__cache_hash__, args, kw, r)
         return r
 
-    def _stream_output(self, text: str, color: Optional[str] = None, *, cls: Optional[str] = None):
-        (FileSystemQueue.get_instance(cls) if cls else FileSystemQueue()).enqueue(colored_text(text, color))
+    def _stream_output(self, text: str, color: Optional[str] = None, *, cls: Optional[str] = 'text'):
+        payload = {'tag': cls, 'delta': colored_text(text, color)}
+        FileSystemQueue().enqueue(json.dumps(payload))
         return ''
 
     @contextmanager

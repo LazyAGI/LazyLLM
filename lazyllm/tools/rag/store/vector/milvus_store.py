@@ -134,6 +134,8 @@ class MilvusStore(EmbedResolveMixin, LazyLLMStoreBase):
         self._embed_datatypes = embed_datatypes or {}
         self._embed = embed or {}
         self._global_metadata_desc = global_metadata_desc or {}
+        if self._index_kwargs is not None and self._embed_datatypes:
+            self._index_kwargs = self.validate_milvus_embed_keys(self._index_kwargs)
         self._set_constants()
 
         self._ddl_lock = threading.Lock()

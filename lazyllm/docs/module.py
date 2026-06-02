@@ -3385,6 +3385,8 @@ add_chinese_doc('StreamCallHelper', '''\
 Args:
     impl (Callable): 需要流式执行的函数或可调用对象。
     interval (float): 轮询队列的时间间隔，单位为秒，默认为0.1。
+    init_sid (Optional[bool]): 是否在后台任务提交前初始化 ``globals`` 和 ``locals`` 的会话ID，默认为True。
+        当调用对象内部已经显式初始化会话ID时，可设置为False，避免覆盖已有会话上下文。
 ''')
 
 add_english_doc('StreamCallHelper', '''\
@@ -3395,44 +3397,50 @@ Supports both a synchronous generator (``__call__``) and an async generator (``a
 Args:
     impl (Callable): The function or callable to execute in streaming mode.
     interval (float): Time interval (in seconds) to poll the internal queue. Defaults to 0.1.
+    init_sid (Optional[bool]): Whether to initialize the ``globals`` and ``locals`` session IDs before
+        submitting the background task. Defaults to True. Set it to False when the callable initializes
+        the session ID itself to avoid overwriting an existing session context.
 ''')
 
 add_chinese_doc('StreamCallHelper.astream', '''\
-异步生成器方法，将底层阻塞调用包装为异步流式输出，逐步 yield 执行结果片段。
+异步生成器方法，将底层阻塞调用包装为异步流式输出，逐步 yield 队列中的原始数据字典。
 
 在后台线程中执行 ``impl``，同时通过 ``FileSystemQueue`` 轮询已产生的输出片段，
 每次轮询间隔为初始化时指定的 ``interval`` 秒（使用 ``asyncio.sleep`` 让出事件循环）。
-当后台任务完成后，会排空队列中剩余的片段，并在最终结果尚未包含在已 yield 内容中时额外 yield 一次。
+当后台任务完成后，排空队列中剩余的数据。
 
 Args:
     *args: 透传给 ``impl`` 的位置参数。
     **kwargs: 透传给 ``impl`` 的关键字参数。
 
 Yields:
-    str: 每次从队列中取出的输出片段，以及（若存在）最终结果的尾部内容。
+    dict: 从队列中取出的原始数据字典，包含 ``tag`` 字段标识数据类型
+    （如 ``text``、``think``、``tool_calls``、``tool_results`` 等）。
 
 Note:
     - 该方法适用于 asyncio / FastAPI 等异步上下文，不会阻塞事件循环。
+    - ``future`` 属性保存了后台任务，调用 ``helper.future.result()`` 可获取最终结果。
     - 与同步的 ``__call__`` 逻辑相同，区别仅在于使用 ``await asyncio.sleep`` 代替 ``time.sleep``。
 ''')
 
 add_english_doc('StreamCallHelper.astream', '''\
 Async generator method that wraps the underlying blocking callable into an async streaming output,
-yielding result chunks incrementally.
+yielding raw data dicts from the queue incrementally.
 
-Executes ``impl`` in a background thread while polling ``FileSystemQueue`` for produced chunks.
+Executes ``impl`` in a background thread while polling ``FileSystemQueue`` for produced items.
 Between polls it yields control back to the event loop via ``asyncio.sleep(interval)``.
-After the background task finishes, any remaining chunks are drained from the queue, and a final
-tail chunk is yielded if the cumulative output does not already end with the full result.
+After the background task finishes, any remaining items are drained from the queue.
 
 Args:
     *args: Positional arguments forwarded to ``impl``.
     **kwargs: Keyword arguments forwarded to ``impl``.
 
 Yields:
-    str: Each output chunk dequeued from the internal queue, plus an optional tail from the final result.
+    dict: Raw data dicts dequeued from the internal queue, each containing a ``tag`` field
+    identifying the data type (e.g. ``text``, ``think``, ``tool_calls``, ``tool_results``).
 
 Note:
     - Suitable for asyncio / FastAPI contexts; does not block the event loop.
+    - The ``future`` attribute holds the background task; use ``helper.future.result()`` to retrieve the final result.
     - Mirrors the logic of the synchronous ``__call__``, replacing ``time.sleep`` with ``await asyncio.sleep``.
 ''')

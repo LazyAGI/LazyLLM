@@ -456,7 +456,7 @@ class TestCommentableFilter:
         assert len(inline + general) == 2
         assert dropped == 0
 
-    def test_filter_drops_out_of_range(self):
+    def test_filter_demotes_out_of_range(self):
         hunks = self._make_hunks([('foo.py', 10, 5)])
         cm = _build_commentable_lines(hunks)
         comments = [
@@ -465,18 +465,18 @@ class TestCommentableFilter:
             {'path': 'foo.py', 'line': 12},  # valid
         ]
         inline, general, dropped = _filter_commentable(comments, cm)
-        kept = inline + general
-        assert len(kept) == 1
-        assert kept[0]['line'] == 12
-        assert dropped == 2
+        assert len(inline) == 1 and inline[0]['line'] == 12
+        assert len(general) == 2
+        assert dropped == 0
 
-    def test_filter_drops_unknown_file(self):
+    def test_filter_demotes_unknown_file(self):
         hunks = self._make_hunks([('foo.py', 1, 10)])
         cm = _build_commentable_lines(hunks)
         comments = [{'path': 'other.py', 'line': 5}]
         inline, general, dropped = _filter_commentable(comments, cm)
-        assert inline + general == []
-        assert dropped == 1
+        assert inline == []
+        assert len(general) == 1
+        assert dropped == 0
 
     def test_filter_drops_missing_line(self):
         hunks = self._make_hunks([('foo.py', 1, 10)])
@@ -546,7 +546,7 @@ class TestCommentableFilter:
         inline, general, dropped = _filter_commentable([{'path': 'f.py', 'line': 11}], cm)
         assert len(inline + general) == 1 and dropped == 0
 
-    def test_filter_drops_line_beyond_content_with_content(self):
+    def test_filter_demotes_line_beyond_content_with_content(self):
         content = '+add1\n ctx'   # new-file lines 5, 6
         hunks = [('f.py', 5, 0, content)]
         cm = _build_commentable_lines(hunks)
@@ -556,7 +556,6 @@ class TestCommentableFilter:
             {'path': 'f.py', 'line': 5},   # valid
         ]
         inline, general, dropped = _filter_commentable(comments, cm)
-        kept = inline + general
-        assert len(kept) == 1
-        assert kept[0]['line'] == 5
-        assert dropped == 2
+        assert len(inline) == 1 and inline[0]['line'] == 5
+        assert len(general) == 2
+        assert dropped == 0

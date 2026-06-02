@@ -47,18 +47,16 @@ def _assert_parallel_trace_group(spans):
 
 def _assert_loop_parallel_trace_group(spans):
     assert len(spans) == 10
-    loop_span = spans[-1]
-    assert loop_span.name == 'Loop'
+    loop_span = next(s for s in spans if s.name == 'Loop')
     assert all(span.context.trace_id == loop_span.context.trace_id for span in spans)
 
-    for iteration in range(3):
-        start = iteration * 3
-        children = spans[start:start + 2]
-        parallel_span = spans[start + 2]
-        assert parallel_span.name == 'Parallel'
+    parallel_spans = [s for s in spans if s.name == 'Parallel']
+    assert len(parallel_spans) == 3
+    for parallel_span in parallel_spans:
         assert parallel_span.parent.span_id == loop_span.context.span_id
-        assert {span.name for span in children} == {'increment', 'keep_zero'}
-        assert all(span.parent.span_id == parallel_span.context.span_id for span in children)
+        children = [s for s in spans if s.parent and s.parent.span_id == parallel_span.context.span_id]
+        assert len(children) == 2
+        assert {s.name for s in children} == {'increment', 'keep_zero'}
         _assert_overlapping(children)
 
 

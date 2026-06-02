@@ -58,13 +58,12 @@ from lazyllm.tools.tools import GoogleSearch
 
 ### 搜索结果提取函数
 
-定义 `extract_search_results` 函数，从 Google API 返回结果中提取标题与链接。
+定义 `extract_search_results` 函数，从 `GoogleSearch` 返回的统一结果列表中提取标题与链接。
 
 ```python
-def extract_search_results(response_dict):
-    items = response_dict.get('items', [])
+def extract_search_results(items):
     results = [
-        {'title': item.get('title', ''), 'url': item.get('link', '')}
+        {'title': item.get('title', ''), 'url': item.get('url', '')}
         for item in items
     ]
     return pd.DataFrame(results)
@@ -144,10 +143,9 @@ from lazyllm.tools.tools import GoogleSearch
 api_key = 'AI******'
 engine_id = 'a3******'
 
-def extract_search_results(response_dict):
-    items = response_dict.get('items', [])
+def extract_search_results(items):
     results = [
-        {'title': item.get('title', ''), 'url': item.get('link', '')}
+        {'title': item.get('title', ''), 'url': item.get('url', '')}
         for item in items
     ]
     return pd.DataFrame(results)

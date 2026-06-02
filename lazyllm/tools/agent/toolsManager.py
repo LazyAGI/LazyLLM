@@ -10,14 +10,17 @@ from lazyllm.common.utils import SecurityVisitor
 from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
-from lazyllm import LOG
+from lazyllm import LOG, locals as lazyllm_locals
 from typing import *  # noqa F403, to import all types for compile_func(), do not remove
 
 # ---------------------------------------------------------------------------- #
 
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, verbose: bool = False, return_trace: bool = False, execute_in_sandbox: bool = True):
+    def __init__(self, verbose: bool = False, return_trace: bool = False, execute_in_sandbox: bool = True,
+                 apply_func: Optional[Callable] = None, schema_func: Optional[Callable] = None):
         super().__init__(return_trace=return_trace)
+        if apply_func is not None:
+            self.apply = apply_func
         self._verbose = verbose
         func = getattr(self.apply, '__func__', self.apply)
         if callable(func) and getattr(func, '__closure__', None):
@@ -34,7 +37,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._output_files_parm = None
         self._output_files = []
 
-        self._params_schema = self._load_function_schema(self.__class__.apply)
+        self._params_schema = self._load_function_schema(schema_func or self.__class__.apply)
 
     @staticmethod
     def _safe_eval_type(type_str: str, context: str) -> Any:
@@ -70,7 +73,10 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         func_return = func_type_hints.get('return')
         doc_return = doc_type_hints.get('return')
         if func_return is not None and doc_return is not None and func_return != doc_return:
-            raise TypeError('return info in docstring is different from that in function prototype.')
+            raise TypeError(
+                f'return info in docstring ({doc_return}) is different from '
+                f'function prototype ({func_return}) in {func.__name__}'
+            )
 
         signature = inspect.signature(func)
         has_var_args = any(
@@ -249,32 +255,28 @@ if 'tool' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('tool')
 if 'builtin_tools' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('builtin_tools')
+if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
+    register.new_group('tmp_tool')
 
 
 class MethodModuleTool(ModuleTool):
     def __init__(self, instance: Any, method_name: str,
                  key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
-        self._instance = instance
-        self._method_name = method_name
         bound = getattr(instance, method_name)
 
         def _apply(**kwargs): return bound(**kwargs)
         _apply.__doc__ = bound.__doc__
         _apply.__name__ = method_name
 
-        self.apply = _apply
-        super().__init__(execute_in_sandbox=False)
+        super().__init__(execute_in_sandbox=False, apply_func=_apply, schema_func=bound)
+        self._instance = instance
+        self._method_name = method_name
         self._name = instance.__class__.__name__ if method_name == '__call__' \
             else f'{instance.__class__.__name__}_{method_name}'
-
-    def _load_function_schema(self, func: Callable) -> Type[BaseModel]:
-        return super()._load_function_schema(getattr(self._instance, self._method_name))
 
 
 def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
     tool_args = tool.args
-    assert len(tool_args) == len(parsed_docstring.params), ('The parameter description and the actual '
-                                                            'number of input parameters are inconsistent.')
     args_description = {param.arg_name: param.description for param in parsed_docstring.params}
     args = {}
     for k, v in tool_args.items():
@@ -285,9 +287,6 @@ def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
         desc = args_description.get(k, None)
         if desc:
             args[k].update({'description': desc})
-        else:
-            raise ValueError(f'The actual input parameter "{k}" is not found '
-                             f'in the parameter description of tool "{tool.name}".')
     return args
 
 
@@ -305,27 +304,110 @@ def _build_tool_desc(tool: 'ModuleTool') -> Dict:
     }
 
 
-class InstanceToolGroup:
-    def __init__(self, instance: Any,
-                 key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
-        self._instance = instance
-        if key_source is None: key_source = getattr(type(instance), '__key_source__', None)
-        self._key_source = key_source
-        self._tools: Dict[str, MethodModuleTool] = {
-            (instance.__class__.__name__ if m == '__call__' else f'{instance.__class__.__name__}_{m}'):
-            MethodModuleTool(instance, m) for m in instance.__public_apis__}
-        self._tool_descs: List[Dict] = [_build_tool_desc(t) for t in self._tools.values()]
+class ToolContainer:
+    def get_flat_tools(self) -> Dict[str, 'ModuleTool']: raise NotImplementedError
+    def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]: raise NotImplementedError
 
-    def should_skip(self) -> bool:
-        if self._key_source is None: return False
-        sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
-        return not any(bool(self._resolve_one_key(src)) for src in sources)
 
-    def get_description(self) -> List[Dict]:
-        return [] if self.should_skip() else self._tool_descs
+class ToolGroup(ToolContainer):
+    def __init__(self, tools: List[Any], name: str, desc: str = '', lazy: bool = True,
+                 prefix: Optional[Union[bool, str]] = True, _outer_prefix: Optional[str] = None):
+        self._name, self._desc, self._lazy = name, desc, lazy
+        own_prefix: Optional[str] = name if prefix is True or prefix == '' \
+            else None if prefix is False or prefix is None else prefix
+        effective_prefix = f'{_outer_prefix}_{own_prefix}' if _outer_prefix and own_prefix \
+            else (_outer_prefix or own_prefix)
+        self._children: List[Union['ModuleTool', 'ToolGroup']] = [
+            _build_tool_from_element(item, _outer_prefix=effective_prefix) for item in tools]
+        self._precompute_descs(effective_prefix)
+        self._gateway_tool: Optional['ModuleTool'] = self.make_gateway_tool() if lazy else None
+        if self._gateway_desc is None and self._gateway_tool is not None:
+            self._gateway_desc = _build_tool_desc(self._gateway_tool)
 
-    def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
-        if callable(source): return source(self._instance) or None
+    def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
+        result: Dict[str, ModuleTool] = {}
+        if self._gateway_tool is not None:
+            result[self._gateway_tool.name] = self._gateway_tool
+        for child, precomputed in zip(self._children, self._expanded_descs):
+            if isinstance(child, ToolGroup):
+                result.update(child.get_flat_tools())
+            else:
+                result[precomputed['function']['name']] = child
+        return result
+
+    def _precompute_descs(self, effective_prefix: Optional[str] = None):
+        self._gateway_desc: Optional[Dict] = None
+        self._expanded_descs: List[Union[Dict, 'ToolGroup']] = []
+        self._leaf_names: List[str] = []
+        for child in self._children:
+            if isinstance(child, ToolGroup):
+                self._expanded_descs.append(child)
+                if child._lazy:
+                    self._leaf_names.append(child._gateway_tool.name)
+                else:
+                    self._leaf_names.extend(child._leaf_names)
+            else:
+                desc = _build_tool_desc(child)
+                final_name = f'{effective_prefix}_{child.name}' if effective_prefix else child.name
+                desc['function']['name'] = final_name
+                self._expanded_descs.append(desc)
+                self._leaf_names.append(final_name)
+
+    def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
+        if not self._lazy or (active_groups is not None and self._name in active_groups):
+            return [x for item in self._expanded_descs
+                    for x in (item.get_description(active_groups) if isinstance(item, ToolContainer) else [item])]
+        return [self._gateway_desc]
+
+    def _collect_leaf_names(self) -> List[str]:
+        return self._leaf_names
+
+    def make_gateway_tool(self) -> 'ModuleTool':
+        group_name = self._name
+        child_names = self._collect_leaf_names()
+
+        def _gateway_apply() -> str:
+            workspace = lazyllm_locals['_lazyllm_agent'].get('workspace', {})
+            active = workspace.setdefault('_active_groups', [])
+            if group_name not in active:
+                active.append(group_name)
+            return (f'Activated tool group "{group_name}". '
+                    f'Available tools: {", ".join(child_names)}')
+
+        short_desc = docstring_parser.parse(self._desc).short_description if self._desc else ''
+        desc = f'Get available methods of {group_name}. {short_desc or ""}'
+        _gateway_apply.__doc__ = (f'{desc}\n\nReturns:\n    str: List of available tool names in this group.')
+        _gateway_apply.__name__ = f'get_{group_name}_methods'
+
+        register('tmp_tool')(_gateway_apply)
+        tool_cls = getattr(lazyllm.tmp_tool, _gateway_apply.__name__)
+        tool = tool_cls()
+        lazyllm.tmp_tool.remove(_gateway_apply.__name__)
+        return tool
+
+
+class SkipMixin:
+    @staticmethod
+    def _normalize_source(src):
+        if callable(src):
+            try:
+                sig = inspect.signature(src)
+                params = [p for p in sig.parameters.values()
+                          if p.default is inspect.Parameter.empty
+                          and p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)]
+            except (ValueError, TypeError):
+                params = []
+            if not params:
+                return lambda _inst: src()
+        return src
+
+    def __init__(self, key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
+        if isinstance(key_source, list):
+            self._key_source = [SkipMixin._normalize_source(s) for s in key_source]
+        else:
+            self._key_source = SkipMixin._normalize_source(key_source) if key_source is not None else None
+
+    def _resolve_key_by_string(self, source: str) -> Optional[str]:
         try:
             if '.' not in source:
                 return lazyllm.globals.config[source] or None
@@ -338,6 +420,50 @@ class InstanceToolGroup:
         except Exception: pass
         return None
 
+    def _resolve_one_key(self, source: Union[str, Callable]) -> Optional[str]:
+        if callable(source): return source(getattr(self, '_instance', None)) or None
+        return self._resolve_key_by_string(source)
+
+    def should_skip(self) -> bool:
+        if self._key_source is None: return False
+        sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
+        return not any(bool(self._resolve_one_key(src)) for src in sources)
+
+
+class InstanceToolGroup(SkipMixin, ToolGroup):
+    def __init__(self, instance: Any,
+                 key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
+        if key_source is None: key_source = getattr(type(instance), '__key_source__', None)
+        self._instance = instance
+        SkipMixin.__init__(self, key_source)
+        tools = [MethodModuleTool(instance, m) for m in instance.__public_apis__]
+        name = instance.__class__.__name__
+        desc = getattr(type(instance), '__doc__', '') or ''
+        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=True)
+
+    @property
+    def _tools(self) -> Dict[str, 'ModuleTool']:
+        return {child.name: child for child in self._children if isinstance(child, ModuleTool)}
+
+    def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
+        if self.should_skip(): return []
+        return super().get_description(active_groups)
+
+
+class ToolGroupWrapper(SkipMixin, ToolContainer):
+    def __init__(self, tool: Any, key_source: Union[str, Callable, List[Union[str, Callable]], None]):
+        SkipMixin.__init__(self, key_source)
+        self._inner = _build_tool_from_element(tool)
+
+    def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
+        return self._inner.get_flat_tools() if isinstance(self._inner, ToolContainer) \
+            else {self._inner.name: self._inner}
+
+    def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
+        if self.should_skip(): return []
+        return self._inner.get_description(active_groups) if isinstance(self._inner, ToolContainer) \
+            else [_build_tool_desc(self._inner)]
+
 
 TOOL_CALL_FORMAT_EXAMPLE = (
     '{"function": {"name": "tool_name", "arguments": '
@@ -345,47 +471,59 @@ TOOL_CALL_FORMAT_EXAMPLE = (
 )
 
 
+def _build_tool_from_element(
+        element: Any, _outer_prefix: Optional[str] = None) -> Optional[Union['ModuleTool', 'ToolGroup']]:
+    if isinstance(element, str):
+        return _load_tool_by_name(element)
+    if isinstance(element, (ToolGroup, ModuleTool)):
+        return element
+    if isinstance(element, (tuple, list)) and len(element) == 2:
+        tool, key_source = element
+        if isinstance(tool, dict) and 'key_source' in tool:
+            raise ValueError(
+                f'key_source is specified both in the dict (dict["key_source"]={tool["key_source"]!r}) '
+                f'and as the second element of the tuple ({key_source!r}). Provide key_source in only one place.')
+        if hasattr(tool, '__public_apis__'):
+            return InstanceToolGroup(tool, key_source)
+        return ToolGroupWrapper(tool, key_source)
+    if hasattr(element, '__public_apis__') and not isinstance(element, (ToolGroup, ModuleTool)):
+        return InstanceToolGroup(element)
+    if isinstance(element, dict):
+        assert 'name' in element, "ToolGroup dict must have a 'name' field"
+        assert 'tools' in element, "ToolGroup dict must have a 'tools' field"
+        assert 'desc' in element, "ToolGroup dict must have a 'desc' field"
+        key_source = element.get('key_source', None)
+        group = ToolGroup(tools=element['tools'], name=element['name'], desc=element['desc'],
+                          lazy=element.get('lazy', True), prefix=element.get('prefix', None),
+                          _outer_prefix=_outer_prefix)
+        if key_source is not None:
+            return ToolGroupWrapper(group, key_source)
+        return group
+    if callable(element):
+        register('tmp_tool')(element)
+        tool = getattr(lazyllm.tmp_tool, element.__name__)()
+        lazyllm.tmp_tool.remove(element.__name__)
+        return tool
+    raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, got {type(element)}')
+
+
+def _load_tool_by_name(name: str) -> 'ModuleTool':
+    name = name.strip()
+    if '.' not in name: return getattr(lazyllm.tool, name)()
+    target = lazyllm
+    for part in name.split('.'):
+        if not part: raise ValueError(f'invalid tool name: {name}')
+        target = getattr(target, part)
+    return target()
+
+
 class ToolManager(ModuleBase):
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
         super().__init__(return_trace=return_trace)
-        self._tools = self._load_tools(tools)
+        self._tools = [_build_tool_from_element(element) for element in tools]
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
         self._sandbox = sandbox
-
-    def _load_tool_by_name(self, name: str) -> 'ModuleTool':
-        name = name.strip()
-        if '.' not in name: return getattr(lazyllm.tool, name)()
-        target = lazyllm
-        for part in name.split('.'):
-            if not part: raise ValueError(f'invalid tool name: {name}')
-            target = getattr(target, part)
-        return target()
-
-    def _load_tools(self, tools: List[Union[str, Callable]]):
-        if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
-            register.new_group('tmp_tool')
-
-        _tools = []
-        for element in tools:
-            if isinstance(element, str):
-                _tools.append(self._load_tool_by_name(element))
-            elif isinstance(element, ModuleTool):
-                _tools.append(element)
-            elif isinstance(element, tuple) and len(element) == 2:
-                instance, key_source = element
-                if not hasattr(instance, '__public_apis__'):
-                    raise ValueError(f'Instance {instance!r} does not have __public_apis__')
-                _tools.append(InstanceToolGroup(instance, key_source))
-            elif hasattr(element, '__public_apis__'):
-                _tools.append(InstanceToolGroup(element))
-            elif isinstance(element, Callable):
-                # just to convert `element` to the internal type in `Register`
-                register('tmp_tool')(element)
-                _tools.append(getattr(lazyllm.tmp_tool, element.__name__)())
-                lazyllm.tmp_tool.remove(element.__name__)
-
-        return _tools
 
     @property
     def all_tools(self) -> List[ModuleTool]:
@@ -393,7 +531,14 @@ class ToolManager(ModuleBase):
 
     @property
     def tools_description(self) -> List[Dict]:
-        return [x for item in self._tools_desc for x in (item() if callable(item) else [item])]
+        try:
+            workspace = lazyllm_locals['_lazyllm_agent'].get('workspace', {})
+        except Exception:
+            workspace = {}
+        active_groups = set(workspace.get('_active_groups', []))
+        return [x for item in self._tools_desc
+                for x in (item.get_description(active_groups=active_groups)
+                          if isinstance(item, ToolContainer) else item() if callable(item) else [item])]
 
     @property
     def tools_info(self):
@@ -418,7 +563,7 @@ class ToolManager(ModuleBase):
         if isinstance(self._tools, List):
             self._tool_call: Dict[str, ModuleTool] = {}
             for item in self._tools:
-                items = item._tools if isinstance(item, InstanceToolGroup) else {item.name: item}
+                items = item.get_flat_tools() if isinstance(item, ToolContainer) else {item.name: item}
                 for name, tool in items.items():
                     if name in self._tool_call:
                         raise ValueError(f'Duplicate tool name [{name}]. Tool names must be unique.')
@@ -430,8 +575,8 @@ class ToolManager(ModuleBase):
 
         format_tools = []
         for item in self._tools:
-            if isinstance(item, InstanceToolGroup):
-                format_tools.append(item.get_description)
+            if isinstance(item, ToolContainer):
+                format_tools.append(item)
             else:
                 try:
                     format_tools.append(_build_tool_desc(item))

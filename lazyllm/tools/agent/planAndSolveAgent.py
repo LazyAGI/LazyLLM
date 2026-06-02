@@ -1,6 +1,6 @@
 import re
 from lazyllm.module import ModuleBase
-from .base import LazyLLMAgentBase
+from .base import LazyLLMAgentBase, _write_agent_data
 from lazyllm.components import ChatPrompter
 from lazyllm import loop, pipeline, _0, package, bind, LOG, Color, once_wrapper
 from .functionCall import FunctionCall, FC_PROMPT
@@ -84,9 +84,7 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
     @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
         with pipeline() as agent:
-            agent.plan = self._plan_llm
-            agent.parse = (lambda text, query: package([], '', [v for v in re.split('\n\\s*\\d+\\. ', text)[1:]],
-                           query)) | bind(query=agent.input)
+            agent.plan = self._plan_query
             with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as agent.lp:
                 agent.lp.pre_action = self._pre_action
                 agent.lp.solve = loop(self._fc, stop_condition=lambda x: isinstance(x, str),
@@ -98,6 +96,13 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
             agent.final_action = lambda pre, res, steps, query: res
         self._agent = agent
 
+    def _plan_query(self, query: str):
+        _write_agent_data('plan_started')
+        plan = self._plan_llm(query)
+        steps = self._parse_plan_steps(plan)
+        _write_agent_data('plan_finished', text=plan, steps=steps)
+        return package([], '', steps, query)
+
     def _pre_action(self, pre_steps, response, steps, query):
         solver_prompt = SOLVER_PROMPT.format(
             previous_steps='\n'.join(pre_steps),
@@ -107,6 +112,9 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
         if self._return_last_tool_calls:
             solver_prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
         return package(solver_prompt, [])
+
+    def _parse_plan_steps(self, plan: str) -> List[str]:
+        return [step for step in re.split('\n\\s*\\d+\\. ', plan)[1:] if step]
 
     def _build_planner_prompt(self) -> str:
         tools_desc = []

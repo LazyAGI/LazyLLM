@@ -52,16 +52,34 @@ def _capture_payload_enabled(ctx: LazyTraceContext) -> bool:
     return bool(config['trace_content_enabled'])
 
 
+_TRUNCATED_SUFFIX = '...<truncated>'
+
+
+def _truncate_payload_fields(value: Any, *, limit: int = 8192) -> Any:
+    if isinstance(value, str):
+        if len(value) > limit:
+            return value[:limit] + _TRUNCATED_SUFFIX
+        return value
+    if isinstance(value, tuple):
+        return [_truncate_payload_fields(item, limit=limit) for item in value]
+    if isinstance(value, list):
+        return [_truncate_payload_fields(item, limit=limit) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _truncate_payload_fields(item, limit=limit)
+            for key, item in value.items()
+        }
+    return value
+
+
 def _stringify_payload(value: Any, *, limit: int = 8192) -> str:
     try:
         if isinstance(value, str):
-            text = value
+            text = _truncate_payload_fields(value, limit=limit)
         else:
-            text = json.dumps(value, ensure_ascii=False, default=str)
+            text = json.dumps(_truncate_payload_fields(value, limit=limit), ensure_ascii=False, default=str)
     except Exception:
         text = repr(value)
-    if len(text) > limit:
-        return text[:limit] + '...<truncated>'
     return text
 
 
