@@ -21,7 +21,6 @@ from ..flow import FlowBase, Pipeline
 from urllib.parse import urljoin
 from .utils import light_reduce
 from .module import ModuleBase, ActionModule
-from .streaming import StreamCallHelper
 
 
 _register_trim_module({'lazyllm.module.servermodule': ['__call__']})
@@ -135,10 +134,12 @@ class LLMBase(object):
 
     async def astream_call(self, *args, **kwargs):
         '''Async generator that yields tokens as they arrive. Suitable for FastAPI/asyncio contexts.'''
+        from lazyllm.module.stream_helper import StreamCallHelper
         llm = self.share()
         kwargs.setdefault('stream_output', True)
-        async for chunk in StreamCallHelper(llm).astream(*args, **kwargs):
-            yield chunk
+        async for item in StreamCallHelper(llm, sid=lazyllm.globals._sid).astream(*args, **kwargs):
+            if item.get('tag', '') in ('text', 'think'):
+                yield item.get('delta', '')
 
     @property
     def static_params(self) -> StaticParams:

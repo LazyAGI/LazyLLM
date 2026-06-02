@@ -1,6 +1,6 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
-from lazyllm import pipeline, loop, locals, package, FileSystemQueue, colored_text, once_wrapper
+from lazyllm import pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
 from .base import LazyLLMAgentBase, _write_agent_data
@@ -30,11 +30,11 @@ class StreamResponse():
         self.color = color
 
     def __call__(self, *inputs):
-        if self.stream: FileSystemQueue().enqueue(colored_text(f'\n{self.prefix}\n', self.prefix_color))
+        if self.stream: FileSystemQueue().enqueue(json.dumps({'tag': 'text', 'delta': f'\n{self.prefix}\n'}))
         if len(inputs) == 1:
-            if self.stream: FileSystemQueue().enqueue(colored_text(f'{inputs[0]}', self.color))
+            if self.stream: FileSystemQueue().enqueue(json.dumps({'tag': 'text', 'delta': f'{inputs[0]}'}))
             return inputs[0]
-        if self.stream: FileSystemQueue().enqueue(colored_text(f'{inputs}', self.color))
+        if self.stream: FileSystemQueue().enqueue(json.dumps({'tag': 'text', 'delta': f'{inputs}'}))
         return package(*inputs)
 
 

@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import lazyllm
 from lazyllm.tools import PlanAndSolveAgent, ReactAgent
-from lazyllm.tools.agent.events import TOOLS_EVENT_QUEUE
 
 
 def add_one(value: int) -> int:
@@ -46,11 +45,11 @@ class _FakeLLM(object):
                 reasoning = output.get('reasoning_content', '')
                 content = output.get('content', '')
                 if reasoning:
-                    lazyllm.FileSystemQueue.get_instance('think').enqueue(reasoning)
+                    lazyllm.FileSystemQueue().enqueue(json.dumps({'tag': 'think', 'delta': reasoning}))
                 if content:
-                    lazyllm.FileSystemQueue().enqueue(content)
+                    lazyllm.FileSystemQueue().enqueue(json.dumps({'tag': 'text', 'delta': content}))
             elif output:
-                lazyllm.FileSystemQueue().enqueue(str(output))
+                lazyllm.FileSystemQueue().enqueue(json.dumps({'tag': 'text', 'delta': str(output)}))
         return output
 
 
@@ -69,9 +68,11 @@ class _SlowStreamingLLM(_FakeLLM):
         output = self._outputs[self._cursor]
         self._cursor += 1
         if self._stream:
-            lazyllm.FileSystemQueue.get_instance('think').enqueue(output.get('reasoning_content', ''))
+            lazyllm.FileSystemQueue().enqueue(
+                json.dumps({'tag': 'think', 'delta': output.get('reasoning_content', '')}))
             time.sleep(0.05)
-            lazyllm.FileSystemQueue().enqueue(output.get('content', ''))
+            lazyllm.FileSystemQueue().enqueue(
+                json.dumps({'tag': 'text', 'delta': output.get('content', '')}))
             self.release.wait(timeout=1)
         return output
 
@@ -80,12 +81,8 @@ def _read_agent_events():
     events = []
     for raw in lazyllm.FileSystemQueue().dequeue():
         if raw:
-            events.append(SimpleNamespace(type='agent.text.delta', delta=raw))
-    for raw in lazyllm.FileSystemQueue.get_instance('think').dequeue():
-        if raw:
-            events.append(SimpleNamespace(type='agent.reasoning.delta', delta=raw))
-    for raw_event in lazyllm.FileSystemQueue.get_instance(TOOLS_EVENT_QUEUE).dequeue():
-        events.append(SimpleNamespace(**json.loads(raw_event)))
+            payload = json.loads(raw)
+            events.append(SimpleNamespace(**payload))
     return events
 
 
@@ -116,10 +113,10 @@ class TestReactAgentEvents(object):
 
         event_types = [event.type for event in events]
         assert result == 'The answer is 2.'
-        assert 'agent.reasoning.delta' in event_types
-        assert 'agent.text.delta' in event_types
-        assert 'agent.tool.calls' in event_types
-        assert 'agent.tool.results' in event_types
+        assert 'think' in event_types
+        assert 'text' in event_types
+        assert 'tool_calls' in event_types
+        assert 'tool_results' in event_types
 
     def test_react_agent_stream_writes_events_before_forward_returns(self):
         llm = _SlowStreamingLLM([{
@@ -147,12 +144,12 @@ class TestReactAgentEvents(object):
         while thread.is_alive() and time.time() < deadline:
             events = _read_agent_events()
             seen_types.extend(event.type for event in events)
-            if 'agent.reasoning.delta' in seen_types or 'agent.text.delta' in seen_types:
+            if 'think' in seen_types or 'text' in seen_types:
                 break
             time.sleep(0.01)
 
         assert thread.is_alive()
-        assert 'agent.reasoning.delta' in seen_types or 'agent.text.delta' in seen_types
+        assert 'think' in seen_types or 'text' in seen_types
         llm.release.set()
         thread.join(timeout=1)
         assert result_holder['result'] == 'The answer is already streaming.'
@@ -191,8 +188,8 @@ class TestPlanAndSolveAgentEvents(object):
 
         event_types = [event.type for event in events]
         assert result == 'The answer is 2.'
-        assert event_types.index('agent.plan.started') < event_types.index('agent.plan.finished')
-        assert 'agent.reasoning.delta' in event_types
-        assert 'agent.text.delta' in event_types
-        assert 'agent.tool.calls' in event_types
-        assert 'agent.tool.results' in event_types
+        assert event_types.index('plan_started') < event_types.index('plan_finished')
+        assert 'think' in event_types
+        assert 'text' in event_types
+        assert 'tool_calls' in event_types
+        assert 'tool_results' in event_types

@@ -471,7 +471,7 @@
     members: extract_file, get_content_type
     exclude-members:
 
-::: lazyllm.tools.StreamCallHelper
+::: lazyllm.module.stream_helper.StreamCallHelper
     members: [split_text]
     exclude-members:
 

@@ -15,7 +15,6 @@ if TYPE_CHECKING:
         ToolManager,
         FunctionCall,
         FunctionCallAgent,
-        AgentEvent,
         register as fc_register,
         LazyLLMAgentBase,
         ReactAgent,
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
     from .servers.graphrag.graphrag_server_module import GraphRagServerModule
     from .mcp.client import MCPClient  # noqa NID002
     from .actors import ParameterExtractor, QustionRewrite, CodeGenerator
-    from lazyllm.module import StreamCallHelper
     from .eval import (BaseEvaluator, ResponseRelevancy, Faithfulness, LLMContextRecall,
                     NonLLMContextRecall, ContextRelevance)
     from .http_request import HttpRequest, HttpExecutorResponse
@@ -89,7 +87,6 @@ _SUBMOD_MAP = {
         'ModuleTool',
         'FunctionCall',
         'FunctionCallAgent',
-        'AgentEvent',
         'fc_register',
         'LazyLLMAgentBase',
         'ReactAgent',
@@ -120,7 +117,6 @@ _SUBMOD_MAP = {
         'QustionRewrite',
         'CodeGenerator'
     ],
-    'common': ['StreamCallHelper'],
     'eval': [
         'BaseEvaluator',
         'ResponseRelevancy',

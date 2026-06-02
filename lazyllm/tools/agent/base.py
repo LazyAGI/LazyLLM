@@ -6,7 +6,6 @@ import lazyllm
 from lazyllm.module import ModuleBase
 from lazyllm import locals, once_wrapper
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
-from .events import TOOLS_EVENT_QUEUE
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager
 from .file_tool import (  # noqa: F401
@@ -24,7 +23,7 @@ from .download_tool import download_file  # noqa: F401
 
 def _write_agent_data(tag: str, **kwargs):
     payload = {'tag': tag, **kwargs}
-    lazyllm.FileSystemQueue.get_instance(TOOLS_EVENT_QUEUE).enqueue(
+    lazyllm.FileSystemQueue().enqueue(
         json.dumps(payload, ensure_ascii=False, default=str))
 
 
@@ -95,10 +94,6 @@ class LazyLLMAgentBase(ModuleBase):
         if len(args) == 1 and not kwargs:
             return args[0]
         return args if args else kwargs
-
-    def _lazyllm_stream_adapter(self, interval: float):
-        from .streaming import AgentStreamAdapter
-        return AgentStreamAdapter(self, interval)
 
     def _post_process(self, result):
         return result
