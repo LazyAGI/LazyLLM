@@ -134,7 +134,7 @@ class LLMBase(object):
 
     async def astream_call(self, *args, **kwargs):
         '''Async generator that yields tokens as they arrive. Suitable for FastAPI/asyncio contexts.'''
-        from lazyllm.module.stream_helper import StreamCallHelper
+        from .stream_helper import StreamCallHelper
         llm = self.share()
         kwargs.setdefault('stream_output', True)
         async for item in StreamCallHelper(llm, sid=lazyllm.globals._sid).astream(*args, **kwargs):
