@@ -35,6 +35,15 @@ MAX_SIZE_MB = 500
 MAX_PAGES = 100
 
 
+def _normalize_paddle_job_url(url: Optional[str]) -> str:
+    raw = (url or '').strip()
+    if not raw:
+        return JOB_URL
+    if _is_paddle_official_online_url(raw):
+        return JOB_URL
+    return raw.rstrip('/')
+
+
 class PaddleOCRPDFReader(_OcrReaderBase):
     def __init__(self,
                  url: Optional[str] = None,
@@ -68,6 +77,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                              'Authorization', 'token {token}'),
                          auth_source_key='paddleocr',
                          **kwargs)
+        self._job_url = _normalize_paddle_job_url(resolved_url)
         self._model = kwargs.pop('model', DEFAULT_MODEL)
         self._timeout = kwargs.pop('timeout', None)
 
@@ -148,7 +158,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         }
         with open(file_path, 'rb') as f:
             resp = post_sync(
-                JOB_URL,
+                self._job_url,
                 payload=data,
                 files={'file': (fname, f)},
                 headers=headers,
@@ -161,7 +171,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         _t_poll = time.time()
         for _ in range(240):
             status_resp = get_sync(
-                f'{JOB_URL}/{job_id}',
+                f'{self._job_url}/{job_id}',
                 headers=headers,
                 timeout=self._timeout or 30,
             )

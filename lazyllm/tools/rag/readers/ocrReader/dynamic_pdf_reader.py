@@ -151,6 +151,15 @@ class DynamicPDFReader(LazyLLMReaderBase):
         ocr_type, ocr_url, mineru_upload_mode, mineru_key, paddle_key = (
             self._resolve_options(extra_info)
         )
+        runtime_info = {}
+        dynamic_cfg = read_dynamic_ocr_configs()
+        if dynamic_cfg:
+            runtime_info.update({k: v for k, v in dynamic_cfg.items() if v is not None})
+        if extra_info:
+            runtime_info.update({k: v for k, v in extra_info.items() if v is not None})
+        effective_ocr_dynamic = self._coerce_bool(runtime_info.get('ocr_dynamic'))
+        if effective_ocr_dynamic is None:
+            effective_ocr_dynamic = self._ocr_dynamic
         cache_key = (ocr_type, ocr_url, mineru_upload_mode)
         reader = self._reader_cache.get(cache_key)
         if reader is None:
