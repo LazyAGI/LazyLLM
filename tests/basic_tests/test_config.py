@@ -52,6 +52,42 @@ class TestConfig(object):
     def test_config_mode(self):
         assert lazyllm.config['mode'] == Mode.Normal
 
+    def test_config_alias_and_options_and_post_action(self):
+        calls = []
+
+        def _post_action(value):
+            calls.append(value)
+
+        key = 'test_alias_options_key'
+        lazyllm.config.add(
+            key, str, 'a', env=None,
+            options=['a', 'b'],
+            alias={'A': 'a', 'B': 'b'},
+            post_action=_post_action,
+            description='test key for alias/options/post_action',
+        )
+
+        old = lazyllm.config._impl.get(key)
+        try:
+            # alias resolution (case-insensitive)
+            lazyllm.config[key] = 'B'
+            assert lazyllm.config[key] == 'b'
+            assert calls[-1] == 'b'
+
+            # options strict validation
+            with pytest.raises(ValueError):
+                lazyllm.config[key] = 'c'
+
+            # empty string falls back to default
+            lazyllm.config[key] = ''
+            assert lazyllm.config[key] == 'a'
+            assert calls[-1] == 'a'
+        finally:
+            if old is None:
+                lazyllm.config._impl.pop(key, None)
+            else:
+                lazyllm.config._impl[key] = old
+
     @isolated
     def test_config_disp(self):
         os.environ['LAZYLLM_DISPLAY'] = '1'

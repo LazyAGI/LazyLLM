@@ -26,7 +26,15 @@ lazyllm.config.add('log_file_level', str, 'ERROR', 'LOG_FILE_LEVEL', description
 lazyllm.config.add('log_file_size', str, '4 MB', 'LOG_FILE_SIZE', description='The size of the log file.')
 lazyllm.config.add('log_file_retention', str, '7 days', 'LOG_FILE_RETENTION',
                    description='The retention of the log file.')
-lazyllm.config.add('log_file_mode', str, 'merge', 'LOG_FILE_MODE', description='The mode of the log file.')
+lazyllm.config.add(
+    'log_file_mode', str, 'merge', 'LOG_FILE_MODE',
+    options=['merge', 'split'],
+    description=(
+        'The log file mode. '
+        'merge=enables multi-process-safe enqueue and writes to a shared file; '
+        'split=write per-process files without enqueue.'
+    ),
+)
 
 
 def _get_log_format(fmt: str):
