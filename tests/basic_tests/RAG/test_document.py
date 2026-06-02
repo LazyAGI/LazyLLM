@@ -1,3 +1,4 @@
+import gc
 import lazyllm
 import cloudpickle
 from lazyllm.tools.rag.doc_impl import DocImpl
@@ -227,6 +228,10 @@ class TestSchemaExtractorRegression(unittest.TestCase):
                     _TableBase.metadata.remove(tbl)
             if extractor._sql_manager is not None:
                 extractor._sql_manager.dispose()
+        # On Windows, SQLite file handles may not be released immediately after dispose().
+        # gc.collect() forces Python to finalize any lingering connection objects so
+        # the file can be deleted without a WinError 32 PermissionError.
+        gc.collect()
         if os.path.exists(db_path):
             os.remove(db_path)
 

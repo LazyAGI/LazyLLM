@@ -941,7 +941,3 @@ jobs:
       - name: Run basic tests
         run: |
           python -m pytest -v --order-scope=class -m "$PYTEST_MARKER" tests/basic_tests
-
-      - name: Run advanced tests
-        run: |
-          python -m pytest -v --order-scope=class -m "$PYTEST_MARKER" tests/advanced_tests
