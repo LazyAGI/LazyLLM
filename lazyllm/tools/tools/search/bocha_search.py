@@ -7,9 +7,9 @@ from .base import SearchBase, _make_result
 
 class BochaSearch(SearchBase):
 
-    def __init__(self, api_key: str, base_url: str = 'https://api.bochaai.com',
+    def __init__(self, api_key: str = None, base_url: str = 'https://api.bochaai.com',
                  timeout: int = 15, source_name: str = 'bocha'):
-        super().__init__(source_name=source_name, api_key=api_key)
+        super().__init__(source_name=source_name, api_key=api_key, dynamic_auth=(api_key is None))
         self._base_url = base_url.rstrip('/')
         self._timeout = timeout
 

@@ -29,8 +29,11 @@ class Reranker(ModuleBase, _PostProcess):
         lazyllm.deprecated(bool(target), '`target` parameter of reranker')
         _PostProcess.__init__(self, output_format, join)
 
-    def forward(self, nodes: List[DocNode], query: str = '') -> List[DocNode]:
-        results = self.registered_reranker[self._name](nodes, query=query, **self._kwargs)
+    def forward(self, nodes: List[DocNode], query: str = '', topk: Optional[int] = None) -> List[DocNode]:
+        kwargs = dict(self._kwargs)
+        if topk is not None:
+            kwargs['topk'] = topk
+        results = self.registered_reranker[self._name](nodes, query=query, **kwargs)
         LOG.debug(f'Rerank use `{self._name}` and get nodes: {results}')
         return self._post_process(results)
 
@@ -104,12 +107,12 @@ class ModuleReranker(Reranker):
         else:
             self._reranker = model
 
-    def forward(self, nodes: List[DocNode], query: str = '') -> List[DocNode]:
+    def forward(self, nodes: List[DocNode], query: str = '', topk: Optional[int] = None) -> List[DocNode]:
         if not nodes:
             return self._post_process([])
 
         docs = [node.get_text(metadata_mode=MetadataMode.EMBED) for node in nodes]
-        top_n = self._kwargs['topk'] if 'topk' in self._kwargs else len(docs)
+        top_n = topk if topk is not None else (self._kwargs['topk'] if 'topk' in self._kwargs else len(docs))
         sorted_indices = self._reranker(query, documents=docs, top_n=top_n)
         results = []
         for index, relevance_score in sorted_indices:

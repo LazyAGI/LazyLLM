@@ -8,14 +8,15 @@ from .base import SearchBase, _make_result
 
 class BingSearch(SearchBase):
 
-    def __init__(self, subscription_key: Optional[str] = None, endpoint: Optional[str] = None,
+    def __init__(self, subscription_key: Optional[str] = None,
+                 endpoint: Optional[str] = 'https://api.bing.microsoft.com/v7.0/search',
                  timeout: int = 10, source_name: str = 'bing'):
         super().__init__(
             source_name=source_name, api_key=subscription_key,
             auth_strategy=ApiKeyHeaderStrategy('Ocp-Apim-Subscription-Key'),
             dynamic_auth=(subscription_key is None),
         )
-        self._url = endpoint or 'https://api.bing.microsoft.com/v7.0/search'
+        self._url = endpoint
         self._timeout = timeout
 
     def search(self, query: str, count: int = 10) -> List[dict]:

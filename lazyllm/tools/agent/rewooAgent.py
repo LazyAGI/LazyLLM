@@ -6,7 +6,7 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from lazyllm import pipeline, LOG, bind, Color, locals, ifs, once_wrapper
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
-from .base import LazyLLMAgentBase
+from .base import LazyLLMAgentBase, _write_agent_data
 
 
 P_PROMPT_PREFIX = ('For the following tasks, make plans that can solve the problem step-by-step. '
@@ -92,6 +92,7 @@ class ReWOOAgent(LazyLLMAgentBase):
         return prompt
 
     def _build_planner_input(self, input: str):
+        _write_agent_data('plan_started')
         locals['chat_history'][self._planner._module_id] = []
         return input
 
@@ -102,13 +103,19 @@ class ReWOOAgent(LazyLLMAgentBase):
             if var in evidence:
                 tool_arguments = tool_arguments.replace(var, str(evidence[var]))
         tool_calls = [{'function': {'name': tool_name, 'arguments': tool_arguments}}]
+        if self._stream:
+            _write_agent_data('tool_calls', tool_calls=tool_calls)
         result = self._tools_manager(tool_calls)
+        if self._stream:
+            _write_agent_data('tool_results',
+                              tool_results=self._normalize_tool_results(tool_calls, result))
         locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
             {**tool_calls[0], 'tool_call_result': result[0]}
         )
         return json.dumps(result[0]).strip('\"')
 
     def _get_worker_evidences(self, response: str):
+        _write_agent_data('plan_finished', text=response)
         LOG.debug(f'planner plans: {response}')
         evidence = {}
         worker_evidences = ''

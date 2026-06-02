@@ -168,7 +168,11 @@ class EmptyFormatter(LazyLLMFormatterBase):
 class FunctionCallFormatter(LazyLLMFormatterBase):
     def format(self, msg):
         assert isinstance(msg, dict), 'FunctionCallFormatter only supports dict input.'
-        return {k: msg[k] for k in ('role', 'content', 'tool_calls', 'reasoning_content') if k in msg}
+        ret = {k: msg[k] for k in ('role', 'content', 'tool_calls', 'reasoning_content') if k in msg}
+        if isinstance(ret.get('tool_calls'), list):
+            ret['tool_calls'] = [{k: v for k, v in tool_call.items() if k != 'index'}
+                                 for tool_call in ret['tool_calls']]
+        return ret
 
 LAZYLLM_QUERY_PREFIX = '<lazyllm-query>'
 

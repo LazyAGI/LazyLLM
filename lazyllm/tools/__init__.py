@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     from .servers.graphrag.graphrag_server_module import GraphRagServerModule
     from .mcp.client import MCPClient  # noqa NID002
     from .actors import ParameterExtractor, QustionRewrite, CodeGenerator
-    from lazyllm.module import StreamCallHelper
     from .eval import (BaseEvaluator, ResponseRelevancy, Faithfulness, LLMContextRecall,
                     NonLLMContextRecall, ContextRelevance)
     from .http_request import HttpRequest, HttpExecutorResponse
@@ -120,7 +119,6 @@ _SUBMOD_MAP = {
         'QustionRewrite',
         'CodeGenerator'
     ],
-    'common': [],
     'eval': [
         'BaseEvaluator',
         'ResponseRelevancy',

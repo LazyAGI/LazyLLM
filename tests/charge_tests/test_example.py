@@ -128,7 +128,7 @@ class TestExamples(object):
 
         # test pipeline wrapped into iterator
         if not config['cache_online_module']:
-            from lazyllm.tools.common import StreamCallHelper
+            from lazyllm.module.stream_helper import StreamCallHelper
             flow_iterator = StreamCallHelper(ppl, interval=0.01)
             res_list = list(flow_iterator(query))
             assert isinstance(res_list, list) and len(res_list) > 1

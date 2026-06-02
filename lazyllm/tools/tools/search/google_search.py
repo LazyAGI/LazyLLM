@@ -9,6 +9,7 @@ from .base import SearchBase, _make_result
 class GoogleSearch(SearchBase):
 
     def __init__(self, custom_search_api_key: Optional[str] = None, search_engine_id: str = '',
+                 base_url: str = 'https://customsearch.googleapis.com/customsearch/v1',
                  timeout: int = 10, proxies: Optional[Dict[str, str]] = None,
                  source_name: str = 'google'):
         super().__init__(
@@ -17,7 +18,7 @@ class GoogleSearch(SearchBase):
             dynamic_auth=(custom_search_api_key is None),
         )
         params = {
-            'key': custom_search_api_key or '',
+            'key': '{{api_key}}',
             'cx': '{{search_engine_id}}',
             'q': '{{query}}',
             'dateRestrict': '{{date_restrict}}',
@@ -26,7 +27,7 @@ class GoogleSearch(SearchBase):
         }
         self._http = HttpTool(
             method='GET',
-            url='https://customsearch.googleapis.com/customsearch/v1',
+            url=base_url,
             params=params,
             timeout=timeout,
             proxies=proxies,
@@ -41,6 +42,7 @@ class GoogleSearch(SearchBase):
             query=query,
             search_engine_id=sid,
             date_restrict=date_restrict,
+            api_key=self.get_current_token(),
         )
         if not raw or not isinstance(raw, dict):
             return []
