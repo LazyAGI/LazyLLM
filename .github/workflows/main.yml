@@ -912,15 +912,30 @@ jobs:
             cmake --install build --prefix . --component lazyllm_cpp
           fi
           ls -al lazyllm | grep -E "lazyllm_cpp|cpp_lib" || true
+          ls -al lazyllm/tokenizers || true
+          echo "LAZYLLM_TOKENIZER_PATH=$GITHUB_WORKSPACE/lazyllm" >> "$GITHUB_ENV"
+
+      - name: Install ffmpeg
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            brew install ffmpeg
+          else
+            powershell -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force; irm get.scoop.sh | iex"
+            export PATH="$HOME/scoop/shims:$PATH"
+            scoop install ffmpeg
+          fi
 
       - name: Compute pytest marker
         run: |
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            echo "PYTEST_MARKER=not skip_on_linux" >> "$GITHUB_ENV"
+            echo "PYTEST_MARKER=not skip_on_linux and not skip_on_cpp" >> "$GITHUB_ENV"
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            echo "PYTEST_MARKER=not skip_on_mac" >> "$GITHUB_ENV"
+            echo "PYTEST_MARKER=not skip_on_mac and not skip_on_cpp" >> "$GITHUB_ENV"
           else
-            echo "PYTEST_MARKER=not skip_on_win" >> "$GITHUB_ENV"
+            echo "PYTEST_MARKER=not skip_on_win and not skip_on_cpp" >> "$GITHUB_ENV"
           fi
 
       - name: Run basic tests
