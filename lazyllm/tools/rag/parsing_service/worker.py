@@ -433,11 +433,11 @@ class DocumentProcessorWorker(ModuleBase):
             file_infos = payload.get('file_infos')
             kb_id = payload.get('kb_id', None)
             ng_names_requested = payload.get('ng_names')  # None means all groups
-            embed_only = payload.get('embed_only', False)
-            # embed_only semantics (folded reparse_mode into embed_only):
-            #   False              → full reparse (reslice + reembed all selected groups)
-            #   True               → rebuild vectors (skip slice, reembed existing nodes only)
-            #   "slice_missing"    → fill gaps (slice + embed only groups with no segments yet)
+            strategy = payload.get('strategy', 'rebuild')
+            # strategy:
+            #   "rebuild"       → full reparse (reslice + reembed all selected groups)
+            #   "reembed"       → rebuild vectors (skip slice, reembed existing nodes only)
+            #   "slice_missing" → fill gaps (slice + embed only groups with no segments yet)
 
             reparse_doc_ids = []
             reparse_files = []
@@ -448,7 +448,7 @@ class DocumentProcessorWorker(ModuleBase):
                 reparse_metadatas.append(file_info.get('metadata'))
 
             LOG.info(f'{self._log_prefix(task_id)} Execute reparse task: doc_ids={reparse_doc_ids!r}, '
-                     f'ng_names={ng_names_requested!r}, embed_only={embed_only!r}, kb_id={kb_id!r}')
+                     f'ng_names={ng_names_requested!r}, strategy={strategy!r}, kb_id={kb_id!r}')
 
             exec_ng_ids = [ng_id for name, ng_id in name_to_id.items()
                            if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
@@ -457,17 +457,21 @@ class DocumentProcessorWorker(ModuleBase):
 
             try:
                 # ================================================================
-                # Step 1: Resolve all conditions from embed_only
+                # Step 1: Resolve strategy to boolean flags
                 # ================================================================
                 source_groups = {LAZY_ROOT_NAME, LAZY_IMAGE_GROUP}
 
-                # Condition A: fill gaps — only process groups with no segments yet
-                check_missing_only = (embed_only == 'slice_missing')
-                # Condition B: need to re-create slices via transform
-                #   False → skip transform, only re-embed existing nodes
-                need_reslice = not (embed_only is True)
-                # Condition C: need to re-embed (always true for reparse, implicit)
-                # need_reembed = True
+                if strategy == 'rebuild':
+                    check_missing_only = False
+                    need_reslice = True
+                elif strategy == 'reembed':
+                    check_missing_only = False
+                    need_reslice = False
+                elif strategy == 'slice_missing':
+                    check_missing_only = True
+                    need_reslice = True
+                else:
+                    raise ValueError(f'Unknown reparse strategy: {strategy!r}')
 
                 # Condition D: force full reparse from source — set during Step 2
                 # when ng_names includes source groups and reslice is needed.
@@ -591,8 +595,8 @@ class DocumentProcessorWorker(ModuleBase):
                                 reader=reader,
                             )
                         else:
-                            # Skip transform, only re-embed existing nodes.
-                            extra['embed_only'] = True
+                            # strategy='reembed': skip transform, only re-embed existing nodes.
+                            extra['strategy'] = 'reembed'
                         operations.append((name, extra))
 
                 # ================================================================

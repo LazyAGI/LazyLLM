@@ -2031,17 +2031,43 @@ class TestBatchForwardRefPath:
 
         assert fallback_calls == ['block', None, 'doc-summary']
 
-    def test_reparse_partial_group_raises_without_reader(self):
-        '''Parent has no nodes + NO reader -> ValueError.'''
+    def test_reparse_partial_group_falls_back_even_without_reader(self):
+        '''Parent has no nodes -> falls back to full reparse (reader always present in practice).'''
         ng = self._make_node_groups()
+        reader = MagicMock()
+        reader.load_data.return_value = {LAZY_ROOT_NAME: [], LAZY_IMAGE_GROUP: []}
+
         store = MagicMock()
-        store.get_nodes.return_value = []
+        store.is_group_active = lambda g: g in (LAZY_ROOT_NAME,)
+        store.activated_groups.return_value = [LAZY_ROOT_NAME]
+        # Call 1 (parent check): [] -> missing -> triggers fallback.
+        # Calls 2..N (remove check in fallback + lazy group lookup): root nodes
+        # but the first of those must be [] for the remove check to succeed.
+
+        def get_nodes_side_effect(**kwargs):
+            return get_nodes_queue.pop(0) if get_nodes_queue else [DocNode(text='root', group=LAZY_ROOT_NAME)]
+
+        get_nodes_queue = [[], []]  # parent check, then remove check
+        store.get_nodes.side_effect = get_nodes_side_effect
 
         processor = _Processor(store=store)
-        with pytest.raises(ValueError, match='Cannot reparse group'):
-            processor._reparse_docs(group_name='block', node_groups=ng, reader=None,
-                                    doc_ids=[self._REPARSE_DOC], doc_paths=[self._REPARSE_PATH],
-                                    metadatas=[{}])
+        processor.add_doc = MagicMock()
+        processor._reparse_group_recursive = MagicMock()
+
+        fallback_calls = []
+        original_reparse = processor._reparse_docs
+
+        def spy_reparse(**kwargs):
+            fallback_calls.append(kwargs.get('group_name'))
+            return original_reparse(**kwargs)
+        processor._reparse_docs = spy_reparse
+
+        processor._reparse_docs(group_name='block', node_groups=ng, reader=reader,
+                                doc_ids=[self._REPARSE_DOC], doc_paths=[self._REPARSE_PATH],
+                                metadatas=[{}], kb_id='default')
+
+        assert 'block' in fallback_calls
+        assert None in fallback_calls  # fell back to full reparse
 
     # --- _reparse_group_recursive ---
 
@@ -2072,10 +2098,10 @@ class TestBatchForwardRefPath:
         assert 'block' not in create_calls
         assert 'line' not in create_calls
 
-    # --- embed_only ---
+    # --- reembed strategy ---
 
-    def test_reparse_embed_only_reembeds_existing_nodes(self):
-        '''embed_only=True -> only re-embed, no re-slice.'''
+    def test_reparse_reembed_strategy_reembeds_existing_nodes(self):
+        '''strategy='reembed' -> only re-embed, no re-slice.'''
         ng = self._make_node_groups()
         existing = [DocNode(text='already sliced', group='block')]
         store = MagicMock()
@@ -2086,7 +2112,7 @@ class TestBatchForwardRefPath:
         processor._reembed_group = MagicMock()
 
         processor.reparse(group_name='block', node_groups=ng, doc_ids=[self._REPARSE_DOC],
-                          kb_id='default', embed_only=True)
+                          kb_id='default', strategy='reembed')
 
         processor._reembed_group.assert_called_once_with('block', ng, doc_ids=[self._REPARSE_DOC], kb_id='default')
 
