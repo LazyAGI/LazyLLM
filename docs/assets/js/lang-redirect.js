@@ -20,12 +20,24 @@ document.addEventListener("DOMContentLoaded", function() {
     return null;
   }
 
-  function getTargetUrl(targetSegment) {
+  function getFromDataToLlmTargetPath(path, currentSegment, targetSegment) {
+    const marker = '/Tutorial/from-data-to-llm/';
+    if (targetSegment !== 'en' || !path.includes(marker)) return null;
+
+    const markerIndex = path.indexOf(marker);
+    const versionPrefix = path.substring(0, markerIndex);
+    const targetPrefix = versionPrefix.replace(`/${currentSegment}/`, `/${targetSegment}/`);
+    return `${targetPrefix}${marker}`;
+  }
+
+  function getTargetUrl(targetSegment, includeHash = true) {
     const freshPath = window.location.pathname;
     const currentSegment = getCurrentSegment(freshPath);
     if (!currentSegment) return null;
-    const freshNewPath = freshPath.replace(`/${currentSegment}/`, `/${targetSegment}/`);
-    return window.location.origin + freshNewPath + window.location.search + window.location.hash;
+    const specialPath = getFromDataToLlmTargetPath(freshPath, currentSegment, targetSegment);
+    const freshNewPath = specialPath || freshPath.replace(`/${currentSegment}/`, `/${targetSegment}/`);
+    const hash = specialPath || !includeHash ? '' : window.location.hash;
+    return window.location.origin + freshNewPath + window.location.search + hash;
   }
 
   document.querySelectorAll('a[lang], a[hreflang]').forEach(link => {
@@ -40,7 +52,8 @@ document.addEventListener("DOMContentLoaded", function() {
     if (currentSegment) {
         if (currentSegment === targetSegment) {
              // Already on the target language page: update href to the current full URL
-             // This makes clicking the button refresh the current page instead of jumping to the default homepage configured in mkdocs.yml
+             // This makes clicking the button refresh the current page instead of jumping to
+             // the default homepage configured in mkdocs.yml
              const currentUrl = window.location.href;
              link.href = currentUrl;
 
@@ -65,7 +78,8 @@ document.addEventListener("DOMContentLoaded", function() {
             link.addEventListener('click', function(e) {
                 // Prevent browser's default link navigation
                 e.preventDefault();
-                // Stop propagation and other similar event listeners (critical to prevent interference from other scripts)
+                // Stop propagation and other similar event listeners.
+                // This prevents interference from other scripts.
                 e.stopImmediatePropagation();
                 
                 // Dynamically get current path and hash (user might have navigated in-page)
@@ -75,10 +89,11 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 // Construct target base URL
                 const freshCurrentSegment = getCurrentSegment(freshPath) || currentSegment;
-                const freshNewPath = freshPath.replace(`/${freshCurrentSegment}/`, `/${targetSegment}/`);
+                const specialPath = getFromDataToLlmTargetPath(freshPath, freshCurrentSegment, targetSegment);
+                const freshNewPath = specialPath || freshPath.replace(`/${freshCurrentSegment}/`, `/${targetSegment}/`);
                 const targetBaseUrl = window.location.origin + freshNewPath + freshSearch;
 
-                if (freshHash) {
+                if (freshHash && !specialPath) {
                     console.log(`[i18n] Hash detected: ${freshHash}. Verifying existence in target...`);
                     
                     fetch(targetBaseUrl)
