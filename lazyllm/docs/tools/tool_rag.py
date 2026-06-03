@@ -2233,8 +2233,9 @@ nodes = reader("path/to/pdf")
 add_chinese_doc('rag.readers.DynamicPDFReader', '''\
 动态 OCR PDF 解析器。根据请求级配置在运行时选择 Mineru / PaddleOCR / 原生 PDFReader。
 
-该 reader 适用于多租户场景：不同请求可携带不同 OCR 类型、服务地址和鉴权 token。
+该 reader 适用于多租户场景：不同请求可携带不同 OCR 类型和服务地址。
 按 ``ocr_type`` 路由到 Mineru / PaddleOCR（``dynamic_auth=True``）；仅 ``ocr_type='none'`` 时使用原生 PDFReader。
+鉴权 token 由具体 OCR reader 在发起请求时从 ``globals.config['dynamic_ocr_auth']`` 动态读取。
 缺少 token 或 OCR 请求失败时直接报错，不回退 PDFReader。
 
 Args:
@@ -2259,8 +2260,10 @@ Dynamic OCR PDF reader that selects Mineru / PaddleOCR / native PDFReader at run
 based on per-request configuration.
 
 This reader is designed for multi-tenant usage: different requests can carry different
-OCR type, endpoint URL, and auth token. It routes by ``ocr_type`` to Mineru / PaddleOCR
+OCR type and endpoint URL. It routes by ``ocr_type`` to Mineru / PaddleOCR
 (``dynamic_auth=True``); only ``ocr_type='none'`` uses native PDFReader.
+Concrete OCR readers read auth tokens dynamically from ``globals.config['dynamic_ocr_auth']``
+when sending requests.
 Missing token or OCR failures raise errors instead of falling back to PDFReader.
 
 Args:

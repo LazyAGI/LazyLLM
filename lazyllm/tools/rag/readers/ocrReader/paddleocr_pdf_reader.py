@@ -128,7 +128,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
 
     def _fetch_job(self, file_path: str):
         fname = os.path.basename(file_path)
-        headers = self._auth_headers()
+        headers = self.inject_auth_header()
 
         optional_payload = {
             'useDocOrientationClassify': False,

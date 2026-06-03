@@ -58,12 +58,6 @@ def read_dynamic_ocr_configs() -> Optional[Dict]:
     return cfg if isinstance(cfg, dict) else None
 
 
-def read_static_api_key(key: str) -> Optional[str]:
-    import lazyllm
-    val = lazyllm.config[key]
-    return val if val else None
-
-
 class _Adapter:
     def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
         '''Adapt raw JSON response to intermediate block representation.
@@ -113,9 +107,6 @@ class _OcrReaderBase(_RichReader, _Adapter, CredentialMixin):
             f'use inject_ocr_config(..., ocr_auth={{"{self._auth_source_key}": "..."}}) '
             f'or set globals.config["dynamic_ocr_auth"] before OCR parsing'
         )
-
-    def _auth_headers(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-        return self.inject_auth_header(headers)
 
     @staticmethod
     def _split_large_pdf(pdf_path: str, max_size_mb: int = 200,

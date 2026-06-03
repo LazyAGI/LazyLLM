@@ -333,8 +333,7 @@ class MineruPDFReader(_OcrReaderBase):
     def _fetch_async_by_upload(self, file_path: str, task_dir: Optional['Path'] = None):
         '''Upload a local file via batch presigned URL and fetch result.'''
         fname = os.path.basename(file_path)
-        # Use unified auth injection so token format can be switched by strategy.
-        headers = self._auth_headers({'Content-Type': 'application/json'})
+        headers = self.inject_auth_header({'Content-Type': 'application/json'})
 
         # Step 1: Request presigned upload URL
         payload = {
