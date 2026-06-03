@@ -43,7 +43,7 @@ class TestPreferenceOperators:
         data = {'content': 'I want to stay at a hotel in Beijing.'}
         res = op([data])
         print('test_intent_extractor result:', res)
-        assert 'intent' in res[0]['intent']
+        assert res[0]['intent'] == 'book a hotel'
 
     def test_preference_response_generator(self):
         mockmodle = self.MockModel(return_val='I can help you book a hotel in Beijing.')
@@ -55,7 +55,7 @@ class TestPreferenceOperators:
             output_key='responses',
             _save_data=False
         )
-        data = {'intent': {'intent': 'book a hotel'}}
+        data = {'intent': 'book a hotel'}
         res = op([data])
         print('test_preference_response_generator result:', res)
         assert len(res[0]['responses']) == 2
@@ -72,7 +72,7 @@ class TestPreferenceOperators:
             _save_data=False
         )
         data = {
-            'intent': {'intent': 'book a hotel'},
+            'intent': 'book a hotel',
             'responses': ['I can help you book a hotel in Beijing.', 'Here are some hotels for you.']
         }
         res = op([data])
