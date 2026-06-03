@@ -33,7 +33,18 @@ FROM_DATA_TO_LLM_IFRAME_PATTERN = re.compile(
 FROM_DATA_TO_LLM_IFRAME_BLOCK_PATTERN = re.compile(
     r'<iframe[^>]+course_map\.html[^>]*>\s*</iframe>'
 )
-FROM_DATA_TO_LLM_ZH_INTRO = ''
+FROM_DATA_TO_LLM_ZH_INTRO = '''# 从数据到大模型
+
+本课程旨在为开发者和算法工程师提供一套从数据到模型再到应用的 LLM 全栈实战指南。
+课程核心聚焦于数据工程，并将其深度融入到模型训练的每一个环节——从底座预训练
+(Pre-training) 到指令微调 (SFT)，再到人类价值观对齐 (RLHF/GRPO)。
+
+课程不仅涵盖了纯文本、多模态、Embedding 等多维度的技术原理，更引入了系统工程视角，
+详解分布式训练、高效部署与模型合规。特别值得一提的是，本课程贯穿了 LazyLLM
+全流程实战与 Agent（智能体）的双重应用：既教授如何构建具备 Agent 能力的模型，
+也演示如何利用 Agent 自动化流水线来清洗和合成高质量数据，助力企业构建闭环的
+"数据飞轮"。
+'''
 
 
 def convert_ipynb_to_md(ipynb_path: str):
