@@ -332,7 +332,7 @@ Args:
     count (int): 返回条数，默认 10，最大 50。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
+    List[dict]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
 add_english_doc('BingSearch.search', '''
@@ -343,7 +343,7 @@ Args:
     count (int): Number of results, default 10, max 50.
 
 Returns:
-    List[Dict[str, Any]]: Search results in the unified format. Each item contains title, url, snippet, and source.
+    List[dict]: Search results in the unified format. Each item contains title, url, snippet, and source.
 ''')
 
 add_chinese_doc('BochaSearch', '''
@@ -406,7 +406,7 @@ Args:
     summary (bool): 是否返回摘要，默认 False。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
+    List[dict]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
 add_english_doc('BochaSearch.search', '''
@@ -419,7 +419,7 @@ Args:
     summary (bool): Whether to request summary, default False.
 
 Returns:
-    List[Dict[str, Any]]: Search results in the unified format. Each item contains title, url, snippet, and source.
+    List[dict]: Search results in the unified format. Each item contains title, url, snippet, and source.
 ''')
 
 add_chinese_doc('StackOverflowSearch', '''
