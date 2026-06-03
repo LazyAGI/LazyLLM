@@ -2241,18 +2241,18 @@ add_chinese_doc('rag.readers.DynamicPDFReader', '''\
 Args:
     ocr_type (str, optional): 默认 OCR 类型，可选 'mineru' / 'paddleocr' / 'paddle' / 'none'。
     ocr_url (str, optional): 默认 OCR 服务地址。
-    patch_applied (bool, optional): Mineru 本地 patch 形态开关。
-    mineru_upload_mode (bool, optional): Mineru 上传模式（部署级）；未设置时按 ``ocr_url`` 主机名推断（非 ``mineru`` 官方域则为上传模式）。
-    mineru_backend (str, optional): Mineru 后端类型，默认 'hybrid-auto-engine'。
     image_cache_dir (str, optional): OCR 图片缓存目录。
     post_func (Callable, optional): 传递给下游 OCR reader 的后处理函数。
     timeout (int, optional): OCR 请求超时（秒）。
     return_trace (bool, optional): 是否启用 trace。
 
 Notes:
-    可通过 ``lazyllm.inject_ocr_config(...)`` 注入请求级配置：
+    可通过 ``lazyllm.inject_ocr_config(llm_config)`` 注入请求级 OCR 配置：
+    - ``llm_config['ocr_config']`` 承载 OCR 配置
     - ``ocr_type`` / ``ocr_url`` → ``globals.config['dynamic_ocr_configs']``
     - ``ocr_auth`` → ``globals.config['dynamic_ocr_auth']``（如 ``{'mineru': '...', 'paddleocr': '...'}``）
+    Mineru 的 ``mineru_backend`` / ``mineru_upload_mode`` / ``ocr_patch_applied`` 由
+    ``MineruPDFReader`` 从配置或环境变量读取，不经由 ``DynamicPDFReader`` 透传。
 ''')
 
 add_english_doc('rag.readers.DynamicPDFReader', '''\
@@ -2269,18 +2269,19 @@ Missing token or OCR failures raise errors instead of falling back to PDFReader.
 Args:
     ocr_type (str, optional): Default OCR type. One of 'mineru' / 'paddleocr' / 'paddle' / 'none'.
     ocr_url (str, optional): Default OCR service URL.
-    patch_applied (bool, optional): Mineru local patch mode flag.
-    mineru_upload_mode (bool, optional): Mineru upload mode (deploy-time). When unset, inferred from ``ocr_url`` hostname (upload mode unless official ``mineru`` host).
-    mineru_backend (str, optional): Mineru backend type. Default is 'hybrid-auto-engine'.
     image_cache_dir (str, optional): OCR image cache directory.
     post_func (Callable, optional): Post-processing function passed to downstream OCR reader.
     timeout (int, optional): OCR request timeout in seconds.
     return_trace (bool, optional): Whether to enable tracing.
 
 Notes:
-    Per-request config can be injected via ``lazyllm.inject_ocr_config(...)``:
+    Per-request OCR config can be injected via ``lazyllm.inject_ocr_config(llm_config)``:
+    - ``llm_config['ocr_config']`` carries OCR configuration
     - ``ocr_type`` / ``ocr_url`` → ``globals.config['dynamic_ocr_configs']``
     - ``ocr_auth`` → ``globals.config['dynamic_ocr_auth']`` (e.g. ``{'mineru': '...', 'paddleocr': '...'}``)
+    Mineru-specific ``mineru_backend`` / ``mineru_upload_mode`` / ``ocr_patch_applied``
+    are read by ``MineruPDFReader`` from config or environment variables instead of
+    being forwarded through ``DynamicPDFReader``.
 ''')
 
 add_example('rag.readers.DynamicPDFReader', '''\
@@ -2289,9 +2290,11 @@ import lazyllm
 
 reader = DynamicPDFReader(ocr_type='mineru')
 lazyllm.inject_ocr_config({
-    'ocr_type': 'paddleocr',
-    'ocr_url': 'http://127.0.0.1:9000',
-    'ocr_auth': {'paddleocr': 'token-user-a'},
+    'ocr_config': {
+        'ocr_type': 'paddleocr',
+        'ocr_url': 'http://127.0.0.1:9000',
+        'ocr_auth': {'paddleocr': 'token-user-a'},
+    },
 })
 nodes = reader('path/to/pdf')
 ''')

@@ -85,7 +85,7 @@ class TestDynamicPDFReader:
             reader._build_reader('mineru', 'http://mock-mineru')
             assert mock_cls.call_args.kwargs['dynamic_auth'] is True
 
-    def test_mineru_key_without_url_uses_official(self):
+    def test_dynamic_mineru_type_without_url_uses_official(self):
         reader = DynamicPDFReader(
             ocr_type='none',
             ocr_url='http://host.docker.internal:8000/api/v1/pdf_parse',
@@ -99,7 +99,7 @@ class TestDynamicPDFReader:
         assert ocr_type == 'mineru'
         assert ocr_url == ''
 
-    def test_paddle_key_without_url_uses_official(self):
+    def test_dynamic_paddle_type_without_url_uses_official(self):
         reader = DynamicPDFReader(
             ocr_type='none',
             ocr_url='http://host.docker.internal:8000/api/v1/pdf_parse',

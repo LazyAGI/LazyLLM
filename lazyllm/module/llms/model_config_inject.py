@@ -13,6 +13,9 @@ _TYPE_TO_SLOT: Dict[str, str] = {
 
 # Role name prefixes that imply the 'embed' slot even when 'type' is absent.
 _EMBED_ROLE_PREFIXES = ('embed_', 'reranker')
+_NON_MODEL_CONFIG_KEYS = {
+    'ocr_config', 'ocr_type', 'ocr_url', 'ocr_auth', 'mineru_api_key', 'paddle_api_key',
+}
 
 
 def _infer_slot(role: str, role_cfg: Dict[str, Any]) -> str:
@@ -66,6 +69,8 @@ def inject_model_config(model_config: Optional[Dict[str, Any]]) -> None:
     injected_roles = []
 
     for role, role_cfg in model_config.items():
+        if role in _NON_MODEL_CONFIG_KEYS:
+            continue
         if not isinstance(role_cfg, dict):
             LOG.warning(f'[inject_model_config] skipping role {role!r}: expected dict, got {type(role_cfg).__name__}')
             continue

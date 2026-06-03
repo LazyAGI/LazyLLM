@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-'''Smoke-test direct MineruPDFReader / PaddleOCRPDFReader construction in container.'''
+'''Smoke-test direct OCR reader init/parse in container (llm_config inject format).'''
 import os
 import sys
 import traceback
 
 from lazyllm import globals, inject_ocr_config
+from lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader import DynamicPDFReader
 from lazyllm.tools.rag.readers.ocrReader.mineru_pdf_reader import MineruPDFReader
 from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import PaddleOCRPDFReader
 
@@ -20,31 +21,43 @@ ENV_OCR_URL = os.environ.get(
     'LAZYMIND_OCR_SERVER_URL',
     'http://host.docker.internal:8000/api/v1/pdf_parse',
 )
+MINERU_LOCAL = os.environ.get(
+    'MINERU_LOCAL',
+    'http://172.24.176.1:20234/api/v1/pdf_parse',
+)
+IMAGE_CACHE_DIR = os.environ.get(
+    'OCR_CACHE_DIR',
+    '/var/lib/lazymind/uploads/.image_cache',
+)
 
 
 def clear_ocr_inject():
-    for key in ('dynamic_ocr_configs', 'dynamic_ocr_auth'):
-        try:
-            del globals.config[key]
-        except Exception:
-            globals.config[key] = None
+    globals.config['dynamic_ocr_configs'] = None
+    globals.config['dynamic_ocr_auth'] = None
+
+
+def reader_attrs(reader):
+    if isinstance(reader, DynamicPDFReader):
+        return {'route': reader._resolve_route(None)}
+    if isinstance(reader, MineruPDFReader):
+        return {
+            '_url': reader._url,
+            '_offline_mode': reader._offline_mode,
+            '_image_cache_dir': str(reader._image_cache_dir),
+        }
+    if isinstance(reader, PaddleOCRPDFReader):
+        return {
+            '_url': reader._url,
+            '_job_url': reader._job_url,
+            '_image_cache_dir': str(reader._image_cache_dir),
+        }
+    return {}
 
 
 def run_init(label, factory):
     try:
         reader = factory()
-        attrs = {}
-        if isinstance(reader, MineruPDFReader):
-            attrs = {
-                '_url': reader._url,
-                '_offline_mode': reader._offline_mode,
-            }
-        elif isinstance(reader, PaddleOCRPDFReader):
-            attrs = {
-                '_url': reader._url,
-                '_job_url': reader._job_url,
-            }
-        print(f'OK   init[{label}] {attrs}')
+        print(f'OK   init[{label}] {reader_attrs(reader)}')
         return reader, None
     except Exception as exc:
         print(f'FAIL init[{label}] {exc!r}')
@@ -62,17 +75,35 @@ def run_parse(label, reader):
         return False
 
 
+def inject_llm(llm_config):
+    clear_ocr_inject()
+    inject_ocr_config(llm_config)
+
+
+def build_dynamic():
+    return DynamicPDFReader(
+        ocr_type='none',
+        ocr_url=ENV_OCR_URL,
+        image_cache_dir=IMAGE_CACHE_DIR,
+        timeout=3600,
+    )
+
+
 def main():
-    print('=== direct reader init / optional parse ===')
+    failed = 0
+    print('=== direct reader init / parse ===')
     print(f'PDF exists: {os.path.isfile(PDF)} path={PDF}')
     print(f'ENV LAZYMIND_OCR_SERVER_URL={ENV_OCR_URL!r}')
+    print(f'MINERU_LOCAL={MINERU_LOCAL!r}')
+    print(f'IMAGE_CACHE_DIR={IMAGE_CACHE_DIR!r}')
     print(f'keys: paddle={"set" if PADDLE_KEY else "empty"} mineru={"set" if MINERU_KEY else "empty"}')
     print()
 
-    cases = [
+    print('=== Part 1: direct init (no inject) ===')
+    init_cases = [
         ('mineru_url_empty', lambda: MineruPDFReader(url='', dynamic_auth=True)),
-        ('mineru_url_official', lambda: MineruPDFReader(url='https://mineru.net', dynamic_auth=True)),
-        ('mineru_url_env_default', lambda: MineruPDFReader(url=ENV_OCR_URL, dynamic_auth=True)),
+        ('mineru_url_local', lambda: MineruPDFReader(url=MINERU_LOCAL, dynamic_auth=True)),
+        ('mineru_url_env', lambda: MineruPDFReader(url=ENV_OCR_URL, dynamic_auth=True)),
         ('paddle_url_empty', lambda: PaddleOCRPDFReader(url='', dynamic_auth=True)),
         (
             'paddle_url_official',
@@ -81,68 +112,95 @@ def main():
                 dynamic_auth=True,
             ),
         ),
-        ('paddle_url_env_default', lambda: PaddleOCRPDFReader(url=ENV_OCR_URL, dynamic_auth=True)),
-        ('mineru_no_dynamic_auth', lambda: MineruPDFReader(url='https://mineru.net', api_key=MINERU_KEY or None)),
-        ('paddle_no_dynamic_auth', lambda: PaddleOCRPDFReader(url='', api_key=PADDLE_KEY or None)),
+        ('paddle_url_env', lambda: PaddleOCRPDFReader(url=ENV_OCR_URL, dynamic_auth=True)),
     ]
-
-    readers = []
-    for label, factory in cases:
-        reader, err = run_init(label, factory)
-        if reader is not None:
-            readers.append((label, reader))
+    for label, factory in init_cases:
+        _, err = run_init(label, factory)
+        if err:
+            failed += 1
 
     if not PADDLE_KEY and not MINERU_KEY:
         print()
         print('SKIP parse: set PADDLE_KEY / MINERU_KEY env to test forward()')
-        return 0
+        return 1 if failed else 0
 
     print()
-    print('=== parse with inject_ocr_config (dynamic_auth readers) ===')
-    parse_cases = []
-    if MINERU_KEY:
-        parse_cases.extend([
-            (
-                'mineru_empty_url_parse',
-                '',
-                {'mineru': MINERU_KEY},
-                lambda: MineruPDFReader(url='', dynamic_auth=True),
-            ),
-            (
-                'mineru_official_url_parse',
-                'https://mineru.net',
-                {'mineru': MINERU_KEY},
-                lambda: MineruPDFReader(url='https://mineru.net', dynamic_auth=True),
-            ),
-        ])
-    if PADDLE_KEY:
-        parse_cases.extend([
-            (
-                'paddle_empty_url_parse',
-                '',
-                {'paddleocr': PADDLE_KEY},
-                lambda: PaddleOCRPDFReader(url='', dynamic_auth=True),
-            ),
-            (
-                'paddle_official_url_parse',
-                'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs',
-                {'paddleocr': PADDLE_KEY},
-                lambda: PaddleOCRPDFReader(
-                    url='https://paddleocr.aistudio-app.com/api/v2/ocr/jobs',
-                    dynamic_auth=True,
-                ),
-            ),
-        ])
+    print('=== Part 2: DynamicPDFReader route + parse (llm_config inject) ===')
+    dynamic = build_dynamic()
+    dynamic_cases = [
+        ('none', {'ocr_config': {'ocr_type': 'none', 'ocr_url': ''}}, True),
+        (
+            'paddle_key_only',
+            {'ocr_config': {'ocr_type': 'paddleocr', 'paddle_api_key': PADDLE_KEY}},
+            bool(PADDLE_KEY),
+        ),
+        (
+            'paddle_alias',
+            {'ocr_config': {'ocr_type': 'paddle', 'paddle_api_key': PADDLE_KEY}},
+            bool(PADDLE_KEY),
+        ),
+        (
+            'mineru_local',
+            {
+                'ocr_config': {
+                    'ocr_type': 'mineru',
+                    'ocr_url': MINERU_LOCAL,
+                    'mineru_api_key': MINERU_KEY,
+                },
+            },
+            bool(MINERU_KEY),
+        ),
+        (
+            'mineru_key_only_offline_fallback',
+            {
+                'ocr_config': {
+                    'ocr_type': 'mineru',
+                    'ocr_url': MINERU_LOCAL,
+                    'mineru_api_key': MINERU_KEY,
+                },
+            },
+            bool(MINERU_KEY),
+        ),
+    ]
+    for label, llm_config, enabled in dynamic_cases:
+        if not enabled:
+            print(f'SKIP [{label}] missing key')
+            continue
+        inject_llm(llm_config)
+        route = dynamic._resolve_route(None)
+        child = dynamic._get_reader(*route)
+        print(f'route[{label}] -> {route} child={reader_attrs(child)}')
+        if not run_parse(label, dynamic):
+            failed += 1
 
-    failed = 0
-    for label, ocr_url, auth, factory in parse_cases:
-        clear_ocr_inject()
-        inject_ocr_config({
-            'ocr_type': 'mineru' if 'mineru' in label else 'paddleocr',
-            'ocr_url': ocr_url,
-            'ocr_auth': auth,
-        })
-        reader, err = run_init(label + '_before_parse', factory)
+    print()
+    print('=== Part 3: direct reader parse + llm_config inject ===')
+    direct_cases = [
+        (
+            'paddle_empty',
+            {'ocr_config': {'ocr_type': 'paddleocr', 'paddle_api_key': PADDLE_KEY}},
+            lambda: PaddleOCRPDFReader(url='', dynamic_auth=True),
+            bool(PADDLE_KEY),
+        ),
+        (
+            'mineru_local',
+            {
+                'ocr_config': {
+                    'ocr_type': 'mineru',
+                    'ocr_url': MINERU_LOCAL,
+                    'mineru_api_key': MINERU_KEY,
+                },
+            },
+            lambda: MineruPDFReader(url=MINERU_LOCAL, dynamic_auth=True),
+            bool(MINERU_KEY),
+        ),
+    ]
+    for label, llm_config, factory, enabled in direct_cases:
+        if not enabled:
+            print(f'SKIP [{label}] missing key')
+            continue
+        inject_llm(llm_config)
+        reader, err = run_init(label, factory)
         if err:
             failed += 1
             continue
@@ -151,7 +209,7 @@ def main():
 
     print()
     if failed:
-        print(f'done: {failed} parse failure(s)')
+        print(f'done: {failed} failure(s)')
         return 1
     print('done: all requested checks finished')
     return 0

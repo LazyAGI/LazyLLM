@@ -80,13 +80,11 @@ class _OcrReaderBase(_RichReader, _Adapter, CredentialMixin):
                  return_trace: bool = True,
                  token: Optional[str] = None,
                  dynamic_auth: bool = False,
-                 auth_strategy: Optional[AuthStrategy] = None,
-                 auth_source_key: Optional[str] = None):
+                 auth_strategy: Optional[AuthStrategy] = None):
         super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
         credential = self._default_credential(token, dynamic_auth)
         self.__init_credential__(credential, strategy=auth_strategy or BearerTokenStrategy())
-        # auth_source_key links this reader to globals.config['dynamic_ocr_auth'][key].
-        self._auth_source_key = (auth_source_key or self.__class__.__name__.replace('PDFReader', '')).lower()
+        self._auth_source_key = self.__class__.__name__.replace('PDFReader', '').lower()
         self._url = url
         self._image_cache_dir = Path(image_cache_dir) if image_cache_dir is not None else None
         if self._image_cache_dir is not None:

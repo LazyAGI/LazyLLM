@@ -33,6 +33,18 @@ from .ocr_reader_base import (
 )
 
 lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='The API key for Mineru')
+lazyllm.config.add(
+    'mineru_backend', str, 'hybrid-auto-engine', 'MINERU_BACKEND',
+    description='The MinerU backend used by local MinerU service.',
+)
+lazyllm.config.add(
+    'mineru_upload_mode', str, None, 'MINERU_UPLOAD_MODE',
+    description='Whether local MinerU service should receive uploaded files.',
+)
+lazyllm.config.add(
+    'ocr_patch_applied', bool, False, 'OCR_PATCH_APPLIED',
+    description='Whether local MinerU service uses the patched form API.',
+)
 _IMAGE_REF_PATTERN = re.compile(
     r'images/[^\s\)"\'\]<]+\.(?:jpg|jpeg|png|gif|bmp|webp|tiff|tif)',
     re.IGNORECASE,
@@ -42,8 +54,8 @@ _IMAGE_REF_PATTERN = re.compile(
 class MineruPDFReader(_OcrReaderBase):
     def __init__(self,
                  url: Optional[str] = None,
-                 backend: str = 'hybrid-auto-engine',
-                 upload_mode: bool = False,
+                 backend: Optional[str] = None,
+                 upload_mode: Optional[bool] = None,
                  extract_table: bool = True,
                  extract_formula: bool = True,
                  split_doc: bool = True,
@@ -52,7 +64,7 @@ class MineruPDFReader(_OcrReaderBase):
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True,
                  dropped_types: Optional[Set[str]] = None,
-                 patch_applied: bool = False,
+                 patch_applied: Optional[bool] = None,
                  api_key: Optional[str] = None,
                  dynamic_auth: bool = False,
                  auth_strategy: Optional[AuthStrategy] = None,
@@ -71,14 +83,43 @@ class MineruPDFReader(_OcrReaderBase):
                          token=token,
                          dynamic_auth=dynamic_auth,
                          auth_strategy=auth_strategy,
-                         auth_source_key='mineru',
                          **kwargs)
-        self._backend = backend
-        self._upload_mode = upload_mode
+        self._backend = backend or lazyllm.config['mineru_backend']
+        self._upload_mode = self._resolve_upload_mode(upload_mode)
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._offline_mode = not _is_mineru_official_online_url(self._url)
         # Local / self-hosted MinerU expects patch form upload, not legacy JSON.
-        self._patch_applied = patch_applied or self._offline_mode
+        self._patch_applied = self._resolve_patch_applied(patch_applied) or self._offline_mode
+
+    @staticmethod
+    def _parse_bool_config(value: Optional[str], *, name: str) -> Optional[bool]:
+        if value is None:
+            return None
+        value = str(value).strip().lower()
+        if value == '':
+            return None
+        if value in ('1', 'true', 'yes', 'on'):
+            return True
+        if value in ('0', 'false', 'no', 'off'):
+            return False
+        raise ValueError(f'{name} must be a boolean string, got: {value!r}')
+
+    def _resolve_upload_mode(self, upload_mode: Optional[bool]) -> bool:
+        if upload_mode is not None:
+            return upload_mode
+        configured = self._parse_bool_config(
+            lazyllm.config['mineru_upload_mode'],
+            name='mineru_upload_mode',
+        )
+        if configured is not None:
+            return configured
+        return self._offline_mode
+
+    @staticmethod
+    def _resolve_patch_applied(patch_applied: Optional[bool]) -> bool:
+        if patch_applied is not None:
+            return patch_applied
+        return bool(lazyllm.config['ocr_patch_applied'])
 
     @override
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True

@@ -44,10 +44,8 @@ class AddDocRequest(BaseModel):
     priority: Optional[int] = 0
     callback_url: Optional[str] = None
     embed_only: bool = False  # when True, skip transform and only (re-)embed existing nodes
-    # per-request model config injected by backend (e.g. embed_main).
+    # per-request model config injected by backend (e.g. embed_main, ocr_config).
     llm_config: Optional[Dict[str, Any]] = None
-    # per-request OCR config for DynamicPDFReader (ocr_type, ocr_url, keys, etc.).
-    ocr_config: Optional[Dict[str, Any]] = None
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None

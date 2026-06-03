@@ -76,7 +76,6 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                          dynamic_auth=dynamic_auth,
                          auth_strategy=auth_strategy or ApiKeyHeaderStrategy(
                              'Authorization', 'token {token}'),
-                         auth_source_key='paddleocr',
                          **kwargs)
         self._job_url = _normalize_paddle_job_url(resolved_url)
         self._model = kwargs.pop('model', DEFAULT_MODEL)
