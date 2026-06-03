@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from abc import ABC, abstractmethod
+from .globals import globals as lazyllm_globals
 
 _AUTH_KINDS = ('static', 'dynamic', 'oauth2', 'app_credentials')
 
@@ -28,12 +29,10 @@ class KeyPool:
         self._policy = policy
 
     def _get_state(self) -> dict:
-        from .globals import globals as lazyllm_globals
         return lazyllm_globals['key_pool_state'].setdefault(id(self), {})
 
     def ordered_keys(self) -> List[str]:
-        from .globals import globals as lazyllm_globals
-        state = lazyllm_globals['key_pool_state'].get(id(self), {})
+        state = self._get_state()
         failed = state.get('failed', set())
         if self._policy == KeySelectPolicy.RANDOM:
             candidates = [k for k in self._keys if k not in failed]
@@ -44,7 +43,7 @@ class KeyPool:
             if not candidates:
                 return candidates
             idx = state.get('rr_index', 0) % len(candidates)
-            lazyllm_globals['key_pool_state'].setdefault(id(self), {})['rr_index'] = (idx + 1) % len(candidates)
+            state['rr_index'] = (idx + 1) % len(candidates)
             return candidates[idx:] + candidates[:idx]
         last = state.get('last_success')
         return sorted(self._keys, key=lambda k: (k in failed, k != last))

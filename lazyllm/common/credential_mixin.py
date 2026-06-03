@@ -25,7 +25,6 @@ class CredentialMixin:
         self._auth_strategy: AuthStrategy = strategy or BearerTokenStrategy()
         self._skip_auth: bool = skip_auth
         self._token_lock: threading.Lock = threading.Lock()
-        self._dynamic_key_pool: Optional[KeyPool] = None
 
     def __key_source__(self) -> Any:
         if self._skip_auth:
@@ -121,10 +120,17 @@ class CredentialMixin:
         return out
 
     def _get_or_build_dynamic_pool(self, keys: List[str]) -> KeyPool:
+        from .globals import globals as lazyllm_globals
         policy = getattr(self, '_dynamic_key_policy', KeySelectPolicy.RANDOM)
-        if self._dynamic_key_pool is None or self._dynamic_key_pool.keys != list(keys):
-            self._dynamic_key_pool = KeyPool(list(keys), policy)
-        return self._dynamic_key_pool
+        pool_state = lazyllm_globals['key_pool_state']
+        cache_key = (id(self), 'dynamic_pool')
+        entry = pool_state.get(cache_key)
+        if entry is None or entry['keys'] != list(keys):
+            pool = KeyPool(list(keys), policy)
+            pool_state[cache_key] = {'keys': list(keys), 'pool': pool}
+        else:
+            pool = entry['pool']
+        return pool
 
     def _get_active_pool(self) -> Optional[KeyPool]:
         cred = self._credential
