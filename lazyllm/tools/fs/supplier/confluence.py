@@ -51,7 +51,8 @@ class ConfluenceFS(LazyLLMFSBase):
             'Accept': 'application/json',
         })
 
-    def inject_auth_header(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    def inject_auth_header(self, headers: Optional[Dict[str, str]] = None,
+                           token: Optional[str] = None) -> Dict[str, str]:
         out = dict(headers or {})
         if self._dynamic_auth:
             token = self._dynamic_token

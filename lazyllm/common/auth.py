@@ -1,9 +1,69 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import random
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from enum import Enum
+from typing import Any, Dict, List, Optional
 from abc import ABC, abstractmethod
 
 _AUTH_KINDS = ('static', 'dynamic', 'oauth2', 'app_credentials')
+
+
+class KeySelectPolicy(str, Enum):
+    RANDOM = 'random'
+    ROUND_ROBIN = 'round_robin'
+    PREFER_LAST_SUCCESS = 'prefer_last_success'
+
+
+class KeyAuthError(Exception):
+    pass
+
+
+class AllKeysExhaustedError(Exception):
+    pass
+
+
+class KeyPool:
+    def __init__(self, keys: List[str], policy: KeySelectPolicy) -> None:
+        self._keys = list(keys)
+        self._policy = policy
+
+    def _get_state(self) -> dict:
+        from .globals import globals as lazyllm_globals
+        return lazyllm_globals['key_pool_state'].setdefault(id(self), {})
+
+    def ordered_keys(self) -> List[str]:
+        from .globals import globals as lazyllm_globals
+        state = lazyllm_globals['key_pool_state'].get(id(self), {})
+        failed = state.get('failed', set())
+        if self._policy == KeySelectPolicy.RANDOM:
+            candidates = [k for k in self._keys if k not in failed]
+            random.shuffle(candidates)
+            return candidates
+        if self._policy == KeySelectPolicy.ROUND_ROBIN:
+            candidates = [k for k in self._keys if k not in failed]
+            if not candidates:
+                return candidates
+            idx = state.get('rr_index', 0) % len(candidates)
+            lazyllm_globals['key_pool_state'].setdefault(id(self), {})['rr_index'] = (idx + 1) % len(candidates)
+            return candidates[idx:] + candidates[:idx]
+        last = state.get('last_success')
+        return sorted(self._keys, key=lambda k: (k in failed, k != last))
+
+    def report_success(self, key: str) -> None:
+        s = self._get_state()
+        s['last_success'] = key
+        s['failed'] = set()
+
+    def report_failure(self, key: str) -> None:
+        self._get_state().setdefault('failed', set()).add(key)
+
+    @property
+    def keys(self) -> List[str]:
+        return self._keys
+
+    @property
+    def policy(self) -> KeySelectPolicy:
+        return self._policy
 
 
 @dataclass(frozen=True)
@@ -14,10 +74,13 @@ class Credential:
     token_expire_at: Optional[float] = None
     refresh_token: str = ''
     oauth_auto: bool = False
+    key_pool: Optional['KeyPool'] = None
 
     def __post_init__(self) -> None:
         if self.kind not in _AUTH_KINDS:
             raise ValueError(f'Invalid Credential.kind: {self.kind!r}, must be one of {_AUTH_KINDS}')
+        if self.key_pool is not None and self.kind not in ('static', 'dynamic'):
+            raise ValueError(f'key_pool only allowed for static/dynamic, got {self.kind!r}')
 
 
 class AuthStrategy(ABC):

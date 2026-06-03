@@ -2006,33 +2006,3 @@ Args:
 Returns:
     Dict[str, str]: New params dict with auth fields merged in.
 ''')
-
-add_chinese_doc('CredentialMixin.override_credential', '''\
-上下文管理器：在当前协程/线程范围内临时替换凭据，退出后自动恢复。
-
-可通过 secret_key 快速替换静态 key，也可传入完整的 Credential 对象。
-两个参数互斥，同时传入时 credential 优先。
-
-Args:
-    secret_key (Any, optional): 临时替换的 secret_key，其余字段保持不变。
-    credential (Credential, optional): 完整替换的凭据对象。
-
-Example:
-    with obj.override_credential(secret_key='tmp-key'):
-        result = obj.some_api_call()
-''')
-
-add_english_doc('CredentialMixin.override_credential', '''\
-Context manager: temporarily replace the credential within the current coroutine/thread scope; restores automatically on exit.
-
-Use secret_key for a quick static key swap, or pass a full Credential object for a complete replacement.
-The two parameters are mutually exclusive; credential takes priority when both are supplied.
-
-Args:
-    secret_key (Any, optional): Temporary secret_key replacement; other fields remain unchanged.
-    credential (Credential, optional): Full replacement credential object.
-
-Example:
-    with obj.override_credential(secret_key='tmp-key'):
-        result = obj.some_api_call()
-''')

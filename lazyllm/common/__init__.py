@@ -18,7 +18,8 @@ from .bind import Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, Placehol
 from .queue import RecentQueue, FileSystemQueue
 from .utils import compile_func, obj2str, str2obj, str2bool, dump_obj, load_obj
 from .auth import (Credential, AuthStrategy, BearerTokenStrategy,
-                   ApiKeyHeaderStrategy, QueryParamStrategy)
+                   ApiKeyHeaderStrategy, QueryParamStrategy,
+                   KeySelectPolicy, KeyPool, KeyAuthError, AllKeysExhaustedError)
 from .credential_mixin import CredentialMixin
 
 __all__ = [
@@ -132,5 +133,9 @@ __all__ = [
     'BearerTokenStrategy',
     'ApiKeyHeaderStrategy',
     'QueryParamStrategy',
+    'KeySelectPolicy',
+    'KeyPool',
+    'KeyAuthError',
+    'AllKeysExhaustedError',
     'CredentialMixin',
 ]

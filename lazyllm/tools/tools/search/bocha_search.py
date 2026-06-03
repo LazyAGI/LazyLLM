@@ -1,7 +1,5 @@
 from typing import List, Optional
 
-from lazyllm.thirdparty import httpx
-
 from .base import SearchBase, _make_result
 
 
@@ -17,12 +15,11 @@ class BochaSearch(SearchBase):
                freshness: Optional[str] = None,
                summary: bool = False) -> List[dict]:
         url = f'{self._base_url}/v1/web-search'
-        headers = self.inject_auth_header({'Content-Type': 'application/json'})
         body = {'query': query, 'count': min(count, 20), 'summary': summary}
         if freshness:
             body['freshness'] = freshness
-        resp = httpx.post(url, headers=headers, json=body, timeout=self._timeout)
-        resp.raise_for_status()
+        resp = self._request('POST', url, headers={'Content-Type': 'application/json'},
+                             json=body, timeout=self._timeout)
         data = resp.json()
         results = data.get('results') or data.get('data') or data.get('items') or []
         if isinstance(results, dict):
