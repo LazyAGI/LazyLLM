@@ -6,6 +6,13 @@ This series helps you get started quickly and dive deep into every LazyLLM capab
 
 ## Tutorial Catalog
 
+### From Data to LLM
+
+- [From Data to LLM](from-data-to-llm/index.md)
+  The English version will be published later. You can read the Chinese version first.
+
+### LazyLLM RAG Tutorials
+
 - [Chapter 1: Understanding the Principles of RAG — Making Retrieval-Augmented Generation No Longer a Black Box](1.md)  
   A thorough breakdown of RAG fundamentals and architecture.
 
