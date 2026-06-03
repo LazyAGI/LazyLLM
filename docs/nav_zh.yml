@@ -60,24 +60,62 @@
   - 数据处理: API Reference/data_process.md
 - 课程体系:
   - 概述: Tutorial/index.md
-  - 1. RAG原理解读: Tutorial/1.md
-  - 2. 快速上手RAG: Tutorial/2.md
-  - 3. Lazy玩转LLM: Tutorial/3.md
-  - 4. 工程化入门: Tutorial/4.md
-  - 5. 自定义Reader: Tutorial/5.md
-  - 6. 召回优化技巧: Tutorial/6.md
-  - 7. 召回优化实战: Tutorial/7.md
-  - 8. 自定义召回策略: Tutorial/8.md
-  - 9. 领域微调实践: Tutorial/9.md
-  - 10. Deepseek实战: Tutorial/10.md
-  - 11. 性能优化指南: Tutorial/11.md
-  - 12. 性能加速实践: Tutorial/12.md
-  - 13. 多模态RAG: Tutorial/13.md
-  - 14. 学术论文问答: Tutorial/14.md
-  - 15. RAG的统计问题: Tutorial/15.md
-  - 16. 论文问答进阶: Tutorial/16.md
-  - 17. 企业级RAG方案: Tutorial/17.md
-  - 18. Agentic RAG: Tutorial/18.md
-  - 19. 知识图谱 RAG: Tutorial/19.md
+  - 从数据到大模型:
+    - 课程大纲: Tutorial/from-data-to-llm/outline.md
+    - 第一部分：大模型基础:
+      - 第1课时：Transformer 核心与 Self-Attention 深度剖析: Tutorial/from-data-to-llm/chapter1/1.md
+      - 第2课时：LLM 训练范式与数据工程全景: Tutorial/from-data-to-llm/chapter2/2.md
+    - 第二部分：系统工程基础:
+      - 第3课时：分布式训练技术概览: Tutorial/from-data-to-llm/chapter3/3.md
+      - 第4课时：模型部署与推理加速: Tutorial/from-data-to-llm/chapter4/4.md
+      - 第5课时：基于Agent的数据处理: Tutorial/from-data-to-llm/chapter5/5.md
+      - 第6课时：基于 LazyLLM 的全流程实践: Tutorial/from-data-to-llm/chapter6/6.md
+    - 第三部分：预训练数据工程:
+      - 第7课时：预训练原理、策略与评测: Tutorial/from-data-to-llm/chapter7/7.md
+      - 第8课时：预训练数据构建全流程: Tutorial/from-data-to-llm/chapter8/8.md
+      - 第9课时：基于 LazyLLM 的预训练实战: Tutorial/from-data-to-llm/chapter9/9.md
+      - 第10课时：多模态 LLM 架构与预训练实战: Tutorial/from-data-to-llm/chapter10/10.md
+    - 第四部分：微调数据工程:
+      - 第11课时：指令微调原理与策略: Tutorial/from-data-to-llm/chapter11/11.md
+      - 第12课时：通用指令数据构建、合成与蒸馏: Tutorial/from-data-to-llm/chapter12/12.md
+      - 第13课时：基于 LazyLLM 的微调实战: Tutorial/from-data-to-llm/chapter13/13.md
+      - 第14课时：多模态指令微调与实战: Tutorial/from-data-to-llm/chapter14/14.md
+    - 第五部分：对齐数据工程:
+      - 第15课时：对齐算法原理 (RLHF & GRPO): Tutorial/from-data-to-llm/chapter15/15.md
+      - 第16课时：偏好数据构建: Tutorial/from-data-to-llm/chapter16/16.md
+      - 第17课时：模型风险、合规与伦理: Tutorial/from-data-to-llm/chapter17/17.md
+      - 第18课时：基于 LazyLLM 的对齐实战: Tutorial/from-data-to-llm/chapter18/18.md
+    - 第六部分：特定能力数据:
+      - 第19课时：推理与数学能力增强: Tutorial/from-data-to-llm/chapter19/19.md
+      - 第20课时：代码能力增强: Tutorial/from-data-to-llm/chapter20/20.md
+      - 第21课时：长上下文能力增强: Tutorial/from-data-to-llm/chapter21/21.md
+      - 第22课时：结构化输出与格式对齐: Tutorial/from-data-to-llm/chapter22/22.md
+      - 第23课时：Agent 能力增强 (Tools & Planning): Tutorial/from-data-to-llm/chapter23/23.md
+      - 第24课时：行业领域模型实战: Tutorial/from-data-to-llm/chapter24/24.md
+    - 第七部分：RAG 数据工程:
+      - 第25课时：RAG 架构原理与数据处理: Tutorial/from-data-to-llm/chapter25/25.md
+      - 第26课时：Embedding 模型微调与实战: Tutorial/from-data-to-llm/chapter26/26.md
+      - 第27课时：Reranker 模型微调与实战: Tutorial/from-data-to-llm/chapter27/27.md
+      - 第28课时：Agentic RAG能力增强: Tutorial/from-data-to-llm/chapter28/28.md
+  - LazyLLM RAG 教程:
+    - 1. RAG原理解读: Tutorial/1.md
+    - 2. 快速上手RAG: Tutorial/2.md
+    - 3. Lazy玩转LLM: Tutorial/3.md
+    - 4. 工程化入门: Tutorial/4.md
+    - 5. 自定义Reader: Tutorial/5.md
+    - 6. 召回优化技巧: Tutorial/6.md
+    - 7. 召回优化实战: Tutorial/7.md
+    - 8. 自定义召回策略: Tutorial/8.md
+    - 9. 领域微调实践: Tutorial/9.md
+    - 10. Deepseek实战: Tutorial/10.md
+    - 11. 性能优化指南: Tutorial/11.md
+    - 12. 性能加速实践: Tutorial/12.md
+    - 13. 多模态RAG: Tutorial/13.md
+    - 14. 学术论文问答: Tutorial/14.md
+    - 15. RAG的统计问题: Tutorial/15.md
+    - 16. 论文问答进阶: Tutorial/16.md
+    - 17. 企业级RAG方案: Tutorial/17.md
+    - 18. Agentic RAG: Tutorial/18.md
+    - 19. 知识图谱 RAG: Tutorial/19.md
 - 研发计划:
   - 0.6 & 0.7: RoadMap/0_6and0_7.md

@@ -1,5 +1,8 @@
 from importlib import import_module
 from typing import TYPE_CHECKING
+
+from . import tool_config_inject  # noqa: F401
+
 if TYPE_CHECKING:
     # flake8: noqa: E401
     from .rag import (Document, GraphDocument, UrlGraphDocument, Reranker, Retriever, TempDocRetriever,

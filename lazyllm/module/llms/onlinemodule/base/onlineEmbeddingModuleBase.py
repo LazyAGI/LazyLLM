@@ -45,6 +45,7 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
         url, done = self._normalize_embed_url(url)
         if done: return url
         suffix = 'rerank' if self.type == 'RERANK' else 'embeddings'
+        if not url.endswith('/'): url += '/'
         return urljoin(url, suffix)
 
     @property

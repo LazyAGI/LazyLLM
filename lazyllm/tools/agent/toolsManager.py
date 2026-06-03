@@ -380,7 +380,7 @@ class ToolGroup(ToolContainer):
         _gateway_apply.__name__ = f'get_{group_name}_methods'
 
         register('tmp_tool')(_gateway_apply)
-        tool_cls = getattr(lazyllm.tmp_tool, _gateway_apply.__name__)
+        tool_cls = lazyllm.tmp_tool.resolve(_gateway_apply.__name__)
         tool = tool_cls()
         lazyllm.tmp_tool.remove(_gateway_apply.__name__)
         return tool
@@ -501,7 +501,7 @@ def _build_tool_from_element(
         return group
     if callable(element):
         register('tmp_tool')(element)
-        tool = getattr(lazyllm.tmp_tool, element.__name__)()
+        tool = lazyllm.tmp_tool.resolve(element.__name__)()
         lazyllm.tmp_tool.remove(element.__name__)
         return tool
     raise TypeError(f'ToolGroup child must be a ModuleTool, ToolGroup, dict, or callable, got {type(element)}')

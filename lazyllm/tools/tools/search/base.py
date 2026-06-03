@@ -48,15 +48,20 @@ class SearchBase(ModuleBase, CredentialMixin):
         api_key: Optional[str] = None,
         auth_strategy: Optional[AuthStrategy] = None,
         dynamic_auth: bool = False,
+        skip_auth: bool = False,
         **kwargs,
     ):
         ModuleBase.__init__(self, **kwargs)
         self._source_name = source_name or self.__class__.__name__.replace('Search', '').lower()
-        if dynamic_auth or api_key is None:
+        if dynamic_auth:
             credential = Credential(kind='dynamic')
         else:
-            credential = Credential(kind='static', secret_key=api_key)
-        self.__init_credential__(credential, strategy=auth_strategy or BearerTokenStrategy())
+            credential = Credential(kind='static', secret_key=api_key or '')
+        self.__init_credential__(
+            credential,
+            strategy=auth_strategy or BearerTokenStrategy(),
+            skip_auth=skip_auth,
+        )
 
     def _resolve_dynamic_token(self) -> str:
         mapping = lazyllm_globals.config['dynamic_tool_auth'] or {}

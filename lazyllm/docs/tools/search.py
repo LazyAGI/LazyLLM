@@ -18,6 +18,7 @@ Args:
     api_key (str, optional): API 密钥；传入后以 static 模式存入 CredentialMixin；为空时使用 dynamic 模式，
         从 lazyllm.config['dynamic_tool_auth'] 中按 source_name 读取运行时密钥。
     auth_strategy (AuthStrategy, optional): 认证策略；未传时默认使用 BearerTokenStrategy。
+    skip_auth (bool): 是否在 ToolManager 凭据检查中跳过鉴权，默认 False。
 ''')
 
 add_english_doc('SearchBase', '''
@@ -30,6 +31,7 @@ Args:
     api_key (str, optional): API key; stored in CredentialMixin in static mode when provided. When omitted,
         dynamic mode reads the runtime key from lazyllm.config['dynamic_tool_auth'] by source_name.
     auth_strategy (AuthStrategy, optional): Authentication strategy; defaults to BearerTokenStrategy when omitted.
+    skip_auth (bool): Whether to bypass ToolManager credential checks, defaults to False.
 ''')
 
 add_example('SearchBase', '''
@@ -332,7 +334,7 @@ Args:
     count (int): 返回条数，默认 10，最大 50。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
+    List[dict]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
 add_english_doc('BingSearch.search', '''
@@ -343,7 +345,7 @@ Args:
     count (int): Number of results, default 10, max 50.
 
 Returns:
-    List[Dict[str, Any]]: Search results in the unified format. Each item contains title, url, snippet, and source.
+    List[dict]: Search results in the unified format. Each item contains title, url, snippet, and source.
 ''')
 
 add_chinese_doc('BochaSearch', '''
@@ -406,7 +408,7 @@ Args:
     summary (bool): 是否返回摘要，默认 False。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
+    List[dict]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
 add_english_doc('BochaSearch.search', '''
@@ -419,7 +421,7 @@ Args:
     summary (bool): Whether to request summary, default False.
 
 Returns:
-    List[Dict[str, Any]]: Search results in the unified format. Each item contains title, url, snippet, and source.
+    List[dict]: Search results in the unified format. Each item contains title, url, snippet, and source.
 ''')
 
 add_chinese_doc('StackOverflowSearch', '''
@@ -624,12 +626,18 @@ arXiv 预印本搜索。无需 API key，直接使用。
 Args:
     timeout (int): 请求超时秒数，默认 15。
     source_name (str): 结果来源标识，默认 "arxiv"。
+    skip_auth (bool): 注册为工具时是否跳过凭据检查，默认 False。
 ''')
 
 add_english_doc('ArxivSearch', '''
 Search arXiv preprints. No API key or token required.
 
 No sign-up or token needed; instantiate and call. API docs: https://info.arxiv.org/help/api/index.html .
+
+Args:
+    timeout (int): Request timeout in seconds, default 15.
+    source_name (str): Source identifier, default "arxiv".
+    skip_auth (bool): Whether to bypass credential checks when registered as a tool, defaults to False.
 ''')
 
 add_example('ArxivSearch', '''
@@ -685,6 +693,7 @@ Args:
     base_url (str): 站点根地址，默认 "https://en.wikipedia.org"，可改为 zh.wikipedia.org 等。
     timeout (int): 请求超时秒数，默认 10。
     source_name (str): 结果来源标识，默认 "wikipedia"。
+    skip_auth (bool): 注册为工具时是否跳过凭据检查，默认 False。
 ''')
 
 add_english_doc('WikipediaSearch', '''
@@ -696,6 +705,7 @@ Args:
     base_url (str): Site base URL, default "https://en.wikipedia.org"; use e.g. https://zh.wikipedia.org for other languages.
     timeout (int): Request timeout in seconds, default 10.
     source_name (str): Source identifier, default "wikipedia".
+    skip_auth (bool): Whether to bypass credential checks when registered as a tool, defaults to False.
 ''')
 
 add_example('WikipediaSearch', '''
