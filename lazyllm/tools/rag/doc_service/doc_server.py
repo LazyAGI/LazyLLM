@@ -458,7 +458,7 @@ class DocServer(ModuleBase):
             '''Validate and normalize the legacy ``user_path`` query param.
 
             Rejects absolute paths or any value that climbs out of
-            ``storage_dir`` (``..``, ``../x``, ``..\\\\x`` on Windows). Returns
+            ``storage_dir`` (``..``, ``../x``, ``..\\x`` on Windows). Returns
             the relative subdirectory string ('' when no user_path).
             '''
             if not user_path:
