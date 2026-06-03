@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import requests
 
@@ -34,8 +34,8 @@ class ParserClient:
                 extractor_names: Optional[List[str]] = None,
                 task_type: Optional[str] = None,
                 callback_url: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None,
-                llm_config: Optional[Dict[str, Any]] = None, embed_only: bool = False,
-                reparse_mode: Optional[str] = None):
+                llm_config: Optional[Dict[str, Any]] = None,
+                embed_only: Union[bool, str] = False):
         req = ParsingAddDocRequest(
             task_id=task_id,
             ng_names=ng_names,
@@ -46,7 +46,6 @@ class ParserClient:
             feedback_url=callback_url,
             llm_config=llm_config,
             embed_only=embed_only,
-            reparse_mode=reparse_mode,
             file_infos=[ParsingFileInfo(
                 file_path=file_path,
                 doc_id=doc_id,

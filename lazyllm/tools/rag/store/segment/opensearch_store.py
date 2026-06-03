@@ -126,7 +126,15 @@ class OpenSearchStore(LazyLLMStoreBase):
                     bulk_data.append(segment)
                 response = self._client.bulk(index=collection_name, body=bulk_data, refresh='wait_for')
                 if response.get('errors'):
-                    raise ValueError(f'Error upserting data to OpenSearch: {response.get("errors")}')
+                    error_details = []
+                    for item in (response.get('items') or []):
+                        idx_err = (item.get('index') or {}).get('error')
+                        if idx_err:
+                            error_details.append(f'{idx_err.get("type", "unknown")}: {idx_err.get("reason", "?")}')
+                    detail = '; '.join(error_details[:5]) if error_details else str(response.get('errors'))
+                    raise ValueError(
+                        f'Error upserting data to OpenSearch: {len(error_details) or "?"} error(s) in batch'
+                        f'{f" — {detail}" if detail else ""}')
             return True
         except Exception as e:
             LOG.error(f'[OpenSearchStore - upsert] Error upserting data to OpenSearch: {e}')

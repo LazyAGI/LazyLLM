@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
 from pydantic import AliasChoices, BaseModel, Field, model_validator
@@ -117,8 +117,11 @@ class ReparseRequest(BaseModel):
     ng_names: Optional[List[str]] = None
     llm_config: Optional[Dict[str, Any]] = None
     idempotency_key: Optional[str] = None
-    embed_only: bool = False  # when True, skip transform and only (re-)embed existing nodes
-    reparse_mode: Optional[str] = None  # "slice_missing" to only rebuild groups missing nodes; otherwise None
+    # embed_only now also encodes the fill-gaps strategy:
+    #   False / not set  → full reparse (re-slice + re-embed all selected groups)
+    #   True              → rebuild vectors (skip slice, re-embed existing nodes only)
+    #   "slice_missing"   → fill gaps (slice + embed only groups that have no segments yet)
+    embed_only: Union[bool, str] = False
 
     @model_validator(mode='after')
     def validate_fields(self):

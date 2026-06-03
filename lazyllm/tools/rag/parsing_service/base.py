@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, BeforeValidator, model_validator
-from typing import Dict, List, Optional, Any, Annotated
+from typing import Dict, List, Optional, Any, Annotated, Union
 from enum import Enum
 from uuid import uuid4
 from datetime import datetime
@@ -43,8 +43,11 @@ class AddDocRequest(BaseModel):
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
     callback_url: Optional[str] = None
-    embed_only: bool = False  # when True, skip transform and only (re-)embed existing nodes
-    reparse_mode: Optional[str] = None  # "slice_missing" to only rebuild groups missing nodes; otherwise None
+    # embed_only now also encodes the fill-gaps strategy:
+    #   False / not set  → full reparse (re-slice + re-embed all selected groups)
+    #   True              → rebuild vectors (skip slice, re-embed existing nodes only)
+    #   "slice_missing"   → fill gaps (slice + embed only groups that have no segments yet)
+    embed_only: Union[bool, str] = False
     # per-request model config injected by backend (e.g. embed_main).
     llm_config: Optional[Dict[str, Any]] = None
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
