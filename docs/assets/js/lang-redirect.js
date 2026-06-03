@@ -68,8 +68,10 @@ document.addEventListener("DOMContentLoaded", function() {
              });
         } else {
             // Replace only the language prefix, preserving the rest of the path exactly (including encoding)
-            const newPath = currentPath.replace(`/${currentSegment}/`, `/${targetSegment}/`);
-            const finalUrl = window.location.origin + newPath + window.location.search + window.location.hash;
+            const specialPath = getFromDataToLlmTargetPath(currentPath, currentSegment, targetSegment);
+            const newPath = specialPath || currentPath.replace(`/${currentSegment}/`, `/${targetSegment}/`);
+            const finalHash = specialPath ? '' : window.location.hash;
+            const finalUrl = window.location.origin + newPath + window.location.search + finalHash;
             
             // 1. Update href so right-click menu and SEO remain correct
             link.href = finalUrl;
