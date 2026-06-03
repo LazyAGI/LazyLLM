@@ -1,7 +1,6 @@
 import json
 import os
 import shutil
-from contextlib import nullcontext
 from typing import Optional, Callable, Set, List, Dict, Tuple
 from pathlib import Path
 from urllib.parse import urlparse
@@ -16,8 +15,16 @@ from .ocr_postprocessor import l1_normalize, l2_associate
 
 
 MINERU_OFFICIAL_ONLINE_HOST = 'mineru.net'
+MINERU_DEFAULT_ONLINE_URL = 'https://mineru.net'
 PADDLE_OFFICIAL_ONLINE_HOST_SUFFIX = 'aistudio-app.com'
 PADDLE_OFFICIAL_ONLINE_URL = 'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs'
+
+
+def _normalize_mineru_service_url(url: Optional[str]) -> str:
+    raw = (url or '').strip()
+    if not raw:
+        return MINERU_DEFAULT_ONLINE_URL
+    return raw.rstrip('/')
 
 
 def _parse_url_host(url: Optional[str]) -> str:
@@ -107,24 +114,8 @@ class _OcrReaderBase(_RichReader, _Adapter, CredentialMixin):
             f'or set globals.config["dynamic_ocr_auth"] before OCR parsing'
         )
 
-    def _effective_token(self, explicit_token: Optional[str] = None) -> str:
-        if explicit_token is None:
-            return self.get_current_token()
-        with self.override_credential(secret_key=explicit_token):
-            return self.get_current_token()
-
-    def _auth_headers(self, headers: Optional[Dict[str, str]] = None, *,
-                      explicit_token: Optional[str] = None) -> Dict[str, str]:
-        if explicit_token is None:
-            return self.inject_auth_header(headers)
-        with self.override_credential(secret_key=explicit_token):
-            return self.inject_auth_header(headers)
-
-    def _auth_scope(self, explicit_token: Optional[str] = None):
-        # Apply per-request token override only within one OCR parse call.
-        if explicit_token is None:
-            return nullcontext()
-        return self.override_credential(secret_key=explicit_token)
+    def _auth_headers(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        return self.inject_auth_header(headers)
 
     @staticmethod
     def _split_large_pdf(pdf_path: str, max_size_mb: int = 200,

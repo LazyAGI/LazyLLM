@@ -23,8 +23,6 @@ from .ocr_reader_base import (
     _OcrReaderBase,
     PADDLE_OFFICIAL_ONLINE_URL,
     _is_paddle_official_online_url,
-    read_dynamic_ocr_configs,
-    read_static_api_key,
 )
 
 lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='The API key for PaddleOCR')
@@ -64,14 +62,17 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         resolved_url = url
         if _is_paddle_official_online_url(url):
             resolved_url = PADDLE_OFFICIAL_ONLINE_URL
-        configured_api_key = api_key if api_key is not None else lazyllm.config['paddle_api_key']
+        if dynamic_auth:
+            token = None
+        else:
+            token = api_key if api_key is not None else lazyllm.config['paddle_api_key']
         super().__init__(url=resolved_url,
                          dropped_types=drop_types or dropped_types or {
                              'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                          return_trace=return_trace,
                          image_cache_dir=images_dir or os.path.join(
                              lazyllm.config['home'], 'paddleocr_cache'),
-                         token=configured_api_key,
+                         token=token,
                          dynamic_auth=dynamic_auth,
                          auth_strategy=auth_strategy or ApiKeyHeaderStrategy(
                              'Authorization', 'token {token}'),
@@ -81,39 +82,22 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         self._model = kwargs.pop('model', DEFAULT_MODEL)
         self._timeout = kwargs.pop('timeout', None)
 
-    def _resolve_api_key(self, extra_info: Optional[Dict] = None) -> Optional[str]:
-        info = extra_info or {}
-        explicit_key = info.get('paddle_api_key')
-        if explicit_key:
-            return explicit_key
-        dynamic_cfg = read_dynamic_ocr_configs()
-        if dynamic_cfg:
-            dynamic_key = dynamic_cfg.get('paddle_api_key')
-            if dynamic_key:
-                return dynamic_key
-        dynamic_key = read_static_api_key('paddle_api_key')
-        if dynamic_key:
-            return dynamic_key
-        return None
-
     @override
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True, **kwargs
                    ) -> List['DocNode']:
         file_path = Path(file)
         merged_info = dict(extra_info) if extra_info else {}
-        request_api_key = self._resolve_api_key(merged_info)
-        with self._auth_scope(request_api_key):
-            _t0 = time.time()
-            response_text, task_dir = self._fetch_async(file_path)
-            _t_fetch = time.time() - _t0
-            if task_dir is not None:
-                merged_info['image_cache_dir'] = str(task_dir)
-            _t1 = time.time()
-            nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
-            _t_build = time.time() - _t1
-            LOG.info(f'[BENCHMARK] file={file_path.name} phase=fetch elapsed={_t_fetch:.3f}s')
-            LOG.info(f'[BENCHMARK] file={file_path.name} phase=parse elapsed={_t_build:.3f}s')
-            return nodes
+        _t0 = time.time()
+        response_text, task_dir = self._fetch_async(file_path)
+        _t_fetch = time.time() - _t0
+        if task_dir is not None:
+            merged_info['image_cache_dir'] = str(task_dir)
+        _t1 = time.time()
+        nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
+        _t_build = time.time() - _t1
+        LOG.info(f'[BENCHMARK] file={file_path.name} phase=fetch elapsed={_t_fetch:.3f}s')
+        LOG.info(f'[BENCHMARK] file={file_path.name} phase=parse elapsed={_t_build:.3f}s')
+        return nodes
 
     def _fetch_async(self, file):
         file_str = str(file)

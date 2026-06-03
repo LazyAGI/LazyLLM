@@ -2085,10 +2085,9 @@ Notes:
     当 `split_doc=True` 时返回 `RichDocNode`，否则返回 `DocNode`，两种情况都只返回一个节点。
     当 `split_doc=True` 时，强烈建议搭配 `RichTransform` 使用，可以解析出带有结构信息等 metadata 的节点；
     如不使用 `RichTransform`，则解析出的节点会回退为纯文本节点。
-    请求级 token 覆盖优先级：extra_info['mineru_api_key'] >
-    globals.config['dynamic_ocr_configs']['mineru_api_key'] >
-    globals['config']['mineru_api_key'] >
-    CredentialMixin 当前 token（static/dynamic）。
+    请求级 token：通过 ``inject_ocr_config(ocr_auth={'mineru': '...'})`` 写入
+    ``globals.config['dynamic_ocr_auth']``，由 CredentialMixin 在每次 HTTP 请求时读取。
+    静态默认 token：``globals['config']['mineru_api_key']``（仅 ``dynamic_auth=False`` 时）。
 ''')
 
 add_english_doc('rag.readers.MineruPDFReader', '''\
@@ -2128,11 +2127,9 @@ Notes:
     When `split_doc=True`, returns a `RichDocNode`; otherwise returns a `DocNode`. Both cases return a single node.
     When `split_doc=True`, it is strongly recommended to use it with `RichTransform`, which can extract nodes with structural information and other metadata;
     without `RichTransform`, the parsed nodes will fall back to plain text nodes.
-    Per-request token override priority:
-    extra_info['mineru_api_key'] >
-    globals.config['dynamic_ocr_configs']['mineru_api_key'] >
-    globals['config']['mineru_api_key'] >
-    current CredentialMixin token (static/dynamic).
+    Per-request token: inject via ``inject_ocr_config(ocr_auth={'mineru': '...'})`` into
+    ``globals.config['dynamic_ocr_auth']``; CredentialMixin reads it on each HTTP call.
+    Static default token: ``globals['config']['mineru_api_key']`` (only when ``dynamic_auth=False``).
 ''')
 
 add_chinese_doc('rag.readers.PaddleOCRPDFReader', '''\
@@ -2174,10 +2171,9 @@ Notes:
     当 `split_doc=True` 时返回 `RichDocNode`，否则返回 `DocNode`，两种情况都只返回一个节点。
     当 `split_doc=True` 时，强烈建议搭配 `RichTransform` 使用，可以解析出带有结构信息等 metadata 的节点；
     如不使用 `RichTransform`，则解析出的节点会回退为纯文本节点。
-    请求级 token 覆盖优先级：extra_info['paddle_api_key'] >
-    globals.config['dynamic_ocr_configs']['paddle_api_key'] >
-    globals['config']['paddle_api_key'] >
-    CredentialMixin 当前 token（static/dynamic）。
+    请求级 token：通过 ``inject_ocr_config(ocr_auth={'paddleocr': '...'})`` 写入
+    ``globals.config['dynamic_ocr_auth']``，由 CredentialMixin 在每次 HTTP 请求时读取。
+    静态默认 token：``globals['config']['paddle_api_key']``（仅 ``dynamic_auth=False`` 时）。
 ''')
 
 add_english_doc('rag.readers.PaddleOCRPDFReader', '''\
@@ -2223,11 +2219,9 @@ Notes:
     When `split_doc=True`, returns a `RichDocNode`; otherwise returns a `DocNode`. Both cases return a single node.
     When `split_doc=True`, it is strongly recommended to use it with `RichTransform`, which can extract nodes with structural information and other metadata;
     without `RichTransform`, the parsed nodes will fall back to plain text nodes.
-    Per-request token override priority:
-    extra_info['paddle_api_key'] >
-    globals.config['dynamic_ocr_configs']['paddle_api_key'] >
-    globals['config']['paddle_api_key'] >
-    current CredentialMixin token (static/dynamic).
+    Per-request token: inject via ``inject_ocr_config(ocr_auth={'paddleocr': '...'})`` into
+    ``globals.config['dynamic_ocr_auth']``; CredentialMixin reads it on each HTTP call.
+    Static default token: ``globals['config']['paddle_api_key']`` (only when ``dynamic_auth=False``).
 ''')
 
 add_example('rag.readers.PaddleOCRPDFReader', '''\
@@ -2240,25 +2234,24 @@ add_chinese_doc('rag.readers.DynamicPDFReader', '''\
 动态 OCR PDF 解析器。根据请求级配置在运行时选择 Mineru / PaddleOCR / 原生 PDFReader。
 
 该 reader 适用于多租户场景：不同请求可携带不同 OCR 类型、服务地址和鉴权 token。
-当 ocr_dynamic=True 时，会优先按 key 可用性自动选择 OCR 引擎；若缺少可用 key，会回退到 PDFReader。
+按 ``ocr_type`` 路由到 Mineru / PaddleOCR（``dynamic_auth=True``）；仅 ``ocr_type='none'`` 时使用原生 PDFReader。
+缺少 token 或 OCR 请求失败时直接报错，不回退 PDFReader。
 
 Args:
-    ocr_type (str, optional): 默认 OCR 类型，可选 'mineru' / 'paddleocr' / 'none'。
+    ocr_type (str, optional): 默认 OCR 类型，可选 'mineru' / 'paddleocr' / 'paddle' / 'none'。
     ocr_url (str, optional): 默认 OCR 服务地址。
     patch_applied (bool, optional): Mineru 本地 patch 形态开关。
-    mineru_upload_mode (str, optional): Mineru 上传模式，支持 'true'/'false'。
+    mineru_upload_mode (bool, optional): Mineru 上传模式（部署级）；未设置时按 ``ocr_url`` 主机名推断（非 ``mineru`` 官方域则为上传模式）。
     mineru_backend (str, optional): Mineru 后端类型，默认 'hybrid-auto-engine'。
     image_cache_dir (str, optional): OCR 图片缓存目录。
     post_func (Callable, optional): 传递给下游 OCR reader 的后处理函数。
     timeout (int, optional): OCR 请求超时（秒）。
-    ocr_dynamic (bool, optional): 是否启用动态 OCR 类型选择。
     return_trace (bool, optional): 是否启用 trace。
 
 Notes:
     可通过 ``lazyllm.inject_ocr_config(...)`` 注入请求级配置：
-    - ``ocr_type`` / ``ocr_url`` / ``ocr_dynamic`` / ``mineru_upload_mode``
-    - ``mineru_api_key`` / ``paddle_api_key`` / ``ocr_auth``
-    最终 key 会透传到具体 reader，由各 reader 的 CredentialMixin + auth_strategy 注入到请求中。
+    - ``ocr_type`` / ``ocr_url`` → ``globals.config['dynamic_ocr_configs']``
+    - ``ocr_auth`` → ``globals.config['dynamic_ocr_auth']``（如 ``{'mineru': '...', 'paddleocr': '...'}``）
 ''')
 
 add_english_doc('rag.readers.DynamicPDFReader', '''\
@@ -2266,34 +2259,32 @@ Dynamic OCR PDF reader that selects Mineru / PaddleOCR / native PDFReader at run
 based on per-request configuration.
 
 This reader is designed for multi-tenant usage: different requests can carry different
-OCR type, endpoint URL, and auth token. When ocr_dynamic=True, it auto-selects OCR
-engine by key availability; if no usable key is found, it falls back to PDFReader.
+OCR type, endpoint URL, and auth token. It routes by ``ocr_type`` to Mineru / PaddleOCR
+(``dynamic_auth=True``); only ``ocr_type='none'`` uses native PDFReader.
+Missing token or OCR failures raise errors instead of falling back to PDFReader.
 
 Args:
-    ocr_type (str, optional): Default OCR type. One of 'mineru' / 'paddleocr' / 'none'.
+    ocr_type (str, optional): Default OCR type. One of 'mineru' / 'paddleocr' / 'paddle' / 'none'.
     ocr_url (str, optional): Default OCR service URL.
     patch_applied (bool, optional): Mineru local patch mode flag.
-    mineru_upload_mode (str, optional): Mineru upload mode, supports 'true'/'false'.
+    mineru_upload_mode (bool, optional): Mineru upload mode (deploy-time). When unset, inferred from ``ocr_url`` hostname (upload mode unless official ``mineru`` host).
     mineru_backend (str, optional): Mineru backend type. Default is 'hybrid-auto-engine'.
     image_cache_dir (str, optional): OCR image cache directory.
     post_func (Callable, optional): Post-processing function passed to downstream OCR reader.
     timeout (int, optional): OCR request timeout in seconds.
-    ocr_dynamic (bool, optional): Whether to enable dynamic OCR type selection.
     return_trace (bool, optional): Whether to enable tracing.
 
 Notes:
     Per-request config can be injected via ``lazyllm.inject_ocr_config(...)``:
-    - ``ocr_type`` / ``ocr_url`` / ``ocr_dynamic`` / ``mineru_upload_mode``
-    - ``mineru_api_key`` / ``paddle_api_key`` / ``ocr_auth``
-    The resolved key is then forwarded to the concrete reader, where CredentialMixin +
-    auth_strategy performs the final request injection.
+    - ``ocr_type`` / ``ocr_url`` → ``globals.config['dynamic_ocr_configs']``
+    - ``ocr_auth`` → ``globals.config['dynamic_ocr_auth']`` (e.g. ``{'mineru': '...', 'paddleocr': '...'}``)
 ''')
 
 add_example('rag.readers.DynamicPDFReader', '''\
 from lazyllm.tools.rag.readers import DynamicPDFReader
 import lazyllm
 
-reader = DynamicPDFReader(ocr_type='mineru', ocr_dynamic=True)
+reader = DynamicPDFReader(ocr_type='mineru')
 lazyllm.inject_ocr_config({
     'ocr_type': 'paddleocr',
     'ocr_url': 'http://127.0.0.1:9000',

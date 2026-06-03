@@ -1,37 +1,43 @@
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader import DynamicPDFReader
+from lazyllm.tools.rag.readers.ocrReader.mineru_pdf_reader import MineruPDFReader
+from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import PaddleOCRPDFReader
 
 
 class TestDynamicPDFReader:
 
-    def test_resolve_options_priority(self):
-        reader = DynamicPDFReader(ocr_type='none', ocr_dynamic=False)
+    def test_resolve_route_priority(self):
+        reader = DynamicPDFReader(ocr_type='none')
         with patch(
             'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_dynamic_ocr_configs'
-        ) as mock_dynamic, patch(
-            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_static_api_key'
-        ) as mock_static:
+        ) as mock_dynamic:
             mock_dynamic.return_value = {
                 'ocr_type': 'paddleocr',
                 'ocr_url': 'http://dynamic-service',
-                'mineru_upload_mode': 'false',
-                'ocr_dynamic': True,
             }
-            mock_static.side_effect = lambda key: 'static-mineru' if key == 'mineru_api_key' else 'static-paddle'
 
-            resolved = reader._resolve_options({
+            ocr_type, ocr_url = reader._resolve_route({
                 'ocr_type': 'mineru',
                 'ocr_url': 'http://extra-service',
-                'mineru_upload_mode': 'true',
             })
 
-        assert resolved[0] == 'mineru'
-        assert resolved[1] == 'http://extra-service'
-        assert resolved[2] is True
-        assert resolved[3] == 'static-mineru'
-        assert resolved[4] == 'static-paddle'
+        assert ocr_type == 'mineru'
+        assert ocr_url == 'http://extra-service'
+
+    def test_normalize_paddle_alias(self):
+        reader = DynamicPDFReader(ocr_type='paddle', ocr_url='http://mock')
+        with patch(
+            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_dynamic_ocr_configs'
+        ) as mock_dynamic:
+            mock_dynamic.return_value = None
+            ocr_type, ocr_url = reader._resolve_route(None)
+
+        assert ocr_type == 'paddleocr'
+        assert ocr_url == 'http://mock'
 
     def test_reader_cache_reuse_same_options(self):
         reader = DynamicPDFReader(ocr_type='mineru', ocr_url='http://mock')
@@ -47,38 +53,76 @@ class TestDynamicPDFReader:
         assert len(result_2) == 1
         assert fake_reader.forward.call_count == 2
 
-    def test_extra_info_overrides_dynamic_config(self):
-        reader = DynamicPDFReader(ocr_type='none')
+    def test_build_reader_uses_dynamic_auth(self):
+        reader = DynamicPDFReader(ocr_type='paddleocr', ocr_url='http://mock-paddle')
         with patch(
-            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_dynamic_ocr_configs'
-        ) as mock_dynamic, patch(
-            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_static_api_key'
-        ) as mock_static:
-            mock_dynamic.return_value = {
-                'ocr_type': 'paddleocr',
-                'ocr_url': 'http://dynamic-url',
-            }
-            mock_static.return_value = None
+            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.PaddleOCRPDFReader'
+        ) as mock_cls:
+            mock_cls.return_value = MagicMock()
+            reader._build_reader('paddleocr', 'http://mock-paddle', None)
+            mock_cls.assert_called_once_with(
+                url='http://mock-paddle',
+                images_dir=reader._image_cache_dir,
+                dynamic_auth=True,
+            )
 
-            ocr_type, ocr_url, _, _, _ = reader._resolve_options({
-                'ocr_type': 'mineru',
-                'ocr_url': 'http://extra-url',
-            })
+    def test_unsupported_type_raises(self):
+        reader = DynamicPDFReader()
+        with pytest.raises(ValueError, match='Unsupported OCR server type'):
+            reader._build_reader('badtype', 'http://fake', None)
 
-        assert ocr_type == 'mineru'
-        assert ocr_url == 'http://extra-url'
+    def test_build_mineru_dynamic_auth(self):
+        reader = DynamicPDFReader(ocr_type='mineru', ocr_url='http://mock-mineru')
+        with patch(
+            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.MineruPDFReader'
+        ) as mock_cls:
+            mock_cls.return_value = MagicMock()
+            reader._build_reader('mineru', 'http://mock-mineru', False)
+            assert mock_cls.call_args.kwargs['dynamic_auth'] is True
 
     def test_mineru_key_without_url_falls_back_to_official(self):
-        reader = DynamicPDFReader(ocr_type='mineru')
+        reader = DynamicPDFReader(
+            ocr_type='none',
+            ocr_url='http://host.docker.internal:8000/api/v1/pdf_parse',
+        )
         with patch(
             'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_dynamic_ocr_configs'
-        ) as mock_dynamic, patch(
-            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_static_api_key'
-        ) as mock_static:
-            mock_dynamic.return_value = None
-            mock_static.side_effect = lambda key: 'mineru-key' if key == 'mineru_api_key' else None
-
-            ocr_type, ocr_url, _, _, _ = reader._resolve_options({})
+        ) as mock_dynamic:
+            mock_dynamic.return_value = {'ocr_type': 'mineru'}
+            ocr_type, ocr_url = reader._resolve_route({'mineru_api_key': 'mineru-key'})
 
         assert ocr_type == 'mineru'
-        assert ocr_url == 'https://mineru.net'
+        assert ocr_url == ''
+
+    def test_paddle_key_without_url_falls_back_to_official(self):
+        reader = DynamicPDFReader(
+            ocr_type='none',
+            ocr_url='http://host.docker.internal:8000/api/v1/pdf_parse',
+        )
+        with patch(
+            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_dynamic_ocr_configs'
+        ) as mock_dynamic:
+            mock_dynamic.return_value = {'ocr_type': 'paddleocr'}
+            ocr_type, ocr_url = reader._resolve_route({'paddle_api_key': 'paddle-key'})
+
+        assert ocr_type == 'paddleocr'
+        assert ocr_url == ''
+
+    def test_mineru_reader_defaults_empty_url_to_official(self):
+        reader = MineruPDFReader(url='', dynamic_auth=True)
+        assert reader._url == 'https://mineru.net'
+        assert reader._offline_mode is False
+
+    def test_static_route_uses_env_url_without_dynamic_request(self):
+        reader = DynamicPDFReader(
+            ocr_type='mineru',
+            ocr_url='http://local-mineru:8000/api/v1/pdf_parse',
+        )
+        with patch(
+            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_dynamic_ocr_configs'
+        ) as mock_dynamic:
+            mock_dynamic.return_value = None
+            ocr_type, ocr_url = reader._resolve_route(None)
+
+        assert ocr_type == 'mineru'
+        assert ocr_url == 'http://local-mineru:8000/api/v1/pdf_parse'

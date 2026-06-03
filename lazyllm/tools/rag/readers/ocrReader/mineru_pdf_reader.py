@@ -29,8 +29,7 @@ from .ocr_ir import (
 from .ocr_reader_base import (
     _OcrReaderBase,
     _is_mineru_official_online_url,
-    read_dynamic_ocr_configs,
-    read_static_api_key,
+    _normalize_mineru_service_url,
 )
 
 lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='The API key for Mineru')
@@ -58,15 +57,18 @@ class MineruPDFReader(_OcrReaderBase):
                  dynamic_auth: bool = False,
                  auth_strategy: Optional[AuthStrategy] = None,
                  **kwargs):
-        configured_api_key = api_key if api_key is not None else lazyllm.config['mineru_api_key']
-        super().__init__(url=url,
+        if dynamic_auth:
+            token = None
+        else:
+            token = api_key if api_key is not None else lazyllm.config['mineru_api_key']
+        super().__init__(url=_normalize_mineru_service_url(url),
                          dropped_types=dropped_types or {
                              'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
                          return_trace=return_trace,
                          post_func=post_func,
                          image_cache_dir=kwargs.pop('image_cache_dir', os.path.join(
                              lazyllm.config['home'], 'mineru_cache')),
-                         token=configured_api_key,
+                         token=token,
                          dynamic_auth=dynamic_auth,
                          auth_strategy=auth_strategy,
                          auth_source_key='mineru',
@@ -82,43 +84,23 @@ class MineruPDFReader(_OcrReaderBase):
                    ) -> List['DocNode']:
         file_path = Path(file)
         merged_info = dict(extra_info) if extra_info else {}
-        # Resolution priority: request extra_info > dynamic_ocr_configs > globals.config.
-        request_api_key = self._resolve_api_key(merged_info)
-        # Keep token override scoped to this request to avoid cross-task leakage.
-        with self._auth_scope(request_api_key):
-            _t0 = time.time()
-            if self._offline_mode:
-                response_text = self._fetch_sync(file_path, use_cache)
-                task_dir = self._image_cache_dir / str(uuid.uuid4())
-                task_dir.mkdir(parents=True, exist_ok=True)
-                self._download_offline_images(response_text, cache_dir=task_dir)
-            else:
-                response_text, task_dir = self._fetch_async(file_path, use_cache)
-            _t_fetch = time.time() - _t0
-            if task_dir is not None:
-                merged_info['image_cache_dir'] = str(task_dir)
-            _t1 = time.time()
-            nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
-            _t_build = time.time() - _t1
-            LOG.info(f'[BENCHMARK] file={file_path.name} phase=fetch elapsed={_t_fetch:.3f}s')
-            LOG.info(f'[BENCHMARK] file={file_path.name} phase=parse elapsed={_t_build:.3f}s')
-            return nodes
-
-    def _resolve_api_key(self, extra_info: Optional[Dict] = None) -> Optional[str]:
-        info = extra_info or {}
-        explicit_key = info.get('mineru_api_key')
-        if explicit_key:
-            return explicit_key
-        dynamic_cfg = read_dynamic_ocr_configs()
-        if dynamic_cfg:
-            dynamic_key = dynamic_cfg.get('mineru_api_key')
-            if dynamic_key:
-                return dynamic_key
-        dynamic_key = read_static_api_key('mineru_api_key')
-        if dynamic_key:
-            return dynamic_key
-        # Fallback to CredentialMixin-managed static/dynamic token when no explicit key is injected.
-        return None
+        _t0 = time.time()
+        if self._offline_mode:
+            response_text = self._fetch_sync(file_path, use_cache)
+            task_dir = self._image_cache_dir / str(uuid.uuid4())
+            task_dir.mkdir(parents=True, exist_ok=True)
+            self._download_offline_images(response_text, cache_dir=task_dir)
+        else:
+            response_text, task_dir = self._fetch_async(file_path, use_cache)
+        _t_fetch = time.time() - _t0
+        if task_dir is not None:
+            merged_info['image_cache_dir'] = str(task_dir)
+        _t1 = time.time()
+        nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
+        _t_build = time.time() - _t1
+        LOG.info(f'[BENCHMARK] file={file_path.name} phase=fetch elapsed={_t_fetch:.3f}s')
+        LOG.info(f'[BENCHMARK] file={file_path.name} phase=parse elapsed={_t_build:.3f}s')
+        return nodes
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
         if self._patch_applied:
