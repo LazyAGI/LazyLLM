@@ -387,6 +387,14 @@ class _Processor:
             self.add_doc(input_files=doc_paths, ids=doc_ids, metadatas=metadatas, kb_id=kb_id,
                          node_groups=node_groups, reader=reader,
                          preloaded_root_nodes=preloaded_root_nodes)
+            # add_doc skips lazy_mode='all' groups (e.g. doc-summary) —
+            # recreate them now so full reparse covers every activated group.
+            for g_name, g_cfg in node_groups.items():
+                if g_cfg.get('lazy_mode') == 'all' and self._store.is_group_active(g_name):
+                    LOG.info(f'[reparse] recreating lazy group {g_name!r} for docs {doc_ids!r}')
+                    self._reparse_docs(group_name=g_name, node_groups=node_groups,
+                                       doc_ids=doc_ids, doc_paths=doc_paths,
+                                       metadatas=metadatas, kb_id=kb_id, reader=reader)
             LOG.info(f'Reparse docs {doc_ids} from store done')
         else:
             LOG.info(f'[reparse] docs group={group_name!r} doc_ids={doc_ids!r} kb_id={kb_id!r}')
