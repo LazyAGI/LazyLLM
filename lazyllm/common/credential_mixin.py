@@ -15,6 +15,7 @@ from .auth import AuthStrategy, BearerTokenStrategy, Credential
 class CredentialMixin:
 
     _TOKEN_REFRESH_BUFFER: float = 60.0
+    def __key_source__(self) -> str: return self.get_current_token()
 
     def __init_credential__(
         self,

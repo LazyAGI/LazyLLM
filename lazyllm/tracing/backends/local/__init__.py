@@ -1,8 +1,7 @@
-from .backend import LocalBackend, LocalConsumeBackend
-from .config import read_local_storage_dir
+from .backend import LocalBackend, LocalConsumeBackend, maintain_local_traces
 
 __all__ = [
     'LocalBackend',
     'LocalConsumeBackend',
-    'read_local_storage_dir',
+    'maintain_local_traces',
 ]

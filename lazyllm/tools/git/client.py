@@ -132,8 +132,11 @@ def _detect_backend_gh_cli() -> Tuple[Optional[str], Optional[str]]:
     return None, None
 
 
-config.add('git_backend', str, None, 'GIT_BACKEND',
-           description='Default git backend: github, gitlab, gitee, gitcode. None for auto-detect.')
+config.add(
+    'git_backend', str, None, 'GIT_BACKEND',
+    options=['github', 'gitlab', 'gitee', 'gitcode', 'local'],
+    description='Default git backend for repository operations. None means auto-detect from environment.',
+)
 
 class Git:
     def __new__(cls, backend: Optional[str] = None, token: Optional[str] = None, repo: Optional[str] = None,

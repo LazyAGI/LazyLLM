@@ -16,14 +16,14 @@ from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeploy
 from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
                      OnlineModule, OnlineChatModule, OnlineEmbeddingModule, AutoModel, OnlineMultiModalModule,
-                     inject_model_config)
+                     inject_model_config, StreamCallHelper)
 from .hook import LazyLLMHook, LazyLLMFuncHook
 from .prompt_templates import ActorPrompt, DataPrompt
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, SkillManager,
-                        FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
-                        LLMParser)
+                        FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent,
+                        SentenceSplitter, LLMParser)
     from .tracing import (TracingSetupError, LazyTraceContext, get_trace_context, set_trace_context,
                           enable_trace)
 from .patch import patch_os_env
@@ -92,6 +92,7 @@ __all__ = [
     'OnlineMultiModalModule',
     'AutoModel',
     'inject_model_config',
+    'StreamCallHelper',
 
     # hook
     'LazyLLMHook',

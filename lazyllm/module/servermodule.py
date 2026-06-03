@@ -1,4 +1,3 @@
-import asyncio
 import re
 import time
 import json
@@ -61,64 +60,6 @@ class StaticParams(TypedDict, total=False):
     frequency_penalty: float  # Note some online api use 'repetition_penalty'
 
 
-_g_stream_thread_pool = lazyllm.ThreadPoolExecutor(max_workers=lazyllm.config['thread_pool_worker_num'])
-
-
-class StreamCallHelper:
-    def __init__(self, impl: Callable, interval: float = 0.1):
-        self._impl = impl
-        self._sleep_interval = interval
-
-    def _submit(self, *args, **kwargs):
-        lazyllm.globals._init_sid()
-        lazyllm.FileSystemQueue().clear()
-        return _g_stream_thread_pool.submit(self._impl, *args, **kwargs)
-
-    @staticmethod
-    def _finalize(future, str_total: str):
-        result = future.result()
-        lazyllm.FileSystemQueue().clear()
-        if isinstance(result, str):
-            return None if str_total.endswith(result) else result
-        return str(result)
-
-    def __call__(self, *args, **kwargs):
-        future = self._submit(*args, **kwargs)
-        str_total = ''
-        while not future.done():
-            if value := lazyllm.FileSystemQueue().dequeue():
-                chunk = ''.join(value)
-                str_total += chunk
-                yield chunk
-            else:
-                time.sleep(self._sleep_interval)
-        # drain any remaining queue entries after future completes
-        while value := lazyllm.FileSystemQueue().dequeue():
-            chunk = ''.join(value)
-            str_total += chunk
-            yield chunk
-        if (tail := self._finalize(future, str_total)) is not None:
-            yield tail
-
-    async def astream(self, *args, **kwargs):
-        future = self._submit(*args, **kwargs)
-        str_total = ''
-        while not future.done():
-            if value := lazyllm.FileSystemQueue().dequeue():
-                chunk = ''.join(value)
-                str_total += chunk
-                yield chunk
-            else:
-                await asyncio.sleep(self._sleep_interval)
-        # drain any remaining queue entries after future completes
-        while value := lazyllm.FileSystemQueue().dequeue():
-            chunk = ''.join(value)
-            str_total += chunk
-            yield chunk
-        if (tail := self._finalize(future, str_total)) is not None:
-            yield tail
-
-
 class LLMBase(object):
     def __init__(self, stream: Union[bool, Dict[str, str]] = False, init_prompt: bool = True,
                  type: Optional[Union[str, LLMType]] = None, static_params: Optional[StaticParams] = None):
@@ -171,7 +112,7 @@ class LLMBase(object):
               stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None,
               copy_static_params: bool = False):
         new = copy.copy(self)
-        new._hooks = set()
+        new._hooks = self._hooks.copy()
         new._set_mid()
         if prompt is not None: new.prompt(prompt, history=history)
         if format is not None: new.formatter(format)
@@ -193,10 +134,12 @@ class LLMBase(object):
 
     async def astream_call(self, *args, **kwargs):
         '''Async generator that yields tokens as they arrive. Suitable for FastAPI/asyncio contexts.'''
+        from .stream_helper import StreamCallHelper
         llm = self.share()
         kwargs.setdefault('stream_output', True)
-        async for chunk in StreamCallHelper(llm).astream(*args, **kwargs):
-            yield chunk
+        async for item in StreamCallHelper(llm).astream(*args, **kwargs):
+            if item.get('tag', '') in ('text', 'think'):
+                yield item.get('delta', '')
 
     @property
     def static_params(self) -> StaticParams:

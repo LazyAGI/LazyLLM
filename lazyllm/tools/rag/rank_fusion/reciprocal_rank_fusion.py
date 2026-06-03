@@ -30,7 +30,7 @@ class RRFFusion(ModuleBase):
                 continue
         return normalized_lists
 
-    def __call__(self, *args: Union[List[DocNode], List[List[DocNode]]]) -> list[DocNode]:
+    def forward(self, *args: Union[List[DocNode], List[List[DocNode]]]) -> list[DocNode]:
         # Reciprocal Rank Fusion on multiple rank lists. https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf
 
         # Associate each doc's content with its RRF score for later sorting by it

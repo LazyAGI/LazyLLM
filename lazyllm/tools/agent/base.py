@@ -1,4 +1,5 @@
 import os
+import json
 from typing import Any, Iterable, Optional, Union
 
 import lazyllm
@@ -18,6 +19,12 @@ from .file_tool import (  # noqa: F401
 )
 from .shell_tool import shell_tool  # noqa: F401
 from .download_tool import download_file  # noqa: F401
+
+
+def _write_agent_data(tag: str, **kwargs):
+    payload = {'tag': tag, **kwargs}
+    lazyllm.FileSystemQueue().enqueue(
+        json.dumps(payload, ensure_ascii=False, default=str))
 
 
 class LazyLLMAgentBase(ModuleBase):
@@ -107,6 +114,15 @@ class LazyLLMAgentBase(ModuleBase):
         else:
             result = self._agent(pre)
         return self._post_process(result)
+
+    @staticmethod
+    def _normalize_tool_results(tool_calls, tool_calls_results):
+        return [{
+            'id': tool_call.get('id'),
+            'name': tool_call.get('function', {}).get('name'),
+            'arguments': tool_call.get('function', {}).get('arguments'),
+            'result': tool_result,
+        } for tool_call, tool_result in zip(tool_calls, tool_calls_results)]
 
     def _assert_tools(self):
         assert self._tools, 'tools cannot be empty.'

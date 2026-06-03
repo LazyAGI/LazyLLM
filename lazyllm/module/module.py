@@ -10,6 +10,7 @@ from ..components.formatter.formatterbase import file_content_hash, transform_pa
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
+import json
 from ..hook import LazyLLMHook, LazyLLMFuncHook, execution_with_hooks, register_hooks, resolve_builtin_hooks
 from lazyllm import FileSystemQueue
 from contextlib import contextmanager
@@ -24,8 +25,11 @@ from filelock import FileLock
 
 lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'cache'), 'CACHE_DIR',
                    description='The default result cache directory for module to use(Read and Write).')
-lazyllm.config.add('cache_strategy', str, 'memory', 'CACHE_STRATEGY',
-                   description='The default cache strategy to use(memory, file, sqlite, redis).')
+lazyllm.config.add(
+    'cache_strategy', str, 'memory', 'CACHE_STRATEGY',
+    options=['memory', 'file', 'sqlite', 'redis'],
+    description='The default cache strategy to use.',
+)
 lazyllm.config.add('cache_mode', str, 'RW', 'CACHE_MODE', options=['RW', 'RO', 'WO', 'NONE'],
                    description='The default cache mode to use(Read and Write, Read Only, Write Only, None).')
 redis_client = redis_client['module']
@@ -353,8 +357,9 @@ class ModuleBase(SessionConfigableBase, metaclass=_MetaBind):
             module_cache.set(self.__cache_hash__, args, kw, r)
         return r
 
-    def _stream_output(self, text: str, color: Optional[str] = None, *, cls: Optional[str] = None):
-        (FileSystemQueue.get_instance(cls) if cls else FileSystemQueue()).enqueue(colored_text(text, color))
+    def _stream_output(self, text: str, color: Optional[str] = None, *, cls: Optional[str] = 'text'):
+        payload = {'tag': cls, 'delta': colored_text(text, color)}
+        FileSystemQueue().enqueue(json.dumps(payload))
         return ''
 
     @contextmanager

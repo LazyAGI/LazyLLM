@@ -168,9 +168,11 @@ class BaseEditor(cst.CSTTransformer):
         new_docstring = self.gen_docstring(old_docstring, node_code)
 
         # Create a new docstring node if new_docstring is provided
-        new_docstring_node = (
-            cst.SimpleStatementLine([cst.Expr(cst.SimpleString(f'"""{new_docstring}"""'))]) if new_docstring else None
-        )
+        if new_docstring:
+            safe_docstring = new_docstring.replace('\\', '\\\\').replace('"""', '\\"\\"\\"')
+            new_docstring_node = cst.SimpleStatementLine([cst.Expr(cst.SimpleString(f'"""{safe_docstring}"""'))])
+        else:
+            new_docstring_node = None
 
         if new_docstring_node:
             # Check if the function body is a SimpleStatementSuite (single-line function)
