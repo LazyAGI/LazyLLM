@@ -16,7 +16,7 @@ from .ocr_postprocessor import l1_normalize, l2_associate
 
 MINERU_OFFICIAL_ONLINE_HOST = 'mineru.net'
 MINERU_DEFAULT_ONLINE_URL = 'https://mineru.net'
-PADDLE_OFFICIAL_ONLINE_HOST_SUFFIX = 'aistudio-app.com'
+PADDLE_OFFICIAL_ONLINE_HOST = 'paddleocr.aistudio-app.com'
 PADDLE_OFFICIAL_ONLINE_URL = 'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs'
 
 
@@ -37,17 +37,17 @@ def _parse_url_host(url: Optional[str]) -> str:
 
 
 def _is_mineru_official_online_url(url: Optional[str]) -> bool:
-    host = _parse_url_host(url)
-    if not host:
+    raw = (url or '').strip()
+    if not raw:
         return True
-    return host == MINERU_OFFICIAL_ONLINE_HOST or host.endswith(f'.{MINERU_OFFICIAL_ONLINE_HOST}')
+    return MINERU_OFFICIAL_ONLINE_HOST in raw.lower()
 
 
 def _is_paddle_official_online_url(url: Optional[str]) -> bool:
-    host = _parse_url_host(url)
-    if not host:
+    raw = (url or '').strip()
+    if not raw:
         return True
-    return host.endswith(PADDLE_OFFICIAL_ONLINE_HOST_SUFFIX) or PADDLE_OFFICIAL_ONLINE_HOST_SUFFIX in host
+    return PADDLE_OFFICIAL_ONLINE_HOST in raw.lower()
 
 
 def read_dynamic_ocr_configs() -> Optional[Dict]:

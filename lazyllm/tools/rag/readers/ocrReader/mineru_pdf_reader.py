@@ -76,8 +76,9 @@ class MineruPDFReader(_OcrReaderBase):
         self._backend = backend
         self._upload_mode = upload_mode
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
-        self._patch_applied = patch_applied
         self._offline_mode = not _is_mineru_official_online_url(self._url)
+        # Local / self-hosted MinerU expects patch form upload, not legacy JSON.
+        self._patch_applied = patch_applied or self._offline_mode
 
     @override
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True

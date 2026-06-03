@@ -6,6 +6,11 @@ from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader import DynamicPDFReader
 from lazyllm.tools.rag.readers.ocrReader.mineru_pdf_reader import MineruPDFReader
 from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import PaddleOCRPDFReader
+from lazyllm.tools.rag.readers.ocrReader.ocr_reader_base import (
+    PADDLE_OFFICIAL_ONLINE_URL,
+    _is_mineru_official_online_url,
+    _is_paddle_official_online_url,
+)
 
 
 class TestDynamicPDFReader:
@@ -80,7 +85,7 @@ class TestDynamicPDFReader:
             reader._build_reader('mineru', 'http://mock-mineru')
             assert mock_cls.call_args.kwargs['dynamic_auth'] is True
 
-    def test_mineru_key_does_not_change_route_url(self):
+    def test_mineru_key_without_url_uses_official(self):
         reader = DynamicPDFReader(
             ocr_type='none',
             ocr_url='http://host.docker.internal:8000/api/v1/pdf_parse',
@@ -92,9 +97,9 @@ class TestDynamicPDFReader:
             ocr_type, ocr_url = reader._resolve_route({'mineru_api_key': 'mineru-key'})
 
         assert ocr_type == 'mineru'
-        assert ocr_url == 'http://host.docker.internal:8000/api/v1/pdf_parse'
+        assert ocr_url == ''
 
-    def test_paddle_key_does_not_change_route_url(self):
+    def test_paddle_key_without_url_uses_official(self):
         reader = DynamicPDFReader(
             ocr_type='none',
             ocr_url='http://host.docker.internal:8000/api/v1/pdf_parse',
@@ -106,7 +111,20 @@ class TestDynamicPDFReader:
             ocr_type, ocr_url = reader._resolve_route({'paddle_api_key': 'paddle-key'})
 
         assert ocr_type == 'paddleocr'
-        assert ocr_url == 'http://host.docker.internal:8000/api/v1/pdf_parse'
+        assert ocr_url == ''
+
+    def test_explicit_empty_ocr_url(self):
+        reader = DynamicPDFReader(
+            ocr_url='http://host.docker.internal:8000/api/v1/pdf_parse',
+        )
+        with patch(
+            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.read_dynamic_ocr_configs'
+        ) as mock_dynamic:
+            mock_dynamic.return_value = {'ocr_type': 'mineru', 'ocr_url': ''}
+            ocr_type, ocr_url = reader._resolve_route(None)
+
+        assert ocr_type == 'mineru'
+        assert ocr_url == ''
 
     def test_mineru_reader_defaults_empty_url_to_official(self):
         reader = MineruPDFReader(url='', dynamic_auth=True)
@@ -126,3 +144,25 @@ class TestDynamicPDFReader:
 
         assert ocr_type == 'mineru'
         assert ocr_url == 'http://local-mineru:8000/api/v1/pdf_parse'
+
+    def test_online_url_detection(self):
+        assert _is_mineru_official_online_url('https://mineru.net/api/v4/foo')
+        assert not _is_mineru_official_online_url('http://172.24.176.1:20234/api/v1/pdf_parse')
+        assert not _is_mineru_official_online_url('http://host.docker.internal:8000/api/v1/pdf_parse')
+        assert _is_mineru_official_online_url('')
+        assert _is_paddle_official_online_url(PADDLE_OFFICIAL_ONLINE_URL)
+        assert not _is_paddle_official_online_url('http://host.docker.internal:8000/api/v1/pdf_parse')
+        assert _is_paddle_official_online_url('')
+
+    def test_offline_mineru_auto_enables_patch(self):
+        reader = MineruPDFReader(
+            url='http://172.24.176.1:20234/api/v1/pdf_parse',
+            patch_applied=False,
+        )
+        assert reader._offline_mode is True
+        assert reader._patch_applied is True
+
+    def test_online_mineru_respects_patch_flag(self):
+        reader = MineruPDFReader(url='https://mineru.net', patch_applied=False)
+        assert reader._offline_mode is False
+        assert reader._patch_applied is False
