@@ -52,10 +52,10 @@ class CredentialMixin:
             return pool.peek()
         cred = self._credential
         if cred.kind == 'dynamic':
-            return self._resolve_dynamic_token() or ''
+            raw = self._resolve_dynamic_token()
+            return (raw[0] if raw else '') if isinstance(raw, (list, tuple)) else (raw or '')
         if cred.kind == 'static':
-            sk = cred.secret_key
-            return sk if isinstance(sk, str) else (sk[0] if isinstance(sk, (list, tuple)) and sk else '')
+            return cred.secret_key if isinstance(cred.secret_key, str) else ''
         return cred.access_token or ''
 
     def get_current_token(self) -> str:
