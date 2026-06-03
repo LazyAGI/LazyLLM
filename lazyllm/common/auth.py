@@ -49,20 +49,21 @@ class KeyPool:
         return sorted(self._keys, key=lambda k: (k in failed, k != last))
 
     def report_success(self, key: str) -> None:
-        s = self._get_state()
-        s['last_success'] = key
-        s['failed'] = set()
+        self._get_state()['last_success'] = key
 
     def report_failure(self, key: str) -> None:
         self._get_state().setdefault('failed', set()).add(key)
 
-    @property
-    def keys(self) -> List[str]:
-        return self._keys
-
-    @property
-    def policy(self) -> KeySelectPolicy:
-        return self._policy
+    def peek(self) -> str:
+        state = self._get_state()
+        failed = state.get('failed', set())
+        candidates = [k for k in self._keys if k not in failed]
+        if not candidates:
+            return ''
+        if self._policy == KeySelectPolicy.PREFER_LAST_SUCCESS:
+            last = state.get('last_success')
+            return last if (last and last not in failed) else candidates[0]
+        return candidates[0]
 
 
 @dataclass(frozen=True)

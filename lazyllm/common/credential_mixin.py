@@ -1,5 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import os
+import requests
 import threading
 import time
 from dataclasses import replace
@@ -9,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .auth import (AllKeysExhaustedError, AuthStrategy, BearerTokenStrategy,
                    Credential, KeyAuthError, KeyPool, KeySelectPolicy)
+from .globals import globals as lazyllm_globals, locals as lazyllm_locals
 
 
 class CredentialMixin:
@@ -20,20 +22,18 @@ class CredentialMixin:
         credential: Credential,
         strategy: Optional[AuthStrategy] = None,
         skip_auth: bool = False,
+        dynamic_key_policy: KeySelectPolicy = KeySelectPolicy.RANDOM,
     ) -> None:
         self._credential: Credential = credential
         self._auth_strategy: AuthStrategy = strategy or BearerTokenStrategy()
         self._skip_auth: bool = skip_auth
+        self._dynamic_key_policy: KeySelectPolicy = dynamic_key_policy
         self._token_lock: threading.Lock = threading.Lock()
 
     def __key_source__(self) -> Any:
         if self._skip_auth:
             return True
-        return self.get_current_token()
-
-    @property
-    def _active_credential(self) -> Credential:
-        return self._credential
+        return bool(self._get_token())
 
     @property
     def _dynamic_auth(self) -> bool:
@@ -43,31 +43,23 @@ class CredentialMixin:
     def _secret_key(self) -> Any:
         return self._credential.secret_key
 
-    @property
-    def _dynamic_token(self) -> str:
-        return self._resolve_dynamic_token()
+    def _get_token(self) -> str:
+        curr = lazyllm_locals['curr_key'].get(id(self))
+        if curr is not None:
+            return curr
+        pool = self._get_active_pool()
+        if pool is not None:
+            return pool.peek()
+        cred = self._credential
+        if cred.kind == 'dynamic':
+            return self._resolve_dynamic_token() or ''
+        if cred.kind == 'static':
+            sk = cred.secret_key
+            return sk if isinstance(sk, str) else (sk[0] if isinstance(sk, (list, tuple)) and sk else '')
+        return cred.access_token or ''
 
     def get_current_token(self) -> str:
-        cred = self._active_credential
-        if cred.kind == 'dynamic':
-            raw = self._resolve_dynamic_token()
-            if isinstance(raw, (list, tuple)):
-                pool = self._get_or_build_dynamic_pool(raw)
-                keys = pool.ordered_keys()
-                return keys[0] if keys else ''
-            return raw or ''
-        if cred.kind == 'static':
-            if cred.key_pool:
-                keys = cred.key_pool.ordered_keys()
-                return keys[0] if keys else ''
-            sk = cred.secret_key
-            if isinstance(sk, str):
-                return sk
-            if isinstance(sk, (list, tuple)) and sk:
-                import random
-                return random.choice(sk)
-            return ''
-        return cred.access_token or ''
+        return self._get_token()
 
     def _resolve_dynamic_token(self) -> Union[str, List[str]]:
         return ''
@@ -90,9 +82,9 @@ class CredentialMixin:
         return self._default_credential(token, dynamic_auth)
 
     def ensure_token(self) -> None:
-        cred = self._active_credential
+        cred = self._credential
         if cred.kind == 'dynamic':
-            if not self.get_current_token():
+            if not self._resolve_dynamic_token():
                 raise ValueError(self._missing_dynamic_token_error())
             return
         if cred.kind in ('oauth2', 'app_credentials'):
@@ -105,32 +97,17 @@ class CredentialMixin:
             return False
         return time.time() >= (cred.token_expire_at - cls._TOKEN_REFRESH_BUFFER)
 
-    def inject_auth_header(self, headers: Optional[Dict[str, str]] = None,
-                           token: Optional[str] = None) -> Dict[str, str]:
+    def inject_auth_header(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         self.ensure_token()
         out = dict(headers or {})
-        out.update(self._auth_strategy.build_header(token or self.get_current_token()))
+        out.update(self._auth_strategy.build_header(self._get_token()))
         return out
 
-    def inject_auth_params(self, params: Optional[Dict[str, str]] = None,
-                           token: Optional[str] = None) -> Dict[str, str]:
+    def inject_auth_params(self, params: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         self.ensure_token()
         out = dict(params or {})
-        out.update(self._auth_strategy.build_params(token or self.get_current_token()))
+        out.update(self._auth_strategy.build_params(self._get_token()))
         return out
-
-    def _get_or_build_dynamic_pool(self, keys: List[str]) -> KeyPool:
-        from .globals import globals as lazyllm_globals
-        policy = getattr(self, '_dynamic_key_policy', KeySelectPolicy.RANDOM)
-        pool_state = lazyllm_globals['key_pool_state']
-        cache_key = (id(self), 'dynamic_pool')
-        entry = pool_state.get(cache_key)
-        if entry is None or entry['keys'] != list(keys):
-            pool = KeyPool(list(keys), policy)
-            pool_state[cache_key] = {'keys': list(keys), 'pool': pool}
-        else:
-            pool = entry['pool']
-        return pool
 
     def _get_active_pool(self) -> Optional[KeyPool]:
         cred = self._credential
@@ -139,19 +116,23 @@ class CredentialMixin:
         if cred.kind == 'dynamic':
             raw = self._resolve_dynamic_token()
             if isinstance(raw, (list, tuple)) and len(raw) > 1:
-                return self._get_or_build_dynamic_pool(raw)
+                pool_state = lazyllm_globals['key_pool_state']
+                pool = pool_state.get(id(self))
+                if pool is None:
+                    pool = KeyPool(list(raw), self._dynamic_key_policy)
+                    pool_state[id(self)] = pool
+                return pool
         return None
 
     def _is_key_auth_error(self, resp: Any) -> bool:
         return getattr(resp, 'status_code', 0) in (401, 403)
 
     def _http_execute(self, method: str, url: str, **kwargs) -> Any:
-        import requests as _requests
-        resp = _requests.request(method, url, **kwargs)
+        resp = requests.request(method, url, **kwargs)
         if self._is_key_auth_error(resp):
             raise KeyAuthError(f'{resp.status_code} for {url}')
         if not resp.ok:
-            raise _requests.HTTPError(response=resp)
+            raise requests.HTTPError(response=resp)
         return resp
 
     def _request(self, method: str, url: str, **kwargs) -> Any:
@@ -161,15 +142,19 @@ class CredentialMixin:
             headers = self.inject_auth_header(incoming_headers)
             return self._http_execute(method, url, headers=headers, **kwargs)
         last_err: Optional[Exception] = None
+        curr_key = lazyllm_locals['curr_key']
         for key in pool.ordered_keys():
-            headers = self.inject_auth_header(incoming_headers, token=key)
+            curr_key[id(self)] = key
             try:
+                headers = self.inject_auth_header(incoming_headers)
                 result = self._http_execute(method, url, headers=headers, **kwargs)
                 pool.report_success(key)
                 return result
             except KeyAuthError as e:
                 pool.report_failure(key)
                 last_err = e
+            finally:
+                curr_key.pop(id(self), None)
         raise AllKeysExhaustedError(f'{type(self).__name__}: all keys exhausted') from last_err
 
     def _refresh_credential(self) -> None:
