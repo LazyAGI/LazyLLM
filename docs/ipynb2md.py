@@ -108,9 +108,8 @@ def _split_from_data_to_llm_entry_pages(dest: Path):
         if outline_start != -1:
             iframe_match = FROM_DATA_TO_LLM_IFRAME_BLOCK_PATTERN.search(outline_text[:outline_start])
             iframe_block = f'{iframe_match.group(0)}\n\n' if iframe_match else ''
-            outline_body_start = outline_start + len(outline_heading)
-            outline_body = outline_text[outline_body_start:].lstrip()
-            outline_path.write_text(f'{iframe_block}{outline_body}', encoding='utf-8')
+            # Keep the LazyLLM outline page focused on the interactive course map.
+            outline_path.write_text(iframe_block, encoding='utf-8')
 
 
 def copy_from_data_to_llm_docs():
