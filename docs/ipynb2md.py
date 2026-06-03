@@ -95,26 +95,6 @@ def _fix_from_data_to_llm_paths(dest: Path):
             md_path.write_text(fixed_text, encoding='utf-8')
 
 
-def _extract_from_data_to_llm_lesson_summaries():
-    tutorial_index = ZH_OUTPUT_DIR / 'index.md'
-    if not tutorial_index.exists():
-        return ''
-
-    index_text = tutorial_index.read_text(encoding='utf-8')
-    section_start = index_text.find('### 从数据到大模型')
-    section_end = index_text.find('### LazyLLM RAG 教程')
-    if section_start == -1 or section_end == -1:
-        return ''
-
-    summary_text = index_text[section_start:section_end]
-    first_lesson = summary_text.find('- [第1讲')
-    if first_lesson == -1:
-        return ''
-
-    summary_text = summary_text[first_lesson:].strip()
-    return summary_text.replace('(from-data-to-llm/', '(')
-
-
 def _split_from_data_to_llm_entry_pages(dest: Path):
     index_path = dest / 'index.md'
     outline_path = dest / 'outline.md'
@@ -130,9 +110,7 @@ def _split_from_data_to_llm_entry_pages(dest: Path):
             iframe_block = f'{iframe_match.group(0)}\n\n' if iframe_match else ''
             outline_body_start = outline_start + len(outline_heading)
             outline_body = outline_text[outline_body_start:].lstrip()
-            summaries = _extract_from_data_to_llm_lesson_summaries()
-            summary_block = f'## 课时摘要\n\n{summaries}\n\n' if summaries else ''
-            outline_path.write_text(f'{iframe_block}{summary_block}{outline_body}', encoding='utf-8')
+            outline_path.write_text(f'{iframe_block}{outline_body}', encoding='utf-8')
 
 
 def copy_from_data_to_llm_docs():
