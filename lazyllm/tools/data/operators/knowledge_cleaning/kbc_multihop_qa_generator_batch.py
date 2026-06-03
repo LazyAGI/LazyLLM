@@ -16,18 +16,18 @@ else:
 
 
 class KBCLoadChunkFile(kbc):
-    def __init__(self, **kwargs):
+    def __init__(self, input_key: str = 'chunk_path', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
+        self.input_key = input_key
 
     def forward(
         self,
         data: dict,
-        input_key: str = 'chunk_path',
         **kwargs,
     ) -> dict:
         import os
 
-        chunk_path = data.get(input_key, '')
+        chunk_path = data.get(self.input_key, '')
 
         if not chunk_path or not os.path.exists(chunk_path):
             LOG.warning(f'Invalid chunk path: {chunk_path}')
@@ -56,15 +56,19 @@ class KBCLoadChunkFile(kbc):
 
 
 class KBCPreprocessText(kbc):
-    def __init__(self, min_length: int = 100, max_length: int = 200000, **kwargs):
+    def __init__(self,
+                 text_field: str = 'cleaned_chunk',
+                 min_length: int = 100,
+                 max_length: int = 200000,
+                 **kwargs):
         super().__init__(_concurrency_mode='process', **kwargs)
+        self.text_field = text_field
         self.min_length = min_length
         self.max_length = max_length
 
     def forward(
         self,
         data: dict,
-        text_field: str = 'cleaned_chunk',
         **kwargs,
     ) -> dict:
         chunks_data = data.get('_chunks_data', [])
@@ -73,7 +77,7 @@ class KBCPreprocessText(kbc):
 
         processed = []
         for item in chunks_data:
-            text = item.get(text_field, '')
+            text = item.get(self.text_field, '')
             if not isinstance(text, str):
                 continue
 
@@ -278,16 +282,20 @@ def _save_enhanced_data(enhanced_data: list, output_path: str) -> None:
 
 
 class KBCSaveEnhanced(kbc):
-    def __init__(self, output_dir: Optional[str] = None, **kwargs):
+    def __init__(self,
+                 output_key: str = 'enhanced_chunk_path',
+                 output_dir: Optional[str] = None,
+                 **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.output_dir = output_dir
+        self.output_key = output_key
 
-    def forward(self, data: dict, output_key: str = 'enhanced_chunk_path', **kwargs) -> dict:
+    def forward(self, data: dict, **kwargs) -> dict:
         chunk_path = data.get('_chunk_path', '')
         result = data.copy()
 
         if not chunk_path:
-            return _clean_enhanced_result(result, output_key)
+            return _clean_enhanced_result(result, self.output_key)
 
         try:
             enhanced_data = _build_enhanced_data(
@@ -297,7 +305,7 @@ class KBCSaveEnhanced(kbc):
             output_path = _get_output_path(chunk_path, self.output_dir)
             _save_enhanced_data(enhanced_data, output_path)
             LOG.info(f'Saved enhanced chunks to {output_path}')
-            return _clean_enhanced_result(result, output_key, output_path)
+            return _clean_enhanced_result(result, self.output_key, output_path)
         except Exception as e:
             LOG.error(f'Error saving enhanced chunks: {e}')
-            return _clean_enhanced_result(result, output_key)
+            return _clean_enhanced_result(result, self.output_key)

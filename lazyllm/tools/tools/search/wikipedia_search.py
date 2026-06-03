@@ -13,8 +13,9 @@ class WikipediaSearch(SearchBase):
     _UA = f'LazyLLM/{lazyllm.__version__} (https://github.com/LazyAGI/LazyLLM; wikipedia-search)'
 
     def __init__(self, base_url: str = 'https://en.wikipedia.org',
-                 timeout: int = 10, source_name: str = 'wikipedia'):
-        super().__init__(source_name=source_name)
+                 timeout: int = 10, source_name: str = 'wikipedia',
+                 skip_auth: bool = True):
+        super().__init__(source_name=source_name, skip_auth=skip_auth)
         self._base_url = base_url.rstrip('/')
         self._api_url = f'{self._base_url}/w/api.php'
         self._timeout = timeout

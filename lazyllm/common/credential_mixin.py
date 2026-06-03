@@ -14,17 +14,23 @@ from .auth import (AllKeysExhaustedError, AuthStrategy, BearerTokenStrategy,
 class CredentialMixin:
 
     _TOKEN_REFRESH_BUFFER: float = 60.0
-    def __key_source__(self) -> str: return self.get_current_token()
 
     def __init_credential__(
         self,
         credential: Credential,
         strategy: Optional[AuthStrategy] = None,
+        skip_auth: bool = False,
     ) -> None:
         self._credential: Credential = credential
         self._auth_strategy: AuthStrategy = strategy or BearerTokenStrategy()
+        self._skip_auth: bool = skip_auth
         self._token_lock: threading.Lock = threading.Lock()
         self._dynamic_key_pool: Optional[KeyPool] = None
+
+    def __key_source__(self) -> Any:
+        if self._skip_auth:
+            return True
+        return self.get_current_token()
 
     @property
     def _active_credential(self) -> Credential:

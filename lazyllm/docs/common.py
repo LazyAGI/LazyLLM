@@ -135,6 +135,33 @@ Note:
     Raises AttributeError if no matching key is found.
 ''')
 
+add_chinese_doc('registry.LazyDict.resolve', '''\
+解析键名并返回字典中匹配的值。
+
+Args:
+    key (str): 要解析的键。支持与__getattr__相同的键匹配规则，包括默认键、首字母小写和组名省略等特性。
+
+Returns:
+    Any: 匹配键对应的值。
+
+注意:
+    如果找不到匹配的键，将抛出AttributeError异常。
+''')
+
+add_english_doc('registry.LazyDict.resolve', '''\
+Resolve a key name and return the matching value from the dictionary.
+
+Args:
+    key (str): The key to resolve. Supports the same key matching rules as __getattr__,
+              including default keys, lowercase first character, and group name omission features.
+
+Returns:
+    Any: The value for the matched key.
+
+Note:
+    Raises AttributeError if no matching key is found.
+''')
+
 add_chinese_doc('registry.LazyDict.set_default', '''\
 设置字典的默认键。设置后可以通过.default属性访问该键对应的值。
 
