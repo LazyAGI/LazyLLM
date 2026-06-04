@@ -1,8 +1,7 @@
 import threading
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import lazyllm
 from lazyllm.common import KeyPool, KeySelectPolicy, KeyAuthError, AllKeysExhaustedError, Credential, CredentialMixin
 from lazyllm.common.auth import BearerTokenStrategy
 from lazyllm.common.globals import globals as lazyllm_globals, locals as lazyllm_locals
@@ -235,7 +234,7 @@ class TestRequestMultiKey:
 
         def fake_execute(method, url, **kwargs):
             call_count[0] += 1
-            auth = kwargs.get('headers', {}).get('Authorization', '')
+            _ = kwargs.get('headers', {}).get('Authorization', '')
             # Fail the first attempted key
             if call_count[0] == 1:
                 raise KeyAuthError('first key invalid')
