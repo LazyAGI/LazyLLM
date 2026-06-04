@@ -5,7 +5,6 @@ import pytest
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader import DynamicPDFReader
 from lazyllm.tools.rag.readers.ocrReader.mineru_pdf_reader import MineruPDFReader
-from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import PaddleOCRPDFReader
 from lazyllm.tools.rag.readers.ocrReader.ocr_reader_base import (
     PADDLE_OFFICIAL_ONLINE_URL,
     _is_mineru_official_online_url,

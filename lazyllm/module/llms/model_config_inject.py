@@ -29,7 +29,7 @@ def _infer_slot(role: str, role_cfg: Dict[str, Any]) -> str:
     return 'chat'
 
 
-def inject_model_config(model_config: Optional[Dict[str, Any]]) -> None:
+def inject_model_config(model_config: Optional[Dict[str, Any]]) -> None:  # noqa: C901
     '''Inject per-request model configuration into lazyllm globals.
 
     model_config keys are role names (e.g. 'llm', 'embed_main', 'reranker').
