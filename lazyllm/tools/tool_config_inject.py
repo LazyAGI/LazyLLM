@@ -36,6 +36,7 @@ TOOL_AUTH_REGISTRY: Dict[str, str] = {
     'semantic_scholar': 'dynamic_tool_auth',
     'google_books': 'dynamic_tool_auth',
     'stackoverflow': 'dynamic_tool_auth',
+    'sciverse': 'dynamic_tool_auth',
 }
 
 # Default config key for tools not listed in TOOL_AUTH_REGISTRY.
