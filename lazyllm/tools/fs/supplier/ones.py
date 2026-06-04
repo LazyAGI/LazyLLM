@@ -59,7 +59,7 @@ class OnesFS(LazyLLMFSBase):
     def inject_auth_header(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         out = dict(headers or {})
         if self._dynamic_auth:
-            raw = self._dynamic_token
+            raw = self._get_token()
             if not raw:
                 return out
             if ':' in raw:

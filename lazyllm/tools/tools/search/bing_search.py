@@ -1,7 +1,6 @@
 from typing import List, Optional
 
 from lazyllm.common import ApiKeyHeaderStrategy
-from lazyllm.thirdparty import httpx
 
 from .base import SearchBase, _make_result
 
@@ -20,15 +19,8 @@ class BingSearch(SearchBase):
         self._timeout = timeout
 
     def search(self, query: str, count: int = 10) -> List[dict]:
-        headers = self.inject_auth_header()
         params = {'q': query, 'count': min(count, 50)}
-        resp = httpx.get(
-            self._url,
-            headers=headers,
-            params=params,
-            timeout=self._timeout,
-        )
-        resp.raise_for_status()
+        resp = self._request('GET', self._url, params=params, timeout=self._timeout)
         data = resp.json()
         if data.get('_type') == 'ErrorResponse':
             return []

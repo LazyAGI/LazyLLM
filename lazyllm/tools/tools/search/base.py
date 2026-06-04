@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 
 from lazyllm import globals as lazyllm_globals
 from lazyllm.common import (
-    AuthStrategy, BearerTokenStrategy, Credential, CredentialMixin,
+    AuthStrategy, BearerTokenStrategy, Credential, CredentialMixin, KeyAuthError,
 )
 from lazyllm.module import ModuleBase
 from lazyllm.module.module import ModuleExecutionError
@@ -66,6 +66,13 @@ class SearchBase(ModuleBase, CredentialMixin):
     def _resolve_dynamic_token(self) -> str:
         mapping = lazyllm_globals.config['dynamic_tool_auth'] or {}
         return mapping.get(self._source_name, '')
+
+    def _http_execute(self, method: str, url: str, **kwargs) -> Any:
+        resp = httpx.request(method, url, **kwargs)
+        if self._is_key_auth_error(resp):
+            raise KeyAuthError(f'{resp.status_code} for {url}')
+        resp.raise_for_status()
+        return resp
 
     @property
     def source_name(self) -> str:

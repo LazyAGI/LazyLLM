@@ -135,7 +135,8 @@ class Globals(metaclass=SingletonABCMeta):
         usage={},
         trace={},
         config={},
-        call_stack=[]
+        call_stack=[],
+        key_pool_state={},
     )
 
     def __new__(cls, *args, **kw):
@@ -300,7 +301,7 @@ globals = Globals()
 
 
 class Locals(MemoryGlobals):
-    __global_attrs__ = ThreadSafeDict(bind_args={}, _lazyllm_agent={})
+    __global_attrs__ = ThreadSafeDict(bind_args={}, _lazyllm_agent={}, curr_key={})
 
     def _init_sid(self, sid: Optional[str] = None):
         return super()._init_sid(sid or f'local_{uuid.uuid4().hex}')
