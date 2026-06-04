@@ -8,6 +8,7 @@ from .semantic_scholar_search import SemanticScholarSearch
 from .google_books_search import GoogleBooksSearch
 from .arxiv_search import ArxivSearch
 from .wikipedia_search import WikipediaSearch
+from .sciverse_search import SciverseSearch
 
 __all__ = [
     'SearchBase',
@@ -20,4 +21,5 @@ __all__ = [
     'GoogleBooksSearch',
     'ArxivSearch',
     'WikipediaSearch',
+    'SciverseSearch',
 ]
