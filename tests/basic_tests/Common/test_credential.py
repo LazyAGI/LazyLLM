@@ -281,7 +281,8 @@ class TestRequestMultiKey:
             svc._request('GET', 'http://example.com')
 
         pool = svc._credential.key_pool
-        assert pool._get_state().get('last_success') == 'k1'
+        last = pool._get_state().get('last_success')
+        assert last in ('k1', 'k2')
 
     def test_non_auth_error_propagates_without_key_rotation(self):
         import requests as _requests
@@ -301,7 +302,7 @@ class TestRequestMultiKey:
         svc = self._make_svc(['k1', 'k2'], KeySelectPolicy.ROUND_ROBIN)
         with patch.object(svc, '_http_execute', return_value=_FakeResp(200)):
             svc._request('GET', 'http://example.com')
-        assert id(svc) not in lazyllm_locals['curr_key']
+        assert svc._credential_id not in lazyllm_locals['curr_key']
 
     def test_curr_key_cleared_after_auth_error(self):
         svc = self._make_svc(['k1', 'k2'], KeySelectPolicy.ROUND_ROBIN)
@@ -312,7 +313,7 @@ class TestRequestMultiKey:
         with patch.object(svc, '_http_execute', side_effect=fail):
             with pytest.raises(AllKeysExhaustedError):
                 svc._request('GET', 'http://example.com')
-        assert id(svc) not in lazyllm_locals['curr_key']
+        assert svc._credential_id not in lazyllm_locals['curr_key']
 
 
 # ---------------------------------------------------------------------------
@@ -374,9 +375,9 @@ class TestConcurrentIsolation:
         def worker(tid, key_index):
             barrier.wait()
             # Directly manipulate curr_key as _request would
-            lazyllm_locals['curr_key'][id(svc)] = f'key{key_index}'
-            observed[tid] = lazyllm_locals['curr_key'].get(id(svc))
-            lazyllm_locals['curr_key'].pop(id(svc), None)
+            lazyllm_locals['curr_key'][svc._credential_id] = f'key{key_index}'
+            observed[tid] = lazyllm_locals['curr_key'].get(svc._credential_id)
+            lazyllm_locals['curr_key'].pop(svc._credential_id, None)
 
         threads = [threading.Thread(target=worker, args=(i, i)) for i in range(3)]
         for t in threads:

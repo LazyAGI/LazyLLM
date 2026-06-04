@@ -1,5 +1,6 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import random
+import uuid
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -27,9 +28,10 @@ class KeyPool:
     def __init__(self, keys: List[str], policy: KeySelectPolicy) -> None:
         self._keys = list(keys)
         self._policy = policy
+        self._id = uuid.uuid4().hex
 
     def _get_state(self) -> dict:
-        return lazyllm_globals['key_pool_state'].setdefault(id(self), {})
+        return lazyllm_globals['key_pool_state'].setdefault(self._id, {})
 
     def ordered_keys(self) -> List[str]:
         state = self._get_state()

@@ -3,6 +3,7 @@ import os
 import requests
 import threading
 import time
+import uuid
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -29,6 +30,7 @@ class CredentialMixin:
         self._skip_auth: bool = skip_auth
         self._dynamic_key_policy: KeySelectPolicy = dynamic_key_policy
         self._token_lock: threading.Lock = threading.Lock()
+        self._credential_id: str = uuid.uuid4().hex
 
     def __key_source__(self) -> Any:
         if self._skip_auth:
@@ -44,7 +46,7 @@ class CredentialMixin:
         return self._credential.secret_key
 
     def _get_token(self) -> str:
-        curr = lazyllm_locals['curr_key'].get(id(self))
+        curr = lazyllm_locals['curr_key'].get(self._credential_id)
         if curr is not None:
             return curr
         pool = self._get_active_pool()
@@ -117,10 +119,10 @@ class CredentialMixin:
             raw = self._resolve_dynamic_token()
             if isinstance(raw, (list, tuple)) and len(raw) > 1:
                 pool_state = lazyllm_globals['key_pool_state']
-                pool = pool_state.get(id(self))
+                pool = pool_state.get(self._credential_id)
                 if pool is None:
                     pool = KeyPool(list(raw), self._dynamic_key_policy)
-                    pool_state[id(self)] = pool
+                    pool_state[self._credential_id] = pool
                 return pool
         return None
 
@@ -144,7 +146,7 @@ class CredentialMixin:
         last_err: Optional[Exception] = None
         curr_key = lazyllm_locals['curr_key']
         for key in pool.ordered_keys():
-            curr_key[id(self)] = key
+            curr_key[self._credential_id] = key
             try:
                 headers = self.inject_auth_header(incoming_headers)
                 result = self._http_execute(method, url, headers=headers, **kwargs)
@@ -154,7 +156,7 @@ class CredentialMixin:
                 pool.report_failure(key)
                 last_err = e
             finally:
-                curr_key.pop(id(self), None)
+                curr_key.pop(self._credential_id, None)
         raise AllKeysExhaustedError(f'{type(self).__name__}: all keys exhausted') from last_err
 
     def _refresh_credential(self) -> None:
