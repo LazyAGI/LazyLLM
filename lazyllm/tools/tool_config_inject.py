@@ -1,5 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import lazyllm
 from lazyllm import LOG
@@ -43,15 +43,15 @@ TOOL_AUTH_REGISTRY: Dict[str, str] = {
 _DEFAULT_CONFIG_KEY = 'dynamic_tool_auth'
 
 
-def inject_tool_config(tool_config: Optional[Dict[str, str]]) -> None:
+def inject_tool_config(tool_config: Optional[Dict[str, Any]]) -> None:
     '''Inject per-request tool credentials into lazyllm globals.
 
-    tool_config maps tool names to credential tokens::
+    tool_config maps tool names to credential tokens or token lists::
 
         {
             "feishu": "u-xxx",    # OAuth2 access token (caller is responsible for freshness)
             "bing":   "sk-xxx",
-            "google": "AIza...",
+            "google": ["AIza...", "AIza..."],
         }
 
     The destination config key for each tool is determined by
@@ -67,22 +67,27 @@ def inject_tool_config(tool_config: Optional[Dict[str, str]]) -> None:
         return
 
     # Collect updates grouped by config key.
-    updates: Dict[str, Dict[str, str]] = {}
+    updates: Dict[str, Dict[str, Any]] = {}
     injected: list = []
 
     for tool_name, token in tool_config.items():
-        if not isinstance(token, str):
-            LOG.warning(f'[inject_tool_config] skipping {tool_name!r}: expected str token, '
+        if isinstance(token, str):
+            value = token.strip()
+        elif isinstance(token, (list, tuple)) and all(isinstance(k, str) for k in token):
+            keys = [k.strip() for k in token if k.strip()]
+            value = keys if len(keys) > 1 else (keys[0] if keys else '')
+        else:
+            LOG.warning(f'[inject_tool_config] skipping {tool_name!r}: expected str or list[str] token, '
                         f'got {type(token).__name__}')
             continue
-        token = token.strip()
-        if not token:
+        if not value:
             LOG.warning(f'[inject_tool_config] skipping {tool_name!r}: token is empty')
             continue
 
         canonical = tool_name.lower().strip()
         config_key = TOOL_AUTH_REGISTRY.get(canonical, _DEFAULT_CONFIG_KEY)
-        updates.setdefault(config_key, {})[canonical] = token
+
+        updates.setdefault(config_key, {})[canonical] = value
         injected.append(canonical)
 
     for config_key, new_entries in updates.items():
