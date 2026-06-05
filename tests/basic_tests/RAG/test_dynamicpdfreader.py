@@ -138,11 +138,17 @@ class TestDynamicPDFReader:
 
     def test_online_url_detection(self):
         assert resolve_ocr_variant('mineru', 'https://mineru.net/api/v4/foo') == OcrServiceVariant.ONLINE
-        assert resolve_ocr_variant('mineru', 'http://172.24.176.1:20234/api/v1/pdf_parse') == OcrServiceVariant.OFFLINE
-        assert resolve_ocr_variant('mineru', 'http://host.docker.internal:8000/api/v1/pdf_parse') == OcrServiceVariant.OFFLINE
+        assert resolve_ocr_variant(
+            'mineru', 'http://172.24.176.1:20234/api/v1/pdf_parse'
+        ) == OcrServiceVariant.OFFLINE
+        assert resolve_ocr_variant(
+            'mineru', 'http://host.docker.internal:8000/api/v1/pdf_parse'
+        ) == OcrServiceVariant.OFFLINE
         assert resolve_ocr_variant('mineru', '') == OcrServiceVariant.ONLINE
         assert resolve_ocr_variant('paddleocr', default_online_url('paddleocr')) == OcrServiceVariant.ONLINE
-        assert resolve_ocr_variant('paddleocr', 'http://host.docker.internal:8000/api/v1/pdf_parse') == OcrServiceVariant.OFFLINE
+        assert resolve_ocr_variant(
+            'paddleocr', 'http://host.docker.internal:8000/api/v1/pdf_parse'
+        ) == OcrServiceVariant.OFFLINE
         assert resolve_ocr_variant('paddleocr', '') == OcrServiceVariant.ONLINE
 
     def test_offline_mineru_enables_upload(self):
