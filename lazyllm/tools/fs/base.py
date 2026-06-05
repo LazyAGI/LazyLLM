@@ -8,7 +8,7 @@ import requests
 
 from lazyllm import thirdparty, globals
 from lazyllm.common import (
-    AuthStrategy, BearerTokenStrategy, Credential, CredentialMixin,
+    AuthStrategy, BearerTokenStrategy, Credential, CredentialMixin, KeyAuthError,
 )
 from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
 
@@ -182,19 +182,17 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
     def _upload_data(self, path: str, data: bytes) -> None:
         raise NotImplementedError(f'{self.__class__.__name__}._upload_data is not implemented')
 
-    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
-        existing = kwargs.get('headers') or {}
-        # auth headers take highest priority — caller-supplied headers cannot override credentials
-        merged = self.inject_auth_header(existing)
-        resp = self._session.request(method, url, **{**kwargs, 'headers': merged})
+    def _http_execute(self, method: str, url: str, **kwargs) -> requests.Response:
+        resp = self._session.request(method, url, **kwargs)
+        if self._is_key_auth_error(resp):
+            raise KeyAuthError(f'{resp.status_code} for {url}')
         if not resp.ok:
             try:
                 body = resp.json()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 body = resp.text
             raise requests.HTTPError(
-                f'{resp.status_code} {resp.reason} for url: {resp.url} — response: {body}',
-                response=resp,
+                f'{resp.status_code} {resp.reason} — {body}', response=resp,
             )
         return resp
 
@@ -232,6 +230,3 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
 
 globals.config.add('dynamic_fs_auth', dict, None, 'DYNAMIC_FS_AUTH',
                    description='Per-source dynamic FS auth: {source: token}.')
-globals.config.add('dynamic_tool_auth', dict, None, 'DYNAMIC_TOOL_AUTH',
-                   description='Per-tool dynamic auth: {tool_name: token}. '
-                   'Used by search engines and other API-key-based tools.')

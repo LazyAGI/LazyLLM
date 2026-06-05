@@ -1,7 +1,7 @@
 import lazyllm
 from lazyllm.tools import ToolManager
 from lazyllm.tools.agent.toolsManager import (
-    InstanceToolGroup, ToolGroup, _gen_args_info_from_moduletool_and_docstring, register,
+    InstanceToolGroup, ToolGroup, _build_tool_from_element, _gen_args_info_from_moduletool_and_docstring, register,
 )
 from lazyllm.common import LazyLLMRegisterMetaClass
 from lazyllm import locals as lazyllm_locals, init_session
@@ -11,7 +11,7 @@ def _gen_wrapped_moduletool(func):
     if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
         register.new_group('tmp_tool')
     register('tmp_tool')(func)
-    wrapped_module = getattr(lazyllm.tmp_tool, func.__name__)()
+    wrapped_module = lazyllm.tmp_tool.resolve(func.__name__)()
     lazyllm.tmp_tool.remove(func.__name__)
     return wrapped_module
 
@@ -106,6 +106,24 @@ class TestToolManager:
         except Exception:
             raised = True
         assert raised
+
+    def test_tmp_tool_name_can_match_dict_method(self):
+        def copy(path1: str, path2: str) -> str:
+            '''
+            Copy a file.
+
+            Args:
+                path1 (str): Source path.
+                path2 (str): Target path.
+
+            Returns:
+                str: Copy result.
+            '''
+            return f'{path1}->{path2}'
+
+        tool = _build_tool_from_element(copy)
+        assert not isinstance(tool, dict)
+        assert tool.name == 'copy'
 
 
 class MockSearchForTest:
@@ -755,6 +773,41 @@ class TestShouldSkipTransitions:
         lazyllm.globals.config['mock_fs_token'] = 'user-token-abc'
         assert grp.should_skip() is False
         lazyllm.globals.config['mock_fs_token'] = None
+
+    def test_required_search_without_key_skips_then_available_with_dynamic_auth(self):
+        from lazyllm.tools.agent.toolsManager import SkipMixin
+        from lazyllm.tools.tools.search import BingSearch
+
+        old_auth = lazyllm.globals.config['dynamic_tool_auth']
+        lazyllm.globals.config['dynamic_tool_auth'] = {}
+        try:
+            inst = BingSearch()
+            mixin = SkipMixin(type(inst).__key_source__)
+            mixin._instance = inst
+            assert mixin.should_skip() is True
+
+            lazyllm.globals.config['dynamic_tool_auth'] = {'bing': 'bing-token'}
+            assert mixin.should_skip() is False
+        finally:
+            lazyllm.globals.config['dynamic_tool_auth'] = old_auth
+
+    def test_search_skip_auth_override_keeps_tool_available(self):
+        from lazyllm.tools.agent.toolsManager import SkipMixin
+        from lazyllm.tools.tools.search import ArxivSearch, WikipediaSearch
+
+        for inst in (ArxivSearch(skip_auth=True), WikipediaSearch(skip_auth=True)):
+            mixin = SkipMixin(type(inst).__key_source__)
+            mixin._instance = inst
+            assert mixin.should_skip() is False
+
+    def test_search_without_key_skips_by_default(self):
+        from lazyllm.tools.agent.toolsManager import SkipMixin
+        from lazyllm.tools.tools.search import ArxivSearch
+
+        inst = ArxivSearch()
+        mixin = SkipMixin(type(inst).__key_source__)
+        mixin._instance = inst
+        assert mixin.should_skip() is True
 
     # ------------------------------------------------------------------ #
     # ToolGroupWrapper — callable key_source, mutate state

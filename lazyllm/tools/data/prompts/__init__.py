@@ -25,5 +25,6 @@ from .kbcleaning import *  # noqa: F401, F403
 from .text2qa import *  # noqa: F401, F403
 from .embedding_synthesis import *  # noqa: F401, F403
 from .reranker_synthesis import *  # noqa: F401, F403
+from .domain_finetune import *  # noqa: F401, F403
 
 __all__ = ['PromptABC']

@@ -135,6 +135,33 @@ Note:
     Raises AttributeError if no matching key is found.
 ''')
 
+add_chinese_doc('registry.LazyDict.resolve', '''\
+解析键名并返回字典中匹配的值。
+
+Args:
+    key (str): 要解析的键。支持与__getattr__相同的键匹配规则，包括默认键、首字母小写和组名省略等特性。
+
+Returns:
+    Any: 匹配键对应的值。
+
+注意:
+    如果找不到匹配的键，将抛出AttributeError异常。
+''')
+
+add_english_doc('registry.LazyDict.resolve', '''\
+Resolve a key name and return the matching value from the dictionary.
+
+Args:
+    key (str): The key to resolve. Supports the same key matching rules as __getattr__,
+              including default keys, lowercase first character, and group name omission features.
+
+Returns:
+    Any: The value for the matched key.
+
+Note:
+    Raises AttributeError if no matching key is found.
+''')
+
 add_chinese_doc('registry.LazyDict.set_default', '''\
 设置字典的默认键。设置后可以通过.default属性访问该键对应的值。
 
@@ -2007,32 +2034,152 @@ Returns:
     Dict[str, str]: New params dict with auth fields merged in.
 ''')
 
-add_chinese_doc('CredentialMixin.override_credential', '''\
-上下文管理器：在当前协程/线程范围内临时替换凭据，退出后自动恢复。
+add_chinese_doc('KeySelectPolicy', '''\
+多 Key 池的 Key 选取策略枚举。
 
-可通过 secret_key 快速替换静态 key，也可传入完整的 Credential 对象。
-两个参数互斥，同时传入时 credential 优先。
-
-Args:
-    secret_key (Any, optional): 临时替换的 secret_key，其余字段保持不变。
-    credential (Credential, optional): 完整替换的凭据对象。
-
-Example:
-    with obj.override_credential(secret_key='tmp-key'):
-        result = obj.some_api_call()
+可选值：
+- ``RANDOM``：每次从未失败的候选 Key 中随机选取顺序。
+- ``ROUND_ROBIN``：按轮询顺序从未失败的候选 Key 中选取。
+- ``PREFER_LAST_SUCCESS``：失败的 Key 排在最后（不剔除），上次成功的 Key 优先尝试。
 ''')
 
-add_english_doc('CredentialMixin.override_credential', '''\
-Context manager: temporarily replace the credential within the current coroutine/thread scope; restores automatically on exit.
+add_english_doc('KeySelectPolicy', '''\
+Enum of Key selection policies for a multi-Key pool.
 
-Use secret_key for a quick static key swap, or pass a full Credential object for a complete replacement.
-The two parameters are mutually exclusive; credential takes priority when both are supplied.
+Values:
+- ``RANDOM``: shuffle non-failed candidate keys randomly each time.
+- ``ROUND_ROBIN``: cycle through non-failed candidate keys in order.
+- ``PREFER_LAST_SUCCESS``: failed keys are deprioritized (not removed), the last successful key is tried first.
+''')
+
+add_chinese_doc('KeyPool', '''\
+多 API Key 池，配合 ``CredentialMixin`` 实现自动 Key 轮换和失败剔除。
+
+session 状态（轮询索引、失败集合、上次成功 Key）存入 ``globals['key_pool_state']``，天然按 session 隔离，不存在实例属性上。
 
 Args:
-    secret_key (Any, optional): Temporary secret_key replacement; other fields remain unchanged.
-    credential (Credential, optional): Full replacement credential object.
+    keys (List[str]): Key 列表，至少包含两个元素。
+    policy (KeySelectPolicy): Key 选取策略，构造时固定，不可运行时更改。
+''')
 
-Example:
-    with obj.override_credential(secret_key='tmp-key'):
-        result = obj.some_api_call()
+add_english_doc('KeyPool', '''\
+A pool of API keys used with ``CredentialMixin`` for automatic key rotation and failure isolation.
+
+Session state (round-robin index, failed set, last successful key) is stored in
+``globals['key_pool_state']``, providing natural per-session isolation without polluting instance attributes.
+
+Args:
+    keys (List[str]): List of API keys; must contain at least two entries.
+    policy (KeySelectPolicy): Key selection policy, fixed at construction time.
+''')
+
+add_chinese_doc('KeyPool.ordered_keys', '''\
+根据当前策略和 session 状态，返回本次尝试的 Key 顺序列表。
+
+- ``RANDOM``：排除失败 Key 后随机打乱。
+- ``ROUND_ROBIN``：排除失败 Key 后从当前索引开始轮转（同时推进索引）。
+- ``PREFER_LAST_SUCCESS``：上次成功的排最前，失败的排最后，其余保持原序（失败 Key 不剔除）。
+
+Returns:
+    List[str]: 本次调用应按序尝试的 Key 列表。
+''')
+
+add_english_doc('KeyPool.ordered_keys', '''\
+Return the ordered list of keys to try for this call, based on current policy and session state.
+
+- ``RANDOM``: failed keys are excluded and the remainder are randomly shuffled.
+- ``ROUND_ROBIN``: failed keys are excluded; the list starts from the current index (index is advanced).
+- ``PREFER_LAST_SUCCESS``: last-successful key is first, failed keys are last, others keep original order
+  (failed keys are NOT removed).
+
+Returns:
+    List[str]: Ordered key list to attempt in sequence.
+''')
+
+add_chinese_doc('KeyPool.peek', '''\
+无副作用地预览当前应使用的 Key（不推进轮询索引）。
+
+用于 ``_get_token()`` 等非 ``_request`` 路径，在不发起实际请求的前提下获取代表性 Key。
+
+Returns:
+    str: 预估的当前 Key；无可用 Key 时返回空字符串。
+''')
+
+add_english_doc('KeyPool.peek', '''\
+Preview the current key without side effects (round-robin index is not advanced).
+
+Used by ``_get_token()`` and other non-``_request`` paths to obtain a representative key without
+issuing an actual request.
+
+Returns:
+    str: The estimated current key; empty string when no usable key is available.
+''')
+
+add_chinese_doc('KeyPool.report_success', '''\
+向 pool 报告某个 Key 本次使用成功，更新 ``last_success``。
+
+Args:
+    key (str): 成功的 Key。
+''')
+
+add_english_doc('KeyPool.report_success', '''\
+Report that a key was used successfully; updates ``last_success``.
+
+Args:
+    key (str): The key that succeeded.
+''')
+
+add_chinese_doc('KeyPool.report_failure', '''\
+向 pool 报告某个 Key 本次认证失败，将其加入 session 内的失败集合。
+
+``RANDOM`` 和 ``ROUND_ROBIN`` 策略下，失败 Key 在本 session 内不再被 ``ordered_keys`` 返回；
+``PREFER_LAST_SUCCESS`` 策略下，失败 Key 仅被排到末尾，仍会被尝试。
+
+Args:
+    key (str): 失败的 Key。
+''')
+
+add_english_doc('KeyPool.report_failure', '''\
+Report that a key failed authentication; adds it to the session-level failed set.
+
+Under ``RANDOM`` and ``ROUND_ROBIN`` policies the failed key is excluded from future ``ordered_keys`` results
+within this session. Under ``PREFER_LAST_SUCCESS`` it is only moved to the end and will still be retried.
+
+Args:
+    key (str): The key that failed.
+''')
+
+add_chinese_doc('KeyAuthError', '''\
+Key 本身无效、过期或余额不足时抛出的异常。
+
+由 ``CredentialMixin._http_execute`` 或子类重写的 ``_http_execute`` 在检测到 HTTP 401/403 响应时抛出，
+触发 ``_request`` 内的 Key 切换逻辑。网络抖动（5xx）或请求体错误（非 401/403 的 4xx）不应触发此异常。
+''')
+
+add_english_doc('KeyAuthError', '''\
+Raised when a key is invalid, expired, or has insufficient quota.
+
+Thrown by ``CredentialMixin._http_execute`` (or a subclass override) upon detecting HTTP 401/403 responses,
+triggering the key-rotation logic inside ``_request``.
+Network errors (5xx) or bad-request errors (non-401/403 4xx) should NOT raise this exception.
+''')
+
+add_chinese_doc('AllKeysExhaustedError', '''\
+所有 Key 均触发 ``KeyAuthError`` 后由 ``_request`` 抛出的异常，表示 pool 内无可用 Key。
+''')
+
+add_english_doc('AllKeysExhaustedError', '''\
+Raised by ``_request`` when every key in the pool has raised ``KeyAuthError``,
+indicating that no usable key remains.
+''')
+
+add_example('KeyPool', '''\
+>>> import lazyllm
+>>> from lazyllm.common import KeyPool, KeySelectPolicy, Credential, CredentialMixin
+>>> pool = KeyPool(['key1', 'key2', 'key3'], KeySelectPolicy.ROUND_ROBIN)
+>>> pool.ordered_keys()  # ['key1', 'key2', 'key3'] (first call starts at index 0)
+>>> pool.report_failure('key1')
+>>> pool.ordered_keys()  # key1 is excluded: ['key2', 'key3']
+>>> pool.report_success('key2')
+>>> pool.peek()  # 'key2' (last_success, no side effect)
 ''')

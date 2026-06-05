@@ -22,11 +22,13 @@ class EmbeddingQueryRewrite(embedding):
         llm=None,
         num_augments: int = 2,
         lang: str = 'zh',
+        input_key: str = 'query',
         **kwargs,
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.num_augments = num_augments
         self.lang = lang
+        self.input_key = input_key
         self.prompt_template = EmbeddingQueryAugmentPrompt(lang=lang)
 
         # Initialize LLM serve with system prompt and formatter
@@ -45,7 +47,7 @@ class EmbeddingQueryRewrite(embedding):
         if self._llm_serve is None:
             raise ValueError('LLM is not configured')
 
-        query = data.get('query', '')
+        query = data.get(self.input_key, '')
         if not query:
             return []
 
@@ -71,7 +73,7 @@ class EmbeddingQueryRewrite(embedding):
                 rewrite_str = str(rewrite).strip()
                 if rewrite_str and rewrite_str != query:
                     new_row = data.copy()
-                    new_row['query'] = rewrite_str
+                    new_row[self.input_key] = rewrite_str
                     new_row['is_augmented'] = True
                     new_row['augment_method'] = 'query_rewrite'
                     augmented.append(new_row)
@@ -87,14 +89,16 @@ class EmbeddingAdjacentWordSwap(embedding):
     def __init__(
         self,
         num_augments: int = 2,
+        input_key: str = 'query',
         **kwargs,
     ):
         # Rule-based operation, use process mode for CPU-bound tasks
         super().__init__(_concurrency_mode='process', **kwargs)
         self.num_augments = num_augments
+        self.input_key = input_key
 
     def forward(self, data: dict) -> List[dict]:
-        query = data.get('query', '')
+        query = data.get(self.input_key, '')
         if not query:
             return []
 
@@ -114,9 +118,9 @@ class EmbeddingAdjacentWordSwap(embedding):
 
                 if new_query != query:
                     new_row = data.copy()
-                    new_row['query'] = new_query
+                    new_row[self.input_key] = new_query
                     new_row['is_augmented'] = True
-                    new_row['augment_method'] = 'synonym_replace'
+                    new_row['augment_method'] = 'adjacent_word_swap'
                     augmented.append(new_row)
             else:
                 # Keep original if too short

@@ -1,7 +1,6 @@
 from typing import Any, Dict, List, Optional
 
 from lazyllm.common import ApiKeyHeaderStrategy
-from lazyllm.thirdparty import httpx
 
 from .base import SearchBase, _make_result
 
@@ -26,15 +25,8 @@ class SemanticScholarSearch(SearchBase):
                 return snippet
             return super().get_content(item)
         url = f'{self._base}/paper/{paper_id}'
-        headers = self.inject_auth_header()
         try:
-            resp = httpx.get(
-                url,
-                params={'fields': 'abstract'},
-                headers=headers or None,
-                timeout=self._timeout,
-            )
-            resp.raise_for_status()
+            resp = self._request('GET', url, params={'fields': 'abstract'}, timeout=self._timeout)
             data = resp.json()
         except Exception:
             return (item.get('snippet') or '') or super().get_content(item)
@@ -48,9 +40,7 @@ class SemanticScholarSearch(SearchBase):
             'limit': min(limit, 100),
             'fields': fields or 'title,url,abstract,authors,year,citationCount',
         }
-        headers = self.inject_auth_header()
-        resp = httpx.get(url, params=params, headers=headers or None, timeout=self._timeout)
-        resp.raise_for_status()
+        resp = self._request('GET', url, params=params, timeout=self._timeout)
         data = resp.json()
         items = data.get('data') or []
         out: List[dict] = []

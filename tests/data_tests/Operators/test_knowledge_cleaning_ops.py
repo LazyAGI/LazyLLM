@@ -112,6 +112,15 @@ class TestKnowledgeCleaningOperators:
         assert result['cleaned_chunk'] == 'cleaned'
         assert '_cleaned_response' not in result
 
+    def test_extract_cleaned_content_single_json_dict(self):
+        op = kbc.extract_cleaned_content_single()
+        data = {
+            'raw_chunk': 'test',
+            '_cleaned_response': {'text': '<cleaned_start>from_json<cleaned_end>'},
+        }
+        result = op([data])[0]
+        assert result['cleaned_chunk'] == 'from_json'
+
     def test_KBCLoadRAWChunkFile(self):
         test_file = os.path.join(self.temp_dir, 'chunk.json')
         with open(test_file, 'w', encoding='utf-8') as f:
@@ -136,6 +145,19 @@ class TestKnowledgeCleaningOperators:
         assert '_cleaned_chunks' in result
         assert len(result['_cleaned_chunks']) == 1
         assert result['_cleaned_chunks'][0]['cleaned_chunk'] == 'cleaned'
+
+    def test_extract_cleaned_content_json_dict(self):
+        op = kbc.extract_cleaned_content()
+        data = {
+            '_cleaned_results': [
+                {
+                    'response': {'text': '<cleaned_start>from_json<cleaned_end>'},
+                    'raw_chunk': 'test',
+                }
+            ]
+        }
+        result = op([data])[0]
+        assert result['_cleaned_chunks'][0]['cleaned_chunk'] == 'from_json'
 
     def test_KBCSaveCleaned(self):
         test_file = os.path.join(self.temp_dir, 'chunk.json')

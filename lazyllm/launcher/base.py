@@ -74,8 +74,11 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
 
 lazyllm.launchers['Status'] = Status
 
-lazyllm.config.add('launcher', str, 'empty', 'DEFAULT_LAUNCHER',
-                   description='The default remote launcher to use if no launcher is specified.')
+lazyllm.config.add(
+    'launcher', str, 'empty', 'DEFAULT_LAUNCHER',
+    options=['empty', 'slurm', 'sco', 'k8s'],
+    description='The default remote launcher to use if no launcher is specified.',
+)
 lazyllm.config.add('cuda_visible', bool, False, 'CUDA_VISIBLE',
                    description='Whether to set the CUDA_VISIBLE_DEVICES environment variable.')
 

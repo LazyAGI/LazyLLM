@@ -66,6 +66,9 @@ class LazyDict(dict):
     def __getattr__(self, key):
         return self[self._match(key)]
 
+    def resolve(self, key):
+        return self[self._match(key)]
+
     def remove(self, key):
         super(__class__, self).pop(self._match(key))
 

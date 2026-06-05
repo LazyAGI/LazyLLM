@@ -1,38 +1,41 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-import contextvars
 import os
+import requests
 import threading
 import time
-from contextlib import contextmanager
+import uuid
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, urlparse
 
-from .auth import AuthStrategy, BearerTokenStrategy, Credential
+from .auth import (AllKeysExhaustedError, AuthStrategy, BearerTokenStrategy,
+                   Credential, KeyAuthError, KeyPool, KeySelectPolicy)
+from .globals import globals as lazyllm_globals, locals as lazyllm_locals
 
 
 class CredentialMixin:
 
     _TOKEN_REFRESH_BUFFER: float = 60.0
-    def __key_source__(self) -> str: return self.get_current_token()
 
     def __init_credential__(
         self,
         credential: Credential,
         strategy: Optional[AuthStrategy] = None,
+        skip_auth: bool = False,
+        dynamic_key_policy: KeySelectPolicy = KeySelectPolicy.RANDOM,
     ) -> None:
         self._credential: Credential = credential
         self._auth_strategy: AuthStrategy = strategy or BearerTokenStrategy()
+        self._skip_auth: bool = skip_auth
+        self._dynamic_key_policy: KeySelectPolicy = dynamic_key_policy
         self._token_lock: threading.Lock = threading.Lock()
-        self._credential_override: contextvars.ContextVar[Optional[Credential]] = (
-            contextvars.ContextVar('lazyllm_credential_override', default=None)
-        )
+        self._credential_id: str = uuid.uuid4().hex
 
-    @property
-    def _active_credential(self) -> Credential:
-        ov = self._credential_override.get()
-        return ov if ov is not None else self._credential
+    def __key_source__(self) -> Any:
+        if self._skip_auth:
+            return True
+        return bool(self._get_token())
 
     @property
     def _dynamic_auth(self) -> bool:
@@ -42,49 +45,48 @@ class CredentialMixin:
     def _secret_key(self) -> Any:
         return self._credential.secret_key
 
-    @property
-    def _dynamic_token(self) -> str:
-        return self._resolve_dynamic_token()
-
-    def get_current_token(self) -> str:
-        cred = self._active_credential
+    def _get_token(self) -> str:
+        curr = lazyllm_locals['curr_key'].get(self._credential_id)
+        if curr is not None:
+            return curr
+        pool = self._get_active_pool()
+        if pool is not None:
+            return pool.peek()
+        cred = self._credential
         if cred.kind == 'dynamic':
-            return self._resolve_dynamic_token() or ''
+            raw = self._resolve_dynamic_token()
+            return (raw[0] if raw else '') if isinstance(raw, (list, tuple)) else (raw or '')
         if cred.kind == 'static':
-            sk = cred.secret_key
-            if isinstance(sk, str):
-                return sk
-            if isinstance(sk, (list, tuple)) and sk:
-                import random
-                return random.choice(sk)
-            return ''
+            return cred.secret_key if isinstance(cred.secret_key, str) else ''
         return cred.access_token or ''
 
-    def _resolve_dynamic_token(self) -> str:
-        '''Subclasses with kind="dynamic" override this to fetch the token from their config source.'''
+    def get_current_token(self) -> str:
+        return self._get_token()
+
+    def _resolve_dynamic_token(self) -> Union[str, List[str]]:
         return ''
 
     def _missing_dynamic_token_error(self) -> str:
         return f'{type(self).__name__}: dynamic credential is not configured.'
 
-    def _default_credential(self, token: Any, dynamic_auth: bool) -> Credential:
-        '''Default credential factory: only handles the universal static/dynamic kinds.
-
-        Subclasses (or intermediate base classes) override _make_credential to detect
-        kind="oauth2" or kind="app_credentials" and call super()._make_credential(...) /
-        self._default_credential(...) to fall back to this implementation.
-        '''
+    def _default_credential(
+        self, token: Any, dynamic_auth: bool,
+        policy: KeySelectPolicy = KeySelectPolicy.RANDOM,
+    ) -> Credential:
         if dynamic_auth:
             return Credential(kind='dynamic')
-        return Credential(kind='static', secret_key=token)
+        if isinstance(token, (list, tuple)) and len(token) > 1:
+            return Credential(kind='static', key_pool=KeyPool(list(token), policy))
+        sk = token if isinstance(token, str) else (token[0] if token else None)
+        return Credential(kind='static', secret_key=sk)
 
     def _make_credential(self, token: Any, dynamic_auth: bool) -> Credential:
         return self._default_credential(token, dynamic_auth)
 
     def ensure_token(self) -> None:
-        cred = self._active_credential
+        cred = self._credential
         if cred.kind == 'dynamic':
-            if not self.get_current_token():
+            if not self._resolve_dynamic_token():
                 raise ValueError(self._missing_dynamic_token_error())
             return
         if cred.kind in ('oauth2', 'app_credentials'):
@@ -100,26 +102,62 @@ class CredentialMixin:
     def inject_auth_header(self, headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         self.ensure_token()
         out = dict(headers or {})
-        out.update(self._auth_strategy.build_header(self.get_current_token()))
+        out.update(self._auth_strategy.build_header(self._get_token()))
         return out
 
     def inject_auth_params(self, params: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         self.ensure_token()
         out = dict(params or {})
-        out.update(self._auth_strategy.build_params(self.get_current_token()))
+        out.update(self._auth_strategy.build_params(self._get_token()))
         return out
 
-    @contextmanager
-    def override_credential(
-        self, *, secret_key: Any = None, credential: Optional[Credential] = None,
-    ) -> Iterator[None]:
-        if credential is None:
-            credential = replace(self._active_credential, secret_key=secret_key)
-        token = self._credential_override.set(credential)
-        try:
-            yield
-        finally:
-            self._credential_override.reset(token)
+    def _get_active_pool(self) -> Optional[KeyPool]:
+        cred = self._credential
+        if cred.kind == 'static' and cred.key_pool:
+            return cred.key_pool
+        if cred.kind == 'dynamic':
+            raw = self._resolve_dynamic_token()
+            if isinstance(raw, (list, tuple)) and len(raw) > 1:
+                pool_state = lazyllm_globals['key_pool_state']
+                pool = pool_state.get(self._credential_id)
+                if pool is None:
+                    pool = KeyPool(list(raw), self._dynamic_key_policy)
+                    pool_state[self._credential_id] = pool
+                return pool
+        return None
+
+    def _is_key_auth_error(self, resp: Any) -> bool:
+        return getattr(resp, 'status_code', 0) in (401, 403)
+
+    def _http_execute(self, method: str, url: str, **kwargs) -> Any:
+        resp = requests.request(method, url, **kwargs)
+        if self._is_key_auth_error(resp):
+            raise KeyAuthError(f'{resp.status_code} for {url}')
+        if not resp.ok:
+            raise requests.HTTPError(response=resp)
+        return resp
+
+    def _request(self, method: str, url: str, **kwargs) -> Any:
+        incoming_headers = kwargs.pop('headers', None)
+        pool = self._get_active_pool()
+        if pool is None:
+            headers = self.inject_auth_header(incoming_headers)
+            return self._http_execute(method, url, headers=headers, **kwargs)
+        last_err: Optional[Exception] = None
+        curr_key = lazyllm_locals['curr_key']
+        for key in pool.ordered_keys():
+            curr_key[self._credential_id] = key
+            try:
+                headers = self.inject_auth_header(incoming_headers)
+                result = self._http_execute(method, url, headers=headers, **kwargs)
+                pool.report_success(key)
+                return result
+            except KeyAuthError as e:
+                pool.report_failure(key)
+                last_err = e
+            finally:
+                curr_key.pop(self._credential_id, None)
+        raise AllKeysExhaustedError(f'{type(self).__name__}: all keys exhausted') from last_err
 
     def _refresh_credential(self) -> None:
         with self._token_lock:

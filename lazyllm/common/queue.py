@@ -11,8 +11,11 @@ from queue import Queue
 from collections import deque
 from filelock import SoftFileLock
 
-config.add('default_fsqueue', str, 'sqlite', 'DEFAULT_FSQUEUE',
-           description='The default file system queue to use.')
+config.add(
+    'default_fsqueue', str, 'sqlite', 'DEFAULT_FSQUEUE',
+    options=['sqlite', 'redis'],
+    description='The default FileSystemQueue backend to use.',
+)
 config.add('fsqredis_url', str, '', 'FSQREDIS_URL',
            description='The URL of the Redis server for the file system queue.')
 config.add('default_recent_k', int, 0, 'DEFAULT_RECENT_K',

@@ -18,6 +18,7 @@ Args:
     api_key (str, optional): API 密钥；传入后以 static 模式存入 CredentialMixin；为空时使用 dynamic 模式，
         从 lazyllm.config['dynamic_tool_auth'] 中按 source_name 读取运行时密钥。
     auth_strategy (AuthStrategy, optional): 认证策略；未传时默认使用 BearerTokenStrategy。
+    skip_auth (bool): 是否在 ToolManager 凭据检查中跳过鉴权，默认 False。
 ''')
 
 add_english_doc('SearchBase', '''
@@ -30,6 +31,7 @@ Args:
     api_key (str, optional): API key; stored in CredentialMixin in static mode when provided. When omitted,
         dynamic mode reads the runtime key from lazyllm.config['dynamic_tool_auth'] by source_name.
     auth_strategy (AuthStrategy, optional): Authentication strategy; defaults to BearerTokenStrategy when omitted.
+    skip_auth (bool): Whether to bypass ToolManager credential checks, defaults to False.
 ''')
 
 add_example('SearchBase', '''
@@ -332,7 +334,7 @@ Args:
     count (int): 返回条数，默认 10，最大 50。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
+    List[dict]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
 add_english_doc('BingSearch.search', '''
@@ -343,7 +345,7 @@ Args:
     count (int): Number of results, default 10, max 50.
 
 Returns:
-    List[Dict[str, Any]]: Search results in the unified format. Each item contains title, url, snippet, and source.
+    List[dict]: Search results in the unified format. Each item contains title, url, snippet, and source.
 ''')
 
 add_chinese_doc('BochaSearch', '''
@@ -406,7 +408,7 @@ Args:
     summary (bool): 是否返回摘要，默认 False。
 
 Returns:
-    List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
+    List[dict]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
 add_english_doc('BochaSearch.search', '''
@@ -419,7 +421,7 @@ Args:
     summary (bool): Whether to request summary, default False.
 
 Returns:
-    List[Dict[str, Any]]: Search results in the unified format. Each item contains title, url, snippet, and source.
+    List[dict]: Search results in the unified format. Each item contains title, url, snippet, and source.
 ''')
 
 add_chinese_doc('StackOverflowSearch', '''
@@ -616,6 +618,168 @@ Returns:
     List[Dict[str, Any]]: Results in unified format; extra may include authors, publishedDate, pageCount.
 ''')
 
+add_chinese_doc('SciverseSearch', '''
+Sciverse 科研文献搜索，支持面向问答的文献片段检索和元数据检索。
+
+如何申请 API Key：
+1. 打开 Sciverse 文档 https://sciverse.space/docs 并登录控制台。
+2. 在 Console > Tokens 创建 API Key。
+3. 构造时传入 api_key，或在工具调用时通过 dynamic_tool_auth["sciverse"] 注入。
+
+Args:
+    api_key (str, optional): Sciverse API key；为空时从 dynamic_tool_auth["sciverse"] 读取。
+    base_url (str): Sciverse API 根地址，默认 "https://api.sciverse.space"。
+    timeout (int): 请求超时秒数，默认 15。
+    source_name (str): 结果来源标识，默认 "sciverse"。
+''')
+
+add_english_doc('SciverseSearch', '''
+Search Sciverse scientific literature, including passage-oriented retrieval for question answering and metadata search.
+
+How to get an API key:
+1. Open Sciverse docs https://sciverse.space/docs and sign in to the console.
+2. Create an API key from Console > Tokens.
+3. Pass api_key to the constructor, or inject it at runtime through dynamic_tool_auth["sciverse"].
+
+Args:
+    api_key (str, optional): Sciverse API key; when omitted, reads dynamic_tool_auth["sciverse"].
+    base_url (str): Sciverse API base URL, default "https://api.sciverse.space".
+    timeout (int): Request timeout in seconds, default 15.
+    source_name (str): Source identifier, default "sciverse".
+''')
+
+add_example('SciverseSearch', '''
+from lazyllm.tools.tools import SciverseSearch
+sciverse = SciverseSearch(api_key='<your_sciverse_api_key>')
+res = sciverse('retrieval augmented generation evaluation', topk=5)
+''')
+
+add_chinese_doc('SciverseSearch.search', '''
+搜索 Sciverse 科研文献。
+
+Args:
+    query (str): 论文标题、作者、DOI、科研主题或自然语言问题。
+    topk (int): 返回条数，默认 5，最大 10。
+    include_content (bool): 是否在 extra.content 中保留摘要或片段文本，默认 True。
+    search_type (str): "agentic" 返回适合问答的文献片段；"meta" 返回偏文献元数据的结果。
+    year_from (int, optional): 发表年份下限，仅 meta 检索使用。
+    year_to (int, optional): 发表年份上限，仅 meta 检索使用。
+
+Returns:
+    List[dict]: 统一格式结果，extra 可含 doc_id、doi、year、venue、authors、score、content 等字段。
+''')
+
+add_english_doc('SciverseSearch.search', '''
+Search Sciverse scientific literature.
+
+Args:
+    query (str): Paper title, author, DOI, research topic, or natural-language question.
+    topk (int): Number of results, default 5, maximum 10.
+    include_content (bool): Whether to keep abstract or passage text in extra.content, default True.
+    search_type (str): "agentic" returns passage-oriented results for question answering; "meta" returns metadata-oriented results.
+    year_from (int, optional): Inclusive lower publication year bound, used by meta search.
+    year_to (int, optional): Inclusive upper publication year bound, used by meta search.
+
+Returns:
+    List[dict]: Results in unified format; extra may include doc_id, doi, year, venue, authors, score, content, and related fields.
+''')
+
+add_chinese_doc('SciverseSearch.get_content', '''
+读取单条 Sciverse 搜索结果的原文内容。
+
+优先使用 item.extra.doc_id 或 item.doc_id 调用官方 /content 接口；支持 offset / limit 分段读取。若 doc_id 不存在或接口失败，则回退为 item.extra.content、item.snippet 或基类 URL 抓取。
+
+Args:
+    item (Dict[str, Any]): SciverseSearch.search 或 meta_search 返回的单条结果。
+    offset (int, optional): 原文字符偏移；传入时启用分段读取。
+    limit (int): 单次读取字符数，默认 700；仅 offset 非空时传给接口。
+
+Returns:
+    str: 原文文本、片段文本或空字符串。
+''')
+
+add_english_doc('SciverseSearch.get_content', '''
+Read full text for one Sciverse search result.
+
+The method first calls the official /content endpoint with item.extra.doc_id or item.doc_id, supporting offset / limit pagination. If doc_id is missing or the endpoint fails, it falls back to item.extra.content, item.snippet, or the base URL fetcher.
+
+Args:
+    item (Dict[str, Any]): One item returned by SciverseSearch.search or meta_search.
+    offset (int, optional): Character offset in the source text; enables chunked reading when provided.
+    limit (int): Number of characters to read, default 700; sent only when offset is provided.
+
+Returns:
+    str: Full text, passage text, or an empty string.
+''')
+
+add_chinese_doc('SciverseSearch.meta_search', '''
+调用 Sciverse /meta-search 做高级论文元数据检索。
+
+search() 返回统一搜索列表，适合普通 Agent 检索；meta_search() 保留分页和统计信息，适合论文列表、筛选、排序、导出和深翻页场景。query 与 sort 不能同时使用；cursor 与 page>1 不能同时使用。
+
+Args:
+    query (str): 全文模糊检索词；可为空，仅用 filters / sort 精确检索。
+    filters (List[Dict[str, Any]], optional): 字段过滤条件，例如 {field, operator, value}。
+    sort (List[Dict[str, Any]], optional): 排序字段集合，例如 {field, order}。
+    fields (List[str], optional): 返回字段投影；为空时使用默认字段。
+    page (int): 页码，默认 1。
+    page_size (int): 每页条数，默认 25，范围 1-200。
+    cursor (str, optional): 深翻页 cursor；与 page>1 互斥。
+    freshness_boost (str): 新鲜度加权，NONE / MILD / STRONG。
+    include_content (bool): 是否在 extra.content 中保留摘要文本，默认 True。
+    year_from (int, optional): 发表年份下限，会追加到 filters。
+    year_to (int, optional): 发表年份上限，会追加到 filters。
+
+Returns:
+    Dict[str, Any]: 包含 items、total_count、total_pages、page、page_size、next_cursor、search_time_ms。
+''')
+
+add_english_doc('SciverseSearch.meta_search', '''
+Run advanced Sciverse /meta-search for literature metadata.
+
+search() returns the unified SearchBase result list for simple agent retrieval. meta_search() preserves pagination and statistics, making it better for paper lists, filtering, sorting, export, and deep pagination. query cannot be used together with sort; cursor cannot be used together with page > 1.
+
+Args:
+    query (str): Full-text fuzzy query; may be empty when using filters / sort only.
+    filters (List[Dict[str, Any]], optional): Field filters, e.g. {field, operator, value}.
+    sort (List[Dict[str, Any]], optional): Sort clauses, e.g. {field, order}.
+    fields (List[str], optional): Field projection; defaults to the built-in field list.
+    page (int): Page number, default 1.
+    page_size (int): Items per page, default 25, clamped to 1-200.
+    cursor (str, optional): Cursor for deep pagination; mutually exclusive with page > 1.
+    freshness_boost (str): Freshness weighting, NONE / MILD / STRONG.
+    include_content (bool): Whether to keep abstract text in extra.content, default True.
+    year_from (int, optional): Inclusive lower publication year bound, appended to filters.
+    year_to (int, optional): Inclusive upper publication year bound, appended to filters.
+
+Returns:
+    Dict[str, Any]: Includes items, total_count, total_pages, page, page_size, next_cursor, and search_time_ms.
+''')
+
+add_chinese_doc('SciverseSearch.meta_catalog', '''
+调用 Sciverse /meta-catalog 查看 meta-search 支持的字段目录。
+
+用于了解哪些字段可筛选、可排序、可全文搜索、默认返回哪些字段，以及支持哪些过滤算子。返回官方原始结构，方便 Agent 或 UI 动态生成筛选器。
+
+Args:
+    include_sample_values (bool): 是否返回枚举字段样本值，默认 False。
+
+Returns:
+    Dict[str, Any]: 官方字段目录响应，通常包含 fields、default_fields、filter_operators。
+''')
+
+add_english_doc('SciverseSearch.meta_catalog', '''
+Call Sciverse /meta-catalog to inspect fields supported by meta_search.
+
+Use this to discover which fields are filterable, sortable, searchable, returned by default, and which filter operators are available. The raw official response is returned so agents or UIs can build filters dynamically.
+
+Args:
+    include_sample_values (bool): Whether to include sample enum values, default False.
+
+Returns:
+    Dict[str, Any]: Official catalog response, usually including fields, default_fields, and filter_operators.
+''')
+
 add_chinese_doc('ArxivSearch', '''
 arXiv 预印本搜索。无需 API key，直接使用。
 
@@ -624,12 +788,18 @@ arXiv 预印本搜索。无需 API key，直接使用。
 Args:
     timeout (int): 请求超时秒数，默认 15。
     source_name (str): 结果来源标识，默认 "arxiv"。
+    skip_auth (bool): 注册为工具时是否跳过凭据检查，默认 False。
 ''')
 
 add_english_doc('ArxivSearch', '''
 Search arXiv preprints. No API key or token required.
 
 No sign-up or token needed; instantiate and call. API docs: https://info.arxiv.org/help/api/index.html .
+
+Args:
+    timeout (int): Request timeout in seconds, default 15.
+    source_name (str): Source identifier, default "arxiv".
+    skip_auth (bool): Whether to bypass credential checks when registered as a tool, defaults to False.
 ''')
 
 add_example('ArxivSearch', '''
@@ -685,6 +855,7 @@ Args:
     base_url (str): 站点根地址，默认 "https://en.wikipedia.org"，可改为 zh.wikipedia.org 等。
     timeout (int): 请求超时秒数，默认 10。
     source_name (str): 结果来源标识，默认 "wikipedia"。
+    skip_auth (bool): 注册为工具时是否跳过凭据检查，默认 False。
 ''')
 
 add_english_doc('WikipediaSearch', '''
@@ -696,6 +867,7 @@ Args:
     base_url (str): Site base URL, default "https://en.wikipedia.org"; use e.g. https://zh.wikipedia.org for other languages.
     timeout (int): Request timeout in seconds, default 10.
     source_name (str): Source identifier, default "wikipedia".
+    skip_auth (bool): Whether to bypass credential checks when registered as a tool, defaults to False.
 ''')
 
 add_example('WikipediaSearch', '''

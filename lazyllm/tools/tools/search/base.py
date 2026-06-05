@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 
 from lazyllm import globals as lazyllm_globals
 from lazyllm.common import (
-    AuthStrategy, BearerTokenStrategy, Credential, CredentialMixin,
+    AuthStrategy, BearerTokenStrategy, Credential, CredentialMixin, KeyAuthError,
 )
 from lazyllm.module import ModuleBase
 from lazyllm.module.module import ModuleExecutionError
@@ -48,19 +48,31 @@ class SearchBase(ModuleBase, CredentialMixin):
         api_key: Optional[str] = None,
         auth_strategy: Optional[AuthStrategy] = None,
         dynamic_auth: bool = False,
+        skip_auth: bool = False,
         **kwargs,
     ):
         ModuleBase.__init__(self, **kwargs)
         self._source_name = source_name or self.__class__.__name__.replace('Search', '').lower()
-        if dynamic_auth or api_key is None:
+        if dynamic_auth:
             credential = Credential(kind='dynamic')
         else:
-            credential = Credential(kind='static', secret_key=api_key)
-        self.__init_credential__(credential, strategy=auth_strategy or BearerTokenStrategy())
+            credential = Credential(kind='static', secret_key=api_key or '')
+        self.__init_credential__(
+            credential,
+            strategy=auth_strategy or BearerTokenStrategy(),
+            skip_auth=skip_auth,
+        )
 
     def _resolve_dynamic_token(self) -> str:
         mapping = lazyllm_globals.config['dynamic_tool_auth'] or {}
         return mapping.get(self._source_name, '')
+
+    def _http_execute(self, method: str, url: str, **kwargs) -> Any:
+        resp = httpx.request(method, url, **kwargs)
+        if self._is_key_auth_error(resp):
+            raise KeyAuthError(f'{resp.status_code} for {url}')
+        resp.raise_for_status()
+        return resp
 
     @property
     def source_name(self) -> str:

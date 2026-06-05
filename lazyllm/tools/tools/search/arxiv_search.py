@@ -9,8 +9,9 @@ from .base import SearchBase, _make_result
 class ArxivSearch(SearchBase):
 
     def __init__(self, base_url: str = 'https://export.arxiv.org/api/query',
-                 timeout: int = 15, source_name: str = 'arxiv'):
-        super().__init__(source_name=source_name)
+                 timeout: int = 15, source_name: str = 'arxiv',
+                 skip_auth: bool = True):
+        super().__init__(source_name=source_name, skip_auth=skip_auth)
         self._url = base_url
         self._timeout = timeout
 

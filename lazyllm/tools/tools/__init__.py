@@ -10,6 +10,7 @@ from .search import (
     GoogleBooksSearch,
     ArxivSearch,
     WikipediaSearch,
+    SciverseSearch,
 )
 from .weather import Weather
 from .calculator import Calculator
@@ -28,6 +29,7 @@ __all__ = [
     'GoogleBooksSearch',
     'ArxivSearch',
     'WikipediaSearch',
+    'SciverseSearch',
     'Weather',
     'Calculator',
     'JsonExtractor',
