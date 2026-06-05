@@ -97,6 +97,7 @@ class DocItemsRequest(BaseModel):
     source_type: Optional[SourceType] = None
     idempotency_key: Optional[str] = None
     llm_config: Optional[Dict[str, Any]] = None
+    ocr_config: Optional[Dict[str, Any]] = None
 
     @model_validator(mode='after')
     def validate_items(self):
@@ -116,6 +117,7 @@ class ReparseRequest(BaseModel):
     algo_ids: Optional[List[str]] = None
     ng_names: Optional[List[str]] = None
     llm_config: Optional[Dict[str, Any]] = None
+    ocr_config: Optional[Dict[str, Any]] = None
     idempotency_key: Optional[str] = None
     # strategy controls how the reparse is performed:
     #   "rebuild"       → full reparse (re-slice + re-embed all selected groups)

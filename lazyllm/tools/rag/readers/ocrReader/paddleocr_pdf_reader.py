@@ -10,7 +10,7 @@ from typing_extensions import override
 
 import lazyllm
 from lazyllm.tools.http_request import post_sync, get_sync
-from lazyllm.common import retry_transient
+from lazyllm.common import ApiKeyHeaderStrategy, AuthStrategy, retry_transient
 from lazyllm import LOG
 
 from ...doc_node import DocNode
@@ -19,11 +19,11 @@ from .ocr_ir import (
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock,
 )
-from .ocr_reader_base import _OcrReaderBase, ServiceVariant
+from .ocr_reader_base import _OcrReaderBase
+from .ocr_service import OcrServiceVariant, default_online_url, resolve_ocr_variant
 
 lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='The API key for PaddleOCR')
 
-JOB_URL = 'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs'
 DEFAULT_MODEL = 'PaddleOCR-VL-1.6'
 MAX_SIZE_MB = 500
 MAX_PAGES = 100
@@ -40,32 +40,43 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                  drop_types: List[str] = None,
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True,
-                 images_dir: str = None,
+                 image_cache_dir: str = None,
                  dropped_types: Optional[Set[str]] = None,
+                 api_key: Optional[str] = None,
+                 dynamic_auth: bool = False,
+                 auth_strategy: Optional[AuthStrategy] = None,
                  **kwargs):
-        super().__init__(url=url,
+        if resolve_ocr_variant('paddleocr', url) == OcrServiceVariant.ONLINE:
+            resolved_url = default_online_url('paddleocr')
+        else:
+            resolved_url = url
+        if dynamic_auth:
+            token = None
+        else:
+            token = api_key if api_key is not None else lazyllm.config['paddle_api_key']
+        super().__init__(url=resolved_url,
                          dropped_types=drop_types or dropped_types or {
                              'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                          return_trace=return_trace,
-                         image_cache_dir=images_dir or os.path.join(
+                         image_cache_dir=image_cache_dir or os.path.join(
                              lazyllm.config['home'], 'paddleocr_cache'),
+                         token=token,
+                         dynamic_auth=dynamic_auth,
+                         auth_strategy=auth_strategy or ApiKeyHeaderStrategy(
+                             'Authorization', 'token {token}'),
                          **kwargs)
-        if self._service_variant != ServiceVariant.ONLINE:
-            raise ValueError(
-                f'PaddleOCRPDFReader only supports service_variant="online", '
-                f'got {self._service_variant.value!r}')
-        self._api_key = lazyllm.config['paddle_api_key']
+        self._job_url = (resolved_url or default_online_url('paddleocr')).rstrip('/')
         self._model = kwargs.pop('model', DEFAULT_MODEL)
         self._timeout = kwargs.pop('timeout', None)
 
     @override
-    def _load_data(self, file, extra_info: Optional[Dict] = None, **kwargs
+    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True, **kwargs
                    ) -> List['DocNode']:
         file_path = Path(file)
+        merged_info = dict(extra_info) if extra_info else {}
         _t0 = time.time()
         response_text, task_dir = self._fetch_async(file_path)
         _t_fetch = time.time() - _t0
-        merged_info = dict(extra_info) if extra_info else {}
         if task_dir is not None:
             merged_info['image_cache_dir'] = str(task_dir)
         _t1 = time.time()
@@ -104,7 +115,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
 
     def _fetch_job(self, file_path: str):
         fname = os.path.basename(file_path)
-        headers = {'Authorization': f'bearer {self._api_key or ""}'}
+        headers = self.inject_auth_header()
 
         optional_payload = {
             'useDocOrientationClassify': False,
@@ -118,7 +129,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         }
         with open(file_path, 'rb') as f:
             resp = post_sync(
-                JOB_URL,
+                self._job_url,
                 payload=data,
                 files={'file': (fname, f)},
                 headers=headers,
@@ -131,7 +142,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         _t_poll = time.time()
         for _ in range(240):
             status_resp = get_sync(
-                f'{JOB_URL}/{job_id}',
+                f'{self._job_url}/{job_id}',
                 headers=headers,
                 timeout=self._timeout or 30,
             )

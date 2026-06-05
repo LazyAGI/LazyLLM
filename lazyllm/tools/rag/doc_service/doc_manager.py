@@ -729,6 +729,7 @@ class DocManager:
                             transfer_params: Optional[Dict[str, Any]] = None,
                             node_group_ids_to_delete: Optional[List[str]] = None,
                             llm_config: Optional[Dict[str, Any]] = None,
+                            ocr_config: Optional[Dict[str, Any]] = None,
                             strategy: str = 'rebuild'):
         if task_type in (TaskType.DOC_ADD, TaskType.DOC_REPARSE, TaskType.DOC_TRANSFER):
             if not file_path:
@@ -738,7 +739,7 @@ class DocManager:
                 ng_names=ng_names, extractor_names=extractor_names,
                 task_type=task_type.value,
                 callback_url=self._callback_url, transfer_params=transfer_params,
-                llm_config=llm_config, strategy=strategy)
+                llm_config=llm_config, ocr_config=ocr_config, strategy=strategy)
         elif task_type == TaskType.DOC_UPDATE_META:
             task_resp = self._parser_client.update_meta(
                 task_id, kb_id, doc_id, metadata, file_path, callback_url=self._callback_url)
@@ -760,6 +761,7 @@ class DocManager:
                       transfer_params: Optional[Dict[str, Any]] = None,
                       extra_message: Optional[Dict[str, Any]] = None, parser_doc_id: Optional[str] = None,
                       llm_config: Optional[Dict[str, Any]] = None,
+                      ocr_config: Optional[Dict[str, Any]] = None,
                       strategy: str = 'rebuild'):
         algo_ids = algo_ids or []
         algo_id = algo_ids[0] if algo_ids else None
@@ -799,7 +801,7 @@ class DocManager:
                 file_path=file_path, metadata=metadata,
                 parser_kb_id=parser_kb_id, transfer_params=transfer_params,
                 node_group_ids_to_delete=exclusive_ng_ids,
-                llm_config=llm_config, strategy=strategy)
+                llm_config=llm_config, ocr_config=ocr_config, strategy=strategy)
         except Exception as exc:
             finished_at = datetime.now()
             error_msg = str(exc)
@@ -961,7 +963,8 @@ class DocManager:
                 task_id, snapshot = self._enqueue_task(
                     doc_id, request.kb_id, TaskType.DOC_ADD, algo_ids=algo_ids,
                     idempotency_key=request.idempotency_key, file_path=file_path, metadata=metadata,
-                    llm_config=getattr(request, 'llm_config', None))
+                    llm_config=getattr(request, 'llm_config', None),
+                    ocr_config=getattr(request, 'ocr_config', None))
             except Exception as exc:
                 snapshot = self._get_parse_snapshot(doc_id, request.kb_id) or {}
                 doc = self._get_doc(doc_id) or doc
@@ -988,6 +991,7 @@ class DocManager:
             source_type=request.source_type or SourceType.EXTERNAL,
             idempotency_key=request.idempotency_key,
             llm_config=request.llm_config,
+            ocr_config=request.ocr_config,
         ))
 
     def reparse(self, request: ReparseRequest) -> List[str]:
@@ -1023,6 +1027,7 @@ class DocManager:
                 metadata=item['metadata'],
                 ng_names=ng_names,
                 llm_config=request.llm_config,
+                ocr_config=request.ocr_config,
                 strategy=request.strategy,
             )
             task_ids.append(task_id)

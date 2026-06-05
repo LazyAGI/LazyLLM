@@ -210,10 +210,6 @@ class TestPaddleOCRPDFReaderMock:
         assert len(image_nodes) == 1
         assert image_nodes[0].metadata['image_path'] is not None
 
-    def test_offline_rejected(self):
-        with pytest.raises(ValueError, match='only supports service_variant="online"'):
-            PaddleOCRPDFReader(service_variant='offline')
-
     def test_split_doc_false(self):
         pdf = _make_test_pdf()
         reader = PaddleOCRPDFReader(split_doc=False)
@@ -242,7 +238,7 @@ class TestPaddleOCRPDFReaderMock:
             if 'type' in d.metadata:
                 assert d.metadata['type'] not in ('header', 'footer', 'aside_text')
 
-    def test_images_dir(self):
+    def test_image_cache_dir(self):
         pdf = _make_test_pdf()
         reader = PaddleOCRPDFReader()
 

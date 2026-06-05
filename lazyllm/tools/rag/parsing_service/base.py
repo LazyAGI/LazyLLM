@@ -48,8 +48,9 @@ class AddDocRequest(BaseModel):
     #   "reembed"       → rebuild vectors only (skip transform, re-embed existing nodes)
     #   "slice_missing" → fill gaps (slice + embed only groups that have no segments yet)
     strategy: str = 'rebuild'
-    # per-request model config injected by backend (e.g. embed_main).
+    # per-request model config injected by backend (e.g. embed_main, llm).
     llm_config: Optional[Dict[str, Any]] = None
+    ocr_config: Optional[Dict[str, Any]] = None
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None
