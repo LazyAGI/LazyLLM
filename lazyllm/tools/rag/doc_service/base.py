@@ -117,7 +117,11 @@ class ReparseRequest(BaseModel):
     ng_names: Optional[List[str]] = None
     llm_config: Optional[Dict[str, Any]] = None
     idempotency_key: Optional[str] = None
-    embed_only: bool = False  # when True, skip transform and only (re-)embed existing nodes
+    # strategy controls how the reparse is performed:
+    #   "rebuild"       → full reparse (re-slice + re-embed all selected groups)
+    #   "reembed"       → rebuild vectors only (skip transform, re-embed existing nodes)
+    #   "slice_missing" → fill gaps (slice + embed only groups that have no segments yet)
+    strategy: str = 'rebuild'
 
     @model_validator(mode='after')
     def validate_fields(self):

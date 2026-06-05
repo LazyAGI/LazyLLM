@@ -685,16 +685,18 @@ class DocumentProcessor(ModuleBase):
                         'type': type_str,
                         'display_name': cfg.get('display_name') or ng_name,
                     }
-                data = [
-                    {
+                data = []
+                for ng_id in ng_ids:
+                    ng_name = id_to_name.get(ng_id, ng_id)
+                    if ng_name not in node_groups:
+                        continue
+                    data.append({
                         'id': ng_id,
-                        'name': id_to_name.get(ng_id, ng_id),
-                        'type': name_to_meta.get(id_to_name.get(ng_id, ng_id), {}).get('type', ''),
-                        'display_name': name_to_meta.get(id_to_name.get(ng_id, ng_id), {}).get('display_name', ''),
-                    }
-                    for ng_id in ng_ids
-                    if id_to_name.get(ng_id, ng_id) in active_groups
-                ]
+                        'name': ng_name,
+                        'type': name_to_meta.get(ng_name, {}).get('type', ''),
+                        'display_name': name_to_meta.get(ng_name, {}).get('display_name', ''),
+                        'active': ng_name in active_groups,
+                    })
                 return BaseResponse(code=200, msg='success', data=data)
             except fastapi.HTTPException:
                 raise

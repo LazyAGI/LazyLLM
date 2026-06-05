@@ -167,7 +167,7 @@ class _DocumentStore(object):
         return self._impl
 
     @property
-    def vec_impl(self):
+    def vector_initialized_impl(self):
         self._seg_init()
         self._vec_init()
         return self._impl
@@ -186,9 +186,9 @@ class _DocumentStore(object):
         if embed_keys:
             self._group_embed_keys[group_name] = embed_keys
         collection_name = self._gen_collection_name(group_name)
-        if hasattr(self.vec_impl, 'create_collection'):
+        if hasattr(self.vector_initialized_impl, 'create_collection'):
             try:
-                self.vec_impl.create_collection(collection_name)
+                self.vector_initialized_impl.create_collection(collection_name)
             except Exception as e:
                 LOG.warning(f'[_DocumentStore] create_collection({collection_name}) failed: {e}')
                 return False
@@ -197,9 +197,9 @@ class _DocumentStore(object):
     def drop_collection(self, group_name: str) -> bool:
         collection_name = self._gen_collection_name(group_name)
         ok = True
-        if hasattr(self.vec_impl, 'drop_collection'):
+        if hasattr(self.vector_initialized_impl, 'drop_collection'):
             try:
-                self.vec_impl.drop_collection(collection_name)
+                self.vector_initialized_impl.drop_collection(collection_name)
                 LOG.info(f'[_DocumentStore] Dropped collection {collection_name} for group {group_name}')
             except Exception as e:
                 LOG.warning(f'[_DocumentStore] drop_collection({collection_name}) failed: {e}')
@@ -219,7 +219,7 @@ class _DocumentStore(object):
 
     def _upsert_segments(self, group: str, segments: List[dict]) -> None:
         collection_name = self._gen_collection_name(group)
-        if not self.vec_impl.upsert(collection_name, segments):
+        if not self.vector_initialized_impl.upsert(collection_name, segments):
             raise RuntimeError(f'[_DocumentStore] Failed to upsert segments for group {group}')
 
     def update_nodes(self, nodes: List[DocNode], copy: bool = False,
@@ -227,10 +227,10 @@ class _DocumentStore(object):
         if not nodes:
             return
         try:
-            if self._embed and self.vec_impl.capability == StoreCapability.SEGMENT:
+            if self._embed and self.vector_initialized_impl.capability == StoreCapability.SEGMENT:
                 LOG.warning(f'[_DocumentStore] Embed is provided'
-                            f' but store {self.vec_impl} does not support embedding')
-            if self.vec_impl.need_embedding and not copy:
+                            f' but store {self.vector_initialized_impl} does not support embedding')
+            if self.vector_initialized_impl.need_embedding and not copy:
                 nodes_to_embed = [n for n in nodes if n._group not in skip_embed_groups] \
                     if skip_embed_groups else nodes
                 if nodes_to_embed:
@@ -428,30 +428,31 @@ class _DocumentStore(object):
         embed_keys = self._validate_query_params(group_name, similarity_name, embed_keys)
         segments = []
         if embed_keys:
-            if self.vec_impl.capability == StoreCapability.SEGMENT:
+            if self.vector_initialized_impl.capability == StoreCapability.SEGMENT:
                 raise ValueError(f'[_DocumentStore] Embed keys {embed_keys}'
                                  ' are not supported when no vector store is provided')
             # vector search
             collection_name = self._gen_collection_name(group_name)
-            if not self.vec_impl.collection_exists(collection_name):
+            if not self.vector_initialized_impl.collection_exists(collection_name):
                 LOG.warning(f'[_DocumentStore] collection {collection_name!r} does not exist, '
                             f'skipping vector search for group {group_name!r}')
                 return []
             for embed_key in embed_keys:
                 query_embedding = self._embed.get(embed_key)(query)
-                search_res = self.vec_impl.search(collection_name=collection_name,
-                                                  query=query, query_embedding=query_embedding,
-                                                  topk=topk, filters=filters, embed_key=embed_key, **kwargs)
+                search_res = self.vector_initialized_impl.search(
+                    collection_name=collection_name, query=query, query_embedding=query_embedding,
+                    topk=topk, filters=filters, embed_key=embed_key, **kwargs)
                 if search_res:
                     sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float)\
                         else similarity_cut_off[embed_key]
                     segments.extend([res for res in search_res if res.get('score', 0) >= sim_cut_off])
         else:
             # text search
-            if self.vec_impl.capability == StoreCapability.VECTOR:
+            if self.vector_initialized_impl.capability == StoreCapability.VECTOR:
                 raise ValueError('[_DocumentStore] Text search is not supported when no segment store is provided')
-            segments.extend(self.vec_impl.search(collection_name=self._gen_collection_name(group_name),
-                                                 query=query, topk=topk, filters=filters, **kwargs))
+            segments.extend(self.vector_initialized_impl.search(
+                collection_name=self._gen_collection_name(group_name), query=query,
+                topk=topk, filters=filters, **kwargs))
         return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
 
     def _validate_query_params(self, group_name: str, similarity: str,

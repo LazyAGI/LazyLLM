@@ -165,11 +165,18 @@ class _Processor:
             store_start = time.time()
             if transfer_mode is None:
                 skip_embed = {g for g, cfg in node_groups.items() if cfg.get('lazy_mode') in ('embed', 'all')}
-                active_node_groups = {g: cfg for g, cfg in node_groups.items() if cfg.get('lazy_mode') != 'all'}
+                # Groups with lazy_mode='all' are deferred to activate_group(), so we
+                # skip their creation here.  Include them in skip_ng_ids and pass the
+                # *full* node_groups to _create_nodes_recursive — this keeps the
+                # dependency graph consistent with the store's activated_groups().
+                lazy_skip = {cfg.get('id') or g for g, cfg in node_groups.items()
+                             if cfg.get('lazy_mode') == 'all'}
+                all_skip_ids = (skip_ng_ids | lazy_skip) if skip_ng_ids else (lazy_skip or None)
                 for k, v in root_nodes.items():
                     if not v: continue
                     self._store.update_nodes(self._set_nodes_number(v), skip_embed_groups=skip_embed or None)
-                    self._create_nodes_recursive(v, k, node_groups=active_node_groups, skip_ng_ids=skip_ng_ids)
+                    self._create_nodes_recursive(v, k, node_groups=node_groups,
+                                                 skip_ng_ids=all_skip_ids)
             else:
                 self._store.update_nodes(root_nodes, copy=True)
                 self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
@@ -331,8 +338,8 @@ class _Processor:
 
     def reparse(self, group_name: str, node_groups: Dict[str, Dict],
                 uids: Optional[List[str]] = None, doc_ids: Optional[List[str]] = None,
-                kb_id: Optional[str] = None, embed_only: bool = False, **kwargs):
-        if embed_only:
+                kb_id: Optional[str] = None, strategy: str = 'rebuild', **kwargs):
+        if strategy == 'reembed':
             self._reembed_group(group_name, node_groups, doc_ids=doc_ids, kb_id=kb_id)
         elif doc_ids:
             self._reparse_docs(group_name=group_name, node_groups=node_groups,
@@ -346,7 +353,7 @@ class _Processor:
         if not embed_keys:
             raise ValueError(
                 f'Node group {group_name!r} has no embed keys. '
-                'Ensure embed model is configured before calling reparse(embed_only=True).'
+                "Ensure embed model is configured before calling reparse(strategy='reembed')."
             )
         nodes = self._store.get_nodes(group=group_name, doc_ids=doc_ids, kb_id=kb_id)
         if not nodes:
@@ -365,7 +372,7 @@ class _Processor:
 
     def _reparse_docs(self, group_name: Optional[str], node_groups: Dict[str, Dict],
                       doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict],
-                      kb_id: str = None, reader: Optional[DirectoryReader] = None, **kwargs):
+                      kb_id: str = None, reader: Optional[DirectoryReader] = None):
         doc_ids, metadatas, kb_id = self._prepare_doc_inputs(doc_paths, doc_ids, metadatas, kb_id)
         if group_name is None:
             preloaded_root_nodes = reader.load_data(doc_paths, metadatas, split_nodes_by_type=True)
@@ -382,16 +389,28 @@ class _Processor:
             self.add_doc(input_files=doc_paths, ids=doc_ids, metadatas=metadatas, kb_id=kb_id,
                          node_groups=node_groups, reader=reader,
                          preloaded_root_nodes=preloaded_root_nodes)
+            # add_doc skips lazy_mode='all' groups (e.g. doc-summary) —
+            # recreate them now so full reparse covers every activated group.
+            for g_name, g_cfg in node_groups.items():
+                if g_cfg.get('lazy_mode') == 'all' and self._store.is_group_active(g_name):
+                    LOG.info(f'[reparse] recreating lazy group {g_name!r} for docs {doc_ids!r}')
+                    self._reparse_docs(group_name=g_name, node_groups=node_groups,
+                                       doc_ids=doc_ids, doc_paths=doc_paths,
+                                       metadatas=metadatas, kb_id=kb_id, reader=reader)
             LOG.info(f'Reparse docs {doc_ids} from store done')
         else:
+            LOG.info(f'[reparse] docs group={group_name!r} doc_ids={doc_ids!r} kb_id={kb_id!r}')
             p_nodes = self._store.get_nodes(group=node_groups[group_name]['parent'],
                                             kb_id=kb_id, doc_ids=doc_ids)
             # TODO: reparse recursively
             if not p_nodes:
-                raise ValueError(
-                    f'Cannot reparse group "{group_name}": parent group '
-                    f'"{node_groups[group_name]["parent"]}" has no nodes for docs {doc_ids}. '
-                    f'Run a full reparse (without specifying ng_names) to rebuild from source.')
+                LOG.warning(
+                    f'Parent group "{node_groups[group_name]["parent"]}" has no nodes for '
+                    f'docs {doc_ids}, falling back to full reparse from source.')
+                self._reparse_docs(group_name=None, node_groups=node_groups,
+                                   doc_ids=doc_ids, doc_paths=doc_paths,
+                                   metadatas=metadatas, kb_id=kb_id, reader=reader)
+                return
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name,
                                           node_groups=node_groups, doc_ids=doc_ids, kb_id=kb_id)
 
