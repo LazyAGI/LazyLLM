@@ -44,6 +44,7 @@ class MineruPDFReader(_OcrReaderBase):
     def __init__(self,
                  url: Optional[str] = None,
                  backend: Optional[str] = None,
+                 upload_mode: Optional[bool] = None,
                  extract_table: bool = True,
                  extract_formula: bool = True,
                  split_doc: bool = True,
@@ -75,7 +76,7 @@ class MineruPDFReader(_OcrReaderBase):
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._variant = resolve_ocr_variant('mineru', self._url)
         self._offline_mode = self._variant == OcrServiceVariant.OFFLINE
-        self._upload_mode = self._offline_mode
+        self._upload_mode = upload_mode if upload_mode is not None else self._offline_mode
 
     @override
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True
