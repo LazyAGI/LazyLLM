@@ -427,22 +427,28 @@ class DocumentProcessorWorker(ModuleBase):
                     self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'FAILED', str(e))
                 raise e
 
-        # TODO: simplify this function
-        def _exec_reparse_task(self, processor: _Processor, task_id: str, payload: dict,  # noqa C901
+        def _exec_reparse_task(self, processor: _Processor, task_id: str, payload: dict,  # noqa: C901
                                node_groups: Dict[str, Dict], name_to_id: Dict[str, str],
                                reader: Optional[DirectoryReader]):
             file_infos = payload.get('file_infos')
             kb_id = payload.get('kb_id', None)
-            ng_names_requested = payload.get('ng_names')  # None means full reparse
-            embed_only = payload.get('embed_only', False)
+            ng_names_requested = payload.get('ng_names')  # None means all groups
+            strategy = payload.get('strategy', 'rebuild')
+            # strategy:
+            #   "rebuild"       → full reparse (reslice + reembed all selected groups)
+            #   "reembed"       → rebuild vectors (skip slice, reembed existing nodes only)
+            #   "slice_missing" → fill gaps (slice + embed only groups with no segments yet)
+
             reparse_doc_ids = []
             reparse_files = []
             reparse_metadatas = []
-
             for file_info in file_infos:
                 reparse_doc_ids.append(file_info.get('doc_id'))
                 reparse_files.append(file_info.get('file_path'))
                 reparse_metadatas.append(file_info.get('metadata'))
+
+            LOG.info(f'{self._log_prefix(task_id)} Execute reparse task: doc_ids={reparse_doc_ids!r}, '
+                     f'ng_names={ng_names_requested!r}, strategy={strategy!r}, kb_id={kb_id!r}')
 
             exec_ng_ids = [ng_id for name, ng_id in name_to_id.items()
                            if name not in (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP)]
@@ -450,39 +456,70 @@ class DocumentProcessorWorker(ModuleBase):
                 self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
 
             try:
-                if embed_only:
-                    # embed_only: skip transform, only (re-)embed existing nodes
-                    for name in (ng_names_requested or list(node_groups.keys())):
-                        if name not in node_groups:
-                            LOG.warning(f'{self._log_prefix(task_id)} ng_name {name!r} not found, skipping')
-                            continue
-                        processor.reparse(group_name=name, node_groups=node_groups,
-                                          doc_ids=reparse_doc_ids, kb_id=kb_id, embed_only=True)
-                elif ng_names_requested is None:
-                    # Full reparse: reload from source and rebuild all node groups.
-                    processor.reparse(group_name=None, node_groups=node_groups,
-                                      doc_ids=reparse_doc_ids, doc_paths=reparse_files,
-                                      metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
+                # Resolve candidate groups, excluding source groups.
+                source_groups = {LAZY_ROOT_NAME, LAZY_IMAGE_GROUP}
+                if ng_names_requested is None:
+                    candidate_groups = [n for n in node_groups if n not in source_groups]
                 else:
-                    # Source groups have no transform; including them forces a full reparse.
-                    source_groups = {LAZY_ROOT_NAME, LAZY_IMAGE_GROUP}
-                    if source_groups & set(ng_names_requested):
-                        LOG.warning(
-                            f'{self._log_prefix(task_id)} ng_names contains source group(s) '
-                            f'{source_groups & set(ng_names_requested)}, upgrading to full reparse')
-                        processor.reparse(group_name=None, node_groups=node_groups,
-                                          doc_ids=reparse_doc_ids, doc_paths=reparse_files,
-                                          metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
+                    candidate_groups = [n for n in ng_names_requested if n in node_groups and n not in source_groups]
+
+                # slice_missing: keep only groups with no segments yet.
+                if strategy == 'slice_missing':
+                    candidate_groups = [
+                        n for n in candidate_groups
+                        if not processor.store.get_nodes(group=n, doc_ids=reparse_doc_ids, kb_id=kb_id)
+                    ]
+                    if not candidate_groups:
+                        LOG.info(f'{self._log_prefix(task_id)} All requested groups already '
+                                 'have nodes, nothing to do')
+                        if kb_id and exec_ng_ids:
+                            self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
+                        return
+
+                # Top-most filtering: _reparse_group_recursive / _reembed_group already
+                # recurse into children, so keep only ancestors with no parent in the set.
+                top = []
+                for name in candidate_groups:
+                    anc = node_groups[name].get('parent')
+                    while anc:
+                        if anc in candidate_groups:
+                            break
+                        anc = node_groups.get(anc, {}).get('parent')
                     else:
-                        # Partial reparse: rebuild only the requested node groups in-place,
-                        # without touching other groups' nodes.
-                        for name in ng_names_requested:
-                            if name not in node_groups:
-                                LOG.warning(f'{self._log_prefix(task_id)} ng_name {name!r} not found, skipping')
-                                continue
-                            processor.reparse(group_name=name, node_groups=node_groups,
-                                              doc_ids=reparse_doc_ids, doc_paths=reparse_files,
-                                              metadatas=reparse_metadatas, kb_id=kb_id, reader=reader)
+                        top.append(name)
+                candidate_groups = top
+
+                if not candidate_groups:
+                    LOG.info(f'{self._log_prefix(task_id)} No valid target groups to reparse')
+                    if kb_id and exec_ng_ids:
+                        self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
+                    return
+
+                # Build operations: full rebuild (ng_names=None + rebuild) or per-group.
+                if ng_names_requested is None and strategy == 'rebuild':
+                    operations = [(None, dict(doc_paths=reparse_files, metadatas=reparse_metadatas, reader=reader))]
+                else:
+                    operations = []
+                    for name in candidate_groups:
+                        if strategy == 'reembed':
+                            operations.append((name, dict(strategy='reembed')))
+                        else:
+                            operations.append((name, dict(
+                                doc_paths=reparse_files, metadatas=reparse_metadatas, reader=reader,
+                            )))
+
+                for group_name, extra_kwargs in operations:
+                    LOG.info(f'{self._log_prefix(task_id)} [reparse] group={group_name!r} '
+                             f'doc_ids={reparse_doc_ids!r} kb_id={kb_id!r} '
+                             f'strategy={strategy!r}')
+                    processor.reparse(
+                        group_name=group_name,
+                        node_groups=node_groups,
+                        doc_ids=reparse_doc_ids,
+                        kb_id=kb_id,
+                        **extra_kwargs,
+                    )
+
                 if kb_id and exec_ng_ids:
                     self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
             except Exception as e:

@@ -1861,6 +1861,261 @@ class TestBatchForwardRefPath:
             preloaded_root_nodes=reader.load_data.return_value,
         )
 
+    # ---------- reparse: group × mode combinations ----------
+
+    _REPARSE_DOC = 'doc-1'
+    _REPARSE_PATH = '/tmp/reparse.txt'
+
+    @staticmethod
+    def _make_reparse_processor(store=None, activated_groups=None):
+        '''Create a _Processor with a pre-configured mock store.'''
+        s = store or MagicMock()
+        s.get_nodes.return_value = []
+        s.is_group_active = lambda g: (activated_groups or {}).get(g, False)
+        s.activated_groups.return_value = [g for g, v in (activated_groups or {}).items() if v]
+        return _Processor(store=s)
+
+    def _make_node_groups(self, **overrides):
+        '''Minimal node_groups dict with common defaults.'''
+        ng = {
+            LAZY_ROOT_NAME: {'parent': '', 'transform': None},
+            'block': {'parent': LAZY_ROOT_NAME, 'transform': 'block_t'},
+            'line': {'parent': 'block', 'transform': 'line_t'},
+            'doc-summary': {'parent': LAZY_ROOT_NAME, 'transform': 'summary_t', 'lazy_mode': 'all'},
+        }
+        ng.update(overrides)
+        return ng
+
+    # --- full rebuild (group_name=None) ---
+
+    def _reparse_with_lazy_tracking(self, store, node_groups, reader, activated):
+        '''Helper: run group_name=None reparse and return recorded reparse calls.'''
+        root_node = [DocNode(text='root', group=LAZY_ROOT_NAME)]
+        # Phase 1: remove_nodes check needs empty; Phase 2: lazy groups need root nodes.
+        get_nodes_returns = []
+
+        def get_nodes_side_effect(**kwargs):
+            # Return the next queued value (pop from front), default to []
+            return get_nodes_returns.pop(0) if get_nodes_returns else []
+
+        store.get_nodes.side_effect = get_nodes_side_effect
+        store.is_group_active = lambda g: g in activated
+        store.activated_groups.return_value = activated
+
+        processor = _Processor(store=store)
+        processor.add_doc = MagicMock()
+        processor._reparse_group_recursive = MagicMock()
+
+        reparse_calls = []
+        original_reparse = processor._reparse_docs
+
+        def tracking_reparse(**kwargs):
+            reparse_calls.append(kwargs.get('group_name'))
+            return original_reparse(**kwargs)
+
+        processor._reparse_docs = tracking_reparse
+
+        # Phase 1: group_name=None -> remove_nodes -> fibonacci backoff checks
+        # -> return [] each time (from side_effect) -> removed
+        # Then add_doc runs. Then lazy group loop: each lazy group calls
+        # _reparse_docs(group_name=...) -> get_nodes for parent -> return root_node.
+        # Queue: first N returns for remove_nodes check (empty), then root for lazy group.
+        get_nodes_returns.extend([[], root_node])
+
+        processor._reparse_docs(group_name=None, node_groups=node_groups, reader=reader,
+                                doc_ids=[self._REPARSE_DOC], doc_paths=[self._REPARSE_PATH],
+                                metadatas=[{}])
+
+        return reparse_calls, processor
+
+    def test_reparse_full_rebuild_recreates_lazy_groups(self):
+        '''group_name=None -> add_doc then reparse each active lazy_mode='all' group.'''
+        ng = self._make_node_groups()
+        reader = MagicMock()
+        reader.load_data.return_value = {LAZY_ROOT_NAME: [], LAZY_IMAGE_GROUP: []}
+        activated = [LAZY_ROOT_NAME, 'block', 'line', 'doc-summary']
+
+        reparse_calls, processor = self._reparse_with_lazy_tracking(
+            MagicMock(), ng, reader, activated)
+
+        processor.add_doc.assert_called_once()
+        assert 'doc-summary' in reparse_calls
+        assert 'block' not in reparse_calls
+        assert 'line' not in reparse_calls
+
+    def test_reparse_full_rebuild_skips_inactive_lazy_groups(self):
+        '''lazy_mode='all' but NOT active -> skip.'''
+        ng = self._make_node_groups()
+        reader = MagicMock()
+        reader.load_data.return_value = {LAZY_ROOT_NAME: [], LAZY_IMAGE_GROUP: []}
+
+        reparse_calls, processor = self._reparse_with_lazy_tracking(
+            MagicMock(), ng, reader, [LAZY_ROOT_NAME])
+
+        processor.add_doc.assert_called_once()
+        assert 'doc-summary' not in reparse_calls
+
+    def test_reparse_full_rebuild_no_lazy_groups_just_calls_add_doc(self):
+        '''No lazy_mode='all' groups -> add_doc only, no extra reparse calls.'''
+        ng = self._make_node_groups()
+        del ng['doc-summary']
+        reader = MagicMock()
+        reader.load_data.return_value = {LAZY_ROOT_NAME: [], LAZY_IMAGE_GROUP: []}
+
+        reparse_calls, processor = self._reparse_with_lazy_tracking(
+            MagicMock(), ng, reader, [LAZY_ROOT_NAME, 'block', 'line'])
+
+        processor.add_doc.assert_called_once()
+        # Only the initial group_name=None call; no extra calls for lazy groups
+        assert reparse_calls == [None]
+
+    # --- partial reparse (group_name='block' etc.) ---
+
+    def test_reparse_partial_group_uses_parent_nodes(self):
+        '''group_name='block' with parent nodes -> recursive reparse.'''
+        ng = self._make_node_groups()
+        parent_node = DocNode(text='root', group=LAZY_ROOT_NAME)
+        store = MagicMock()
+        store.get_nodes.return_value = [parent_node]
+        store.activated_groups.return_value = [LAZY_ROOT_NAME, 'block', 'line']
+        reader = MagicMock()
+
+        processor = _Processor(store=store)
+        processor._reparse_group_recursive = MagicMock()
+
+        processor._reparse_docs(group_name='block', node_groups=ng, reader=reader,
+                                doc_ids=[self._REPARSE_DOC], doc_paths=[self._REPARSE_PATH],
+                                metadatas=[{}])
+
+        processor._reparse_group_recursive.assert_called_once()
+        call_args = processor._reparse_group_recursive.call_args
+        assert call_args[1]['cur_name'] == 'block'
+        assert call_args[1]['p_nodes'] == [parent_node]
+
+    def test_reparse_partial_group_falls_back_when_parent_missing(self):
+        '''Parent has no nodes + reader available -> fallback to group_name=None.'''
+        ng = self._make_node_groups()
+        reader = MagicMock()
+        reader.load_data.return_value = {LAZY_ROOT_NAME: [], LAZY_IMAGE_GROUP: []}
+
+        store = MagicMock()
+        store.is_group_active = lambda g: True
+        store.activated_groups.return_value = [LAZY_ROOT_NAME, 'block', 'line', 'doc-summary']
+        # Phase 1 (remove check): [] -> removed. Phase 2 (lazy groups): root nodes.
+        get_nodes_call_count = [0]
+
+        # Calls 1-2 (parent check + remove check): [] -> removed.
+        # Calls 3+ (lazy group parent lookup): root nodes.
+        def get_nodes_side_effect(**kwargs):
+            get_nodes_call_count[0] += 1
+            return [] if get_nodes_call_count[0] <= 2 else [DocNode(text='root', group=LAZY_ROOT_NAME)]
+
+        store.get_nodes.side_effect = get_nodes_side_effect
+
+        processor = _Processor(store=store)
+        processor.add_doc = MagicMock()
+        processor._reparse_group_recursive = MagicMock()
+
+        fallback_calls = []
+        original_reparse = processor._reparse_docs
+
+        def spy_reparse(**kwargs):
+            fallback_calls.append(kwargs.get('group_name'))
+            return original_reparse(**kwargs)
+
+        processor._reparse_docs = spy_reparse
+
+        processor._reparse_docs(group_name='block', node_groups=ng, reader=reader,
+                                doc_ids=[self._REPARSE_DOC], doc_paths=[self._REPARSE_PATH],
+                                metadatas=[{}], kb_id='default')
+
+        assert fallback_calls == ['block', None, 'doc-summary']
+
+    def test_reparse_partial_group_falls_back_even_without_reader(self):
+        '''Parent has no nodes -> falls back to full reparse (reader always present in practice).'''
+        ng = self._make_node_groups()
+        reader = MagicMock()
+        reader.load_data.return_value = {LAZY_ROOT_NAME: [], LAZY_IMAGE_GROUP: []}
+
+        store = MagicMock()
+        store.is_group_active = lambda g: g in (LAZY_ROOT_NAME,)
+        store.activated_groups.return_value = [LAZY_ROOT_NAME]
+        # Call 1 (parent check): [] -> missing -> triggers fallback.
+        # Calls 2..N (remove check in fallback + lazy group lookup): root nodes
+        # but the first of those must be [] for the remove check to succeed.
+
+        def get_nodes_side_effect(**kwargs):
+            return get_nodes_queue.pop(0) if get_nodes_queue else [DocNode(text='root', group=LAZY_ROOT_NAME)]
+
+        get_nodes_queue = [[], []]  # parent check, then remove check
+        store.get_nodes.side_effect = get_nodes_side_effect
+
+        processor = _Processor(store=store)
+        processor.add_doc = MagicMock()
+        processor._reparse_group_recursive = MagicMock()
+
+        fallback_calls = []
+        original_reparse = processor._reparse_docs
+
+        def spy_reparse(**kwargs):
+            fallback_calls.append(kwargs.get('group_name'))
+            return original_reparse(**kwargs)
+        processor._reparse_docs = spy_reparse
+
+        processor._reparse_docs(group_name='block', node_groups=ng, reader=reader,
+                                doc_ids=[self._REPARSE_DOC], doc_paths=[self._REPARSE_PATH],
+                                metadatas=[{}], kb_id='default')
+
+        assert 'block' in fallback_calls
+        assert None in fallback_calls  # fell back to full reparse
+
+    # --- _reparse_group_recursive ---
+
+    def test_reparse_group_recursive_skips_lazy_children(self):
+        '''Recursive reparse skips children with lazy_mode='all'.'''
+        ng = self._make_node_groups()
+        ng['block']['lazy_mode'] = 'all'  # block is now lazy, line's parent is block
+        store = MagicMock()
+        store.get_nodes.return_value = []  # for remove_nodes check
+        store.activated_groups.return_value = [LAZY_ROOT_NAME, 'block', 'line', 'doc-summary']
+
+        processor = _Processor(store=store)
+        processor._create_nodes_impl = MagicMock(return_value=[DocNode(text='new')])
+
+        processor._reparse_group_recursive(
+            p_nodes=[DocNode(text='root', group=LAZY_ROOT_NAME)],
+            cur_name=LAZY_ROOT_NAME,
+            node_groups=ng,
+            doc_ids=[self._REPARSE_DOC],
+            kb_id='default',
+        )
+
+        # block is lazy_mode='all' child of root -> NOT recursed into
+        # line is child of block -> not reached because block is skipped
+        # doc-summary is child of root -> NOT skipped (lazy_mode='all' but it was the explicitly requested group)
+        create_calls = [c[0][1] for c in processor._create_nodes_impl.call_args_list]
+        # Only root itself gets created; lazy children are skipped
+        assert 'block' not in create_calls
+        assert 'line' not in create_calls
+
+    # --- reembed strategy ---
+
+    def test_reparse_reembed_strategy_reembeds_existing_nodes(self):
+        '''strategy='reembed' -> only re-embed, no re-slice.'''
+        ng = self._make_node_groups()
+        existing = [DocNode(text='already sliced', group='block')]
+        store = MagicMock()
+        store.get_nodes.return_value = existing
+        store.activated_groups.return_value = [LAZY_ROOT_NAME, 'block', 'line']
+
+        processor = _Processor(store=store)
+        processor._reembed_group = MagicMock()
+
+        processor.reparse(group_name='block', node_groups=ng, doc_ids=[self._REPARSE_DOC],
+                          kb_id='default', strategy='reembed')
+
+        processor._reembed_group.assert_called_once_with('block', ng, doc_ids=[self._REPARSE_DOC], kb_id='default')
+
 
 class TestCallableSig:
     def test_named_function_is_stable(self):

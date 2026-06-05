@@ -730,7 +730,7 @@ class DocManager:
                             node_group_ids_to_delete: Optional[List[str]] = None,
                             llm_config: Optional[Dict[str, Any]] = None,
                             ocr_config: Optional[Dict[str, Any]] = None,
-                            embed_only: bool = False):
+                            strategy: str = 'rebuild'):
         if task_type in (TaskType.DOC_ADD, TaskType.DOC_REPARSE, TaskType.DOC_TRANSFER):
             if not file_path:
                 raise RuntimeError(f'file_path is required for task_type {task_type.value}')
@@ -739,7 +739,7 @@ class DocManager:
                 ng_names=ng_names, extractor_names=extractor_names,
                 task_type=task_type.value,
                 callback_url=self._callback_url, transfer_params=transfer_params,
-                llm_config=llm_config, ocr_config=ocr_config, embed_only=embed_only)
+                llm_config=llm_config, ocr_config=ocr_config, strategy=strategy)
         elif task_type == TaskType.DOC_UPDATE_META:
             task_resp = self._parser_client.update_meta(
                 task_id, kb_id, doc_id, metadata, file_path, callback_url=self._callback_url)
@@ -762,7 +762,7 @@ class DocManager:
                       extra_message: Optional[Dict[str, Any]] = None, parser_doc_id: Optional[str] = None,
                       llm_config: Optional[Dict[str, Any]] = None,
                       ocr_config: Optional[Dict[str, Any]] = None,
-                      embed_only: bool = False):
+                      strategy: str = 'rebuild'):
         algo_ids = algo_ids or []
         algo_id = algo_ids[0] if algo_ids else None
         task_id = str(uuid4())
@@ -801,7 +801,7 @@ class DocManager:
                 file_path=file_path, metadata=metadata,
                 parser_kb_id=parser_kb_id, transfer_params=transfer_params,
                 node_group_ids_to_delete=exclusive_ng_ids,
-                llm_config=llm_config, ocr_config=ocr_config, embed_only=embed_only)
+                llm_config=llm_config, ocr_config=ocr_config, strategy=strategy)
         except Exception as exc:
             finished_at = datetime.now()
             error_msg = str(exc)
@@ -1000,6 +1000,8 @@ class DocManager:
             ng_names: Optional[List[str]] = list(request.ng_names)
             ng_ids = self._resolve_ng_ids_for_names(request.kb_id, ng_names)
             if not ng_ids:
+                LOG.error(f'[reparse] kb={request.kb_id!r} ng_names={request.ng_names!r}: '
+                          f'none of the requested node groups were found')
                 raise DocServiceError('E_INVALID_PARAM', 'none of the requested ng_names '
                                       f'{request.ng_names!r} were found in kb {request.kb_id!r}')
         else:
@@ -1026,9 +1028,11 @@ class DocManager:
                 ng_names=ng_names,
                 llm_config=request.llm_config,
                 ocr_config=request.ocr_config,
-                embed_only=request.embed_only,
+                strategy=request.strategy,
             )
             task_ids.append(task_id)
+        LOG.info(f'[reparse] kb={request.kb_id!r} doc_ids={request.doc_ids!r} '
+                 f'ng_names={ng_names!r} task_ids={task_ids!r}')
         return task_ids
 
     def _resolve_ng_ids_for_names(self, kb_id: str, ng_names: List[str]) -> List[str]:
