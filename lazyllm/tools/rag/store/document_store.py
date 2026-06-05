@@ -286,12 +286,11 @@ class _DocumentStore(object):
                     groups = self._activated_groups
             else:
                 groups = [group]
-            store_impl = self.vec_impl if self._impl.capability & StoreCapability.VECTOR else self.seg_impl
             for group in groups:
                 if not self.is_group_active(group):
                     LOG.warning(f'[_DocumentStore] Group {group} is not active, skip')
                     continue
-                store_impl.delete(self._gen_collection_name(group), criteria)
+                self.seg_impl.delete(self._gen_collection_name(group), criteria)
             # update indices
             for index in self._indices.values():
                 index.remove(uids, group)
@@ -332,9 +331,8 @@ class _DocumentStore(object):
             limit, offset = self._normalize_pagination(limit, offset)
             criteria = self._build_get_criteria(uids, doc_ids, kb_id, numbers, kwargs.get('parent'))
             groups = self._resolve_groups(group)
-            store_impl = self.vec_impl if self._impl.capability & StoreCapability.VECTOR else self.seg_impl
             if self._can_use_native_segment_pagination(groups, sort_by_number):
-                result = store_impl.get(
+                result = self.seg_impl.get(
                     self._gen_collection_name(groups[0]),
                     criteria,
                     limit=limit,
@@ -352,7 +350,7 @@ class _DocumentStore(object):
                 if not self.is_group_active(group):
                     LOG.warning(f'[_DocumentStore] Group {group} is not active, skip')
                     continue
-                segments.extend(store_impl.get(self._gen_collection_name(group), criteria, **kwargs))
+                segments.extend(self.seg_impl.get(self._gen_collection_name(group), criteria, **kwargs))
             if sort_by_number:
                 segments = self._sort_segments_by_number(segments)
             total = len(segments)
