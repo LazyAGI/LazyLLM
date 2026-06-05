@@ -100,10 +100,47 @@ class TestNotionToolRegistration(unittest.TestCase):
         manager = ToolManager([(fs, lambda _instance: 'secret-token')])
         names = {item['function']['name'] for item in manager.tools_description}
 
+        self.assertIn('NotionFS_search', names)
         self.assertIn('NotionFS_resolve_link', names)
         self.assertIn('NotionFS_read_with_references', names)
         self.assertIn('NotionFS_get_doc_blocks', names)
         self.assertNotIn('NotionFS_copy', names)
+
+
+class TestNotionSearch(unittest.TestCase):
+
+    def test_search_builds_official_title_query_payload(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+
+        def paginate_post(url, payload):
+            calls.append((url, payload))
+            return [{
+                'id': PAGE_ID,
+                'object': 'page',
+                'properties': {
+                    'Name': {'type': 'title', 'title': [{'plain_text': 'Project Plan'}]},
+                },
+                'last_edited_time': '2026-06-01T00:00:00.000Z',
+            }]
+
+        fs._paginate_post = paginate_post
+        results = fs.search('Project', object_type='page', limit=5)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['title'], 'Project Plan')
+        self.assertEqual(results[0]['notion_path'], f'notion:/~page/{PAGE_ID}')
+        url, payload = calls[0]
+        self.assertTrue(url.endswith('/search'))
+        self.assertEqual(payload['query'], 'Project')
+        self.assertEqual(payload['page_size'], 5)
+        self.assertEqual(payload['filter'], {'property': 'object', 'value': 'page'})
+        self.assertEqual(payload['sort'], {'direction': 'descending', 'timestamp': 'last_edited_time'})
+
+    def test_search_rejects_empty_query(self):
+        fs = NotionFS(token='secret-token')
+        with self.assertRaises(ValueError):
+            fs.search('')
 
 
 class TestNotionMarkdownFetch(unittest.TestCase):

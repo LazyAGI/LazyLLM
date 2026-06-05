@@ -1366,6 +1366,30 @@ _add_fs_example('NotionFS', '''\
 >>> fs = NotionFS(token='xxx')
 >>> fs.ls('/')
 ''')
+_add_fs_chinese('NotionFS.search', '''\
+按标题搜索当前 token 可访问的 Notion 页面或数据库。该能力来自 Notion 官方 /v1/search 接口，主要用于定位资源；不是页面正文全文检索。
+
+Args:
+    query (str): 标题关键词。
+    object_type (str): 可选对象过滤，支持 page、database。
+    limit (int): 最大返回条数，默认 20，最大 100。
+    sort_direction (str): 按 last_edited_time 排序方向，ascending 或 descending。
+
+Returns:
+    List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path 等字段。
+''')
+_add_fs_english('NotionFS.search', '''\
+Search Notion pages or databases visible to the current token by title. This uses Notion's official /v1/search endpoint to locate resources; it is not full-text page-body search.
+
+Args:
+    query (str): Title keyword.
+    object_type (str): Optional object filter: page or database.
+    limit (int): Maximum number of results, default 20, capped at 100.
+    sort_direction (str): Sort direction by last_edited_time: ascending or descending.
+
+Returns:
+    List[Dict[str, Any]]: Search result entries with title, id, notion_path, and related metadata.
+''')
 
 # GoogleDriveFS
 _add_fs_chinese('GoogleDriveFS', '''\

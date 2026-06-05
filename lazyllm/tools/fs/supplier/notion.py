@@ -100,7 +100,7 @@ class NotionFile(CloudFSBufferedFile):
 class NotionFS(LinkDocumentFSBase):
     document_provider = 'notion'
     __public_apis__ = ['ls', 'info', 'mkdir', 'rm', 'exists',
-                       'read', 'read_file', 'write', 'move',
+                       'read', 'read_file', 'search', 'write', 'move',
                        *LinkDocumentFSBase.__document_public_apis__]
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
@@ -190,6 +190,44 @@ class NotionFS(LinkDocumentFSBase):
         if not parsed:
             raise ValueError(f'Cannot parse Notion browser URL: {url!r}')
         return self._fetch_content(f'/{parsed["id"]}')
+
+    def search(self, query: str, object_type: str = '', limit: int = 20,
+               sort_direction: str = 'descending') -> List[Dict[str, Any]]:
+        """Search Notion pages/databases by title.
+
+        Args:
+            query (str): Title keyword to search in Notion.
+            object_type (str): Optional object filter: ``page`` or ``database``.
+            limit (int): Maximum number of results to return.
+            sort_direction (str): Sort by last edited time, ``ascending`` or ``descending``.
+
+        Returns:
+            List[Dict[str, Any]]: Matching Notion objects with ``title``, ``id``, and ``notion_path``.
+        """
+        query = (query or '').strip()
+        if not query:
+            raise ValueError('query is required')
+        object_type = (object_type or '').strip().lower()
+        if object_type and object_type not in {'page', 'database'}:
+            raise ValueError('object_type must be page or database')
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 20
+        limit = max(1, min(limit, _PAGE_SIZE))
+        sort_direction = (sort_direction or 'descending').strip().lower()
+        if sort_direction not in {'ascending', 'descending'}:
+            sort_direction = 'descending'
+
+        payload: Dict[str, Any] = {
+            'query': query,
+            'page_size': limit,
+            'sort': {'direction': sort_direction, 'timestamp': 'last_edited_time'},
+        }
+        if object_type:
+            payload['filter'] = {'property': 'object', 'value': object_type}
+        results = self._paginate_post(f'{self._base_url}/search', payload)
+        return [self._object_to_entry(item) for item in results[:limit]]
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parent_id, title = self._parse_parent_title_path(path)
