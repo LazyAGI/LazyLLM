@@ -427,7 +427,7 @@ class DocumentProcessorWorker(ModuleBase):
                     self._write_ng_status_batch(ids, list(exec_ng_ids), kb_id, 'FAILED', str(e))
                 raise e
 
-        def _exec_reparse_task(self, processor: _Processor, task_id: str, payload: dict,  # noqa C901
+        def _exec_reparse_task(self, processor: _Processor, task_id: str, payload: dict,  # noqa: C901
                                node_groups: Dict[str, Dict], name_to_id: Dict[str, str],
                                reader: Optional[DirectoryReader]):
             file_infos = payload.get('file_infos')
@@ -456,61 +456,18 @@ class DocumentProcessorWorker(ModuleBase):
                 self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'WORKING')
 
             try:
-                # ================================================================
-                # Step 1: Resolve strategy to boolean flags
-                # ================================================================
+                # Resolve candidate groups, excluding source groups.
                 source_groups = {LAZY_ROOT_NAME, LAZY_IMAGE_GROUP}
-
-                if strategy == 'rebuild':
-                    check_missing_only = False
-                    need_reslice = True
-                elif strategy == 'reembed':
-                    check_missing_only = False
-                    need_reslice = False
-                elif strategy == 'slice_missing':
-                    check_missing_only = True
-                    need_reslice = True
-                else:
-                    raise ValueError(f'Unknown reparse strategy: {strategy!r}')
-
-                # Condition D: force full reparse from source — set during Step 2
-                # when ng_names includes source groups and reslice is needed.
-                force_full = False
-
-                # ================================================================
-                # Step 2: Determine candidate groups (filter source groups and
-                #          invalid ng_names)
-                # ================================================================
                 if ng_names_requested is None:
                     candidate_groups = [n for n in node_groups if n not in source_groups]
                 else:
-                    candidate_groups = []
-                    for n in ng_names_requested:
-                        if n in source_groups:
-                            if need_reslice:
-                                # Condition D: when reslice is needed, requesting a
-                                # source group means a full rebuild is required.
-                                force_full = True
-                                LOG.warning(
-                                    f'{self._log_prefix(task_id)} ng_names contains source '
-                                    f'group {n!r}, upgrading to full reparse')
-                            # For embed_only, source groups are meaningless — any
-                            # top-level group's _reembed_group recursion covers all.
-                            continue
-                        if n not in node_groups:
-                            LOG.warning(f'{self._log_prefix(task_id)} ng_name {n!r} not found, skipping')
-                            continue
-                        candidate_groups.append(n)
+                    candidate_groups = [n for n in ng_names_requested if n in node_groups and n not in source_groups]
 
-                # ================================================================
-                # Step 3: Condition A driven — fill gaps: keep only groups with
-                #          no nodes
-                # ================================================================
-                if check_missing_only:
+                # slice_missing: keep only groups with no segments yet.
+                if strategy == 'slice_missing':
                     candidate_groups = [
                         n for n in candidate_groups
-                        if not processor.store.get_nodes(
-                            group=n, doc_ids=reparse_doc_ids, kb_id=kb_id)
+                        if not processor.store.get_nodes(group=n, doc_ids=reparse_doc_ids, kb_id=kb_id)
                     ]
                     if not candidate_groups:
                         LOG.info(f'{self._log_prefix(task_id)} All requested groups already '
@@ -519,95 +476,42 @@ class DocumentProcessorWorker(ModuleBase):
                             self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
                         return
 
-                    # Keep only top-most missing groups: if an ancestor is also
-                    # missing, its recursive reparse will cover the descendant.
-                    missing_set = set(candidate_groups)
-                    top_candidates = []
-                    for name in candidate_groups:
-                        ancestor = node_groups[name].get('parent')
-                        while ancestor:
-                            if ancestor in missing_set:
-                                break
-                            ancestor = node_groups.get(ancestor, {}).get('parent')
-                        else:
-                            top_candidates.append(name)
-                    candidate_groups = top_candidates
+                # Top-most filtering: _reparse_group_recursive / _reembed_group already
+                # recurse into children, so keep only ancestors with no parent in the set.
+                top = []
+                for name in candidate_groups:
+                    anc = node_groups[name].get('parent')
+                    while anc:
+                        if anc in candidate_groups:
+                            break
+                        anc = node_groups.get(anc, {}).get('parent')
+                    else:
+                        top.append(name)
+                candidate_groups = top
 
-                # Only a true no-op when we have neither candidates nor a forced full reparse.
-                if not candidate_groups and not force_full:
+                if not candidate_groups:
                     LOG.info(f'{self._log_prefix(task_id)} No valid target groups to reparse')
                     if kb_id and exec_ng_ids:
                         self._write_ng_status_batch(reparse_doc_ids, exec_ng_ids, kb_id, 'SUCCESS')
                     return
 
-                # ================================================================
-                # Step 4: Compute remaining conditions
-                # ================================================================
-                # Condition E: whether parent groups have nodes available
-                #   (only checked in fill-gaps mode)
-                parent_available = True
-                if check_missing_only and not force_full:
-                    for name in candidate_groups:
-                        parent = node_groups[name].get('parent')
-                        if not parent:
-                            parent_available = False
-                            break
-                        if not processor.store.get_nodes(
-                                group=parent, doc_ids=reparse_doc_ids, kb_id=kb_id):
-                            parent_available = False
-                            break
-
-                # Condition F: final decision — use group_name=None (full from source)?
-                #   force_full                                  → source groups requested
-                #   ng_names=None + need_reslice + not gap-fill → full reparse all
-                #   gap-fill + parent unavailable               → fallback to full
-                need_full_from_source = (
-                    force_full
-                    or (ng_names_requested is None and need_reslice and not check_missing_only)
-                    or (check_missing_only and not parent_available)
-                )
-
-                # ================================================================
-                # Step 5: Build operation list from conditions
-                #   Each item = (group_name, extra_kwargs)
-                #   group_name=None means rebuild everything from source.
-                # ================================================================
-                if need_full_from_source:
-                    if check_missing_only and not parent_available:
-                        LOG.info(f'{self._log_prefix(task_id)} slice_missing: upstream nodes '
-                                 'missing, full reparse from source')
-                    operations = [(None, dict(
-                        doc_paths=reparse_files,
-                        metadatas=reparse_metadatas,
-                        reader=reader,
-                    ))]
+                # Build operations: full rebuild (ng_names=None + rebuild) or per-group.
+                if ng_names_requested is None and strategy == 'rebuild':
+                    operations = [(None, dict(doc_paths=reparse_files, metadatas=reparse_metadatas, reader=reader))]
                 else:
                     operations = []
                     for name in candidate_groups:
-                        # Compute per-group extra kwargs from conditions.
-                        extra = {}
-                        if need_reslice:
-                            # Pass source file paths and reader so _reparse_docs
-                            # can fall back to full reparse if parent is missing.
-                            extra.update(
-                                doc_paths=reparse_files,
-                                metadatas=reparse_metadatas,
-                                reader=reader,
-                            )
+                        if strategy == 'reembed':
+                            operations.append((name, dict(strategy='reembed')))
                         else:
-                            # strategy='reembed': skip transform, only re-embed existing nodes.
-                            extra['strategy'] = 'reembed'
-                        operations.append((name, extra))
+                            operations.append((name, dict(
+                                doc_paths=reparse_files, metadatas=reparse_metadatas, reader=reader,
+                            )))
 
-                # ================================================================
-                # Step 6: Single call site — all parameters are computed from
-                #         conditions above.
-                # ================================================================
                 for group_name, extra_kwargs in operations:
                     LOG.info(f'{self._log_prefix(task_id)} [reparse] group={group_name!r} '
                              f'doc_ids={reparse_doc_ids!r} kb_id={kb_id!r} '
-                             f'need_reslice={need_reslice} '
-                             f'check_missing_only={check_missing_only}')
+                             f'strategy={strategy!r}')
                     processor.reparse(
                         group_name=group_name,
                         node_groups=node_groups,
