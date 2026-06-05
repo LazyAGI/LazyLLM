@@ -14,16 +14,19 @@ DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
 Pdf2Qa = data_register.new_group('pdf2Qa')
 
 
-class Pdf2Md(Pdf2Qa):
-    def __init__(self,
-                 input_key='pdf_path',
-                 output_key='docs',
-                 reader_url=None,
-                 backend='vlm-vllm-async-engine',
-                 upload_mode=True,
-                 use_cache=False,
-                 **kwargs):
-
+class PdfProcessor(Pdf2Qa):
+    def __init__(
+        self,
+        input_key='pdf_path',
+        output_key='chunk',
+        reader_url=None,
+        use_cache=False,
+        image_output_folder='./pdf_images',
+        image_key='image_path',
+        image_size=(336, 336),
+        max_chunk_chars=1500,
+        **kwargs,
+    ):
         super().__init__(_concurrency_mode='thread', **kwargs)
         if not reader_url:
             raise ValueError('You must pass in a mineru url.')
@@ -32,8 +35,6 @@ class Pdf2Md(Pdf2Qa):
         self.use_cache = use_cache
         self.reader = MineruPDFReader(
             url=reader_url,
-            backend=backend,
-            upload_mode=upload_mode
         )
 
         self.base_url = reader_url.rstrip('/')
