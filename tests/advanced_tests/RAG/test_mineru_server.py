@@ -225,7 +225,7 @@ class TestMineruServer(unittest.TestCase):
     @pytest.mark.order(7)
     def test_pdf_reader_with_upload_files(self):
         '''Test 7: Test pdf reader (upload files)'''
-        pdf_reader = MineruPDFReader(url=self.__class__.url, upload_mode=True)
+        pdf_reader = MineruPDFReader(url=self.__class__.url)
         pdf_path = str(self.test_files['pdf1'])
         nodes = pdf_reader._load_data(Path(pdf_path))
         assert isinstance(nodes, list)

@@ -44,8 +44,9 @@ class AddDocRequest(BaseModel):
     priority: Optional[int] = 0
     callback_url: Optional[str] = None
     embed_only: bool = False  # when True, skip transform and only (re-)embed existing nodes
-    # per-request model config injected by backend (e.g. embed_main, ocr_config).
+    # per-request model config injected by backend (e.g. embed_main, llm).
     llm_config: Optional[Dict[str, Any]] = None
+    ocr_config: Optional[Dict[str, Any]] = None
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None

@@ -97,6 +97,7 @@ class DocItemsRequest(BaseModel):
     source_type: Optional[SourceType] = None
     idempotency_key: Optional[str] = None
     llm_config: Optional[Dict[str, Any]] = None
+    ocr_config: Optional[Dict[str, Any]] = None
 
     @model_validator(mode='after')
     def validate_items(self):
@@ -116,6 +117,7 @@ class ReparseRequest(BaseModel):
     algo_ids: Optional[List[str]] = None
     ng_names: Optional[List[str]] = None
     llm_config: Optional[Dict[str, Any]] = None
+    ocr_config: Optional[Dict[str, Any]] = None
     idempotency_key: Optional[str] = None
     embed_only: bool = False  # when True, skip transform and only (re-)embed existing nodes
 

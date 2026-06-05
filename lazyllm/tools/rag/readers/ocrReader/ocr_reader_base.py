@@ -3,7 +3,6 @@ import os
 import shutil
 from typing import Optional, Callable, Set, List, Dict, Tuple
 from pathlib import Path
-from urllib.parse import urlparse
 
 from lazyllm import globals as lazyllm_globals
 from lazyllm.thirdparty import bs4, pypdf
@@ -12,50 +11,6 @@ from ..readerBase import _RichReader
 from ...doc_node import DocNode
 from .ocr_ir import Block, Cell
 from .ocr_postprocessor import l1_normalize, l2_associate
-
-
-MINERU_OFFICIAL_ONLINE_HOST = 'mineru.net'
-MINERU_DEFAULT_ONLINE_URL = 'https://mineru.net'
-PADDLE_OFFICIAL_ONLINE_HOST = 'paddleocr.aistudio-app.com'
-PADDLE_OFFICIAL_ONLINE_URL = 'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs'
-
-
-def _normalize_mineru_service_url(url: Optional[str]) -> str:
-    raw = (url or '').strip()
-    if not raw:
-        return MINERU_DEFAULT_ONLINE_URL
-    return raw.rstrip('/')
-
-
-def _parse_url_host(url: Optional[str]) -> str:
-    raw = (url or '').strip()
-    if not raw:
-        return ''
-    if '://' not in raw:
-        raw = f'http://{raw}'
-    return (urlparse(raw).hostname or '').lower()
-
-
-def _is_mineru_official_online_url(url: Optional[str]) -> bool:
-    raw = (url or '').strip()
-    if not raw:
-        return True
-    return MINERU_OFFICIAL_ONLINE_HOST in raw.lower()
-
-
-def _is_paddle_official_online_url(url: Optional[str]) -> bool:
-    raw = (url or '').strip()
-    if not raw:
-        return True
-    return PADDLE_OFFICIAL_ONLINE_HOST in raw.lower()
-
-
-def read_dynamic_ocr_configs() -> Optional[Dict]:
-    try:
-        cfg = lazyllm_globals.config['dynamic_ocr_configs']
-    except Exception:
-        return None
-    return cfg if isinstance(cfg, dict) else None
 
 
 class _Adapter:

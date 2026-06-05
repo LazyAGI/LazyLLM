@@ -6,7 +6,7 @@ if TYPE_CHECKING:
                     GraphRetriever, SentenceSplitter, LLMParser, DocServer,
                     DeleteRequest, ReparseRequest, AddRequest, UploadRequest, AddFileItem,
                     TransferItem, TransferRequest, MetadataPatchItem, MetadataPatchRequest,
-                    DocStatus, DocServiceError, SourceType, inject_ocr_config)
+                    DocStatus, DocServiceError, SourceType)
     from .webpages import WebModule
     from .fs import (LazyLLMFSBase, CloudFSBufferedFile, CloudFsWatchdog, FS, dynamic_fs_config,
                      FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS,
@@ -81,7 +81,6 @@ _SUBMOD_MAP = {
         'DocStatus',
         'DocServiceError',
         'SourceType',
-        'inject_ocr_config',
     ],
     'webpages': ['WebModule'],
     'agent': [

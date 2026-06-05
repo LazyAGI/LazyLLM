@@ -26,24 +26,13 @@ from .ocr_ir import (
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock, ListBlock,
 )
-from .ocr_reader_base import (
-    _OcrReaderBase,
-    _is_mineru_official_online_url,
-    _normalize_mineru_service_url,
-)
+from .ocr_reader_base import _OcrReaderBase
+from .ocr_service import OcrServiceVariant, default_online_url, resolve_ocr_variant
 
 lazyllm.config.add('mineru_api_key', str, None, 'MINERU_API_KEY', description='The API key for Mineru')
 lazyllm.config.add(
     'mineru_backend', str, 'hybrid-auto-engine', 'MINERU_BACKEND',
     description='The MinerU backend used by local MinerU service.',
-)
-lazyllm.config.add(
-    'mineru_upload_mode', str, None, 'MINERU_UPLOAD_MODE',
-    description='Whether local MinerU service should receive uploaded files.',
-)
-lazyllm.config.add(
-    'ocr_patch_applied', bool, False, 'OCR_PATCH_APPLIED',
-    description='Whether local MinerU service uses the patched form API.',
 )
 _IMAGE_REF_PATTERN = re.compile(
     r'images/[^\s\)"\'\]<]+\.(?:jpg|jpeg|png|gif|bmp|webp|tiff|tif)',
@@ -55,7 +44,6 @@ class MineruPDFReader(_OcrReaderBase):
     def __init__(self,
                  url: Optional[str] = None,
                  backend: Optional[str] = None,
-                 upload_mode: Optional[bool] = None,
                  extract_table: bool = True,
                  extract_formula: bool = True,
                  split_doc: bool = True,
@@ -64,7 +52,6 @@ class MineruPDFReader(_OcrReaderBase):
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True,
                  dropped_types: Optional[Set[str]] = None,
-                 patch_applied: Optional[bool] = None,
                  api_key: Optional[str] = None,
                  dynamic_auth: bool = False,
                  auth_strategy: Optional[AuthStrategy] = None,
@@ -73,7 +60,7 @@ class MineruPDFReader(_OcrReaderBase):
             token = None
         else:
             token = api_key if api_key is not None else lazyllm.config['mineru_api_key']
-        super().__init__(url=_normalize_mineru_service_url(url),
+        super().__init__(url=url or default_online_url('mineru'),
                          dropped_types=dropped_types or {
                              'header', 'footer', 'page_number', 'aside_text', 'page_footnote'},
                          return_trace=return_trace,
@@ -85,41 +72,10 @@ class MineruPDFReader(_OcrReaderBase):
                          auth_strategy=auth_strategy,
                          **kwargs)
         self._backend = backend or lazyllm.config['mineru_backend']
-        self._upload_mode = self._resolve_upload_mode(upload_mode)
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
-        self._offline_mode = not _is_mineru_official_online_url(self._url)
-        # Local / self-hosted MinerU expects patch form upload, not legacy JSON.
-        self._patch_applied = self._resolve_patch_applied(patch_applied) or self._offline_mode
-
-    @staticmethod
-    def _parse_bool_config(value: Optional[str], *, name: str) -> Optional[bool]:
-        if value is None:
-            return None
-        value = str(value).strip().lower()
-        if value == '':
-            return None
-        if value in ('1', 'true', 'yes', 'on'):
-            return True
-        if value in ('0', 'false', 'no', 'off'):
-            return False
-        raise ValueError(f'{name} must be a boolean string, got: {value!r}')
-
-    def _resolve_upload_mode(self, upload_mode: Optional[bool]) -> bool:
-        if upload_mode is not None:
-            return upload_mode
-        configured = self._parse_bool_config(
-            lazyllm.config['mineru_upload_mode'],
-            name='mineru_upload_mode',
-        )
-        if configured is not None:
-            return configured
-        return self._offline_mode
-
-    @staticmethod
-    def _resolve_patch_applied(patch_applied: Optional[bool]) -> bool:
-        if patch_applied is not None:
-            return patch_applied
-        return bool(lazyllm.config['ocr_patch_applied'])
+        self._variant = resolve_ocr_variant('mineru', self._url)
+        self._offline_mode = self._variant == OcrServiceVariant.OFFLINE
+        self._upload_mode = self._offline_mode
 
     @override
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True
@@ -145,34 +101,20 @@ class MineruPDFReader(_OcrReaderBase):
         return nodes
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
-        if self._patch_applied:
-            # Patch-deployed local server: form-encoded.
-            payload = {
-                'return_content_list': 'true',
-                'use_cache': 'false' if not use_cache else 'true',
-                'backend': self._backend,
-                'table_enable': 'true',
-                'formula_enable': 'true',
-            }
-            if not self._upload_mode:
-                payload['files'] = str(file)
-                response = post_sync(self._url, payload=payload, timeout=self._timeout)
-            else:
-                with open(file, 'rb') as f:
-                    files = {'upload_files': (os.path.basename(file), f)}
-                    response = post_sync(self._url, payload=payload, files=files, timeout=self._timeout)
-            return response.text
-
-        # Original local server: JSON payload.
         payload = {
-            'return_content_list': True,
-            'use_cache': use_cache,
+            'return_content_list': 'true',
+            'use_cache': 'false' if not use_cache else 'true',
             'backend': self._backend,
-            'table_enable': True,
-            'formula_enable': True,
-            'files': [str(file)],
+            'table_enable': 'true',
+            'formula_enable': 'true',
         }
-        response = post_sync(self._url, json_payload=payload, timeout=self._timeout)
+        if not self._upload_mode:
+            payload['files'] = str(file)
+            response = post_sync(self._url, payload=payload, timeout=self._timeout)
+        else:
+            with open(file, 'rb') as f:
+                files = {'upload_files': (os.path.basename(file), f)}
+                response = post_sync(self._url, payload=payload, files=files, timeout=self._timeout)
         return response.text
 
     @staticmethod
@@ -217,7 +159,7 @@ class MineruPDFReader(_OcrReaderBase):
         return ''
 
     def _offline_content_list(self, raw) -> List[dict]:
-        if self._patch_applied and isinstance(raw, dict):
+        if isinstance(raw, dict):
             return raw.get('result', [{}])[0].get('content_list', []) or []
         if isinstance(raw, list):
             return raw
@@ -446,10 +388,8 @@ class MineruPDFReader(_OcrReaderBase):
     @override
     def _adapt_json_to_IR(self, raw) -> List[Block]:
         # Online API (zip extraction) returns a list directly.
-        # Patch-deployed local server returns {'result': [{'content_list': [...]}]}.
-        # Prefer structural detection over the patch_applied flag so that
-        # online-API responses are handled correctly regardless of configuration.
-        if self._patch_applied and isinstance(raw, dict):
+        # Local server returns {'result': [{'content_list': [...]}]}.
+        if isinstance(raw, dict):
             content_list = raw['result'][0]['content_list']
         else:
             content_list = raw
@@ -458,7 +398,7 @@ class MineruPDFReader(_OcrReaderBase):
         for item in content_list:
             block = self._adapt_one(item)
             if block is not None:
-                if self._offline_mode and self._patch_applied and 'lines' in item:
+                if self._offline_mode and 'lines' in item:
                     block.lines = self._normalize_content(item['lines'])
                 blocks.append(block)
         return blocks

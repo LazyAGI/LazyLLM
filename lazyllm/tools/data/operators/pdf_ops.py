@@ -11,7 +11,6 @@ class Pdf2Md(Pdf2Qa):
                  output_key='docs',
                  reader_url=None,
                  backend='vlm-vllm-async-engine',
-                 upload_mode=True,
                  use_cache=False,
                  **kwargs):
 
@@ -26,7 +25,6 @@ class Pdf2Md(Pdf2Qa):
         self.reader = MineruPDFReader(
             url=reader_url,
             backend=backend,
-            upload_mode=upload_mode
         )
 
     def forward(self, data):

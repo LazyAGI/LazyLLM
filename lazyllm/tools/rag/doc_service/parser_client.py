@@ -34,7 +34,9 @@ class ParserClient:
                 extractor_names: Optional[List[str]] = None,
                 task_type: Optional[str] = None,
                 callback_url: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None,
-                llm_config: Optional[Dict[str, Any]] = None, embed_only: bool = False):
+                llm_config: Optional[Dict[str, Any]] = None,
+                ocr_config: Optional[Dict[str, Any]] = None,
+                embed_only: bool = False):
         req = ParsingAddDocRequest(
             task_id=task_id,
             ng_names=ng_names,
@@ -44,6 +46,7 @@ class ParserClient:
             callback_url=callback_url,
             feedback_url=callback_url,
             llm_config=llm_config,
+            ocr_config=ocr_config,
             embed_only=embed_only,
             file_infos=[ParsingFileInfo(
                 file_path=file_path,

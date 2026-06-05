@@ -19,27 +19,14 @@ from .ocr_ir import (
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
     FigureBlock, CodeBlock,
 )
-from .ocr_reader_base import (
-    _OcrReaderBase,
-    PADDLE_OFFICIAL_ONLINE_URL,
-    _is_paddle_official_online_url,
-)
+from .ocr_reader_base import _OcrReaderBase
+from .ocr_service import OcrServiceVariant, default_online_url, resolve_ocr_variant
 
 lazyllm.config.add('paddle_api_key', str, None, 'PADDLE_API_KEY', description='The API key for PaddleOCR')
 
-JOB_URL = 'https://paddleocr.aistudio-app.com/api/v2/ocr/jobs'
 DEFAULT_MODEL = 'PaddleOCR-VL-1.6'
 MAX_SIZE_MB = 500
 MAX_PAGES = 100
-
-
-def _normalize_paddle_job_url(url: Optional[str]) -> str:
-    raw = (url or '').strip()
-    if not raw:
-        return JOB_URL
-    if _is_paddle_official_online_url(raw):
-        return JOB_URL
-    return raw.rstrip('/')
 
 
 class PaddleOCRPDFReader(_OcrReaderBase):
@@ -53,15 +40,16 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                  drop_types: List[str] = None,
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True,
-                 images_dir: str = None,
+                 image_cache_dir: str = None,
                  dropped_types: Optional[Set[str]] = None,
                  api_key: Optional[str] = None,
                  dynamic_auth: bool = False,
                  auth_strategy: Optional[AuthStrategy] = None,
                  **kwargs):
-        resolved_url = url
-        if _is_paddle_official_online_url(url):
-            resolved_url = PADDLE_OFFICIAL_ONLINE_URL
+        if resolve_ocr_variant('paddleocr', url) == OcrServiceVariant.ONLINE:
+            resolved_url = default_online_url('paddleocr')
+        else:
+            resolved_url = url
         if dynamic_auth:
             token = None
         else:
@@ -70,14 +58,14 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                          dropped_types=drop_types or dropped_types or {
                              'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                          return_trace=return_trace,
-                         image_cache_dir=images_dir or os.path.join(
+                         image_cache_dir=image_cache_dir or os.path.join(
                              lazyllm.config['home'], 'paddleocr_cache'),
                          token=token,
                          dynamic_auth=dynamic_auth,
                          auth_strategy=auth_strategy or ApiKeyHeaderStrategy(
                              'Authorization', 'token {token}'),
                          **kwargs)
-        self._job_url = _normalize_paddle_job_url(resolved_url)
+        self._job_url = (resolved_url or default_online_url('paddleocr')).rstrip('/')
         self._model = kwargs.pop('model', DEFAULT_MODEL)
         self._timeout = kwargs.pop('timeout', None)
 

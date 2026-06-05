@@ -18,18 +18,8 @@ globals.config.add(
 )
 
 
-def _extract_ocr_config(config: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    if not config or not isinstance(config, dict):
-        return None
-    nested = config.get('ocr_config')
-    if isinstance(nested, dict):
-        return nested
-    return None
-
-
-def inject_ocr_config(config: Optional[Dict[str, Any]]) -> None:
-    ocr_config = _extract_ocr_config(config)
-    if not ocr_config:
+def inject_ocr_config(ocr_config: Optional[Dict[str, Any]]) -> None:
+    if not ocr_config or not isinstance(ocr_config, dict):
         return
 
     cleaned = {}

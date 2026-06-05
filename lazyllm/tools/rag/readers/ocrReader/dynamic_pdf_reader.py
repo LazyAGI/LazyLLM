@@ -1,8 +1,9 @@
+from lazyllm import globals as lazyllm_globals
+
 from ..pdfReader import PDFReader
 from ..readerBase import LazyLLMReaderBase
 from .mineru_pdf_reader import MineruPDFReader
 from .paddleocr_pdf_reader import PaddleOCRPDFReader
-from .ocr_reader_base import read_dynamic_ocr_configs
 
 
 class DynamicPDFReader(LazyLLMReaderBase):
@@ -36,7 +37,7 @@ class DynamicPDFReader(LazyLLMReaderBase):
         return normalized
 
     def _resolve_route(self, extra_info: dict | None) -> tuple[str, str]:
-        dynamic_cfg = read_dynamic_ocr_configs() or {}
+        dynamic_cfg = lazyllm_globals.config['dynamic_ocr_configs'] or {}
         extra_info = extra_info or {}
         has_dynamic_type = 'ocr_type' in extra_info or 'ocr_type' in dynamic_cfg
 
@@ -56,24 +57,14 @@ class DynamicPDFReader(LazyLLMReaderBase):
         if ocr_type in ('', 'none'):
             return PDFReader(split_doc=True, return_trace=self._return_trace)
 
-        if ocr_type == 'mineru':
-            kwargs = {
-                'url': ocr_url,
-                'post_func': self._post_func,
-                'timeout': self._timeout,
-                'dynamic_auth': True,
-            }
-            if self._image_cache_dir is not None:
-                kwargs['image_cache_dir'] = self._image_cache_dir
-            return MineruPDFReader(**kwargs)
+        kwargs = dict[str, str | bool](url=ocr_url, dynamic_auth=True)
+        if self._image_cache_dir:
+            kwargs['image_cache_dir'] = self._image_cache_dir
 
-        if ocr_type == 'paddleocr':
-            kwargs = {
-                'url': ocr_url,
-                'dynamic_auth': True,
-            }
-            if self._image_cache_dir is not None:
-                kwargs['images_dir'] = self._image_cache_dir
+        if ocr_type == 'mineru':
+            kwargs.update(timeout=self._timeout, post_func=self._post_func)
+            return MineruPDFReader(**kwargs)
+        elif ocr_type == 'paddleocr':
             return PaddleOCRPDFReader(**kwargs)
 
         raise ValueError(f'Unsupported OCR server type: {ocr_type!r}')

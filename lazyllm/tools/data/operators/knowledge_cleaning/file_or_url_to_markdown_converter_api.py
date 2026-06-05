@@ -212,13 +212,11 @@ class PDFToMarkdownConverterAPI(kbc):
         self,
         mineru_url: str = None,
         mineru_backend: str = 'vlm-vllm-async-engine',
-        upload_mode: bool = True,
         **kwargs,
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.mineru_url = mineru_url
         self.mineru_backend = mineru_backend
-        self.upload_mode = upload_mode
 
     def forward(self, data: dict, **kwargs) -> dict:
         if data.get('_type', '') != 'pdf':
@@ -244,7 +242,6 @@ class PDFToMarkdownConverterAPI(kbc):
             reader = MineruPDFReader(
                 url=self.mineru_url,
                 backend=self.mineru_backend,
-                upload_mode=self.upload_mode,
                 split_doc=False,
             )
 
