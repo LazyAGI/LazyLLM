@@ -15,14 +15,7 @@ from .auth import (AllKeysExhaustedError, AuthStrategy, BearerTokenStrategy,
 from .globals import globals as lazyllm_globals, locals as lazyllm_locals
 
 
-class PickleableLock:
-    '''A threading.Lock wrapper that survives pickle/unpickle cycles.
-
-    The underlying lock is dropped during serialization and recreated on
-    deserialization, so instances can safely be sent across process boundaries
-    (e.g. multiprocessing queues, joblib, Ray).
-    '''
-
+class _PickleableLock:
     def __init__(self):
         self._lock = threading.Lock()
 
@@ -61,7 +54,7 @@ class CredentialMixin:
         self._auth_strategy: AuthStrategy = strategy or BearerTokenStrategy()
         self._skip_auth: bool = skip_auth
         self._dynamic_key_policy: KeySelectPolicy = dynamic_key_policy
-        self._token_lock: PickleableLock = PickleableLock()
+        self._token_lock: _PickleableLock = _PickleableLock()
         self._credential_id: str = uuid.uuid4().hex
 
     def __key_source__(self) -> Any:
