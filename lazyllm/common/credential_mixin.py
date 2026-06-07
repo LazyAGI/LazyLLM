@@ -4,6 +4,7 @@ import requests
 import threading
 import time
 import uuid
+
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -12,6 +13,27 @@ from urllib.parse import parse_qs, urlparse
 from .auth import (AllKeysExhaustedError, AuthStrategy, BearerTokenStrategy,
                    Credential, KeyAuthError, KeyPool, KeySelectPolicy)
 from .globals import globals as lazyllm_globals, locals as lazyllm_locals
+
+
+class _PickleableLock:
+    def __init__(self):
+        self._lock = threading.Lock()
+
+    def acquire(self, blocking=True, timeout=-1):
+        return self._lock.acquire(blocking, timeout)
+
+    def release(self):
+        self._lock.release()
+
+    def __enter__(self):
+        self._lock.acquire()
+        return self
+
+    def __exit__(self, *args):
+        self._lock.release()
+
+    def __reduce__(self):
+        return (_PickleableLock, ())
 
 
 class CredentialMixin:
@@ -29,7 +51,7 @@ class CredentialMixin:
         self._auth_strategy: AuthStrategy = strategy or BearerTokenStrategy()
         self._skip_auth: bool = skip_auth
         self._dynamic_key_policy: KeySelectPolicy = dynamic_key_policy
-        self._token_lock: threading.Lock = threading.Lock()
+        self._token_lock: _PickleableLock = _PickleableLock()
         self._credential_id: str = uuid.uuid4().hex
 
     def __key_source__(self) -> Any:
