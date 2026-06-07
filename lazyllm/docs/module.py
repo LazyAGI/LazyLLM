@@ -3018,7 +3018,7 @@ Minimax 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
 
 Args:
     base_url (str, optional): API 基础地址，默认为 "https://api.minimax.io/v1/"
-    model (str, optional): 使用的模型名称，默认为 "MiniMax-M2.7"
+    model (str, optional): 使用的模型名称，默认为 "MiniMax-M3"
     api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['minimax_api_key'] 中读取
     stream (bool, optional): 是否启用流式输出，默认为 True；启用时会自动设置请求参数
     return_trace (bool, optional): 是否返回追踪信息，默认为 False
@@ -3032,7 +3032,7 @@ Provides large language model chat capabilities based on the Minimax platform.
 
 Args:
     base_url (str, optional): Base API URL, defaults to "https://api.minimax.io/v1/"
-    model (str, optional): Model name to use, defaults to "MiniMax-M2.7"
+    model (str, optional): Model name to use, defaults to "MiniMax-M3"
     api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
     stream (bool, optional): Whether to enable streaming output, defaults to True; automatically configures request parameters when enabled
     return_trace (bool, optional): Whether to return trace information, defaults to False

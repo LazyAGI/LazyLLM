@@ -438,13 +438,9 @@ MODEL_MAPPING = {
     'doubao-embedding-vision-250328': 'cross_modal_embed',
 
     # ===== MiniMax =====
+    'MiniMax-M3': 'llm',
     'MiniMax-M2.7': 'llm',
     'MiniMax-M2.7-highspeed': 'llm',
-    'MiniMax-M2.5': 'llm',
-    'MiniMax-M2.5-highspeed': 'llm',
-    'MiniMax-M2.1': 'llm',
-    'MiniMax-M2': 'llm',
-    'MiniMax-M1': 'llm',
     'image-01': 'sd',
     'speech-2.8-hd': 'tts',
     'speech-2.8-turbo': 'tts',

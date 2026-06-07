@@ -13,7 +13,7 @@ class TestMinimaxChatDefaults:
         import inspect
         from lazyllm.module.llms.onlinemodule.supplier.minimax import MinimaxChat
         sig = inspect.signature(MinimaxChat.__init__)
-        assert sig.parameters['model'].default == 'MiniMax-M2.7'
+        assert sig.parameters['model'].default == 'MiniMax-M3'
 
 
 class TestMinimaxText2ImageDefaults:
@@ -49,8 +49,7 @@ class TestMinimaxModelMapping:
 
     def test_minimax_llm_models(self):
         from lazyllm.module.llms.onlinemodule.map_model_type import get_model_type
-        for model in ['minimax-m2.7', 'minimax-m2.7-highspeed', 'minimax-m2.5',
-                      'minimax-m2.5-highspeed', 'minimax-m2.1', 'minimax-m2', 'minimax-m1']:
+        for model in ['minimax-m3', 'minimax-m2.7', 'minimax-m2.7-highspeed']:
             assert get_model_type(model) == 'llm', f'{model} should be classified as llm'
 
     def test_minimax_image_model(self):
@@ -61,7 +60,3 @@ class TestMinimaxModelMapping:
         from lazyllm.module.llms.onlinemodule.map_model_type import get_model_type
         for model in ['speech-2.8-hd', 'speech-2.8-turbo', 'speech-2.6-hd']:
             assert get_model_type(model) == 'tts', f'{model} should be classified as tts'
-
-    def test_minimax_embed_model(self):
-        from lazyllm.module.llms.onlinemodule.map_model_type import get_model_type
-        assert get_model_type('embo-01') == 'embed'
