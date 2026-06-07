@@ -32,11 +32,8 @@ class _PickleableLock:
     def __exit__(self, *args):
         self._lock.release()
 
-    def __getstate__(self):
-        return {}
-
-    def __setstate__(self, state):
-        self._lock = threading.Lock()
+    def __reduce__(self):
+        return (_PickleableLock, ())
 
 
 class CredentialMixin:
