@@ -327,12 +327,6 @@ class ToolGroup(ToolContainer):
             self._gateway_desc = _build_tool_desc(self._gateway_tool)
 
     def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
-        if self._pick_first_valid:
-            for child, precomputed in zip(self._children, self._expanded_descs):
-                if _child_is_valid(child):
-                    return child.get_flat_tools() if isinstance(child, ToolContainer) \
-                        else {precomputed['function']['name']: child}
-            return {}
         result: Dict[str, ModuleTool] = {}
         if self._gateway_tool is not None:
             result[self._gateway_tool.name] = self._gateway_tool
