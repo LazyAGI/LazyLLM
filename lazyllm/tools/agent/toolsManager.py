@@ -307,6 +307,7 @@ def _build_tool_desc(tool: 'ModuleTool') -> Dict:
 class ToolContainer:
     def get_flat_tools(self) -> Dict[str, 'ModuleTool']: raise NotImplementedError
     def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]: raise NotImplementedError
+    def get_leaf_names(self) -> List[str]: raise NotImplementedError
 
 
 class ToolGroup(ToolContainer):
@@ -344,13 +345,7 @@ class ToolGroup(ToolContainer):
         for child in self._children:
             if isinstance(child, ToolContainer):
                 self._expanded_descs.append(child)
-                if isinstance(child, ToolGroup):
-                    if child._lazy:
-                        self._leaf_names.append(child._gateway_tool.name)
-                    else:
-                        self._leaf_names.extend(child._leaf_names)
-                else:
-                    self._leaf_names.extend(t for t in child.get_flat_tools().keys())
+                self._leaf_names.extend(child.get_leaf_names())
             else:
                 desc = _build_tool_desc(child)
                 final_name = f'{effective_prefix}_{child.name}' if effective_prefix else child.name
@@ -370,12 +365,12 @@ class ToolGroup(ToolContainer):
                     for x in (item.get_description(active_groups) if isinstance(item, ToolContainer) else [item])]
         return [self._gateway_desc]
 
-    def _collect_leaf_names(self) -> List[str]:
-        return self._leaf_names
+    def get_leaf_names(self) -> List[str]:
+        return [self._gateway_tool.name] if self._lazy else self._leaf_names
 
     def make_gateway_tool(self) -> 'ModuleTool':
         group_name = self._name
-        child_names = self._collect_leaf_names()
+        child_names = self._leaf_names
 
         def _gateway_apply() -> str:
             workspace = lazyllm_locals['_lazyllm_agent'].get('workspace', {})
@@ -469,6 +464,10 @@ class ToolGroupWrapper(SkipMixin, ToolContainer):
     def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
         return self._inner.get_flat_tools() if isinstance(self._inner, ToolContainer) \
             else {self._inner.name: self._inner}
+
+    def get_leaf_names(self) -> List[str]:
+        return self._inner.get_leaf_names() if isinstance(self._inner, ToolContainer) \
+            else [self._inner.name]
 
     def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
         if self.should_skip(): return []
