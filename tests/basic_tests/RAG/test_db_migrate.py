@@ -194,3 +194,38 @@ def test_dev_file_merge(tmp_path, monkeypatch):
 
 
 import re  # noqa: E402 — used inside test_dev_file_merge
+
+
+# ------------------------------------------------------------------
+# Scenario 6: concurrent calls (multi-thread safety)
+# ------------------------------------------------------------------
+
+def test_concurrent_migration(tmp_path):
+    import threading
+    engine = create_engine(f'sqlite:///{tmp_path}/concurrent.db')
+    errors = []
+    results = []
+
+    def worker():
+        try:
+            run_migrations(engine)
+            results.append('ok')
+        except Exception as exc:
+            errors.append(str(exc))
+
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f'Concurrent migration raised errors: {errors}'
+    # All versions applied exactly once
+    assert _applied(engine) == {'0001', '0002', '0003'}
+    # No leftover lock row
+    with engine.connect() as conn:
+        lock_row = conn.execute(
+            text('SELECT 1 FROM lazyllm_schema_migrations WHERE version = :v'),
+            {'v': '__migrating__'},
+        ).fetchone()
+    assert lock_row is None, 'Lock sentinel row should be cleaned up'

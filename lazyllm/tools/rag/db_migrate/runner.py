@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import os
 import re
+import time
 from datetime import datetime
 
 import sqlalchemy
@@ -12,6 +13,10 @@ from lazyllm import LOG
 
 _VERSIONS_DIR = os.path.join(os.path.dirname(__file__), 'versions')
 _MIGRATIONS_TABLE = 'lazyllm_schema_migrations'
+_LOCK_VERSION = '__migrating__'
+# Seconds to wait for another process/thread to finish migrating
+_LOCK_TIMEOUT = 120
+_LOCK_POLL_INTERVAL = 1
 
 
 class MigrationRunner:
@@ -20,15 +25,82 @@ class MigrationRunner:
 
     def run_up(self):
         self._ensure_version_table()
-        self._detect_and_bootstrap()
-        applied = self._applied_versions()
-        pending = self._pending_versions(applied)
-        for version, name, module_path in pending:
-            LOG.info(f'[db_migrate] applying {version} ({name})')
-            mod = importlib.import_module(module_path)
-            mod.up(self._engine)
-            self._record_version(version, name)
-            LOG.info(f'[db_migrate] applied  {version}')
+        if not self._acquire_lock():
+            # Another process is already migrating; wait until it finishes
+            self._wait_for_migration()
+            return
+        try:
+            self._detect_and_bootstrap()
+            applied = self._applied_versions()
+            pending = self._pending_versions(applied)
+            for version, name, module_path in pending:
+                LOG.info(f'[db_migrate] applying {version} ({name})')
+                mod = importlib.import_module(module_path)
+                mod.up(self._engine)
+                self._record_version(version, name)
+                LOG.info(f'[db_migrate] applied  {version}')
+        finally:
+            self._release_lock()
+
+    # ------------------------------------------------------------------
+    # Distributed lock: INSERT a sentinel row to claim the migration slot
+    # ------------------------------------------------------------------
+
+    def _acquire_lock(self) -> bool:
+        try:
+            with self._engine.connect() as conn:
+                result = conn.execute(
+                    text(
+                        f'INSERT OR IGNORE INTO {_MIGRATIONS_TABLE} (version, name, applied_at) '
+                        'VALUES (:v, :n, :t)'
+                    ),
+                    {'v': _LOCK_VERSION, 'n': _LOCK_VERSION, 't': datetime.now()},
+                )
+                conn.commit()
+                # rowcount == 1 means we inserted the row (lock acquired)
+                return result.rowcount == 1
+        except Exception as exc:
+            LOG.warning(f'[db_migrate] could not acquire migration lock: {exc}')
+            return False
+
+    def _release_lock(self):
+        try:
+            with self._engine.connect() as conn:
+                conn.execute(
+                    text(f'DELETE FROM {_MIGRATIONS_TABLE} WHERE version = :v'),
+                    {'v': _LOCK_VERSION},
+                )
+                conn.commit()
+        except Exception as exc:
+            LOG.warning(f'[db_migrate] could not release migration lock: {exc}')
+
+    def _lock_exists(self) -> bool:
+        with self._engine.connect() as conn:
+            row = conn.execute(
+                text(f'SELECT 1 FROM {_MIGRATIONS_TABLE} WHERE version = :v'),
+                {'v': _LOCK_VERSION},
+            ).fetchone()
+        return row is not None
+
+    def _wait_for_migration(self):
+        LOG.info('[db_migrate] another process is migrating; waiting…')
+        all_versions = {v for v, _, _ in self._sorted_version_files()}
+        deadline = time.monotonic() + _LOCK_TIMEOUT
+        while time.monotonic() < deadline:
+            time.sleep(_LOCK_POLL_INTERVAL)
+            lock_held = self._lock_exists()
+            applied = self._applied_versions()
+            if not lock_held and all_versions.issubset(applied):
+                LOG.info('[db_migrate] migration finished by peer process')
+                return
+            if not lock_held:
+                # Lock released but migrations incomplete — take over
+                LOG.warning('[db_migrate] peer released lock with incomplete migrations; taking over')
+                self.run_up()
+                return
+        raise RuntimeError(
+            f'[db_migrate] timed out after {_LOCK_TIMEOUT}s waiting for peer migration to complete'
+        )
 
     # ------------------------------------------------------------------
     # Version table helpers
@@ -48,7 +120,8 @@ class MigrationRunner:
     def _applied_versions(self):
         with self._engine.connect() as conn:
             rows = conn.execute(
-                text(f'SELECT version FROM {_MIGRATIONS_TABLE}')
+                text(f'SELECT version FROM {_MIGRATIONS_TABLE} WHERE version != :lock'),
+                {'lock': _LOCK_VERSION},
             ).fetchall()
         return {r[0] for r in rows}
 
