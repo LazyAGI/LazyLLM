@@ -107,7 +107,11 @@ def merge(name: str, db_url: str | None = None):
 def _update_db_records(db_url: str, dev_versions: list, release_version: str, name: str):
     try:
         from sqlalchemy import create_engine, text as _text
+        from .runner import _insert_ignore_sql
         engine = create_engine(db_url)
+        insert_sql = _insert_ignore_sql(
+            engine, _MIGRATIONS_TABLE, ('version', 'name', 'applied_at')
+        )
         with engine.connect() as conn:
             for dv in dev_versions:
                 conn.execute(
@@ -115,11 +119,12 @@ def _update_db_records(db_url: str, dev_versions: list, release_version: str, na
                     {'v': dv},
                 )
             conn.execute(
-                _text(
-                    f'INSERT OR IGNORE INTO {_MIGRATIONS_TABLE} (version, name, applied_at) '
-                    'VALUES (:v, :n, :t)'
-                ),
-                {'v': release_version, 'n': f'{release_version}_{name}', 't': datetime.now()},
+                _text(insert_sql),
+                {
+                    'version': release_version,
+                    'name': f'{release_version}_{name}',
+                    'applied_at': datetime.now(),
+                },
             )
             conn.commit()
         LOG.info(f'Updated DB: replaced {dev_versions} → {release_version}')

@@ -19,6 +19,23 @@ _LOCK_TIMEOUT = 120
 _LOCK_POLL_INTERVAL = 1
 
 
+def _dialect(engine) -> str:
+    return engine.dialect.name  # 'sqlite', 'mysql', 'postgresql', etc.
+
+
+def _insert_ignore_sql(engine, table: str, cols: tuple) -> str:
+    col_list = ', '.join(cols)
+    placeholders = ', '.join(f':{c}' for c in cols)
+    dialect = _dialect(engine)
+    if dialect == 'sqlite':
+        return f'INSERT OR IGNORE INTO {table} ({col_list}) VALUES ({placeholders})'
+    if dialect == 'mysql':
+        return f'INSERT IGNORE INTO {table} ({col_list}) VALUES ({placeholders})'
+    # PostgreSQL and others (e.g. oracle, mssql use different syntax, but
+    # ON CONFLICT DO NOTHING covers all standard SQL:2003 compliant DBs)
+    return f'INSERT INTO {table} ({col_list}) VALUES ({placeholders}) ON CONFLICT DO NOTHING'
+
+
 class MigrationRunner:
     def __init__(self, engine):
         self._engine = engine
@@ -48,13 +65,13 @@ class MigrationRunner:
 
     def _acquire_lock(self) -> bool:
         try:
+            sql = _insert_ignore_sql(
+                self._engine, _MIGRATIONS_TABLE, ('version', 'name', 'applied_at')
+            )
             with self._engine.connect() as conn:
                 result = conn.execute(
-                    text(
-                        f'INSERT OR IGNORE INTO {_MIGRATIONS_TABLE} (version, name, applied_at) '
-                        'VALUES (:v, :n, :t)'
-                    ),
-                    {'v': _LOCK_VERSION, 'n': _LOCK_VERSION, 't': datetime.now()},
+                    text(sql),
+                    {'version': _LOCK_VERSION, 'name': _LOCK_VERSION, 'applied_at': datetime.now()},
                 )
                 conn.commit()
                 # rowcount == 1 means we inserted the row (lock acquired)
@@ -107,14 +124,26 @@ class MigrationRunner:
     # ------------------------------------------------------------------
 
     def _ensure_version_table(self):
-        with self._engine.connect() as conn:
-            conn.execute(text(
+        dialect = _dialect(self._engine)
+        if dialect == 'mysql':
+            # MySQL (utf8mb4) requires explicit length for TEXT primary keys
+            ddl = (
+                f'CREATE TABLE IF NOT EXISTS {_MIGRATIONS_TABLE} ('
+                '  version VARCHAR(191) PRIMARY KEY,'
+                '  name VARCHAR(512) NOT NULL,'
+                '  applied_at DATETIME NOT NULL'
+                ') CHARACTER SET utf8mb4'
+            )
+        else:
+            ddl = (
                 f'CREATE TABLE IF NOT EXISTS {_MIGRATIONS_TABLE} ('
                 '  version TEXT PRIMARY KEY,'
                 '  name TEXT NOT NULL,'
                 '  applied_at TIMESTAMP NOT NULL'
                 ')'
-            ))
+            )
+        with self._engine.connect() as conn:
+            conn.execute(text(ddl))
             conn.commit()
 
     def _applied_versions(self):
@@ -126,25 +155,22 @@ class MigrationRunner:
         return {r[0] for r in rows}
 
     def _record_version(self, version: str, name: str):
+        sql = _insert_ignore_sql(
+            self._engine, _MIGRATIONS_TABLE, ('version', 'name', 'applied_at')
+        )
         with self._engine.connect() as conn:
-            conn.execute(
-                text(
-                    f'INSERT OR IGNORE INTO {_MIGRATIONS_TABLE} (version, name, applied_at) '
-                    'VALUES (:v, :n, :t)'
-                ),
-                {'v': version, 'n': name, 't': datetime.now()},
-            )
+            conn.execute(text(sql), {'version': version, 'name': name, 'applied_at': datetime.now()})
             conn.commit()
 
     def _record_versions_bulk(self, pairs: list):
+        sql = _insert_ignore_sql(
+            self._engine, _MIGRATIONS_TABLE, ('version', 'name', 'applied_at')
+        )
         with self._engine.connect() as conn:
             for version, name in pairs:
                 conn.execute(
-                    text(
-                        f'INSERT OR IGNORE INTO {_MIGRATIONS_TABLE} (version, name, applied_at) '
-                        'VALUES (:v, :n, :t)'
-                    ),
-                    {'v': version, 'n': name, 't': datetime.now()},
+                    text(sql),
+                    {'version': version, 'name': name, 'applied_at': datetime.now()},
                 )
             conn.commit()
 
