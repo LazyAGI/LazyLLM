@@ -318,22 +318,23 @@ class MineruPDFReader(_OcrReaderBase):
     def _fetch_async_by_upload(self, file_path: str, task_dir: Optional['Path'] = None):
         '''Upload a local file via batch presigned URL and fetch result.'''
         fname = os.path.basename(file_path)
-        headers = self.inject_auth_header({'Content-Type': 'application/json'})
 
         # Step 1: Request presigned upload URL
         payload = {
             'files': [{'name': fname}],
             'model_version': 'vlm',
         }
-        resp = post_sync(
+        resp = self._request(
+            'POST',
             'https://mineru.net/api/v4/file-urls/batch',
-            json_payload=payload,
-            headers=headers,
+            json=payload,
+            headers={'Content-Type': 'application/json'},
             timeout=self._timeout,
         )
         data = resp.json()
         batch_id = data['data']['batch_id']
         file_url = data['data']['file_urls'][0]
+        auth_key = self._auth_key_after_successful_request()
 
         # Step 2: Upload file to OSS
         _t2 = time.time()
@@ -347,8 +348,12 @@ class MineruPDFReader(_OcrReaderBase):
         _t3 = time.time()
         status_url = f'https://mineru.net/api/v4/extract-results/batch/{batch_id}'
         for _ in range(120):
-            status_resp = requests.get(status_url, headers=headers, timeout=self._timeout or 30)
-            status_resp.raise_for_status()
+            status_resp = self._request_with_pinned_auth(
+                'GET',
+                status_url,
+                auth_key,
+                timeout=self._timeout or 30,
+            )
             status_data = status_resp.json()
             extract_result = status_data.get('data', {}).get('extract_result', [])
             if extract_result:

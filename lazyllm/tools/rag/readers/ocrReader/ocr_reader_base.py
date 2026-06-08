@@ -1,10 +1,11 @@
 import json
 import os
 import shutil
-from typing import Optional, Callable, Set, List, Dict, Tuple
+from typing import Optional, Callable, Set, List, Dict, Tuple, Any
 from pathlib import Path
 
 from lazyllm import globals as lazyllm_globals
+from lazyllm import locals as lazyllm_locals
 from lazyllm.thirdparty import bs4, pypdf
 from lazyllm.common import AuthStrategy, BearerTokenStrategy, CredentialMixin
 from ..readerBase import _RichReader
@@ -60,6 +61,23 @@ class _OcrReaderBase(_RichReader, _Adapter, CredentialMixin):
             f'use inject_ocr_config(..., ocr_auth={{"{self._auth_source_key}": "..."}}) '
             f'or set globals.config["dynamic_ocr_auth"] before OCR parsing'
         )
+
+    def _auth_key_after_successful_request(self) -> str:
+        pool = self._get_active_pool()
+        if pool is not None:
+            key = pool._get_state().get('last_success')
+            if key:
+                return key
+        return self._get_token()
+
+    def _request_with_pinned_auth(self, method: str, url: str, auth_key: str, **kwargs) -> Any:
+        lazyllm_locals['curr_key'][self._credential_id] = auth_key
+        try:
+            incoming_headers = kwargs.pop('headers', None)
+            headers = self.inject_auth_header(incoming_headers)
+            return self._http_execute(method, url, headers=headers, **kwargs)
+        finally:
+            lazyllm_locals['curr_key'].pop(self._credential_id, None)
 
     @staticmethod
     def _split_large_pdf(pdf_path: str, max_size_mb: int = 200,
