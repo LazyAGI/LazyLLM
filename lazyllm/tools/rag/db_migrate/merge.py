@@ -37,7 +37,7 @@ def _next_release_number():
 
 
 def _extract_up_body(filepath: str) -> str:
-    with open(filepath) as f:
+    with open(filepath, encoding='utf-8') as f:
         source = f.read()
     tree = ast.parse(source)
     for node in ast.walk(tree):
@@ -90,7 +90,7 @@ def merge(name: str, db_url: str | None = None):
         f'{merged_body}\n'
     )
 
-    with open(release_path, 'w') as f:
+    with open(release_path, 'w', encoding='utf-8') as f:
         f.write(content)
     LOG.info(f'Created: {release_filename}')
 

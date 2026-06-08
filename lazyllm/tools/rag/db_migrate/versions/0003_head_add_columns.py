@@ -44,10 +44,10 @@ def _add_columns_if_missing(conn, inspector, table_name: str, columns: list):
 
 
 def up(engine) -> None:
-    inspector = sqlalchemy.inspect(engine)
-    existing_tables = set(inspector.get_table_names())
-
     with engine.connect() as conn:
+        inspector = sqlalchemy.inspect(conn)
+        existing_tables = set(inspector.get_table_names())
+
         if _PARSE_STATE_TABLE in existing_tables:
             _add_columns_if_missing(conn, inspector, _PARSE_STATE_TABLE, _PARSE_STATE_COLS)
         else:
