@@ -122,6 +122,82 @@ fc_register("tool")(get_current_weather, "another_get_current_weather")
 
 Thus, the function `get_current_weather` is registered as a tool named `another_get_current_weather`.
 
+### Hierarchical Tool Groups (ToolGroup)
+
+When the number of tools is large, injecting all tool descriptions into the system prompt at once significantly increases context length and can degrade model performance. LazyLLM provides a **hierarchical tool group** mechanism that lets you pass a `dict` to the `tools` list to define a tool group:
+
+```python
+tools = [
+    tool1,
+    dict(name='search', desc='Search tools', tools=[search_web, search_news]),
+    dict(name='advanced', desc='Advanced tools', tools=[
+        tool2,
+        dict(name='sub_ops', desc='Sub-tools', tools=[tool3, tool4]),
+    ]),
+]
+agent = ReactAgent(llm, tools=tools)
+```
+
+`dict` field reference:
+
+- `name` (required): Tool group name, used to generate the gateway tool `get_<name>_methods`.
+- `tools` (required): Child tool list; elements can be functions, `ModuleTool` instances, or nested `dict`s.
+- `desc` (optional): Tool group description shown to the LLM as the gateway tool's summary.
+- `lazy` (optional, default `True`): Whether to use lazy mode.
+
+**Lazy mode** (default) workflow:
+
+1. The initial system prompt contains only the `get_search_methods` gateway tool—child tools are not expanded.
+2. When the LLM determines that a search is needed, it first calls `get_search_methods()`, which returns:
+   ```
+   Activated tool group "search". Available tools: search_web, search_news
+   ```
+3. In the next LLM call, the system prompt automatically includes the full descriptions of `search_web` and `search_news`, and the LLM selects and calls the appropriate one.
+
+**Eager mode** (`lazy=False`): All child tool descriptions are expanded and injected into the system prompt immediately, identical to normal tool registration.
+
+For multi-level nesting, the same rule applies at each level—once the outer gateway is activated, the inner sub-group's gateway tool appears in the system prompt, and so on.
+
+### Pick-First-Valid Tool Group (pick_first_valid)
+
+When multiple equivalent services act as fallbacks for each other (e.g. Google, Bing, DuckDuckGo), you only need to expose whichever service the user has a key for. Use `pick_first_valid=True` for this:
+
+```python
+import lazyllm
+from lazyllm.tools import ReactAgent
+
+llm = lazyllm.OnlineChatModule()
+
+# Assume only BING_API_KEY is set; GOOGLE_API_KEY is absent
+search_group = dict(
+    name='search',
+    desc='Search engine tool',
+    pick_first_valid=True,
+    tools=[
+        (google_search_tool, 'env.GOOGLE_API_KEY'),   # no key, skipped
+        (bing_search_tool,   'env.BING_API_KEY'),     # key present, selected
+        duckduckgo_tool,                               # no key required, always valid fallback
+    ],
+)
+
+agent = ReactAgent(llm, tools=[search_group, calculator])
+```
+
+**How it works:**
+
+- All tools are registered in `ToolManager._tool_call` at init time regardless of key state.
+- On every forward call, credentials are checked in order; only the first valid tool's description is returned to the LLM.
+- Different sessions with different keys naturally select different tools without interference.
+- If no child tool has a valid credential, the tool group is completely invisible to the LLM (empty list).
+- Enabling `pick_first_valid=True` forces `lazy=False` (no progressive disclosure needed).
+
+`dict` fields for pick-first-valid:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `pick_first_valid` | `bool` | `False` | Enable pick-first-valid mode |
+| `lazy` | `bool` | `True` | Automatically ignored (forced False) in pick-first-valid mode |
+
 If we do not intend to register the tool as globally visible, we can also pass the tool itself directly when calling FunctionCall, like this:
 
 ```python
