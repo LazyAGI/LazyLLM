@@ -128,13 +128,15 @@ ToolManager是一个工具管理类，用于提供工具信息和工具调用给
 - 带有 ``__public_apis__`` 的对象实例（自动包装为 ``InstanceToolGroup``）；
   若该类继承自 ``CredentialMixin``，则自动以 ``get_current_token()`` 作为凭据来源，token 为空时该组工具对 LLM 不可见。
 - ``(instance, key_source)`` 元组（带凭据来源的实例工具组）
-- ``dict``：直接定义一个工具组，格式为 ``dict(name='grp', desc='...', tools=[...], lazy=True)``，其中 ``name`` 和 ``tools`` 为必填字段；
-  可选字段 ``key_source`` 用于绑定运行时凭据来源，语义与 ``(instance, key_source)`` 元组中的 ``key_source`` 相同，凭据不存在时整组工具对 LLM 不可见。
+- ``dict``：直接定义一个工具组，格式为 ``dict(name='grp', desc='...', tools=[...], lazy=True, pick_first_valid=False)``，其中 ``name`` 和 ``tools`` 为必填字段；
+  可选字段 ``key_source`` 用于绑定运行时凭据来源，语义与 ``(instance, key_source)`` 元组中的 ``key_source`` 相同，凭据不存在时整组工具对 LLM 不可见；
+  可选字段 ``pick_first_valid=True`` 启用 N选1 模式，见下文说明。
 
-工具组（``ToolGroup``）支持两种模式：
+工具组（``ToolGroup``）支持三种模式：
 
 - **lazy 模式**（默认）：初始只向 LLM 暴露一个 ``get_<name>_methods`` 工具；LLM 调用该工具后，该组的子工具描述会动态注入 system prompt，LLM 在下一轮中再选择并调用具体工具。适合工具数量多、希望减少上下文长度的场景。
 - **eager 模式**（``lazy=False``）：直接把所有子工具描述展开注入 system prompt，与旧行为一致。
+- **N选1 模式**（``pick_first_valid=True``）：从子工具中找到第一个凭据有效的工具，只向 LLM 暴露该工具。适合多个同类服务互为备份的场景（如多搜索引擎）。启用时 ``lazy`` 自动置为 ``False``。
 
 工具组支持多级嵌套，子节点可以是普通工具或另一个工具组（通过嵌套 ``dict`` 定义）。
 
@@ -155,14 +157,16 @@ When constructing this management class, you pass in a list of tools. Each eleme
   If the class inherits from ``CredentialMixin``, ``get_current_token()`` is automatically used as the credential source;
   when the token is empty the entire tool group is hidden from the LLM.
 - A ``(instance, key_source)`` tuple (instance tool group with a runtime credential source)
-- A ``dict``: defines a tool group inline, with the format ``dict(name='grp', desc='...', tools=[...], lazy=True)``. ``name`` and ``tools`` are required fields.
+- A ``dict``: defines a tool group inline, with the format ``dict(name='grp', desc='...', tools=[...], lazy=True, pick_first_valid=False)``. ``name`` and ``tools`` are required fields.
   The optional ``key_source`` field binds a runtime credential source with the same semantics as the ``key_source`` in a ``(instance, key_source)`` tuple;
   when the credential is absent the entire group is hidden from the LLM.
+  The optional ``pick_first_valid=True`` field enables pick-first-valid mode; see below.
 
-Tool groups (``ToolGroup``) support two modes:
+Tool groups (``ToolGroup``) support three modes:
 
 - **lazy mode** (default): Initially only a ``get_<name>_methods`` gateway tool is exposed to the LLM. After the LLM calls it, the child tool descriptions are dynamically injected into the system prompt, and the LLM selects and calls the actual tool in the next turn. Suitable when there are many tools and you want to reduce context length.
 - **eager mode** (``lazy=False``): All child tool descriptions are expanded and injected into the system prompt immediately, matching the previous behavior.
+- **pick-first-valid mode** (``pick_first_valid=True``): Scans the child list and exposes only the first tool whose credential is currently valid. Designed for scenarios where multiple equivalent services act as fallbacks (e.g. multiple search engines). ``lazy`` is forced to ``False`` in this mode.
 
 Tool groups support multi-level nesting; child nodes can be plain tools or another tool group (defined via a nested ``dict``).
 
@@ -2089,14 +2093,17 @@ Returns:
 ''')
 
 add_toolsmgr_chinese_doc('ToolGroup', '''\
-工具组类，用于将多个工具（或子工具组）组织为一个有名称的集合，并以 lazy 或 eager 模式向 LLM 暴露。
+工具组类，用于将多个工具（或子工具组）组织为一个有名称的集合，并以 lazy、eager 或 N选1 模式向 LLM 暴露。
 
-支持两种模式：
+支持三种模式：
 
 - **lazy 模式**（默认，``lazy=True``）：初始只向 LLM 暴露一个 ``get_<name>_methods`` gateway 工具。
   LLM 调用该工具后，子工具描述动态注入 system prompt，LLM 在下一轮中再选择并调用具体工具。
   适合工具数量多、希望减少初始上下文长度的场景。
 - **eager 模式**（``lazy=False``）：直接把所有子工具描述展开注入 system prompt，与旧行为一致。
+- **N选1 模式**（``pick_first_valid=True``）：从子工具列表中找到第一个当前凭据有效的工具，只向 LLM 暴露该工具。
+  适合多个同类服务互为备份的场景（如多个搜索引擎），根据用户配置的 key 自动选择其中一个可用服务。
+  启用此模式时 ``lazy`` 自动置为 ``False``（N选1 不需要渐进式披露）。
 
 支持多级嵌套：子 ``tools`` 列表中可以包含普通工具（函数、``ModuleTool``）或另一个 ``ToolGroup``（通过嵌套 ``dict`` 定义）。
 
@@ -2111,25 +2118,36 @@ add_toolsmgr_chinese_doc('ToolGroup', '''\
             tool2,
             dict(name='sub_ops', desc='子工具集', lazy=False, tools=[tool3, tool4]),
         ]),
+        # N选1：根据 key 选择第一个有效的搜索引擎
+        dict(name='engine', desc='搜索引擎', pick_first_valid=True, tools=[
+            (google_tool, 'env.GOOGLE_API_KEY'),
+            (bing_tool,   'env.BING_API_KEY'),
+            fallback_tool,  # 无需 key，永远有效，作为兜底
+        ]),
     ]
 
 Args:
     tools (List): 子工具列表，每个元素可以是函数、``ModuleTool`` 实例、``ToolGroup`` 实例，或嵌套 ``dict``（格式同上）。
     name (str): 工具组名称，必填。用于生成 gateway 工具名 ``get_<name>_methods``，以及在激活后标识该组。
     desc (str): 工具组描述，会作为 gateway 工具的 description 展示给 LLM。
-    lazy (bool): 是否使用 lazy 模式，默认 True。
+    lazy (bool): 是否使用 lazy 模式，默认 True。``pick_first_valid=True`` 时自动忽略此参数（强制非 lazy）。
+    pick_first_valid (bool): 是否启用 N选1 模式，默认 False。启用后从子工具中选择第一个凭据有效的工具暴露给 LLM；
+        所有工具仍全量注册到 ``_tool_call``，每次 ``get_description`` 调用时实时检查凭据状态，不同 session 可选出不同工具。
     key_source: 凭据来源，格式与 ``InstanceToolGroup`` 的 ``key_source`` 参数相同。凭据不可用时整个工具组从 LLM 可见列表中隐藏。
 ''')
 
 add_toolsmgr_english_doc('ToolGroup', '''\
-Tool group class that organizes multiple tools (or sub-groups) into a named collection and exposes them to the LLM in lazy or eager mode.
+Tool group class that organizes multiple tools (or sub-groups) into a named collection and exposes them to the LLM in lazy, eager, or pick-first-valid mode.
 
-Two modes are supported:
+Three modes are supported:
 
 - **lazy mode** (default, ``lazy=True``): Initially only a ``get_<name>_methods`` gateway tool is exposed to the LLM.
   After the LLM calls it, child tool descriptions are dynamically injected into the system prompt, and the LLM selects and calls the actual tool in the next turn.
   Suitable when there are many tools and you want to reduce the initial context length.
 - **eager mode** (``lazy=False``): All child tool descriptions are expanded and injected into the system prompt immediately, matching the previous behavior.
+- **pick-first-valid mode** (``pick_first_valid=True``): Scans the child tool list and exposes only the first tool whose credential is currently valid.
+  Designed for scenarios where multiple equivalent services act as fallbacks for each other (e.g. multiple search engines); the framework automatically selects whichever service has a valid key configured.
+  ``lazy`` is forced to ``False`` in this mode (no progressive disclosure needed).
 
 Multi-level nesting is supported: the ``tools`` list can contain plain tools (functions, ``ModuleTool``) or another ``ToolGroup`` (defined via a nested ``dict``).
 
@@ -2144,13 +2162,21 @@ Typically you do not instantiate ``ToolGroup`` directly; instead, pass a ``dict`
             tool2,
             dict(name='sub_ops', desc='Sub-tools', lazy=False, tools=[tool3, tool4]),
         ]),
+        # Pick-first-valid: select the first available search engine based on configured keys
+        dict(name='engine', desc='Search engine', pick_first_valid=True, tools=[
+            (google_tool, 'env.GOOGLE_API_KEY'),
+            (bing_tool,   'env.BING_API_KEY'),
+            fallback_tool,  # no key required, always valid, serves as a fallback
+        ]),
     ]
 
 Args:
     tools (List): Child tool list. Each element can be a function, ``ModuleTool`` instance, ``ToolGroup`` instance, or a nested ``dict`` (same format as above).
     name (str): Tool group name. Required. Used to generate the gateway tool name ``get_<name>_methods`` and to identify the group after activation.
     desc (str): Tool group description, shown to the LLM as the gateway tool's description.
-    lazy (bool): Whether to use lazy mode. Defaults to True.
+    lazy (bool): Whether to use lazy mode. Defaults to True. Ignored (forced False) when ``pick_first_valid=True``.
+    pick_first_valid (bool): Whether to enable pick-first-valid mode. Defaults to False. When enabled, only the first child tool with a valid credential is exposed to the LLM.
+        All tools are still registered in ``_tool_call``; the credential check runs on every ``get_description`` call, so different sessions can select different tools.
     key_source: Credential source, same format as the ``key_source`` parameter of ``InstanceToolGroup``. When the credential is unavailable, the entire tool group is hidden from the LLM.
 ''')
 
@@ -2226,6 +2252,58 @@ Activated tool group "search". Available tools: search_web, search_news
 ... ])
 >>> [d['function']['name'] for d in tm3.tools_description]
 ['get_outer_methods']
+>>>
+>>> # Pick-first-valid mode: select the first search engine with a valid key
+>>> import os
+>>> os.environ.pop('FAKE_GOOGLE_KEY', None)
+>>> os.environ['FAKE_BING_KEY'] = 'bing_secret'
+>>>
+>>> def google_search(query: str) -> str:
+...     \"\"\"Search using Google.
+...
+...     Args:
+...         query (str): Search query.
+...
+...     Returns:
+...         str: Google results.
+...     \"\"\"
+...     return f"google: {query}"
+...
+>>> def bing_search(query: str) -> str:
+...     \"\"\"Search using Bing.
+...
+...     Args:
+...         query (str): Search query.
+...
+...     Returns:
+...         str: Bing results.
+...     \"\"\"
+...     return f"bing: {query}"
+...
+>>> def ddg_search(query: str) -> str:
+...     \"\"\"Search using DuckDuckGo (no key required).
+...
+...     Args:
+...         query (str): Search query.
+...
+...     Returns:
+...         str: DuckDuckGo results.
+...     \"\"\"
+...     return f"ddg: {query}"
+...
+>>> # google key absent, bing key present → bing_search is selected
+>>> tm_pfv = ToolManager([
+...     dict(name='engine', desc='Search engine', pick_first_valid=True, tools=[
+...         (google_search, 'env.FAKE_GOOGLE_KEY'),
+...         (bing_search,   'env.FAKE_BING_KEY'),
+...         ddg_search,  # no key, always valid, serves as fallback
+...     ]),
+... ])
+>>> [d['function']['name'] for d in tm_pfv.tools_description]
+['bing_search']
+>>> # All tools are registered; execution still works regardless of which was exposed
+>>> list(tm_pfv.tools_info.keys())
+['google_search', 'bing_search', 'ddg_search']
 ''')
 
 add_toolsmgr_chinese_doc('MethodModuleTool', '''\
@@ -2277,6 +2355,7 @@ Returns:
 add_toolsmgr_chinese_doc('ToolGroup.get_description', '''\
 返回当前工具组在给定激活状态下应向 LLM 暴露的工具描述列表（OpenAI function calling 格式）。
 
+- 若工具组处于 **N选1 模式**（``pick_first_valid=True``）：遍历子工具，返回第一个凭据有效的工具的描述（一个元素的列表）；若全部无效则返回空列表。每次调用时实时检查凭据，不同 session 可得到不同结果。
 - 若工具组处于 lazy 模式且尚未被激活（即 ``name`` 不在 ``active_groups`` 中），则只返回 gateway 工具的描述（一个元素的列表）。
 - 若工具组处于 eager 模式，或已被激活，则递归展开所有子工具的描述并返回。
 
@@ -2290,6 +2369,7 @@ Returns:
 add_toolsmgr_english_doc('ToolGroup.get_description', '''\
 Returns the list of tool descriptions (in OpenAI function calling format) that should be exposed to the LLM given the current activation state.
 
+- If the group is in **pick-first-valid mode** (``pick_first_valid=True``): scans the child list and returns the description of the first tool whose credential is currently valid (single-element list); returns an empty list if all tools are invalid. The credential check runs on every call, so different sessions can get different results.
 - If the group is in lazy mode and has not yet been activated (i.e. ``name`` is not in ``active_groups``), only the gateway tool description is returned (a single-element list).
 - If the group is in eager mode, or has been activated, all child tool descriptions are recursively expanded and returned.
 
@@ -2366,6 +2446,28 @@ Args:
 
 Returns:
     List[Dict]: List of tool description dicts.
+''')
+
+add_toolsmgr_chinese_doc('ToolContainer.get_leaf_names', '''\
+返回该容器对外暴露的"叶子工具名"列表，用于父工具组构建 gateway 工具的可用工具提示。
+
+- 对 lazy ``ToolGroup``：返回 ``[gateway_tool.name]``，即 ``['get_<name>_methods']``。
+- 对 eager/pick_first_valid ``ToolGroup``：返回所有展开的子工具名列表。
+- 对 ``ToolGroupWrapper``：委托给内部工具，若内部是 ``ToolContainer`` 则递归；否则返回 ``[inner.name]``。
+
+Returns:
+    List[str]: 叶子工具名列表。
+''')
+
+add_toolsmgr_english_doc('ToolContainer.get_leaf_names', '''\
+Returns the list of "leaf tool names" exposed by this container, used by the parent tool group to build the gateway tool's available-tools hint.
+
+- For a lazy ``ToolGroup``: returns ``[gateway_tool.name]``, i.e. ``['get_<name>_methods']``.
+- For an eager or pick-first-valid ``ToolGroup``: returns the full list of expanded child tool names.
+- For a ``ToolGroupWrapper``: delegates to the inner tool; recurses if the inner object is a ``ToolContainer``, otherwise returns ``[inner.name]``.
+
+Returns:
+    List[str]: List of leaf tool names.
 ''')
 
 add_toolsmgr_chinese_doc('SkipMixin', '''\

@@ -111,7 +111,7 @@ class TestReactAgentEvents(object):
         result = agent('add one to 1')
         events = _read_agent_events()
 
-        event_types = [event.type for event in events]
+        event_types = [event.tag for event in events]
         assert result == 'The answer is 2.'
         assert 'think' in event_types
         assert 'text' in event_types
@@ -143,7 +143,7 @@ class TestReactAgentEvents(object):
         deadline = time.time() + 1
         while thread.is_alive() and time.time() < deadline:
             events = _read_agent_events()
-            seen_types.extend(event.type for event in events)
+            seen_types.extend(event.tag for event in events)
             if 'think' in seen_types or 'text' in seen_types:
                 break
             time.sleep(0.01)
@@ -186,7 +186,7 @@ class TestPlanAndSolveAgentEvents(object):
         result = stream_agent('add one to 1')
         events = _read_agent_events()
 
-        event_types = [event.type for event in events]
+        event_types = [event.tag for event in events]
         assert result == 'The answer is 2.'
         assert event_types.index('plan_started') < event_types.index('plan_finished')
         assert 'think' in event_types

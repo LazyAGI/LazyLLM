@@ -206,6 +206,46 @@ agent = ReactAgent(llm, tools=tools)
 
 多级嵌套时，每一层都遵循相同规则——激活外层 gateway 后，内层子组的 gateway 工具才会出现在 system prompt 中，依此类推。
 
+### N选1 工具组（pick_first_valid）
+
+当多个同类服务互为备份时（例如 Google、Bing、DuckDuckGo 等搜索引擎），实际上只需要向 LLM 暴露用户已配置 key 的那一个。这时可以使用 `pick_first_valid=True`：
+
+```python
+import lazyllm
+from lazyllm.tools import ReactAgent
+
+llm = lazyllm.OnlineChatModule()
+
+# 假设只有 BING_API_KEY 存在，GOOGLE_API_KEY 不存在
+search_group = dict(
+    name='search',
+    desc='搜索引擎工具',
+    pick_first_valid=True,
+    tools=[
+        (google_search_tool, 'env.GOOGLE_API_KEY'),   # 无 key，跳过
+        (bing_search_tool,   'env.BING_API_KEY'),     # 有 key，选中
+        duckduckgo_tool,                               # 无需 key，作为兜底
+    ],
+)
+
+agent = ReactAgent(llm, tools=[search_group, calculator])
+```
+
+**工作机制：**
+
+- 所有工具在初始化时全量注册到 `ToolManager._tool_call`，不受 key 状态影响。
+- 每次前向调用获取工具描述时，实时检查各子工具的凭据，找到第一个有效的暴露给 LLM。
+- 不同 session 持有不同 key，自然得到不同的选择结果，互不干扰。
+- 若当前所有子工具均无有效凭据，工具对 LLM 完全不可见（返回空列表）。
+- 启用 `pick_first_valid=True` 时，`lazy` 自动置为 `False`（N选1 不需要渐进式披露）。
+
+`dict` 格式中 `pick_first_valid` 字段说明：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `pick_first_valid` | `bool` | `False` | 是否启用 N选1 模式 |
+| `lazy` | `bool` | `True` | N选1 模式下自动忽略（强制 False） |
+
 如果我们不打算把工具注册为全局可见，也可以在调用 FunctionCall 的时候直接传入工具本身，像这样：
 
 ```python
