@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 
 import lazyllm
 from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import (
-    PaddleOCRPDFReader, JOB_URL,
+    PaddleOCRPDFReader,
 )
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.doc_node import RichDocNode
@@ -307,7 +307,7 @@ class TestPaddleOCRPDFReaderMock:
 
         assert mock_post.called
         submit_url = mock_post.call_args[0][0]
-        assert submit_url == JOB_URL
+        assert submit_url == reader._job_url
 
         assert mock_get.call_count >= 1
         poll_url = mock_get.call_args_list[0][0][0]
