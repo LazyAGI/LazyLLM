@@ -311,8 +311,10 @@ class ToolContainer:
 
 class ToolGroup(ToolContainer):
     def __init__(self, tools: List[Any], name: str, desc: str = '', lazy: bool = True,
-                 prefix: Optional[Union[bool, str]] = True, _outer_prefix: Optional[str] = None):
-        self._name, self._desc, self._lazy = name, desc, lazy
+                 prefix: Optional[Union[bool, str]] = True, _outer_prefix: Optional[str] = None,
+                 pick_first_valid: bool = False):
+        self._name, self._desc, self._lazy = name, desc, lazy and not pick_first_valid
+        self._pick_first_valid = pick_first_valid
         own_prefix: Optional[str] = name if prefix is True or prefix == '' \
             else None if prefix is False or prefix is None else prefix
         effective_prefix = f'{_outer_prefix}_{own_prefix}' if _outer_prefix and own_prefix \
@@ -320,16 +322,22 @@ class ToolGroup(ToolContainer):
         self._children: List[Union['ModuleTool', 'ToolGroup']] = [
             _build_tool_from_element(item, _outer_prefix=effective_prefix) for item in tools]
         self._precompute_descs(effective_prefix)
-        self._gateway_tool: Optional['ModuleTool'] = self.make_gateway_tool() if lazy else None
+        self._gateway_tool: Optional['ModuleTool'] = self.make_gateway_tool() if self._lazy else None
         if self._gateway_desc is None and self._gateway_tool is not None:
             self._gateway_desc = _build_tool_desc(self._gateway_tool)
 
     def get_flat_tools(self) -> Dict[str, 'ModuleTool']:
+        if self._pick_first_valid:
+            for child, precomputed in zip(self._children, self._expanded_descs):
+                if _child_is_valid(child):
+                    return child.get_flat_tools() if isinstance(child, ToolContainer) \
+                        else {precomputed['function']['name']: child}
+            return {}
         result: Dict[str, ModuleTool] = {}
         if self._gateway_tool is not None:
             result[self._gateway_tool.name] = self._gateway_tool
         for child, precomputed in zip(self._children, self._expanded_descs):
-            if isinstance(child, ToolGroup):
+            if isinstance(child, ToolContainer):
                 result.update(child.get_flat_tools())
             else:
                 result[precomputed['function']['name']] = child
@@ -337,15 +345,18 @@ class ToolGroup(ToolContainer):
 
     def _precompute_descs(self, effective_prefix: Optional[str] = None):
         self._gateway_desc: Optional[Dict] = None
-        self._expanded_descs: List[Union[Dict, 'ToolGroup']] = []
+        self._expanded_descs: List[Union[Dict, 'ToolContainer']] = []
         self._leaf_names: List[str] = []
         for child in self._children:
-            if isinstance(child, ToolGroup):
+            if isinstance(child, ToolContainer):
                 self._expanded_descs.append(child)
-                if child._lazy:
-                    self._leaf_names.append(child._gateway_tool.name)
+                if isinstance(child, ToolGroup):
+                    if child._lazy:
+                        self._leaf_names.append(child._gateway_tool.name)
+                    else:
+                        self._leaf_names.extend(child._leaf_names)
                 else:
-                    self._leaf_names.extend(child._leaf_names)
+                    self._leaf_names.extend(t for t in child.get_flat_tools().keys())
             else:
                 desc = _build_tool_desc(child)
                 final_name = f'{effective_prefix}_{child.name}' if effective_prefix else child.name
@@ -354,6 +365,12 @@ class ToolGroup(ToolContainer):
                 self._leaf_names.append(final_name)
 
     def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]:
+        if self._pick_first_valid:
+            for child, precomputed in zip(self._children, self._expanded_descs):
+                if _child_is_valid(child):
+                    return child.get_description(active_groups) if isinstance(child, ToolContainer) \
+                        else [precomputed]
+            return []
         if not self._lazy or (active_groups is not None and self._name in active_groups):
             return [x for item in self._expanded_descs
                     for x in (item.get_description(active_groups) if isinstance(item, ToolContainer) else [item])]
@@ -465,6 +482,12 @@ class ToolGroupWrapper(SkipMixin, ToolContainer):
             else [_build_tool_desc(self._inner)]
 
 
+def _child_is_valid(child) -> bool:
+    if isinstance(child, SkipMixin):
+        return not child.should_skip()
+    return True
+
+
 TOOL_CALL_FORMAT_EXAMPLE = (
     '{"function": {"name": "tool_name", "arguments": '
     '"{{"arg1": "value1", "arg2": "value2"}}"}}'
@@ -493,9 +516,10 @@ def _build_tool_from_element(
         assert 'tools' in element, "ToolGroup dict must have a 'tools' field"
         assert 'desc' in element, "ToolGroup dict must have a 'desc' field"
         key_source = element.get('key_source', None)
+        pick_first_valid = element.get('pick_first_valid', False)
         group = ToolGroup(tools=element['tools'], name=element['name'], desc=element['desc'],
                           lazy=element.get('lazy', True), prefix=element.get('prefix', None),
-                          _outer_prefix=_outer_prefix)
+                          _outer_prefix=_outer_prefix, pick_first_valid=pick_first_valid)
         if key_source is not None:
             return ToolGroupWrapper(group, key_source)
         return group
