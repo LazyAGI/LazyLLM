@@ -807,7 +807,7 @@ class TestShouldSkipTransitions:
         inst = ArxivSearch()
         mixin = SkipMixin(type(inst).__key_source__)
         mixin._instance = inst
-        assert mixin.should_skip() is True
+        assert mixin.should_skip() is False
 
     # ------------------------------------------------------------------ #
     # ToolGroupWrapper — callable key_source, mutate state

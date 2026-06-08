@@ -164,14 +164,25 @@ class TestModule:
         assert tm._deploy_type == lazyllm.deploy.dummy
         tm.prompt(None).start()
 
+        import json as _json
+
+        def _join_stream():
+            parts = []
+            for raw in lazyllm.FileSystemQueue().dequeue():
+                try:
+                    parts.append(_json.loads(raw).get('delta', ''))
+                except (_json.JSONDecodeError, AttributeError):
+                    parts.append(raw)
+            return ''.join(parts)
+
         _ = tm('input')
-        re = ''.join(lazyllm.FileSystemQueue().dequeue())
+        re = _join_stream()
         assert re == "reply for input, and parameters is {'do_sample': False, 'temperature': 0.1}"
 
         sm = lazyllm.ServerModule(tm)
         sm.start()
         _ = sm('input')
-        re = ''.join(lazyllm.FileSystemQueue().dequeue())
+        re = _join_stream()
         assert re == "reply for input, and parameters is {'do_sample': False, 'temperature': 0.1}"
 
     def test_WebModule(self):
