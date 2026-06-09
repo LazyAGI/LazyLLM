@@ -2,6 +2,7 @@
 import unittest
 from urllib.parse import quote
 
+from lazyllm import init_session, locals as lazyllm_locals
 from lazyllm.tools.fs.client import _FSRouter, dynamic_fs_config
 from lazyllm.tools.fs.supplier.notion import (
     NotionFS,
@@ -106,9 +107,17 @@ class TestNotionDynamicAuth(unittest.TestCase):
 
 class TestNotionToolRegistration(unittest.TestCase):
 
+    def setUp(self):
+        init_session()
+        lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+
     def test_document_flow_tools_are_registered(self):
         fs = NotionFS(dynamic_auth=True)
         manager = ToolManager([(fs, lambda _instance: 'secret-token')])
+        names = {item['function']['name'] for item in manager.tools_description}
+
+        self.assertEqual(names, {'get_NotionFS_methods'})
+        manager._tool_call['get_NotionFS_methods']({})
         names = {item['function']['name'] for item in manager.tools_description}
 
         self.assertIn('NotionFS_search', names)

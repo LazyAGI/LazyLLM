@@ -262,6 +262,8 @@ if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
 class MethodModuleTool(ModuleTool):
     def __init__(self, instance: Any, method_name: str,
                  key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
+        self._instance = instance
+        self._method_name = method_name
         bound = getattr(instance, method_name)
 
         def _apply(**kwargs): return bound(**kwargs)
@@ -269,8 +271,6 @@ class MethodModuleTool(ModuleTool):
         _apply.__name__ = method_name
 
         super().__init__(execute_in_sandbox=False, apply_func=_apply, schema_func=bound)
-        self._instance = instance
-        self._method_name = method_name
         self._name = instance.__class__.__name__ if method_name == '__call__' \
             else f'{instance.__class__.__name__}_{method_name}'
 
@@ -456,7 +456,7 @@ class InstanceToolGroup(SkipMixin, ToolGroup):
         tools = [MethodModuleTool(instance, m) for m in instance.__public_apis__]
         name = instance.__class__.__name__
         desc = getattr(type(instance), '__doc__', '') or ''
-        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=True)
+        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=True, prefix=False)
 
     @property
     def _tools(self) -> Dict[str, 'ModuleTool']:
