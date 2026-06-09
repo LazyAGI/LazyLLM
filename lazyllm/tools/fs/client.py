@@ -9,7 +9,7 @@ from lazyllm.tools.fs.base import LinkDocumentFSBase
 _PROTOCOL_RE = re.compile(r'^([a-zA-Z][a-zA-Z0-9+\-.]*)(@[^:/]+)?:/(.*)$')
 _FEISHU_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
 _FEISHU_WIKI_PATH_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
-_NOTION_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:notion\.so|notion\.site)/', re.IGNORECASE)
+_NOTION_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:notion\.so|notion\.site|notion\.com)/', re.IGNORECASE)
 _NOTION_LINK_PATH_PREFIXES = ('~link/', '~page/', '~database/', '~block/')
 
 

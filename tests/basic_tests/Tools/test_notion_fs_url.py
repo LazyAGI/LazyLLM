@@ -32,6 +32,10 @@ class TestParseNotionBrowserUrl(unittest.TestCase):
         result = _parse_notion_browser_url(f'https://team.notion.site/Project-Plan-{PAGE_RAW}')
         self.assertEqual(result, {'kind': 'object', 'id': PAGE_ID})
 
+    def test_app_notion_com_page_url(self):
+        result = _parse_notion_browser_url(f'https://app.notion.com/p/{PAGE_RAW}?source=copy_link')
+        self.assertEqual(result, {'kind': 'object', 'id': PAGE_ID})
+
     def test_hyphenated_id(self):
         result = _parse_notion_browser_url(f'https://www.notion.so/{PAGE_ID}')
         self.assertEqual(result, {'kind': 'object', 'id': PAGE_ID})
@@ -61,6 +65,13 @@ class TestFSRouterParseNotion(unittest.TestCase):
         self.assertEqual(space_id, 'dynamic')
         self.assertTrue(real_path.startswith('/~link/'))
         self.assertIn('notion.so', real_path)
+
+    def test_app_notion_com_bare_url_normalized(self):
+        protocol, space_id, real_path = self.router._parse(f'https://app.notion.com/p/{PAGE_RAW}?source=copy_link')
+        self.assertEqual(protocol, 'notion')
+        self.assertEqual(space_id, 'dynamic')
+        self.assertTrue(real_path.startswith('/~link/'))
+        self.assertIn('notion.com', real_path)
 
     def test_notion_tilde_link_gets_dynamic_space(self):
         protocol, space_id, real_path = self.router._parse(f'notion:/~link/{quote(f"https://www.notion.so/{PAGE_RAW}", safe="")}')

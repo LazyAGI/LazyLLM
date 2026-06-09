@@ -18,7 +18,7 @@ _NOTION_MARKDOWN_VERSION = '2026-03-11'
 _PAGE_SIZE = 100
 _MAX_RECURSION_DEPTH = 3
 
-_NOTION_HOST_RE = re.compile(r'(^|\.)notion\.(so|site)$', re.IGNORECASE)
+_NOTION_HOST_RE = re.compile(r'(^|\.)notion\.(so|site|com)$', re.IGNORECASE)
 _UUID_RE = re.compile(
     r'(?<![0-9a-fA-F])('
     r'[0-9a-fA-F]{32}|'
