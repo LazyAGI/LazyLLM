@@ -5,7 +5,7 @@ import importlib
 from lazyllm.thirdparty import pandas as pd
 from lazyllm import LOG
 
-from .readerBase import LazyLLMReaderBase
+from .readerBase import LazyLLMReaderBase, get_default_fs
 from ..doc_node import DocNode
 
 
@@ -16,14 +16,17 @@ _FILL_FUNC_MAP = {
 }
 
 
-def _read_csv_auto(file, **kwargs):
+def _read_csv_auto(file, *, file_path: Optional[Path] = None,
+                   fs: Optional['fsspec.AbstractFileSystem'] = None, **kwargs):
     user_encoding = kwargs.pop('encoding', None)
 
-    # Try user override first, then common CSV encodings (GB18030 covers GBK/GB2312).
     encodings = []
-    for enc in (user_encoding, 'utf-8', 'utf-8-sig', 'gb18030'):
-        if enc and enc not in encodings:
-            encodings.append(enc)
+    if user_encoding:
+        encodings.append(user_encoding)
+    if file_path is not None:
+        detected = LazyLLMReaderBase.detect_encoding(file_path, fs or get_default_fs())
+        if detected and detected not in encodings:
+            encodings.append(detected)
 
     last_error = None
     for enc in encodings:
@@ -61,9 +64,9 @@ class PandasCSVReader(LazyLLMReaderBase):
 
         if fs:
             with fs.open(file) as f:
-                df = _read_csv_auto(f, **self._pandas_config)
+                df = _read_csv_auto(f, file_path=file, fs=fs, **self._pandas_config)
         else:
-            df = _read_csv_auto(file, **self._pandas_config)
+            df = _read_csv_auto(file, file_path=file, **self._pandas_config)
 
         df = _apply_fill(df, self._fill_method)
         text_list = df.apply(lambda row: (self._col_joiner).join(row.astype(str).tolist()), axis=1).tolist()

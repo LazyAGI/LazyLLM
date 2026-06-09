@@ -189,6 +189,23 @@ class TestRagReader(object):
         finally:
             shutil.rmtree(temp_dir)
 
+    def test_detect_encoding_gb_csv_long_ascii_header(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            csv_file = os.path.join(temp_dir, 'gb_csv_header.csv')
+            header = (
+                'dataset_id,dataset_name,question,ground_truth,reference_context,'
+                'reference_doc,data_source,question_type,score_type,key_point,version,domain\n'
+            )
+            row = '1,test,q,a,ctx,doc,src,type,score,kp,v1,电影\n'
+            with open(csv_file, 'w', encoding='gb18030') as f:
+                f.write(header + row)
+
+            detected = TxtReader.detect_encoding(csv_file)
+            assert detected in ('gb18030', 'gbk'), f'Expected gb18030/gbk, got {detected}'
+        finally:
+            shutil.rmtree(temp_dir)
+
     def test_encoding_cache(self):
         temp_dir = tempfile.mkdtemp()
         try:

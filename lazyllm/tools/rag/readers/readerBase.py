@@ -77,22 +77,19 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         has_high_bytes = any(b > 127 for b in raw_data[:1000])
 
         if has_high_bytes:
-            chinese_encodings = ['gbk', 'gb2312', 'big5']
-            for encoding in chinese_encodings:
-                if cls._try_decode(raw_data, encoding):
-                    try:
-                        decoded = raw_data.decode(encoding)
-                        if any('\u4e00' <= c <= '\u9fff' for c in decoded[:100]):
-                            cls._cache_encoding(cache_key, encoding)
-                            return encoding
-                    except Exception:
-                        pass
-
+            chinese_encodings = ['gb18030', 'gbk', 'gb2312', 'big5']
+            # Prefer UTF-8 when valid; otherwise fall back to Chinese encodings.
+            # Do not require Chinese chars in the first N chars — CSV headers are often long ASCII.
             if cls._try_decode(raw_data, 'utf-8'):
                 cls._cache_encoding(cache_key, 'utf-8')
                 return 'utf-8'
+
+            for encoding in chinese_encodings:
+                if cls._try_decode(raw_data, encoding):
+                    cls._cache_encoding(cache_key, encoding)
+                    return encoding
         else:
-            primary_encodings = ['utf-8', 'gbk', 'gb2312', 'big5']
+            primary_encodings = ['utf-8', 'gb18030', 'gbk', 'gb2312', 'big5']
             for encoding in primary_encodings:
                 if cls._try_decode(raw_data, encoding):
                     cls._cache_encoding(cache_key, encoding)
