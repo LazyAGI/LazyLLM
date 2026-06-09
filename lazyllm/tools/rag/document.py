@@ -60,7 +60,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             connect = isinstance(manager, DocServer)
             if (not spawn and not connect and not processor and is_persistent_store(store_conf)
                     and dataset_path and not os.path.isfile(dataset_path)
-                    and not list(iter_embedded_store_endpoints(store_conf))):
+                    and not any(iter_embedded_store_endpoints(store_conf))):
                 lazyllm.LOG.info(f'Persistent store detected (type={store_conf.get("type")}),'
                                  f' auto-enabling DocServer for production-grade file tracking and scan.')
                 spawn = True
