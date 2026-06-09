@@ -105,7 +105,7 @@ class TestReactAgentEvents(object):
                 'reasoning_content': 'Now I can answer.',
             },
         ])
-        agent = ReactAgent(llm=llm, tools=[add_one], max_retries=3, stream=True,
+        agent = ReactAgent(llm=llm, tools=[add_one], max_retries=1, stream=True,
                            enable_builtin_tools=False)
 
         result = agent('add one to 1')
