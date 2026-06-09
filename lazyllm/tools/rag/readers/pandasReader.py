@@ -21,7 +21,7 @@ def _read_csv_auto(file, **kwargs):
 
     # Try user override first, then common CSV encodings (GB18030 covers GBK/GB2312).
     encodings = []
-    for enc in (user_encoding, 'utf-8', 'gb18030', 'utf-8-sig'):
+    for enc in (user_encoding, 'utf-8', 'utf-8-sig', 'gb18030'):
         if enc and enc not in encodings:
             encodings.append(enc)
 
