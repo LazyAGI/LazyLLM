@@ -208,7 +208,7 @@ class FunctionCallAgent(LazyLLMAgentBase):
 
     @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
-        agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries + 1)
         self._agent = agent
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):

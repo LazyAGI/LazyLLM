@@ -98,7 +98,7 @@ class ReactAgent(LazyLLMAgentBase):
                                   stream=self._stream, _tool_manager=self._tools_manager,
                                   skill_manager=self._skill_manager,
                                   keep_full_turns=self._keep_full_turns),
-                     stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+                     stop_condition=lambda x: isinstance(x, str), count=self._max_retries + 1)
         self._agent = agent
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
