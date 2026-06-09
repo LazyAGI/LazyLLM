@@ -10,6 +10,14 @@ from sqlalchemy import text
 from lazyllm import LOG
 
 
+def _adapt_ddl(ddl: str, dialect: str) -> str:
+    '''Adapt SQLite DDL syntax to the target database dialect.'''
+    if dialect == 'sqlite':
+        return ddl
+    # PostgreSQL and others: replace AUTOINCREMENT with SERIAL
+    return ddl.replace('INTEGER PRIMARY KEY AUTOINCREMENT', 'SERIAL PRIMARY KEY')
+
+
 # ------------------------------------------------------------------
 # DDL for 10 new tables (without the HEAD-only columns that 0003 adds)
 # ------------------------------------------------------------------
@@ -132,9 +140,10 @@ _STATUS_MAP = {
 
 
 def up(engine) -> None:
+    dialect = engine.dialect.name
     with engine.connect() as conn:
         for ddl in _DDL:
-            conn.execute(text(ddl))
+            conn.execute(text(_adapt_ddl(ddl, dialect)))
         conn.commit()
     LOG.info('[0002_v100_new_tables] all 10 new tables created (if not exists)')
 
@@ -157,16 +166,26 @@ def _migrate_legacy_documents(engine) -> None:
         return
 
     LOG.info(f'[0002_v100_new_tables] migrating {len(rows)} rows from legacy `documents`')
+    dialect = engine.dialect.name
+    if dialect == 'sqlite':
+        insert_sql = (
+            'INSERT OR IGNORE INTO lazyllm_documents '
+            '(doc_id, filename, path, meta, upload_status, source_type) '
+            'VALUES (:doc_id, :filename, :path, :meta, :status, :src)'
+        )
+    else:
+        insert_sql = (
+            'INSERT INTO lazyllm_documents '
+            '(doc_id, filename, path, meta, upload_status, source_type) '
+            'VALUES (:doc_id, :filename, :path, :meta, :status, :src) '
+            'ON CONFLICT (doc_id) DO NOTHING'
+        )
     with engine.connect() as conn:
         for row in rows:
             doc_id, filename, path, meta, status = row
             new_status = _STATUS_MAP.get(status, 'WAITING')
             conn.execute(
-                text(
-                    'INSERT OR IGNORE INTO lazyllm_documents '
-                    '(doc_id, filename, path, meta, upload_status, source_type) '
-                    'VALUES (:doc_id, :filename, :path, :meta, :status, :src)'
-                ),
+                text(insert_sql),
                 {
                     'doc_id': doc_id,
                     'filename': filename,
