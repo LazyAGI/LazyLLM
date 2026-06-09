@@ -15,6 +15,30 @@ _FILL_FUNC_MAP = {
     'bfill': lambda df: df.bfill(),
 }
 
+
+def _read_csv_auto(file, **kwargs):
+    user_encoding = kwargs.pop('encoding', None)
+
+    # Try user override first, then common CSV encodings (GB18030 covers GBK/GB2312).
+    encodings = []
+    for enc in (user_encoding, 'gb18030', 'utf-8', 'utf-8-sig'):
+        if enc and enc not in encodings:
+            encodings.append(enc)
+
+    last_error = None
+    for enc in encodings:
+        try:
+            # File-like objects must rewind between encoding attempts.
+            if hasattr(file, 'seek'):
+                file.seek(0)
+            return pd.read_csv(file, encoding=enc, **kwargs)
+        except UnicodeDecodeError as e:
+            last_error = e
+
+    file_repr = getattr(file, 'name', file)
+    raise ValueError(f'Cannot decode csv: {file_repr}') from last_error
+
+
 def _apply_fill(df: pd.DataFrame, fill_method: Optional[str]) -> pd.DataFrame:
     if fill_method not in _FILL_FUNC_MAP:
         LOG.warning(f'Unsupported fill method: {fill_method}, using fillna instead')
@@ -37,9 +61,9 @@ class PandasCSVReader(LazyLLMReaderBase):
 
         if fs:
             with fs.open(file) as f:
-                df = pd.read_csv(f, **self._pandas_config)
+                df = _read_csv_auto(f, **self._pandas_config)
         else:
-            df = pd.read_csv(file, **self._pandas_config)
+            df = _read_csv_auto(file, **self._pandas_config)
 
         df = _apply_fill(df, self._fill_method)
         text_list = df.apply(lambda row: (self._col_joiner).join(row.astype(str).tolist()), axis=1).tolist()
