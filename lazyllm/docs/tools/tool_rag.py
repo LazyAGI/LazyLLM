@@ -8877,4 +8877,155 @@ add_example('rag.db_migrate.MigrationRunner', '''\
 >>> runner.run_up()
 ''')
 
+# ── rag.store.SQLiteStore ──
+add_chinese_doc('rag.store.segment.SQLiteStore', """\
+基于 SQLite 的段存储实现，继承自 LazyLLMStoreBase。
+
+提供本地文件级文档存储与 FTS5 全文检索，零依赖、轻量部署，适合小规模场景替代 OpenSearch。
+
+Args:
+    db_path (str): SQLite 数据库文件路径（如 ``/data/segments.db``）。
+    **kwargs: 预留扩展参数。
+
+Attributes:
+    capability: StoreCapability.SEGMENT（仅段存储，向量存储需搭配 Milvus 等）
+    need_embedding: False
+    supports_index_registration: False
+""")
+
+add_english_doc('rag.store.SQLiteStore', """\
+SQLite-based segment store, inherits from LazyLLMStoreBase.
+
+Provides local file-level document storage with FTS5 full-text search — zero dependency, lightweight deployment, suitable as an OpenSearch alternative for small-scale use.
+
+Args:
+    db_path (str): Path to the SQLite database file (e.g. ``/data/segments.db``).
+    **kwargs: Reserved for extension.
+
+Attributes:
+    capability: StoreCapability.SEGMENT (segment-only; pair with Milvus for vectors)
+    need_embedding: False
+    supports_index_registration: False
+""")
+
+add_chinese_doc('rag.store.segment.SQLiteStore.connect', """\
+初始化 SQLite 连接，启用 WAL 模式与线程本地存储。
+
+Args:
+    global_metadata_desc (Optional[Dict]): 全局元数据字段描述。
+    **kwargs: 关键字参数。
+
+Returns:
+    None
+""")
+
+add_english_doc('rag.store.segment.SQLiteStore.connect', """\
+Initialize SQLite connection, enable WAL mode and thread-local storage.
+
+Args:
+    global_metadata_desc (Optional[Dict]): Global metadata field descriptions.
+    **kwargs: Keyword arguments.
+
+Returns:
+    None
+""")
+
+add_chinese_doc('rag.store.segment.SQLiteStore.upsert', """\
+批量插入或更新切片数据，自动建表、同步 FTS5 索引。
+
+Args:
+    collection_name (str): 集合名称（表名）。
+    data (List[dict]): 切片数据列表。
+
+Returns:
+    bool: 操作是否成功。
+""")
+
+add_english_doc('rag.store.segment.SQLiteStore.upsert', """\
+Batch insert or update segment data, auto-create table and sync FTS5 index.
+
+Args:
+    collection_name (str): Collection name (table name).
+    data (List[dict]): Segment data list.
+
+Returns:
+    bool: Whether operation succeeded.
+""")
+
+add_chinese_doc('rag.store.segment.SQLiteStore.delete', """\
+删除整个集合或按条件删除指定记录（uid/doc_id/kb_id/parent/number），支持 500 条分批防 SQLite 参数上限。
+
+Args:
+    collection_name (str): 目标集合名称。
+    criteria (Optional[dict]): 若为 None 则删除整个集合；否则按条件过滤删除。
+    **kwargs: 其他参数。
+
+Returns:
+    bool: 删除成功返回 True。
+""")
+
+add_english_doc('rag.store.segment.SQLiteStore.delete', """\
+Delete entire collection or subset of records by criteria (uid/doc_id/kb_id/parent/number), chunked at 500 to respect SQLite parameter limit.
+
+Args:
+    collection_name (str): Target collection.
+    criteria (Optional[dict]): If None, drop entire collection; otherwise filter by criteria.
+    **kwargs: Other parameters.
+
+Returns:
+    bool: True if deletion succeeds.
+""")
+
+add_chinese_doc('rag.store.segment.SQLiteStore.get', """\
+按条件查询切片数据，支持分页（limit/offset）、排序（sort_by_number）、总数返回（return_total）。
+
+Args:
+    collection_name (str): 待查询集合。
+    criteria (Optional[dict]): 过滤条件（uid/doc_id/kb_id/parent/number 及 json_extract 自定义字段）。
+    **kwargs: limit / offset / return_total / sort_by_number。
+
+Returns:
+    List[dict] 或 (List[dict], int): 切片列表或 (列表, 总数)。
+""")
+
+add_english_doc('rag.store.segment.SQLiteStore.get', """\
+Query segments by criteria with pagination (limit/offset), sorting (sort_by_number), and total count (return_total).
+
+Args:
+    collection_name (str): Collection to query.
+    criteria (Optional[dict]): Filter conditions (uid/doc_id/kb_id/parent/number, plus json_extract for custom fields).
+    **kwargs: limit / offset / return_total / sort_by_number.
+
+Returns:
+    List[dict] or (List[dict], int): Segment list or (list, total).
+""")
+
+add_chinese_doc('rag.store.segment.SQLiteStore.search', """\
+FTS5 全文搜索，支持前缀匹配与元数据过滤。
+
+Args:
+    collection_name (str): 目标集合。
+    query (Optional[str]): 搜索关键词（自动追加 ``*`` 分词前缀匹配）。
+    topk (Optional[int]): 返回结果数上限（默认 10）。
+    filters (Optional[dict]): 元数据过滤条件。
+    **kwargs: 其他参数。
+
+Returns:
+    List[dict]: 带 ``score`` 字段的切片列表（-rank 转换，越大越相关）。
+""")
+
+add_english_doc('rag.store.segment.SQLiteStore.search', """\
+FTS5 full-text search with prefix matching and metadata filtering.
+
+Args:
+    collection_name (str): Target collection.
+    query (Optional[str]): Search keyword (``*`` auto-appended for prefix matching).
+    topk (Optional[int]): Max results (default 10).
+    filters (Optional[dict]): Metadata filter conditions.
+    **kwargs: Other parameters.
+
+Returns:
+    List[dict]: Segment list with ``score`` field (negated FTS5 rank, higher = more relevant).
+""")
+
 
