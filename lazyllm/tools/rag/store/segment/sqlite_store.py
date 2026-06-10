@@ -15,7 +15,6 @@ class SQLiteStore(LazyLLMStoreBase):
     need_embedding = False
     supports_index_registration = False
 
-    # ── Column schema (row layout: 1:1 with _serialize_row / _deserialize_row order) ──
     _COLS = [('uid', 'TEXT PRIMARY KEY'),
              ('doc_id', 'TEXT NOT NULL'),
              ('"group"', 'TEXT'),
