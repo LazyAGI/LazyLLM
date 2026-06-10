@@ -193,7 +193,7 @@ class NotionFS(LinkDocumentFSBase):
 
     def search(self, query: str, object_type: str = '', limit: int = 20,
                sort_direction: str = 'descending') -> List[Dict[str, Any]]:
-        """Search Notion pages/databases by title.
+        '''Search Notion pages/databases by title.
 
         Args:
             query (str): Title keyword to search in Notion.
@@ -203,7 +203,7 @@ class NotionFS(LinkDocumentFSBase):
 
         Returns:
             List[Dict[str, Any]]: Matching Notion objects with ``title``, ``id``, and ``notion_path``.
-        """
+        '''
         query = (query or '').strip()
         if not query:
             raise ValueError('query is required')
@@ -899,17 +899,17 @@ class NotionFS(LinkDocumentFSBase):
                 continue
             ptype = prop.get('type')
             value = prop.get(ptype) if ptype else None
-            if isinstance(value, list):
+            if ptype in ('relation',) and isinstance(value, list):
+                for rel in value:
+                    if isinstance(rel, dict) and rel.get('id'):
+                        refs.append({'url': f'notion:/~page/{_normalize_notion_id(rel["id"])}',
+                                     'ref_type': 'property_relation', 'kind': 'page'})
+            elif isinstance(value, list):
                 refs.extend(cls._refs_from_rich_text(value))
             elif ptype == 'url' and isinstance(value, str) and value:
                 parsed = _parse_notion_browser_url(value)
                 refs.append({'url': value, 'ref_type': 'property_url',
                              'kind': parsed['kind'] if parsed else 'external'})
-            elif ptype in ('relation',) and isinstance(value, list):
-                for rel in value:
-                    if isinstance(rel, dict) and rel.get('id'):
-                        refs.append({'url': f'notion:/~page/{_normalize_notion_id(rel["id"])}',
-                                     'ref_type': 'property_relation', 'kind': 'page'})
         return refs
 
     @classmethod
@@ -964,8 +964,6 @@ class NotionFS(LinkDocumentFSBase):
             url = content['external'].get('url') or ''
         if isinstance(content.get('file'), dict):
             url = content['file'].get('url') or url
-        if isinstance(content.get('pdf'), dict):
-            url = content['pdf'].get('url') or url
         if url:
             return f'[{caption or url}]({url})'
         return caption

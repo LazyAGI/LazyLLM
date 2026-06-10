@@ -75,7 +75,8 @@ class TestFSRouterParseNotion(unittest.TestCase):
         self.assertIn('notion.com', real_path)
 
     def test_notion_tilde_link_gets_dynamic_space(self):
-        protocol, space_id, real_path = self.router._parse(f'notion:/~link/{quote(f"https://www.notion.so/{PAGE_RAW}", safe="")}')
+        encoded_url = quote(f'https://www.notion.so/{PAGE_RAW}', safe='')
+        protocol, space_id, real_path = self.router._parse(f'notion:/~link/{encoded_url}')
         self.assertEqual(protocol, 'notion')
         self.assertEqual(space_id, 'dynamic')
         self.assertTrue(real_path.startswith('/~link/'))
