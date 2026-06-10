@@ -403,7 +403,7 @@ class _DocumentStore(object):
         if len(groups) != 1 or not sort_by_number:
             return False
         store = getattr(self._impl, 'segment_store', self._impl)
-        return store.__class__.__name__ in {'MapStore', 'OpenSearchStore', 'ElasticSearchStore'}
+        return store.__class__.__name__ in {'MapStore', 'OpenSearchStore', 'ElasticSearchStore', 'SQLiteStore'}
 
     def _build_get_criteria(self, uids: Optional[List[str]], doc_ids: Optional[Set],
                             kb_id: Optional[str], numbers: Optional[Set] = None,

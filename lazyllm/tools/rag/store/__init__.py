@@ -6,7 +6,7 @@ from .store_base import (
     BUILDIN_GLOBAL_META_DESC
 )
 from .hybrid import HybridStore, MapStore, SenseCoreStore, OceanBaseStore
-from .segment import OpenSearchStore, ElasticSearchStore
+from .segment import OpenSearchStore, ElasticSearchStore, SQLiteStore
 from .vector import ChromaStore, MilvusStore
 
 __all__ = [
@@ -15,6 +15,7 @@ __all__ = [
     'MapStore',
     'OpenSearchStore',
     'ElasticSearchStore',
+    'SQLiteStore',
     'ChromaStore',
     'MilvusStore',
     'SenseCoreStore',
