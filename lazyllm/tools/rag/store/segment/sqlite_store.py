@@ -36,24 +36,34 @@ class SQLiteStore(LazyLLMStoreBase):
     _INDEX_COLS = ['doc_id', 'kb_id', '"group"', 'parent', 'number']
     _STD_KEYS = frozenset({c[0].strip('"') for c in _COLS} | {'embedding', 'copy_source'})
 
+    _DELETE_CHUNK = 500  # SQLite max host parameter limit is 999
+
     def __init__(self, db_path: str, **kwargs):
         self._db_path = db_path
-        self._conn = None
+        self._local = threading.local()
         self._primary_key = 'uid'
+
+    @classmethod
+    def rebuild(cls, db_path, **kwargs):
+        return cls(db_path, **kwargs)
+
+    def __reduce__(self):
+        return self.rebuild, (self._db_path,)
 
     @property
     def dir(self):
         return os.path.dirname(os.path.abspath(self._db_path)) + os.sep
 
     def _open_conn(self):
-        if self._conn: return self._conn
+        if conn := getattr(self._local, 'conn', None):
+            return conn
         os.makedirs(os.path.dirname(self._db_path) or '.', exist_ok=True)
-        conn = sqlite3.connect(self._db_path, timeout=5.0, check_same_thread=False)
+        conn = sqlite3.connect(self._db_path, timeout=5.0)
         conn.execute('PRAGMA journal_mode = WAL;')
         conn.execute('PRAGMA synchronous = NORMAL;')
         conn.execute('PRAGMA busy_timeout = 5000;')
         conn.commit()
-        self._conn = conn
+        self._local.conn = conn
         return conn
 
     @override
@@ -103,6 +113,9 @@ class SQLiteStore(LazyLLMStoreBase):
         try:
             conn = self._open_conn()
             cur = conn.cursor()
+            if not cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                               (collection_name,)).fetchone():
+                return True
             if not criteria:
                 with self._ddl_lock:
                     cur.execute(f'DROP TABLE IF EXISTS "{collection_name}"')
@@ -113,10 +126,11 @@ class SQLiteStore(LazyLLMStoreBase):
                 where, args = self._build_where(criteria)
                 cur.execute(f'SELECT uid FROM "{collection_name}" {where}', args)
                 uids = [row[0] for row in cur.fetchall()]
-                if uids:
-                    ph = ','.join('?' for _ in uids)
-                    cur.execute(f'DELETE FROM "{collection_name}" WHERE uid IN ({ph})', uids)
-                    cur.execute(f'DELETE FROM "{collection_name}_fts" WHERE uid IN ({ph})', uids)
+                for i in range(0, len(uids), self._DELETE_CHUNK):
+                    batch = uids[i:i + self._DELETE_CHUNK]
+                    ph = ','.join('?' for _ in batch)
+                    cur.execute(f'DELETE FROM "{collection_name}" WHERE uid IN ({ph})', batch)
+                    cur.execute(f'DELETE FROM "{collection_name}_fts" WHERE uid IN ({ph})', batch)
                 conn.commit()
             return True
         except Exception as e:
@@ -181,18 +195,18 @@ class SQLiteStore(LazyLLMStoreBase):
             return []
 
     def _serialize_row(self, item):
-        gm = dict(item.get('global_meta', {}))
+        gm = dict(item.get('global_meta') or {})
         for k, v in item.items():
             if k not in self._STD_KEYS and v is not None:
                 gm[k] = v
         return (item['uid'], item.get('doc_id', ''), item.get('group', ''),
-                item.get('content', ''), json.dumps(item.get('meta', {})),
+                item.get('content', ''), json.dumps(item.get('meta') or {}),
                 json.dumps(gm), item.get('type', 0),
                 item.get('number', 0), item.get('kb_id', item.get(RAG_KB_ID, DEFAULT_KB_ID)),
-                json.dumps(item.get('excluded_embed_metadata_keys', [])),
-                json.dumps(item.get('excluded_llm_metadata_keys', [])),
+                json.dumps(item.get('excluded_embed_metadata_keys') or []),
+                json.dumps(item.get('excluded_llm_metadata_keys') or []),
                 item.get('parent'), item.get('answer', ''),
-                json.dumps(item.get('image_keys', [])))
+                json.dumps(item.get('image_keys') or []))
 
     def _deserialize_row(self, row):
         gm = json.loads(row[5]) if row[5] else {}

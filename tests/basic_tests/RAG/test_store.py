@@ -7,7 +7,7 @@ import unittest
 import copy
 import lazyllm
 from lazyllm.tools.rag.store import (MapStore, ChromaStore, MilvusStore, OceanBaseStore,
-                                     SenseCoreStore, SQLiteStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
+                                     SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
 from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc as DocField
