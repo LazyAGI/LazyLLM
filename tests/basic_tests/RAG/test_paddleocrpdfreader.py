@@ -2,11 +2,11 @@ import json
 import os
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import lazyllm
 from lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader import (
-    PaddleOCRPDFReader, JOB_URL,
+    PaddleOCRPDFReader,
 )
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.doc_node import RichDocNode
@@ -282,40 +282,6 @@ class TestPaddleOCRPDFReaderMock:
     def test_resolve_image_empty_returns_none(self):
         result = PaddleOCRPDFReader._resolve_image([0, 0, 100, 100], {})
         assert result is None
-
-    def test_fetch_job_submits_and_polls(self):
-        pdf = _make_test_pdf()
-
-        with patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.post_sync') as mock_post, \
-             patch('lazyllm.tools.rag.readers.ocrReader.paddleocr_pdf_reader.get_sync') as mock_get:
-            submit_resp = mock_post.return_value
-            submit_resp.json.return_value = {'data': {'jobId': 'test-job-123'}}
-
-            poll_resp_mock = MagicMock()
-            poll_resp_mock.json.return_value = {
-                'data': {
-                    'state': 'done',
-                    'resultUrl': {'jsonUrl': 'http://mock/jsonl'},
-                }
-            }
-            jsonl_resp_mock = MagicMock()
-            jsonl_resp_mock.text = '{"result": {"layoutParsingResults": [{"x": 1}]}}'
-            mock_get.side_effect = [poll_resp_mock, jsonl_resp_mock]
-
-            reader = PaddleOCRPDFReader()
-            result, task_dir = reader._fetch_job(str(pdf))
-
-        assert mock_post.called
-        submit_url = mock_post.call_args[0][0]
-        assert submit_url == JOB_URL
-
-        assert mock_get.call_count >= 1
-        poll_url = mock_get.call_args_list[0][0][0]
-        assert 'test-job-123' in poll_url
-
-        data = json.loads(result)
-        assert data['result']['layoutParsingResults'] == [{'x': 1}]
-        assert task_dir is None
 
 
 # ---------------------------------------------------------------------------

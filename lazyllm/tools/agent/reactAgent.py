@@ -1,7 +1,7 @@
 from .base import LazyLLMAgentBase
 from lazyllm import loop, once_wrapper, LOG, locals
 from .functionCall import FunctionCall
-from typing import List, Any, Dict, Optional, Union
+from typing import List, Any, Dict, Optional, Union, Callable
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 
@@ -70,7 +70,8 @@ _FORCE_SUMMARIZE_MSG = (
 
 
 class ReactAgent(LazyLLMAgentBase):
-    def __init__(self, llm, tools: Optional[List[str]] = None, max_retries: int = 5, return_trace: bool = False,
+    def __init__(self, llm, tools: Optional[List[Union[str, Callable, Dict]]] = None, max_retries: int = 5,
+                 return_trace: bool = False,
                  prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, List[str]]] = None, desc: str = '',
                  workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
@@ -97,7 +98,7 @@ class ReactAgent(LazyLLMAgentBase):
                                   stream=self._stream, _tool_manager=self._tools_manager,
                                   skill_manager=self._skill_manager,
                                   keep_full_turns=self._keep_full_turns),
-                     stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+                     stop_condition=lambda x: isinstance(x, str), count=self._max_retries + 1)
         self._agent = agent
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):

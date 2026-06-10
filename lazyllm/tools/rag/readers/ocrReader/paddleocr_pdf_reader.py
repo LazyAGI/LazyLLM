@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Set, Callable
 from typing_extensions import override
 
 import lazyllm
-from lazyllm.tools.http_request import post_sync, get_sync
+from lazyllm.tools.http_request import get_sync
 from lazyllm.common import ApiKeyHeaderStrategy, AuthStrategy, retry_transient
 from lazyllm import LOG
 
@@ -115,7 +115,6 @@ class PaddleOCRPDFReader(_OcrReaderBase):
 
     def _fetch_job(self, file_path: str):
         fname = os.path.basename(file_path)
-        headers = self.inject_auth_header()
 
         optional_payload = {
             'useDocOrientationClassify': False,
@@ -128,22 +127,24 @@ class PaddleOCRPDFReader(_OcrReaderBase):
             'optionalPayload': json.dumps(optional_payload),
         }
         with open(file_path, 'rb') as f:
-            resp = post_sync(
+            resp = self._request(
+                'POST',
                 self._job_url,
-                payload=data,
+                data=data,
                 files={'file': (fname, f)},
-                headers=headers,
                 timeout=self._timeout or 120,
             )
         job_data = resp.json()
         job_id = job_data['data']['jobId']
         LOG.info(f'[PaddleOCRPDFReader] Job submitted: {job_id} for {fname}')
+        auth_key = self._auth_key_after_successful_request()
 
         _t_poll = time.time()
         for _ in range(240):
-            status_resp = get_sync(
+            status_resp = self._request_with_pinned_auth(
+                'GET',
                 f'{self._job_url}/{job_id}',
-                headers=headers,
+                auth_key,
                 timeout=self._timeout or 30,
             )
             status_data = status_resp.json()

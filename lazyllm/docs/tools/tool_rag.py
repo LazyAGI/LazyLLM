@@ -8728,5 +8728,153 @@ suitable for deciding whether documents need to be re-parsed.
 - str: 16-character hexadecimal fingerprint string.
 ''')
 
+add_chinese_doc('rag.db_migrate.MigrationRunner', '''\
+数据库 schema 迁移执行器，负责将 ``versions/`` 目录下的迁移脚本按顺序应用到目标数据库。
+
+``MigrationRunner`` 使用一张名为 ``lazyllm_schema_migrations`` 的版本追踪表来记录已应用的迁移，
+并通过行级分布式锁（INSERT-OR-IGNORE 哨兵行）保证在多进程/多线程并发启动时迁移只执行一次。
+
+**迁移文件命名规则：**
+
+- 正式版本：``NNNN_<name>.py``，其中 ``NNNN`` 为四位数字序号（如 ``0001_v076_baseline.py``）。
+- 开发版本：``dev_NNNN_<name>.py``，仅在开发阶段使用，发布前通过 ``db_migrate merge`` 合并为正式文件。
+- 每个迁移文件须暴露 ``up(engine) -> None`` 函数，``MigrationRunner`` 将按序调用它。
+
+Args:
+    engine: SQLAlchemy ``Engine`` 实例，指向需要迁移的数据库。
+
+**版本追踪表结构：**
+
+.. code-block:: sql
+
+    CREATE TABLE lazyllm_schema_migrations (
+        version TEXT PRIMARY KEY,
+        name    TEXT NOT NULL,
+        applied_at TIMESTAMP NOT NULL
+    )
+
+Note:
+    - 支持 SQLite、MySQL、PostgreSQL。MySQL 使用 ``VARCHAR(191)`` 主键以兼容 utf8mb4 编码。
+    - 哨兵行（``version = '__migrating__'``）用于分布式锁；正常情况下该行在迁移结束后自动删除。
+    - 若检测到旧版数据库（无版本表），会自动引导（bootstrap）历史版本号，避免重复执行已内嵌在旧库中的 DDL。
+''')
+
+add_english_doc('rag.db_migrate.MigrationRunner', '''\
+Database schema migration runner that applies migration scripts from the ``versions/`` directory
+to the target database in version order.
+
+``MigrationRunner`` uses a tracking table called ``lazyllm_schema_migrations`` to record applied
+migrations, and uses a row-level distributed lock (INSERT-OR-IGNORE sentinel row) to ensure
+migrations run exactly once even when multiple processes or threads start concurrently.
+
+**Migration file naming conventions:**
+
+- Release versions: ``NNNN_<name>.py`` where ``NNNN`` is a zero-padded four-digit sequence number
+  (e.g. ``0001_v076_baseline.py``).
+- Development versions: ``dev_NNNN_<name>.py``, used only during development and merged into a
+  release file via ``db_migrate merge`` before publishing.
+- Each migration file must expose an ``up(engine) -> None`` function that ``MigrationRunner``
+  calls in order.
+
+Args:
+    engine: A SQLAlchemy ``Engine`` instance pointing to the database to migrate.
+
+**Version tracking table schema:**
+
+.. code-block:: sql
+
+    CREATE TABLE lazyllm_schema_migrations (
+        version TEXT PRIMARY KEY,
+        name    TEXT NOT NULL,
+        applied_at TIMESTAMP NOT NULL
+    )
+
+Note:
+    - Supports SQLite, MySQL, and PostgreSQL. MySQL uses a ``VARCHAR(191)`` primary key for
+      utf8mb4 compatibility.
+    - The sentinel row (``version = '__migrating__'``) is used for the distributed lock and is
+      automatically removed when migration completes.
+    - Legacy databases (no version table) are automatically bootstrapped with historical version
+      numbers to prevent re-applying DDL already embedded in the old schema.
+''')
+
+add_chinese_doc('rag.db_migrate.MigrationRunner.run_up', '''\
+执行所有尚未应用的迁移脚本（向上迁移）。
+
+调用此方法后，``MigrationRunner`` 将：
+
+1. 确保版本追踪表 ``lazyllm_schema_migrations`` 已存在（不存在则自动创建）。
+2. 尝试获取分布式锁。
+
+   - 若获取成功：执行迁移并在完成后释放锁。
+   - 若获取失败（另一个进程正在迁移）：等待对方完成后返回；若等待超时（默认 120 秒）则抛出 ``RuntimeError``。
+     若对方异常退出（锁已释放但迁移未完成），本进程会接管并继续执行剩余迁移。
+
+3. 检测并引导旧版数据库（``_detect_and_bootstrap``），将已隐式包含的历史版本标记为已应用。
+4. 查询已应用版本，计算待执行的迁移列表（按版本号升序，正式版优先于 dev 版）。
+5. 对每个待执行迁移，动态导入对应模块并调用 ``up(engine)``，成功后记录版本号。
+
+**执行顺序：**
+
+正式版本（``0001``、``0002``、...）按序号升序排列，排在所有 ``dev_*`` 版本之前。
+``dev_*`` 版本按 ``dev_NNNN`` 数字升序排列。
+
+**Returns:**
+    None
+
+**Raises:**
+    RuntimeError: 等待其他进程完成迁移超时（超过 120 秒）。
+
+Note:
+    - 此方法是幂等的：对同一数据库多次调用不会重复执行已应用的迁移。
+    - 分布式锁基于数据库行，无需额外的锁服务；对所有支持的数据库方言均有效。
+''')
+
+add_english_doc('rag.db_migrate.MigrationRunner.run_up', '''\
+Apply all pending migration scripts (upgrade path).
+
+When called, ``MigrationRunner.run_up`` performs the following steps:
+
+1. Ensures the version-tracking table ``lazyllm_schema_migrations`` exists, creating it if needed.
+2. Attempts to acquire the distributed lock.
+
+   - If acquired: runs the pending migrations, then releases the lock.
+   - If not acquired (another process is already migrating): waits for it to finish and then
+     returns. If the wait exceeds the timeout (default 120 s) a ``RuntimeError`` is raised.
+     If the peer exits abnormally (lock released but migrations incomplete), this process takes
+     over and continues with the remaining migrations.
+
+3. Detects and bootstraps legacy databases (``_detect_and_bootstrap``), marking historically
+   implicit migrations as already applied to avoid re-running embedded DDL.
+4. Queries applied versions and computes the pending list (ascending version order, release
+   versions before ``dev_*`` versions).
+5. For each pending migration, dynamically imports the module and calls ``up(engine)``, then
+   records the version on success.
+
+**Execution order:**
+
+Release versions (``0001``, ``0002``, ...) are sorted in ascending numeric order and always
+precede ``dev_*`` versions. ``dev_*`` versions are sorted by their ``dev_NNNN`` numeric suffix.
+
+**Returns:**
+    None
+
+**Raises:**
+    RuntimeError: Raised when waiting for a peer migration process exceeds the timeout (120 s).
+
+Note:
+    - This method is idempotent: calling it multiple times on the same database does not
+      re-apply already-applied migrations.
+    - The distributed lock is row-based and requires no external lock service; it works across
+      all supported database dialects.
+''')
+
+add_example('rag.db_migrate.MigrationRunner', '''\
+>>> from sqlalchemy import create_engine
+>>> from lazyllm.tools.rag.db_migrate.runner import MigrationRunner
+>>> engine = create_engine('sqlite:///my_app.db')
+>>> runner = MigrationRunner(engine)
+>>> runner.run_up()
+''')
 
 

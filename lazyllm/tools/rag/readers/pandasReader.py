@@ -5,7 +5,7 @@ import importlib
 from lazyllm.thirdparty import pandas as pd
 from lazyllm import LOG
 
-from .readerBase import LazyLLMReaderBase
+from .readerBase import LazyLLMReaderBase, get_default_fs
 from ..doc_node import DocNode
 
 
@@ -14,6 +14,33 @@ _FILL_FUNC_MAP = {
     'ffill': lambda df: df.ffill(),
     'bfill': lambda df: df.bfill(),
 }
+
+
+def _read_csv_auto(file, *, file_path: Optional[Path] = None,
+                   fs: Optional['fsspec.AbstractFileSystem'] = None, **kwargs):
+    user_encoding = kwargs.pop('encoding', None)
+
+    encodings = []
+    if user_encoding:
+        encodings.append(user_encoding)
+    if file_path is not None:
+        detected = LazyLLMReaderBase.detect_encoding(file_path, fs or get_default_fs())
+        if detected and detected not in encodings:
+            encodings.append(detected)
+
+    last_error = None
+    for enc in encodings:
+        try:
+            # File-like objects must rewind between encoding attempts.
+            if hasattr(file, 'seek'):
+                file.seek(0)
+            return pd.read_csv(file, encoding=enc, **kwargs)
+        except UnicodeDecodeError as e:
+            last_error = e
+
+    file_repr = getattr(file, 'name', file)
+    raise ValueError(f'Cannot decode csv: {file_repr}') from last_error
+
 
 def _apply_fill(df: pd.DataFrame, fill_method: Optional[str]) -> pd.DataFrame:
     if fill_method not in _FILL_FUNC_MAP:
@@ -37,9 +64,9 @@ class PandasCSVReader(LazyLLMReaderBase):
 
         if fs:
             with fs.open(file) as f:
-                df = pd.read_csv(f, **self._pandas_config)
+                df = _read_csv_auto(f, file_path=file, fs=fs, **self._pandas_config)
         else:
-            df = pd.read_csv(file, **self._pandas_config)
+            df = _read_csv_auto(file, file_path=file, **self._pandas_config)
 
         df = _apply_fill(df, self._fill_method)
         text_list = df.apply(lambda row: (self._col_joiner).join(row.astype(str).tolist()), axis=1).tolist()

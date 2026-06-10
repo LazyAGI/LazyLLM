@@ -88,7 +88,7 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
             with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as agent.lp:
                 agent.lp.pre_action = self._pre_action
                 agent.lp.solve = loop(self._fc, stop_condition=lambda x: isinstance(x, str),
-                                      count=self._max_retries)
+                                      count=self._max_retries + 1)
                 agent.lp.post_action = self._post_action | bind(agent.lp.input[0][0], _0,
                                                                 agent.lp.input[0][2],
                                                                 agent.lp.input[0][3])

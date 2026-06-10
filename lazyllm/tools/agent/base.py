@@ -1,6 +1,6 @@
 import os
 import json
-from typing import Any, Iterable, Optional, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import lazyllm
 from lazyllm.module import ModuleBase
@@ -28,7 +28,8 @@ def _write_agent_data(tag: str, **kwargs):
 
 
 class LazyLLMAgentBase(ModuleBase):
-    def __init__(self, llm=None, tools=None, max_retries: int = 5, return_trace: bool = False,
+    def __init__(self, llm=None, tools: Optional[List[Union[str, Callable, Dict]]] = None,
+                 max_retries: int = 5, return_trace: bool = False,
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
                  desc: str = '', workspace: Optional[str] = None,

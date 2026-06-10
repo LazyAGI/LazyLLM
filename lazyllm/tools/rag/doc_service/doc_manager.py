@@ -26,6 +26,7 @@ from .utils import (
     from_json, gen_doc_id, hash_payload, merge_transfer_metadata, resolve_transfer_target_path,
     sha256_file, stable_json, to_json,
 )
+from ..db_migrate import run_migrations
 
 
 class DocManager:
@@ -41,6 +42,7 @@ class DocManager:
                 KB_ALGORITHM_TABLE_INFO, PARSE_STATE_TABLE_INFO, IDEMPOTENCY_RECORDS_TABLE_INFO,
                 CALLBACK_RECORDS_TABLE_INFO, DOC_SERVICE_TASKS_TABLE_INFO, DOC_NODE_GROUP_STATUS_TABLE_INFO,
             ]})
+        run_migrations(self._db_manager.engine)
         self._ensure_indexes()
         self._parser_client = ParserClient(parser_url=parser_url)
         try:
