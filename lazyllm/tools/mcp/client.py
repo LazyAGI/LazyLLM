@@ -1,8 +1,8 @@
-import importlib.util
-
-from typing import Any, Optional
+from typing import Any, Optional, Literal
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
+
+import httpx
 from lazyllm.thirdparty import mcp
 
 from .utils import patch_sync
@@ -18,21 +18,77 @@ class MCPClient(object):
         env: dict[str, str] = None,
         headers: dict[str, Any] = None,
         timeout: float = 5,
+        transport: Literal["auto", "stdio", "sse", "http", "streamable-http"] = "auto",
     ):
         self._command_or_url = command_or_url
         self._args = args or []
         self._env = env
         self._headers = headers
         self._timeout = timeout
+        self._transport = transport
+
+    def _resolve_transport(self) -> str:
+        """Resolve the actual transport to use.
+
+        - auto: http(s) URL → legacy SSE (backward compat), otherwise → stdio
+        - explicit value is returned as-is.
+        """
+        if self._transport != "auto":
+            return self._transport
+        if urlparse(self._command_or_url).scheme in ("http", "https"):
+            return "sse"
+        return "stdio"
 
     @asynccontextmanager
     async def _run_session(self):
-        if urlparse(self._command_or_url).scheme in ('http', 'https'):
-            spec = importlib.util.find_spec('mcp.client.sse')
+        transport = self._resolve_transport()
+
+        # ───────── stdio ─────────
+        if transport == "stdio":
+            server_parameters = mcp.StdioServerParameters(
+                command=self._command_or_url, args=self._args, env=self._env
+            )
+            async with mcp.stdio_client(server_parameters) as (read_stream, write_stream):
+                async with mcp.ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    yield session
+
+        # ───────── Streamable HTTP (new standard) ─────────
+        elif transport in ("http", "streamable-http"):
+            import importlib.util
+            spec = importlib.util.find_spec("mcp.client.streamable_http")
             if spec is None:
                 raise ImportError(
-                    'Please install mcp to use mcp module. '
-                    'You can install it with `pip install mcp`'
+                    "Please install mcp to use mcp module. "
+                    "You can install it with `pip install mcp`"
+                )
+            streamable_http_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(streamable_http_module)
+            streamable_http_client = streamable_http_module.streamable_http_client
+
+            http_client = None
+            if self._headers:
+                http_client = httpx.AsyncClient(
+                    headers=self._headers,
+                    timeout=httpx.Timeout(self._timeout),
+                )
+
+            async with streamable_http_client(
+                url=self._command_or_url,
+                http_client=http_client,
+            ) as (read_stream, write_stream, _get_session_id):
+                async with mcp.ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    yield session
+
+        # ───────── Legacy SSE (backward compatible) ─────────
+        else:  # "sse"
+            import importlib.util
+            spec = importlib.util.find_spec("mcp.client.sse")
+            if spec is None:
+                raise ImportError(
+                    "Please install mcp to use mcp module. "
+                    "You can install it with `pip install mcp`"
                 )
             sse_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(sse_module)
@@ -41,17 +97,9 @@ class MCPClient(object):
             async with sse_client(
                 url=self._command_or_url,
                 headers=self._headers,
-                timeout=self._timeout
-            ) as streams:
-                async with mcp.ClientSession(*streams) as session:
-                    await session.initialize()
-                    yield session
-        else:
-            server_parameters = mcp.StdioServerParameters(
-                command=self._command_or_url, args=self._args, env=self._env
-            )
-            async with mcp.stdio_client(server_parameters) as streams:
-                async with mcp.ClientSession(*streams) as session:
+                timeout=self._timeout,
+            ) as (read_stream, write_stream):
+                async with mcp.ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
                     yield session
 
