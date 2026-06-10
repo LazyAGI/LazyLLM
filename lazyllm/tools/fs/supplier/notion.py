@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qs, unquote, urlparse
 
 import lazyllm
+import requests
 from lazyllm import config
 
 from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
@@ -86,6 +87,19 @@ def _format_references_footer(refs: List[Dict[str, Any]]) -> str:
     return LinkDocumentFSBase.format_document_references_footer(refs, 'notion')
 
 
+def _is_notion_object_not_found(exc: Exception) -> bool:
+    if not isinstance(exc, requests.HTTPError):
+        return False
+    response = getattr(exc, 'response', None)
+    if getattr(response, 'status_code', None) != 404:
+        return False
+    try:
+        body = response.json()
+    except Exception:
+        return False
+    return isinstance(body, dict) and body.get('code') == 'object_not_found'
+
+
 class NotionFile(CloudFSBufferedFile):
 
     def __init__(self, fs: 'NotionFS', path: str, include_references: bool = False, **kwargs) -> None:
@@ -134,7 +148,9 @@ class NotionFS(LinkDocumentFSBase):
         try:
             self._retrieve_page(object_id)
             entries = [self._block_to_entry(b) for b in self._list_children_raw(object_id)]
-        except Exception:
+        except Exception as exc:
+            if not _is_notion_object_not_found(exc):
+                raise
             entries = [self._page_to_entry(p) for p in self._query_database(object_id)]
         return entries if detail else [e['name'] for e in entries]
 
@@ -152,10 +168,9 @@ class NotionFS(LinkDocumentFSBase):
         try:
             return self._page_to_entry(self._retrieve_page(object_id))
         except Exception as page_exc:
-            try:
-                return self._db_to_entry(self._retrieve_database(object_id))
-            except Exception:
-                raise page_exc
+            if not _is_notion_object_not_found(page_exc):
+                raise
+            return self._db_to_entry(self._retrieve_database(object_id))
 
     def _open(self, path: str, mode: str = 'rb',
               block_size: Optional[int] = None,
@@ -253,7 +268,9 @@ class NotionFS(LinkDocumentFSBase):
             return
         try:
             self._patch(f'{self._base_url}/databases/{object_id}', json={'archived': True})
-        except Exception:
+        except Exception as exc:
+            if not _is_notion_object_not_found(exc):
+                raise
             self._patch(f'{self._base_url}/pages/{object_id}', json={'archived': True})
 
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
@@ -427,7 +444,9 @@ class NotionFS(LinkDocumentFSBase):
         else:
             try:
                 entry = self._page_to_entry(self._retrieve_page(object_id))
-            except Exception:
+            except Exception as exc:
+                if not _is_notion_object_not_found(exc):
+                    raise
                 entry = self._db_to_entry(self._retrieve_database(object_id))
         return {
             'object_id': entry.get('id', object_id),
@@ -573,7 +592,9 @@ class NotionFS(LinkDocumentFSBase):
         else:
             try:
                 text = self._page_to_markdown(object_id)
-            except Exception:
+            except Exception as exc:
+                if not _is_notion_object_not_found(exc):
+                    raise
                 text = self._database_to_markdown(object_id)
         if include_references:
             text = self._append_document_references_footer(text, path)

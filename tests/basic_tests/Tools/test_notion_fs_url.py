@@ -2,6 +2,8 @@
 import unittest
 from urllib.parse import quote
 
+import requests
+
 from lazyllm import init_session, locals as lazyllm_locals
 from lazyllm.tools.fs.client import _FSRouter, dynamic_fs_config
 from lazyllm.tools.fs.supplier.notion import (
@@ -21,6 +23,15 @@ DB_RAW = '11111111222233334444555555555555'
 DB_ID = '11111111-2222-3333-4444-555555555555'
 BLOCK_RAW = 'aaaaaaaaaaaabbbbccccdddddddddddd'
 BLOCK_ID = 'aaaaaaaa-aaaa-bbbb-cccc-dddddddddddd'
+
+
+def _notion_object_not_found() -> requests.HTTPError:
+    response = requests.Response()
+    response.status_code = 404
+    response.reason = 'Not Found'
+    response._content = b'{"code":"object_not_found"}'
+    response.headers['Content-Type'] = 'application/json'
+    return requests.HTTPError('404 Not Found', response=response)
 
 
 class TestParseNotionBrowserUrl(unittest.TestCase):
@@ -275,7 +286,7 @@ class TestNotionDatabaseMarkdown(unittest.TestCase):
 
     def test_database_fallback_when_object_is_not_page(self):
         fs = NotionFS(token='secret-token')
-        fs._retrieve_page = lambda _page_id: (_ for _ in ()).throw(RuntimeError('not a page'))
+        fs._retrieve_page = lambda _page_id: (_ for _ in ()).throw(_notion_object_not_found())
         fs._retrieve_database = lambda _database_id: {
             'id': DB_ID,
             'object': 'database',

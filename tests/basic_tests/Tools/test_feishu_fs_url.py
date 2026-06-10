@@ -2,6 +2,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+from lazyllm import init_session, locals as lazyllm_locals
 from lazyllm.tools.fs.supplier.feishu import (
     _parse_feishu_browser_url,
     _SPACE_ID_DYNAMIC,
@@ -252,9 +253,17 @@ class TestFSRouterParse(unittest.TestCase):
 
 class TestFeishuToolRegistration(unittest.TestCase):
 
+    def setUp(self):
+        init_session()
+        lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+
     def test_document_flow_tools_are_registered(self):
         fs = FeishuFS(space_id='dynamic', dynamic_auth=True)
         manager = ToolManager([(fs, lambda _instance: 'secret-token')])
+        names = {item['function']['name'] for item in manager.tools_description}
+
+        self.assertEqual(names, {'get_FeishuWikiFS_methods'})
+        manager._tool_call['get_FeishuWikiFS_methods']({})
         names = {item['function']['name'] for item in manager.tools_description}
 
         self.assertIn('FeishuWikiFS_resolve_link', names)
