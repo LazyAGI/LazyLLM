@@ -164,6 +164,7 @@ Examples:
             token = (token or config['notion_token'] or os.environ.get('NOTION_TOKEN')
                      or os.environ.get('NOTION_API_KEY') or '')
         super().__init__(token=token, base_url=base_url or _API_BASE, dynamic_auth=dynamic_auth, **storage_options)
+        self._kind_cache: Dict[str, str] = {}
 
     def _setup_auth(self) -> None:
         self._session.headers.update({
@@ -339,6 +340,8 @@ Returns:
         if _is_notion_browser_url(path):
             parsed = _parse_notion_browser_url(path)
             assert parsed is not None
+            if parsed.get('mode_hint') in ('page', 'database'):
+                return parsed['mode_hint'], parsed['id']
             return 'object', parsed['id']
 
         norm = path.lstrip('/')
@@ -347,6 +350,8 @@ Returns:
             parsed = _parse_notion_browser_url(url)
             if not parsed:
                 raise ValueError(f'Cannot parse Notion browser URL: {url!r}')
+            if parsed.get('mode_hint') in ('page', 'database'):
+                return parsed['mode_hint'], parsed['id']
             return 'object', parsed['id']
         for prefix, kind in (
             ('~page/', 'page'),
@@ -366,13 +371,18 @@ Returns:
         kind, object_id = self._resolve_ref(path)
         if kind != 'object':
             return kind, object_id
-        return self._resolve_object_kind(object_id), object_id
+        cached = self._kind_cache.get(object_id)
+        if cached is not None:
+            return cached, object_id
+        resolved = self._resolve_object_kind(object_id)
+        self._kind_cache[object_id] = resolved
+        return resolved, object_id
 
     def _resolve_object_kind(self, object_id: str) -> str:
         try:
             self._retrieve_page(object_id)
             return 'page'
-        except Exception as exc:
+        except requests.HTTPError as exc:
             if not _is_notion_object_not_found(exc):
                 raise
         self._retrieve_database(object_id)
