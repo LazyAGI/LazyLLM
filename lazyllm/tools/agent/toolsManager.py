@@ -262,8 +262,8 @@ if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
 class MethodModuleTool(ModuleTool):
     def __init__(self, instance: Any, method_name: str,
                  key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
-        self._instance = instance
-        self._method_name = method_name
+        object.__setattr__(self, '_instance', instance)
+        object.__setattr__(self, '_method_name', method_name)
         bound = getattr(instance, method_name)
 
         def _apply(**kwargs): return bound(**kwargs)
