@@ -180,7 +180,6 @@ class SQLiteStore(LazyLLMStoreBase):
             LOG.error(f'[SQLiteStore - search] Error: {e}')
             return []
 
-    # ── Row serialization (order must match _COLS) ──
     def _serialize_row(self, item):
         gm = dict(item.get('global_meta', {}))
         for k, v in item.items():
