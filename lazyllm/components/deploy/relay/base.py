@@ -2,6 +2,9 @@ import os
 import random
 import inspect
 import sys
+import shlex
+import subprocess
+import tempfile
 
 from lazyllm import launchers, LazyLLMCMD, dump_obj, config
 from ..base import LazyLLMDeployBase, verify_fastapi_func, verify_ray_func
@@ -9,6 +12,42 @@ from ..utils import get_log_path, make_log_dir
 from typing import Optional
 
 config.add('use_ray', bool, False, 'USE_RAY', description='Whether to use Ray for ServerModule(relay server).')
+
+
+def _should_write_relay_arg_file():
+    return os.name == 'nt'
+
+
+def _can_use_relay_arg_files(launcher):
+    return _should_write_relay_arg_file() and isinstance(launcher, launchers.EmptyLauncher)
+
+
+def _quote_relay_cmd_arg(value):
+    if os.name == 'nt':
+        quoted = subprocess.list2cmdline([value])
+        if not (quoted.startswith('"') and quoted.endswith('"')):
+            quoted = f'"{quoted}"'
+        return quoted.replace('%', '%%')
+    return shlex.quote(value)
+
+
+def _relay_payload_arg(name, value, *, use_file=None):
+    if not value:
+        return ''
+    if use_file is None:
+        use_file = _should_write_relay_arg_file()
+    if use_file:
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            encoding='utf-8',
+            prefix=f'lazyllm-relay-{name}-',
+            suffix='.b64',
+            delete=False,
+        ) as handle:
+            handle.write(value)
+            file_path = handle.name
+        return f'--{name}_file={_quote_relay_cmd_arg(file_path)} '
+    return f'--{name}={_quote_relay_cmd_arg(value)} '
 
 
 class RelayServer(LazyLLMDeployBase):
@@ -39,25 +78,34 @@ class RelayServer(LazyLLMDeployBase):
 
         def impl():
             self._real_port = self._port if self._port else random.randint(30000, 40000)
-            cmd = f'{sys.executable} {run_file_path} --open_port={self._real_port} --function="{self._func}" '
+            use_arg_file = _can_use_relay_arg_files(self._launcher)
+            cmd = f'{_quote_relay_cmd_arg(sys.executable)} {_quote_relay_cmd_arg(run_file_path)} '
+            cmd += f'--open_port={self._real_port} '
+            cmd += _relay_payload_arg('function', self._func, use_file=use_arg_file)
             if self._pre:
-                cmd += f'--before_function="{self._pre}" '
+                cmd += _relay_payload_arg('before_function', self._pre, use_file=use_arg_file)
             if self._post:
-                cmd += f'--after_function="{self._post}" '
+                cmd += _relay_payload_arg('after_function', self._post, use_file=use_arg_file)
             if self._pythonpath:
-                cmd += f'--pythonpath="{self._pythonpath}" '
+                cmd += _relay_payload_arg('pythonpath', self._pythonpath, use_file=use_arg_file)
             if self._num_replicas > 1 and config['use_ray']:
-                cmd += f'--num_replicas={self._num_replicas}'
+                cmd += f'--num_replicas={self._num_replicas} '
             if self._security_key:
-                cmd += f'--security_key="{self._security_key}" '
+                cmd += _relay_payload_arg('security_key', self._security_key, use_file=use_arg_file)
             if self._defined_pos:
-                cmd += '--defined_pos="{}" '.format(dump_obj(self._defined_pos.replace('"', r'\"')))
-            if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
+                cmd += _relay_payload_arg('defined_pos', dump_obj(self._defined_pos.replace('"', r'\"')),
+                                          use_file=use_arg_file)
+            if self.temp_folder: cmd += f' 2>&1 | tee {_quote_relay_cmd_arg(get_log_path(self.temp_folder))}'
             return cmd
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl,
                           checkf=verify_ray_func if config['use_ray'] else verify_fastapi_func,
-                          no_displays=['function', 'before_function', 'after_function', 'security_key', 'defined_pos'])
+                          no_displays=['function', 'function_file',
+                                       'before_function', 'before_function_file',
+                                       'after_function', 'after_function_file',
+                                       'defined_pos', 'defined_pos_file',
+                                       'pythonpath_file',
+                                       'security_key', 'security_key_file'])
 
     def geturl(self, job=None):
         if job is None:

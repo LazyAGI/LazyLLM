@@ -1,6 +1,7 @@
 import os
 import shutil
 import time
+import threading
 import pytest
 import tempfile
 import unittest
@@ -349,6 +350,190 @@ class TestChromaStore(unittest.TestCase):
         res = self.store.search(collection_name=self.collections[1], query_embedding=[0.1, 0.2, 0.3],
                                 embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)
+
+
+class TestChromaStoreUnit(unittest.TestCase):
+    def setUp(self):
+        self.store_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.store_dir, ignore_errors=True)
+
+    def _store(self):
+        store = ChromaStore(uri=self.store_dir)
+        store._global_metadata_desc = BUILDIN_GLOBAL_META_DESC
+        store._embed_dims = {'vec_dense': 3}
+        store._embed_datatypes = {'vec_dense': DataType.FLOAT_VECTOR}
+        store._embed = {}
+        store._ddl_lock = threading.Lock()
+        return store
+
+    def test_upsert_empty_data_returns_true(self):
+        store = self._store()
+
+        self.assertTrue(store.upsert('col', []))
+
+    def test_upsert_missing_embedding_payload_returns_true(self):
+        store = self._store()
+
+        self.assertTrue(store.upsert('col', [{'uid': 'uid1'}]))
+
+    def test_upsert_with_empty_global_meta_uses_nonempty_metadata_payload(self):
+        store = self._store()
+
+        class FakeCollection:
+            def __init__(self):
+                self.upserts = []
+
+            def upsert(self, **kwargs):
+                self.upserts.append(kwargs)
+
+        class FakeClient:
+            def __init__(self):
+                self.collection = FakeCollection()
+
+            def get_or_create_collection(self, name, **kwargs):
+                return self.collection
+
+        fake_client = FakeClient()
+        store._client = fake_client
+
+        self.assertTrue(store.upsert('col', [{
+            'uid': 'uid1',
+            'embedding': {'vec_dense': [0.1, 0.2, 0.3]},
+            'global_meta': {},
+        }]))
+
+        self.assertEqual(len(fake_client.collection.upserts), 1)
+        metadatas = fake_client.collection.upserts[0]['metadatas']
+        self.assertEqual(len(metadatas), 1)
+        self.assertTrue(len(metadatas[0]) >= 1)
+        self.assertEqual(set(metadatas[0].keys()).intersection({RAG_DOC_ID, RAG_KB_ID}), set())
+
+    def test_get_filters_internal_and_non_global_metadata(self):
+        from lazyllm.tools.rag.store.store_base import GLOBAL_META_KEY_PREFIX
+
+        class FakeCollection:
+            def get(self, include, **filters):
+                return {
+                    'ids': ['uid1'],
+                    'metadatas': [{
+                        'internal_metadata': True,
+                        'foreign': 'value',
+                        GLOBAL_META_KEY_PREFIX + RAG_DOC_ID: 'doc1',
+                    }],
+                    'embeddings': [[0.1, 0.2, 0.3]],
+                }
+
+        class FakeClient:
+            def get_collection(self, name):
+                return FakeCollection()
+
+        store = self._store()
+        store._client = FakeClient()
+
+        res = store.get('col')
+
+        self.assertEqual(res[0]['global_meta'], {RAG_DOC_ID: 'doc1'})
+        self.assertEqual(res[0]['embedding']['vec_dense'], [0.1, 0.2, 0.3])
+        self.assertNotIn('foreign', res[0]['global_meta'])
+        self.assertNotIn('internal_metadata', res[0]['global_meta'])
+
+    def test_collection_kwargs_forwards_configuration_for_dict(self):
+        class FakeCollection:
+            def __init__(self):
+                self.kwargs = []
+
+            def upsert(self, **kwargs):
+                pass
+
+        class FakeClient:
+            def __init__(self):
+                self.collection = FakeCollection()
+                self.created = []
+
+            def get_or_create_collection(self, name, **kwargs):
+                self.created.append((name, kwargs))
+                return self.collection
+
+        fake_client = FakeClient()
+        store = self._store()
+        store._client = fake_client
+        store._index_kwargs = {'hnsw': {'space': 'cosine'}}
+
+        store.upsert('col', [{'uid': 'uid1', 'embedding': {'vec_dense': [0.1, 0.2, 0.3]}}])
+
+        self.assertEqual(len(fake_client.created), 1)
+        self.assertEqual(fake_client.created[0][1].get('configuration'), {'hnsw': {'space': 'cosine'}})
+
+    def test_collection_kwargs_selects_matching_list_entry(self):
+        class FakeCollection:
+            def upsert(self, **kwargs):
+                pass
+
+        class FakeClient:
+            def __init__(self):
+                self.collection = FakeCollection()
+                self.created = []
+
+            def get_or_create_collection(self, name, **kwargs):
+                self.created.append((name, kwargs))
+                return self.collection
+
+        fake_client = FakeClient()
+        store = self._store()
+        store._client = fake_client
+        store._index_kwargs = [
+            {'hnsw': {'space': 'ip'}},
+            {'embed_key': 'other', 'hnsw': {'space': 'l2'}},
+            {'embed_key': 'vec_dense', 'hnsw': {'space': 'cosine'}},
+        ]
+
+        store.upsert('col', [{'uid': 'uid1', 'embedding': {'vec_dense': [0.1, 0.2, 0.3]}}])
+
+        self.assertEqual(len(fake_client.created), 1)
+        self.assertEqual(fake_client.created[0][1].get('configuration'), {'hnsw': {'space': 'cosine'}})
+
+    def test_collection_kwargs_converts_legacy_hnsw_metadata(self):
+        store = self._store()
+        store._index_kwargs = {'hnsw:space': 'cosine', 'hnsw:construction_ef': 200}
+
+        kwargs = store._collection_kwargs('vec_dense')
+
+        self.assertEqual(kwargs['configuration']['hnsw']['space'], 'cosine')
+        self.assertEqual(kwargs['configuration']['hnsw']['ef_construction'], 200)
+
+    def test_collection_kwargs_forwards_configuration_for_to_json_object(self):
+        class Config:
+            def to_json(self):
+                return '{}'
+
+        class FakeCollection:
+            def __init__(self):
+                self.kwargs = []
+
+            def upsert(self, **kwargs):
+                pass
+
+        class FakeClient:
+            def __init__(self):
+                self.collection = FakeCollection()
+                self.created = []
+
+            def get_or_create_collection(self, name, **kwargs):
+                self.created.append((name, kwargs))
+                return self.collection
+
+        fake_client = FakeClient()
+        store = self._store()
+        store._client = fake_client
+
+        config = Config()
+        store._index_kwargs = config
+        store.upsert('col', [{'uid': 'uid1', 'embedding': {'vec_dense': [0.1, 0.2, 0.3]}}])
+
+        self.assertEqual(len(fake_client.created), 1)
+        self.assertEqual(fake_client.created[0][1].get('configuration'), config)
 
 
 @pytest.mark.skip_on_win
