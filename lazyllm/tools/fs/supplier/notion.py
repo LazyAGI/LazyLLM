@@ -64,6 +64,13 @@ def _parse_notion_browser_url(url: str) -> Optional[Dict[str, str]]:
     if not object_id:
         return None
     result = {'kind': 'object', 'id': object_id}
+    path_parts = [p for p in (parsed.path or '').strip('/').split('/') if p]
+    if path_parts[:1] == ['p']:
+        result['mode_hint'] = 'page'
+    elif any(query.get(key) for key in ('p', 'page', 'page_id', 'pageId')):
+        result['mode_hint'] = 'page'
+    elif any(query.get(key) for key in ('database_id', 'databaseId')):
+        result['mode_hint'] = 'database'
     if fragment_ids and fragment_ids[-1] != object_id:
         result['block_id'] = fragment_ids[-1]
     return result
@@ -101,7 +108,17 @@ def _is_notion_object_not_found(exc: Exception) -> bool:
 
 
 class NotionFile(CloudFSBufferedFile):
+    '''Notion 文档内容的 fsspec 缓冲文件对象。
 
+    构造时会通过所属 NotionFS 预取页面、数据库或 block 内容，并按 fsspec
+    的 range read 接口提供给上层。
+
+Args:
+    fs (NotionFS): 所属 Notion 文件系统实例。
+    path (str): 页面、数据库或 block 路径。
+    include_references (bool): 是否在读取内容末尾追加 Notion 引用页脚。
+    **kwargs: 透传给 CloudFSBufferedFile 的 fsspec 文件参数。
+'''
     def __init__(self, fs: 'NotionFS', path: str, include_references: bool = False, **kwargs) -> None:
         content = fs._fetch_content(path, include_references=include_references)
         self._notion_content: bytes = content
@@ -112,6 +129,26 @@ class NotionFile(CloudFSBufferedFile):
 
 
 class NotionFS(LinkDocumentFSBase):
+    '''Notion 文件系统：基于 Notion API，以 Page/Block 为层级，支持 ls、读写、mkdir、rm（归档）。
+写入页面内容时，Notion API 单 block 的 rich_text 限制为 2000 字符，超长内容会被截断。
+
+认证与配置: 构造参数 token（Notion Integration Token / Internal Integration Secret）；可选 base_url。
+环境变量: NOTION_TOKEN、NOTION_INTEGRATION_TOKEN，任一非空即可作为 token。
+
+如何获取 token:
+    1. 登录 https://www.notion.so，进入要管理的 Workspace。
+    2. 侧栏底部点击「Settings & members」→「Connections」或「Integrations」。
+    3. 点击「Develop or manage integrations」或「New integration」，创建新集成（Integration）。
+    4. 在集成详情页复制「Internal Integration Secret」或「API key」（形如 secret_xxx），即为本 FS
+       的 token。注意：需在需要访问的页面/数据库中，通过「Connections」或「Add connections」
+       将该集成连接上，否则 API 无法访问该内容。
+
+
+Examples:
+    >>> from lazyllm.tools.fs import NotionFS
+    >>> fs = NotionFS(token='xxx')
+    >>> fs.ls('/')
+    '''
     document_provider = 'notion'
     __public_apis__ = ['ls', 'info', 'mkdir', 'rm', 'exists',
                        'read', 'read_file', 'search', 'write', 'move',
@@ -135,7 +172,7 @@ class NotionFS(LinkDocumentFSBase):
         })
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
-        kind, object_id = self._resolve_ref(path)
+        kind, object_id = self._resolve_access_ref(path)
         if kind == 'root':
             return self._search_all(detail)
         if kind == 'database':
@@ -145,32 +182,18 @@ class NotionFS(LinkDocumentFSBase):
             entries = [self._block_to_entry(b) for b in self._list_children_raw(object_id)]
             return entries if detail else [e['name'] for e in entries]
 
-        try:
-            self._retrieve_page(object_id)
-            entries = [self._block_to_entry(b) for b in self._list_children_raw(object_id)]
-        except Exception as exc:
-            if not _is_notion_object_not_found(exc):
-                raise
-            entries = [self._page_to_entry(p) for p in self._query_database(object_id)]
+        entries = [self._block_to_entry(b) for b in self._list_children_raw(object_id)]
         return entries if detail else [e['name'] for e in entries]
 
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
-        kind, object_id = self._resolve_ref(path)
+        kind, object_id = self._resolve_access_ref(path)
         if kind == 'root':
             return self._entry('/', ftype='directory')
         if kind == 'database':
             return self._db_to_entry(self._retrieve_database(object_id))
         if kind == 'block':
             return self._block_to_entry(self._retrieve_block(object_id))
-        if kind == 'page':
-            return self._page_to_entry(self._retrieve_page(object_id))
-
-        try:
-            return self._page_to_entry(self._retrieve_page(object_id))
-        except Exception as page_exc:
-            if not _is_notion_object_not_found(page_exc):
-                raise
-            return self._db_to_entry(self._retrieve_database(object_id))
+        return self._page_to_entry(self._retrieve_page(object_id))
 
     def _open(self, path: str, mode: str = 'rb',
               block_size: Optional[int] = None,
@@ -208,17 +231,17 @@ class NotionFS(LinkDocumentFSBase):
 
     def search(self, query: str, object_type: str = '', limit: int = 20,
                sort_direction: str = 'descending') -> List[Dict[str, Any]]:
-        '''Search Notion pages/databases by title.
+        '''按标题搜索当前 token 可访问的 Notion 页面或数据库。该能力来自 Notion 官方 /v1/search 接口，主要用于定位资源；不是页面正文全文检索。
 
-        Args:
-            query (str): Title keyword to search in Notion.
-            object_type (str): Optional object filter: ``page`` or ``database``.
-            limit (int): Maximum number of results to return.
-            sort_direction (str): Sort by last edited time, ``ascending`` or ``descending``.
+Args:
+    query (str): 标题关键词。
+    object_type (str): 可选对象过滤，支持 page、database。
+    limit (int): 最大返回条数，默认 20，最大 100。
+    sort_direction (str): 按 last_edited_time 排序方向，ascending 或 descending。
 
-        Returns:
-            List[Dict[str, Any]]: Matching Notion objects with ``title``, ``id``, and ``notion_path``.
-        '''
+Returns:
+    List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path 等字段。
+'''
         query = (query or '').strip()
         if not query:
             raise ValueError('query is required')
@@ -257,7 +280,7 @@ class NotionFS(LinkDocumentFSBase):
         self._post(f'{self._base_url}/pages', json=payload)
 
     def rm_file(self, path: str) -> None:
-        kind, object_id = self._resolve_ref(path)
+        kind, object_id = self._resolve_access_ref(path)
         if kind in ('root', 'database'):
             raise FileNotFoundError(path)
         self._patch(f'{self._base_url}/pages/{object_id}', json={'archived': True})
@@ -277,8 +300,8 @@ class NotionFS(LinkDocumentFSBase):
         raise NotImplementedError('NotionFS: Notion official API does not support copy')
 
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
-        src_kind, page_id = self._resolve_ref(path1)
-        if src_kind not in ('page', 'object'):
+        src_kind, page_id = self._resolve_access_ref(path1)
+        if src_kind != 'page':
             raise NotImplementedError('NotionFS.move only supports moving pages')
         parent_id, new_title = self._parse_move_destination(path2)
         self._post(
@@ -293,12 +316,12 @@ class NotionFS(LinkDocumentFSBase):
         return self._fetch_content(path)[start:end]
 
     def _upload_data(self, path: str, data: bytes, **kwargs) -> None:
-        kind, object_id = self._resolve_ref(path)
+        kind, object_id = self._resolve_access_ref(path)
         if kind in ('root', 'database'):
             raise ValueError('path must include a page_id or block_id')
         text = data.decode('utf-8', errors='replace')
         content_type = kwargs.get('content_type')
-        if kind in ('page', 'object') and content_type in ('markdown', 'md'):
+        if kind == 'page' and content_type in ('markdown', 'md'):
             self.replace_page_markdown(object_id, text)
             return
         blocks = self._text_to_paragraph_blocks(text)
@@ -338,6 +361,22 @@ class NotionFS(LinkDocumentFSBase):
         if not parts:
             return 'root', ''
         return 'object', _normalize_notion_id(parts[-1])
+
+    def _resolve_access_ref(self, path: str) -> Tuple[str, str]:
+        kind, object_id = self._resolve_ref(path)
+        if kind != 'object':
+            return kind, object_id
+        return self._resolve_object_kind(object_id), object_id
+
+    def _resolve_object_kind(self, object_id: str) -> str:
+        try:
+            self._retrieve_page(object_id)
+            return 'page'
+        except Exception as exc:
+            if not _is_notion_object_not_found(exc):
+                raise
+        self._retrieve_database(object_id)
+        return 'database'
 
     def _parse_parent_title_path(self, path: str) -> Tuple[str, str]:
         path = _strip_notion_protocol(path)
@@ -398,6 +437,16 @@ class NotionFS(LinkDocumentFSBase):
 
     def replace_page_markdown(self, page_id: str, markdown: str,
                               allow_deleting_content: bool = False) -> Dict[str, Any]:
+        '''使用 Notion Markdown endpoint 替换页面正文。该接口适合把算法生成的整页 Markdown 写回 Notion；是否允许删除原内容由 allow_deleting_content 控制。
+
+Args:
+    page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
+    markdown (str): 新的 Markdown 正文。
+    allow_deleting_content (bool): 是否允许删除页面已有内容，默认 False。
+
+Returns:
+    Dict[str, Any]: Notion API 返回体。
+'''
         return self._patch(
             f'{self._base_url}/pages/{_normalize_notion_id(page_id)}/markdown',
             json={
@@ -412,6 +461,16 @@ class NotionFS(LinkDocumentFSBase):
 
     def insert_page_markdown(self, page_id: str, markdown: str,
                              position: str = 'end') -> Dict[str, Any]:
+        '''向页面插入 Markdown 内容。默认插入到页面末尾，适合追加总结、分析结论或同步生成的段落。
+
+Args:
+    page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
+    markdown (str): 要插入的 Markdown 内容。
+    position (str): 插入位置，默认 end。
+
+Returns:
+    Dict[str, Any]: Notion API 返回体。
+'''
         return self._patch(
             f'{self._base_url}/pages/{_normalize_notion_id(page_id)}/markdown',
             json={
@@ -425,6 +484,12 @@ class NotionFS(LinkDocumentFSBase):
         )
 
     def update_page_title(self, page_id: str, title: str) -> None:
+        '''更新 Notion 页面的标题属性。方法会自动识别页面的 title 类型属性，再通过 pages/{page_id} PATCH 写入。
+
+Args:
+    page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
+    title (str): 新标题文本。
+'''
         page_id = _normalize_notion_id(page_id)
         page = self._retrieve_page(page_id)
         title_key = self._title_property_key(page)
@@ -434,7 +499,15 @@ class NotionFS(LinkDocumentFSBase):
         )
 
     def resolve_notion_ref(self, url_or_path: str) -> Dict[str, Any]:
-        kind, object_id = self._resolve_ref(url_or_path)
+        '''解析 Notion URL、notion:/ URI 或页面/数据库/block ID，并返回统一元信息。用于 chat 中用户粘贴链接后先确定对象类型、标题和可读路径。
+
+Args:
+    url_or_path (str): Notion 浏览器链接、notion:/ URI、页面/数据库/block ID 或路径。
+
+Returns:
+    Dict[str, Any]: 包含 object_id、object_type、title、notion_path、has_child 等字段的元信息。
+'''
+        kind, object_id = self._resolve_access_ref(url_or_path)
         if kind == 'root':
             return {'object_id': '', 'object_type': 'root', 'title': 'Notion'}
         if kind == 'database':
@@ -442,12 +515,7 @@ class NotionFS(LinkDocumentFSBase):
         elif kind == 'block':
             entry = self._block_to_entry(self._retrieve_block(object_id))
         else:
-            try:
-                entry = self._page_to_entry(self._retrieve_page(object_id))
-            except Exception as exc:
-                if not _is_notion_object_not_found(exc):
-                    raise
-                entry = self._db_to_entry(self._retrieve_database(object_id))
+            entry = self._page_to_entry(self._retrieve_page(object_id))
         return {
             'object_id': entry.get('id', object_id),
             'object_type': entry.get('object') or entry.get('block_type') or kind,
@@ -466,7 +534,7 @@ class NotionFS(LinkDocumentFSBase):
         return object_id
 
     def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
-        kind, object_id = self._resolve_ref(path)
+        kind, object_id = self._resolve_access_ref(path)
         if kind == 'root' or not object_id:
             return []
         blocks: List[Dict[str, Any]]
@@ -525,7 +593,7 @@ class NotionFS(LinkDocumentFSBase):
         return out
 
     def _list_document_references(self, path: str) -> List[Dict[str, Any]]:
-        kind, object_id = self._resolve_ref(path)
+        kind, object_id = self._resolve_access_ref(path)
         if kind == 'root' or not object_id:
             return []
         refs: List[Dict[str, Any]] = []
@@ -537,7 +605,7 @@ class NotionFS(LinkDocumentFSBase):
                     if page_id:
                         refs.extend(self._refs_from_blocks(self._get_doc_blocks_raw(page_id, True)))
             else:
-                if kind in ('page', 'object'):
+                if kind == 'page':
                     try:
                         refs.extend(self._refs_from_page_properties(self._retrieve_page(object_id)))
                     except Exception as exc:
@@ -579,7 +647,7 @@ class NotionFS(LinkDocumentFSBase):
         return results
 
     def _fetch_content(self, path: str, include_references: bool = False) -> bytes:
-        kind, object_id = self._resolve_ref(path)
+        kind, object_id = self._resolve_access_ref(path)
         if kind == 'root':
             text = self._search_to_markdown()
         elif kind == 'database':
@@ -587,15 +655,8 @@ class NotionFS(LinkDocumentFSBase):
         elif kind == 'block':
             block = self._retrieve_block(object_id)
             text = '\n'.join(self._block_to_markdown(block, depth=0, visited=set()))
-        elif kind == 'page':
-            text = self._page_to_markdown(object_id)
         else:
-            try:
-                text = self._page_to_markdown(object_id)
-            except Exception as exc:
-                if not _is_notion_object_not_found(exc):
-                    raise
-                text = self._database_to_markdown(object_id)
+            text = self._page_to_markdown(object_id)
         if include_references:
             text = self._append_document_references_footer(text, path)
         return text.encode('utf-8')

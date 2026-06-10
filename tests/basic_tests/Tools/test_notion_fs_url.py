@@ -46,7 +46,7 @@ class TestParseNotionBrowserUrl(unittest.TestCase):
 
     def test_app_notion_com_page_url(self):
         result = _parse_notion_browser_url(f'https://app.notion.com/p/{PAGE_RAW}?source=copy_link')
-        self.assertEqual(result, {'kind': 'object', 'id': PAGE_ID})
+        self.assertEqual(result, {'kind': 'object', 'id': PAGE_ID, 'mode_hint': 'page'})
 
     def test_hyphenated_id(self):
         result = _parse_notion_browser_url(f'https://www.notion.so/{PAGE_ID}')
@@ -54,7 +54,11 @@ class TestParseNotionBrowserUrl(unittest.TestCase):
 
     def test_query_page_id_fallback(self):
         result = _parse_notion_browser_url(f'https://www.notion.so/page?p={PAGE_RAW}')
-        self.assertEqual(result, {'kind': 'object', 'id': PAGE_ID})
+        self.assertEqual(result, {'kind': 'object', 'id': PAGE_ID, 'mode_hint': 'page'})
+
+    def test_query_database_id_hint(self):
+        result = _parse_notion_browser_url(f'https://www.notion.so/db?database_id={DB_RAW}')
+        self.assertEqual(result, {'kind': 'object', 'id': DB_ID, 'mode_hint': 'database'})
 
     def test_invalid_url(self):
         self.assertIsNone(_parse_notion_browser_url('https://example.com/Project-Plan-' + PAGE_RAW))
@@ -306,6 +310,30 @@ class TestNotionDatabaseMarkdown(unittest.TestCase):
         self.assertIn('## Q2 Plan', text)
         linked = fs.fetch_url(f'https://www.notion.so/Roadmap-{DB_RAW}').decode('utf-8')
         self.assertIn('# Roadmap DB', linked)
+
+    def test_database_url_doc_blocks_resolves_to_database(self):
+        fs = NotionFS(token='secret-token')
+        fs._retrieve_page = lambda _page_id: (_ for _ in ()).throw(_notion_object_not_found())
+        fs._retrieve_database = lambda _database_id: {
+            'id': DB_ID,
+            'object': 'database',
+            'title': [{'plain_text': 'Roadmap DB'}],
+        }
+        fs._query_database = lambda _database_id: [{
+            'id': PAGE_ID,
+            'object': 'page',
+            'properties': {
+                'Name': {'type': 'title', 'title': [{'plain_text': 'Q2 Plan'}]},
+            },
+        }]
+        fs._list_children_raw = lambda _block_id: []
+
+        blocks = fs.get_doc_blocks(f'https://www.notion.so/Roadmap-{DB_RAW}')
+
+        self.assertEqual(blocks[0]['block_id'], PAGE_ID)
+        self.assertEqual(blocks[0]['block_type'], 'child_page')
+        self.assertEqual(blocks[0]['parent_id'], DB_ID)
+        self.assertEqual(blocks[0]['plain_text'], 'Q2 Plan')
 
 
 class TestNotionWriteAndBlocks(unittest.TestCase):
