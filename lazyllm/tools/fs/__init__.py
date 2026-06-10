@@ -1,5 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-from .base import LazyLLMFSBase, CloudFSBufferedFile
+from .base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
 from .watchdog import CloudFsWatchdog
 from .client import FS, dynamic_fs_config
 from .supplier.feishu import FeishuFS, FeishuWikiFS
@@ -15,6 +15,7 @@ from .supplier.obsidian import ObsidianFS
 
 __all__ = [
     'LazyLLMFSBase',
+    'LinkDocumentFSBase',
     'CloudFSBufferedFile',
     'CloudFsWatchdog',
     'FS',
