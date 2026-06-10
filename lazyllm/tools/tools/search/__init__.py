@@ -9,6 +9,7 @@ from .google_books_search import GoogleBooksSearch
 from .arxiv_search import ArxivSearch
 from .wikipedia_search import WikipediaSearch
 from .sciverse_search import SciverseSearch
+from .tavily_search import TavilySearch
 
 __all__ = [
     'SearchBase',
@@ -22,4 +23,5 @@ __all__ = [
     'ArxivSearch',
     'WikipediaSearch',
     'SciverseSearch',
+    'TavilySearch',
 ]

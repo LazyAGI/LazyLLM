@@ -917,3 +917,122 @@ When item.extra has pageid, fetches full page text via MediaWiki API; otherwise 
 Args:
     item (Dict[str, Any]): Search result item; pageid in extra is used if available.
 ''')
+
+add_chinese_doc('TavilySearch', '''
+Tavily Search API 封装，专为 AI Agent 优化的搜索引擎，聚合多源结果并支持深度搜索。
+
+如何申请 API Key：
+1. 打开 Tavily 官网 https://app.tavily.com/ ，注册并登录。
+2. 进入 Dashboard，在 "API Keys" 页面创建或查看密钥。
+3. 得到 tvly- 开头的 API key，用于请求头 Authorization: Bearer <api_key>。
+4. API 文档：https://docs.tavily.com/ 。
+
+特点：
+- search_depth 支持 basic（快速）和 advanced（深度，返回更丰富内容）。
+- topic 支持 general（通用）和 news（新闻），配合 days 实现时效过滤。
+- include_domains / exclude_domains 控制搜索域名范围。
+- include_answer 返回 AI 生成的综合摘要。
+- include_raw_content 返回清洗后的网页原文（Markdown 格式）。
+- 每条结果的 extra 中包含 score（相关性分数）；开启 include_raw_content 时含 raw_content。
+
+Args:
+    api_key (str, optional): Tavily API key；为空时从 dynamic_tool_auth["tavily"] 读取。
+    base_url (str): API 根地址，默认 https://api.tavily.com。
+    timeout (int): 请求超时秒数，默认 30。
+    source_name (str): 结果来源标识，默认 "tavily"。
+''')
+
+add_english_doc('TavilySearch', '''
+Tavily Search API wrapper, a search engine optimized for AI Agents with aggregated multi-source results and deep search capabilities.
+
+How to get an API key:
+1. Go to Tavily https://app.tavily.com/ , sign up and log in.
+2. Go to the Dashboard, create or view your key under "API Keys".
+3. Use the tvly- prefixed key as Authorization: Bearer <api_key>.
+4. API docs: https://docs.tavily.com/ .
+
+Features:
+- search_depth: "basic" (fast) or "advanced" (deeper, richer content).
+- topic: "general" (web) or "news", with days for time-based filtering.
+- include_domains / exclude_domains to constrain or block specific domains.
+- include_answer returns an AI-generated summary.
+- include_raw_content returns cleaned page content in Markdown.
+- extra in each result contains score (relevance); raw_content when include_raw_content is enabled.
+
+Args:
+    api_key (str, optional): Tavily API key; when omitted, reads dynamic_tool_auth["tavily"].
+    base_url (str): API base URL, default https://api.tavily.com.
+    timeout (int): Request timeout in seconds, default 30.
+    source_name (str): Source identifier in results, default "tavily".
+''')
+
+add_example('TavilySearch', '''
+from lazyllm.tools.tools import TavilySearch
+tavily = TavilySearch(api_key='<your_tavily_api_key>')
+res = tavily('machine learning', max_results=5)
+''')
+
+add_chinese_doc('TavilySearch.search', '''
+执行 Tavily 网页搜索。
+
+Args:
+    query (str): 搜索关键词或自然语言问题。
+    search_depth (str): 搜索深度，"basic"（快速，默认）或 "advanced"（深度，返回更高质量内容）。
+    topic (str): 搜索类别，"general"（通用网页，默认）或 "news"（新闻）。
+    days (int): 时效范围（天），默认 3。仅在 topic="news" 时生效。
+    max_results (int): 返回条数，默认 10，最大 20。
+    include_domains (List[str], optional): 限定搜索域名列表，如 ["docs.python.org"]。
+    exclude_domains (List[str], optional): 排除搜索域名列表。
+    include_answer (bool): 是否在响应中返回 AI 生成的综合摘要，默认 False。
+    include_raw_content (bool): 是否返回清洗后的网页原文（Markdown），默认 False。
+    include_images (bool): 是否返回相关图片，默认 False。
+
+Returns:
+    List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet（即 Tavily 的 content 字段）、source；
+    extra 中包含 score（float，相关性分数）；开启 include_raw_content 时含 raw_content（str，Markdown 原文）。
+''')
+
+add_english_doc('TavilySearch.search', '''
+Execute Tavily web search.
+
+Args:
+    query (str): Search keywords or natural language question.
+    search_depth (str): Search depth, "basic" (fast, default) or "advanced" (deeper, higher-quality results).
+    topic (str): Search category, "general" (web, default) or "news".
+    days (int): Time range in days, default 3. Only effective when topic="news".
+    max_results (int): Number of results, default 10, maximum 20.
+    include_domains (List[str], optional): Restrict search to specific domains, e.g. ["docs.python.org"].
+    exclude_domains (List[str], optional): Exclude specific domains from search.
+    include_answer (bool): Whether to return an AI-generated summary in the response, default False.
+    include_raw_content (bool): Whether to return cleaned page content in Markdown, default False.
+    include_images (bool): Whether to return related images, default False.
+
+Returns:
+    List[Dict[str, Any]]: Search results in the unified format. Each item contains title, url, snippet (mapped from Tavily's content field), source;
+    extra includes score (float, relevance score); raw_content (str, Markdown) when include_raw_content is enabled.
+''')
+
+add_example('TavilySearch.search', '''
+from lazyllm.tools.tools import TavilySearch
+tavily = TavilySearch(api_key='<your_key>')
+# 基础搜索
+res = tavily('what is retrieval augmented generation', max_results=5)
+# 深度搜索 + AI 摘要
+res = tavily('latest AI research', search_depth='advanced', include_answer=True)
+# 新闻搜索
+res = tavily('AI news', topic='news', days=1, max_results=5)
+''')
+
+add_chinese_doc('TavilySearch.get_content', '''
+使用 item 的 url 请求页面并将 HTML 转为纯文本返回（基类默认行为）。
+
+Args:
+    item (Dict[str, Any]): 搜索结果项，至少包含 url。
+''')
+
+add_english_doc('TavilySearch.get_content', '''
+Fetches the item url and returns HTML as plain text (base default).
+
+Args:
+    item (Dict[str, Any]): Search result item with at least url.
+''')
