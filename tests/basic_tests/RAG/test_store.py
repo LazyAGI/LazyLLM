@@ -1174,6 +1174,10 @@ STORE_TEMPLATES = {
                             'password': os.getenv('OPENSEARCH_INITIAL_ADMIN_PASSWORD'),
                             'verify_certs': False}},
         'is_skip': False, 'skip_reason': 'To test opensearch store, please set up a opensearch server'},
+    'SQLiteStore': {
+        'segment_store_type': 'SQLiteStore',
+        'init_kwargs': {'db_path': os.path.join(tempfile.gettempdir(), 'test_sqlite_store.db')},
+        'is_skip': False, 'skip_reason': ''},
 }
 
 GLOBAL_META_SCENARIOS = {
@@ -1184,7 +1188,7 @@ GLOBAL_META_SCENARIOS = {
     },
 }
 PARAM_COMBINATIONS = []
-for backend in ('elasticsearch', 'opensearch'):
+for backend in ('elasticsearch', 'opensearch', 'SQLiteStore'):
     for scenario_key, meta_desc in GLOBAL_META_SCENARIOS.items():
         PARAM_COMBINATIONS.append({
             'backend': backend,
