@@ -8930,6 +8930,22 @@ Returns:
     None
 """)
 
+add_chinese_doc('rag.store.segment.SQLiteStore.rebuild', """\
+重建 SQLiteStore 实例（用于 pickle 反序列化）。
+Args:
+    db_path (str): SQLite 数据库文件路径。
+Returns:
+    SQLiteStore: 新实例。
+""")
+
+add_english_doc('rag.store.SQLiteStore.rebuild', """\
+Rebuild SQLiteStore instance (used for pickle deserialization).
+Args:
+    db_path (str): SQLite database file path.
+Returns:
+    SQLiteStore: New instance.
+""")
+
 add_chinese_doc('rag.store.segment.SQLiteStore.upsert', """\
 批量插入或更新切片数据，自动建表、同步 FTS5 索引。
 
