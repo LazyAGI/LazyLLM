@@ -49,7 +49,7 @@ class AutoModel:
         # 2) second: try OnlineModule with online config if found
         if online_entry is not None:
             online_args = process_online_args(model=model, source=source, type=type, entry=online_entry,
-                                               stream=stream)
+                                              stream=stream)
             if online_args: return OnlineModule(**online_args, **kwargs)
 
         # 3) finally: fallback (no config or config unusable)
