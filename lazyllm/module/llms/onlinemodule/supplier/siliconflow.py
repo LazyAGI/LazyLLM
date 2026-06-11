@@ -253,7 +253,7 @@ class SiliconFlowSTT(LazyLLMOnlineSTTModuleBase):
         response.raise_for_status()
         return response.json().get('text', '')
 
-    def _forward(self, input: str = None, files: List[str] = [], url: str = None, model: str = None, **kwargs):
+    def _forward(self, input: str = None, files: List[str] = None, url: str = None, model: str = None, **kwargs):
         file_path = self._resolve_audio_path(input=input, files=files)
         return self._transcribe(file_path, model or self._model_name, base_url=url)
 
