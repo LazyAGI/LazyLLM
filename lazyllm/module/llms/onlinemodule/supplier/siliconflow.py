@@ -23,8 +23,6 @@ class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
         super().__init__(api_key=api_key or self._default_api_key(), base_url=base_url, model_name=model,
                          stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
-        if stream:
-            self._model_optional_params['stream'] = True
 
     def _get_system_prompt(self):
         return 'You are an intelligent assistant provided by SiliconFlow. You are a helpful assistant.'

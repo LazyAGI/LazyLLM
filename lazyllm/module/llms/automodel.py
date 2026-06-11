@@ -9,14 +9,14 @@ from .utils import get_candidate_entries, process_trainable_args, process_online
 class AutoModel:
 
     def __new__(cls, model: Optional[str] = None, *, config_id: Optional[str] = None, source: Optional[str] = None,  # noqa C901
-                type: Optional[str] = None, config: Union[str, bool] = True, **kwargs: Any):
+                type: Optional[str] = None, config: Union[str, bool] = True, stream=True, **kwargs: Any):
         # check and accomodate user params
         model = model or kwargs.pop('base_model', kwargs.pop('embed_model_name', kwargs.pop('model_name', None)))
 
         if source == 'dynamic':
             from .onlinemodule import OnlineChatModule
             dynamic_auth = kwargs.pop('dynamic_auth', False)
-            return OnlineChatModule(source='dynamic', dynamic_auth=dynamic_auth, type=type, **kwargs)
+            return OnlineChatModule(source='dynamic', dynamic_auth=dynamic_auth, type=type, stream=stream, **kwargs)
 
         if model in lazyllm.online.chat:
             if source is not None:
@@ -27,7 +27,7 @@ class AutoModel:
 
         if not model:
             try:
-                return lazyllm.OnlineModule(source=source, type=type)
+                return lazyllm.OnlineModule(source=source, type=type, stream=stream, **kwargs)
             except Exception as e:
                 raise RuntimeError(f'`model` is not provided in AutoModel, and {e}') from None
 
@@ -36,10 +36,11 @@ class AutoModel:
         # 1) first: try TrainableModule with trainable config (for directly connecting deployed endpoint)
         if trainable_entry is not None:
             trainable_args = process_trainable_args(
-                model=model, type=type, source=source, config=config, entry=trainable_entry
+                model=model, type=type, source=source, config=config, entry=trainable_entry,
+                stream=stream,
             )
             try:
-                module = TrainableModule(**trainable_args)
+                module = TrainableModule(**trainable_args, **kwargs)
                 if module._url or module._impl._get_deploy_tasks.flag: return module
             except Exception as e:
                 LOG.warning('Fail to create `TrainableModule`, will try to '
@@ -47,13 +48,14 @@ class AutoModel:
 
         # 2) second: try OnlineModule with online config if found
         if online_entry is not None:
-            online_args = process_online_args(model=model, source=source, type=type, entry=online_entry)
-            if online_args: return OnlineModule(**online_args)
+            online_args = process_online_args(model=model, source=source, type=type, entry=online_entry,
+                                              stream=stream)
+            if online_args: return OnlineModule(**online_args, **kwargs)
 
         # 3) finally: fallback (no config or config unusable)
         try:
-            return OnlineModule(model=model, source=source, type=type)
+            return OnlineModule(model=model, source=source, type=type, stream=stream, **kwargs)
         except Exception as e:
             LOG.warning('`OnlineModule` creation failed, and will try to '
                         f'load model {model} with local `TrainableModule`. Since the error: {e}')
-            return TrainableModule(model, type=type)
+            return TrainableModule(model, type=type, stream=stream, **kwargs)
