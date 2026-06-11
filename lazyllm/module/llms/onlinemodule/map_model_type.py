@@ -444,6 +444,8 @@ MODEL_MAPPING = {
     'deepseek-v4-pro': 'llm',
 
     # ===== SiliconFlow =====
+    # free speech2text model
+    'FunAudioLLM/SenseVoiceSmall': 'stt',
     'qwen/qwen3-vl-embedding-8b': 'cross_modal_embed',
     'qwen/qwen-image-edit': 'image_editing',
     'qwen/qwen-image-edit-2509': 'image_editing',

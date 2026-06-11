@@ -72,6 +72,7 @@ class EmbedPlaceholder:
 class NodeGroupType(str, Enum):
     ORIGINAL = 'Original Source'
     CHUNK = 'Chunk'
+    CODE = 'Code'
     SUMMARY = 'Summary'
     IMAGE_INFO = 'Image Info'
     QUESTION_ANSWER = 'Question Answer'
