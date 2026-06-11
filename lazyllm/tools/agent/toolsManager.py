@@ -456,7 +456,7 @@ class InstanceToolGroup(SkipMixin, ToolGroup):
         tools = [MethodModuleTool(instance, m) for m in instance.__public_apis__]
         name = instance.__class__.__name__
         desc = getattr(type(instance), '__doc__', '') or ''
-        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=True, prefix=True)
+        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=True, prefix=False)
 
     @property
     def _tools(self) -> Dict[str, 'ModuleTool']:

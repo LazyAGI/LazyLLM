@@ -103,11 +103,11 @@ def _ref_from_element(el: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _DEDUPE_REMOVED(refs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _dedupe_refs(refs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return LinkDocumentFSBase.dedupe_document_references(refs)
 
 
-def _FORMAT_REMOVED(refs: List[Dict[str, Any]]) -> str:
+def _format_references_footer(refs: List[Dict[str, Any]]) -> str:
     return LinkDocumentFSBase.format_document_references_footer(refs, 'feishu')
 
 

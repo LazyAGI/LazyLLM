@@ -10,7 +10,7 @@ _PROTOCOL_RE = re.compile(r'^([a-zA-Z][a-zA-Z0-9+\-.]*)(@[^:/]+)?:/(.*)$')
 _FEISHU_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
 _FEISHU_WIKI_PATH_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
 _NOTION_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:notion\.so|notion\.site|notion\.com)/', re.IGNORECASE)
-_NOTION_LINK_PATH_PREFIXES = ('~link/', '~page/', '~database/', '~block/')
+_NOTION_LINK_PATH_PREFIXES = ('~link/', '~page/', '~database/', '~data_source/', '~block/')
 
 
 def _lookup_fs_cls(protocol: str):

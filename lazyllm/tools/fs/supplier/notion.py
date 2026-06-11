@@ -113,17 +113,14 @@ def _is_notion_object_not_found(exc: Exception) -> bool:
 
 
 class NotionFile(CloudFSBufferedFile):
-    '''Notion 文档内容的 fsspec 缓冲文件对象。
+    '''Buffered view of Notion-rendered document content.
 
-    构造时会通过所属 NotionFS 预取页面、数据库或 block 内容，并按 fsspec
-    的 range read 接口提供给上层。
-
-Args:
-    fs (NotionFS): 所属 Notion 文件系统实例。
-    path (str): 页面、数据库或 block 路径。
-    include_references (bool): 是否在读取内容末尾追加 Notion 引用页脚。
-    **kwargs: 透传给 CloudFSBufferedFile 的 fsspec 文件参数。
-'''
+    Args:
+        fs (NotionFS): Owning Notion filesystem instance.
+        path (str): Page, database, data source, or block locator.
+        include_references (bool): Whether to append the Notion references footer.
+        **kwargs: fsspec buffered file options.
+    '''
     def __init__(self, fs: 'NotionFS', path: str, include_references: bool = False, **kwargs) -> None:
         content = fs._fetch_content(path, include_references=include_references)
         self._notion_content: bytes = content
@@ -134,6 +131,13 @@ Args:
 
 
 class NotionFS(LinkDocumentFSBase):
+    '''Notion filesystem adapter with URL-addressable document tools.
+
+    The adapter mirrors the Feishu document flow: browser URLs and provider
+    locators resolve to stable document ids, document reads can include a
+    references footer, and block edits are scoped to the resolved document tree.
+    '''
+
     document_provider = 'notion'
     __public_apis__ = ['ls', 'info', 'mkdir', 'rm', 'exists',
                        'read', 'read_file', 'search', 'write', 'move',
@@ -161,8 +165,8 @@ class NotionFS(LinkDocumentFSBase):
         kind, object_id = self._resolve_access_ref(path)
         if kind == 'root':
             return self._search_all(detail)
-        if kind == 'database':
-            entries = [self._page_to_entry(p) for p in self._query_database(object_id)]
+        if kind in ('database', 'data_source'):
+            entries = [self._object_to_entry(p) for p in self._query_collection(kind, object_id)]
             return entries if detail else [e['name'] for e in entries]
         if kind == 'block':
             entries = [self._block_to_entry(b) for b in self._list_children_raw(object_id)]
@@ -177,6 +181,8 @@ class NotionFS(LinkDocumentFSBase):
             return self._entry('/', ftype='directory')
         if kind == 'database':
             return self._db_to_entry(self._retrieve_database(object_id))
+        if kind == 'data_source':
+            return self._data_source_to_entry(self._retrieve_data_source(object_id))
         if kind == 'block':
             return self._block_to_entry(self._retrieve_block(object_id))
         return self._page_to_entry(self._retrieve_page(object_id))
@@ -255,32 +261,43 @@ class NotionFS(LinkDocumentFSBase):
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parent_kind, parent_id, title = self._resolve_parent_ref(path)
-        if parent_kind not in ('page', 'database') or not parent_id or not title:
-            raise ValueError('path must be /<parent_page_or_database_id>/<title>')
+        if parent_kind not in ('page', 'database', 'data_source') or not parent_id or not title:
+            raise ValueError('path must be /<parent_page_database_or_data_source_id>/<title>')
+        parent, title_key = self._build_page_parent_and_title_key(parent_kind, parent_id)
         payload: Dict[str, Any] = {
-            'parent': self._build_page_parent(parent_kind, parent_id),
+            'parent': parent,
             'properties': {
-                'title': {'title': [{'text': {'content': title}}]}
+                title_key: {'title': [{'text': {'content': title}}]}
             },
         }
-        self._post(f'{self._base_url}/pages', json=payload)
+        self._post(
+            f'{self._base_url}/pages',
+            json=payload,
+            headers={'Notion-Version': _NOTION_MARKDOWN_VERSION},
+        )
 
     def rm_file(self, path: str) -> None:
         kind, object_id = self._resolve_access_ref(path)
-        if kind in ('root', 'database'):
+        if kind in ('root', 'database', 'data_source'):
             raise FileNotFoundError(path)
+        if kind == 'block':
+            self._delete(f'{self._base_url}/blocks/{object_id}')
+            return
         self._patch(f'{self._base_url}/pages/{object_id}', json={'archived': True})
 
     def rmdir(self, path: str) -> None:
-        kind, object_id = self._resolve_ref(path)
+        kind, object_id = self._resolve_access_ref(path)
         if kind == 'root':
             return
-        try:
+        if kind == 'block':
+            self._delete(f'{self._base_url}/blocks/{object_id}')
+            return
+        if kind == 'data_source':
+            raise NotImplementedError('NotionFS.rmdir does not support deleting data sources')
+        if kind == 'database':
             self._patch(f'{self._base_url}/databases/{object_id}', json={'archived': True})
-        except Exception as exc:
-            if not _is_notion_object_not_found(exc):
-                raise
-            self._patch(f'{self._base_url}/pages/{object_id}', json={'archived': True})
+            return
+        self._patch(f'{self._base_url}/pages/{object_id}', json={'archived': True})
 
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         raise NotImplementedError('NotionFS: Notion official API does not support copy')
@@ -303,7 +320,7 @@ class NotionFS(LinkDocumentFSBase):
 
     def _upload_data(self, path: str, data: bytes, **kwargs) -> None:
         kind, object_id = self._resolve_access_ref(path)
-        if kind in ('root', 'database'):
+        if kind in ('root', 'database', 'data_source'):
             raise ValueError('path must include a page_id or block_id')
         text = data.decode('utf-8', errors='replace')
         content_type = kwargs.get('content_type')
@@ -341,6 +358,7 @@ class NotionFS(LinkDocumentFSBase):
         for prefix, kind in (
             ('~page/', 'page'),
             ('~database/', 'database'),
+            ('~data_source/', 'data_source'),
             ('~block/', 'block'),
         ):
             if norm.startswith(prefix):
@@ -370,8 +388,14 @@ class NotionFS(LinkDocumentFSBase):
         except requests.HTTPError as exc:
             if not _is_notion_object_not_found(exc):
                 raise
-        self._retrieve_database(object_id)
-        return 'database'
+        try:
+            self._retrieve_database(object_id)
+            return 'database'
+        except requests.HTTPError as exc:
+            if not _is_notion_object_not_found(exc):
+                raise
+        self._retrieve_data_source(object_id)
+        return 'data_source'
 
     def _parse_parent_title_path(self, path: str) -> Tuple[str, str]:
         _, parent_id, title = self._resolve_parent_ref(path)
@@ -390,11 +414,12 @@ class NotionFS(LinkDocumentFSBase):
         if not norm:
             return 'root', '', ''
         explicit_kind = ''
-        if norm.startswith(('~page/', '~database/', '~block/')):
+        if norm.startswith(('~page/', '~database/', '~data_source/', '~block/')):
             prefix, rest = norm.split('/', 1)
             explicit_kind = {
                 '~page': 'page',
                 '~database': 'database',
+                '~data_source': 'data_source',
                 '~block': 'block',
             }[prefix]
             parts = [p for p in rest.split('/') if p]
@@ -411,8 +436,8 @@ class NotionFS(LinkDocumentFSBase):
 
     def _parse_move_destination(self, path: str) -> Tuple[str, str, str]:
         parent_kind, parent_id, title = self._resolve_parent_ref(path)
-        if parent_kind not in ('page', 'database') or not parent_id:
-            raise ValueError('move destination must include a parent page or database id')
+        if parent_kind not in ('page', 'database', 'data_source') or not parent_id:
+            raise ValueError('move destination must include a parent page, database, or data source id')
         return parent_kind, parent_id, title
 
     def _resolve_data_source_id(self, database_id: str) -> str:
@@ -440,14 +465,26 @@ class NotionFS(LinkDocumentFSBase):
             return {'page_id': parent_id}
         if parent_kind == 'database':
             return {'data_source_id': self._resolve_data_source_id(parent_id)}
-        raise ValueError('parent must be a page or database')
+        if parent_kind == 'data_source':
+            return {'data_source_id': parent_id}
+        raise ValueError('parent must be a page, database, or data source')
+
+    def _build_page_parent_and_title_key(self, parent_kind: str, parent_id: str) -> Tuple[Dict[str, str], str]:
+        parent = self._build_page_parent(parent_kind, parent_id)
+        title_key = 'title'
+        data_source_id = parent.get('data_source_id')
+        if data_source_id:
+            title_key = self._data_source_title_property_key(data_source_id)
+        return parent, title_key
 
     def _build_move_parent(self, parent_kind: str, parent_id: str) -> Dict[str, str]:
         if parent_kind == 'page':
             return {'type': 'page_id', 'page_id': parent_id}
         if parent_kind == 'database':
             return {'type': 'data_source_id', 'data_source_id': self._resolve_data_source_id(parent_id)}
-        raise ValueError('parent must be a page or database')
+        if parent_kind == 'data_source':
+            return {'type': 'data_source_id', 'data_source_id': parent_id}
+        raise ValueError('parent must be a page, database, or data source')
 
     def _search_all(self, detail: bool) -> List:
         results = self._paginate_post(f'{self._base_url}/search', {'page_size': _PAGE_SIZE})
@@ -458,14 +495,43 @@ class NotionFS(LinkDocumentFSBase):
     def _list_children_raw(self, block_id: str) -> List[Dict[str, Any]]:
         return self._paginate_get(f'{self._base_url}/blocks/{block_id}/children', {'page_size': _PAGE_SIZE})
 
+    def _query_collection(self, kind: str, object_id: str) -> List[Dict[str, Any]]:
+        if kind == 'data_source':
+            return self._query_data_source(object_id)
+        return self._query_database(object_id)
+
     def _query_database(self, database_id: str) -> List[Dict[str, Any]]:
-        return self._paginate_post(f'{self._base_url}/databases/{database_id}/query', {'page_size': _PAGE_SIZE})
+        return self._query_data_source(self._resolve_data_source_id(database_id))
+
+    def _query_data_source(self, data_source_id: str) -> List[Dict[str, Any]]:
+        return self._paginate_post(
+            f'{self._base_url}/data_sources/{_normalize_notion_id(data_source_id)}/query',
+            {'page_size': _PAGE_SIZE},
+            headers={'Notion-Version': _NOTION_MARKDOWN_VERSION},
+        )
 
     def _retrieve_page(self, page_id: str) -> Dict[str, Any]:
         return self._get(f'{self._base_url}/pages/{page_id}')
 
     def _retrieve_database(self, database_id: str) -> Dict[str, Any]:
         return self._get(f'{self._base_url}/databases/{database_id}')
+
+    def _retrieve_data_source(self, data_source_id: str) -> Dict[str, Any]:
+        return self._get(
+            f'{self._base_url}/data_sources/{_normalize_notion_id(data_source_id)}',
+            headers={'Notion-Version': _NOTION_MARKDOWN_VERSION},
+        )
+
+    def _data_source_title_property_key(self, data_source_id: str) -> str:
+        data_source = self._retrieve_data_source(data_source_id)
+        props = data_source.get('properties') or {}
+        for key, prop in props.items():
+            if isinstance(prop, dict) and prop.get('type') == 'title':
+                return key
+        for key in ('title', 'Title', 'Name'):
+            if key in props:
+                return key
+        return 'title'
 
     def _retrieve_block(self, block_id: str) -> Dict[str, Any]:
         return self._get(f'{self._base_url}/blocks/{block_id}')
@@ -510,20 +576,20 @@ class NotionFS(LinkDocumentFSBase):
                              position: str = 'end') -> Dict[str, Any]:
         '''向页面插入 Markdown 内容。默认插入到页面末尾，适合追加总结、分析结论或同步生成的段落。
 
-Args:
-    page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
-    markdown (str): 要插入的 Markdown 内容。
-    position (str): 插入位置，默认 end。
+        Args:
+            page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
+            markdown (str): 要插入的 Markdown 内容。
+            position (str): 插入位置，默认 end。
 
-Returns:
-    Dict[str, Any]: Notion API 返回体。
-'''
+        Returns:
+            Dict[str, Any]: Notion API 返回体。
+        '''
         return self._patch(
             f'{self._base_url}/pages/{_normalize_notion_id(page_id)}/markdown',
             json={
                 'type': 'insert_content',
                 'insert_content': {
-                    'new_str': markdown,
+                    'content': markdown,
                     'position': {'type': position},
                 },
             },
@@ -531,12 +597,12 @@ Returns:
         )
 
     def update_page_title(self, page_id: str, title: str) -> None:
-        '''更新 Notion 页面的标题属性。方法会自动识别页面的 title 类型属性，再通过 pages/{page_id} PATCH 写入。
+        '''更新 Notion 页面或 data source 条目的标题属性。自动识别页面的 title 类型属性，再通过 pages/{page_id} PATCH 写入。
 
-Args:
-    page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
-    title (str): 新标题文本。
-'''
+        Args:
+            page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
+            title (str): 新标题文本。
+        '''
         page_id = _normalize_notion_id(page_id)
         page = self._retrieve_page(page_id)
         title_key = self._title_property_key(page)
@@ -546,19 +612,21 @@ Args:
         )
 
     def resolve_notion_ref(self, url_or_path: str) -> Dict[str, Any]:
-        '''解析 Notion URL、notion:/ URI 或页面/数据库/block ID，并返回统一元信息。用于 chat 中用户粘贴链接后先确定对象类型、标题和可读路径。
+        '''解析 Notion URL、notion:/ URI 或页面/数据库/data_source/block ID，并返回统一元信息。用于 chat 中用户粘贴链接后先确定对象类型、标题和可读路径。
 
-Args:
-    url_or_path (str): Notion 浏览器链接、notion:/ URI、页面/数据库/block ID 或路径。
+        Args:
+            url_or_path (str): Notion 浏览器链接、notion:/ URI、页面/数据库/data_source/block ID 或路径。
 
-Returns:
-    Dict[str, Any]: 包含 object_id、object_type、title、notion_path、has_child 等字段的元信息。
-'''
+        Returns:
+            Dict[str, Any]: 包含 object_id、object_type、title、notion_path、has_child 等字段的元信息。
+        '''
         kind, object_id = self._resolve_access_ref(url_or_path)
         if kind == 'root':
             return {'object_id': '', 'object_type': 'root', 'title': 'Notion'}
         if kind == 'database':
             entry = self._db_to_entry(self._retrieve_database(object_id))
+        elif kind == 'data_source':
+            entry = self._data_source_to_entry(self._retrieve_data_source(object_id))
         elif kind == 'block':
             entry = self._block_to_entry(self._retrieve_block(object_id))
         else:
@@ -585,26 +653,28 @@ Returns:
         if kind == 'root' or not object_id:
             return []
         blocks: List[Dict[str, Any]]
-        if kind == 'database':
+        if kind in ('database', 'data_source'):
             blocks = []
-            for page in self._query_database(object_id):
-                page_entry = self._page_to_entry(page)
+            for page in self._query_collection(kind, object_id):
+                page_entry = self._object_to_entry(page)
+                child_type = 'child_database' if page.get('object') == 'data_source' else 'child_page'
                 blocks.append({
                     'block_id': page.get('id', ''),
-                    'block_type': 'child_page',
+                    'block_type': child_type,
                     'parent_id': object_id,
                     'plain_text': page_entry.get('title', ''),
                     'has_children': True,
                 })
                 if with_descendants and page.get('id'):
-                    blocks.extend(self._get_doc_blocks_raw(page['id'], with_descendants=True))
+                    if page.get('object') == 'page':
+                        blocks.extend(self._get_doc_blocks_raw(page['id'], with_descendants=True))
         else:
             blocks = self._get_doc_blocks_raw(object_id, with_descendants=with_descendants)
         return [self._block_summary(block) for block in blocks]
 
     def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
-        self.get_document_id(path)
         block_id = _normalize_notion_id(block_id)
+        self._ensure_block_belongs_to_document(path, block_id)
         block = self._retrieve_block(block_id)
         btype = block.get('type', '')
         content = dict(block.get(btype) or {})
@@ -620,6 +690,20 @@ Returns:
         if btype == 'code':
             content['language'] = (block.get('code') or {}).get('language') or 'plain text'
         self._patch(f'{self._base_url}/blocks/{block_id}', json={btype: content})
+
+    def _ensure_block_belongs_to_document(self, path: str, block_id: str) -> None:
+        kind, document_id = self._resolve_access_ref(path)
+        if kind == 'root' or not document_id:
+            raise FileNotFoundError(f'Path not found: {path}')
+        if kind == 'block' and _normalize_notion_id(document_id) == block_id:
+            return
+        visible_ids = {
+            _normalize_notion_id(block.get('block_id') or block.get('id') or '')
+            for block in self.get_doc_blocks(path, with_descendants=True)
+            if block.get('block_id') or block.get('id')
+        }
+        if block_id not in visible_ids:
+            raise ValueError(f'block_id {block_id!r} is not under document {path!r}')
 
     def _get_doc_blocks_raw(self, block_id: str, with_descendants: bool = True,
                             depth: int = 0, visited: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
@@ -645,12 +729,17 @@ Returns:
             return []
         refs: List[Dict[str, Any]] = []
         try:
-            if kind == 'database':
-                for page in self._query_database(object_id):
-                    refs.extend(self._refs_from_page_properties(page))
-                    page_id = page.get('id')
-                    if page_id:
+            if kind in ('database', 'data_source'):
+                for item in self._query_collection(kind, object_id):
+                    refs.extend(self._refs_from_page_properties(item))
+                    page_id = item.get('id')
+                    if item.get('object') == 'page' and page_id:
                         refs.extend(self._refs_from_blocks(self._get_doc_blocks_raw(page_id, True)))
+                    elif item.get('object') == 'data_source' and page_id:
+                        try:
+                            refs.extend(self._refs_from_page_properties(self._retrieve_data_source(page_id)))
+                        except Exception as exc:
+                            lazyllm.LOG.debug(f'Failed to get Notion data source properties for references: {exc}')
             else:
                 if kind == 'page':
                     try:
@@ -678,7 +767,7 @@ Returns:
                 break
         return results
 
-    def _paginate_post(self, url: str, payload: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def _paginate_post(self, url: str, payload: Optional[Dict[str, Any]] = None, **kwargs) -> List[Dict[str, Any]]:
         base_payload = dict(payload or {})
         results: List[Dict[str, Any]] = []
         cursor: Optional[str] = None
@@ -686,7 +775,7 @@ Returns:
             page_payload = dict(base_payload)
             if cursor:
                 page_payload['start_cursor'] = cursor
-            data = self._post(url, json=page_payload)
+            data = self._post(url, json=page_payload, **kwargs)
             results.extend(data.get('results') or [])
             cursor = data.get('next_cursor') if data.get('has_more') else None
             if not cursor:
@@ -699,6 +788,8 @@ Returns:
             text = self._search_to_markdown()
         elif kind == 'database':
             text = self._database_to_markdown(object_id)
+        elif kind == 'data_source':
+            text = self._data_source_to_markdown(object_id)
         elif kind == 'block':
             block = self._retrieve_block(object_id)
             text = '\n'.join(self._block_to_markdown(block, depth=0, visited=set()))
@@ -751,22 +842,56 @@ Returns:
 
         db = self._retrieve_database(database_id)
         title = self._database_title(db) or database_id
+        pages = self._query_database(database_id)
+        return self._collection_pages_to_markdown(
+            title, pages, heading_level, depth, visited, include_title,
+            failure_label='Notion database child page',
+        )
+
+    def _data_source_to_markdown(self, data_source_id: str, heading_level: int = 1,
+                                 depth: int = 0, visited: Optional[Set[str]] = None,
+                                 include_title: bool = True) -> str:
+        visited = visited or set()
+        data_source_id = _normalize_notion_id(data_source_id)
+        if data_source_id in visited:
+            return ''
+        visited.add(data_source_id)
+
+        data_source = self._retrieve_data_source(data_source_id)
+        title = self._data_source_title(data_source) or data_source_id
+        pages = self._query_data_source(data_source_id)
+        return self._collection_pages_to_markdown(
+            title, pages, heading_level, depth, visited, include_title,
+            failure_label='Notion data source child page',
+        )
+
+    def _collection_pages_to_markdown(self, title: str, pages: List[Dict[str, Any]],
+                                      heading_level: int, depth: int, visited: Set[str],
+                                      include_title: bool, failure_label: str) -> str:
         heading = '#' * max(1, min(6, heading_level))
         lines = [f'{heading} {title}'] if include_title else []
-        pages = self._query_database(database_id)
         for page in pages:
+            entry = self._object_to_entry(page)
             page_id = page.get('id', '')
-            page_title = self._page_title(page) or page_id
+            page_title = entry.get('title') or entry.get('name') or page_id
             child_heading = '#' * max(1, min(6, heading_level + 1))
             lines.append(f'{child_heading} {page_title}')
             if page_id and depth < _MAX_RECURSION_DEPTH:
                 try:
-                    body = self._page_to_markdown(page_id, heading_level + 2, depth + 1, visited,
-                                                  include_title=False)
+                    if page.get('object') == 'data_source':
+                        body = self._data_source_to_markdown(
+                            page_id, heading_level + 2, depth + 1, visited,
+                            include_title=False,
+                        )
+                    else:
+                        body = self._page_to_markdown(
+                            page_id, heading_level + 2, depth + 1, visited,
+                            include_title=False,
+                        )
                     if body:
                         lines.append(body)
                 except Exception as exc:
-                    lazyllm.LOG.debug(f'Failed to fetch Notion database child page {page_id}: {exc}')
+                    lazyllm.LOG.debug(f'Failed to fetch {failure_label} {page_id}: {exc}')
         return self._join_markdown(lines)
 
     def _blocks_to_markdown(self, blocks: List[Dict[str, Any]],
@@ -1145,6 +1270,13 @@ Returns:
         return NotionFS._rich_text_to_markdown(db.get('title') or [])
 
     @staticmethod
+    def _data_source_title(data_source: Dict[str, Any]) -> str:
+        title = data_source.get('title')
+        if isinstance(title, list):
+            return NotionFS._rich_text_to_markdown(title)
+        return data_source.get('name') or ''
+
+    @staticmethod
     def _page_to_entry(page: Dict[str, Any]) -> Dict[str, Any]:
         pid = page.get('id', '')
         title = NotionFS._page_title(page)
@@ -1170,9 +1302,20 @@ Returns:
         )
 
     @staticmethod
+    def _data_source_to_entry(data_source: Dict[str, Any]) -> Dict[str, Any]:
+        did = data_source.get('id', '')
+        title = NotionFS._data_source_title(data_source)
+        return LazyLLMFSBase._entry(
+            name=title or did, ftype='directory', title=title, id=did,
+            object=data_source.get('object', 'data_source'), notion_path=f'notion:/~data_source/{did}',
+        )
+
+    @staticmethod
     def _object_to_entry(obj: Dict[str, Any]) -> Dict[str, Any]:
         if obj.get('object') == 'database':
             return NotionFS._db_to_entry(obj)
+        if obj.get('object') == 'data_source':
+            return NotionFS._data_source_to_entry(obj)
         return NotionFS._page_to_entry(obj)
 
     @staticmethod

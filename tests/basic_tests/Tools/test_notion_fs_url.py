@@ -108,6 +108,12 @@ class TestFSRouterParseNotion(unittest.TestCase):
         self.assertEqual(space_id, 'dynamic')
         self.assertEqual(real_path, f'/~page/{PAGE_RAW}')
 
+    def test_notion_data_source_path_gets_dynamic_space(self):
+        protocol, space_id, real_path = self.router._parse(f'notion:/~data_source/{DB_RAW}')
+        self.assertEqual(protocol, 'notion')
+        self.assertEqual(space_id, 'dynamic')
+        self.assertEqual(real_path, f'/~data_source/{DB_RAW}')
+
     def test_link_path_helper_round_trip(self):
         url = f'https://www.notion.so/Project-Plan-{PAGE_RAW}?pvs=4'
         path = LinkDocumentFSBase.to_link_path(url)
@@ -152,7 +158,7 @@ class TestNotionToolRegistration(unittest.TestCase):
 class TestNotionSearch(unittest.TestCase):
 
     def test_search_builds_official_title_query_payload(self):
-        fs = NotionFS(token='secret-token')
+        fs = NotionFS(token='secret-token', skip_instance_cache=True)
         calls = []
 
         def paginate_post(url, payload):
@@ -180,7 +186,7 @@ class TestNotionSearch(unittest.TestCase):
         self.assertEqual(payload['sort'], {'direction': 'descending', 'timestamp': 'last_edited_time'})
 
     def test_search_rejects_empty_query(self):
-        fs = NotionFS(token='secret-token')
+        fs = NotionFS(token='secret-token', skip_instance_cache=True)
         with self.assertRaises(ValueError):
             fs.search('')
 
@@ -188,7 +194,7 @@ class TestNotionSearch(unittest.TestCase):
 class TestNotionMarkdownFetch(unittest.TestCase):
 
     def _make_fs(self) -> NotionFS:
-        fs = NotionFS(token='secret-token')
+        fs = NotionFS(token='markdown-fetch-token', skip_instance_cache=True)
 
         def retrieve_page(page_id):
             if page_id == PAGE_ID:
@@ -295,7 +301,7 @@ class TestNotionMarkdownFetch(unittest.TestCase):
 class TestNotionDatabaseMarkdown(unittest.TestCase):
 
     def test_database_fallback_when_object_is_not_page(self):
-        fs = NotionFS(token='secret-token')
+        fs = NotionFS(token='database-markdown-token', skip_instance_cache=True)
         fs._retrieve_page = lambda _page_id: (_ for _ in ()).throw(_notion_object_not_found())
         fs._retrieve_database = lambda _database_id: {
             'id': DB_ID,
@@ -318,7 +324,7 @@ class TestNotionDatabaseMarkdown(unittest.TestCase):
         self.assertIn('# Roadmap DB', linked)
 
     def test_database_url_doc_blocks_resolves_to_database(self):
-        fs = NotionFS(token='secret-token')
+        fs = NotionFS(token='database-doc-blocks-token', skip_instance_cache=True)
         fs._retrieve_page = lambda _page_id: (_ for _ in ()).throw(_notion_object_not_found())
         fs._retrieve_database = lambda _database_id: {
             'id': DB_ID,
@@ -345,7 +351,7 @@ class TestNotionDatabaseMarkdown(unittest.TestCase):
 class TestNotionWriteAndBlocks(unittest.TestCase):
 
     def test_replace_page_markdown_uses_markdown_endpoint(self):
-        fs = NotionFS(token='secret-token')
+        fs = NotionFS(token='mkdir-db-token', skip_instance_cache=True)
         calls = []
         fs._patch = lambda url, **kwargs: calls.append((url, kwargs)) or {'ok': True}
         fs.replace_page_markdown(PAGE_RAW, '# Hello')
@@ -356,14 +362,14 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
         self.assertEqual(calls[0][1]['json']['replace_content']['new_str'], '# Hello')
 
     def test_upload_markdown_replaces_page_markdown(self):
-        fs = NotionFS(token='secret-token')
+        fs = NotionFS(token='query-db-token', skip_instance_cache=True)
         calls = []
-        fs.replace_page_markdown = lambda page_id, markdown: calls.append((page_id, markdown))
+        fs.replace_page_markdown = lambda page_id, markdown, **kwargs: calls.append((page_id, markdown, kwargs))
         fs._upload_data(f'/~page/{PAGE_RAW}', b'# New body', content_type='markdown')
-        self.assertEqual(calls, [(PAGE_ID, '# New body')])
+        self.assertEqual(calls, [(PAGE_ID, '# New body', {'allow_deleting_content': True})])
 
     def test_upload_text_appends_all_chunks(self):
-        fs = NotionFS(token='secret-token')
+        fs = NotionFS(token='mkdir-ds-token', skip_instance_cache=True)
         calls = []
         fs._patch = lambda url, **kwargs: calls.append((url, kwargs)) or {}
         fs._upload_data(f'/~block/{BLOCK_RAW}', ('a' * 2500).encode('utf-8'))
@@ -391,21 +397,72 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
         fs = NotionFS(token='secret-token')
         calls = []
         data_source_id = '22222222-3333-4444-5555-666666666666'
-        fs._get = lambda url, **kwargs: {
-            'id': DB_ID,
-            'object': 'database',
-            'data_sources': [{'id': data_source_id}],
-        } if url.endswith(f'/databases/{DB_ID}') else {}
+        fs._get = lambda url, **kwargs: (
+            {
+                'id': DB_ID,
+                'object': 'database',
+                'data_sources': [{'id': data_source_id}],
+            } if url.endswith(f'/databases/{DB_ID}') else {
+                'id': data_source_id,
+                'object': 'data_source',
+                'properties': {'Name': {'type': 'title'}},
+            } if url.endswith(f'/data_sources/{data_source_id}') else {}
+        )
         fs._post = lambda url, **kwargs: calls.append((url, kwargs)) or {}
 
         fs.mkdir(f'/~database/{DB_RAW}/New Page')
 
         self.assertEqual(calls[0][0], 'https://api.notion.com/v1/pages')
         self.assertEqual(calls[0][1]['json']['parent'], {'data_source_id': data_source_id})
+        self.assertEqual(calls[0][1]['headers']['Notion-Version'], '2026-03-11')
         self.assertEqual(
-            calls[0][1]['json']['properties']['title']['title'][0]['text']['content'],
+            calls[0][1]['json']['properties']['Name']['title'][0]['text']['content'],
             'New Page',
         )
+
+    def test_query_database_uses_data_source_endpoint(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        data_source_id = '22222222-3333-4444-5555-666666666666'
+        fs._get = lambda url, **kwargs: {
+            'id': DB_ID,
+            'object': 'database',
+            'data_sources': [{'id': data_source_id}],
+        } if url.endswith(f'/databases/{DB_ID}') else {}
+        fs._post = lambda url, **kwargs: calls.append((url, kwargs)) or {
+            'results': [],
+            'has_more': False,
+        }
+
+        self.assertEqual(fs._query_database(DB_ID), [])
+
+        self.assertEqual(calls[0][0], f'https://api.notion.com/v1/data_sources/{data_source_id}/query')
+        self.assertEqual(calls[0][1]['headers']['Notion-Version'], '2026-03-11')
+
+    def test_mkdir_under_explicit_data_source(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        data_source_id = '22222222-3333-4444-5555-666666666666'
+        fs._get = lambda url, **kwargs: {
+            'id': data_source_id,
+            'object': 'data_source',
+            'properties': {'Task': {'type': 'title'}},
+        } if url.endswith(f'/data_sources/{data_source_id}') else {}
+        fs._post = lambda url, **kwargs: calls.append((url, kwargs)) or {}
+
+        fs.mkdir(f'/~data_source/{data_source_id}/New Task')
+
+        self.assertEqual(calls[0][1]['json']['parent'], {'data_source_id': data_source_id})
+        self.assertEqual(
+            calls[0][1]['json']['properties']['Task']['title'][0]['text']['content'],
+            'New Task',
+        )
+
+    def test_upload_data_rejects_data_source_path(self):
+        fs = NotionFS(token='secret-token')
+
+        with self.assertRaises(ValueError):
+            fs._upload_data(f'/~data_source/{DB_RAW}', b'body')
 
     def test_move_to_database_uses_data_source_parent(self):
         fs = NotionFS(token='secret-token')
@@ -429,6 +486,19 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
         self.assertEqual(calls[0][2]['headers']['Notion-Version'], '2026-03-11')
         self.assertEqual(calls[1], ('rename', PAGE_ID, 'New Title'))
 
+    def test_rmdir_rejects_data_source_paths(self):
+        fs = NotionFS(token='secret-token')
+        fs._retrieve_page = lambda _page_id: (_ for _ in ()).throw(_notion_object_not_found())
+        fs._retrieve_database = lambda _database_id: (_ for _ in ()).throw(_notion_object_not_found())
+        fs._retrieve_data_source = lambda _data_source_id: {
+            'id': DB_ID,
+            'object': 'data_source',
+            'properties': {'Task': {'type': 'title'}},
+        }
+
+        with self.assertRaises(NotImplementedError):
+            fs.rmdir(f'/{DB_RAW}')
+
     def test_get_document_id_and_doc_blocks(self):
         fs = NotionFS(token='secret-token')
         fs._list_children_raw = lambda block_id: [{
@@ -448,6 +518,12 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
     def test_update_doc_block_text_patches_rich_text(self):
         fs = NotionFS(token='secret-token')
         calls = []
+        fs._list_children_raw = lambda block_id: [{
+            'id': BLOCK_ID,
+            'type': 'paragraph',
+            'parent': {'type': 'page_id', 'page_id': PAGE_ID},
+            'paragraph': {'rich_text': [{'plain_text': 'Old'}]},
+        }] if block_id == PAGE_ID else []
         fs._retrieve_block = lambda block_id: {
             'id': block_id,
             'type': 'paragraph',
@@ -460,6 +536,32 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
         rich = calls[0][1]['json']['paragraph']['rich_text']
         self.assertEqual(rich[0]['text']['content'], 'New text')
 
+    def test_update_doc_block_text_rejects_block_outside_document(self):
+        fs = NotionFS(token='secret-token')
+        fs._list_children_raw = lambda _block_id: []
+
+        with self.assertRaises(ValueError):
+            fs.update_doc_block_text(f'/~page/{PAGE_RAW}', BLOCK_RAW, 'New text')
+
+    def test_rm_block_uses_block_delete_endpoint(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        fs._delete = lambda url, **kwargs: calls.append((url, kwargs)) or {}
+
+        fs.rm_file(f'/~block/{BLOCK_RAW}')
+
+        self.assertEqual(calls, [(f'https://api.notion.com/v1/blocks/{BLOCK_ID}', {})])
+
+    def test_insert_page_markdown_uses_content_field(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        fs._patch = lambda url, **kwargs: calls.append((url, kwargs)) or {}
+
+        fs.insert_page_markdown(PAGE_RAW, '## Added')
+
+        self.assertEqual(calls[0][0], f'https://api.notion.com/v1/pages/{PAGE_ID}/markdown')
+        self.assertEqual(calls[0][1]['json']['insert_content']['content'], '## Added')
+
     def test_resolve_notion_ref(self):
         fs = NotionFS(token='secret-token')
         fs._retrieve_page = lambda _page_id: {
@@ -471,6 +573,23 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
         self.assertEqual(result['object_id'], PAGE_ID)
         self.assertEqual(result['object_type'], 'page')
         self.assertEqual(result['title'], 'Project Plan')
+
+    def test_resolve_notion_ref_supports_data_source(self):
+        fs = NotionFS(token='secret-token')
+        fs._retrieve_page = lambda _page_id: (_ for _ in ()).throw(_notion_object_not_found())
+        fs._retrieve_database = lambda _database_id: (_ for _ in ()).throw(_notion_object_not_found())
+        fs._retrieve_data_source = lambda _data_source_id: {
+            'id': DB_ID,
+            'object': 'data_source',
+            'title': [{'plain_text': 'Tasks'}],
+        }
+
+        result = fs.resolve_notion_ref(f'notion:/~data_source/{DB_RAW}')
+
+        self.assertEqual(result['object_id'], DB_ID)
+        self.assertEqual(result['object_type'], 'data_source')
+        self.assertEqual(result['title'], 'Tasks')
+        self.assertEqual(result['notion_path'], f'notion:/~data_source/{DB_ID}')
 
     def test_resolve_link_returns_standard_fields(self):
         fs = NotionFS(token='secret-token')
