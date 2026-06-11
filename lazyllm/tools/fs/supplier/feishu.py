@@ -101,11 +101,11 @@ def _ref_from_element(el: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _dedupe_refs(refs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _DEDUPE_REMOVED(refs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return LinkDocumentFSBase.dedupe_document_references(refs)
 
 
-def _format_references_footer(refs: List[Dict[str, Any]]) -> str:
+def _FORMAT_REMOVED(refs: List[Dict[str, Any]]) -> str:
     return LinkDocumentFSBase.format_document_references_footer(refs, 'feishu')
 
 
@@ -1045,7 +1045,7 @@ class FeishuWikiFS(FeishuFSBase):
                     'link_preview' if 'link_preview' in el else 'hyperlink')
                 refs.append({'url': url, 'ref_type': ref_type,
                              'kind': parsed['kind'] if parsed else 'external'})
-        return _dedupe_refs(refs)
+        return LinkDocumentFSBase.dedupe_document_references(refs)
 
     def _fetch_wiki_content(self, path: str, include_references: bool = False) -> bytes:  # noqa C901
         norm = path.lstrip('/')

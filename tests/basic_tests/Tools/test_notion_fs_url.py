@@ -60,6 +60,12 @@ class TestParseNotionBrowserUrl(unittest.TestCase):
         result = _parse_notion_browser_url(f'https://www.notion.so/db?database_id={DB_RAW}')
         self.assertEqual(result, {'kind': 'object', 'id': DB_ID, 'mode_hint': 'database'})
 
+    def test_block_fragment_is_ignored_for_document_mode(self):
+        result = _parse_notion_browser_url(
+            f'https://www.notion.so/Project-Plan-{PAGE_RAW}#{BLOCK_RAW}'
+        )
+        self.assertEqual(result, {'kind': 'object', 'id': PAGE_ID})
+
     def test_invalid_url(self):
         self.assertIsNone(_parse_notion_browser_url('https://example.com/Project-Plan-' + PAGE_RAW))
         self.assertIsNone(_parse_notion_browser_url('not-a-url'))
@@ -378,6 +384,48 @@ class TestNotionWriteAndBlocks(unittest.TestCase):
 
         self.assertEqual(calls[0][1], f'https://api.notion.com/v1/pages/{PAGE_ID}/move')
         self.assertEqual(calls[0][2]['json']['parent']['page_id'], CHILD_ID)
+        self.assertEqual(calls[0][2]['headers']['Notion-Version'], '2026-03-11')
+        self.assertEqual(calls[1], ('rename', PAGE_ID, 'New Title'))
+
+    def test_mkdir_under_database_uses_data_source_parent(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        data_source_id = '22222222-3333-4444-5555-666666666666'
+        fs._get = lambda url, **kwargs: {
+            'id': DB_ID,
+            'object': 'database',
+            'data_sources': [{'id': data_source_id}],
+        } if url.endswith(f'/databases/{DB_ID}') else {}
+        fs._post = lambda url, **kwargs: calls.append((url, kwargs)) or {}
+
+        fs.mkdir(f'/~database/{DB_RAW}/New Page')
+
+        self.assertEqual(calls[0][0], 'https://api.notion.com/v1/pages')
+        self.assertEqual(calls[0][1]['json']['parent'], {'data_source_id': data_source_id})
+        self.assertEqual(
+            calls[0][1]['json']['properties']['title']['title'][0]['text']['content'],
+            'New Page',
+        )
+
+    def test_move_to_database_uses_data_source_parent(self):
+        fs = NotionFS(token='secret-token')
+        calls = []
+        data_source_id = '22222222-3333-4444-5555-666666666666'
+        fs._post = lambda url, **kwargs: calls.append(('post', url, kwargs)) or {}
+        fs.update_page_title = lambda page_id, title: calls.append(('rename', page_id, title))
+        fs._get = lambda url, **kwargs: {
+            'id': DB_ID,
+            'object': 'database',
+            'data_sources': [{'id': data_source_id}],
+        } if url.endswith(f'/databases/{DB_ID}') else {}
+
+        fs.move(f'/~page/{PAGE_RAW}', f'/~database/{DB_RAW}/New Title')
+
+        self.assertEqual(calls[0][1], f'https://api.notion.com/v1/pages/{PAGE_ID}/move')
+        self.assertEqual(
+            calls[0][2]['json']['parent'],
+            {'type': 'data_source_id', 'data_source_id': data_source_id},
+        )
         self.assertEqual(calls[0][2]['headers']['Notion-Version'], '2026-03-11')
         self.assertEqual(calls[1], ('rename', PAGE_ID, 'New Title'))
 

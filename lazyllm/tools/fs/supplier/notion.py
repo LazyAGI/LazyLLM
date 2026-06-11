@@ -71,8 +71,6 @@ def _parse_notion_browser_url(url: str) -> Optional[Dict[str, str]]:
         result['mode_hint'] = 'page'
     elif any(query.get(key) for key in ('database_id', 'databaseId')):
         result['mode_hint'] = 'database'
-    if fragment_ids and fragment_ids[-1] != object_id:
-        result['block_id'] = fragment_ids[-1]
     return result
 
 
@@ -92,6 +90,13 @@ def _dedupe_refs(refs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def _format_references_footer(refs: List[Dict[str, Any]]) -> str:
     return LinkDocumentFSBase.format_document_references_footer(refs, 'notion')
+
+
+def _parsed_notion_ref_to_path(parsed: Dict[str, str]) -> str:
+    mode_hint = parsed.get('mode_hint')
+    if mode_hint in ('page', 'database'):
+        return f'/~{mode_hint}/{parsed["id"]}'
+    return f'/{parsed["id"]}'
 
 
 def _is_notion_object_not_found(exc: Exception) -> bool:
@@ -128,27 +133,7 @@ Args:
         return self._notion_content[start:end]
 
 
-class NotionFS(LinkDocumentFSBase):
-    '''Notion 文件系统：基于 Notion API，以 Page/Block 为层级，支持 ls、读写、mkdir、rm（归档）。
-写入页面内容时，Notion API 单 block 的 rich_text 限制为 2000 字符，超长内容会被截断。
-
-认证与配置: 构造参数 token（Notion Integration Token / Internal Integration Secret）；可选 base_url。
-环境变量: NOTION_TOKEN、NOTION_INTEGRATION_TOKEN，任一非空即可作为 token。
-
-如何获取 token:
-    1. 登录 https://www.notion.so，进入要管理的 Workspace。
-    2. 侧栏底部点击「Settings & members」→「Connections」或「Integrations」。
-    3. 点击「Develop or manage integrations」或「New integration」，创建新集成（Integration）。
-    4. 在集成详情页复制「Internal Integration Secret」或「API key」（形如 secret_xxx），即为本 FS
-       的 token。注意：需在需要访问的页面/数据库中，通过「Connections」或「Add connections」
-       将该集成连接上，否则 API 无法访问该内容。
-
-
-Examples:
-    >>> from lazyllm.tools.fs import NotionFS
-    >>> fs = NotionFS(token='xxx')
-    >>> fs.ls('/')
-    '''
+__CLASS__ NotionFS(LinkDocumentFSBase):
     document_provider = 'notion'
     __public_apis__ = ['ls', 'info', 'mkdir', 'rm', 'exists',
                        'read', 'read_file', 'search', 'write', 'move',
@@ -228,23 +213,21 @@ Examples:
         parsed = _parse_notion_browser_url(url)
         if not parsed:
             raise ValueError(f'Cannot parse Notion browser URL: {url!r}')
-        return self._fetch_content(f'/{parsed["id"]}')
+        return self._fetch_content(_parsed_notion_ref_to_path(parsed))
 
     def search(self, query: str, object_type: str = '', limit: int = 20,
                sort_direction: str = 'descending') -> List[Dict[str, Any]]:
         '''按标题搜索当前 token 可访问的 Notion 页面或数据库。该能力来自 Notion 官方 /v1/search 接口，主要用于定位资源；不是页面正文全文检索。
 
-Args:
-    query (str): 标题关键词。
-    object_type (str): 可选对象过滤，支持 page、database。
-    limit (int): 最大返回条数，默认 20，最大 100。
-    sort_direction (str): 按 last_edited_time 排序方向，ascending 或 descending。
+        Args:
+            query (str): 标题关键词。
+            object_type (str): 可选对象过滤，支持 page、database。
+            limit (int): 最大返回条数，默认 20，最大 100。
+            sort_direction (str): 按 last_edited_time 排序方向，ascending 或 descending。
 
-Returns:
-    List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path 等字段。
-'''
-        query = (query or '').strip()
-        if not query:
+        Returns:
+            List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path 等字段。
+        '''
             raise ValueError('query is required')
         object_type = (object_type or '').strip().lower()
         if object_type and object_type not in {'page', 'database'}:
@@ -269,11 +252,11 @@ Returns:
         return [self._object_to_entry(item) for item in results[:limit]]
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
-        parent_id, title = self._parse_parent_title_path(path)
-        if not parent_id or not title:
-            raise ValueError('path must be /<parent_page_id>/<title>')
+        parent_kind, parent_id, title = self._resolve_parent_ref(path)
+        if parent_kind not in ('page', 'database') or not parent_id or not title:
+            raise ValueError('path must be /<parent_page_or_database_id>/<title>')
         payload: Dict[str, Any] = {
-            'parent': {'page_id': parent_id},
+            'parent': self._build_page_parent(parent_kind, parent_id),
             'properties': {
                 'title': {'title': [{'text': {'content': title}}]}
             },
@@ -304,10 +287,10 @@ Returns:
         src_kind, page_id = self._resolve_access_ref(path1)
         if src_kind != 'page':
             raise NotImplementedError('NotionFS.move only supports moving pages')
-        parent_id, new_title = self._parse_move_destination(path2)
+        parent_kind, parent_id, new_title = self._parse_move_destination(path2)
         self._post(
             f'{self._base_url}/pages/{page_id}/move',
-            json={'parent': {'type': 'page_id', 'page_id': parent_id}},
+            json={'parent': self._build_move_parent(parent_kind, parent_id)},
             headers={'Notion-Version': _NOTION_MARKDOWN_VERSION},
         )
         if new_title:
@@ -389,28 +372,79 @@ Returns:
         return 'database'
 
     def _parse_parent_title_path(self, path: str) -> Tuple[str, str]:
+        _, parent_id, title = self._resolve_parent_ref(path)
+        return parent_id, title
+
+    def _resolve_parent_ref(self, path: str) -> Tuple[str, str, str]:
         path = _strip_notion_protocol(path)
         if _is_notion_browser_url(path):
             parsed = _parse_notion_browser_url(path)
-            return (parsed['id'], '') if parsed else ('', '')
+            if not parsed:
+                return '', '', ''
+            kind, object_id = self._resolve_access_ref(_parsed_notion_ref_to_path(parsed))
+            return kind, object_id, ''
 
         norm = path.strip('/')
+        if not norm:
+            return 'root', '', ''
+        explicit_kind = ''
         if norm.startswith(('~page/', '~database/', '~block/')):
-            _, rest = norm.split('/', 1)
+            prefix, rest = norm.split('/', 1)
+            explicit_kind = {
+                '~page': 'page',
+                '~database': 'database',
+                '~block': 'block',
+            }[prefix]
             parts = [p for p in rest.split('/') if p]
         else:
             parts = [p for p in norm.split('/') if p]
         if not parts:
-            return '', ''
+            return explicit_kind or 'root', '', ''
         parent_id = _normalize_notion_id(unquote(parts[0]))
         title = unquote('/'.join(parts[1:])) if len(parts) > 1 else ''
-        return parent_id, title
+        if explicit_kind:
+            return explicit_kind, parent_id, title
+        kind, object_id = self._resolve_access_ref(f'/{parent_id}')
+        return kind, object_id, title
 
-    def _parse_move_destination(self, path: str) -> Tuple[str, str]:
-        parent_id, title = self._parse_parent_title_path(path)
-        if not parent_id:
-            raise ValueError('move destination must include a parent page id')
-        return parent_id, title
+    def _parse_move_destination(self, path: str) -> Tuple[str, str, str]:
+        parent_kind, parent_id, title = self._resolve_parent_ref(path)
+        if parent_kind not in ('page', 'database') or not parent_id:
+            raise ValueError('move destination must include a parent page or database id')
+        return parent_kind, parent_id, title
+
+    def _resolve_data_source_id(self, database_id: str) -> str:
+        database = self._get(
+            f'{self._base_url}/databases/{database_id}',
+            headers={'Notion-Version': _NOTION_MARKDOWN_VERSION},
+        )
+        data_sources = database.get('data_sources') or []
+        data_source_ids = [
+            _normalize_notion_id(item.get('id', ''))
+            for item in data_sources
+            if isinstance(item, dict) and item.get('id')
+        ]
+        if len(data_source_ids) == 1:
+            return data_source_ids[0]
+        if not data_source_ids:
+            raise ValueError(
+                'database parent does not expose a child data source; use a page parent or a database with one data source'
+            )
+        raise ValueError('database parent has multiple data sources; specify the intended data source explicitly')
+
+    def _build_page_parent(self, parent_kind: str, parent_id: str) -> Dict[str, str]:
+        if parent_kind == 'page':
+            return {'page_id': parent_id}
+        if parent_kind == 'database':
+            return {'data_source_id': self._resolve_data_source_id(parent_id)}
+        raise ValueError('parent must be a page or database')
+
+    def _build_move_parent(self, parent_kind: str, parent_id: str) -> Dict[str, str]:
+        if parent_kind == 'page':
+            return {'type': 'page_id', 'page_id': parent_id}
+        if parent_kind == 'database':
+            return {'type': 'data_source_id', 'data_source_id': self._resolve_data_source_id(parent_id)}
+        raise ValueError('parent must be a page or database')
 
     def _search_all(self, detail: bool) -> List:
         results = self._paginate_post(f'{self._base_url}/search', {'page_size': _PAGE_SIZE})
