@@ -308,7 +308,7 @@ class NotionFS(LinkDocumentFSBase):
         text = data.decode('utf-8', errors='replace')
         content_type = kwargs.get('content_type')
         if kind == 'page' and content_type in ('markdown', 'md'):
-            self.replace_page_markdown(object_id, text)
+            self.replace_page_markdown(object_id, text, allow_deleting_content=True)
             return
         blocks = self._text_to_paragraph_blocks(text)
         for i in range(0, len(blocks), _PAGE_SIZE):
@@ -486,14 +486,14 @@ class NotionFS(LinkDocumentFSBase):
                               allow_deleting_content: bool = False) -> Dict[str, Any]:
         '''使用 Notion Markdown endpoint 替换页面正文。该接口适合把算法生成的整页 Markdown 写回 Notion；是否允许删除原内容由 allow_deleting_content 控制。
 
-Args:
-    page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
-    markdown (str): 新的 Markdown 正文。
-    allow_deleting_content (bool): 是否允许删除页面已有内容，默认 False。
+        Args:
+            page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
+            markdown (str): 新的 Markdown 正文。
+            allow_deleting_content (bool): 是否允许删除页面已有内容，默认 False。
 
-Returns:
-    Dict[str, Any]: Notion API 返回体。
-'''
+        Returns:
+            Dict[str, Any]: Notion API 返回体。
+        '''
         return self._patch(
             f'{self._base_url}/pages/{_normalize_notion_id(page_id)}/markdown',
             json={
@@ -941,7 +941,7 @@ Returns:
 
     @staticmethod
     def _title_property_key(page: Dict[str, Any]) -> str:
-        props = page.get('properties', {}) or {}
+        props = page.get('properties') or {} or {}
         for key, prop in props.items():
             if isinstance(prop, dict) and prop.get('type') == 'title':
                 return key
@@ -1130,7 +1130,7 @@ Returns:
 
     @staticmethod
     def _page_title(page: Dict[str, Any]) -> str:
-        props = page.get('properties', {})
+        props = page.get('properties') or {}
         for prop in props.values():
             if prop.get('type') == 'title':
                 return NotionFS._rich_text_to_markdown(prop.get('title') or [])
