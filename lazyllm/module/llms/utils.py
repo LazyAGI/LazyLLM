@@ -332,12 +332,13 @@ def resolve_model_name(model: Optional[str], entry: Optional[Dict[str, Any]]) ->
 
 def process_trainable_args(model: str, type: str, source: str,
                            config: Union[str, bool],
-                           entry: Optional[Dict[str, Any]]) -> dict:
+                           entry: Optional[Dict[str, Any]],
+                           stream: bool = False) -> dict:
     entry = entry or {}
     return {
         'base_model': resolve_model_name(model=model, entry=entry),
         'target_path': entry.get('target_path', ''),
-        'stream': entry.get('stream', False),
+        'stream': stream or entry.get('stream', False),
         'return_trace': entry.get('return_trace', False),
         'trust_remote_code': entry.get('trust_remote_code', True),
         'type': type or entry.get('type', entry.get('task', None)),
@@ -346,7 +347,8 @@ def process_trainable_args(model: str, type: str, source: str,
     }
 
 def process_online_args(model: str, source: str, type: str,
-                        entry: Optional[Dict[str, Any]]) -> dict:
+                        entry: Optional[Dict[str, Any]],
+                        stream: bool = False) -> dict:
     entry = entry or {}
     entry['model'] = resolve_model_name(model=model, entry=entry)
     if source:
@@ -358,4 +360,5 @@ def process_online_args(model: str, source: str, type: str,
     # ConfigsDict look up per-role dynamic configs by name rather than
     # falling back to 'default' for every module of the same slot type.
     entry.setdefault('name', model)
+    entry['stream'] = stream or entry.get('stream', False)
     return entry
