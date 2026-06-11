@@ -14,11 +14,10 @@ class IPYNBReader(LazyLLMReaderBase):
     def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
-        if file.name.endswith('.ipynb'):
-            try:
-                import nbformat
-            except ImportError:
-                raise ImportError('Please install nbformat: pip install nbformat')
+        try:
+            import nbformat
+        except ImportError:
+            raise ImportError('Please install nbformat: pip install nbformat')
 
         if fs:
             with fs.open(file, 'r', encoding='utf-8') as f:
@@ -28,7 +27,7 @@ class IPYNBReader(LazyLLMReaderBase):
                 notebook = nbformat.read(f, as_version=4)
 
         cell_texts = []
-        for idx, cell in enumerate(notebook.cells):
+        for cell in notebook.cells:
             source = getattr(cell, 'source', '')
             if isinstance(source, list):
                 source = ''.join(source)

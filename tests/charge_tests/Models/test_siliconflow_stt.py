@@ -7,8 +7,14 @@ import lazyllm
 from lazyllm import AutoModel
 from lazyllm.module.llms.onlinemodule.supplier.siliconflow import SiliconFlowSTT
 
+from ...utils import get_api_key
+
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'automodel_stt_config.yaml')
-AUDIO_PATH = '/mnt/c/Users/cuishaoting/Downloads/test_content/speech.mp3'
+AUDIO_PATH = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
+
+
+def _live_stt_ready() -> bool:
+    return os.path.exists(AUDIO_PATH) and bool(get_api_key('siliconflow'))
 
 
 class TestSiliconFlowSTT:
@@ -47,15 +53,17 @@ class TestSiliconFlowSTT:
 
         assert result == 'path input'
 
+    def test_forward_rejects_multiple_files(self):
+        module = SiliconFlowSTT(api_key='test-key')
+        files = [AUDIO_PATH, AUDIO_PATH]
+        with pytest.raises(ValueError, match='only supports one audio file'):
+            module(files=files)
 
-@pytest.mark.skipif(
-    not os.environ.get('LAZYLLM_SILICONFLOW_API_KEY'),
-    reason='LAZYLLM_SILICONFLOW_API_KEY is required for live STT test',
-)
-@pytest.mark.skipif(not os.path.exists(AUDIO_PATH), reason=f'audio file not found: {AUDIO_PATH}')
+
+@pytest.mark.skipif(not _live_stt_ready(), reason='ci_data/shuidiaogetou.mp3 or siliconflow api key unavailable')
 class TestSiliconFlowSTTLive:
     def test_siliconflow_stt_live(self):
-        module = SiliconFlowSTT(api_key=os.environ['LAZYLLM_SILICONFLOW_API_KEY'])
+        module = SiliconFlowSTT(api_key=get_api_key('siliconflow'))
         result = module(AUDIO_PATH)
         assert isinstance(result, str)
         assert result.strip()
