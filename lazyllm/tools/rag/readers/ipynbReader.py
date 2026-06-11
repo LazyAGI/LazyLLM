@@ -1,4 +1,3 @@
-import re
 from pathlib import Path
 from typing import Dict, List, Optional
 from lazyllm.thirdparty import fsspec
@@ -17,20 +16,30 @@ class IPYNBReader(LazyLLMReaderBase):
 
         if file.name.endswith('.ipynb'):
             try:
-                import nbconvert
+                import nbformat
             except ImportError:
-                raise ImportError('Please install nbconvert `pip install nbconvert`')
+                raise ImportError('Please install nbformat: pip install nbformat')
 
         if fs:
-            with fs.open(file, encoding='utf-8') as f:
-                doc_str = nbconvert.exporters.ScriptExporter().from_file(f)[0]
+            with fs.open(file, 'r', encoding='utf-8') as f:
+                notebook = nbformat.read(f, as_version=4)
         else:
-            doc_str = nbconvert.exporters.ScriptExporter().from_file(file)[0]
+            with open(file, 'r', encoding='utf-8') as f:
+                notebook = nbformat.read(f, as_version=4)
 
-        splits = re.split(r'In\[\d+\]:', doc_str)
-        splits.pop(0)
+        cell_texts = []
+        for idx, cell in enumerate(notebook.cells):
+            source = getattr(cell, 'source', '')
+            if isinstance(source, list):
+                source = ''.join(source)
+            if not source or not source.strip():
+                continue
 
-        if self._concatenate: docs = [DocNode(text='\n\n'.join(splits))]
-        else: docs = [DocNode(text=s) for s in splits]
+            cell_texts.append(source)
 
-        return docs
+        if not cell_texts:
+            return []
+
+        if self._concatenate:
+            return [DocNode(text=('\n\n' + '-' * 80 + '\n\n').join(cell_texts))]
+        return [DocNode(text=text) for text in cell_texts]
