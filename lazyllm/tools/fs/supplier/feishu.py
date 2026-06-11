@@ -7,14 +7,16 @@ from urllib.parse import urlencode
 import requests
 
 
-from lazyllm import LOG, config, globals as lazyllm_globals
+from lazyllm import LOG, config
+from lazyllm import globals as lazyllm_globals
 from lazyllm.common import Credential
 from lazyllm.thirdparty import mistune
 
 from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
 
 config.add('feishu_app_id', str, None, 'FEISHU_APP_ID', description='Feishu App ID for tenant_access_token.')
-config.add('feishu_app_secret', str, None, 'FEISHU_APP_SECRET', description='Feishu App Secret for tenant_access_token.')
+config.add('feishu_app_secret', str, None, 'FEISHU_APP_SECRET',
+           description='Feishu App Secret for tenant_access_token.')
 lazyllm_globals.config.add(
     'feishu_wiki_space_id', str, None, 'FEISHU_WIKI_SPACE_ID',
     description='Default Feishu wiki space_id for tree ops (ls/mkdir) when not set in URI.',
@@ -224,10 +226,12 @@ class FeishuFSBase(LinkDocumentFSBase):
         return super()._make_credential(token, dynamic_auth)
 
     @property
-    def _app_id(self) -> str: return self._secret_key.get('app_id', '')
+    def _app_id(self) -> str:
+        return self._secret_key.get('app_id', '')
 
     @property
-    def _app_secret(self) -> str: return self._secret_key.get('app_secret', '')
+    def _app_secret(self) -> str:
+        return self._secret_key.get('app_secret', '')
 
     @property
     def _user_refresh_token(self) -> str:
@@ -850,7 +854,8 @@ class FeishuWikiFS(FeishuFSBase):
                 params['page_token'] = page_token
             data = self._get(url, params=params)
             results.extend(data.get('data', {}).get('items') or data.get('data', {}).get('nodes') or [])
-            if not (page_token := data.get('data', {}).get('page_token') or data.get('data', {}).get('next_page_token')):
+            page_token = data.get('data', {}).get('page_token') or data.get('data', {}).get('next_page_token')
+            if not page_token:
                 break
         return results
 

@@ -133,7 +133,7 @@ Args:
         return self._notion_content[start:end]
 
 
-__CLASS__ NotionFS(LinkDocumentFSBase):
+class NotionFS(LinkDocumentFSBase):
     document_provider = 'notion'
     __public_apis__ = ['ls', 'info', 'mkdir', 'rm', 'exists',
                        'read', 'read_file', 'search', 'write', 'move',
@@ -228,6 +228,8 @@ __CLASS__ NotionFS(LinkDocumentFSBase):
         Returns:
             List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path 等字段。
         '''
+        query = (query or '').strip()
+        if not query:
             raise ValueError('query is required')
         object_type = (object_type or '').strip().lower()
         if object_type and object_type not in {'page', 'database'}:
