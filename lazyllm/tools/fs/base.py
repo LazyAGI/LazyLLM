@@ -321,6 +321,19 @@ class LinkDocumentFSBase(LazyLLMFSBase):
 
     @staticmethod
     def build_public_apis(extra: Optional[List[str]] = None, exclude: Optional[List[str]] = None) -> List[str]:
+        '''Build the public API list for cloud document FS subclasses.
+
+        Merges LazyLLMFSBase and LinkDocumentFSBase base interfaces, allowing
+        subclasses to add their own methods via extra or remove inherited ones
+        via exclude.
+
+        Args:
+            extra (Optional[List[str]]): Additional method names to expose.
+            exclude (Optional[List[str]]): Method names to omit from the base lists.
+
+        Returns:
+            List[str]: Merged list of public API method names.
+        '''
         excluded = set(exclude or [])
         public_apis: List[str] = []
         for name in [*LazyLLMFSBase.__public_apis__, *LinkDocumentFSBase.__document_public_apis__, *(extra or [])]:
