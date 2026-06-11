@@ -169,6 +169,33 @@ class SQLiteStore(LazyLLMStoreBase):
             return ([], 0) if kwargs.get('return_total') else []
 
     @override
+    def keyword_search(self, collection_name, keyword, doc_id, kb_id=None,
+                       phrase=True, sort_by='score', size=10, **kwargs):
+        LOG.info(f'[SQLiteStore.keyword_search] collection={collection_name!r} keyword={keyword!r} '
+                 f'doc_id={doc_id!r} kb_id={kb_id!r} phrase={phrase} sort_by={sort_by!r}')
+        criteria = {RAG_DOC_ID: doc_id}
+        if kb_id:
+            criteria[RAG_KB_ID] = kb_id
+        nodes = self.get(collection_name, criteria=criteria)
+
+        kw_lower = keyword.lower()
+        matched = []
+        for n in nodes:
+            text = (n.get('content') or '').lower()
+            if phrase:
+                if kw_lower in text:
+                    matched.append(n)
+            elif all(w.lower() in text for w in keyword.split()):
+                matched.append(n)
+
+        if sort_by == 'number':
+            matched.sort(key=lambda n: (n.get('number', 0) or 0, (n.get('uid', '') or '')))
+        else:
+            matched.sort(key=lambda n: ((n.get('content') or '').lower().count(kw_lower)), reverse=True)
+
+        return matched[:size]
+
+    @override
     def search(self, collection_name, query=None, topk=10, filters=None, **kwargs):
         if not query: return []
         try:
