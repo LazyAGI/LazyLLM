@@ -19,7 +19,7 @@ Args:
     timeout (float, optional): Timeout for http client connection, in seconds. (default is 5)
     transport (Literal, optional): Transport protocol to use. One of 'auto', 'stdio', 'sse', 'streamable-http'. (default is 'auto')
 
-        - 'auto': For http(s) URLs, probes the endpoint via POST InitializeRequest to detect streamable-http per the MCP spec. If detection fails, raises RuntimeError (hint: use explicit transport='sse' for legacy servers). For non-http commands, selects 'stdio'.
+        - 'auto': For http(s) URLs, selects 'streamable-http'. For non-http commands, selects 'stdio'. SSE is NOT auto-detected — use explicit transport='sse' for legacy SSE servers.
         - 'stdio': Launch and communicate with a local MCP server via standard input/output.
         - 'sse': Connect to a remote MCP server using the legacy SSE protocol (deprecated by MCP spec, but still supported for backward compatibility).
         - 'streamable-http': Connect to a remote MCP server using the new Streamable HTTP protocol.
@@ -39,7 +39,7 @@ Args:
     timeout (float, optional): HTTP 客户端连接的超时时间，单位为秒。(默认值为5)
     transport (Literal, optional): 传输协议。可选值为 'auto'、'stdio'、'sse'、'streamable-http'。(默认值为 'auto')
 
-        - 'auto'：对于 http(s) URL，发送 POST InitializeRequest 探测 streamable-http（符合 MCP 规范）。探测失败则抛出 RuntimeError（提示：老版本 SSE 服务器请显式设置 transport='sse'）。对于非 http 命令，选择 'stdio'。
+        - 'auto'：对于 http(s) URL，选择 'streamable-http'。对于非 http 命令，选择 'stdio'。SSE 不会被自动检测——老版本 SSE 服务器请显式设置 transport='sse'。
         - 'stdio'：通过标准输入输出启动和通信本地 MCP 服务器。
         - 'sse'：使用旧版 SSE 协议连接远程 MCP 服务器（已被 MCP 规范废弃，仍保留以兼容老服务）。
         - 'streamable-http'：使用新版 Streamable HTTP 协议连接远程 MCP 服务器。

@@ -25,56 +25,18 @@ class MCPClient(object):
         self._headers = headers
         self._timeout = timeout
         self._transport = transport
-        self._probed_transport: Optional[str] = None
 
-    async def _resolve_transport(self) -> str:
+    def _resolve_transport(self) -> str:
         if self._transport != 'auto':
             return self._transport
-        if self._probed_transport is not None:
-            return self._probed_transport
-        self._probed_transport = await self._probe_transport()
-        return self._probed_transport
-
-    async def _probe_transport(self) -> str:
-        url = self._command_or_url
-        if urlparse(url).scheme not in ('http', 'https'):
-            return 'stdio'
-
-        timeout = httpx.Timeout(min(self._timeout, 5))
-        headers = {
-            **(self._headers or {}),
-            'Accept': 'application/json, text/event-stream',
-            'Content-Type': 'application/json',
-        }
-        body = {
-            'jsonrpc': '2.0',
-            'id': 1,
-            'method': 'initialize',
-            'params': {
-                'protocolVersion': '2025-03-26',
-                'capabilities': {},
-                'clientInfo': {'name': 'lazyllm', 'version': '1.0'},
-            },
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                r = await client.post(url, json=body, headers=headers)
-                if r.status_code < 500:
-                    return 'streamable-http'
-        except Exception:
-            pass
-
-        raise RuntimeError(
-            f"Cannot auto-detect MCP transport for '{url}'. "
-            f"If this server uses the legacy SSE transport, set transport='sse'."
-        )
+        if urlparse(self._command_or_url).scheme in ('http', 'https'):
+            return 'streamable-http'
+        return 'stdio'
 
     @asynccontextmanager
     async def _run_session(self):
-        transport = await self._resolve_transport()
+        transport = self._resolve_transport()
 
-        # ───────── stdio ─────────
         if transport == 'stdio':
             server_parameters = mcp.StdioServerParameters(
                 command=self._command_or_url, args=self._args, env=self._env
@@ -83,8 +45,6 @@ class MCPClient(object):
                 async with mcp.ClientSession(read_stream, write_stream) as session:
                     await session.initialize()
                     yield session
-
-        # ───────── Streamable HTTP (new standard) ─────────
         elif transport == 'streamable-http':
             import importlib.util
             spec = importlib.util.find_spec('mcp.client.streamable_http')
@@ -109,8 +69,6 @@ class MCPClient(object):
                     async with mcp.ClientSession(read_stream, write_stream) as session:
                         await session.initialize()
                         yield session
-
-        # ───────── Legacy SSE (backward compatible) ─────────
         else:  # 'sse'
             import importlib.util
             spec = importlib.util.find_spec('mcp.client.sse')
