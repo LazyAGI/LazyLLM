@@ -430,7 +430,8 @@ class NotionFS(LinkDocumentFSBase):
             return data_source_ids[0]
         if not data_source_ids:
             raise ValueError(
-                'database parent does not expose a child data source; use a page parent or a database with one data source'
+                'database parent does not expose a child data source; '
+                'use a page parent or a database with one data source'
             )
         raise ValueError('database parent has multiple data sources; specify the intended data source explicitly')
 
