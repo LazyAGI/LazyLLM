@@ -3911,6 +3911,42 @@ Args:
 - Union[List[DocNode], DocNode]: Window nodes list or a merged node.
 ''')
 
+add_chinese_doc('rag.document.UrlDocument.keyword_search', '''\
+在远程文档中执行关键词精准匹配。
+
+与 :meth:`Document.keyword_search` 接口一致，通过 RPC 代理到远端 Document 服务。
+
+Args:
+    group (str): 节点组名。
+    keyword (str): 待匹配的关键词。
+    doc_id (str): 目标文档 ID。
+    kb_id (Optional[str]): 知识库过滤条件。
+    phrase (bool): True 为精确子串匹配，False 为单词级匹配。
+    sort_by (str): ``"score"`` 按相关性排序，``"number"`` 按文档顺序排序。
+    size (int): 最大返回条数。
+
+Returns:
+    List[dict]: 命中的切片列表。
+''')
+
+add_english_doc('rag.document.UrlDocument.keyword_search', '''\
+Perform exact keyword matching in a remote document.
+
+Same interface as :meth:`Document.keyword_search`, proxied via RPC to the remote Document service.
+
+Args:
+    group (str): Node group name.
+    keyword (str): Keyword to match.
+    doc_id (str): Target document ID.
+    kb_id (Optional[str]): Knowledge-base filter.
+    phrase (bool): True for exact substring match, False for word-level match.
+    sort_by (str): ``"score"`` sorts by relevance, ``"number"`` sorts by document order.
+    size (int): Maximum number of hits.
+
+Returns:
+    List[dict]: Matched segment list.
+''')
+
 add_english_doc('rag.doc_node.DocNode', '''
 Execute assigned tasks on the specified document.
 
