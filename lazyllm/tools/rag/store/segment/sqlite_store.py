@@ -179,19 +179,22 @@ class SQLiteStore(LazyLLMStoreBase):
         nodes = self.get(collection_name, criteria=criteria)
 
         kw_lower = keyword.lower()
+        words = kw_lower.split()
         matched = []
         for n in nodes:
             text = (n.get('content') or '').lower()
             if phrase:
                 if kw_lower in text:
                     matched.append(n)
-            elif all(w.lower() in text for w in keyword.split()):
+            elif all(w in text for w in words):
                 matched.append(n)
 
         if sort_by == 'number':
             matched.sort(key=lambda n: (n.get('number', 0) or 0, (n.get('uid', '') or '')))
-        else:
+        elif phrase:
             matched.sort(key=lambda n: ((n.get('content') or '').lower().count(kw_lower)), reverse=True)
+        else:
+            matched.sort(key=lambda n: sum(((n.get('content') or '').lower().count(w) for w in words)), reverse=True)
 
         return matched[:size]
 

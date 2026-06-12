@@ -285,7 +285,8 @@ class OpenSearchStore(LazyLLMStoreBase):
                         'global_meta', 'type', 'number', 'parent'],
             'query': {'bool': {
                 'filter': filters,
-                'must': [{'match_phrase' if phrase else 'match': {'content': keyword}}],
+                'must': [{'match_phrase': {'content': keyword}} if phrase
+                         else {'match': {'content': {'query': keyword, 'operator': 'and'}}}],
             }},
             'sort': [{'number': {'order': 'asc'}}] if sort_by == 'number' else [
                 {'_score': {'order': 'desc'}}, {'number': {'order': 'asc'}}],
