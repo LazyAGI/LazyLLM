@@ -1083,7 +1083,7 @@ class NotionFS(LinkDocumentFSBase):
 
     @staticmethod
     def _title_property_key(page: Dict[str, Any]) -> str:
-        props = page.get('properties') or {} or {}
+        props = page.get('properties') or {}
         for key, prop in props.items():
             if isinstance(prop, dict) and prop.get('type') == 'title':
                 return key
