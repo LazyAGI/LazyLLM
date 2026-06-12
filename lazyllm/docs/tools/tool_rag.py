@@ -2158,6 +2158,33 @@ reader = MineruPPTReader(url='https://mineru.net', dynamic_auth=True)
 nodes = reader('path/to/deck.pptx')
 ''')
 
+add_chinese_doc('rag.readers.MineruPPTReader.is_ppt_file', '''\
+判断路径是否为 Mineru 演示文稿文件。
+
+Args:
+    file_path (str | Path): 文件路径。
+
+Returns:
+    bool: 后缀为 ``.ppt`` / ``.pptx`` / ``.pptm`` 时返回 True。
+''')
+
+add_english_doc('rag.readers.MineruPPTReader.is_ppt_file', '''\
+Return whether a path refers to a Mineru presentation file.
+
+Args:
+    file_path (str | Path): File path.
+
+Returns:
+    bool: True when the suffix is ``.ppt``, ``.pptx``, or ``.pptm``.
+''')
+
+add_example('rag.readers.MineruPPTReader.is_ppt_file', '''\
+from lazyllm.tools.rag.readers import MineruPPTReader
+
+MineruPPTReader.is_ppt_file('deck.pptx')   # True
+MineruPPTReader.is_ppt_file('report.pdf')  # False
+''')
+
 add_chinese_doc('rag.readers.PaddleOCRPDFReader', '''\
 基于PaddleOCR服务的PDF解析器，通过调用PaddleOCR服务的API来解析PDF文件，支持丰富的文档结构识别。
 服务接入方式：
