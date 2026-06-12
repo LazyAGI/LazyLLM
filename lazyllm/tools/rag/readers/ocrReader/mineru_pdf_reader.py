@@ -38,6 +38,8 @@ _IMAGE_REF_PATTERN = re.compile(
     r'images/[^\s\)"\'\]<]+\.(?:jpg|jpeg|png|gif|bmp|webp|tiff|tif)',
     re.IGNORECASE,
 )
+
+
 class MineruPDFReader(_OcrReaderBase):
     def __init__(self,
                  url: Optional[str] = None,
@@ -264,13 +266,9 @@ class MineruPDFReader(_OcrReaderBase):
         with ThreadPoolExecutor(max_workers=8) as executor:
             list(executor.map(_download_one, image_tasks))
 
-    @staticmethod
-    def _split_for_upload(file_path: str) -> List[tuple]:
-        return MineruPDFReader._split_large_pdf(file_path)
-
     def _fetch_async(self, file, use_cache: bool = True):
         file_str = str(file)
-        splits = self._split_for_upload(file_str)
+        splits = self._split_large_pdf(file_str)
         task_dir = self._image_cache_dir / str(uuid.uuid4())
 
         if len(splits) == 1:
@@ -430,14 +428,7 @@ class MineruPDFReader(_OcrReaderBase):
             return result
         raise TypeError(f'Not supported type: {type(content)}.')
 
-    def _resolve_bbox(self, item: dict) -> Optional[List]:
-        bbox = item.get('bbox')
-        if bbox is None:
-            LOG.warning(f'[MineruPDFReader] content item missing bbox field, skipped: {item}')
-            return None
-        return bbox
-
-    def _adapt_one(self, item: dict) -> Optional[Block]:  # noqa: C901
+    def _adapt_one(self, item: dict) -> Optional[Block]:
         ty = item.get('type')
         if ty is None:
             LOG.warning(f'[MineruPDFReader] content item missing type field, skipped: {item}')
@@ -451,8 +442,9 @@ class MineruPDFReader(_OcrReaderBase):
         if page_idx is None:
             LOG.warning(f'[MineruPDFReader] content item missing page_idx field, skipped: {item}')
             return None
-        bbox = self._resolve_bbox(item)
+        bbox = item.get('bbox')
         if bbox is None:
+            LOG.warning(f'[MineruPDFReader] content item missing bbox field, skipped: {item}')
             return None
         page = PageRef(index=page_idx, bbox=BBox.from_list(bbox))
 

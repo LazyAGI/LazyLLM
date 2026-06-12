@@ -191,10 +191,7 @@ class TestDynamicPDFReader:
 
     def test_ppt_skips_pdf_split(self):
         ppt_path = '/tmp/demo.pptx'
-        with patch.object(MineruPDFReader, '_split_large_pdf') as mock_split:
-            splits = MineruPPTReader._split_for_upload(ppt_path)
-        mock_split.assert_not_called()
-        assert splits == [(ppt_path, 0)]
+        assert MineruPPTReader._split_large_pdf(ppt_path) == [(ppt_path, 0)]
 
     def test_ppt_missing_bbox_uses_zero_bbox(self):
         reader = MineruPPTReader(url='https://mineru.net')
