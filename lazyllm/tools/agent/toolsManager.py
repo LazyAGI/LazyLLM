@@ -260,8 +260,7 @@ if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
 
 
 class MethodModuleTool(ModuleTool):
-    def __init__(self, instance: Any, method_name: str,
-                 key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
+    def __init__(self, instance: Any, method_name: str):
         object.__setattr__(self, '_instance', instance)
         object.__setattr__(self, '_method_name', method_name)
         bound = getattr(instance, method_name)
@@ -281,9 +280,6 @@ class MethodModuleTool(ModuleTool):
             if member is not None and getattr(member, '__doc__', None):
                 return member.__doc__
         return None
-
-    def _load_function_schema(self, func: Callable) -> Type[BaseModel]:
-        return super()._load_function_schema(getattr(self._instance, self._method_name))
 
 
 def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
