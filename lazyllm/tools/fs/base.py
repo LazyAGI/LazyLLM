@@ -320,6 +320,15 @@ class LinkDocumentFSBase(LazyLLMFSBase):
     __public_apis__ = LazyLLMFSBase.__public_apis__ + __document_public_apis__
     link_path_prefix = '~link/'
 
+    @staticmethod
+    def build_public_apis(extra: Optional[List[str]] = None, exclude: Optional[List[str]] = None) -> List[str]:
+        excluded = set(exclude or [])
+        public_apis: List[str] = []
+        for name in [*LazyLLMFSBase.__public_apis__, *LinkDocumentFSBase.__document_public_apis__, *(extra or [])]:
+            if name not in excluded and name not in public_apis:
+                public_apis.append(name)
+        return public_apis
+
     @classmethod
     def to_link_path(cls, url: str) -> str:
         return '/' + cls.link_path_prefix + quote(url, safe='')

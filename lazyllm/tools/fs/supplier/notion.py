@@ -139,9 +139,7 @@ class NotionFS(LinkDocumentFSBase):
     '''
 
     document_provider = 'notion'
-    __public_apis__ = ['ls', 'info', 'mkdir', 'rm', 'exists',
-                       'read', 'read_file', 'search', 'write', 'move',
-                       *LinkDocumentFSBase.__document_public_apis__]
+    __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search'], exclude=['copy'])
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  dynamic_auth: bool = False, **storage_options):

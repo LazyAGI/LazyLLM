@@ -806,7 +806,7 @@ class FeishuWikiFS(FeishuFSBase):
     protocol = 'feishu'
     _fs_protocol_key = 'feishu'
     document_provider = 'feishu'
-    __public_apis__ = LazyLLMFSBase.__public_apis__ + LinkDocumentFSBase.__document_public_apis__
+    __public_apis__ = LinkDocumentFSBase.build_public_apis()
 
     def _create_docx_node(self, title: str, parent_token: str = '') -> str:
         url = f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes'

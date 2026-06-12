@@ -120,6 +120,14 @@ class TestFSRouterParseNotion(unittest.TestCase):
         self.assertTrue(LinkDocumentFSBase.is_link_path(path))
         self.assertEqual(LinkDocumentFSBase.decode_link_path(path), url)
 
+    def test_document_public_apis_are_composed_by_base(self):
+        apis = LinkDocumentFSBase.build_public_apis(extra=['search'], exclude=['copy'])
+        self.assertIn('resolve_link', apis)
+        self.assertIn('read_with_references', apis)
+        self.assertIn('get_doc_blocks', apis)
+        self.assertIn('search', apis)
+        self.assertNotIn('copy', apis)
+
 
 class TestNotionDynamicAuth(unittest.TestCase):
 
