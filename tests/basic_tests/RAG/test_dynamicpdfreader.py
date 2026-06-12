@@ -6,7 +6,8 @@ import pytest
 from lazyllm import globals as lazyllm_globals
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader import DynamicPDFReader
-from lazyllm.tools.rag.readers.ocrReader.mineru_pdf_reader import MineruPDFReader
+from lazyllm.tools.rag.readers.ocrReader.mineru_pdf_reader import MineruPDFReader, _OFFICE_DEFAULT_BBOX
+from lazyllm.tools.rag.readers.ocrReader.ocr_ir import FigureBlock, ParagraphBlock
 from lazyllm.tools.rag.readers.ocrReader.ocr_service import (
     OcrServiceVariant,
     default_online_url,
@@ -162,3 +163,33 @@ class TestDynamicPDFReader:
         reader = MineruPDFReader(url='https://mineru.net')
         assert reader._variant == OcrServiceVariant.ONLINE
         assert reader._upload_mode is False
+
+    def test_ppt_skips_pdf_split(self):
+        ppt_path = '/tmp/demo.pptx'
+        with patch.object(MineruPDFReader, '_split_large_pdf') as mock_split:
+            splits = MineruPDFReader._split_for_upload(ppt_path)
+        mock_split.assert_not_called()
+        assert splits == [(ppt_path, 0)]
+
+    def test_office_missing_bbox_uses_zero_bbox(self):
+        reader = MineruPDFReader(url='https://mineru.net')
+        reader._office_compat = True
+        text_block = reader._adapt_one({
+            'type': 'text',
+            'text': 'hello',
+            'page_idx': 0,
+        })
+        image_block = reader._adapt_one({
+            'type': 'image',
+            'img_path': 'images/demo.jpg',
+            'page_idx': 1,
+        })
+        assert isinstance(text_block, ParagraphBlock)
+        assert text_block.page.bbox.to_list() == _OFFICE_DEFAULT_BBOX
+        assert isinstance(image_block, FigureBlock)
+        assert image_block.page.bbox.to_list() == _OFFICE_DEFAULT_BBOX
+
+    def test_pdf_missing_bbox_still_skipped(self):
+        reader = MineruPDFReader(url='https://mineru.net')
+        reader._office_compat = False
+        assert reader._adapt_one({'type': 'text', 'text': 'hello', 'page_idx': 0}) is None
