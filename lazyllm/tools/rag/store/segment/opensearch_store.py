@@ -270,6 +270,42 @@ class OpenSearchStore(LazyLLMStoreBase):
             LOG.error(f'[OpenSearchStore - search] Error searching data from OpenSearch: {e}')
             return []
 
+    @override
+    def keyword_search(self, collection_name, keyword, doc_id, kb_id=None,
+                       phrase=True, sort_by='score', size=10, **kwargs):
+        LOG.info(f'[OpenSearchStore.keyword_search] collection={collection_name!r} keyword={keyword!r} '
+                 f'doc_id={doc_id!r} kb_id={kb_id!r} phrase={phrase} sort_by={sort_by!r}')
+        self._ensure_index(collection_name)
+        filters = [{'term': {'doc_id.keyword': doc_id}}]
+        if kb_id:
+            filters.append({'term': {'kb_id.keyword': kb_id}})
+        body = {
+            'size': size,
+            '_source': ['uid', 'doc_id', 'kb_id', 'group', 'content', 'meta',
+                        'global_meta', 'type', 'number', 'parent'],
+            'query': {'bool': {
+                'filter': filters,
+                'must': [{'match_phrase': {'content': keyword}} if phrase
+                         else {'match': {'content': {'query': keyword, 'operator': 'and'}}}],
+            }},
+            'sort': [{'number': {'order': 'asc'}}] if sort_by == 'number' else [
+                {'_score': {'order': 'desc'}}, {'number': {'order': 'asc'}}],
+            'highlight': {
+                'fields': {'content': {'fragment_size': 180, 'number_of_fragments': 3}},
+            },
+        }
+        resp = self._client.search(index=collection_name, body=body)
+        res = []
+        for hit in resp['hits']['hits']:
+            seg = self._transform_segment(hit)
+            if seg:
+                seg['score'] = hit.get('_score', 0.0)
+                highlights = hit.get('highlight', {}).get('content', [])
+                if highlights:
+                    seg['highlights'] = highlights
+                res.append(seg)
+        return res
+
     def _serialize_node(self, segment: dict):
         seg = dict(segment)
         seg.pop('embedding', None)
