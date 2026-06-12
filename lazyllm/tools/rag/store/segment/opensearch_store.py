@@ -276,9 +276,9 @@ class OpenSearchStore(LazyLLMStoreBase):
         LOG.info(f'[OpenSearchStore.keyword_search] collection={collection_name!r} keyword={keyword!r} '
                  f'doc_id={doc_id!r} kb_id={kb_id!r} phrase={phrase} sort_by={sort_by!r}')
         self._ensure_index(collection_name)
-        filters = [{'term': {'doc_id': doc_id}}]
+        filters = [{'term': {'doc_id.keyword': doc_id}}]
         if kb_id:
-            filters.append({'term': {'kb_id': kb_id}})
+            filters.append({'term': {'kb_id.keyword': kb_id}})
         body = {
             'size': size,
             '_source': ['uid', 'doc_id', 'kb_id', 'group', 'content', 'meta',
