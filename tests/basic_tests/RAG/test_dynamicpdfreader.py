@@ -6,7 +6,8 @@ import pytest
 from lazyllm import globals as lazyllm_globals
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader import DynamicPDFReader
-from lazyllm.tools.rag.readers.ocrReader.mineru_pdf_reader import MineruPDFReader, _OFFICE_DEFAULT_BBOX
+from lazyllm.tools.rag.readers.ocrReader.mineru_pdf_reader import MineruPDFReader
+from lazyllm.tools.rag.readers.ocrReader.mineru_ppt_reader import MineruPPTReader
 from lazyllm.tools.rag.readers.ocrReader.ocr_ir import FigureBlock, ParagraphBlock
 from lazyllm.tools.rag.readers.ocrReader.ocr_service import (
     OcrServiceVariant,
@@ -89,6 +90,30 @@ class TestDynamicPDFReader:
             reader._build_reader('mineru', 'http://mock-mineru')
             assert mock_cls.call_args.kwargs['dynamic_auth'] is True
 
+    def test_build_mineru_ppt_reader(self):
+        reader = DynamicPDFReader(ocr_type='mineru', ocr_url='http://mock-mineru')
+        with patch(
+            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.MineruPPTReader'
+        ) as mock_cls:
+            mock_cls.return_value = MagicMock()
+            reader._build_reader('mineru_ppt', 'http://mock-mineru')
+            assert mock_cls.call_args.kwargs['dynamic_auth'] is True
+
+    def test_ppt_file_uses_separate_reader_cache(self):
+        reader = DynamicPDFReader(ocr_type='mineru', ocr_url='http://mock-mineru')
+        pdf_reader = MagicMock()
+        ppt_reader = MagicMock()
+        pdf_reader.forward.return_value = [DocNode(text='pdf')]
+        ppt_reader.forward.return_value = [DocNode(text='ppt')]
+
+        with patch.object(reader, '_build_reader', side_effect=[pdf_reader, ppt_reader]) as mock_build:
+            reader._load_data('/tmp/demo.pdf', extra_info=None, use_cache=True)
+            reader._load_data('/tmp/demo.pptx', extra_info=None, use_cache=True)
+
+        assert mock_build.call_count == 2
+        assert mock_build.call_args_list[0].args == ('mineru', 'http://mock-mineru')
+        assert mock_build.call_args_list[1].args == ('mineru_ppt', 'http://mock-mineru')
+
     def test_dynamic_mineru_type_without_url_uses_official(self):
         reader = DynamicPDFReader(
             ocr_type='none',
@@ -167,13 +192,12 @@ class TestDynamicPDFReader:
     def test_ppt_skips_pdf_split(self):
         ppt_path = '/tmp/demo.pptx'
         with patch.object(MineruPDFReader, '_split_large_pdf') as mock_split:
-            splits = MineruPDFReader._split_for_upload(ppt_path)
+            splits = MineruPPTReader._split_for_upload(ppt_path)
         mock_split.assert_not_called()
         assert splits == [(ppt_path, 0)]
 
-    def test_office_missing_bbox_uses_zero_bbox(self):
-        reader = MineruPDFReader(url='https://mineru.net')
-        reader._office_compat = True
+    def test_ppt_missing_bbox_uses_zero_bbox(self):
+        reader = MineruPPTReader(url='https://mineru.net')
         text_block = reader._adapt_one({
             'type': 'text',
             'text': 'hello',
@@ -185,11 +209,10 @@ class TestDynamicPDFReader:
             'page_idx': 1,
         })
         assert isinstance(text_block, ParagraphBlock)
-        assert text_block.page.bbox.to_list() == _OFFICE_DEFAULT_BBOX
+        assert text_block.page.bbox.to_list() == [0, 0, 0, 0]
         assert isinstance(image_block, FigureBlock)
-        assert image_block.page.bbox.to_list() == _OFFICE_DEFAULT_BBOX
+        assert image_block.page.bbox.to_list() == [0, 0, 0, 0]
 
     def test_pdf_missing_bbox_still_skipped(self):
         reader = MineruPDFReader(url='https://mineru.net')
-        reader._office_compat = False
         assert reader._adapt_one({'type': 'text', 'text': 'hello', 'page_idx': 0}) is None

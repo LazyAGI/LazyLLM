@@ -38,11 +38,6 @@ _IMAGE_REF_PATTERN = re.compile(
     r'images/[^\s\)"\'\]<]+\.(?:jpg|jpeg|png|gif|bmp|webp|tiff|tif)',
     re.IGNORECASE,
 )
-_OFFICE_SUFFIXES = frozenset({'.ppt', '.pptx', '.pptm'})
-# Mineru doesn't extract bbox for office file type.
-_OFFICE_DEFAULT_BBOX = [0, 0, 0, 0]
-
-
 class MineruPDFReader(_OcrReaderBase):
     def __init__(self,
                  url: Optional[str] = None,
@@ -80,38 +75,29 @@ class MineruPDFReader(_OcrReaderBase):
         self._variant = resolve_ocr_variant('mineru', self._url)
         self._offline_mode = self._variant == OcrServiceVariant.OFFLINE
         self._upload_mode = upload_mode if upload_mode is not None else self._offline_mode
-        self._office_compat = False
-
-    @staticmethod
-    def _is_office_file(file_path) -> bool:
-        return Path(file_path).suffix.lower() in _OFFICE_SUFFIXES
 
     @override
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True
                    ) -> List['DocNode']:
         file_path = Path(file)
         merged_info = dict(extra_info) if extra_info else {}
-        self._office_compat = self._is_office_file(file_path)
-        try:
-            _t0 = time.time()
-            if self._offline_mode:
-                response_text = self._fetch_sync(file_path, use_cache)
-                task_dir = self._image_cache_dir / str(uuid.uuid4())
-                task_dir.mkdir(parents=True, exist_ok=True)
-                self._download_offline_images(response_text, cache_dir=task_dir)
-            else:
-                response_text, task_dir = self._fetch_async(file_path, use_cache)
-            _t_fetch = time.time() - _t0
-            if task_dir is not None:
-                merged_info['image_cache_dir'] = str(task_dir)
-            _t1 = time.time()
-            nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
-            _t_build = time.time() - _t1
-            LOG.info(f'[BENCHMARK] file={file_path.name} phase=fetch elapsed={_t_fetch:.3f}s')
-            LOG.info(f'[BENCHMARK] file={file_path.name} phase=parse elapsed={_t_build:.3f}s')
-            return nodes
-        finally:
-            self._office_compat = False
+        _t0 = time.time()
+        if self._offline_mode:
+            response_text = self._fetch_sync(file_path, use_cache)
+            task_dir = self._image_cache_dir / str(uuid.uuid4())
+            task_dir.mkdir(parents=True, exist_ok=True)
+            self._download_offline_images(response_text, cache_dir=task_dir)
+        else:
+            response_text, task_dir = self._fetch_async(file_path, use_cache)
+        _t_fetch = time.time() - _t0
+        if task_dir is not None:
+            merged_info['image_cache_dir'] = str(task_dir)
+        _t1 = time.time()
+        nodes = self._build_nodes_from_response(response_text, file_path, merged_info)
+        _t_build = time.time() - _t1
+        LOG.info(f'[BENCHMARK] file={file_path.name} phase=fetch elapsed={_t_fetch:.3f}s')
+        LOG.info(f'[BENCHMARK] file={file_path.name} phase=parse elapsed={_t_build:.3f}s')
+        return nodes
 
     def _fetch_sync(self, file: Path, use_cache: bool) -> str:
         payload = {
@@ -280,9 +266,6 @@ class MineruPDFReader(_OcrReaderBase):
 
     @staticmethod
     def _split_for_upload(file_path: str) -> List[tuple]:
-        suffix = Path(file_path).suffix.lower()
-        if suffix in _OFFICE_SUFFIXES:
-            return [(file_path, 0)]
         return MineruPDFReader._split_large_pdf(file_path)
 
     def _fetch_async(self, file, use_cache: bool = True):
@@ -447,6 +430,13 @@ class MineruPDFReader(_OcrReaderBase):
             return result
         raise TypeError(f'Not supported type: {type(content)}.')
 
+    def _resolve_bbox(self, item: dict) -> Optional[List]:
+        bbox = item.get('bbox')
+        if bbox is None:
+            LOG.warning(f'[MineruPDFReader] content item missing bbox field, skipped: {item}')
+            return None
+        return bbox
+
     def _adapt_one(self, item: dict) -> Optional[Block]:  # noqa: C901
         ty = item.get('type')
         if ty is None:
@@ -461,13 +451,9 @@ class MineruPDFReader(_OcrReaderBase):
         if page_idx is None:
             LOG.warning(f'[MineruPDFReader] content item missing page_idx field, skipped: {item}')
             return None
-        bbox = item.get('bbox')
+        bbox = self._resolve_bbox(item)
         if bbox is None:
-            if self._office_compat:
-                bbox = _OFFICE_DEFAULT_BBOX
-            else:
-                LOG.warning(f'[MineruPDFReader] content item missing bbox field, skipped: {item}')
-                return None
+            return None
         page = PageRef(index=page_idx, bbox=BBox.from_list(bbox))
 
         if ty == 'title':
