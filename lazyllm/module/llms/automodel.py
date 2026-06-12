@@ -27,7 +27,7 @@ class AutoModel:
 
         if not model:
             try:
-                return lazyllm.OnlineModule(source=source, type=type, **kwargs)
+                return lazyllm.OnlineModule(source=source, type=type)
             except Exception as e:
                 raise RuntimeError(f'`model` is not provided in AutoModel, and {e}') from None
 
@@ -39,7 +39,7 @@ class AutoModel:
                 model=model, type=type, source=source, config=config, entry=trainable_entry
             )
             try:
-                module = TrainableModule(**trainable_args, **kwargs)
+                module = TrainableModule(**trainable_args)
                 if module._url or module._impl._get_deploy_tasks.flag: return module
             except Exception as e:
                 LOG.warning('Fail to create `TrainableModule`, will try to '
@@ -48,12 +48,12 @@ class AutoModel:
         # 2) second: try OnlineModule with online config if found
         if online_entry is not None:
             online_args = process_online_args(model=model, source=source, type=type, entry=online_entry)
-            if online_args: return OnlineModule(**online_args, **kwargs)
+            if online_args: return OnlineModule(**online_args)
 
         # 3) finally: fallback (no config or config unusable)
         try:
-            return OnlineModule(model=model, source=source, type=type, **kwargs)
+            return OnlineModule(model=model, source=source, type=type)
         except Exception as e:
             LOG.warning('`OnlineModule` creation failed, and will try to '
                         f'load model {model} with local `TrainableModule`. Since the error: {e}')
-            return TrainableModule(model, type=type, **kwargs)
+            return TrainableModule(model, type=type)
