@@ -38,5 +38,7 @@ def inject_ocr_config(ocr_config: Optional[Dict[str, Any]]) -> None:
         auth_mapping.setdefault('mineru', ocr_config['mineru_api_key'])
     if ocr_config.get('paddle_api_key'):
         auth_mapping.setdefault('paddleocr', ocr_config['paddle_api_key'])
+    if auth_mapping.get('mineru'):
+        auth_mapping.setdefault('minerupptreader', auth_mapping['mineru'])
     if auth_mapping:
         globals.config['dynamic_ocr_auth'] = auth_mapping

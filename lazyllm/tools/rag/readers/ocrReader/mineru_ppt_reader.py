@@ -13,6 +13,10 @@ _DEFAULT_BBOX = [0, 0, 0, 0]
 
 class MineruPPTReader(MineruPDFReader):
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._auth_source_key = 'mineru'
+
     @staticmethod
     def is_ppt_file(file_path) -> bool:
         return Path(file_path).suffix.lower() in _PPT_SUFFIXES
