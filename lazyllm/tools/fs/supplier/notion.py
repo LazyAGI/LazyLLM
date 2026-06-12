@@ -727,30 +727,47 @@ class NotionFS(LinkDocumentFSBase):
         kind, object_id = self._resolve_access_ref(path)
         if kind == 'root' or not object_id:
             return []
-        refs: List[Dict[str, Any]] = []
         try:
             if kind in ('database', 'data_source'):
-                for item in self._query_collection(kind, object_id):
-                    refs.extend(self._refs_from_page_properties(item))
-                    page_id = item.get('id')
-                    if item.get('object') == 'page' and page_id:
-                        refs.extend(self._refs_from_blocks(self._get_doc_blocks_raw(page_id, True)))
-                    elif item.get('object') == 'data_source' and page_id:
-                        try:
-                            refs.extend(self._refs_from_page_properties(self._retrieve_data_source(page_id)))
-                        except Exception as exc:
-                            lazyllm.LOG.debug(f'Failed to get Notion data source properties for references: {exc}')
+                refs = self._list_collection_references(kind, object_id)
             else:
-                if kind == 'page':
-                    try:
-                        refs.extend(self._refs_from_page_properties(self._retrieve_page(object_id)))
-                    except Exception as exc:
-                        lazyllm.LOG.debug(f'Failed to get Notion page properties for references: {exc}')
-                refs.extend(self._refs_from_blocks(self._get_doc_blocks_raw(object_id, True)))
+                refs = self._list_page_or_block_references(kind, object_id)
         except Exception as exc:
             lazyllm.LOG.warning(f'_list_document_references: failed to get blocks for {path!r}: {exc}')
             return []
         return _dedupe_refs(refs)
+
+    def _list_collection_references(self, kind: str, object_id: str) -> List[Dict[str, Any]]:
+        refs: List[Dict[str, Any]] = []
+        for item in self._query_collection(kind, object_id):
+            refs.extend(self._refs_from_page_properties(item))
+            item_id = item.get('id')
+            if item.get('object') == 'page' and item_id:
+                refs.extend(self._refs_from_blocks(self._get_doc_blocks_raw(item_id, True)))
+            elif item.get('object') == 'data_source' and item_id:
+                refs.extend(self._safe_data_source_property_refs(item_id))
+        return refs
+
+    def _list_page_or_block_references(self, kind: str, object_id: str) -> List[Dict[str, Any]]:
+        refs: List[Dict[str, Any]] = []
+        if kind == 'page':
+            refs.extend(self._safe_page_property_refs(object_id))
+        refs.extend(self._refs_from_blocks(self._get_doc_blocks_raw(object_id, True)))
+        return refs
+
+    def _safe_page_property_refs(self, page_id: str) -> List[Dict[str, Any]]:
+        try:
+            return self._refs_from_page_properties(self._retrieve_page(page_id))
+        except Exception as exc:
+            lazyllm.LOG.debug(f'Failed to get Notion page properties for references: {exc}')
+            return []
+
+    def _safe_data_source_property_refs(self, data_source_id: str) -> List[Dict[str, Any]]:
+        try:
+            return self._refs_from_page_properties(self._retrieve_data_source(data_source_id))
+        except Exception as exc:
+            lazyllm.LOG.debug(f'Failed to get Notion data source properties for references: {exc}')
+            return []
 
     def _paginate_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         params = dict(params or {})
