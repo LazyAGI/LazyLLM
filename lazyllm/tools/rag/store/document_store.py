@@ -457,6 +457,7 @@ class _DocumentStore(object):
 
     def keyword_search(self, group, keyword, doc_id, kb_id=None,
                        phrase=True, sort_by='score', size=10):
+        self._seg_init()
         store = getattr(self._impl, 'segment_store', self._impl)
         return store.keyword_search(
             collection_name=self._gen_collection_name(group),
