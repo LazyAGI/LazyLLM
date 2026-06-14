@@ -9,6 +9,8 @@ _TYPE_TO_SLOT: Dict[str, str] = {
     'embed': 'embed',
     'rerank': 'embed',
     'cross_modal_embed': 'embed',
+    'text2image': 'multimodal',
+    'image_editing': 'multimodal',
 }
 
 # Role name prefixes that imply the 'embed' slot even when 'type' is absent.
