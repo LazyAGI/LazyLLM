@@ -60,8 +60,9 @@ class DynamicPDFReader(LazyLLMReaderBase):
             return 'mineru_ppt'
         return ocr_type
 
-    def _reader_cache_key(self, ocr_type: str, ocr_url: str, file) -> tuple[str, str]:
-        return self._reader_type(ocr_type, file), ocr_url
+    @staticmethod
+    def _reader_cache_key(ocr_type: str, ocr_url: str, file) -> tuple[str, str]:
+        return DynamicPDFReader._reader_type(ocr_type, file), ocr_url
 
     def _build_reader(self, reader_type: str, ocr_url: str) -> LazyLLMReaderBase:
         if reader_type in ('', 'none'):

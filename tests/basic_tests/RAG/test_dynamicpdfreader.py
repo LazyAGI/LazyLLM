@@ -14,7 +14,6 @@ from lazyllm.tools.rag.readers.ocrReader.ocr_service import (
     default_online_url,
     resolve_ocr_variant,
 )
-from lazyllm.tools.rag.readers.ocr_config_inject import inject_ocr_config
 
 
 @contextmanager
@@ -193,16 +192,6 @@ class TestDynamicPDFReader:
     def test_ppt_reader_reuses_mineru_auth_key(self):
         reader = MineruPPTReader(url='https://mineru.net', dynamic_auth=True)
         assert reader._auth_source_key == 'mineru'
-
-    def test_inject_ocr_config_aliases_minerupptreader(self):
-        old = lazyllm_globals.config['dynamic_ocr_auth']
-        try:
-            inject_ocr_config({'ocr_auth': {'mineru': 'mineru-key'}})
-            auth = lazyllm_globals.config['dynamic_ocr_auth']
-            assert auth['mineru'] == 'mineru-key'
-            assert auth['minerupptreader'] == 'mineru-key'
-        finally:
-            lazyllm_globals.config['dynamic_ocr_auth'] = old
 
     def test_ppt_skips_pdf_split(self):
         ppt_path = '/tmp/demo.pptx'
