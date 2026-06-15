@@ -72,6 +72,7 @@ class EmbedPlaceholder:
 class NodeGroupType(str, Enum):
     ORIGINAL = 'Original Source'
     CHUNK = 'Chunk'
+    CODE = 'Code'
     SUMMARY = 'Summary'
     IMAGE_INFO = 'Image Info'
     QUESTION_ANSWER = 'Question Answer'
@@ -601,6 +602,14 @@ class DocImpl:
             uids=uids, doc_ids=doc_ids, group=group, kb_id=kb_id, numbers=numbers,
             limit=limit, offset=offset, return_total=return_total,
             sort_by_number=sort_by_number, display=True,
+        )
+
+    def _keyword_search(self, group, keyword, doc_id, kb_id=None,
+                        phrase=True, sort_by='score', size=10):
+        self._lazy_init()
+        return self._store.keyword_search(
+            group=group, keyword=keyword, doc_id=doc_id, kb_id=kb_id,
+            phrase=phrase, sort_by=sort_by, size=size,
         )
 
     def _get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),

@@ -63,7 +63,7 @@ def _embedded_reason_for_single_cfg(cfg: Dict) -> Optional[str]:
     if not store_type or store_type in NON_PERSISTENT_STORE_TYPES:
         return None
     kwargs = cfg.get('kwargs') or {}
-    for field in ('uri', 'url', 'endpoint'):
+    for field in ('uri', 'url', 'endpoint', 'db_path'):
         value = kwargs.get(field)
         if isinstance(value, str) and value:
             if _endpoint_scheme(value) not in _REMOTE_STORE_SCHEMES:

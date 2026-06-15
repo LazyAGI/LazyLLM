@@ -2783,6 +2783,47 @@ Args:
     **kwargs: Other model parameters
 """)
 
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowSTT', """\
+SiliconFlow 语音转文本模块，继承自 LazyLLMOnlineSTTModuleBase。
+
+通过 SiliconFlow ``/v1/audio/transcriptions`` 接口将本地音频文件转写为文本，默认模型为 ``FunAudioLLM/SenseVoiceSmall``。
+
+调用时传入本地音频路径（``input`` 为文件路径字符串）或通过 ``files`` 传入单文件路径列表；每次仅支持一个音频文件。
+
+Args:
+    api_key (str, optional): API 密钥，默认为配置中的 ``siliconflow_api_key``
+    model (str, optional): 模型名称，默认为 ``FunAudioLLM/SenseVoiceSmall``。也可使用别名 ``model_name``
+    base_url (str, optional): API 基础 URL，默认为 ``https://api.siliconflow.cn/v1/``
+    return_trace (bool, optional): 是否返回追踪信息，默认为 ``False``
+    **kwargs: 其他模型参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowSTT', """\
+SiliconFlow Speech-to-Text module, inherits from LazyLLMOnlineSTTModuleBase.
+
+Transcribes local audio files to text via the SiliconFlow ``/v1/audio/transcriptions`` endpoint. The default model is ``FunAudioLLM/SenseVoiceSmall``.
+
+Pass a local audio file path as ``input``, or provide a single-file list via ``files``; only one audio file is supported per call.
+
+Args:
+    api_key (str, optional): API key, defaults to configured ``siliconflow_api_key``
+    model (str, optional): Model name, defaults to ``FunAudioLLM/SenseVoiceSmall``. Alias: ``model_name``
+    base_url (str, optional): Base API URL, defaults to ``https://api.siliconflow.cn/v1/``
+    return_trace (bool, optional): Whether to return trace information, defaults to ``False``
+    **kwargs: Other model parameters
+""")
+
+add_example('llms.onlinemodule.supplier.siliconflow.SiliconFlowSTT', """\
+>>> import lazyllm
+>>> stt = lazyllm.OnlineMultiModalModule(
+...     source='siliconflow',
+...     model='FunAudioLLM/SenseVoiceSmall',
+...     type='stt',
+... )
+>>> text = stt('/path/to/audio.mp3')
+>>> print(text)
+""")
+
 add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
 SiliconFlow文本转语音模块，继承自OnlineMultiModalBase。
 

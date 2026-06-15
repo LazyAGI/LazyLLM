@@ -403,7 +403,7 @@ class _DocumentStore(object):
         if len(groups) != 1 or not sort_by_number:
             return False
         store = getattr(self._impl, 'segment_store', self._impl)
-        return store.__class__.__name__ in {'MapStore', 'OpenSearchStore', 'ElasticSearchStore'}
+        return store.__class__.__name__ in {'MapStore', 'OpenSearchStore', 'ElasticSearchStore', 'SQLiteStore'}
 
     def _build_get_criteria(self, uids: Optional[List[str]], doc_ids: Optional[Set],
                             kb_id: Optional[str], numbers: Optional[Set] = None,
@@ -454,6 +454,16 @@ class _DocumentStore(object):
                 collection_name=self._gen_collection_name(group_name), query=query,
                 topk=topk, filters=filters, **kwargs))
         return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
+
+    def keyword_search(self, group, keyword, doc_id, kb_id=None,
+                       phrase=True, sort_by='score', size=10):
+        self._seg_init()
+        store = getattr(self._impl, 'segment_store', self._impl)
+        return store.keyword_search(
+            collection_name=self._gen_collection_name(group),
+            keyword=keyword, doc_id=doc_id, kb_id=kb_id,
+            phrase=phrase, sort_by=sort_by, size=size,
+        )
 
     def _validate_query_params(self, group_name: str, similarity: str,
                                embed_keys: Optional[List[str]] = None, **kwargs):

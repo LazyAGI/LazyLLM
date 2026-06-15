@@ -5,7 +5,8 @@ from urllib.parse import urljoin
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
     OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineMultimodalEmbedModuleBase,
-    LazyLLMOnlineRerankModuleBase, LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
+    LazyLLMOnlineRerankModuleBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase,
+    LazyLLMOnlineTTSModuleBase,
 )
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file, _image_to_base64
@@ -23,8 +24,6 @@ class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
         super().__init__(api_key=api_key or self._default_api_key(), base_url=base_url, model_name=model,
                          stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
-        if stream:
-            self._model_optional_params['stream'] = True
 
     def _get_system_prompt(self):
         return 'You are an intelligent assistant provided by SiliconFlow. You are a helpful assistant.'
@@ -215,6 +214,46 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
         ai_img_path = os.path.join(config['temp_dir'], 'ai_img')
         file_paths = bytes_to_file(image_bytes, target_dir=ai_img_path)
         return encode_query_with_filepaths(None, file_paths)
+
+
+class SiliconFlowSTT(LazyLLMOnlineSTTModuleBase):
+    MODEL_NAME = 'FunAudioLLM/SenseVoiceSmall'
+
+    def __init__(self, api_key: str = None, model: str = None, model_name: str = None,
+                 base_url: Optional[str] = None,
+                 return_trace: bool = False, **kwargs):
+        base_url = base_url or 'https://api.siliconflow.cn/v1/'
+        resolved_model = model or model_name or SiliconFlowSTT.MODEL_NAME
+        super().__init__(api_key=api_key or self._default_api_key(),
+                         model=resolved_model, return_trace=return_trace, url=base_url, **kwargs)
+        self._endpoint = 'audio/transcriptions'
+
+    def _resolve_audio_path(self, input: str = None, files: List[str] = None) -> str:
+        if files and len(files) > 1:
+            raise ValueError('SiliconFlowSTT only supports one audio file at a time')
+        if files and len(files) == 1:
+            return files[0]
+        if input and os.path.isfile(input):
+            return input
+        raise ValueError('SiliconFlowSTT requires a local audio file path')
+
+    def _transcribe(self, file_path: str, model: str, base_url: Optional[str] = None) -> str:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f'File {file_path} not found')
+        url = urljoin(base_url or self._base_url, self._endpoint)
+        filename = os.path.basename(file_path)
+        with open(file_path, 'rb') as audio_file:
+            multipart = {
+                'file': (filename, audio_file),
+                'model': (None, model),
+            }
+            response = requests.post(url, headers=self._get_empty_header(), files=multipart, timeout=180)
+        response.raise_for_status()
+        return response.json().get('text', '')
+
+    def _forward(self, input: str = None, files: List[str] = None, url: str = None, model: str = None, **kwargs):
+        file_path = self._resolve_audio_path(input=input, files=files)
+        return self._transcribe(file_path, model or self._model_name, base_url=url)
 
 
 class SiliconFlowTTS(LazyLLMOnlineTTSModuleBase):

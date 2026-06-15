@@ -7,7 +7,7 @@ add_english_doc = functools.partial(utils.add_english_doc, module=importlib.impo
 add_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools'))
 
 add_english_doc('MCPClient', '''\
-MCP client that can be used to connect to an MCP server. It supports both local servers (through stdio client) and remote servers (through sse client).
+MCP client that can be used to connect to an MCP server. It supports both local servers (through stdio client) and remote servers (through sse client or streamable-http client).
 
 If the 'command_or_url' is a url string (started with 'http' or 'https'), a remote server will be connected, otherwise a local server will be started and connected.
 
@@ -15,12 +15,18 @@ Args:
     command_or_url (str): The command or url string, which will be used to start a local server or connect to a remote server.
     args (list[str], optional): Arguments list used for starting a local server, if you want to connect to a remote server, this argument is not needed. (default is [])
     env (dict[str, str], optional): Environment variables dictionary used in tools, for example some api keys. (default is None)
-    headers(dict[str, Any], optional): HTTP headers used in sse client connection. (default is None)
-    timeout (float, optional): Timeout for sse client connection, in seconds. (default is 5)
+    headers(dict[str, Any], optional): HTTP headers used in http client connection. (default is None)
+    timeout (float, optional): Timeout for http client connection, in seconds. (default is 5)
+    transport (Literal, optional): Transport protocol to use. One of 'auto', 'stdio', 'sse', 'streamable-http'. (default is 'auto')
+
+        - 'auto': For http(s) URLs, selects 'streamable-http'. For non-http commands, selects 'stdio'. SSE is NOT auto-detected — use explicit transport='sse' for legacy SSE servers.
+        - 'stdio': Launch and communicate with a local MCP server via standard input/output.
+        - 'sse': Connect to a remote MCP server using the legacy SSE protocol (deprecated by MCP spec, but still supported for backward compatibility).
+        - 'streamable-http': Connect to a remote MCP server using the new Streamable HTTP protocol.
 ''')
 
 add_chinese_doc('MCPClient', '''\
-MCP客户端，用于连接MCP服务器。同时支持本地服务器和sse服务器。
+MCP客户端，用于连接MCP服务器。同时支持本地服务器（通过 stdio）和远程服务器（通过 SSE 或 Streamable HTTP）。
 
 如果传入的 'command_or_url' 是一个 URL 字符串（以 'http' 或 'https' 开头），则将连接到远程服务器；否则，将启动并连接到本地服务器。
 
@@ -29,8 +35,14 @@ Args:
     command_or_url (str): 用于启动本地服务器或连接远程服务器的命令或 URL 字符串。
     args (list[str], optional): 用于启动本地服务器的参数列表；如果要连接远程服务器，则无需此参数。（默认值为[]）
     env (dict[str, str], optional): 工具中使用的环境变量，例如一些 API 密钥。（默认值为None）
-    headers(dict[str, Any], optional): 用于sse客户端连接的HTTP头。（默认值为None）
-    timeout (float, optional): sse客户端连接的超时时间，单位为秒。(默认值为5)
+    headers(dict[str, Any], optional): 用于 HTTP 客户端连接的请求头。（默认值为None）
+    timeout (float, optional): HTTP 客户端连接的超时时间，单位为秒。(默认值为5)
+    transport (Literal, optional): 传输协议。可选值为 'auto'、'stdio'、'sse'、'streamable-http'。(默认值为 'auto')
+
+        - 'auto'：对于 http(s) URL，选择 'streamable-http'。对于非 http 命令，选择 'stdio'。SSE 不会被自动检测——老版本 SSE 服务器请显式设置 transport='sse'。
+        - 'stdio'：通过标准输入输出启动和通信本地 MCP 服务器。
+        - 'sse'：使用旧版 SSE 协议连接远程 MCP 服务器（已被 MCP 规范废弃，仍保留以兼容老服务）。
+        - 'streamable-http'：使用新版 Streamable HTTP 协议连接远程 MCP 服务器。
 ''')
 
 
