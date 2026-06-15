@@ -2,7 +2,7 @@
 import os
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qs, unquote, urlparse
 
 import lazyllm
@@ -84,19 +84,16 @@ def _strip_notion_protocol(path: str) -> str:
     return path
 
 
-def _dedupe_refs(refs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return LinkDocumentFSBase.dedupe_document_references(refs)
-
-
-def _format_references_footer(refs: List[Dict[str, Any]]) -> str:
-    return LinkDocumentFSBase.format_document_references_footer(refs, 'notion')
-
-
 def _parsed_notion_ref_to_path(parsed: Dict[str, str]) -> str:
     mode_hint = parsed.get('mode_hint')
     if mode_hint in ('page', 'database'):
         return f'/~{mode_hint}/{parsed["id"]}'
     return f'/{parsed["id"]}'
+
+
+def _parsed_notion_ref_to_kind(parsed: Dict[str, str]) -> Tuple[str, str]:
+    mode_hint = parsed.get('mode_hint')
+    return (mode_hint, parsed['id']) if mode_hint in ('page', 'database') else ('object', parsed['id'])
 
 
 def _is_notion_object_not_found(exc: Exception) -> bool:
@@ -113,14 +110,6 @@ def _is_notion_object_not_found(exc: Exception) -> bool:
 
 
 class NotionFile(CloudFSBufferedFile):
-    '''Buffered view of Notion-rendered document content.
-
-    Args:
-        fs (NotionFS): Owning Notion filesystem instance.
-        path (str): Page, database, data source, or block locator.
-        include_references (bool): Whether to append the Notion references footer.
-        **kwargs: fsspec buffered file options.
-    '''
     def __init__(self, fs: 'NotionFS', path: str, include_references: bool = False, **kwargs) -> None:
         content = fs._fetch_content(path, include_references=include_references)
         self._notion_content: bytes = content
@@ -131,12 +120,6 @@ class NotionFile(CloudFSBufferedFile):
 
 
 class NotionFS(LinkDocumentFSBase):
-    '''Notion filesystem adapter with URL-addressable document tools.
-
-    The adapter mirrors the Feishu document flow: browser URLs and provider
-    locators resolve to stable document ids, document reads can include a
-    references footer, and block edits are scoped to the resolved document tree.
-    '''
 
     document_provider = 'notion'
     __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search'], exclude=['copy'])
@@ -221,16 +204,16 @@ class NotionFS(LinkDocumentFSBase):
 
     def search(self, query: str, object_type: str = '', limit: int = 20,
                sort_direction: str = 'descending') -> List[Dict[str, Any]]:
-        '''按标题搜索当前 token 可访问的 Notion 页面或数据库。该能力来自 Notion 官方 /v1/search 接口，主要用于定位资源；不是页面正文全文检索。
+        '''Search Notion pages or databases visible to the current token.
 
         Args:
-            query (str): 标题关键词。
-            object_type (str): 可选对象过滤，支持 page、database。
-            limit (int): 最大返回条数，默认 20，最大 100。
-            sort_direction (str): 按 last_edited_time 排序方向，ascending 或 descending。
+            query (str): Title keyword to search.
+            object_type (str): Optional object filter; page or database.
+            limit (int): Maximum result count.
+            sort_direction (str): last_edited_time sort direction.
 
         Returns:
-            List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path 等字段。
+            List[Dict[str, Any]]: Matching Notion entries.
         '''
         query = (query or '').strip()
         if not query:
@@ -337,22 +320,15 @@ class NotionFS(LinkDocumentFSBase):
         path = _strip_notion_protocol(path)
         if not path or path == '/':
             return 'root', ''
-        if _is_notion_browser_url(path):
-            parsed = _parse_notion_browser_url(path)
-            assert parsed is not None
-            if parsed.get('mode_hint') in ('page', 'database'):
-                return parsed['mode_hint'], parsed['id']
-            return 'object', parsed['id']
-
         norm = path.lstrip('/')
         if self.is_link_path(norm):
-            url = self.decode_link_path(norm)
-            parsed = _parse_notion_browser_url(url)
-            if not parsed:
-                raise ValueError(f'Cannot parse Notion browser URL: {url!r}')
-            if parsed.get('mode_hint') in ('page', 'database'):
-                return parsed['mode_hint'], parsed['id']
-            return 'object', parsed['id']
+            path = self.decode_link_path(norm)
+            norm = path.lstrip('/')
+
+        parsed = _parse_notion_browser_url(path)
+        if parsed:
+            return _parsed_notion_ref_to_kind(parsed)
+
         for prefix, kind in (
             ('~page/', 'page'),
             ('~database/', 'database'),
@@ -394,10 +370,6 @@ class NotionFS(LinkDocumentFSBase):
                 raise
         self._retrieve_data_source(object_id)
         return 'data_source'
-
-    def _parse_parent_title_path(self, path: str) -> Tuple[str, str]:
-        _, parent_id, title = self._resolve_parent_ref(path)
-        return parent_id, title
 
     def _resolve_parent_ref(self, path: str) -> Tuple[str, str, str]:
         path = _strip_notion_protocol(path)
@@ -548,16 +520,6 @@ class NotionFS(LinkDocumentFSBase):
 
     def replace_page_markdown(self, page_id: str, markdown: str,
                               allow_deleting_content: bool = False) -> Dict[str, Any]:
-        '''使用 Notion Markdown endpoint 替换页面正文。该接口适合把算法生成的整页 Markdown 写回 Notion；是否允许删除原内容由 allow_deleting_content 控制。
-
-        Args:
-            page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
-            markdown (str): 新的 Markdown 正文。
-            allow_deleting_content (bool): 是否允许删除页面已有内容，默认 False。
-
-        Returns:
-            Dict[str, Any]: Notion API 返回体。
-        '''
         return self._patch(
             f'{self._base_url}/pages/{_normalize_notion_id(page_id)}/markdown',
             json={
@@ -572,16 +534,6 @@ class NotionFS(LinkDocumentFSBase):
 
     def insert_page_markdown(self, page_id: str, markdown: str,
                              position: str = 'end') -> Dict[str, Any]:
-        '''向页面插入 Markdown 内容。默认插入到页面末尾，适合追加总结、分析结论或同步生成的段落。
-
-        Args:
-            page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
-            markdown (str): 要插入的 Markdown 内容。
-            position (str): 插入位置，默认 end。
-
-        Returns:
-            Dict[str, Any]: Notion API 返回体。
-        '''
         return self._patch(
             f'{self._base_url}/pages/{_normalize_notion_id(page_id)}/markdown',
             json={
@@ -595,12 +547,6 @@ class NotionFS(LinkDocumentFSBase):
         )
 
     def update_page_title(self, page_id: str, title: str) -> None:
-        '''更新 Notion 页面或 data source 条目的标题属性。自动识别页面的 title 类型属性，再通过 pages/{page_id} PATCH 写入。
-
-        Args:
-            page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
-            title (str): 新标题文本。
-        '''
         page_id = _normalize_notion_id(page_id)
         page = self._retrieve_page(page_id)
         title_key = self._title_property_key(page)
@@ -610,14 +556,6 @@ class NotionFS(LinkDocumentFSBase):
         )
 
     def resolve_notion_ref(self, url_or_path: str) -> Dict[str, Any]:
-        '''解析 Notion URL、notion:/ URI 或页面/数据库/data_source/block ID，并返回统一元信息。用于 chat 中用户粘贴链接后先确定对象类型、标题和可读路径。
-
-        Args:
-            url_or_path (str): Notion 浏览器链接、notion:/ URI、页面/数据库/data_source/block ID 或路径。
-
-        Returns:
-            Dict[str, Any]: 包含 object_id、object_type、title、notion_path、has_child 等字段的元信息。
-        '''
         kind, object_id = self._resolve_access_ref(url_or_path)
         if kind == 'root':
             return {'object_id': '', 'object_type': 'root', 'title': 'Notion'}
@@ -733,7 +671,7 @@ class NotionFS(LinkDocumentFSBase):
         except Exception as exc:
             lazyllm.LOG.warning(f'_list_document_references: failed to get blocks for {path!r}: {exc}')
             return []
-        return _dedupe_refs(refs)
+        return self.dedupe_document_references(refs)
 
     def _list_collection_references(self, kind: str, object_id: str) -> List[Dict[str, Any]]:
         refs: List[Dict[str, Any]] = []
@@ -743,28 +681,22 @@ class NotionFS(LinkDocumentFSBase):
             if item.get('object') == 'page' and item_id:
                 refs.extend(self._refs_from_blocks(self._get_doc_blocks_raw(item_id, True)))
             elif item.get('object') == 'data_source' and item_id:
-                refs.extend(self._safe_data_source_property_refs(item_id))
+                refs.extend(self._safe_property_refs(item_id, self._retrieve_data_source, 'data source'))
         return refs
 
     def _list_page_or_block_references(self, kind: str, object_id: str) -> List[Dict[str, Any]]:
         refs: List[Dict[str, Any]] = []
         if kind == 'page':
-            refs.extend(self._safe_page_property_refs(object_id))
+            refs.extend(self._safe_property_refs(object_id, self._retrieve_page, 'page'))
         refs.extend(self._refs_from_blocks(self._get_doc_blocks_raw(object_id, True)))
         return refs
 
-    def _safe_page_property_refs(self, page_id: str) -> List[Dict[str, Any]]:
+    def _safe_property_refs(self, object_id: str, retrieve: Callable[[str], Dict[str, Any]],
+                            label: str) -> List[Dict[str, Any]]:
         try:
-            return self._refs_from_page_properties(self._retrieve_page(page_id))
+            return self._refs_from_page_properties(retrieve(object_id))
         except Exception as exc:
-            lazyllm.LOG.debug(f'Failed to get Notion page properties for references: {exc}')
-            return []
-
-    def _safe_data_source_property_refs(self, data_source_id: str) -> List[Dict[str, Any]]:
-        try:
-            return self._refs_from_page_properties(self._retrieve_data_source(data_source_id))
-        except Exception as exc:
-            lazyllm.LOG.debug(f'Failed to get Notion data source properties for references: {exc}')
+            lazyllm.LOG.debug(f'Failed to get Notion {label} properties for references: {exc}')
             return []
 
     def _paginate_get(self, url: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -849,35 +781,36 @@ class NotionFS(LinkDocumentFSBase):
     def _database_to_markdown(self, database_id: str, heading_level: int = 1,
                               depth: int = 0, visited: Optional[Set[str]] = None,
                               include_title: bool = True) -> str:
-        visited = visited or set()
-        database_id = _normalize_notion_id(database_id)
-        if database_id in visited:
-            return ''
-        visited.add(database_id)
-
-        db = self._retrieve_database(database_id)
-        title = self._database_title(db) or database_id
-        pages = self._query_database(database_id)
-        return self._collection_pages_to_markdown(
-            title, pages, heading_level, depth, visited, include_title,
-            failure_label='Notion database child page',
+        return self._collection_to_markdown(
+            database_id, self._retrieve_database, self._query_database, self._database_title,
+            heading_level, depth, visited, include_title, failure_label='Notion database child page',
         )
 
     def _data_source_to_markdown(self, data_source_id: str, heading_level: int = 1,
                                  depth: int = 0, visited: Optional[Set[str]] = None,
                                  include_title: bool = True) -> str:
-        visited = visited or set()
-        data_source_id = _normalize_notion_id(data_source_id)
-        if data_source_id in visited:
-            return ''
-        visited.add(data_source_id)
+        return self._collection_to_markdown(
+            data_source_id, self._retrieve_data_source, self._query_data_source, self._data_source_title,
+            heading_level, depth, visited, include_title, failure_label='Notion data source child page',
+        )
 
-        data_source = self._retrieve_data_source(data_source_id)
-        title = self._data_source_title(data_source) or data_source_id
-        pages = self._query_data_source(data_source_id)
+    def _collection_to_markdown(self, object_id: str, retrieve: Callable[[str], Dict[str, Any]],
+                                query: Callable[[str], List[Dict[str, Any]]],
+                                title_getter: Callable[[Dict[str, Any]], str],
+                                heading_level: int, depth: int, visited: Optional[Set[str]],
+                                include_title: bool, failure_label: str) -> str:
+        visited = visited or set()
+        object_id = _normalize_notion_id(object_id)
+        if object_id in visited:
+            return ''
+        visited.add(object_id)
+
+        obj = retrieve(object_id)
+        title = title_getter(obj) or object_id
+        pages = query(object_id)
         return self._collection_pages_to_markdown(
             title, pages, heading_level, depth, visited, include_title,
-            failure_label='Notion data source child page',
+            failure_label=failure_label,
         )
 
     def _collection_pages_to_markdown(self, title: str, pages: List[Dict[str, Any]],

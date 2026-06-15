@@ -379,13 +379,13 @@ class TestRefFromElement(unittest.TestCase):
 class TestDedupeRefs(unittest.TestCase):
 
     def test_deduplication(self):
-        from lazyllm.tools.fs.supplier.feishu import _dedupe_refs
+        from lazyllm.tools.fs.base import LinkDocumentFSBase
         refs = [
             {'url': 'https://a.feishu.cn/wiki/T1', 'ref_type': 'mention_doc'},
             {'url': 'https://a.feishu.cn/wiki/T1', 'ref_type': 'hyperlink'},
             {'url': 'https://a.feishu.cn/wiki/T2', 'ref_type': 'hyperlink'},
         ]
-        result = _dedupe_refs(refs)
+        result = LinkDocumentFSBase.dedupe_document_references(refs)
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]['url'], 'https://a.feishu.cn/wiki/T1')
         self.assertEqual(result[1]['url'], 'https://a.feishu.cn/wiki/T2')
@@ -394,16 +394,16 @@ class TestDedupeRefs(unittest.TestCase):
 class TestFormatReferencesFooter(unittest.TestCase):
 
     def test_empty_refs(self):
-        from lazyllm.tools.fs.supplier.feishu import _format_references_footer
-        self.assertEqual(_format_references_footer([]), '')
+        from lazyllm.tools.fs.base import LinkDocumentFSBase
+        self.assertEqual(LinkDocumentFSBase.format_document_references_footer([], 'feishu'), '')
 
     def test_footer_format(self):
-        from lazyllm.tools.fs.supplier.feishu import _format_references_footer
+        from lazyllm.tools.fs.base import LinkDocumentFSBase
         refs = [
             {'url': 'https://a.feishu.cn/wiki/T1', 'ref_type': 'mention_doc'},
             {'url': 'https://a.feishu.cn/docx/D2', 'ref_type': 'hyperlink'},
         ]
-        footer = _format_references_footer(refs)
+        footer = LinkDocumentFSBase.format_document_references_footer(refs, 'feishu')
         self.assertIn('lazyllm-feishu-references', footer)
         self.assertIn('[1] mention_doc | https://a.feishu.cn/wiki/T1', footer)
         self.assertIn('[2] hyperlink | https://a.feishu.cn/docx/D2', footer)

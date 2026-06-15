@@ -103,14 +103,6 @@ def _ref_from_element(el: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _dedupe_refs(refs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return LinkDocumentFSBase.dedupe_document_references(refs)
-
-
-def _format_references_footer(refs: List[Dict[str, Any]]) -> str:
-    return LinkDocumentFSBase.format_document_references_footer(refs, 'feishu')
-
-
 def _feishu_acquire_access_token(
     session: requests.Session,
     app_id: str,

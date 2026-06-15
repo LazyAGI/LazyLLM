@@ -306,7 +306,6 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
 
 
 class LinkDocumentFSBase(LazyLLMFSBase):
-    '''Base class for URL-addressable document systems such as Feishu, Notion, and Obsidian.'''
 
     __lazyllm_registry_disable__ = True
     document_provider = ''
@@ -322,19 +321,6 @@ class LinkDocumentFSBase(LazyLLMFSBase):
 
     @staticmethod
     def build_public_apis(extra: Optional[List[str]] = None, exclude: Optional[List[str]] = None) -> List[str]:
-        '''Build the public API list for cloud document FS subclasses.
-
-        Merges LazyLLMFSBase and LinkDocumentFSBase base interfaces, allowing
-        subclasses to add their own methods via extra or remove inherited ones
-        via exclude.
-
-        Args:
-            extra (Optional[List[str]]): Additional method names to expose.
-            exclude (Optional[List[str]]): Method names to omit from the base lists.
-
-        Returns:
-            List[str]: Merged list of public API method names.
-        '''
         excluded = set(exclude or [])
         public_apis: List[str] = []
         for name in [*LazyLLMFSBase.__public_apis__, *LinkDocumentFSBase.__document_public_apis__, *(extra or [])]:
@@ -424,7 +410,7 @@ class LinkDocumentFSBase(LazyLLMFSBase):
             url_or_path (str): Browser URL, provider URI, or provider-specific path.
 
         Returns:
-            Dict[str, Any]: Normalized metadata including title, object id, object type, and child availability.
+            Dict[str, Any]: Normalized document metadata.
         '''
         resolver = getattr(self, '_resolve_document_ref', None)
         if callable(resolver):
@@ -476,7 +462,7 @@ class LinkDocumentFSBase(LazyLLMFSBase):
             with_descendants (bool): Whether nested child blocks should be included.
 
         Returns:
-            List[Dict[str, Any]]: Blocks with block_id, block_type, parent_id, and plain_text.
+            List[Dict[str, Any]]: Editable document blocks.
         '''
         raise NotImplementedError(f'{self.__class__.__name__}.get_doc_blocks is not implemented')
 
@@ -484,7 +470,7 @@ class LinkDocumentFSBase(LazyLLMFSBase):
         '''Update text in one editable document block.
 
         Args:
-            path (str): Browser URL, provider URI, or provider-specific path for the document.
+            path (str): Browser URL, provider URI, or provider-specific path.
             block_id (str): Provider-native block id from get_doc_blocks.
             new_text (str): Replacement text for the block.
         '''
