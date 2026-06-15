@@ -628,13 +628,33 @@ class ToolManager(ModuleBase):
         output_files = self._ensure_list(arguments.get(tool.output_files_parm, [])) + tool.output_files
         return kwargs(code=tool.to_sandbox_code(arguments), input_files=input_files, output_files=output_files)
 
+    @staticmethod
+    def _safe_parse_json(raw):
+        import re as _re
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+        cleaned = _re.sub(r',\s*([}\]])', r'\1', raw)
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            pass
+        # last resort: close truncated JSON by counting unmatched braces
+        s = cleaned.strip()
+        opens = s.count('{') - s.count('}')
+        opens_sq = s.count('[') - s.count(']')
+        s = _re.sub(r'[,:\"\'\w\s]*$', '', s.rstrip())
+        s = s + (']' * max(0, opens_sq)) + ('}' * max(0, opens))
+        return json.loads(s)
+
     def _parse_tool_call(self, tc):
         func = tc.get('function') if isinstance(tc, dict) else None
         if not func or 'name' not in func or 'arguments' not in func:
             return None, f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}'
         name = func['name']
         raw_args = func['arguments']
-        arguments = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+        arguments = ToolManager._safe_parse_json(raw_args) if isinstance(raw_args, str) else raw_args
         if not isinstance(arguments, dict):
             return None, f'Tool [{name}] arguments format error.'
         tool = self._tool_call.get(name)
