@@ -204,17 +204,7 @@ class NotionFS(LinkDocumentFSBase):
 
     def search(self, query: str, object_type: str = '', limit: int = 20,
                sort_direction: str = 'descending') -> List[Dict[str, Any]]:
-        '''Search Notion pages or databases visible to the current token.
-
-        Args:
-            query (str): Title keyword to search.
-            object_type (str): Optional object filter; page or database.
-            limit (int): Maximum result count.
-            sort_direction (str): last_edited_time sort direction.
-
-        Returns:
-            List[Dict[str, Any]]: Matching Notion entries.
-        '''
+        '''Search visible Notion pages or databases by title keyword.'''
         query = (query or '').strip()
         if not query:
             raise ValueError('query is required')

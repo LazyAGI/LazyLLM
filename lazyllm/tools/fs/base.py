@@ -95,27 +95,12 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
 
     @abstractmethod
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
-        '''List files or child nodes under a path.
-
-        Args:
-            path (str): Remote path or provider-specific locator to list.
-            detail (bool): Whether to return detailed entries instead of names.
-
-        Returns:
-            List: Child entries or child names.
-        '''
+        '''List child entries under a provider path.'''
         pass
 
     @abstractmethod
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
-        '''Get metadata for a path.
-
-        Args:
-            path (str): Remote path or provider-specific locator to inspect.
-
-        Returns:
-            Dict[str, Any]: Metadata for the remote item.
-        '''
+        '''Return metadata for a provider path.'''
         pass
 
     @abstractmethod
@@ -124,12 +109,7 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
         pass
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
-        '''Create a directory or provider-native container.
-
-        Args:
-            path (str): Remote path to create.
-            create_parents (bool): Whether parent containers may be created.
-        '''
+        '''Create a provider-native directory or container.'''
         pass
 
     def makedirs(self, path: str, exist_ok: bool = False) -> None:
@@ -142,12 +122,7 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
         raise NotImplementedError(f'{self.__class__.__name__}.rm_file is not implemented')
 
     def rm(self, path: str, recursive: bool = False) -> None:
-        '''Remove a file, document, or directory.
-
-        Args:
-            path (str): Remote path or provider-specific locator to remove.
-            recursive (bool): Whether to remove children recursively.
-        '''
+        '''Remove a provider item.'''
         if self.isdir(path) and recursive:  # type: ignore[attr-defined]
             for entry in self.ls(path, detail=True):
                 self.rm(entry['name'], recursive=True)
@@ -156,14 +131,7 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
             self.rm_file(path)
 
     def exists(self, path: str, **kwargs) -> bool:
-        '''Check whether a path exists.
-
-        Args:
-            path (str): Remote path or provider-specific locator to check.
-
-        Returns:
-            bool: True when the item exists.
-        '''
+        '''Return whether a provider path exists.'''
         return super().exists(path, **kwargs)
 
     def put_file(self, lpath: str, rpath: str, **kwargs) -> None:
@@ -186,57 +154,26 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
             return fh.read()
 
     def read(self, path: str) -> str:
-        '''Read a UTF-8 text file or document.
-
-        Args:
-            path (str): Remote path or provider-specific locator to read.
-
-        Returns:
-            str: UTF-8 decoded content.
-        '''
+        '''Read UTF-8 text from a provider path.'''
         return self.read_bytes(path).decode('utf-8')
 
     def read_file(self, path: str) -> str:
-        '''Read a UTF-8 text file or document.
-
-        Args:
-            path (str): Remote path or provider-specific locator to read.
-
-        Returns:
-            str: UTF-8 decoded content.
-        '''
+        '''Read UTF-8 text from a provider path.'''
         return self.read_bytes(path).decode('utf-8')
 
     def write_file(self, path: str, data: bytes) -> None:
         self._upload_data(path, data)
 
     def write(self, path: str, content: str) -> None:
-        '''Write UTF-8 text content to a remote path.
-
-        Args:
-            path (str): Remote path or provider-specific locator to write.
-            content (str): Text content to write.
-        '''
+        '''Write UTF-8 text to a provider path.'''
         self._upload_data(path, content.encode('utf-8'))
 
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
-        '''Copy a file, document, or directory.
-
-        Args:
-            path1 (str): Source path or provider-specific locator.
-            path2 (str): Destination path or provider-specific locator.
-            recursive (bool): Whether to copy children recursively.
-        '''
+        '''Copy a provider item when supported.'''
         raise NotImplementedError(f'{self.__class__.__name__}.copy is not implemented')
 
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
-        '''Move a file, document, or directory.
-
-        Args:
-            path1 (str): Source path or provider-specific locator.
-            path2 (str): Destination path or provider-specific locator.
-            recursive (bool): Whether to move children recursively.
-        '''
+        '''Move a provider item when supported.'''
         raise NotImplementedError(f'{self.__class__.__name__}.move is not implemented')
 
     def _platform_supports_webhook(self) -> bool:
@@ -321,19 +258,7 @@ class LinkDocumentFSBase(LazyLLMFSBase):
 
     @staticmethod
     def build_public_apis(extra: Optional[List[str]] = None, exclude: Optional[List[str]] = None) -> List[str]:
-        '''Build the public API list for cloud document FS subclasses.
-
-        Merges LazyLLMFSBase and LinkDocumentFSBase base interfaces, allowing
-        subclasses to add their own methods via extra or remove inherited ones
-        via exclude.
-
-        Args:
-            extra (Optional[List[str]]): Additional method names to expose.
-            exclude (Optional[List[str]]): Method names to omit from the base lists.
-
-        Returns:
-            List[str]: Merged list of public API method names.
-        '''
+        '''Return tool API names exposed by document FS subclasses.'''
         excluded = set(exclude or [])
         public_apis: List[str] = []
         for name in [*LazyLLMFSBase.__public_apis__, *LinkDocumentFSBase.__document_public_apis__, *(extra or [])]:
@@ -417,28 +342,14 @@ class LinkDocumentFSBase(LazyLLMFSBase):
         return {**ref, **standard}
 
     def resolve_link(self, url_or_path: str) -> Dict[str, Any]:
-        '''Resolve a document URL or provider path before reading content.
-
-        Args:
-            url_or_path (str): Browser URL, provider URI, or provider-specific path.
-
-        Returns:
-            Dict[str, Any]: Normalized document metadata.
-        '''
+        '''Resolve a document link into provider metadata.'''
         resolver = getattr(self, '_resolve_document_ref', None)
         if callable(resolver):
             return self._standardize_document_ref(resolver(url_or_path))
         raise NotImplementedError(f'{self.__class__.__name__}.resolve_link is not implemented')
 
     def read_with_references(self, path: str) -> str:
-        '''Read a document and append provider-native references when available.
-
-        Args:
-            path (str): Browser URL, provider URI, or provider-specific path to read.
-
-        Returns:
-            str: UTF-8 document content with an optional references footer.
-        '''
+        '''Read document text with provider references when available.'''
         try:
             data = self.read_bytes(path, include_references=True)  # type: ignore[call-arg]
         except TypeError:
@@ -446,47 +357,19 @@ class LinkDocumentFSBase(LazyLLMFSBase):
         return data.decode('utf-8')
 
     def fetch_url(self, url: str) -> bytes:
-        '''Fetch document content from a browser URL.
-
-        Args:
-            url (str): Provider browser URL to fetch.
-
-        Returns:
-            bytes: Raw document content bytes.
-        '''
+        '''Fetch document bytes from a browser URL.'''
         return self.read_bytes(url)
 
     def get_document_id(self, path: str) -> str:
-        '''Get the provider-native document id for a path or URL.
-
-        Args:
-            path (str): Browser URL, provider URI, or provider-specific path.
-
-        Returns:
-            str: Provider-native document id.
-        '''
+        '''Return the provider-native document id.'''
         raise NotImplementedError(f'{self.__class__.__name__}.get_document_id is not implemented')
 
     def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
-        '''List editable blocks in a document.
-
-        Args:
-            path (str): Browser URL, provider URI, or provider-specific path.
-            with_descendants (bool): Whether nested child blocks should be included.
-
-        Returns:
-            List[Dict[str, Any]]: Editable document blocks.
-        '''
+        '''List editable document blocks.'''
         raise NotImplementedError(f'{self.__class__.__name__}.get_doc_blocks is not implemented')
 
     def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
-        '''Update text in one editable document block.
-
-        Args:
-            path (str): Browser URL, provider URI, or provider-specific path.
-            block_id (str): Provider-native block id from get_doc_blocks.
-            new_text (str): Replacement text for the block.
-        '''
+        '''Update one editable text block.'''
         raise NotImplementedError(f'{self.__class__.__name__}.update_doc_block_text is not implemented')
 
 
