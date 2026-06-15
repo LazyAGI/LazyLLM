@@ -95,12 +95,10 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
 
     @abstractmethod
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
-        '''List child entries under a provider path.'''
         pass
 
     @abstractmethod
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
-        '''Return metadata for a provider path.'''
         pass
 
     @abstractmethod
@@ -109,7 +107,6 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
         pass
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
-        '''Create a provider-native directory or container.'''
         pass
 
     def makedirs(self, path: str, exist_ok: bool = False) -> None:
@@ -122,7 +119,6 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
         raise NotImplementedError(f'{self.__class__.__name__}.rm_file is not implemented')
 
     def rm(self, path: str, recursive: bool = False) -> None:
-        '''Remove a provider item.'''
         if self.isdir(path) and recursive:  # type: ignore[attr-defined]
             for entry in self.ls(path, detail=True):
                 self.rm(entry['name'], recursive=True)
@@ -131,7 +127,6 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
             self.rm_file(path)
 
     def exists(self, path: str, **kwargs) -> bool:
-        '''Return whether a provider path exists.'''
         return super().exists(path, **kwargs)
 
     def put_file(self, lpath: str, rpath: str, **kwargs) -> None:
@@ -154,26 +149,21 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
             return fh.read()
 
     def read(self, path: str) -> str:
-        '''Read UTF-8 text from a provider path.'''
         return self.read_bytes(path).decode('utf-8')
 
     def read_file(self, path: str) -> str:
-        '''Read UTF-8 text from a provider path.'''
         return self.read_bytes(path).decode('utf-8')
 
     def write_file(self, path: str, data: bytes) -> None:
         self._upload_data(path, data)
 
     def write(self, path: str, content: str) -> None:
-        '''Write UTF-8 text to a provider path.'''
         self._upload_data(path, content.encode('utf-8'))
 
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
-        '''Copy a provider item when supported.'''
         raise NotImplementedError(f'{self.__class__.__name__}.copy is not implemented')
 
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
-        '''Move a provider item when supported.'''
         raise NotImplementedError(f'{self.__class__.__name__}.move is not implemented')
 
     def _platform_supports_webhook(self) -> bool:
@@ -258,7 +248,6 @@ class LinkDocumentFSBase(LazyLLMFSBase):
 
     @staticmethod
     def build_public_apis(extra: Optional[List[str]] = None, exclude: Optional[List[str]] = None) -> List[str]:
-        '''Return tool API names exposed by document FS subclasses.'''
         excluded = set(exclude or [])
         public_apis: List[str] = []
         for name in [*LazyLLMFSBase.__public_apis__, *LinkDocumentFSBase.__document_public_apis__, *(extra or [])]:
@@ -342,14 +331,12 @@ class LinkDocumentFSBase(LazyLLMFSBase):
         return {**ref, **standard}
 
     def resolve_link(self, url_or_path: str) -> Dict[str, Any]:
-        '''Resolve a document link into provider metadata.'''
         resolver = getattr(self, '_resolve_document_ref', None)
         if callable(resolver):
             return self._standardize_document_ref(resolver(url_or_path))
         raise NotImplementedError(f'{self.__class__.__name__}.resolve_link is not implemented')
 
     def read_with_references(self, path: str) -> str:
-        '''Read document text with provider references when available.'''
         try:
             data = self.read_bytes(path, include_references=True)  # type: ignore[call-arg]
         except TypeError:
@@ -357,19 +344,15 @@ class LinkDocumentFSBase(LazyLLMFSBase):
         return data.decode('utf-8')
 
     def fetch_url(self, url: str) -> bytes:
-        '''Fetch document bytes from a browser URL.'''
         return self.read_bytes(url)
 
     def get_document_id(self, path: str) -> str:
-        '''Return the provider-native document id.'''
         raise NotImplementedError(f'{self.__class__.__name__}.get_document_id is not implemented')
 
     def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
-        '''List editable document blocks.'''
         raise NotImplementedError(f'{self.__class__.__name__}.get_doc_blocks is not implemented')
 
     def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
-        '''Update one editable text block.'''
         raise NotImplementedError(f'{self.__class__.__name__}.update_doc_block_text is not implemented')
 
 
