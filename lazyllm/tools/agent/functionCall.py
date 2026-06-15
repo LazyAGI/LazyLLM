@@ -173,7 +173,15 @@ class FunctionCall(ModuleBase):
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         if 'workspace' not in locals['_lazyllm_agent']:
             locals['_lazyllm_agent']['workspace'] = dict(history=llm_chat_history or [])
-        result = self._impl(input)
+        try:
+            result = self._impl(input)
+        except Exception:
+            # On failure, clear any in-progress workspace and the LLM chat history so that
+            # the next call (e.g. user says "continue") does not inherit a corrupted history
+            # that may contain truncated tool_calls with invalid JSON arguments.
+            locals['_lazyllm_agent'].pop('workspace', None)
+            locals['chat_history'][self._llm._module_id] = []
+            raise
 
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
         # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed']
