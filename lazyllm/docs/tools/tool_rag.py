@@ -2286,8 +2286,9 @@ Notes:
     - ``ocr_auth`` → ``globals.config['dynamic_ocr_auth']``（如 ``{'mineru': '...', 'paddleocr': '...'}``）
     Mineru 的 ``mineru_backend`` 由 ``MineruPDFReader`` 从配置或环境变量读取，
     不经由 ``DynamicPDFReader`` 透传；本地/在线及 upload 行为由 URL 判定。
-    下游 OCR reader 通过 ``reader(file, use_cache=...)`` 接收调用参数；请使用 ``reader(...)`` 而非
-    ``reader.forward(...)``，以确保算法端内容缓存生效。
+    内层 OCR reader 通过 ``reader.forward(...)`` 委托解析，以执行 ``_RichReader`` 的
+    ``post_func`` / ``RichDocNode`` 组装；算法端内容缓存由外层 ``DynamicPDFReader(file)``
+    的 ``_call_impl`` 负责，而非内层 ``reader(...)``。
 ''')
 
 add_english_doc('rag.readers.DynamicPDFReader', '''\
@@ -2317,8 +2318,9 @@ Notes:
     Mineru-specific ``mineru_backend`` is read by ``MineruPDFReader`` from config
     or environment variables instead of being forwarded through ``DynamicPDFReader``;
     online/offline and upload behavior are derived from URL.
-    Downstream OCR readers receive ``use_cache`` via ``reader(file, use_cache=...)``. Call
-    ``reader(...)`` instead of ``reader.forward(...)`` so algorithm-side content cache applies.
+    Inner OCR readers are invoked via ``reader.forward(...)`` so ``_RichReader`` ``post_func``
+    and ``RichDocNode`` assembly run correctly. Algorithm-side content cache is handled by the
+    outer ``DynamicPDFReader(file)`` ``_call_impl``, not by inner ``reader(...)``.
 ''')
 
 add_example('rag.readers.DynamicPDFReader', '''\
