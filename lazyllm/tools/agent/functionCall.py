@@ -168,7 +168,7 @@ class FunctionCall(ModuleBase):
                 for tool_call, tool_result in zip(tool_calls, tool_calls_results)
             ]
             if self._stop_tools:
-                called_names = {tc.get('function', {}).get('name') for tc in tool_calls}
+                called_names = {(tc.get('function') or {}).get('name') for tc in tool_calls if isinstance(tc, dict)}
                 if called_names & self._stop_tools:
                     return '\n'.join(str(r) for r in tool_calls_results)
         else:

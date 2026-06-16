@@ -950,11 +950,11 @@ add_chinese_doc('ReactAgent.set_stop_tools', '''\
 设置触发 agent 循环提前终止的工具列表。
 
 当 ``stop_tools`` 中任意一个工具被调用后，agent 会直接将该工具的返回值作为最终结果输出，
-而不再将结果回传给 LLM 进行进一步推理。此方法在 agent 已构建之后调用同样安全，
-会原地替换原有的 stop-tool 集合。
+而不再将结果回传给 LLM 进行进一步推理。该配置会持久化在 agent 实例上，序列化/反序列化后
+（如 pickle）也不会丢失。可在 agent 构建前后的任意时刻调用。
 
 Args:
-    stop_tools (List[str]): 需要触发提前退出的工具名称列表。传入空列表可清除全部 stop tools。
+    stop_tools (Optional[List[str]]): 需要触发提前退出的工具名称列表。传入空列表或 ``None`` 可清除全部 stop tools。
 ''')
 
 add_english_doc('ReactAgent.set_stop_tools', '''\
@@ -962,12 +962,12 @@ Set tools that cause the agent loop to stop immediately after execution.
 
 When any tool whose name appears in *stop_tools* is called, the agent returns that tool\'s
 result directly instead of feeding it back to the LLM for further reasoning.
-Calling this method after the agent has already been built is safe — it replaces the
-previous stop-tool set in place.
+The configuration is stored on the agent instance and survives serialization/deserialization
+(e.g. pickle). Safe to call before or after the agent is built.
 
 Args:
-    stop_tools (List[str]): Tool name(s) that should trigger an early exit.
-        Pass an empty list to clear all stop tools.
+    stop_tools (Optional[List[str]]): Tool name(s) that should trigger an early exit.
+        Pass an empty list or ``None`` to clear all stop tools.
 ''')
 
 add_example('ReactAgent.set_stop_tools', """\
