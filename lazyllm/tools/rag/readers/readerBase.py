@@ -16,7 +16,7 @@ import hashlib
 from lazyllm.thirdparty import charset_normalizer
 
 config.add('reader_content_cache', bool, True, 'READER_CONTENT_CACHE',
-           description='Whether to cache parsed reader results by file content')
+           description='Whether to cache parsed reader results keyed by file mtime and size')
 
 _READER_CACHE_SKIP_KEYS = frozenset({'use_cache', 'lazyllm_files', 'llm_chat_history'})
 
@@ -56,14 +56,11 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
     @classmethod
     def _file_content_digest(cls, path: str) -> str:
-        hash_obj = hashlib.md5()
         try:
-            with open(path, 'rb') as f:
-                while chunk := f.read(8192):
-                    hash_obj.update(chunk)
+            stat = Path(path).stat()
+            return f'{stat.st_mtime}-{stat.st_size}'
         except OSError:
-            hash_obj.update(path.encode())
-        return hash_obj.hexdigest()
+            return hashlib.md5(path.encode()).hexdigest()
 
     @classmethod
     def _reader_cache_file_token(cls, value):

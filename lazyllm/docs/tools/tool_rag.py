@@ -4669,8 +4669,8 @@ add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
 - **算法端内容缓存**（本类）：缓存 ``DocNode`` 列表，由 ``use_content_cache`` / ``LAZYLLM_READER_CONTENT_CACHE`` 控制。
 - **OCR 服务端缓存**（如 MineruPDFReader）：HTTP 请求参数 ``use_cache`` 控制远端是否复用解析结果。
 
-缓存键由 Reader 类型、``appendix_hash_key``（子类配置，如 OCR URL/backend）、文件内容 MD5 及
-``extra_info`` 等调用参数共同决定；文件内容变更后自动 miss，旧条目不会自动删除。
+缓存键由 Reader 类型、``appendix_hash_key``（子类配置，如 OCR URL/backend）、文件
+``mtime`` 与 ``st_size`` 及 ``extra_info`` 等调用参数共同决定；文件修改后（mtime/size 变化）自动 miss。
 
 存储后端复用 ``ModuleCache``，由全局配置选择：
 
@@ -4703,8 +4703,8 @@ Algorithm-side cache and OCR service ``use_cache`` are two independent layers:
   service reuses its own parse results.
 
 Cache keys combine reader type, ``appendix_hash_key`` (subclass config such as OCR URL/backend),
-file content MD5, and call kwargs such as ``extra_info``. File content changes cause a miss;
-stale entries are not evicted automatically.
+file ``mtime`` and ``st_size``, and call kwargs such as ``extra_info``. File updates (mtime/size
+change) cause a miss; stale entries are not evicted automatically.
 
 Storage reuses ``ModuleCache`` and global settings:
 
