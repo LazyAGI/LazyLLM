@@ -380,8 +380,8 @@ class ToolGroup(ToolContainer):
             return (f'Activated tool group "{group_name}". '
                     f'Available tools: {", ".join(child_names)}')
 
-        short_desc = docstring_parser.parse(self._desc).description if self._desc else ''
-        desc = f'Get available methods of {group_name}. {short_desc or ""}'
+        group_desc = docstring_parser.parse(self._desc).description if self._desc else ''
+        desc = f'Get available methods of {group_name}. {group_desc or ""}'
         _gateway_apply.__doc__ = (f'{desc}\n\nReturns:\n    str: List of available tool names in this group.')
         _gateway_apply.__name__ = f'get_{group_name}_methods'
 
