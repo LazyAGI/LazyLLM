@@ -621,8 +621,6 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
         has_ref_image = files is not None and len(files) > 0
         reference_image_data = None
         messages = []
-        if url and url != self._base_url:
-            LOG.warning('QwenText2Image ignores runtime `url`; use `set_dashscope_urls` instead.')
         if 'base_websocket_url' in kwargs:
             raise Exception('Qwen Text2Image forward() does not support overriding the `base_websocket_url` parameter.')
         if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
