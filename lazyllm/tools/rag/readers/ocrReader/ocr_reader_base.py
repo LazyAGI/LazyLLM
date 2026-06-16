@@ -36,8 +36,9 @@ class _OcrReaderBase(_RichReader, _Adapter, CredentialMixin):
                  return_trace: bool = True,
                  token: Optional[str] = None,
                  dynamic_auth: bool = False,
-                 auth_strategy: Optional[AuthStrategy] = None):
-        super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
+                 auth_strategy: Optional[AuthStrategy] = None,
+                 **kwargs):
+        super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace, **kwargs)
         credential = self._default_credential(token, dynamic_auth)
         self.__init_credential__(credential, strategy=auth_strategy or BearerTokenStrategy())
         self._auth_source_key = self.__class__.__name__.replace('PDFReader', '').lower()
@@ -49,6 +50,11 @@ class _OcrReaderBase(_RichReader, _Adapter, CredentialMixin):
             for item in self._image_cache_dir.iterdir():
                 shutil.rmtree(item) if item.is_dir() else item.unlink()
         self._dropped_types = dropped_types if dropped_types is not None else set()
+
+    @property
+    def appendix_hash_key(self):
+        dropped = ','.join(sorted(self._dropped_types))
+        return f'{self._url}|{dropped}|{self._split_doc}'
 
     def _resolve_dynamic_token(self) -> str:
         # Dynamic OCR auth is request/session scoped and injected via globals.config.

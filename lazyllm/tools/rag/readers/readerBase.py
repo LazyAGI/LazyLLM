@@ -2,15 +2,24 @@ from lazyllm.thirdparty import fsspec
 from typing import Iterable, List, Optional, Union, Callable
 
 from lazyllm.thirdparty import torch
+import lazyllm
 from lazyllm import LOG, config
 
 from ....common import LazyLLMRegisterMetaClass
 from ..doc_node import DocNode, RichDocNode
 from lazyllm.module import ModuleBase
+from lazyllm.module.module import module_cache, CacheNotFoundError
 from pathlib import Path
 import locale
 import threading
+import hashlib
 from lazyllm.thirdparty import charset_normalizer
+
+config.add('reader_content_cache', bool, True, 'READER_CONTENT_CACHE',
+           description='Whether to cache parsed reader results by file content')
+
+_READER_CACHE_SKIP_KEYS = frozenset({'use_cache', 'lazyllm_files', 'llm_chat_history'})
+
 
 class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     post_action = None
@@ -19,8 +28,86 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     _cache_lock = threading.Lock()
     _cache_max_size = 1000
 
-    def __init__(self, *args, return_trace: bool = True, **kwargs):
+    def __init__(self, *args, return_trace: bool = True,
+                 use_content_cache: bool = config['reader_content_cache'], **kwargs):
         super().__init__(return_trace=return_trace)
+        self._use_content_cache = use_content_cache
+
+    @property
+    def __reader_cache_hash__(self):
+        cache_hash = f'Reader@{self.__class__.__name__}'
+        if isinstance(self._use_content_cache, str):
+            cache_hash += f'@{self._use_content_cache}'
+        if hasattr(self, 'appendix_hash_key'):
+            cache_hash += f'@{self.appendix_hash_key}'
+        return cache_hash
+
+    @staticmethod
+    def _reader_cache_kwargs(kwargs: dict) -> dict:
+        return {k: v for k, v in kwargs.items() if k not in _READER_CACHE_SKIP_KEYS}
+
+    @staticmethod
+    def _normalize_file_path(value) -> Optional[str]:
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, str) and not value.startswith(('http://', 'https://')):
+            return value
+        return None
+
+    @classmethod
+    def _file_content_digest(cls, path: str) -> str:
+        hash_obj = hashlib.md5()
+        try:
+            with open(path, 'rb') as f:
+                while chunk := f.read(8192):
+                    hash_obj.update(chunk)
+        except OSError:
+            hash_obj.update(path.encode())
+        return hash_obj.hexdigest()
+
+    @classmethod
+    def _reader_cache_file_token(cls, value):
+        path = cls._normalize_file_path(value)
+        if path is None:
+            return value
+        return f'file://{path}|{cls._file_content_digest(path)}'
+
+    @classmethod
+    def _reader_cache_args(cls, args: tuple) -> tuple:
+        return tuple(cls._reader_cache_file_token(arg) for arg in args)
+
+    @classmethod
+    def _reader_cache_key_kwargs(cls, kwargs: dict) -> dict:
+        return {k: cls._reader_cache_file_token(v) for k, v in cls._reader_cache_kwargs(kwargs).items()}
+
+    def _reader_cache_read_enabled(self, kwargs: dict) -> bool:
+        if not self._use_content_cache:
+            return False
+        if kwargs.get('use_cache', True) is False:
+            return False
+        return 'R' in lazyllm.config['cache_mode']
+
+    def _reader_cache_write_enabled(self, kwargs: dict) -> bool:
+        if not self._reader_cache_read_enabled(kwargs):
+            return False
+        return 'W' in lazyllm.config['cache_mode']
+
+    def use_content_cache(self, flag: Union[bool, str] = True):
+        self._use_content_cache = flag or False
+        return self
+
+    def _call_impl(self, *args, **kw):
+        cache_kw = self._reader_cache_key_kwargs(kw)
+        cache_args = self._reader_cache_args(args)
+        if self._reader_cache_read_enabled(kw):
+            try:
+                return module_cache.get(self.__reader_cache_hash__, cache_args, cache_kw)
+            except CacheNotFoundError:
+                pass
+        r = super()._call_impl(*args, **kw)
+        if self._reader_cache_write_enabled(kw):
+            module_cache.set(self.__reader_cache_hash__, cache_args, cache_kw, r)
+        return r
 
     def _lazy_load_data(self, *args, **load_kwargs) -> Iterable[DocNode]:
         raise NotImplementedError(f'{self.__class__.__name__} does not implement lazy_load_data method.')
@@ -29,7 +116,8 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return list(self._lazy_load_data(*args, **load_kwargs))
 
     def forward(self, *args, **kwargs) -> List[DocNode]:
-        r = self._load_data(*args, **kwargs)
+        load_kwargs = {k: v for k, v in kwargs.items() if k not in _READER_CACHE_SKIP_KEYS}
+        r = self._load_data(*args, **load_kwargs)
         r = [r] if isinstance(r, DocNode) else [] if r is None else r
         if r and self.post_action:
             r = [x for sub in [self.post_action(n) for n in r] for x in (sub if isinstance(sub, list) else [sub])]
@@ -195,6 +283,10 @@ class TxtReader(LazyLLMReaderBase):
         self._enable_chardet = enable_chardet
         self._use_encoding_cache = use_encoding_cache
 
+    @property
+    def appendix_hash_key(self):
+        return f'{self._encoding}|{self._auto_detect_encoding}|{self._enable_chardet}'
+
     def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if self._encoding:
             encoding = self._encoding
@@ -246,8 +338,8 @@ class DefaultReader(TxtReader):
 
 class _RichReader(LazyLLMReaderBase):
     def __init__(self, post_func: Optional[Callable] = None, split_doc: bool = True,
-                 return_trace: bool = True):
-        super().__init__(return_trace=return_trace)
+                 return_trace: bool = True, **kwargs):
+        super().__init__(return_trace=return_trace, **kwargs)
         self._post_func = post_func
         self._split_doc = split_doc
 

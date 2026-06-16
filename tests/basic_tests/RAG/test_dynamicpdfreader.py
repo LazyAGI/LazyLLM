@@ -51,7 +51,7 @@ class TestDynamicPDFReader:
     def test_reader_cache_reuse_same_options(self):
         reader = DynamicPDFReader(ocr_type='mineru', ocr_url='http://mock')
         fake_reader = MagicMock()
-        fake_reader.forward.return_value = [DocNode(text='ok')]
+        fake_reader.return_value = [DocNode(text='ok')]
 
         with patch.object(reader, '_build_reader', return_value=fake_reader) as mock_build:
             result_1 = reader._load_data('fake.pdf', extra_info=None, use_cache=True)
@@ -60,7 +60,7 @@ class TestDynamicPDFReader:
         assert mock_build.call_count == 1
         assert len(result_1) == 1
         assert len(result_2) == 1
-        assert fake_reader.forward.call_count == 2
+        assert fake_reader.call_count == 2
 
     def test_build_reader_uses_dynamic_auth(self):
         reader = DynamicPDFReader(ocr_type='paddleocr', ocr_url='http://mock-paddle')
@@ -162,3 +162,25 @@ class TestDynamicPDFReader:
         reader = MineruPDFReader(url='https://mineru.net')
         assert reader._variant == OcrServiceVariant.ONLINE
         assert reader._upload_mode is False
+
+    def test_mineru_reader_content_cache_skips_load(self, tmp_path):
+        import lazyllm
+        from lazyllm.module.module import module_cache
+
+        pdf_path = tmp_path / 'demo.pdf'
+        pdf_path.write_bytes(b'%PDF-1.4 demo')
+
+        old_cache_mode = lazyllm.config['cache_mode']
+        lazyllm.config['cache_mode'] = 'RW'
+        module_cache.close()
+        try:
+            reader = MineruPDFReader(url='https://mineru.net').use_content_cache(True)
+            with patch.object(
+                MineruPDFReader, '_load_data', return_value=[DocNode(text='cached')]
+            ) as mock_load:
+                reader(pdf_path, use_cache=True)
+                reader(pdf_path, use_cache=True)
+            assert mock_load.call_count == 1
+        finally:
+            lazyllm.config['cache_mode'] = old_cache_mode
+            module_cache.close()

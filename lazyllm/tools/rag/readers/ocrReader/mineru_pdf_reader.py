@@ -78,6 +78,11 @@ class MineruPDFReader(_OcrReaderBase):
         self._offline_mode = self._variant == OcrServiceVariant.OFFLINE
         self._upload_mode = upload_mode if upload_mode is not None else self._offline_mode
 
+    @property
+    def appendix_hash_key(self):
+        dropped = ','.join(sorted(self._dropped_types))
+        return f'{self._url}|{self._backend}|{self._upload_mode}|{dropped}|{self._split_doc}'
+
     @override
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True
                    ) -> List['DocNode']:
