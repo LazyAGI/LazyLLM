@@ -610,6 +610,11 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
             LOG.error(f'Failed to extract async image URLs: {str(e)}')
             return []
 
+    @staticmethod
+    def _uses_multimodal_generation(model_name: Optional[str]) -> bool:
+        name = (model_name or '').strip().lower()
+        return name.startswith('qwen-image')
+
     def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1,
                  prompt_extend: bool = True, size: str = '1024*1024', seed: int = None,
                  url: str = None, model: str = None, **kwargs):
@@ -617,8 +622,7 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
         reference_image_data = None
         messages = []
         if url and url != self._base_url:
-            raise Exception('Qwen Text2Image forward() does not support overriding the `url` parameter, '
-                            'please remove it.')
+            LOG.warning('QwenText2Image ignores runtime `url`; use `set_dashscope_urls` instead.')
         if 'base_websocket_url' in kwargs:
             raise Exception('Qwen Text2Image forward() does not support overriding the `base_websocket_url` parameter.')
         if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
@@ -644,6 +648,13 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
                     'content': content
                 }
             ]
+        elif self._uses_multimodal_generation(model):
+            messages = [
+                {
+                    'role': 'user',
+                    'content': [{'text': input}],
+                }
+            ]
 
         call_params = {
             'model': model,
@@ -655,8 +666,9 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
-        if has_ref_image:
+        if has_ref_image or self._uses_multimodal_generation(model):
             call_params['messages'] = messages
+            call_params['result_format'] = call_params.get('result_format') or 'message'
             response = self._call_sync_text2image(call_params)
             image_urls = self._extract_sync_image_urls(response)
         else:
