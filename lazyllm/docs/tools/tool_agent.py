@@ -946,6 +946,56 @@ add_english_doc('ReactAgent.build_agent', '''\
 Build the internal reasoning and tool-calling loop for ReactAgent.
 ''')
 
+add_chinese_doc('ReactAgent.set_stop_tools', '''\
+设置触发 agent 循环提前终止的工具列表。
+
+当 ``stop_tools`` 中任意一个工具被调用后，agent 会直接将该工具的返回值作为最终结果输出，
+而不再将结果回传给 LLM 进行进一步推理。此方法在 agent 已构建之后调用同样安全，
+会原地替换原有的 stop-tool 集合。
+
+Args:
+    stop_tools (List[str]): 需要触发提前退出的工具名称列表。传入空列表可清除全部 stop tools。
+''')
+
+add_english_doc('ReactAgent.set_stop_tools', '''\
+Set tools that cause the agent loop to stop immediately after execution.
+
+When any tool whose name appears in *stop_tools* is called, the agent returns that tool\'s
+result directly instead of feeding it back to the LLM for further reasoning.
+Calling this method after the agent has already been built is safe — it replaces the
+previous stop-tool set in place.
+
+Args:
+    stop_tools (List[str]): Tool name(s) that should trigger an early exit.
+        Pass an empty list to clear all stop tools.
+''')
+
+add_example('ReactAgent.set_stop_tools', """\
+>>> import lazyllm
+>>> from lazyllm.tools import fc_register, ReactAgent
+>>> @fc_register("tool")
+>>> def search(query: str) -> str:
+...     '''Search the web for information.
+...
+...     Args:
+...         query (str): The search query.
+...     '''
+...     return "search result"
+>>> @fc_register("tool")
+>>> def fetch_image(url: str) -> str:
+...     '''Fetch an image from a URL.
+...
+...     Args:
+...         url (str): The image URL.
+...     '''
+...     return "image data"
+>>> llm = lazyllm.OnlineChatModule(source="openai")
+>>> agent = ReactAgent(llm, tools=["search", "fetch_image"])
+>>> agent.set_stop_tools(["fetch_image"])
+>>> # The agent loop will exit as soon as fetch_image is called,
+>>> # returning its result directly without further LLM reasoning.
+""")
+
 add_example('ReactAgent', """\
 >>> import lazyllm
 >>> from lazyllm.tools import fc_register, ReactAgent
