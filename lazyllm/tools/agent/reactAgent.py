@@ -91,14 +91,20 @@ class ReactAgent(LazyLLMAgentBase):
         self._force_summarize = force_summarize
         self._force_summarize_context = force_summarize_context
         self._keep_full_turns = keep_full_turns
+        self._fc = None
+
+    def set_stop_tools(self, stop_tools: List[str]) -> None:
+        self.build_agent()
+        self._fc._stop_tools = set(stop_tools)
 
     @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
-        agent = loop(FunctionCall(llm=self._llm, _prompt=self._prompt, return_trace=self._return_trace,
-                                  stream=self._stream, _tool_manager=self._tools_manager,
-                                  skill_manager=self._skill_manager,
-                                  keep_full_turns=self._keep_full_turns),
-                     stop_condition=lambda x: isinstance(x, str), count=self._max_retries + 1)
+        fc = FunctionCall(llm=self._llm, _prompt=self._prompt, return_trace=self._return_trace,
+                          stream=self._stream, _tool_manager=self._tools_manager,
+                          skill_manager=self._skill_manager,
+                          keep_full_turns=self._keep_full_turns)
+        agent = loop(fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries + 1)
+        self._fc = fc
         self._agent = agent
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
