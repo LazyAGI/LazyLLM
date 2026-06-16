@@ -1286,6 +1286,42 @@ add_example('Document.get_window_nodes', '''\
 >>> window_nodes = doc.get_window_nodes(node, span=(-2, 2), merge=False)
 ''')
 
+add_chinese_doc('Document.keyword_search', '''\
+在指定文档内做关键词精准匹配，与全库检索的 :meth:`find` 互补。
+
+需提供 ``doc_id`` 定位目标文档，支持精确短语匹配或单词级匹配，可控制排序方式与返回数量。
+
+Args:
+    group (str): 节点组名（如 ``"block"`` 或 ``"line"``）。
+    keyword (str): 待匹配的关键词或短语。
+    doc_id (str): 目标文档 ID。
+    kb_id (Optional[str]): 知识库过滤条件（可选）。
+    phrase (bool): True 为精确子串匹配，False 要求所有单词均出现。
+    sort_by (str): ``"score"`` 按相关性排序，``"number"`` 按文档原始顺序排序。
+    size (int): 最大返回条数。
+
+Returns:
+    List[dict]: 命中的切片列表。
+''')
+
+add_english_doc('Document.keyword_search', '''\
+Perform exact keyword matching within a specific document, complementing the collection-wide retrieval of :meth:`find`.
+
+Requires ``doc_id`` to locate the target document. Supports exact phrase or word-level matching, with configurable sort order and result count.
+
+Args:
+    group (str): Node group name (e.g., ``"block"`` or ``"line"``).
+    keyword (str): Keyword or phrase to match.
+    doc_id (str): Target document ID.
+    kb_id (Optional[str]): Optional knowledge-base filter.
+    phrase (bool): True for exact substring match; False requires every word to appear.
+    sort_by (str): ``"score"`` sorts by relevance, ``"number"`` sorts by document order.
+    size (int): Maximum number of hits.
+
+Returns:
+    List[dict]: Matched segment list.
+''')
+
 
 
 # rag/graph_document.py
@@ -3937,6 +3973,42 @@ Args:
 
 **Returns:**\n
 - Union[List[DocNode], DocNode]: Window nodes list or a merged node.
+''')
+
+add_chinese_doc('rag.document.UrlDocument.keyword_search', '''\
+在远程文档中执行关键词精准匹配。
+
+与 :meth:`Document.keyword_search` 接口一致，通过 RPC 代理到远端 Document 服务。
+
+Args:
+    group (str): 节点组名。
+    keyword (str): 待匹配的关键词。
+    doc_id (str): 目标文档 ID。
+    kb_id (Optional[str]): 知识库过滤条件。
+    phrase (bool): True 为精确子串匹配，False 为单词级匹配。
+    sort_by (str): ``"score"`` 按相关性排序，``"number"`` 按文档顺序排序。
+    size (int): 最大返回条数。
+
+Returns:
+    List[dict]: 命中的切片列表。
+''')
+
+add_english_doc('rag.document.UrlDocument.keyword_search', '''\
+Perform exact keyword matching in a remote document.
+
+Same interface as :meth:`Document.keyword_search`, proxied via RPC to the remote Document service.
+
+Args:
+    group (str): Node group name.
+    keyword (str): Keyword to match.
+    doc_id (str): Target document ID.
+    kb_id (Optional[str]): Knowledge-base filter.
+    phrase (bool): True for exact substring match, False for word-level match.
+    sort_by (str): ``"score"`` sorts by relevance, ``"number"`` sorts by document order.
+    size (int): Maximum number of hits.
+
+Returns:
+    List[dict]: Matched segment list.
 ''')
 
 add_english_doc('rag.doc_node.DocNode', '''
@@ -7784,6 +7856,38 @@ Returns:
         - Second element: mapping from embed key to ``DataType``.
 ''')
 
+add_chinese_doc('rag.LazyLLMStoreBase.keyword_search', '''\
+在指定文档内做关键词精准匹配，与全库相关性检索的 :meth:`search` 互补。
+
+Args:
+    collection_name (str): 表名或索引名。
+    keyword (str): 待匹配的关键词或短语。
+    doc_id (str): 限定在此文档内搜索。
+    kb_id (Optional[str]): 知识库过滤条件（可选）。
+    phrase (bool): True 为精确子串匹配，False 要求所有单词均出现（不要求顺序）。
+    sort_by (str): ``"score"`` 按关键词出现次数排序，``"number"`` 按文档原始顺序排序。
+    size (int): 最大返回条数。
+
+Returns:
+    List[dict]: 命中的切片列表。
+''')
+
+add_english_doc('rag.LazyLLMStoreBase.keyword_search', '''\
+Perform exact keyword matching within a specific document, complementing the collection-wide relevance retrieval of :meth:`search`.
+
+Args:
+    collection_name (str): Table or index name.
+    keyword (str): Keyword or phrase to match.
+    doc_id (str): Limit search to this document.
+    kb_id (Optional[str]): Optional knowledge-base filter.
+    phrase (bool): True for exact substring match; False requires every word to appear (any order).
+    sort_by (str): ``"score"`` sorts by keyword occurrence count, ``"number"`` sorts by original document order.
+    size (int): Maximum number of hits.
+
+Returns:
+    List[dict]: Matched segment list.
+''')
+
 add_chinese_doc('rag.doc_impl.DocImpl', '''\
 文档实现类，用于管理文档处理、存储和检索的核心功能。
 
@@ -8436,6 +8540,42 @@ Args:
 
 **Returns:**\n
 - List[dict]: 返回匹配结果列表及相似度 'score'。
+""")
+
+add_chinese_doc('rag.store.segment.OpenSearchStore.keyword_search', """\
+在单文档内做关键词精准匹配，直接拼 OpenSearch DSL（match_phrase / match + filter + highlight）。
+
+与 :meth:`search` 的全库检索不同，本方法限定 ``doc_id``，并通过 ``phrase`` 控制精确短语或单词级匹配，返回带高亮片段的切片列表。
+
+Args:
+    collection_name (str): 索引名。
+    keyword (str): 待匹配的关键词或短语。
+    doc_id (str): 目标文档 ID。
+    kb_id (Optional[str]): 知识库过滤条件（可选）。
+    phrase (bool): True 使用 match_phrase，False 使用 match。
+    sort_by (str): ``"score"`` 按 BM25 相关性排序，``"number"`` 按文档原始顺序排序。
+    size (int): 最大返回条数。
+
+Returns:
+    List[dict]: 命中的切片列表，可含 ``highlights`` 高亮片段。
+""")
+
+add_english_doc('rag.store.segment.OpenSearchStore.keyword_search', """\
+Exact keyword matching within a single document, building an OpenSearch DSL query (match_phrase / match + filter + highlight).
+
+Unlike :meth:`search` which does collection-wide retrieval, this method scopes to a single ``doc_id``, controls phrase vs word-level matching via ``phrase``, and returns segments with highlight snippets.
+
+Args:
+    collection_name (str): Index name.
+    keyword (str): Keyword or phrase to match.
+    doc_id (str): Target document ID.
+    kb_id (Optional[str]): Optional knowledge-base filter.
+    phrase (bool): True uses match_phrase; False uses match.
+    sort_by (str): ``"score"`` sorts by BM25 relevance; ``"number"`` sorts by document order.
+    size (int): Maximum number of hits.
+
+Returns:
+    List[dict]: Matched segment list, may contain ``highlights`` snippets.
 """)
 
 add_chinese_doc('services.ServerBase', """\
@@ -9106,6 +9246,42 @@ Args:
 
 Returns:
     List[dict]: Segment list with ``score`` field (negated FTS5 rank, higher = more relevant).
+""")
+
+add_chinese_doc('rag.store.segment.SQLiteStore.keyword_search', """\
+在单文档内做关键词精准匹配，先通过 :meth:`get` 取全文档切片再在内存中过滤排序。
+
+与 :meth:`search` 的全库 FTS5 检索不同，本方法限定 ``doc_id``，按 ``phrase`` 模式筛选后根据 ``sort_by`` 排序并截断。
+
+Args:
+    collection_name (str): 集合名称（表名）。
+    keyword (str): 待匹配的关键词或短语。
+    doc_id (str): 目标文档 ID。
+    kb_id (Optional[str]): 知识库过滤条件（可选）。
+    phrase (bool): True 为精确子串匹配，False 要求所有单词均出现。
+    sort_by (str): ``"score"`` 按关键词出现次数排序，``"number"`` 按文档原始顺序排序。
+    size (int): 最大返回条数。
+
+Returns:
+    List[dict]: 命中的切片列表。
+""")
+
+add_english_doc('rag.store.segment.SQLiteStore.keyword_search', """\
+Exact keyword matching within a single document — fetches all segments via :meth:`get`, then filters and sorts in memory.
+
+Unlike :meth:`search` which does collection-wide FTS5 retrieval, this method scopes to a single ``doc_id``, filters by ``phrase`` mode, then sorts by ``sort_by`` and truncates.
+
+Args:
+    collection_name (str): Collection name (table name).
+    keyword (str): Keyword or phrase to match.
+    doc_id (str): Target document ID.
+    kb_id (Optional[str]): Optional knowledge-base filter.
+    phrase (bool): True for exact substring match; False requires every word to appear.
+    sort_by (str): ``"score"`` sorts by keyword occurrence count, ``"number"`` sorts by document order.
+    size (int): Maximum number of hits.
+
+Returns:
+    List[dict]: Matched segment list.
 """)
 
 

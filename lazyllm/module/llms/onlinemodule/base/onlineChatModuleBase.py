@@ -169,8 +169,20 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         partial_content = ''
         for attempt in range(max_retries):
             if attempt > 0 and partial_content:
-                data['messages'].append({'role': 'assistant', 'content': partial_content})
-                data['messages'].append({'role': 'user', 'content': _CONTINUATION_PROMPT})
+                # If the stream was cut mid-tool-call, the partial assistant message contains
+                # a truncated tool_calls block with malformed JSON arguments.  Appending it
+                # back into the history causes a 400 from providers that validate
+                # function.arguments.  In that case, skip the continuation injection and
+                # retry with the original messages so the model can restart the tool call.
+                last_msg = data['messages'][-1] if data['messages'] else {}
+                stream_cut_in_tool_call = (
+                    last_msg.get('role') == 'assistant' and last_msg.get('tool_calls')
+                )
+                if not stream_cut_in_tool_call:
+                    data['messages'].append({'role': 'assistant', 'content': partial_content})
+                    data['messages'].append({'role': 'user', 'content': _CONTINUATION_PROMPT})
+                else:
+                    lazyllm.LOG.warning('Stream interrupted mid-tool-call; retrying without continuation injection.')
                 partial_content = ''
             try:
                 msg_json = self._forward_impl(data, runtime_url=runtime_url,

@@ -11,6 +11,8 @@ _TYPE_TO_SLOT: Dict[str, str] = {
     'cross_modal_embed': 'embed',
     'text2image': 'multimodal',
     'image_editing': 'multimodal',
+    'stt': 'multimodal',
+    'tts': 'multimodal',
 }
 
 # Role name prefixes that imply the 'embed' slot even when 'type' is absent.
