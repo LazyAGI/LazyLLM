@@ -1509,6 +1509,24 @@ class DocManager:
             name = meta.get('name') or row.node_group_id
             if name in seen:
                 continue
+            try:
+                algo_id = self._find_algo_for_group(kb_id, name)
+                resp = self._parser_client.list_doc_chunks(
+                    algo_id=algo_id,
+                    kb_id=kb_id,
+                    doc_id=doc_id,
+                    group=name,
+                    offset=0,
+                    page_size=1,
+                )
+            except Exception as e:
+                LOG.warning(f'[DocManager] Failed to check chunk existence for group {name}: {e}')
+                continue
+            if resp.code != 200:
+                continue
+            total = int((resp.data or {}).get('total') or 0)
+            if total <= 0:
+                continue
             seen.add(name)
             groups.append(name)
         return {'groups': groups}
