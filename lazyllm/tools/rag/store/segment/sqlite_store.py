@@ -169,19 +169,29 @@ class SQLiteStore(LazyLLMStoreBase):
             return ([], 0) if kwargs.get('return_total') else []
 
     @override
-    def keyword_search(self, collection_name, keyword, doc_id, kb_id=None,
-                       phrase=True, sort_by='score', size=10, **kwargs):
+    def keyword_search(self, collection_name, keyword, doc_id='', kb_id=None,
+                       phrase=True, sort_by='score', size=10, file_name=None, **kwargs):
         LOG.info(f'[SQLiteStore.keyword_search] collection={collection_name!r} keyword={keyword!r} '
-                 f'doc_id={doc_id!r} kb_id={kb_id!r} phrase={phrase} sort_by={sort_by!r}')
-        criteria = {RAG_DOC_ID: doc_id}
+                 f'doc_id={doc_id!r} kb_id={kb_id!r} file_name={file_name!r} phrase={phrase} sort_by={sort_by!r}')
+        criteria = {}
+        if file_name:
+            # file_name is stored inside global_meta JSON; filter in Python after fetch
+            pass  # handled below
+        elif doc_id:
+            criteria[RAG_DOC_ID] = doc_id
         if kb_id:
             criteria[RAG_KB_ID] = kb_id
-        nodes = self.get(collection_name, criteria=criteria)
+        nodes = self.get(collection_name, criteria=criteria if criteria else None)
 
         kw_lower = keyword.lower()
         words = kw_lower.split()
         matched = []
         for n in nodes:
+            if file_name:
+                gm_raw = n.get('global_meta') or '{}'
+                gm = json.loads(gm_raw) if isinstance(gm_raw, str) else (gm_raw or {})
+                if gm.get('file_name') != file_name:
+                    continue
             text = (n.get('content') or '').lower()
             if phrase:
                 if kw_lower in text:

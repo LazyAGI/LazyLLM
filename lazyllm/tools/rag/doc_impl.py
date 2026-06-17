@@ -604,12 +604,12 @@ class DocImpl:
             sort_by_number=sort_by_number, display=True,
         )
 
-    def _keyword_search(self, group, keyword, doc_id, kb_id=None,
-                        phrase=True, sort_by='score', size=10):
+    def _keyword_search(self, group, keyword, doc_id='', kb_id=None,
+                        phrase=True, sort_by='score', size=10, file_name=None):
         self._lazy_init()
         return self._store.keyword_search(
             group=group, keyword=keyword, doc_id=doc_id, kb_id=kb_id,
-            phrase=phrase, sort_by=sort_by, size=size,
+            phrase=phrase, sort_by=sort_by, size=size, file_name=file_name,
         )
 
     def _get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
