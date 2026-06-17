@@ -3,12 +3,24 @@ import re
 import threading
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
-from urllib.parse import quote
 from lazyllm import globals
+from lazyllm.tools.fs.base import LinkDocumentFSBase
 
 _PROTOCOL_RE = re.compile(r'^([a-zA-Z][a-zA-Z0-9+\-.]*)(@[^:/]+)?:/(.*)$')
 _FEISHU_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
 _FEISHU_WIKI_PATH_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
+_NOTION_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:notion\.so|notion\.site|notion\.com)/', re.IGNORECASE)
+_NOTION_LINK_PATH_PREFIXES = ('~link/', '~page/', '~database/', '~data_source/', '~block/')
+_DOCUMENT_ROUTES = {
+    'feishu': {
+        'bare_url_re': _FEISHU_BARE_URL_RE,
+        'locator_prefixes': _FEISHU_WIKI_PATH_PREFIXES,
+    },
+    'notion': {
+        'bare_url_re': _NOTION_BARE_URL_RE,
+        'locator_prefixes': _NOTION_LINK_PATH_PREFIXES,
+    },
+}
 
 
 def _lookup_fs_cls(protocol: str):
@@ -33,6 +45,18 @@ def _feishu_needs_wiki(space_id: Optional[str], real_path: str) -> bool:
     return bool((globals.config.get('feishu_wiki_space_id') or '').strip())
 
 
+def _match_bare_document_url(path: str) -> Optional[str]:
+    for protocol, route in _DOCUMENT_ROUTES.items():
+        if route['bare_url_re'].match(path):
+            return protocol
+    return None
+
+
+def _is_document_locator(protocol: str, real_path: str) -> bool:
+    prefixes = _DOCUMENT_ROUTES.get(protocol, {}).get('locator_prefixes') or ()
+    return any(real_path.lstrip('/').startswith(prefix) for prefix in prefixes)
+
+
 class _FSRouter:
 
     def __init__(self) -> None:
@@ -40,8 +64,9 @@ class _FSRouter:
         self._lock = threading.Lock()
 
     def _parse(self, path: str):
-        if _FEISHU_BARE_URL_RE.match(path):
-            return 'feishu', 'dynamic', '/~link/' + quote(path, safe='')
+        bare_protocol = _match_bare_document_url(path)
+        if bare_protocol:
+            return bare_protocol, 'dynamic', LinkDocumentFSBase.to_link_path(path)
         m = _PROTOCOL_RE.match(path)
         if not m:
             return 'file', None, path
@@ -49,10 +74,8 @@ class _FSRouter:
         at_id = m.group(2)
         rest = '/' + m.group(3)
         space_id = at_id[1:] if at_id else None
-        if protocol == 'feishu' and space_id is None:
-            norm = rest.lstrip('/')
-            if any(norm.startswith(p) for p in _FEISHU_WIKI_PATH_PREFIXES):
-                space_id = 'dynamic'
+        if space_id is None and _is_document_locator(protocol, rest):
+            space_id = 'dynamic'
         return protocol, space_id, rest
 
     def _get_or_create_fs(self, protocol: str, space_id: Optional[str], real_path: str = '') -> Any:

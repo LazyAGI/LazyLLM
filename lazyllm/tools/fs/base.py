@@ -1,6 +1,7 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 from abc import abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote, unquote
 
 import io
 
@@ -125,6 +126,9 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
         else:
             self.rm_file(path)
 
+    def exists(self, path: str, **kwargs) -> bool:
+        return super().exists(path, **kwargs)
+
     def put_file(self, lpath: str, rpath: str, **kwargs) -> None:
         with open(lpath, 'rb') as fh:
             data = fh.read()
@@ -226,6 +230,130 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
     def _parse_path(self, path: str) -> Tuple[str, ...]:
         stripped = self._strip_protocol(path)
         return tuple(p for p in stripped.split('/') if p)
+
+
+class LinkDocumentFSBase(LazyLLMFSBase):
+
+    __lazyllm_registry_disable__ = True
+    document_provider = ''
+    __document_public_apis__ = [
+        'resolve_link',
+        'read_with_references',
+        'get_document_id',
+        'get_doc_blocks',
+        'update_doc_block_text',
+    ]
+    __public_apis__ = LazyLLMFSBase.__public_apis__ + __document_public_apis__
+    link_path_prefix = '~link/'
+
+    @staticmethod
+    def build_public_apis(extra: Optional[List[str]] = None, exclude: Optional[List[str]] = None) -> List[str]:
+        excluded = set(exclude or [])
+        public_apis: List[str] = []
+        for name in [*LazyLLMFSBase.__public_apis__, *LinkDocumentFSBase.__document_public_apis__, *(extra or [])]:
+            if name not in excluded and name not in public_apis:
+                public_apis.append(name)
+        return public_apis
+
+    @classmethod
+    def to_link_path(cls, url: str) -> str:
+        return '/' + cls.link_path_prefix + quote(url, safe='')
+
+    @classmethod
+    def is_link_path(cls, path: str) -> bool:
+        return path.lstrip('/').startswith(cls.link_path_prefix)
+
+    @classmethod
+    def decode_link_path(cls, path: str) -> str:
+        norm = path.lstrip('/')
+        if not norm.startswith(cls.link_path_prefix):
+            raise ValueError(f'Path is not a {cls.link_path_prefix!r} locator: {path!r}')
+        return unquote(norm[len(cls.link_path_prefix):])
+
+    @staticmethod
+    def dedupe_document_references(refs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        seen: set = set()
+        out: List[Dict[str, Any]] = []
+        for ref in refs:
+            url = ref.get('url', '')
+            if url and url not in seen:
+                seen.add(url)
+                out.append(ref)
+        return out
+
+    @classmethod
+    def format_document_references_footer(cls, refs: List[Dict[str, Any]], provider: str) -> str:
+        refs = cls.dedupe_document_references(refs)
+        if not refs:
+            return ''
+        provider_key = (provider or 'document').strip().lower()
+        lines = [f'\n--- lazyllm-{provider_key}-references ---\n']
+        for i, ref in enumerate(refs, 1):
+            lines.append(f'[{i}] {ref.get("ref_type", "hyperlink")} | {ref.get("url", "")}\n')
+        lines.append(f'--- end lazyllm-{provider_key}-references ---\n')
+        return ''.join(lines)
+
+    @property
+    def _document_provider_name(self) -> str:
+        return (self.document_provider or getattr(self, 'protocol', '') or self.__class__.__name__).lower()
+
+    def _format_document_references_footer(self, refs: List[Dict[str, Any]]) -> str:
+        return self.format_document_references_footer(refs, self._document_provider_name)
+
+    def _list_document_references(self, path: str) -> List[Dict[str, Any]]:
+        return []
+
+    def _append_document_references_footer(self, text: str, path: str) -> str:
+        footer = self._format_document_references_footer(self._list_document_references(path))
+        return text + footer if footer else text
+
+    def _append_document_references_footer_bytes(self, data: bytes, path: str) -> bytes:
+        footer = self._format_document_references_footer(self._list_document_references(path))
+        return data + footer.encode('utf-8') if footer else data
+
+    def _standardize_document_ref(self, ref: Dict[str, Any]) -> Dict[str, Any]:
+        object_id = (
+            ref.get('object_id') or ref.get('node_token') or ref.get('obj_token')
+            or ref.get('id') or ''
+        )
+        object_type = (
+            ref.get('object_type') or ref.get('obj_type') or ref.get('kind')
+            or ref.get('type') or ''
+        )
+        title = ref.get('title') or ref.get('name') or ''
+        standard = {
+            'provider': self._document_provider_name,
+            'object_id': object_id,
+            'object_type': object_type,
+            'title': title,
+            'has_child': bool(ref.get('has_child')),
+        }
+        return {**ref, **standard}
+
+    def resolve_link(self, url_or_path: str) -> Dict[str, Any]:
+        resolver = getattr(self, '_resolve_document_ref', None)
+        if callable(resolver):
+            return self._standardize_document_ref(resolver(url_or_path))
+        raise NotImplementedError(f'{self.__class__.__name__}.resolve_link is not implemented')
+
+    def read_with_references(self, path: str) -> str:
+        try:
+            data = self.read_bytes(path, include_references=True)  # type: ignore[call-arg]
+        except TypeError:
+            data = self.read_bytes(path)
+        return data.decode('utf-8')
+
+    def fetch_url(self, url: str) -> bytes:
+        return self.read_bytes(url)
+
+    def get_document_id(self, path: str) -> str:
+        raise NotImplementedError(f'{self.__class__.__name__}.get_document_id is not implemented')
+
+    def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
+        raise NotImplementedError(f'{self.__class__.__name__}.get_doc_blocks is not implemented')
+
+    def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
+        raise NotImplementedError(f'{self.__class__.__name__}.update_doc_block_text is not implemented')
 
 
 globals.config.add('dynamic_fs_auth', dict, None, 'DYNAMIC_FS_AUTH',

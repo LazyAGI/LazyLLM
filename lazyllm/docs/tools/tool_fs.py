@@ -15,6 +15,9 @@ _add_fs_example = functools.partial(
 _feishu_module = importlib.import_module('lazyllm.tools.fs.supplier.feishu')
 _add_feishu_chinese = functools.partial(utils.add_chinese_doc, module=_feishu_module)
 _add_feishu_english = functools.partial(utils.add_english_doc, module=_feishu_module)
+_notion_module = importlib.import_module('lazyllm.tools.fs.supplier.notion')
+_add_notion_chinese = functools.partial(utils.add_chinese_doc, module=_notion_module)
+_add_notion_english = functools.partial(utils.add_english_doc, module=_notion_module)
 
 # LazyLLMFSBase
 _add_fs_chinese('LazyLLMFSBase', '''\
@@ -61,7 +64,7 @@ Args:
     **kwargs: 子类扩展参数。
 
 Returns:
-    list: detail=True 时为 dict 列表；detail=False 时为 name 列表。
+    List: detail=True 时为 dict 列表；detail=False 时为 name 列表。
 ''')
 _add_fs_english('LazyLLMFSBase.ls', '''\
 List directory entries at path. Must be implemented by subclass.
@@ -72,7 +75,7 @@ Args:
     **kwargs: Subclass-specific options.
 
 Returns:
-    list: List of dicts if detail=True else list of names.
+    List: List of dicts if detail=True else list of names.
 ''')
 
 _add_fs_chinese('LazyLLMFSBase.info', '''\
@@ -83,7 +86,7 @@ Args:
     **kwargs: 子类扩展参数。
 
 Returns:
-    dict: 至少包含 name, size, type（file/directory），可选 mtime 等。
+    Dict[str, Any]: 至少包含 name, size, type（file/directory），可选 mtime 等。
 ''')
 _add_fs_english('LazyLLMFSBase.info', '''\
 Get metadata for the path. Must be implemented by subclass.
@@ -93,7 +96,7 @@ Args:
     **kwargs: Subclass-specific options.
 
 Returns:
-    dict: At least name, size, type (file/directory); optional mtime etc.
+    Dict[str, Any]: At least name, size, type (file/directory); optional mtime etc.
 ''')
 
 _add_fs_chinese('LazyLLMFSBase.read', '''\
@@ -538,6 +541,270 @@ Must be implemented by subclass: upload full data to path; used by CloudFSBuffer
 Args:
     path (str): Remote file path.
     data (bytes): Full content to upload.
+''')
+
+# LinkDocumentFSBase
+_add_fs_chinese('LinkDocumentFSBase', '''\
+URL 文档文件系统基类，面向飞书、Notion、Obsidian 等可通过链接定位文档的系统。它在 LazyLLMFSBase 的基础上统一沉淀“解析链接、读取正文并附带引用、获取文档 ID、列出可编辑块、更新文本块”等文档流 API。
+
+子类只需要实现平台差异：如何解析浏览器链接、如何读取正文、如何列出引用/块、如何更新块。若某个平台不支持块级编辑，应在对应方法中抛出 NotImplementedError。
+
+Args:
+    token (Any): 平台访问凭证；动态鉴权时可为空，由 dynamic_fs_auth 注入。
+    base_url (str, optional): 平台 API 根地址。
+    dynamic_auth (bool): 是否启用动态凭证。启用后会从 lazyllm.globals.config["dynamic_fs_auth"] 中按协议名读取 token。
+''')
+_add_fs_english('LinkDocumentFSBase', '''\
+Base filesystem for URL-addressable document systems such as Feishu, Notion, and Obsidian. It extends LazyLLMFSBase with a shared document workflow: resolving browser links, reading content with references, getting provider document ids, listing editable blocks, and updating text blocks.
+
+Subclasses keep only provider-specific behavior: how to resolve browser links, read content, collect references/blocks, and update blocks. Providers without block-level editing should raise NotImplementedError for the editing methods.
+
+Args:
+    token (Any): Provider access credential; may be empty when dynamic_auth=True.
+    base_url (str, optional): Provider API base URL.
+    dynamic_auth (bool): Whether to use dynamic credentials from lazyllm.globals.config["dynamic_fs_auth"] by protocol name.
+''')
+_add_fs_example('LinkDocumentFSBase', '''\
+>>> from lazyllm.tools.fs import FeishuFS, NotionFS
+>>> notion = NotionFS(token='ntn_xxx')
+>>> meta = notion.resolve_link('https://www.notion.so/0123456789abcdef0123456789abcdef')
+>>> content = notion.read_with_references(meta['path'])
+>>> feishu = FeishuFS(app_id='cli_xxx', app_secret='xxx', space_id='dynamic')
+>>> feishu.resolve_link('https://example.feishu.cn/wiki/xxxx')
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.build_public_apis', '''\
+构造面向工具暴露的公共 API 列表。文档型 FS 可复用 LazyLLMFSBase 的基础文件 API 与
+LinkDocumentFSBase 的文档 API，并通过 extra / exclude 对平台差异做少量增删。
+
+Args:
+    extra (List[str], optional): 需要追加暴露的平台专属方法名。
+    exclude (List[str], optional): 需要从默认集合中排除的方法名。
+
+Returns:
+    List[str]: 去重且保持声明顺序的公共 API 名称列表。
+''')
+_add_fs_english('LinkDocumentFSBase.build_public_apis', '''\
+Build the public API list exposed to tools. Document filesystems can reuse LazyLLMFSBase file APIs
+and LinkDocumentFSBase document APIs, then use extra / exclude for provider-specific differences.
+
+Args:
+    extra (List[str], optional): Provider-specific method names to expose.
+    exclude (List[str], optional): Method names to remove from the default set.
+
+Returns:
+    List[str]: Deduplicated public API names preserving declaration order.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.to_link_path', '''\
+将浏览器链接编码成统一的内部 link path。算法侧可以把用户粘贴的 URL 先转成该路径，再交给普通 FS read/ls 流程处理。
+
+Args:
+    url (str): 原始浏览器 URL。
+
+Returns:
+    str: 形如 /~link/<encoded-url> 的内部路径。
+''')
+_add_fs_english('LinkDocumentFSBase.to_link_path', '''\
+Encode a browser URL into the shared internal link path format. Algorithm code may normalize pasted URLs this way before using ordinary FS read/ls flows.
+
+Args:
+    url (str): Original browser URL.
+
+Returns:
+    str: Internal path like /~link/<encoded-url>.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.is_link_path', '''\
+判断路径是否为 LinkDocumentFSBase 生成的内部 link path。用于区分普通平台路径和用户直接粘贴的外部链接。
+
+Args:
+    path (str): 待判断路径。
+
+Returns:
+    bool: 是内部 link path 时返回 True。
+''')
+_add_fs_english('LinkDocumentFSBase.is_link_path', '''\
+Return whether a path is an internal link path generated by LinkDocumentFSBase. This distinguishes provider paths from user-pasted external links.
+
+Args:
+    path (str): Path to inspect.
+
+Returns:
+    bool: True if the path is an internal link path.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.decode_link_path', '''\
+从内部 link path 还原原始浏览器 URL。若 path 不是 link path，会抛出 ValueError，避免把普通平台路径误当作 URL。
+
+Args:
+    path (str): 形如 /~link/<encoded-url> 的内部路径。
+
+Returns:
+    str: 解码后的原始 URL。
+''')
+_add_fs_english('LinkDocumentFSBase.decode_link_path', '''\
+Decode an internal link path back to the original browser URL. Raises ValueError when the input is not a link path, preventing provider paths from being treated as URLs.
+
+Args:
+    path (str): Internal path like /~link/<encoded-url>.
+
+Returns:
+    str: Decoded original URL.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.dedupe_document_references', '''\
+按 url 字段对文档引用去重，并保持首次出现的顺序。用于统一飞书、Notion 等平台的引用收集结果，避免回答末尾重复列出同一链接。
+
+Args:
+    refs (List[Dict[str, Any]]): 引用对象列表，每项通常包含 url、ref_type 等字段。
+
+Returns:
+    List[Dict[str, Any]]: 去重后的引用列表。
+''')
+_add_fs_english('LinkDocumentFSBase.dedupe_document_references', '''\
+Deduplicate document references by the url field while preserving first-seen order. This normalizes reference lists from providers such as Feishu and Notion before appending them to answers.
+
+Args:
+    refs (List[Dict[str, Any]]): Reference objects, typically containing url and ref_type.
+
+Returns:
+    List[Dict[str, Any]]: Deduplicated references.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.format_document_references_footer', '''\
+将引用列表格式化成可追踪的文本页脚。页脚使用 provider 名称作为边界标识，便于上层工具在回答或日志中保留来源链接。
+
+Args:
+    refs (List[Dict[str, Any]]): 引用对象列表。
+    provider (str): 平台名，例如 feishu 或 notion。
+
+Returns:
+    str: 格式化后的引用页脚；无引用时返回空字符串。
+''')
+_add_fs_english('LinkDocumentFSBase.format_document_references_footer', '''\
+Format references into a traceable text footer. The footer uses the provider name in its boundary marker so upstream tools can keep source links in answers or logs.
+
+Args:
+    refs (List[Dict[str, Any]]): Reference objects.
+    provider (str): Provider name, such as feishu or notion.
+
+Returns:
+    str: Formatted references footer, or an empty string when refs is empty.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.resolve_link', '''\
+解析浏览器链接、provider URI 或平台路径，返回标准化文档元信息。建议在用户粘贴链接后先调用本方法，再读取正文或继续展开子页面。
+
+Args:
+    url_or_path (str): 浏览器 URL、provider URI 或平台路径。
+
+Returns:
+    Dict[str, Any]: 标准化元信息，至少尽量包含 provider、object_id、object_type、title、path、has_child 等字段。
+''')
+_add_fs_english('LinkDocumentFSBase.resolve_link', '''\
+Resolve a browser URL, provider URI, or provider path into normalized document metadata. Call this before reading content or expanding child pages when users paste a document link.
+
+Args:
+    url_or_path (str): Browser URL, provider URI, or provider-specific path.
+
+Returns:
+    Dict[str, Any]: Normalized metadata, preferably including provider, object_id, object_type, title, path, and has_child.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.read_with_references', '''\
+读取文档正文，并在平台支持时追加可追踪的引用页脚。适合总结、分析、跨页面阅读等需要保留链接/关系信息的场景。
+
+Args:
+    path (str): 浏览器 URL、provider URI 或平台路径。
+
+Returns:
+    str: UTF-8 文档正文；若平台返回引用，则末尾追加 references footer。
+''')
+_add_fs_english('LinkDocumentFSBase.read_with_references', '''\
+Read document content and append a traceable references footer when the provider supports references. Useful for summarization, analysis, and linked-page context.
+
+Args:
+    path (str): Browser URL, provider URI, or provider-specific path.
+
+Returns:
+    str: UTF-8 document content, optionally followed by a references footer.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.fetch_url', '''\
+通过浏览器 URL 直接读取文档原始字节内容。基类默认转调 read_bytes(url)，子类可覆盖以适配平台 URL 解析。
+
+Args:
+    url (str): 平台浏览器 URL。
+
+Returns:
+    bytes: 文档原始字节内容。
+''')
+_add_fs_english('LinkDocumentFSBase.fetch_url', '''\
+Fetch raw document bytes from a browser URL. The base implementation delegates to read_bytes(url); providers may override it for platform-specific URL parsing.
+
+Args:
+    url (str): Provider browser URL.
+
+Returns:
+    bytes: Raw document content bytes.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.get_document_id', '''\
+获取文档的 provider-native ID。该 ID 可用于块级编辑、审计日志或后端绑定。
+
+Args:
+    path (str): 浏览器 URL、provider URI 或平台路径。
+
+Returns:
+    str: 平台原生文档 ID。
+''')
+_add_fs_english('LinkDocumentFSBase.get_document_id', '''\
+Return the provider-native document id. The id can be used for block-level editing, audit logs, or backend bindings.
+
+Args:
+    path (str): Browser URL, provider URI, or provider-specific path.
+
+Returns:
+    str: Provider-native document id.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.get_doc_blocks', '''\
+列出文档中的可编辑块。返回值用于精确修改文本块，避免整篇文档覆盖导致格式丢失。
+
+Args:
+    path (str): 浏览器 URL、provider URI 或平台路径。
+    with_descendants (bool): 是否包含嵌套子块，默认 True。
+
+Returns:
+    List[Dict[str, Any]]: 块列表，通常包含 block_id、block_type、parent_id、plain_text 等字段。
+''')
+_add_fs_english('LinkDocumentFSBase.get_doc_blocks', '''\
+List editable blocks in a document. Use the returned blocks for precise text updates without replacing the whole document and losing formatting.
+
+Args:
+    path (str): Browser URL, provider URI, or provider-specific path.
+    with_descendants (bool): Whether nested child blocks should be included. Defaults to True.
+
+Returns:
+    List[Dict[str, Any]]: Blocks, typically including block_id, block_type, parent_id, and plain_text.
+''')
+
+_add_fs_chinese('LinkDocumentFSBase.update_doc_block_text', '''\
+更新单个文本块内容。该方法只应修改指定 block_id 对应的文本块；表格、图片等非文本块由子类按平台能力处理或拒绝。
+
+Args:
+    path (str): 文档浏览器 URL、provider URI 或平台路径。
+    block_id (str): 来自 get_doc_blocks 的块 ID。
+    new_text (str): 新文本内容。
+''')
+_add_fs_english('LinkDocumentFSBase.update_doc_block_text', '''\
+Update one text block. The method should only modify the block identified by block_id; non-text blocks such as tables or images are provider-specific and may be rejected.
+
+Args:
+    path (str): Document browser URL, provider URI, or provider-specific path.
+    block_id (str): Block id returned by get_doc_blocks.
+    new_text (str): Replacement text.
 ''')
 
 _add_fs_chinese('CloudFsWatchdog', '''\
@@ -1286,7 +1553,7 @@ Args:
     with_descendants (bool): Whether to include all descendant blocks; default True.
 
 Returns:
-    list: Each item is a dict with block_id, block_type, parent_id; text blocks also have plain_text.
+    List[Dict[str, Any]]: Each item is a dict with block_id, block_type, parent_id; text blocks also have plain_text.
 ''')
 _add_fs_chinese('FeishuWikiFS.update_doc_block_text', '''\
 更新文档中指定块的文本内容。仅适用于支持文本的块（如 Text、Heading、Bullet 等）；表格等块不支持，调用会由飞书 API 报错。
@@ -1335,12 +1602,40 @@ _add_fs_example('ConfluenceFS', '''\
 ''')
 
 # NotionFS
+_add_notion_chinese('NotionFile', '''\
+Notion 页面对应的只读缓冲文件对象。打开页面时会先通过 NotionFS 读取页面 Markdown 内容，
+再提供 fsspec 风格的区间读取能力，供上层统一按文件对象消费。
+''')
+_add_notion_english('NotionFile', '''\
+Read-only buffered file object for a Notion page. It preloads page Markdown through NotionFS and
+then exposes fsspec-style range reads so upper layers can consume it as a file object.
+''')
+
+_add_notion_chinese('NotionFile.__init__', '''\
+创建用于 Notion 页面读取的缓冲文件对象。构造时会通过所属 NotionFS 预取页面内容，并按 fsspec 的 range read 接口提供给上层。
+
+Args:
+    fs (NotionFS): 所属 Notion 文件系统实例。
+    path (str): 页面、数据库或 block 路径。
+    include_references (bool): 是否在读取内容末尾追加 Notion 引用页脚。
+    **kwargs: 透传给 CloudFSBufferedFile 的 fsspec 文件参数。
+''')
+_add_notion_english('NotionFile.__init__', '''\
+Create a buffered file object for reading Notion page content. It prefetches content through the owning NotionFS and exposes it through fsspec-style range reads.
+
+Args:
+    fs (NotionFS): Owning Notion filesystem.
+    path (str): Page, database, or block path.
+    include_references (bool): Whether to append a Notion references footer to the content.
+    **kwargs: fsspec file options forwarded to CloudFSBufferedFile.
+''')
+
 _add_fs_chinese('NotionFS', '''\
 Notion 文件系统：基于 Notion API，以 Page/Block 为层级，支持 ls、读写、mkdir、rm（归档）。
 写入页面内容时，Notion API 单 block 的 rich_text 限制为 2000 字符，超长内容会被截断。
 
 认证与配置: 构造参数 token（Notion Integration Token / Internal Integration Secret）；可选 base_url。
-环境变量: NOTION_TOKEN、NOTION_INTEGRATION_TOKEN，任一非空即可作为 token。
+环境变量: NOTION_TOKEN、NOTION_API_KEY，任一非空即可作为 token。
 
 如何获取 token:
     1. 登录 https://www.notion.so，进入要管理的 Workspace。
@@ -1353,7 +1648,7 @@ Notion FS: Notion API; Page/Block hierarchy; supports ls, read/write, mkdir, rm 
 When writing page content, Notion API limits rich_text to 2000 chars per block; longer content is truncated.
 
 Auth and config: Constructor token (Notion Integration Token / Internal Integration Secret); optional base_url.
-Env vars: NOTION_TOKEN, NOTION_INTEGRATION_TOKEN; any non-empty used as token.
+Env vars: NOTION_TOKEN, NOTION_API_KEY; any non-empty used as token.
 
 How to obtain token:
     1. Log in at https://www.notion.so and open the target Workspace.
@@ -1365,6 +1660,110 @@ _add_fs_example('NotionFS', '''\
 >>> from lazyllm.tools.fs import NotionFS
 >>> fs = NotionFS(token='xxx')
 >>> fs.ls('/')
+''')
+_add_fs_chinese('NotionFS.search', '''\
+按标题搜索当前 token 可访问的 Notion 页面或数据库。该能力来自 Notion 官方 /v1/search 接口，主要用于定位资源；不是页面正文全文检索。
+
+Args:
+    query (str): 标题关键词。
+    object_type (str): 可选对象过滤，支持 page、database。
+    limit (int): 最大返回条数，默认 20，最大 100。
+    sort_direction (str): 按 last_edited_time 排序方向，ascending 或 descending。
+
+Returns:
+    List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path 等字段。
+''')
+_add_fs_english('NotionFS.search', '''\
+Search Notion pages or databases visible to the current token by title. This uses Notion's official /v1/search endpoint to locate resources; it is not full-text page-body search.
+
+Args:
+    query (str): Title keyword.
+    object_type (str): Optional object filter: page or database.
+    limit (int): Maximum number of results, default 20, capped at 100.
+    sort_direction (str): Sort direction by last_edited_time: ascending or descending.
+
+Returns:
+    List[Dict[str, Any]]: Search result entries with title, id, notion_path, and related metadata.
+''')
+
+_add_fs_chinese('NotionFS.replace_page_markdown', '''\
+使用 Notion Markdown endpoint 替换页面正文。该接口适合把算法生成的整页 Markdown 写回 Notion；是否允许删除原内容由 allow_deleting_content 控制。
+
+Args:
+    page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
+    markdown (str): 新的 Markdown 正文。
+    allow_deleting_content (bool): 是否允许删除页面已有内容，默认 False。
+
+Returns:
+    Dict[str, Any]: Notion API 返回体。
+''')
+_add_fs_english('NotionFS.replace_page_markdown', '''\
+Replace a page body through Notion's Markdown endpoint. This is useful when algorithm output should be written back as full-page Markdown; allow_deleting_content controls whether existing content may be removed.
+
+Args:
+    page_id (str): Notion page id, hyphenated or compact.
+    markdown (str): New Markdown body.
+    allow_deleting_content (bool): Whether existing page content may be deleted. Defaults to False.
+
+Returns:
+    Dict[str, Any]: Notion API response payload.
+''')
+
+_add_fs_chinese('NotionFS.insert_page_markdown', '''\
+向页面插入 Markdown 内容。默认插入到页面末尾，适合追加总结、分析结论或同步生成的段落。
+
+Args:
+    page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
+    markdown (str): 要插入的 Markdown 内容。
+    position (str): 插入位置，默认 end。
+
+Returns:
+    Dict[str, Any]: Notion API 返回体。
+''')
+_add_fs_english('NotionFS.insert_page_markdown', '''\
+Insert Markdown content into a page. By default the content is appended to the end, which fits summaries, analysis notes, or generated paragraphs.
+
+Args:
+    page_id (str): Notion page id, hyphenated or compact.
+    markdown (str): Markdown content to insert.
+    position (str): Insert position. Defaults to end.
+
+Returns:
+    Dict[str, Any]: Notion API response payload.
+''')
+
+_add_fs_chinese('NotionFS.update_page_title', '''\
+更新 Notion 页面的标题属性。方法会自动识别页面的 title 类型属性，再通过 pages/{page_id} PATCH 写入。
+
+Args:
+    page_id (str): Notion 页面 ID，可为带横线或不带横线格式。
+    title (str): 新标题文本。
+''')
+_add_fs_english('NotionFS.update_page_title', '''\
+Update the title property of a Notion page. The method detects the page's title property and patches pages/{page_id}.
+
+Args:
+    page_id (str): Notion page id, hyphenated or compact.
+    title (str): New title text.
+''')
+
+_add_fs_chinese('NotionFS.resolve_notion_ref', '''\
+解析 Notion URL、notion:/ URI 或页面/数据库/block ID，并返回统一元信息。用于 chat 中用户粘贴链接后先确定对象类型、标题和可读路径。
+
+Args:
+    url_or_path (str): Notion 浏览器链接、notion:/ URI、页面/数据库/block ID 或路径。
+
+Returns:
+    Dict[str, Any]: 包含 object_id、object_type、title、notion_path、has_child 等字段的元信息。
+''')
+_add_fs_english('NotionFS.resolve_notion_ref', '''\
+Resolve a Notion URL, notion:/ URI, or page/database/block id into normalized metadata. This lets chat flows identify object type, title, and readable path after users paste links.
+
+Args:
+    url_or_path (str): Notion browser link, notion:/ URI, page/database/block id, or path.
+
+Returns:
+    Dict[str, Any]: Metadata including object_id, object_type, title, notion_path, and has_child.
 ''')
 
 # GoogleDriveFS

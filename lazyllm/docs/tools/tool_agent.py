@@ -2366,7 +2366,6 @@ add_toolsmgr_chinese_doc('MethodModuleTool', '''\
 Args:
     instance (Any): 持有目标方法的对象实例。
     method_name (str): 要封装的方法名称。
-    key_source (Union[str, Callable, List[Union[str, Callable]], None]): 保留参数，当前未使用，默认为 None。
 ''')
 
 add_toolsmgr_english_doc('MethodModuleTool', '''\
@@ -2379,7 +2378,6 @@ The tool description and parameter schema are automatically parsed from the boun
 Args:
     instance (Any): The object instance holding the target method.
     method_name (str): The name of the method to wrap.
-    key_source (Union[str, Callable, List[Union[str, Callable]], None]): Reserved parameter, currently unused. Defaults to None.
 ''')
 
 add_toolsmgr_chinese_doc('ToolGroup.get_flat_tools', '''\

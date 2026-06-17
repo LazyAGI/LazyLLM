@@ -2,6 +2,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+from lazyllm import init_session, locals as lazyllm_locals
 from lazyllm.tools.fs.supplier.feishu import (
     _parse_feishu_browser_url,
     _SPACE_ID_DYNAMIC,
@@ -9,6 +10,7 @@ from lazyllm.tools.fs.supplier.feishu import (
     FeishuWikiFS,
 )
 from lazyllm.tools.fs.client import _FSRouter, _feishu_needs_wiki, _FEISHU_WIKI_PATH_PREFIXES
+from lazyllm.tools.agent.toolsManager import ToolManager
 
 
 class TestParseFeishuBrowserUrl(unittest.TestCase):
@@ -249,6 +251,46 @@ class TestFSRouterParse(unittest.TestCase):
         self.assertEqual(real_path, '/folder/file.txt')
 
 
+class TestFeishuToolRegistration(unittest.TestCase):
+
+    def setUp(self):
+        init_session()
+        lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+
+    def test_document_flow_tools_are_registered(self):
+        fs = FeishuFS(space_id='dynamic', dynamic_auth=True)
+        manager = ToolManager([(fs, lambda _instance: 'secret-token')])
+        names = {item['function']['name'] for item in manager.tools_description}
+
+        self.assertEqual(names, {'get_FeishuWikiFS_methods'})
+        manager._tool_call['get_FeishuWikiFS_methods']({})
+        names = {item['function']['name'] for item in manager.tools_description}
+
+        self.assertIn('FeishuWikiFS_resolve_link', names)
+        self.assertIn('FeishuWikiFS_read_with_references', names)
+        self.assertIn('FeishuWikiFS_get_doc_blocks', names)
+        self.assertIn('FeishuWikiFS_copy', names)
+
+    def test_resolve_link_returns_standard_fields(self):
+        fs = FeishuFS(space_id='dynamic', dynamic_auth=True)
+        fs._get_node = MagicMock(return_value={
+            'node_token': 'node-1',
+            'space_id': 'space-1',
+            'title': 'Project Plan',
+            'obj_type': 'docx',
+            'obj_token': 'doc-1',
+            'has_child': True,
+        })
+
+        result = fs.resolve_link('/~node/node-1')
+
+        self.assertEqual(result['provider'], 'feishu')
+        self.assertEqual(result['object_id'], 'node-1')
+        self.assertEqual(result['object_type'], 'docx')
+        self.assertEqual(result['title'], 'Project Plan')
+        self.assertTrue(result['has_child'])
+
+
 class TestFeishuNeedsWiki(unittest.TestCase):
 
     def test_with_space_id(self):
@@ -337,13 +379,13 @@ class TestRefFromElement(unittest.TestCase):
 class TestDedupeRefs(unittest.TestCase):
 
     def test_deduplication(self):
-        from lazyllm.tools.fs.supplier.feishu import _dedupe_refs
+        from lazyllm.tools.fs.base import LinkDocumentFSBase
         refs = [
             {'url': 'https://a.feishu.cn/wiki/T1', 'ref_type': 'mention_doc'},
             {'url': 'https://a.feishu.cn/wiki/T1', 'ref_type': 'hyperlink'},
             {'url': 'https://a.feishu.cn/wiki/T2', 'ref_type': 'hyperlink'},
         ]
-        result = _dedupe_refs(refs)
+        result = LinkDocumentFSBase.dedupe_document_references(refs)
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]['url'], 'https://a.feishu.cn/wiki/T1')
         self.assertEqual(result[1]['url'], 'https://a.feishu.cn/wiki/T2')
@@ -352,16 +394,16 @@ class TestDedupeRefs(unittest.TestCase):
 class TestFormatReferencesFooter(unittest.TestCase):
 
     def test_empty_refs(self):
-        from lazyllm.tools.fs.supplier.feishu import _format_references_footer
-        self.assertEqual(_format_references_footer([]), '')
+        from lazyllm.tools.fs.base import LinkDocumentFSBase
+        self.assertEqual(LinkDocumentFSBase.format_document_references_footer([], 'feishu'), '')
 
     def test_footer_format(self):
-        from lazyllm.tools.fs.supplier.feishu import _format_references_footer
+        from lazyllm.tools.fs.base import LinkDocumentFSBase
         refs = [
             {'url': 'https://a.feishu.cn/wiki/T1', 'ref_type': 'mention_doc'},
             {'url': 'https://a.feishu.cn/docx/D2', 'ref_type': 'hyperlink'},
         ]
-        footer = _format_references_footer(refs)
+        footer = LinkDocumentFSBase.format_document_references_footer(refs, 'feishu')
         self.assertIn('lazyllm-feishu-references', footer)
         self.assertIn('[1] mention_doc | https://a.feishu.cn/wiki/T1', footer)
         self.assertIn('[2] hyperlink | https://a.feishu.cn/docx/D2', footer)
