@@ -798,7 +798,7 @@ class FeishuWikiFS(FeishuFSBase):
     protocol = 'feishu'
     _fs_protocol_key = 'feishu'
     document_provider = 'feishu'
-    __public_apis__ = LinkDocumentFSBase.build_public_apis()
+    __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search', 'find'])
 
     def _create_docx_node(self, title: str, parent_token: str = '') -> str:
         url = f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes'
@@ -1180,6 +1180,84 @@ class FeishuWikiFS(FeishuFSBase):
             if sid:
                 self._space_id = sid
         return node or {}
+
+    def search(self, query: str, space_id: str = '', page_size: int = 20) -> List[Dict[str, Any]]:
+        query = (query or '').strip()
+        if not query:
+            raise ValueError('query is required')
+        page_size = max(1, min(int(page_size), 100))
+        sid = (space_id or '').strip() or self._effective_space_id()
+        if not sid:
+            raise ValueError(
+                'space_id is required for Feishu wiki search: pass space_id or '
+                "set globals.config['feishu_wiki_space_id']"
+            )
+        url = f'{self._base_url}/wiki/v2/spaces/{sid}/search'
+        params: Dict[str, Any] = {'query': query, 'page_size': page_size}
+        results: List[Dict[str, Any]] = []
+        page_token: Optional[str] = None
+        while True:
+            if page_token:
+                params['page_token'] = page_token
+            data = self._get(url, params=params)
+            items = data.get('data', {}).get('items') or []
+            for item in items:
+                results.append({
+                    'title': item.get('title') or '',
+                    'node_token': item.get('node_token') or '',
+                    'obj_type': item.get('obj_type') or '',
+                    'url': item.get('url') or '',
+                    'snippet': item.get('snippet') or '',
+                    'space_id': item.get('space_id') or sid,
+                })
+            page_token = data.get('data', {}).get('page_token')
+            if not page_token or len(results) >= page_size:
+                break
+        return results[:page_size]
+
+    def find(self, pattern: str, space_id: str = '', max_results: int = 50) -> List[Dict[str, Any]]:
+        pattern = (pattern or '').strip()
+        if not pattern:
+            raise ValueError('pattern is required')
+        max_results = max(1, min(int(max_results), 200))
+        sid = (space_id or '').strip() or self._effective_space_id()
+        try:
+            regex = re.compile(pattern, re.IGNORECASE)
+        except re.error as e:
+            raise ValueError(f'Invalid regex pattern: {e}') from e
+
+        results: List[Dict[str, Any]] = []
+        visited: set = set()
+
+        def _collect(parent_token: str, depth: int) -> None:
+            if len(results) >= max_results or depth > 8:
+                return
+            try:
+                nodes = self._list_nodes_raw(parent_token)
+            except Exception:
+                return
+            for node in nodes:
+                if len(results) >= max_results:
+                    return
+                title = node.get('title') or ''
+                if not title:
+                    continue
+                if regex.search(title):
+                    results.append({
+                        'title': title,
+                        'node_token': node.get('node_token') or '',
+                        'obj_type': node.get('obj_type') or '',
+                        'url': node.get('url') or '',
+                        'space_id': node.get('space_id') or sid,
+                        'has_child': bool(node.get('has_child')),
+                    })
+                nt = node.get('node_token') or ''
+                if nt and nt not in visited and bool(node.get('has_child')):
+                    visited.add(nt)
+                    _collect(nt, depth + 1)
+
+        _collect('', 0)
+        return results[:max_results]
 
     def get_document_id(self, path: str) -> str:
         self._require_space_id()

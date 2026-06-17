@@ -122,7 +122,7 @@ class NotionFile(CloudFSBufferedFile):
 class NotionFS(LinkDocumentFSBase):
 
     document_provider = 'notion'
-    __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search'], exclude=['copy'])
+    __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search', 'find'], exclude=['copy'])
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  dynamic_auth: bool = False, **storage_options):
@@ -228,6 +228,50 @@ class NotionFS(LinkDocumentFSBase):
             payload['filter'] = {'property': 'object', 'value': object_type}
         results = self._paginate_post(f'{self._base_url}/search', payload)
         return [self._object_to_entry(item) for item in results[:limit]]
+
+    def find(self, pattern: str, object_type: str = '', limit: int = 50) -> List[Dict[str, Any]]:
+        pattern = (pattern or '').strip()
+        if not pattern:
+            raise ValueError('pattern is required')
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 50
+        limit = max(1, min(limit, _PAGE_SIZE))
+        object_type = (object_type or '').strip().lower()
+        if object_type and object_type not in {'page', 'database'}:
+            raise ValueError('object_type must be page or database')
+        try:
+            regex = re.compile(pattern, re.IGNORECASE)
+        except re.error as e:
+            raise ValueError(f'Invalid regex pattern: {e}') from e
+
+        # Use Notion search API with a broad query, then filter by regex on title
+        payload: Dict[str, Any] = {
+            'page_size': _PAGE_SIZE,
+            'sort': {'direction': 'descending', 'timestamp': 'last_edited_time'},
+        }
+        if object_type:
+            payload['filter'] = {'property': 'object', 'value': object_type}
+        results: List[Dict[str, Any]] = []
+        cursor: Optional[str] = None
+        while len(results) < limit:
+            page_payload = dict(payload)
+            if cursor:
+                page_payload['start_cursor'] = cursor
+            data = self._post(f'{self._base_url}/search', json=page_payload)
+            items = data.get('results') or []
+            for item in items:
+                if len(results) >= limit:
+                    break
+                entry = self._object_to_entry(item)
+                title = entry.get('title') or entry.get('name') or ''
+                if title and regex.search(title):
+                    results.append(entry)
+            cursor = data.get('next_cursor') if data.get('has_more') else None
+            if not cursor or len(results) >= limit:
+                break
+        return results[:limit]
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parent_kind, parent_id, title = self._resolve_parent_ref(path)

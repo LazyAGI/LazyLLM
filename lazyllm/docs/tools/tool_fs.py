@@ -1572,6 +1572,80 @@ Args:
     new_text (str): New plain text content.
 ''')
 
+_add_fs_chinese('FeishuWikiFS.search', '''\
+在飞书知识库中按关键词搜索节点，使用飞书官方 wiki/v2/spaces/{space_id}/search 接口。
+搜索范围包括节点标题和正文内容，返回匹配的 wiki 节点列表。
+
+这是在线搜索 —— 直接查询飞书线上知识库，不是本地已入库的文档。
+
+Args:
+    query (str): 搜索关键词，支持一个或多个词。
+    space_id (str, optional): 要搜索的知识空间 ID；不传时使用当前配置的 space_id。
+        space_id 必须有效，否则抛出 ValueError。
+    page_size (int): 每页返回条数，默认 20，最大 100。
+
+Returns:
+    List[Dict[str, Any]]: 匹配节点列表。每项包含 title、node_token、obj_type、url、
+    snippet（匹配片段摘录）、space_id。
+''')
+_add_fs_english('FeishuWikiFS.search', '''\
+Search wiki nodes by keyword using Feishu's official wiki/v2/spaces/{space_id}/search API.
+Matches against both node title and content, returning matching wiki nodes.
+
+This searches the LIVE online Feishu wiki — not locally indexed documents.
+
+Args:
+    query (str): One or more search keywords.
+    space_id (str, optional): Wiki space ID to search in; defaults to the configured space_id.
+        Must be a valid space_id or ValueError is raised.
+    page_size (int): Results per page, default 20, maximum 100.
+
+Returns:
+    List[Dict[str, Any]]: Matching nodes, each with title, node_token, obj_type, url,
+    snippet (highlighted excerpt), and space_id.
+''')
+
+_add_fs_chinese('FeishuWikiFS.find', '''\
+按文件名/标题正则匹配查找知识库节点。只匹配节点标题（文件名），不搜索正文内容。
+
+通过递归遍历 wiki 树并逐标题做正则筛选实现；默认大小写不敏感。
+
+常用正则示例：
+- "report" 匹配标题含 report 的节点
+- "^2024" 匹配以 2024 开头的标题
+- "(设计|方案)" 匹配含"设计"或"方案"的标题
+
+Args:
+    pattern (str): 正则表达式模式，大小写不敏感。
+    space_id (str, optional): 要搜索的知识空间 ID；不传时使用当前配置的 space_id。
+    max_results (int): 最大返回条数，默认 50，最大 200。
+
+Returns:
+    List[Dict[str, Any]]: 匹配节点列表。每项包含 title、node_token、obj_type、url、
+    space_id、has_child。
+''')
+_add_fs_english('FeishuWikiFS.find', '''\
+Find wiki nodes by filename/title matching a regex pattern. Matches only node titles (names),
+not document content.
+
+Implemented by recursively listing the wiki tree and filtering by title regex; case-insensitive
+by default.
+
+Common regex examples:
+- "report" matches titles containing "report"
+- "^2024" matches titles starting with "2024"
+- "(design|spec)" matches titles with either "design" or "spec"
+
+Args:
+    pattern (str): Regular expression pattern, case-insensitive.
+    space_id (str, optional): Wiki space ID to search in; defaults to the configured space_id.
+    max_results (int): Maximum results, default 50, capped at 200.
+
+Returns:
+    List[Dict[str, Any]]: Matching nodes, each with title, node_token, obj_type, url,
+    space_id, and has_child.
+''')
+
 # ConfluenceFS
 _add_fs_chinese('ConfluenceFS', '''\
 Confluence 文件系统：基于 Atlassian Confluence REST API，以 Space/Page 为目录与文件。目录监听用 CloudFsWatchdog；支持 webhook。
@@ -1684,6 +1758,47 @@ Args:
 
 Returns:
     List[Dict[str, Any]]: Search result entries with title, id, notion_path, and related metadata.
+''')
+
+_add_fs_chinese('NotionFS.find', '''\
+按页面/数据库标题正则匹配查找 Notion 对象。只匹配标题（名称），不搜索页面正文内容。
+
+使用 Notion 官方 /v1/search 接口做宽泛查询后，在客户端按标题正则筛选。默认大小写不敏感。
+
+常用正则示例：
+- "PRD" 匹配标题含 PRD 的页面
+- "^Q[1-4]" 匹配以 Q1-Q4 开头的标题
+- "(OKR|KPI)" 匹配含 OKR 或 KPI 的标题
+
+Args:
+    pattern (str): 正则表达式模式，大小写不敏感。
+    object_type (str, optional): 对象类型过滤：''（全部）、page、database。
+    limit (int): 最大返回条数，默认 50，最大 100。
+
+Returns:
+    List[Dict[str, Any]]: 匹配的条目列表。每项包含 title/name、id、type（file/directory）、
+    notion_path 等字段。
+''')
+_add_fs_english('NotionFS.find', '''\
+Find Notion pages or databases by title matching a regex pattern. Matches only titles (names),
+not page body content.
+
+Uses Notion's official /v1/search API for broad lookup, then filters by title regex client-side.
+Case-insensitive by default.
+
+Common regex examples:
+- "PRD" matches pages with "PRD" in the title
+- "^Q[1-4]" matches titles starting with Q1 through Q4
+- "(OKR|KPI)" matches titles containing either OKR or KPI
+
+Args:
+    pattern (str): Regular expression pattern, case-insensitive.
+    object_type (str, optional): Object type filter: '' (all), page, or database.
+    limit (int): Maximum results, default 50, capped at 100.
+
+Returns:
+    List[Dict[str, Any]]: Matching entries, each with title/name, id, type (file/directory),
+    and notion_path.
 ''')
 
 _add_fs_chinese('NotionFS.replace_page_markdown', '''\
