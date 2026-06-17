@@ -51,7 +51,7 @@ class DocManager:
             raise RuntimeError(f'parser service is unavailable: {parser_url}') from exc
         self._cleanup_idempotency_records()
         self._callback_url = callback_url
-        self._algo_ng_cache: Dict[str, List[str]] = {}
+        self._algo_ng_groups_cache: Dict[str, List[dict]] = {}
 
     def set_callback_url(self, callback_url: str):
         self._callback_url = callback_url
@@ -520,20 +520,21 @@ class DocManager:
                     ))
 
     def _get_algo_node_group_ids(self, algo_id: str) -> List[str]:
-        if algo_id in self._algo_ng_cache:
-            return self._algo_ng_cache[algo_id]
         try:
             groups = self._fetch_algo_ng_groups(algo_id)
             if (result := [g['id'] for g in groups if g.get('id')]):
-                self._algo_ng_cache[algo_id] = result
                 return result
         except Exception as e:
             raise RuntimeError(f'[DocManager] Failed to get node_group_ids for algo {algo_id}: {e}') from e
         raise ValueError(f'Failed to get node_group_ids for algo {algo_id!r}')
 
     def _fetch_algo_ng_groups(self, algo_id: str) -> List[dict]:
+        if algo_id in self._algo_ng_groups_cache:
+            return self._algo_ng_groups_cache[algo_id]
         resp = self._parser_client.get_algorithm_groups(algo_id)
-        return resp.data if resp and resp.code == 200 and isinstance(resp.data, list) else []
+        groups = resp.data if resp and resp.code == 200 and isinstance(resp.data, list) else []
+        self._algo_ng_groups_cache[algo_id] = groups
+        return groups
 
     def _algo_ids_to_ng_names(self, algo_ids: List[str]) -> Dict[str, str]:
         name_to_id: Dict[str, str] = {}

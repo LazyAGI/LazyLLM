@@ -1980,7 +1980,7 @@ def test_get_algo_node_group_ids_caches_result(manager_harness):
 
     mgr._parser_client.get_algorithm_groups = counting_get_algorithm_groups
     # Clear any existing cache
-    mgr._algo_ng_cache.clear()
+    mgr._algo_ng_groups_cache.clear()
 
     mgr._get_algo_node_group_ids('__default__')
     mgr._get_algo_node_group_ids('__default__')
