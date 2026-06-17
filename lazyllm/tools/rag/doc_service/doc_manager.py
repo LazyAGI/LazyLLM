@@ -547,6 +547,24 @@ class DocManager:
                 raise RuntimeError(f'[DocManager] Failed to get ng names for algo {algo_id}: {e}') from e
         return name_to_id
 
+    def _build_ng_id_to_meta(self, algo_ids: List[str]) -> Dict[str, Dict[str, str]]:
+        id_to_meta: Dict[str, Dict[str, str]] = {}
+        for algo_id in algo_ids:
+            try:
+                for g in self._fetch_algo_ng_groups(algo_id):
+                    ng_id = g.get('id')
+                    if not ng_id or ng_id in id_to_meta:
+                        continue
+                    name = g.get('name') or ng_id
+                    id_to_meta[ng_id] = {
+                        'name': name,
+                        'display_name': g.get('display_name') or name,
+                        'type': g.get('type') or '',
+                    }
+            except Exception as e:
+                LOG.warning(f'[DocManager] Failed to resolve ng meta for algo {algo_id}: {e}')
+        return id_to_meta
+
     def _get_shared_ng_ids(self, kb_id: str, algo_id: str, candidate_ng_ids: List[str]) -> Set[str]:
         other_algo_ids = [a for a in self._get_kb_algorithms(kb_id) if a != algo_id]
         shared: Set[str] = set()
@@ -1469,6 +1487,31 @@ class DocManager:
                 continue
         raise DocServiceError('E_INVALID_PARAM', f'group {group!r} not found in any algo bound to kb {kb_id}',
                               {'kb_id': kb_id, 'group': group})
+
+    def list_doc_node_groups(self, kb_id: str, doc_id: str):
+        for name, val in [('kb_id', kb_id), ('doc_id', doc_id)]:
+            if not val:
+                raise DocServiceError('E_INVALID_PARAM', f'{name} is required', {name: val})
+        doc = self._get_doc(doc_id)
+        if doc is None or not self._has_kb_document(kb_id, doc_id):
+            raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}', {'kb_id': kb_id, 'doc_id': doc_id})
+        algo_ids = self._get_kb_algorithms(kb_id)
+        id_to_meta = self._build_ng_id_to_meta(algo_ids)
+        with self._db_manager.get_session() as session:
+            NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
+            rows = session.query(NgStatus).filter(
+                NgStatus.kb_id == kb_id, NgStatus.doc_id == doc_id,
+            ).order_by(NgStatus.created_at.asc()).all()
+        groups: List[str] = []
+        seen: Set[str] = set()
+        for row in rows:
+            meta = id_to_meta.get(row.node_group_id, {})
+            name = meta.get('name') or row.node_group_id
+            if name in seen:
+                continue
+            seen.add(name)
+            groups.append(name)
+        return {'groups': groups}
 
     def list_chunks(self, kb_id: str, doc_id: str, group: str, algo_id: Optional[str] = None,
                     page: int = 1, page_size: int = 20, offset: Optional[int] = None):
