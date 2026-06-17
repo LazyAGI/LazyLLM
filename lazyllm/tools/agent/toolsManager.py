@@ -684,11 +684,8 @@ class ToolManager(ModuleBase):
                 call_arguments.append(self._build_sandbox_args(tool, args_or_err))
             else:
                 def _safe_call(args, _tool=tool):
-                    lazyllm.LOG.info(f'[ToolCall] invoking tool={_tool.name!r} args={args!r}')
                     try:
-                        result = _tool(args)
-                        lazyllm.LOG.info(f'[ToolCall] tool={_tool.name!r} result={result!r}')
-                        return result
+                        return _tool(args)
                     except Exception as e:
                         lazyllm.LOG.warning(f'[ToolCall] tool={_tool.name!r} raised: {type(e).__name__}: {e}')
                         return f'[Tool Error] {type(e).__name__}: {e}'
