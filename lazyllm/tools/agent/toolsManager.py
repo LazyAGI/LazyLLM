@@ -659,6 +659,10 @@ class ToolManager(ModuleBase):
             return None, f'Tool [{name}] arguments format error.'
         tool = self._tool_call.get(name)
         if tool is None:
+            lazyllm.LOG.warning(
+                f'[ToolManager] tool {name!r} not found. '
+                f'Available: {list(self._tool_call.keys())}'
+            )
             return None, f'Tool [{name}] is not available. Please choose from the available tools.'
         if not self._validate_tool(name, arguments):
             return None, f'Tool [{name}] parameters error.'
@@ -683,7 +687,7 @@ class ToolManager(ModuleBase):
                     try:
                         return _tool(args)
                     except Exception as e:
-                        lazyllm.LOG.warning(f'Tool {_tool.name} raised an exception: {e}')
+                        lazyllm.LOG.warning(f'[ToolCall] tool={_tool.name!r} raised: {type(e).__name__}: {e}')
                         return f'[Tool Error] {type(e).__name__}: {e}'
                 callables.append(_safe_call)
                 call_arguments.append(args_or_err)
