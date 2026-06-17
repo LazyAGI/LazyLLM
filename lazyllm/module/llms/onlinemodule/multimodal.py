@@ -112,9 +112,7 @@ class OnlineMultiModalModule(_DynamicSourceRouterMixin, metaclass=_OnlineMultiMo
         self._init_dynamic_auth(api_key, dynamic_auth)
 
     def _build_supplier(self, source: str, skip_auth: bool):
-        bucket = self.__class__._get_dynamic_bucket()
-        api_key = bucket.get('api_key') or self._api_key
         params = {'base_url': self._base_url, 'model': self._model_name, 'return_trace': self._return_trace,
-                  'type': self._type, 'api_key': api_key, 'skip_auth': skip_auth, **self._kwargs}
+                  'type': self._type, 'api_key': self._api_key, 'skip_auth': skip_auth, **self._kwargs}
         register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(self._type).lower()
         return getattr(lazyllm.online[register_type], source)(**params)

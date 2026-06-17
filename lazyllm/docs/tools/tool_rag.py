@@ -512,6 +512,10 @@ _add_bilingual_docs({
             '分页查看指定文档的解析 chunk。',
             'List parsed chunks for one document with pagination.'
         ),
+        'list_doc_node_groups': (
+            '列出指定文档已落库的节点组名称。',
+            'List node-group names that have been persisted for one document.'
+        ),
         'health': (
             '执行 doc service 健康检查。',
             'Run a health check for doc_service.'
@@ -677,6 +681,10 @@ _add_bilingual_docs({
         'set_node_group_lazy_mode': (
             '设置指定节点组的懒加载模式。',
             'Set the lazy-loading mode for a specific node group.'
+        ),
+        'list_doc_node_groups': (
+            '列出指定文档已落库的节点组名称。',
+            'List node-group names that have been persisted for one document.'
         ),
     }.items()
 })

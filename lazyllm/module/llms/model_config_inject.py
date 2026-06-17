@@ -88,9 +88,6 @@ def inject_model_config(model_config: Optional[Dict[str, Any]]) -> None:  # noqa
             bucket['model'] = model
         if base_url:
             bucket['url'] = base_url
-        api_key = (role_cfg.get('api_key') or '').strip()
-        if api_key:
-            bucket['api_key'] = api_key
         skip_auth = role_cfg.get('skip_auth')
         if skip_auth is not None:
             if isinstance(skip_auth, str):
@@ -100,6 +97,7 @@ def inject_model_config(model_config: Optional[Dict[str, Any]]) -> None:  # noqa
         cfg.setdefault(role, {})[slot] = bucket
         injected_roles.append(role)
 
+        api_key = (role_cfg.get('api_key') or '').strip()
         if api_key and source:
             config_key = f'{source}_api_key'
             api_key_configs.setdefault(config_key, ConfigsDict())[role] = api_key
