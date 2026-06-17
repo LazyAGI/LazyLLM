@@ -548,6 +548,9 @@ class DocManager:
         return name_to_id
 
     def _build_ng_id_to_meta(self, algo_ids: List[str]) -> Dict[str, Dict[str, str]]:
+        # One forward pass per bound algo: ng_id -> {name, display_name, type, algo_id}.
+        # Callers that already know ng_id should reuse algo_id from here instead of
+        # reverse-looking up algo by group name.
         id_to_meta: Dict[str, Dict[str, str]] = {}
         for algo_id in algo_ids:
             try:
@@ -560,6 +563,7 @@ class DocManager:
                         'name': name,
                         'display_name': g.get('display_name') or name,
                         'type': g.get('type') or '',
+                        'algo_id': algo_id,
                     }
             except Exception as e:
                 LOG.warning(f'[DocManager] Failed to resolve ng meta for algo {algo_id}: {e}')
@@ -1497,6 +1501,7 @@ class DocManager:
             raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}', {'kb_id': kb_id, 'doc_id': doc_id})
         algo_ids = self._get_kb_algorithms(kb_id)
         id_to_meta = self._build_ng_id_to_meta(algo_ids)
+        default_algo_id = algo_ids[0] if len(algo_ids) == 1 else None
         with self._db_manager.get_session() as session:
             NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
             rows = session.query(NgStatus).filter(
@@ -1509,8 +1514,8 @@ class DocManager:
             name = meta.get('name') or row.node_group_id
             if name in seen:
                 continue
+            algo_id = meta.get('algo_id') or default_algo_id
             try:
-                algo_id = self._find_algo_for_group(kb_id, name)
                 resp = self._parser_client.list_doc_chunks(
                     algo_id=algo_id,
                     kb_id=kb_id,
