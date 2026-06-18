@@ -140,7 +140,6 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     def _forward_impl(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
                       proxies: Optional[Dict]) -> List[Dict[str, Any]]:
         request_timeout = self._request_timeout(data)
-        data.pop('timeout', None)
         with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
                            proxies=proxies, timeout=request_timeout) as r:
             if r.status_code != 200:
