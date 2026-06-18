@@ -7,7 +7,7 @@ from lazyllm import LOG
 from lazyllm.common import override
 
 from ..store_base import LazyLLMStoreBase, StoreCapability, INSERT_BATCH_SIZE, DEFAULT_KB_ID
-from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
+from ...global_metadata import RAG_DOC_ID, RAG_KB_ID, RAG_DOC_FILE_NAME
 
 
 class SQLiteStore(LazyLLMStoreBase):
@@ -175,8 +175,7 @@ class SQLiteStore(LazyLLMStoreBase):
                  f'doc_id={doc_id!r} kb_id={kb_id!r} file_name={file_name!r} phrase={phrase} sort_by={sort_by!r}')
         criteria = {}
         if file_name:
-            # file_name is stored inside global_meta JSON; filter in Python after fetch
-            pass  # handled below
+            criteria[RAG_DOC_FILE_NAME] = file_name
         elif doc_id:
             criteria[RAG_DOC_ID] = doc_id
         if kb_id:
@@ -187,11 +186,6 @@ class SQLiteStore(LazyLLMStoreBase):
         words = kw_lower.split()
         matched = []
         for n in nodes:
-            if file_name:
-                gm_raw = n.get('global_meta') or '{}'
-                gm = json.loads(gm_raw) if isinstance(gm_raw, str) else (gm_raw or {})
-                if gm.get('file_name') != file_name:
-                    continue
             text = (n.get('content') or '').lower()
             if phrase:
                 if kw_lower in text:
