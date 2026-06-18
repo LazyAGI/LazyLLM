@@ -512,6 +512,10 @@ _add_bilingual_docs({
             '分页查看指定文档的解析 chunk。',
             'List parsed chunks for one document with pagination.'
         ),
+        'list_doc_node_groups': (
+            '列出指定文档已落库的节点组名称。',
+            'List node-group names that have been persisted for one document.'
+        ),
         'health': (
             '执行 doc service 健康检查。',
             'Run a health check for doc_service.'
@@ -677,6 +681,10 @@ _add_bilingual_docs({
         'set_node_group_lazy_mode': (
             '设置指定节点组的懒加载模式。',
             'Set the lazy-loading mode for a specific node group.'
+        ),
+        'list_doc_node_groups': (
+            '列出指定文档已落库的节点组名称。',
+            'List node-group names that have been persisted for one document.'
         ),
     }.items()
 })
@@ -2160,6 +2168,67 @@ Notes:
     Static default token: ``globals['config']['mineru_api_key']`` (only when ``dynamic_auth=False``).
 ''')
 
+add_chinese_doc('rag.readers.MineruPPTReader', '''\
+基于 Mineru 服务的演示文稿解析器，继承自 ``MineruPDFReader``。
+
+构造参数、鉴权与 ``MineruPDFReader`` 相同；下列行为仅针对 PowerPoint 文件与父类不同：
+
+Notes:
+    - 支持后缀：``.ppt`` / ``.pptx`` / ``.pptm``。
+    - 不进行 PDF 大文件拆分，整文件上传解析。
+    - Mineru 在线 API 对 Office 文件通常不返回 ``bbox``；缺失时使用 ``[0, 0, 0, 0]``，避免块被跳过。
+    - 通常由 ``DynamicPDFReader`` 在 ``ocr_type='mineru'`` 且输入为演示文稿时自动路由；也可直接实例化。
+''')
+
+add_english_doc('rag.readers.MineruPPTReader', '''\
+Mineru-based presentation reader; subclasses ``MineruPDFReader``.
+
+Constructor arguments and auth behavior are inherited unchanged. Presentation-specific
+differences from the parent class:
+
+Notes:
+    - Supported suffixes: ``.ppt`` / ``.pptx`` / ``.pptm``.
+    - Skips large-PDF splitting; uploads the presentation file as a whole.
+    - Mineru online API often omits ``bbox`` for Office files; uses ``[0, 0, 0, 0]`` when
+      missing so blocks are not dropped.
+    - Usually selected automatically by ``DynamicPDFReader`` when ``ocr_type='mineru'`` and
+      the input is a presentation file; may also be instantiated directly.
+''')
+
+add_example('rag.readers.MineruPPTReader', '''\
+from lazyllm.tools.rag.readers import MineruPPTReader
+
+reader = MineruPPTReader(url='https://mineru.net', dynamic_auth=True)
+nodes = reader('path/to/deck.pptx')
+''')
+
+add_chinese_doc('rag.readers.MineruPPTReader.is_ppt_file', '''\
+判断路径是否为 Mineru 演示文稿文件。
+
+Args:
+    file_path (str | Path): 文件路径。
+
+Returns:
+    bool: 后缀为 ``.ppt`` / ``.pptx`` / ``.pptm`` 时返回 True。
+''')
+
+add_english_doc('rag.readers.MineruPPTReader.is_ppt_file', '''\
+Return whether a path refers to a Mineru presentation file.
+
+Args:
+    file_path (str | Path): File path.
+
+Returns:
+    bool: True when the suffix is ``.ppt``, ``.pptx``, or ``.pptm``.
+''')
+
+add_example('rag.readers.MineruPPTReader.is_ppt_file', '''\
+from lazyllm.tools.rag.readers import MineruPPTReader
+
+MineruPPTReader.is_ppt_file('deck.pptx')   # True
+MineruPPTReader.is_ppt_file('report.pdf')  # False
+''')
+
 add_chinese_doc('rag.readers.PaddleOCRPDFReader', '''\
 基于PaddleOCR服务的PDF解析器，通过调用PaddleOCR服务的API来解析PDF文件，支持丰富的文档结构识别。
 服务接入方式：
@@ -2281,6 +2350,7 @@ Notes:
     - ``ocr_auth`` → ``globals.config['dynamic_ocr_auth']``（如 ``{'mineru': '...', 'paddleocr': '...'}``）
     Mineru 的 ``mineru_backend`` 由 ``MineruPDFReader`` 从配置或环境变量读取，
     不经由 ``DynamicPDFReader`` 透传；本地/在线及 upload 行为由 URL 判定。
+    ``ocr_type='mineru'`` 且文件为 ``.ppt`` / ``.pptx`` / ``.pptm`` 时路由到 ``MineruPPTReader``。
 ''')
 
 add_english_doc('rag.readers.DynamicPDFReader', '''\
@@ -2310,6 +2380,8 @@ Notes:
     Mineru-specific ``mineru_backend`` is read by ``MineruPDFReader`` from config
     or environment variables instead of being forwarded through ``DynamicPDFReader``;
     online/offline and upload behavior are derived from URL.
+    When ``ocr_type='mineru'`` and the file is ``.ppt`` / ``.pptx`` / ``.pptm``, routes to
+    ``MineruPPTReader``.
 ''')
 
 add_example('rag.readers.DynamicPDFReader', '''\

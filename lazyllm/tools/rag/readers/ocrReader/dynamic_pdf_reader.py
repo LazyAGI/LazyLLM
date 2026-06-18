@@ -3,6 +3,7 @@ from lazyllm import globals as lazyllm_globals
 from ..pdfReader import PDFReader
 from ..readerBase import LazyLLMReaderBase
 from .mineru_pdf_reader import MineruPDFReader
+from .mineru_ppt_reader import MineruPPTReader
 from .paddleocr_pdf_reader import PaddleOCRPDFReader
 
 
@@ -53,31 +54,45 @@ class DynamicPDFReader(LazyLLMReaderBase):
 
         return ocr_type, str(self._ocr_url or '').rstrip('/')
 
-    def _build_reader(self, ocr_type: str, ocr_url: str) -> LazyLLMReaderBase:
-        if ocr_type in ('', 'none'):
+    @staticmethod
+    def _reader_type(ocr_type: str, file) -> str:
+        if ocr_type == 'mineru' and MineruPPTReader.is_ppt_file(file):
+            return 'mineru_ppt'
+        return ocr_type
+
+    @staticmethod
+    def _reader_cache_key(ocr_type: str, ocr_url: str, file) -> tuple[str, str]:
+        return DynamicPDFReader._reader_type(ocr_type, file), ocr_url
+
+    def _build_reader(self, reader_type: str, ocr_url: str) -> LazyLLMReaderBase:
+        if reader_type in ('', 'none'):
             return PDFReader(split_doc=True, return_trace=self._return_trace)
 
         kwargs = dict[str, str | bool](url=ocr_url, dynamic_auth=True)
         if self._image_cache_dir:
             kwargs['image_cache_dir'] = self._image_cache_dir
 
-        if ocr_type == 'mineru':
+        if reader_type == 'mineru_ppt':
+            kwargs.update(timeout=self._timeout, post_func=self._post_func)
+            return MineruPPTReader(**kwargs)
+        if reader_type == 'mineru':
             kwargs.update(timeout=self._timeout, post_func=self._post_func)
             return MineruPDFReader(**kwargs)
-        elif ocr_type == 'paddleocr':
+        if reader_type == 'paddleocr':
             return PaddleOCRPDFReader(**kwargs)
 
-        raise ValueError(f'Unsupported OCR server type: {ocr_type!r}')
+        raise ValueError(f'Unsupported OCR server type: {reader_type!r}')
 
-    def _get_reader(self, ocr_type: str, ocr_url: str) -> LazyLLMReaderBase:
-        cache_key = (ocr_type, ocr_url)
+    def _get_reader(self, reader_type: str, ocr_url: str) -> LazyLLMReaderBase:
+        cache_key = (reader_type, ocr_url)
         if cache_key not in self._reader_cache:
-            self._reader_cache[cache_key] = self._build_reader(ocr_type, ocr_url)
+            self._reader_cache[cache_key] = self._build_reader(reader_type, ocr_url)
         return self._reader_cache[cache_key]
 
     def _load_data(self, file, extra_info=None, use_cache: bool = True, **kwargs):
         ocr_type, ocr_url = self._resolve_route(extra_info)
-        reader = self._get_reader(ocr_type, ocr_url)
+        reader_type, ocr_url = self._reader_cache_key(ocr_type, ocr_url, file)
+        reader = self._get_reader(reader_type, ocr_url)
         if isinstance(reader, PDFReader):
             return reader.forward(file)
         return reader.forward(file, extra_info=extra_info, use_cache=use_cache, **kwargs)

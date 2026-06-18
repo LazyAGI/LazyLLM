@@ -827,6 +827,11 @@ class DocServer(ModuleBase):
             )
             return BaseResponse(code=200, msg='success', data=data)
 
+        @app.get('/v1/docs/node_groups')
+        def list_doc_node_groups(self, kb_id: str, doc_id: str):
+            self._lazy_init()
+            return self._run(lambda: self._manager.list_doc_node_groups(kb_id=kb_id, doc_id=doc_id))
+
         @app.get('/v1/docs/{doc_id}')
         def get_doc(self, doc_id: str):
             self._lazy_init()
@@ -1297,6 +1302,9 @@ class DocServer(ModuleBase):
 
     def list_chunks(self, **kwargs):
         return self._dispatch('list_chunks', **kwargs)
+
+    def list_doc_node_groups(self, kb_id: str, doc_id: str):
+        return self._dispatch('list_doc_node_groups', kb_id=kb_id, doc_id=doc_id)
 
     def list_algorithms(self):
         return self._dispatch('list_algorithms_impl')
