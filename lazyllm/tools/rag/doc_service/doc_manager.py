@@ -1493,7 +1493,7 @@ class DocManager:
         raise DocServiceError('E_INVALID_PARAM', f'group {group!r} not found in any algo bound to kb {kb_id}',
                               {'kb_id': kb_id, 'group': group})
 
-    def list_doc_node_groups(self, kb_id: str, doc_id: str):
+    def get_doc_ng_status(self, kb_id: str, doc_id: str):
         for name, val in [('kb_id', kb_id), ('doc_id', doc_id)]:
             if not val:
                 raise DocServiceError('E_INVALID_PARAM', f'{name} is required', {name: val})
@@ -1502,39 +1502,36 @@ class DocManager:
             raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}', {'kb_id': kb_id, 'doc_id': doc_id})
         algo_ids = self._get_kb_algorithms(kb_id)
         id_to_meta = self._build_ng_id_to_meta(algo_ids)
-        default_algo_id = algo_ids[0] if len(algo_ids) == 1 else None
         with self._db_manager.get_session() as session:
             NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
             rows = session.query(NgStatus).filter(
                 NgStatus.kb_id == kb_id, NgStatus.doc_id == doc_id,
             ).order_by(NgStatus.created_at.asc()).all()
-        groups: List[str] = []
+        items = []
         seen: Set[str] = set()
         for row in rows:
             meta = id_to_meta.get(row.node_group_id, {})
             name = meta.get('name') or row.node_group_id
             if name in seen:
                 continue
-            algo_id = meta.get('algo_id') or default_algo_id
-            try:
-                resp = self._parser_client.list_doc_chunks(
-                    algo_id=algo_id,
-                    kb_id=kb_id,
-                    doc_id=doc_id,
-                    group=name,
-                    offset=0,
-                    page_size=1,
-                )
-            except Exception as e:
-                LOG.warning(f'[DocManager] Failed to check chunk existence for group {name}: {e}')
-                continue
-            if resp.code != 200:
-                continue
-            total = int((resp.data or {}).get('total') or 0)
-            if total <= 0:
-                continue
             seen.add(name)
-            groups.append(name)
+            items.append({
+                'node_group_id': row.node_group_id,
+                'name': name,
+                'display_name': meta.get('display_name') or name,
+                'status': row.status,
+                'error_msg': row.error_msg,
+                'updated_at': row.updated_at.isoformat() if row.updated_at else None,
+            })
+        return {'items': items}
+
+    def list_doc_node_groups(self, kb_id: str, doc_id: str):
+        result = self.get_doc_ng_status(kb_id, doc_id)
+        groups = [
+            item['name']
+            for item in result['items']
+            if item['status'] == NodeGroupParseStatus.SUCCESS.value
+        ]
         return {'groups': groups}
 
     def list_chunks(self, kb_id: str, doc_id: str, group: str, algo_id: Optional[str] = None,

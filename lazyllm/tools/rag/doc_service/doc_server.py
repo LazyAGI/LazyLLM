@@ -832,6 +832,11 @@ class DocServer(ModuleBase):
             self._lazy_init()
             return self._run(lambda: self._manager.list_doc_node_groups(kb_id=kb_id, doc_id=doc_id))
 
+        @app.get('/v1/docs/{doc_id}/ng-status')
+        def get_doc_ng_status(self, doc_id: str, kb_id: str):
+            self._lazy_init()
+            return self._run(lambda: self._manager.get_doc_ng_status(kb_id=kb_id, doc_id=doc_id))
+
         @app.get('/v1/docs/{doc_id}')
         def get_doc(self, doc_id: str):
             self._lazy_init()
@@ -1305,6 +1310,9 @@ class DocServer(ModuleBase):
 
     def list_doc_node_groups(self, kb_id: str, doc_id: str):
         return self._dispatch('list_doc_node_groups', kb_id=kb_id, doc_id=doc_id)
+
+    def get_doc_ng_status(self, kb_id: str, doc_id: str):
+        return self._dispatch('get_doc_ng_status', kb_id=kb_id, doc_id=doc_id)
 
     def list_algorithms(self):
         return self._dispatch('list_algorithms_impl')
