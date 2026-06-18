@@ -2,19 +2,21 @@
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlencode, unquote
+from urllib.parse import urlencode
 
 import requests
 
 
-from lazyllm import LOG, config, globals as lazyllm_globals
+from lazyllm import LOG, config
+from lazyllm import globals as lazyllm_globals
 from lazyllm.common import Credential
 from lazyllm.thirdparty import mistune
 
-from ..base import LazyLLMFSBase, CloudFSBufferedFile
+from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
 
 config.add('feishu_app_id', str, None, 'FEISHU_APP_ID', description='Feishu App ID for tenant_access_token.')
-config.add('feishu_app_secret', str, None, 'FEISHU_APP_SECRET', description='Feishu App Secret for tenant_access_token.')
+config.add('feishu_app_secret', str, None, 'FEISHU_APP_SECRET',
+           description='Feishu App Secret for tenant_access_token.')
 lazyllm_globals.config.add(
     'feishu_wiki_space_id', str, None, 'FEISHU_WIKI_SPACE_ID',
     description='Default Feishu wiki space_id for tree ops (ls/mkdir) when not set in URI.',
@@ -24,8 +26,6 @@ _SPACE_ID_DYNAMIC = 'dynamic'
 _FEISHU_URL_RE = re.compile(r'/(wiki|docx|docs)/([A-Za-z0-9_-]+)', re.IGNORECASE)
 _FEISHU_BARE_HOST_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
 _FEISHU_WIKI_TILDE_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
-_FEISHU_REF_FOOTER_START = '\n--- lazyllm-feishu-references ---\n'
-_FEISHU_REF_FOOTER_END = '--- end lazyllm-feishu-references ---\n'
 
 
 _API_BASE = 'https://open.feishu.cn/open-apis'
@@ -101,27 +101,6 @@ def _ref_from_element(el: Dict[str, Any]) -> Optional[str]:
         if url and _FEISHU_BARE_HOST_RE.match(url):
             return url
     return None
-
-
-def _dedupe_refs(refs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    seen: set = set()
-    out: List[Dict[str, Any]] = []
-    for r in refs:
-        key = r.get('url', '')
-        if key and key not in seen:
-            seen.add(key)
-            out.append(r)
-    return out
-
-
-def _format_references_footer(refs: List[Dict[str, Any]]) -> str:
-    if not refs:
-        return ''
-    lines = [_FEISHU_REF_FOOTER_START]
-    for i, r in enumerate(refs, 1):
-        lines.append(f'[{i}] {r.get("ref_type", "hyperlink")} | {r.get("url", "")}\n')
-    lines.append(_FEISHU_REF_FOOTER_END)
-    return ''.join(lines)
 
 
 def _feishu_acquire_access_token(
@@ -205,7 +184,7 @@ def _feishu_refresh_user_token(
     return token, expires_at, new_refresh
 
 
-class FeishuFSBase(LazyLLMFSBase):
+class FeishuFSBase(LinkDocumentFSBase):
     __lazyllm_registry_disable__ = True
 
     def __init__(self, base_url: Optional[str] = None, app_id: Optional[str] = None, app_secret: Optional[str] = None,
@@ -239,10 +218,12 @@ class FeishuFSBase(LazyLLMFSBase):
         return super()._make_credential(token, dynamic_auth)
 
     @property
-    def _app_id(self) -> str: return self._secret_key.get('app_id', '')
+    def _app_id(self) -> str:
+        return self._secret_key.get('app_id', '')
 
     @property
-    def _app_secret(self) -> str: return self._secret_key.get('app_secret', '')
+    def _app_secret(self) -> str:
+        return self._secret_key.get('app_secret', '')
 
     @property
     def _user_refresh_token(self) -> str:
@@ -612,6 +593,7 @@ class FeishuFSBase(LazyLLMFSBase):
 
 
 class FeishuFS(FeishuFSBase):
+    __public_apis__ = LazyLLMFSBase.__public_apis__
 
     def __new__(cls, base_url: Optional[str] = None, app_id: Optional[str] = None, app_secret: Optional[str] = None,
                 space_id: Optional[str] = None, user_refresh_token: Optional[str] = None,
@@ -815,6 +797,8 @@ class FeishuWikiFS(FeishuFSBase):
     __lazyllm_registry_disable__ = True
     protocol = 'feishu'
     _fs_protocol_key = 'feishu'
+    document_provider = 'feishu'
+    __public_apis__ = LinkDocumentFSBase.build_public_apis()
 
     def _create_docx_node(self, title: str, parent_token: str = '') -> str:
         url = f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes'
@@ -862,7 +846,8 @@ class FeishuWikiFS(FeishuFSBase):
                 params['page_token'] = page_token
             data = self._get(url, params=params)
             results.extend(data.get('data', {}).get('items') or data.get('data', {}).get('nodes') or [])
-            if not (page_token := data.get('data', {}).get('page_token') or data.get('data', {}).get('next_page_token')):
+            page_token = data.get('data', {}).get('page_token') or data.get('data', {}).get('next_page_token')
+            if not page_token:
                 break
         return results
 
@@ -882,8 +867,8 @@ class FeishuWikiFS(FeishuFSBase):
 
     def resolve_wiki_ref(self, url_or_path: str) -> Dict[str, Any]:
         norm = url_or_path.lstrip('/')
-        if norm.startswith('~link/'):
-            url = unquote(norm[len('~link/'):])
+        if self.is_link_path(norm):
+            url = self.decode_link_path(norm)
             parsed = _parse_feishu_browser_url(url)
             if not parsed:
                 raise ValueError(f'Cannot parse Feishu browser URL: {url!r}')
@@ -908,6 +893,9 @@ class FeishuWikiFS(FeishuFSBase):
         node_token = self._resolve_path_to_token(url_or_path)
         node = self._get_node(node_token)
         return self._node_to_ref_dict(node, node_token)
+
+    def _resolve_document_ref(self, url_or_path: str) -> Dict[str, Any]:
+        return self.resolve_wiki_ref(url_or_path)
 
     @staticmethod
     def _node_to_ref_dict(node: Dict[str, Any], fallback_token: str = '') -> Dict[str, Any]:
@@ -1017,8 +1005,8 @@ class FeishuWikiFS(FeishuFSBase):
 
     def _resolve_doc_token_from_path(self, path: str) -> Tuple[str, str]:
         norm = path.lstrip('/')
-        if norm.startswith('~link/'):
-            url = unquote(norm[len('~link/'):])
+        if self.is_link_path(norm):
+            url = self.decode_link_path(norm)
             parsed = _parse_feishu_browser_url(url)
             if not parsed:
                 return '', ''
@@ -1054,15 +1042,15 @@ class FeishuWikiFS(FeishuFSBase):
                     'link_preview' if 'link_preview' in el else 'hyperlink')
                 refs.append({'url': url, 'ref_type': ref_type,
                              'kind': parsed['kind'] if parsed else 'external'})
-        return _dedupe_refs(refs)
+        return LinkDocumentFSBase.dedupe_document_references(refs)
 
     def _fetch_wiki_content(self, path: str, include_references: bool = False) -> bytes:  # noqa C901
         norm = path.lstrip('/')
         # Bare feishu URL (https://xxx.feishu.cn/...) — convert to ~link/ path
         if _FEISHU_BARE_HOST_RE.match(path):
-            norm = f'~link/{path}'
-        if norm.startswith('~link/'):
-            url = unquote(norm[len('~link/'):])
+            norm = self.to_link_path(path).lstrip('/')
+        if self.is_link_path(norm):
+            url = self.decode_link_path(norm)
             parsed = _parse_feishu_browser_url(url)
             if not parsed:
                 raise ValueError(f'Cannot parse Feishu browser URL from path: {path!r}')
@@ -1092,10 +1080,7 @@ class FeishuWikiFS(FeishuFSBase):
             else:
                 return b''
         if include_references:
-            refs = self._list_document_references(path)
-            footer = _format_references_footer(refs)
-            if footer:
-                body = body + footer.encode('utf-8')
+            body = self._append_document_references_footer_bytes(body, path)
         return body
 
     def cat_file(self, path: str, start: Optional[int] = None, end: Optional[int] = None,

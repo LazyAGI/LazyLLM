@@ -51,7 +51,7 @@ class DocManager:
             raise RuntimeError(f'parser service is unavailable: {parser_url}') from exc
         self._cleanup_idempotency_records()
         self._callback_url = callback_url
-        self._algo_ng_cache: Dict[str, List[str]] = {}
+        self._algo_ng_groups_cache: Dict[str, List[dict]] = {}
 
     def set_callback_url(self, callback_url: str):
         self._callback_url = callback_url
@@ -520,20 +520,21 @@ class DocManager:
                     ))
 
     def _get_algo_node_group_ids(self, algo_id: str) -> List[str]:
-        if algo_id in self._algo_ng_cache:
-            return self._algo_ng_cache[algo_id]
         try:
             groups = self._fetch_algo_ng_groups(algo_id)
             if (result := [g['id'] for g in groups if g.get('id')]):
-                self._algo_ng_cache[algo_id] = result
                 return result
         except Exception as e:
             raise RuntimeError(f'[DocManager] Failed to get node_group_ids for algo {algo_id}: {e}') from e
         raise ValueError(f'Failed to get node_group_ids for algo {algo_id!r}')
 
     def _fetch_algo_ng_groups(self, algo_id: str) -> List[dict]:
+        if algo_id in self._algo_ng_groups_cache:
+            return self._algo_ng_groups_cache[algo_id]
         resp = self._parser_client.get_algorithm_groups(algo_id)
-        return resp.data if resp and resp.code == 200 and isinstance(resp.data, list) else []
+        groups = resp.data if resp and resp.code == 200 and isinstance(resp.data, list) else []
+        self._algo_ng_groups_cache[algo_id] = groups
+        return groups
 
     def _algo_ids_to_ng_names(self, algo_ids: List[str]) -> Dict[str, str]:
         name_to_id: Dict[str, str] = {}
@@ -546,6 +547,28 @@ class DocManager:
             except Exception as e:
                 raise RuntimeError(f'[DocManager] Failed to get ng names for algo {algo_id}: {e}') from e
         return name_to_id
+
+    def _build_ng_id_to_meta(self, algo_ids: List[str]) -> Dict[str, Dict[str, str]]:
+        # One forward pass per bound algo: ng_id -> {name, display_name, type, algo_id}.
+        # Callers that already know ng_id should reuse algo_id from here instead of
+        # reverse-looking up algo by group name.
+        id_to_meta: Dict[str, Dict[str, str]] = {}
+        for algo_id in algo_ids:
+            try:
+                for g in self._fetch_algo_ng_groups(algo_id):
+                    ng_id = g.get('id')
+                    if not ng_id or ng_id in id_to_meta:
+                        continue
+                    name = g.get('name') or ng_id
+                    id_to_meta[ng_id] = {
+                        'name': name,
+                        'display_name': g.get('display_name') or name,
+                        'type': g.get('type') or '',
+                        'algo_id': algo_id,
+                    }
+            except Exception as e:
+                LOG.warning(f'[DocManager] Failed to resolve ng meta for algo {algo_id}: {e}')
+        return id_to_meta
 
     def _get_shared_ng_ids(self, kb_id: str, algo_id: str, candidate_ng_ids: List[str]) -> Set[str]:
         other_algo_ids = [a for a in self._get_kb_algorithms(kb_id) if a != algo_id]
@@ -1469,6 +1492,50 @@ class DocManager:
                 continue
         raise DocServiceError('E_INVALID_PARAM', f'group {group!r} not found in any algo bound to kb {kb_id}',
                               {'kb_id': kb_id, 'group': group})
+
+    def list_doc_node_groups(self, kb_id: str, doc_id: str):
+        for name, val in [('kb_id', kb_id), ('doc_id', doc_id)]:
+            if not val:
+                raise DocServiceError('E_INVALID_PARAM', f'{name} is required', {name: val})
+        doc = self._get_doc(doc_id)
+        if doc is None or not self._has_kb_document(kb_id, doc_id):
+            raise DocServiceError('E_NOT_FOUND', f'doc not found in kb: {doc_id}', {'kb_id': kb_id, 'doc_id': doc_id})
+        algo_ids = self._get_kb_algorithms(kb_id)
+        id_to_meta = self._build_ng_id_to_meta(algo_ids)
+        default_algo_id = algo_ids[0] if len(algo_ids) == 1 else None
+        with self._db_manager.get_session() as session:
+            NgStatus = self._db_manager.get_table_orm_class(DOC_NODE_GROUP_STATUS_TABLE_INFO['name'])
+            rows = session.query(NgStatus).filter(
+                NgStatus.kb_id == kb_id, NgStatus.doc_id == doc_id,
+            ).order_by(NgStatus.created_at.asc()).all()
+        groups: List[str] = []
+        seen: Set[str] = set()
+        for row in rows:
+            meta = id_to_meta.get(row.node_group_id, {})
+            name = meta.get('name') or row.node_group_id
+            if name in seen:
+                continue
+            algo_id = meta.get('algo_id') or default_algo_id
+            try:
+                resp = self._parser_client.list_doc_chunks(
+                    algo_id=algo_id,
+                    kb_id=kb_id,
+                    doc_id=doc_id,
+                    group=name,
+                    offset=0,
+                    page_size=1,
+                )
+            except Exception as e:
+                LOG.warning(f'[DocManager] Failed to check chunk existence for group {name}: {e}')
+                continue
+            if resp.code != 200:
+                continue
+            total = int((resp.data or {}).get('total') or 0)
+            if total <= 0:
+                continue
+            seen.add(name)
+            groups.append(name)
+        return {'groups': groups}
 
     def list_chunks(self, kb_id: str, doc_id: str, group: str, algo_id: Optional[str] = None,
                     page: int = 1, page_size: int = 20, offset: Optional[int] = None):

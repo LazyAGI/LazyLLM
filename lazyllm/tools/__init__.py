@@ -11,9 +11,9 @@ if TYPE_CHECKING:
                     TransferItem, TransferRequest, MetadataPatchItem, MetadataPatchRequest,
                     DocStatus, DocServiceError, SourceType)
     from .webpages import WebModule
-    from .fs import (LazyLLMFSBase, CloudFSBufferedFile, CloudFsWatchdog, FS, dynamic_fs_config,
-                     FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS, YuqueFS, OnesFS, S3FS,
-                     ObsidianFS)
+    from .fs import (LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile, CloudFsWatchdog, FS,
+                     dynamic_fs_config, FeishuFS, ConfluenceFS, NotionFS, GoogleDriveFS, OneDriveFS,
+                     YuqueFS, OnesFS, S3FS, ObsidianFS)
     from .agent import (
         ToolManager,
         FunctionCall,
@@ -155,6 +155,7 @@ _SUBMOD_MAP = {
     'tool_config_inject': ['inject_tool_config'],
     'fs': [
         'LazyLLMFSBase',
+        'LinkDocumentFSBase',
         'CloudFSBufferedFile',
         'CloudFsWatchdog',
         'FS',
