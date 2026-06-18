@@ -25,7 +25,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def __init__(self, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
-                 static_params: Optional[StaticParams] = None, type: Optional[str] = None, **kwargs):
+                 static_params: Optional[StaticParams] = None, type: Optional[str] = None,
+                 timeout: Optional[Union[int, Tuple[int, int]]] = 180, **kwargs):
         if any([model_name.startswith(prefix) for prefix in self.VLM_MODEL_PREFIX]):
             if type is None: type = LLMType.VLM
             else: assert type == LLMType.VLM, f'model_name {model_name} is a VLM model, but type is {type}'
@@ -37,6 +38,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         self._is_trained = False
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
+        self._timeout = timeout
 
     def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
         super().prompt('' if prompt is None else prompt, history=history)
@@ -138,8 +140,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             return ''
 
     def _forward_impl(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
-                      proxies: Optional[Dict]) -> List[Dict[str, Any]]:
-        request_timeout = self._request_timeout(data)
+                      proxies: Optional[Dict], request_timeout: Optional[Union[float, Tuple[float, float]]]
+                      ) -> List[Dict[str, Any]]:
         with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
                            proxies=proxies, timeout=request_timeout) as r:
             if r.status_code != 200:
@@ -155,8 +157,12 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                 )))
         return msg_json
 
-    def _request_timeout(self, data: Dict[str, Any]) -> Optional[Union[float, Tuple[float, float]]]:
+    def _request_timeout(self, data: Dict[str, Any],
+                         default_timeout: Optional[Union[int, float, Tuple[int, int], Tuple[float, float]]] = None,
+                         ) -> Optional[Union[float, Tuple[float, float]]]:
         raw_timeout = data.get('timeout')
+        if raw_timeout is None:
+            raw_timeout = default_timeout
         if raw_timeout is None:
             return None
         try:
@@ -170,7 +176,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             return None
 
     def _forward_with_retry(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
-                            proxies: Optional[Dict], max_retries: int) -> List[Dict[str, Any]]:
+                            proxies: Optional[Dict], max_retries: int,
+                            request_timeout: Optional[Union[float, Tuple[float, float]]]) -> List[Dict[str, Any]]:
         _RETRY_DELAYS = [3, 10, 30]
         _CONTINUATION_PROMPT = (
             'Your previous response was interrupted. '
@@ -201,7 +208,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                 partial_content = ''
             try:
                 msg_json = self._forward_impl(data, runtime_url=runtime_url,
-                                              stream_output=stream_output, proxies=proxies)
+                                              stream_output=stream_output, proxies=proxies,
+                                              request_timeout=request_timeout)
             except (requests.exceptions.ChunkedEncodingError, requests.exceptions.ConnectionError):
                 if attempt < max_retries - 1:
                     partial_content = self._extract_partial_content(msg_json)
@@ -221,6 +229,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
                 tools: List[Dict[str, Any]] = None, stream_output: bool = None, stream: bool = None,
                 lazyllm_files=None, url: str = None, model: str = None, max_retries: int = 3, **kw):
+        request_timeout = self._request_timeout(kw, default_timeout=self._timeout)
         stream_output = stream_output if stream_output is not None else stream
         stream_output = stream_output if stream_output is not None else self._stream
         __input, files = self._get_files(__input, lazyllm_files)
@@ -247,7 +256,8 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         data = self._prepare_request_data(data)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         msg_json = self._forward_with_retry(data, runtime_url=runtime_url, stream_output=stream_output,
-                                            proxies=proxies, max_retries=max_retries)
+                                            proxies=proxies, max_retries=max_retries,
+                                            request_timeout=request_timeout)
 
         usage = {'prompt_tokens': -1, 'completion_tokens': -1}
         if len(msg_json) > 0 and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict):
