@@ -139,8 +139,10 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def _forward_impl(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
                       proxies: Optional[Dict]) -> List[Dict[str, Any]]:
+        request_timeout = self._request_timeout(data)
+        data.pop('timeout', None)
         with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
-                           proxies=proxies) as r:
+                           proxies=proxies, timeout=request_timeout) as r:
             if r.status_code != 200:
                 err_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) \
                     if stream_output else r.text
@@ -153,6 +155,20 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                     else [self._str_to_json(r.text, stream_output)]
                 )))
         return msg_json
+
+    def _request_timeout(self, data: Dict[str, Any]) -> Optional[Union[float, Tuple[float, float]]]:
+        raw_timeout = data.get('timeout')
+        if raw_timeout is None:
+            return None
+        try:
+            if isinstance(raw_timeout, (tuple, list)):
+                if len(raw_timeout) != 2:
+                    raise ValueError('timeout tuple/list must contain exactly two values')
+                return float(raw_timeout[0]), float(raw_timeout[1])
+            return float(raw_timeout)
+        except (TypeError, ValueError) as exc:
+            lazyllm.LOG.warning(f'Invalid request timeout {raw_timeout}: {exc}; using default None.')
+            return None
 
     def _forward_with_retry(self, data: Dict[str, Any], *, runtime_url: str, stream_output: Union[bool, Dict],
                             proxies: Optional[Dict], max_retries: int) -> List[Dict[str, Any]]:
