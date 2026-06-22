@@ -7,6 +7,8 @@ from lazyllm import globals as lazyllm_globals
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader import DynamicPDFReader
 from lazyllm.tools.rag.readers.ocrReader.mineru_pdf_reader import MineruPDFReader
+from lazyllm.tools.rag.readers.ocrReader.mineru_ppt_reader import MineruPPTReader
+from lazyllm.tools.rag.readers.ocrReader.ocr_ir import FigureBlock, ParagraphBlock
 from lazyllm.tools.rag.readers.ocrReader.ocr_service import (
     OcrServiceVariant,
     default_online_url,
@@ -87,6 +89,30 @@ class TestDynamicPDFReader:
             mock_cls.return_value = MagicMock()
             reader._build_reader('mineru', 'http://mock-mineru')
             assert mock_cls.call_args.kwargs['dynamic_auth'] is True
+
+    def test_build_mineru_ppt_reader(self):
+        reader = DynamicPDFReader(ocr_type='mineru', ocr_url='http://mock-mineru')
+        with patch(
+            'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.MineruPPTReader'
+        ) as mock_cls:
+            mock_cls.return_value = MagicMock()
+            reader._build_reader('mineru_ppt', 'http://mock-mineru')
+            assert mock_cls.call_args.kwargs['dynamic_auth'] is True
+
+    def test_ppt_file_uses_separate_reader_cache(self):
+        reader = DynamicPDFReader(ocr_type='mineru', ocr_url='http://mock-mineru')
+        pdf_reader = MagicMock()
+        ppt_reader = MagicMock()
+        pdf_reader.forward.return_value = [DocNode(text='pdf')]
+        ppt_reader.forward.return_value = [DocNode(text='ppt')]
+
+        with patch.object(reader, '_build_reader', side_effect=[pdf_reader, ppt_reader]) as mock_build:
+            reader._load_data('/tmp/demo.pdf', extra_info=None, use_cache=True)
+            reader._load_data('/tmp/demo.pptx', extra_info=None, use_cache=True)
+
+        assert mock_build.call_count == 2
+        assert mock_build.call_args_list[0].args == ('mineru', 'http://mock-mineru')
+        assert mock_build.call_args_list[1].args == ('mineru_ppt', 'http://mock-mineru')
 
     def test_dynamic_mineru_type_without_url_uses_official(self):
         reader = DynamicPDFReader(
@@ -184,3 +210,32 @@ class TestDynamicPDFReader:
         finally:
             lazyllm.config['cache_mode'] = old_cache_mode
             module_cache.close()
+
+    def test_ppt_reader_reuses_mineru_auth_key(self):
+        reader = MineruPPTReader(url='https://mineru.net', dynamic_auth=True)
+        assert reader._auth_source_key == 'mineru'
+
+    def test_ppt_skips_pdf_split(self):
+        ppt_path = '/tmp/demo.pptx'
+        assert MineruPPTReader._split_large_pdf(ppt_path) == [(ppt_path, 0)]
+
+    def test_ppt_missing_bbox_uses_zero_bbox(self):
+        reader = MineruPPTReader(url='https://mineru.net')
+        text_block = reader._adapt_one({
+            'type': 'text',
+            'text': 'hello',
+            'page_idx': 0,
+        })
+        image_block = reader._adapt_one({
+            'type': 'image',
+            'img_path': 'images/demo.jpg',
+            'page_idx': 1,
+        })
+        assert isinstance(text_block, ParagraphBlock)
+        assert text_block.page.bbox.to_list() == [0, 0, 0, 0]
+        assert isinstance(image_block, FigureBlock)
+        assert image_block.page.bbox.to_list() == [0, 0, 0, 0]
+
+    def test_pdf_missing_bbox_still_skipped(self):
+        reader = MineruPDFReader(url='https://mineru.net')
+        assert reader._adapt_one({'type': 'text', 'text': 'hello', 'page_idx': 0}) is None

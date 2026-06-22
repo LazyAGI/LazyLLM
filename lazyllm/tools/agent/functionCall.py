@@ -71,7 +71,7 @@ class FunctionCall(ModuleBase):
     def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None, _tool_manager: Optional[ToolManager] = None,
                  skill_manager=None, sandbox: Optional[LazyLLMSandboxBase] = None,
-                 keep_full_turns: int = 0):
+                 keep_full_turns: int = 0, stop_tools: Optional[List[str]] = None):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
@@ -83,6 +83,7 @@ class FunctionCall(ModuleBase):
         self._skill_manager = skill_manager
         self._stream = stream
         self._keep_full_turns = keep_full_turns
+        self._stop_tools: set = set(stop_tools) if stop_tools else set()
         prompt = _prompt or FC_PROMPT
         self._prompter = ChatPrompter(
             instruction={'system': prompt, 'user': ''},
@@ -166,6 +167,10 @@ class FunctionCall(ModuleBase):
                 {**tool_call, 'tool_call_result': tool_result}
                 for tool_call, tool_result in zip(tool_calls, tool_calls_results)
             ]
+            if self._stop_tools:
+                called_names = {(tc.get('function') or {}).get('name') for tc in tool_calls if isinstance(tc, dict)}
+                if called_names & self._stop_tools:
+                    return '\n'.join(str(r) for r in tool_calls_results)
         else:
             llm_output = llm_output['content']
         return llm_output
@@ -173,7 +178,15 @@ class FunctionCall(ModuleBase):
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         if 'workspace' not in locals['_lazyllm_agent']:
             locals['_lazyllm_agent']['workspace'] = dict(history=llm_chat_history or [])
-        result = self._impl(input)
+        try:
+            result = self._impl(input)
+        except Exception:
+            # On failure, clear any in-progress workspace and the LLM chat history so that
+            # the next call (e.g. user says "continue") does not inherit a corrupted history
+            # that may contain truncated tool_calls with invalid JSON arguments.
+            locals['_lazyllm_agent'].pop('workspace', None)
+            locals['chat_history'][self._llm._module_id] = []
+            raise
 
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
         # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed']

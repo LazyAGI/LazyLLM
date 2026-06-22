@@ -260,19 +260,26 @@ if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
 
 
 class MethodModuleTool(ModuleTool):
-    def __init__(self, instance: Any, method_name: str,
-                 key_source: Union[str, Callable, List[Union[str, Callable]], None] = None):
+    def __init__(self, instance: Any, method_name: str):
+        object.__setattr__(self, '_instance', instance)
+        object.__setattr__(self, '_method_name', method_name)
         bound = getattr(instance, method_name)
 
         def _apply(**kwargs): return bound(**kwargs)
-        _apply.__doc__ = bound.__doc__
+        _apply.__doc__ = bound.__doc__ or self._find_inherited_docstring(instance, method_name)
         _apply.__name__ = method_name
 
         super().__init__(execute_in_sandbox=False, apply_func=_apply, schema_func=bound)
-        self._instance = instance
-        self._method_name = method_name
         self._name = instance.__class__.__name__ if method_name == '__call__' \
             else f'{instance.__class__.__name__}_{method_name}'
+
+    @staticmethod
+    def _find_inherited_docstring(instance: Any, method_name: str) -> Optional[str]:
+        for cls in type(instance).__mro__[1:]:
+            member = cls.__dict__.get(method_name)
+            if member is not None and getattr(member, '__doc__', None):
+                return member.__doc__
+        return None
 
 
 def _gen_args_info_from_moduletool_and_docstring(tool, parsed_docstring):
@@ -298,7 +305,7 @@ def _build_tool_desc(tool: 'ModuleTool') -> Dict:
         'type': 'function',
         'function': {
             'name': tool.name,
-            'description': parsed_docstring.short_description,
+            'description': parsed_docstring.description,
             'parameters': {'type': 'object', 'properties': args, 'required': required_arg_list},
         }
     }
@@ -380,8 +387,8 @@ class ToolGroup(ToolContainer):
             return (f'Activated tool group "{group_name}". '
                     f'Available tools: {", ".join(child_names)}')
 
-        short_desc = docstring_parser.parse(self._desc).short_description if self._desc else ''
-        desc = f'Get available methods of {group_name}. {short_desc or ""}'
+        group_desc = docstring_parser.parse(self._desc).description if self._desc else ''
+        desc = f'Get available methods of {group_name}. {group_desc or ""}'
         _gateway_apply.__doc__ = (f'{desc}\n\nReturns:\n    str: List of available tool names in this group.')
         _gateway_apply.__name__ = f'get_{group_name}_methods'
 
@@ -445,7 +452,7 @@ class InstanceToolGroup(SkipMixin, ToolGroup):
         tools = [MethodModuleTool(instance, m) for m in instance.__public_apis__]
         name = instance.__class__.__name__
         desc = getattr(type(instance), '__doc__', '') or ''
-        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=True)
+        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=True, prefix=False)
 
     @property
     def _tools(self) -> Dict[str, 'ModuleTool']:
@@ -628,17 +635,41 @@ class ToolManager(ModuleBase):
         output_files = self._ensure_list(arguments.get(tool.output_files_parm, [])) + tool.output_files
         return kwargs(code=tool.to_sandbox_code(arguments), input_files=input_files, output_files=output_files)
 
+    @staticmethod
+    def _safe_parse_json(raw):
+        import re as _re
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+        cleaned = _re.sub(r',\s*([}\]])', r'\1', raw)
+        try:
+            return json.loads(cleaned)
+        except Exception:
+            pass
+        # last resort: close truncated JSON by counting unmatched braces
+        s = cleaned.strip()
+        opens = s.count('{') - s.count('}')
+        opens_sq = s.count('[') - s.count(']')
+        s = _re.sub(r'[,:\"\'\w\s]*$', '', s.rstrip())
+        s = s + (']' * max(0, opens_sq)) + ('}' * max(0, opens))
+        return json.loads(s)
+
     def _parse_tool_call(self, tc):
         func = tc.get('function') if isinstance(tc, dict) else None
         if not func or 'name' not in func or 'arguments' not in func:
             return None, f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}'
         name = func['name']
         raw_args = func['arguments']
-        arguments = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+        arguments = ToolManager._safe_parse_json(raw_args) if isinstance(raw_args, str) else raw_args
         if not isinstance(arguments, dict):
             return None, f'Tool [{name}] arguments format error.'
         tool = self._tool_call.get(name)
         if tool is None:
+            lazyllm.LOG.warning(
+                f'[ToolManager] tool {name!r} not found. '
+                f'Available: {list(self._tool_call.keys())}'
+            )
             return None, f'Tool [{name}] is not available. Please choose from the available tools.'
         if not self._validate_tool(name, arguments):
             return None, f'Tool [{name}] parameters error.'
@@ -663,7 +694,7 @@ class ToolManager(ModuleBase):
                     try:
                         return _tool(args)
                     except Exception as e:
-                        lazyllm.LOG.warning(f'Tool {_tool.name} raised an exception: {e}')
+                        lazyllm.LOG.warning(f'[ToolCall] tool={_tool.name!r} raised: {type(e).__name__}: {e}')
                         return f'[Tool Error] {type(e).__name__}: {e}'
                 callables.append(_safe_call)
                 call_arguments.append(args_or_err)
