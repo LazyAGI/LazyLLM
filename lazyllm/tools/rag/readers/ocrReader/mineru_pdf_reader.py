@@ -430,7 +430,7 @@ class MineruPDFReader(_OcrReaderBase):
             return result
         raise TypeError(f'Not supported type: {type(content)}.')
 
-    def _adapt_one(self, item: dict) -> Optional[Block]:
+    def _adapt_one(self, item: dict) -> Optional[Block]:  # noqa: C901
         ty = item.get('type')
         if ty is None:
             LOG.warning(f'[MineruPDFReader] content item missing type field, skipped: {item}')
