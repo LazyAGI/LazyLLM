@@ -39,7 +39,7 @@ _IMAGE_REF_PATTERN = re.compile(
     re.IGNORECASE,
 )
 # Official MinerU API returns unreliable bbox values; keep page_idx only.
-_DEFAULT_BBOX = [0, 0, 0, 0]
+DEFAULT_BBOX = [0, 0, 0, 0]
 
 
 class MineruPDFReader(_OcrReaderBase):
@@ -446,7 +446,7 @@ class MineruPDFReader(_OcrReaderBase):
             return None
         bbox = item.get('bbox')
         if self._variant == OcrServiceVariant.ONLINE:
-            bbox = _DEFAULT_BBOX
+            bbox = DEFAULT_BBOX
         elif bbox is None:
             LOG.warning(f'[MineruPDFReader] content item missing bbox field, skipped: {item}')
             return None

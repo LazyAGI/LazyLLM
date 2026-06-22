@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 
 from typing_extensions import override
 
-from .mineru_pdf_reader import MineruPDFReader, _DEFAULT_BBOX
+from .mineru_pdf_reader import MineruPDFReader, DEFAULT_BBOX
 from .ocr_ir import Block
 
 _PPT_SUFFIXES = frozenset({'.ppt', '.pptx', '.pptm'})
@@ -28,5 +28,5 @@ class MineruPPTReader(MineruPDFReader):
     @override
     def _adapt_one(self, item: dict) -> Optional[Block]:
         if item.get('bbox') is None:
-            item = {**item, 'bbox': _DEFAULT_BBOX}
+            item = {**item, 'bbox': DEFAULT_BBOX}
         return super()._adapt_one(item)
