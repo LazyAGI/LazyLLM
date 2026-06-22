@@ -3,12 +3,10 @@ from typing import List, Optional, Tuple
 
 from typing_extensions import override
 
-from .mineru_pdf_reader import MineruPDFReader
+from .mineru_pdf_reader import MineruPDFReader, _DEFAULT_BBOX
 from .ocr_ir import Block
 
 _PPT_SUFFIXES = frozenset({'.ppt', '.pptx', '.pptm'})
-# Mineru online API does not return bbox for office files.
-_DEFAULT_BBOX = [0, 0, 0, 0]
 
 
 class MineruPPTReader(MineruPDFReader):
