@@ -1580,7 +1580,7 @@ _add_fs_chinese('FeishuWikiFS.search', '''\
 
 Args:
     query (str): 搜索关键词，支持一个或多个词。
-    space_id (str, optional): 要搜索的知识空间 ID；不传时使用当前配置的 space_id。
+    space_id (str, optional): 要搜索的知识空间 ID；不传或传 dynamic 时使用当前配置的 space_id。
         space_id 必须有效，否则抛出 ValueError。
     page_size (int): 每页返回条数，默认 20，最大 100。
 
@@ -1596,7 +1596,7 @@ This searches the LIVE online Feishu wiki — not locally indexed documents.
 
 Args:
     query (str): One or more search keywords.
-    space_id (str, optional): Wiki space ID to search in; defaults to the configured space_id.
+    space_id (str, optional): Wiki space ID to search in; defaults to the configured space_id when empty or dynamic.
         Must be a valid space_id or ValueError is raised.
     page_size (int): Results per page, default 20, maximum 100.
 
@@ -1617,7 +1617,7 @@ _add_fs_chinese('FeishuWikiFS.find', '''\
 
 Args:
     pattern (str): 正则表达式模式，大小写不敏感。
-    space_id (str, optional): 要搜索的知识空间 ID；不传时使用当前配置的 space_id。
+    space_id (str, optional): 要搜索的知识空间 ID；不传或传 dynamic 时使用当前配置的 space_id。
     max_results (int): 最大返回条数，默认 50，最大 200。
 
 Returns:
@@ -1638,7 +1638,7 @@ Common regex examples:
 
 Args:
     pattern (str): Regular expression pattern, case-insensitive.
-    space_id (str, optional): Wiki space ID to search in; defaults to the configured space_id.
+    space_id (str, optional): Wiki space ID to search in; defaults to the configured space_id when empty or dynamic.
     max_results (int): Maximum results, default 50, capped at 200.
 
 Returns:
@@ -1743,6 +1743,8 @@ Args:
     object_type (str): 可选对象过滤，支持 page、database。
     limit (int): 最大返回条数，默认 20，最大 100。
     sort_direction (str): 按 last_edited_time 排序方向，ascending 或 descending。
+    scope (str): 可选 Notion database 或 data_source 范围，支持 notion:/~database/<id>、notion:/~data_source/<id>、database:<id>、data_source:<id>。
+    title_pattern (str): 可选标题/文件名正则过滤。
 
 Returns:
     List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path 等字段。
@@ -1755,6 +1757,8 @@ Args:
     object_type (str): Optional object filter: page or database.
     limit (int): Maximum number of results, default 20, capped at 100.
     sort_direction (str): Sort direction by last_edited_time: ascending or descending.
+    scope (str): Optional Notion database or data_source scope, such as notion:/~database/<id>, notion:/~data_source/<id>, database:<id>, or data_source:<id>.
+    title_pattern (str): Optional title/filename regex filter.
 
 Returns:
     List[Dict[str, Any]]: Search result entries with title, id, notion_path, and related metadata.
@@ -1774,6 +1778,7 @@ Args:
     pattern (str): 正则表达式模式，大小写不敏感。
     object_type (str, optional): 对象类型过滤：''（全部）、page、database。
     limit (int): 最大返回条数，默认 50，最大 100。
+    scope (str): 可选 Notion database 或 data_source 范围，支持 notion:/~database/<id>、notion:/~data_source/<id>、database:<id>、data_source:<id>。
 
 Returns:
     List[Dict[str, Any]]: 匹配的条目列表。每项包含 title/name、id、type（file/directory）、
@@ -1795,6 +1800,7 @@ Args:
     pattern (str): Regular expression pattern, case-insensitive.
     object_type (str, optional): Object type filter: '' (all), page, or database.
     limit (int): Maximum results, default 50, capped at 100.
+    scope (str): Optional Notion database or data_source scope, such as notion:/~database/<id>, notion:/~data_source/<id>, database:<id>, or data_source:<id>.
 
 Returns:
     List[Dict[str, Any]]: Matching entries, each with title/name, id, type (file/directory),

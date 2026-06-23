@@ -44,6 +44,8 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         try:
             tree = ast.parse(type_str, mode='eval')
             SecurityVisitor().visit(tree)
+        except SyntaxError:
+            return Any
         except ValueError as e:
             raise ValueError(f'Unsafe type expression in docstring ({context}): {e}')
         try:
@@ -72,7 +74,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         func_return = func_type_hints.get('return')
         doc_return = doc_type_hints.get('return')
-        if func_return is not None and doc_return is not None and func_return != doc_return:
+        if func_return is not None and doc_return is not None and doc_return is not Any and func_return != doc_return:
             raise TypeError(
                 f'return info in docstring ({doc_return}) is different from '
                 f'function prototype ({func_return}) in {func.__name__}'

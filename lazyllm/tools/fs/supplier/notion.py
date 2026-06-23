@@ -203,7 +203,8 @@ class NotionFS(LinkDocumentFSBase):
         return self._fetch_content(_parsed_notion_ref_to_path(parsed))
 
     def search(self, query: str, object_type: str = '', limit: int = 20,
-               sort_direction: str = 'descending') -> List[Dict[str, Any]]:
+               sort_direction: str = 'descending', scope: str = '',
+               title_pattern: str = '') -> List[Dict[str, Any]]:
         query = (query or '').strip()
         if not query:
             raise ValueError('query is required')
@@ -218,6 +219,19 @@ class NotionFS(LinkDocumentFSBase):
         sort_direction = (sort_direction or 'descending').strip().lower()
         if sort_direction not in {'ascending', 'descending'}:
             sort_direction = 'descending'
+        title_regex = self._compile_title_regex(title_pattern)
+
+        scope_kind, scope_id = self._resolve_search_scope(scope)
+        if scope_kind in ('database', 'data_source'):
+            entries = [
+                self._object_to_entry(item)
+                for item in self._query_collection(scope_kind, scope_id)
+            ]
+            return [
+                entry for entry in entries
+                if self._entry_matches_query(entry, query)
+                and self._entry_matches_title_regex(entry, title_regex)
+            ][:limit]
 
         payload: Dict[str, Any] = {
             'query': query,
@@ -227,9 +241,14 @@ class NotionFS(LinkDocumentFSBase):
         if object_type:
             payload['filter'] = {'property': 'object', 'value': object_type}
         results = self._paginate_post(f'{self._base_url}/search', payload)
-        return [self._object_to_entry(item) for item in results[:limit]]
+        entries = [self._object_to_entry(item) for item in results]
+        return [
+            entry for entry in entries
+            if self._entry_matches_title_regex(entry, title_regex)
+        ][:limit]
 
-    def find(self, pattern: str, object_type: str = '', limit: int = 50) -> List[Dict[str, Any]]:
+    def find(self, pattern: str, object_type: str = '', limit: int = 50,
+             scope: str = '') -> List[Dict[str, Any]]:
         pattern = (pattern or '').strip()
         if not pattern:
             raise ValueError('pattern is required')
@@ -241,10 +260,18 @@ class NotionFS(LinkDocumentFSBase):
         object_type = (object_type or '').strip().lower()
         if object_type and object_type not in {'page', 'database'}:
             raise ValueError('object_type must be page or database')
-        try:
-            regex = re.compile(pattern, re.IGNORECASE)
-        except re.error as e:
-            raise ValueError(f'Invalid regex pattern: {e}') from e
+        regex = self._compile_title_regex(pattern)
+
+        scope_kind, scope_id = self._resolve_search_scope(scope)
+        if scope_kind in ('database', 'data_source'):
+            entries = [
+                self._object_to_entry(item)
+                for item in self._query_collection(scope_kind, scope_id)
+            ]
+            return [
+                entry for entry in entries
+                if self._entry_matches_title_regex(entry, regex)
+            ][:limit]
 
         # Use Notion search API with a broad query, then filter by regex on title
         payload: Dict[str, Any] = {
@@ -272,6 +299,41 @@ class NotionFS(LinkDocumentFSBase):
             if not cursor or len(results) >= limit:
                 break
         return results[:limit]
+
+    def _resolve_search_scope(self, scope: str = '') -> Tuple[str, str]:
+        scope = (scope or '').strip()
+        if not scope:
+            return '', ''
+        for prefix, kind in (('database:', 'database'), ('data_source:', 'data_source')):
+            if scope.startswith(prefix):
+                return kind, _normalize_notion_id(scope[len(prefix):])
+        kind, object_id = self._resolve_access_ref(scope)
+        if kind not in ('database', 'data_source'):
+            raise ValueError('scope must be a Notion database or data_source id/path')
+        return kind, object_id
+
+    @staticmethod
+    def _compile_title_regex(pattern: str):
+        pattern = (pattern or '').strip()
+        if not pattern:
+            return None
+        try:
+            return re.compile(pattern, re.IGNORECASE)
+        except re.error as e:
+            raise ValueError(f'Invalid regex pattern: {e}') from e
+
+    @staticmethod
+    def _entry_title(entry: Dict[str, Any]) -> str:
+        return entry.get('title') or entry.get('name') or ''
+
+    @classmethod
+    def _entry_matches_title_regex(cls, entry: Dict[str, Any], regex) -> bool:
+        return regex is None or bool(regex.search(cls._entry_title(entry)))
+
+    @classmethod
+    def _entry_matches_query(cls, entry: Dict[str, Any], query: str) -> bool:
+        title = cls._entry_title(entry).lower()
+        return all(part.lower() in title for part in query.split())
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parent_kind, parent_id, title = self._resolve_parent_ref(path)

@@ -823,9 +823,15 @@ class FeishuWikiFS(FeishuFSBase):
             self._post(url, json={'index': 0, 'children': children})
 
     def _effective_space_id(self) -> str:
-        if self._space_id:
+        if self._space_id and self._space_id != _SPACE_ID_DYNAMIC:
             return self._space_id
         return (lazyllm_globals.config['feishu_wiki_space_id'] or '').strip()
+
+    def _resolve_space_id(self, space_id: str = '') -> str:
+        sid = (space_id or '').strip()
+        if sid and sid != _SPACE_ID_DYNAMIC:
+            return sid
+        return self._effective_space_id()
 
     def _require_space_id(self) -> None:
         if not self._effective_space_id():
@@ -834,8 +840,14 @@ class FeishuWikiFS(FeishuFSBase):
                 "set globals.config['feishu_wiki_space_id'], or use feishu@<space_id>:/ URI"
             )
 
-    def _list_nodes_raw(self, parent_token: str = '') -> List[Dict[str, Any]]:
-        url = f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes'
+    def _list_nodes_raw(self, parent_token: str = '', space_id: str = '') -> List[Dict[str, Any]]:
+        sid = self._resolve_space_id(space_id)
+        if not sid:
+            raise ValueError(
+                'space_id is required for Feishu wiki node listing: pass space_id or '
+                "set globals.config['feishu_wiki_space_id']"
+            )
+        url = f'{self._base_url}/wiki/v2/spaces/{sid}/nodes'
         params: Dict[str, Any] = {'page_size': 50}
         if parent_token:
             params['parent_node_token'] = parent_token
@@ -1186,7 +1198,7 @@ class FeishuWikiFS(FeishuFSBase):
         if not query:
             raise ValueError('query is required')
         page_size = max(1, min(int(page_size), 100))
-        sid = (space_id or '').strip() or self._effective_space_id()
+        sid = self._resolve_space_id(space_id)
         if not sid:
             raise ValueError(
                 'space_id is required for Feishu wiki search: pass space_id or '
@@ -1220,7 +1232,7 @@ class FeishuWikiFS(FeishuFSBase):
         if not pattern:
             raise ValueError('pattern is required')
         max_results = max(1, min(int(max_results), 200))
-        sid = (space_id or '').strip() or self._effective_space_id()
+        sid = self._resolve_space_id(space_id)
         try:
             regex = re.compile(pattern, re.IGNORECASE)
         except re.error as e:
@@ -1233,7 +1245,7 @@ class FeishuWikiFS(FeishuFSBase):
             if len(results) >= max_results or depth > 8:
                 return
             try:
-                nodes = self._list_nodes_raw(parent_token)
+                nodes = self._list_nodes_raw(parent_token, space_id=sid)
             except Exception:
                 return
             for node in nodes:

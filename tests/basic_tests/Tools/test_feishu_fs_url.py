@@ -1,5 +1,9 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import importlib.util
+import sys
+import types
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from lazyllm import init_session, locals as lazyllm_locals
@@ -11,6 +15,28 @@ from lazyllm.tools.fs.supplier.feishu import (
 )
 from lazyllm.tools.fs.client import _FSRouter, _feishu_needs_wiki, _FEISHU_WIKI_PATH_PREFIXES
 from lazyllm.tools.agent.toolsManager import ToolManager
+
+
+_FS_DOCS_LOADED = False
+
+
+def _load_fs_docs_only():
+    global _FS_DOCS_LOADED
+    if _FS_DOCS_LOADED or getattr(FeishuWikiFS.search, '__doc__', None):
+        return
+    docs_tools_pkg = types.ModuleType('lazyllm.docs.tools')
+    docs_tools_pkg.__path__ = [
+        str(Path(__file__).parents[3] / 'lazyllm' / 'docs' / 'tools')
+    ]
+    sys.modules.setdefault('lazyllm.docs.tools', docs_tools_pkg)
+    spec = importlib.util.spec_from_file_location(
+        'lazyllm.docs.tools.tool_fs_test',
+        Path(__file__).parents[3] / 'lazyllm' / 'docs' / 'tools' / 'tool_fs.py',
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    _FS_DOCS_LOADED = True
 
 
 class TestParseFeishuBrowserUrl(unittest.TestCase):
@@ -100,6 +126,12 @@ class TestEffectiveSpaceId(unittest.TestCase):
 
     def test_falls_back_to_globals_config(self):
         fs = self._make_wiki_fs('')
+        with patch('lazyllm.tools.fs.supplier.feishu.lazyllm_globals') as mock_globals:
+            mock_globals.config = {'feishu_wiki_space_id': 'wikcnFromGlobals'}
+            self.assertEqual(fs._effective_space_id(), 'wikcnFromGlobals')
+
+    def test_dynamic_sentinel_falls_back_to_globals_config(self):
+        fs = self._make_wiki_fs('dynamic')
         with patch('lazyllm.tools.fs.supplier.feishu.lazyllm_globals') as mock_globals:
             mock_globals.config = {'feishu_wiki_space_id': 'wikcnFromGlobals'}
             self.assertEqual(fs._effective_space_id(), 'wikcnFromGlobals')
@@ -199,6 +231,52 @@ class TestGetNodeSpaceIdBackfill(unittest.TestCase):
         self.assertEqual(fs._space_id, 'wikcnOriginal')
 
 
+class TestFeishuWikiOnlineSearch(unittest.TestCase):
+
+    def _make_wiki_fs(self, space_id='') -> FeishuWikiFS:
+        fs = object.__new__(FeishuWikiFS)
+        fs._space_id = space_id
+        fs._base_url = 'https://open.feishu.cn/open-apis'
+        return fs
+
+    def test_search_treats_direct_dynamic_space_as_configured_space(self):
+        fs = self._make_wiki_fs('dynamic')
+        fs._get = MagicMock(return_value={
+            'data': {
+                'items': [{
+                    'title': 'Project Plan',
+                    'node_token': 'node1',
+                    'obj_type': 'docx',
+                    'url': 'https://example.feishu.cn/wiki/node1',
+                }],
+            },
+        })
+
+        with patch('lazyllm.tools.fs.supplier.feishu.lazyllm_globals') as mock_globals:
+            mock_globals.config = {'feishu_wiki_space_id': 'wikcnFromGlobals'}
+            results = fs.search('Project')
+
+        self.assertEqual(results[0]['title'], 'Project Plan')
+        url = fs._get.call_args[0][0]
+        self.assertIn('/wiki/v2/spaces/wikcnFromGlobals/search', url)
+        self.assertNotIn('/spaces/dynamic/', url)
+
+    def test_find_uses_explicit_space_for_tree_listing(self):
+        fs = self._make_wiki_fs('')
+        fs._list_nodes_raw = MagicMock(return_value=[{
+            'title': 'Project Plan',
+            'node_token': 'node1',
+            'obj_type': 'docx',
+            'url': 'https://example.feishu.cn/wiki/node1',
+            'has_child': False,
+        }])
+
+        results = fs.find('Project', space_id='wikcnExplicit')
+
+        self.assertEqual(results[0]['space_id'], 'wikcnExplicit')
+        fs._list_nodes_raw.assert_called_once_with('', space_id='wikcnExplicit')
+
+
 class TestFSRouterParse(unittest.TestCase):
 
     def setUp(self):
@@ -256,6 +334,7 @@ class TestFeishuToolRegistration(unittest.TestCase):
     def setUp(self):
         init_session()
         lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+        _load_fs_docs_only()
 
     def test_document_flow_tools_are_registered(self):
         fs = FeishuFS(space_id='dynamic', dynamic_auth=True)
@@ -269,6 +348,8 @@ class TestFeishuToolRegistration(unittest.TestCase):
         self.assertIn('FeishuWikiFS_resolve_link', names)
         self.assertIn('FeishuWikiFS_read_with_references', names)
         self.assertIn('FeishuWikiFS_get_doc_blocks', names)
+        self.assertIn('FeishuWikiFS_search', names)
+        self.assertIn('FeishuWikiFS_find', names)
         self.assertIn('FeishuWikiFS_copy', names)
 
     def test_resolve_link_returns_standard_fields(self):
