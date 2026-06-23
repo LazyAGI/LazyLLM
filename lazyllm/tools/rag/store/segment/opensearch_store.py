@@ -271,12 +271,16 @@ class OpenSearchStore(LazyLLMStoreBase):
             return []
 
     @override
-    def keyword_search(self, collection_name, keyword, doc_id, kb_id=None,
-                       phrase=True, sort_by='score', size=10, **kwargs):
+    def keyword_search(self, collection_name, keyword, doc_id='', kb_id=None,
+                       phrase=True, sort_by='score', size=10, file_name=None, **kwargs):
         LOG.info(f'[OpenSearchStore.keyword_search] collection={collection_name!r} keyword={keyword!r} '
-                 f'doc_id={doc_id!r} kb_id={kb_id!r} phrase={phrase} sort_by={sort_by!r}')
+                 f'doc_id={doc_id!r} kb_id={kb_id!r} file_name={file_name!r} phrase={phrase} sort_by={sort_by!r}')
         self._ensure_index(collection_name)
-        filters = [{'term': {'doc_id.keyword': doc_id}}]
+        filters = []
+        if file_name:
+            filters.append({'term': {'global_meta.file_name.keyword': file_name}})
+        elif doc_id:
+            filters.append({'term': {'doc_id.keyword': doc_id}})
         if kb_id:
             filters.append({'term': {'kb_id.keyword': kb_id}})
         body = {
