@@ -34,10 +34,6 @@ lazyllm.config.add(
     'mineru_backend', str, 'hybrid-auto-engine', 'MINERU_BACKEND',
     description='The MinerU backend used by local MinerU service.',
 )
-lazyllm.config.add(
-    'mineru_ssl_verify', bool, False, 'MINERU_SSL_VERIFY',
-    description='Verify SSL for official MinerU online API. Temporary workaround for mineru.net cert mismatch.',
-)
 _IMAGE_REF_PATTERN = re.compile(
     r'images/[^\s\)"\'\]<]+\.(?:jpg|jpeg|png|gif|bmp|webp|tiff|tif)',
     re.IGNORECASE,
@@ -81,24 +77,6 @@ class MineruPDFReader(_OcrReaderBase):
         self._variant = resolve_ocr_variant('mineru', self._url)
         self._offline_mode = self._variant == OcrServiceVariant.OFFLINE
         self._upload_mode = upload_mode if upload_mode is not None else self._offline_mode
-        if not self._offline_mode and not lazyllm.config['mineru_ssl_verify']:
-            LOG.warning(
-                '[MineruPDFReader] SSL verification disabled for official MinerU API; '
-                'set MINERU_SSL_VERIFY=true after mineru.net certificate is fixed.'
-            )
-
-    def _online_ssl_verify(self) -> bool:
-        if self._offline_mode:
-            return True
-        return lazyllm.config['mineru_ssl_verify']
-
-    def _online_request_kwargs(self) -> Dict:
-        return {'verify': self._online_ssl_verify()}
-
-    def _http_execute(self, method: str, url: str, **kwargs):
-        if not self._offline_mode and 'verify' not in kwargs:
-            kwargs['verify'] = self._online_ssl_verify()
-        return super()._http_execute(method, url, **kwargs)
 
     @property
     def appendix_hash_key(self):
@@ -366,8 +344,7 @@ class MineruPDFReader(_OcrReaderBase):
         # Step 2: Upload file to OSS
         _t2 = time.time()
         with open(file_path, 'rb') as f:
-            upload_resp = requests.put(
-                file_url, data=f, timeout=self._timeout or 300, **self._online_request_kwargs())
+            upload_resp = requests.put(file_url, data=f, timeout=self._timeout or 300)
             upload_resp.raise_for_status()
         _t_upload = time.time() - _t2
         LOG.info(f'[BENCHMARK] file={fname} phase=upload elapsed={_t_upload:.3f}s')
@@ -388,8 +365,7 @@ class MineruPDFReader(_OcrReaderBase):
                 state = extract_result[0].get('state')
                 if state == 'done':
                     full_zip_url = extract_result[0].get('full_zip_url')
-                    zip_resp = requests.get(
-                        full_zip_url, timeout=self._timeout or 120, **self._online_request_kwargs())
+                    zip_resp = requests.get(full_zip_url, timeout=self._timeout or 120)
                     zip_resp.raise_for_status()
                     _t_wait = time.time() - _t3
                     LOG.info(f'[BENCHMARK] file={fname} phase=wait elapsed={_t_wait:.3f}s')
