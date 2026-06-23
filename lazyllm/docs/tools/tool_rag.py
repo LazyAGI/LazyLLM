@@ -2129,7 +2129,7 @@ Notes:
     ``globals.config['dynamic_ocr_auth']``，由 CredentialMixin 在每次 HTTP 请求时读取。
     静态默认 token：``globals['config']['mineru_api_key']``（仅 ``dynamic_auth=False`` 时）。
     调用参数 ``use_cache``（默认 True）控制 OCR **服务端**是否使用其缓存；算法端 ``DocNode``
-    内容缓存由 ``LazyLLMReaderBase`` / ``use_content_cache`` 单独控制，两层可组合使用。
+    内容缓存由 ``LazyLLMReaderBase`` / ``use_reader_cache`` 单独控制，两层可组合使用。
 ''')
 
 add_english_doc('rag.readers.MineruPDFReader', '''\
@@ -2170,7 +2170,7 @@ Notes:
     Static default token: ``globals['config']['mineru_api_key']`` (only when ``dynamic_auth=False``).
     Call argument ``use_cache`` (default True) controls whether the OCR **service** reuses its
     cache; algorithm-side ``DocNode`` content caching is controlled separately by
-    ``LazyLLMReaderBase`` / ``use_content_cache``, and both layers can be used together.
+    ``LazyLLMReaderBase`` / ``use_reader_cache``, and both layers can be used together.
 ''')
 
 add_chinese_doc('rag.readers.MineruPPTReader', '''\
@@ -4738,7 +4738,7 @@ add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
 
 缓存与 OCR 服务端 ``use_cache`` 为两层独立机制：
 
-- **算法端内容缓存**（本类）：缓存 ``DocNode`` 列表，由 ``use_content_cache`` / ``LAZYLLM_READER_CONTENT_CACHE`` 控制。
+- **算法端内容缓存**（本类）：缓存 ``DocNode`` 列表，由 ``use_reader_cache`` / ``LAZYLLM_READER_CACHE`` 控制。
 - **OCR 服务端缓存**（如 MineruPDFReader）：HTTP 请求参数 ``use_cache`` 控制远端是否复用解析结果。
 
 缓存键由 Reader 类型、``appendix_hash_key``（子类配置，如 OCR URL/backend）、文件
@@ -4754,7 +4754,7 @@ add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
 Args:
     *args: 位置参数，保留给子类或父类使用。
     return_trace (bool): 是否返回处理过程的追踪信息，默认为 True。
-    use_content_cache (bool): 是否启用算法端内容缓存，默认读取 ``LAZYLLM_READER_CONTENT_CACHE``（默认 True）。
+    use_reader_cache (bool): 是否启用算法端内容缓存，默认读取 ``LAZYLLM_READER_CACHE``（默认 True）。
     **kwargs: 关键字参数，保留给子类或父类使用。
 ''')
 
@@ -4770,7 +4770,7 @@ downstream OCR requests.
 Algorithm-side cache and OCR service ``use_cache`` are two independent layers:
 
 - **Algorithm-side content cache** (this class): caches ``DocNode`` lists; controlled by
-  ``use_content_cache`` / ``LAZYLLM_READER_CONTENT_CACHE``.
+  ``use_reader_cache`` / ``LAZYLLM_READER_CACHE``.
 - **OCR service cache** (e.g. MineruPDFReader): HTTP ``use_cache`` controls whether the remote
   service reuses its own parse results.
 
@@ -4788,8 +4788,8 @@ Storage reuses ``ModuleCache`` and global settings:
 Args:
     *args: Positional arguments, reserved for parent or subclass use.
     return_trace (bool): Whether to return processing trace information. Defaults to True.
-    use_content_cache (bool): Whether to enable algorithm-side content cache. Defaults to
-        ``LAZYLLM_READER_CONTENT_CACHE`` (True).
+    use_reader_cache (bool): Whether to enable algorithm-side content cache. Defaults to
+        ``LAZYLLM_READER_CACHE`` (True).
     **kwargs: Keyword arguments, reserved for parent or subclass use.
 ''')
 
@@ -4902,7 +4902,7 @@ add_example('rag.readers.readerBase.LazyLLMReaderBase.get_encoding_cache_stats',
 >>> print(stats)
 ''')
 
-add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.use_content_cache', '''\
+add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.use_reader_cache', '''\
 启用或关闭算法端内容缓存（链式调用）。
 
 命中缓存时直接返回已解析的 ``List[DocNode]``，不执行 ``_load_data``。与调用参数 ``use_cache=False``
@@ -4912,7 +4912,7 @@ add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.use_content_cache', ''
 
     export LAZYLLM_CACHE_STRATEGY=sqlite
     export LAZYLLM_CACHE_MODE=RW
-    export LAZYLLM_READER_CONTENT_CACHE=true
+    export LAZYLLM_READER_CACHE=true
 
 Args:
     flag (Union[bool, str]): True 启用；False 关闭；str 时作为缓存命名空间后缀写入 cache key。
@@ -4921,7 +4921,7 @@ Args:
 - LazyLLMReaderBase: 返回 self，支持链式调用。
 ''')
 
-add_english_doc('rag.readers.readerBase.LazyLLMReaderBase.use_content_cache', '''\
+add_english_doc('rag.readers.readerBase.LazyLLMReaderBase.use_reader_cache', '''\
 Enable or disable algorithm-side content caching (chainable).
 
 On cache hit, returns the cached ``List[DocNode]`` without running ``_load_data``. Pass
@@ -4932,7 +4932,7 @@ Persistent storage example (set env vars before ``import lazyllm``)::
 
     export LAZYLLM_CACHE_STRATEGY=sqlite
     export LAZYLLM_CACHE_MODE=RW
-    export LAZYLLM_READER_CONTENT_CACHE=true
+    export LAZYLLM_READER_CACHE=true
 
 Args:
     flag (Union[bool, str]): True to enable; False to disable; str appends a namespace suffix
@@ -4942,12 +4942,12 @@ Args:
 - LazyLLMReaderBase: Returns self for chaining.
 ''')
 
-add_example('rag.readers.readerBase.LazyLLMReaderBase.use_content_cache', '''\
+add_example('rag.readers.readerBase.LazyLLMReaderBase.use_reader_cache', '''\
 >>> import os
 >>> os.environ['LAZYLLM_CACHE_STRATEGY'] = 'sqlite'
 >>> import lazyllm
 >>> from lazyllm.tools.rag.readers import TxtReader
->>> reader = TxtReader().use_content_cache(True)
+>>> reader = TxtReader().use_reader_cache(True)
 >>> nodes1 = reader('path/to/doc.txt')
 >>> nodes2 = reader('path/to/doc.txt')  # cache hit, _load_data not called
 >>> nodes3 = reader('path/to/doc.txt', use_cache=False)  # skip algorithm-side cache
@@ -4965,7 +4965,7 @@ TxtReader 类用于从文本文件中加载内容，并将其封装为 `DocNode`
 
 - 支持指定文本编码读取文件；
 - 可选返回加载过程的跟踪信息；
-- 继承算法端内容缓存（``use_content_cache`` / ``LAZYLLM_READER_CONTENT_CACHE``）。
+- 继承算法端内容缓存（``use_reader_cache`` / ``LAZYLLM_READER_CACHE``）。
 
 Args:
     encoding (str): 文件读取的文本编码，默认值为 'utf-8'。
@@ -4982,7 +4982,7 @@ This class inherits from `LazyLLMReaderBase` and mainly provides:
 
 - Support for reading files with a specified text encoding;
 - Optional tracing information of the loading process;
-- Inherited algorithm-side content cache (``use_content_cache`` / ``LAZYLLM_READER_CONTENT_CACHE``).
+- Inherited algorithm-side content cache (``use_reader_cache`` / ``LAZYLLM_READER_CACHE``).
 
 Args:
     encoding (str): Text encoding for reading files, default is 'utf-8'.

@@ -277,7 +277,7 @@ class TestReaderContentCache(object):
             with open(test_file, 'w', encoding='utf-8') as f:
                 f.write('reader content cache')
 
-            reader = TxtReader().use_content_cache(True)
+            reader = TxtReader().use_reader_cache(True)
             original_load = reader._load_data
             call_count = {'n': 0}
 
@@ -303,7 +303,7 @@ class TestReaderContentCache(object):
             with open(test_file, 'w', encoding='utf-8') as f:
                 f.write('version-1')
 
-            reader = TxtReader().use_content_cache(True)
+            reader = TxtReader().use_reader_cache(True)
             original_load = reader._load_data
             call_count = {'n': 0}
 
@@ -329,7 +329,7 @@ class TestReaderContentCache(object):
             with open(test_file, 'w', encoding='utf-8') as f:
                 f.write('bypass cache')
 
-            reader = TxtReader().use_content_cache(True)
+            reader = TxtReader().use_reader_cache(True)
             original_load = reader._load_data
             call_count = {'n': 0}
 

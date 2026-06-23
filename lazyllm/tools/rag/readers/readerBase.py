@@ -90,11 +90,8 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return 'W' in lazyllm.config['cache_mode']
 
     def use_reader_cache(self, flag: Union[bool, str] = True):
-        self._use_reader_cache = flag or False
+        self._use_reader_cache = bool(flag) if isinstance(flag, bool) else flag or False
         return self
-
-    def use_content_cache(self, flag: Union[bool, str] = True):
-        return self.use_reader_cache(flag)
 
     def _call_impl(self, *args, **kw):
         cache_kw = self._reader_cache_key_kwargs(kw)
