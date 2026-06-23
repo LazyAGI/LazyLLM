@@ -24,7 +24,8 @@ class PDFReader(_RichReader):
         super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
 
     @retry(stop_after_attempt=3)
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
+                   use_cache: bool = True, **kwargs) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         fs = fs or get_default_fs()

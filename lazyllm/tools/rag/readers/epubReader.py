@@ -10,7 +10,8 @@ from lazyllm.thirdparty import html2text, ebooklib
 from lazyllm import LOG
 
 class EpubReader(LazyLLMReaderBase):
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
+                   use_cache: bool = True, **kwargs) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:

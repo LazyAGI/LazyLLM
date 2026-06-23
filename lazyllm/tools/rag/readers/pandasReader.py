@@ -59,7 +59,8 @@ class PandasCSVReader(LazyLLMReaderBase):
         self._pandas_config = pandas_config or {}
         self._fill_method = fill_method
 
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
+                   use_cache: bool = True, **kwargs) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:
@@ -84,7 +85,8 @@ class PandasExcelReader(LazyLLMReaderBase):
         self._pandas_config = pandas_config or {}
         self._fill_method = fill_method
 
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
+                   use_cache: bool = True, **kwargs) -> List[DocNode]:
         openpyxl_spec = importlib.util.find_spec('openpyxl')
         if openpyxl_spec is not None: pass
         else: raise ImportError('Please install openpyxl to read Excel files. '

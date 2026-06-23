@@ -17,7 +17,8 @@ class HWPReader(LazyLLMReaderBase):
         self._HWP_TEXT_TAGS = [67]
         self._text = ''
 
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
+                   use_cache: bool = True, **kwargs) -> List[DocNode]:
         if fs:
             LOG.warning('fs was specified but HWPReader doesn\'t support loading from '
                         'fsspec filesystems. Will load from local filesystem instead.')

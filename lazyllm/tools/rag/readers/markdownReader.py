@@ -55,7 +55,8 @@ class MarkdownReader(LazyLLMReaderBase):
         if self._remove_images: content = self.remove_images(content)
         return self._markdown_to_tups(content)
 
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
+                   use_cache: bool = True, **kwargs) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         tups = self._parse_tups(file, fs=fs)

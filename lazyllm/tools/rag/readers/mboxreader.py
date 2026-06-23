@@ -26,7 +26,8 @@ class MboxReader(LazyLLMReaderBase):
         self._max_count = max_count
         self._message_format = message_format
 
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
+                   use_cache: bool = True, **kwargs) -> List[DocNode]:
         import mailbox
         from email.parser import BytesParser
         from email.policy import default
