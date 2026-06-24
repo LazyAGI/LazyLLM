@@ -455,14 +455,15 @@ class _DocumentStore(object):
                 topk=topk, filters=filters, **kwargs))
         return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
 
-    def keyword_search(self, group, keyword, doc_id, kb_id=None,
-                       phrase=True, sort_by='score', size=10):
+    def keyword_search(self, group, keyword, doc_id='', kb_id=None,
+                       phrase=True, sort_by='score', size=10, file_name=None):
         self._seg_init()
         store = getattr(self._impl, 'segment_store', self._impl)
         return store.keyword_search(
             collection_name=self._gen_collection_name(group),
             keyword=keyword, doc_id=doc_id, kb_id=kb_id,
             phrase=phrase, sort_by=sort_by, size=size,
+            file_name=file_name,
         )
 
     def _validate_query_params(self, group_name: str, similarity: str,
