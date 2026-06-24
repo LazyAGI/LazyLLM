@@ -19,8 +19,7 @@ class VideoAudioReader(LazyLLMReaderBase):
         model = whisper.load_model(self._model_version)
         self._parser_config = {'model': model}
 
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
-                   use_cache: bool = True, **kwargs) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         import whisper
 
         if not isinstance(file, Path): file = Path(file)

@@ -56,8 +56,8 @@ class TestDynamicPDFReader:
         fake_reader.forward.return_value = [DocNode(text='ok')]
 
         with patch.object(reader, '_build_reader', return_value=fake_reader) as mock_build:
-            result_1 = reader._load_data('fake.pdf', extra_info=None, use_cache=True)
-            result_2 = reader._load_data('fake.pdf', extra_info=None, use_cache=True)
+            result_1 = reader._load_data('fake.pdf', extra_info=None)
+            result_2 = reader._load_data('fake.pdf', extra_info=None)
 
         assert mock_build.call_count == 1
         assert len(result_1) == 1
@@ -107,8 +107,8 @@ class TestDynamicPDFReader:
         ppt_reader.forward.return_value = [DocNode(text='ppt')]
 
         with patch.object(reader, '_build_reader', side_effect=[pdf_reader, ppt_reader]) as mock_build:
-            reader._load_data('/tmp/demo.pdf', extra_info=None, use_cache=True)
-            reader._load_data('/tmp/demo.pptx', extra_info=None, use_cache=True)
+            reader._load_data('/tmp/demo.pdf', extra_info=None)
+            reader._load_data('/tmp/demo.pptx', extra_info=None)
 
         assert mock_build.call_count == 2
         assert mock_build.call_args_list[0].args == ('mineru', 'http://mock-mineru')
@@ -204,8 +204,8 @@ class TestDynamicPDFReader:
             with patch.object(
                 MineruPDFReader, '_load_data', return_value=[DocNode(text='cached')]
             ) as mock_load:
-                reader(pdf_path, use_cache=True)
-                reader(pdf_path, use_cache=True)
+                reader(pdf_path)
+                reader(pdf_path)
             assert mock_load.call_count == 1
         finally:
             lazyllm.config['cache_mode'] = old_cache_mode

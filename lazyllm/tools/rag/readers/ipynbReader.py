@@ -11,8 +11,7 @@ class IPYNBReader(LazyLLMReaderBase):
         self._parser_config = parser_config
         self._concatenate = concatenate
 
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
-                   use_cache: bool = True, **kwargs) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         try:

@@ -75,7 +75,7 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         return f'{self._url}|{self._model}|{dropped}|{self._split_doc}'
 
     @override
-    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True, **kwargs
+    def _load_data(self, file, extra_info: Optional[Dict] = None, **kwargs
                    ) -> List['DocNode']:
         file_path = Path(file)
         merged_info = dict(extra_info) if extra_info else {}

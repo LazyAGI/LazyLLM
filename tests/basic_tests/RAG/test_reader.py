@@ -322,14 +322,14 @@ class TestReaderContentCache(object):
         finally:
             shutil.rmtree(temp_dir)
 
-    def test_txt_reader_content_cache_bypass_with_use_cache_false(self):
+    def test_txt_reader_content_cache_disabled_with_use_reader_cache_false(self):
         temp_dir = tempfile.mkdtemp()
         try:
             test_file = os.path.join(temp_dir, 'cache_bypass.txt')
             with open(test_file, 'w', encoding='utf-8') as f:
                 f.write('bypass cache')
 
-            reader = TxtReader().use_reader_cache(True)
+            reader = TxtReader().use_reader_cache(False)
             original_load = reader._load_data
             call_count = {'n': 0}
 
@@ -338,7 +338,7 @@ class TestReaderContentCache(object):
                 return original_load(file, fs)
 
             with patch.object(reader, '_load_data', side_effect=counting_load):
-                reader(test_file, use_cache=False)
+                reader(test_file)
                 reader(test_file)
 
             assert call_count['n'] == 2

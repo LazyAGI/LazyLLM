@@ -195,11 +195,10 @@ class _OcrReaderBase(_RichReader, _Adapter, CredentialMixin):
         blocks = l2_associate(blocks)
         return self._build_nodes_from_blocks(blocks, file, extra_info)
 
-    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True,
-                   **kwargs) -> List[DocNode]:
+    def _load_data(self, file, extra_info: Optional[Dict] = None, **kwargs) -> List[DocNode]:
         # Preserve URL strings; Path() would corrupt https:// into https:/
         file_path = file if isinstance(file, str) and file.startswith(('http://', 'https://')) else Path(file)
-        response_raw_text = self._fetch_response(file_path, use_cache=use_cache)
+        response_raw_text = self._fetch_response(file_path, use_cache=self._active_use_cache)
         return self._build_nodes_from_response(response_raw_text, file_path, extra_info)
 
     @staticmethod

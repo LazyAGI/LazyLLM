@@ -77,15 +77,13 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def _reader_cache_key_kwargs(cls, kwargs: dict) -> dict:
         return {k: cls._reader_cache_file_token(v) for k, v in cls._reader_cache_kwargs(kwargs).items()}
 
-    def _reader_cache_read_enabled(self, kwargs: dict) -> bool:
+    def _reader_cache_read_enabled(self) -> bool:
         if not self._use_reader_cache:
-            return False
-        if kwargs.get('use_cache', True) is False:
             return False
         return 'R' in lazyllm.config['cache_mode']
 
-    def _reader_cache_write_enabled(self, kwargs: dict) -> bool:
-        if not self._reader_cache_read_enabled(kwargs):
+    def _reader_cache_write_enabled(self) -> bool:
+        if not self._reader_cache_read_enabled():
             return False
         return 'W' in lazyllm.config['cache_mode']
 
@@ -96,28 +94,29 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def _call_impl(self, *args, **kw):
         cache_kw = self._reader_cache_key_kwargs(kw)
         cache_args = self._reader_cache_args(args)
-        if self._reader_cache_read_enabled(kw):
+        if self._reader_cache_read_enabled():
             try:
                 return module_cache.get(self.__reader_cache_hash__, cache_args, cache_kw)
             except CacheNotFoundError:
                 pass
         r = super()._call_impl(*args, **kw)
-        if self._reader_cache_write_enabled(kw):
+        if self._reader_cache_write_enabled():
             module_cache.set(self.__reader_cache_hash__, cache_args, cache_kw, r)
         return r
 
     def _lazy_load_data(self, *args, **load_kwargs) -> Iterable[DocNode]:
         raise NotImplementedError(f'{self.__class__.__name__} does not implement lazy_load_data method.')
 
-    def _load_data(self, *args, use_cache: bool = True, **load_kwargs) -> List[DocNode]:
+    def _load_data(self, *args, **load_kwargs) -> List[DocNode]:
         return list(self._lazy_load_data(*args, **load_kwargs))
 
+    @property
+    def _active_use_cache(self) -> bool:
+        return bool(self._use_reader_cache)
+
     def forward(self, *args, **kwargs) -> List[DocNode]:
-        if 'use_cache' not in kwargs:
-            kwargs['use_cache'] = lazyllm.config['reader_cache']
-        use_cache = kwargs['use_cache']
         load_kwargs = {k: v for k, v in kwargs.items() if k not in _READER_CACHE_SKIP_KEYS}
-        r = self._load_data(*args, use_cache=use_cache, **load_kwargs)
+        r = self._load_data(*args, **load_kwargs)
         r = [r] if isinstance(r, DocNode) else [] if r is None else r
         if r and self.post_action:
             r = [x for sub in [self.post_action(n) for n in r] for x in (sub if isinstance(sub, list) else [sub])]
@@ -287,8 +286,7 @@ class TxtReader(LazyLLMReaderBase):
     def appendix_hash_key(self):
         return f'{self._encoding}|{self._auto_detect_encoding}|{self._enable_chardet}'
 
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
-                   use_cache: bool = True, **kwargs) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if self._encoding:
             encoding = self._encoding
         elif self._auto_detect_encoding:
@@ -329,10 +327,9 @@ class TxtReader(LazyLLMReaderBase):
             raise
 
 class DefaultReader(TxtReader):
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
-                   use_cache: bool = True, **kwargs) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         try:
-            return super()._load_data(file, fs, use_cache=use_cache, **kwargs)
+            return super()._load_data(file, fs)
         except Exception as e:
             encoding_info = self._encoding if self._encoding else 'auto-detected encoding'
             LOG.error(f'Failed to read {file} with {encoding_info}: {e}. Skipping file.')

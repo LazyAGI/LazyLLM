@@ -84,10 +84,10 @@ class MineruPDFReader(_OcrReaderBase):
         return f'{self._url}|{self._backend}|{self._upload_mode}|{dropped}|{self._split_doc}'
 
     @override
-    def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True,
-                   **kwargs) -> List['DocNode']:
+    def _load_data(self, file, extra_info: Optional[Dict] = None, **kwargs) -> List['DocNode']:
         file_path = Path(file)
         merged_info = dict(extra_info) if extra_info else {}
+        use_cache = self._active_use_cache
         _t0 = time.time()
         if self._offline_mode:
             response_text = self._fetch_sync(file_path, use_cache)

@@ -51,8 +51,7 @@ class PPTXReader(LazyLLMReaderBase):
         preds = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
         return preds[0].strip()
 
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
-                   use_cache: bool = True, **kwargs) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:

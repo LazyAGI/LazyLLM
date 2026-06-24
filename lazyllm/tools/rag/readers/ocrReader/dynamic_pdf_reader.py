@@ -93,10 +93,14 @@ class DynamicPDFReader(LazyLLMReaderBase):
             self._reader_cache[cache_key] = self._build_reader(reader_type, ocr_url)
         return self._reader_cache[cache_key]
 
-    def _load_data(self, file, extra_info=None, use_cache: bool = True, **kwargs):
+    def _load_data(self, file, extra_info=None, **kwargs):
         ocr_type, ocr_url = self._resolve_route(extra_info)
         reader_type, ocr_url = self._reader_cache_key(ocr_type, ocr_url, file)
         reader = self._get_reader(reader_type, ocr_url)
         if isinstance(reader, PDFReader):
             return reader.forward(file)
-        return reader.forward(file, extra_info=extra_info, use_cache=use_cache, **kwargs)
+        return reader.forward(
+            file,
+            extra_info=extra_info,
+            **kwargs,
+        )

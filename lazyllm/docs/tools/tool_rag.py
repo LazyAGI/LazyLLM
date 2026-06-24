@@ -2128,8 +2128,8 @@ Notes:
     请求级 token：通过 ``inject_ocr_config({'ocr_auth': {'mineru': '...'}})`` 写入
     ``globals.config['dynamic_ocr_auth']``，由 CredentialMixin 在每次 HTTP 请求时读取。
     静态默认 token：``globals['config']['mineru_api_key']``（仅 ``dynamic_auth=False`` 时）。
-    调用参数 ``use_cache``（默认 True）控制 OCR **服务端**是否使用其缓存；算法端 ``DocNode``
-    内容缓存由 ``LazyLLMReaderBase`` / ``use_reader_cache`` 单独控制，两层可组合使用。
+    OCR **服务端**缓存由 Reader 的 ``use_reader_cache`` / ``LAZYLLM_READER_CACHE`` 统一控制（默认开启）；
+    算法端 ``DocNode`` 内容缓存由 ``ModuleCache`` 与同一开关协同工作。
 ''')
 
 add_english_doc('rag.readers.MineruPDFReader', '''\
@@ -2168,9 +2168,8 @@ Notes:
     Per-request token: inject via ``inject_ocr_config({'ocr_auth': {'mineru': '...'}})`` into
     ``globals.config['dynamic_ocr_auth']``; CredentialMixin reads it on each HTTP call.
     Static default token: ``globals['config']['mineru_api_key']`` (only when ``dynamic_auth=False``).
-    Call argument ``use_cache`` (default True) controls whether the OCR **service** reuses its
-    cache; algorithm-side ``DocNode`` content caching is controlled separately by
-    ``LazyLLMReaderBase`` / ``use_reader_cache``, and both layers can be used together.
+    OCR **service** caching follows ``use_reader_cache`` / ``LAZYLLM_READER_CACHE`` (enabled by default);
+    algorithm-side ``DocNode`` content caching uses ``ModuleCache`` under the same switch.
 ''')
 
 add_chinese_doc('rag.readers.MineruPPTReader', '''\
@@ -4905,8 +4904,7 @@ add_example('rag.readers.readerBase.LazyLLMReaderBase.get_encoding_cache_stats',
 add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.use_reader_cache', '''\
 启用或关闭算法端内容缓存（链式调用）。
 
-命中缓存时直接返回已解析的 ``List[DocNode]``，不执行 ``_load_data``。与调用参数 ``use_cache=False``
-配合可跳过本次读缓存（仍可走 OCR 服务端缓存逻辑）。
+命中缓存时直接返回已解析的 ``List[DocNode]``，不执行 ``_load_data``。关闭后每次调用都会重新解析。
 
 持久化示例（需在 ``import lazyllm`` 之前设置环境变量）::
 
@@ -4924,9 +4922,8 @@ Args:
 add_english_doc('rag.readers.readerBase.LazyLLMReaderBase.use_reader_cache', '''\
 Enable or disable algorithm-side content caching (chainable).
 
-On cache hit, returns the cached ``List[DocNode]`` without running ``_load_data``. Pass
-``use_cache=False`` on a single call to skip reading the algorithm-side cache for that call
-(OCR service-side caching may still apply).
+On cache hit, returns the cached ``List[DocNode]`` without running ``_load_data``. When disabled,
+each call re-parses the file.
 
 Persistent storage example (set env vars before ``import lazyllm``)::
 
@@ -4950,7 +4947,7 @@ add_example('rag.readers.readerBase.LazyLLMReaderBase.use_reader_cache', '''\
 >>> reader = TxtReader().use_reader_cache(True)
 >>> nodes1 = reader('path/to/doc.txt')
 >>> nodes2 = reader('path/to/doc.txt')  # cache hit, _load_data not called
->>> nodes3 = reader('path/to/doc.txt', use_cache=False)  # skip algorithm-side cache
+>>> nodes3 = TxtReader().use_reader_cache(False)('path/to/doc.txt')  # cache disabled
 ''')
 
 add_example('rag.readers.MineruPDFReader', '''\

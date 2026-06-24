@@ -251,9 +251,10 @@ class PDFToMarkdownConverterAPI(kbc):
                 backend=self.mineru_backend,
                 upload_mode=self.upload_mode,
                 split_doc=False,
+                use_reader_cache=False,
             )
 
-            docs = reader(file=raw_path, use_cache=False)
+            docs = reader(file=raw_path)
 
             if not docs:
                 LOG.warning(f'MinerU returned no documents for: {raw_path}')
