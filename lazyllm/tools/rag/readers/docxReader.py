@@ -63,7 +63,8 @@ class DocxReader(_RichReader):
 
         return global_info
 
-    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
+                   **kwargs) -> List[DocNode]:
         if not isinstance(file, Path):
             file = Path(file)
 

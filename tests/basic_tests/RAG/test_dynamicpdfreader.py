@@ -74,6 +74,7 @@ class TestDynamicPDFReader:
             mock_cls.assert_called_once_with(
                 url='http://mock-paddle',
                 dynamic_auth=True,
+                use_reader_cache=True,
             )
 
     def test_unsupported_type_raises(self):
