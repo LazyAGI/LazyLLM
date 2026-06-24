@@ -29,9 +29,11 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     _cache_max_size = 1000
 
     def __init__(self, *args, return_trace: bool = True,
-                 use_reader_cache: bool = config['reader_cache'], **kwargs):
+                 use_reader_cache: Optional[Union[bool, str]] = None, **kwargs):
         super().__init__(return_trace=return_trace)
-        self._use_reader_cache = use_reader_cache
+        self._use_reader_cache = (
+            config['reader_cache'] if use_reader_cache is None else use_reader_cache
+        )
 
     @property
     def __reader_cache_hash__(self):
