@@ -1,8 +1,10 @@
 import json
 import tempfile
 import os
+import pytest
 
 from lazyllm.tools.writer.data_models import (
+    ResourceProfile,
     WritingTask,
     WritingContext,
     WritingOutline,
@@ -14,6 +16,7 @@ from lazyllm.tools.writer.data_models import (
     ReviewReport,
     WritingOutput,
 )
+from lazyllm.tools.writer.tools.base import WriterToolBase
 from lazyllm.tools.writer.utils import ArtifactModel, ToolResult, save_artifact_json, load_artifact_json
 
 
@@ -141,3 +144,59 @@ def test_standalone_save_load_functions():
         assert os.path.isabs(returned_path)
         loaded = load_artifact_json(returned_path, WritingOutline)
         assert loaded.title == "测试大纲"
+
+
+def test_load_artifact_schema_mismatch():
+    outline = WritingOutline(title="测试大纲")
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "outline.json")
+        save_artifact_json(outline, path)
+        with pytest.raises(ValueError, match="schema mismatch"):
+            load_artifact_json(path, WritingContext)
+
+
+def test_save_and_load_dict_list_artifacts():
+    data = [{"resource_id": "r1", "resource_role": "background"}]
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "profiles.json")
+        returned_path = save_artifact_json(
+            data,
+            path,
+            schema_name="lazyllm.tools.writer.artifacts.resource_profiles",
+        )
+        loaded = load_artifact_json(
+            returned_path,
+            expected_schema_name="lazyllm.tools.writer.artifacts.resource_profiles",
+        )
+        assert loaded == data
+
+
+def test_writer_tool_base_save_artifacts_metadata():
+    outline = WritingOutline(title="测试大纲", nodes=[OutlineNode(title="背景")])
+    context = WritingContext(context_id="ctx-1")
+    profiles = [ResourceProfile(resource_id="r1", resource_role="background")]
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterToolBase(artifact_store=d)
+        result = tool._save_artifacts(
+            {
+                "outline": outline,
+                "writing_context": context,
+                "resource_profiles": profiles,
+            },
+            filename_prefix="generate_outline",
+            primary_key="outline",
+            summary="Generated outline.",
+            counts={"outline_nodes": 1, "resource_profiles": 1},
+        )
+
+        assert result.artifact_path.endswith("generate_outline.outline.json")
+        assert result.context_path.endswith("generate_outline.writing_context.json")
+        assert result.metadata["artifact_key"] == "outline"
+        assert result.metadata["artifact_paths"]["resource_profiles"].endswith(
+            "generate_outline.resource_profiles.json"
+        )
+        assert result.metadata["schema_names"]["resource_profiles"] == (
+            "lazyllm.tools.writer.artifacts.resource_profiles"
+        )
+        assert result.metadata["counts"]["outline_nodes"] == 1
