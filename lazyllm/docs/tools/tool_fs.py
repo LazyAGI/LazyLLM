@@ -1811,6 +1811,60 @@ _add_fs_example('GoogleDriveFS', '''\
 >>> fs.ls('/root')
 ''')
 
+_add_fs_chinese('GoogleDriveFS.search', '''\
+使用 Google Drive 官方 files.list API 在在线云盘中搜索文件正文。支持一个或多个关键词；多个关键词按 AND 组合。可通过文件名、共享盘 ID 或直接父文件夹 ID 限定范围。
+
+Args:
+    keywords (str | List[str]): 一个关键词/短语，或多个关键词/短语。
+    file_name (str, optional): 精确文件名范围。
+    drive_id (str, optional): 共享盘 ID；设置后使用 corpora=drive。
+    folder_id (str, optional): 直接父文件夹 ID。
+    limit (int, optional): 最大结果数，范围 1 到 1000，默认 20。
+
+Returns:
+    List[Dict[str, Any]]: 匹配文件的元数据，包含 title、mime_type、google_drive_path、web_url、parents 和 drive_id。
+''')
+_add_fs_english('GoogleDriveFS.search', '''\
+Search online Google Drive content with the official files.list API. Accepts one or more keywords combined with AND, with optional exact file-name, shared-drive, and direct parent-folder scopes.
+
+Args:
+    keywords (str | List[str]): One keyword/phrase or multiple keywords/phrases.
+    file_name (str, optional): Exact file-name scope.
+    drive_id (str, optional): Shared-drive id; uses corpora=drive when set.
+    folder_id (str, optional): Direct parent-folder id.
+    limit (int, optional): Maximum results, from 1 to 1000. Defaults to 20.
+
+Returns:
+    List[Dict[str, Any]]: File metadata including title, mime_type, google_drive_path, web_url, parents, and drive_id.
+''')
+
+_add_fs_chinese('GoogleDriveFS.find', '''\
+仅按 Google Drive 文件名执行 Python 正则表达式查找。Drive API 用于按共享盘或父文件夹列出候选文件，正则匹配在本地完成，不检索文件正文。
+
+Args:
+    pattern (str): 应用于完整文件名的 Python 正则表达式。
+    drive_id (str, optional): 共享盘 ID。
+    folder_id (str, optional): 直接父文件夹 ID。
+    limit (int, optional): 最大匹配数，默认 50。
+    max_scan (int, optional): 最多检查的候选文件数，默认 1000，最大 10000。
+
+Returns:
+    List[Dict[str, Any]]: 文件名匹配的 Google Drive 文件元数据。
+''')
+_add_fs_english('GoogleDriveFS.find', '''\
+Find Google Drive files by applying a Python regular expression to file names only. The Drive API lists candidates within optional shared-drive or parent-folder scopes; file content is not searched.
+
+Args:
+    pattern (str): Python regular expression applied to the full file name.
+    drive_id (str, optional): Shared-drive id.
+    folder_id (str, optional): Direct parent-folder id.
+    limit (int, optional): Maximum matches. Defaults to 50.
+    max_scan (int, optional): Maximum candidate files inspected. Defaults to 1000, capped at 10000.
+
+Returns:
+    List[Dict[str, Any]]: Google Drive file metadata whose names match the pattern.
+''')
+
 # OneDriveFS
 _add_fs_chinese('OneDriveFS', '''\
 OneDrive 文件系统：基于 Microsoft Graph API，支持 ls、读写、mkdir、rm。
