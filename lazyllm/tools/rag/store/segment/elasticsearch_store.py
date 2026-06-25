@@ -368,9 +368,9 @@ class ElasticSearchStore(LazyLLMStoreBase):
         if RAG_KB_ID in criteria:
             _add_clause('kb_id', criteria.pop(RAG_KB_ID))
         if 'parent' in criteria:
-            must_clauses.append({'term': {'parent': criteria.pop('parent')}})
+            _add_clause('parent', criteria.pop('parent'))
         if 'number' in criteria:
-            must_clauses.append({'term': {'number': criteria.pop('number')}})
+            _add_clause('number', criteria.pop('number'))
 
         for k, v in criteria.items():
             field_key = k
