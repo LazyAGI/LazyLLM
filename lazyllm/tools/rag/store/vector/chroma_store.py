@@ -24,6 +24,7 @@ DEFAULT_INDEX_CONFIG = {
         'ef_construction': 200,
     }
 }
+EMPTY_METADATA_SENTINEL = '__lazyllm_empty_metadata__'
 
 
 class ChromaStore(EmbedResolveMixin, LazyLLMStoreBase):
@@ -37,6 +38,7 @@ class ChromaStore(EmbedResolveMixin, LazyLLMStoreBase):
         assert uri or (dir), 'uri or dir must be provided'
         self._index_kwargs = index_kwargs or DEFAULT_INDEX_CONFIG
         self._client_kwargs = client_kwargs or {}
+        self._index_kwargs_compat_warning_sent = False
         if dir:
             self._dir = dir
         else:
@@ -103,25 +105,62 @@ class ChromaStore(EmbedResolveMixin, LazyLLMStoreBase):
             self._client = chromadb.HttpClient(host=self._host, port=self._port, **self._client_kwargs)
             LOG.success(f'Initialzed chroma in host: {self._host}, port: {self._port}')
 
+    def _collection_kwargs(self, embed_key: str):
+        index_kwargs = self._index_kwargs
+        if isinstance(index_kwargs, list):
+            matched = next((item for item in index_kwargs
+                            if isinstance(item, dict) and item.get('embed_key') == embed_key), None)
+            fallback = next((item for item in index_kwargs
+                             if isinstance(item, dict) and item.get('embed_key') is None), None)
+            index_kwargs = matched or fallback
+        if not index_kwargs:
+            return {}
+        if isinstance(index_kwargs, dict):
+            index_kwargs = index_kwargs.copy()
+            index_kwargs.pop('embed_key', None)
+            if any(key.startswith('hnsw:') for key in index_kwargs):
+                index_kwargs = chromadb.api.collection_configuration\
+                    .create_collection_configuration_from_legacy_metadata_dict(index_kwargs)
+        if hasattr(index_kwargs, 'to_json') or isinstance(index_kwargs, dict):
+            return {'configuration': index_kwargs}
+        if not self._index_kwargs_compat_warning_sent:
+            LOG.warning(f'[Chroma Store] Unsupported index kwargs type: {type(index_kwargs)}')
+            self._index_kwargs_compat_warning_sent = True
+        return {}
+
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         try:
-            # NOTE chroma only support single embedding for each collection
             if not data:
                 LOG.warning(f'[Chroma Store - upsert] No data to upsert for collection {collection_name}')
-                return
-            data_embeddings = data[0].get('embedding', {})
-            if not data_embeddings: return
-            embed_keys = list(data_embeddings.keys())
+                return True
+
+            # NOTE chroma only support single embedding for each collection
+            embed_keys = []
+            seen_embed_keys = set()
+            for item in data:
+                for embed_key, embedding in item.get('embedding', {}).items():
+                    if embedding is None:
+                        continue
+                    if embed_key not in seen_embed_keys:
+                        seen_embed_keys.add(embed_key)
+                        embed_keys.append(embed_key)
+
+            if not embed_keys:
+                LOG.warning(f'[Chroma Store - upsert] No embedding payload for collection {collection_name}')
+                return True
+
             for embed_key in embed_keys:
+                rows = [item for item in data if item.get('embedding', {}).get(embed_key) is not None]
                 with self._ddl_lock:
                     self._resolve_missing_embed_specs({embed_key})
                 if embed_key not in self._embed_datatypes:
                     raise ValueError(f'Embed key {embed_key} not found in embed_datatypes')
                 collection = self._client.get_or_create_collection(
-                    name=self._gen_collection_name(collection_name, embed_key), configuration=self._index_kwargs)
-                for i in range(0, len(data), INSERT_BATCH_SIZE):
-                    collection.upsert(**self._serialize_data(data[i: i + INSERT_BATCH_SIZE], embed_key))
+                    name=self._gen_collection_name(collection_name, embed_key),
+                    **self._collection_kwargs(embed_key))
+                for i in range(0, len(rows), INSERT_BATCH_SIZE):
+                    collection.upsert(**self._serialize_data(rows[i: i + INSERT_BATCH_SIZE], embed_key))
             return True
         except Exception as e:
             LOG.error(f'[Chroma Store - upsert] Failed to create collection {collection_name}: {e}')
@@ -131,10 +170,15 @@ class ChromaStore(EmbedResolveMixin, LazyLLMStoreBase):
     def _serialize_data(self, data: List[dict], embed_key: str) -> List[dict]:
         res = {'ids': [], 'embeddings': [], 'metadatas': []}
         for d in data:
+            global_meta = {
+                self._gen_global_meta_key(k): v for k, v in d.get('global_meta', {}).items()
+                if k in self._global_metadata_desc
+            }
+            if not global_meta:
+                global_meta = {EMPTY_METADATA_SENTINEL: True}
             res['ids'].append(d.get('uid'))
             res['embeddings'].append(d.get('embedding', {}).get(embed_key))
-            res['metadatas'].append({self._gen_global_meta_key(k): v for k, v in d.get('global_meta', {}).items()
-                                     if k in self._global_metadata_desc})
+            res['metadatas'].append(global_meta)
         return res
 
     @override
@@ -200,6 +244,7 @@ class ChromaStore(EmbedResolveMixin, LazyLLMStoreBase):
                         entry['global_meta'] = {
                             k[len(GLOBAL_META_KEY_PREFIX):]: v
                             for k, v in meta.items()
+                            if k.startswith(GLOBAL_META_KEY_PREFIX)
                         }
                     entry['embedding'][embed_key] = list(emb)
             return list(res.values())

@@ -13,14 +13,32 @@ from types import GeneratorType
 from typing import Callable
 
 
+def _read_arg_file(file_path, *, remove=True):
+    try:
+        with open(file_path, encoding='utf-8') as file_obj:
+            return file_obj.read()
+    finally:
+        if remove:
+            try:
+                os.remove(file_path)
+            except FileNotFoundError:
+                pass
+
+
 def _inject_pythonpath(argv):
     pythonpath = None
     for index, arg in enumerate(argv):
         if arg == '--pythonpath' and index + 1 < len(argv):
             pythonpath = argv[index + 1]
             break
+        if arg == '--pythonpath_file' and index + 1 < len(argv):
+            pythonpath = _read_arg_file(argv[index + 1], remove=False)
+            break
         if arg.startswith('--pythonpath='):
             pythonpath = arg.split('=', 1)[1]
+            break
+        if arg.startswith('--pythonpath_file='):
+            pythonpath = _read_arg_file(arg.split('=', 1)[1], remove=False)
             break
     if pythonpath:
         pythonpath = os.path.abspath(pythonpath)
@@ -51,26 +69,52 @@ parser.add_argument('--open_ip', type=str, default='0.0.0.0',
                     help='IP: Receive for Client')
 parser.add_argument('--open_port', type=int, default=17782,
                     help='Port: Receive for Client')
-parser.add_argument('--function', required=True)
+parser.add_argument('--function')
 parser.add_argument('--before_function')
 parser.add_argument('--after_function')
 parser.add_argument('--pythonpath')
 parser.add_argument('--num_replicas', type=int, default=1, help='num of ray replicas')
 parser.add_argument('--security_key', type=str, default=None, help='security key')
 parser.add_argument('--defined_pos', type=str, default=None, help='user defined positional')
+parser.add_argument('--function_file')
+parser.add_argument('--before_function_file')
+parser.add_argument('--after_function_file')
+parser.add_argument('--defined_pos_file')
+parser.add_argument('--pythonpath_file')
+parser.add_argument('--security_key_file')
 args = parser.parse_args()
 
-func = load_obj(args.function)
-if args.before_function:
-    before_func = load_obj(args.before_function)
-if args.after_function:
-    after_func = load_obj(args.after_function)
+
+def _read_arg(name, value, file_path, *, required=False):
+    if value and file_path:
+        parser.error(f'Cannot specify both --{name} and --{name}_file')
+    if value:
+        return value
+    if file_path:
+        return _read_arg_file(file_path)
+    if required:
+        parser.error(f'`--{name}` or `--{name}_file` is required')
+    return None
+
+
+function_arg = _read_arg('function', args.function, args.function_file, required=True)
+before_function_arg = _read_arg('before_function', args.before_function, args.before_function_file)
+after_function_arg = _read_arg('after_function', args.after_function, args.after_function_file)
+defined_pos_arg = _read_arg('defined_pos', args.defined_pos, args.defined_pos_file)
+_read_arg('pythonpath', args.pythonpath, args.pythonpath_file)
+security_key_arg = _read_arg('security_key', args.security_key, args.security_key_file)
+
+func = load_obj(function_arg)
+if before_function_arg:
+    before_func = load_obj(before_function_arg)
+if after_function_arg:
+    after_func = load_obj(after_function_arg)
 
 
 _register_trim_module({'__main__': ['async_wrapper', 'impl']})
 _err_msg = ('service of ServerModule execuate failed.\n\nThe above exception was the direct cause '
             'of the following exception in service of ServerModule')
-_err_msg += (f' defined at `{load_obj(args.defined_pos)}`' if args.defined_pos else '') + ':\n'
+_err_msg += (f' defined at `{load_obj(defined_pos_arg)}`' if defined_pos_arg else '') + ':\n'
 
 
 app = fastapi.FastAPI()
@@ -89,7 +133,7 @@ async def async_wrapper(func, *args, **kwargs):
 def security_check(f: Callable):
     @functools.wraps(f)
     async def wrapper(request: fastapi.Request):
-        if args.security_key and args.security_key != request.headers.get('Security-Key'):
+        if security_key_arg and security_key_arg != request.headers.get('Security-Key'):
             return fastapi.responses.Response(content='Authentication failed', status_code=401)
         return (await f(request)) if inspect.iscoroutinefunction(f) else f(request)
     return wrapper
@@ -128,7 +172,7 @@ async def generate(request: fastapi.Request): # noqa C901
         globals._init_sid(request.headers.get('Session-ID'))
         globals.unpickle_and_update_data(request.headers.get('Global-Parameters'))
 
-        if args.before_function:
+        if before_function_arg:
             assert (callable(before_func)), 'before_func must be callable'
             r = inspect.getfullargspec(before_func)
             if isinstance(input, kwargs) or (
@@ -153,7 +197,7 @@ async def generate(request: fastapi.Request): # noqa C901
                 for o in output:
                     yield impl(o)
             return fastapi.responses.StreamingResponse(generate_stream(), media_type='text/plain')
-        elif args.after_function:
+        elif after_function_arg:
             assert (callable(after_func)), 'after_func must be callable'
             r = inspect.getfullargspec(after_func)
             assert len(r.args) > 0 and r.varargs is None and r.varkw is None
