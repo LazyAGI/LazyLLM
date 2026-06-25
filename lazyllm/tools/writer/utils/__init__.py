@@ -1,8 +1,17 @@
-from .artifact import ArtifactModel, ToolResult, save_artifact_json, load_artifact_json
+from .artifact import (
+    SCHEMA_VERSION,
+    Artifact,
+    ArtifactModel,
+    ToolResult,
+    load_artifact_json,
+    save_artifact_json,
+)
 
 __all__ = [
+    "SCHEMA_VERSION",
+    "Artifact",
     "ArtifactModel",
     "ToolResult",
-    "save_artifact_json",
     "load_artifact_json",
+    "save_artifact_json",
 ]

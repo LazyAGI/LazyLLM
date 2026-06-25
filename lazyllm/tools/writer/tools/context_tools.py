@@ -49,10 +49,9 @@ class WriterContextTools(WriterToolBase):
 
         result = self._save_artifacts(
             {"writing_context": context},
-            filename_prefix="create_writing_context",
+            step_name="create_writing_context",
             primary_key="writing_context",
             summary="Created writing context.",
-            tool_name="create_writing_context",
             counts={
                 "resource_profiles": len(profiles),
                 "facts": len(context.facts),
@@ -92,10 +91,9 @@ class WriterContextTools(WriterToolBase):
 
         result = self._save_artifacts(
             {"writing_context": writing_context},
-            filename_prefix="update_writing_context",
+            step_name="update_writing_context",
             primary_key="writing_context",
             summary="Updated writing context.",
-            tool_name="update_writing_context",
             counts={
                 "facts": len(writing_context.facts),
                 "block_summaries": len(writing_context.block_summaries),

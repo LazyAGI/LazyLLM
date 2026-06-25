@@ -184,19 +184,36 @@ def test_writer_tool_base_save_artifacts_metadata():
                 "writing_context": context,
                 "resource_profiles": profiles,
             },
-            filename_prefix="generate_outline",
+            step_name="generate_outline",
             primary_key="outline",
             summary="Generated outline.",
             counts={"outline_nodes": 1, "resource_profiles": 1},
         )
 
-        assert result.artifact_path.endswith("generate_outline.outline.json")
-        assert result.context_path.endswith("generate_outline.writing_context.json")
+        assert result.artifact_path.endswith("outline.json")
+        assert result.context_path.endswith("writing_context.json")
         assert result.metadata["artifact_key"] == "outline"
+        assert result.metadata["step_name"] == "generate_outline"
         assert result.metadata["artifact_paths"]["resource_profiles"].endswith(
-            "generate_outline.resource_profiles.json"
+            "resource_profiles.json"
         )
         assert result.metadata["schema_names"]["resource_profiles"] == (
             "lazyllm.tools.writer.artifacts.resource_profiles"
         )
         assert result.metadata["counts"]["outline_nodes"] == 1
+
+
+def test_writer_tool_base_save_artifacts_defaults_primary_key():
+    outline = WritingOutline(title="测试大纲")
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterToolBase(artifact_store=d)
+        result = tool._save_artifacts(
+            {"outline": outline},
+            step_name="generate_outline",
+            summary="Generated outline.",
+        )
+
+        assert result.artifact_path.endswith("outline.json")
+        assert result.metadata["artifact_key"] == "outline"
+        assert result.metadata["step_name"] == "generate_outline"

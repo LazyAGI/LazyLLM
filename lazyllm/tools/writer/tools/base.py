@@ -85,25 +85,28 @@ class WriterToolBase(ModuleBase):
         self,
         artifacts: Dict[str, Any],
         *,
-        filename_prefix: str,
-        primary_key: str,
+        primary_key: Optional[str] = None,
         context_key: Optional[str] = "writing_context",
         summary: str = "",
-        tool_name: Optional[str] = None,
+        step_name: Optional[str] = None,
         status: str = "success",
         warnings: Optional[List[str]] = None,
         counts: Optional[Dict[str, Any]] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> ToolResult:
-        if primary_key not in artifacts:
-            raise ValueError(f"primary_key {primary_key!r} is not present in artifacts.")
+        if not artifacts:
+            raise ValueError("artifacts must contain at least one artifact.")
+
+        resolved_primary_key = primary_key or next(iter(artifacts))
+        if resolved_primary_key not in artifacts:
+            raise ValueError(f"primary_key {resolved_primary_key!r} is not present in artifacts.")
 
         artifact_paths: Dict[str, str] = {}
         schema_names: Dict[str, str] = {}
 
         for artifact_key, artifact in artifacts.items():
             schema_name = self._artifact_schema_name(artifact, artifact_key)
-            filename = f"{filename_prefix}.{artifact_key}.json"
+            filename = f"{artifact_key}.json"
             artifact_paths[artifact_key] = self._write_single_artifact(
                 artifact,
                 filename,
@@ -113,8 +116,8 @@ class WriterToolBase(ModuleBase):
             schema_names[artifact_key] = schema_name
 
         metadata = {
-            "tool_name": tool_name or type(self).__name__,
-            "artifact_key": primary_key,
+            "step_name": step_name or type(self).__name__,
+            "artifact_key": resolved_primary_key,
             "artifact_paths": artifact_paths,
             "schema_names": schema_names,
             "counts": counts or {},
@@ -124,7 +127,7 @@ class WriterToolBase(ModuleBase):
         }
 
         return ToolResult(
-            artifact_path=artifact_paths[primary_key],
+            artifact_path=artifact_paths[resolved_primary_key],
             context_path=artifact_paths.get(context_key or ""),
             summary=summary,
             metadata=metadata,

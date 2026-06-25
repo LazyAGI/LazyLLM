@@ -40,9 +40,9 @@ def test_create_writing_context_tool_result():
             doc_ir=doc_ir.model_dump(),
         )
 
-        assert result["artifact_path"].endswith("create_writing_context.writing_context.json")
+        assert result["artifact_path"].endswith("writing_context.json")
         assert result["context_path"] == result["artifact_path"]
-        assert result["metadata"]["tool_name"] == "create_writing_context"
+        assert result["metadata"]["step_name"] == "create_writing_context"
         assert result["metadata"]["artifact_key"] == "writing_context"
         assert result["metadata"]["counts"]["facts"] == 1
 
@@ -66,8 +66,8 @@ def test_update_writing_context_tool_result_from_paths():
         tool = WriterContextTools(artifact_store=d)
         result = tool.update_writing_context(content_artifact=output_path, context=context_path)
 
-        assert result["artifact_path"].endswith("update_writing_context.writing_context.json")
-        assert result["metadata"]["tool_name"] == "update_writing_context"
+        assert result["artifact_path"].endswith("writing_context.json")
+        assert result["metadata"]["step_name"] == "update_writing_context"
         assert result["metadata"]["counts"]["block_summaries"] == 1
 
         updated = load_artifact_json(result["context_path"], WritingContext)
