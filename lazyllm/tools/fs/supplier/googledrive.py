@@ -91,6 +91,13 @@ class GoogleDriveFS(LazyLLMFSBase):
         return token, expires_at, ''
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
+        '''List Google Drive directory entries.
+
+        Args:
+            path (str): Directory path or folder id.
+            detail (bool): Return metadata dictionaries when True, names when False.
+            kwargs (dict): Extra provider-specific options.
+        '''
         parts = self._parse_path(path)
         if parts and parts[0] == 'drive' and len(parts) >= 2:
             drive_id = parts[1]
@@ -130,6 +137,12 @@ class GoogleDriveFS(LazyLLMFSBase):
         return results
 
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
+        '''Get Google Drive file metadata.
+
+        Args:
+            path (str): File or directory path.
+            kwargs (dict): Extra provider-specific options.
+        '''
         parts = self._parse_path(path)
         if not parts:
             return self._entry('/', ftype='directory')
@@ -224,6 +237,31 @@ class GoogleDriveFS(LazyLLMFSBase):
                     break
         return matches
 
+    def read(self, path: str) -> str:
+        '''Read a Google Drive file as UTF-8 text.
+
+        Args:
+            path (str): File path.
+        '''
+        return super().read(path)
+
+    def read_file(self, path: str) -> str:
+        '''Read a Google Drive file as UTF-8 text.
+
+        Args:
+            path (str): File path.
+        '''
+        return super().read_file(path)
+
+    def write(self, path: str, content: str) -> None:
+        '''Write UTF-8 text to a Google Drive file.
+
+        Args:
+            path (str): File path.
+            content (str): Text content.
+        '''
+        return super().write(path, content)
+
     def _open(self, path: str, mode: str = 'rb',
               block_size: Optional[int] = None,
               autocommit: bool = True,
@@ -257,6 +295,15 @@ class GoogleDriveFS(LazyLLMFSBase):
 
     def rmdir(self, path: str) -> None:
         self.rm_file(path)
+
+    def rm(self, path: str, recursive: bool = False) -> None:
+        '''Remove a Google Drive file or directory.
+
+        Args:
+            path (str): File or directory path.
+            recursive (bool): Recursively remove directory contents when True.
+        '''
+        return super().rm(path, recursive=recursive)
 
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         if self.isdir(path1):  # type: ignore[attr-defined]
