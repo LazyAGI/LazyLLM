@@ -44,10 +44,14 @@ class WriterResourceTools(WriterToolBase):
         protocol, space_id, real_path = _fs_client.FS._parse(locator)
         fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
 
-        resolved_ref = fs.resolve_link(real_path) or {}
-        plain_text = fs.read_bytes(real_path).decode("utf-8")
-        document_id = fs.get_document_id(real_path)
-        raw_blocks = fs.get_doc_blocks(real_path, with_descendants=True) or []
+        if hasattr(fs, "resolve_link"):
+            resolved_ref = fs.resolve_link(real_path) or {}
+        else:
+            resolved_ref = {}
+        plain_text = fs.read_bytes(real_path).decode("utf-8", errors="replace")
+        document_id = fs.get_document_id(real_path) if hasattr(fs, "get_document_id") else ""
+        raw_blocks = fs.get_doc_blocks(real_path, with_descendants=True) if hasattr(fs, "get_doc_blocks") else []
+        raw_blocks = raw_blocks or []
 
         bt_map = _BLOCK_TYPE_MAPS.get(protocol, {})
         blocks: List[DocBlock] = []
@@ -57,6 +61,8 @@ class WriterResourceTools(WriterToolBase):
             bt = raw.get("block_type", "block")
             if isinstance(bt, int):
                 bt = bt_map.get(bt, "block")
+            if bt not in DocBlock.model_fields["block_type"].annotation.__args__:
+                bt = "block"
             blocks.append(DocBlock(
                 block_id=str(raw.get("block_id") or ""),
                 block_type=bt,
@@ -109,7 +115,8 @@ class WriterResourceTools(WriterToolBase):
 
         fs.write_file(real_path, markdown.encode("utf-8"))
 
-        resolved_ref = fs.resolve_link(real_path) or {}
+        resolved_ref = fs.resolve_link(real_path) if hasattr(fs, "resolve_link") else {}
+        resolved_ref = resolved_ref or {}
         doc_id = resolved_ref.get("object_id") or resolved_ref.get("obj_token") or ""
 
         result = self._save_artifacts(
