@@ -14,6 +14,7 @@ from .writing import (
     DraftSection,
     OutlineNode,
     SectionInstruction,
+    SectionInstructionList,
     WritingOutline,
     WritingSubTask,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "DraftSection",
     "OutlineNode",
     "SectionInstruction",
+    "SectionInstructionList",
     "WritingOutline",
     "WritingSubTask",
     "Anchor",

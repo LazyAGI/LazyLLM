@@ -1,7 +1,24 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from ..utils.artifact import ArtifactModel
+
+
+class OutlineNodeConstraints(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    section_goal: Optional[str] = None
+    required_points: List[str] = Field(default_factory=list)
+    fact_constraints: List[str] = Field(default_factory=list)
+    style_constraints: List[str] = Field(default_factory=list)
+    relation_constraints: List[str] = Field(default_factory=list)
+    source_refs: List[str] = Field(default_factory=list)
+    min_words: Optional[int] = None
+    max_words: Optional[int] = None
+    pov: Optional[str] = None
+    tone: Optional[str] = None
+    must_include: List[str] = Field(default_factory=list)
+    must_avoid: List[str] = Field(default_factory=list)
 
 
 class OutlineNode(BaseModel):
@@ -9,7 +26,7 @@ class OutlineNode(BaseModel):
     title: str
     level: int = 1
     instruction: Optional[str] = None
-    constraints: Dict[str, Any] = Field(default_factory=dict)
+    constraints: OutlineNodeConstraints = Field(default_factory=OutlineNodeConstraints)
     children: List[OutlineNode] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
 
@@ -38,6 +55,13 @@ class SectionInstruction(BaseModel):
     expected_blocks: List[str] = Field(default_factory=list)
     pending_subtasks: List[str] = Field(default_factory=list)
     revision_notes: List[str] = Field(default_factory=list)
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SectionInstructionList(ArtifactModel):
+    instruction_set_id: Optional[str] = None
+    outline_id: Optional[str] = None
+    instructions: List[SectionInstruction] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
