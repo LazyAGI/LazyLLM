@@ -10,7 +10,8 @@ from lazyllm.tools.writer.data_models import (
     WritingOutput,
     WritingTask,
 )
-from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
+from lazyllm.tools.writer.data_models.task import InputResource
+from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools, _read_resource_content
 from lazyllm.tools.writer.tools.context_tools import WriterContextTools
 from lazyllm.tools.writer.utils import load_artifact_json
 
@@ -272,4 +273,357 @@ def test_write_to_document_non_document_fs():
 
     assert result["metadata"]["extra"]["document_id"] == ""
 
+
+# ---------------------------------------------------------------------------
+# _read_resource_content
+# ---------------------------------------------------------------------------
+
+def test_read_content_text():
+    res = InputResource(resource_type="text", inline_text="本产品要求支持私有化部署")
+    assert _read_resource_content(res) == "本产品要求支持私有化部署"
+
+
+def test_read_content_text_empty():
+    res = InputResource(resource_type="text", inline_text="")
+    assert _read_resource_content(res) == ""
+
+
+def test_read_content_document():
+    res = InputResource(resource_type="document", uri="feishu://~docx/doc-1")
+
+    class _FakeFS:
+        def read_bytes(self, *_):
+            return b"# Title\n\n## Content"
+
+    with patch("lazyllm.tools.fs.client.FS._parse", return_value=("feishu", None, "~docx/doc-1")):
+        with patch("lazyllm.tools.fs.client.FS._get_or_create_fs", return_value=_FakeFS()):
+            assert _read_resource_content(res) == "# Title\n\n## Content"
+
+
+def test_read_content_file_pdf():
+    from pypdf import PdfWriter
+    from pathlib import Path
+    import tempfile
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "test.pdf"
+        with open(path, "wb") as f:
+            writer.write(f)
+        res = InputResource(resource_type="file", uri=str(path))
+        content = _read_resource_content(res)
+    assert isinstance(content, str)
+
+
+def test_read_content_file_markdown():
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "test.md"
+        path.write_text("# Hello\n\nMarkdown content.", encoding="utf-8")
+        res = InputResource(resource_type="file", uri=str(path))
+        content = _read_resource_content(res)
+    assert "Markdown content" in content
+    assert "# Hello" in content
+
+
+def test_read_content_file_docx():
+    from docx import Document
+    import tempfile
+    from pathlib import Path
+    doc = Document()
+    doc.add_heading("Test Heading", level=1)
+    doc.add_paragraph("This is a paragraph in docx.")
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "test.docx"
+        doc.save(str(path))
+        res = InputResource(resource_type="file", uri=str(path))
+        content = _read_resource_content(res)
+    assert "Test Heading" in content
+    assert "paragraph in docx" in content
+
+
+def test_read_content_file_pptx():
+    import pytest
+    try:
+        from pptx import Presentation
+    except ImportError:
+        pytest.skip("python-pptx not installed")
+
+    import tempfile
+    from pathlib import Path
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[0])
+    slide.shapes.title.text = "PPTX Title"
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "test.pptx"
+        prs.save(str(path))
+        res = InputResource(resource_type="file", uri=str(path))
+        try:
+            content = _read_resource_content(res)
+        except ImportError:
+            pytest.skip("transformers not installed for PPTXReader")
+    assert "PPTX Title" in content
+
+
+def test_read_content_file_csv():
+    import pandas as pd
+    import tempfile
+    from pathlib import Path
+    df = pd.DataFrame({"name": ["张三", "李四"], "age": [30, 25]})
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "test.csv"
+        df.to_csv(path, index=False)
+        res = InputResource(resource_type="file", uri=str(path))
+        content = _read_resource_content(res)
+    assert isinstance(content, str)
+    assert "张三" in content or "李四" in content
+
+
+def test_read_content_image():
+    from PIL import Image
+    import tempfile
+    from pathlib import Path
+    img = Image.new("RGB", (10, 10), color="red")
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "test.png"
+        img.save(str(path))
+        res = InputResource(resource_type="image", uri=str(path))
+        content = _read_resource_content(res)
+    assert content == ""  # no OCR by default
+
+
+def test_read_content_image_with_summary():
+    res = InputResource(resource_type="image", uri="/tmp/img.png",
+                        summary="红色方块图片")
+    assert _read_resource_content(res) == "红色方块图片"
+
+
+def test_read_content_url_fallback():
+    res = InputResource(resource_type="url",
+                        uri="https://example.com",
+                        summary="网页摘要")
+    assert _read_resource_content(res) == "网页摘要"
+
+
+def test_read_content_kb_fallback():
+    res = InputResource(resource_type="kb",
+                        kb_id="kb-123",
+                        summary="知识库检索结果摘要")
+    assert _read_resource_content(res) == "知识库检索结果摘要"
+
+
+def test_read_content_no_summary_fallback():
+    res = InputResource(resource_type="url", uri="https://example.com")
+    assert _read_resource_content(res) == ""
+
+
+# ---------------------------------------------------------------------------
+# profile_resources
+# ---------------------------------------------------------------------------
+
+def _make_llm_result(**overrides):
+    return ResourceProfile(
+        resource_id="r1",
+        resource_role=overrides.pop("resource_role", "spec"),
+        template_usage=overrides.pop("template_usage", "structure"),
+        summary=overrides.pop("summary", "LLM generated summary"),
+        key_facts=overrides.pop("key_facts", ["fact1", "fact2"]),
+        style_notes=overrides.pop("style_notes", ["formal", "technical"]),
+        confidence=overrides.pop("confidence", 0.9),
+        extracted_constraints=overrides.pop("extracted_constraints", {"format": "markdown"}),
+        extracted_outline=overrides.pop("extracted_outline", None),
+        **overrides,
+    )
+
+
+def test_profile_resources_text_no_llm():
+    task = WritingTask(query="写方案", task_type="write")
+    res = InputResource(resource_type="text", inline_text="需求文档",
+                        summary="用户摘要", resource_id="r1",
+                        meta={"role": "spec", "template": "structure"})
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d)
+        result = tool.profile_resources(
+            task=task.model_dump(),
+            input_resources=[res.model_dump()],
+        )
+
+        assert result["metadata"]["counts"]["resource_profiles"] == 1
+        with open(result["artifact_path"]) as f:
+            import json
+            profiles = json.load(f)["data"]
+
+        assert profiles[0]["resource_id"] == "r1"
+        assert profiles[0]["resource_role"] == "spec"
+        assert profiles[0]["template_usage"] == "structure"
+        assert profiles[0]["summary"] == "用户摘要"
+        assert profiles[0]["key_facts"] == []
+        assert profiles[0]["style_notes"] == []
+        assert profiles[0]["confidence"] == 1.0
+        assert profiles[0]["extracted_constraints"] == {}
+        assert profiles[0]["extracted_outline"] is None
+
+
+def test_profile_resources_text_with_llm():
+    task = WritingTask(query="写方案", task_type="write")
+    res = InputResource(resource_type="text", inline_text="需求文档",
+                        resource_id="r1")
+
+    llm_result = _make_llm_result(
+        resource_role="spec", template_usage="both",
+        summary="LLM summary", key_facts=["hello", "world"],
+        style_notes=["casual"], confidence=0.85,
+        extracted_constraints={"word_limit": "5000"},
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d, llm=MagicMock())
+        with patch.object(tool, "_call_llm_structured", return_value=llm_result):
+            result = tool.profile_resources(
+                task=task.model_dump(),
+                input_resources=[res.model_dump()],
+            )
+
+        with open(result["artifact_path"]) as f:
+            import json
+            profiles = json.load(f)["data"]
+
+        p = profiles[0]
+        assert p["resource_role"] == "spec"
+        assert p["template_usage"] == "both"
+        assert p["summary"] == "LLM summary"
+        assert p["key_facts"] == ["hello", "world"]
+        assert p["style_notes"] == ["casual"]
+        assert p["confidence"] == 0.85
+        assert p["extracted_constraints"] == {"word_limit": "5000"}
+
+
+def test_profile_resources_llm_exception_fallback():
+    task = WritingTask(query="写方案", task_type="write")
+    res = InputResource(resource_type="text", inline_text="需求文档",
+                        summary="fallback summary", resource_id="r1")
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d, llm=MagicMock())
+        with patch.object(tool, "_call_llm_structured",
+                          side_effect=RuntimeError("LLM down")):
+            result = tool.profile_resources(
+                task=task.model_dump(),
+                input_resources=[res.model_dump()],
+            )
+
+        with open(result["artifact_path"]) as f:
+            import json
+            profiles = json.load(f)["data"]
+
+        p = profiles[0]
+        assert p["resource_role"] == "background"
+        assert p["summary"] == "fallback summary"
+        assert p["key_facts"] == []
+        assert p["confidence"] == 1.0
+
+
+def test_profile_resources_empty_inputs():
+    task = WritingTask(query="写方案", task_type="write")
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d)
+        result = tool.profile_resources(
+            task=task.model_dump(),
+            input_resources=[],
+        )
+
+        assert result["metadata"]["counts"]["resource_profiles"] == 0
+        with open(result["artifact_path"]) as f:
+            import json
+            profiles = json.load(f)["data"]
+        assert profiles == []
+
+
+def test_profile_resources_multi():
+    task = WritingTask(query="写方案", task_type="write")
+    resources = [
+        InputResource(resource_type="text", inline_text="需求文档",
+                      resource_id="r1"),
+        InputResource(resource_type="text", inline_text="背景材料",
+                      resource_id="r2"),
+        InputResource(resource_type="text", inline_text="范文示例",
+                      resource_id="r3"),
+    ]
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d)
+        result = tool.profile_resources(
+            task=task.model_dump(),
+            input_resources=[r.model_dump() for r in resources],
+        )
+
+        assert result["metadata"]["counts"]["resource_profiles"] == 3
+        with open(result["artifact_path"]) as f:
+            import json
+            profiles = json.load(f)["data"]
+        assert [p["resource_id"] for p in profiles] == ["r1", "r2", "r3"]
+
+
+def test_profile_resources_meta_overrides():
+    task = WritingTask(query="写方案", task_type="write")
+    res = InputResource(resource_type="text", inline_text="内容",
+                        resource_id="r1",
+                        meta={"role": "example", "template": "style"})
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d)
+        result = tool.profile_resources(
+            task=task.model_dump(),
+            input_resources=[res.model_dump()],
+        )
+
+        with open(result["artifact_path"]) as f:
+            import json
+            profiles = json.load(f)["data"]
+
+        p = profiles[0]
+        assert p["resource_role"] == "example"
+        assert p["template_usage"] == "style"
+
+
+def test_profile_resources_content_fallback():
+    task = WritingTask(query="写方案", task_type="write")
+    res = InputResource(resource_type="url", uri="https://x.com",
+                        resource_id="r1")
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d)
+        result = tool.profile_resources(
+            task=task.model_dump(),
+            input_resources=[res.model_dump()],
+        )
+
+        with open(result["artifact_path"]) as f:
+            import json
+            profiles = json.load(f)["data"]
+
+        p = profiles[0]
+        assert p["summary"] == ""
+
+
+def test_profile_resources_artifact_structure():
+    task = WritingTask(query="写方案", task_type="write",
+                       constraints={"word_limit": "5000"})
+    res = InputResource(resource_type="text", inline_text="需求文档")
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d)
+        result = tool.profile_resources(
+            task=task.model_dump(),
+            input_resources=[res.model_dump()],
+        )
+
+        assert result["artifact_path"].endswith("resource_profiles.json")
+        assert result["metadata"]["step_name"] == "profile_resources"
+        assert result["metadata"]["artifact_key"] == "resource_profiles"
+        assert result["metadata"]["status"] == "success"
 

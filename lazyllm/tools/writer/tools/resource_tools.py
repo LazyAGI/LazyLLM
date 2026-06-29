@@ -3,7 +3,9 @@ from typing import Any, Dict, List
 
 from .base import WriterToolBase
 from ..data_models.docir import DocBlock, DocIR
-from ..data_models.task import TargetDocument
+from ..data_models.resource import ResourceProfile
+from ..data_models.task import InputResource, TargetDocument, WritingTask
+from ..prompts.profile_resources import RESOURCE_PROFILE_PROMPT
 
 _BLOCK_TYPE_MAPS: Dict[str, Dict[Any, str]] = {
     "feishu": {
@@ -17,6 +19,32 @@ _BLOCK_TYPE_MAPS: Dict[str, Dict[Any, str]] = {
 }
 
 
+def _read_resource_content(res: InputResource) -> str:
+    """InputResource → plain text. Delegates to existing LazyLLM systems."""
+    if res.resource_type == "text":
+        return res.inline_text or ""
+
+    if res.resource_type == "document":
+        import lazyllm.tools.fs.client as _fs_client
+        protocol, space_id, real_path = _fs_client.FS._parse(res.uri or "")
+        fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
+        return fs.read_bytes(real_path).decode("utf-8")
+
+    if res.resource_type in ("file", "table", "slide"):
+        from pathlib import Path
+        from lazyllm.tools.rag.dataReader import SimpleDirectoryReader
+        reader = SimpleDirectoryReader(input_files=[str(res.uri)])
+        nodes = reader._load_data()
+        content = "\n".join(n.text for n in nodes if n.text)
+        return content if content.strip() else ""
+
+    if res.resource_type == "image":
+        return res.summary or ""
+
+    # url / kb — no ready gateway yet
+    return res.summary or ""
+
+
 class WriterResourceTools(WriterToolBase):
     __public_apis__ = [
         "profile_resources",
@@ -28,10 +56,66 @@ class WriterResourceTools(WriterToolBase):
         self,
         task: Any,
         input_resources: Any = None,
-        context: Any = None,
     ) -> dict:
         """Profile input resources for the writing task."""
-        raise NotImplementedError("profile_resources is not implemented yet.")
+        writing_task = self._unified_model(task, WritingTask)
+        inputs = self._unified_models(input_resources, InputResource)
+
+        profiles: List[ResourceProfile] = []
+        for res in inputs:
+            content = _read_resource_content(res)
+
+            resource_role = res.meta.get("role", "background")
+            template_usage = res.meta.get("template", "none")
+            summary = res.summary or (content[:500] if content else "")
+            key_facts: List[str] = []
+            style_notes_list: List[str] = []
+            confidence = 1.0
+            extracted_constraints: Dict[str, Any] = {}
+            extracted_outline = None
+
+            if self.llm is not None and content.strip():
+                try:
+                    prompt = RESOURCE_PROFILE_PROMPT.format(
+                        query=writing_task.query,
+                        task_type=writing_task.task_type,
+                        constraints=str(writing_task.constraints),
+                        title=res.title or "",
+                        summary=res.summary or "",
+                        content=content,
+                    )
+                    llm_result = self._call_llm_structured(prompt, ResourceProfile)
+                    resource_role = llm_result.resource_role or resource_role
+                    template_usage = llm_result.template_usage or template_usage
+                    summary = llm_result.summary or summary
+                    key_facts = llm_result.key_facts or []
+                    style_notes_list = llm_result.style_notes or []
+                    confidence = llm_result.confidence or 1.0
+                    extracted_constraints = llm_result.extracted_constraints or {}
+                    extracted_outline = llm_result.extracted_outline or None
+                except Exception:
+                    pass
+
+            profiles.append(ResourceProfile(
+                resource_id=res.resource_id or f"res-{len(profiles)}",
+                resource_role=resource_role,
+                template_usage=template_usage,
+                summary=summary,
+                key_facts=key_facts,
+                style_notes=style_notes_list,
+                confidence=confidence,
+                extracted_constraints=extracted_constraints,
+                extracted_outline=extracted_outline,
+            ))
+
+        return self._save_artifacts(
+            {"resource_profiles": profiles},
+            step_name="profile_resources",
+            primary_key="resource_profiles",
+            context_key=None,
+            summary=f"Profiled {len(profiles)} resources.",
+            counts={"resource_profiles": len(profiles)},
+        ).model_dump()
 
     def target_to_doc_ir(self, target_document: Any) -> dict:
         """Convert a target document into a DocIR artifact."""
