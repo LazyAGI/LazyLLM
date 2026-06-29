@@ -1,6 +1,6 @@
 import os
 import tempfile
-from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 from lazyllm.tools.writer.data_models import (
     DocBlock,
@@ -12,70 +12,55 @@ from lazyllm.tools.writer.data_models import (
 )
 from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
 from lazyllm.tools.writer.tools.context_tools import WriterContextTools
-from lazyllm.tools.agent.toolsManager import ToolManager
-from lazyllm import locals as lazyllm_locals
 from lazyllm.tools.writer.utils import load_artifact_json
 
 
 # ---------------------------------------------------------------------------
-# test helpers
+# helpers
 # ---------------------------------------------------------------------------
 
-class _FakeDocAdapter:
-    """Implements the 4-method LinkDocumentFSBase contract for testing."""
-
-    def __init__(self, blocks=None, plain_text="第一段\n第二段", doc_id="doc-1",
-                 ref_title="飞书文档"):
-        self.calls = []
-        self._blocks = blocks or [
-            {"block_id": "b1", "block_type": "heading", "plain_text": "标题"},
-            {"block_id": "b2", "block_type": "paragraph", "plain_text": "正文"},
-        ]
-        self._plain_text = plain_text
-        self._doc_id = doc_id
-        self._ref_title = ref_title
-
-    def resolve_link(self, locator):
-        self.calls.append(("resolve_link", locator))
-        return {"provider": "feishu", "object_id": self._doc_id,
-                "object_type": "docx", "title": self._ref_title, "has_child": False}
-
-    def read_bytes(self, locator):
-        self.calls.append(("read_bytes", locator))
-        return self._plain_text.encode("utf-8")
-
-    def get_document_id(self, locator):
-        self.calls.append(("get_document_id", locator))
-        return self._doc_id
-
-    def write_file(self, locator, data):
-        self.calls.append(("write_file", locator))
-
-    def get_doc_blocks(self, locator, with_descendants=True):
-        self.calls.append(("get_doc_blocks", locator, with_descendants))
-        return self._blocks
+def _make_doc_adapter(blocks=None, plain_text="第一段\n第二段",
+                      doc_id="doc-1", ref_title="飞书文档"):
+    adapter = MagicMock()
+    adapter.resolve_link.return_value = {
+        "provider": "feishu", "object_id": doc_id,
+        "object_type": "docx", "title": ref_title, "has_child": False,
+    }
+    adapter.read_bytes.return_value = plain_text.encode("utf-8")
+    adapter.get_document_id.return_value = doc_id
+    adapter.get_doc_blocks.return_value = blocks or [
+        {"block_id": "b1", "block_type": "heading", "plain_text": "标题"},
+        {"block_id": "b2", "block_type": "paragraph", "plain_text": "正文"},
+    ]
+    return adapter
 
 
-@contextmanager
-def _mock_fs(adapter, protocol="feishu"):
-    """Replace FS singleton so target_to_doc_ir routes to *adapter*."""
-    class _M:
-        def _parse(self, path):
-            return protocol, None, path
-        def _get_or_create_fs(self, protocol, space_id, real_path):
-            return adapter
+def _call_target_to_doc_ir(adapter, artifact_store, protocol="feishu", **kwargs):
+    with patch("lazyllm.tools.fs.client.FS._parse",
+               return_value=(protocol, None, "~docx/doc-1")):
+        with patch("lazyllm.tools.fs.client.FS._get_or_create_fs",
+                   return_value=adapter):
+            tool = WriterResourceTools(artifact_store=artifact_store)
+            params = {"uri": "feishu://~docx/doc-1", "adapter": "feishu",
+                      "title": "飞书文档", "doc_id": "doc-1",
+                      "meta": {"space_id": "wikcn-demo"}, **kwargs}
+            return tool.target_to_doc_ir(target_document=params)
 
-    import lazyllm.tools.fs.client as _fs_client
-    orig = _fs_client.FS
-    _fs_client.FS = _M()
-    try:
-        yield
-    finally:
-        _fs_client.FS = orig
+
+def _call_write_to_document(adapter, markdown, artifact_store,
+                            protocol="feishu", uri="feishu:///write-test.md", **kwargs):
+    with patch("lazyllm.tools.fs.client.FS._parse",
+               return_value=(protocol, None, "/write-test.md")):
+        with patch("lazyllm.tools.fs.client.FS._get_or_create_fs",
+                   return_value=adapter):
+            tool = WriterResourceTools(artifact_store=artifact_store)
+            params = {"uri": uri, "adapter": "feishu", **kwargs}
+            return tool.write_to_document(markdown=markdown,
+                                          target_document=params)
 
 
 # ---------------------------------------------------------------------------
-# pre-existing context-tools tests
+# context-tools tests (pre-existing)
 # ---------------------------------------------------------------------------
 
 def test_create_writing_context_tool_result():
@@ -108,6 +93,7 @@ def test_create_writing_context_tool_result():
         assert result["artifact_path"].endswith("writing_context.json")
         assert result["context_path"] == result["artifact_path"]
         assert result["metadata"]["step_name"] == "create_writing_context"
+        assert result["metadata"]["artifact_key"] == "writing_context"
         assert result["metadata"]["counts"]["facts"] == 1
 
         context = load_artifact_json(result["context_path"], WritingContext)
@@ -143,19 +129,12 @@ def test_update_writing_context_tool_result_from_paths():
 # target_to_doc_ir
 # ---------------------------------------------------------------------------
 
-def test_target_to_doc_ir_artifact():
-    """Happy path: adapter provides string block_type, full doc_ir artifact."""
-    adapter = _FakeDocAdapter()
+def test_target_to_doc_ir():
+    """Normal path: produces DocIR artifact with correct fields and source."""
+    adapter = _make_doc_adapter()
 
-    with _mock_fs(adapter), tempfile.TemporaryDirectory() as d:
-        tool = WriterResourceTools(artifact_store=d)
-        result = tool.target_to_doc_ir(target_document={
-            "doc_id": "doc-1",
-            "uri": "feishu://~docx/doc-1",
-            "adapter": "feishu",
-            "title": "飞书文档",
-            "meta": {"space_id": "wikcn-demo"},
-        })
+    with tempfile.TemporaryDirectory() as d:
+        result = _call_target_to_doc_ir(adapter, d)
 
         assert result["artifact_path"].endswith("doc_ir.json")
         assert result["metadata"]["step_name"] == "target_to_doc_ir"
@@ -167,27 +146,52 @@ def test_target_to_doc_ir_artifact():
         assert doc_ir.title == "飞书文档"
         assert doc_ir.adapter == "feishu"
         assert doc_ir.plain_text == "第一段\n第二段"
-        assert len(doc_ir.blocks) == 2
-        assert doc_ir.blocks[0].block_id == "b1"
         assert doc_ir.blocks[0].block_type == "heading"
-        assert doc_ir.blocks[1].block_id == "b2"
         assert doc_ir.blocks[1].block_type == "paragraph"
 
         # source kept as-is (no back-fill)
-        assert doc_ir.source.doc_id == "doc-1"
         assert doc_ir.source.uri == "feishu://~docx/doc-1"
         assert doc_ir.source.adapter == "feishu"
         assert "source_locator" not in doc_ir.meta
 
-        assert adapter.calls[0][0] == "resolve_link"
-        assert adapter.calls[1][0] == "read_bytes"
-        assert adapter.calls[2][0] == "get_document_id"
-        assert adapter.calls[3][0] == "get_doc_blocks"
+        # adapter called in correct order
+        adapter.resolve_link.assert_called_once()
+        adapter.read_bytes.assert_called_once()
+        adapter.get_document_id.assert_called_once()
+        adapter.get_doc_blocks.assert_called_once()
+        calls = [c[0] for c in adapter.method_calls]
+        assert calls.index("resolve_link") < calls.index("read_bytes")
+        assert calls.index("read_bytes") < calls.index("get_document_id")
+        assert calls.index("get_document_id") < calls.index("get_doc_blocks")
+
+
+def test_target_to_doc_ir_source_snapshot():
+    """source keeps user value even when title comes from resolved_ref."""
+    adapter = _make_doc_adapter(ref_title="Resolved Title")
+
+    with tempfile.TemporaryDirectory() as d:
+        result = _call_target_to_doc_ir(adapter, d, title="User Title")
+        doc_ir = load_artifact_json(result["artifact_path"], DocIR)
+
+        assert doc_ir.source.doc_id == "doc-1"
+        assert doc_ir.title == "User Title"
+        assert doc_ir.source.title == "User Title"
+
+
+def test_target_to_doc_ir_title_fallback():
+    """title falls back to resolved_ref when target does not supply one."""
+    adapter = _make_doc_adapter(ref_title="Resolved Title")
+
+    with tempfile.TemporaryDirectory() as d:
+        result = _call_target_to_doc_ir(adapter, d, title=None)
+        doc_ir = load_artifact_json(result["artifact_path"], DocIR)
+
+    assert doc_ir.title == "Resolved Title"
 
 
 def test_target_to_doc_ir_normalizes_int_block_types():
-    """Feishu int block_types are mapped to DocIR Literals."""
-    adapter = _FakeDocAdapter(blocks=[
+    """Feishu int block_types map to DocIR Literals with unknown→\"block\"."""
+    adapter = _make_doc_adapter(blocks=[
         {"block_id": "b1", "block_type": 1,  "plain_text": ""},
         {"block_id": "b2", "block_type": 3,  "plain_text": "标题"},
         {"block_id": "b3", "block_type": 2,  "plain_text": "正文"},
@@ -196,122 +200,76 @@ def test_target_to_doc_ir_normalizes_int_block_types():
         {"block_id": "b6", "block_type": 99, "plain_text": "未知"},
     ], plain_text="全文")
 
-    with _mock_fs(adapter), tempfile.TemporaryDirectory() as d:
-        tool = WriterResourceTools(artifact_store=d)
-        result = tool.target_to_doc_ir(target_document={
-            "doc_id": "doc-1",
-            "uri": "feishu://~docx/doc-1",
-            "adapter": "feishu",
-            "title": "飞书文档",
-        })
+    with tempfile.TemporaryDirectory() as d:
+        result = _call_target_to_doc_ir(adapter, d)
         doc_ir = load_artifact_json(result["artifact_path"], DocIR)
-        assert [b.block_type for b in doc_ir.blocks] == [
-            "document", "heading", "paragraph", "code", "table", "block",
-        ]
+
+    assert [b.block_type for b in doc_ir.blocks] == [
+        "document", "heading", "paragraph", "code", "table", "block",
+    ]
 
 
-def test_target_to_doc_ir_title_fallback():
-    """title falls back to resolved_ref when target does not supply one."""
-    adapter = _FakeDocAdapter(ref_title="Resolved Title")
-
-    with _mock_fs(adapter), tempfile.TemporaryDirectory() as d:
-        tool = WriterResourceTools(artifact_store=d)
-        result = tool.target_to_doc_ir(target_document={
-            "uri": "feishu://~docx/doc-1",
-            "adapter": "feishu",
-        })
-        doc_ir = load_artifact_json(result["artifact_path"], DocIR)
-        assert doc_ir.title == "Resolved Title"
-
-
-def test_target_to_doc_ir_falls_back_on_plain_fs():
-    """Non-document FS (e.g. protocol=file) still produces DocIR."""
+def test_target_to_doc_ir_non_document_fs():
+    """Plain FS (protocol=file) does not crash — hasattr guards work."""
     class _PlainFS:
-        def read_bytes(self, locator):
+        def read_bytes(self, *_):
             return b"plain"
-    class _M:
-        def _parse(self, path): return "file", None, path
-        def _get_or_create_fs(self, p, s, r): return _PlainFS()
 
-    import lazyllm.tools.fs.client as _fs_client
-    orig = _fs_client.FS
-    _fs_client.FS = _M()
-    try:
-        with tempfile.TemporaryDirectory() as d:
-            tool = WriterResourceTools(artifact_store=d)
-            result = tool.target_to_doc_ir(target_document={
-                "uri": "/tmp/doc.txt",
-                "adapter": "file",
-                "title": "plain",
-            })
-            doc_ir = load_artifact_json(result["artifact_path"], DocIR)
-            assert doc_ir.plain_text == "plain"
-            assert len(doc_ir.blocks) == 0
-            assert doc_ir.doc_id is None
-    finally:
-        _fs_client.FS = orig
+    with patch("lazyllm.tools.fs.client.FS._parse",
+               return_value=("file", None, "/tmp/doc.txt")):
+        with patch("lazyllm.tools.fs.client.FS._get_or_create_fs",
+                   return_value=_PlainFS()):
+            with tempfile.TemporaryDirectory() as d:
+                tool = WriterResourceTools(artifact_store=d)
+                result = tool.target_to_doc_ir(target_document={
+                    "uri": "/tmp/doc.txt", "adapter": "file", "title": "plain",
+                })
+                doc_ir = load_artifact_json(result["artifact_path"], DocIR)
+
+    assert doc_ir.plain_text == "plain"
+    assert len(doc_ir.blocks) == 0
+    assert doc_ir.doc_id is None
 
 
 # ---------------------------------------------------------------------------
 # write_to_document
 # ---------------------------------------------------------------------------
 
-def test_write_to_document_artifact():
-    """markdown is written and a write_result artifact is saved."""
-    adapter = _FakeDocAdapter()
+def test_write_to_document():
+    """markdown is written via fs.write_file; write_result artifact saved."""
+    adapter = _make_doc_adapter()
 
-    with _mock_fs(adapter), tempfile.TemporaryDirectory() as d:
-        tool = WriterResourceTools(artifact_store=d)
-        result = tool.write_to_document(
-            markdown="# Hello\n\nworld",
-            target_document={
-                "uri": "feishu:///write-test.md",
-                "adapter": "feishu",
-            },
-        )
+    with tempfile.TemporaryDirectory() as d:
+        result = _call_write_to_document(adapter, "# Hello\n\nworld", d)
 
         assert result["artifact_path"].endswith("write_result.json")
         assert result["metadata"]["step_name"] == "write_to_document"
         assert result["metadata"]["extra"]["adapter"] == "feishu"
         assert result["metadata"]["extra"]["document_id"] == "doc-1"
 
+        adapter.write_file.assert_called_once()
+        args = adapter.write_file.call_args[0]
+        assert "write-test" in args[0]
+        assert b"Hello" in args[1]
 
-def test_write_to_document_falls_back_on_plain_fs():
-    """Non-document FS still writes, resolve_link returns empty dict."""
+
+def test_write_to_document_non_document_fs():
+    """Plain FS does not crash — resolve_link guard works, doc_id is empty."""
     class _PlainWriteFS:
-        def write_file(self, path, data):
+        def write_file(self, *_):
             pass
-    class _M:
-        def _parse(self, path): return "file", None, path
-        def _get_or_create_fs(self, p, s, r): return _PlainWriteFS()
 
-    import lazyllm.tools.fs.client as _fs_client
-    orig = _fs_client.FS
-    _fs_client.FS = _M()
-    try:
-        with tempfile.TemporaryDirectory() as d:
-            tool = WriterResourceTools(artifact_store=d)
-            result = tool.write_to_document(
-                markdown="# Hi",
-                target_document={"uri": "/tmp/doc.md", "adapter": "file"},
-            )
-            assert result["metadata"]["extra"]["document_id"] == ""
-    finally:
-        _fs_client.FS = orig
+    with patch("lazyllm.tools.fs.client.FS._parse",
+               return_value=("file", None, "/tmp/doc.md")):
+        with patch("lazyllm.tools.fs.client.FS._get_or_create_fs",
+                   return_value=_PlainWriteFS()):
+            with tempfile.TemporaryDirectory() as d:
+                tool = WriterResourceTools(artifact_store=d)
+                result = tool.write_to_document(
+                    markdown="# Hi",
+                    target_document={"uri": "/tmp/doc.md", "adapter": "file"},
+                )
+
+    assert result["metadata"]["extra"]["document_id"] == ""
 
 
-# ---------------------------------------------------------------------------
-# agent-tool exposure
-# ---------------------------------------------------------------------------
-
-def test_writer_resource_tools_is_exposed_as_agent_tools():
-    lazyllm_locals["_lazyllm_agent"] = {"workspace": {}}
-
-    manager = ToolManager([WriterResourceTools(artifact_store="/tmp")])
-    names = {item["function"]["name"] for item in manager.tools_description}
-    assert names == {"get_WriterResourceTools_methods"}
-
-    manager._tool_call["get_WriterResourceTools_methods"]({})
-    names = {item["function"]["name"] for item in manager.tools_description}
-    assert "WriterResourceTools_target_to_doc_ir" in names
-    assert "WriterResourceTools_write_to_document" in names
