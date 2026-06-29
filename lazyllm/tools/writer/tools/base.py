@@ -64,6 +64,15 @@ class WriterToolBase(ModuleBase):
             return [self._unified_model(item, model_class) for item in value]
         raise TypeError(f"Expected a list of {model_class.__name__}, or an artifact path.")
 
+    def _unified_raw_data(self, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return self._load_artifact(value, validate_schema=False)
+        if isinstance(value, BaseModel):
+            return value.model_dump()
+        return value
+
     def _write_single_artifact(
         self,
         artifact: Any,

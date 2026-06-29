@@ -105,13 +105,7 @@ class WriterPlanningTools(WriterToolBase):
         return result.model_dump()
 
     def _normalize_execution_results(self, execution_results: Any) -> Any:
-        if execution_results is None:
-            return None
-        if isinstance(execution_results, str):
-            return self._load_artifact(execution_results, validate_schema=False)
-        if hasattr(execution_results, "model_dump"):
-            return execution_results.model_dump()
-        return execution_results
+        return self._unified_raw_data(execution_results)
 
     def _normalize_outline(
         self,

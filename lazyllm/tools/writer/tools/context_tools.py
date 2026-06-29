@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
 
 from .base import WriterToolBase
 from ..data_models.context import (
@@ -39,11 +38,7 @@ class WriterContextTools(WriterToolBase):
             facts=self._build_facts(profiles),
             style_profile=self._build_style_profile(profiles),
             meta={
-                "task_type": writing_task.task_type,
-                "task_id": writing_task.task_id,
                 "source": "create_writing_context",
-                "resource_profile_count": len(profiles),
-                "has_doc_ir": source_doc is not None,
             },
         )
 
@@ -57,13 +52,21 @@ class WriterContextTools(WriterToolBase):
                 "facts": len(context.facts),
                 "block_summaries": len(context.block_summaries),
             },
+            artifact_meta={
+                "task_id": writing_task.task_id,
+                "task_type": writing_task.task_type,
+                "doc_id": context.doc_id,
+                "resource_profile_count": len(profiles),
+                "has_doc_ir": source_doc is not None,
+            },
         )
         return result.model_dump()
 
     def update_writing_context(self, content_artifact: Any, context: Any) -> dict:
         writing_context = self._unified_model(context, WritingContext)
-        content_data = self._load_content_artifact(content_artifact)
+        content_data = self._unified_raw_data(content_artifact)
         content_summary = self._summarize_content_data(content_data)
+        content_kind = self._content_artifact_kind(content_data)
 
         if writing_context.document_summary is None:
             writing_context.document_summary = DocumentSummary(
@@ -85,7 +88,6 @@ class WriterContextTools(WriterToolBase):
         writing_context.meta.update(
             {
                 "source": "update_writing_context",
-                "last_updated_from": self._content_artifact_kind(content_data),
             }
         )
 
@@ -97,6 +99,11 @@ class WriterContextTools(WriterToolBase):
             counts={
                 "facts": len(writing_context.facts),
                 "block_summaries": len(writing_context.block_summaries),
+            },
+            artifact_meta={
+                "context_id": writing_context.context_id,
+                "doc_id": writing_context.doc_id,
+                "last_updated_from": content_kind,
             },
         )
         return result.model_dump()
@@ -168,13 +175,6 @@ class WriterContextTools(WriterToolBase):
             result.append(block)
             result.extend(self._iter_blocks(block.children))
         return result
-
-    def _load_content_artifact(self, content_artifact: Any) -> Any:
-        if isinstance(content_artifact, str):
-            return self._load_artifact(content_artifact, validate_schema=False)
-        if isinstance(content_artifact, BaseModel):
-            return content_artifact.model_dump()
-        return content_artifact
 
     def _summarize_content_data(self, content_data: Any) -> str:
         text = self._extract_text(content_data)
