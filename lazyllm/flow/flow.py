@@ -522,9 +522,11 @@ class Parallel(LazyLLMFlowsBase):
         return items, inputs
 
     def _parallel_execute_concurrent(self, items, inputs, **kw):
+        # Workers call globals.pickled_data (e.g. UrlModule / KB Document HTTP).
+        # Pass a snapshot of the parent session globals for both process and thread pools.
+        kw['global_data'] = dict(lazyllm.globals._data)
         if self._multiprocessing:
             barrier, executor = None, lazyllm.ProcessPoolExecutor
-            kw['global_data'] = lazyllm.globals._data
         else:
             barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
 

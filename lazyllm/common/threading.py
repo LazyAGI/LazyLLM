@@ -33,8 +33,14 @@ class Thread(threading.Thread):
 
 class ThreadPoolExecutor(TPE):
     def submit(self, fn, /, *args, **kwargs):
-        def impl(sid, *a, **kw):
+        sid = globals._sid
+        global_data = dict(globals._data)
+
+        def impl(sid, global_data, *a, **kw):
             globals._init_sid(sid)
+            globals._update(global_data)
             return fn(*a, **kw)
 
-        return super(__class__, self).submit(functools.partial(impl, globals._sid), *args, **kwargs)
+        return super(__class__, self).submit(
+            functools.partial(impl, sid, global_data), *args, **kwargs,
+        )

@@ -256,6 +256,11 @@ class MemoryGlobals(Globals):
 
     def _update(self, d: Optional[Dict]) -> None:
         if d:
+            # call_stack tracks module nesting per thread; snapshots from
+            # ThreadPoolExecutor / parallel must not overwrite it (same sid
+            # is shared across threads).
+            if 'call_stack' in d:
+                d = {k: v for k, v in d.items() if k != 'call_stack'}
             self._data.update(d)
 
     def __setitem__(self, __key: str, __value: Any):
