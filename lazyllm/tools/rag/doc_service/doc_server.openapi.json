@@ -1037,6 +1037,22 @@
         "summary": "Upload Files Legacy"
       }
     },
+    "/v1/algo/list": {
+      "get": {
+        "operationId": "list_algorithms_v1_algo_list_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Algorithms"
+      }
+    },
     "/v1/algo/{algo_id}/groups": {
       "get": {
         "operationId": "get_algo_groups_v1_algo__algo_id__groups_get",
@@ -1072,22 +1088,6 @@
           }
         },
         "summary": "Get Algo Groups"
-      }
-    },
-    "/v1/algorithms": {
-      "get": {
-        "operationId": "list_algorithms_v1_algorithms_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Algorithms"
       }
     },
     "/v1/algorithms/info": {
