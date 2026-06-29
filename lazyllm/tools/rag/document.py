@@ -528,9 +528,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                          merge: bool = False) -> Union[List[DocNode], DocNode]:
         return self._forward('_get_window_nodes', node, span, merge)
 
-    def keyword_search(self, group, keyword, doc_id, kb_id=None,
-                       phrase=True, sort_by='score', size=10):
-        return self._forward('_keyword_search', group, keyword, doc_id, kb_id, phrase, sort_by, size)
+    def keyword_search(self, group, keyword, doc_id='', kb_id=None,
+                       phrase=True, sort_by='score', size=10, file_name=None):
+        return self._forward('_keyword_search', group, keyword, doc_id, kb_id, phrase, sort_by, size, file_name)
 
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
@@ -568,9 +568,9 @@ class UrlDocument(ModuleBase):
                          merge: bool = False) -> Union[List[DocNode], DocNode]:
         return self._forward('_get_window_nodes', node, span, merge)
 
-    def keyword_search(self, group, keyword, doc_id, kb_id=None,
-                       phrase=True, sort_by='score', size=10):
-        return self._forward('_keyword_search', group, keyword, doc_id, kb_id, phrase, sort_by, size)
+    def keyword_search(self, group, keyword, doc_id='', kb_id=None,
+                       phrase=True, sort_by='score', size=10, file_name=None):
+        return self._forward('_keyword_search', group, keyword, doc_id, kb_id, phrase, sort_by, size, file_name)
 
     @cached_property
     def active_node_groups(self):

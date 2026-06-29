@@ -124,9 +124,10 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
         raise NotImplementedError
 
     def keyword_search(
-        self, collection_name: str, keyword: str, doc_id: str,
+        self, collection_name: str, keyword: str, doc_id: str = '',
         kb_id: Optional[str] = None, phrase: bool = True,
-        sort_by: str = 'score', size: int = 10, **kwargs
+        sort_by: str = 'score', size: int = 10,
+        file_name: Optional[str] = None, **kwargs
     ) -> List[dict]:
         raise NotImplementedError
 

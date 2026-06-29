@@ -271,12 +271,16 @@ class OpenSearchStore(LazyLLMStoreBase):
             return []
 
     @override
-    def keyword_search(self, collection_name, keyword, doc_id, kb_id=None,
-                       phrase=True, sort_by='score', size=10, **kwargs):
+    def keyword_search(self, collection_name, keyword, doc_id='', kb_id=None,
+                       phrase=True, sort_by='score', size=10, file_name=None, **kwargs):
         LOG.info(f'[OpenSearchStore.keyword_search] collection={collection_name!r} keyword={keyword!r} '
-                 f'doc_id={doc_id!r} kb_id={kb_id!r} phrase={phrase} sort_by={sort_by!r}')
+                 f'doc_id={doc_id!r} kb_id={kb_id!r} file_name={file_name!r} phrase={phrase} sort_by={sort_by!r}')
         self._ensure_index(collection_name)
-        filters = [{'term': {'doc_id.keyword': doc_id}}]
+        filters = []
+        if file_name:
+            filters.append({'term': {'global_meta.file_name.keyword': file_name}})
+        elif doc_id:
+            filters.append({'term': {'doc_id.keyword': doc_id}})
         if kb_id:
             filters.append({'term': {'kb_id.keyword': kb_id}})
         body = {
@@ -364,9 +368,9 @@ class OpenSearchStore(LazyLLMStoreBase):
             val = criteria.pop(RAG_KB_ID)
             _add_clause('kb_id', val)
         if 'parent' in criteria:
-            must_clauses.append({'term': {'parent': criteria.pop('parent')}})
+            _add_clause('parent', criteria.pop('parent'))
         if 'number' in criteria:
-            must_clauses.append({'term': {'number': criteria.pop('number')}})
+            _add_clause('number', criteria.pop('number'))
 
         for k, v in criteria.items():
             field_key = k

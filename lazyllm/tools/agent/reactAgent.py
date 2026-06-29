@@ -77,7 +77,8 @@ class ReactAgent(LazyLLMAgentBase):
                  workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None,
                  force_summarize: bool = False, force_summarize_context: str = '',
                  keep_full_turns: int = 0, fs: Optional[Any] = None, skills_dir: Optional[str] = None,
-                 enable_builtin_tools: bool = True):
+                 enable_builtin_tools: bool = True,
+                 extra_stop_condition: Optional[Callable] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox, fs=fs, skills_dir=skills_dir,
@@ -91,6 +92,7 @@ class ReactAgent(LazyLLMAgentBase):
         self._force_summarize = force_summarize
         self._force_summarize_context = force_summarize_context
         self._keep_full_turns = keep_full_turns
+        self._extra_stop_condition = extra_stop_condition
         self._stop_tools: set = set()
         self._fc = None
 
@@ -99,6 +101,9 @@ class ReactAgent(LazyLLMAgentBase):
         if self._fc:
             self._fc._stop_tools = self._stop_tools
 
+    def _stop(self, x):
+        return (self._extra_stop_condition and self._extra_stop_condition(x)) or isinstance(x, str)
+
     @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
         fc = FunctionCall(llm=self._llm, _prompt=self._prompt, return_trace=self._return_trace,
@@ -106,7 +111,7 @@ class ReactAgent(LazyLLMAgentBase):
                           skill_manager=self._skill_manager,
                           keep_full_turns=self._keep_full_turns,
                           stop_tools=list(self._stop_tools) if self._stop_tools else None)
-        agent = loop(fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries + 1)
+        agent = loop(fc, stop_condition=self._stop, count=self._max_retries + 1)
         self._fc = fc
         self._agent = agent
 
