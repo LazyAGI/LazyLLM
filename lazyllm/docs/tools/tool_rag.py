@@ -97,7 +97,7 @@ add_english_doc('DocServer.add', '''\
 Add existing local files through the ``/v1/docs/add`` endpoint.
 
 Use this method when the file paths are already accessible on the DocServer host. The request body is an
-``AddRequest`` containing ``kb_id``, ``algo_id``, and ``items``. Each item can provide ``file_path``,
+``AddRequest`` containing ``kb_id`` and ``items``. Each item can provide ``file_path``,
 optional ``doc_id``, and optional ``metadata``.
 
 **Returns:**
@@ -107,7 +107,7 @@ optional ``doc_id``, and optional ``metadata``.
 add_chinese_doc('DocServer.add', '''\
 通过 ``/v1/docs/add`` 接口添加服务端可直接访问的本地文件。
 
-当文件路径已经对 DocServer 所在机器可见时，使用该方法。请求体为 ``AddRequest``，包含 ``kb_id``、``algo_id``
+当文件路径已经对 DocServer 所在机器可见时，使用该方法。请求体为 ``AddRequest``，包含 ``kb_id``
 和 ``items``。每个 item 可提供 ``file_path``，以及可选的 ``doc_id``、``metadata``。
 
 **Returns:**
@@ -118,7 +118,7 @@ add_english_doc('DocServer.upload', '''\
 Upload files into DocServer-managed storage through the ``/v1/docs/upload`` flow.
 
 Use this method when you want DocServer to manage uploaded copies of the source files. The request body is an
-``UploadRequest`` with ``kb_id``, ``algo_id``, and ``items``. Each item uses ``file_path`` as the local source
+``UploadRequest`` with ``kb_id`` and ``items``. Each item uses ``file_path`` as the local source
 path and can optionally include ``doc_id`` or ``metadata``.
 
 **Returns:**
@@ -128,7 +128,7 @@ path and can optionally include ``doc_id`` or ``metadata``.
 add_chinese_doc('DocServer.upload', '''\
 通过 ``/v1/docs/upload`` 流程将文件上传到 DocServer 管理的存储目录。
 
-当你希望由 DocServer 保存上传副本时，使用该方法。请求体为 ``UploadRequest``，包含 ``kb_id``、``algo_id``
+当你希望由 DocServer 保存上传副本时，使用该方法。请求体为 ``UploadRequest``，包含 ``kb_id``
 和 ``items``。每个 item 使用 ``file_path`` 作为本地源路径，也可以附带可选的 ``doc_id``、``metadata``。
 
 **Returns:**
