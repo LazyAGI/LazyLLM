@@ -43,19 +43,42 @@
         "title": "AlgorithmInfoRequest",
         "type": "object"
       },
+      "Body_add_files_to_group_legacy_add_files_to_group_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_add_files_to_group_legacy_add_files_to_group_post",
+        "type": "object"
+      },
+      "Body_upload_files_legacy_upload_files_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_files_legacy_upload_files_post",
+        "type": "object"
+      },
       "Body_upload_v1_docs_upload_post": {
         "properties": {
-          "algo_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Algo Id"
-          },
           "doc_id": {
             "anyOf": [
               {
@@ -124,11 +147,6 @@
       },
       "DeleteRequest": {
         "properties": {
-          "algo_id": {
-            "default": "__default__",
-            "title": "Algo Id",
-            "type": "string"
-          },
           "doc_ids": {
             "items": {
               "type": "string"
@@ -161,11 +179,6 @@
       },
       "DocItemsRequest": {
         "properties": {
-          "algo_id": {
-            "default": "__default__",
-            "title": "Algo Id",
-            "type": "string"
-          },
           "idempotency_key": {
             "anyOf": [
               {
@@ -188,6 +201,30 @@
             "default": "__default__",
             "title": "Kb Id",
             "type": "string"
+          },
+          "llm_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Config"
+          },
+          "ocr_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Config"
           },
           "source_type": {
             "anyOf": [
@@ -232,80 +269,6 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
-      "KbCreateRequest": {
-        "properties": {
-          "algo_id": {
-            "default": "__default__",
-            "title": "Algo Id",
-            "type": "string"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "display_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Name"
-          },
-          "idempotency_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Idempotency Key"
-          },
-          "kb_id": {
-            "title": "Kb Id",
-            "type": "string"
-          },
-          "meta": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Meta"
-          },
-          "owner_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Owner Id"
-          }
-        },
-        "required": [
-          "kb_id"
-        ],
-        "title": "KbCreateRequest",
-        "type": "object"
-      },
       "KbDeleteBatchRequest": {
         "properties": {
           "idempotency_key": {
@@ -333,7 +296,7 @@
         "title": "KbDeleteBatchRequest",
         "type": "object"
       },
-      "KbUpdateRequest": {
+      "KbRequest": {
         "properties": {
           "algo_id": {
             "anyOf": [
@@ -379,6 +342,17 @@
             ],
             "title": "Idempotency Key"
           },
+          "kb_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kb Id"
+          },
           "meta": {
             "anyOf": [
               {
@@ -403,7 +377,7 @@
             "title": "Owner Id"
           }
         },
-        "title": "KbUpdateRequest",
+        "title": "KbRequest",
         "type": "object"
       },
       "MetadataPatchItem": {
@@ -426,11 +400,6 @@
       },
       "MetadataPatchRequest": {
         "properties": {
-          "algo_id": {
-            "default": "__default__",
-            "title": "Algo Id",
-            "type": "string"
-          },
           "idempotency_key": {
             "anyOf": [
               {
@@ -463,10 +432,19 @@
       },
       "ReparseRequest": {
         "properties": {
-          "algo_id": {
-            "default": "__default__",
-            "title": "Algo Id",
-            "type": "string"
+          "algo_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Algo Ids"
           },
           "doc_ids": {
             "items": {
@@ -489,6 +467,49 @@
           "kb_id": {
             "default": "__default__",
             "title": "Kb Id",
+            "type": "string"
+          },
+          "llm_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Config"
+          },
+          "ng_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ng Names"
+          },
+          "ocr_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Config"
+          },
+          "strategy": {
+            "default": "rebuild",
+            "title": "Strategy",
             "type": "string"
           }
         },
@@ -525,6 +546,7 @@
         "type": "object"
       },
       "TaskCallbackPayload": {
+        "description": "Parser -> DocService callback payload.\n\n``status`` is the document-level state after this callback (what\n``parse_state.status`` should transition to); ``task_status`` is the outcome\nof the individual task execution (SUCCESS / FAILED / CANCELED). They can\ndiverge during cancel flows where the task is CANCELED but the doc may\nremain in SUCCESS on a previous version.",
         "properties": {
           "algo_id": {
             "anyOf": [
@@ -676,19 +698,6 @@
         "title": "TaskCancelRequest",
         "type": "object"
       },
-      "TaskInfoRequest": {
-        "properties": {
-          "task_id": {
-            "title": "Task Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "task_id"
-        ],
-        "title": "TaskInfoRequest",
-        "type": "object"
-      },
       "TaskType": {
         "enum": [
           "DOC_ADD",
@@ -702,11 +711,6 @@
       },
       "TransferItem": {
         "properties": {
-          "algo_id": {
-            "default": "__default__",
-            "title": "Algo Id",
-            "type": "string"
-          },
           "doc_id": {
             "title": "Doc Id",
             "type": "string"
@@ -719,10 +723,6 @@
           "mode": {
             "default": "copy",
             "title": "Mode",
-            "type": "string"
-          },
-          "target_algo_id": {
-            "title": "Target Algo Id",
             "type": "string"
           },
           "target_doc_id": {
@@ -771,8 +771,7 @@
         "required": [
           "doc_id",
           "target_doc_id",
-          "target_kb_id",
-          "target_algo_id"
+          "target_kb_id"
         ],
         "title": "TransferItem",
         "type": "object"
@@ -853,9 +852,72 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/v1/algo/list": {
-      "get": {
-        "operationId": "list_algo_v1_algo_list_get",
+    "/add_files_to_group": {
+      "post": {
+        "operationId": "add_files_to_group_legacy_add_files_to_group_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "group_name",
+            "required": true,
+            "schema": {
+              "title": "Group Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "override",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Override",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metadatas",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metadatas"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Path"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_files_to_group_legacy_add_files_to_group_post"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -864,9 +926,115 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
-        "summary": "List Algo"
+        "summary": "Add Files To Group Legacy"
+      }
+    },
+    "/upload_files": {
+      "post": {
+        "operationId": "upload_files_legacy_upload_files_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "override",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Override",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metadatas",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metadatas"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_name",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group Name"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Path"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_files_legacy_upload_files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Files Legacy"
       }
     },
     "/v1/algo/{algo_id}/groups": {
@@ -994,9 +1162,15 @@
             "name": "algo_id",
             "required": false,
             "schema": {
-              "default": "__default__",
-              "title": "Algo Id",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Algo Id"
             }
           },
           {
@@ -1077,22 +1251,6 @@
                 }
               ],
               "title": "Kb Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "algo_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Algo Id"
             }
           },
           {
@@ -1293,6 +1451,52 @@
         "summary": "Patch Metadata"
       }
     },
+    "/v1/docs/node_groups": {
+      "get": {
+        "operationId": "list_doc_node_groups_v1_docs_node_groups_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "title": "Doc Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Doc Node Groups"
+      }
+    },
     "/v1/docs/reparse": {
       "post": {
         "operationId": "reparse_v1_docs_reparse_post",
@@ -1436,6 +1640,52 @@
           }
         },
         "summary": "Get Doc"
+      }
+    },
+    "/v1/docs/{doc_id}/ng-status": {
+      "get": {
+        "operationId": "get_doc_ng_status_v1_docs__doc_id__ng_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "title": "Doc Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Doc Ng Status"
       }
     },
     "/v1/health": {
@@ -1645,7 +1895,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/KbCreateRequest"
+                "$ref": "#/components/schemas/KbRequest"
               }
             }
           },
@@ -1760,11 +2010,9 @@
           }
         },
         "summary": "Get Kb"
-      }
-    },
-    "/v1/kbs/{kb_id}/update": {
+      },
       "post": {
-        "operationId": "update_kb_v1_kbs__kb_id__update_post",
+        "operationId": "update_kb_v1_kbs__kb_id__post",
         "parameters": [
           {
             "in": "path",
@@ -1780,7 +2028,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/KbUpdateRequest"
+                "$ref": "#/components/schemas/KbRequest"
               }
             }
           },
@@ -1807,6 +2055,115 @@
           }
         },
         "summary": "Update Kb"
+      }
+    },
+    "/v1/kbs/{kb_id}/algos/{algo_id}": {
+      "delete": {
+        "operationId": "unbind_algo_v1_kbs__kb_id__algos__algo_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "algo_id",
+            "required": true,
+            "schema": {
+              "title": "Algo Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dry_run",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Dry Run",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unbind Algo"
+      }
+    },
+    "/v1/ng/{group_name}/lazy_mode": {
+      "post": {
+        "operationId": "set_node_group_lazy_mode_v1_ng__group_name__lazy_mode_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_name",
+            "required": true,
+            "schema": {
+              "title": "Group Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lazy_mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lazy Mode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Node Group Lazy Mode"
       }
     },
     "/v1/tasks": {
@@ -1947,42 +2304,6 @@
           }
         },
         "summary": "Cancel Task"
-      }
-    },
-    "/v1/tasks/info": {
-      "post": {
-        "operationId": "get_task_info_v1_tasks_info_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TaskInfoRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Task Info"
       }
     },
     "/v1/tasks/{task_id}": {

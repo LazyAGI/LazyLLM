@@ -500,10 +500,6 @@ _add_bilingual_docs({
             '获取指定算法的节点组信息。',
             'Get node-group information for one algorithm.'
         ),
-        'list_algorithms_compat': (
-            '以兼容旧客户端的格式返回算法列表。',
-            'Return the algorithm list in a legacy-compatible format.'
-        ),
         'get_algorithm_info': (
             '获取指定算法的详细信息。',
             'Get detailed information for one algorithm.'
@@ -511,6 +507,10 @@ _add_bilingual_docs({
         'list_chunks': (
             '分页查看指定文档的解析 chunk。',
             'List parsed chunks for one document with pagination.'
+        ),
+        'get_doc_ng_status': (
+            '查询指定文档的节点组解析状态。',
+            'Get node-group parse status for one document.'
         ),
         'list_doc_node_groups': (
             '列出指定文档已落库的节点组名称。',
@@ -633,7 +633,7 @@ _add_bilingual_docs({
             '批量获取多个任务记录。',
             'Fetch multiple task records in one batch.'
         ),
-        'get_task_info': (
+        'get_task': (
             '获取单个任务记录。',
             'Get one task record.'
         ),
@@ -681,6 +681,10 @@ _add_bilingual_docs({
         'set_node_group_lazy_mode': (
             '设置指定节点组的懒加载模式。',
             'Set the lazy-loading mode for a specific node group.'
+        ),
+        'get_doc_ng_status': (
+            '查询指定文档的节点组解析状态。',
+            'Get node-group parse status for one document.'
         ),
         'list_doc_node_groups': (
             '列出指定文档已落库的节点组名称。',
