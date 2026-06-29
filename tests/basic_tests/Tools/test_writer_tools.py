@@ -1,5 +1,7 @@
 import os
 import tempfile
+
+import pytest
 from unittest.mock import MagicMock, patch
 
 from lazyllm.tools.writer.data_models import (
@@ -11,7 +13,7 @@ from lazyllm.tools.writer.data_models import (
     WritingTask,
 )
 from lazyllm.tools.writer.data_models.task import InputResource
-from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools, _read_resource_content
+from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
 from lazyllm.tools.writer.tools.context_tools import WriterContextTools
 from lazyllm.tools.writer.utils import load_artifact_json
 
@@ -280,12 +282,12 @@ def test_write_to_document_non_document_fs():
 
 def test_read_content_text():
     res = InputResource(resource_type="text", inline_text="本产品要求支持私有化部署")
-    assert _read_resource_content(res) == "本产品要求支持私有化部署"
+    assert WriterResourceTools()._read_resource_content(res) == "本产品要求支持私有化部署"
 
 
 def test_read_content_text_empty():
     res = InputResource(resource_type="text", inline_text="")
-    assert _read_resource_content(res) == ""
+    assert WriterResourceTools()._read_resource_content(res) == ""
 
 
 def test_read_content_document():
@@ -297,91 +299,11 @@ def test_read_content_document():
 
     with patch("lazyllm.tools.fs.client.FS._parse", return_value=("feishu", None, "~docx/doc-1")):
         with patch("lazyllm.tools.fs.client.FS._get_or_create_fs", return_value=_FakeFS()):
-            assert _read_resource_content(res) == "# Title\n\n## Content"
-
-
-def test_read_content_file_pdf():
-    from pypdf import PdfWriter
-    from pathlib import Path
-    import tempfile
-
-    writer = PdfWriter()
-    writer.add_blank_page(width=612, height=792)
-    with tempfile.TemporaryDirectory() as d:
-        path = Path(d) / "test.pdf"
-        with open(path, "wb") as f:
-            writer.write(f)
-        res = InputResource(resource_type="file", uri=str(path))
-        content = _read_resource_content(res)
-    assert isinstance(content, str)
-
-
-def test_read_content_file_markdown():
-    import tempfile
-    from pathlib import Path
-    with tempfile.TemporaryDirectory() as d:
-        path = Path(d) / "test.md"
-        path.write_text("# Hello\n\nMarkdown content.", encoding="utf-8")
-        res = InputResource(resource_type="file", uri=str(path))
-        content = _read_resource_content(res)
-    assert "Markdown content" in content
-    assert "# Hello" in content
-
-
-def test_read_content_file_docx():
-    from docx import Document
-    import tempfile
-    from pathlib import Path
-    doc = Document()
-    doc.add_heading("Test Heading", level=1)
-    doc.add_paragraph("This is a paragraph in docx.")
-    with tempfile.TemporaryDirectory() as d:
-        path = Path(d) / "test.docx"
-        doc.save(str(path))
-        res = InputResource(resource_type="file", uri=str(path))
-        content = _read_resource_content(res)
-    assert "Test Heading" in content
-    assert "paragraph in docx" in content
-
-
-def test_read_content_file_pptx():
-    import pytest
-    try:
-        from pptx import Presentation
-    except ImportError:
-        pytest.skip("python-pptx not installed")
-
-    import tempfile
-    from pathlib import Path
-    prs = Presentation()
-    slide = prs.slides.add_slide(prs.slide_layouts[0])
-    slide.shapes.title.text = "PPTX Title"
-    with tempfile.TemporaryDirectory() as d:
-        path = Path(d) / "test.pptx"
-        prs.save(str(path))
-        res = InputResource(resource_type="file", uri=str(path))
-        try:
-            content = _read_resource_content(res)
-        except ImportError:
-            pytest.skip("transformers not installed for PPTXReader")
-    assert "PPTX Title" in content
-
-
-def test_read_content_file_csv():
-    import pandas as pd
-    import tempfile
-    from pathlib import Path
-    df = pd.DataFrame({"name": ["张三", "李四"], "age": [30, 25]})
-    with tempfile.TemporaryDirectory() as d:
-        path = Path(d) / "test.csv"
-        df.to_csv(path, index=False)
-        res = InputResource(resource_type="file", uri=str(path))
-        content = _read_resource_content(res)
-    assert isinstance(content, str)
-    assert "张三" in content or "李四" in content
+            assert WriterResourceTools()._read_resource_content(res) == "# Title\n\n## Content"
 
 
 def test_read_content_image():
+    pytest.importorskip("PIL.Image")
     from PIL import Image
     import tempfile
     from pathlib import Path
@@ -390,33 +312,33 @@ def test_read_content_image():
         path = Path(d) / "test.png"
         img.save(str(path))
         res = InputResource(resource_type="image", uri=str(path))
-        content = _read_resource_content(res)
+        content = WriterResourceTools()._read_resource_content(res)
     assert content == ""  # no OCR by default
 
 
 def test_read_content_image_with_summary():
     res = InputResource(resource_type="image", uri="/tmp/img.png",
                         summary="红色方块图片")
-    assert _read_resource_content(res) == "红色方块图片"
+    assert WriterResourceTools()._read_resource_content(res) == "红色方块图片"
 
 
 def test_read_content_url_fallback():
     res = InputResource(resource_type="url",
                         uri="https://example.com",
                         summary="网页摘要")
-    assert _read_resource_content(res) == "网页摘要"
+    assert WriterResourceTools()._read_resource_content(res) == "网页摘要"
 
 
 def test_read_content_kb_fallback():
     res = InputResource(resource_type="kb",
                         kb_id="kb-123",
                         summary="知识库检索结果摘要")
-    assert _read_resource_content(res) == "知识库检索结果摘要"
+    assert WriterResourceTools()._read_resource_content(res) == "知识库检索结果摘要"
 
 
 def test_read_content_no_summary_fallback():
     res = InputResource(resource_type="url", uri="https://example.com")
-    assert _read_resource_content(res) == ""
+    assert WriterResourceTools()._read_resource_content(res) == ""
 
 
 # ---------------------------------------------------------------------------

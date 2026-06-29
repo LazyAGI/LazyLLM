@@ -1,6 +1,8 @@
 from __future__ import annotations
 from typing import Any, Dict, List
 
+from lazyllm import LOG
+
 from .base import WriterToolBase
 from ..data_models.docir import DocBlock, DocIR
 from ..data_models.resource import ResourceProfile
@@ -19,38 +21,38 @@ _BLOCK_TYPE_MAPS: Dict[str, Dict[Any, str]] = {
 }
 
 
-def _read_resource_content(res: InputResource) -> str:
-    """InputResource → plain text. Delegates to existing LazyLLM systems."""
-    if res.resource_type == "text":
-        return res.inline_text or ""
-
-    if res.resource_type == "document":
-        import lazyllm.tools.fs.client as _fs_client
-        protocol, space_id, real_path = _fs_client.FS._parse(res.uri or "")
-        fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
-        return fs.read_bytes(real_path).decode("utf-8")
-
-    if res.resource_type in ("file", "table", "slide"):
-        from pathlib import Path
-        from lazyllm.tools.rag.dataReader import SimpleDirectoryReader
-        reader = SimpleDirectoryReader(input_files=[str(res.uri)])
-        nodes = reader._load_data()
-        content = "\n".join(n.text for n in nodes if n.text)
-        return content if content.strip() else ""
-
-    if res.resource_type == "image":
-        return res.summary or ""
-
-    # url / kb — no ready gateway yet
-    return res.summary or ""
-
-
 class WriterResourceTools(WriterToolBase):
     __public_apis__ = [
         "profile_resources",
         "target_to_doc_ir",
         "write_to_document",
     ]
+
+    def _read_resource_content(self, res: InputResource) -> str:
+        if res.resource_type == "text":
+            return res.inline_text or ""
+
+        if res.resource_type == "document":
+            import lazyllm.tools.fs.client as _fs_client
+            protocol, space_id, real_path = _fs_client.FS._parse(res.uri or "")
+            fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
+            return fs.read_bytes(real_path).decode("utf-8", errors="replace")
+
+        if res.resource_type in ("file", "table", "slide"):
+            if not res.uri:
+                return res.summary or ""
+            from pathlib import Path
+            from lazyllm.tools.rag.dataReader import SimpleDirectoryReader
+            reader = SimpleDirectoryReader(input_files=[str(res.uri)])
+            nodes = reader._load_data()
+            content = "\n".join(n.text for n in nodes if n.text)
+            return content if content.strip() else ""
+
+        if res.resource_type == "image":
+            return res.summary or ""
+
+        # url / kb — no ready gateway yet
+        return res.summary or ""
 
     def profile_resources(
         self,
@@ -63,7 +65,7 @@ class WriterResourceTools(WriterToolBase):
 
         profiles: List[ResourceProfile] = []
         for res in inputs:
-            content = _read_resource_content(res)
+            content = self._read_resource_content(res)
 
             resource_role = res.meta.get("role", "background")
             template_usage = res.meta.get("template", "none")
@@ -94,7 +96,7 @@ class WriterResourceTools(WriterToolBase):
                     extracted_constraints = llm_result.extracted_constraints or {}
                     extracted_outline = llm_result.extracted_outline or None
                 except Exception:
-                    pass
+                    LOG.warning("profile_resources: LLM analysis failed, using rule-based fallback")
 
             profiles.append(ResourceProfile(
                 resource_id=res.resource_id or f"res-{len(profiles)}",
