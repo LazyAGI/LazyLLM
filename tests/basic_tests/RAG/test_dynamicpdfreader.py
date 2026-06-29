@@ -214,6 +214,25 @@ class TestDynamicPDFReader:
         assert isinstance(image_block, FigureBlock)
         assert image_block.page.bbox.to_list() == [0, 0, 0, 0]
 
-    def test_pdf_missing_bbox_still_skipped(self):
+    def test_pdf_official_missing_bbox_uses_zero_bbox(self):
         reader = MineruPDFReader(url='https://mineru.net')
+        block = reader._adapt_one({'type': 'text', 'text': 'hello', 'page_idx': 0})
+        assert isinstance(block, ParagraphBlock)
+        assert block.page.index == 0
+        assert block.page.bbox.to_list() == [0, 0, 0, 0]
+
+    def test_pdf_official_ignores_returned_bbox(self):
+        reader = MineruPDFReader(url='https://mineru.net')
+        block = reader._adapt_one({
+            'type': 'text',
+            'text': 'hello',
+            'page_idx': 2,
+            'bbox': [10.0, 20.0, 100.0, 50.0],
+        })
+        assert isinstance(block, ParagraphBlock)
+        assert block.page.index == 2
+        assert block.page.bbox.to_list() == [0, 0, 0, 0]
+
+    def test_pdf_offline_missing_bbox_still_skipped(self):
+        reader = MineruPDFReader(url='http://local-mineru:8000/api/v1/pdf_parse')
         assert reader._adapt_one({'type': 'text', 'text': 'hello', 'page_idx': 0}) is None
