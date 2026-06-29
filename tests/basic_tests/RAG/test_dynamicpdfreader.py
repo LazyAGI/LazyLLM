@@ -74,7 +74,6 @@ class TestDynamicPDFReader:
             mock_cls.assert_called_once_with(
                 url='http://mock-paddle',
                 dynamic_auth=True,
-                use_reader_cache=True,
             )
 
     def test_unsupported_type_raises(self):
@@ -201,7 +200,8 @@ class TestDynamicPDFReader:
         lazyllm.config['cache_mode'] = 'RW'
         module_cache.close()
         try:
-            reader = MineruPDFReader(url='https://mineru.net').use_reader_cache(True)
+            reader = MineruPDFReader(url='https://mineru.net')
+            lazyllm.globals.config['use_cache'] = True
             with patch.object(
                 MineruPDFReader, '_load_data', return_value=[DocNode(text='cached')]
             ) as mock_load:

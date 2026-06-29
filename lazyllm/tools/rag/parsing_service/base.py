@@ -51,6 +51,7 @@ class AddDocRequest(BaseModel):
     # per-request model config injected by backend (e.g. embed_main, llm).
     llm_config: Optional[Dict[str, Any]] = None
     ocr_config: Optional[Dict[str, Any]] = None
+    use_cache: Optional[bool] = None
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
     db_info: EmptyDBInfo = None
     feedback_url: Optional[str] = None

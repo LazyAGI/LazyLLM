@@ -1,5 +1,3 @@
-from typing import Union
-
 from lazyllm import globals as lazyllm_globals
 
 from ..pdfReader import PDFReader
@@ -70,24 +68,16 @@ class DynamicPDFReader(LazyLLMReaderBase):
     def _reader_cache_key(ocr_type: str, ocr_url: str, file) -> tuple[str, str]:
         return DynamicPDFReader._reader_type(ocr_type, file), ocr_url
 
-    def use_reader_cache(self, flag: Union[bool, str] = True):
-        super().use_reader_cache(flag)
-        # Child OCR readers are cached in _reader_cache with use_reader_cache fixed at build time.
-        self._reader_cache = {}
-        return self
-
     def _build_reader(self, reader_type: str, ocr_url: str) -> LazyLLMReaderBase:
         if reader_type in ('', 'none'):
             return PDFReader(
                 split_doc=True,
                 return_trace=self._return_trace,
-                use_reader_cache=self._use_reader_cache,
             )
 
         kwargs = dict[str, str | bool](
             url=ocr_url,
             dynamic_auth=True,
-            use_reader_cache=self._use_reader_cache,
         )
         if self._image_cache_dir:
             kwargs['image_cache_dir'] = self._image_cache_dir

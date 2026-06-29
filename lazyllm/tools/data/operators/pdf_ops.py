@@ -32,10 +32,7 @@ class PdfProcessor(Pdf2Qa):
             raise ValueError('You must pass in a mineru url.')
         self.input_key = input_key
         self.output_key = output_key
-        self.reader = MineruPDFReader(
-            url=reader_url,
-            use_reader_cache=use_cache,
-        )
+        self.reader = MineruPDFReader(url=reader_url).use_cache(use_cache)
 
         self.base_url = reader_url.rstrip('/')
         self.pattern = re.compile(r'!\[.*?\]\((.*?)\)')
