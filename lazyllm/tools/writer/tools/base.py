@@ -1,8 +1,11 @@
 from __future__ import annotations
+import json
 import os
 from typing import Any, Dict, Iterable, List, Optional, Type, TypeVar
 from pydantic import BaseModel
+from lazyllm.components.formatter import JsonFormatter
 from lazyllm.module import ModuleBase
+from ..prompts.structured_output import STRUCTURED_OUTPUT_SYSTEM_PROMPT
 from ..utils.artifact import ToolResult, load_artifact_json, save_artifact_json
 
 T = TypeVar("T", bound=BaseModel)
@@ -144,5 +147,55 @@ class WriterToolBase(ModuleBase):
         module = cls.__module__ or ""
         return f"{module}.{cls.__qualname__}"
 
-    def _call_llm_structured(self, prompt: str, schema: Type[BaseModel]) -> BaseModel:
-        ...
+    def _call_llm_structured(self, prompt: str, schema: Type[T]) -> T:
+        if self.llm is None:
+            raise ValueError("llm is not set")
+
+        system_prompt = self._structured_output_prompt(schema)
+        model = self._build_structured_llm(system_prompt)
+        response = model(prompt)
+        return self._validate_structured_response(response, schema)
+
+    def _structured_output_prompt(self, schema: Type[BaseModel]) -> str:
+        schema_json = json.dumps(schema.model_json_schema(), ensure_ascii=False, indent=2)
+        return STRUCTURED_OUTPUT_SYSTEM_PROMPT.format(schema_name=schema.__name__, schema_json=schema_json)
+
+    def _build_structured_llm(self, system_prompt: str) -> Any:
+        model = self.llm
+        if hasattr(model, "share"):
+            try:
+                model = model.share(stream=False)
+            except TypeError:
+                model = model.share()
+        if hasattr(model, "prompt"):
+            model = model.prompt(system_prompt)
+        if hasattr(model, "formatter"):
+            model = model.formatter(JsonFormatter())
+        return model
+
+    def _validate_structured_response(self, response: Any, schema: Type[T]) -> T:
+        parsed = response
+        if isinstance(parsed, schema):
+            return parsed
+        if isinstance(parsed, str):
+            try:
+                parsed = JsonFormatter()(parsed)
+            except Exception as exc:
+                raise ValueError(
+                    f"Failed to parse LLM output as JSON for {schema.__name__}. "
+                    f"Response: {response!r}"
+                ) from exc
+        if isinstance(parsed, list) and len(parsed) == 1:
+            parsed = parsed[0]
+        if isinstance(parsed, dict):
+            try:
+                return schema.model_validate(parsed)
+            except Exception as exc:
+                raise ValueError(
+                    f"Failed to validate LLM output as {schema.__name__}. "
+                    f"Response: {parsed!r}"
+                ) from exc
+        raise ValueError(
+            f"Failed to parse LLM output as {schema.__name__}. "
+            f"Response: {response!r}"
+        )
