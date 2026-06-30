@@ -41,6 +41,7 @@ class GoogleDriveFS(LazyLLMFSBase):
         loop: Optional[Any] = None,
         dynamic_auth: bool = False,
     ):
+        self._mime_type_cache: Dict[str, str] = {}
         if dynamic_auth:
             super().__init__(
                 token={},
@@ -213,12 +214,13 @@ class GoogleDriveFS(LazyLLMFSBase):
         Returns:
             Matching Google Drive file metadata.
         '''
+        pattern = (pattern or '').strip()
+        if not pattern:
+            raise ValueError('pattern is required')
         try:
-            regex = re.compile((pattern or '').strip())
+            regex = re.compile(pattern)
         except re.error as exc:
             raise ValueError(f'invalid regular expression: {exc}') from exc
-        if not pattern or not pattern.strip():
-            raise ValueError('pattern is required')
         limit = self._normalize_limit(limit, default=50, maximum=1000)
         max_scan = self._normalize_limit(max_scan, default=1000, maximum=10000)
         terms = ['trashed = false']
@@ -335,11 +337,14 @@ class GoogleDriveFS(LazyLLMFSBase):
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)
         file_id = parts[-1] if parts else path
-        metadata = self._get(
-            f'{self._base_url}/files/{file_id}',
-            params={'fields': 'mimeType', 'supportsAllDrives': 'true'},
-        )
-        mime_type = metadata.get('mimeType', '')
+        mime_type = self._mime_type_cache.get(file_id)
+        if mime_type is None:
+            metadata = self._get(
+                f'{self._base_url}/files/{file_id}',
+                params={'fields': 'mimeType', 'supportsAllDrives': 'true'},
+            )
+            mime_type = metadata.get('mimeType') or ''
+            self._mime_type_cache[file_id] = mime_type
         if mime_type in _GOOGLE_WORKSPACE_EXPORT_TYPES:
             resp = self._request(
                 'GET',
@@ -467,6 +472,7 @@ class GoogleDriveFS(LazyLLMFSBase):
         seen = 0
         page_token = ''
         while seen < max_items:
+            params['pageSize'] = min(max_items - seen, 1000)
             if page_token:
                 params['pageToken'] = page_token
             data = self._get(f'{self._base_url}/files', params=params)
@@ -481,7 +487,8 @@ class GoogleDriveFS(LazyLLMFSBase):
 
     @staticmethod
     def _item_to_entry(item: Dict[str, Any]) -> Dict[str, Any]:
-        mime = item.get('mimeType', '')
+        mime = item.get('mimeType') or ''
+        file_id = item.get('id') or ''
         ftype = 'directory' if mime == 'application/vnd.google-apps.folder' else 'file'
         mtime = None
         ts = item.get('modifiedTime')
@@ -491,13 +498,13 @@ class GoogleDriveFS(LazyLLMFSBase):
             except (ValueError, TypeError) as e:
                 lazyllm.LOG.debug(f"Failed to parse timestamp '{ts}': {e}")
         return LazyLLMFSBase._entry(
-            name=item.get('id', ''),
+            name=file_id,
             size=int(item.get('size', 0) or 0),
             ftype=ftype, mtime=mtime,
-            title=item.get('name', ''), mime_type=mime,
-            google_drive_path=f'googledrive:/{item.get("id", "")}',
-            web_url=item.get('webViewLink', ''),
-            parents=item.get('parents', []),
-            drive_id=item.get('driveId', ''),
-            description=item.get('description', ''),
+            title=item.get('name') or '', mime_type=mime,
+            google_drive_path=f'googledrive:/{file_id}',
+            web_url=item.get('webViewLink') or '',
+            parents=item.get('parents') or [],
+            drive_id=item.get('driveId') or '',
+            description=item.get('description') or '',
         )

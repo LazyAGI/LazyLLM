@@ -75,6 +75,11 @@ class TestGoogleDriveSearch(unittest.TestCase):
         with self.assertRaises(ValueError):
             fs.find('[')
 
+    def test_find_rejects_empty_regex_before_compile(self):
+        fs = self._make_fs()
+        with self.assertRaisesRegex(ValueError, 'pattern is required'):
+            fs.find('   ')
+
     def test_google_workspace_document_uses_export(self):
         fs = self._make_fs()
         requests = []
@@ -89,6 +94,22 @@ class TestGoogleDriveSearch(unittest.TestCase):
         self.assertTrue(requests[0][1].endswith('/files/file-1/export'))
         self.assertEqual(requests[0][2]['params']['mimeType'], 'text/plain')
 
+    def test_download_range_caches_mime_type(self):
+        fs = self._make_fs()
+        metadata_calls = []
+
+        def get(url, params):
+            metadata_calls.append((url, params))
+            return {'mimeType': 'text/plain'}
+
+        fs._get = get
+        fs._request = lambda *_args, **_kwargs: SimpleNamespace(content=b'hello')
+
+        fs._download_range('/file-1', 0, 2)
+        fs._download_range('/file-1', 2, 5)
+
+        self.assertEqual(len(metadata_calls), 1)
+
     def test_blob_file_uses_media_download(self):
         fs = self._make_fs()
         fs._get = lambda _url, params: {'mimeType': 'text/plain'}
@@ -102,6 +123,36 @@ class TestGoogleDriveSearch(unittest.TestCase):
         self.assertEqual(fs._download_range('/file-1', 0, 5), b'hello')
         self.assertEqual(requests[0][2]['params']['alt'], 'media')
         self.assertEqual(requests[0][2]['headers']['Range'], 'bytes=0-4')
+
+    def test_iter_files_uses_remaining_count_for_next_page(self):
+        fs = self._make_fs()
+        page_sizes = []
+
+        def get(_url, params):
+            page_sizes.append(params['pageSize'])
+            if len(page_sizes) == 1:
+                return {'files': [{'id': '1'}, {'id': '2'}], 'nextPageToken': 'next'}
+            return {'files': [{'id': '3'}]}
+
+        fs._get = get
+        self.assertEqual(len(list(fs._iter_files('trashed = false', max_items=3))), 3)
+        self.assertEqual(page_sizes, [3, 1])
+
+    def test_item_to_entry_normalizes_null_values(self):
+        entry = GoogleDriveFS._item_to_entry({
+            'id': None,
+            'name': None,
+            'mimeType': None,
+            'webViewLink': None,
+            'parents': None,
+            'driveId': None,
+            'description': None,
+        })
+
+        self.assertEqual(entry['name'], '')
+        self.assertEqual(entry['title'], '')
+        self.assertEqual(entry['web_url'], '')
+        self.assertEqual(entry['parents'], [])
 
     def test_search_and_find_are_registered(self):
         init_session()
