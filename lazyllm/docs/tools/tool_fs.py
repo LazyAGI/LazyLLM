@@ -1573,36 +1573,34 @@ Args:
 ''')
 
 _add_fs_chinese('FeishuWikiFS.search', '''\
-在飞书知识库中按关键词搜索节点，使用飞书官方 wiki/v2/spaces/{space_id}/search 接口。
-搜索范围包括节点标题和正文内容，返回匹配的 wiki 节点列表。
+在飞书知识库中按关键词搜索节点，使用飞书官方 wiki/v2/nodes/search 接口。
+搜索范围包括节点标题和正文内容，返回当前用户可见的匹配 wiki 节点。
 
 这是在线搜索 —— 直接查询飞书线上知识库，不是本地已入库的文档。
 
 Args:
-    query (str): 搜索关键词，支持一个或多个词。
-    space_id (str, optional): 要搜索的知识空间 ID；不传或传 dynamic 时使用当前配置的 space_id。
-        space_id 必须有效，否则抛出 ValueError。
-    page_size (int): 每页返回条数，默认 20，最大 100。
+    query (str or List[str]): 一个搜索词、以空格分隔的多个词，或搜索词列表。
+    space_id (str, optional): 要搜索的知识空间 ID；为空时搜索当前用户可见的全部 Wiki。
+    node_id (str, optional): 将范围限定到指定节点及其子节点；使用时必须同时提供 space_id。
+    page_size (int): 最大返回条数，默认 20，最大 50。
 
 Returns:
-    List[Dict[str, Any]]: 匹配节点列表。每项包含 title、node_token、obj_type、url、
-    snippet（匹配片段摘录）、space_id。
+    List[Dict[str, Any]]: 匹配节点列表。每项包含 title、node_token、obj_type、url、space_id。
 ''')
 _add_fs_english('FeishuWikiFS.search', '''\
-Search wiki nodes by keyword using Feishu's official wiki/v2/spaces/{space_id}/search API.
-Matches against both node title and content, returning matching wiki nodes.
+Search wiki nodes by keyword using Feishu's official wiki/v2/nodes/search API.
+Matches node titles and content visible to the current user.
 
 This searches the LIVE online Feishu wiki — not locally indexed documents.
 
 Args:
-    query (str): One or more search keywords.
-    space_id (str, optional): Wiki space ID to search in; defaults to the configured space_id when empty or dynamic.
-        Must be a valid space_id or ValueError is raised.
-    page_size (int): Results per page, default 20, maximum 100.
+    query (str or List[str]): One term, multiple space-separated terms, or a list of terms.
+    space_id (str, optional): Wiki space ID to search; when empty, searches all Wiki spaces visible to the user.
+    node_id (str, optional): Limit the search to a node and its descendants; requires space_id.
+    page_size (int): Maximum results, default 20, maximum 50.
 
 Returns:
-    List[Dict[str, Any]]: Matching nodes, each with title, node_token, obj_type, url,
-    snippet (highlighted excerpt), and space_id.
+    List[Dict[str, Any]]: Matching nodes, each with title, node_token, obj_type, url, and space_id.
 ''')
 
 _add_fs_chinese('FeishuWikiFS.find', '''\
@@ -1617,7 +1615,8 @@ _add_fs_chinese('FeishuWikiFS.find', '''\
 
 Args:
     pattern (str): 正则表达式模式，大小写不敏感。
-    space_id (str, optional): 要搜索的知识空间 ID；不传或传 dynamic 时使用当前配置的 space_id。
+    space_id (str, optional): 要搜索的知识空间 ID；为空时遍历飞书“获取知识空间列表”接口返回的空间。
+        该官方接口不返回“我的文档库”，查找个人库时应显式传入 space_id。
     max_results (int): 最大返回条数，默认 50，最大 200。
 
 Returns:
@@ -1638,7 +1637,8 @@ Common regex examples:
 
 Args:
     pattern (str): Regular expression pattern, case-insensitive.
-    space_id (str, optional): Wiki space ID to search in; defaults to the configured space_id when empty or dynamic.
+    space_id (str, optional): Wiki space ID to search. When empty, walks spaces returned by Feishu's list-spaces API.
+        That official API excludes My Library, so pass space_id explicitly for a personal Wiki.
     max_results (int): Maximum results, default 50, capped at 200.
 
 Returns:

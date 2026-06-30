@@ -1,7 +1,7 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import re
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlencode
 
 import requests
@@ -863,6 +863,22 @@ class FeishuWikiFS(FeishuFSBase):
                 break
         return results
 
+    def _list_spaces_raw(self) -> List[Dict[str, Any]]:
+        url = f'{self._base_url}/wiki/v2/spaces'
+        params: Dict[str, Any] = {'page_size': 50}
+        results: List[Dict[str, Any]] = []
+        page_token: Optional[str] = None
+        while True:
+            if page_token:
+                params['page_token'] = page_token
+            data = self._get(url, params=params)
+            payload = data.get('data', {})
+            results.extend(payload.get('items') or [])
+            page_token = payload.get('page_token') or payload.get('next_page_token')
+            if not payload.get('has_more') or not page_token:
+                break
+        return results
+
     def _resolve_path_to_token(self, path: str) -> str:
         self._require_space_id()
         parts = [p for p in path.strip('/').split('/') if p]
@@ -1193,37 +1209,44 @@ class FeishuWikiFS(FeishuFSBase):
                 self._space_id = sid
         return node or {}
 
-    def search(self, query: str, space_id: str = '', page_size: int = 20) -> List[Dict[str, Any]]:
+    def search(self, query: Union[str, List[str]], space_id: str = '', node_id: str = '',
+               page_size: int = 20) -> List[Dict[str, Any]]:
+        if isinstance(query, list):
+            query = ' '.join(str(item).strip() for item in query if str(item).strip())
         query = (query or '').strip()
         if not query:
             raise ValueError('query is required')
-        page_size = max(1, min(int(page_size), 100))
+        page_size = max(1, min(int(page_size), 50))
         sid = self._resolve_space_id(space_id)
-        if not sid:
-            raise ValueError(
-                'space_id is required for Feishu wiki search: pass space_id or '
-                "set globals.config['feishu_wiki_space_id']"
-            )
-        url = f'{self._base_url}/wiki/v2/spaces/{sid}/search'
-        params: Dict[str, Any] = {'query': query, 'page_size': page_size}
+        node_id = (node_id or '').strip()
+        if node_id and not sid:
+            raise ValueError('space_id is required when node_id is specified')
+        url = f'{self._base_url}/wiki/v2/nodes/search'
+        payload: Dict[str, Any] = {'query': query}
+        if sid:
+            payload['space_id'] = sid
+        if node_id:
+            payload['node_id'] = node_id
+        params: Dict[str, Any] = {'page_size': page_size}
         results: List[Dict[str, Any]] = []
         page_token: Optional[str] = None
         while True:
             if page_token:
                 params['page_token'] = page_token
-            data = self._get(url, params=params)
-            items = data.get('data', {}).get('items') or []
+            data = self._post(url, params=params, json=payload)
+            response_data = data.get('data', {})
+            items = response_data.get('items') or []
             for item in items:
                 results.append({
                     'title': item.get('title') or '',
-                    'node_token': item.get('node_token') or '',
+                    'node_token': item.get('node_id') or item.get('node_token') or '',
                     'obj_type': item.get('obj_type') or '',
                     'url': item.get('url') or '',
                     'snippet': item.get('snippet') or '',
                     'space_id': item.get('space_id') or sid,
                 })
-            page_token = data.get('data', {}).get('page_token')
-            if not page_token or len(results) >= page_size:
+            page_token = response_data.get('page_token') or response_data.get('next_page_token')
+            if not response_data.get('has_more') or not page_token or len(results) >= page_size:
                 break
         return results[:page_size]
 
@@ -1238,14 +1261,19 @@ class FeishuWikiFS(FeishuFSBase):
         except re.error as e:
             raise ValueError(f'Invalid regex pattern: {e}') from e
 
+        space_ids = [sid] if sid else [
+            str(item.get('space_id') or '').strip()
+            for item in self._list_spaces_raw()
+            if str(item.get('space_id') or '').strip()
+        ]
         results: List[Dict[str, Any]] = []
         visited: set = set()
 
-        def _collect(parent_token: str, depth: int) -> None:
+        def _collect(parent_token: str, depth: int, current_space_id: str) -> None:
             if len(results) >= max_results or depth > 8:
                 return
             try:
-                nodes = self._list_nodes_raw(parent_token, space_id=sid)
+                nodes = self._list_nodes_raw(parent_token, space_id=current_space_id)
             except Exception:
                 return
             for node in nodes:
@@ -1260,15 +1288,18 @@ class FeishuWikiFS(FeishuFSBase):
                         'node_token': node.get('node_token') or '',
                         'obj_type': node.get('obj_type') or '',
                         'url': node.get('url') or '',
-                        'space_id': node.get('space_id') or sid,
+                        'space_id': node.get('space_id') or current_space_id,
                         'has_child': bool(node.get('has_child')),
                     })
                 nt = node.get('node_token') or ''
                 if nt and nt not in visited and bool(node.get('has_child')):
                     visited.add(nt)
-                    _collect(nt, depth + 1)
+                    _collect(nt, depth + 1, current_space_id)
 
-        _collect('', 0)
+        for current_space_id in space_ids:
+            _collect('', 0, current_space_id)
+            if len(results) >= max_results:
+                break
         return results[:max_results]
 
     def get_document_id(self, path: str) -> str:
