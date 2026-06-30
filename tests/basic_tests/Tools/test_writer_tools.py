@@ -217,7 +217,7 @@ def test_structure_summary_with_headings():
             DocBlock(block_id="b3", block_type="paragraph", text="正文"),
         ],
     )
-    result = WriterContextTools._build_structure_summary(doc_ir)
+    result = WriterContextTools(artifact_store="/tmp/test")._build_structure_summary(doc_ir)
     assert result == "文档结构: # 背景 > # 方案"
 
 
@@ -228,7 +228,7 @@ def test_structure_summary_heading_text_empty():
             DocBlock(block_id="b2", block_type="paragraph", text="正文"),
         ],
     )
-    assert WriterContextTools._build_structure_summary(doc_ir) is None
+    assert WriterContextTools(artifact_store="/tmp/test")._build_structure_summary(doc_ir) is None
 
 
 def test_structure_summary_no_headings():
@@ -238,17 +238,47 @@ def test_structure_summary_no_headings():
             DocBlock(block_id="b2", block_type="table", text=""),
         ],
     )
-    result = WriterContextTools._build_structure_summary(doc_ir)
+    result = WriterContextTools(artifact_store="/tmp/test")._build_structure_summary(doc_ir)
     assert result == "由 2 个顶层块组成"
 
 
 def test_structure_summary_none_doc_ir():
-    assert WriterContextTools._build_structure_summary(None) is None
+    assert WriterContextTools(artifact_store="/tmp/test")._build_structure_summary(None) is None
 
 
 def test_structure_summary_empty_blocks():
     doc_ir = DocIR(blocks=[])
-    assert WriterContextTools._build_structure_summary(doc_ir) is None
+    assert WriterContextTools(artifact_store="/tmp/test")._build_structure_summary(doc_ir) is None
+
+
+def test_structure_summary_two_level_headings():
+    doc_ir = DocIR(
+        blocks=[
+            DocBlock(block_id="b1", block_type="heading", text="第一章", level=1),
+            DocBlock(block_id="b2", block_type="heading", text="第一节", level=2),
+        ],
+    )
+    result = WriterContextTools(artifact_store="/tmp/test")._build_structure_summary(doc_ir)
+    assert "## 第一节" in result
+
+
+def test_structure_summary_nested_headings():
+    """Headings nested inside parent block.children — DFS traversal ensures they are found."""
+    doc_ir = DocIR(
+        blocks=[
+            DocBlock(
+                block_id="b1", block_type="heading", text="背景", level=1,
+                children=[
+                    DocBlock(block_id="b1-1", block_type="heading", text="子背景", level=2),
+                ],
+            ),
+            DocBlock(block_id="b2", block_type="heading", text="方案", level=1),
+        ],
+    )
+    result = WriterContextTools(artifact_store="/tmp/test")._build_structure_summary(doc_ir)
+    assert "# 背景" in result
+    assert "## 子背景" in result
+    assert "# 方案" in result
 
 
 # ---------------------------------------------------------------------------

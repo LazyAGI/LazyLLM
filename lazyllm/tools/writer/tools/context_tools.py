@@ -157,11 +157,10 @@ class WriterContextTools(WriterToolBase):
             structure_summary=structure_summary,
         )
 
-    @staticmethod
-    def _build_structure_summary(doc_ir: Optional[DocIR]) -> Optional[str]:
+    def _build_structure_summary(self, doc_ir: Optional[DocIR]) -> Optional[str]:
         if not doc_ir or not doc_ir.blocks:
             return None
-        headings = [b for b in doc_ir.blocks if b.block_type == "heading"]
+        headings = [b for b in self._iter_blocks(doc_ir.blocks) if b.block_type == "heading"]
         if headings:
             parts = [f"{'#' * (b.level or 1)} {b.text}" for b in headings if b.text]
             return "文档结构: " + " > ".join(parts) if parts else None
@@ -219,7 +218,7 @@ class WriterContextTools(WriterToolBase):
 
         result = self._shorten(text)
 
-        if self.llm is not None:
+        if self.llm is not None and len(text) > 240:
             try:
                 prompt = CONTENT_SUMMARY_PROMPT.format(content=text[:3000])
                 llm_result = self._call_llm_structured(prompt, _ContentSummaryResult)
