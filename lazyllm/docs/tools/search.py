@@ -8,6 +8,40 @@ add_chinese_doc = functools.partial(utils.add_chinese_doc, module=_tools_module)
 add_english_doc = functools.partial(utils.add_english_doc, module=_tools_module)
 add_example = functools.partial(utils.add_example, module=_tools_module)
 
+_GENERAL_SEARCH_GUIDANCE_ZH = '''
+使用建议:
+- 每次调用只处理一个明确的搜索意图。
+- 如果用户问题包含多个无关主题、实体、产品、关键词或问题，应分别调用搜索工具，不要把它们合并成一个 query。
+- query 应来自用户的核心问题，只加入有助于检索的时间、机构、产品、领域或站点等约束。
+- 返回的 title、url、snippet 和 metadata 是检索证据；不要编造未返回的来源。
+- 当 snippet 或 metadata 不足以支撑回答时，再调用 get_content(item) 或 get_contents(items) 深读结果。
+'''
+
+_GENERAL_SEARCH_GUIDANCE_EN = '''
+Usage guidance:
+- Each call handles exactly one search intent.
+- If the user asks about multiple unrelated topics, entities, products, keywords, or questions, call the search tool separately for each one instead of merging them into one query.
+- Build query from the user's core question and include only retrieval-useful constraints such as date, organization, product, domain, or site.
+- Treat returned titles, URLs, snippets, and metadata as search evidence; do not fabricate sources that were not returned.
+- Use get_content(item) or get_contents(items) when snippets or metadata are not enough to support the answer.
+'''
+
+_ACADEMIC_SEARCH_GUIDANCE_ZH = '''
+学术检索建议:
+- 适用于论文、方法、模型、benchmark、dataset、算法和科研问题。
+- 每次调用只处理一个研究意图；不同论文、方法、模型或 benchmark 主题应分开搜索，不要混在一个 query 中。
+- 优先使用返回的 title、abstract/snippet、authors、year、venue/source、DOI 和 metadata 作为证据。
+- 当摘要或元数据不足以支撑回答时，再调用 get_content(item) 深读结果。
+'''
+
+_ACADEMIC_SEARCH_GUIDANCE_EN = '''
+Academic retrieval guidance:
+- Use for papers, methods, models, benchmarks, datasets, algorithms, and research questions where academic evidence is appropriate.
+- Each call handles exactly one research intent; split unrelated papers, methods, models, or benchmark topics into separate calls instead of mixing them in one query.
+- Prefer returned title, abstract/snippet, authors, year, venue/source, DOI, and metadata as evidence.
+- Use get_content(item) when the abstract or metadata is not enough to support the answer.
+'''
+
 add_chinese_doc('SearchBase', '''
 所有搜索工具的基类，定义统一接口与返回格式。混入 CredentialMixin 提供统一的 API key 管理。
 
@@ -40,8 +74,10 @@ engine = ArxivSearch()
 results = engine('transformer')
 ''')
 
-add_chinese_doc('SearchBase.search', '''
+add_chinese_doc('SearchBase.search', f'''
 执行搜索并返回统一格式结果。子类必须重写此方法，参数由各子类自行定义。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
 
 Returns:
     List[Dict[str, Any]]: 每条结果至少包含 title (str), url (str), snippet (str), source (str)；
@@ -49,8 +85,10 @@ Returns:
     不包含完整正文；需正文可调用 get_content(item) 或 get_contents(items)。
 ''')
 
-add_english_doc('SearchBase.search', '''
+add_english_doc('SearchBase.search', f'''
 Run search and return unified results. Subclasses must override this method; parameters are defined by each subclass.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
 
 Returns:
     List[Dict[str, Any]]: Each item has at least title (str), url (str), snippet (str), source (str);
@@ -164,8 +202,10 @@ cx = '<your_search_engine_id>'
 google = GoogleSearch(custom_search_api_key=key, search_engine_id=cx)
 ''')
 
-add_chinese_doc('GoogleSearch.search', '''
+add_chinese_doc('GoogleSearch.search', f'''
 执行 Google 搜索。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
 
 Args:
     query (str): 检索关键词。
@@ -176,8 +216,10 @@ Returns:
     List[Dict[str, Any]]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
-add_english_doc('GoogleSearch.search', '''
+add_english_doc('GoogleSearch.search', f'''
 Execute Google search.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
 
 Args:
     query (str): Search keywords.
@@ -236,8 +278,10 @@ from lazyllm.tools.tools import TencentSearch
 searcher = TencentSearch(secret_id='<your_secret_id>', secret_key='<your_secret_key>')
 ''')
 
-add_chinese_doc('TencentSearch.search', '''
+add_chinese_doc('TencentSearch.search', f'''
 执行腾讯云搜索。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
 
 Args:
     query (str): 用户查询内容。
@@ -246,8 +290,10 @@ Returns:
     List[Dict[str, Any]]: 统一格式的搜索结果列表；出错时返回空列表。
 ''')
 
-add_english_doc('TencentSearch.search', '''
+add_english_doc('TencentSearch.search', f'''
 Execute Tencent Cloud search.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
 
 Args:
     query (str): User query string.
@@ -326,8 +372,10 @@ Args:
     item (Dict[str, Any]): Search result item with at least url.
 ''')
 
-add_chinese_doc('BingSearch.search', '''
+add_chinese_doc('BingSearch.search', f'''
 执行 Bing 网页搜索。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
 
 Args:
     query (str): 搜索关键词。
@@ -337,8 +385,10 @@ Returns:
     List[dict]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
-add_english_doc('BingSearch.search', '''
+add_english_doc('BingSearch.search', f'''
 Execute Bing web search.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
 
 Args:
     query (str): Search query.
@@ -398,8 +448,10 @@ Args:
     item (Dict[str, Any]): Search result item with at least url.
 ''')
 
-add_chinese_doc('BochaSearch.search', '''
+add_chinese_doc('BochaSearch.search', f'''
 执行博查网页搜索。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
 
 Args:
     query (str): 搜索内容。
@@ -411,8 +463,10 @@ Returns:
     List[dict]: 统一格式的搜索结果列表。每条结果包含 title、url、snippet、source。
 ''')
 
-add_english_doc('BochaSearch.search', '''
+add_english_doc('BochaSearch.search', f'''
 Execute Bocha web search.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
 
 Args:
     query (str): Search query.
@@ -452,8 +506,10 @@ so = StackOverflowSearch()
 res = so('python asyncio', count=5)
 ''')
 
-add_chinese_doc('StackOverflowSearch.search', '''
+add_chinese_doc('StackOverflowSearch.search', f'''
 搜索 Stack Exchange 问题。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
 
 Args:
     query (str): 搜索关键词。
@@ -478,8 +534,10 @@ Args:
     item (Dict[str, Any]): Search result item whose url contains a question id.
 ''')
 
-add_english_doc('StackOverflowSearch.search', '''
+add_english_doc('StackOverflowSearch.search', f'''
 Search Stack Exchange questions.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
 
 Args:
     query (str): Search query.
@@ -517,8 +575,10 @@ sch = SemanticScholarSearch()
 res = sch('transformer attention', limit=5)
 ''')
 
-add_chinese_doc('SemanticScholarSearch.search', '''
+add_chinese_doc('SemanticScholarSearch.search', f'''
 搜索学术论文。
+
+{_ACADEMIC_SEARCH_GUIDANCE_ZH}
 
 Args:
     query (str): 搜索关键词。
@@ -529,8 +589,10 @@ Returns:
     List[Dict[str, Any]]: 统一格式结果，extra 可含 authors、year、citationCount。
 ''')
 
-add_english_doc('SemanticScholarSearch.search', '''
+add_english_doc('SemanticScholarSearch.search', f'''
 Search academic papers.
+
+{_ACADEMIC_SEARCH_GUIDANCE_EN}
 
 Args:
     query (str): Search query.
@@ -596,8 +658,10 @@ Args:
     item (Dict[str, Any]): Search result item with at least url.
 ''')
 
-add_chinese_doc('GoogleBooksSearch.search', '''
+add_chinese_doc('GoogleBooksSearch.search', f'''
 检索书籍。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
 
 Args:
     query (str): 搜索关键词。
@@ -607,8 +671,10 @@ Returns:
     List[Dict[str, Any]]: 统一格式结果，extra 可含 authors、publishedDate、pageCount。
 ''')
 
-add_english_doc('GoogleBooksSearch.search', '''
+add_english_doc('GoogleBooksSearch.search', f'''
 Search books.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
 
 Args:
     query (str): Search query.
@@ -654,8 +720,14 @@ sciverse = SciverseSearch(api_key='<your_sciverse_api_key>')
 res = sciverse('retrieval augmented generation evaluation', topk=5)
 ''')
 
-add_chinese_doc('SciverseSearch.search', '''
+add_chinese_doc('SciverseSearch.search', f'''
 搜索 Sciverse 科研文献。
+
+{_ACADEMIC_SEARCH_GUIDANCE_ZH}
+
+Sciverse search_type 选择:
+- "agentic" 返回适合问答的文献片段，适合需要快速回答研究问题的场景。
+- "meta" 返回偏文献元数据的结果，适合论文列表、过滤、年份范围和导出。
 
 Args:
     query (str): 论文标题、作者、DOI、科研主题或自然语言问题。
@@ -669,8 +741,14 @@ Returns:
     List[dict]: 统一格式结果，extra 可含 doc_id、doi、year、venue、authors、score、content 等字段。
 ''')
 
-add_english_doc('SciverseSearch.search', '''
+add_english_doc('SciverseSearch.search', f'''
 Search Sciverse scientific literature.
+
+{_ACADEMIC_SEARCH_GUIDANCE_EN}
+
+Sciverse search_type selection:
+- "agentic" returns passage-oriented results for question answering.
+- "meta" returns metadata-oriented results for paper lists, filtering, year constraints, and export.
 
 Args:
     query (str): Paper title, author, DOI, research topic, or natural-language question.
@@ -808,8 +886,10 @@ arxiv = ArxivSearch()
 res = arxiv('attention is all you need', max_results=5)
 ''')
 
-add_chinese_doc('ArxivSearch.search', '''
+add_chinese_doc('ArxivSearch.search', f'''
 搜索 arXiv 预印本。
+
+{_ACADEMIC_SEARCH_GUIDANCE_ZH}
 
 Args:
     query (str): 搜索关键词。
@@ -820,8 +900,10 @@ Returns:
     List[dict]: 统一格式结果，extra 可含 authors、published。
 ''')
 
-add_english_doc('ArxivSearch.search', '''
+add_english_doc('ArxivSearch.search', f'''
 Search arXiv preprints.
+
+{_ACADEMIC_SEARCH_GUIDANCE_EN}
 
 Args:
     query (str): Search query.
@@ -876,8 +958,10 @@ wiki = WikipediaSearch()
 res = wiki('transformer machine learning', limit=5)
 ''')
 
-add_chinese_doc('WikipediaSearch.search', '''
+add_chinese_doc('WikipediaSearch.search', f'''
 执行 Wikipedia 搜索。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
 
 Args:
     query (str): 搜索关键词。
@@ -887,8 +971,10 @@ Returns:
     List[dict]: 统一格式的搜索结果列表。extra 中包含 pageid，可用于 get_content 获取词条全文。
 ''')
 
-add_english_doc('WikipediaSearch.search', '''
+add_english_doc('WikipediaSearch.search', f'''
 Execute Wikipedia search.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
 
 Args:
     query (str): Search query.
@@ -972,8 +1058,10 @@ tavily = TavilySearch(api_key='<your_tavily_api_key>')
 res = tavily('machine learning', max_results=5)
 ''')
 
-add_chinese_doc('TavilySearch.search', '''
+add_chinese_doc('TavilySearch.search', f'''
 执行 Tavily 网页搜索。
+
+{_GENERAL_SEARCH_GUIDANCE_ZH}
 
 Args:
     query (str): 搜索关键词或自然语言问题。
@@ -992,8 +1080,10 @@ Returns:
     extra 中包含 score（float，相关性分数）；开启 include_raw_content 时含 raw_content（str，Markdown 原文）。
 ''')
 
-add_english_doc('TavilySearch.search', '''
+add_english_doc('TavilySearch.search', f'''
 Execute Tavily web search.
+
+{_GENERAL_SEARCH_GUIDANCE_EN}
 
 Args:
     query (str): Search keywords or natural language question.
