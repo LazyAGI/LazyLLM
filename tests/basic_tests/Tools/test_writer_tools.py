@@ -5,10 +5,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from lazyllm.tools.writer.data_models import (
+    BlockSummary,
     DraftBlock,
     DraftDocument,
     DraftSection,
     DocBlock,
+    DocumentSummary,
     DocIR,
     OutlineNode,
     ResourceProfile,
@@ -191,14 +193,244 @@ def test_update_writing_context_tool_result_from_paths():
         context.save(context_path)
         output.save(output_path)
 
-        result = WriterContextTools(artifact_store=d).update_writing_context(
-            content_artifact=output_path,
-            context=context_path,
-        )
+        tool = WriterContextTools(artifact_store=d)
+        result = tool.update_writing_context(content_artifact=output_path, context=context_path)
+
+        assert result["artifact_path"].endswith("writing_context.json")
+        assert result["metadata"]["step_name"] == "update_writing_context"
 
         updated = load_artifact_json(result["context_path"], WritingContext)
         assert result["metadata"]["step_name"] == "update_writing_context"
         assert updated.document_summary.summary == "最终稿 这是最终输出内容。"
+        assert updated.meta["context_updates"][0]["summary"] == "最终稿 这是最终输出内容。"
+
+
+# ---------------------------------------------------------------------------
+# _build_structure_summary
+# ---------------------------------------------------------------------------
+
+def test_structure_summary_with_headings():
+    doc_ir = DocIR(
+        blocks=[
+            DocBlock(block_id="b1", block_type="heading", text="背景", level=1),
+            DocBlock(block_id="b2", block_type="heading", text="方案", level=1),
+            DocBlock(block_id="b3", block_type="paragraph", text="正文"),
+        ],
+    )
+    result = WriterContextTools._build_structure_summary(doc_ir)
+    assert result == "文档结构: # 背景 > # 方案"
+
+
+def test_structure_summary_heading_text_empty():
+    doc_ir = DocIR(
+        blocks=[
+            DocBlock(block_id="b1", block_type="heading", text=""),
+            DocBlock(block_id="b2", block_type="paragraph", text="正文"),
+        ],
+    )
+    assert WriterContextTools._build_structure_summary(doc_ir) is None
+
+
+def test_structure_summary_no_headings():
+    doc_ir = DocIR(
+        blocks=[
+            DocBlock(block_id="b1", block_type="paragraph", text="正文"),
+            DocBlock(block_id="b2", block_type="table", text=""),
+        ],
+    )
+    result = WriterContextTools._build_structure_summary(doc_ir)
+    assert result == "由 2 个顶层块组成"
+
+
+def test_structure_summary_none_doc_ir():
+    assert WriterContextTools._build_structure_summary(None) is None
+
+
+def test_structure_summary_empty_blocks():
+    doc_ir = DocIR(blocks=[])
+    assert WriterContextTools._build_structure_summary(doc_ir) is None
+
+
+# ---------------------------------------------------------------------------
+# _summarize_content_data
+# ---------------------------------------------------------------------------
+
+def test_summarize_content_empty():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool._summarize_content_data("")
+        assert result == "No content summary available."
+
+
+def test_summarize_content_no_llm():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool._summarize_content_data("这是草稿内容。" * 50)
+        assert len(result) <= 243  # 240 + "..."
+        assert "这是草稿内容" in result
+
+
+def test_summarize_content_with_llm():
+    llm = MagicMock()
+    llm_result = MagicMock()
+    llm_result.summary = "这是 LLM 生成的语义摘要。"
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d, llm=llm)
+        with patch.object(tool, "_call_llm_structured", return_value=llm_result):
+            result = tool._summarize_content_data("这是一段很长的草稿内容。" * 50)
+            assert result == "这是 LLM 生成的语义摘要。"
+
+
+def test_summarize_content_llm_exception():
+    llm = MagicMock()
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d, llm=llm)
+        with patch.object(tool, "_call_llm_structured", side_effect=RuntimeError("LLM down")):
+            result = tool._summarize_content_data("草稿内容" * 50)
+            assert "草稿内容" in result
+
+
+def test_summarize_content_long_no_llm():
+    long_text = "A" * 500
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool._summarize_content_data(long_text)
+        assert len(result) <= 243
+        assert result.endswith("...")
+
+
+# ---------------------------------------------------------------------------
+# create_writing_context 边界
+# ---------------------------------------------------------------------------
+
+def test_create_context_doc_ir_none():
+    task = WritingTask(task_id="t1", query="写方案", task_type="write")
+    profiles = [
+        ResourceProfile(resource_id="r1", resource_role="background",
+                        summary="背景资料", key_facts=["fact1"], style_notes=["正式"])
+    ]
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool.create_writing_context(
+            task=task.model_dump(),
+            resource_profiles=[p.model_dump() for p in profiles],
+            doc_ir=None,
+        )
+
+        context = load_artifact_json(result["context_path"], WritingContext)
+        assert context.document_summary.structure_summary is None
+        assert context.block_summaries == []
+
+
+def test_create_context_doc_ir_with_headings():
+    task = WritingTask(task_id="t2", query="写报告", task_type="write")
+    profiles = [
+        ResourceProfile(resource_id="r1", resource_role="background",
+                        summary="行业数据", key_facts=["市场增长20%"], style_notes=[])
+    ]
+    doc_ir = DocIR(
+        doc_id="doc-2",
+        blocks=[
+            DocBlock(block_id="b1", block_type="heading", text="背景分析", level=1),
+            DocBlock(block_id="b2", block_type="heading", text="市场趋势", level=1),
+            DocBlock(block_id="b3", block_type="paragraph", text="行业正在快速增长。"),
+        ],
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool.create_writing_context(
+            task=task.model_dump(),
+            resource_profiles=[p.model_dump() for p in profiles],
+            doc_ir=doc_ir.model_dump(),
+        )
+
+        context = load_artifact_json(result["context_path"], WritingContext)
+        assert "文档结构" in context.document_summary.structure_summary
+        assert "# 背景分析" in context.document_summary.structure_summary
+        assert len(context.block_summaries) == 3  # 2 headings + 1 paragraph all have text
+        assert context.facts[0].value == "市场增长20%"
+
+
+def test_create_context_multiple_profiles():
+    task = WritingTask(task_id="t3", query="写方案", task_type="write")
+    profiles = [
+        ResourceProfile(resource_id="r1", resource_role="spec",
+                        summary="需求规格", key_facts=["私有化部署", "SaaS"], style_notes=["技术"]),
+        ResourceProfile(resource_id="r2", resource_role="background",
+                        summary="市场数据", key_facts=["市场增长"], style_notes=[]),
+        ResourceProfile(resource_id="r3", resource_role="example",
+                        summary="范文", key_facts=[], style_notes=["正式"]),
+    ]
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool.create_writing_context(
+            task=task.model_dump(),
+            resource_profiles=[p.model_dump() for p in profiles],
+        )
+
+        context = load_artifact_json(result["context_path"], WritingContext)
+        assert context.document_summary.key_points == ["需求规格", "市场数据", "范文"]
+        assert len(context.facts) == 3
+        assert context.style_profile.notes == ["技术", "正式"]
+
+
+# ---------------------------------------------------------------------------
+# update_writing_context 边界
+# ---------------------------------------------------------------------------
+
+def test_update_context_first_update():
+    ctx = WritingContext(context_id="ctx-first")
+    # no document_summary
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool.update_writing_context(
+            content_artifact={"title": "第一章", "content": "这是第一章的内容。", "draft_id": "d1"},
+            context=ctx,
+        )
+
+        updated = load_artifact_json(result["context_path"], WritingContext)
+        assert updated.document_summary is not None
+        assert updated.document_summary.summary == "第一章 这是第一章的内容。"
+        assert len(updated.meta.get("context_updates", [])) >= 1
+
+
+def test_update_context_second_update():
+    ctx = WritingContext(
+        context_id="ctx-second",
+        document_summary=DocumentSummary(summary="第一次的摘要"),
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool.update_writing_context(
+            content_artifact={"title": "第二章", "content": "第二次更新的内容。"},
+            context=ctx,
+        )
+
+        updated = load_artifact_json(result["context_path"], WritingContext)
+        assert updated.document_summary.summary == "第二章 第二次更新的内容。"
+        assert len(updated.meta.get("context_updates", [])) >= 1
+
+
+def test_update_context_content_as_pydantic():
+    ctx = WritingContext(context_id="ctx-pydantic")
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterContextTools(artifact_store=d)
+        result = tool.update_writing_context(
+            content_artifact=WritingOutput(title="终稿", content="最终输出内容"),
+            context=ctx,
+        )
+
+        updated = load_artifact_json(result["context_path"], WritingContext)
+        assert updated.document_summary.summary == "终稿 最终输出内容"
 
 
 def test_generate_section_instructions_drops_unavailable_source_refs():

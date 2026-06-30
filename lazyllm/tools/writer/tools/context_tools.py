@@ -1,6 +1,10 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel
+
+from lazyllm import LOG
+
 from .base import WriterToolBase
 from ..data_models.context import (
     BlockSummary,
@@ -13,6 +17,11 @@ from ..data_models.docir import DocBlock, DocIR
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
 from ..data_models.writing import WritingOutline
+from ..prompts.context import CONTENT_SUMMARY_PROMPT
+
+
+class _ContentSummaryResult(BaseModel):
+    summary: str
 
 
 class WriterContextTools(WriterToolBase):
@@ -88,14 +97,13 @@ class WriterContextTools(WriterToolBase):
             else:
                 writing_context.document_summary.summary = content_summary
 
-            block_id = f"content_update_{len(writing_context.block_summaries) + 1}"
-            writing_context.block_summaries.append(
-                BlockSummary(
-                    block_id=block_id,
-                    summary=content_summary,
-                    key_points=[],
-                )
-            )
+            from datetime import datetime, timezone
+
+            writing_context.meta.setdefault("context_updates", []).append({
+                "summary": content_summary,
+                "content_kind": content_kind,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
 
         if outline is not None:
             writing_context.outline = self._unified_model(outline, WritingOutline)
@@ -113,7 +121,6 @@ class WriterContextTools(WriterToolBase):
             summary="Updated writing context.",
             counts={
                 "facts": len(writing_context.facts),
-                "block_summaries": len(writing_context.block_summaries),
             },
             artifact_meta={
                 "context_id": writing_context.context_id,
@@ -138,14 +145,27 @@ class WriterContextTools(WriterToolBase):
         doc_ir: Optional[DocIR],
     ) -> DocumentSummary:
         key_points = [profile.summary for profile in profiles if profile.summary]
-        structure_summary = None
-        if doc_ir:
-            structure_summary = f"{len(doc_ir.blocks)} top-level blocks"
+        structure_summary = self._build_structure_summary(doc_ir)
+
+        summary = task.query
+        if doc_ir and doc_ir.plain_text:
+            summary = self._summarize_content_data(doc_ir.plain_text)
+
         return DocumentSummary(
-            summary=task.query,
+            summary=summary,
             key_points=key_points,
             structure_summary=structure_summary,
         )
+
+    @staticmethod
+    def _build_structure_summary(doc_ir: Optional[DocIR]) -> Optional[str]:
+        if not doc_ir or not doc_ir.blocks:
+            return None
+        headings = [b for b in doc_ir.blocks if b.block_type == "heading"]
+        if headings:
+            parts = [f"{'#' * (b.level or 1)} {b.text}" for b in headings if b.text]
+            return "文档结构: " + " > ".join(parts) if parts else None
+        return f"由 {len(doc_ir.blocks)} 个顶层块组成"
 
     def _build_block_summaries(self, doc_ir: Optional[DocIR]) -> List[BlockSummary]:
         if not doc_ir:
@@ -194,7 +214,20 @@ class WriterContextTools(WriterToolBase):
 
     def _summarize_content_data(self, content_data: Any) -> str:
         text = self._extract_text(content_data)
-        return self._shorten(text or "No content summary available.")
+        if not text or not text.strip():
+            return "No content summary available."
+
+        result = self._shorten(text)
+
+        if self.llm is not None:
+            try:
+                prompt = CONTENT_SUMMARY_PROMPT.format(content=text[:3000])
+                llm_result = self._call_llm_structured(prompt, _ContentSummaryResult)
+                result = llm_result.summary or result
+            except Exception:
+                LOG.warning("update_writing_context: LLM summary failed, using truncation fallback")
+
+        return result
 
     def _extract_text(self, value: Any) -> str:
         if isinstance(value, str):
