@@ -391,9 +391,9 @@ class ToolGroup(ToolContainer):
 
         group_desc = docstring_parser.parse(self._desc).description if self._desc else ''
         desc = (
-            f'Activate the {group_name} tool group and unlock its methods. '
-            f'You MUST call this tool before using any tool from {group_name}. '
-            f'{group_desc or ""}'
+            f'Gateway to activate the "{group_name}" tool group '
+            f'{"(usage: " + group_desc + ")" if group_desc else ""}'
+            f'. You MUST call this tool before using any tool from {group_name}.'
         )
         _gateway_apply.__doc__ = (
             f'{desc}\n\nReturns:\n    str: List of available tool names in this group.'
