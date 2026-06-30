@@ -5,7 +5,7 @@ from .writing import WritingOutline
 
 
 class ResourceProfile(BaseModel):
-    resource_id: str
+    resource_id: str = ""
     resource_role: Literal["spec", "background", "example"]
     template_usage: Optional[Literal["structure", "style", "both", "none"]] = None
     confidence: float = 1.0
