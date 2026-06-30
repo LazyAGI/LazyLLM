@@ -82,6 +82,7 @@ class NaiveWriterWorkflow:
         draft_document = self.drafting.generate_draft_document(
             draft_sections=self._artifact_ref(draft_section, "draft_section"),
             context=self._artifact_ref(writing_context, "writing_context"),
+            outline=self._artifact_ref(outline, "outline"),
         )
         writing_output = self.drafting.generate_writing_output(
             draft=self._artifact_ref(draft_document, "draft_document"),

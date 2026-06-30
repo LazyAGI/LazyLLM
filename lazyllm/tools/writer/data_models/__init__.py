@@ -1,4 +1,4 @@
-from .task import InputResource, Selection, TargetDocument, WritingOutput, WritingTask
+from .task import InputResource, Selection, TargetDocument, WritingTask
 from .resource import ResourceProfile
 from .context import (
     BlockRelationGraph,
@@ -16,6 +16,7 @@ from .writing import (
     SectionInstruction,
     SectionInstructionList,
     WritingOutline,
+    WritingOutput,
     WritingSubTask,
 )
 from .docir import Anchor, DocBlock, DocIR, DocSpan

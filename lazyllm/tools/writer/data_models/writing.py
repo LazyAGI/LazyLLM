@@ -106,3 +106,12 @@ class DraftDocument(ArtifactModel):
     title: Optional[str] = None
     sections: List[DraftSection] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class WritingOutput(ArtifactModel):
+    output_id: Optional[str] = None
+    title: Optional[str] = None
+    content: str
+    output_format: Literal["markdown", "plain_text", "html", "docx"] = "markdown"
+    references: List[str] = Field(default_factory=list)
+    meta: Dict[str, Any] = Field(default_factory=dict)

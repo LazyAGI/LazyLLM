@@ -45,12 +45,3 @@ class WritingTask(ArtifactModel):
     constraints: Dict[str, Any] = Field(default_factory=dict)
     output: Dict[str, Any] = Field(default_factory=dict)
     meta: Dict[str, Any] = Field(default_factory=dict)
-
-
-class WritingOutput(ArtifactModel):
-    output_id: Optional[str] = None
-    title: Optional[str] = None
-    content: str
-    output_format: Literal["markdown", "plain_text", "html", "docx"] = "markdown"
-    references: List[str] = Field(default_factory=list)
-    meta: Dict[str, Any] = Field(default_factory=dict)

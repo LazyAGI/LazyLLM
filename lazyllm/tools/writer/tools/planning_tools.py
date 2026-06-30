@@ -175,7 +175,7 @@ class WriterPlanningTools(WriterToolBase):
             instruction = instructions_by_node_id.get(node.node_id or "")
             if instruction is None:
                 instruction = self._instruction_from_outline_node(node)
-            normalized.append(self._normalize_section_instruction(instruction, node))
+            normalized.append(self._normalize_section_instruction(instruction, node, outline))
 
         instruction_list.instruction_set_id = (
             instruction_list.instruction_set_id
@@ -187,6 +187,7 @@ class WriterPlanningTools(WriterToolBase):
             {
                 "source": "llm",
                 "outline_id": outline.outline_id,
+                "outline_title": outline.title,
                 "context_id": context.context_id,
                 "has_execution_results": execution_results is not None,
             }
@@ -197,6 +198,7 @@ class WriterPlanningTools(WriterToolBase):
         self,
         instruction: SectionInstruction,
         node: OutlineNode,
+        outline: WritingOutline,
     ) -> SectionInstruction:
         constraints = node.constraints
         instruction.outline_node_id = instruction.outline_node_id or node.node_id or ""
@@ -228,6 +230,8 @@ class WriterPlanningTools(WriterToolBase):
             {
                 "outline_node_level": node.level,
                 "outline_node_instruction": node.instruction,
+                "outline_id": outline.outline_id,
+                "outline_title": outline.title,
             }
         )
         return instruction

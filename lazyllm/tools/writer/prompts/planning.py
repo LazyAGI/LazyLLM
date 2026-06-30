@@ -41,7 +41,9 @@ Requirements:
 - fact_constraints should preserve locked facts and important context facts relevant to this section.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
 - relation_constraints should describe dependencies on previous or later sections when useful.
-- expected_blocks should be a concise block-level plan for the draft tool.
+- expected_blocks should be a concise block-level content plan for the draft tool.
+- For a normal section, expected_blocks should usually contain 3 to 6 planned content blocks unless the section is explicitly very short.
+- expected_blocks are planning labels for coverage and ordering, not visible headings that must appear in final text.
 - Do not invent facts that conflict with writing context.
 
 Outline:

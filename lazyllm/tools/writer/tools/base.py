@@ -106,6 +106,7 @@ class WriterToolBase(ModuleBase):
         counts: Optional[Dict[str, Any]] = None,
         extra: Optional[Dict[str, Any]] = None,
         artifact_meta: Optional[Dict[str, Any]] = None,
+        artifact_filenames: Optional[Dict[str, str]] = None,
     ) -> ToolResult:
         if not artifacts:
             raise ValueError("artifacts must contain at least one artifact.")
@@ -119,7 +120,11 @@ class WriterToolBase(ModuleBase):
 
         for artifact_key, artifact in artifacts.items():
             schema_name = self._artifact_schema_name(artifact, artifact_key)
-            filename = f"{artifact_key}.json"
+            filename = (
+                artifact_filenames.get(artifact_key)
+                if artifact_filenames and artifact_key in artifact_filenames
+                else f"{artifact_key}.json"
+            )
             artifact_extra_meta = {
                 "step_name": step_name or type(self).__name__,
                 "artifact_key": artifact_key,
