@@ -20,7 +20,7 @@ from .writing import (
     WritingSubTask,
 )
 from .docir import Anchor, DocBlock, DocIR, DocSpan
-from .patch import ModifyInstruction, ModifyPlan, PatchHunk, PatchResult, PatchSet
+from .revision import ModifyInstruction, ModifyPlan, PatchHunk, PatchResult, PatchSet
 from .multimodal import MediaAsset, MediaAssetLibrary, VisualInstruction
 from .quality import AuditIssue, AuditResult, ReviewReport
 
