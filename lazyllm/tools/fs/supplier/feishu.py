@@ -872,7 +872,7 @@ class FeishuWikiFS(FeishuFSBase):
             if page_token:
                 params['page_token'] = page_token
             data = self._get(url, params=params)
-            payload = data.get('data', {})
+            payload = data.get('data') or {}
             results.extend(payload.get('items') or [])
             page_token = payload.get('page_token') or payload.get('next_page_token')
             if not payload.get('has_more') or not page_token:
@@ -1234,7 +1234,7 @@ class FeishuWikiFS(FeishuFSBase):
             if page_token:
                 params['page_token'] = page_token
             data = self._post(url, params=params, json=payload)
-            response_data = data.get('data', {})
+            response_data = data.get('data') or {}
             items = response_data.get('items') or []
             for item in items:
                 results.append({

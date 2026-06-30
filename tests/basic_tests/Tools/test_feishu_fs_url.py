@@ -272,6 +272,16 @@ class TestFeishuWikiOnlineSearch(unittest.TestCase):
         self.assertEqual(fs._post.call_args.kwargs['json'], {'query': 'Project Plan'})
         self.assertEqual(fs._post.call_args.kwargs['params']['page_size'], 20)
 
+    def test_search_treats_null_data_as_empty_results(self):
+        fs = self._make_wiki_fs('')
+        fs._post = MagicMock(return_value={'code': 0, 'data': None})
+
+        with patch('lazyllm.tools.fs.supplier.feishu.lazyllm_globals') as mock_globals:
+            mock_globals.config = {'feishu_wiki_space_id': None}
+            results = fs.search('Project')
+
+        self.assertEqual(results, [])
+
     def test_find_uses_explicit_space_for_tree_listing(self):
         fs = self._make_wiki_fs('')
         fs._list_nodes_raw = MagicMock(return_value=[{
@@ -302,6 +312,12 @@ class TestFeishuWikiOnlineSearch(unittest.TestCase):
             results = fs.find('Project')
 
         self.assertEqual([item['space_id'] for item in results], ['wikcnOne', 'wikcnTwo'])
+
+    def test_list_spaces_treats_null_data_as_empty_results(self):
+        fs = self._make_wiki_fs('')
+        fs._get = MagicMock(return_value={'code': 0, 'data': None})
+
+        self.assertEqual(fs._list_spaces_raw(), [])
 
 
 class TestFSRouterParse(unittest.TestCase):
