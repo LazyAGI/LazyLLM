@@ -233,9 +233,10 @@ def hook_execution(
         except Exception as e:
             err = map_exception(e) if map_exception else e
             nm = getattr(obj, 'name', None)
-            LOG.error(
-                f'Error in `{type(obj).__name__}`' + (f' name={nm!r}' if nm else '') + f': {err}'
-            )
+            error_msg = f'Error in `{type(obj).__name__}`' + (f' name={nm!r}' if nm else '') + f': {err}'
+            if map_exception:
+                err.args = (error_msg, *getattr(err, 'args', ())[1:])
+            LOG.error(error_msg)
             try:
                 run_hooks(hook_objs, 'on_error', err)
             except Exception:
