@@ -551,7 +551,7 @@ def _load_tool_by_name(name: str) -> 'ModuleTool':
 # Upper layers write via: lazyllm.globals.config['active_tool_names'] = <set>
 # _safe_call reads via the same key.  Using globals.config keeps the framework
 # decoupled from hard-coded key strings in business code.
-lazyllm.globals.config.add('active_tool_names', set, set())
+lazyllm.globals.config.add('active_tool_names', set, None)
 
 
 class ToolManager(ModuleBase):
@@ -709,8 +709,7 @@ class ToolManager(ModuleBase):
                     try:
                         # Guard: raise PermissionError if tool is not active in this session.
                         active_tool_names = lazyllm.globals.config['active_tool_names']
-                        if isinstance(active_tool_names, set) and active_tool_names and \
-                                tool_name not in active_tool_names:
+                        if isinstance(active_tool_names, set) and tool_name not in active_tool_names:
                             raise PermissionError(
                                 f'{tool_name} is not registered or active in current session. '
                                 'Please enable this tool in model/tool config, then retry.'
