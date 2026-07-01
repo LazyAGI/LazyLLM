@@ -205,7 +205,7 @@ def run_hooks(hook_objs, phase: str, *phase_args):
 
 
 @contextmanager
-def hook_execution(
+def hook_execution(  # C901
     obj: Any,
     *hook_args: Any,
     map_exception: Optional[Callable[[Exception], Exception]] = None,
