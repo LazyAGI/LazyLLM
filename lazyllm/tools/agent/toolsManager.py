@@ -547,12 +547,14 @@ def _load_tool_by_name(name: str) -> 'ModuleTool':
     return target()
 
 
+# Register the per-session active-tool allowlist in the lazyllm session config system.
+# Upper layers write via: lazyllm.globals.config['active_tool_names'] = <set>
+# _safe_call reads via the same key.  Using globals.config keeps the framework
+# decoupled from hard-coded key strings in business code.
+lazyllm.globals.config.add('active_tool_names', set, set())
+
+
 class ToolManager(ModuleBase):
-    # Register the per-session active-tool allowlist in the lazyllm session config system.
-    # Upper layers write via: lazyllm.globals.config['active_tool_names'] = <set>
-    # _safe_call reads via the same key.  Using globals.config keeps the framework
-    # decoupled from hard-coded key strings in business code.
-    lazyllm.globals.config.add('active_tool_names', set, set())
 
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
         super().__init__(return_trace=return_trace)
