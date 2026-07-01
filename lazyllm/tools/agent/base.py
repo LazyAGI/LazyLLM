@@ -27,6 +27,18 @@ def _write_agent_data(tag: str, **kwargs):
         json.dumps(payload, ensure_ascii=False, default=str))
 
 
+def _unwrap_tool_result(result: Any) -> str:
+    # Unpack structured tool results produced by ToolManager._safe_call.
+    # {'ok': True,  'value': v}  → str(v)
+    # {'ok': False, 'msg':   m}  → m  (already a human-readable error string)
+    # anything else              → str(result)  (sandbox output, parse errors, etc.)
+    if isinstance(result, dict) and 'ok' in result:
+        if result['ok']:
+            return str(result.get('value', ''))
+        return str(result.get('msg', repr(result)))
+    return str(result)
+
+
 class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools: Optional[List[Union[str, Callable, Dict]]] = None,
                  max_retries: int = 5, return_trace: bool = False,
@@ -122,7 +134,7 @@ class LazyLLMAgentBase(ModuleBase):
             'id': tool_call.get('id'),
             'name': tool_call.get('function', {}).get('name'),
             'arguments': tool_call.get('function', {}).get('arguments'),
-            'result': tool_result,
+            'result': _unwrap_tool_result(tool_result),
         } for tool_call, tool_result in zip(tool_calls, tool_calls_results)]
 
     def _assert_tools(self):
