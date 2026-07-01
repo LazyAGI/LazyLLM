@@ -1855,21 +1855,26 @@ Returns:
 
 # GoogleDriveFS
 _add_fs_chinese('GoogleDriveFS', '''\
-Google Drive 文件系统：使用 Drive v3 API，支持 OAuth token 或 Service Account 凭证。目录监听用 CloudFsWatchdog；支持 webhook。
+Google Drive 文件系统：使用 Google 官方 Drive v3 API 直接访问在线原始云盘，支持目录浏览、文件读写、关键词搜索和文件名正则查找。不会先把文件导入 LazyLLM 知识库。
 
 构造参数:
     credentials (str | dict, optional): Service Account JSON 文件路径或已解析的 dict；提供后会自动换取 access_token。
     base_url (str, optional): Drive API 根地址，默认官方地址。
+    dynamic_auth (bool): 是否由 Agent/ToolManager 在每次请求时注入用户 OAuth access token；默认 False。
 
-认证与配置: 推荐使用 Service Account 方式：credentials 为 JSON 文件路径或 Service Account 的 dict，由 FS 自动换取并刷新 access_token。可选 base_url。
+认证模式:
+    - 独立 Python 调用：传入 Service Account JSON 路径或 dict，FS 自动换取并刷新 access_token。
+    - Agent/LazyMind 在线工具：使用 GoogleDriveFS(dynamic_auth=True)，由 ToolManager 按请求注入已授权用户的 OAuth access token。构造函数不接收 token 参数，请勿把 access_token 当作 credentials 传入。
+    - drive.readonly 权限可用于 search、find 和读取；写入、移动、删除等操作需要更高的 Google Drive OAuth 权限，否则官方 API 会拒绝请求。
+
 配置与环境变量: config 项 googledrive_credentials（环境变量 GOOGLE_APPLICATION_CREDENTIALS）指向 Service Account JSON 路径；在 GoogleDriveFS 内解析。
 
-如何获取 token / 凭证:
-    方式 A — OAuth2 access_token（用户身份）:
+如何获取 OAuth / Service Account 凭证:
+    方式 A — OAuth2（用户身份，由上层应用管理 token 生命周期）:
     1. 打开 Google Cloud Console https://console.cloud.google.com，创建或选择项目。
     2. 启用「Google Drive API」：APIs & Services → Enable APIs and Services → 搜索并启用 Drive API。
     3. 创建 OAuth 2.0 凭据：APIs & Services → Credentials → Create Credentials → OAuth client ID，应用类型选 Desktop 或 Web，获取 client_id 与 client_secret。
-    4. 使用 Google 官方 OAuth 流程（或 google-auth 等库）让用户授权，用返回的 authorization code 换取 access_token 和 refresh_token；将 access_token 作为本 FS 的 token（注意 access_token 有过期时间，生产环境建议用 refresh_token 定期刷新后传入）。
+    4. 上层应用使用 Google 官方 OAuth 流程取得 access_token/refresh_token，并通过 dynamic_auth 工具调用注入短期 access_token。
     方式 B — Service Account（服务身份）:
     1. 同上在 Cloud Console 启用 Drive API。
     2. 创建服务账号：APIs & Services → Credentials → Create Credentials → Service account，创建后进入该服务账号 → Keys → Add key → JSON，下载 JSON 密钥文件。
@@ -1877,16 +1882,25 @@ Google Drive 文件系统：使用 Drive v3 API，支持 OAuth token 或 Service
     4. 构造 GoogleDriveFS 时传入 credentials 为该 JSON 文件路径或已解析的 dict，无需手动传 token（内部会用 JSON 中的私钥换取 access_token）。
 ''')
 _add_fs_english('GoogleDriveFS', '''\
-Google Drive FS: Drive v3 API; OAuth token or Service Account credentials. Use CloudFsWatchdog for watching; webhook supported.
+Google Drive filesystem backed directly by Google's official Drive v3 API. It browses, reads, writes, searches, and finds files in the live source Drive without importing them into a LazyLLM knowledge base first.
 
-Auth and config: Prefer Service Account credentials: pass credentials as JSON path or SA dict so the FS can obtain and refresh access_token automatically. Optional base_url.
+Args:
+    credentials (str | dict, optional): Service Account JSON path or parsed dictionary. The filesystem obtains and refreshes its access token.
+    base_url (str, optional): Drive API base URL; defaults to the official endpoint.
+    dynamic_auth (bool): Let Agent/ToolManager inject a user OAuth access token per request. Defaults to False.
+
+Authentication modes:
+    - Standalone Python: pass a Service Account JSON path or dictionary.
+    - Agent/LazyMind online tools: construct GoogleDriveFS(dynamic_auth=True); ToolManager injects the authorized user's OAuth access token for each request. The constructor has no token argument, so do not pass an access token as credentials.
+    - drive.readonly is sufficient for search, find, and read. Write, move, and delete operations require broader Google Drive OAuth scopes and are rejected by the official API otherwise.
+
 Config and env: config key googledrive_credentials (env GOOGLE_APPLICATION_CREDENTIALS) points to Service Account JSON path; resolved inside GoogleDriveFS.
 
-How to obtain token / credentials:
-    Option A — OAuth2 access_token (user identity):
+How to obtain OAuth / Service Account credentials:
+    Option A — OAuth2 (user identity; token lifecycle managed by the host application):
     1. In Google Cloud Console (https://console.cloud.google.com), create or select a project and enable the Google Drive API.
     2. Create OAuth 2.0 credentials (Desktop or Web client), get client_id and client_secret.
-    3. Run the OAuth flow (e.g. with google-auth) to get user consent and exchange the authorization code for access_token (and refresh_token). Use access_token as token for this FS; refresh it with refresh_token when expired.
+    3. Run Google's official OAuth flow in the host application, retain access_token/refresh_token there, and inject the short-lived access token through dynamic_auth tool execution.
     Option B — Service Account:
     1. Enable Drive API and create a Service Account in the same project; download its JSON key from Keys → Add key → JSON.
     2. Share the target Drive folder (or My Drive) with the service account email (e.g. xxx@yyy.iam.gserviceaccount.com) with at least Viewer/Editor access.
@@ -1894,12 +1908,15 @@ How to obtain token / credentials:
 ''')
 _add_fs_example('GoogleDriveFS', '''\
 >>> from lazyllm.tools.fs import GoogleDriveFS
+>>> # Standalone use with a service account shared into the target Drive.
 >>> fs = GoogleDriveFS(credentials='/path/to/service-account.json')
 >>> fs.ls('/root')
+>>> # Agent/ToolManager integrations construct with dynamic_auth=True and inject OAuth per request.
+>>> online_fs = GoogleDriveFS(dynamic_auth=True)
 ''')
 
 _add_fs_chinese('GoogleDriveFS.search', '''\
-使用 Google Drive 官方 files.list API 在在线云盘中搜索文件正文。支持一个或多个关键词；多个关键词按 AND 组合。可通过文件名、共享盘 ID 或直接父文件夹 ID 限定范围。
+使用 Google Drive 官方 files.list API 在在线原始云盘中搜索文件正文，不查询 LazyLLM 本地知识库。支持一个或多个关键词；多个关键词按 AND 组合。可通过文件名、共享盘 ID 或直接父文件夹 ID 限定范围。
 
 Args:
     keywords (str | List[str]): 一个关键词/短语，或多个关键词/短语。
@@ -1912,7 +1929,7 @@ Returns:
     List[Dict[str, Any]]: 匹配文件的元数据，包含 title、mime_type、google_drive_path、web_url、parents 和 drive_id。
 ''')
 _add_fs_english('GoogleDriveFS.search', '''\
-Search online Google Drive content with the official files.list API. Accepts one or more keywords combined with AND, with optional exact file-name, shared-drive, and direct parent-folder scopes.
+Search the live source Google Drive with the official files.list API, not a local LazyLLM knowledge base. Accepts one or more keywords combined with AND, with optional exact file-name, shared-drive, and direct parent-folder scopes.
 
 Args:
     keywords (str | List[str]): One keyword/phrase or multiple keywords/phrases.
