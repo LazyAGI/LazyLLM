@@ -12,9 +12,12 @@ from lazyllm.tools.writer.data_models import (
     WritingOutput,
     WritingTask,
 )
+from lazyllm.tools.writer.data_models.quality import AuditIssue, AuditResult, ReviewReport
 from lazyllm.tools.writer.data_models.task import InputResource
-from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
+from lazyllm.tools.writer.data_models.writing import SectionInstruction, SectionInstructionList
 from lazyllm.tools.writer.tools.context_tools import WriterContextTools
+from lazyllm.tools.writer.tools.quality_tools import WriterQualityTools
+from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
 from lazyllm.tools.writer.utils import load_artifact_json
 
 
@@ -548,4 +551,319 @@ def test_profile_resources_artifact_structure():
         assert result["metadata"]["step_name"] == "profile_resources"
         assert result["metadata"]["artifact_key"] == "resource_profiles"
         assert result["metadata"]["status"] == "success"
+
+
+# ---------------------------------------------------------------------------
+# quality-tools helpers
+# ---------------------------------------------------------------------------
+
+def _make_context():
+    return WritingContext(
+        context_id="ctx-test-001",
+        doc_id="doc-test-001",
+    )
+
+
+def _make_passing_audit() -> AuditResult:
+    return AuditResult(is_passed=True, score=100, summary="All checks passed.", issues=[])
+
+
+def _make_failing_audit() -> AuditResult:
+    return AuditResult(
+        is_passed=False,
+        score=63,
+        summary="发现 1 个严重问题和 2 个轻微问题。",
+        issues=[
+            AuditIssue(
+                severity="high",
+                category="evidence",
+                location="sec-ch01",
+                description="林星辰灵力测试值 3 星，与前文设定矛盾。",
+                suggestion="修正为 0 星（被本源封印压制）。",
+            ),
+            AuditIssue(
+                severity="medium",
+                category="style",
+                location="sec-prologue",
+                description="「在当今时代」出现 1 次。",
+                suggestion="删除该禁用表达。",
+            ),
+            AuditIssue(
+                severity="low",
+                category="style",
+                location="全文",
+                description="「然而」作为段落开头出现 4 次。",
+                suggestion="减少使用频率或替换为其他过渡词。",
+            ),
+        ],
+    )
+
+
+def _make_section_data():
+    return {
+        "section_id": "sec-prologue",
+        "outline_node_id": "prologue",
+        "instruction_id": "si-prologue",
+        "title": "楔子 · 星辰陨落",
+        "blocks": [
+            {
+                "block_id": "blk-pro-01",
+                "heading": None,
+                "content": (
+                    "万古之前，九州大陆之上，有一位统御星辰的大帝。\n\n"
+                    "他抬手可摘日月，挥袖能碎星河。但这一天，天穹裂开了。"
+                ),
+            }
+        ],
+    }
+
+
+def _make_section_instruction_list():
+    return SectionInstructionList(
+        instruction_set_id="iset-test-001",
+        instructions=[
+            SectionInstruction(
+                instruction_id="si-prologue",
+                outline_node_id="prologue",
+                section_title="楔子 · 星辰陨落",
+                section_goal="建立世界观的宏大感和宿命基调。",
+                required_points=[
+                    "太古星辰大帝的实力层级",
+                    "陨落的具体场景",
+                    "本源封印于婴儿体内的过程",
+                ],
+                fact_constraints=[
+                    "星辰本源=太古大帝毕生修为+灵魂印记",
+                    "封印地点：星陨城外荒山",
+                ],
+                style_constraints=[
+                    "全知视角，史诗歌谣的叙述节奏",
+                    "避免口语化，保持古雅的书面语感",
+                ],
+                relation_constraints=[
+                    "为第一章「废柴少年」提供时间跨越的承接"
+                ],
+                expected_blocks=["开篇场景描写", "大帝陨落过程", "本源封印", "时空跨越暗示"],
+            ),
+            SectionInstruction(
+                instruction_id="si-ch01",
+                outline_node_id="ch01",
+                section_title="第一章 · 废柴少年",
+                section_goal="建立读者对主角林星辰的同情和代入感。",
+                required_points=[
+                    "林星辰十六岁的身份背景",
+                    "连续三年灵力测试倒数第一",
+                    "家族轻视态度",
+                    "深夜星魂异动的转折场景",
+                ],
+                fact_constraints=[
+                    "林星辰境界：未入引星",
+                    "林家地位：星陨城三大家族之一",
+                ],
+                style_constraints=[
+                    "前半部分压抑沉闷",
+                    "后期觉醒场景节奏突变",
+                ],
+                relation_constraints=["承接楔子的十六年后时间线"],
+                expected_blocks=["日常压抑场景", "灵力测试羞辱", "深夜觉醒"],
+            ),
+        ],
+    )
+
+
+def _make_writing_output():
+    return WritingOutput(
+        output_id="out-test-001",
+        title="星辰大帝",
+        content=(
+            "# 星辰大帝\n\n"
+            "## 楔子 · 星辰陨落\n\n"
+            "万古之前，九州大陆上，曾有一位统御星辰的大帝。\n\n"
+            "他抬手摘日月，挥袖碎星河。\n\n"
+            "## 第一章 · 废柴少年\n\n"
+            "星陨城的秋天来得比往年更早一些。\n\n"
+            "林家的演武场上立着一块三丈高的观星盘……\n\n"
+            "## 参考文献\n\n"
+            "- AI Fiction Research Group (2025)\n"
+        ),
+        output_format="markdown",
+        references=["AI Fiction Research Group (2025)"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# validate_section
+# ---------------------------------------------------------------------------
+
+def test_validate_section_happy_path():
+    section_data = _make_section_data()
+    instruction_list = _make_section_instruction_list()
+    context = _make_context()
+    mock_llm = MagicMock()
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=mock_llm, artifact_store=d)
+        with patch.object(tool, "_call_llm_structured", return_value=_make_passing_audit()):
+            result = tool.validate_section(
+                draft_section=section_data,
+                section_instruction=instruction_list,
+                context=context,
+            )
+
+        assert result["artifact_path"].endswith("section_review.json")
+        assert result["metadata"]["step_name"] == "validate_section"
+        assert result["metadata"]["artifact_key"] == "section_review"
+
+        assert result["metadata"]["counts"]["total_issues"] == 0
+        assert result["metadata"]["counts"]["high_severity"] == 0
+
+        assert result["metadata"]["artifact_paths"]["section_review"].endswith("section_review.json")
+
+        report = load_artifact_json(result["artifact_path"], ReviewReport)
+        assert isinstance(report, ReviewReport)
+        assert report.result.is_passed is True
+        assert report.result.score == 100
+        assert report.result.issues == []
+        assert report.target == "sec-prologue"
+        assert report.meta["instruction_id"] == "si-prologue"
+        assert report.meta["outline_node_id"] == "prologue"
+
+
+def test_validate_section_no_match():
+    """Returns skip result when the draft has no matching instruction in the list."""
+    section_data = {
+        "section_id": "sec-unknown",
+        "title": "不存在的章节",
+    }
+    instruction_list = _make_section_instruction_list()
+    context = _make_context()
+    mock_llm = MagicMock()
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=mock_llm, artifact_store=d)
+        with patch.object(tool, "_call_llm_structured") as mock_llm_call:
+            result = tool.validate_section(
+                draft_section=section_data,
+                section_instruction=instruction_list,
+                context=context,
+            )
+
+        mock_llm_call.assert_not_called()
+        assert result["artifact_path"].endswith("section_review.json")
+        assert result["metadata"]["step_name"] == "validate_section"
+        assert result["metadata"]["counts"]["total_issues"] == 0
+        assert result["metadata"]["artifact_paths"]["section_review"].endswith("section_review.json")
+
+        report = load_artifact_json(result["artifact_path"], ReviewReport)
+        assert report.result.is_passed is True
+        assert report.result.score == 100
+        assert report.result.summary == "未找到匹配的章节指令，跳过详细校验。"
+
+
+def test_validate_section_failing_audit():
+    section_data = _make_section_data()
+    instruction_list = _make_section_instruction_list()
+    context = _make_context()
+    mock_llm = MagicMock()
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=mock_llm, artifact_store=d)
+        with patch.object(tool, "_call_llm_structured", return_value=_make_failing_audit()):
+            result = tool.validate_section(
+                draft_section=section_data,
+                section_instruction=instruction_list,
+                context=context,
+            )
+
+        counts = result["metadata"]["counts"]
+        assert counts["total_issues"] == 3
+        assert counts["high_severity"] == 1
+        assert counts["medium_severity"] == 1
+        assert counts["low_severity"] == 1
+
+        report = load_artifact_json(result["artifact_path"], ReviewReport)
+        assert report.result.is_passed is False
+        assert report.result.score == 63
+        assert len(report.result.issues) == 3
+        assert report.result.issues[0].severity == "high"
+        assert report.result.issues[0].category == "evidence"
+        assert report.result.issues[0].location == "sec-ch01"
+
+
+# ---------------------------------------------------------------------------
+# validate_output
+# ---------------------------------------------------------------------------
+
+def test_validate_output_happy_path():
+    output = _make_writing_output()
+    context = _make_context()
+    mock_llm = MagicMock()
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=mock_llm, artifact_store=d)
+        with patch.object(tool, "_call_llm_structured", return_value=_make_passing_audit()):
+            result = tool.validate_output(output=output, context=context)
+
+        assert result["artifact_path"].endswith("output_review.json")
+        assert result["metadata"]["step_name"] == "validate_output"
+        assert result["metadata"]["artifact_key"] == "output_review"
+
+        assert result["metadata"]["counts"]["total_issues"] == 0
+        assert result["metadata"]["counts"]["high_severity"] == 0
+
+        assert result["metadata"]["artifact_paths"]["output_review"].endswith("output_review.json")
+
+        report = load_artifact_json(result["artifact_path"], ReviewReport)
+        assert isinstance(report, ReviewReport)
+        assert report.result.is_passed is True
+        assert report.result.score == 100
+        assert report.result.issues == []
+        assert report.target == "out-test-001"
+        assert report.meta["output_id"] == "out-test-001"
+        assert report.meta["output_title"] == "星辰大帝"
+        assert report.meta["output_format"] == "markdown"
+        assert report.meta["context_id"] == "ctx-test-001"
+
+
+def test_validate_output_failing_audit():
+    output = _make_writing_output()
+    context = _make_context()
+    mock_llm = MagicMock()
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=mock_llm, artifact_store=d)
+        with patch.object(tool, "_call_llm_structured", return_value=_make_failing_audit()):
+            result = tool.validate_output(output=output, context=context)
+
+        counts = result["metadata"]["counts"]
+        assert counts["total_issues"] == 3
+        assert counts["high_severity"] == 1
+        assert counts["medium_severity"] == 1
+        assert counts["low_severity"] == 1
+
+        report = load_artifact_json(result["artifact_path"], ReviewReport)
+        assert report.result.is_passed is False
+        assert report.result.score == 63
+        assert len(report.result.issues) == 3
+
+
+def test_validate_output_from_artifact_paths():
+    """Pass inputs as artifact paths, matching the workflow calling convention."""
+    output = _make_writing_output()
+    context = _make_context()
+    mock_llm = MagicMock()
+
+    with tempfile.TemporaryDirectory() as d:
+        output_path = os.path.join(d, "output.json")
+        context_path = os.path.join(d, "context.json")
+        output.save(output_path)
+        context.save(context_path)
+
+        tool = WriterQualityTools(llm=mock_llm, artifact_store=d)
+        with patch.object(tool, "_call_llm_structured", return_value=_make_passing_audit()):
+            result = tool.validate_output(output=output_path, context=context_path)
+
+        assert result["artifact_path"].endswith("output_review.json")
+        report = load_artifact_json(result["artifact_path"], ReviewReport)
+        assert report.result.is_passed is True
 
