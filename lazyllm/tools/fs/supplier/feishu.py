@@ -1250,54 +1250,107 @@ class FeishuWikiFS(FeishuFSBase):
                 break
         return results[:page_size]
 
-    def find(self, pattern: str, space_id: str = '', max_results: int = 50) -> List[Dict[str, Any]]:
+    @staticmethod
+    def _compile_find_pattern(pattern: str) -> 're.Pattern[str]':
         pattern = (pattern or '').strip()
         if not pattern:
             raise ValueError('pattern is required')
-        max_results = max(1, min(int(max_results), 200))
-        sid = self._resolve_space_id(space_id)
         try:
-            regex = re.compile(pattern, re.IGNORECASE)
+            return re.compile(pattern, re.IGNORECASE)
         except re.error as e:
             raise ValueError(f'Invalid regex pattern: {e}') from e
 
-        space_ids = [sid] if sid else [
+    def _enumerate_find_spaces(self, sid: str) -> List[str]:
+        if sid:
+            return [sid]
+        return [
             str(item.get('space_id') or '').strip()
             for item in self._list_spaces_raw()
             if str(item.get('space_id') or '').strip()
         ]
+
+    @staticmethod
+    def _feishu_node_to_find_result(node: Dict[str, Any], current_space_id: str) -> Dict[str, Any]:
+        return {
+            'title': node.get('title') or '',
+            'node_token': node.get('node_token') or '',
+            'obj_type': node.get('obj_type') or '',
+            'url': node.get('url') or '',
+            'space_id': node.get('space_id') or current_space_id,
+            'has_child': bool(node.get('has_child')),
+        }
+
+    def _collect_find_in_space(
+        self,
+        regex: 're.Pattern[str]',
+        current_space_id: str,
+        max_results: int,
+        results: List[Dict[str, Any]],
+        visited: set,
+    ) -> None:
+        self._walk_feishu_space(
+            regex, '', 0, current_space_id, max_results, results, visited,
+        )
+
+    def _walk_feishu_space(
+        self,
+        regex: 're.Pattern[str]',
+        parent_token: str,
+        depth: int,
+        current_space_id: str,
+        max_results: int,
+        results: List[Dict[str, Any]],
+        visited: set,
+    ) -> None:
+        if len(results) >= max_results or depth > 8:
+            return
+        try:
+            nodes = self._list_nodes_raw(parent_token, space_id=current_space_id)
+        except Exception:
+            return
+        for node in nodes:
+            if self._process_feishu_find_node(
+                node, regex, current_space_id, depth, max_results, results, visited,
+            ):
+                return
+
+    def _process_feishu_find_node(
+        self,
+        node: Dict[str, Any],
+        regex: 're.Pattern[str]',
+        current_space_id: str,
+        depth: int,
+        max_results: int,
+        results: List[Dict[str, Any]],
+        visited: set,
+    ) -> bool:
+        if len(results) >= max_results:
+            return True
+        title = node.get('title') or ''
+        if not title:
+            return False
+        if regex.search(title):
+            results.append(self._feishu_node_to_find_result(node, current_space_id))
+            if len(results) >= max_results:
+                return True
+        nt = node.get('node_token') or ''
+        if nt and nt not in visited and bool(node.get('has_child')):
+            visited.add(nt)
+            self._walk_feishu_space(
+                regex, nt, depth + 1, current_space_id, max_results, results, visited,
+            )
+        return len(results) >= max_results
+
+    def find(self, pattern: str, space_id: str = '', max_results: int = 50) -> List[Dict[str, Any]]:
+        regex = self._compile_find_pattern(pattern)
+        max_results = max(1, min(int(max_results), 200))
+        sid = self._resolve_space_id(space_id)
+        space_ids = self._enumerate_find_spaces(sid)
+
         results: List[Dict[str, Any]] = []
         visited: set = set()
-
-        def _collect(parent_token: str, depth: int, current_space_id: str) -> None:
-            if len(results) >= max_results or depth > 8:
-                return
-            try:
-                nodes = self._list_nodes_raw(parent_token, space_id=current_space_id)
-            except Exception:
-                return
-            for node in nodes:
-                if len(results) >= max_results:
-                    return
-                title = node.get('title') or ''
-                if not title:
-                    continue
-                if regex.search(title):
-                    results.append({
-                        'title': title,
-                        'node_token': node.get('node_token') or '',
-                        'obj_type': node.get('obj_type') or '',
-                        'url': node.get('url') or '',
-                        'space_id': node.get('space_id') or current_space_id,
-                        'has_child': bool(node.get('has_child')),
-                    })
-                nt = node.get('node_token') or ''
-                if nt and nt not in visited and bool(node.get('has_child')):
-                    visited.add(nt)
-                    _collect(nt, depth + 1, current_space_id)
-
         for current_space_id in space_ids:
-            _collect('', 0, current_space_id)
+            self._collect_find_in_space(regex, current_space_id, max_results, results, visited)
             if len(results) >= max_results:
                 break
         return results[:max_results]

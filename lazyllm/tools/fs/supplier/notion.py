@@ -252,28 +252,46 @@ class NotionFS(LinkDocumentFSBase):
         pattern = (pattern or '').strip()
         if not pattern:
             raise ValueError('pattern is required')
-        try:
-            limit = int(limit)
-        except (TypeError, ValueError):
-            limit = 50
-        limit = max(1, min(limit, _PAGE_SIZE))
-        object_type = (object_type or '').strip().lower()
-        if object_type and object_type not in {'page', 'database'}:
-            raise ValueError('object_type must be page or database')
+        limit = self._clamp_find_limit(limit)
+        object_type = self._validate_find_object_type(object_type)
         regex = self._compile_title_regex(pattern)
 
         scope_kind, scope_id = self._resolve_search_scope(scope)
         if scope_kind in ('database', 'data_source'):
-            entries = [
-                self._object_to_entry(item)
-                for item in self._query_collection(scope_kind, scope_id)
-            ]
-            return [
-                entry for entry in entries
-                if self._entry_matches_title_regex(entry, regex)
-            ][:limit]
+            return self._find_in_collection(scope_kind, scope_id, regex, limit)
 
-        # Use Notion search API with a broad query, then filter by regex on title
+        return self._find_via_search_api(object_type, regex, limit)
+
+    @staticmethod
+    def _clamp_find_limit(limit: int) -> int:
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 50
+        return max(1, min(limit, _PAGE_SIZE))
+
+    @staticmethod
+    def _validate_find_object_type(object_type: str) -> str:
+        object_type = (object_type or '').strip().lower()
+        if object_type and object_type not in {'page', 'database'}:
+            raise ValueError('object_type must be page or database')
+        return object_type
+
+    def _find_in_collection(
+        self, kind: str, object_id: str, regex, limit: int,
+    ) -> List[Dict[str, Any]]:
+        entries = [
+            self._object_to_entry(item)
+            for item in self._query_collection(kind, object_id)
+        ]
+        return [
+            entry for entry in entries
+            if self._entry_matches_title_regex(entry, regex)
+        ][:limit]
+
+    def _find_via_search_api(
+        self, object_type: str, regex, limit: int,
+    ) -> List[Dict[str, Any]]:
         payload: Dict[str, Any] = {
             'page_size': _PAGE_SIZE,
             'sort': {'direction': 'descending', 'timestamp': 'last_edited_time'},
@@ -283,22 +301,51 @@ class NotionFS(LinkDocumentFSBase):
         results: List[Dict[str, Any]] = []
         cursor: Optional[str] = None
         while len(results) < limit:
-            page_payload = dict(payload)
-            if cursor:
-                page_payload['start_cursor'] = cursor
-            data = self._post(f'{self._base_url}/search', json=page_payload)
-            items = data.get('results') or []
-            for item in items:
-                if len(results) >= limit:
-                    break
-                entry = self._object_to_entry(item)
-                title = entry.get('title') or entry.get('name') or ''
-                if title and regex.search(title):
-                    results.append(entry)
-            cursor = data.get('next_cursor') if data.get('has_more') else None
-            if not cursor or len(results) >= limit:
+            page = self._fetch_find_search_page(payload, cursor)
+            results.extend(self._collect_find_matches(page.get('results') or [], regex, limit, results))
+            cursor = self._next_find_cursor(page, results, limit)
+            if self._find_page_done(cursor, results, limit):
                 break
         return results[:limit]
+
+    @staticmethod
+    def _next_find_cursor(
+        page: Dict[str, Any], results: List[Dict[str, Any]], limit: int,
+    ) -> Optional[str]:
+        if len(results) >= limit:
+            return None
+        return page.get('next_cursor') if page.get('has_more') else None
+
+    @staticmethod
+    def _find_page_done(
+        cursor: Optional[str], results: List[Dict[str, Any]], limit: int,
+    ) -> bool:
+        return not cursor or len(results) >= limit
+
+    def _fetch_find_search_page(
+        self, payload: Dict[str, Any], cursor: Optional[str],
+    ) -> Dict[str, Any]:
+        page_payload = dict(payload)
+        if cursor:
+            page_payload['start_cursor'] = cursor
+        return self._post(f'{self._base_url}/search', json=page_payload)
+
+    def _collect_find_matches(
+        self,
+        items: List[Dict[str, Any]], regex,
+        limit: int, results: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if len(results) >= limit:
+            return []
+        collected: List[Dict[str, Any]] = []
+        for item in items:
+            if len(results) + len(collected) >= limit:
+                break
+            entry = self._object_to_entry(item)
+            title = entry.get('title') or entry.get('name') or ''
+            if title and regex.search(title):
+                collected.append(entry)
+        return collected
 
     def _resolve_search_scope(self, scope: str = '') -> Tuple[str, str]:
         scope = (scope or '').strip()
