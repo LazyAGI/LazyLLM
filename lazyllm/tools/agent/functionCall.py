@@ -3,7 +3,7 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
-from .base import LazyLLMAgentBase, _write_agent_data
+from .base import LazyLLMAgentBase, _write_agent_data, _unwrap_tool_result
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
@@ -39,18 +39,6 @@ class StreamResponse():
 
 
 _COMPACTION_TRUNCATE_LEN = 200  # chars kept per old tool result
-
-
-def _unwrap_tool_result(result: Any) -> str:
-    # Unpack structured tool results produced by ToolManager._safe_call.
-    # {'ok': True,  'value': v}  → str(v)
-    # {'ok': False, 'msg':   m}  → m  (already a human-readable error string)
-    # anything else              → str(result)  (sandbox output, parse errors, etc.)
-    if isinstance(result, dict) and 'ok' in result:
-        if result['ok']:
-            return str(result.get('value', ''))
-        return str(result.get('msg', repr(result)))
-    return str(result)
 
 
 def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -> List[Dict[str, Any]]:
