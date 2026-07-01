@@ -7,7 +7,8 @@ import unittest
 import copy
 import lazyllm
 from lazyllm.tools.rag.store import (MapStore, ChromaStore, MilvusStore, OceanBaseStore,
-                                     SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
+                                     SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore,
+                                     OpenSearchStore, ElasticSearchStore)
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
 from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc as DocField
@@ -51,6 +52,47 @@ def clear_directory(directory_path):
                 print(f'Failed to delete {file_path}. Reason: {e}')
     else:
         print(f'The directory {directory_path} does not exist.')
+
+
+def _contains_array_term(query, field):
+    if isinstance(query, dict):
+        term = query.get('term')
+        if isinstance(term, dict) and isinstance(term.get(field), list):
+            return True
+        return any(_contains_array_term(value, field) for value in query.values())
+    if isinstance(query, list):
+        return any(_contains_array_term(value, field) for value in query)
+    return False
+
+
+class TestSegmentStoreCriteria(unittest.TestCase):
+    def test_opensearch_uses_terms_for_parent_and_number_lists(self):
+        store = OpenSearchStore(uris=['http://localhost:9200'])
+
+        criteria = store._construct_criteria({
+            'parent': ['parent-a', 'parent-b'],
+            'number': [1, 2],
+        })
+
+        self.assertFalse(_contains_array_term(criteria, 'parent'))
+        self.assertFalse(_contains_array_term(criteria, 'number'))
+        must = criteria['query']['bool']['must']
+        self.assertIn({'terms': {'number': [1, 2]}}, must)
+        self.assertIn({'terms': {'parent': ['parent-a', 'parent-b']}}, must[0]['bool']['should'])
+
+    def test_elasticsearch_uses_terms_for_parent_and_number_lists(self):
+        store = ElasticSearchStore(uris=['http://localhost:9200'])
+
+        criteria = store._construct_criteria({
+            'parent': ['parent-a', 'parent-b'],
+            'number': [1, 2],
+        })
+
+        self.assertFalse(_contains_array_term(criteria, 'parent'))
+        self.assertFalse(_contains_array_term(criteria, 'number'))
+        must = criteria['query']['bool']['must']
+        self.assertIn({'terms': {'number': [1, 2]}}, must)
+        self.assertIn({'terms': {'parent': ['parent-a', 'parent-b']}}, must[0]['bool']['should'])
 
 
 class TestMapStore(unittest.TestCase):
