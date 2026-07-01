@@ -690,18 +690,26 @@ class ToolManager(ModuleBase):
         for tc in tool_calls:
             tool, args_or_err = self._parse_tool_call(tc)
             if tool is None:
-                callables.append(lambda *_, _e=args_or_err: _e)
+                callables.append(lambda *_, _e=args_or_err: {'ok': False, 'value': None, 'msg': _e})
                 call_arguments.append({})
             elif self._sandbox and tool.execute_in_sandbox:
                 callables.append(self._sandbox)
                 call_arguments.append(self._build_sandbox_args(tool, args_or_err))
             else:
                 def _safe_call(args, _tool=tool):
+                    tool_name = _tool.name
                     try:
-                        return _tool(args)
+                        # Guard: raise PermissionError if tool is not active in this session.
+                        active_tool_names = lazyllm.globals.get('active_tool_names')
+                        if isinstance(active_tool_names, set) and tool_name not in active_tool_names:
+                            raise PermissionError(
+                                f'{tool_name} is not registered or active in current session. '
+                                'Please enable this tool in model/tool config, then retry.'
+                            )
+                        return {'ok': True, 'value': _tool(args)}
                     except Exception as e:
-                        lazyllm.LOG.warning(f'[ToolCall] tool={_tool.name!r} raised: {type(e).__name__}: {e}')
-                        return f'[Tool Error] {type(e).__name__}: {e}'
+                        lazyllm.LOG.warning(f'[ToolCall] tool={tool_name!r} raised: {type(e).__name__}: {e}')
+                        return {'ok': False, 'value': None, 'msg': f'[Tool Error] {type(e).__name__}: {e}'}
                 callables.append(_safe_call)
                 call_arguments.append(args_or_err)
 

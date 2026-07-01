@@ -41,6 +41,18 @@ class StreamResponse():
 _COMPACTION_TRUNCATE_LEN = 200  # chars kept per old tool result
 
 
+def _unwrap_tool_result(result: Any) -> str:
+    # Unpack structured tool results produced by ToolManager._safe_call.
+    # {'ok': True,  'value': v}  → str(v)
+    # {'ok': False, 'msg':   m}  → m  (already a human-readable error string)
+    # anything else              → str(result)  (sandbox output, parse errors, etc.)
+    if isinstance(result, dict) and 'ok' in result:
+        if result['ok']:
+            return str(result.get('value', ''))
+        return str(result.get('msg', repr(result)))
+    return str(result)
+
+
 def _compact_chat_history(history: List[Dict[str, Any]], keep_full_turns: int) -> List[Dict[str, Any]]:
     # identify tool-result message indices (role == 'tool'), from oldest to newest
     tool_indices = [i for i, m in enumerate(history) if m.get('role') == 'tool']
@@ -127,7 +139,7 @@ class FunctionCall(ModuleBase):
             tool_call_results = [
                 {
                     'role': 'tool',
-                    'content': str(tool_call['tool_call_result']),
+                    'content': _unwrap_tool_result(tool_call['tool_call_result']),
                     'tool_call_id': tool_call['id'],
                     'name': tool_call['function']['name'],
                 } for tool_call in workspace['tool_call_trace']
@@ -170,7 +182,17 @@ class FunctionCall(ModuleBase):
             if self._stop_tools:
                 called_names = {(tc.get('function') or {}).get('name') for tc in tool_calls if isinstance(tc, dict)}
                 if called_names & self._stop_tools:
-                    return '\n'.join(str(r) for r in tool_calls_results)
+                    # Only stop the ReAct loop when all stop-tool results succeeded.
+                    # If any stop-tool returned ok=False (tool raised an exception), fall through
+                    # so the LLM receives the error as a tool observation and can retry.
+                    stop_failed = any(
+                        isinstance(r, dict) and not r.get('ok', True)
+                        for tc, r in zip(tool_calls, tool_calls_results)
+                        if isinstance(tc, dict)
+                        and (tc.get('function') or {}).get('name') in self._stop_tools
+                    )
+                    if not stop_failed:
+                        return '\n'.join(_unwrap_tool_result(r) for r in tool_calls_results)
         else:
             llm_output = llm_output['content']
         return llm_output

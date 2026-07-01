@@ -118,11 +118,12 @@ class LazyLLMAgentBase(ModuleBase):
 
     @staticmethod
     def _normalize_tool_results(tool_calls, tool_calls_results):
+        from lazyllm.tools.agent.functionCall import _unwrap_tool_result
         return [{
             'id': tool_call.get('id'),
             'name': tool_call.get('function', {}).get('name'),
             'arguments': tool_call.get('function', {}).get('arguments'),
-            'result': tool_result,
+            'result': _unwrap_tool_result(tool_result),
         } for tool_call, tool_result in zip(tool_calls, tool_calls_results)]
 
     def _assert_tools(self):
