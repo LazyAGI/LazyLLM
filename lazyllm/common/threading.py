@@ -1,7 +1,7 @@
 import threading
 from queue import Queue
 import functools
-from .globals import globals
+from .globals import globals, pickle_safe_globals_data
 from concurrent.futures import ThreadPoolExecutor as TPE
 
 def _sid_setter(sid):
@@ -34,11 +34,12 @@ class Thread(threading.Thread):
 class ThreadPoolExecutor(TPE):
     def submit(self, fn, /, *args, **kwargs):
         sid = globals._sid
-        global_data = dict(globals._data)
+        global_data = pickle_safe_globals_data(dict(globals._data))
 
         def impl(sid, global_data, *a, **kw):
             globals._init_sid(sid)
             globals._update(global_data)
+            _ = globals._data
             return fn(*a, **kw)
 
         return super(__class__, self).submit(

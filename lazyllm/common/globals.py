@@ -1,6 +1,7 @@
 import threading
 import contextvars
 import copy
+import pickle
 from typing import Any, Tuple, Optional, List, Dict, Union
 import uuid
 import inspect
@@ -14,6 +15,29 @@ import asyncio
 from ..configs import config
 from .utils import obj2str, str2obj
 from abc import abstractmethod
+
+
+# Keys that must never cross thread/process hops or UrlDocument HTTP headers.
+_GLOBALS_THREAD_EXCLUDE = frozenset({
+    'subagent_ctx',   # SubAgentContext holds live DB handles
+    'call_stack',     # per-thread module nesting
+})
+
+
+def pickle_safe_globals_data(data: Optional[Dict] = None) -> dict:
+    '''Return a pickle-safe subset of session globals for thread hops / HTTP headers.'''
+    if not data:
+        return {}
+    safe: Dict[str, Any] = {}
+    for key, value in data.items():
+        if key in _GLOBALS_THREAD_EXCLUDE:
+            continue
+        try:
+            pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception:
+            continue
+        safe[key] = value
+    return safe
 
 
 class ReadWriteLock(object):
@@ -180,6 +204,10 @@ class Globals(metaclass=SingletonABCMeta):
             super(__class__, self).__setattr__(__name, __value)
 
     def __getattr__(self, __name: str) -> Any:
+        # Fallback when descriptor lookup fails in thread-pool workers (e.g. Parallel
+        # retrievers calling UrlDocument HTTP with globals.pickled_data).
+        if __name == 'pickled_data':
+            return obj2str(pickle_safe_globals_data(self._data))
         if __name in type(self).__global_attrs__:
             return self[__name]
         raise AttributeError(f'Attr {__name} not found in globals')
@@ -203,7 +231,7 @@ class Globals(metaclass=SingletonABCMeta):
 
     @property
     def pickled_data(self):
-        return obj2str(self._data)
+        return obj2str(pickle_safe_globals_data(self._data))
 
     def unpickle_and_update_data(self, data: Optional[str]) -> dict:
         if data: self._data.update(str2obj(data))
@@ -293,9 +321,13 @@ class RedisGlobals(MemoryGlobals):
     def _get_redis_key(self, key: str):
         return f'globals:{self._sid}@{key}'
 
+    @property
     def pickled_data(self):
         key = str(uuid.uuid4().hex)
-        self._redis_client.set(self._get_redis_key(key), obj2str(self._data))
+        self._redis_client.set(
+            self._get_redis_key(key),
+            obj2str(pickle_safe_globals_data(self._data)),
+        )
         return key
 
     def unpickle_and_update_data(self, data: str) -> dict:

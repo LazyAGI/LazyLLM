@@ -1,6 +1,7 @@
 import lazyllm
 from lazyllm import config
 from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind
+from lazyllm.common.globals import pickle_safe_globals_data
 from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals, _get_callsite
 from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
 from lazyllm.common import SessionConfigableBase
@@ -439,7 +440,10 @@ class Parallel(LazyLLMFlowsBase):
     @staticmethod
     def _worker(func, barrier, sid, local_data, *args, global_data=None, **kw):
         lazyllm.globals._init_sid(sid)
-        if global_data: lazyllm.globals._update(global_data)
+        if global_data:
+            lazyllm.globals._update(global_data)
+        # Materialize session bucket so pickled_data / UrlDocument HTTP works in workers.
+        _ = lazyllm.globals._data
         lazyllm.locals._init_sid()
         lazyllm.locals._update({k: v.copy() for k, v in local_data.items()})
         _barr.impl = barrier
@@ -524,7 +528,7 @@ class Parallel(LazyLLMFlowsBase):
     def _parallel_execute_concurrent(self, items, inputs, **kw):
         # Workers call globals.pickled_data (e.g. UrlModule / KB Document HTTP).
         # Pass a snapshot of the parent session globals for both process and thread pools.
-        kw['global_data'] = dict(lazyllm.globals._data)
+        kw['global_data'] = pickle_safe_globals_data(dict(lazyllm.globals._data))
         if self._multiprocessing:
             barrier, executor = None, lazyllm.ProcessPoolExecutor
         else:
