@@ -302,24 +302,22 @@ def test_summarize_content_no_llm():
 
 def test_summarize_content_with_llm():
     llm = MagicMock()
-    llm_result = MagicMock()
-    llm_result.summary = "这是 LLM 生成的语义摘要。"
+    llm.return_value = '{"summary": "这是 LLM 生成的语义摘要。"}'
 
     with tempfile.TemporaryDirectory() as d:
         tool = WriterContextTools(artifact_store=d, llm=llm)
-        with patch.object(tool, "_call_llm_structured", return_value=llm_result):
-            result = tool._summarize_content_data("这是一段很长的草稿内容。" * 50)
-            assert result == "这是 LLM 生成的语义摘要。"
+        result = tool._summarize_content_data("这是一段很长的草稿内容。" * 50)
+        assert result == "这是 LLM 生成的语义摘要。"
 
 
 def test_summarize_content_llm_exception():
     llm = MagicMock()
+    llm.side_effect = RuntimeError("LLM down")
 
     with tempfile.TemporaryDirectory() as d:
         tool = WriterContextTools(artifact_store=d, llm=llm)
-        with patch.object(tool, "_call_llm_structured", side_effect=RuntimeError("LLM down")):
-            result = tool._summarize_content_data("草稿内容" * 50)
-            assert "草稿内容" in result
+        result = tool._summarize_content_data("草稿内容" * 50)
+        assert "草稿内容" in result
 
 
 def test_summarize_content_long_no_llm():

@@ -1,8 +1,6 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
-
 from lazyllm import LOG
 
 from .base import WriterToolBase
@@ -18,10 +16,6 @@ from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
 from ..data_models.writing import WritingOutline
 from ..prompts.context import CONTENT_SUMMARY_PROMPT
-
-
-class _ContentSummaryResult(BaseModel):
-    summary: str
 
 
 class WriterContextTools(WriterToolBase):
@@ -220,9 +214,11 @@ class WriterContextTools(WriterToolBase):
 
         if self.llm is not None and len(text) > 240:
             try:
+                import json as _json
                 prompt = CONTENT_SUMMARY_PROMPT.format(content=text[:3000])
-                llm_result = self._call_llm_structured(prompt, _ContentSummaryResult)
-                result = llm_result.summary or result
+                response = str(self.llm(prompt))
+                parsed = _json.loads(response)
+                result = parsed.get("summary") or result
             except Exception:
                 LOG.warning("update_writing_context: LLM summary failed, using truncation fallback")
 
