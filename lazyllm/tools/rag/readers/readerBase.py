@@ -7,10 +7,14 @@ from lazyllm import LOG, config
 from ....common import LazyLLMRegisterMetaClass
 from ..doc_node import DocNode, RichDocNode
 from lazyllm.module import ModuleBase
+from . import reader_config_inject as _reader_config_inject  # noqa: F401
 from pathlib import Path
 import locale
 import threading
 from lazyllm.thirdparty import charset_normalizer
+
+_READER_CALL_SKIP_KEYS = frozenset({'use_cache', 'lazyllm_files', 'llm_chat_history'})
+
 
 class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     post_action = None
@@ -21,6 +25,7 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
     def __init__(self, *args, return_trace: bool = True, **kwargs):
         super().__init__(return_trace=return_trace)
+        self.use_cache(bool(config['reader_use_cache']))
 
     def _lazy_load_data(self, *args, **load_kwargs) -> Iterable[DocNode]:
         raise NotImplementedError(f'{self.__class__.__name__} does not implement lazy_load_data method.')
@@ -29,7 +34,8 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return list(self._lazy_load_data(*args, **load_kwargs))
 
     def forward(self, *args, **kwargs) -> List[DocNode]:
-        r = self._load_data(*args, **kwargs)
+        load_kwargs = {k: v for k, v in kwargs.items() if k not in _READER_CALL_SKIP_KEYS}
+        r = self._load_data(*args, **load_kwargs)
         r = [r] if isinstance(r, DocNode) else [] if r is None else r
         if r and self.post_action:
             r = [x for sub in [self.post_action(n) for n in r] for x in (sub if isinstance(sub, list) else [sub])]
@@ -176,6 +182,8 @@ def infer_torch_device() -> str:
     if torch.backends.mps.is_available(): return 'mps'
     return 'cpu'
 
+config.add('reader_use_cache', bool, False, 'READER_USE_CACHE',
+           description='Global ModuleBase reader content cache flag (OCR HTTP use_cache is separate).')
 config.add('auto_detect_encoding', bool, True, 'AUTO_DETECT_ENCODING',
            description='Whether auto detecting txt encoding')
 config.add('enable_chardet', bool, True, 'ENABLE_CHARDET',
@@ -194,6 +202,10 @@ class TxtReader(LazyLLMReaderBase):
         self._auto_detect_encoding = auto_detect_encoding
         self._enable_chardet = enable_chardet
         self._use_encoding_cache = use_encoding_cache
+
+    @property
+    def appendix_hash_key(self):
+        return f'{self._encoding}|{self._auto_detect_encoding}|{self._enable_chardet}'
 
     def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if self._encoding:
@@ -246,8 +258,8 @@ class DefaultReader(TxtReader):
 
 class _RichReader(LazyLLMReaderBase):
     def __init__(self, post_func: Optional[Callable] = None, split_doc: bool = True,
-                 return_trace: bool = True):
-        super().__init__(return_trace=return_trace)
+                 return_trace: bool = True, **kwargs):
+        super().__init__(return_trace=return_trace, **kwargs)
         self._post_func = post_func
         self._split_doc = split_doc
 

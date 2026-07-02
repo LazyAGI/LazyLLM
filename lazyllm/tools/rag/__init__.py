@@ -18,7 +18,7 @@ from .similarity import register_similarity
 from .doc_node import DocNode, RichDocNode
 from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader, EpubReader,
                       MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
-                      MineruPDFReader, inject_ocr_config)
+                      MineruPDFReader, inject_reader_config)
 from .dataReader import SimpleDirectoryReader, FileReader
 from .global_metadata import GlobalMetadataDesc as DocField
 from .data_type import DataType
@@ -79,7 +79,7 @@ __all__ = [
     'VideoAudioReader',
     'SimpleDirectoryReader',
     'MineruPDFReader',
-    'inject_ocr_config',
+    'inject_reader_config',
     'DocField',
     'DataType',
     'IndexBase',
