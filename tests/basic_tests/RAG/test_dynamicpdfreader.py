@@ -200,8 +200,8 @@ class TestDynamicPDFReader:
         lazyllm.config['cache_mode'] = 'RW'
         module_cache.close()
         try:
+            lazyllm.config['reader_use_cache'] = True
             reader = MineruPDFReader(url='https://mineru.net')
-            lazyllm.globals.config['use_cache'] = True
             with patch.object(
                 MineruPDFReader, '_load_data', return_value=[DocNode(text='cached')]
             ) as mock_load:

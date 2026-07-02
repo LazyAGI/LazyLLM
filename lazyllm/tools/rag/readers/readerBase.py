@@ -2,7 +2,7 @@ from lazyllm.thirdparty import fsspec
 from typing import Iterable, List, Optional, Union, Callable
 
 from lazyllm.thirdparty import torch
-from lazyllm import LOG, config, globals as lazyllm_globals
+from lazyllm import LOG, config
 
 from ....common import LazyLLMRegisterMetaClass
 from ..doc_node import DocNode, RichDocNode
@@ -25,14 +25,7 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
     def __init__(self, *args, return_trace: bool = True, **kwargs):
         super().__init__(return_trace=return_trace)
-
-    @property
-    def _active_use_cache(self) -> bool:
-        return bool(lazyllm_globals.config['use_cache'])
-
-    def _call_impl(self, *args, **kw):
-        self.use_cache(self._active_use_cache)
-        return super()._call_impl(*args, **kw)
+        self.use_cache(bool(config['reader_use_cache']))
 
     def _lazy_load_data(self, *args, **load_kwargs) -> Iterable[DocNode]:
         raise NotImplementedError(f'{self.__class__.__name__} does not implement lazy_load_data method.')
@@ -189,6 +182,8 @@ def infer_torch_device() -> str:
     if torch.backends.mps.is_available(): return 'mps'
     return 'cpu'
 
+config.add('reader_use_cache', bool, False, 'READER_USE_CACHE',
+           description='Global ModuleBase reader content cache flag (OCR HTTP use_cache is separate).')
 config.add('auto_detect_encoding', bool, True, 'AUTO_DETECT_ENCODING',
            description='Whether auto detecting txt encoding')
 config.add('enable_chardet', bool, True, 'ENABLE_CHARDET',

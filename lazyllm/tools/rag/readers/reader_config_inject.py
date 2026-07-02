@@ -3,13 +3,6 @@ from typing import Any, Dict, Optional
 from lazyllm import globals
 
 globals.config.add(
-    'use_cache',
-    bool,
-    False,
-    'USE_CACHE',
-    description='Per-request ModuleBase reader cache flag (OCR HTTP use_cache is passed separately).',
-)
-globals.config.add(
     'dynamic_ocr_configs',
     dict,
     None,
@@ -27,12 +20,8 @@ globals.config.add(
 
 def inject_reader_config(
     *,
-    use_cache: Optional[bool] = None,
     ocr_config: Optional[Dict[str, Any]] = None,
 ) -> None:
-    if use_cache is not None:
-        globals.config['use_cache'] = bool(use_cache)
-
     if not ocr_config or not isinstance(ocr_config, dict):
         return
 

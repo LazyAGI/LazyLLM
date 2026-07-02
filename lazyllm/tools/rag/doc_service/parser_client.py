@@ -36,7 +36,6 @@ class ParserClient:
                 callback_url: Optional[str] = None, transfer_params: Optional[Dict[str, Any]] = None,
                 llm_config: Optional[Dict[str, Any]] = None,
                 ocr_config: Optional[Dict[str, Any]] = None,
-                use_cache: Optional[bool] = None,
                 strategy: str = 'rebuild'):
         req = ParsingAddDocRequest(
             task_id=task_id,
@@ -48,7 +47,6 @@ class ParserClient:
             feedback_url=callback_url,
             llm_config=llm_config,
             ocr_config=ocr_config,
-            use_cache=use_cache,
             strategy=strategy,
             file_infos=[ParsingFileInfo(
                 file_path=file_path,

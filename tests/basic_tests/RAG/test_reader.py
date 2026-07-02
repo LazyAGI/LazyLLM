@@ -263,13 +263,13 @@ class TestReaderContentCache(object):
 
     def setup_method(self):
         self._old_cache_mode = lazyllm.config['cache_mode']
-        self._old_use_cache = lazyllm.globals.config['use_cache']
+        self._old_reader_use_cache = lazyllm.config['reader_use_cache']
         lazyllm.config['cache_mode'] = 'RW'
-        lazyllm.globals.config['use_cache'] = True
+        lazyllm.config['reader_use_cache'] = True
 
     def teardown_method(self):
         lazyllm.config['cache_mode'] = self._old_cache_mode
-        lazyllm.globals.config['use_cache'] = self._old_use_cache
+        lazyllm.config['reader_use_cache'] = self._old_reader_use_cache
         from lazyllm.module.module import module_cache
         module_cache.close()
 
@@ -325,14 +325,14 @@ class TestReaderContentCache(object):
         finally:
             shutil.rmtree(temp_dir)
 
-    def test_txt_reader_content_cache_disabled_with_use_cache_false(self):
+    def test_txt_reader_content_cache_disabled_with_reader_use_cache_false(self):
         temp_dir = tempfile.mkdtemp()
         try:
             test_file = os.path.join(temp_dir, 'cache_bypass.txt')
             with open(test_file, 'w', encoding='utf-8') as f:
                 f.write('bypass cache')
 
-            lazyllm.globals.config['use_cache'] = False
+            lazyllm.config['reader_use_cache'] = False
             reader = TxtReader()
             original_load = reader._load_data
             call_count = {'n': 0}
