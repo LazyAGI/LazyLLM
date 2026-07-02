@@ -3,7 +3,7 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import pipeline, loop, locals, package, FileSystemQueue, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
-from .base import LazyLLMAgentBase, _write_agent_data
+from .base import LazyLLMAgentBase, _write_agent_data, _unwrap_tool_result
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, create_sandbox
@@ -127,7 +127,7 @@ class FunctionCall(ModuleBase):
             tool_call_results = [
                 {
                     'role': 'tool',
-                    'content': str(tool_call['tool_call_result']),
+                    'content': _unwrap_tool_result(tool_call['tool_call_result']),
                     'tool_call_id': tool_call['id'],
                     'name': tool_call['function']['name'],
                 } for tool_call in workspace['tool_call_trace']
@@ -170,7 +170,17 @@ class FunctionCall(ModuleBase):
             if self._stop_tools:
                 called_names = {(tc.get('function') or {}).get('name') for tc in tool_calls if isinstance(tc, dict)}
                 if called_names & self._stop_tools:
-                    return '\n'.join(str(r) for r in tool_calls_results)
+                    # Only stop the ReAct loop when all stop-tool results succeeded.
+                    # If any stop-tool returned ok=False (tool raised an exception), fall through
+                    # so the LLM receives the error as a tool observation and can retry.
+                    stop_failed = any(
+                        isinstance(r, dict) and not r.get('ok', True)
+                        for tc, r in zip(tool_calls, tool_calls_results)
+                        if isinstance(tc, dict)
+                        and (tc.get('function') or {}).get('name') in self._stop_tools
+                    )
+                    if not stop_failed:
+                        return '\n'.join(_unwrap_tool_result(r) for r in tool_calls_results)
         else:
             llm_output = llm_output['content']
         return llm_output
