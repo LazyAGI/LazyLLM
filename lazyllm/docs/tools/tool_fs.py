@@ -1915,6 +1915,118 @@ _add_fs_example('GoogleDriveFS', '''\
 >>> online_fs = GoogleDriveFS(dynamic_auth=True)
 ''')
 
+_add_fs_chinese('GoogleDriveFS.ls', '''\
+列出 Google Drive 文件夹中的直接子项。使用官方 files.list API；路径为空时列出“我的云端硬盘”根目录，路径末段也可以直接使用文件夹 ID。共享盘路径支持 /drive/<drive_id>/<folder_id>。
+
+Args:
+    path (str): 文件夹路径或文件夹 ID。
+    detail (bool): 为 True 时返回元数据字典；为 False 时仅返回名称。默认 True。
+    **kwargs: 预留的文件系统参数。
+
+Returns:
+    List: 文件夹直接子项的元数据或名称列表。
+''')
+_add_fs_english('GoogleDriveFS.ls', '''\
+List direct children of a Google Drive folder with the official files.list API. An empty path lists the My Drive root, and the final path segment may be a folder id. Shared-drive paths support /drive/<drive_id>/<folder_id>.
+
+Args:
+    path (str): Folder path or folder id.
+    detail (bool): Return metadata dictionaries when True, or names only when False. Defaults to True.
+    **kwargs: Reserved filesystem options.
+
+Returns:
+    List: Direct child metadata or names.
+''')
+
+_add_fs_chinese('GoogleDriveFS.info', '''\
+使用 Google Drive 官方 files.get API 获取文件或文件夹元数据。空路径返回合成的根目录条目；其他路径使用末段文件 ID 查询。
+
+Args:
+    path (str): 文件或文件夹路径，也可以直接使用对象 ID。
+    **kwargs: 预留的文件系统参数。
+
+Returns:
+    Dict[str, Any]: 标准化元数据，包含名称、标题、类型、大小和修改时间等字段。
+''')
+_add_fs_english('GoogleDriveFS.info', '''\
+Get file or folder metadata with the official Google Drive files.get API. An empty path returns a synthetic root entry; other paths use the final segment as the object id.
+
+Args:
+    path (str): File or folder path, or an object id.
+    **kwargs: Reserved filesystem options.
+
+Returns:
+    Dict[str, Any]: Normalized metadata including name, title, type, size, and modification time.
+''')
+
+_add_fs_chinese('GoogleDriveFS.read', '''\
+以 UTF-8 文本读取 Google Drive 文件。普通文件通过 files.get?alt=media 下载；Google Docs 导出为纯文本，Google Sheets 导出为 CSV。暂不支持的 Google Workspace 原生格式会抛出 NotImplementedError。
+
+Args:
+    path (str): 文件路径或文件 ID。
+
+Returns:
+    str: 解码后的文件文本。
+''')
+_add_fs_english('GoogleDriveFS.read', '''\
+Read a Google Drive file as UTF-8 text. Regular files use files.get?alt=media; Google Docs export as plain text and Google Sheets as CSV. Unsupported native Google Workspace formats raise NotImplementedError.
+
+Args:
+    path (str): File path or file id.
+
+Returns:
+    str: Decoded file text.
+''')
+
+_add_fs_chinese('GoogleDriveFS.read_file', '''\
+读取完整 Google Drive 文件并返回 UTF-8 文本；下载与 Google Workspace 导出规则和 read 相同。
+
+Args:
+    path (str): 文件路径或文件 ID。
+
+Returns:
+    str: 完整文件文本。
+''')
+_add_fs_english('GoogleDriveFS.read_file', '''\
+Read a complete Google Drive file as UTF-8 text, using the same download and Google Workspace export behavior as read.
+
+Args:
+    path (str): File path or file id.
+
+Returns:
+    str: Complete file text.
+''')
+
+_add_fs_chinese('GoogleDriveFS.write', '''\
+向 Google Drive 写入 UTF-8 文本内容。该操作使用官方上传 API，需要可写 OAuth scope 或具有编辑权限的 Service Account；drive.readonly 凭据会被 Google 拒绝。
+
+Args:
+    path (str): 目标文件路径。
+    content (str): 要写入的文本内容。
+''')
+_add_fs_english('GoogleDriveFS.write', '''\
+Write UTF-8 text content to Google Drive through the official upload API. This requires a writable OAuth scope or a Service Account with edit access; drive.readonly credentials are rejected by Google.
+
+Args:
+    path (str): Destination file path.
+    content (str): Text content to write.
+''')
+
+_add_fs_chinese('GoogleDriveFS.rm', '''\
+删除 Google Drive 文件或文件夹。文件删除使用官方 files.delete API；recursive=True 时由统一文件系统逻辑递归处理目录。需要可写 OAuth scope，drive.readonly 凭据无法执行删除。
+
+Args:
+    path (str): 文件或文件夹路径。
+    recursive (bool): 是否递归删除目录内容。默认 False。
+''')
+_add_fs_english('GoogleDriveFS.rm', '''\
+Remove a Google Drive file or folder. File deletion uses the official files.delete API; recursive=True delegates directory traversal to the shared filesystem behavior. A writable OAuth scope is required, and drive.readonly credentials cannot delete content.
+
+Args:
+    path (str): File or folder path.
+    recursive (bool): Recursively remove directory contents. Defaults to False.
+''')
+
 _add_fs_chinese('GoogleDriveFS.search', '''\
 使用 Google Drive 官方 files.list API 在在线原始云盘中搜索文件正文，不查询 LazyLLM 本地知识库。支持一个或多个关键词；多个关键词按 AND 组合。可通过文件名、共享盘 ID 或直接父文件夹 ID 限定范围。
 

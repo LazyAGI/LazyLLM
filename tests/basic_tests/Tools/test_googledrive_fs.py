@@ -180,6 +180,13 @@ class TestGoogleDriveSearch(unittest.TestCase):
         self.assertIn('GoogleDriveFS_search', names)
         self.assertIn('GoogleDriveFS_find', names)
 
+    def test_public_method_docs_are_loaded_from_central_registry(self):
+        load_fs_docs_only(GoogleDriveFS.search)
+
+        for method_name in ('ls', 'info', 'read', 'read_file', 'write', 'rm', 'search', 'find'):
+            method = getattr(GoogleDriveFS, method_name)
+            self.assertTrue(method.__doc__, f'{method_name} must have centralized documentation')
+
 
 if __name__ == '__main__':
     unittest.main()
