@@ -106,6 +106,7 @@ class SimpleDirectoryReader(ModuleBase):
         self._input_files = self._get_input_files(input_dir, input_files)
         self._file_extractor = {**self.default_file_readers, **(file_extractor or {})}
         self._metadata_genf = metadata_genf or _DefaultFileMetadataFunc(self._fs)
+        self._last_load_error: Optional[BaseException] = None
         if filename_as_id: LOG.warning('Argument `filename_as_id` for DataReader is no longer used')
 
     def _get_input_files(self, input_dir, input_files):
@@ -212,7 +213,7 @@ class SimpleDirectoryReader(ModuleBase):
     @staticmethod
     def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
                   encoding: str = 'utf-8', pathm: PurePath = Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
-                  metadata: Optional[Dict] = None) -> List[DocNode]:
+                  metadata: Optional[Dict] = None, load_errors: Optional[List[BaseException]] = None) -> List[DocNode]:
         # metadata priority: user > reader > metadata_genf
         user_metadata: Dict = metadata or {}
         metadata_generated: Dict = metadata_genf(str(input_file)) if metadata_genf else {}
@@ -230,6 +231,8 @@ class SimpleDirectoryReader(ModuleBase):
         except Exception as e:
             LOG.error(f'Error loading file {input_file}, skip it!')
             LOG.error(f'message: {e}\n Traceback: {traceback.format_tb(e.__traceback__)}')
+            if load_errors is not None:
+                load_errors.append(e)
             return []
         docs = [docs] if isinstance(docs, DocNode) else [] if docs is None else docs
 
@@ -248,6 +251,8 @@ class SimpleDirectoryReader(ModuleBase):
                    fs: Optional['fsspec.AbstractFileSystem'] = None, metadatas: Optional[Dict] = None,
                    input_dir: Optional[str] = None, input_files: Optional[List] = None) -> List[DocNode]:
         documents, fs, metadatas = [], fs or self._fs, metadatas or self._metadatas
+        self._last_load_error = None
+        load_errors: List[BaseException] = []
         process_file = self._get_input_files(input_dir, input_files) if input_dir or input_files else self._input_files
 
         if num_workers and num_workers >= 1:
@@ -267,9 +272,16 @@ class SimpleDirectoryReader(ModuleBase):
                 documents.extend(
                     SimpleDirectoryReader.load_file(
                         input_file=input_file, metadata_genf=self._metadata_genf, file_extractor=self._file_extractor,
-                        encoding=self._encoding, pathm=self._Path, fs=self._fs, metadata=metadata))
+                        encoding=self._encoding, pathm=self._Path, fs=self._fs, metadata=metadata,
+                        load_errors=load_errors))
 
+        if load_errors:
+            self._last_load_error = load_errors[0]
         return self._exclude_metadata(documents)
+
+    @property
+    def last_load_error(self) -> Optional[BaseException]:
+        return self._last_load_error
 
     def forward(self, *args, **kwargs) -> List[DocNode]:
         return self._load_data(*args, **kwargs)
