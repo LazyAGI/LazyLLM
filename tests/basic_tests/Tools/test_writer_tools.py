@@ -14,7 +14,7 @@ from lazyllm.tools.writer.data_models import (
 )
 from lazyllm.tools.writer.data_models.quality import AuditIssue, AuditResult, ReviewReport
 from lazyllm.tools.writer.data_models.task import InputResource
-from lazyllm.tools.writer.data_models.writing import SectionInstruction, SectionInstructionList
+from lazyllm.tools.writer.data_models.writing import SectionInstruction, SectionInstructionList, WritingOutline
 from lazyllm.tools.writer.tools.context_tools import WriterContextTools
 from lazyllm.tools.writer.tools.quality_tools import WriterQualityTools
 from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
@@ -561,6 +561,21 @@ def _make_context():
     return WritingContext(
         context_id="ctx-test-001",
         doc_id="doc-test-001",
+        query="写一份关于深度学习在金融时间序列预测中的应用的学术综述报告。",
+    )
+
+
+def _make_context_with_outline():
+    outline = WritingOutline(
+        outline_id="outline-test-001",
+        title="深度学习在金融时间序列预测中的应用",
+        nodes=[],
+    )
+    return WritingContext(
+        context_id="ctx-test-002",
+        doc_id="doc-test-002",
+        query="写一份关于深度学习在金融时间序列预测中的应用的学术综述报告。",
+        outline=outline,
     )
 
 
@@ -845,6 +860,32 @@ def test_validate_output_failing_audit():
         assert report.result.is_passed is False
         assert report.result.score == 63
         assert len(report.result.issues) == 3
+
+
+def test_validate_section_context_has_outline():
+    section_data = _make_section_data()
+    instruction_list = _make_section_instruction_list()
+    context = _make_context_with_outline()
+    mock_llm = MagicMock()
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=mock_llm, artifact_store=d)
+        mock_call = MagicMock(return_value=_make_passing_audit())
+        with patch.object(tool, "_call_llm_structured", mock_call):
+            result = tool.validate_section(
+                draft_section=section_data,
+                section_instruction=instruction_list,
+                context=context,
+            )
+
+        assert result["artifact_path"].endswith("section_review.json")
+        report = load_artifact_json(result["artifact_path"], ReviewReport)
+        assert report.result.is_passed is True
+
+        # outline and query are serialized in context that was passed to LLM
+        prompt = mock_call.call_args[0][0]
+        assert "outline-test-001" in prompt
+        assert "深度学习在金融时间序列预测中的应用" in prompt
 
 
 def test_validate_output_from_artifact_paths():
