@@ -4,15 +4,15 @@ from typing import Any, Optional
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.quality import AuditResult, ReviewReport
-from ..data_models.writing import SectionInstruction, SectionInstructionList, WritingOutput
-from ..prompts.quality import VALIDATE_OUTPUT_PROMPT, VALIDATE_SECTION_PROMPT
+from ..data_models.writing import DraftDocument, SectionInstruction, SectionInstructionList
+from ..prompts.quality import VALIDATE_DRAFT_DOCUMENT_PROMPT, VALIDATE_SECTION_PROMPT
 from ..utils import to_prompt_json
 
 
 class WriterQualityTools(WriterToolBase):
     __public_apis__ = [
         "validate_section",
-        "validate_output",
+        "validate_draft_document",
     ]
 
     def validate_section(
@@ -94,28 +94,28 @@ class WriterQualityTools(WriterToolBase):
         )
         return result.model_dump()
 
-    def validate_output(
+    def validate_draft_document(
         self,
-        output: Any,
+        draft_document: Any,
         context: Any,
     ) -> dict:
-        writing_output = self._unified_model(output, WritingOutput)
+        document = self._unified_model(draft_document, DraftDocument)
         writing_context = self._unified_model(context, WritingContext)
 
-        prompt = VALIDATE_OUTPUT_PROMPT.format(
-            output_json=to_prompt_json(writing_output),
+        prompt = VALIDATE_DRAFT_DOCUMENT_PROMPT.format(
+            draft_document_json=to_prompt_json(document),
             context_json=to_prompt_json(writing_context),
         )
 
         audit_result = self._call_llm_structured(prompt, AuditResult)
 
         report = ReviewReport(
-            target=writing_output.output_id or writing_output.title or "untitled",
+            target=document.draft_id or document.title or "untitled",
             result=audit_result,
             meta={
-                "output_id": writing_output.output_id,
-                "output_title": writing_output.title,
-                "output_format": writing_output.output_format,
+                "draft_id": document.draft_id,
+                "draft_title": document.title,
+                "draft_section_count": len(document.sections),
                 "context_id": writing_context.context_id,
             },
         )
@@ -125,10 +125,10 @@ class WriterQualityTools(WriterToolBase):
         low_count = sum(1 for i in audit_result.issues if i.severity == "low")
 
         result = self._save_artifacts(
-            {"output_review": report},
-            step_name="validate_output",
-            primary_key="output_review",
-            summary=f"Output validation: {'PASSED' if audit_result.is_passed else 'FAILED'} (score: {audit_result.score}/100)",
+            {"draft_document_review": report},
+            step_name="validate_draft_document",
+            primary_key="draft_document_review",
+            summary=f"Draft document validation: {'PASSED' if audit_result.is_passed else 'FAILED'} (score: {audit_result.score}/100)",
             counts={
                 "total_issues": len(audit_result.issues),
                 "high_severity": high_count,
@@ -136,8 +136,8 @@ class WriterQualityTools(WriterToolBase):
                 "low_severity": low_count,
             },
             artifact_meta={
-                "output_id": writing_output.output_id,
-                "output_title": writing_output.title,
+                "draft_id": document.draft_id,
+                "draft_title": document.title,
                 "is_passed": audit_result.is_passed,
                 "score": audit_result.score,
             },

@@ -88,12 +88,12 @@ class NaiveWriterWorkflow:
             context=self._artifact_ref(writing_context, "writing_context"),
             outline=self._artifact_ref(outline, "outline"),
         )
-        writing_output = self.drafting.generate_writing_output(
-            draft=self._artifact_ref(draft_document, "draft_document"),
+        draft_document_review = self.quality.validate_draft_document(
+            draft_document=self._artifact_ref(draft_document, "draft_document"),
             context=self._artifact_ref(writing_context, "writing_context"),
         )
-        output_review = self.quality.validate_output(
-            output=self._artifact_ref(writing_output, "writing_output"),
+        writing_output = self.drafting.generate_writing_output(
+            draft=self._artifact_ref(draft_document, "draft_document"),
             context=self._artifact_ref(writing_context, "writing_context"),
         )
 
@@ -107,8 +107,8 @@ class NaiveWriterWorkflow:
                 "draft_section": draft_section,
                 "section_review": section_review,
                 "draft_document": draft_document,
+                "draft_document_review": draft_document_review,
                 "writing_output": writing_output,
-                "output_review": output_review,
             },
         }
 

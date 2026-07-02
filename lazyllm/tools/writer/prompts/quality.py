@@ -41,13 +41,13 @@ Writing context:
 """
 
 
-VALIDATE_OUTPUT_PROMPT = """You are a final-output quality reviewer. Validate the given writing output against the writing context and return an AuditResult.
+VALIDATE_DRAFT_DOCUMENT_PROMPT = """You are a draft-document quality reviewer. Validate the given draft document against the writing context and return an AuditResult.
 
-This output has already passed section-level validation. Focus on: output format, cross-chapter fact consistency, AI-tone deep scan, style consistency, reference completeness, reader adaptation, conclusion quality, and source attribution.
+This draft document has already passed section-level validation. Focus on: document structure, cross-chapter fact consistency, AI-tone deep scan, style consistency, reader adaptation, conclusion quality, and source attribution.
 
 Validation rules:
 
-1. OUTPUT FORMAT (category=format): Check that output_format matches the declared format (usually markdown), and that the content has correct heading hierarchy (# title, ## chapter, ### subsection). If the writing context contains an outline, verify that the heading hierarchy matches the outline structure. Format errors or incorrect heading hierarchy → severity=high, category=format. Missing or incomplete references field (fewer than 2 entries) → severity=high, category=format.
+1. DOCUMENT STRUCTURE (category=format): Check that the draft document has a non-empty title, ordered sections, non-empty section titles, and non-empty block content. If the writing context contains an outline, verify that the section structure matches the outline. Missing title, missing major sections, empty sections, or incorrect hierarchy → severity=high, category=format.
 
 2. CROSS-CHAPTER FACT CONSISTENCY (category=evidence): Cross-check all data points in the full text against the facts in the writing context. The same data appearing in different chapters must have consistent values — no internal contradictions. Contradiction → severity=high, category=evidence. Data inconsistent with locked facts in context → severity=high, category=evidence.
 
@@ -62,7 +62,7 @@ Validation rules:
 
 4. STYLE CONSISTENCY (category=style): Check that tone, point-of-view, and formality match the context's style_profile. The style should be uniform across all chapters — no mixing of academic tone in one chapter and casual tone in another. Significant deviation or inconsistency → severity=medium, category=style.
 
-5. REFERENCE COMPLETENESS (category=evidence): Check whether every model, data point, and claim is cited with source (author, year). References should cover at least all sources referenced in the context facts. Missing citations → severity=medium, category=evidence. Missing key sources → severity=high, category=evidence.
+5. REFERENCE COMPLETENESS (category=evidence): Check whether every model, data point, and claim is cited with source when sources are present in the writing context. References should cover at least all sources referenced in the context facts. Missing citations → severity=medium, category=evidence. Missing key sources → severity=high, category=evidence. If the context has no concrete source facts, do not invent missing-reference issues.
 
 6. READER ADAPTATION (category=coverage): Based on style_profile.audience in the context, check whether technical terms are explained on first use (required for non-expert audiences, optional for expert audiences). Unexplained terms for non-expert audience → severity=medium, category=coverage.
 
@@ -75,11 +75,11 @@ Validation rules:
 Scoring rules:
 - is_passed: false if any issue has severity=high, or if there are more than 3 severity=medium issues. Otherwise true.
 - score: Start at 100. Deduct 20 per high, 10 per medium, 3 per low. Minimum 0.
-- summary: A one-sentence overall assessment in the same language as the output.
+- summary: A one-sentence overall assessment in the same language as the draft document.
 - issues: List every issue found. Empty list if none.
 
-Output:
-{output_json}
+Draft document:
+{draft_document_json}
 
 Writing context:
 {context_json}
