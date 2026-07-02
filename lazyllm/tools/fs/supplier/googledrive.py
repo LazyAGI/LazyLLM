@@ -92,13 +92,6 @@ class GoogleDriveFS(LazyLLMFSBase):
         return token, expires_at, ''
 
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
-        '''List Google Drive directory entries.
-
-        Args:
-            path (str): Directory path or folder id.
-            detail (bool): Return metadata dictionaries when True, names when False.
-            kwargs (dict): Extra provider-specific options.
-        '''
         parts = self._parse_path(path)
         if parts and parts[0] == 'drive' and len(parts) >= 2:
             drive_id = parts[1]
@@ -138,12 +131,6 @@ class GoogleDriveFS(LazyLLMFSBase):
         return results
 
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
-        '''Get Google Drive file metadata.
-
-        Args:
-            path (str): File or directory path.
-            kwargs (dict): Extra provider-specific options.
-        '''
         parts = self._parse_path(path)
         if not parts:
             return self._entry('/', ftype='directory')
@@ -164,19 +151,6 @@ class GoogleDriveFS(LazyLLMFSBase):
         folder_id: str = '',
         limit: int = 20,
     ) -> List[Dict[str, Any]]:
-        '''Search accessible Google Drive content with one or more keywords.
-
-        Args:
-            keywords: One keyword/phrase or a list of keywords. Multiple values
-                are combined with AND.
-            file_name: Optional exact file-name scope.
-            drive_id: Optional shared-drive id.
-            folder_id: Optional direct parent-folder id.
-            limit: Maximum number of results, from 1 to 1000.
-
-        Returns:
-            Matching Google Drive file metadata.
-        '''
         normalized = self._normalize_keywords(keywords)
         limit = self._normalize_limit(limit, default=20, maximum=1000)
         terms = ['trashed = false']
@@ -202,18 +176,6 @@ class GoogleDriveFS(LazyLLMFSBase):
         limit: int = 50,
         max_scan: int = 1000,
     ) -> List[Dict[str, Any]]:
-        '''Find files by applying a regular expression to file names only.
-
-        Args:
-            pattern: Python regular expression matched against the full file name.
-            drive_id: Optional shared-drive id.
-            folder_id: Optional direct parent-folder id.
-            limit: Maximum number of matches, from 1 to 1000.
-            max_scan: Maximum number of Drive entries inspected.
-
-        Returns:
-            Matching Google Drive file metadata.
-        '''
         pattern = (pattern or '').strip()
         if not pattern:
             raise ValueError('pattern is required')
@@ -240,28 +202,12 @@ class GoogleDriveFS(LazyLLMFSBase):
         return matches
 
     def read(self, path: str) -> str:
-        '''Read a Google Drive file as UTF-8 text.
-
-        Args:
-            path (str): File path.
-        '''
         return super().read(path)
 
     def read_file(self, path: str) -> str:
-        '''Read a Google Drive file as UTF-8 text.
-
-        Args:
-            path (str): File path.
-        '''
         return super().read_file(path)
 
     def write(self, path: str, content: str) -> None:
-        '''Write UTF-8 text to a Google Drive file.
-
-        Args:
-            path (str): File path.
-            content (str): Text content.
-        '''
         return super().write(path, content)
 
     def _open(self, path: str, mode: str = 'rb',
@@ -299,12 +245,6 @@ class GoogleDriveFS(LazyLLMFSBase):
         self.rm_file(path)
 
     def rm(self, path: str, recursive: bool = False) -> None:
-        '''Remove a Google Drive file or directory.
-
-        Args:
-            path (str): File or directory path.
-            recursive (bool): Recursively remove directory contents when True.
-        '''
         return super().rm(path, recursive=recursive)
 
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
@@ -476,6 +416,11 @@ class GoogleDriveFS(LazyLLMFSBase):
             if page_token:
                 params['pageToken'] = page_token
             data = self._get(f'{self._base_url}/files', params=params)
+            if data.get('incompleteSearch'):
+                lazyllm.LOG.warning(
+                    'Google Drive files.list returned incompleteSearch=true; '
+                    'search results may be incomplete'
+                )
             for item in data.get('files', []):
                 yield item
                 seen += 1

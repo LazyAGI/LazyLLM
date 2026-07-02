@@ -1,10 +1,12 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from lazyllm import init_session, locals as lazyllm_locals
 from lazyllm.tools.agent.toolsManager import ToolManager
 from lazyllm.tools.fs.supplier.googledrive import GoogleDriveFS
+from tests.basic_tests.Tools.fs_test_utils import load_fs_docs_only
 
 
 class TestGoogleDriveSearch(unittest.TestCase):
@@ -138,6 +140,19 @@ class TestGoogleDriveSearch(unittest.TestCase):
         self.assertEqual(len(list(fs._iter_files('trashed = false', max_items=3))), 3)
         self.assertEqual(page_sizes, [3, 1])
 
+    def test_iter_files_warns_when_google_reports_incomplete_search(self):
+        fs = self._make_fs()
+        fs._get = lambda _url, params: {
+            'files': [{'id': '1'}],
+            'incompleteSearch': True,
+        }
+
+        with patch('lazyllm.tools.fs.supplier.googledrive.lazyllm.LOG.warning') as warning:
+            self.assertEqual(len(list(fs._iter_files('trashed = false', max_items=1))), 1)
+
+        warning.assert_called_once()
+        self.assertIn('incompleteSearch=true', warning.call_args.args[0])
+
     def test_item_to_entry_normalizes_null_values(self):
         entry = GoogleDriveFS._item_to_entry({
             'id': None,
@@ -157,6 +172,7 @@ class TestGoogleDriveSearch(unittest.TestCase):
     def test_search_and_find_are_registered(self):
         init_session()
         lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+        load_fs_docs_only(GoogleDriveFS.search)
         fs = self._make_fs()
         manager = ToolManager([(fs, lambda _instance: 'secret-token')])
         manager._tool_call['get_GoogleDriveFS_methods']({})
