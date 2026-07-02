@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from typing import Any, List
 
 from .base import WriterToolBase
@@ -167,7 +168,10 @@ class WriterDraftingTools(WriterToolBase):
                 "output_format": writing_output.output_format,
             },
         )
-        return result.model_dump()
+        output_file_path = self._write_writing_output_file(writing_output)
+        dumped = result.model_dump()
+        dumped["output_file_path"] = output_file_path
+        return dumped
 
     def _unified_section_instruction(self, value: Any) -> SectionInstruction:
         if isinstance(value, SectionInstruction):
@@ -448,3 +452,23 @@ class WriterDraftingTools(WriterToolBase):
             if value:
                 return value
         return None
+
+    def _write_writing_output_file(self, writing_output: WritingOutput) -> str:
+        if not self.artifact_store:
+            raise ValueError("artifact_store is not set")
+        extension = self._output_file_extension(writing_output.output_format)
+        path = os.path.join(self.artifact_store, f"writing_output.{extension}")
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(writing_output.content)
+        return os.path.abspath(path)
+
+    def _output_file_extension(self, output_format: str) -> str:
+        extensions = {
+            "markdown": "md",
+            "plain_text": "txt",
+            "html": "html",
+        }
+        if output_format not in extensions:
+            raise ValueError(f"Unsupported output_format for file export: {output_format}")
+        return extensions[output_format]

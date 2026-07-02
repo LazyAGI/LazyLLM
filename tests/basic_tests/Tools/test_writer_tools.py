@@ -5,6 +5,9 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from lazyllm.tools.writer.data_models import (
+    DraftBlock,
+    DraftDocument,
+    DraftSection,
     DocBlock,
     DocIR,
     OutlineNode,
@@ -17,6 +20,7 @@ from lazyllm.tools.writer.data_models.quality import AuditIssue, AuditResult, Re
 from lazyllm.tools.writer.data_models.task import InputResource
 from lazyllm.tools.writer.data_models.writing import SectionInstruction, SectionInstructionList, WritingOutline
 from lazyllm.tools.writer.tools.context_tools import WriterContextTools
+from lazyllm.tools.writer.tools.drafting_tools import WriterDraftingTools
 from lazyllm.tools.writer.tools.planning_tools import WriterPlanningTools
 from lazyllm.tools.writer.tools.quality_tools import WriterQualityTools
 from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
@@ -174,6 +178,41 @@ def test_generate_section_instructions_drops_unavailable_source_refs():
         )
         assert instructions.instructions[0].source_refs == []
         assert instructions.instructions[0].fact_constraints == []
+
+
+def test_generate_writing_output_writes_markdown_file():
+    context = WritingContext(context_id="ctx-output-file", doc_id="doc-output-file")
+    draft_document = DraftDocument(
+        draft_id="draft-output-file",
+        title="测试文档",
+        sections=[
+            DraftSection(
+                section_id="sec-1",
+                title="第一章",
+                blocks=[
+                    DraftBlock(block_id="block-1", content="这是第一章正文。"),
+                ],
+            )
+        ],
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterDraftingTools(artifact_store=d)
+        result = tool.generate_writing_output(draft=draft_document, context=context)
+
+        assert result["artifact_path"].endswith("writing_output.json")
+        markdown_path = result["output_file_path"]
+        assert markdown_path.endswith("writing_output.md")
+        assert os.path.exists(markdown_path)
+
+        with open(markdown_path, "r", encoding="utf-8") as fh:
+            markdown = fh.read()
+        assert markdown.startswith("# 测试文档")
+        assert "## 第一章" in markdown
+        assert "这是第一章正文。" in markdown
+
+        output = load_artifact_json(result["artifact_path"], WritingOutput)
+        assert output.content == markdown
 
 
 # ---------------------------------------------------------------------------
