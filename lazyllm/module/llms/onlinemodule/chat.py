@@ -31,6 +31,7 @@ class _ChatModuleMeta(_MetaBind):
 class OnlineChatModule(_DynamicSourceRouterMixin, LLMBase, metaclass=_ChatModuleMeta):
     _dynamic_module_slot = 'chat'
     _dynamic_source_error = 'No source is configured for dynamic LLM source.'
+    _timeout = 180
 
     def __new__(cls, model: str = None, source: str = None, url: str = None, stream: bool = True,
                 return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None,
