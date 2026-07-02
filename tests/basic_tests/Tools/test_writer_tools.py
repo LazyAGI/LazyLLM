@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from lazyllm.tools.writer.data_models import (
     DocBlock,
     DocIR,
+    OutlineNode,
     ResourceProfile,
     WritingContext,
     WritingOutput,
@@ -14,8 +15,9 @@ from lazyllm.tools.writer.data_models import (
 )
 from lazyllm.tools.writer.data_models.quality import AuditIssue, AuditResult, ReviewReport
 from lazyllm.tools.writer.data_models.task import InputResource
-from lazyllm.tools.writer.data_models.writing import SectionInstruction, SectionInstructionList
+from lazyllm.tools.writer.data_models.writing import SectionInstruction, SectionInstructionList, WritingOutline
 from lazyllm.tools.writer.tools.context_tools import WriterContextTools
+from lazyllm.tools.writer.tools.planning_tools import WriterPlanningTools
 from lazyllm.tools.writer.tools.quality_tools import WriterQualityTools
 from lazyllm.tools.writer.tools.resource_tools import WriterResourceTools
 from lazyllm.tools.writer.utils import load_artifact_json
@@ -129,6 +131,49 @@ def test_update_writing_context_tool_result_from_paths():
         updated = load_artifact_json(result["context_path"], WritingContext)
         assert updated.document_summary.summary == "最终稿 这是最终输出内容。"
         assert updated.block_summaries[0].summary == "最终稿 这是最终输出内容。"
+
+
+def test_generate_section_instructions_drops_unavailable_source_refs():
+    context = WritingContext(context_id="ctx-no-refs")
+    outline = WritingOutline(
+        outline_id="outline-no-refs",
+        title="无引用测试",
+        nodes=[
+            OutlineNode(
+                node_id="section-1",
+                title="第一节",
+                level=1,
+                constraints={
+                    "source_refs": ["unrelated-reference"],
+                    "fact_constraints": ["未在上下文中出现的事实"],
+                },
+            )
+        ],
+    )
+    llm_result = SectionInstructionList(
+        instructions=[
+            SectionInstruction(
+                instruction_id="instruction-section-1",
+                outline_node_id="section-1",
+                section_title="第一节",
+                section_goal="写第一节",
+                source_refs=["unrelated-reference"],
+                fact_constraints=["未在上下文中出现的事实"],
+            )
+        ]
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterPlanningTools(artifact_store=d)
+        with patch.object(tool, "_call_llm_structured", return_value=llm_result):
+            result = tool.generate_section_instructions(outline=outline, context=context)
+
+        instructions = load_artifact_json(
+            result["metadata"]["artifact_paths"]["section_instructions"],
+            SectionInstructionList,
+        )
+        assert instructions.instructions[0].source_refs == []
+        assert instructions.instructions[0].fact_constraints == []
 
 
 # ---------------------------------------------------------------------------
@@ -866,4 +911,3 @@ def test_validate_output_from_artifact_paths():
         assert result["artifact_path"].endswith("output_review.json")
         report = load_artifact_json(result["artifact_path"], ReviewReport)
         assert report.result.is_passed is True
-

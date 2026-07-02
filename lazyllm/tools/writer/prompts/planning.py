@@ -11,6 +11,9 @@ Requirements:
   min_words, max_words, pov, tone, must_include, must_avoid.
 - Do not invent other constraints fields.
 - Constraints fields are optional. Fill only the fields that are useful for the section.
+- fact_constraints and source_refs MUST only reference facts and resource_ids that are actually present
+  in the writing context or resource profiles. If no specific fact or resource applies to a section,
+  leave the list empty.
 - Prefer the target document title or task intent as the outline title.
 - Use the writing context and resource profiles as constraints, not as content to copy blindly.
 
@@ -39,6 +42,9 @@ Requirements:
 - section_goal should be concrete and actionable.
 - required_points should contain the key content that must appear in the section.
 - fact_constraints should preserve locked facts and important context facts relevant to this section.
+- fact_constraints and source_refs MUST only reference facts and resource_ids that are actually present
+  in the writing context or resource profiles. If no specific fact or resource applies to a section,
+  leave the list empty.
 - style_constraints should include tone, pov, audience, and style requirements when applicable.
 - relation_constraints should describe dependencies on previous or later sections when useful.
 - expected_blocks should be a concise block-level content plan for the draft tool.

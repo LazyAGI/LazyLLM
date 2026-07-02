@@ -4,8 +4,7 @@ from typing import Any, Optional
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.quality import AuditResult, ReviewReport
-from ..data_models.task import WritingOutput
-from ..data_models.writing import SectionInstruction, SectionInstructionList
+from ..data_models.writing import SectionInstruction, SectionInstructionList, WritingOutput
 from ..prompts.quality import VALIDATE_OUTPUT_PROMPT, VALIDATE_SECTION_PROMPT
 from ..utils import to_prompt_json
 

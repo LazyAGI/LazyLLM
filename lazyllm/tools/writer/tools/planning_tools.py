@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, List
+from typing import Any, List, Optional
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
@@ -120,8 +120,16 @@ class WriterPlanningTools(WriterToolBase):
 
         outline.outline_id = outline.outline_id or self._default_outline_id(task, context)
         outline.title = outline.title or self._default_outline_title(task)
+        valid_source_refs = self._valid_source_refs(context, profiles)
+        has_available_facts = self._has_available_facts(context, profiles)
         for index, node in enumerate(outline.nodes, start=1):
-            self._normalize_outline_node(node, level=1, fallback_id=f"section-{index}")
+            self._normalize_outline_node(
+                node,
+                level=1,
+                fallback_id=f"section-{index}",
+                valid_source_refs=valid_source_refs,
+                has_available_facts=has_available_facts,
+            )
 
         outline.meta.update(
             {
@@ -130,14 +138,27 @@ class WriterPlanningTools(WriterToolBase):
         )
         return outline
 
-    def _normalize_outline_node(self, node: OutlineNode, *, level: int, fallback_id: str) -> None:
+    def _normalize_outline_node(
+        self,
+        node: OutlineNode,
+        *,
+        level: int,
+        fallback_id: str,
+        valid_source_refs: set[str],
+        has_available_facts: bool,
+    ) -> None:
         node.level = level
         node.node_id = node.node_id or fallback_id
+        node.constraints.source_refs = self._filter_source_refs(node.constraints.source_refs, valid_source_refs)
+        if not has_available_facts:
+            node.constraints.fact_constraints = []
         for index, child in enumerate(node.children, start=1):
             self._normalize_outline_node(
                 child,
                 level=level + 1,
                 fallback_id=f"{node.node_id}-{index}",
+                valid_source_refs=valid_source_refs,
+                has_available_facts=has_available_facts,
             )
 
     def _default_outline_id(self, task: WritingTask, context: WritingContext) -> str:
@@ -169,13 +190,23 @@ class WriterPlanningTools(WriterToolBase):
             for instruction in instruction_list.instructions
             if instruction.outline_node_id
         }
+        valid_source_refs = self._valid_source_refs(context)
+        has_available_facts = self._has_available_facts(context)
 
         normalized: List[SectionInstruction] = []
         for node in target_nodes:
             instruction = instructions_by_node_id.get(node.node_id or "")
             if instruction is None:
                 instruction = self._instruction_from_outline_node(node)
-            normalized.append(self._normalize_section_instruction(instruction, node, outline))
+            normalized.append(
+                self._normalize_section_instruction(
+                    instruction,
+                    node,
+                    outline,
+                    valid_source_refs,
+                    has_available_facts,
+                )
+            )
 
         instruction_list.instruction_set_id = (
             instruction_list.instruction_set_id
@@ -199,6 +230,8 @@ class WriterPlanningTools(WriterToolBase):
         instruction: SectionInstruction,
         node: OutlineNode,
         outline: WritingOutline,
+        valid_source_refs: set[str],
+        has_available_facts: bool,
     ) -> SectionInstruction:
         constraints = node.constraints
         instruction.outline_node_id = instruction.outline_node_id or node.node_id or ""
@@ -214,8 +247,11 @@ class WriterPlanningTools(WriterToolBase):
             instruction.required_points = list(constraints.required_points)
         if not instruction.source_refs:
             instruction.source_refs = list(constraints.source_refs)
+        instruction.source_refs = self._filter_source_refs(instruction.source_refs, valid_source_refs)
         if not instruction.fact_constraints:
             instruction.fact_constraints = list(constraints.fact_constraints)
+        if not has_available_facts:
+            instruction.fact_constraints = []
         if not instruction.style_constraints:
             instruction.style_constraints = list(constraints.style_constraints)
             if constraints.pov:
@@ -260,3 +296,32 @@ class WriterPlanningTools(WriterToolBase):
     def _default_instruction_set_id(self, outline: WritingOutline) -> str:
         source_id = outline.outline_id or "outline"
         return f"{source_id}-section-instructions"
+
+    def _valid_source_refs(
+        self,
+        context: WritingContext,
+        profiles: Optional[List[ResourceProfile]] = None,
+    ) -> set[str]:
+        refs: set[str] = set()
+        for profile in profiles or []:
+            if profile.resource_id:
+                refs.add(profile.resource_id)
+        for fact in context.facts:
+            if fact.key:
+                refs.add(fact.key)
+            refs.update(source for source in fact.source if source)
+        return refs
+
+    def _has_available_facts(
+        self,
+        context: WritingContext,
+        profiles: Optional[List[ResourceProfile]] = None,
+    ) -> bool:
+        if context.facts:
+            return True
+        return any(profile.key_facts for profile in profiles or [])
+
+    def _filter_source_refs(self, source_refs: List[str], valid_source_refs: set[str]) -> List[str]:
+        if not valid_source_refs:
+            return []
+        return [source_ref for source_ref in source_refs if source_ref in valid_source_refs]
