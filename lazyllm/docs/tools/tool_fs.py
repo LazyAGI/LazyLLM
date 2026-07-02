@@ -1855,21 +1855,26 @@ Returns:
 
 # GoogleDriveFS
 _add_fs_chinese('GoogleDriveFS', '''\
-Google Drive 文件系统：使用 Drive v3 API，支持 OAuth token 或 Service Account 凭证。目录监听用 CloudFsWatchdog；支持 webhook。
+Google Drive 文件系统：使用 Google 官方 Drive v3 API 直接访问在线原始云盘，支持目录浏览、文件读写、关键词搜索和文件名正则查找。不会先把文件导入 LazyLLM 知识库。
 
 构造参数:
     credentials (str | dict, optional): Service Account JSON 文件路径或已解析的 dict；提供后会自动换取 access_token。
     base_url (str, optional): Drive API 根地址，默认官方地址。
+    dynamic_auth (bool): 是否由 Agent/ToolManager 在每次请求时注入用户 OAuth access token；默认 False。
 
-认证与配置: 推荐使用 Service Account 方式：credentials 为 JSON 文件路径或 Service Account 的 dict，由 FS 自动换取并刷新 access_token。可选 base_url。
+认证模式:
+    - 独立 Python 调用：传入 Service Account JSON 路径或 dict，FS 自动换取并刷新 access_token。
+    - Agent/LazyMind 在线工具：使用 GoogleDriveFS(dynamic_auth=True)，由 ToolManager 按请求注入已授权用户的 OAuth access token。构造函数不接收 token 参数，请勿把 access_token 当作 credentials 传入。
+    - drive.readonly 权限可用于 search、find 和读取；写入、移动、删除等操作需要更高的 Google Drive OAuth 权限，否则官方 API 会拒绝请求。
+
 配置与环境变量: config 项 googledrive_credentials（环境变量 GOOGLE_APPLICATION_CREDENTIALS）指向 Service Account JSON 路径；在 GoogleDriveFS 内解析。
 
-如何获取 token / 凭证:
-    方式 A — OAuth2 access_token（用户身份）:
+如何获取 OAuth / Service Account 凭证:
+    方式 A — OAuth2（用户身份，由上层应用管理 token 生命周期）:
     1. 打开 Google Cloud Console https://console.cloud.google.com，创建或选择项目。
     2. 启用「Google Drive API」：APIs & Services → Enable APIs and Services → 搜索并启用 Drive API。
     3. 创建 OAuth 2.0 凭据：APIs & Services → Credentials → Create Credentials → OAuth client ID，应用类型选 Desktop 或 Web，获取 client_id 与 client_secret。
-    4. 使用 Google 官方 OAuth 流程（或 google-auth 等库）让用户授权，用返回的 authorization code 换取 access_token 和 refresh_token；将 access_token 作为本 FS 的 token（注意 access_token 有过期时间，生产环境建议用 refresh_token 定期刷新后传入）。
+    4. 上层应用使用 Google 官方 OAuth 流程取得 access_token/refresh_token，并通过 dynamic_auth 工具调用注入短期 access_token。
     方式 B — Service Account（服务身份）:
     1. 同上在 Cloud Console 启用 Drive API。
     2. 创建服务账号：APIs & Services → Credentials → Create Credentials → Service account，创建后进入该服务账号 → Keys → Add key → JSON，下载 JSON 密钥文件。
@@ -1877,16 +1882,25 @@ Google Drive 文件系统：使用 Drive v3 API，支持 OAuth token 或 Service
     4. 构造 GoogleDriveFS 时传入 credentials 为该 JSON 文件路径或已解析的 dict，无需手动传 token（内部会用 JSON 中的私钥换取 access_token）。
 ''')
 _add_fs_english('GoogleDriveFS', '''\
-Google Drive FS: Drive v3 API; OAuth token or Service Account credentials. Use CloudFsWatchdog for watching; webhook supported.
+Google Drive filesystem backed directly by Google's official Drive v3 API. It browses, reads, writes, searches, and finds files in the live source Drive without importing them into a LazyLLM knowledge base first.
 
-Auth and config: Prefer Service Account credentials: pass credentials as JSON path or SA dict so the FS can obtain and refresh access_token automatically. Optional base_url.
+Args:
+    credentials (str | dict, optional): Service Account JSON path or parsed dictionary. The filesystem obtains and refreshes its access token.
+    base_url (str, optional): Drive API base URL; defaults to the official endpoint.
+    dynamic_auth (bool): Let Agent/ToolManager inject a user OAuth access token per request. Defaults to False.
+
+Authentication modes:
+    - Standalone Python: pass a Service Account JSON path or dictionary.
+    - Agent/LazyMind online tools: construct GoogleDriveFS(dynamic_auth=True); ToolManager injects the authorized user's OAuth access token for each request. The constructor has no token argument, so do not pass an access token as credentials.
+    - drive.readonly is sufficient for search, find, and read. Write, move, and delete operations require broader Google Drive OAuth scopes and are rejected by the official API otherwise.
+
 Config and env: config key googledrive_credentials (env GOOGLE_APPLICATION_CREDENTIALS) points to Service Account JSON path; resolved inside GoogleDriveFS.
 
-How to obtain token / credentials:
-    Option A — OAuth2 access_token (user identity):
+How to obtain OAuth / Service Account credentials:
+    Option A — OAuth2 (user identity; token lifecycle managed by the host application):
     1. In Google Cloud Console (https://console.cloud.google.com), create or select a project and enable the Google Drive API.
     2. Create OAuth 2.0 credentials (Desktop or Web client), get client_id and client_secret.
-    3. Run the OAuth flow (e.g. with google-auth) to get user consent and exchange the authorization code for access_token (and refresh_token). Use access_token as token for this FS; refresh it with refresh_token when expired.
+    3. Run Google's official OAuth flow in the host application, retain access_token/refresh_token there, and inject the short-lived access token through dynamic_auth tool execution.
     Option B — Service Account:
     1. Enable Drive API and create a Service Account in the same project; download its JSON key from Keys → Add key → JSON.
     2. Share the target Drive folder (or My Drive) with the service account email (e.g. xxx@yyy.iam.gserviceaccount.com) with at least Viewer/Editor access.
@@ -1894,8 +1908,177 @@ How to obtain token / credentials:
 ''')
 _add_fs_example('GoogleDriveFS', '''\
 >>> from lazyllm.tools.fs import GoogleDriveFS
+>>> # Standalone use with a service account shared into the target Drive.
 >>> fs = GoogleDriveFS(credentials='/path/to/service-account.json')
 >>> fs.ls('/root')
+>>> # Agent/ToolManager integrations construct with dynamic_auth=True and inject OAuth per request.
+>>> online_fs = GoogleDriveFS(dynamic_auth=True)
+''')
+
+_add_fs_chinese('GoogleDriveFS.ls', '''\
+列出 Google Drive 文件夹中的直接子项。使用官方 files.list API；路径为空时列出“我的云端硬盘”根目录，路径末段也可以直接使用文件夹 ID。共享盘路径支持 /drive/<drive_id>/<folder_id>。
+
+Args:
+    path (str): 文件夹路径或文件夹 ID。
+    detail (bool): 为 True 时返回元数据字典；为 False 时仅返回名称。默认 True。
+    **kwargs: 预留的文件系统参数。
+
+Returns:
+    List: 文件夹直接子项的元数据或名称列表。
+''')
+_add_fs_english('GoogleDriveFS.ls', '''\
+List direct children of a Google Drive folder with the official files.list API. An empty path lists the My Drive root, and the final path segment may be a folder id. Shared-drive paths support /drive/<drive_id>/<folder_id>.
+
+Args:
+    path (str): Folder path or folder id.
+    detail (bool): Return metadata dictionaries when True, or names only when False. Defaults to True.
+    **kwargs: Reserved filesystem options.
+
+Returns:
+    List: Direct child metadata or names.
+''')
+
+_add_fs_chinese('GoogleDriveFS.info', '''\
+使用 Google Drive 官方 files.get API 获取文件或文件夹元数据。空路径返回合成的根目录条目；其他路径使用末段文件 ID 查询。
+
+Args:
+    path (str): 文件或文件夹路径，也可以直接使用对象 ID。
+    **kwargs: 预留的文件系统参数。
+
+Returns:
+    Dict[str, Any]: 标准化元数据，包含名称、标题、类型、大小和修改时间等字段。
+''')
+_add_fs_english('GoogleDriveFS.info', '''\
+Get file or folder metadata with the official Google Drive files.get API. An empty path returns a synthetic root entry; other paths use the final segment as the object id.
+
+Args:
+    path (str): File or folder path, or an object id.
+    **kwargs: Reserved filesystem options.
+
+Returns:
+    Dict[str, Any]: Normalized metadata including name, title, type, size, and modification time.
+''')
+
+_add_fs_chinese('GoogleDriveFS.read', '''\
+以 UTF-8 文本读取 Google Drive 文件。普通文件通过 files.get?alt=media 下载；Google Docs 导出为纯文本，Google Sheets 导出为 CSV。暂不支持的 Google Workspace 原生格式会抛出 NotImplementedError。
+
+Args:
+    path (str): 文件路径或文件 ID。
+
+Returns:
+    str: 解码后的文件文本。
+''')
+_add_fs_english('GoogleDriveFS.read', '''\
+Read a Google Drive file as UTF-8 text. Regular files use files.get?alt=media; Google Docs export as plain text and Google Sheets as CSV. Unsupported native Google Workspace formats raise NotImplementedError.
+
+Args:
+    path (str): File path or file id.
+
+Returns:
+    str: Decoded file text.
+''')
+
+_add_fs_chinese('GoogleDriveFS.read_file', '''\
+读取完整 Google Drive 文件并返回 UTF-8 文本；下载与 Google Workspace 导出规则和 read 相同。
+
+Args:
+    path (str): 文件路径或文件 ID。
+
+Returns:
+    str: 完整文件文本。
+''')
+_add_fs_english('GoogleDriveFS.read_file', '''\
+Read a complete Google Drive file as UTF-8 text, using the same download and Google Workspace export behavior as read.
+
+Args:
+    path (str): File path or file id.
+
+Returns:
+    str: Complete file text.
+''')
+
+_add_fs_chinese('GoogleDriveFS.write', '''\
+向 Google Drive 写入 UTF-8 文本内容。该操作使用官方上传 API，需要可写 OAuth scope 或具有编辑权限的 Service Account；drive.readonly 凭据会被 Google 拒绝。
+
+Args:
+    path (str): 目标文件路径。
+    content (str): 要写入的文本内容。
+''')
+_add_fs_english('GoogleDriveFS.write', '''\
+Write UTF-8 text content to Google Drive through the official upload API. This requires a writable OAuth scope or a Service Account with edit access; drive.readonly credentials are rejected by Google.
+
+Args:
+    path (str): Destination file path.
+    content (str): Text content to write.
+''')
+
+_add_fs_chinese('GoogleDriveFS.rm', '''\
+删除 Google Drive 文件或文件夹。文件删除使用官方 files.delete API；recursive=True 时由统一文件系统逻辑递归处理目录。需要可写 OAuth scope，drive.readonly 凭据无法执行删除。
+
+Args:
+    path (str): 文件或文件夹路径。
+    recursive (bool): 是否递归删除目录内容。默认 False。
+''')
+_add_fs_english('GoogleDriveFS.rm', '''\
+Remove a Google Drive file or folder. File deletion uses the official files.delete API; recursive=True delegates directory traversal to the shared filesystem behavior. A writable OAuth scope is required, and drive.readonly credentials cannot delete content.
+
+Args:
+    path (str): File or folder path.
+    recursive (bool): Recursively remove directory contents. Defaults to False.
+''')
+
+_add_fs_chinese('GoogleDriveFS.search', '''\
+使用 Google Drive 官方 files.list API 在在线原始云盘中搜索文件正文，不查询 LazyLLM 本地知识库。支持一个或多个关键词；多个关键词按 AND 组合。可通过文件名、共享盘 ID 或直接父文件夹 ID 限定范围。
+
+Args:
+    keywords (str | List[str]): 一个关键词/短语，或多个关键词/短语。
+    file_name (str, optional): 精确文件名范围。
+    drive_id (str, optional): 共享盘 ID；设置后使用 corpora=drive。
+    folder_id (str, optional): 直接父文件夹 ID。
+    limit (int, optional): 最大结果数，范围 1 到 1000，默认 20。
+
+Returns:
+    List[Dict[str, Any]]: 匹配文件的元数据，包含 title、mime_type、google_drive_path、web_url、parents 和 drive_id。
+''')
+_add_fs_english('GoogleDriveFS.search', '''\
+Search the live source Google Drive with the official files.list API, not a local LazyLLM knowledge base. Accepts one or more keywords combined with AND, with optional exact file-name, shared-drive, and direct parent-folder scopes.
+
+Args:
+    keywords (str | List[str]): One keyword/phrase or multiple keywords/phrases.
+    file_name (str, optional): Exact file-name scope.
+    drive_id (str, optional): Shared-drive id; uses corpora=drive when set.
+    folder_id (str, optional): Direct parent-folder id.
+    limit (int, optional): Maximum results, from 1 to 1000. Defaults to 20.
+
+Returns:
+    List[Dict[str, Any]]: File metadata including title, mime_type, google_drive_path, web_url, parents, and drive_id.
+''')
+
+_add_fs_chinese('GoogleDriveFS.find', '''\
+仅按 Google Drive 文件名执行 Python 正则表达式查找。Drive API 用于按共享盘或父文件夹列出候选文件，正则匹配在本地完成，不检索文件正文。
+
+Args:
+    pattern (str): 应用于完整文件名的 Python 正则表达式。
+    drive_id (str, optional): 共享盘 ID。
+    folder_id (str, optional): 直接父文件夹 ID。
+    limit (int, optional): 最大匹配数，默认 50。
+    max_scan (int, optional): 最多检查的候选文件数，默认 1000，最大 10000。
+
+Returns:
+    List[Dict[str, Any]]: 文件名匹配的 Google Drive 文件元数据。
+''')
+_add_fs_english('GoogleDriveFS.find', '''\
+Find Google Drive files by applying a Python regular expression to file names only. The Drive API lists candidates within optional shared-drive or parent-folder scopes; file content is not searched.
+
+Args:
+    pattern (str): Python regular expression applied to the full file name.
+    drive_id (str, optional): Shared-drive id.
+    folder_id (str, optional): Direct parent-folder id.
+    limit (int, optional): Maximum matches. Defaults to 50.
+    max_scan (int, optional): Maximum candidate files inspected. Defaults to 1000, capped at 10000.
+
+Returns:
+    List[Dict[str, Any]]: Google Drive file metadata whose names match the pattern.
 ''')
 
 # OneDriveFS

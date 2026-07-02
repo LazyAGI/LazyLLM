@@ -1,9 +1,10 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import json
 import os
+import re
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Union, Tuple
 
 import lazyllm
 from lazyllm import config
@@ -17,9 +18,18 @@ _API_BASE = 'https://www.googleapis.com/drive/v3'
 _UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3'
 _SCOPES = ['https://www.googleapis.com/auth/drive']
 _SA_TOKEN_BUFFER = 300  # refresh 5 min before expiry
+_LIST_FIELDS = (
+    'nextPageToken,incompleteSearch,'
+    'files(id,name,mimeType,size,modifiedTime,createdTime,parents,driveId,webViewLink,description)'
+)
+_GOOGLE_WORKSPACE_EXPORT_TYPES = {
+    'application/vnd.google-apps.document': 'text/plain',
+    'application/vnd.google-apps.spreadsheet': 'text/csv',
+}
 
 
 class GoogleDriveFS(LazyLLMFSBase):
+    __public_apis__ = LazyLLMFSBase.__public_apis__ + ['search', 'find']
 
     def __init__(
         self,
@@ -31,6 +41,7 @@ class GoogleDriveFS(LazyLLMFSBase):
         loop: Optional[Any] = None,
         dynamic_auth: bool = False,
     ):
+        self._mime_type_cache: Dict[str, str] = {}
         if dynamic_auth:
             super().__init__(
                 token={},
@@ -132,6 +143,73 @@ class GoogleDriveFS(LazyLLMFSBase):
         data = self._get(url, params=params)
         return self._item_to_entry(data)
 
+    def search(
+        self,
+        keywords: Union[str, List[str]],
+        file_name: str = '',
+        drive_id: str = '',
+        folder_id: str = '',
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        normalized = self._normalize_keywords(keywords)
+        limit = self._normalize_limit(limit, default=20, maximum=1000)
+        terms = ['trashed = false']
+        terms.extend(f"fullText contains '{self._escape_query_literal(item)}'" for item in normalized)
+        if file_name := (file_name or '').strip():
+            terms.append(f"name = '{self._escape_query_literal(file_name)}'")
+        if folder_id := (folder_id or '').strip():
+            terms.append(f"'{self._escape_query_literal(folder_id)}' in parents")
+        return [
+            self._item_to_entry(item)
+            for item in self._iter_files(
+                ' and '.join(terms),
+                drive_id=(drive_id or '').strip(),
+                max_items=limit,
+            )
+        ]
+
+    def find(
+        self,
+        pattern: str,
+        drive_id: str = '',
+        folder_id: str = '',
+        limit: int = 50,
+        max_scan: int = 1000,
+    ) -> List[Dict[str, Any]]:
+        pattern = (pattern or '').strip()
+        if not pattern:
+            raise ValueError('pattern is required')
+        try:
+            regex = re.compile(pattern)
+        except re.error as exc:
+            raise ValueError(f'invalid regular expression: {exc}') from exc
+        limit = self._normalize_limit(limit, default=50, maximum=1000)
+        max_scan = self._normalize_limit(max_scan, default=1000, maximum=10000)
+        terms = ['trashed = false']
+        if folder_id := (folder_id or '').strip():
+            terms.append(f"'{self._escape_query_literal(folder_id)}' in parents")
+
+        matches = []
+        for item in self._iter_files(
+            ' and '.join(terms),
+            drive_id=(drive_id or '').strip(),
+            max_items=max_scan,
+        ):
+            if regex.search(item.get('name', '')):
+                matches.append(self._item_to_entry(item))
+                if len(matches) >= limit:
+                    break
+        return matches
+
+    def read(self, path: str) -> str:
+        return super().read(path)
+
+    def read_file(self, path: str) -> str:
+        return super().read_file(path)
+
+    def write(self, path: str, content: str) -> None:
+        return super().write(path, content)
+
     def _open(self, path: str, mode: str = 'rb',
               block_size: Optional[int] = None,
               autocommit: bool = True,
@@ -166,6 +244,9 @@ class GoogleDriveFS(LazyLLMFSBase):
     def rmdir(self, path: str) -> None:
         self.rm_file(path)
 
+    def rm(self, path: str, recursive: bool = False) -> None:
+        return super().rm(path, recursive=recursive)
+
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         if self.isdir(path1):  # type: ignore[attr-defined]
             raise NotImplementedError('GoogleDriveFS does not support folder copy via the official API')
@@ -196,6 +277,23 @@ class GoogleDriveFS(LazyLLMFSBase):
     def _download_range(self, path: str, start: int, end: int) -> bytes:
         parts = self._parse_path(path)
         file_id = parts[-1] if parts else path
+        mime_type = self._mime_type_cache.get(file_id)
+        if mime_type is None:
+            metadata = self._get(
+                f'{self._base_url}/files/{file_id}',
+                params={'fields': 'mimeType', 'supportsAllDrives': 'true'},
+            )
+            mime_type = metadata.get('mimeType') or ''
+            self._mime_type_cache[file_id] = mime_type
+        if mime_type in _GOOGLE_WORKSPACE_EXPORT_TYPES:
+            resp = self._request(
+                'GET',
+                f'{self._base_url}/files/{file_id}/export',
+                params={'mimeType': _GOOGLE_WORKSPACE_EXPORT_TYPES[mime_type]},
+            )
+            return resp.content[start:end]
+        if mime_type.startswith('application/vnd.google-apps.'):
+            raise NotImplementedError(f'GoogleDriveFS cannot export {mime_type} as text')
         url = f'{self._base_url}/files/{file_id}'
         headers = {'Range': f'bytes={start}-{end - 1}'}
         resp = self._request('GET', url,
@@ -272,8 +370,70 @@ class GoogleDriveFS(LazyLLMFSBase):
             return ''
 
     @staticmethod
+    def _escape_query_literal(value: str) -> str:
+        return value.replace('\\', '\\\\').replace("'", "\\'")
+
+    @staticmethod
+    def _normalize_keywords(keywords: Union[str, List[str]]) -> List[str]:
+        values = [keywords] if isinstance(keywords, str) else keywords
+        if not isinstance(values, (list, tuple)):
+            raise ValueError('keywords must be a string or a list of strings')
+        normalized = []
+        for item in values:
+            if not isinstance(item, str):
+                raise ValueError('keywords must contain only strings')
+            if value := item.strip():
+                normalized.append(value)
+        if not normalized:
+            raise ValueError('at least one keyword is required')
+        return normalized
+
+    @staticmethod
+    def _normalize_limit(value: int, default: int, maximum: int) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            parsed = default
+        return max(1, min(parsed, maximum))
+
+    def _iter_files(self, query: str, drive_id: str = '', max_items: int = 1000) -> Iterator[Dict[str, Any]]:
+        params: Dict[str, Any] = {
+            'q': query,
+            'spaces': 'drive',
+            'fields': _LIST_FIELDS,
+            'pageSize': min(max_items, 1000),
+            'orderBy': 'modifiedTime desc',
+            'includeItemsFromAllDrives': 'true',
+            'supportsAllDrives': 'true',
+        }
+        if drive_id:
+            params.update({'corpora': 'drive', 'driveId': drive_id})
+
+        seen = 0
+        page_token = ''
+        while seen < max_items:
+            params['pageSize'] = min(max_items - seen, 1000)
+            if page_token:
+                params['pageToken'] = page_token
+            data = self._get(f'{self._base_url}/files', params=params)
+            if data.get('incompleteSearch'):
+                lazyllm.LOG.warning(
+                    'Google Drive files.list returned incompleteSearch=true; '
+                    'search results may be incomplete'
+                )
+            for item in data.get('files', []):
+                yield item
+                seen += 1
+                if seen >= max_items:
+                    return
+            page_token = data.get('nextPageToken') or ''
+            if not page_token:
+                return
+
+    @staticmethod
     def _item_to_entry(item: Dict[str, Any]) -> Dict[str, Any]:
-        mime = item.get('mimeType', '')
+        mime = item.get('mimeType') or ''
+        file_id = item.get('id') or ''
         ftype = 'directory' if mime == 'application/vnd.google-apps.folder' else 'file'
         mtime = None
         ts = item.get('modifiedTime')
@@ -283,8 +443,13 @@ class GoogleDriveFS(LazyLLMFSBase):
             except (ValueError, TypeError) as e:
                 lazyllm.LOG.debug(f"Failed to parse timestamp '{ts}': {e}")
         return LazyLLMFSBase._entry(
-            name=item.get('id', ''),
+            name=file_id,
             size=int(item.get('size', 0) or 0),
             ftype=ftype, mtime=mtime,
-            title=item.get('name', ''), mime_type=mime,
+            title=item.get('name') or '', mime_type=mime,
+            google_drive_path=f'googledrive:/{file_id}',
+            web_url=item.get('webViewLink') or '',
+            parents=item.get('parents') or [],
+            drive_id=item.get('driveId') or '',
+            description=item.get('description') or '',
         )
