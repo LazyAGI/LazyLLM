@@ -13,6 +13,7 @@ from lazyllm.tools.fs.supplier.notion import (
 )
 from lazyllm.tools.fs.base import LinkDocumentFSBase
 from lazyllm.tools.agent.toolsManager import ToolManager
+from tests.basic_tests.Tools.fs_test_utils import load_fs_docs_only
 
 
 PAGE_RAW = '0123456789abcdef0123456789abcdef'
@@ -146,6 +147,7 @@ class TestNotionToolRegistration(unittest.TestCase):
     def setUp(self):
         init_session()
         lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+        load_fs_docs_only(NotionFS.search)
 
     def test_document_flow_tools_are_registered(self):
         fs = NotionFS(dynamic_auth=True)
@@ -157,6 +159,7 @@ class TestNotionToolRegistration(unittest.TestCase):
         names = {item['function']['name'] for item in manager.tools_description}
 
         self.assertIn('NotionFS_search', names)
+        self.assertIn('NotionFS_find', names)
         self.assertIn('NotionFS_resolve_link', names)
         self.assertIn('NotionFS_read_with_references', names)
         self.assertIn('NotionFS_get_doc_blocks', names)
@@ -197,6 +200,59 @@ class TestNotionSearch(unittest.TestCase):
         fs = NotionFS(token='secret-token', skip_instance_cache=True)
         with self.assertRaises(ValueError):
             fs.search('')
+
+    def test_search_can_be_scoped_to_data_source(self):
+        fs = NotionFS(token='secret-token', skip_instance_cache=True)
+        fs._query_data_source = lambda data_source_id: [
+            {
+                'id': PAGE_ID,
+                'object': 'page',
+                'properties': {
+                    'Name': {'type': 'title', 'title': [{'plain_text': 'Project Plan'}]},
+                },
+            },
+            {
+                'id': CHILD_ID,
+                'object': 'page',
+                'properties': {
+                    'Name': {'type': 'title', 'title': [{'plain_text': 'Meeting Notes'}]},
+                },
+            },
+        ]
+
+        results = fs.search(
+            'Project',
+            scope=f'notion:/~data_source/{DB_RAW}',
+            title_pattern='Plan$',
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['title'], 'Project Plan')
+        self.assertEqual(results[0]['notion_path'], f'notion:/~page/{PAGE_ID}')
+
+    def test_find_can_be_scoped_to_data_source(self):
+        fs = NotionFS(token='secret-token', skip_instance_cache=True)
+        fs._query_data_source = lambda data_source_id: [
+            {
+                'id': PAGE_ID,
+                'object': 'page',
+                'properties': {
+                    'Name': {'type': 'title', 'title': [{'plain_text': 'Project Plan'}]},
+                },
+            },
+            {
+                'id': CHILD_ID,
+                'object': 'page',
+                'properties': {
+                    'Name': {'type': 'title', 'title': [{'plain_text': 'Meeting Notes'}]},
+                },
+            },
+        ]
+
+        results = fs.find('^Project', scope=f'notion:/~data_source/{DB_RAW}')
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['title'], 'Project Plan')
 
 
 class TestNotionMarkdownFetch(unittest.TestCase):
