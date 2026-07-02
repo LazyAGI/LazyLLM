@@ -10,12 +10,14 @@ from pydantic import ValidationError
 from lazyllm.thirdparty import fastapi
 
 from lazyllm.tools.rag.doc_service.doc_server import DocServer
+from lazyllm.tools.rag.doc_service.doc_manager import DocManager
 from lazyllm.tools.rag.doc_service.base import (
     AddFileItem,
     CallbackEventType,
     DocServiceError,
     DocStatus,
     KbUpdateRequest,
+    NodeGroupParseStatus,
     SourceType,
     TaskCallbackRequest,
     TaskCancelRequest,
@@ -51,6 +53,7 @@ class _FakeManager:
         self.reparse_request = None
         self.patch_request = None
         self.chunk_kwargs = None
+        self.ng_status_kwargs = None
         # For the legacy compat shim's override path: list of (path -> doc_id)
         # the manager pretends already exist in the kb. Tests can set this
         # before calling upload_files_legacy(override=True).
@@ -96,6 +99,13 @@ class _FakeManager:
     def list_chunks(self, **kwargs):
         self.chunk_kwargs = kwargs
         return {'items': [{'uid': 'chunk-1'}], 'total': 1, 'page': kwargs['page'], 'page_size': kwargs['page_size']}
+
+    def list_algorithms(self):
+        return [{'algo_id': 'algo-1', 'display_name': 'Algorithm 1'}]
+
+    def get_doc_ng_status(self, **kwargs):
+        self.ng_status_kwargs = kwargs
+        return {'items': [{'name': 'block', 'status': NodeGroupParseStatus.SUCCESS.value}]}
 
 
 def _decode_response(response):
@@ -228,6 +238,31 @@ def test_list_chunks_forwards_pagination_to_manager(server_impl):
     assert body['data']['total'] == 1
 
 
+def test_list_algorithms_wraps_items_in_handler(server_impl):
+    response = server_impl.list_algorithms()
+    body = _decode_response(response)
+
+    assert body['data'] == {'items': [{'algo_id': 'algo-1', 'display_name': 'Algorithm 1'}]}
+
+
+def test_get_doc_ng_status_forwards_to_manager(server_impl):
+    response = server_impl.get_doc_ng_status(kb_id='kb-1', doc_id='doc-1')
+    body = _decode_response(response)
+
+    assert server_impl._manager.ng_status_kwargs == {'kb_id': 'kb-1', 'doc_id': 'doc-1'}
+    assert body['data']['items'] == [{'name': 'block', 'status': NodeGroupParseStatus.SUCCESS.value}]
+
+
+def test_doc_manager_list_doc_node_groups_filters_success_status():
+    manager = object.__new__(DocManager)
+    manager.get_doc_ng_status = lambda kb_id, doc_id: {'items': [
+        {'name': 'block', 'status': NodeGroupParseStatus.SUCCESS.value},
+        {'name': 'outline', 'status': NodeGroupParseStatus.PENDING.value},
+    ]}
+
+    assert manager.list_doc_node_groups('kb-1', 'doc-1') == {'groups': ['block']}
+
+
 def test_upload_request_uses_idempotency_payload(server_impl):
     file_path = os.path.join(server_impl._storage_dir, 'seed.txt')
     with open(file_path, 'w', encoding='utf-8') as file:
@@ -257,7 +292,6 @@ def test_upload_http_saves_unique_files_and_only_first_doc_id(server_impl):
     response = asyncio.run(server_impl.upload(
         files=files,
         kb_id='kb-upload',
-        algo_id='__default__',
         source_type=SourceType.API,
         doc_id='doc-first',
         idempotency_key='upload-http-idem',
