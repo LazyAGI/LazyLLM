@@ -1,9 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-import importlib.util
-import sys
-import types
 import unittest
-from pathlib import Path
 from urllib.parse import quote
 
 import requests
@@ -17,28 +13,7 @@ from lazyllm.tools.fs.supplier.notion import (
 )
 from lazyllm.tools.fs.base import LinkDocumentFSBase
 from lazyllm.tools.agent.toolsManager import ToolManager
-
-
-_FS_DOCS_LOADED = False
-
-
-def _load_fs_docs_only():
-    global _FS_DOCS_LOADED
-    if _FS_DOCS_LOADED or getattr(NotionFS.search, '__doc__', None):
-        return
-    docs_tools_pkg = types.ModuleType('lazyllm.docs.tools')
-    docs_tools_pkg.__path__ = [
-        str(Path(__file__).parents[3] / 'lazyllm' / 'docs' / 'tools')
-    ]
-    sys.modules.setdefault('lazyllm.docs.tools', docs_tools_pkg)
-    spec = importlib.util.spec_from_file_location(
-        'lazyllm.docs.tools.tool_fs_test',
-        Path(__file__).parents[3] / 'lazyllm' / 'docs' / 'tools' / 'tool_fs.py',
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    _FS_DOCS_LOADED = True
+from tests.basic_tests.Tools.fs_test_utils import load_fs_docs_only
 
 
 PAGE_RAW = '0123456789abcdef0123456789abcdef'
@@ -172,7 +147,7 @@ class TestNotionToolRegistration(unittest.TestCase):
     def setUp(self):
         init_session()
         lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
-        _load_fs_docs_only()
+        load_fs_docs_only(NotionFS.search)
 
     def test_document_flow_tools_are_registered(self):
         fs = NotionFS(dynamic_auth=True)

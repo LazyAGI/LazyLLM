@@ -1306,7 +1306,11 @@ class FeishuWikiFS(FeishuFSBase):
             return
         try:
             nodes = self._list_nodes_raw(parent_token, space_id=current_space_id)
-        except Exception:
+        except Exception as exc:
+            LOG.warning(
+                f'Feishu wiki traversal failed for space_id={current_space_id!r} '
+                f'parent_token={parent_token!r}: {exc}'
+            )
             return
         for node in nodes:
             if self._process_feishu_find_node(
