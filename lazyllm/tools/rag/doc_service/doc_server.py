@@ -35,7 +35,6 @@ from .base import (
     TaskCallbackPayload,
     TaskCallbackRequest,
     TaskCancelRequest,
-    TaskInfoRequest,
     TransferRequest,
     UploadRequest,
 )
@@ -193,7 +192,7 @@ class DocServer(ModuleBase):
         def ensure_kb_registered(self, kb_id: str, algo_id: Optional[str] = None):
             '''Lightweight KB registration: ensure KB + algo binding rows exist in DB.
 
-            Unlike ``create_kb_by_id`` this does NOT validate algorithm existence
+            Unlike ``create_kb`` this does NOT validate algorithm existence
             against the parser, so it can be called before the algorithm is registered
             (e.g. during ``add_kb_group`` which creates a DocImpl that will register
             its algorithm later during ``_lazy_init``).
@@ -390,9 +389,7 @@ class DocServer(ModuleBase):
 
         @staticmethod
         def _format_task_view(task: Optional[Dict[str, Any]]):
-            if not isinstance(task, dict):
-                return task
-            return dict(task)
+            return task
 
         def _format_task_response_data(self, data: Any):
             if isinstance(data, dict) and isinstance(data.get('items'), list):
@@ -743,7 +740,6 @@ class DocServer(ModuleBase):
             self,
             files: List['fastapi.UploadFile'] = fastapi.File(...),  # noqa: B008
             kb_id: Optional[str] = fastapi.Form(None),  # noqa: B008
-            algo_id: Optional[str] = fastapi.Form(None),  # noqa: B008
             source_type: Optional[SourceType] = fastapi.Form(None),  # noqa: B008
             doc_id: Optional[str] = fastapi.Form(None),  # noqa: B008
             idempotency_key: Optional[str] = fastapi.Form(None),  # noqa: B008
@@ -752,8 +748,6 @@ class DocServer(ModuleBase):
             if not files:
                 raise fastapi.HTTPException(status_code=400, detail='files is required')
             kb_id = kb_id or '__default__'
-            if algo_id is not None:
-                LOG.warning(f'[upload] algo_id is deprecated and ignored; kb={kb_id}')
             source_type = source_type or SourceType.API
             saved_paths, file_identities = await self._persist_uploads(files)
             upload_request = UploadRequest(
@@ -808,29 +802,30 @@ class DocServer(ModuleBase):
             self,
             status: Optional[List[str]] = None,
             kb_id: Optional[str] = None,
-            algo_id: Optional[str] = None,
             keyword: Optional[str] = None,
             include_deleted_or_canceled: bool = True,
             page: int = 1,
             page_size: int = 20,
         ):
             self._lazy_init()
-            if algo_id is not None:
-                LOG.warning(f'[list_docs] algo_id={algo_id!r} is deprecated and ignored')
-            data = self._manager.list_docs(
+            return self._run(lambda: self._manager.list_docs(
                 status=status,
                 kb_id=kb_id,
                 keyword=keyword,
                 include_deleted_or_canceled=include_deleted_or_canceled,
                 page=page,
                 page_size=page_size,
-            )
-            return BaseResponse(code=200, msg='success', data=data)
+            ))
 
         @app.get('/v1/docs/node_groups')
         def list_doc_node_groups(self, kb_id: str, doc_id: str):
             self._lazy_init()
             return self._run(lambda: self._manager.list_doc_node_groups(kb_id=kb_id, doc_id=doc_id))
+
+        @app.get('/v1/docs/{doc_id}/ng-status')
+        def get_doc_ng_status(self, doc_id: str, kb_id: str):
+            self._lazy_init()
+            return self._run(lambda: self._manager.get_doc_ng_status(kb_id=kb_id, doc_id=doc_id))
 
         @app.get('/v1/docs/{doc_id}')
         def get_doc(self, doc_id: str):
@@ -868,11 +863,6 @@ class DocServer(ModuleBase):
                 status_code=resp.code,
             )
 
-        def cancel_task_by_id(self, task_id: str):
-            self._lazy_init()
-            resp = self._manager.cancel_task(task_id)
-            return self._response(data=resp.data, code=resp.code, msg=resp.msg, status_code=resp.code)
-
         @app.post('/v1/tasks/cancel')
         def cancel_task(self, request: TaskCancelRequest):
             self._lazy_init()
@@ -899,33 +889,20 @@ class DocServer(ModuleBase):
         def task_callback_http(self, request: TaskCallbackPayload):
             return self.task_callback(request.model_dump(mode='json', exclude_none=True))
 
-        @app.get('/v1/algo/list')
-        def list_algo(self):
-            self._lazy_init()
-            return self._run(lambda: self._manager.list_algorithms())
-
         @app.get('/v1/algo/{algo_id}/groups')
         def get_algo_groups(self, algo_id: str):
             self._lazy_init()
             return self._run(lambda: self._manager.get_algo_groups(algo_id))
 
-        @app.get('/v1/algorithms')
+        @app.get('/v1/algo/list')
         def list_algorithms(self):
             self._lazy_init()
-            return self._run(lambda: self._manager.list_algorithms_compat())
-
-        def list_algorithms_impl(self):
-            self._lazy_init()
-            return self._run(lambda: self._manager.list_algorithms_compat())
+            return self._run(lambda: {'items': self._manager.list_algorithms()})
 
         @app.post('/v1/algorithms/info')
         def get_algorithm_info(self, request: AlgorithmInfoRequest):
             self._lazy_init()
             return self._run(lambda: self._manager.get_algorithm_info(request.algo_id))
-
-        def get_algorithm_info_impl(self, algo_id: str):
-            self._lazy_init()
-            return self._run(lambda: self._manager.get_algorithm_info(algo_id))
 
         @app.get('/v1/chunks')
         def list_chunks(
@@ -948,31 +925,6 @@ class DocServer(ModuleBase):
         def get_tasks_batch(self, request: TaskBatchRequest):
             self._lazy_init()
             return self._run(lambda: self._manager.get_tasks_batch(request.task_ids))
-
-        def get_tasks_batch_impl(self, task_ids: List[str]):
-            self._lazy_init()
-            return self._run(lambda: self._manager.get_tasks_batch(task_ids))
-
-        @app.post('/v1/tasks/info')
-        def get_task_info(self, request: TaskInfoRequest):
-            self._lazy_init()
-            resp = self._manager.get_task(request.task_id)
-            return self._response(
-                data=self._format_task_response_data(resp.data),
-                code=resp.code,
-                msg=resp.msg,
-                status_code=resp.code,
-            )
-
-        def get_task_info_impl(self, task_id: str):
-            self._lazy_init()
-            resp = self._manager.get_task(task_id)
-            return self._response(
-                data=self._format_task_response_data(resp.data),
-                code=resp.code,
-                msg=resp.msg,
-                status_code=resp.code,
-            )
 
         @app.get('/v1/kbs')
         def list_kbs(
@@ -997,19 +949,6 @@ class DocServer(ModuleBase):
             self._lazy_init()
             return self._run(lambda: self._manager.get_kb(kb_id))
 
-        def create_kb_by_id(self, kb_id: str, display_name: Optional[str] = None, description: Optional[str] = None,
-                            owner_id: Optional[str] = None, meta: Optional[Dict[str, Any]] = None,
-                            algo_id: str = '__default__'):
-            self._lazy_init()
-            return self._run(lambda: self._manager.create_kb(
-                kb_id,
-                display_name=display_name,
-                description=description,
-                owner_id=owner_id,
-                meta=meta,
-                algo_id=algo_id,
-            ))
-
         @app.post('/v1/kbs')
         def create_kb(self, request: KbCreateRequest):
             self._lazy_init()
@@ -1028,7 +967,8 @@ class DocServer(ModuleBase):
                 )
             ))
 
-        def update_kb_by_id(self, kb_id: str, request: KbUpdateRequest):
+        @app.post('/v1/kbs/{kb_id}')
+        def update_kb(self, kb_id: str, request: KbUpdateRequest):
             self._lazy_init()
             if request.kb_id and request.kb_id != kb_id:
                 raise DocServiceError(
@@ -1050,10 +990,6 @@ class DocServer(ModuleBase):
                 )
             ))
 
-        @app.post('/v1/kbs/{kb_id}/update')
-        def update_kb(self, kb_id: str, request: KbUpdateRequest):
-            return self.update_kb_by_id(kb_id, request)
-
         @app.delete('/v1/kbs/{kb_id}/algos/{algo_id}')
         def unbind_algo(self, kb_id: str, algo_id: str, dry_run: bool = False):
             self._lazy_init()
@@ -1073,13 +1009,6 @@ class DocServer(ModuleBase):
             payload = request.model_dump(mode='json')
             return self._run(lambda: self._manager.run_idempotent(
                 '/v1/kbs:delete', request.idempotency_key, payload, lambda: self._manager.delete_kbs(request.kb_ids)
-            ))
-
-        def delete_kbs_impl(self, kb_ids: List[str], idempotency_key: Optional[str] = None):
-            self._lazy_init()
-            payload = {'kb_ids': kb_ids}
-            return self._run(lambda: self._manager.run_idempotent(
-                '/v1/kbs:delete', idempotency_key, payload, lambda: self._manager.delete_kbs(kb_ids)
             ))
 
         @app.post('/v1/ng/{group_name}/lazy_mode')
@@ -1280,10 +1209,7 @@ class DocServer(ModuleBase):
         return self._dispatch('list_tasks', **kwargs)
 
     def get_tasks_batch(self, task_ids: List[str]):
-        return self._dispatch('get_tasks_batch_impl', task_ids)
-
-    def get_task_info(self, task_id: str):
-        return self._dispatch('get_task_info_impl', task_id)
+        return self._dispatch('get_tasks_batch', TaskBatchRequest(task_ids=task_ids))
 
     def get_task(self, task_id: str):
         return self._dispatch('get_task', task_id)
@@ -1292,7 +1218,7 @@ class DocServer(ModuleBase):
         return self._dispatch('set_runtime_callback_url', callback_url)
 
     def cancel_task(self, task_id: str):
-        return self._dispatch('cancel_task_by_id', task_id)
+        return self._dispatch('cancel_task', TaskCancelRequest(task_id=task_id))
 
     def list_kbs(self, **kwargs):
         return self._dispatch('list_kbs', **kwargs)
@@ -1306,25 +1232,31 @@ class DocServer(ModuleBase):
     def list_doc_node_groups(self, kb_id: str, doc_id: str):
         return self._dispatch('list_doc_node_groups', kb_id=kb_id, doc_id=doc_id)
 
+    def get_doc_ng_status(self, kb_id: str, doc_id: str):
+        return self._dispatch('get_doc_ng_status', kb_id=kb_id, doc_id=doc_id)
+
     def list_algorithms(self):
-        return self._dispatch('list_algorithms_impl')
+        return self._dispatch('list_algorithms')
 
     def get_algorithm_info(self, algo_id: str):
-        return self._dispatch('get_algorithm_info_impl', algo_id)
+        return self._dispatch('get_algorithm_info', AlgorithmInfoRequest(algo_id=algo_id))
 
     def create_kb(self, kb_id: str, display_name: Optional[str] = None, description: Optional[str] = None,
                   owner_id: Optional[str] = None, meta: Optional[Dict[str, Any]] = None,
                   algo_id: str = '__default__'):
-        return self._dispatch('create_kb_by_id', kb_id, display_name, description, owner_id, meta, algo_id)
+        return self._dispatch('create_kb', KbCreateRequest(
+            kb_id=kb_id, display_name=display_name, description=description,
+            owner_id=owner_id, meta=meta, algo_id=algo_id,
+        ))
 
     def update_kb(self, kb_id: str, request: KbUpdateRequest):
-        return self._dispatch('update_kb_by_id', kb_id, request)
+        return self._dispatch('update_kb', kb_id, request)
 
     def delete_kb(self, kb_id: str):
         return self._dispatch('delete_kb', kb_id)
 
     def delete_kbs(self, kb_ids: List[str]):
-        return self._dispatch('delete_kbs_impl', kb_ids)
+        return self._dispatch('delete_kbs', KbDeleteBatchRequest(kb_ids=kb_ids))
 
     def unbind_algo(self, kb_id: str, algo_id: str):
         return self._dispatch('unbind_algo', kb_id, algo_id)

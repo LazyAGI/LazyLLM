@@ -1,5 +1,7 @@
 import os
+import pickle
 import shutil
+import threading
 import time
 import pytest
 import tempfile
@@ -391,6 +393,25 @@ class TestChromaStore(unittest.TestCase):
         res = self.store.search(collection_name=self.collections[1], query_embedding=[0.1, 0.2, 0.3],
                                 embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)
+
+
+class TestMilvusStorePickle(unittest.TestCase):
+    def test_pickle_reduces_to_constructor_args(self):
+        from lazyllm.tools.rag.store.vector.milvus_store import _ClientPool
+        store = MilvusStore(uri='', db_name='mydb', client_kwargs={'max_pool_size': 3})
+        # Runtime state established by connect(); a threading.Lock and a live client pool are
+        # not picklable. __reduce__ serializes only constructor args, so it must round-trip
+        # regardless of this state, and connect() re-creates the runtime state afterwards.
+        store._ddl_lock = threading.Lock()
+        store._client_pool = _ClientPool(store._new_client, max_size=3)
+
+        restored = pickle.loads(pickle.dumps(store))
+
+        self.assertEqual(restored._db_name, 'mydb')
+        self.assertEqual(restored._client_kwargs, {'max_pool_size': 3})
+        # Runtime-only resources are not carried over; connect() rebuilds them on next use.
+        self.assertNotIn('_ddl_lock', restored.__dict__)
+        self.assertNotIn('_client_pool', restored.__dict__)
 
 
 @pytest.mark.skip_on_win

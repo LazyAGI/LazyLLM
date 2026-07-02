@@ -389,9 +389,9 @@ class ToolGroup(ToolContainer):
 
         group_desc = docstring_parser.parse(self._desc).description if self._desc else ''
         desc = (
-            f'Activate the {group_name} tool group and unlock its methods. '
-            f'You MUST call this tool before using any tool from {group_name}. '
-            f'{group_desc or ""}'
+            f'Gateway to activate the "{group_name}" tool group '
+            f'{"(usage: " + group_desc + ")" if group_desc else ""}'
+            f'. You MUST call this tool before using any tool from {group_name}.'
         )
         _gateway_apply.__doc__ = (
             f'{desc}\n\nReturns:\n    str: List of available tool names in this group.'
@@ -548,6 +548,7 @@ def _load_tool_by_name(name: str) -> 'ModuleTool':
 
 
 class ToolManager(ModuleBase):
+
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
         super().__init__(return_trace=return_trace)
         self._tools = [_build_tool_from_element(element) for element in tools]
@@ -690,18 +691,19 @@ class ToolManager(ModuleBase):
         for tc in tool_calls:
             tool, args_or_err = self._parse_tool_call(tc)
             if tool is None:
-                callables.append(lambda *_, _e=args_or_err: _e)
+                callables.append(lambda *_, _e=args_or_err: {'ok': False, 'value': None, 'msg': _e})
                 call_arguments.append({})
             elif self._sandbox and tool.execute_in_sandbox:
                 callables.append(self._sandbox)
                 call_arguments.append(self._build_sandbox_args(tool, args_or_err))
             else:
                 def _safe_call(args, _tool=tool):
+                    tool_name = _tool.name
                     try:
-                        return _tool(args)
+                        return {'ok': True, 'value': _tool(args)}
                     except Exception as e:
-                        lazyllm.LOG.warning(f'[ToolCall] tool={_tool.name!r} raised: {type(e).__name__}: {e}')
-                        return f'[Tool Error] {type(e).__name__}: {e}'
+                        lazyllm.LOG.warning(f'[ToolCall] tool={tool_name!r} raised: {type(e).__name__}: {e}')
+                        return {'ok': False, 'value': None, 'msg': f'[Tool Error] {type(e).__name__}: {e}'}
                 callables.append(_safe_call)
                 call_arguments.append(args_or_err)
 

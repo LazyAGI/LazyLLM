@@ -83,6 +83,13 @@ class MilvusStore(EmbedResolveMixin, LazyLLMStoreBase):
         else:
             self._is_remote = False
 
+    @classmethod
+    def rebuild(cls, uri, db_name, index_kwargs, client_kwargs):
+        return cls(uri=uri, db_name=db_name, index_kwargs=index_kwargs, client_kwargs=client_kwargs)
+
+    def __reduce__(self):
+        return self.rebuild, (self._uri, self._db_name, self._index_kwargs, self._client_kwargs)
+
     @property
     def dir(self):
         if self._is_remote: return None
