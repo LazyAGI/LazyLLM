@@ -22,6 +22,8 @@ Validation rules:
 
 7. WORD COUNT (category=format): If the instruction specifies min_words or max_words, estimate the draft's approximate word count and flag deviations. → severity=low, category=format.
 
+8. OUTLINE POSITION (category=relevance): If the writing context contains an outline, verify that the current section's position in the overall document structure is correct. Check that the content does not overlap with neighboring sections and that relationships to previous/next sections match the outline. Misplaced content or section-level inconsistency → severity=medium, category=relevance.
+
 Scoring rules:
 - is_passed: false if any issue has severity=high, or if there are more than 3 severity=medium issues. Otherwise true.
 - score: Start at 100. Deduct 20 per high, 10 per medium, 3 per low. Minimum 0.
@@ -45,7 +47,7 @@ This output has already passed section-level validation. Focus on: output format
 
 Validation rules:
 
-1. OUTPUT FORMAT (category=format): Check that output_format matches the declared format (usually markdown), and that the content has correct heading hierarchy (# title, ## chapter, ### subsection) consistent with the outline structure in the context. Format errors or incorrect heading hierarchy → severity=high, category=format. Missing or incomplete references field (fewer than 2 entries) → severity=high, category=format.
+1. OUTPUT FORMAT (category=format): Check that output_format matches the declared format (usually markdown), and that the content has correct heading hierarchy (# title, ## chapter, ### subsection). If the writing context contains an outline, verify that the heading hierarchy matches the outline structure. Format errors or incorrect heading hierarchy → severity=high, category=format. Missing or incomplete references field (fewer than 2 entries) → severity=high, category=format.
 
 2. CROSS-CHAPTER FACT CONSISTENCY (category=evidence): Cross-check all data points in the full text against the facts in the writing context. The same data appearing in different chapters must have consistent values — no internal contradictions. Contradiction → severity=high, category=evidence. Data inconsistent with locked facts in context → severity=high, category=evidence.
 
@@ -67,6 +69,8 @@ Validation rules:
 7. CONCLUSION QUALITY (category=style): The conclusion chapter should end with open questions or forward-looking perspectives, not deterministic summaries. Ending with "总之，……" or "综上所述，……" followed by a definitive conclusion → severity=medium, category=style.
 
 8. SOURCE ATTRIBUTION (category=evidence): The output must not present itself as original research (e.g. "我们研究发现", "本文原创性地提出"). Information sources must be clearly attributed. Missing attribution or inappropriate stance → severity=medium, category=evidence.
+
+9. REQUIREMENT COVERAGE (category=coverage): If the writing context contains a query (the user's original writing request), check whether the output covers all requirements and topics specified in the query. Missing major topics or requirements → severity=high, category=coverage. Missing minor details → severity=medium, category=coverage.
 
 Scoring rules:
 - is_passed: false if any issue has severity=high, or if there are more than 3 severity=medium issues. Otherwise true.

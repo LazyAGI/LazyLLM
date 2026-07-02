@@ -61,6 +61,10 @@ class NaiveWriterWorkflow:
             context=self._artifact_ref(writing_context, "writing_context"),
             resource_profiles=self._artifact_ref(resource_profiles, "resource_profiles"),
         )
+        writing_context = self.context.update_writing_context(
+            outline=self._artifact_ref(outline, "outline"),
+            context=self._artifact_ref(writing_context, "writing_context"),
+        )
         section_instructions = self.planning.generate_section_instructions(
             outline=self._artifact_ref(outline, "outline"),
             context=self._artifact_ref(writing_context, "writing_context"),

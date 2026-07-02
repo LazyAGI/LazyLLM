@@ -12,6 +12,7 @@ from ..data_models.context import (
 from ..data_models.docir import DocBlock, DocIR
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
+from ..data_models.writing import WritingOutline
 
 
 class WriterContextTools(WriterToolBase):
@@ -37,6 +38,7 @@ class WriterContextTools(WriterToolBase):
             block_summaries=self._build_block_summaries(source_doc),
             facts=self._build_facts(profiles),
             style_profile=self._build_style_profile(profiles),
+            query=writing_task.query,
             meta={
                 "source": "create_writing_context",
             },
@@ -62,29 +64,42 @@ class WriterContextTools(WriterToolBase):
         )
         return result.model_dump()
 
-    def update_writing_context(self, content_artifact: Any, context: Any) -> dict:
+    def update_writing_context(
+        self,
+        content_artifact: Any = None,
+        context: Any = None,
+        *,
+        outline: Any = None,
+    ) -> dict:
         writing_context = self._unified_model(context, WritingContext)
-        content_data = self._unified_raw_data(content_artifact)
-        content_summary = self._summarize_content_data(content_data)
-        content_kind = self._content_artifact_kind(content_data)
+        content_kind = None
 
-        if writing_context.document_summary is None:
-            writing_context.document_summary = DocumentSummary(
-                summary=content_summary,
-                key_points=[],
-                structure_summary=None,
-            )
-        else:
-            writing_context.document_summary.summary = content_summary
+        if content_artifact is not None:
+            content_data = self._unified_raw_data(content_artifact)
+            content_summary = self._summarize_content_data(content_data)
+            content_kind = self._content_artifact_kind(content_data)
 
-        block_id = f"content_update_{len(writing_context.block_summaries) + 1}"
-        writing_context.block_summaries.append(
-            BlockSummary(
-                block_id=block_id,
-                summary=content_summary,
-                key_points=[],
+            if writing_context.document_summary is None:
+                writing_context.document_summary = DocumentSummary(
+                    summary=content_summary,
+                    key_points=[],
+                    structure_summary=None,
+                )
+            else:
+                writing_context.document_summary.summary = content_summary
+
+            block_id = f"content_update_{len(writing_context.block_summaries) + 1}"
+            writing_context.block_summaries.append(
+                BlockSummary(
+                    block_id=block_id,
+                    summary=content_summary,
+                    key_points=[],
+                )
             )
-        )
+
+        if outline is not None:
+            writing_context.outline = self._unified_model(outline, WritingOutline)
+
         writing_context.meta.update(
             {
                 "source": "update_writing_context",
@@ -103,7 +118,8 @@ class WriterContextTools(WriterToolBase):
             artifact_meta={
                 "context_id": writing_context.context_id,
                 "doc_id": writing_context.doc_id,
-                "last_updated_from": content_kind,
+                "last_updated_from": content_kind or "outline",
+                "has_outline": writing_context.outline is not None,
             },
         )
         return result.model_dump()
