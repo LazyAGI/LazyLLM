@@ -547,13 +547,6 @@ def _load_tool_by_name(name: str) -> 'ModuleTool':
     return target()
 
 
-# Register the per-session active-tool allowlist in the lazyllm session config system.
-# Upper layers write via: lazyllm.globals.config['active_tool_names'] = <set>
-# _safe_call reads via the same key.  Using globals.config keeps the framework
-# decoupled from hard-coded key strings in business code.
-lazyllm.globals.config.add('active_tool_names', set, None)
-
-
 class ToolManager(ModuleBase):
 
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
@@ -707,13 +700,6 @@ class ToolManager(ModuleBase):
                 def _safe_call(args, _tool=tool):
                     tool_name = _tool.name
                     try:
-                        # Guard: raise PermissionError if tool is not active in this session.
-                        active_tool_names = lazyllm.globals.config['active_tool_names']
-                        if isinstance(active_tool_names, set) and tool_name not in active_tool_names:
-                            raise PermissionError(
-                                f'{tool_name} is not registered or active in current session. '
-                                'Please enable this tool in model/tool config, then retry.'
-                            )
                         return {'ok': True, 'value': _tool(args)}
                     except Exception as e:
                         lazyllm.LOG.warning(f'[ToolCall] tool={tool_name!r} raised: {type(e).__name__}: {e}')
