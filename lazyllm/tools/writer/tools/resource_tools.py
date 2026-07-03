@@ -1,11 +1,11 @@
 from __future__ import annotations
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from lazyllm import LOG
 
 from .base import WriterToolBase
 from ..data_models.docir import DocBlock, DocIR
-from ..data_models.resource import ResourceProfile
+from ..data_models.resource import MaterialStyle, ResourceProfile
 from ..data_models.task import InputResource, TargetDocument, WritingTask
 from ..prompts.profile_resources import RESOURCE_PROFILE_PROMPT
 
@@ -71,7 +71,7 @@ class WriterResourceTools(WriterToolBase):
             template_usage = res.meta.get("template", "none")
             summary = res.summary or (content[:500] if content else "")
             key_facts: List[str] = []
-            style_notes_list: List[str] = []
+            style: Optional[MaterialStyle] = None
             confidence = 1.0
             extracted_constraints: Dict[str, Any] = {}
             extracted_outline = None
@@ -91,7 +91,8 @@ class WriterResourceTools(WriterToolBase):
                     template_usage = llm_result.template_usage or template_usage
                     summary = llm_result.summary or summary
                     key_facts = llm_result.key_facts or []
-                    style_notes_list = llm_result.style_notes or []
+                    if llm_result.style is not None:
+                        style = llm_result.style
                     confidence = llm_result.confidence or 1.0
                     extracted_constraints = llm_result.extracted_constraints or {}
                     extracted_outline = llm_result.extracted_outline or None
@@ -104,10 +105,11 @@ class WriterResourceTools(WriterToolBase):
                 template_usage=template_usage,
                 summary=summary,
                 key_facts=key_facts,
-                style_notes=style_notes_list,
+                style=style,
                 confidence=confidence,
                 extracted_constraints=extracted_constraints,
                 extracted_outline=extracted_outline,
+                raw_content=content[:3000] if content else None,
             ))
 
         return self._save_artifacts(

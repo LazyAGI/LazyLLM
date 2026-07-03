@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from ..utils.artifact import ArtifactModel
-from .writing import WritingOutline
+from .writing import DraftDocument, DraftSection, WritingOutline
 
 
 class DocumentSummary(BaseModel):
@@ -47,6 +47,8 @@ class WritingContext(ArtifactModel):
     relation_graph: Optional[BlockRelationGraph] = None
     query: Optional[str] = None
     outline: Optional["WritingOutline"] = None
+    draft_sections: List["DraftSection"] = Field(default_factory=list)
+    draft_document: Optional["DraftDocument"] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 

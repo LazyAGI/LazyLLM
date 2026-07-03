@@ -62,7 +62,7 @@ class NaiveWriterWorkflow:
             resource_profiles=self._artifact_ref(resource_profiles, "resource_profiles"),
         )
         writing_context = self.context.update_writing_context(
-            outline=self._artifact_ref(outline, "outline"),
+            artifacts=self._artifact_ref(outline, "outline"),
             context=self._artifact_ref(writing_context, "writing_context"),
         )
         section_instructions = self.planning.generate_section_instructions(
@@ -80,13 +80,17 @@ class NaiveWriterWorkflow:
             context=self._artifact_ref(writing_context, "writing_context"),
         )
         writing_context = self.context.update_writing_context(
-            content_artifact=self._artifact_ref(draft_section, "draft_section"),
+            artifacts=self._artifact_ref(draft_section, "draft_section"),
             context=self._artifact_ref(writing_context, "writing_context"),
         )
         draft_document = self.drafting.generate_draft_document(
             draft_sections=self._artifact_ref(draft_section, "draft_section"),
             context=self._artifact_ref(writing_context, "writing_context"),
             outline=self._artifact_ref(outline, "outline"),
+        )
+        writing_context = self.context.update_writing_context(
+            artifacts=self._artifact_ref(draft_document, "draft_document"),
+            context=self._artifact_ref(writing_context, "writing_context"),
         )
         draft_document_review = self.quality.validate_draft_document(
             draft_document=self._artifact_ref(draft_document, "draft_document"),

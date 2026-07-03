@@ -1,5 +1,5 @@
 from .task import InputResource, Selection, TargetDocument, WritingTask
-from .resource import ResourceProfile
+from .resource import MaterialStyle, ResourceProfile
 from .context import (
     BlockRelationGraph,
     BlockSummary,
@@ -30,6 +30,7 @@ __all__ = [
     "TargetDocument",
     "WritingOutput",
     "WritingTask",
+    "MaterialStyle",
     "ResourceProfile",
     "BlockRelationGraph",
     "BlockSummary",
