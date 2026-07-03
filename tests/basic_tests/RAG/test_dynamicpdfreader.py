@@ -56,8 +56,8 @@ class TestDynamicPDFReader:
         fake_reader.forward.return_value = [DocNode(text='ok')]
 
         with patch.object(reader, '_build_reader', return_value=fake_reader) as mock_build:
-            result_1 = reader._load_data('fake.pdf', extra_info=None, use_cache=True)
-            result_2 = reader._load_data('fake.pdf', extra_info=None, use_cache=True)
+            result_1 = reader._load_data('fake.pdf', extra_info=None)
+            result_2 = reader._load_data('fake.pdf', extra_info=None)
 
         assert mock_build.call_count == 1
         assert len(result_1) == 1
@@ -107,8 +107,8 @@ class TestDynamicPDFReader:
         ppt_reader.forward.return_value = [DocNode(text='ppt')]
 
         with patch.object(reader, '_build_reader', side_effect=[pdf_reader, ppt_reader]) as mock_build:
-            reader._load_data('/tmp/demo.pdf', extra_info=None, use_cache=True)
-            reader._load_data('/tmp/demo.pptx', extra_info=None, use_cache=True)
+            reader._load_data('/tmp/demo.pdf', extra_info=None)
+            reader._load_data('/tmp/demo.pptx', extra_info=None)
 
         assert mock_build.call_count == 2
         assert mock_build.call_args_list[0].args == ('mineru', 'http://mock-mineru')
@@ -188,6 +188,29 @@ class TestDynamicPDFReader:
         reader = MineruPDFReader(url='https://mineru.net')
         assert reader._variant == OcrServiceVariant.ONLINE
         assert reader._upload_mode is False
+
+    def test_mineru_reader_content_cache_skips_load(self, tmp_path):
+        import lazyllm
+        from lazyllm.module.module import module_cache
+
+        pdf_path = tmp_path / 'demo.pdf'
+        pdf_path.write_bytes(b'%PDF-1.4 demo')
+
+        old_cache_mode = lazyllm.config['cache_mode']
+        lazyllm.config['cache_mode'] = 'RW'
+        module_cache.close()
+        try:
+            lazyllm.config['reader_use_cache'] = True
+            reader = MineruPDFReader(url='https://mineru.net')
+            with patch.object(
+                MineruPDFReader, '_load_data', return_value=[DocNode(text='cached')]
+            ) as mock_load:
+                reader(pdf_path)
+                reader(pdf_path)
+            assert mock_load.call_count == 1
+        finally:
+            lazyllm.config['cache_mode'] = old_cache_mode
+            module_cache.close()
 
     def test_ppt_reader_reuses_mineru_auth_key(self):
         reader = MineruPPTReader(url='https://mineru.net', dynamic_auth=True)
