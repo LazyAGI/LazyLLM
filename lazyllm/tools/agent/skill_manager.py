@@ -1,6 +1,7 @@
 import os
 import re
 import shlex
+import tempfile
 import threading
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -344,15 +345,29 @@ class SkillManager(ModuleBase):
             return {'status': 'missing', 'name': name}
         base = info['path']
         script_path = os.path.join(base, rel_path)
+        temp_dir = None
         if self._extract_protocol(script_path):
-            return {'status': 'error', 'error': 'run_script is not supported for cloud FS skills'}
-        if not self._fs.exists(script_path):
-            return {'status': 'missing', 'path': script_path}
-        ext = os.path.splitext(script_path)[1].lower()
-        cmd = ['python' if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh', script_path]
-        if args:
-            cmd.extend(args)
-        return _shell_tool(' '.join(shlex.quote(p) for p in cmd), cwd=cwd or base, allow_unsafe=allow_unsafe)
+            try:
+                temp_dir = tempfile.TemporaryDirectory(prefix='lazyllm-skill-')
+                materialized = self._fs.materialize_dir(base, temp_dir.name) or {}
+                base = str(materialized.get('local_dir') or temp_dir.name)
+                script_path = os.path.join(base, rel_path)
+            except Exception as exc:
+                if temp_dir is not None:
+                    temp_dir.cleanup()
+                return {'status': 'error', 'name': name, 'error': str(exc)}
+        try:
+            script_exists = os.path.exists(script_path) if temp_dir is not None else self._fs.exists(script_path)
+            if not script_exists:
+                return {'status': 'missing', 'path': script_path}
+            ext = os.path.splitext(script_path)[1].lower()
+            cmd = ['python' if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh', script_path]
+            if args:
+                cmd.extend(args)
+            return _shell_tool(' '.join(shlex.quote(p) for p in cmd), cwd=cwd or base, allow_unsafe=allow_unsafe)
+        finally:
+            if temp_dir is not None:
+                temp_dir.cleanup()
 
     def read_reference(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
         return self.read_file(name=name, rel_path=rel_path, **kwargs)

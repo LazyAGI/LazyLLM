@@ -1,4 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import os
 from abc import abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote, unquote
@@ -165,6 +166,43 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
 
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         raise NotImplementedError(f'{self.__class__.__name__}.move is not implemented')
+
+    def materialize_dir(self, path: str, local_dir: str, **kwargs) -> Dict[str, Any]:
+        root = str(path or '').rstrip('/')
+        files: List[str] = []
+
+        def rel_path(remote_path: str) -> str:
+            normalized = str(remote_path or '').strip('/')
+            root_normalized = root.strip('/')
+            if root_normalized and normalized.startswith(root_normalized + '/'):
+                return normalized[len(root_normalized) + 1:]
+            return normalized.rsplit('/', 1)[-1]
+
+        def walk(current: str) -> None:
+            for entry in self.ls(current, detail=True):
+                name = str((entry or {}).get('name') or '').strip()
+                if not name:
+                    continue
+                if str((entry or {}).get('type') or 'file') in ('directory', 'dir'):
+                    walk(name)
+                    continue
+                rel = rel_path(name)
+                if not rel or rel.startswith('../') or '/..' in rel:
+                    raise RuntimeError(f'{self.__class__.__name__}.materialize_dir got invalid path: {rel!r}')
+                destination = os.path.join(local_dir, *rel.split('/'))
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                with self.open(name, 'rb') as src, open(destination, 'wb') as dst:
+                    dst.write(src.read())
+                files.append(rel)
+
+        walk(root)
+        return {
+            'source_path': path,
+            'local_dir': local_dir,
+            'materialized': True,
+            'file_count': len(files),
+            'files': sorted(files),
+        }
 
     def _platform_supports_webhook(self) -> bool:
         return False

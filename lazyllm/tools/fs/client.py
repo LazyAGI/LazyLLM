@@ -137,6 +137,17 @@ class _FSRouter:
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
         self._dispatch('move', path1, path2, recursive=recursive, **kwargs)
 
+    def materialize_dir(self, path: str, local_dir: str, **kwargs) -> Dict[str, Any]:
+        protocol, space_id, real_path = self._parse(path)
+        if protocol == 'file':
+            return {
+                'source_path': path,
+                'local_dir': real_path,
+                'materialized': False,
+            }
+        fs = self._get_or_create_fs(protocol, space_id, real_path)
+        return getattr(fs, 'materialize_dir')(real_path, local_dir, **kwargs)
+
 
 FS = _FSRouter()
 
