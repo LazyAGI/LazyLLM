@@ -5,7 +5,7 @@ from lazyllm.tools.agent.toolsManager import (
 )
 from lazyllm.common import LazyLLMRegisterMetaClass
 from lazyllm import locals as lazyllm_locals, init_session
-from typing import Literal
+from typing import List, Literal
 
 def _gen_wrapped_moduletool(func):
     if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
@@ -193,6 +193,23 @@ class MockSearchWithStrClassKeySource:
         return f'result:{query}'
 
 
+def mock_search_schema(queries: List[str]) -> str:
+    return ''
+
+
+def mock_search_input_adapter(tool_input):
+    adapted = dict(tool_input)
+    if isinstance(adapted.get('queries'), str):
+        adapted['queries'] = [adapted['queries']]
+    return adapted
+
+
+class MockSearchWithToolContract(MockSearchForTest):
+    __tool_public_apis__ = ['search']
+    __tool_schema_overrides__ = {'search': mock_search_schema}
+    __tool_input_adapters__ = {'search': mock_search_input_adapter}
+
+
 class TestInstanceToolGroup:
     def test_name_and_invocation_without_key(self):
         inst = MockSearchForTest()
@@ -259,6 +276,16 @@ class TestInstanceToolGroup:
         tool = grp._tools['MockSearchForTest_search']
         assert tool._params_schema is not None
         assert 'query' in tool._params_schema.model_fields
+
+    def test_instance_group_supports_tool_api_and_schema_overrides(self):
+        grp = InstanceToolGroup(MockSearchWithToolContract())
+
+        assert set(grp._tools) == {'MockSearchWithToolContract_search'}
+        schema = grp._tools['MockSearchWithToolContract_search'].params_schema.model_json_schema()
+        assert schema['properties']['queries']['type'] == 'array'
+        assert grp._tools['MockSearchWithToolContract_search']._validate_input(
+            {'queries': 'hello'}
+        ) == {'queries': ['hello']}
 
     def test_tool_manager_loads_public_apis_as_tools(self):
         inst = MockSearchForTest(key='k')

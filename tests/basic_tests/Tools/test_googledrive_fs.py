@@ -179,6 +179,17 @@ class TestGoogleDriveSearch(unittest.TestCase):
         names = {item['function']['name'] for item in manager.tools_description}
         self.assertIn('GoogleDriveFS_search', names)
         self.assertIn('GoogleDriveFS_find', names)
+        self.assertIn('GoogleDriveFS_read', names)
+        self.assertIn('GoogleDriveFS_read_file', names)
+        self.assertNotIn('GoogleDriveFS_write', names)
+        self.assertNotIn('GoogleDriveFS_rm', names)
+
+        search_tool = next(tool for tool in manager.all_tools if tool.name == 'GoogleDriveFS_search')
+        keywords_schema = search_tool.params_schema.model_json_schema()['properties']['keywords']
+        self.assertEqual(keywords_schema['type'], 'array')
+        self.assertNotIn('anyOf', keywords_schema)
+        self.assertEqual(search_tool._validate_input({'keywords': 'release'}), {'keywords': ['release']})
+        self.assertEqual(search_tool._validate_input({'query': 'release'}), {'keywords': ['release']})
 
     def test_public_method_docs_are_loaded_from_central_registry(self):
         load_fs_docs_only(GoogleDriveFS.search)

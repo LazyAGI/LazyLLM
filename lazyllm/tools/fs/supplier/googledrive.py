@@ -28,8 +28,32 @@ _GOOGLE_WORKSPACE_EXPORT_TYPES = {
 }
 
 
+def _search_tool_schema(
+    keywords: List[str],
+    file_name: str = '',
+    drive_id: str = '',
+    folder_id: str = '',
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    return []
+
+
+def _adapt_search_tool_input(tool_input: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+    if isinstance(tool_input, str):
+        return {'keywords': [tool_input]}
+    adapted = dict(tool_input)
+    if 'keywords' not in adapted and 'query' in adapted:
+        adapted['keywords'] = adapted.pop('query')
+    if isinstance(adapted.get('keywords'), str):
+        adapted['keywords'] = [adapted['keywords']]
+    return adapted
+
+
 class GoogleDriveFS(LazyLLMFSBase):
     __public_apis__ = LazyLLMFSBase.__public_apis__ + ['search', 'find']
+    __tool_public_apis__ = ['search', 'find', 'read', 'read_file']
+    __tool_schema_overrides__ = {'search': _search_tool_schema}
+    __tool_input_adapters__ = {'search': _adapt_search_tool_input}
 
     def __init__(
         self,

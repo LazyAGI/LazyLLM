@@ -2025,6 +2025,12 @@ add_toolsmgr_chinese_doc('InstanceToolGroup', '''\
 将一个对象实例的所有 ``__public_apis__`` 方法统一封装为可注册到 ToolManager 的工具组。
 支持可选的 key_source 参数，用于在运行时检测凭据是否存在；当凭据不存在时，该组内所有工具会从 tools_description 中自动隐藏，LLM 不会感知到其存在。
 
+实例可以用以下可选类属性定制仅面向 LLM 的工具契约，而不改变原始 Python API：
+
+- ``__tool_public_apis__``：覆盖向 LLM 暴露的方法列表；未设置时继续使用 ``__public_apis__``。
+- ``__tool_schema_overrides__``：方法名到签名函数的映射，仅替换参数 schema，工具描述仍来自实际绑定方法。
+- ``__tool_input_adapters__``：方法名到输入适配函数的映射，在 schema 校验和调用前归一化工具输入。
+
 主要用于将 SearchBase、LazyLLMFSBase 等带有 __public_apis__ 的对象注册为 Agent 工具。
 
 Args:
@@ -2048,6 +2054,12 @@ Internal class; direct use is not normally required. The framework creates insta
 
 Wraps all ``__public_apis__`` methods of an object instance into a tool group that can be registered with ToolManager.
 Accepts an optional key_source parameter to detect credential availability at runtime; when the credential is absent, all tools in the group are automatically hidden from tools_description so the LLM is unaware of them.
+
+An instance may define these optional class attributes to customize its LLM-facing tool contract without changing the original Python API:
+
+- ``__tool_public_apis__``: Overrides the methods exposed to the LLM; falls back to ``__public_apis__`` when absent.
+- ``__tool_schema_overrides__``: Maps method names to signature functions used only for parameter schemas; descriptions still come from the bound methods.
+- ``__tool_input_adapters__``: Maps method names to input adapters that normalize tool input before schema validation and invocation.
 
 Primarily used to register objects with __public_apis__ (such as SearchBase or LazyLLMFSBase subclasses) as Agent tools.
 
@@ -2357,7 +2369,7 @@ Activated tool group "search". Available tools: search_web, search_news
 ''')
 
 add_toolsmgr_chinese_doc('MethodModuleTool', '''\
-内部类，通常不需要直接使用。InstanceToolGroup 在初始化时会自动为实例的每个 ``__public_apis__`` 方法创建对应的 MethodModuleTool。
+内部类，通常不需要直接使用。InstanceToolGroup 在初始化时会自动为实例公开的每个工具方法创建对应的 MethodModuleTool。
 
 将对象实例的某个绑定方法封装为 ModuleTool，使其可被 ToolManager 管理和调用。
 工具名称由实例类名和方法名拼接而成（``ClassName_method_name``）；若方法名为 ``__call__``，则工具名直接使用类名。
@@ -2366,10 +2378,12 @@ add_toolsmgr_chinese_doc('MethodModuleTool', '''\
 Args:
     instance (Any): 持有目标方法的对象实例。
     method_name (str): 要封装的方法名称。
+    schema_func (Optional[Callable]): 可选的 schema 签名函数；默认使用目标绑定方法。
+    input_adapter (Optional[Callable]): 可选的输入归一化函数，在参数校验前执行。
 ''')
 
 add_toolsmgr_english_doc('MethodModuleTool', '''\
-Internal class; direct use is not normally required. InstanceToolGroup automatically creates a MethodModuleTool for each ``__public_apis__`` method of the instance during initialization.
+Internal class; direct use is not normally required. InstanceToolGroup automatically creates a MethodModuleTool for each tool-facing method exposed by the instance during initialization.
 
 Wraps a bound method of an object instance as a ModuleTool so it can be managed and invoked by ToolManager.
 The tool name is formed by concatenating the class name and method name (``ClassName_method_name``); if the method name is ``__call__``, the tool name is the class name alone.
@@ -2378,6 +2392,8 @@ The tool description and parameter schema are automatically parsed from the boun
 Args:
     instance (Any): The object instance holding the target method.
     method_name (str): The name of the method to wrap.
+    schema_func (Optional[Callable]): Optional signature function for schema generation; defaults to the target bound method.
+    input_adapter (Optional[Callable]): Optional input normalizer executed before parameter validation.
 ''')
 
 add_toolsmgr_chinese_doc('ToolGroup.get_flat_tools', '''\

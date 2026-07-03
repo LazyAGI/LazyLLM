@@ -260,18 +260,25 @@ if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
 
 
 class MethodModuleTool(ModuleTool):
-    def __init__(self, instance: Any, method_name: str):
+    def __init__(self, instance: Any, method_name: str, schema_func: Optional[Callable] = None,
+                 input_adapter: Optional[Callable] = None):
         object.__setattr__(self, '_instance', instance)
         object.__setattr__(self, '_method_name', method_name)
+        object.__setattr__(self, '_input_adapter', input_adapter)
         bound = getattr(instance, method_name)
 
         def _apply(**kwargs): return bound(**kwargs)
         _apply.__doc__ = bound.__doc__ or self._find_inherited_docstring(instance, method_name)
         _apply.__name__ = method_name
 
-        super().__init__(execute_in_sandbox=False, apply_func=_apply, schema_func=bound)
+        super().__init__(execute_in_sandbox=False, apply_func=_apply, schema_func=schema_func or bound)
         self._name = instance.__class__.__name__ if method_name == '__call__' \
             else f'{instance.__class__.__name__}_{method_name}'
+
+    def _validate_input(self, tool_input: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+        if self._input_adapter:
+            tool_input = self._input_adapter(tool_input)
+        return super()._validate_input(tool_input)
 
     @staticmethod
     def _find_inherited_docstring(instance: Any, method_name: str) -> Optional[str]:
@@ -455,7 +462,18 @@ class InstanceToolGroup(SkipMixin, ToolGroup):
         if key_source is None: key_source = getattr(type(instance), '__key_source__', None)
         self._instance = instance
         SkipMixin.__init__(self, key_source)
-        tools = [MethodModuleTool(instance, m) for m in instance.__public_apis__]
+        public_apis = getattr(instance, '__tool_public_apis__', instance.__public_apis__)
+        schema_overrides = getattr(instance, '__tool_schema_overrides__', {})
+        input_adapters = getattr(instance, '__tool_input_adapters__', {})
+        tools = [
+            MethodModuleTool(
+                instance,
+                method_name,
+                schema_func=schema_overrides.get(method_name),
+                input_adapter=input_adapters.get(method_name),
+            )
+            for method_name in public_apis
+        ]
         name = instance.__class__.__name__
         desc = getattr(type(instance), '__doc__', '') or ''
         ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=True, prefix=False)
