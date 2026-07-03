@@ -11,7 +11,7 @@ from .mboxreader import MboxReader
 from .pandasReader import PandasCSVReader, PandasExcelReader
 from .videoAudioReader import VideoAudioReader
 from .ocrReader import DynamicPDFReader, MineruPDFReader, MineruPPTReader, PaddleOCRPDFReader
-from .ocr_config_inject import inject_ocr_config
+from .reader_config_inject import inject_reader_config
 
 __all__ = [
     'ReaderBase',
@@ -33,5 +33,5 @@ __all__ = [
     'MineruPPTReader',
     'PaddleOCRPDFReader',
     'DynamicPDFReader',
-    'inject_ocr_config',
+    'inject_reader_config',
 ]

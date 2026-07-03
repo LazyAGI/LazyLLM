@@ -18,7 +18,10 @@ globals.config.add(
 )
 
 
-def inject_ocr_config(ocr_config: Optional[Dict[str, Any]]) -> None:
+def inject_reader_config(
+    *,
+    ocr_config: Optional[Dict[str, Any]] = None,
+) -> None:
     if not ocr_config or not isinstance(ocr_config, dict):
         return
 

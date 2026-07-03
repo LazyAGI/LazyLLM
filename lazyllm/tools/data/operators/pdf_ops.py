@@ -32,10 +32,7 @@ class PdfProcessor(Pdf2Qa):
             raise ValueError('You must pass in a mineru url.')
         self.input_key = input_key
         self.output_key = output_key
-        self.use_cache = use_cache
-        self.reader = MineruPDFReader(
-            url=reader_url,
-        )
+        self.reader = MineruPDFReader(url=reader_url).use_cache(use_cache)
 
         self.base_url = reader_url.rstrip('/')
         self.pattern = re.compile(r'!\[.*?\]\((.*?)\)')
@@ -116,7 +113,7 @@ class PdfProcessor(Pdf2Qa):
         if not pdf_path:
             return []
 
-        docs = self.reader._load_data(pdf_path, use_cache=self.use_cache)
+        docs = self.reader.forward(pdf_path)
         results = []
         merged_text = self._merge_chunks(docs)
 

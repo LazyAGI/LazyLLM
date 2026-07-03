@@ -3,6 +3,7 @@ import lazyllm
 import tiktoken
 from lazyllm.tools.rag.transform import SentenceSplitter
 import pytest
+from unittest.mock import patch
 from lazyllm.tools.rag.readers import ReaderBase
 from lazyllm.tools.rag.readers.readerBase import TxtReader
 from lazyllm.tools.rag.readers.docxReader import DocxReader
@@ -254,5 +255,96 @@ class TestRagReader(object):
             texts = [doc.text for doc in docs]
             assert any('©®™' in text for text in texts), 'Special characters not read correctly'
             assert any('日本語' in text for text in texts), 'Mixed language content not read correctly'
+        finally:
+            shutil.rmtree(temp_dir)
+
+
+class TestReaderContentCache(object):
+
+    def setup_method(self):
+        self._old_cache_mode = lazyllm.config['cache_mode']
+        self._old_reader_use_cache = lazyllm.config['reader_use_cache']
+        lazyllm.config['cache_mode'] = 'RW'
+        lazyllm.config['reader_use_cache'] = True
+
+    def teardown_method(self):
+        lazyllm.config['cache_mode'] = self._old_cache_mode
+        lazyllm.config['reader_use_cache'] = self._old_reader_use_cache
+        from lazyllm.module.module import module_cache
+        module_cache.close()
+
+    def test_txt_reader_content_cache_hit(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            test_file = os.path.join(temp_dir, 'cache_content.txt')
+            with open(test_file, 'w', encoding='utf-8') as f:
+                f.write('reader content cache')
+
+            reader = TxtReader()
+            original_load = reader._load_data
+            call_count = {'n': 0}
+
+            def counting_load(file, fs=None, **load_kwargs):
+                call_count['n'] += 1
+                return original_load(file, fs)
+
+            with patch.object(reader, '_load_data', side_effect=counting_load):
+                result_1 = reader(test_file)
+                result_2 = reader(test_file)
+
+            assert call_count['n'] == 1
+            assert len(result_1) == 1
+            assert result_1[0].text == 'reader content cache'
+            assert result_2[0].text == 'reader content cache'
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_txt_reader_content_cache_miss_on_file_change(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            test_file = os.path.join(temp_dir, 'cache_change.txt')
+            with open(test_file, 'w', encoding='utf-8') as f:
+                f.write('version-1')
+
+            reader = TxtReader()
+            original_load = reader._load_data
+            call_count = {'n': 0}
+
+            def counting_load(file, fs=None, **load_kwargs):
+                call_count['n'] += 1
+                return original_load(file, fs)
+
+            with patch.object(reader, '_load_data', side_effect=counting_load):
+                reader(test_file)
+                with open(test_file, 'w', encoding='utf-8') as f:
+                    f.write('version-2')
+                result = reader(test_file)
+
+            assert call_count['n'] == 2
+            assert result[0].text == 'version-2'
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_txt_reader_content_cache_disabled_with_reader_use_cache_false(self):
+        temp_dir = tempfile.mkdtemp()
+        try:
+            test_file = os.path.join(temp_dir, 'cache_bypass.txt')
+            with open(test_file, 'w', encoding='utf-8') as f:
+                f.write('bypass cache')
+
+            lazyllm.config['reader_use_cache'] = False
+            reader = TxtReader()
+            original_load = reader._load_data
+            call_count = {'n': 0}
+
+            def counting_load(file, fs=None, **load_kwargs):
+                call_count['n'] += 1
+                return original_load(file, fs)
+
+            with patch.object(reader, '_load_data', side_effect=counting_load):
+                reader(test_file)
+                reader(test_file)
+
+            assert call_count['n'] == 2
         finally:
             shutil.rmtree(temp_dir)

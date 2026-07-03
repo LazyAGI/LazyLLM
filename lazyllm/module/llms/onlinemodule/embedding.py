@@ -138,6 +138,18 @@ class OnlineEmbeddingModule(_DynamicSourceRouterMixin, metaclass=__EmbedModuleMe
         self._batch_size = batch_size
         self._init_dynamic_auth(api_key, dynamic_auth)
 
+    # Expose batch_size on the dynamic router (which subclasses ModuleBase, not
+    # OnlineEmbeddingModuleBase). Without it, parallel_do_embedding's _check_batch
+    # cannot detect batch capability and falls back to one concurrent request per
+    # node, flooding the provider and triggering rate limits.
+    @property
+    def batch_size(self):
+        return self._batch_size
+
+    @batch_size.setter
+    def batch_size(self, value: int):
+        self._batch_size = value
+
     def _build_supplier(self, source: str, skip_auth: bool):
         params = {'embed_url': self._embed_url, 'embed_model_name': self._embed_model_name,
                   'return_trace': self._return_trace, 'batch_size': self._batch_size,
