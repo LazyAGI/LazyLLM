@@ -21,6 +21,10 @@ class DynamicPDFReader(LazyLLMReaderBase):
         self._return_trace = return_trace
         self._reader_cache = {}
 
+    @property
+    def appendix_hash_key(self):
+        return f'{self._ocr_type}|{self._ocr_url}|{self._timeout}|{self._image_cache_dir}'
+
     def __getstate__(self):
         state = self.__dict__.copy()
         state['_reader_cache'] = {}
@@ -66,9 +70,15 @@ class DynamicPDFReader(LazyLLMReaderBase):
 
     def _build_reader(self, reader_type: str, ocr_url: str) -> LazyLLMReaderBase:
         if reader_type in ('', 'none'):
-            return PDFReader(split_doc=True, return_trace=self._return_trace)
+            return PDFReader(
+                split_doc=True,
+                return_trace=self._return_trace,
+            )
 
-        kwargs = dict[str, str | bool](url=ocr_url, dynamic_auth=True)
+        kwargs = dict[str, str | bool](
+            url=ocr_url,
+            dynamic_auth=True,
+        )
         if self._image_cache_dir:
             kwargs['image_cache_dir'] = self._image_cache_dir
 
@@ -89,10 +99,14 @@ class DynamicPDFReader(LazyLLMReaderBase):
             self._reader_cache[cache_key] = self._build_reader(reader_type, ocr_url)
         return self._reader_cache[cache_key]
 
-    def _load_data(self, file, extra_info=None, use_cache: bool = True, **kwargs):
+    def _load_data(self, file, extra_info=None, **kwargs):
         ocr_type, ocr_url = self._resolve_route(extra_info)
         reader_type, ocr_url = self._reader_cache_key(ocr_type, ocr_url, file)
         reader = self._get_reader(reader_type, ocr_url)
         if isinstance(reader, PDFReader):
             return reader.forward(file)
-        return reader.forward(file, extra_info=extra_info, use_cache=use_cache, **kwargs)
+        return reader.forward(
+            file,
+            extra_info=extra_info,
+            **kwargs,
+        )
