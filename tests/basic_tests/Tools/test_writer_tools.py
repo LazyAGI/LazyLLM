@@ -12,6 +12,7 @@ from lazyllm.tools.writer.data_models import (
     DocBlock,
     DocumentSummary,
     DocIR,
+    MaterialStyle,
     OutlineNode,
     ResourceProfile,
     WritingContext,
@@ -154,7 +155,7 @@ def test_create_writing_context_tool_result():
             resource_role="background",
             summary="产品背景资料",
             key_facts=["支持私有化部署"],
-            style_notes=["正式"],
+            style=MaterialStyle(notes=["正式"]),
         )
     ]
     doc_ir = DocIR(
@@ -194,7 +195,7 @@ def test_update_writing_context_tool_result_from_paths():
         output.save(output_path)
 
         tool = WriterContextTools(artifact_store=d)
-        result = tool.update_writing_context(content_artifact=output_path, context=context_path)
+        result = tool.update_writing_context(artifacts=output_path, context=context_path)
 
         assert result["artifact_path"].endswith("writing_context.json")
         assert result["metadata"]["step_name"] == "update_writing_context"
@@ -338,7 +339,7 @@ def test_create_context_doc_ir_none():
     task = WritingTask(task_id="t1", query="写方案", task_type="write")
     profiles = [
         ResourceProfile(resource_id="r1", resource_role="background",
-                        summary="背景资料", key_facts=["fact1"], style_notes=["正式"])
+                        summary="背景资料", key_facts=["fact1"], style=MaterialStyle(notes=["正式"]))
     ]
 
     with tempfile.TemporaryDirectory() as d:
@@ -358,7 +359,7 @@ def test_create_context_doc_ir_with_headings():
     task = WritingTask(task_id="t2", query="写报告", task_type="write")
     profiles = [
         ResourceProfile(resource_id="r1", resource_role="background",
-                        summary="行业数据", key_facts=["市场增长20%"], style_notes=[])
+                        summary="行业数据", key_facts=["市场增长20%"], style=None)
     ]
     doc_ir = DocIR(
         doc_id="doc-2",
@@ -388,11 +389,11 @@ def test_create_context_multiple_profiles():
     task = WritingTask(task_id="t3", query="写方案", task_type="write")
     profiles = [
         ResourceProfile(resource_id="r1", resource_role="spec",
-                        summary="需求规格", key_facts=["私有化部署", "SaaS"], style_notes=["技术"]),
+                        summary="需求规格", key_facts=["私有化部署", "SaaS"], style=MaterialStyle(notes=["技术"])),
         ResourceProfile(resource_id="r2", resource_role="background",
-                        summary="市场数据", key_facts=["市场增长"], style_notes=[]),
+                        summary="市场数据", key_facts=["市场增长"], style=None),
         ResourceProfile(resource_id="r3", resource_role="example",
-                        summary="范文", key_facts=[], style_notes=["正式"]),
+                        summary="范文", key_facts=[], style=MaterialStyle(notes=["正式"])),
     ]
 
     with tempfile.TemporaryDirectory() as d:
@@ -419,7 +420,7 @@ def test_update_context_first_update():
     with tempfile.TemporaryDirectory() as d:
         tool = WriterContextTools(artifact_store=d)
         result = tool.update_writing_context(
-            content_artifact={"title": "第一章", "content": "这是第一章的内容。", "draft_id": "d1"},
+            artifacts={"title": "第一章", "content": "这是第一章的内容。", "draft_id": "d1"},
             context=ctx,
         )
 
@@ -438,7 +439,7 @@ def test_update_context_second_update():
     with tempfile.TemporaryDirectory() as d:
         tool = WriterContextTools(artifact_store=d)
         result = tool.update_writing_context(
-            content_artifact={"title": "第二章", "content": "第二次更新的内容。"},
+            artifacts={"title": "第二章", "content": "第二次更新的内容。"},
             context=ctx,
         )
 
@@ -453,7 +454,7 @@ def test_update_context_content_as_pydantic():
     with tempfile.TemporaryDirectory() as d:
         tool = WriterContextTools(artifact_store=d)
         result = tool.update_writing_context(
-            content_artifact=WritingOutput(title="终稿", content="最终输出内容"),
+            artifacts=WritingOutput(title="终稿", content="最终输出内容"),
             context=ctx,
         )
 
@@ -623,7 +624,7 @@ def test_profile_resources_with_llm():
         template_usage="both",
         summary="LLM summary",
         key_facts=["fact1", "fact2"],
-        style_notes=["formal"],
+        style=MaterialStyle(notes=["formal"]),
         confidence=0.9,
         extracted_constraints={"word_limit": "5000"},
     )

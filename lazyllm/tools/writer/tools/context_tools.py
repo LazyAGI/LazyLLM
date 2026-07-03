@@ -1,5 +1,8 @@
 from __future__ import annotations
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel
 
 from lazyllm import LOG
 
@@ -14,7 +17,7 @@ from ..data_models.context import (
 from ..data_models.docir import DocBlock, DocIR
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
-from ..data_models.writing import WritingOutline
+from ..data_models.writing import DraftDocument, DraftSection, WritingOutline, WritingOutput
 from ..prompts.context import CONTENT_SUMMARY_PROMPT
 
 
@@ -69,38 +72,47 @@ class WriterContextTools(WriterToolBase):
 
     def update_writing_context(
         self,
-        content_artifact: Any = None,
+        artifacts: Any = None,
         context: Any = None,
-        *,
-        outline: Any = None,
     ) -> dict:
         writing_context = self._unified_model(context, WritingContext)
+
+        if artifacts is None:
+            return self._save_artifacts(
+                {"writing_context": writing_context},
+                step_name="update_writing_context",
+                primary_key="writing_context",
+                summary="Updated writing context (no artifacts).",
+                counts={"facts": len(writing_context.facts)},
+            ).model_dump()
+
+        if not isinstance(artifacts, list):
+            artifacts = [artifacts]
+
         content_kind = None
 
-        if content_artifact is not None:
-            content_data = self._unified_raw_data(content_artifact)
-            content_summary = self._summarize_content_data(content_data)
-            content_kind = self._content_artifact_kind(content_data)
+        for artifact in artifacts:
+            raw = self._unified_raw_data(artifact)
+            kind = self._resolve_artifact_kind(artifact) or "content"
 
-            if writing_context.document_summary is None:
-                writing_context.document_summary = DocumentSummary(
-                    summary=content_summary,
-                    key_points=[],
-                    structure_summary=None,
-                )
+            if kind == "WritingOutline":
+                writing_context.outline = self._unified_model(raw, WritingOutline)
+
+            elif kind == "DraftSection":
+                summary = self._ensure_document_summary(writing_context, raw)
+                self._append_context_update(writing_context, summary, kind)
+                writing_context.draft_sections.append(self._unified_model(raw, DraftSection))
+
+            elif kind == "DraftDocument":
+                summary = self._ensure_document_summary(writing_context, raw)
+                self._append_context_update(writing_context, summary, kind)
+                writing_context.draft_document = self._unified_model(raw, DraftDocument)
+
             else:
-                writing_context.document_summary.summary = content_summary
+                summary = self._ensure_document_summary(writing_context, raw)
+                self._append_context_update(writing_context, summary, kind)
 
-            from datetime import datetime, timezone
-
-            writing_context.meta.setdefault("context_updates", []).append({
-                "summary": content_summary,
-                "content_kind": content_kind,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
-
-        if outline is not None:
-            writing_context.outline = self._unified_model(outline, WritingOutline)
+            content_kind = content_kind or kind
 
         writing_context.meta.update(
             {
@@ -119,11 +131,39 @@ class WriterContextTools(WriterToolBase):
             artifact_meta={
                 "context_id": writing_context.context_id,
                 "doc_id": writing_context.doc_id,
-                "last_updated_from": content_kind or "outline",
+                "last_updated_from": content_kind or "none",
                 "has_outline": writing_context.outline is not None,
             },
         )
         return result.model_dump()
+
+    def _ensure_document_summary(self, writing_context: WritingContext, raw: Any) -> str:
+        content_summary = self._summarize_content_data(raw)
+        if writing_context.document_summary is None:
+            writing_context.document_summary = DocumentSummary(
+                summary=content_summary, key_points=[], structure_summary=None,
+            )
+        else:
+            writing_context.document_summary.summary = content_summary
+        return content_summary
+
+    def _append_context_update(self, writing_context: WritingContext, summary: str, kind: str) -> None:
+        writing_context.meta.setdefault("context_updates", []).append({
+            "summary": summary,
+            "content_kind": kind,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+    def _resolve_artifact_kind(self, artifact: Any) -> Optional[str]:
+        if not isinstance(artifact, str):
+            return None
+        try:
+            import json as _json
+            with open(artifact, "r", encoding="utf-8") as f:
+                schema = _json.load(f).get("schema", "")
+            return schema.rsplit(".", 1)[-1] if "." in schema else None
+        except Exception:
+            return None
 
     def _resolve_doc_id(self, task: WritingTask, doc_ir: Optional[DocIR]) -> Optional[str]:
         if task.target_document and task.target_document.doc_id:
@@ -192,11 +232,18 @@ class WriterContextTools(WriterToolBase):
 
     def _build_style_profile(self, profiles: List[ResourceProfile]) -> Optional[StyleProfile]:
         notes: List[str] = []
+        tone: Optional[str] = None
+        formality: Optional[str] = None
+        audience: Optional[str] = None
         for profile in profiles:
-            notes.extend(profile.style_notes)
-        if not notes:
+            if profile.style:
+                notes.extend(profile.style.notes)
+                tone = tone or profile.style.tone
+                formality = formality or profile.style.formality
+                audience = audience or profile.style.audience
+        if not notes and not tone:
             return None
-        return StyleProfile(notes=notes)
+        return StyleProfile(tone=tone, formality=formality, audience=audience, notes=notes)
 
     def _iter_blocks(self, blocks: List[DocBlock]) -> List[DocBlock]:
         result: List[DocBlock] = []
