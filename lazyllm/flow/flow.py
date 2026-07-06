@@ -4,6 +4,7 @@ from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments,
 from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals, _get_callsite
 from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
 from lazyllm.common import SessionConfigableBase
+from lazyllm.common.globals import filter_session_for_propagation
 from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
@@ -439,7 +440,8 @@ class Parallel(LazyLLMFlowsBase):
     @staticmethod
     def _worker(func, barrier, sid, local_data, *args, global_data=None, **kw):
         lazyllm.globals._init_sid(sid)
-        if global_data: lazyllm.globals._update(global_data)
+        if global_data:
+            lazyllm.globals._update(global_data)
         lazyllm.locals._init_sid()
         lazyllm.locals._update({k: v.copy() for k, v in local_data.items()})
         _barr.impl = barrier
@@ -524,9 +526,11 @@ class Parallel(LazyLLMFlowsBase):
     def _parallel_execute_concurrent(self, items, inputs, **kw):
         if self._multiprocessing:
             barrier, executor = None, lazyllm.ProcessPoolExecutor
-            kw['global_data'] = lazyllm.globals._data
+            kw['global_data'] = filter_session_for_propagation(dict(lazyllm.globals._data))
         else:
             barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
+            # Thread workers need parent session for UrlModule RPC; skip thread-local keys.
+            kw['global_data'] = filter_session_for_propagation(dict(lazyllm.globals._data))
 
         with executor(max_workers=self._concurrent) as e:
             # Thread workers need the parent's contextvars (OTel current span, tracing ContextVars,

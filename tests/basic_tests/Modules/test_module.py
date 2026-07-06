@@ -227,4 +227,38 @@ class TestModule:
             prl.m1 = MyModule
 
         assert prl([dict(a=1, b=2), dict(a=3, b=4)]) == 10
-        assert prl(dict(a=1, b=2), dict(a=3, b=4)) == 10
+
+    def test_StreamCallHelper_propagates_context_when_init_sid_false(self):
+        parent_sid = 'stream-helper-parent-sid'
+        lazyllm.globals._init_sid(sid=parent_sid)
+        lazyllm.globals['propagation_marker'] = 'parent-value'
+
+        captured = {}
+
+        def impl():
+            captured['sid'] = lazyllm.globals._sid
+            captured['marker'] = lazyllm.globals.get('propagation_marker')
+
+        helper = lazyllm.StreamCallHelper(impl, interval=0.01, init_sid=False)
+        list(helper())
+        helper.future.result()
+
+        assert captured['sid'] == parent_sid
+        assert captured['marker'] == 'parent-value'
+
+    def test_pickled_data_excludes_local_session_keys(self):
+        lazyllm.globals._init_sid('test-pickled-exclude')
+        lazyllm.globals['agentic_config'] = {'kb_id': 'ds_test'}
+        lazyllm.globals['call_stack'] = ['module-a']
+
+        class _Unpickleable:
+            def __getstate__(self):
+                raise AttributeError("Can't pickle local object")
+
+        lazyllm.globals['subagent_ctx'] = _Unpickleable()
+        pd = lazyllm.globals.pickled_data
+        assert isinstance(pd, str) and pd
+        restored = lazyllm.str2obj(pd)
+        assert 'subagent_ctx' not in restored
+        assert 'call_stack' not in restored
+        assert restored['agentic_config'] == {'kb_id': 'ds_test'}

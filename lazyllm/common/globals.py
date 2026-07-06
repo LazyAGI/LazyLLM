@@ -15,6 +15,14 @@ from ..configs import config
 from .utils import obj2str, str2obj
 from abc import abstractmethod
 
+# Session keys that are thread-local or worker-local. Excluded from UrlModule RPC
+# headers and from Parallel / StreamCallHelper cross-thread session propagation.
+RPC_SESSION_EXCLUDE_KEYS = frozenset({'subagent_ctx', 'call_stack'})
+
+
+def filter_session_for_propagation(data: dict) -> dict:
+    return {k: v for k, v in data.items() if k not in RPC_SESSION_EXCLUDE_KEYS}
+
 
 class ReadWriteLock(object):
     def __init__(self):
@@ -201,9 +209,18 @@ class Globals(metaclass=SingletonABCMeta):
     @abstractmethod
     def pop(self, *args, **kw): ...
 
+    def _rpc_session_data(self) -> dict:
+        return filter_session_for_propagation(self._data)
+
     @property
     def pickled_data(self):
-        return obj2str(self._data)
+        try:
+            return obj2str(self._rpc_session_data())
+        except AttributeError as exc:
+            # pickle may raise AttributeError; do not let Python route it to __getattr__.
+            raise RuntimeError(
+                f'Failed to pickle session data (keys={sorted(self._rpc_session_data().keys())}): {exc}'
+            ) from exc
 
     def unpickle_and_update_data(self, data: Optional[str]) -> dict:
         if data: self._data.update(str2obj(data))
@@ -288,9 +305,16 @@ class RedisGlobals(MemoryGlobals):
     def _get_redis_key(self, key: str):
         return f'globals:{self._sid}@{key}'
 
+    @property
     def pickled_data(self):
         key = str(uuid.uuid4().hex)
-        self._redis_client.set(self._get_redis_key(key), obj2str(self._data))
+        try:
+            payload = obj2str(self._rpc_session_data())
+        except AttributeError as exc:
+            raise RuntimeError(
+                f'Failed to pickle session data (keys={sorted(self._rpc_session_data().keys())}): {exc}'
+            ) from exc
+        self._redis_client.set(self._get_redis_key(key), payload)
         return key
 
     def unpickle_and_update_data(self, data: str) -> dict:
