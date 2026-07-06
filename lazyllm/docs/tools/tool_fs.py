@@ -1720,6 +1720,30 @@ _add_fs_example('NotionFS', '''\
 >>> fs = NotionFS(token='xxx')
 >>> fs.ls('/')
 ''')
+_add_fs_chinese('NotionFS.ls', '''\
+列出当前 token 可访问的 Notion 页面、数据库或指定对象的子项。传入根路径 ``/`` 时，
+通过 Notion 官方搜索接口列出所有可访问对象；聊天工具调用中省略 path 或传入空路径时，
+也会按根路径处理。
+
+Args:
+    path (str): Notion 路径、对象 ID、浏览器 URL 或 notion:/ URI；默认为根路径 ``/``。
+    detail (bool): 是否返回完整元信息；为 False 时仅返回名称。
+
+Returns:
+    List: 可访问对象或子项列表。
+''')
+_add_fs_english('NotionFS.ls', '''\
+List Notion pages, databases, or children of a specific object visible to the current token.
+For the root path ``/``, this uses Notion's official search endpoint to list all accessible
+objects. Chat tool calls that omit path or provide an empty path are also treated as root.
+
+Args:
+    path (str): Notion path, object id, browser URL, or notion:/ URI; defaults to root ``/``.
+    detail (bool): Whether to return full metadata; when False, return names only.
+
+Returns:
+    List: Accessible objects or child entries.
+''')
 _add_fs_chinese('NotionFS.read_bytes', f'''\
 读取 Notion 页面、数据库或 block 路径的完整内容，并返回 UTF-8 字节。支持 Notion 浏览器 URL、notion:/ URI、页面/数据库/block ID 或路径。
 
