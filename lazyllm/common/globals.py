@@ -21,6 +21,9 @@ RPC_SESSION_EXCLUDE_KEYS = frozenset({'subagent_ctx', 'call_stack'})
 
 
 def filter_session_for_propagation(data: dict) -> dict:
+    if isinstance(data, ThreadSafeDict):
+        with data._lock.read_lock():
+            return {k: v for k, v in dict.items(data) if k not in RPC_SESSION_EXCLUDE_KEYS}
     return {k: v for k, v in data.items() if k not in RPC_SESSION_EXCLUDE_KEYS}
 
 

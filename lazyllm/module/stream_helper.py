@@ -41,7 +41,7 @@ class StreamCallHelper:
             # Snapshot sid + session buckets on the parent thread, then restore in the
             # worker before ctx.run — same pattern as relay server async_wrapper.
             sid = lazyllm.globals._sid
-            session_data = filter_session_for_propagation(dict(lazyllm.globals._data))
+            session_data = filter_session_for_propagation(lazyllm.globals._data)
             local_data = dict(lazyllm.locals._data)
             ctx = copy_context()
 

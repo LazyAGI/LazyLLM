@@ -526,11 +526,11 @@ class Parallel(LazyLLMFlowsBase):
     def _parallel_execute_concurrent(self, items, inputs, **kw):
         if self._multiprocessing:
             barrier, executor = None, lazyllm.ProcessPoolExecutor
-            kw['global_data'] = filter_session_for_propagation(dict(lazyllm.globals._data))
+            kw['global_data'] = filter_session_for_propagation(lazyllm.globals._data)
         else:
             barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
             # Thread workers need parent session for UrlModule RPC; skip thread-local keys.
-            kw['global_data'] = filter_session_for_propagation(dict(lazyllm.globals._data))
+            kw['global_data'] = filter_session_for_propagation(lazyllm.globals._data)
 
         with executor(max_workers=self._concurrent) as e:
             # Thread workers need the parent's contextvars (OTel current span, tracing ContextVars,
