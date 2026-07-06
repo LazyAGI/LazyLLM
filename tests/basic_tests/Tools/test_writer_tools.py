@@ -51,14 +51,14 @@ def _make_doc_adapter():
     return adapter
 
 
-def _call_target_to_doc_ir(adapter, artifact_store):
+def _call_document_to_docir(adapter, artifact_store):
     with patch(
         'lazyllm.tools.fs.client.FS._parse',
         return_value=('feishu', None, '~docx/doc-1'),
     ):
         with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
             tool = WriterResourceTools(artifact_store=artifact_store)
-            return tool.target_to_doc_ir(
+            return tool.document_to_docir(
                 target_document={
                     'uri': 'feishu://~docx/doc-1',
                     'adapter': 'feishu',
@@ -76,7 +76,7 @@ def _call_write_to_document(adapter, markdown, artifact_store):
         with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
             tool = WriterResourceTools(artifact_store=artifact_store)
             return tool.write_to_document(
-                markdown=markdown,
+                content=markdown,
                 target_document={'uri': 'feishu:///write-test.md', 'adapter': 'feishu'},
             )
 
@@ -536,15 +536,15 @@ def test_generate_writing_output_writes_markdown_file():
         assert '这是第一章正文。' in markdown
 
 
-def test_target_to_doc_ir():
+def test_document_to_docir():
     pytest.importorskip('fsspec')
     adapter = _make_doc_adapter()
 
     with tempfile.TemporaryDirectory() as d:
-        result = _call_target_to_doc_ir(adapter, d)
+        result = _call_document_to_docir(adapter, d)
 
         assert result['artifact_path'].endswith('doc_ir.json')
-        assert result['metadata']['step_name'] == 'target_to_doc_ir'
+        assert result['metadata']['step_name'] == 'document_to_docir'
         assert result['metadata']['counts']['blocks'] == 2
 
         doc_ir = load_artifact_json(result['artifact_path'], DocIR)
@@ -564,7 +564,7 @@ def test_write_to_document():
     adapter = _make_doc_adapter()
 
     with tempfile.TemporaryDirectory() as d:
-        result = _call_write_to_document(adapter, '# Hello\n\nworld', d)
+        result = _call_write_to_document(adapter, {'content': '# Hello\n\nworld'}, d)
 
         assert result['artifact_path'].endswith('write_result.json')
         assert result['metadata']['step_name'] == 'write_to_document'
@@ -673,3 +673,56 @@ def test_validate_draft_document_happy_path():
         assert report.result.is_passed is True
         assert report.target == 'draft-test-001'
         assert report.meta['draft_section_count'] == 1
+
+
+# ---------------------------------------------------------------------------
+# write_to_document boundary tests
+# ---------------------------------------------------------------------------
+
+
+def test_write_to_document_no_target():
+    'target_document=None → locator empty → logs warning, no local file saved.'
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d)
+        result = tool.write_to_document(
+            content={'content': '# Local output'},
+            target_document=None,
+        )
+
+        assert result['metadata']['step_name'] == 'write_to_document'
+        assert result['metadata']['extra']['document_id'] == ''
+        assert result['metadata']['extra']['adapter'] == ''
+        assert 'markdown' not in result['metadata'].get('artifact_paths', {})
+
+
+def test_write_to_document_fs_failure():
+    'fs.write_file raises → doc_id empty, no local file saved.'
+    adapter = _make_doc_adapter()
+    adapter.write_file.side_effect = RuntimeError('network down')
+    adapter.resolve_link.side_effect = RuntimeError('network down')
+
+    with tempfile.TemporaryDirectory() as d:
+        with patch('lazyllm.tools.fs.client.FS._parse', return_value=('feishu', None, '/fail.md')):
+            with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
+                tool = WriterResourceTools(artifact_store=d)
+                result = tool.write_to_document(
+                    content={'content': '# Should survive'},
+                    target_document={'uri': 'feishu:///fail.md', 'adapter': 'feishu'},
+                )
+
+        assert result['metadata']['extra']['document_id'] == ''
+        assert result['metadata']['extra']['adapter'] == 'feishu'
+        assert 'markdown' not in result['metadata'].get('artifact_paths', {})
+
+
+def test_write_to_document_empty_target_dict():
+    'target_document={} → locator empty, same as None.'
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d)
+        result = tool.write_to_document(
+            content={'content': '# Empty target'},
+            target_document={},
+        )
+
+        assert result['metadata']['extra']['document_id'] == ''
+        assert 'markdown' not in result['metadata'].get('artifact_paths', {})
