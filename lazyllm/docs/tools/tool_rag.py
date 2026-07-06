@@ -2102,6 +2102,72 @@ Args:
     return_trace (bool): Whether to record processing trace. Default is True.
 ''')
 
+add_chinese_doc('rag.inject_reader_config', '''\
+请求级 OCR 配置注入函数。
+
+在每次解析请求开始前调用，将 ``ocr_config`` 写入
+``lazyllm.globals.config``，供 OCR Reader 在运行时读取。
+
+Args:
+    ocr_config (dict, optional): 请求级 OCR 配置，与 ``llm_config`` 平级。支持字段：
+
+        - ``ocr_type`` / ``ocr_url`` → ``globals.config['dynamic_ocr_configs']``
+        - ``ocr_auth`` → ``globals.config['dynamic_ocr_auth']``
+        - ``mineru_api_key`` / ``paddle_api_key`` → 映射到 ``ocr_auth`` 对应键（若未设置）
+
+Notes:
+    **算法端内容缓存**（ModuleBase）由全局配置 ``lazyllm.config['reader_use_cache']``
+    （环境变量 ``LAZYLLM_READER_USE_CACHE``）控制，不经过本函数。
+
+    **OCR 服务端缓存**（如 Mineru HTTP ``use_cache``）由 OCR Reader
+    ``_load_data(..., use_cache=...)`` 单独控制（默认 ``True``）。
+
+    典型调用：Doc 解析 worker、Chat 请求入口、本地 ``Document`` / 脚本在解析前手动调用。
+
+**Returns:**\n
+- None
+''')
+
+add_english_doc('rag.inject_reader_config', '''\
+Per-request OCR configuration injection.
+
+Call before each parse request to write ``ocr_config`` into
+``lazyllm.globals.config`` for OCR readers to read at runtime.
+
+Args:
+    ocr_config (dict, optional): Per-request OCR settings (sibling of ``llm_config``):
+
+        - ``ocr_type`` / ``ocr_url`` → ``globals.config['dynamic_ocr_configs']``
+        - ``ocr_auth`` → ``globals.config['dynamic_ocr_auth']``
+        - ``mineru_api_key`` / ``paddle_api_key`` → mapped into ``ocr_auth`` when unset
+
+Notes:
+    **Algorithm-side content cache** (ModuleBase) is controlled globally via
+    ``lazyllm.config['reader_use_cache']`` (env ``LAZYLLM_READER_USE_CACHE``), not this function.
+
+    **OCR service cache** (e.g. Mineru HTTP ``use_cache``) is controlled separately via OCR reader
+    ``_load_data(..., use_cache=...)`` (default ``True``).
+
+    Typical call sites: parsing worker, chat entrypoint, or manual call before local parsing.
+
+**Returns:**\n
+- None
+''')
+
+add_example('rag.inject_reader_config', '''\
+from lazyllm.tools.rag import inject_reader_config
+from lazyllm.tools.rag.readers import DynamicPDFReader
+
+inject_reader_config(
+    ocr_config={
+        'ocr_type': 'mineru',
+        'ocr_url': 'https://mineru.example/api',
+        'ocr_auth': {'mineru': 'your-token'},
+    },
+)
+nodes = DynamicPDFReader()('path/to/report.pdf')
+''')
+
 add_chinese_doc('rag.readers.MineruPDFReader', '''\
 基于Mineru服务的PDF解析器，通过调用Mineru服务的API来解析PDF文件，支持丰富的文档结构识别。
 
@@ -2131,9 +2197,11 @@ Notes:
     当 `split_doc=True` 时返回 `RichDocNode`，否则返回 `DocNode`，两种情况都只返回一个节点。
     当 `split_doc=True` 时，强烈建议搭配 `RichTransform` 使用，可以解析出带有结构信息等 metadata 的节点；
     如不使用 `RichTransform`，则解析出的节点会回退为纯文本节点。
-    请求级 token：通过 ``inject_ocr_config({'ocr_auth': {'mineru': '...'}})`` 写入
+    请求级 token：通过 ``inject_reader_config(ocr_config={'ocr_auth': {'mineru': '...'}})`` 写入
     ``globals.config['dynamic_ocr_auth']``，由 CredentialMixin 在每次 HTTP 请求时读取。
     静态默认 token：``globals['config']['mineru_api_key']``（仅 ``dynamic_auth=False`` 时）。
+    OCR **服务端**缓存由 ``_load_data(..., use_cache=...)`` 单独控制（默认 ``True``）；
+    算法端 ``DocNode`` 内容缓存由全局 ``lazyllm.config['reader_use_cache']`` 控制。
 ''')
 
 add_english_doc('rag.readers.MineruPDFReader', '''\
@@ -2169,9 +2237,11 @@ Notes:
     When `split_doc=True`, returns a `RichDocNode`; otherwise returns a `DocNode`. Both cases return a single node.
     When `split_doc=True`, it is strongly recommended to use it with `RichTransform`, which can extract nodes with structural information and other metadata;
     without `RichTransform`, the parsed nodes will fall back to plain text nodes.
-    Per-request token: inject via ``inject_ocr_config({'ocr_auth': {'mineru': '...'}})`` into
+    Per-request token: inject via ``inject_reader_config(ocr_config={'ocr_auth': {'mineru': '...'}})`` into
     ``globals.config['dynamic_ocr_auth']``; CredentialMixin reads it on each HTTP call.
     Static default token: ``globals['config']['mineru_api_key']`` (only when ``dynamic_auth=False``).
+    OCR **service** cache is controlled separately via ``_load_data(..., use_cache=...)`` (default ``True``).
+    Algorithm-side ``DocNode`` content cache is controlled globally via ``lazyllm.config['reader_use_cache']``.
 ''')
 
 add_chinese_doc('rag.readers.MineruPPTReader', '''\
@@ -2274,7 +2344,7 @@ Notes:
     当 `split_doc=True` 时返回 `RichDocNode`，否则返回 `DocNode`，两种情况都只返回一个节点。
     当 `split_doc=True` 时，强烈建议搭配 `RichTransform` 使用，可以解析出带有结构信息等 metadata 的节点；
     如不使用 `RichTransform`，则解析出的节点会回退为纯文本节点。
-    请求级 token：通过 ``inject_ocr_config({'ocr_auth': {'paddleocr': '...'}})`` 写入
+    请求级 token：通过 ``inject_reader_config(ocr_config={'ocr_auth': {'paddleocr': '...'}})`` 写入
     ``globals.config['dynamic_ocr_auth']``，由 CredentialMixin 在每次 HTTP 请求时读取。
     静态默认 token：``globals['config']['paddle_api_key']``（仅 ``dynamic_auth=False`` 时）。
 ''')
@@ -2322,7 +2392,7 @@ Notes:
     When `split_doc=True`, returns a `RichDocNode`; otherwise returns a `DocNode`. Both cases return a single node.
     When `split_doc=True`, it is strongly recommended to use it with `RichTransform`, which can extract nodes with structural information and other metadata;
     without `RichTransform`, the parsed nodes will fall back to plain text nodes.
-    Per-request token: inject via ``inject_ocr_config({'ocr_auth': {'paddleocr': '...'}})`` into
+    Per-request token: inject via ``inject_reader_config(ocr_config={'ocr_auth': {'paddleocr': '...'}})`` into
     ``globals.config['dynamic_ocr_auth']``; CredentialMixin reads it on each HTTP call.
     Static default token: ``globals['config']['paddle_api_key']`` (only when ``dynamic_auth=False``).
 ''')
@@ -2350,13 +2420,16 @@ Args:
     return_trace (bool, optional): 是否启用 trace。
 
 Notes:
-    可通过 ``lazyllm.tools.rag.inject_ocr_config(ocr_config)`` 注入请求级 OCR 配置：
+    可通过 ``lazyllm.tools.rag.inject_reader_config(ocr_config=...)`` 注入请求级 OCR 配置：
     - ``ocr_config`` 承载 OCR 配置（与 ``llm_config`` 平级）
     - ``ocr_type`` / ``ocr_url`` → ``globals.config['dynamic_ocr_configs']``
     - ``ocr_auth`` → ``globals.config['dynamic_ocr_auth']``（如 ``{'mineru': '...', 'paddleocr': '...'}``）
     Mineru 的 ``mineru_backend`` 由 ``MineruPDFReader`` 从配置或环境变量读取，
     不经由 ``DynamicPDFReader`` 透传；本地/在线及 upload 行为由 URL 判定。
     ``ocr_type='mineru'`` 且文件为 ``.ppt`` / ``.pptx`` / ``.pptm`` 时路由到 ``MineruPPTReader``。
+    内层 OCR reader 通过 ``reader.forward(...)`` 委托解析，以执行 ``_RichReader`` 的
+    ``post_func`` / ``RichDocNode`` 组装；算法端内容缓存由外层 ``DynamicPDFReader(file)``
+    的 ``_call_impl`` 负责，而非内层 ``reader(...)``。
 ''')
 
 add_english_doc('rag.readers.DynamicPDFReader', '''\
@@ -2379,7 +2452,7 @@ Args:
     return_trace (bool, optional): Whether to enable tracing.
 
 Notes:
-    Per-request OCR config can be injected via ``lazyllm.tools.rag.inject_ocr_config(ocr_config)``:
+    Per-request OCR config can be injected via ``lazyllm.tools.rag.inject_reader_config(ocr_config=...)``:
     - ``ocr_config`` carries OCR configuration (sibling of ``llm_config``)
     - ``ocr_type`` / ``ocr_url`` → ``globals.config['dynamic_ocr_configs']``
     - ``ocr_auth`` → ``globals.config['dynamic_ocr_auth']`` (e.g. ``{'mineru': '...', 'paddleocr': '...'}``)
@@ -2388,18 +2461,23 @@ Notes:
     online/offline and upload behavior are derived from URL.
     When ``ocr_type='mineru'`` and the file is ``.ppt`` / ``.pptx`` / ``.pptm``, routes to
     ``MineruPPTReader``.
+    Inner OCR readers are invoked via ``reader.forward(...)`` so ``_RichReader`` ``post_func``
+    and ``RichDocNode`` assembly run correctly. Algorithm-side content cache is handled by the
+    outer ``DynamicPDFReader(file)`` ``_call_impl``, not by inner ``reader(...)``.
 ''')
 
 add_example('rag.readers.DynamicPDFReader', '''\
-from lazyllm.tools.rag import inject_ocr_config
+from lazyllm.tools.rag import inject_reader_config
 from lazyllm.tools.rag.readers import DynamicPDFReader
 
 reader = DynamicPDFReader(ocr_type='mineru')
-inject_ocr_config({
-    'ocr_type': 'paddleocr',
-    'ocr_url': 'http://127.0.0.1:9000',
-    'ocr_auth': {'paddleocr': 'token-user-a'},
-})
+inject_reader_config(
+    ocr_config={
+        'ocr_type': 'paddleocr',
+        'ocr_url': 'http://127.0.0.1:9000',
+        'ocr_auth': {'paddleocr': 'token-user-a'},
+    },
+)
 nodes = reader('path/to/pdf')
 ''')
 
@@ -4730,6 +4808,26 @@ add_example('rag.dataReader.FileReader', '''
 add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
 基础文档读取器类，提供文档加载的基本接口。继承自 ModuleBase，使用 LazyLLMRegisterMetaClass 作为元类。
 
+所有 Reader 在 ``reader(file, ...)`` 时可选启用**算法端内容缓存**：将解析完成后的 ``List[DocNode]`` 写入
+``ModuleCache``，相同文件内容与 Reader 配置再次调用时直接返回缓存，跳过 ``_load_data`` 及下游 OCR 请求。
+
+全局开关为 ``lazyllm.config['reader_use_cache']``（环境变量 ``LAZYLLM_READER_USE_CACHE``，默认 False）。
+
+缓存与 OCR 服务端 ``use_cache`` 为两层独立机制：
+
+- **算法端内容缓存**（本类）：缓存 ``DocNode`` 列表，由 ``lazyllm.config['reader_use_cache']`` 控制。
+- **OCR 服务端缓存**（如 MineruPDFReader）：OCR Reader ``_load_data(..., use_cache=...)``，默认 ``True``。
+
+缓存键由 Reader 类型、``appendix_hash_key``（子类配置，如 OCR URL/backend）、文件
+``mtime`` 与 ``st_size`` 及 ``extra_info`` 等调用参数共同决定；文件修改后（mtime/size 变化）自动 miss。
+
+存储后端复用 ``ModuleCache``，由全局配置选择：
+
+- ``LAZYLLM_CACHE_STRATEGY``：``memory``（默认）/ ``file`` / ``sqlite`` / ``redis``
+- ``LAZYLLM_CACHE_MODE``：``RW`` / ``RO`` / ``WO`` / ``NONE``
+- ``LAZYLLM_CACHE_DIR``：缓存根目录，默认 ``~/.lazyllm/cache``；``sqlite`` 策略下 db 为
+  ``{CACHE_DIR}/module/cache.db``
+
 Args:
     *args: 位置参数，保留给子类或父类使用。
     return_trace (bool): 是否返回处理过程的追踪信息，默认为 True。
@@ -4737,7 +4835,33 @@ Args:
 ''')
 
 add_english_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
-Base document reader class that provides fundamental interfaces for document loading. Inherits from ModuleBase and uses LazyLLMRegisterMetaClass as metaclass.
+Base document reader class that provides fundamental interfaces for document loading.
+Inherits from ModuleBase and uses LazyLLMRegisterMetaClass as metaclass.
+
+All readers may enable **algorithm-side content caching** on ``reader(file, ...)``: parsed
+``List[DocNode]`` results are stored in ``ModuleCache``. Subsequent calls with the same file
+content and reader configuration return the cache directly, skipping ``_load_data`` and
+downstream OCR requests.
+
+Global switch: ``lazyllm.config['reader_use_cache']`` (env ``LAZYLLM_READER_USE_CACHE``, default False).
+
+Algorithm-side cache and OCR service ``use_cache`` are two independent layers:
+
+- **Algorithm-side content cache** (this class): caches ``DocNode`` lists; controlled by
+  ``lazyllm.config['reader_use_cache']``.
+- **OCR service cache** (e.g. MineruPDFReader): OCR reader ``_load_data(..., use_cache=...)``,
+  default ``True``.
+
+Cache keys combine reader type, ``appendix_hash_key`` (subclass config such as OCR URL/backend),
+file ``mtime`` and ``st_size``, and call kwargs such as ``extra_info``. File updates (mtime/size
+change) cause a miss; stale entries are not evicted automatically.
+
+Storage reuses ``ModuleCache`` and global settings:
+
+- ``LAZYLLM_CACHE_STRATEGY``: ``memory`` (default) / ``file`` / ``sqlite`` / ``redis``
+- ``LAZYLLM_CACHE_MODE``: ``RW`` / ``RO`` / ``WO`` / ``NONE``
+- ``LAZYLLM_CACHE_DIR``: cache root, default ``~/.lazyllm/cache``; with ``sqlite`` strategy the
+  db file is ``{CACHE_DIR}/module/cache.db``
 
 Args:
     *args: Positional arguments, reserved for parent or subclass use.
@@ -4854,6 +4978,59 @@ add_example('rag.readers.readerBase.LazyLLMReaderBase.get_encoding_cache_stats',
 >>> print(stats)
 ''')
 
+add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.use_cache', '''\
+继承自 ModuleBase 的链式缓存开关。启用或关闭算法端内容缓存（链式调用）。
+
+Reader 在构造时读取 ``lazyllm.config['reader_use_cache']`` 并同步到本开关。
+
+命中缓存时直接返回已解析的 ``List[DocNode]``，不执行 ``_load_data``。关闭后每次调用都会重新解析。
+
+持久化示例（需在 ``import lazyllm`` 之前设置环境变量）::
+
+    export LAZYLLM_CACHE_STRATEGY=sqlite
+    export LAZYLLM_CACHE_MODE=RW
+
+Args:
+    flag (Union[bool, str]): True 启用；False 关闭；str 时作为缓存命名空间后缀写入 cache key。
+
+**Returns:**\n
+- LazyLLMReaderBase: 返回 self，支持链式调用。
+''')
+
+add_english_doc('rag.readers.readerBase.LazyLLMReaderBase.use_cache', '''\
+Inherited chainable cache switch from ModuleBase. Enable or disable algorithm-side content caching.
+
+Readers read ``lazyllm.config['reader_use_cache']`` at construction and sync it to this switch.
+
+On cache hit, returns the cached ``List[DocNode]`` without running ``_load_data``. When disabled,
+each call re-parses the file.
+
+Persistent storage example (set env vars before ``import lazyllm``)::
+
+    export LAZYLLM_CACHE_STRATEGY=sqlite
+    export LAZYLLM_CACHE_MODE=RW
+
+Args:
+    flag (Union[bool, str]): True to enable; False to disable; str appends a namespace suffix
+        to the cache key.
+
+**Returns:**\n
+- LazyLLMReaderBase: Returns self for chaining.
+''')
+
+add_example('rag.readers.readerBase.LazyLLMReaderBase.use_cache', '''\
+>>> import os
+>>> os.environ['LAZYLLM_CACHE_STRATEGY'] = 'sqlite'
+>>> os.environ['LAZYLLM_READER_USE_CACHE'] = 'true'
+>>> import lazyllm
+>>> from lazyllm.tools.rag.readers import TxtReader
+>>> reader = TxtReader()
+>>> nodes1 = reader('path/to/doc.txt')
+>>> nodes2 = reader('path/to/doc.txt')  # cache hit, _load_data not called
+>>> reader_no_cache = TxtReader().use_cache(False)
+>>> nodes3 = reader_no_cache('path/to/doc.txt')  # cache disabled for this instance
+''')
+
 add_example('rag.readers.MineruPDFReader', '''\
 from lazyllm.tools.rag.readers import MineruPDFReader
 reader = MineruPDFReader("http://0.0.0.0:8888")  # Mineru server address
@@ -4866,10 +5043,14 @@ TxtReader 类用于从文本文件中加载内容，并将其封装为 `DocNode`
 
 - 支持指定文本编码读取文件；
 - 可选返回加载过程的跟踪信息；
+- 继承算法端内容缓存（``lazyllm.config['reader_use_cache']``）。
 
 Args:
     encoding (str): 文件读取的文本编码，默认值为 'utf-8'。
     return_trace (bool): 是否返回加载过程的跟踪信息，默认值为 True。
+    auto_detect_encoding (bool): 是否自动检测编码，默认读取 ``LAZYLLM_AUTO_DETECT_ENCODING``。
+    enable_chardet (bool): 检测编码时是否启用 chardet，默认读取 ``LAZYLLM_ENABLE_CHARDET``。
+    use_encoding_cache (bool): 是否缓存编码检测结果（类级缓存，与内容缓存无关）。
 ''')
 
 add_english_doc('rag.readers.readerBase.TxtReader', '''\
@@ -4879,10 +5060,14 @@ This class inherits from `LazyLLMReaderBase` and mainly provides:
 
 - Support for reading files with a specified text encoding;
 - Optional tracing information of the loading process;
+- Inherited algorithm-side content cache (``lazyllm.config['reader_use_cache']``).
 
 Args:
     encoding (str): Text encoding for reading files, default is 'utf-8'.
     return_trace (bool): Whether to return trace information of the loading process, default is True.
+    auto_detect_encoding (bool): Whether to auto-detect encoding; defaults to ``LAZYLLM_AUTO_DETECT_ENCODING``.
+    enable_chardet (bool): Whether to use chardet when detecting encoding; defaults to ``LAZYLLM_ENABLE_CHARDET``.
+    use_encoding_cache (bool): Whether to cache encoding detection results (class-level; separate from content cache).
 ''')
 
 add_chinese_doc('rag.doc_node.QADocNode', '''\
