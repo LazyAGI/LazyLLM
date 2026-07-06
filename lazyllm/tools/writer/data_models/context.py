@@ -46,9 +46,9 @@ class WritingContext(ArtifactModel):
     style_profile: Optional[StyleProfile] = None
     relation_graph: Optional[BlockRelationGraph] = None
     query: Optional[str] = None
-    outline: Optional["WritingOutline"] = None
-    draft_sections: List["DraftSection"] = Field(default_factory=list)
-    draft_document: Optional["DraftDocument"] = None
+    outline: Optional['WritingOutline'] = None
+    draft_sections: List['DraftSection'] = Field(default_factory=list)
+    draft_document: Optional['DraftDocument'] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 

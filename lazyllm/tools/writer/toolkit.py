@@ -29,32 +29,32 @@ class WriterToolKit:
     def as_tool_groups(self):
         groups = [
             dict(
-                name="writer_resource",
-                desc="Input resource profiling and document IO tools.",
+                name='writer_resource',
+                desc='Input resource profiling and document IO tools.',
                 tools=[self.resource],
                 lazy=self.lazy,
             ),
             dict(
-                name="writer_context",
-                desc="Writing context creation and update tools.",
+                name='writer_context',
+                desc='Writing context creation and update tools.',
                 tools=[self.context],
                 lazy=self.lazy,
             ),
             dict(
-                name="writer_planning",
-                desc="Outline and section instruction generation tools.",
+                name='writer_planning',
+                desc='Outline and section instruction generation tools.',
                 tools=[self.planning],
                 lazy=self.lazy,
             ),
             dict(
-                name="writer_drafting",
-                desc="Draft section, draft document, and writing output generation tools.",
+                name='writer_drafting',
+                desc='Draft section, draft document, and writing output generation tools.',
                 tools=[self.drafting],
                 lazy=self.lazy,
             ),
             dict(
-                name="writer_quality",
-                desc="Section and draft-document quality validation tools.",
+                name='writer_quality',
+                desc='Section and draft-document quality validation tools.',
                 tools=[self.quality],
                 lazy=self.lazy,
             ),
@@ -64,4 +64,4 @@ class WriterToolKit:
             return groups
 
         enabled = set(self.tools)
-        return [group for group in groups if group["name"] in enabled]
+        return [group for group in groups if group['name'] in enabled]

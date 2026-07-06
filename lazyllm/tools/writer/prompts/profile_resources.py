@@ -1,4 +1,5 @@
-RESOURCE_PROFILE_PROMPT = """\
+# flake8: noqa
+RESOURCE_PROFILE_PROMPT = '''\
 Analyze the following material for a writing task.
 
 Task: {query}
@@ -23,4 +24,4 @@ Analyze the content above and produce a JSON object:
 - confidence: 0.0-1.0, how confident you are in this analysis
 - extracted_constraints: key-value pairs of constraints from the material (empty object if none), e.g. {{"word_limit": "10000", "format": "markdown"}}
 - extracted_outline: outline structure from the material, as {{"title": "string", "nodes": [{{"title": "string", "level": int, "children": [...]}}]}}, or null if none
-"""
+'''

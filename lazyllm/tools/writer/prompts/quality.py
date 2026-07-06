@@ -1,4 +1,5 @@
-VALIDATE_SECTION_PROMPT = """You are a section quality reviewer. Validate the given draft section against its writing instruction and context, and return an AuditResult.
+# flake8: noqa
+VALIDATE_SECTION_PROMPT = '''You are a section quality reviewer. Validate the given draft section against its writing instruction and context, and return an AuditResult.
 
 Validation rules:
 
@@ -38,10 +39,10 @@ Section instruction:
 
 Writing context:
 {context_json}
-"""
+'''
 
 
-VALIDATE_DRAFT_DOCUMENT_PROMPT = """You are a draft-document quality reviewer. Validate the given draft document against the writing context and return an AuditResult.
+VALIDATE_DRAFT_DOCUMENT_PROMPT = '''You are a draft-document quality reviewer. Validate the given draft document against the writing context and return an AuditResult.
 
 This draft document has already passed section-level validation. Focus on: document structure, cross-chapter fact consistency, AI-tone deep scan, style consistency, reader adaptation, conclusion quality, and source attribution.
 
@@ -83,4 +84,4 @@ Draft document:
 
 Writing context:
 {context_json}
-"""
+'''

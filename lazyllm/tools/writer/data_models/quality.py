@@ -5,8 +5,8 @@ from ..utils.artifact import ArtifactModel
 
 
 class AuditIssue(BaseModel):
-    severity: Literal["high", "medium", "low"]
-    category: Literal["format", "coverage", "relevance", "evidence", "style"]
+    severity: Literal['high', 'medium', 'low']
+    category: Literal['format', 'coverage', 'relevance', 'evidence', 'style']
     location: Optional[str] = None
     description: str
     suggestion: str

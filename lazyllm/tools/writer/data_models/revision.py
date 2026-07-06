@@ -8,7 +8,7 @@ from ..utils.artifact import ArtifactModel
 class ModifyInstruction(BaseModel):
     instruction_id: Optional[str] = None
     target_block_id: str
-    modify_type: Literal["rewrite", "polish", "insert", "delete", "move", "split", "merge"]
+    modify_type: Literal['rewrite', 'polish', 'insert', 'delete', 'move', 'split', 'merge']
     instruction: str
     meta: Dict[str, Any] = Field(default_factory=dict)
 
@@ -16,7 +16,7 @@ class ModifyInstruction(BaseModel):
 class ModifyPlan(BaseModel):
     plan_id: Optional[str] = None
     task_id: Optional[str] = None
-    scope: Literal["document", "section", "block", "span"]
+    scope: Literal['document', 'section', 'block', 'span']
     target_block_ids: List[str] = Field(default_factory=list)
     instructions: List[ModifyInstruction] = Field(default_factory=list)
     summary: Optional[str] = None

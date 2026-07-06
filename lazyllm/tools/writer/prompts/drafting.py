@@ -1,4 +1,5 @@
-GENERATE_DRAFT_SECTION_PROMPT = """Generate a draft section from the given writing task, section instruction, and writing context.
+# flake8: noqa
+GENERATE_DRAFT_SECTION_PROMPT = '''Generate a draft section from the given writing task, section instruction, and writing context.
 
 Requirements:
 - Return a DraftSection object.
@@ -31,4 +32,4 @@ Writing context:
 
 Previous sections:
 {previous_sections_json}
-"""
+'''

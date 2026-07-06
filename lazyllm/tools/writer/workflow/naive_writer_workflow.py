@@ -54,76 +54,76 @@ class NaiveWriterWorkflow:
         )
         writing_context = self.context.create_writing_context(
             task=task,
-            resource_profiles=self._artifact_ref(resource_profiles, "resource_profiles"),
+            resource_profiles=self._artifact_ref(resource_profiles, 'resource_profiles'),
         )
         outline = self.planning.generate_outline(
             task=task,
-            context=self._artifact_ref(writing_context, "writing_context"),
-            resource_profiles=self._artifact_ref(resource_profiles, "resource_profiles"),
+            context=self._artifact_ref(writing_context, 'writing_context'),
+            resource_profiles=self._artifact_ref(resource_profiles, 'resource_profiles'),
         )
         writing_context = self.context.update_writing_context(
-            artifacts=self._artifact_ref(outline, "outline"),
-            context=self._artifact_ref(writing_context, "writing_context"),
+            artifacts=self._artifact_ref(outline, 'outline'),
+            context=self._artifact_ref(writing_context, 'writing_context'),
         )
         section_instructions = self.planning.generate_section_instructions(
-            outline=self._artifact_ref(outline, "outline"),
-            context=self._artifact_ref(writing_context, "writing_context"),
+            outline=self._artifact_ref(outline, 'outline'),
+            context=self._artifact_ref(writing_context, 'writing_context'),
         )
         draft_section = self.drafting.generate_draft_section(
             task=task,
-            section_instruction=self._artifact_ref(section_instructions, "section_instructions"),
-            context=self._artifact_ref(writing_context, "writing_context"),
+            section_instruction=self._artifact_ref(section_instructions, 'section_instructions'),
+            context=self._artifact_ref(writing_context, 'writing_context'),
         )
         section_review = self.quality.validate_section(
-            draft_section=self._artifact_ref(draft_section, "draft_section"),
-            section_instruction=self._artifact_ref(section_instructions, "section_instructions"),
-            context=self._artifact_ref(writing_context, "writing_context"),
+            draft_section=self._artifact_ref(draft_section, 'draft_section'),
+            section_instruction=self._artifact_ref(section_instructions, 'section_instructions'),
+            context=self._artifact_ref(writing_context, 'writing_context'),
         )
         writing_context = self.context.update_writing_context(
-            artifacts=self._artifact_ref(draft_section, "draft_section"),
-            context=self._artifact_ref(writing_context, "writing_context"),
+            artifacts=self._artifact_ref(draft_section, 'draft_section'),
+            context=self._artifact_ref(writing_context, 'writing_context'),
         )
         draft_document = self.drafting.generate_draft_document(
-            draft_sections=self._artifact_ref(draft_section, "draft_section"),
-            context=self._artifact_ref(writing_context, "writing_context"),
-            outline=self._artifact_ref(outline, "outline"),
+            draft_sections=self._artifact_ref(draft_section, 'draft_section'),
+            context=self._artifact_ref(writing_context, 'writing_context'),
+            outline=self._artifact_ref(outline, 'outline'),
         )
         writing_context = self.context.update_writing_context(
-            artifacts=self._artifact_ref(draft_document, "draft_document"),
-            context=self._artifact_ref(writing_context, "writing_context"),
+            artifacts=self._artifact_ref(draft_document, 'draft_document'),
+            context=self._artifact_ref(writing_context, 'writing_context'),
         )
         draft_document_review = self.quality.validate_draft_document(
-            draft_document=self._artifact_ref(draft_document, "draft_document"),
-            context=self._artifact_ref(writing_context, "writing_context"),
+            draft_document=self._artifact_ref(draft_document, 'draft_document'),
+            context=self._artifact_ref(writing_context, 'writing_context'),
         )
         writing_output = self.drafting.generate_writing_output(
-            draft=self._artifact_ref(draft_document, "draft_document"),
-            context=self._artifact_ref(writing_context, "writing_context"),
+            draft=self._artifact_ref(draft_document, 'draft_document'),
+            context=self._artifact_ref(writing_context, 'writing_context'),
         )
 
         return {
-            "primary_result": writing_output,
-            "stage_results": {
-                "resource_profiles": resource_profiles,
-                "writing_context": writing_context,
-                "outline": outline,
-                "section_instructions": section_instructions,
-                "draft_section": draft_section,
-                "section_review": section_review,
-                "draft_document": draft_document,
-                "draft_document_review": draft_document_review,
-                "writing_output": writing_output,
+            'primary_result': writing_output,
+            'stage_results': {
+                'resource_profiles': resource_profiles,
+                'writing_context': writing_context,
+                'outline': outline,
+                'section_instructions': section_instructions,
+                'draft_section': draft_section,
+                'section_review': section_review,
+                'draft_document': draft_document,
+                'draft_document_review': draft_document_review,
+                'writing_output': writing_output,
             },
         }
 
     def revise(self, *args, **kwargs) -> dict:
-        raise NotImplementedError("NaiveWriterWorkflow.revise is not implemented yet.")
+        raise NotImplementedError('NaiveWriterWorkflow.revise is not implemented yet.')
 
     def _artifact_ref(self, result: Any, artifact_key: Optional[str] = None) -> Any:
         if not isinstance(result, dict):
             return result
-        metadata = result.get("metadata") or {}
-        artifact_paths = metadata.get("artifact_paths") or {}
+        metadata = result.get('metadata') or {}
+        artifact_paths = metadata.get('artifact_paths') or {}
         if artifact_key and artifact_key in artifact_paths:
             return artifact_paths[artifact_key]
-        return result.get("artifact_path") or result
+        return result.get('artifact_path') or result

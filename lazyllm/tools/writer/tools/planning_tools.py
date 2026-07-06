@@ -17,8 +17,8 @@ from ..utils import to_prompt_json
 
 class WriterPlanningTools(WriterToolBase):
     __public_apis__ = [
-        "generate_outline",
-        "generate_section_instructions",
+        'generate_outline',
+        'generate_section_instructions',
     ]
 
     def generate_outline(
@@ -43,20 +43,20 @@ class WriterPlanningTools(WriterToolBase):
         outline = self._normalize_outline(outline, writing_task, writing_context, profiles, execution_data)
 
         result = self._save_artifacts(
-            {"outline": outline},
-            step_name="generate_outline",
-            primary_key="outline",
+            {'outline': outline},
+            step_name='generate_outline',
+            primary_key='outline',
             context_key=None,
-            summary="Generated writing outline.",
+            summary='Generated writing outline.',
             counts={
-                "top_level_sections": len(outline.nodes),
-                "outline_nodes": self._count_outline_nodes(outline.nodes),
+                'top_level_sections': len(outline.nodes),
+                'outline_nodes': self._count_outline_nodes(outline.nodes),
             },
             artifact_meta={
-                "task_id": writing_task.task_id,
-                "context_id": writing_context.context_id,
-                "resource_profile_count": len(profiles),
-                "has_execution_results": execution_data is not None,
+                'task_id': writing_task.task_id,
+                'context_id': writing_context.context_id,
+                'resource_profile_count': len(profiles),
+                'has_execution_results': execution_data is not None,
             },
         )
         return result.model_dump()
@@ -88,18 +88,18 @@ class WriterPlanningTools(WriterToolBase):
         )
 
         result = self._save_artifacts(
-            {"section_instructions": instruction_list},
-            step_name="generate_section_instructions",
-            primary_key="section_instructions",
+            {'section_instructions': instruction_list},
+            step_name='generate_section_instructions',
+            primary_key='section_instructions',
             context_key=None,
-            summary="Generated section writing instructions.",
+            summary='Generated section writing instructions.',
             counts={
-                "section_instructions": len(instruction_list.instructions),
+                'section_instructions': len(instruction_list.instructions),
             },
             artifact_meta={
-                "outline_id": writing_outline.outline_id,
-                "context_id": writing_context.context_id,
-                "has_execution_results": execution_data is not None,
+                'outline_id': writing_outline.outline_id,
+                'context_id': writing_context.context_id,
+                'has_execution_results': execution_data is not None,
             },
         )
         return result.model_dump()
@@ -116,7 +116,7 @@ class WriterPlanningTools(WriterToolBase):
         execution_results: Any,
     ) -> WritingOutline:
         if len(outline.nodes) < 3:
-            raise ValueError("generate_outline must produce at least 3 top-level sections.")
+            raise ValueError('generate_outline must produce at least 3 top-level sections.')
 
         outline.outline_id = outline.outline_id or self._default_outline_id(task, context)
         outline.title = outline.title or self._default_outline_title(task)
@@ -126,14 +126,14 @@ class WriterPlanningTools(WriterToolBase):
             self._normalize_outline_node(
                 node,
                 level=1,
-                fallback_id=f"section-{index}",
+                fallback_id=f'section-{index}',
                 valid_source_refs=valid_source_refs,
                 has_available_facts=has_available_facts,
             )
 
         outline.meta.update(
             {
-                "source": "llm",
+                'source': 'llm',
             }
         )
         return outline
@@ -156,20 +156,20 @@ class WriterPlanningTools(WriterToolBase):
             self._normalize_outline_node(
                 child,
                 level=level + 1,
-                fallback_id=f"{node.node_id}-{index}",
+                fallback_id=f'{node.node_id}-{index}',
                 valid_source_refs=valid_source_refs,
                 has_available_facts=has_available_facts,
             )
 
     def _default_outline_id(self, task: WritingTask, context: WritingContext) -> str:
-        source_id = task.task_id or context.context_id or "writer"
-        return f"{source_id}-outline"
+        source_id = task.task_id or context.context_id or 'writer'
+        return f'{source_id}-outline'
 
     def _default_outline_title(self, task: WritingTask) -> str:
         if task.target_document and task.target_document.title:
             return task.target_document.title
-        query = " ".join(task.query.split())
-        return query[:80] if query else "Writing Outline"
+        query = ' '.join(task.query.split())
+        return query[:80] if query else 'Writing Outline'
 
     def _count_outline_nodes(self, nodes: List[OutlineNode]) -> int:
         return sum(1 + self._count_outline_nodes(node.children) for node in nodes)
@@ -195,7 +195,7 @@ class WriterPlanningTools(WriterToolBase):
 
         normalized: List[SectionInstruction] = []
         for node in target_nodes:
-            instruction = instructions_by_node_id.get(node.node_id or "")
+            instruction = instructions_by_node_id.get(node.node_id or '')
             if instruction is None:
                 instruction = self._instruction_from_outline_node(node)
             normalized.append(
@@ -216,11 +216,11 @@ class WriterPlanningTools(WriterToolBase):
         instruction_list.instructions = normalized
         instruction_list.meta.update(
             {
-                "source": "llm",
-                "outline_id": outline.outline_id,
-                "outline_title": outline.title,
-                "context_id": context.context_id,
-                "has_execution_results": execution_results is not None,
+                'source': 'llm',
+                'outline_id': outline.outline_id,
+                'outline_title': outline.title,
+                'context_id': context.context_id,
+                'has_execution_results': execution_results is not None,
             }
         )
         return instruction_list
@@ -234,14 +234,14 @@ class WriterPlanningTools(WriterToolBase):
         has_available_facts: bool,
     ) -> SectionInstruction:
         constraints = node.constraints
-        instruction.outline_node_id = instruction.outline_node_id or node.node_id or ""
-        instruction.instruction_id = instruction.instruction_id or f"instruction-{instruction.outline_node_id}"
+        instruction.outline_node_id = instruction.outline_node_id or node.node_id or ''
+        instruction.instruction_id = instruction.instruction_id or f'instruction-{instruction.outline_node_id}'
         instruction.section_title = instruction.section_title or node.title
         instruction.section_goal = (
             instruction.section_goal
             or constraints.section_goal
             or node.instruction
-            or f"Write the section: {node.title}"
+            or f'Write the section: {node.title}'
         )
         if not instruction.required_points:
             instruction.required_points = list(constraints.required_points)
@@ -255,19 +255,19 @@ class WriterPlanningTools(WriterToolBase):
         if not instruction.style_constraints:
             instruction.style_constraints = list(constraints.style_constraints)
             if constraints.pov:
-                instruction.style_constraints.append(f"POV: {constraints.pov}")
+                instruction.style_constraints.append(f'POV: {constraints.pov}')
             if constraints.tone:
-                instruction.style_constraints.append(f"Tone: {constraints.tone}")
+                instruction.style_constraints.append(f'Tone: {constraints.tone}')
         if not instruction.relation_constraints:
             instruction.relation_constraints = list(constraints.relation_constraints)
         if not instruction.expected_blocks:
             instruction.expected_blocks = self._default_expected_blocks(node)
         instruction.meta.update(
             {
-                "outline_node_level": node.level,
-                "outline_node_instruction": node.instruction,
-                "outline_id": outline.outline_id,
-                "outline_title": outline.title,
+                'outline_node_level': node.level,
+                'outline_node_instruction': node.instruction,
+                'outline_id': outline.outline_id,
+                'outline_title': outline.title,
             }
         )
         return instruction
@@ -275,10 +275,10 @@ class WriterPlanningTools(WriterToolBase):
     def _instruction_from_outline_node(self, node: OutlineNode) -> SectionInstruction:
         constraints = node.constraints
         return SectionInstruction(
-            instruction_id=f"instruction-{node.node_id or node.title}",
-            outline_node_id=node.node_id or "",
+            instruction_id=f'instruction-{node.node_id or node.title}',
+            outline_node_id=node.node_id or '',
             section_title=node.title,
-            section_goal=constraints.section_goal or node.instruction or f"Write the section: {node.title}",
+            section_goal=constraints.section_goal or node.instruction or f'Write the section: {node.title}',
             required_points=list(constraints.required_points),
             source_refs=list(constraints.source_refs),
             fact_constraints=list(constraints.fact_constraints),
@@ -294,8 +294,8 @@ class WriterPlanningTools(WriterToolBase):
         return blocks
 
     def _default_instruction_set_id(self, outline: WritingOutline) -> str:
-        source_id = outline.outline_id or "outline"
-        return f"{source_id}-section-instructions"
+        source_id = outline.outline_id or 'outline'
+        return f'{source_id}-section-instructions'
 
     def _valid_source_refs(
         self,

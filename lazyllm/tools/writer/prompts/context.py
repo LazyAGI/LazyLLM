@@ -1,4 +1,4 @@
-CONTENT_SUMMARY_PROMPT = """\
+CONTENT_SUMMARY_PROMPT = '''\
 You are summarizing a draft document section for a writer agent.
 
 The content below is extracted from a draft. The title may appear first, followed by the body text.
@@ -11,4 +11,4 @@ Content:
 ---
 
 Return JSON: {{"summary": "one-sentence summary of the draft's main topic and key content"}}
-"""
+'''

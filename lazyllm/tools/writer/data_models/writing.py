@@ -5,7 +5,7 @@ from ..utils.artifact import ArtifactModel
 
 
 class OutlineNodeConstraints(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra='forbid')
 
     section_goal: Optional[str] = None
     required_points: List[str] = Field(default_factory=list)
@@ -67,13 +67,13 @@ class SectionInstructionList(ArtifactModel):
 
 class WritingSubTask(BaseModel):
     subtask_id: str
-    subtask_type: Literal["research", "extract", "write", "table", "visual", "verify"]
+    subtask_type: Literal['research', 'extract', 'write', 'table', 'visual', 'verify']
     section_id: Optional[str] = None
     block_id: Optional[str] = None
     description: str
     placeholder: Optional[str] = None
     blocking: bool = False
-    status: Literal["pending", "resolved", "failed"] = "pending"
+    status: Literal['pending', 'resolved', 'failed'] = 'pending'
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -82,7 +82,7 @@ class DraftBlock(BaseModel):
     outline_node_id: Optional[str] = None
     section_id: Optional[str] = None
     heading: Optional[str] = None
-    content: str = ""
+    content: str = ''
     subtasks: List[WritingSubTask] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
 
@@ -112,6 +112,6 @@ class WritingOutput(ArtifactModel):
     output_id: Optional[str] = None
     title: Optional[str] = None
     content: str
-    output_format: Literal["markdown", "plain_text", "html", "docx"] = "markdown"
+    output_format: Literal['markdown', 'plain_text', 'html', 'docx'] = 'markdown'
     references: List[str] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)

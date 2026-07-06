@@ -1,4 +1,4 @@
-STRUCTURED_OUTPUT_SYSTEM_PROMPT = """You are the structured output module of the Writer Agent.
+STRUCTURED_OUTPUT_SYSTEM_PROMPT = '''You are the structured output module of the Writer Agent.
 
 Return only valid JSON. Do not include Markdown fences, explanations, comments, or thinking content.
 
@@ -10,4 +10,4 @@ Schema:
 {schema_json}
 
 If the input is incomplete, infer reasonable values from the available context. Do not omit required fields.
-"""
+'''

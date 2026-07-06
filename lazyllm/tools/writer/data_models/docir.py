@@ -6,18 +6,18 @@ from ..utils.artifact import ArtifactModel
 
 
 class DocSpan(BaseModel):
-    text: str = ""
+    text: str = ''
     stype: List[str] = Field(default_factory=list)
 
 
 class DocBlock(BaseModel):
     block_id: str
     block_type: Literal[
-        "document", "heading", "paragraph", "list", "list_item",
-        "table", "table_row", "table_cell", "code", "quote",
-        "image", "divider", "callout", "block",
+        'document', 'heading', 'paragraph', 'list', 'list_item',
+        'table', 'table_row', 'table_cell', 'code', 'quote',
+        'image', 'divider', 'callout', 'block',
     ]
-    text: str = ""
+    text: str = ''
     spans: List[DocSpan] = Field(default_factory=list)
     level: Optional[int] = None
     children: List[DocBlock] = Field(default_factory=list)
@@ -45,5 +45,5 @@ class DocIR(ArtifactModel):
     blocks: List[DocBlock] = Field(default_factory=list)
     plain_text: Optional[str] = None
     revision: Optional[str] = None
-    adapter: str = ""
+    adapter: str = ''
     meta: Dict[str, Any] = Field(default_factory=dict)

@@ -1,4 +1,5 @@
-GENERATE_OUTLINE_PROMPT = """Generate a writing outline from the given writing task and context.
+# flake8: noqa
+GENERATE_OUTLINE_PROMPT = '''Generate a writing outline from the given writing task and context.
 
 Requirements:
 - Return a WritingOutline object.
@@ -28,10 +29,10 @@ Resource profiles:
 
 Execution results:
 {execution_results_json}
-"""
+'''
 
 
-GENERATE_SECTION_INSTRUCTIONS_PROMPT = """Generate section-level writing instructions from the outline and writing context.
+GENERATE_SECTION_INSTRUCTIONS_PROMPT = '''Generate section-level writing instructions from the outline and writing context.
 
 Requirements:
 - Return a SectionInstructionList object.
@@ -63,4 +64,4 @@ Writing context:
 
 Execution results:
 {execution_results_json}
-"""
+'''

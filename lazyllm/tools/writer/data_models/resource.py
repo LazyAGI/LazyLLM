@@ -12,9 +12,9 @@ class MaterialStyle(BaseModel):
 
 
 class ResourceProfile(BaseModel):
-    resource_id: str = ""
-    resource_role: Literal["spec", "background", "example"]
-    template_usage: Optional[Literal["structure", "style", "both", "none"]] = None
+    resource_id: str = ''
+    resource_role: Literal['spec', 'background', 'example']
+    template_usage: Optional[Literal['structure', 'style', 'both', 'none']] = None
     confidence: float = 1.0
     summary: Optional[str] = None
     extracted_constraints: Dict[str, Any] = Field(default_factory=dict)

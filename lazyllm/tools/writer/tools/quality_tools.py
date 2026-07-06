@@ -11,8 +11,8 @@ from ..utils import to_prompt_json
 
 class WriterQualityTools(WriterToolBase):
     __public_apis__ = [
-        "validate_section",
-        "validate_draft_document",
+        'validate_section',
+        'validate_draft_document',
     ]
 
     def validate_section(
@@ -31,20 +31,20 @@ class WriterQualityTools(WriterToolBase):
             fallback = AuditResult(
                 is_passed=True,
                 score=100,
-                summary="未找到匹配的章节指令，跳过详细校验。",
+                summary='未找到匹配的章节指令，跳过详细校验。',
                 issues=[],
             )
             report = ReviewReport(
-                target=section_data.get("section_id") or section_data.get("title") if section_data else None,
+                target=section_data.get('section_id') or section_data.get('title') if section_data else None,
                 result=fallback,
             )
             result = self._save_artifacts(
-                {"section_review": report},
-                step_name="validate_section",
-                primary_key="section_review",
-                summary="Section validation skipped: no matching instruction.",
-                counts={"total_issues": 0, "high_severity": 0, "medium_severity": 0, "low_severity": 0},
-                artifact_meta={"is_passed": True, "score": 100, "match_found": False},
+                {'section_review': report},
+                step_name='validate_section',
+                primary_key='section_review',
+                summary='Section validation skipped: no matching instruction.',
+                counts={'total_issues': 0, 'high_severity': 0, 'medium_severity': 0, 'low_severity': 0},
+                artifact_meta={'is_passed': True, 'score': 100, 'match_found': False},
             )
             return result.model_dump()
 
@@ -56,40 +56,41 @@ class WriterQualityTools(WriterToolBase):
 
         audit_result = self._call_llm_structured(prompt, AuditResult)
 
-        section_title = section_data.get("title") if section_data else None
-        section_id = section_data.get("section_id") if section_data else None
+        section_title = section_data.get('title') if section_data else None
+        section_id = section_data.get('section_id') if section_data else None
 
         report = ReviewReport(
-            target=section_id or section_title or instruction.section_title or "unknown",
+            target=section_id or section_title or instruction.section_title or 'unknown',
             result=audit_result,
             meta={
-                "instruction_id": instruction.instruction_id,
-                "outline_node_id": instruction.outline_node_id,
-                "section_title": instruction.section_title,
+                'instruction_id': instruction.instruction_id,
+                'outline_node_id': instruction.outline_node_id,
+                'section_title': instruction.section_title,
             },
         )
 
-        high_count = sum(1 for i in audit_result.issues if i.severity == "high")
-        medium_count = sum(1 for i in audit_result.issues if i.severity == "medium")
-        low_count = sum(1 for i in audit_result.issues if i.severity == "low")
+        high_count = sum(1 for i in audit_result.issues if i.severity == 'high')
+        medium_count = sum(1 for i in audit_result.issues if i.severity == 'medium')
+        low_count = sum(1 for i in audit_result.issues if i.severity == 'low')
 
         result = self._save_artifacts(
-            {"section_review": report},
-            step_name="validate_section",
-            primary_key="section_review",
-            summary=f"Section validation: {'PASSED' if audit_result.is_passed else 'FAILED'} (score: {audit_result.score}/100)",
+            {'section_review': report},
+            step_name='validate_section',
+            primary_key='section_review',
+            summary=f'Section validation: {"PASSED" if audit_result.is_passed else "FAILED"} '
+                    f'(score: {audit_result.score}/100)',
             counts={
-                "total_issues": len(audit_result.issues),
-                "high_severity": high_count,
-                "medium_severity": medium_count,
-                "low_severity": low_count,
+                'total_issues': len(audit_result.issues),
+                'high_severity': high_count,
+                'medium_severity': medium_count,
+                'low_severity': low_count,
             },
             artifact_meta={
-                "section_id": section_id,
-                "section_title": section_title,
-                "instruction_id": instruction.instruction_id,
-                "is_passed": audit_result.is_passed,
-                "score": audit_result.score,
+                'section_id': section_id,
+                'section_title': section_title,
+                'instruction_id': instruction.instruction_id,
+                'is_passed': audit_result.is_passed,
+                'score': audit_result.score,
             },
         )
         return result.model_dump()
@@ -110,36 +111,37 @@ class WriterQualityTools(WriterToolBase):
         audit_result = self._call_llm_structured(prompt, AuditResult)
 
         report = ReviewReport(
-            target=document.draft_id or document.title or "untitled",
+            target=document.draft_id or document.title or 'untitled',
             result=audit_result,
             meta={
-                "draft_id": document.draft_id,
-                "draft_title": document.title,
-                "draft_section_count": len(document.sections),
-                "context_id": writing_context.context_id,
+                'draft_id': document.draft_id,
+                'draft_title': document.title,
+                'draft_section_count': len(document.sections),
+                'context_id': writing_context.context_id,
             },
         )
 
-        high_count = sum(1 for i in audit_result.issues if i.severity == "high")
-        medium_count = sum(1 for i in audit_result.issues if i.severity == "medium")
-        low_count = sum(1 for i in audit_result.issues if i.severity == "low")
+        high_count = sum(1 for i in audit_result.issues if i.severity == 'high')
+        medium_count = sum(1 for i in audit_result.issues if i.severity == 'medium')
+        low_count = sum(1 for i in audit_result.issues if i.severity == 'low')
 
         result = self._save_artifacts(
-            {"draft_document_review": report},
-            step_name="validate_draft_document",
-            primary_key="draft_document_review",
-            summary=f"Draft document validation: {'PASSED' if audit_result.is_passed else 'FAILED'} (score: {audit_result.score}/100)",
+            {'draft_document_review': report},
+            step_name='validate_draft_document',
+            primary_key='draft_document_review',
+            summary=f'Draft document validation: {"PASSED" if audit_result.is_passed else "FAILED"} '
+                    f'(score: {audit_result.score}/100)',
             counts={
-                "total_issues": len(audit_result.issues),
-                "high_severity": high_count,
-                "medium_severity": medium_count,
-                "low_severity": low_count,
+                'total_issues': len(audit_result.issues),
+                'high_severity': high_count,
+                'medium_severity': medium_count,
+                'low_severity': low_count,
             },
             artifact_meta={
-                "draft_id": document.draft_id,
-                "draft_title": document.title,
-                "is_passed": audit_result.is_passed,
-                "score": audit_result.score,
+                'draft_id': document.draft_id,
+                'draft_title': document.title,
+                'is_passed': audit_result.is_passed,
+                'score': audit_result.score,
             },
         )
         return result.model_dump()
@@ -149,9 +151,9 @@ class WriterQualityTools(WriterToolBase):
         section_data: dict,
         instruction_list: SectionInstructionList,
     ) -> Optional[SectionInstruction]:
-        section_instruction_id = section_data.get("instruction_id") or ""
-        section_node_id = section_data.get("outline_node_id") or ""
-        section_title = section_data.get("title") or ""
+        section_instruction_id = section_data.get('instruction_id') or ''
+        section_node_id = section_data.get('outline_node_id') or ''
+        section_title = section_data.get('title') or ''
 
         for inst in instruction_list.instructions:
             if section_instruction_id and inst.instruction_id == section_instruction_id:
@@ -163,8 +165,8 @@ class WriterQualityTools(WriterToolBase):
             if section_title and inst.section_title == section_title:
                 return inst
 
-        for section_block in section_data.get("blocks") or []:
-            block_heading = (section_block.get("heading") or "").strip()
+        for section_block in section_data.get('blocks') or []:
+            block_heading = (section_block.get('heading') or '').strip()
             if block_heading:
                 for inst in instruction_list.instructions:
                     if block_heading == inst.section_title:

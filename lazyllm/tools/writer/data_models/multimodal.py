@@ -6,8 +6,8 @@ from ..utils.artifact import ArtifactModel
 
 class MediaAsset(BaseModel):
     media_asset_id: str
-    asset_type: Literal["image", "chart", "table", "diagram", "screenshot", "generated_image"]
-    source_type: Literal["input_resource", "web_search", "code_render", "image_generation"]
+    asset_type: Literal['image', 'chart', 'table', 'diagram', 'screenshot', 'generated_image']
+    source_type: Literal['input_resource', 'web_search', 'code_render', 'image_generation']
     uri: Optional[str] = None
     local_path: Optional[str] = None
     caption: Optional[str] = None
@@ -25,10 +25,10 @@ class MediaAssetLibrary(ArtifactModel):
 
 class VisualInstruction(BaseModel):
     need_id: str
-    visual_type: Literal["image", "chart", "table", "diagram"]
+    visual_type: Literal['image', 'chart', 'table', 'diagram']
     purpose: str
     preferred_strategy: Literal[
-        "web_search", "kb_search", "image_generation", "code_render"
-    ] = "web_search"
+        'web_search', 'kb_search', 'image_generation', 'code_render'
+    ] = 'web_search'
     required: bool = True
     meta: Dict[str, Any] = Field(default_factory=dict)
