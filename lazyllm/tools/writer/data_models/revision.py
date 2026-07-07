@@ -1,8 +1,17 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from pydantic import BaseModel, Field
 from .docir import Anchor
 from ..utils.artifact import ArtifactModel
+
+
+class LocateResult(ArtifactModel):
+    task_id: Optional[str] = None
+    doc_id: Optional[str] = None
+    target_block_ids: List[str] = Field(default_factory=list)
+    target_reasons: Dict[str, str] = Field(default_factory=dict)
+    summary: Optional[str] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ModifyInstruction(BaseModel):
@@ -46,3 +55,9 @@ class PatchResult(BaseModel):
     failed_hunks: List[str] = Field(default_factory=list)
     message: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+# Fields side-channelled through DocBlock.meta during DraftDocument <-> DocIR conversion.
+HEADING_PATH_KEY = 'heading_path'
+SECTION_META_FIELDS: Tuple[str, ...] = ('section_id', 'outline_node_id', 'instruction_id')
+BLOCK_META_FIELDS: Tuple[str, ...] = ('heading', 'outline_node_id')

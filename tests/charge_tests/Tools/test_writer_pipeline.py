@@ -6,10 +6,13 @@ from pydantic import BaseModel
 
 import lazyllm
 from lazyllm.tools.writer.tools.base import WriterToolBase
-from lazyllm.tools.writer.data_models.context import WritingContext
+from lazyllm.tools.writer.data_models.context import DocumentSummary, WritingContext
+from lazyllm.tools.writer.data_models.docir import DocIR
 from lazyllm.tools.writer.data_models.quality import ReviewReport
-from lazyllm.tools.writer.data_models.task import InputResource, WritingTask
+from lazyllm.tools.writer.data_models.revision import LocateResult, ModifyPlan, PatchResult, PatchSet
+from lazyllm.tools.writer.data_models.task import InputResource, Selection, WritingTask
 from lazyllm.tools.writer.data_models.writing import (
+    DraftBlock,
     DraftDocument,
     DraftSection,
     SectionInstructionList,
@@ -197,3 +200,113 @@ def test_write_workflow_e2e():
     primary = result.get('primary_result') or {}
     primary_path = primary.get('artifact_path') if isinstance(primary, dict) else ''
     assert primary_path
+
+
+# ============================================================================
+# NaiveWriterWorkflow.revise() E2E
+# ============================================================================
+
+
+def test_revise_workflow_e2e():
+    '''End-to-end verify NaiveWriterWorkflow.revise() against an in-memory draft, with a
+    Selection narrowing the revision's candidate domain to one block.'''
+    llm = lazyllm.OnlineChatModule(
+        source='qwen', model=QWEN_MODEL,
+        api_key=get_api_key('qwen'), stream=False,
+    )
+    store = str(REPO_ROOT / 'tests' / 'charge_tests' / 'artifacts' / 'revise_workflow_e2e')
+    wf = NaiveWriterWorkflow(llm=llm, artifact_store=store)
+
+    section = DraftSection(
+        section_id='sec-1',
+        title='LazyCoder Overview',
+        blocks=[
+            DraftBlock(block_id='block-1', content='LazyCoder is an AI coding assistant for developers.'),
+            DraftBlock(
+                block_id='block-2',
+                content='LazyCoder supports Python and JavaScript, and continues to expand.',
+            ),
+            DraftBlock(
+                block_id='block-3',
+                content='Deployment modes include on-premises and SaaS multi-tenant.',
+            ),
+        ],
+    )
+    draft = DraftDocument(
+        draft_id='draft-1',
+        title='LazyCoder Overview',
+        sections=[section],
+    )
+    context = WritingContext(
+        context_id='revise-ut',
+        doc_id='draft-1',
+        document_summary=DocumentSummary(summary='LazyCoder Overview', key_points=[]),
+    )
+
+    doc_ir_result = wf.revision.draft_to_doc_ir(draft=draft)
+    result = wf.revise(
+        task=WritingTask(
+            task_id='revise-ut',
+            query='Add support for Rust and put it in the supported-languages list. Do not change anything else.',
+            task_type='revise',
+            selection=Selection(block_ids=['block-2']),
+        ).model_dump(),
+        doc_ir=doc_ir_result['metadata']['artifact_paths']['doc_ir'],
+        context=context,
+    )
+    stages = result.get('stage_results') or {}
+    assert stages, 'revise() stage_results must not be empty.'
+
+    # --- locate ---
+    locate = _load_stage(stages, 'locate_result', LocateResult)
+    assert locate.target_block_ids, 'locate must select at least one block.'
+    assert set(locate.target_block_ids) <= {'block-2'}, (
+        f'locate must only pick block within selection, got {locate.target_block_ids}'
+    )
+    assert locate.target_reasons.get('block-2', '').strip(), 'missing reason for selected block.'
+
+    # --- modify_plan ---
+    plan = _load_stage(stages, 'modify_plan', ModifyPlan)
+    assert {i.target_block_id for i in plan.instructions} == set(locate.target_block_ids)
+    for instr in plan.instructions:
+        assert instr.modify_type in {'rewrite', 'polish', 'insert', 'delete', 'move', 'split', 'merge'}
+        assert instr.instruction.strip()
+
+    # --- patch_set ---
+    patch = _load_stage(stages, 'patch_set', PatchSet)
+    assert len(patch.hunks) == len(plan.instructions)
+    original_text_by_id = {b.block_id: b.content for b in section.blocks}
+    for hunk in patch.hunks:
+        assert hunk.anchor is not None and hunk.anchor.block_id == hunk.target_block_id
+        assert hunk.old_text == original_text_by_id[hunk.target_block_id]
+        assert hunk.new_text and hunk.new_text != hunk.old_text, 'new_text is a no-op.'
+    assert {h.target_block_id for h in patch.hunks} <= {'block-2'}
+    assert any('rust' in (h.new_text or '').lower() for h in patch.hunks)
+
+    # --- apply_patch ---
+    patch_result = _load_stage(stages, 'patch_result', PatchResult)
+    assert patch_result is not None and patch_result.success
+    assert not patch_result.failed_hunks
+
+    # --- revised_doc_ir ---
+    revised_ir = load_artifact_json(stages['revised_doc_ir'], DocIR)
+    revised_text_by_id = {b.block_id: b.text for b in revised_ir.blocks}
+    assert set(revised_text_by_id.keys()) == {'sec-1::heading', 'block-1', 'block-2', 'block-3'}
+    assert revised_text_by_id['block-2'] != original_text_by_id['block-2']
+    assert revised_text_by_id['block-1'] == original_text_by_id['block-1']
+    assert revised_text_by_id['block-3'] == original_text_by_id['block-3']
+    assert any('rust' in t.lower() for t in revised_text_by_id.values())
+
+    # --- rebuild + writing_output ---
+    revised_draft = _load_stage(stages, 'revised_draft', DraftDocument)
+    assert revised_draft is not None and revised_draft.sections and revised_draft.title
+
+    revised_context = _load_stage(stages, 'writing_context', WritingContext)
+    assert revised_context is not None and revised_context.draft_document is not None
+
+    output = _load_stage(stages, 'writing_output', WritingOutput)
+    assert output is not None and output.output_format == 'markdown'
+    assert len(output.content) >= 50 and 'rust' in output.content.lower()
+
+    primary = result.get('primary_result') or {}
+    assert primary.get('artifact_path'), 'primary_result must carry an artifact_path.'
