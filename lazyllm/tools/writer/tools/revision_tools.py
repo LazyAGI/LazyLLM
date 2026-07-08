@@ -70,8 +70,6 @@ class WriterRevisionTools(WriterToolBase):
         locate_result = self._call_llm_structured(prompt, LocateResult)
 
         located = [bid for bid in (locate_result.target_block_ids or []) if bid]
-        if not located:
-            raise ValueError('LLM returned empty target_block_ids.')
         invalid = [bid for bid in located if bid not in candidate_block_ids]
         if invalid:
             raise ValueError(
@@ -90,7 +88,11 @@ class WriterRevisionTools(WriterToolBase):
             step_name='locate_revision_target',
             primary_key='locate_result',
             context_key=None,
-            summary='Located revision target blocks.',
+            summary=(
+                'No revision target blocks located.'
+                if not locate_result.target_block_ids
+                else 'Located revision target blocks.'
+            ),
             counts={'target_block_count': len(locate_result.target_block_ids)},
             artifact_meta={
                 'task_id': writing_task.task_id,
@@ -115,28 +117,28 @@ class WriterRevisionTools(WriterToolBase):
         located = self._unified_model(locate_result, LocateResult)
         writing_context = self._unified_model(context, WritingContext)
 
-        if not located.target_block_ids:
-            raise ValueError('locate_result.target_block_ids is empty.')
+        if located.target_block_ids:
+            block_map = {b.block_id: b for b in self._iter_blocks(source_doc.blocks)}
+            missing = [bid for bid in located.target_block_ids if bid not in block_map]
+            if missing:
+                raise ValueError(f'locate_result has block_ids absent from doc_ir: {missing}.')
 
-        block_map = {b.block_id: b for b in self._iter_blocks(source_doc.blocks)}
-        missing = [bid for bid in located.target_block_ids if bid not in block_map]
-        if missing:
-            raise ValueError(f'locate_result has block_ids absent from doc_ir: {missing}.')
+            target_blocks = [block_map[bid] for bid in located.target_block_ids]
+            focused_doc = DocIR(
+                doc_id=source_doc.doc_id,
+                title=source_doc.title,
+                blocks=[b.model_copy(deep=True) for b in target_blocks],
+            )
 
-        target_blocks = [block_map[bid] for bid in located.target_block_ids]
-        focused_doc = DocIR(
-            doc_id=source_doc.doc_id,
-            title=source_doc.title,
-            blocks=[b.model_copy(deep=True) for b in target_blocks],
-        )
-
-        prompt = GENERATE_MODIFY_PLAN_PROMPT.format(
-            task_json=to_prompt_json(writing_task),
-            doc_ir_json=to_prompt_json(focused_doc),
-            locate_result_json=to_prompt_json(located),
-            context_json=to_prompt_json(writing_context),
-        )
-        modify_plan = self._call_llm_structured(prompt, ModifyPlan)
+            prompt = GENERATE_MODIFY_PLAN_PROMPT.format(
+                task_json=to_prompt_json(writing_task),
+                doc_ir_json=to_prompt_json(focused_doc),
+                locate_result_json=to_prompt_json(located),
+                context_json=to_prompt_json(writing_context),
+            )
+            modify_plan = self._call_llm_structured(prompt, ModifyPlan)
+        else:
+            modify_plan = ModifyPlan(scope='document', summary='No revision targets; nothing to plan.')
 
         modify_plan = self._normalize_modify_plan(modify_plan, writing_task, located.target_block_ids)
 
@@ -167,50 +169,48 @@ class WriterRevisionTools(WriterToolBase):
         plan = self._unified_model(modify_plan, ModifyPlan)
         writing_context = self._unified_model(context, WritingContext)
 
-        if not plan.instructions:
-            raise ValueError('modify_plan.instructions is empty.')
-
-        block_map = {b.block_id: b for b in self._iter_blocks(source_doc.blocks)}
-        target_blocks, missing = self._resolve_target_blocks(block_map, plan.instructions)
-        if missing:
-            raise ValueError(f'modify_plan targets block_ids absent from doc_ir: {missing}.')
-
-        focused_doc = DocIR(
-            doc_id=source_doc.doc_id,
-            title=source_doc.title,
-            blocks=[b.model_copy(deep=True) for b in target_blocks],
-        )
-
-        prompt = GENERATE_PATCH_SET_PROMPT.format(
-            doc_ir_json=to_prompt_json(focused_doc),
-            modify_plan_json=to_prompt_json(plan),
-            context_json=to_prompt_json(writing_context),
-        )
-        proposal = self._call_llm_structured(prompt, PatchSet)
-
-        proposal_map: Dict[str, PatchHunk] = {
-            h.target_block_id: h for h in proposal.hunks if h.target_block_id
-        }
-
         hunks: List[PatchHunk] = []
-        for instr, block in zip(plan.instructions, target_blocks):
-            proposed = proposal_map.get(instr.target_block_id)
-            if proposed is None:
-                raise ValueError(f'lack hunk for block {instr.target_block_id!r}.')
-            if instr.modify_type != 'delete' and not proposed.new_text:
-                raise ValueError(f'lack new_text for block {instr.target_block_id!r}.')
-            hunks.append(PatchHunk(
-                hunk_id=f'hunk-{instr.target_block_id}',
-                target_block_id=instr.target_block_id,
-                modify_type=instr.modify_type,
-                anchor=Anchor(
-                    block_id=block.block_id,
-                    heading_path=list(block.meta.get('heading_path', [])),
-                ),
-                old_text=None if instr.modify_type == 'insert' else block.text,
-                new_text=proposed.new_text,
-                meta={'instruction': instr.instruction},
-            ))
+        if plan.instructions:
+            block_map = {b.block_id: b for b in self._iter_blocks(source_doc.blocks)}
+            target_blocks, missing = self._resolve_target_blocks(block_map, plan.instructions)
+            if missing:
+                raise ValueError(f'modify_plan targets block_ids absent from doc_ir: {missing}.')
+
+            focused_doc = DocIR(
+                doc_id=source_doc.doc_id,
+                title=source_doc.title,
+                blocks=[b.model_copy(deep=True) for b in target_blocks],
+            )
+
+            prompt = GENERATE_PATCH_SET_PROMPT.format(
+                doc_ir_json=to_prompt_json(focused_doc),
+                modify_plan_json=to_prompt_json(plan),
+                context_json=to_prompt_json(writing_context),
+            )
+            proposal = self._call_llm_structured(prompt, PatchSet)
+
+            proposal_map: Dict[str, PatchHunk] = {
+                h.target_block_id: h for h in proposal.hunks if h.target_block_id
+            }
+
+            for instr, block in zip(plan.instructions, target_blocks):
+                proposed = proposal_map.get(instr.target_block_id)
+                if proposed is None:
+                    raise ValueError(f'lack hunk for block {instr.target_block_id!r}.')
+                if instr.modify_type != 'delete' and not proposed.new_text:
+                    raise ValueError(f'lack new_text for block {instr.target_block_id!r}.')
+                hunks.append(PatchHunk(
+                    hunk_id=f'hunk-{instr.target_block_id}',
+                    target_block_id=instr.target_block_id,
+                    modify_type=instr.modify_type,
+                    anchor=Anchor(
+                        block_id=block.block_id,
+                        heading_path=list(block.meta.get('heading_path', [])),
+                    ),
+                    old_text=None if instr.modify_type == 'insert' else block.text,
+                    new_text=proposed.new_text,
+                    meta={'instruction': instr.instruction},
+                ))
 
         patch_set = PatchSet(
             patch_id=f'patch-{source_doc.doc_id or "document"}',
@@ -246,44 +246,42 @@ class WriterRevisionTools(WriterToolBase):
         patch = self._unified_model(patch_set, PatchSet)
         writing_context = self._unified_model(context, WritingContext)
 
-        if not patch.hunks:
-            raise ValueError('patch_set.hunks is empty.')
-
         revised_doc = source_doc.model_copy(deep=True)
-        block_map = {b.block_id: b for b in revised_doc.blocks}
 
         applied: List[str] = []
         failed: List[str] = []
-        for hunk in patch.hunks:
-            target_id = hunk.target_block_id or ''
-            block = block_map.get(target_id)
-            if block is None:
-                failed.append(target_id)
-                continue
+        if patch.hunks:
+            block_map = {b.block_id: b for b in revised_doc.blocks}
+            for hunk in patch.hunks:
+                target_id = hunk.target_block_id or ''
+                block = block_map.get(target_id)
+                if block is None:
+                    failed.append(target_id)
+                    continue
 
-            applied_ok = False
-            if hunk.modify_type == 'insert':
-                anchor_idx = revised_doc.blocks.index(block)
-                revised_doc.blocks.insert(anchor_idx + 1, DocBlock(
-                    block_id=f'{target_id}::inserted',
-                    block_type='paragraph',
-                    text=hunk.new_text,
-                ))
-                applied_ok = True
-            elif hunk.old_text is not None and block.text == hunk.old_text:
-                if hunk.modify_type == 'delete':
-                    revised_doc.blocks.remove(block)
-                else:  # rewrite / replace
-                    block.text = hunk.new_text
-                applied_ok = True
+                applied_ok = False
+                if hunk.modify_type == 'insert':
+                    anchor_idx = revised_doc.blocks.index(block)
+                    revised_doc.blocks.insert(anchor_idx + 1, DocBlock(
+                        block_id=f'{target_id}::inserted',
+                        block_type='paragraph',
+                        text=hunk.new_text,
+                    ))
+                    applied_ok = True
+                elif hunk.old_text is not None and block.text == hunk.old_text:
+                    if hunk.modify_type == 'delete':
+                        revised_doc.blocks.remove(block)
+                    else:  # rewrite / replace
+                        block.text = hunk.new_text
+                    applied_ok = True
 
-            if applied_ok:
-                applied.append(target_id)
-            else:
-                failed.append(target_id)
+                if applied_ok:
+                    applied.append(target_id)
+                else:
+                    failed.append(target_id)
 
-        if not applied:
-            raise ValueError('apply_patch produced no applied hunks; every hunk failed to match.')
+            if not applied:
+                raise ValueError('apply_patch produced no applied hunks; every hunk failed to match.')
 
         revised_doc.plain_text = self.blocks_to_plain_text(self._iter_blocks(revised_doc.blocks))
 
@@ -345,25 +343,22 @@ class WriterRevisionTools(WriterToolBase):
     def doc_ir_to_draft(self, doc_ir: Any) -> dict:
         '''Convert a DocIR into a DraftDocument artifact.'''
         source_doc = self._unified_model(doc_ir, DocIR)
-        sections: List[DraftSection] = []
-        stack: List[Tuple[int, DraftSection]] = []
+        # Virtual root absorbs heading-less leading paragraphs; null heading level defaults to 1.
+        root = DraftSection()
+        stack: List[Tuple[int, DraftSection]] = [(0, root)]
         for block in source_doc.blocks:
             if block.block_type == 'heading':
-                while stack and stack[-1][0] >= block.level:
+                level = block.level if block.level is not None else 1
+                while len(stack) > 1 and stack[-1][0] >= level:
                     stack.pop()
                 meta = block.meta or {}
                 section = DraftSection(
                     **{field: meta.get(field) for field in SECTION_META_FIELDS},
                     title=block.text or None,
                 )
-                if stack:
-                    stack[-1][1].sub_sections.append(section)
-                else:
-                    sections.append(section)
-                stack.append((block.level, section))
+                stack[-1][1].sub_sections.append(section)
+                stack.append((level, section))
             else:
-                if not stack:
-                    raise ValueError(f'Block {block.block_id!r} has no enclosing heading.')
                 parent = stack[-1][1]
                 meta = block.meta or {}
                 parent.blocks.append(DraftBlock(
@@ -372,6 +367,11 @@ class WriterRevisionTools(WriterToolBase):
                     **{field: meta.get(field) for field in BLOCK_META_FIELDS},
                     content=block.text,
                 ))
+        sections = (
+            [DraftSection(blocks=root.blocks)] + root.sub_sections
+            if root.blocks
+            else root.sub_sections
+        )
         revised_draft = DraftDocument(
             draft_id=source_doc.doc_id,
             title=source_doc.title,
