@@ -7,6 +7,7 @@ from ..tools.planning_tools import WriterPlanningTools
 from ..tools.quality_tools import WriterQualityTools
 from ..tools.resource_tools import WriterResourceTools
 from ..tools.revision_tools import WriterRevisionTools
+from ..data_models.writing import DraftDocument
 
 
 class NaiveWriterWorkflow:
@@ -132,10 +133,17 @@ class NaiveWriterWorkflow:
     def revise(
         self,
         task: Any,
-        doc_ir: Any,
+        document: Any,
         context: Any,
     ) -> dict:
         context_ref = self._artifact_ref(context, 'writing_context')
+        if isinstance(document, DraftDocument):
+            doc_ir_result = self.revision.draft_to_doc_ir(draft=document)
+            doc_ir = self._artifact_ref(doc_ir_result, 'doc_ir')
+        else:
+            raise TypeError(
+                f'Unsupported document type {type(document).__name__!r}.'
+            )
 
         locate_result = self.revision.locate_revision_target(
             task=task,

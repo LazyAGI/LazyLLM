@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
@@ -195,23 +195,21 @@ class WriterRevisionTools(WriterToolBase):
         hunks: List[PatchHunk] = []
         for instr, block in zip(plan.instructions, target_blocks):
             proposed = proposal_map.get(instr.target_block_id)
-            if proposed is None or proposed.new_text is None:
-                raise ValueError(
-                    f'LLM did not produce new_text for block {instr.target_block_id!r}.'
-                )
+            if proposed is None:
+                raise ValueError(f'lack hunk for block {instr.target_block_id!r}.')
+            if instr.modify_type != 'delete' and not proposed.new_text:
+                raise ValueError(f'lack new_text for block {instr.target_block_id!r}.')
             hunks.append(PatchHunk(
                 hunk_id=f'hunk-{instr.target_block_id}',
                 target_block_id=instr.target_block_id,
+                modify_type=instr.modify_type,
                 anchor=Anchor(
                     block_id=block.block_id,
                     heading_path=list(block.meta.get('heading_path', [])),
                 ),
-                old_text=block.text,
+                old_text=None if instr.modify_type == 'insert' else block.text,
                 new_text=proposed.new_text,
-                meta={
-                    'modify_type': instr.modify_type,
-                    'instruction': instr.instruction,
-                },
+                meta={'instruction': instr.instruction},
             ))
 
         patch_set = PatchSet(
@@ -252,7 +250,7 @@ class WriterRevisionTools(WriterToolBase):
             raise ValueError('patch_set.hunks is empty.')
 
         revised_doc = source_doc.model_copy(deep=True)
-        block_map = {b.block_id: b for b in self._iter_blocks(revised_doc.blocks)}
+        block_map = {b.block_id: b for b in revised_doc.blocks}
 
         applied: List[str] = []
         failed: List[str] = []
@@ -262,14 +260,32 @@ class WriterRevisionTools(WriterToolBase):
             if block is None:
                 failed.append(target_id)
                 continue
-            if hunk.old_text is not None and block.text == hunk.old_text:
-                block.text = hunk.new_text or ''
+
+            applied_ok = False
+            if hunk.modify_type == 'insert':
+                anchor_idx = revised_doc.blocks.index(block)
+                revised_doc.blocks.insert(anchor_idx + 1, DocBlock(
+                    block_id=f'{target_id}::inserted',
+                    block_type='paragraph',
+                    text=hunk.new_text,
+                ))
+                applied_ok = True
+            elif hunk.old_text is not None and block.text == hunk.old_text:
+                if hunk.modify_type == 'delete':
+                    revised_doc.blocks.remove(block)
+                else:  # rewrite / replace
+                    block.text = hunk.new_text
+                applied_ok = True
+
+            if applied_ok:
                 applied.append(target_id)
             else:
                 failed.append(target_id)
 
         if not applied:
             raise ValueError('apply_patch produced no applied hunks; every hunk failed to match.')
+
+        revised_doc.plain_text = self.blocks_to_plain_text(self._iter_blocks(revised_doc.blocks))
 
         patch_result = PatchResult(
             patch_id=patch.patch_id,
@@ -305,12 +321,12 @@ class WriterRevisionTools(WriterToolBase):
         '''Convert a DraftDocument into a DocIR artifact.'''
         source_draft = self._unified_model(draft, DraftDocument)
         blocks: List[DocBlock] = []
-        _flatten_sections(source_draft.sections, 1, [], blocks)
+        self._flatten_sections(source_draft.sections, 1, [], blocks)
         doc_ir = DocIR(
             doc_id=source_draft.draft_id,
             title=source_draft.title,
             blocks=blocks,
-            plain_text='\n\n'.join(b.text for b in blocks if b.text.strip()) or None,
+            plain_text=self.blocks_to_plain_text(blocks),
             adapter='draft_document',
         )
         return self._save_artifacts(
@@ -329,7 +345,38 @@ class WriterRevisionTools(WriterToolBase):
     def doc_ir_to_draft(self, doc_ir: Any) -> dict:
         '''Convert a DocIR into a DraftDocument artifact.'''
         source_doc = self._unified_model(doc_ir, DocIR)
-        revised_draft = _doc_ir_to_draft(source_doc)
+        sections: List[DraftSection] = []
+        stack: List[Tuple[int, DraftSection]] = []
+        for block in source_doc.blocks:
+            if block.block_type == 'heading':
+                while stack and stack[-1][0] >= block.level:
+                    stack.pop()
+                meta = block.meta or {}
+                section = DraftSection(
+                    **{field: meta.get(field) for field in SECTION_META_FIELDS},
+                    title=block.text or None,
+                )
+                if stack:
+                    stack[-1][1].sub_sections.append(section)
+                else:
+                    sections.append(section)
+                stack.append((block.level, section))
+            else:
+                if not stack:
+                    raise ValueError(f'Block {block.block_id!r} has no enclosing heading.')
+                parent = stack[-1][1]
+                meta = block.meta or {}
+                parent.blocks.append(DraftBlock(
+                    block_id=block.block_id,
+                    section_id=parent.section_id,
+                    **{field: meta.get(field) for field in BLOCK_META_FIELDS},
+                    content=block.text,
+                ))
+        revised_draft = DraftDocument(
+            draft_id=source_doc.doc_id,
+            title=source_doc.title,
+            sections=sections,
+        )
         return self._save_artifacts(
             {'revised_draft': revised_draft},
             step_name='doc_ir_to_draft',
@@ -348,6 +395,7 @@ class WriterRevisionTools(WriterToolBase):
         task: WritingTask,
         located_block_ids: List[str],
     ) -> ModifyPlan:
+        plan.plan_id = plan.plan_id or f'plan-{task.task_id or "task"}'
         plan.task_id = task.task_id
         plan.target_block_ids = list(located_block_ids)
 
@@ -364,6 +412,7 @@ class WriterRevisionTools(WriterToolBase):
             if target_id in seen:
                 raise ValueError(f'modify_plan has duplicate instruction for block {target_id!r}.')
             seen.add(target_id)
+            instr.instruction_id = instr.instruction_id or f'instr-{target_id}'
             normalized.append(instr)
 
         missing_instructions = located_set - seen
@@ -396,102 +445,68 @@ class WriterRevisionTools(WriterToolBase):
             result.extend(self._iter_blocks(block.children))
         return result
 
+    def blocks_to_plain_text(self, blocks: List[DocBlock]) -> Optional[str]:
+        return '\n\n'.join(b.text for b in blocks if b.text.strip()) or None
 
-def _doc_ir_to_draft(doc_ir: DocIR) -> DraftDocument:
-    '''Rebuild a DraftDocument from a DocIR; section nesting is restored from heading levels.'''
-    sections: List[DraftSection] = []
-    stack: List[Tuple[int, DraftSection]] = []
-    for block in doc_ir.blocks:
-        if block.block_type == 'heading':
-            while stack and stack[-1][0] >= block.level:
-                stack.pop()
-            meta = block.meta or {}
-            section = DraftSection(
-                **{field: meta.get(field) for field in SECTION_META_FIELDS},
-                title=block.text or None,
-            )
-            if stack:
-                stack[-1][1].sub_sections.append(section)
-            else:
-                sections.append(section)
-            stack.append((block.level, section))
+    def _flatten_sections(
+        self,
+        sections: List[DraftSection],
+        depth: int,
+        heading_path: List[str],
+        blocks: List[DocBlock],
+    ) -> None:
+        for section in sections:
+            current_path = list(heading_path)
+            if section.title:
+                current_path.append(section.title)
+            blocks.append(self._heading_doc_block(section, depth, current_path, len(blocks)))
+            for idx, block in enumerate(section.blocks, start=1):
+                blocks.append(self._paragraph_doc_block(section, block, current_path, idx, len(blocks)))
+            self._flatten_sections(section.sub_sections, depth + 1, current_path, blocks)
+
+    def _heading_doc_block(
+        self,
+        section: DraftSection,
+        depth: int,
+        heading_path: List[str],
+        fallback_index: int,
+    ) -> DocBlock:
+        block_id = f'{section.section_id}::heading' if section.section_id else f'block-{fallback_index + 1}'
+        meta: Dict[str, Any] = {HEADING_PATH_KEY: list(heading_path)}
+        for field in SECTION_META_FIELDS:
+            val = getattr(section, field)
+            if val:
+                meta[field] = val
+        return DocBlock(
+            block_id=block_id,
+            block_type='heading',
+            text=section.title or '',
+            level=depth,
+            meta=meta,
+        )
+
+    def _paragraph_doc_block(
+        self,
+        section: DraftSection,
+        block: DraftBlock,
+        heading_path: List[str],
+        local_index: int,
+        fallback_index: int,
+    ) -> DocBlock:
+        if block.block_id:
+            block_id = block.block_id
+        elif section.section_id:
+            block_id = f'{section.section_id}::block-{local_index}'
         else:
-            if not stack:
-                raise ValueError(f'Block {block.block_id!r} has no enclosing heading.')
-            parent = stack[-1][1]
-            meta = block.meta or {}
-            parent.blocks.append(DraftBlock(
-                block_id=block.block_id,
-                section_id=parent.section_id,
-                **{field: meta.get(field) for field in BLOCK_META_FIELDS},
-                content=block.text,
-            ))
-
-    return DraftDocument(
-        draft_id=doc_ir.doc_id,
-        title=doc_ir.title,
-        sections=sections,
-    )
-
-
-def _flatten_sections(
-    sections: List[DraftSection],
-    depth: int,
-    heading_path: List[str],
-    blocks: List[DocBlock],
-) -> None:
-    for section in sections:
-        current_path = list(heading_path)
-        if section.title:
-            current_path.append(section.title)
-        blocks.append(_heading_doc_block(section, depth, current_path, len(blocks)))
-        for idx, block in enumerate(section.blocks, start=1):
-            blocks.append(_paragraph_doc_block(section, block, current_path, idx, len(blocks)))
-        _flatten_sections(section.sub_sections, depth + 1, current_path, blocks)
-
-
-def _heading_doc_block(
-    section: DraftSection,
-    depth: int,
-    heading_path: List[str],
-    fallback_index: int,
-) -> DocBlock:
-    block_id = f'{section.section_id}::heading' if section.section_id else f'block-{fallback_index + 1}'
-    meta: Dict[str, Any] = {HEADING_PATH_KEY: list(heading_path)}
-    for field in SECTION_META_FIELDS:
-        val = getattr(section, field)
-        if val:
-            meta[field] = val
-    return DocBlock(
-        block_id=block_id,
-        block_type='heading',
-        text=section.title or '',
-        level=depth,
-        meta=meta,
-    )
-
-
-def _paragraph_doc_block(
-    section: DraftSection,
-    block: DraftBlock,
-    heading_path: List[str],
-    local_index: int,
-    fallback_index: int,
-) -> DocBlock:
-    if block.block_id:
-        block_id = block.block_id
-    elif section.section_id:
-        block_id = f'{section.section_id}::block-{local_index}'
-    else:
-        block_id = f'block-{fallback_index + 1}'
-    meta: Dict[str, Any] = {HEADING_PATH_KEY: list(heading_path)}
-    for field in BLOCK_META_FIELDS:
-        val = getattr(block, field)
-        if val:
-            meta[field] = val
-    return DocBlock(
-        block_id=block_id,
-        block_type='paragraph',
-        text=block.content,
-        meta=meta,
-    )
+            block_id = f'block-{fallback_index + 1}'
+        meta: Dict[str, Any] = {HEADING_PATH_KEY: list(heading_path)}
+        for field in BLOCK_META_FIELDS:
+            val = getattr(block, field)
+            if val:
+                meta[field] = val
+        return DocBlock(
+            block_id=block_id,
+            block_type='paragraph',
+            text=block.content,
+            meta=meta,
+        )

@@ -4,7 +4,7 @@ from typing import Any, Optional
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.quality import AuditResult, ReviewReport
-from ..data_models.revision import ModifyPlan, PatchSet
+from ..data_models.revision import PatchSet
 from ..data_models.writing import DraftDocument, SectionInstruction, SectionInstructionList
 from ..prompts.quality import (
     VALIDATE_DRAFT_DOCUMENT_PROMPT,
@@ -159,25 +159,20 @@ class WriterQualityTools(WriterToolBase):
         context: Any,
     ) -> dict:
         patch = self._unified_model(patch_set, PatchSet)
-        plan = self._unified_model(modify_plan, ModifyPlan)
         writing_context = self._unified_model(context, WritingContext)
 
         if not patch.hunks:
             audit_result = AuditResult(is_passed=True, score=100,
                                        summary='No hunks to validate.', issues=[])
         else:
-            # Pair each hunk with its ModifyInstruction
-            inst_by_target = {mi.target_block_id: mi for mi in plan.instructions}
             hunks_json = [
                 {
                     'hunk_id': h.hunk_id,
                     'target_block_id': h.target_block_id,
+                    'modify_type': h.modify_type,
                     'old_text': h.old_text,
                     'new_text': h.new_text,
-                    'modify_type': inst_by_target.get(h.target_block_id, None).modify_type
-                    if inst_by_target.get(h.target_block_id, None) else 'unknown',
-                    'instruction': inst_by_target.get(h.target_block_id, None).instruction
-                    if inst_by_target.get(h.target_block_id, None) else '',
+                    'instruction': h.meta.get('instruction', ''),
                 }
                 for h in patch.hunks
             ]

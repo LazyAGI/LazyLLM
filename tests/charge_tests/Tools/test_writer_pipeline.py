@@ -208,8 +208,7 @@ def test_write_workflow_e2e():
 
 
 def test_revise_workflow_e2e():
-    '''End-to-end verify NaiveWriterWorkflow.revise() against an in-memory draft, with a
-    Selection narrowing the revision's candidate domain to one block.'''
+    '''Run verify NaiveWriterWorkflow.revise() end-to-end with WritingTask.'''
     llm = lazyllm.OnlineChatModule(
         source='qwen', model=QWEN_MODEL,
         api_key=get_api_key('qwen'), stream=False,
@@ -243,7 +242,6 @@ def test_revise_workflow_e2e():
         document_summary=DocumentSummary(summary='LazyCoder Overview', key_points=[]),
     )
 
-    doc_ir_result = wf.revision.draft_to_doc_ir(draft=draft)
     result = wf.revise(
         task=WritingTask(
             task_id='revise-ut',
@@ -251,7 +249,7 @@ def test_revise_workflow_e2e():
             task_type='revise',
             selection=Selection(block_ids=['block-2']),
         ).model_dump(),
-        doc_ir=doc_ir_result['metadata']['artifact_paths']['doc_ir'],
+        document=draft,
         context=context,
     )
     stages = result.get('stage_results') or {}
@@ -269,7 +267,7 @@ def test_revise_workflow_e2e():
     plan = _load_stage(stages, 'modify_plan', ModifyPlan)
     assert {i.target_block_id for i in plan.instructions} == set(locate.target_block_ids)
     for instr in plan.instructions:
-        assert instr.modify_type in {'rewrite', 'polish', 'insert', 'delete', 'move', 'split', 'merge'}
+        assert instr.modify_type in {'rewrite', 'insert', 'replace', 'delete'}
         assert instr.instruction.strip()
 
     # --- patch_set ---
