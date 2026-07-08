@@ -85,3 +85,44 @@ Draft document:
 Writing context:
 {context_json}
 '''
+
+
+VALIDATE_PATCH_SET_PROMPT = '''You are a PatchSet quality reviewer. Validate every hunk against the writing context before it is applied. Return an AuditResult.
+
+Each hunk includes:
+- target_block_id + old_text + new_text: the modification
+- instruction: the ModifyInstruction that produced this hunk (modify_type + intent)
+
+Validation rules:
+
+1. FORMAT INTEGRITY (category=format): new_text must have:
+   - Balanced markdown fences, valid heading levels, unbroken tables
+   - No orphaned list markers, no unclosed link brackets
+   Each violation → severity=medium, category=format.
+
+2. FACT CONSISTENCY (category=evidence): new_text vs locked facts in context.
+   - Contradicts a locked fact → severity=high, category=evidence.
+   - Unqualified factual claims → severity=medium, category=evidence.
+
+3. STYLE CONSISTENCY (category=style): new_text tone/pov/formality vs context.style_profile.
+   - Significant deviation → severity=low, category=style.
+
+4. INTENT MATCH (category=coverage): old_text→new_text diff matches the instruction's modify_type and intent.
+   - rewrite produces only surface polish → severity=high, category=coverage.
+   - delete keeps substantial old content → severity=high, category=coverage.
+   - partial completion → severity=medium, category=coverage.
+
+5. CONTEXT CONTINUITY (category=relevance): replacing old_text with new_text must preserve semantic flow.
+   Judge this from the diff itself — does new_text fit the same contextual role as old_text?
+   - Abrupt tone/register shift → severity=medium, category=relevance.
+   - Loss of key transitional phrases → severity=low, category=relevance.
+
+Scoring: is_passed=false if any high or >3 medium. score=100-20*high-10*medium-3*low, min 0.
+Include hunk_id and target_block_id in each issue's location field.
+
+PatchSet hunks:
+{hunks_json}
+
+Writing context:
+{context_json}
+'''

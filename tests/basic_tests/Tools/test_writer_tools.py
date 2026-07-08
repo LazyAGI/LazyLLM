@@ -18,7 +18,13 @@ from lazyllm.tools.writer.data_models import (
     WritingOutput,
     WritingTask,
 )
-from lazyllm.tools.writer.data_models.quality import AuditResult, ReviewReport
+from lazyllm.tools.writer.data_models.quality import AuditIssue, AuditResult, ReviewReport
+from lazyllm.tools.writer.data_models.revision import (
+    ModifyInstruction,
+    ModifyPlan,
+    PatchHunk,
+    PatchSet,
+)
 from lazyllm.tools.writer.data_models.task import InputResource
 from lazyllm.tools.writer.data_models.writing import (
     SectionInstruction,
@@ -673,6 +679,152 @@ def test_validate_draft_document_happy_path():
         assert report.result.is_passed is True
         assert report.target == 'draft-test-001'
         assert report.meta['draft_section_count'] == 1
+
+
+def _make_modify_plan(target_block_ids=None, modify_type='rewrite',
+                      instruction_text='Rewrite the text.'):
+    if target_block_ids is None:
+        target_block_ids = ['blk-pro-01']
+    return ModifyPlan(
+        plan_id='plan-test-001',
+        scope='document',
+        target_block_ids=target_block_ids,
+        instructions=[
+            ModifyInstruction(
+                instruction_id=f'mi-{i:03d}',
+                target_block_id=bid,
+                modify_type=modify_type,
+                instruction=instruction_text,
+            )
+            for i, bid in enumerate(target_block_ids)
+        ],
+    )
+
+
+def _make_patch_set(hunks=None):
+    return PatchSet(
+        patch_id='patch-test-001',
+        target_doc_id='doc-test-001',
+        hunks=hunks or [],
+    )
+
+
+def _make_failing_audit():
+    return AuditResult(
+        is_passed=False,
+        score=70,
+        summary='Validation failed: 1 high-severity issue.',
+        issues=[AuditIssue(
+            severity='high', category='evidence',
+            description='new_text contradicts locked fact.',
+            suggestion='Fix the factual error.',
+        )],
+    )
+
+
+# --- Scenario 1: Empty hunks (boundary) ---
+
+def test_validate_patch_set_empty():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()) as mock_llm:
+            result = tool.validate_patch_set(
+                patch_set=_make_patch_set(),
+                modify_plan=_make_modify_plan(),
+                context=_make_context(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert mock_llm.call_count == 0
+        assert audit.is_passed is True
+        assert audit.score == 100
+        assert result['metadata']['counts']['total_hunks'] == 0
+
+
+# --- Scenario 2: Single hunk (basic path) ---
+
+def test_validate_patch_set_single_hunk():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()) as mock_llm:
+            result = tool.validate_patch_set(
+                patch_set=_make_patch_set(hunks=[
+                    PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
+                              old_text='万古之前...', new_text='太古之初...'),
+                ]),
+                modify_plan=_make_modify_plan(),
+                context=_make_context(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert mock_llm.call_count == 1
+        assert audit.is_passed is True
+        assert result['metadata']['counts']['total_hunks'] == 1
+
+
+# --- Scenario 3: Multiple hunks, single LLM call ---
+
+def test_validate_patch_set_multi_hunk():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()) as mock_llm:
+            result = tool.validate_patch_set(
+                patch_set=_make_patch_set(hunks=[
+                    PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
+                              old_text='万古之前...', new_text='太古之初...'),
+                    PatchHunk(hunk_id='h2', target_block_id='blk-pro-02',
+                              old_text='second...', new_text='rewrite...'),
+                ]),
+                modify_plan=_make_modify_plan(target_block_ids=['blk-pro-01', 'blk-pro-02']),
+                context=_make_context(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert mock_llm.call_count == 1
+        assert result['metadata']['counts']['total_hunks'] == 2
+
+
+# --- Scenario 4: Failing validation ---
+
+def test_validate_patch_set_failing():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_failing_audit()) as mock_llm:
+            result = tool.validate_patch_set(
+                patch_set=_make_patch_set(hunks=[
+                    PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
+                              old_text='万古之前...', new_text='星辰大帝是九州最强者。'),
+                ]),
+                modify_plan=_make_modify_plan(),
+                context=_make_context(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert mock_llm.call_count == 1
+        assert audit.is_passed is False
+        assert audit.score == 70
+        assert len(audit.issues) == 1
+
+
+# --- Scenario 5: Hunk without matching ModifyInstruction ---
+
+def test_validate_patch_set_unmatched_instruction():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()) as mock_llm:
+            result = tool.validate_patch_set(
+                patch_set=_make_patch_set(hunks=[
+                    PatchHunk(hunk_id='h1', target_block_id='unknown-id',
+                              old_text='xxx', new_text='yyy'),
+                ]),
+                modify_plan=_make_modify_plan(),  # plan targets blk-pro-01, not unknown-id
+                context=_make_context(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert mock_llm.call_count == 1
+        # modify_type/instruction fall back to 'unknown'/''
+        assert audit.is_passed is True
 
 
 # ---------------------------------------------------------------------------
