@@ -161,6 +161,11 @@ class NaiveWriterWorkflow:
             modify_plan=self._artifact_ref(modify_plan, 'modify_plan'),
             context=context_ref,
         )
+        patch_review = self.quality.validate_patch_set(
+            patch_set=self._artifact_ref(patch_set, 'patch_set'),
+            modify_plan=self._artifact_ref(modify_plan, 'modify_plan'),
+            context=context_ref,
+        )
         patch_result = self.revision.apply_patch(
             doc_ir=doc_ir,
             patch_set=self._artifact_ref(patch_set, 'patch_set'),
@@ -188,6 +193,7 @@ class NaiveWriterWorkflow:
                 'locate_result': locate_result,
                 'modify_plan': modify_plan,
                 'patch_set': patch_set,
+                'patch_review': patch_review,
                 'patch_result': patch_result,
                 'revised_doc_ir': self._artifact_ref(patch_result, 'revised_doc_ir'),
                 'revised_draft': revised_draft,

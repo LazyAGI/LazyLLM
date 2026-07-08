@@ -750,7 +750,8 @@ def test_validate_patch_set_single_hunk():
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
-                              old_text='万古之前...', new_text='太古之初...'),
+                              old_text='万古之前...', new_text='太古之初...',
+                              modify_type='rewrite'),
                 ]),
                 modify_plan=_make_modify_plan(),
                 context=_make_context(),
@@ -771,9 +772,11 @@ def test_validate_patch_set_multi_hunk():
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
-                              old_text='万古之前...', new_text='太古之初...'),
+                              old_text='万古之前...', new_text='太古之初...',
+                              modify_type='rewrite'),
                     PatchHunk(hunk_id='h2', target_block_id='blk-pro-02',
-                              old_text='second...', new_text='rewrite...'),
+                              old_text='second...', new_text='rewrite...',
+                              modify_type='rewrite'),
                 ]),
                 modify_plan=_make_modify_plan(target_block_ids=['blk-pro-01', 'blk-pro-02']),
                 context=_make_context(),
@@ -793,7 +796,8 @@ def test_validate_patch_set_failing():
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
-                              old_text='万古之前...', new_text='星辰大帝是九州最强者。'),
+                              old_text='万古之前...', new_text='星辰大帝是九州最强者。',
+                              modify_type='rewrite'),
                 ]),
                 modify_plan=_make_modify_plan(),
                 context=_make_context(),
@@ -815,7 +819,8 @@ def test_validate_patch_set_unmatched_instruction():
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_block_id='unknown-id',
-                              old_text='xxx', new_text='yyy'),
+                              old_text='xxx', new_text='yyy',
+                              modify_type='rewrite'),
                 ]),
                 modify_plan=_make_modify_plan(),  # plan targets blk-pro-01, not unknown-id
                 context=_make_context(),
