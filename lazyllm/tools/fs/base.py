@@ -169,14 +169,34 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
 
     def materialize_dir(self, path: str, local_dir: str, **kwargs) -> Dict[str, Any]:
         root = str(path or '').rstrip('/')
+        base_path = os.path.realpath(os.path.abspath(local_dir))
         files: List[str] = []
 
         def rel_path(remote_path: str) -> str:
             normalized = str(remote_path or '').strip('/')
             root_normalized = root.strip('/')
-            if root_normalized and normalized.startswith(root_normalized + '/'):
+            if not root_normalized:
+                return normalized
+            if normalized.startswith(root_normalized + '/'):
                 return normalized[len(root_normalized) + 1:]
             return normalized.rsplit('/', 1)[-1]
+
+        def checked_destination(rel: str) -> str:
+            parts = rel.split('/')
+            if not rel or rel == '.' or '\\' in rel or any(part in ('', '.', '..') for part in parts):
+                raise RuntimeError(
+                    f'{self.__class__.__name__}.materialize_dir got invalid relative path: {rel!r}'
+                )
+            destination = os.path.realpath(os.path.abspath(os.path.join(base_path, *parts)))
+            try:
+                inside_local_dir = os.path.commonpath([base_path, destination]) == base_path
+            except ValueError:
+                inside_local_dir = False
+            if not inside_local_dir:
+                raise RuntimeError(
+                    f'{self.__class__.__name__}.materialize_dir path escapes local_dir: {rel!r}'
+                )
+            return destination
 
         def walk(current: str) -> None:
             for entry in self.ls(current, detail=True):
@@ -187,9 +207,7 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
                     walk(name)
                     continue
                 rel = rel_path(name)
-                if not rel or rel.startswith('../') or '/..' in rel:
-                    raise RuntimeError(f'{self.__class__.__name__}.materialize_dir got invalid path: {rel!r}')
-                destination = os.path.join(local_dir, *rel.split('/'))
+                destination = checked_destination(rel)
                 os.makedirs(os.path.dirname(destination), exist_ok=True)
                 with self.open(name, 'rb') as src, open(destination, 'wb') as dst:
                     dst.write(src.read())

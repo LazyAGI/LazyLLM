@@ -1,3 +1,4 @@
+import io
 import os
 import shutil
 import tempfile
@@ -6,6 +7,7 @@ import lazyllm
 from lazyllm.tools import ReactAgent
 from lazyllm.cli.skills import skills as skills_cli
 from lazyllm.tools.agent.skill_manager import SkillManager
+from lazyllm.tools.fs.base import LazyLLMFSBase
 
 
 def _make_skill(base_dir: str, folder_name: str, meta_name: str) -> str:
@@ -22,6 +24,30 @@ def _make_skill(base_dir: str, folder_name: str, meta_name: str) -> str:
             'Test skill\n'
         )
     return skill_dir
+
+
+class _MemoryCloudFS(LazyLLMFSBase):
+    protocol = 'memory'
+
+    def __init__(self, entries, files):
+        self._entries = entries
+        self._files = files
+
+    def _setup_auth(self):
+        pass
+
+    def ls(self, path: str, detail: bool = True, **kwargs):
+        return self._entries.get(path, [])
+
+    def info(self, path: str, **kwargs):
+        return {'name': path}
+
+    def _open(self, path: str, mode: str = 'rb', block_size=None, autocommit: bool = True,
+              cache_options=None, **kwargs):
+        return io.BytesIO(self._files[path])
+
+    def open(self, path: str, mode: str = 'rb', **kwargs):
+        return io.BytesIO(self._files[path])
 
 
 class TestSkills(object):
@@ -91,6 +117,61 @@ class TestSkills(object):
             assert fail_result['status'] == 'failed'
             assert fail_result['exit_code'] == 7
             assert 'bad' in fail_result['stdout']
+
+    def test_run_script_reports_missing_cwd_as_tool_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'cwd-skill', 'cwd-skill')
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            script = os.path.join(scripts_dir, 'ok.py')
+            with open(script, 'w', encoding='utf-8') as f:
+                f.write('print("ok")\n')
+
+            manager = SkillManager(dir=tmp)
+            result = manager.run_script('cwd-skill', 'scripts/ok.py', allow_unsafe=True, cwd='missing')
+
+            assert result['status'] == 'error'
+            assert result['error_type'] == 'FileNotFoundError'
+            assert result['rel_path'] == 'scripts/ok.py'
+            assert result['cwd'].endswith(os.path.join('cwd-skill', 'missing'))
+            assert 'cwd not found' in result['error']
+
+    def test_materialize_dir_preserves_paths_when_root_is_empty(self):
+        fs = _MemoryCloudFS(
+            {
+                '': [{'name': 'pkg', 'type': 'directory'}],
+                'pkg': [
+                    {'name': 'pkg/SKILL.md', 'type': 'file'},
+                    {'name': 'pkg/scripts', 'type': 'directory'},
+                ],
+                'pkg/scripts': [{'name': 'pkg/scripts/run.py', 'type': 'file'}],
+            },
+            {
+                'pkg/SKILL.md': b'# skill\n',
+                'pkg/scripts/run.py': b'print("ok")\n',
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = fs.materialize_dir('', tmp)
+
+            assert result['files'] == ['pkg/SKILL.md', 'pkg/scripts/run.py']
+            assert os.path.exists(os.path.join(tmp, 'pkg', 'SKILL.md'))
+            assert os.path.exists(os.path.join(tmp, 'pkg', 'scripts', 'run.py'))
+            assert not os.path.exists(os.path.join(tmp, 'SKILL.md'))
+            assert not os.path.exists(os.path.join(tmp, 'run.py'))
+
+    def test_materialize_dir_rejects_paths_that_escape_local_dir(self):
+        fs = _MemoryCloudFS(
+            {'root': [{'name': 'root/..', 'type': 'file'}]},
+            {'root/..': b'bad\n'},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                fs.materialize_dir('root', tmp)
+            except RuntimeError as exc:
+                assert 'invalid relative path' in str(exc)
+            else:
+                raise AssertionError('expected materialize_dir to reject parent path segments')
 
     def test_react_agent_with_skills(self):
         llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct')

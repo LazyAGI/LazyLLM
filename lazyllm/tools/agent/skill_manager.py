@@ -2,6 +2,7 @@ import os
 import posixpath
 import re
 import shlex
+import subprocess
 import tempfile
 import threading
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -462,7 +463,11 @@ class SkillManager(ModuleBase):
         if not self._extract_protocol(remote_script_path):
             return base, None
         temp_dir = tempfile.TemporaryDirectory(prefix='lazyllm-skill-')
-        materialized = self._fs.materialize_dir(base, temp_dir.name) or {}
+        try:
+            materialized = self._fs.materialize_dir(base, temp_dir.name) or {}
+        except Exception as exc:
+            temp_dir.cleanup()
+            raise RuntimeError(f'Failed to materialize remote skill directory {base!r}: {exc}') from exc
         return str(materialized.get('local_dir') or temp_dir.name), temp_dir
 
     @staticmethod
@@ -489,24 +494,62 @@ class SkillManager(ModuleBase):
             return {
                 'status': 'error',
                 'name': name,
+                'rel_path': normalized_rel_path,
+                'error_type': 'InvalidRelPath',
                 'error': 'run_script rel_path must be under scripts/.',
             }
         base = info['path']
         temp_dir = None
+        run_cwd = None
         try:
             base, temp_dir = self._materialize_script_base(base, normalized_rel_path)
             script_path = self._resolve_local_skill_child(base, normalized_rel_path)
             run_cwd = self._resolve_run_cwd(base, cwd)
             script_exists = os.path.exists(script_path) if temp_dir is not None else self._fs.exists(script_path)
             if not script_exists:
-                return {'status': 'missing', 'path': script_path}
+                return {'status': 'missing', 'name': name, 'path': script_path, 'rel_path': normalized_rel_path}
             cmd = self._build_script_command(script_path, args)
             result = _shell_tool(' '.join(shlex.quote(p) for p in cmd), cwd=run_cwd, allow_unsafe=allow_unsafe)
             if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
                 result['status'] = 'failed'
             return result
         except ValueError as exc:
-            return {'status': 'error', 'name': name, 'error': str(exc)}
+            return {
+                'status': 'error',
+                'name': name,
+                'rel_path': normalized_rel_path,
+                'cwd': cwd,
+                'error_type': exc.__class__.__name__,
+                'error': f'Invalid run_script path argument: {exc}',
+            }
+        except FileNotFoundError as exc:
+            return {
+                'status': 'error',
+                'name': name,
+                'rel_path': normalized_rel_path,
+                'cwd': run_cwd or cwd,
+                'error_type': exc.__class__.__name__,
+                'error': f'run_script filesystem path not found: {exc}',
+            }
+        except subprocess.TimeoutExpired as exc:
+            return {
+                'status': 'error',
+                'name': name,
+                'rel_path': normalized_rel_path,
+                'cwd': run_cwd or cwd,
+                'timeout': exc.timeout,
+                'error_type': exc.__class__.__name__,
+                'error': f'run_script timed out after {exc.timeout} seconds.',
+            }
+        except Exception as exc:
+            return {
+                'status': 'error',
+                'name': name,
+                'rel_path': normalized_rel_path,
+                'cwd': run_cwd or cwd,
+                'error_type': exc.__class__.__name__,
+                'error': f'run_script execution failed: {exc}',
+            }
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()
