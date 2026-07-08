@@ -377,7 +377,6 @@ def decode_request(input, default=None):
 class _GlobalConfig(object):
 
     class ConfigsDict(dict):
-        '''A dict that is keyed by id. Used for dynamic configs.'''
         pass
 
     def __init__(self):
