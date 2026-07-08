@@ -496,7 +496,10 @@ class SkillManager(ModuleBase):
             cmd = ['python' if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh', script_path]
             if args:
                 cmd.extend(args)
-            return _shell_tool(' '.join(shlex.quote(p) for p in cmd), cwd=run_cwd, allow_unsafe=allow_unsafe)
+            result = _shell_tool(' '.join(shlex.quote(p) for p in cmd), cwd=run_cwd, allow_unsafe=allow_unsafe)
+            if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
+                result['status'] = 'failed'
+            return result
         except ValueError as exc:
             return {'status': 'error', 'name': name, 'error': str(exc)}
         finally:

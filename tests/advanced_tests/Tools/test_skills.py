@@ -1,5 +1,6 @@
 import os
 import shutil
+import tempfile
 
 import lazyllm
 from lazyllm.tools import ReactAgent
@@ -67,6 +68,29 @@ class TestSkills(object):
     def test_parse_dirs_cloud_preserves_paths(self):
         parsed = SkillManager._parse_dirs('s3:/remote/skills')
         assert parsed == ['s3:/remote/skills']
+
+    def test_run_script_marks_nonzero_exit_failed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = _make_skill(tmp, 'script-skill', 'script-skill')
+            scripts_dir = os.path.join(skill_dir, 'scripts')
+            os.makedirs(scripts_dir, exist_ok=True)
+            ok_script = os.path.join(scripts_dir, 'ok.py')
+            fail_script = os.path.join(scripts_dir, 'fail.py')
+            with open(ok_script, 'w', encoding='utf-8') as f:
+                f.write('print("ok")\n')
+            with open(fail_script, 'w', encoding='utf-8') as f:
+                f.write('import sys\nprint("bad")\nsys.exit(7)\n')
+
+            manager = SkillManager(dir=tmp)
+
+            ok_result = manager.run_script('script-skill', 'scripts/ok.py', allow_unsafe=True)
+            fail_result = manager.run_script('script-skill', 'scripts/fail.py', allow_unsafe=True)
+
+            assert ok_result['status'] == 'ok'
+            assert ok_result['exit_code'] == 0
+            assert fail_result['status'] == 'failed'
+            assert fail_result['exit_code'] == 7
+            assert 'bad' in fail_result['stdout']
 
     def test_react_agent_with_skills(self):
         llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct')
