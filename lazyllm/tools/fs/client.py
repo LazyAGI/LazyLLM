@@ -146,7 +146,7 @@ class _FSRouter:
                 'materialized': False,
             }
         fs = self._get_or_create_fs(protocol, space_id, real_path)
-        return getattr(fs, 'materialize_dir')(real_path, local_dir, **kwargs)
+        return fs.materialize_dir(real_path, local_dir, **kwargs)
 
 
 FS = _FSRouter()

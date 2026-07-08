@@ -357,8 +357,8 @@ class SkillManager(ModuleBase):
                 'name': name,
                 'matches': sorted(matches),
                 'error': (
-                    f"Ambiguous skill name {name!r}; use the full skill key "
-                    f"such as {sorted(matches)[0]!r}."
+                    f'Ambiguous skill name {name!r}; use the full skill key '
+                    f'such as {sorted(matches)[0]!r}.'
                 ),
             }
         return matches[0], None
@@ -457,6 +457,23 @@ class SkillManager(ModuleBase):
         except Exception as e:
             return {'status': 'error', 'path': path, 'error': str(e)}
 
+    def _materialize_script_base(self, base: str, rel_path: str) -> Tuple[str, Optional[tempfile.TemporaryDirectory]]:
+        remote_script_path = self._fs_join(base, rel_path)
+        if not self._extract_protocol(remote_script_path):
+            return base, None
+        temp_dir = tempfile.TemporaryDirectory(prefix='lazyllm-skill-')
+        materialized = self._fs.materialize_dir(base, temp_dir.name) or {}
+        return str(materialized.get('local_dir') or temp_dir.name), temp_dir
+
+    @staticmethod
+    def _build_script_command(script_path: str, args: Optional[List[str]]) -> List[str]:
+        ext = os.path.splitext(script_path)[1].lower()
+        runner = 'python' if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh'
+        cmd = [runner, script_path]
+        if args:
+            cmd.extend(args)
+        return cmd
+
     def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
                    allow_unsafe: bool = False, cwd: Optional[str] = None) -> Dict[str, str]:
         info, error = self._get_visible_skill_info(name)
@@ -476,26 +493,14 @@ class SkillManager(ModuleBase):
             }
         base = info['path']
         temp_dir = None
-        remote_script_path = self._fs_join(base, normalized_rel_path)
-        if self._extract_protocol(remote_script_path):
-            try:
-                temp_dir = tempfile.TemporaryDirectory(prefix='lazyllm-skill-')
-                materialized = self._fs.materialize_dir(base, temp_dir.name) or {}
-                base = str(materialized.get('local_dir') or temp_dir.name)
-            except Exception as exc:
-                if temp_dir is not None:
-                    temp_dir.cleanup()
-                return {'status': 'error', 'name': name, 'error': str(exc)}
         try:
+            base, temp_dir = self._materialize_script_base(base, normalized_rel_path)
             script_path = self._resolve_local_skill_child(base, normalized_rel_path)
             run_cwd = self._resolve_run_cwd(base, cwd)
             script_exists = os.path.exists(script_path) if temp_dir is not None else self._fs.exists(script_path)
             if not script_exists:
                 return {'status': 'missing', 'path': script_path}
-            ext = os.path.splitext(script_path)[1].lower()
-            cmd = ['python' if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh', script_path]
-            if args:
-                cmd.extend(args)
+            cmd = self._build_script_command(script_path, args)
             result = _shell_tool(' '.join(shlex.quote(p) for p in cmd), cwd=run_cwd, allow_unsafe=allow_unsafe)
             if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
                 result['status'] = 'failed'
