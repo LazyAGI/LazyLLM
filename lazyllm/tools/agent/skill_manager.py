@@ -100,7 +100,7 @@ class SkillManager(ModuleBase):
                  max_skill_md_bytes: Optional[int] = None, fs=None):
         super().__init__(return_trace=False)
         self._fs = fs or fsspec.implementations.local.LocalFileSystem()
-        self._skills_dir = self._parse_dirs(dir or config['skills_dir'])
+        self._skills_dir = self._parse_dirs(dir or config['skills_dir'], fs=fs)
         self._validate_fs_dir_consistency(fs, self._skills_dir)
         self._skills_expected = self._parse_skills(skills)
         self._max_skill_md_bytes = max_skill_md_bytes or config['max_skill_md_bytes']
@@ -139,19 +139,36 @@ class SkillManager(ModuleBase):
                     )
 
     @staticmethod
-    def _parse_dirs(dir_value: Optional[str]) -> List[str]:
+    def _is_fs_router(fs) -> bool:
+        from lazyllm.tools.fs.client import _FSRouter
+        return isinstance(fs, _FSRouter)
+
+    @staticmethod
+    def _is_local_fs(fs) -> bool:
+        if fs is None or SkillManager._is_fs_router(fs):
+            return True
+        if isinstance(fs, fsspec.implementations.local.LocalFileSystem):
+            return True
+        protocol = getattr(fs, 'protocol', None)
+        protocol_key = getattr(fs, '_fs_protocol_key', None)
+        protocols = protocol if isinstance(protocol, (tuple, list, set)) else [protocol]
+        return protocol_key == 'file' or 'file' in protocols
+
+    @staticmethod
+    def _parse_dirs(dir_value: Optional[str], fs=None) -> List[str]:
         if not dir_value:
             return []
         dirs = [d.strip() for d in dir_value.split(',') if d.strip()] if isinstance(dir_value, str) else list(dir_value)
         seen = set()
         result = []
+        expand_bare_paths = SkillManager._is_local_fs(fs)
         for d in dirs:
             if not d:
                 continue
             # Keep cloud paths (protocol:/ prefix) as-is; expand local paths.
             # Use the same regex as _extract_protocol for consistency.
             is_cloud_path = bool(re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*(@[^:/]+)?:/', d))
-            path = d if is_cloud_path else os.path.abspath(os.path.expanduser(d))
+            path = d if is_cloud_path or not expand_bare_paths else os.path.abspath(os.path.expanduser(d))
             if path not in seen:
                 seen.add(path)
                 result.append(path)
@@ -174,8 +191,18 @@ class SkillManager(ModuleBase):
         with self._fs.open(path, 'r', encoding='utf-8', errors='replace') as f:
             return f.read()
 
-    def _fs_getsize(self, path: str) -> int:
-        return self._fs.info(path).get('size', 0)
+    def _fs_getsize(self, path: str) -> Optional[int]:
+        try:
+            size = self._fs.info(path).get('size')
+        except Exception:
+            return None
+        try:
+            return int(size) if size is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _content_exceeds_limit(self, content: str) -> bool:
+        return len(content.encode('utf-8')) > self._max_skill_md_bytes
 
     def _fs_listdir(self, path: str) -> List[Dict]:
         try:
@@ -298,11 +325,14 @@ class SkillManager(ModuleBase):
                 return
             skills_index: Dict[str, Dict] = {}
             for skill_dir, skill_md in self._iter_skill_files():
-                if self._fs_getsize(skill_md) > self._max_skill_md_bytes:
+                size = self._fs_getsize(skill_md)
+                if size is not None and size > self._max_skill_md_bytes:
                     continue
                 try:
                     content = self._fs_read(skill_md)
                 except Exception:
+                    continue
+                if size is None and self._content_exceeds_limit(content):
                     continue
                 meta = self._extract_yaml_meta(content)
                 if not self._is_meta_valid(meta):
@@ -432,13 +462,18 @@ class SkillManager(ModuleBase):
             return {'status': 'missing', 'name': name}
         skill_md = info['skill_md']
         size = self._fs_getsize(skill_md)
-        if size > self._max_skill_md_bytes and not allow_large:
+        if size is not None and size > self._max_skill_md_bytes and not allow_large:
             return {'status': 'too_large', 'name': name, 'path': skill_md,
                     'size': size, 'limit': self._max_skill_md_bytes}
         try:
             content = self._fs_read(skill_md)
         except Exception as e:
             return {'status': 'error', 'name': name, 'error': str(e)}
+        if size is None:
+            size = len(content.encode('utf-8'))
+        if size > self._max_skill_md_bytes and not allow_large:
+            return {'status': 'too_large', 'name': name, 'path': skill_md,
+                    'size': size, 'limit': self._max_skill_md_bytes}
         return {'status': 'ok', 'name': name, 'path': skill_md, 'content': content}
 
     def read_file(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
@@ -460,7 +495,7 @@ class SkillManager(ModuleBase):
 
     def _materialize_script_base(self, base: str, rel_path: str) -> Tuple[str, Optional[tempfile.TemporaryDirectory]]:
         remote_script_path = self._fs_join(base, rel_path)
-        if not self._extract_protocol(remote_script_path):
+        if self._is_local_fs(self._fs) and not self._extract_protocol(remote_script_path):
             return base, None
         temp_dir = tempfile.TemporaryDirectory(prefix='lazyllm-skill-')
         try:

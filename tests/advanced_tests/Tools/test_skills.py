@@ -28,10 +28,13 @@ def _make_skill(base_dir: str, folder_name: str, meta_name: str) -> str:
 
 class _MemoryCloudFS(LazyLLMFSBase):
     protocol = 'memory'
+    _fs_protocol_key = 'memory'
 
-    def __init__(self, entries, files):
+    def __init__(self, entries, files, info_error=False, include_size=True):
         self._entries = entries
         self._files = files
+        self._info_error = info_error
+        self._include_size = include_size
 
     def _setup_auth(self):
         pass
@@ -40,14 +43,26 @@ class _MemoryCloudFS(LazyLLMFSBase):
         return self._entries.get(path, [])
 
     def info(self, path: str, **kwargs):
-        return {'name': path}
+        if self._info_error:
+            raise RuntimeError('info unavailable')
+        info = {'name': path}
+        if self._include_size and path in self._files:
+            info['size'] = len(self._files[path])
+        return info
 
     def _open(self, path: str, mode: str = 'rb', block_size=None, autocommit: bool = True,
               cache_options=None, **kwargs):
-        return io.BytesIO(self._files[path])
+        return self.open(path, mode=mode, **kwargs)
 
     def open(self, path: str, mode: str = 'rb', **kwargs):
-        return io.BytesIO(self._files[path])
+        body = io.BytesIO(self._files[path])
+        if 'b' in mode:
+            return body
+        return io.TextIOWrapper(body, encoding=kwargs.get('encoding') or 'utf-8',
+                                errors=kwargs.get('errors') or 'strict')
+
+    def exists(self, path: str, **kwargs):
+        return path in self._files or path in self._entries
 
 
 class TestSkills(object):
@@ -94,6 +109,96 @@ class TestSkills(object):
     def test_parse_dirs_cloud_preserves_paths(self):
         parsed = SkillManager._parse_dirs('s3:/remote/skills')
         assert parsed == ['s3:/remote/skills']
+
+    def test_parse_dirs_non_local_fs_preserves_bare_paths(self):
+        fs = _MemoryCloudFS({}, {})
+
+        parsed = SkillManager._parse_dirs('skills', fs=fs)
+        manager = SkillManager(dir='skills', fs=fs)
+
+        assert parsed == ['skills']
+        assert manager._skills_dir == ['skills']
+
+    def test_skill_manager_uses_content_when_info_fails(self):
+        fs = _MemoryCloudFS(
+            {
+                'skills': [{'name': 'skills/demo', 'type': 'directory'}],
+                'skills/demo': [{'name': 'skills/demo/SKILL.md', 'type': 'file'}],
+            },
+            {
+                'skills/demo/SKILL.md': (
+                    b'---\n'
+                    b'name: demo\n'
+                    b'description: demo skill for tests\n'
+                    b'---\n'
+                    b'# Demo\n'
+                ),
+            },
+            info_error=True,
+        )
+        manager = SkillManager(dir='skills', fs=fs)
+
+        listing = manager.list_skill()
+        skill = manager.get_skill('demo')
+
+        assert 'demo skill for tests' in listing
+        assert skill['status'] == 'ok'
+        assert '# Demo' in skill['content']
+
+    def test_skill_manager_enforces_size_limit_when_info_has_no_size(self):
+        fs = _MemoryCloudFS(
+            {
+                'skills': [{'name': 'skills/large', 'type': 'directory'}],
+                'skills/large': [{'name': 'skills/large/SKILL.md', 'type': 'file'}],
+            },
+            {
+                'skills/large/SKILL.md': (
+                    b'---\n'
+                    b'name: large\n'
+                    b'description: large skill for tests\n'
+                    b'---\n'
+                    b'# Large\n'
+                    b'x' * 128
+                ),
+            },
+            include_size=False,
+        )
+        manager = SkillManager(dir='skills', fs=fs, max_skill_md_bytes=64)
+
+        listing = manager.list_skill()
+
+        assert 'large skill for tests' not in listing
+
+    def test_run_script_materializes_non_local_fs_with_bare_dir(self):
+        fs = _MemoryCloudFS(
+            {
+                'skills': [{'name': 'skills/script-skill', 'type': 'directory'}],
+                'skills/script-skill': [
+                    {'name': 'skills/script-skill/SKILL.md', 'type': 'file'},
+                    {'name': 'skills/script-skill/scripts', 'type': 'directory'},
+                ],
+                'skills/script-skill/scripts': [
+                    {'name': 'skills/script-skill/scripts/ok.py', 'type': 'file'},
+                ],
+            },
+            {
+                'skills/script-skill/SKILL.md': (
+                    b'---\n'
+                    b'name: script-skill\n'
+                    b'description: script skill for tests\n'
+                    b'---\n'
+                    b'# Script Skill\n'
+                ),
+                'skills/script-skill/scripts/ok.py': b'print("ok")\n',
+            },
+        )
+        manager = SkillManager(dir='skills', fs=fs)
+
+        result = manager.run_script('script-skill', 'scripts/ok.py', allow_unsafe=True)
+
+        assert result['status'] == 'ok'
+        assert result['exit_code'] == 0
+        assert result['stdout'] == 'ok\n'
 
     def test_run_script_marks_nonzero_exit_failed(self):
         with tempfile.TemporaryDirectory() as tmp:
