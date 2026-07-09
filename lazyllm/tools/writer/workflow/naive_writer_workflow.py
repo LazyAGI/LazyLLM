@@ -163,8 +163,8 @@ class NaiveWriterWorkflow:
         )
         patch_review = self.quality.validate_patch_set(
             patch_set=self._artifact_ref(patch_set, 'patch_set'),
-            modify_plan=self._artifact_ref(modify_plan, 'modify_plan'),
             context=context_ref,
+            task=task,
         )
         patch_result = self.revision.apply_patch(
             doc_ir=doc_ir,

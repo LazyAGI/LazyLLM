@@ -5,6 +5,7 @@ from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.quality import AuditResult, ReviewReport
 from ..data_models.revision import PatchSet
+from ..data_models.task import WritingTask
 from ..data_models.writing import DraftDocument, SectionInstruction, SectionInstructionList
 from ..prompts.quality import (
     VALIDATE_DRAFT_DOCUMENT_PROMPT,
@@ -155,40 +156,31 @@ class WriterQualityTools(WriterToolBase):
     def validate_patch_set(
         self,
         patch_set: Any,
-        modify_plan: Any,
         context: Any,
+        task: Any,
     ) -> dict:
         patch = self._unified_model(patch_set, PatchSet)
         writing_context = self._unified_model(context, WritingContext)
+        writing_task = self._unified_model(task, WritingTask)
+        task_query = writing_task.query
 
-        if not patch.hunks:
-            audit_result = AuditResult(is_passed=True, score=100,
-                                       summary='No hunks to validate.', issues=[])
-        else:
-            hunks_json = [
-                {
-                    'hunk_id': h.hunk_id,
-                    'target_block_id': h.target_block_id,
-                    'modify_type': h.modify_type,
-                    'old_text': h.old_text,
-                    'new_text': h.new_text,
-                    'instruction': h.meta.get('instruction', ''),
-                }
-                for h in patch.hunks
-            ]
+        hunks_json = to_prompt_json(
+            [h.model_dump(exclude={'anchor', 'meta'}) for h in patch.hunks]
+        )
 
-            context_json = to_prompt_json({
-                'facts': [{'key': f.key, 'value': f.value}
-                          for f in writing_context.facts if f.locked],
-                'style_profile': writing_context.style_profile.model_dump()
-                    if writing_context.style_profile else None,
-            })
+        context_json = to_prompt_json({
+            'facts': [f.model_dump(exclude={'fact_id', 'source', 'applies_to_block_ids', 'locked'})
+                      for f in writing_context.facts if f.locked],
+            'style_profile': writing_context.style_profile.model_dump()
+                if writing_context.style_profile else None,
+        })
 
-            prompt = VALIDATE_PATCH_SET_PROMPT.format(
-                hunks_json=to_prompt_json(hunks_json),
-                context_json=context_json,
-            )
-            audit_result = self._call_llm_structured(prompt, AuditResult)
+        prompt = VALIDATE_PATCH_SET_PROMPT.format(
+            task_query=task_query,
+            hunks_json=hunks_json,
+            context_json=context_json,
+        )
+        audit_result = self._call_llm_structured(prompt, AuditResult)
 
         high_count = sum(1 for i in audit_result.issues if i.severity == 'high')
         medium_count = sum(1 for i in audit_result.issues if i.severity == 'medium')

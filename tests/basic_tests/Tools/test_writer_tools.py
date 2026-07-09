@@ -20,8 +20,6 @@ from lazyllm.tools.writer.data_models import (
 )
 from lazyllm.tools.writer.data_models.quality import AuditIssue, AuditResult, ReviewReport
 from lazyllm.tools.writer.data_models.revision import (
-    ModifyInstruction,
-    ModifyPlan,
     PatchHunk,
     PatchSet,
 )
@@ -681,32 +679,16 @@ def test_validate_draft_document_happy_path():
         assert report.meta['draft_section_count'] == 1
 
 
-def _make_modify_plan(target_block_ids=None, modify_type='rewrite',
-                      instruction_text='Rewrite the text.'):
-    if target_block_ids is None:
-        target_block_ids = ['blk-pro-01']
-    return ModifyPlan(
-        plan_id='plan-test-001',
-        scope='document',
-        target_block_ids=target_block_ids,
-        instructions=[
-            ModifyInstruction(
-                instruction_id=f'mi-{i:03d}',
-                target_block_id=bid,
-                modify_type=modify_type,
-                instruction=instruction_text,
-            )
-            for i, bid in enumerate(target_block_ids)
-        ],
-    )
-
-
 def _make_patch_set(hunks=None):
     return PatchSet(
         patch_id='patch-test-001',
         target_doc_id='doc-test-001',
         hunks=hunks or [],
     )
+
+
+def _make_task(query='Revise the document.'):
+    return WritingTask(task_id='test-task', query=query, task_type='revise')
 
 
 def _make_failing_audit():
@@ -730,12 +712,12 @@ def test_validate_patch_set_empty():
         with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()) as mock_llm:
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(),
-                modify_plan=_make_modify_plan(),
                 context=_make_context(),
+                task=_make_task(),
             )
 
         audit = load_artifact_json(result['artifact_path'], AuditResult)
-        assert mock_llm.call_count == 0
+        assert mock_llm.call_count == 1
         assert audit.is_passed is True
         assert audit.score == 100
         assert result['metadata']['counts']['total_hunks'] == 0
@@ -753,8 +735,8 @@ def test_validate_patch_set_single_hunk():
                               old_text='万古之前...', new_text='太古之初...',
                               modify_type='rewrite'),
                 ]),
-                modify_plan=_make_modify_plan(),
                 context=_make_context(),
+                task=_make_task(),
             )
 
         audit = load_artifact_json(result['artifact_path'], AuditResult)
@@ -778,8 +760,8 @@ def test_validate_patch_set_multi_hunk():
                               old_text='second...', new_text='rewrite...',
                               modify_type='rewrite'),
                 ]),
-                modify_plan=_make_modify_plan(target_block_ids=['blk-pro-01', 'blk-pro-02']),
                 context=_make_context(),
+                task=_make_task(),
             )
 
         audit = load_artifact_json(result['artifact_path'], AuditResult)
@@ -799,8 +781,8 @@ def test_validate_patch_set_failing():
                               old_text='万古之前...', new_text='星辰大帝是九州最强者。',
                               modify_type='rewrite'),
                 ]),
-                modify_plan=_make_modify_plan(),
                 context=_make_context(),
+                task=_make_task(),
             )
 
         audit = load_artifact_json(result['artifact_path'], AuditResult)
@@ -822,13 +804,12 @@ def test_validate_patch_set_unmatched_instruction():
                               old_text='xxx', new_text='yyy',
                               modify_type='rewrite'),
                 ]),
-                modify_plan=_make_modify_plan(),  # plan targets blk-pro-01, not unknown-id
                 context=_make_context(),
+                task=_make_task(),
             )
 
         audit = load_artifact_json(result['artifact_path'], AuditResult)
         assert mock_llm.call_count == 1
-        # modify_type/instruction fall back to 'unknown'/''
         assert audit.is_passed is True
 
 
