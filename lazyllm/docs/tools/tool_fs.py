@@ -1627,6 +1627,80 @@ Args:
     new_text (str): New plain text content.
 ''')
 
+_add_fs_chinese('FeishuWikiFS.search', '''\
+在飞书知识库中按关键词搜索节点，使用飞书官方 wiki/v2/nodes/search 接口。
+搜索范围包括节点标题和正文内容，返回当前用户可见的匹配 wiki 节点。
+
+这是在线搜索 —— 直接查询飞书线上知识库，不是本地已入库的文档。
+
+Args:
+    query (str or List[str]): 一个搜索词、以空格分隔的多个词，或搜索词列表。
+    space_id (str, optional): 要搜索的知识空间 ID；为空时搜索当前用户可见的全部 Wiki。
+    node_id (str, optional): 将范围限定到指定节点及其子节点；使用时必须同时提供 space_id。
+    page_size (int): 最大返回条数，默认 20，最大 50。
+
+Returns:
+    List[Dict[str, Any]]: 匹配节点列表。每项包含 title、node_token、obj_type、url、space_id。
+''')
+_add_fs_english('FeishuWikiFS.search', '''\
+Search wiki nodes by keyword using Feishu's official wiki/v2/nodes/search API.
+Matches node titles and content visible to the current user.
+
+This searches the LIVE online Feishu wiki — not locally indexed documents.
+
+Args:
+    query (str or List[str]): One term, multiple space-separated terms, or a list of terms.
+    space_id (str, optional): Wiki space ID to search; when empty, searches all Wiki spaces visible to the user.
+    node_id (str, optional): Limit the search to a node and its descendants; requires space_id.
+    page_size (int): Maximum results, default 20, maximum 50.
+
+Returns:
+    List[Dict[str, Any]]: Matching nodes, each with title, node_token, obj_type, url, and space_id.
+''')
+
+_add_fs_chinese('FeishuWikiFS.find', '''\
+按文件名/标题正则匹配查找知识库节点。只匹配节点标题（文件名），不搜索正文内容。
+
+通过递归遍历 wiki 树并逐标题做正则筛选实现；默认大小写不敏感。
+
+常用正则示例：
+- "report" 匹配标题含 report 的节点
+- "^2024" 匹配以 2024 开头的标题
+- "(设计|方案)" 匹配含"设计"或"方案"的标题
+
+Args:
+    pattern (str): 正则表达式模式，大小写不敏感。
+    space_id (str, optional): 要搜索的知识空间 ID；为空时遍历飞书“获取知识空间列表”接口返回的空间。
+        该官方接口不返回“我的文档库”，查找个人库时应显式传入 space_id。
+    max_results (int): 最大返回条数，默认 50，最大 200。
+
+Returns:
+    List[Dict[str, Any]]: 匹配节点列表。每项包含 title、node_token、obj_type、url、
+    space_id、has_child。
+''')
+_add_fs_english('FeishuWikiFS.find', '''\
+Find wiki nodes by filename/title matching a regex pattern. Matches only node titles (names),
+not document content.
+
+Implemented by recursively listing the wiki tree and filtering by title regex; case-insensitive
+by default.
+
+Common regex examples:
+- "report" matches titles containing "report"
+- "^2024" matches titles starting with "2024"
+- "(design|spec)" matches titles with either "design" or "spec"
+
+Args:
+    pattern (str): Regular expression pattern, case-insensitive.
+    space_id (str, optional): Wiki space ID to search. When empty, walks spaces returned by Feishu's list-spaces API.
+        That official API excludes My Library, so pass space_id explicitly for a personal Wiki.
+    max_results (int): Maximum results, default 50, capped at 200.
+
+Returns:
+    List[Dict[str, Any]]: Matching nodes, each with title, node_token, obj_type, url,
+    space_id, and has_child.
+''')
+
 # ConfluenceFS
 _add_fs_chinese('ConfluenceFS', '''\
 Confluence 文件系统：基于 Atlassian Confluence REST API，以 Space/Page 为目录与文件。目录监听用 CloudFsWatchdog；支持 webhook。
@@ -1752,6 +1826,8 @@ Args:
     object_type (str): 可选对象过滤，支持 page、database。
     limit (int): 最大返回条数，默认 20，最大 100。
     sort_direction (str): 按 last_edited_time 排序方向，ascending 或 descending。
+    scope (str): 可选 Notion database 或 data_source 范围，支持 notion:/~database/<id>、notion:/~data_source/<id>、database:<id>、data_source:<id>。
+    title_pattern (str): 可选标题/文件名正则过滤。
 
 Returns:
     List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path 等字段。
@@ -1764,9 +1840,54 @@ Args:
     object_type (str): Optional object filter: page or database.
     limit (int): Maximum number of results, default 20, capped at 100.
     sort_direction (str): Sort direction by last_edited_time: ascending or descending.
+    scope (str): Optional Notion database or data_source scope, such as notion:/~database/<id>, notion:/~data_source/<id>, database:<id>, or data_source:<id>.
+    title_pattern (str): Optional title/filename regex filter.
 
 Returns:
     List[Dict[str, Any]]: Search result entries with title, id, notion_path, and related metadata.
+''')
+
+_add_fs_chinese('NotionFS.find', '''\
+按页面/数据库标题正则匹配查找 Notion 对象。只匹配标题（名称），不搜索页面正文内容。
+
+使用 Notion 官方 /v1/search 接口做宽泛查询后，在客户端按标题正则筛选。默认大小写不敏感。
+
+常用正则示例：
+- "PRD" 匹配标题含 PRD 的页面
+- "^Q[1-4]" 匹配以 Q1-Q4 开头的标题
+- "(OKR|KPI)" 匹配含 OKR 或 KPI 的标题
+
+Args:
+    pattern (str): 正则表达式模式，大小写不敏感。
+    object_type (str, optional): 对象类型过滤：''（全部）、page、database。
+    limit (int): 最大返回条数，默认 50，最大 100。
+    scope (str): 可选 Notion database 或 data_source 范围，支持 notion:/~database/<id>、notion:/~data_source/<id>、database:<id>、data_source:<id>。
+
+Returns:
+    List[Dict[str, Any]]: 匹配的条目列表。每项包含 title/name、id、type（file/directory）、
+    notion_path 等字段。
+''')
+_add_fs_english('NotionFS.find', '''\
+Find Notion pages or databases by title matching a regex pattern. Matches only titles (names),
+not page body content.
+
+Uses Notion's official /v1/search API for broad lookup, then filters by title regex client-side.
+Case-insensitive by default.
+
+Common regex examples:
+- "PRD" matches pages with "PRD" in the title
+- "^Q[1-4]" matches titles starting with Q1 through Q4
+- "(OKR|KPI)" matches titles containing either OKR or KPI
+
+Args:
+    pattern (str): Regular expression pattern, case-insensitive.
+    object_type (str, optional): Object type filter: '' (all), page, or database.
+    limit (int): Maximum results, default 50, capped at 100.
+    scope (str): Optional Notion database or data_source scope, such as notion:/~database/<id>, notion:/~data_source/<id>, database:<id>, or data_source:<id>.
+
+Returns:
+    List[Dict[str, Any]]: Matching entries, each with title/name, id, type (file/directory),
+    and notion_path.
 ''')
 
 _add_fs_chinese('NotionFS.replace_page_markdown', '''\
