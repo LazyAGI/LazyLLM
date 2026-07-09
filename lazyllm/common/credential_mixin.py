@@ -195,6 +195,7 @@ class CredentialMixin:
                 self._save_persisted_refresh_token(new_refresh)
 
     def _acquire_credential(self, cred: Credential) -> Tuple[str, Optional[float], str]:
+        '''Acquire a fresh access token. Subclasses implement the kind-specific paths.'''
         if cred.kind == 'app_credentials':
             return self._do_acquire_without_refresh()
         rt = cred.refresh_token

@@ -49,6 +49,7 @@ sys.excepthook = _lazyllm_excepthook
 
 
 class HandledException(Exception):
+    ''' Builtin class. Exception that is intended to be handled exceptions. '''
     pass
 
 def _change_exception_type(e, new_type):
