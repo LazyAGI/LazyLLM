@@ -4,8 +4,14 @@ from typing import Any, Optional
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.quality import AuditResult, ReviewReport
+from ..data_models.revision import PatchSet
+from ..data_models.task import WritingTask
 from ..data_models.writing import DraftDocument, SectionInstruction, SectionInstructionList
-from ..prompts.quality import VALIDATE_DRAFT_DOCUMENT_PROMPT, VALIDATE_SECTION_PROMPT
+from ..prompts.quality import (
+    VALIDATE_DRAFT_DOCUMENT_PROMPT,
+    VALIDATE_PATCH_SET_PROMPT,
+    VALIDATE_SECTION_PROMPT,
+)
 from ..utils import to_prompt_json
 
 
@@ -13,6 +19,7 @@ class WriterQualityTools(WriterToolBase):
     __public_apis__ = [
         'validate_section',
         'validate_draft_document',
+        'validate_patch_set',
     ]
 
     def validate_section(
@@ -145,6 +152,60 @@ class WriterQualityTools(WriterToolBase):
             },
         )
         return result.model_dump()
+
+    def validate_patch_set(
+        self,
+        patch_set: Any,
+        context: Any,
+        task: Any,
+    ) -> dict:
+        patch = self._unified_model(patch_set, PatchSet)
+        writing_context = self._unified_model(context, WritingContext)
+        writing_task = self._unified_model(task, WritingTask)
+        task_query = writing_task.query
+
+        hunks_json = to_prompt_json(
+            [h.model_dump(exclude={'anchor', 'meta'}) for h in patch.hunks]
+        )
+
+        context_json = to_prompt_json({
+            'facts': [f.model_dump(exclude={'fact_id', 'source', 'applies_to_block_ids', 'locked'})
+                      for f in writing_context.facts if f.locked],
+            'style_profile': writing_context.style_profile.model_dump()
+                if writing_context.style_profile else None,
+        })
+
+        prompt = VALIDATE_PATCH_SET_PROMPT.format(
+            task_query=task_query,
+            hunks_json=hunks_json,
+            context_json=context_json,
+        )
+        audit_result = self._call_llm_structured(prompt, AuditResult)
+
+        high_count = sum(1 for i in audit_result.issues if i.severity == 'high')
+        medium_count = sum(1 for i in audit_result.issues if i.severity == 'medium')
+        low_count = sum(1 for i in audit_result.issues if i.severity == 'low')
+
+        return self._save_artifacts(
+            {'patch_set_review': audit_result},
+            step_name='validate_patch_set',
+            primary_key='patch_set_review',
+            summary=f'PatchSet validation: {"PASSED" if audit_result.is_passed else "FAILED"} '
+                    f'(score: {audit_result.score}/100)',
+            counts={
+                'total_hunks': len(patch.hunks),
+                'total_issues': len(audit_result.issues),
+                'high_severity': high_count,
+                'medium_severity': medium_count,
+                'low_severity': low_count,
+            },
+            artifact_meta={
+                'patch_id': patch.patch_id,
+                'target_doc_id': patch.target_doc_id,
+                'is_passed': audit_result.is_passed,
+                'score': audit_result.score,
+            },
+        ).model_dump()
 
     def _match_instruction(
         self,

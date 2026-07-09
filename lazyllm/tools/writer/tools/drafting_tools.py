@@ -65,7 +65,7 @@ class WriterDraftingTools(WriterToolBase):
                 'outline_title': instruction.meta.get('outline_title'),
             },
             artifact_filenames={
-                'draft_section': f'draft_section_{draft_section.section_id}.json',
+                'draft_section': f'draft_section/{draft_section.section_id}.json',
             },
         )
         return result.model_dump()
