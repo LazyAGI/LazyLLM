@@ -11,7 +11,7 @@ from lazyllm.tools.fs.supplier.notion import (
     _normalize_notion_id,
     _parse_notion_browser_url,
 )
-from lazyllm.tools.fs.base import LinkDocumentFSBase
+from lazyllm.tools.fs.base import LinkDocumentFSBase, clean_document_ref
 from lazyllm.tools.agent.toolsManager import ToolManager
 from tests.basic_tests.Tools.fs_test_utils import load_fs_docs_only
 
@@ -72,9 +72,20 @@ class TestParseNotionBrowserUrl(unittest.TestCase):
         self.assertIsNone(_parse_notion_browser_url('not-a-url'))
         self.assertIsNone(_parse_notion_browser_url(''))
 
+    def test_markdown_wrapped_url_is_parsed(self):
+        url = f'https://www.notion.so/Project-Plan-{PAGE_RAW}'
+        for wrapped in (f'**{url}**', f'`{url}`', f'<{url}>', f'[Project Plan]({url})'):
+            with self.subTest(wrapped=wrapped):
+                self.assertEqual(_parse_notion_browser_url(wrapped), {'kind': 'object', 'id': PAGE_ID})
+
     def test_normalize_invalid_id_raises(self):
         with self.assertRaises(ValueError):
             _normalize_notion_id('not-a-notion-id')
+
+    def test_document_ref_cleanup_strips_display_markup(self):
+        url = f'https://www.notion.so/Project-Plan-{PAGE_RAW}'
+        self.assertEqual(clean_document_ref(f' **{url}**。 '), url)
+        self.assertEqual(clean_document_ref(f'[Project Plan]({url})'), url)
 
 
 class TestFSRouterParseNotion(unittest.TestCase):
@@ -109,6 +120,12 @@ class TestFSRouterParseNotion(unittest.TestCase):
         self.assertEqual(space_id, 'dynamic')
         self.assertEqual(real_path, f'/~page/{PAGE_RAW}')
 
+    def test_markdown_wrapped_notion_url_gets_dynamic_space(self):
+        protocol, space_id, real_path = self.router._parse(f'**https://www.notion.so/Project-Plan-{PAGE_RAW}**')
+        self.assertEqual(protocol, 'notion')
+        self.assertEqual(space_id, 'dynamic')
+        self.assertTrue(real_path.startswith('/~link/'))
+
     def test_notion_data_source_path_gets_dynamic_space(self):
         protocol, space_id, real_path = self.router._parse(f'notion:/~data_source/{DB_RAW}')
         self.assertEqual(protocol, 'notion')
@@ -140,6 +157,35 @@ class TestNotionDynamicAuth(unittest.TestCase):
         with dynamic_fs_config({'notion': 'secret-token'}):
             headers = fs.inject_auth_header()
         self.assertEqual(headers['Authorization'], 'Bearer secret-token')
+
+
+class TestNotionReadReferenceNormalization(unittest.TestCase):
+
+    def _make_fs(self):
+        fs = NotionFS(token='secret-token', skip_instance_cache=True)
+        fs._retrieve_page = lambda page_id: {
+            'id': page_id,
+            'object': 'page',
+            'properties': {
+                'Name': {'type': 'title', 'title': [{'plain_text': 'Project Plan'}]},
+            },
+        }
+        fs._retrieve_page_markdown = lambda page_id: 'Body from markdown'
+        fs._list_document_references = lambda path: []
+        return fs
+
+    def test_read_with_references_accepts_common_page_reference_forms(self):
+        url = f'https://www.notion.so/Project-Plan-{PAGE_RAW}'
+        refs = [
+            f'notion:/~page/{PAGE_RAW}',
+            PAGE_RAW,
+            url,
+            f'**{url}**',
+            f'`notion:/~page/{PAGE_RAW}`',
+        ]
+        for ref in refs:
+            with self.subTest(ref=ref):
+                self.assertIn('Body from markdown', self._make_fs().read_with_references(ref))
 
 
 class TestNotionToolRegistration(unittest.TestCase):
