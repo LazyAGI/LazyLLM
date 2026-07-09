@@ -479,6 +479,30 @@ class SkillManager(ModuleBase):
             cmd.extend(args)
         return cmd
 
+    def _run_script_exception(self, name: str, rel_path: str, cwd: Optional[str],
+                              run_cwd: Optional[str], exc: Exception) -> Dict[str, str]:
+        error_cwd = run_cwd or cwd
+        extra = {}
+        if isinstance(exc, ValueError):
+            error_cwd = cwd
+            message = f'Invalid run_script path argument: {exc}'
+        elif isinstance(exc, FileNotFoundError):
+            message = f'run_script filesystem path not found: {exc}'
+        elif isinstance(exc, subprocess.TimeoutExpired):
+            message = f'run_script timed out after {exc.timeout} seconds.'
+            extra['timeout'] = exc.timeout
+        else:
+            message = f'run_script execution failed: {exc}'
+        return {
+            'status': 'error',
+            'name': name,
+            'rel_path': rel_path,
+            'cwd': error_cwd,
+            'error_type': exc.__class__.__name__,
+            'error': message,
+            **extra,
+        }
+
     def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
                    allow_unsafe: bool = False, cwd: Optional[str] = None) -> Dict[str, str]:
         info, error = self._get_visible_skill_info(name)
@@ -513,43 +537,8 @@ class SkillManager(ModuleBase):
             if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
                 result['status'] = 'failed'
             return result
-        except ValueError as exc:
-            return {
-                'status': 'error',
-                'name': name,
-                'rel_path': normalized_rel_path,
-                'cwd': cwd,
-                'error_type': exc.__class__.__name__,
-                'error': f'Invalid run_script path argument: {exc}',
-            }
-        except FileNotFoundError as exc:
-            return {
-                'status': 'error',
-                'name': name,
-                'rel_path': normalized_rel_path,
-                'cwd': run_cwd or cwd,
-                'error_type': exc.__class__.__name__,
-                'error': f'run_script filesystem path not found: {exc}',
-            }
-        except subprocess.TimeoutExpired as exc:
-            return {
-                'status': 'error',
-                'name': name,
-                'rel_path': normalized_rel_path,
-                'cwd': run_cwd or cwd,
-                'timeout': exc.timeout,
-                'error_type': exc.__class__.__name__,
-                'error': f'run_script timed out after {exc.timeout} seconds.',
-            }
         except Exception as exc:
-            return {
-                'status': 'error',
-                'name': name,
-                'rel_path': normalized_rel_path,
-                'cwd': run_cwd or cwd,
-                'error_type': exc.__class__.__name__,
-                'error': f'run_script execution failed: {exc}',
-            }
+            return self._run_script_exception(name, normalized_rel_path, cwd, run_cwd, exc)
         finally:
             if temp_dir is not None:
                 temp_dir.cleanup()
