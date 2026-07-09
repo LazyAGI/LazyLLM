@@ -28,6 +28,23 @@ from ..data_loaders import DirectoryReader
 WORKER_ERROR_RETRY_INTERVAL = 5.0
 
 
+def _root_cause(exc: BaseException) -> BaseException:
+    current = exc
+    seen = {id(current)}
+    while True:
+        next_exc = current.__cause__ or current.__context__
+        if next_exc is None or id(next_exc) in seen:
+            return current
+        seen.add(id(next_exc))
+        current = next_exc
+
+
+def _root_error_info(exc: BaseException) -> tuple[str, str]:
+    root = _root_cause(exc)
+    message = str(root).strip() or repr(root)
+    return type(root).__name__, message
+
+
 class DocumentProcessorWorker(ModuleBase):
 
     class _Impl():
@@ -831,12 +848,13 @@ class DocumentProcessorWorker(ModuleBase):
             except Exception as e:
                 LOG.error(f'{self._log_prefix(task_id)} Failed to run task: {e}, {traceback.format_exc()}')
                 if task_id and task_type:
+                    error_code, error_msg = _root_error_info(e)
                     self._enqueue_finished_task(
                         task_id=task_id,
                         task_type=task_type,
                         task_status=TaskStatus.FAILED,
-                        error_code=type(e).__name__,
-                        error_msg=str(e),
+                        error_code=error_code,
+                        error_msg=error_msg,
                         callback_url=callback_url,
                         task_context_json=task_context_json,
                     )
@@ -930,12 +948,13 @@ class DocumentProcessorWorker(ModuleBase):
                                   f'{traceback.format_exc()}')
                         if task_id and task_type:
                             try:
+                                error_code, error_msg = _root_error_info(e)
                                 self._enqueue_finished_task(
                                     task_id=task_id,
                                     task_type=task_type,
                                     task_status=TaskStatus.FAILED,
-                                    error_code=type(e).__name__,
-                                    error_msg=str(e),
+                                    error_code=error_code,
+                                    error_msg=error_msg,
                                     callback_url=callback_url,
                                     task_context_json=task_context_json,
                                 )
