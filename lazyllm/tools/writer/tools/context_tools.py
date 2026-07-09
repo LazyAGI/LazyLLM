@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, List, Optional
 
 from lazyllm import LOG
@@ -149,7 +149,7 @@ class WriterContextTools(WriterToolBase):
         writing_context.meta.setdefault('context_updates', []).append({
             'summary': summary,
             'content_kind': kind,
-            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'timestamp': datetime.now().astimezone().isoformat(),
         })
 
     def _resolve_artifact_kind(self, artifact: Any) -> Optional[str]:
