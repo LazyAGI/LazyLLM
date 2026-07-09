@@ -367,11 +367,9 @@ class WriterRevisionTools(WriterToolBase):
                     **{field: meta.get(field) for field in BLOCK_META_FIELDS},
                     content=block.text,
                 ))
-        sections = (
-            [DraftSection(blocks=root.blocks)] + root.sub_sections
-            if root.blocks
-            else root.sub_sections
-        )
+        sections = list(root.sub_sections)
+        if root.blocks:
+            sections.insert(0, DraftSection(blocks=root.blocks))
         revised_draft = DraftDocument(
             draft_id=source_doc.doc_id,
             title=source_doc.title,
