@@ -28,7 +28,7 @@ def clean_document_ref(value: str) -> str:
         match = _MARKDOWN_LINK_RE.match(ref)
         if match:
             ref = match.group(1).strip()
-        for left, right in (('**', '**'), ('__', '__'), ('`', '`'), ('"', '"'), ("'", "'"), ('<', '>')):
+        for left, right in (('**', '**'), ('`', '`'), ('"', '"'), ("'", "'"), ('<', '>')):
             if ref.startswith(left) and ref.endswith(right) and len(ref) >= len(left) + len(right):
                 ref = ref[len(left):-len(right)].strip()
         if ref == original:

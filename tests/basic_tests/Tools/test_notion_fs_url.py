@@ -86,6 +86,7 @@ class TestParseNotionBrowserUrl(unittest.TestCase):
         url = f'https://www.notion.so/Project-Plan-{PAGE_RAW}'
         self.assertEqual(clean_document_ref(f' **{url}**。 '), url)
         self.assertEqual(clean_document_ref(f'[Project Plan]({url})'), url)
+        self.assertEqual(clean_document_ref('__pycache__'), '__pycache__')
 
 
 class TestFSRouterParseNotion(unittest.TestCase):
