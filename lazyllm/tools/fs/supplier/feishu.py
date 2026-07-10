@@ -1,4 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+import copy
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -10,8 +11,6 @@ import requests
 from lazyllm import LOG, config
 from lazyllm import globals as lazyllm_globals
 from lazyllm.common import Credential
-from lazyllm.thirdparty import mistune
-
 from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
 
 config.add('feishu_app_id', str, None, 'FEISHU_APP_ID', description='Feishu App ID for tenant_access_token.')
@@ -292,42 +291,6 @@ class FeishuFSBase(LinkDocumentFSBase):
                             json={'upload_id': upload_id, 'block_num': num_blocks})
         return result.get('data', {}).get('file_token', '')
 
-    @staticmethod
-    def _text_from_ast_node(node: Dict[str, Any]) -> str:
-        if node.get('raw') is not None:
-            return str(node['raw'])
-        children = node.get('children') or []
-        return ''.join(FeishuFSBase._text_from_ast_node(c) for c in children)
-
-    @staticmethod
-    def _elements_from_inline_children(children: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        elements: List[Dict[str, Any]] = []
-        for c in children:
-            if not isinstance(c, dict):
-                continue
-            ct = c.get('type')
-            if ct == 'text':
-                raw = (c.get('raw') or '')
-                if raw:
-                    elements.append({'text_run': {'content': raw}})
-            elif ct == 'link':
-                url = (c.get('attrs') or {}).get('url') or ''
-                content = FeishuFSBase._text_from_ast_node(c)
-                if content or url:
-                    el: Dict[str, Any] = {'text_run': {'content': content or url}}
-                    if url:
-                        el['link'] = {'url': url}
-                    elements.append(el)
-            elif ct == 'softbreak':
-                elements.append({'text_run': {'content': '\n'}})
-            elif ct == 'linebreak':
-                elements.append({'text_run': {'content': '\n'}})
-            else:
-                raw = FeishuFSBase._text_from_ast_node(c)
-                if raw:
-                    elements.append({'text_run': {'content': raw}})
-        return elements
-
     _DOCX_BLOCK_TYPE_KEY: Dict[int, str] = {
         2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
         7: 'heading5', 8: 'heading6', 9: 'heading7', 10: 'heading8', 11: 'heading9',
@@ -335,186 +298,133 @@ class FeishuFSBase(LinkDocumentFSBase):
     }
 
     @staticmethod
-    def _docx_block_with_content(block_type: int, content: str) -> Dict[str, Any]:
-        key = FeishuFSBase._DOCX_BLOCK_TYPE_KEY.get(block_type, 'text')
-        return {'block_type': block_type, key: {'elements': [{'text_run': {'content': content}}]}}
-
-    @staticmethod
-    def _docx_block_with_elements(block_type: int, elements: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        if not elements:
-            return None
-        key = FeishuFSBase._DOCX_BLOCK_TYPE_KEY.get(block_type, 'text')
-        return {'block_type': block_type, key: {'elements': elements}}
-
-    @staticmethod
-    def _table_ast_to_markdown(node: Dict[str, Any]) -> str:
-        def cell_text(cell_node: Dict[str, Any]) -> str:
-            return FeishuFSBase._text_from_ast_node(cell_node).strip().replace('|', '\\|')
-        rows: List[str] = []
-        for part in (node.get('children') or []):
-            if not isinstance(part, dict):
+    def _extract_table_grid(
+        cell_ids: List[str], block_map: Dict[str, Dict[str, Any]],
+        rows: int, cols: int,
+    ) -> List[List[str]]:
+        grid: List[str] = []
+        for cid in cell_ids:
+            cell = block_map.get(cid)
+            if cell is None:
+                grid.append('')
                 continue
-            if part.get('type') == 'table_head':
-                cells = [cell_text(c) for c in (part.get('children') or [])
-                         if isinstance(c, dict) and c.get('type') == 'table_cell']
-                if cells:
-                    rows.append('| ' + ' | '.join(cells) + ' |')
-                    rows.append('| ' + ' | '.join(['---'] * len(cells)) + ' |')
-            elif part.get('type') == 'table_body':
-                for row_node in (part.get('children') or []):
-                    if isinstance(row_node, dict) and row_node.get('type') == 'table_row':
-                        cells = [cell_text(c) for c in (row_node.get('children') or [])
-                                 if isinstance(c, dict) and c.get('type') == 'table_cell']
-                        if cells:
-                            rows.append('| ' + ' | '.join(cells) + ' |')
-        return '\n'.join(rows) if rows else ''
+            cell_text = ''
+            for tcid in (cell.get('children') or []):
+                txt_blk = block_map.get(tcid)
+                if txt_blk:
+                    parts = [el.get('text_run', {}).get('content', '')
+                             for el in txt_blk.get('text', {}).get('elements', [])]
+                    cell_text += ''.join(parts)
+            grid.append(cell_text if cell_text.strip() else '')
+        return [
+            [grid[r * cols + c] if r * cols + c < len(grid) else ''
+             for c in range(cols)]
+            for r in range(rows)
+        ]
 
-    @staticmethod
-    def _table_ast_to_cells(node: Dict[str, Any]) -> Optional[Tuple[int, int, List[List[str]]]]:
-        def cell_text(cell_node: Dict[str, Any]) -> str:
-            return FeishuFSBase._text_from_ast_node(cell_node).strip()
-        grid: List[List[str]] = []
-        for part in (node.get('children') or []):
-            if not isinstance(part, dict):
-                continue
-            if part.get('type') == 'table_head':
-                cells = [cell_text(c) for c in (part.get('children') or [])
-                         if isinstance(c, dict) and c.get('type') == 'table_cell']
-                if cells:
-                    grid.append(cells)
-            elif part.get('type') == 'table_body':
-                for row_node in (part.get('children') or []):
-                    if isinstance(row_node, dict) and row_node.get('type') == 'table_row':
-                        cells = [cell_text(c) for c in (row_node.get('children') or [])
-                                 if isinstance(c, dict) and c.get('type') == 'table_cell']
-                        if cells:
-                            grid.append(cells)
-        if not grid:
-            return None
-        row_size, col_size = len(grid), max(len(r) for r in grid)
-        return (row_size, col_size, grid)
+    def _convert_markdown_via_api(self, text: str) -> Tuple[
+            List[Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
+        resp = self._post(
+            f'{self._base_url}/docx/v1/documents/blocks/convert',
+            json={'content_type': 'markdown', 'content': text})
+        if resp.get('code', 0) != 0:
+            raise RuntimeError(
+                'Feishu Convert API failed: %s' % resp.get('msg', resp))
 
-    @staticmethod
-    def _inline_children_to_block(block_type: int, node: Dict[str, Any]) -> List[Dict[str, Any]]:
-        elements = FeishuFSBase._elements_from_inline_children(node.get('children') or [])
-        blk = FeishuFSBase._docx_block_with_elements(block_type, elements)
-        return [blk] if blk else []
+        blocks_raw = resp.get('data', {}).get('blocks', [])
+        first_level = resp.get('data', {}).get('first_level_block_ids', [])
+        if not blocks_raw:
+            return [], {}
 
-    @staticmethod
-    def _parse_details_summary(raw: str) -> Optional[Tuple[str, str]]:
-        raw = raw.strip()
-        if not raw.lower().startswith('<details'):
-            return None
-        m = re.search(r'<summary[^>]*>(.*?)</summary>', raw, re.DOTALL | re.IGNORECASE)
-        if not m:
-            return None
-        summary_html = m.group(1).strip()
-        summary_text = re.sub(r'<[^>]+>', '', summary_html).strip()
-        rest = raw[m.end():]
-        m2 = re.search(r'^(.*?)</details>', rest, re.DOTALL | re.IGNORECASE)
-        body = m2.group(1).strip() if m2 else rest.strip()
-        return (summary_text or 'Details', body)
+        block_map = {b['block_id']: b for b in blocks_raw}
 
-    @staticmethod
-    def _ast_table_to_block(node: Dict[str, Any]) -> List[Dict[str, Any]]:
-        cells_data = FeishuFSBase._table_ast_to_cells(node)
-        if not cells_data:
-            return []
-        row_size, col_size, grid = cells_data
-        return [{
-            'block_type': 31,
-            'table': {'property': {'row_size': row_size, 'column_size': col_size}},
-            '_table_cells': grid,
-        }]
+        block_children: Dict[str, List[Dict[str, Any]]] = {}
 
-    @staticmethod
-    def _ast_block_html_to_blocks(node: Dict[str, Any]) -> List[Dict[str, Any]]:
-        raw = (node.get('raw') or '').rstrip()
-        if not raw:
-            return []
-        if re.match(r'^\s*</(?:details|summary|div|p)>\s*$', raw, re.IGNORECASE):
-            return []
-        parsed = FeishuFSBase._parse_details_summary(raw)
-        if parsed:
-            summary_text, body_content = parsed
-            out: List[Dict[str, Any]] = []
-            title_blk = FeishuFSBase._docx_block_with_content(2, summary_text)
-            if title_blk:
-                out.append(title_blk)
-            if body_content:
-                out.extend(FeishuFSBase._markdown_to_docx_blocks(body_content))
-            return out
-        return [{'block_type': 14, 'code': {'elements': [{'text_run': {'content': raw}}]}}]
+        def _transform(raw: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[List[str]]]:
+            bt = raw.get('block_type', 0)
+            if bt == 22:  # divider
+                return ({'block_type': 22, 'divider': {}}, None)
+            if bt == 27:  # image
+                return ({'block_type': 2, 'text': {
+                    'elements': [{'text_run': {'content': '[Image]'}}]}}, None)
 
-    @staticmethod
-    def _ast_list_to_blocks(node: Dict[str, Any]) -> List[Dict[str, Any]]:
-        ordered = (node.get('attrs') or {}).get('ordered', False)
-        btype = 13 if ordered else 12
-        out: List[Dict[str, Any]] = []
-        for item in (node.get('children') or []):
-            if isinstance(item, dict) and item.get('type') == 'list_item':
-                blk = FeishuFSBase._docx_block_with_elements(
-                    btype, FeishuFSBase._elements_from_inline_children(item.get('children') or []))
-                if blk:
-                    out.append(blk)
-        return out
+            b = dict(raw)
+            children = list(b.pop('children', [])) or None
+            b['_temp_id'] = b.pop('block_id')
+            b.pop('parent_id', None)
 
-    @staticmethod
-    def _ast_node_to_docx_block(node: Dict[str, Any]) -> List[Dict[str, Any]]:
-        t = node.get('type')
-        if t == 'blank_line':
-            return []
-        if t == 'heading':
-            level = max(1, min(9, int((node.get('attrs') or {}).get('level', 1))))
-            return FeishuFSBase._inline_children_to_block(2 + level, node)
-        if t == 'paragraph':
-            return FeishuFSBase._inline_children_to_block(2, node)
-        if t == 'block_code':
-            content = (node.get('raw') or '').rstrip()
-            return [{'block_type': 14, 'code': {'elements': [{'text_run': {'content': content}}]}}]
-        if t == 'block_quote':
-            return FeishuFSBase._inline_children_to_block(15, node)
-        if t == 'list':
-            return FeishuFSBase._ast_list_to_blocks(node)
-        if t == 'table':
-            return FeishuFSBase._ast_table_to_block(node)
-        if t == 'block_html':
-            return FeishuFSBase._ast_block_html_to_blocks(node)
-        blk = FeishuFSBase._docx_block_with_elements(
-            2, FeishuFSBase._elements_from_inline_children(node.get('children') or []))
-        if blk:
-            return [blk]
-        content = FeishuFSBase._text_from_ast_node(node).strip()
-        return [FeishuFSBase._docx_block_with_content(2, content)] if content else []
+            if bt == 31:  # table
+                b['table'] = dict(b.get('table', {}))
+                b['table'].pop('merge_info', None)
+                prop = b['table'].get('property', {})
+                rows, cols = prop.get('row_size', 0), prop.get('column_size', 0)
+                b['table'] = {'property': {'row_size': rows, 'column_size': cols}}
+                b['_table_cells'] = FeishuFSBase._extract_table_grid(
+                    children or [], block_map, rows, cols)
+                children = None
 
-    @staticmethod
-    def _normalize_md_tables(md_text: str) -> str:
-        lines = md_text.splitlines(keepends=True)
-        result = []
-        for line in lines:
-            stripped = line.rstrip('\n\r')
-            if stripped.lstrip().startswith('|') and not stripped.rstrip().endswith('|'):
-                stripped = stripped.rstrip() + ' |'
-                line = stripped + ('\n' if line.endswith('\n') else '')
-            result.append(line)
-        return ''.join(result)
+            return (b, children)
 
-    @staticmethod
-    def _markdown_to_docx_blocks(md_text: str) -> List[Dict[str, Any]]:
-        md = mistune.create_markdown(renderer='ast', plugins=['table'])
-        ast = md(FeishuFSBase._normalize_md_tables(md_text))
-        if not ast:
-            return []
-        blocks: List[Dict[str, Any]] = []
-        for node in ast:
-            if not isinstance(node, dict):
-                continue
-            blocks.extend(FeishuFSBase._ast_node_to_docx_block(node))
-        return blocks
+        def _walk(block_ids: List[str]) -> List[Dict[str, Any]]:
+            block_result: List[Dict[str, Any]] = []
+            for bid in block_ids:
+                if bid not in block_map:
+                    continue
+                block, children = _transform(block_map[bid])
+                block_result.append(block)
+                if children:
+                    nested = _walk(children)
+                    if nested:
+                        block_children[bid] = nested
+            return block_result
 
-    def _append_docx_blocks(self, document_id: str, blocks: List[Dict[str, Any]]) -> None:
+        top_blocks = _walk(first_level)
+        return top_blocks, block_children
+
+    def _resolve_and_insert_children(
+        self, document_id: str,
+        top_blocks: List[Dict[str, Any]],
+        block_children: Dict[str, List[Dict[str, Any]]],
+        inserted_blocks: List[Dict[str, Any]],
+    ) -> None:
+        # Build mapping: Convert API temp_id → real Feishu block_id (from POST responses)
+        temp_to_real = {
+            top_blocks[i]['_temp_id']: inserted_blocks[i]['block_id']
+            for i in range(min(len(top_blocks), len(inserted_blocks)))
+            if top_blocks[i].get('_temp_id')
+        }
+
+        # BFS insert: for each level, post child blocks under their real parent
+        pending = block_children
+        while pending:
+            next_pending: Dict[str, List[Dict[str, Any]]] = {}
+            for temp_parent_id, child_blocks in pending.items():
+                real_parent_id = temp_to_real.get(temp_parent_id)
+                if not real_parent_id:
+                    continue
+
+                clean = [copy.deepcopy(c) for c in child_blocks]
+                for c in clean:
+                    c.pop('_temp_id', None)
+                    c.pop('_table_cells', None)
+
+                child_url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{real_parent_id}/children'
+                resp = self._post(child_url, json={'index': 0, 'children': clean})
+                created = (resp.get('data') or {}).get('children') or []
+
+                for child_blk, real_child in zip(child_blocks, created):
+                    ctid = child_blk.get('_temp_id', '')
+                    if ctid and real_child.get('block_id'):
+                        temp_to_real[ctid] = real_child['block_id']
+                        grandchildren = block_children.get(ctid)
+                        if grandchildren:
+                            next_pending[ctid] = grandchildren
+            pending = next_pending
+
+    def _append_docx_blocks(self, document_id: str, blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not blocks:
-            return
+            return []
+        inserted_blocks: List[Dict[str, Any]] = []
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}/children'
         batch_size = 50
         index = 0
@@ -522,13 +432,16 @@ class FeishuFSBase(LinkDocumentFSBase):
         for blk in blocks:
             if blk.get('_table_cells') is not None:
                 if chunk:
-                    self._post(url, json={'index': index, 'children': chunk})
+                    resp = self._post(url, json={'index': index, 'children': chunk})
+                    inserted_blocks.extend((resp.get('data') or {}).get('children') or [])
                     index += len(chunk)
                     chunk = []
                 payload = {k: v for k, v in blk.items() if k != '_table_cells'}
-                resp = self._request('POST', url, json={'index': index, 'children': [payload]})
-                created_list = (resp.json().get('data') or {}).get('children') or []
+                resp = self._post(url, json={'index': index, 'children': [payload]})
+                created_list = (resp.get('data') or {}).get('children') or []
                 table_info = created_list[0] if created_list and isinstance(created_list[0], dict) else {}
+                if table_info:
+                    inserted_blocks.append(table_info)
                 table_block_id = table_info.get('block_id')
                 cell_ids: List[str] = (table_info.get('table') or {}).get('cells') or []
                 if table_block_id:
@@ -537,11 +450,14 @@ class FeishuFSBase(LinkDocumentFSBase):
             else:
                 chunk.append(blk)
                 if len(chunk) >= batch_size:
-                    self._post(url, json={'index': index, 'children': chunk})
+                    resp = self._post(url, json={'index': index, 'children': chunk})
+                    inserted_blocks.extend((resp.get('data') or {}).get('children') or [])
                     index += len(chunk)
                     chunk = []
         if chunk:
-            self._post(url, json={'index': index, 'children': chunk})
+            resp = self._post(url, json={'index': index, 'children': chunk})
+            inserted_blocks.extend((resp.get('data') or {}).get('children') or [])
+        return inserted_blocks
 
     def _get_table_cells(self, document_id: str, table_block_id: str) -> List[Dict[str, Any]]:
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{table_block_id}/children'
@@ -755,8 +671,14 @@ class FeishuFS(FeishuFSBase):
                 LOG.warning('Feishu drive docx create returned no document_id, falling back to file upload')
                 self._upload_file_to_drive(name, data, folder_token=parent_token)
                 return
-            blocks = self._markdown_to_docx_blocks(text)
-            self._append_docx_blocks(doc_id, blocks)
+            try:
+                top_blocks, block_children = self._convert_markdown_via_api(text)
+                inserted_blocks = self._append_docx_blocks(doc_id, top_blocks)
+                if block_children:
+                    self._resolve_and_insert_children(doc_id, top_blocks, block_children, inserted_blocks)
+            except RuntimeError:
+                LOG.warning('Convert API failed, falling back to file upload')
+                self._upload_file_to_drive(name, data, folder_token=parent_token)
         else:
             self._upload_file_to_drive(name, data, folder_token=parent_token)
 
@@ -1145,8 +1067,14 @@ class FeishuWikiFS(FeishuFSBase):
         if content_type is None:
             content_type = 'markdown' if (path.rstrip('/').split('/')[-1].endswith('.md')) else 'text'
         if content_type in ('markdown', 'md'):
-            blocks = self._markdown_to_docx_blocks(text)
-            self._append_docx_blocks(doc_id, blocks)
+            try:
+                top_blocks, block_children = self._convert_markdown_via_api(text)
+                inserted_blocks = self._append_docx_blocks(doc_id, top_blocks)
+                if block_children:
+                    self._resolve_and_insert_children(doc_id, top_blocks, block_children, inserted_blocks)
+            except RuntimeError:
+                LOG.warning('Convert API failed, falling back to plain text append')
+                self._append_docx_text(doc_id, text)
         else:
             self._append_docx_text(doc_id, text)
 
