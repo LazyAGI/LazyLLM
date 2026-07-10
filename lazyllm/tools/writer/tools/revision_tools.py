@@ -271,7 +271,7 @@ class WriterRevisionTools(WriterToolBase):
                 elif hunk.old_text is not None and block.text == hunk.old_text:
                     if hunk.modify_type == 'delete':
                         revised_doc.blocks.remove(block)
-                    else:  # rewrite / replace
+                    else:  # replace
                         block.text = hunk.new_text
                     applied_ok = True
 

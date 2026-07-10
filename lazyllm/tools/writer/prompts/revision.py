@@ -30,9 +30,8 @@ GENERATE_MODIFY_PLAN_PROMPT = '''You are a modify plan generator. Given a writin
 Rules:
 - For each target block, decide the modify_type and write a clear, specific instruction.
 - modify_type must be one of:
-  - rewrite: rewrite the whole target block into a new version.
   - insert: insert a brand-new block right after the target block.
-  - replace: replace specific portions of the target block, leaving the rest intact.
+  - replace: replace the target block's content with a new version.
   - delete: remove the target block.
 - instruction: a concise description of what change to make to that block, derived from task.query.
 - Every ModifyInstruction.target_block_id must come from the locate_result's target_block_ids. Produce exactly one instruction per target block.
@@ -63,7 +62,7 @@ Rules:
   - target_block_id: copied from the corresponding ModifyInstruction.
   - modify_type: copied from the corresponding ModifyInstruction.
   - new_text depends on modify_type:
-    - rewrite / replace: the FULL new text for that block after applying the instruction.
+    - replace: the FULL new text for that block after applying the instruction.
     - insert: the FULL content of the new block to insert right after the target block.
     - delete: leave new_text null.
 - Leave anchor and old_text as null — the system fills them from the document automatically.

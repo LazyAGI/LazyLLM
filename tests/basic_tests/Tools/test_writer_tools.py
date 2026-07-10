@@ -733,7 +733,7 @@ def test_validate_patch_set_single_hunk():
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
                               old_text='万古之前...', new_text='太古之初...',
-                              modify_type='rewrite'),
+                              modify_type='replace'),
                 ]),
                 context=_make_context(),
                 task=_make_task(),
@@ -755,10 +755,10 @@ def test_validate_patch_set_multi_hunk():
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
                               old_text='万古之前...', new_text='太古之初...',
-                              modify_type='rewrite'),
+                              modify_type='replace'),
                     PatchHunk(hunk_id='h2', target_block_id='blk-pro-02',
                               old_text='second...', new_text='rewrite...',
-                              modify_type='rewrite'),
+                              modify_type='replace'),
                 ]),
                 context=_make_context(),
                 task=_make_task(),
@@ -779,7 +779,7 @@ def test_validate_patch_set_failing():
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
                               old_text='万古之前...', new_text='星辰大帝是九州最强者。',
-                              modify_type='rewrite'),
+                              modify_type='replace'),
                 ]),
                 context=_make_context(),
                 task=_make_task(),
@@ -802,7 +802,7 @@ def test_validate_patch_set_unmatched_instruction():
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_block_id='unknown-id',
                               old_text='xxx', new_text='yyy',
-                              modify_type='rewrite'),
+                              modify_type='replace'),
                 ]),
                 context=_make_context(),
                 task=_make_task(),
