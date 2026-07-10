@@ -309,7 +309,7 @@ def test_revise_workflow_e2e():
     plan = _load_stage(stages, 'modify_plan', ModifyPlan)
     assert {i.target_block_id for i in plan.instructions} == set(locate.target_block_ids)
     for instr in plan.instructions:
-        assert instr.modify_type in {'rewrite', 'insert', 'replace', 'delete'}
+        assert instr.modify_type in {'insert', 'replace', 'delete'}
         assert instr.instruction.strip()
 
     # --- patch_set ---

@@ -17,7 +17,7 @@ class LocateResult(ArtifactModel):
 class ModifyInstruction(BaseModel):
     instruction_id: Optional[str] = None
     target_block_id: str
-    modify_type: Literal['rewrite', 'insert', 'replace', 'delete']
+    modify_type: Literal['insert', 'replace', 'delete']
     instruction: str
     meta: Dict[str, Any] = Field(default_factory=dict)
 
@@ -35,7 +35,7 @@ class ModifyPlan(BaseModel):
 class PatchHunk(BaseModel):
     hunk_id: Optional[str] = None
     target_block_id: Optional[str] = None
-    modify_type: Literal['rewrite', 'insert', 'replace', 'delete']
+    modify_type: Literal['insert', 'replace', 'delete']
     anchor: Optional[Anchor] = None
     old_text: Optional[str] = None
     new_text: Optional[str] = None
