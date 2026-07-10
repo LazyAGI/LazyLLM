@@ -9,7 +9,9 @@ import uuid
 import lazyllm
 from lazyllm import globals
 from lazyllm.thirdparty import jwt
-from ..base import OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase
+from lazyllm.components.formatter import encode_query_with_filepaths
+from lazyllm.components.utils.file_operate import bytes_to_file
+from ..base import OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineText2ImageModuleBase
 from ..fileHandler import FileHandlerBase
 from ..base.utils import check_and_add_config, LAZY_API_KEY_TOKENS
 
@@ -258,3 +260,42 @@ class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
             return embeddings[0].get('embedding', [])
         else:
             return [res.get('embedding', []) for res in embeddings]
+
+
+class SenseNovaText2Image(LazyLLMOnlineText2ImageModuleBase, _SenseNovaBase):
+    MODEL_NAME = 'sensenova-u1-fast'
+
+    def _materialize_lazy_api_key(self) -> str:
+        return self._get_api_key(None, None)
+
+    def __init__(self, api_key: str = None, secret_key: str = None, model: str = None,
+                 url: Optional[str] = None, return_trace: bool = False, **kwargs):
+        url = url or 'https://token.sensenova.cn/v1/'
+        if api_key not in LAZY_API_KEY_TOKENS:
+            api_key = self._get_api_key(api_key, secret_key)
+        super().__init__(api_key=api_key, model=model or SenseNovaText2Image.MODEL_NAME,
+                         url=url, return_trace=return_trace, **kwargs)
+        self._endpoint = 'images/generations'
+
+    def _get_image_data_from_url(self, url: str, timeout: int = 30) -> bytes:
+        # SenseNova OSS may return application/octet-stream.
+        self._validate_url_security(url)
+        resp = requests.get(url, timeout=timeout, allow_redirects=True)
+        resp.raise_for_status()
+        data = resp.content
+        self._validate_image_data(data, url)
+        return data
+
+    def _forward(self, input: str = None, files: List[str] = None, size: str = '2752x1536', n: int = 1,
+                 url: str = None, model: str = None, **kwargs):
+        payload = {'model': model, 'prompt': input, 'size': size, 'n': n, **kwargs}
+        if files:
+            for i, file in enumerate(files):
+                b64, _ = self._load_images(file)[0]
+                payload['image' if i == 0 else f'image{i + 1}'] = f'data:image/png;base64,{b64}'
+        resp = requests.post(f'{(url or self._base_url)}{self._endpoint}',
+                             headers=self._header, json=payload, timeout=180)
+        resp.raise_for_status()
+        image_urls = [item['url'] for item in resp.json()['data']]
+        image_bytes = [data for _, data in self._load_images(image_urls)]
+        return encode_query_with_filepaths(None, bytes_to_file(image_bytes))

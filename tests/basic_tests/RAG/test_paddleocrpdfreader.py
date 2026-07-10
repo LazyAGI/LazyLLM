@@ -146,10 +146,15 @@ def _make_job_response(layout_parsing_results: list) -> str:
     return json.dumps({'result': {'layoutParsingResults': layout_parsing_results}})
 
 
-def _make_page_result(blocks: list, images: dict = None) -> dict:
+def _make_page_result(blocks: list, images: dict = None, width=None, height=None) -> dict:
+    pruned = {'parsing_res_list': blocks}
+    if width is not None:
+        pruned['width'] = width
+    if height is not None:
+        pruned['height'] = height
     return {
         'markdown': {'images': images or {}},
-        'prunedResult': {'parsing_res_list': blocks},
+        'prunedResult': pruned,
     }
 
 
@@ -195,6 +200,51 @@ class TestPaddleOCRPDFReaderMock:
         assert 'paragraph' in types
         assert 'figure' in types
         assert 'table' in types
+
+    def test_forward_applies_post_func(self):
+        pdf = _make_test_pdf()
+
+        def test_post_func(nodes):
+            for node in nodes:
+                node._content += '[after_process]'
+            return nodes
+
+        reader = PaddleOCRPDFReader(post_func=test_post_func)
+
+        with patch.object(reader, '_fetch_async') as mock_fetch, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
+            mock_fetch.return_value = (_make_mock_response(), None)
+            rich_nodes = reader.forward(str(pdf))
+
+        assert len(rich_nodes) == 1
+        assert isinstance(rich_nodes[0], RichDocNode)
+        for node in rich_nodes[0].nodes:
+            assert node._content.endswith('[after_process]')
+
+    def test_bbox_normalized_to_pdf_space(self):
+        pdf = _make_test_pdf()
+        # Test PDF page is 612 x 792; OCR canvas is 2x that.
+        ocr_w, ocr_h = 1224, 1584
+        raw_bbox = [431, 137, 760, 170]
+        reader = PaddleOCRPDFReader()
+        mock = _make_job_response([
+            _make_page_result(
+                [{'block_label': 'text', 'block_content': 'title', 'block_bbox': raw_bbox}],
+                width=ocr_w,
+                height=ocr_h,
+            ),
+        ])
+        with patch.object(reader, '_fetch_async') as mock_fetch, \
+             patch.object(PaddleOCRPDFReader, '_download_images'):
+            mock_fetch.return_value = (mock, None)
+            docs = reader._load_data(str(pdf))
+
+        assert len(docs) == 1
+        got = docs[0].metadata['bbox']
+        assert got[0] == pytest.approx(raw_bbox[0] * 612 / ocr_w, abs=0.5)
+        assert got[1] == pytest.approx(raw_bbox[1] * 792 / ocr_h, abs=0.5)
+        assert got[2] == pytest.approx(raw_bbox[2] * 612 / ocr_w, abs=0.5)
+        assert got[3] == pytest.approx(raw_bbox[3] * 792 / ocr_h, abs=0.5)
 
     def test_resolve_image_by_bbox(self):
         pdf = _make_test_pdf()
