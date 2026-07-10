@@ -171,8 +171,11 @@ class WriterQualityTools(WriterToolBase):
         context_json = to_prompt_json({
             'facts': [f.model_dump(exclude={'fact_id', 'source', 'applies_to_block_ids', 'locked'})
                       for f in writing_context.facts if f.locked],
-            'style_profile': writing_context.style_profile.model_dump()
-                if writing_context.style_profile else None,
+            'style_profile': (
+                writing_context.style_profile.model_dump()
+                if writing_context.style_profile
+                else None
+            ),
         })
 
         prompt = VALIDATE_PATCH_SET_PROMPT.format(

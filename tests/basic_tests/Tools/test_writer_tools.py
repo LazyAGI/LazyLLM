@@ -766,6 +766,7 @@ def test_validate_patch_set_multi_hunk():
 
         audit = load_artifact_json(result['artifact_path'], AuditResult)
         assert mock_llm.call_count == 1
+        assert audit.is_passed is True
         assert result['metadata']['counts']['total_hunks'] == 2
 
 
@@ -819,7 +820,7 @@ def test_validate_patch_set_unmatched_instruction():
 
 
 def test_write_to_document_no_target():
-    'target_document=None → locator empty → logs warning, no local file saved.'
+    # target_document=None -> locator empty -> logs warning, no local file saved.
     with tempfile.TemporaryDirectory() as d:
         tool = WriterResourceTools(artifact_store=d)
         result = tool.write_to_document(
@@ -834,7 +835,7 @@ def test_write_to_document_no_target():
 
 
 def test_write_to_document_fs_failure():
-    'fs.write_file raises → doc_id empty, no local file saved.'
+    # fs.write_file raises -> doc_id empty, no local file saved.
     adapter = _make_doc_adapter()
     adapter.write_file.side_effect = RuntimeError('network down')
     adapter.resolve_link.side_effect = RuntimeError('network down')
@@ -854,7 +855,7 @@ def test_write_to_document_fs_failure():
 
 
 def test_write_to_document_empty_target_dict():
-    'target_document={} → locator empty, same as None.'
+    # target_document={} -> locator empty, same as None.
     with tempfile.TemporaryDirectory() as d:
         tool = WriterResourceTools(artifact_store=d)
         result = tool.write_to_document(
