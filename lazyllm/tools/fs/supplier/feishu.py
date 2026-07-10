@@ -1,5 +1,4 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
-import copy
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -312,8 +311,8 @@ class FeishuFSBase(LinkDocumentFSBase):
             for tcid in (cell.get('children') or []):
                 txt_blk = block_map.get(tcid)
                 if txt_blk:
-                    parts = [el.get('text_run', {}).get('content', '')
-                             for el in txt_blk.get('text', {}).get('elements', [])]
+                    parts = [(el.get('text_run') or {}).get('content', '')
+                             for el in (txt_blk.get('text') or {}).get('elements', [])]
                     cell_text += ''.join(parts)
             grid.append(cell_text if cell_text.strip() else '')
         return [
@@ -331,8 +330,8 @@ class FeishuFSBase(LinkDocumentFSBase):
             raise RuntimeError(
                 'Feishu Convert API failed: %s' % resp.get('msg', resp))
 
-        blocks_raw = resp.get('data', {}).get('blocks', [])
-        first_level = resp.get('data', {}).get('first_level_block_ids', [])
+        blocks_raw = (resp.get('data') or {}).get('blocks', [])
+        first_level = (resp.get('data') or {}).get('first_level_block_ids', [])
         if not blocks_raw:
             return [], {}
 
@@ -354,7 +353,7 @@ class FeishuFSBase(LinkDocumentFSBase):
             b.pop('parent_id', None)
 
             if bt == 31:  # table
-                b['table'] = dict(b.get('table', {}))
+                b['table'] = dict(b.get('table') or {})
                 b['table'].pop('merge_info', None)
                 prop = b['table'].get('property', {})
                 rows, cols = prop.get('row_size', 0), prop.get('column_size', 0)
@@ -403,13 +402,17 @@ class FeishuFSBase(LinkDocumentFSBase):
                 if not real_parent_id:
                     continue
 
-                clean = [copy.deepcopy(c) for c in child_blocks]
+                clean = [c.copy() for c in child_blocks]
                 for c in clean:
                     c.pop('_temp_id', None)
                     c.pop('_table_cells', None)
 
                 child_url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{real_parent_id}/children'
                 resp = self._post(child_url, json={'index': 0, 'children': clean})
+                if resp.get('code', 0) != 0:
+                    LOG.warning('Feishu create_descendant failed for parent %s: %s',
+                                real_parent_id, resp.get('msg', resp))
+                    continue
                 created = (resp.get('data') or {}).get('children') or []
 
                 for child_blk, real_child in zip(child_blocks, created):
@@ -432,11 +435,12 @@ class FeishuFSBase(LinkDocumentFSBase):
         for blk in blocks:
             if blk.get('_table_cells') is not None:
                 if chunk:
-                    resp = self._post(url, json={'index': index, 'children': chunk})
+                    clean_chunk = [{k: v for k, v in c.items() if k != '_temp_id'} for c in chunk]
+                    resp = self._post(url, json={'index': index, 'children': clean_chunk})
                     inserted_blocks.extend((resp.get('data') or {}).get('children') or [])
                     index += len(chunk)
                     chunk = []
-                payload = {k: v for k, v in blk.items() if k != '_table_cells'}
+                payload = {k: v for k, v in blk.items() if k not in ('_table_cells', '_temp_id')}
                 resp = self._post(url, json={'index': index, 'children': [payload]})
                 created_list = (resp.get('data') or {}).get('children') or []
                 table_info = created_list[0] if created_list and isinstance(created_list[0], dict) else {}
@@ -450,12 +454,14 @@ class FeishuFSBase(LinkDocumentFSBase):
             else:
                 chunk.append(blk)
                 if len(chunk) >= batch_size:
-                    resp = self._post(url, json={'index': index, 'children': chunk})
+                    clean_chunk = [{k: v for k, v in c.items() if k != '_temp_id'} for c in chunk]
+                    resp = self._post(url, json={'index': index, 'children': clean_chunk})
                     inserted_blocks.extend((resp.get('data') or {}).get('children') or [])
                     index += len(chunk)
                     chunk = []
         if chunk:
-            resp = self._post(url, json={'index': index, 'children': chunk})
+            clean_chunk = [{k: v for k, v in c.items() if k != '_temp_id'} for c in chunk]
+            resp = self._post(url, json={'index': index, 'children': clean_chunk})
             inserted_blocks.extend((resp.get('data') or {}).get('children') or [])
         return inserted_blocks
 
@@ -676,7 +682,7 @@ class FeishuFS(FeishuFSBase):
                 inserted_blocks = self._append_docx_blocks(doc_id, top_blocks)
                 if block_children:
                     self._resolve_and_insert_children(doc_id, top_blocks, block_children, inserted_blocks)
-            except RuntimeError:
+            except (RuntimeError, requests.HTTPError):
                 LOG.warning('Convert API failed, falling back to file upload')
                 self._upload_file_to_drive(name, data, folder_token=parent_token)
         else:
@@ -1072,7 +1078,7 @@ class FeishuWikiFS(FeishuFSBase):
                 inserted_blocks = self._append_docx_blocks(doc_id, top_blocks)
                 if block_children:
                     self._resolve_and_insert_children(doc_id, top_blocks, block_children, inserted_blocks)
-            except RuntimeError:
+            except (RuntimeError, requests.HTTPError):
                 LOG.warning('Convert API failed, falling back to plain text append')
                 self._append_docx_text(doc_id, text)
         else:
