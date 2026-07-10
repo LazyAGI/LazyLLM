@@ -7,7 +7,7 @@ from lazyllm.tools.rag.store.store_base import LAZY_IMAGE_GROUP
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
+from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID, RAG_KB_ID
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform
 import os
 import shutil
@@ -87,6 +87,41 @@ class TestDocImpl(unittest.TestCase):
         )
         node = result[0]
         assert node.text == 'dummy text'
+
+    def test_find_parent_with_node_preserves_best_child_similarity_score(self):
+        block = DocNode(uid='block-a', group='block', text='block')
+        block.similarity_score = 0.99
+        line_1 = DocNode(uid='line-1', group='line', text='line 1', parent=block)
+        line_2 = DocNode(uid='line-2', group='line', text='line 2', parent=block)
+        line_1.similarity_score = 0.91
+        line_2.similarity_score = 0.85
+
+        result = self.doc_impl.find_parent([line_1, line_2], 'block')
+
+        assert result == [block]
+        assert block.similarity_score == 0.91
+
+    def test_find_parent_with_uid_preserves_best_child_similarity_score(self):
+        block = DocNode(uid='block-a', group='block', text='block', global_metadata={RAG_KB_ID: 'kb'})
+        block.similarity_score = 0.99
+        line_1 = DocNode(uid='line-1', group='line', text='line 1', parent='block-a',
+                         global_metadata={RAG_KB_ID: 'kb'})
+        line_2 = DocNode(uid='line-2', group='line', text='line 2', parent='block-a',
+                         global_metadata={RAG_KB_ID: 'kb'})
+        line_1.similarity_score = 0.85
+        line_2.similarity_score = 0.91
+        self.doc_impl.node_groups['line'] = {'parent': 'block'}
+        self.doc_impl.node_groups['block'] = {'parent': LAZY_ROOT_NAME}
+        self.doc_impl._store = MagicMock()
+        self.doc_impl._store.get_nodes.return_value = [block]
+
+        result = self.doc_impl.find_parent([line_1, line_2], 'block')
+
+        assert result == [block]
+        assert block.similarity_score == 0.91
+        self.doc_impl._store.get_nodes.assert_called_once_with(
+            group='block', kb_id='kb', uids=['block-a'], display=True
+        )
 
     def test_add_files(self):
         assert self.doc_impl._store is None

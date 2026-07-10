@@ -259,3 +259,8 @@ class TestDynamicPDFReader:
     def test_pdf_offline_missing_bbox_still_skipped(self):
         reader = MineruPDFReader(url='http://local-mineru:8000/api/v1/pdf_parse')
         assert reader._adapt_one({'type': 'text', 'text': 'hello', 'page_idx': 0}) is None
+
+    def test_online_ssl_verify_respects_config(self, monkeypatch):
+        monkeypatch.setenv('LAZYLLM_MINERU_SSL_VERIFY', 'false')
+        reader = MineruPDFReader(url='https://mineru.net')
+        assert reader._online_request_kwargs() == {'verify': False}

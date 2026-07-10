@@ -60,6 +60,10 @@ class DirectoryReader:
             doc._group = type_mapping.get(type(doc), LAZY_ROOT_NAME)
             nodes[doc._group].append(doc) if split_nodes_by_type else nodes.append(doc)
         if not nodes:
-            raise ValueError(f'No nodes load from path {input_files}, please check your data path.')
+            message = f'No nodes load from path {input_files}, please check your data path.'
+            load_error = getattr(self._reader, 'last_load_error', None)
+            if load_error is not None:
+                raise ValueError(str(load_error) or message) from load_error
+            raise ValueError(message)
         LOG.info('DirectoryReader loads data done!')
         return nodes
