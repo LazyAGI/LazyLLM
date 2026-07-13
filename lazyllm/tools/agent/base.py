@@ -37,12 +37,6 @@ def _unwrap_tool_result(result: Any) -> Any:
             return result.get('value', '')
         return str(result.get('msg', repr(result)))
     return result
-
-
-def _stringify_tool_result(result: Any) -> str:
-    return str(_unwrap_tool_result(result))
-
-
 class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools: Optional[List[Union[str, Callable, Dict]]] = None,
                  max_retries: int = 5, return_trace: bool = False,
