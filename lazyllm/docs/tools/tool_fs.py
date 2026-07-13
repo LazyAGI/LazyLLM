@@ -1594,6 +1594,28 @@ Args:
     path2 (str): Destination path; the last segment is the new title, preceding segments are the target parent path.
     recursive (bool): Whether to copy recursively (current implementation copies the node including its children).
 ''')
+_add_feishu_chinese('FeishuWikiFS.resolve_wiki_ref', f'''\
+解析飞书 wiki URL、~node/~link 路径、裸飞书 URL 或标题路径，返回标准化节点元信息。用于 chat 中用户粘贴飞书链接后确定节点类型、标题和 ID，再读取正文。自动区分 wiki_node、docx、doc 类型。
+
+{_FEISHU_DOCUMENT_LINK_WORKFLOW_ZH}
+
+Args:
+    url_or_path (str): 飞书 wiki URL、~node/~link/~docx/~doc 路径或知识库标题路径。
+
+Returns:
+    Dict[str, Any]: 包含 node_token、space_id、title、obj_type、obj_token、has_child、creator、owner、node_creator 等字段。
+''')
+_add_feishu_english('FeishuWikiFS.resolve_wiki_ref', f'''\
+Resolve a Feishu wiki URL, ~node/~link path, bare Feishu URL, or title path into normalized node metadata. Use after users paste Feishu links to identify node type, title, and id before reading content. Automatically distinguishes wiki_node, docx, and doc types.
+
+{_FEISHU_DOCUMENT_LINK_WORKFLOW_EN}
+
+Args:
+    url_or_path (str): Feishu wiki URL, ~node/~link/~docx/~doc path, or wiki title path.
+
+Returns:
+    Dict[str, Any]: Metadata including node_token, space_id, title, obj_type, obj_token, has_child, creator, owner, and node_creator.
+''')
 
 _add_fs_chinese('FeishuWikiFS.get_document_id', '''\
 返回 Wiki 文档节点对应的飞书 docx document_id（即 obj_token）。path 必须指向 doc 或 docx 类型节点，否则抛出 ValueError。
