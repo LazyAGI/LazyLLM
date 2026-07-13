@@ -743,8 +743,8 @@ add_chinese_doc('Switch', """\
 ```   
 
 Args:
-    args: 可变长度参数列表，交替提供条件和对应的流或函数。条件可以是返回布尔值的可调用对象或与输入表达式进行比较的值。
-    conversion (callable, optional): 在进行条件匹配之前，对判定表达式 ``exp`` 进行转换或预处理的函数。默认为 ``None``。
+    args: 可变长度参数列表，交替提供条件和对应的流或函数。可调用条件仅作为谓词执行一次，接收判定输入和关键字参数，并根据返回值的真值进行匹配；不可调用条件则与输入表达式进行比较。
+    conversion (callable, optional): 在进行条件匹配之前，对判定表达式 ``exp`` 进行转换或预处理的函数。它接收判定输入和关键字参数，并使用统一的 Flow 异常处理。默认为 ``None``。
     post_action (callable, optional): 在执行选定流后要调用的函数。默认为 ``None``。
     judge_on_full_input(bool): 如果设置为 ``True`` ， 则通过 ``switch`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
 
@@ -765,8 +765,8 @@ The ``Switch`` class provides a way to choose between different flows depending 
 ``` 
 
 Args:
-    args: A variable length argument list, alternating between conditions and corresponding flows or functions. Conditions are either callables returning a boolean or values to be compared with the input expression.
-    conversion (callable, optional): A function used to transform or preprocess the evaluation expression ``exp`` before performing condition matching. Defaults to ``None``.
+    args: A variable length argument list alternating between conditions and corresponding flows or functions. A callable condition is executed exactly once as a predicate with the condition input and keyword arguments, and matched by the truthiness of its result; a non-callable condition is compared with the input expression.
+    conversion (callable, optional): A function used to transform or preprocess the evaluation expression ``exp`` before condition matching. It receives the condition input and keyword arguments, and uses standard Flow exception handling. Defaults to ``None``.
     post_action (callable, optional): A function to be called on the output after the selected flow is executed. Defaults to ``None``.
     judge_on_full_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``switch``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
 

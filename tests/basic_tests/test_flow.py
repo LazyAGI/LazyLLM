@@ -52,6 +52,14 @@ class TestFlow(object):
         assert p.p3._item_names == ['p31', 'f1', 'f2']
         assert p.p3.p31._item_names == ['f1', 'f2']
 
+    def test_flow_preserves_error_without_user_callsite(self, monkeypatch):
+        with monkeypatch.context() as context:
+            context.setattr(lazyllm.flow.flow.inspect, 'stack', lambda: [])
+            flow = pipeline(lambda x: 1 / 0)
+
+        with pytest.raises(lazyllm.flow.flow.FlowException, match='division by zero'):
+            flow(1)
+
     def test_server_with_bind(self):
         with pipeline() as ppl:
             ppl.f1 = lambda x: str(len(x))
@@ -179,6 +187,32 @@ class TestFlow(object):
             sw.case(is_2, t2)
             sw.case[is_3, t3]
         assert sw(1, 30) == 60 and sw(2, 10) == 30 and sw(3, 5) == 5
+
+    def test_switch_truthy_callable_condition(self):
+        assert switch(lambda x: 1, t3, 'default', t1)(2) == 2
+
+    def test_switch_callable_condition_is_not_compared_as_value(self):
+        class Condition:
+            def __call__(self, value):
+                return False
+
+            def __eq__(self, value):
+                return value == 2
+
+        assert switch(Condition(), t3, 'default', t1)(2) == 4
+
+    def test_switch_callable_condition_receives_keyword_input(self):
+        assert switch(lambda x: x > 0, t3, 'default', t1)(x=2) == 2
+
+    def test_switch_conversion_receives_keyword_input(self):
+        assert switch(2, t3, 'default', t1, conversion=lambda x: x)(x=2) == 2
+
+    def test_switch_conversion_error_is_wrapped(self):
+        def conversion(value):
+            raise ValueError(f'cannot convert {value}')
+
+        with pytest.raises(lazyllm.flow.flow.FlowException, match='cannot convert 2'):
+            switch(2, t3, conversion=conversion)(2)
 
     def test_ifs(self, capfd):
 
