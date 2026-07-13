@@ -2548,6 +2548,34 @@ Args:
     secret_key (str, optional): API secret key, defaults to None.
 ''')
 
+add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaText2Image', '''\
+商汤科技 SenseNova 文生图模块，继承自 LazyLLMOnlineText2ImageModuleBase。
+
+提供基于 SenseNova 的文本生成图像功能，调用 ``/v1/images/generations`` 接口根据文本描述生成图像。
+
+Args:
+    api_key (str, optional): API密钥，默认为配置中的 sensenova_api_key。
+    secret_key (str, optional): API秘密密钥，默认为配置中的 sensenova_secret_key。
+    model (str, optional): 模型名称，默认为 "sensenova-u1-fast"。
+    url (str, optional): API基础URL，默认为 "https://token.sensenova.cn/v1/"。
+    return_trace (bool, optional): 是否返回追踪信息，默认为 False。
+    **kwargs: 其他传递给父类的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaText2Image', '''\
+SenseTime SenseNova Text-to-Image module, inherits from LazyLLMOnlineText2ImageModuleBase.
+
+Provides text-to-image generation via SenseNova's ``/v1/images/generations`` API.
+
+Args:
+    api_key (str, optional): API key, defaults to configured sensenova_api_key.
+    secret_key (str, optional): Secret key, defaults to configured sensenova_secret_key.
+    model (str, optional): Model name, defaults to "sensenova-u1-fast".
+    url (str, optional): Base API URL, defaults to "https://token.sensenova.cn/v1/".
+    return_trace (bool, optional): Whether to return trace information, defaults to False.
+    **kwargs: Additional parameters passed to the parent class.
+''')
+
 add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoText2Image', '''\
 字节跳动豆包文生图模块，支持纯文本生成图像和图像编辑模型。
 

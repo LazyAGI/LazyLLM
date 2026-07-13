@@ -58,6 +58,8 @@ class PaddleOCRPDFReader(_OcrReaderBase):
                          dropped_types=drop_types or dropped_types or {
                              'aside_text', 'header', 'footer', 'number', 'header_image', 'seal'},
                          return_trace=return_trace,
+                         post_func=post_func,
+                         split_doc=split_doc,
                          image_cache_dir=image_cache_dir or os.path.join(
                              lazyllm.config['home'], 'paddleocr_cache'),
                          token=token,
@@ -210,32 +212,45 @@ class PaddleOCRPDFReader(_OcrReaderBase):
         return json.dumps(merged), None
 
     @override
-    def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
+    def _adapt_json_to_IR(self, raw: dict, file=None) -> List[Block]:
         blocks: List[Block] = []
         image_tasks: List[tuple] = []
+        pdf_sizes = self._pdf_page_sizes(file) if file is not None else []
         for page_idx, page_data in enumerate(raw['result']['layoutParsingResults']):
             markdown_images = page_data['markdown']['images']
-            for item in page_data['prunedResult']['parsing_res_list']:
-                block = self._adapt_one(item, page_idx, markdown_images, image_tasks)
+            pruned = page_data['prunedResult']
+            ocr_w = pruned.get('width')
+            ocr_h = pruned.get('height')
+            dst_size = pdf_sizes[page_idx] if page_idx < len(pdf_sizes) else None
+            src_size = (float(ocr_w), float(ocr_h)) if ocr_w and ocr_h else None
+            for item in pruned['parsing_res_list']:
+                block = self._adapt_one(
+                    item, page_idx, markdown_images, image_tasks,
+                    src_size=src_size, dst_size=dst_size,
+                )
                 if block is not None:
                     blocks.append(block)
         self._download_images(image_tasks)
         return blocks
 
     def _adapt_one(self, item: dict, page_idx: int, markdown_images: Dict[str, str],
-                   image_tasks: List[tuple]) -> Optional[Block]:
+                   image_tasks: List[tuple], src_size=None, dst_size=None) -> Optional[Block]:
         label = item['block_label']
         if label in self._dropped_types:
             return None
 
         content = item['block_content']
-        bbox = BBox.from_list(item['block_bbox'])
-        page = PageRef(index=page_idx, bbox=bbox)
+        raw_bbox = item['block_bbox']
+        # Image key matching needs the original OCR-space bbox.
+        bbox = raw_bbox
+        if src_size and dst_size:
+            bbox = self._normalize_bbox(raw_bbox, src_size, dst_size)
+        page = PageRef(index=page_idx, bbox=BBox.from_list(bbox))
 
         if label in ('paragraph_title', 'doc_title'):
             return HeadingBlock(page=page, text=content)
         elif label == 'image':
-            img_src, img_url = self._resolve_image(item['block_bbox'], markdown_images)
+            img_src, img_url = self._resolve_image(raw_bbox, markdown_images)
             if img_src is None:
                 return None
             rel_path = Path(img_src).as_posix().removeprefix('./')

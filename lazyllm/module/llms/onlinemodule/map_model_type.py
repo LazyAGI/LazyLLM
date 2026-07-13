@@ -80,6 +80,7 @@ MODEL_MAPPING = {
     'sensenova-audio-fusion-0603': 'tts',
     'nova-tts-1': 'tts',
     'nova-embedding-stable': 'embed',
+    'sensenova-u1-fast': 'sd',
 
     # ===== GLM =====
     'chatglm3-6b': 'llm',
