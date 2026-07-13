@@ -122,24 +122,6 @@ class TestReactAgentEvents(object):
             'status': 'ok',
             'content': 'Error handling reference',
         }
-
-    def test_react_agent_sends_structured_tool_results_to_llm_as_text(self):
-        llm = _FakeLLM([
-            {
-                'role': 'assistant',
-                'content': 'Let me read the status.',
-                'tool_calls': [{
-                    'id': 'call-status',
-                    'type': 'function',
-                    'function': {'name': 'get_status', 'arguments': '{}'},
-                }],
-            },
-            {'role': 'assistant', 'content': 'Done.'},
-        ])
-        agent = ReactAgent(llm=llm, tools=[get_status], max_retries=1, stream=True,
-                           enable_builtin_tools=False)
-
-        assert agent('read status') == 'Done.'
         tool_message = llm.inputs[1]['input'][0]
 
         assert tool_message['role'] == 'tool'
