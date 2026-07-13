@@ -1,6 +1,8 @@
 import os
 import random
 import inspect
+import shlex
+import subprocess
 import sys
 import tempfile
 
@@ -39,7 +41,6 @@ class RelayServer(LazyLLMDeployBase):
         self._defined_pos = defined_pos
         # None means fall back to global config at call time.
         self._pass_args_by_file = pass_args_by_file
-        self._spill_files: list = []
         super().__init__(launcher=launcher)
         self.temp_folder = make_log_dir(log_path, cls or 'relay') if log_path else None
 
@@ -57,13 +58,20 @@ class RelayServer(LazyLLMDeployBase):
             return None
         if not force and len(serialised) <= _CMD_ARG_SIZE_THRESHOLD:
             return serialised
-        fd, path = tempfile.mkstemp(suffix='.pkl', prefix='lazyllm_relay_')
+        temp_dir = os.path.abspath(config['temp_dir'])
+        os.makedirs(temp_dir, exist_ok=True)
+        fd, path = tempfile.mkstemp(suffix='.pkl', prefix='lazyllm_relay_', dir=temp_dir)
         os.close(fd)
         raw = base64.b64decode(serialised.encode('utf-8'))
         with open(path, 'wb') as fp:
             fp.write(raw)
-        self._spill_files.append(path)
         return f'@file:{path}'
+
+    @staticmethod
+    def _join_command(args) -> str:
+        if os.name == 'nt':
+            return subprocess.list2cmdline([str(arg) for arg in args])
+        return shlex.join([str(arg) for arg in args])
 
     def cmd(self, func=None):
         FastapiApp.update()
@@ -75,20 +83,32 @@ class RelayServer(LazyLLMDeployBase):
             self._real_port = self._port if self._port else random.randint(30000, 40000)
             force = self._file_args_forced
             func_arg = self._prepare_obj_arg(self._func, force=force)
-            cmd = f'{sys.executable} {run_file_path} --open_port={self._real_port} --function="{func_arg}" '
+            args = [
+                sys.executable,
+                run_file_path,
+                f'--open_port={self._real_port}',
+                f'--function={func_arg}',
+            ]
             if self._pre:
-                cmd += f'--before_function="{self._prepare_obj_arg(self._pre, force=force)}" '
+                args.append(f'--before_function={self._prepare_obj_arg(self._pre, force=force)}')
             if self._post:
-                cmd += f'--after_function="{self._prepare_obj_arg(self._post, force=force)}" '
+                args.append(f'--after_function={self._prepare_obj_arg(self._post, force=force)}')
             if self._pythonpath:
-                cmd += f'--pythonpath="{self._pythonpath}" '
+                args.append(f'--pythonpath={self._pythonpath}')
             if self._num_replicas > 1 and config['use_ray']:
-                cmd += f'--num_replicas={self._num_replicas}'
+                args.append(f'--num_replicas={self._num_replicas}')
             if self._security_key:
-                cmd += f'--security_key="{self._security_key}" '
+                args.append(f'--security_key={self._security_key}')
             if self._defined_pos:
-                cmd += '--defined_pos="{}" '.format(dump_obj(self._defined_pos.replace('"', r'\"')))
-            if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
+                defined_pos = dump_obj(self._defined_pos.replace('"', r'\"'))
+                args.append(f'--defined_pos={self._prepare_obj_arg(defined_pos, force=force)}')
+            cmd = self._join_command(args)
+            if self.temp_folder:
+                log_path = get_log_path(self.temp_folder)
+                if os.name == 'nt':
+                    cmd += f' > {subprocess.list2cmdline([log_path])} 2>&1'
+                else:
+                    cmd += f' 2>&1 | tee {shlex.quote(log_path)}'
             return cmd
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl,

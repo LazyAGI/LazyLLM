@@ -228,7 +228,10 @@ _FILE_REF_PREFIX = '@file:'
 def dump_obj_to_file(f, path: str) -> str:
     '''Serialize *f* with cloudpickle, write raw bytes to *path*, and return a
     ``@file:<path>`` reference string that ``load_obj`` understands.'''
-    raw = cloudpickle.dumps(f)
+    # Reuse dump_obj so dynamically generated test modules are registered by
+    # value in exactly the same way as command-line payloads.
+    serialised = dump_obj(f)
+    raw = cloudpickle.dumps(None) if serialised is None else base64.b64decode(serialised.encode('utf-8'))
     with open(path, 'wb') as fp:
         fp.write(raw)
     return f'{_FILE_REF_PREFIX}{path}'
@@ -237,6 +240,12 @@ def dump_obj_to_file(f, path: str) -> str:
 def load_obj(f):
     if f.startswith(_FILE_REF_PREFIX):
         path = f[len(_FILE_REF_PREFIX):]
-        with open(path, 'rb') as fp:
-            return cloudpickle.loads(fp.read())
+        try:
+            with open(path, 'rb') as fp:
+                return cloudpickle.loads(fp.read())
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
     return cloudpickle.loads(base64.b64decode(f.encode('utf-8')))
