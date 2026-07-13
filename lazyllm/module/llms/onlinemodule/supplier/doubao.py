@@ -1,9 +1,11 @@
+import time
 import lazyllm
 from typing import Dict, List, Union, Optional
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
     OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase,
-    LazyLLMOnlineMultimodalEmbedModuleBase, LazyLLMOnlineText2ImageModuleBase
+    LazyLLMOnlineMultimodalEmbedModuleBase, LazyLLMOnlineText2ImageModuleBase,
+    LazyLLMOnlineText2VideoModuleBase,
 )
 import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
@@ -140,3 +142,74 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase):
         imagesResponse = self._ark_client(base_url=url).images.generate(**api_params)
         image_contents = [requests.get(result.url).content for result in imagesResponse.data]
         return encode_query_with_filepaths(None, bytes_to_file(image_contents))
+
+
+class DoubaoText2Video(LazyLLMOnlineText2VideoModuleBase):
+    # Default to the cheapest free model for traffic-saving usage.
+    MODEL_NAME = 'doubao-seedance-1-0-pro-fast-251015'
+    MODEL_NAMES = (
+        'doubao-seedance-2-0',
+        'doubao-seedance-2-0-fast',
+        'doubao-seedance-1-5-pro-251215',
+        'doubao-seedance-1-0-pro-250528',
+        'doubao-seedance-1-0-pro-fast-251015',
+        'doubao-seedance-2-0-mini',
+    )
+    # 2,000,000 tokens
+    FREE_MODEL_NAMES = (
+        'doubao-seedance-1-5-pro-251215',
+        'doubao-seedance-1-0-pro-250528',
+        'doubao-seedance-1-0-pro-fast-251015',
+    )
+
+    def __init__(self, api_key: str = None, model: Optional[str] = None, url: Optional[str] = None,
+                 return_trace: bool = False, **kwargs):
+        url = url or 'https://ark.cn-beijing.volces.com/api/v3'
+        resolved_model = model or lazyllm.config['doubao_text2video_model_name'] or DoubaoText2Video.MODEL_NAME
+        super().__init__(model=resolved_model, api_key=api_key or self._default_api_key(),
+                         return_trace=return_trace, url=url, **kwargs)
+
+    def _ark_client(self, base_url=None):
+        return volcenginesdkarkruntime.Ark(base_url=(base_url or self._base_url), api_key=self._api_key)
+
+    def _build_content(self, input: str, files: List[str] = None, resolution: str = '480p',
+                       duration: int = 2, ratio: str = '16:9', watermark: bool = True,
+                       camerafixed: bool = False) -> List[Dict]:
+        text = (f'{input} --resolution {resolution} --duration {duration} '
+                f'--ratio {ratio} --camerafixed {str(camerafixed).lower()} '
+                f'--watermark {str(watermark).lower()}')
+        content = [{'type': 'text', 'text': text}]
+        if files:
+            for file in files:
+                if file.startswith(('http://', 'https://', 'data:')):
+                    image_url = file
+                else:
+                    b64, _ = self._load_images(file)[0]
+                    image_url = f'data:image/png;base64,{b64}'
+                content.append({'type': 'image_url', 'image_url': {'url': image_url}})
+        return content
+
+    def _forward(self, input: str = None, files: List[str] = None, resolution: str = '480p',
+                 duration: int = 2, ratio: str = '16:9', watermark: bool = True,
+                 camerafixed: bool = False, poll_interval: float = 3.0,
+                 model: str = None, url: str = None, **kwargs):
+        content = self._build_content(
+            input=input, files=files, resolution=resolution, duration=duration,
+            ratio=ratio, watermark=watermark, camerafixed=camerafixed)
+        client = self._ark_client(base_url=url)
+        # Strip LazyLLM-only kwargs before calling the Ark SDK.
+        for key in ('stream_output', 'stream', 'priority'):
+            kwargs.pop(key, None)
+        create_result = client.content_generation.tasks.create(
+            model=model or self._model_name, content=content, **kwargs)
+        task_id = create_result.id
+        while True:
+            get_result = client.content_generation.tasks.get(task_id=task_id)
+            status = get_result.status
+            if status == 'succeeded':
+                video_url = get_result.content.video_url
+                video_bytes = requests.get(video_url, timeout=180).content
+                return encode_query_with_filepaths(None, bytes_to_file([video_bytes]))
+            if status == 'failed':
+                raise Exception(f'Doubao text2video failed: {getattr(get_result, "error", None)}')
+            time.sleep(poll_interval)

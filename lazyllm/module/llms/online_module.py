@@ -22,6 +22,7 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
         LLMType.SD: 'text2image',
         LLMType.TEXT2IMAGE: 'text2image',
         LLMType.IMAGE_EDITING: 'image_editing',
+        LLMType.TEXT2VIDEO: 'text2video',
     }
 
     def __new__(self, model: Optional[str] = None, source: Optional[str] = None, *,

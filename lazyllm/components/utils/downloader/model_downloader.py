@@ -41,6 +41,7 @@ class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
     SD = 'SD'
     TEXT2IMAGE = 'TEXT2IMAGE'
     IMAGE_EDITING = 'IMAGE_EDITING'
+    TEXT2VIDEO = 'TEXT2VIDEO'
     TTS = 'TTS'
     STT = 'STT'
     EMBED = 'EMBED'
