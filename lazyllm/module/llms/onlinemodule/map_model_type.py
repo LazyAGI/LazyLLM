@@ -432,8 +432,15 @@ MODEL_MAPPING = {
     'doubao-seedance-1-0-pro-fast-251015': 'text2video',
     'doubao-seedance-1-0-lite-t2v-250428': 'text2video',
     'doubao-seedance-1-0-lite-i2v-250428': 'text2video',
+    'doubao-seedream-5-0-pro-260628': 'sd',
+    'doubao-seedream-5-0-pro': 'sd',
+    'doubao-seedream-5-0-260128': 'sd',
+    'doubao-seedream-5-0-lite': 'sd',
+    'doubao-seedream-5-0': 'sd',
+    'doubao-seedream-4-5-251128': 'sd',
     'doubao-seedream-4-5': 'sd',
     'doubao-seedream-4-0-250828': 'sd',
+    'doubao-seedream-4-0': 'sd',
     'doubao-seedream-3-0-t2i-250415': 'sd',
     'doubao-seededit-3-0-i2i-250628': 'sd',
     'doubao-seed3d-1-0-250928': 'sd',
@@ -466,9 +473,9 @@ _TOKEN_MAP = {
     'stt': ('whisper', 'paraformer', 'asr', 'stt', 'transcribe'),
     'tts': ('tts', 'cosyvoice', 'nova-tts'),
     'vlm': ('qwen-vl', 'vl', 'vision', 'caption', 'omni', 'vlm', 'seed'),
-    'sd': ('dall', 'wan', 'sora', 'image', 't2i'),
+    'sd': ('dall', 'wan', 'sora', 'image', 't2i', 'seedream'),
     'text2video': ('seedance', 't2v', 'video'),
-    'image_editing': ('image-edit', 'seededit', 'i2i', 'seedream-3', 'seedream-4', 'Kolors'),
+    'image_editing': ('image-edit', 'seededit', 'i2i', 'seedream-3', 'seedream-4', 'seedream-5', 'Kolors'),
 }
 _SUFFIX_RE = re.compile(
     r'(?:'

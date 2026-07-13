@@ -94,8 +94,16 @@ class DoubaoMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
 
 
 class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase):
-    MODEL_NAME = 'doubao-seedream-3-0-t2i-250415'
-    IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-3-0-t2i-250415'
+    # Default to Seedream 4.0 (stable production); override via model= or config.
+    MODEL_NAME = 'doubao-seedream-4-0-250828'
+    IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'
+    MODEL_NAMES = (
+        'doubao-seedream-5-0-pro-260628',  # Seedream 5.0 Pro
+        'doubao-seedream-5-0-260128',      # Seedream 5.0 Lite
+        'doubao-seedream-4-5-251128',      # Seedream 4.5
+        'doubao-seedream-4-0-250828',      # Seedream 4.0
+        'doubao-seedream-3-0-t2i-250415',  # Seedream 3.0
+    )
 
     def __init__(self, api_key: str = None, model: Optional[str] = None, url: Optional[str] = None,
                  return_trace: bool = False, **kwargs):
@@ -123,8 +131,11 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase):
         if has_ref_image:
             image_results = self._load_images(files)
             contents = [f'data:image/png;base64,{base64_str}' for base64_str, _ in image_results]
+        # Strip LazyLLM-only kwargs before calling the Ark SDK.
+        for key in ('stream_output', 'stream', 'priority'):
+            kwargs.pop(key, None)
         api_params = {
-            'model': model,
+            'model': model or self._model_name,
             'prompt': input,
             'size': size,
             'seed': seed,
