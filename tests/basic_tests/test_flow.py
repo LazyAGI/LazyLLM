@@ -180,10 +180,15 @@ class TestFlow(object):
             sw.case[is_3, t3]
         assert sw(1, 30) == 60 and sw(2, 10) == 30 and sw(3, 5) == 5
 
-    def test_ifs(self):
+    def test_ifs(self, capfd):
 
         assert ifs(is_1, t3, t1)(1) == 1
         assert ifs(is_1, t3, t1)(2) == 4
+        assert ifs(lambda: True, t3, t1)(2) == 2
+        assert ifs(lambda x=0: x > 0, t3, t1)(2) == 4
+        assert ifs(lambda *args: args[0] > 0, t3, t1)(2) == 2
+        assert ifs(False, t3, t1)(2) == 4
+        assert 'missing 1 required positional argument' not in capfd.readouterr().err
 
     def test_loop(self):
 
