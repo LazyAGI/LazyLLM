@@ -2,13 +2,21 @@ import os
 import random
 import inspect
 import sys
+import tempfile
 
 from lazyllm import launchers, LazyLLMCMD, dump_obj, config
 from ..base import LazyLLMDeployBase, verify_fastapi_func, verify_ray_func
 from ..utils import get_log_path, make_log_dir
 from typing import Optional
+import base64
 
 config.add('use_ray', bool, False, 'USE_RAY', description='Whether to use Ray for ServerModule(relay server).')
+config.add('pass_args_by_file', bool, False, 'PASS_ARGS_BY_FILE',
+           description='When True, serialised relay cmd args are always written to temp files.')
+
+# Serialised objects longer than this (bytes) are written to a temp file so the
+# OS command-line length limit is not exceeded.
+_CMD_ARG_SIZE_THRESHOLD = 65536
 
 
 class RelayServer(LazyLLMDeployBase):
@@ -18,7 +26,8 @@ class RelayServer(LazyLLMDeployBase):
 
     def __init__(self, port=None, *, func=None, pre_func=None, post_func=None, pythonpath=None,
                  log_path=None, cls=None, launcher=launchers.remote(sync=False), num_replicas: int = 1,  # noqa B008
-                 security_key: Optional[str] = None, defined_pos: Optional[str] = None):
+                 security_key: Optional[str] = None, defined_pos: Optional[str] = None,
+                 pass_args_by_file: Optional[bool] = None):
         # func must dump in __call__ to wait for dependancies.
         self._func = func
         self._pre = dump_obj(pre_func)
@@ -28,8 +37,33 @@ class RelayServer(LazyLLMDeployBase):
         self._num_replicas = num_replicas
         self._security_key = security_key
         self._defined_pos = defined_pos
+        # None means fall back to global config at call time.
+        self._pass_args_by_file = pass_args_by_file
+        self._spill_files: list = []
         super().__init__(launcher=launcher)
         self.temp_folder = make_log_dir(log_path, cls or 'relay') if log_path else None
+
+    @property
+    def _file_args_forced(self) -> bool:
+        if self._pass_args_by_file is not None:
+            return self._pass_args_by_file
+        return config['pass_args_by_file']
+
+    def _prepare_obj_arg(self, serialised: Optional[str], *, force: bool = False) -> Optional[str]:
+        '''Return *serialised* as-is when small, or spill it to a temp file and
+        return a ``@file:<path>`` reference when it exceeds the threshold.
+        Pass ``force=True`` to always write to a file regardless of size.'''
+        if serialised is None:
+            return None
+        if not force and len(serialised) <= _CMD_ARG_SIZE_THRESHOLD:
+            return serialised
+        fd, path = tempfile.mkstemp(suffix='.pkl', prefix='lazyllm_relay_')
+        os.close(fd)
+        raw = base64.b64decode(serialised.encode('utf-8'))
+        with open(path, 'wb') as fp:
+            fp.write(raw)
+        self._spill_files.append(path)
+        return f'@file:{path}'
 
     def cmd(self, func=None):
         FastapiApp.update()
@@ -39,11 +73,13 @@ class RelayServer(LazyLLMDeployBase):
 
         def impl():
             self._real_port = self._port if self._port else random.randint(30000, 40000)
-            cmd = f'{sys.executable} {run_file_path} --open_port={self._real_port} --function="{self._func}" '
+            force = self._file_args_forced
+            func_arg = self._prepare_obj_arg(self._func, force=force)
+            cmd = f'{sys.executable} {run_file_path} --open_port={self._real_port} --function="{func_arg}" '
             if self._pre:
-                cmd += f'--before_function="{self._pre}" '
+                cmd += f'--before_function="{self._prepare_obj_arg(self._pre, force=force)}" '
             if self._post:
-                cmd += f'--after_function="{self._post}" '
+                cmd += f'--after_function="{self._prepare_obj_arg(self._post, force=force)}" '
             if self._pythonpath:
                 cmd += f'--pythonpath="{self._pythonpath}" '
             if self._num_replicas > 1 and config['use_ray']:
