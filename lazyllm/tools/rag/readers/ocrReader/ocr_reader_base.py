@@ -10,12 +10,12 @@ from lazyllm.thirdparty import bs4, pypdf
 from lazyllm.common import AuthStrategy, BearerTokenStrategy, CredentialMixin
 from ..readerBase import _RichReader
 from ...doc_node import DocNode
-from .ocr_ir import Block, Cell
+from .ocr_ir import Block, Cell, normalize_bbox
 from .ocr_postprocessor import l1_normalize, l2_associate
 
 
 class _Adapter:
-    def _adapt_json_to_IR(self, raw: dict) -> List[Block]:
+    def _adapt_json_to_IR(self, raw: dict, file=None) -> List[Block]:
         '''Adapt raw JSON response to intermediate block representation.
 
         Subclasses implement service-specific adaptation logic directly.'''
@@ -189,11 +189,30 @@ class _OcrReaderBase(_RichReader, _Adapter, CredentialMixin):
                                    extra_info: Optional[Dict] = None) -> List[DocNode]:
         '''Parse OCR service response into DocNodes.'''
         raw = json.loads(response_text)
-        blocks = self._adapt_json_to_IR(raw)
+        blocks = self._adapt_json_to_IR(raw, file=file)
         # Post processing
         blocks = l1_normalize(blocks)
         blocks = l2_associate(blocks)
         return self._build_nodes_from_blocks(blocks, file, extra_info)
+
+    @staticmethod
+    def _pdf_page_sizes(file) -> List[Tuple[float, float]]:
+        if isinstance(file, str) and file.startswith(('http://', 'https://')):
+            return []
+        try:
+            reader = pypdf.PdfReader(str(file))
+            sizes = []
+            for page in reader.pages:
+                box = page.mediabox
+                sizes.append((float(box.width), float(box.height)))
+            return sizes
+        except Exception:
+            return []
+
+    @staticmethod
+    def _normalize_bbox(bbox: List[float], src_size: Tuple[float, float],
+                        dst_size: Tuple[float, float]) -> List[float]:
+        return normalize_bbox(bbox, src_size, dst_size)
 
     def _load_data(self, file, extra_info: Optional[Dict] = None, use_cache: bool = True,
                    **kwargs) -> List[DocNode]:

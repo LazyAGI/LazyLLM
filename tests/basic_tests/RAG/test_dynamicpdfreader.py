@@ -65,7 +65,13 @@ class TestDynamicPDFReader:
         assert fake_reader.forward.call_count == 2
 
     def test_build_reader_uses_dynamic_auth(self):
-        reader = DynamicPDFReader(ocr_type='paddleocr', ocr_url='http://mock-paddle')
+        post_func = MagicMock()
+        reader = DynamicPDFReader(
+            ocr_type='paddleocr',
+            ocr_url='http://mock-paddle',
+            post_func=post_func,
+            timeout=3600,
+        )
         with patch(
             'lazyllm.tools.rag.readers.ocrReader.dynamic_pdf_reader.PaddleOCRPDFReader'
         ) as mock_cls:
@@ -74,6 +80,8 @@ class TestDynamicPDFReader:
             mock_cls.assert_called_once_with(
                 url='http://mock-paddle',
                 dynamic_auth=True,
+                timeout=3600,
+                post_func=post_func,
             )
 
     def test_unsupported_type_raises(self):
@@ -237,14 +245,11 @@ class TestDynamicPDFReader:
         assert isinstance(image_block, FigureBlock)
         assert image_block.page.bbox.to_list() == [0, 0, 0, 0]
 
-    def test_pdf_official_missing_bbox_uses_zero_bbox(self):
+    def test_pdf_official_missing_bbox_still_skipped(self):
         reader = MineruPDFReader(url='https://mineru.net')
-        block = reader._adapt_one({'type': 'text', 'text': 'hello', 'page_idx': 0})
-        assert isinstance(block, ParagraphBlock)
-        assert block.page.index == 0
-        assert block.page.bbox.to_list() == [0, 0, 0, 0]
+        assert reader._adapt_one({'type': 'text', 'text': 'hello', 'page_idx': 0}) is None
 
-    def test_pdf_official_ignores_returned_bbox(self):
+    def test_pdf_official_keeps_returned_bbox(self):
         reader = MineruPDFReader(url='https://mineru.net')
         block = reader._adapt_one({
             'type': 'text',
@@ -254,7 +259,24 @@ class TestDynamicPDFReader:
         })
         assert isinstance(block, ParagraphBlock)
         assert block.page.index == 2
-        assert block.page.bbox.to_list() == [0, 0, 0, 0]
+        assert block.page.bbox.to_list() == [10.0, 20.0, 100.0, 50.0]
+
+    def test_normalize_online_content_bboxes_to_pdf_space(self):
+        content = [
+            {'type': 'text', 'text': 'title', 'page_idx': 0, 'bbox': [361, 80, 636, 99]},
+            {'type': 'text', 'text': 'body', 'page_idx': 0, 'bbox': [174, 224, 825, 502]},
+        ]
+        layout = {'pdf_info': [{'page_idx': 0, 'page_size': [595, 841]}]}
+        model = [[
+            {'type': 'doc_title', 'bbox': [0.363, 0.081, 0.637, 0.101], 'content': 'title'},
+            {'type': 'text', 'bbox': [0.175, 0.225, 0.826, 0.503], 'content': 'body'},
+        ]]
+        out = MineruPDFReader._normalize_online_content_bboxes(content, layout, model)
+        # OCR canvas inferred from max extent ≈ 1000; result should be near PDF points.
+        assert out[0]['bbox'][0] == pytest.approx(215.0, abs=2.0)
+        assert out[0]['bbox'][1] == pytest.approx(67.5, abs=2.0)
+        assert out[0]['bbox'][2] == pytest.approx(379.0, abs=2.0)
+        assert out[0]['bbox'][3] == pytest.approx(83.5, abs=2.0)
 
     def test_pdf_offline_missing_bbox_still_skipped(self):
         reader = MineruPDFReader(url='http://local-mineru:8000/api/v1/pdf_parse')
