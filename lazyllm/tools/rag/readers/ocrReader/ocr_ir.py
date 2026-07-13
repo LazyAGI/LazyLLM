@@ -20,6 +20,16 @@ class BBox:
         return cls(x0=float(vals[0]), y0=float(vals[1]), x1=float(vals[2]), y1=float(vals[3]))
 
 
+def normalize_bbox(bbox: List[float], src_size: Tuple[float, float],
+                   dst_size: Tuple[float, float]) -> List[float]:
+    '''Scale bbox from src page size to dst page size (typically PDF points).'''
+    sw, sh = src_size
+    dw, dh = dst_size
+    if sw <= 0 or sh <= 0:
+        return [float(v) for v in bbox]
+    return [bbox[0] * dw / sw, bbox[1] * dh / sh, bbox[2] * dw / sw, bbox[3] * dh / sh]
+
+
 @dataclass
 class PageRef:
     index: int

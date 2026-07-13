@@ -1,6 +1,9 @@
 import os
+import posixpath
 import re
 import shlex
+import subprocess
+import tempfile
 import threading
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -97,7 +100,7 @@ class SkillManager(ModuleBase):
                  max_skill_md_bytes: Optional[int] = None, fs=None):
         super().__init__(return_trace=False)
         self._fs = fs or fsspec.implementations.local.LocalFileSystem()
-        self._skills_dir = self._parse_dirs(dir or config['skills_dir'])
+        self._skills_dir = self._parse_dirs(dir or config['skills_dir'], fs=fs)
         self._validate_fs_dir_consistency(fs, self._skills_dir)
         self._skills_expected = self._parse_skills(skills)
         self._max_skill_md_bytes = max_skill_md_bytes or config['max_skill_md_bytes']
@@ -136,19 +139,36 @@ class SkillManager(ModuleBase):
                     )
 
     @staticmethod
-    def _parse_dirs(dir_value: Optional[str]) -> List[str]:
+    def _is_fs_router(fs) -> bool:
+        from lazyllm.tools.fs.client import _FSRouter
+        return isinstance(fs, _FSRouter)
+
+    @staticmethod
+    def _is_local_fs(fs) -> bool:
+        if fs is None or SkillManager._is_fs_router(fs):
+            return True
+        if isinstance(fs, fsspec.implementations.local.LocalFileSystem):
+            return True
+        protocol = getattr(fs, 'protocol', None)
+        protocol_key = getattr(fs, '_fs_protocol_key', None)
+        protocols = protocol if isinstance(protocol, (tuple, list, set)) else [protocol]
+        return protocol_key == 'file' or 'file' in protocols
+
+    @staticmethod
+    def _parse_dirs(dir_value: Optional[str], fs=None) -> List[str]:
         if not dir_value:
             return []
         dirs = [d.strip() for d in dir_value.split(',') if d.strip()] if isinstance(dir_value, str) else list(dir_value)
         seen = set()
         result = []
+        expand_bare_paths = SkillManager._is_local_fs(fs)
         for d in dirs:
             if not d:
                 continue
             # Keep cloud paths (protocol:/ prefix) as-is; expand local paths.
             # Use the same regex as _extract_protocol for consistency.
             is_cloud_path = bool(re.match(r'^[a-zA-Z][a-zA-Z0-9+\-.]*(@[^:/]+)?:/', d))
-            path = d if is_cloud_path else os.path.abspath(os.path.expanduser(d))
+            path = d if is_cloud_path or not expand_bare_paths else os.path.abspath(os.path.expanduser(d))
             if path not in seen:
                 seen.add(path)
                 result.append(path)
@@ -171,8 +191,18 @@ class SkillManager(ModuleBase):
         with self._fs.open(path, 'r', encoding='utf-8', errors='replace') as f:
             return f.read()
 
-    def _fs_getsize(self, path: str) -> int:
-        return self._fs.info(path).get('size', 0)
+    def _fs_getsize(self, path: str) -> Optional[int]:
+        try:
+            size = self._fs.info(path).get('size')
+        except Exception:
+            return None
+        try:
+            return int(size) if size is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _content_exceeds_limit(self, content: str) -> bool:
+        return len(content.encode('utf-8')) > self._max_skill_md_bytes
 
     def _fs_listdir(self, path: str) -> List[Dict]:
         try:
@@ -182,6 +212,44 @@ class SkillManager(ModuleBase):
 
     def _fs_join(self, base: str, name: str) -> str:
         return base.rstrip('/') + '/' + name
+
+    @staticmethod
+    def _normalize_skill_rel_path(path: str, label: str = 'rel_path') -> str:
+        raw = str(path or '').strip()
+        if not raw:
+            raise ValueError(f'{label} must be a non-empty relative path inside the skill directory.')
+        if raw.startswith('/') or os.path.isabs(raw) or '\\' in raw or re.match(r'^[A-Za-z]:[/\\]', raw):
+            raise ValueError(f'{label} must be a relative POSIX path inside the skill directory.')
+        parts = raw.split('/')
+        if any(part in ('', '.', '..') for part in parts):
+            raise ValueError(f"{label} must not contain empty, '.', or '..' path segments.")
+        normalized = posixpath.normpath(raw)
+        if normalized in ('', '.') or normalized == '..' or normalized.startswith('../'):
+            raise ValueError(f'{label} must stay inside the skill directory.')
+        return normalized
+
+    @staticmethod
+    def _resolve_local_skill_child(base: str, rel_path: str, label: str = 'rel_path') -> str:
+        base_real = os.path.realpath(os.path.abspath(base))
+        target = os.path.realpath(os.path.abspath(os.path.join(base_real, *rel_path.split('/'))))
+        if os.path.commonpath([base_real, target]) != base_real:
+            raise ValueError(f'{label} must stay inside the skill directory.')
+        return target
+
+    @classmethod
+    def _resolve_run_cwd(cls, base: str, cwd: Optional[str]) -> str:
+        base_real = os.path.realpath(os.path.abspath(base))
+        if cwd is None or str(cwd).strip() in ('', '.'):
+            return base_real
+        raw = str(cwd).strip()
+        if os.path.isabs(raw):
+            target = os.path.realpath(os.path.abspath(raw))
+        else:
+            rel_cwd = cls._normalize_skill_rel_path(raw, label='cwd')
+            target = cls._resolve_local_skill_child(base_real, rel_cwd, label='cwd')
+        if os.path.commonpath([base_real, target]) != base_real:
+            raise ValueError('cwd must stay inside the skill directory.')
+        return target
 
     def _iter_skill_files(self) -> Iterable[Tuple[str, str]]:
         for base_dir in self._skills_dir:
@@ -231,6 +299,24 @@ class SkillManager(ModuleBase):
     def _is_meta_valid(meta: dict) -> bool:
         return meta is not None and _META_REQUIRED_FIELDS.issubset(meta.keys())
 
+    def _skill_key_from_dir(self, skill_dir: str) -> str:
+        normalized_dir = self._normalize_index_path(skill_dir)
+        for base_dir in sorted(self._skills_dir, key=len, reverse=True):
+            normalized_base = self._normalize_index_path(base_dir)
+            if normalized_dir == normalized_base:
+                return normalized_dir.rsplit('/', 1)[-1]
+            prefix = normalized_base.rstrip('/') + '/'
+            if normalized_dir.startswith(prefix):
+                return normalized_dir[len(prefix):].strip('/')
+        return normalized_dir.rsplit('/', 1)[-1]
+
+    @classmethod
+    def _normalize_index_path(cls, path: str) -> str:
+        raw = str(path or '').replace('\\', '/').rstrip('/')
+        if cls._extract_protocol(raw):
+            return raw
+        return os.path.abspath(os.path.expanduser(raw)).replace('\\', '/').rstrip('/')
+
     def _load_skills_index(self) -> None:
         if self._skills_index:
             return
@@ -238,22 +324,27 @@ class SkillManager(ModuleBase):
             if self._skills_index:
                 return
             skills_index: Dict[str, Dict] = {}
-            seen: set = set()
             for skill_dir, skill_md in self._iter_skill_files():
-                if self._fs_getsize(skill_md) > self._max_skill_md_bytes:
+                size = self._fs_getsize(skill_md)
+                if size is not None and size > self._max_skill_md_bytes:
                     continue
                 try:
                     content = self._fs_read(skill_md)
                 except Exception:
                     continue
+                if size is None and self._content_exceeds_limit(content):
+                    continue
                 meta = self._extract_yaml_meta(content)
                 if not self._is_meta_valid(meta):
                     continue
                 name = meta.get('name')
-                if not name or name in seen:
+                if not name:
                     continue
-                seen.add(name)
-                skills_index[name] = {
+                key = self._skill_key_from_dir(skill_dir)
+                if not key or key in skills_index:
+                    continue
+                skills_index[key] = {
+                    'key': key,
                     'name': name,
                     'description': meta.get('description', ''),
                     'argument-hint': meta.get('argument-hint', ''),
@@ -267,24 +358,80 @@ class SkillManager(ModuleBase):
                 }
             self._skills_index = skills_index
             if self._skills_expected:
-                self._skills_selected = [n for n in self._skills_expected if n in self._skills_index]
+                self._skills_selected = [
+                    key for key in (self._resolve_skill_ref(ref, self._skills_index.keys())[0]
+                                    for ref in self._skills_expected)
+                    if key
+                ]
             else:
                 self._skills_selected = [
-                    n for n, info in self._skills_index.items() if not info.get('disable-model-invocation')
+                    key for key, info in self._skills_index.items() if not info.get('disable-model-invocation')
                 ]
 
-    def list_skill(self) -> str:
+    def _resolve_skill_ref(self, ref: str, keys: Iterable[str]) -> Tuple[Optional[str], Optional[Dict]]:
+        name = str(ref or '').strip()
+        if not name:
+            return None, {'status': 'missing', 'name': name}
+        key_list = list(keys)
+        if name in key_list:
+            return name, None
+        matches = [
+            key for key in key_list
+            if self._skills_index[key].get('name') == name
+            or key.rsplit('/', 1)[-1] == name
+        ]
+        if not matches:
+            return None, {'status': 'missing', 'name': name}
+        if len(matches) > 1:
+            return None, {
+                'status': 'ambiguous',
+                'name': name,
+                'matches': sorted(matches),
+                'error': (
+                    f'Ambiguous skill name {name!r}; use the full skill key '
+                    f'such as {sorted(matches)[0]!r}.'
+                ),
+            }
+        return matches[0], None
+
+    def _visible_skill_keys(self) -> List[str]:
         self._load_skills_index()
+        if self._skills_selected:
+            return [key for key in self._skills_selected if key in self._skills_index]
+        if self._skills_expected:
+            return []
+        return [
+            key for key, info in self._skills_index.items()
+            if not info.get('disable-model-invocation')
+        ]
+
+    def _visible_skills_index(self) -> Dict[str, Dict]:
+        return {
+            key: self._skills_index[key]
+            for key in self._visible_skill_keys()
+            if key in self._skills_index
+        }
+
+    def _get_visible_skill_info(self, name: str) -> Tuple[Optional[Dict], Optional[Dict]]:
+        visible_keys = self._visible_skill_keys()
+        key, error = self._resolve_skill_ref(name, visible_keys)
+        if error:
+            return None, error
+        return self._skills_index.get(key), None
+
+    def list_skill(self) -> str:
+        visible_skills = self._visible_skills_index()
         lines = ['# Skills', '', '## Skill Locations']
         lines.extend([f'- {path}' for path in self._skills_dir] or ['- (none)'])
         lines += ['', '## Available Skills']
-        if not self._skills_index:
+        if not visible_skills:
             lines.append('- (none)')
             return '\n'.join(lines)
-        for name, info in self._skills_index.items():
+        for name, info in visible_skills.items():
             desc = (info.get('description', '') or '')[:1024]
             lines += [
                 f'- **{name}**',
+                f'  - Name: {info.get("name")}',
                 f'  - {desc}',
                 f'  - Source: {info.get("source", "file")}',
                 f'  - Path: {info.get("path")}',
@@ -292,8 +439,7 @@ class SkillManager(ModuleBase):
         return '\n'.join(lines)
 
     def build_prompt(self) -> str:
-        self._load_skills_index()
-        skills_list = self._format_skills_list(list(self._skills_index.keys()))
+        skills_list = self._format_skills_list(self._visible_skill_keys())
         lines = ['**Skills Directory**']
         if self._skills_dir:
             lines.append(self._format_skills_locations())
@@ -309,50 +455,128 @@ class SkillManager(ModuleBase):
         return bool(value) if value is not None else False
 
     def get_skill(self, name: str, allow_large: bool = False) -> Dict[str, str]:
-        self._load_skills_index()
-        info = self._skills_index.get(name)
+        info, error = self._get_visible_skill_info(name)
+        if error:
+            return error
         if not info:
             return {'status': 'missing', 'name': name}
         skill_md = info['skill_md']
         size = self._fs_getsize(skill_md)
-        if size > self._max_skill_md_bytes and not allow_large:
+        if size is not None and size > self._max_skill_md_bytes and not allow_large:
             return {'status': 'too_large', 'name': name, 'path': skill_md,
                     'size': size, 'limit': self._max_skill_md_bytes}
         try:
             content = self._fs_read(skill_md)
         except Exception as e:
             return {'status': 'error', 'name': name, 'error': str(e)}
+        if size is None:
+            size = len(content.encode('utf-8'))
+        if size > self._max_skill_md_bytes and not allow_large:
+            return {'status': 'too_large', 'name': name, 'path': skill_md,
+                    'size': size, 'limit': self._max_skill_md_bytes}
         return {'status': 'ok', 'name': name, 'path': skill_md, 'content': content}
 
     def read_file(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
-        self._load_skills_index()
-        info = self._skills_index.get(name)
+        info, error = self._get_visible_skill_info(name)
+        if error:
+            return error
         if not info:
             return {'status': 'missing', 'name': name}
+        try:
+            normalized_rel_path = self._normalize_skill_rel_path(rel_path)
+        except ValueError as exc:
+            return {'status': 'error', 'name': name, 'error': str(exc)}
         base = info['path']
-        path = self._fs_join(base, rel_path)
+        path = self._fs_join(base, normalized_rel_path)
         try:
             return {'status': 'ok', 'path': path, 'content': self._fs_read(path)}
         except Exception as e:
             return {'status': 'error', 'path': path, 'error': str(e)}
 
-    def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
-                   allow_unsafe: bool = False, cwd: Optional[str] = None) -> Dict[str, str]:
-        self._load_skills_index()
-        info = self._skills_index.get(name)
-        if not info:
-            return {'status': 'missing', 'name': name}
-        base = info['path']
-        script_path = os.path.join(base, rel_path)
-        if self._extract_protocol(script_path):
-            return {'status': 'error', 'error': 'run_script is not supported for cloud FS skills'}
-        if not self._fs.exists(script_path):
-            return {'status': 'missing', 'path': script_path}
+    def _materialize_script_base(self, base: str, rel_path: str) -> Tuple[str, Optional[tempfile.TemporaryDirectory]]:
+        remote_script_path = self._fs_join(base, rel_path)
+        if self._is_local_fs(self._fs) and not self._extract_protocol(remote_script_path):
+            return base, None
+        temp_dir = tempfile.TemporaryDirectory(prefix='lazyllm-skill-')
+        try:
+            materialized = self._fs.materialize_dir(base, temp_dir.name) or {}
+        except Exception as exc:
+            temp_dir.cleanup()
+            raise RuntimeError(f'Failed to materialize remote skill directory {base!r}: {exc}') from exc
+        return str(materialized.get('local_dir') or temp_dir.name), temp_dir
+
+    @staticmethod
+    def _build_script_command(script_path: str, args: Optional[List[str]]) -> List[str]:
         ext = os.path.splitext(script_path)[1].lower()
-        cmd = ['python' if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh', script_path]
+        runner = 'python' if ext == '.py' else 'bash' if ext in ('.sh', '.bash') else 'sh'
+        cmd = [runner, script_path]
         if args:
             cmd.extend(args)
-        return _shell_tool(' '.join(shlex.quote(p) for p in cmd), cwd=cwd or base, allow_unsafe=allow_unsafe)
+        return cmd
+
+    def _run_script_exception(self, name: str, rel_path: str, cwd: Optional[str],
+                              run_cwd: Optional[str], exc: Exception) -> Dict[str, str]:
+        error_cwd = run_cwd or cwd
+        extra = {}
+        if isinstance(exc, ValueError):
+            error_cwd = cwd
+            message = f'Invalid run_script path argument: {exc}'
+        elif isinstance(exc, FileNotFoundError):
+            message = f'run_script filesystem path not found: {exc}'
+        elif isinstance(exc, subprocess.TimeoutExpired):
+            message = f'run_script timed out after {exc.timeout} seconds.'
+            extra['timeout'] = exc.timeout
+        else:
+            message = f'run_script execution failed: {exc}'
+        return {
+            'status': 'error',
+            'name': name,
+            'rel_path': rel_path,
+            'cwd': error_cwd,
+            'error_type': exc.__class__.__name__,
+            'error': message,
+            **extra,
+        }
+
+    def run_script(self, name: str, rel_path: str, args: Optional[List[str]] = None,
+                   allow_unsafe: bool = False, cwd: Optional[str] = None) -> Dict[str, str]:
+        info, error = self._get_visible_skill_info(name)
+        if error:
+            return error
+        if not info:
+            return {'status': 'missing', 'name': name}
+        try:
+            normalized_rel_path = self._normalize_skill_rel_path(rel_path)
+        except ValueError as exc:
+            return {'status': 'error', 'name': name, 'error': str(exc)}
+        if not normalized_rel_path.startswith('scripts/'):
+            return {
+                'status': 'error',
+                'name': name,
+                'rel_path': normalized_rel_path,
+                'error_type': 'InvalidRelPath',
+                'error': 'run_script rel_path must be under scripts/.',
+            }
+        base = info['path']
+        temp_dir = None
+        run_cwd = None
+        try:
+            base, temp_dir = self._materialize_script_base(base, normalized_rel_path)
+            script_path = self._resolve_local_skill_child(base, normalized_rel_path)
+            run_cwd = self._resolve_run_cwd(base, cwd)
+            script_exists = os.path.exists(script_path) if temp_dir is not None else self._fs.exists(script_path)
+            if not script_exists:
+                return {'status': 'missing', 'name': name, 'path': script_path, 'rel_path': normalized_rel_path}
+            cmd = self._build_script_command(script_path, args)
+            result = _shell_tool(' '.join(shlex.quote(p) for p in cmd), cwd=run_cwd, allow_unsafe=allow_unsafe)
+            if result.get('status') == 'ok' and result.get('exit_code', 0) != 0:
+                result['status'] = 'failed'
+            return result
+        except Exception as exc:
+            return self._run_script_exception(name, normalized_rel_path, cwd, run_cwd, exc)
+        finally:
+            if temp_dir is not None:
+                temp_dir.cleanup()
 
     def read_reference(self, name: str, rel_path: str, **kwargs) -> Dict[str, str]:
         return self.read_file(name=name, rel_path=rel_path, **kwargs)

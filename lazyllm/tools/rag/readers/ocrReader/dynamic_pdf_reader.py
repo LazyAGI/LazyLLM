@@ -89,6 +89,7 @@ class DynamicPDFReader(LazyLLMReaderBase):
             kwargs.update(timeout=self._timeout, post_func=self._post_func)
             return MineruPDFReader(**kwargs)
         if reader_type == 'paddleocr':
+            kwargs.update(timeout=self._timeout, post_func=self._post_func)
             return PaddleOCRPDFReader(**kwargs)
 
         raise ValueError(f'Unsupported OCR server type: {reader_type!r}')

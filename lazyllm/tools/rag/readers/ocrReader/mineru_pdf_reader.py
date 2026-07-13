@@ -24,7 +24,7 @@ from ...doc_node import DocNode
 from .ocr_ir import (
     Block, BBox, PageRef,
     HeadingBlock, ParagraphBlock, TableBlock, FormulaBlock,
-    FigureBlock, CodeBlock, ListBlock,
+    FigureBlock, CodeBlock, ListBlock, normalize_bbox,
 )
 from .ocr_reader_base import _OcrReaderBase
 from .ocr_service import OcrServiceVariant, default_online_url, resolve_ocr_variant
@@ -34,11 +34,15 @@ lazyllm.config.add(
     'mineru_backend', str, 'hybrid-auto-engine', 'MINERU_BACKEND',
     description='The MinerU backend used by local MinerU service.',
 )
+lazyllm.config.add(
+    'mineru_ssl_verify', bool, True, 'MINERU_SSL_VERIFY',
+    description='Verify SSL for official MinerU online API. Set false when mineru.net certificate is mismatched.',
+)
 _IMAGE_REF_PATTERN = re.compile(
     r'images/[^\s\)"\'\]<]+\.(?:jpg|jpeg|png|gif|bmp|webp|tiff|tif)',
     re.IGNORECASE,
 )
-# Official MinerU API returns unreliable bbox values; keep page_idx only.
+# Official MinerU content_list bbox is in OCR raster space; normalize to PDF points.
 DEFAULT_BBOX = [0, 0, 0, 0]
 
 
@@ -79,6 +83,18 @@ class MineruPDFReader(_OcrReaderBase):
         self._variant = resolve_ocr_variant('mineru', self._url)
         self._offline_mode = self._variant == OcrServiceVariant.OFFLINE
         self._upload_mode = upload_mode if upload_mode is not None else self._offline_mode
+        if self._variant == OcrServiceVariant.ONLINE and not lazyllm.config['mineru_ssl_verify']:
+            LOG.warning(
+                '[MineruPDFReader] SSL verification disabled for official MinerU API; '
+                'set MINERU_SSL_VERIFY=true after mineru.net certificate is fixed.'
+            )
+
+    def _online_request_kwargs(self) -> Dict:
+        return {'verify': lazyllm.config['mineru_ssl_verify']}
+
+    def _http_execute(self, method: str, url: str, **kwargs):
+        kwargs.setdefault('verify', lazyllm.config['mineru_ssl_verify'])
+        return super()._http_execute(method, url, **kwargs)
 
     @property
     def appendix_hash_key(self):
@@ -346,7 +362,8 @@ class MineruPDFReader(_OcrReaderBase):
         # Step 2: Upload file to OSS
         _t2 = time.time()
         with open(file_path, 'rb') as f:
-            upload_resp = requests.put(file_url, data=f, timeout=self._timeout or 300)
+            upload_resp = requests.put(
+                file_url, data=f, timeout=self._timeout or 300, **self._online_request_kwargs())
             upload_resp.raise_for_status()
         _t_upload = time.time() - _t2
         LOG.info(f'[BENCHMARK] file={fname} phase=upload elapsed={_t_upload:.3f}s')
@@ -367,7 +384,8 @@ class MineruPDFReader(_OcrReaderBase):
                 state = extract_result[0].get('state')
                 if state == 'done':
                     full_zip_url = extract_result[0].get('full_zip_url')
-                    zip_resp = requests.get(full_zip_url, timeout=self._timeout or 120)
+                    zip_resp = requests.get(
+                        full_zip_url, timeout=self._timeout or 120, **self._online_request_kwargs())
                     zip_resp.raise_for_status()
                     _t_wait = time.time() - _t3
                     LOG.info(f'[BENCHMARK] file={fname} phase=wait elapsed={_t_wait:.3f}s')
@@ -393,13 +411,71 @@ class MineruPDFReader(_OcrReaderBase):
             if not json_members:
                 raise ValueError('No *_content_list.json found in zip')
             content = json.loads(zf.read(json_members[0]))
+            layout = None
+            model = None
+            for member in zf.infolist():
+                name = Path(member.filename).name
+                if name == 'layout.json':
+                    layout = json.loads(zf.read(member))
+                elif name.endswith('_model.json'):
+                    model = json.loads(zf.read(member))
+            if layout is not None and model is not None:
+                content = self._normalize_online_content_bboxes(content, layout, model)
             for member in zf.infolist():
                 if not member.filename.endswith('_content_list.json'):
                     zf.extract(member, task_dir)
         return json.dumps(content), task_dir
 
+    @staticmethod
+    def _normalize_online_content_bboxes(content_list: List[dict], layout: dict,
+                                         model_pages: List) -> List[dict]:
+        '''Rewrite official content_list bboxes from OCR raster space into PDF points.
+
+        layout.json provides PDF page_size; model.json provides 0-1 normalized bboxes.
+        content_list absolute coords ≈ normalized * OCR canvas, so
+        pdf_bbox = content_bbox * page_size / canvas.
+        '''
+        page_sizes = {
+            int(p['page_idx']): p['page_size']
+            for p in (layout.get('pdf_info') or [])
+            if 'page_idx' in p and p.get('page_size')
+        }
+        if not page_sizes or not isinstance(model_pages, list):
+            return content_list
+
+        by_page: Dict[int, List[dict]] = {}
+        for item in content_list:
+            if not isinstance(item, dict) or item.get('bbox') is None:
+                continue
+            page_idx = item.get('page_idx')
+            if page_idx is None:
+                continue
+            by_page.setdefault(int(page_idx), []).append(item)
+
+        for page_idx, items in by_page.items():
+            page_size = page_sizes.get(page_idx)
+            if not page_size or page_idx >= len(model_pages):
+                continue
+            dets = model_pages[page_idx]
+            if not isinstance(dets, list) or not dets:
+                continue
+            try:
+                max_nx = max(float(d['bbox'][2]) for d in dets if isinstance(d, dict) and d.get('bbox'))
+                max_ny = max(float(d['bbox'][3]) for d in dets if isinstance(d, dict) and d.get('bbox'))
+                max_cx = max(float(it['bbox'][2]) for it in items)
+                max_cy = max(float(it['bbox'][3]) for it in items)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if max_nx <= 0 or max_ny <= 0:
+                continue
+            src_size = (max_cx / max_nx, max_cy / max_ny)
+            dst_size = (float(page_size[0]), float(page_size[1]))
+            for it in items:
+                it['bbox'] = normalize_bbox(it['bbox'], src_size, dst_size)
+        return content_list
+
     @override
-    def _adapt_json_to_IR(self, raw) -> List[Block]:
+    def _adapt_json_to_IR(self, raw, file=None) -> List[Block]:
         # Online API (zip extraction) returns a list directly.
         # Local server returns {'result': [{'content_list': [...]}]}.
         if isinstance(raw, dict):
@@ -450,9 +526,7 @@ class MineruPDFReader(_OcrReaderBase):
             LOG.warning(f'[MineruPDFReader] content item missing page_idx field, skipped: {item}')
             return None
         bbox = item.get('bbox')
-        if self._variant == OcrServiceVariant.ONLINE:
-            bbox = DEFAULT_BBOX
-        elif bbox is None:
+        if bbox is None:
             LOG.warning(f'[MineruPDFReader] content item missing bbox field, skipped: {item}')
             return None
         page = PageRef(index=page_idx, bbox=BBox.from_list(bbox))
