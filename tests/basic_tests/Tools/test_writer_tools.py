@@ -18,7 +18,11 @@ from lazyllm.tools.writer.data_models import (
     WritingOutput,
     WritingTask,
 )
-from lazyllm.tools.writer.data_models.quality import AuditResult, ReviewReport
+from lazyllm.tools.writer.data_models.quality import AuditIssue, AuditResult, ReviewReport
+from lazyllm.tools.writer.data_models.revision import (
+    PatchHunk,
+    PatchSet,
+)
 from lazyllm.tools.writer.data_models.task import InputResource
 from lazyllm.tools.writer.data_models.writing import (
     SectionInstruction,
@@ -51,14 +55,14 @@ def _make_doc_adapter():
     return adapter
 
 
-def _call_target_to_doc_ir(adapter, artifact_store):
+def _call_document_to_docir(adapter, artifact_store):
     with patch(
         'lazyllm.tools.fs.client.FS._parse',
         return_value=('feishu', None, '~docx/doc-1'),
     ):
         with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
             tool = WriterResourceTools(artifact_store=artifact_store)
-            return tool.target_to_doc_ir(
+            return tool.document_to_docir(
                 target_document={
                     'uri': 'feishu://~docx/doc-1',
                     'adapter': 'feishu',
@@ -76,7 +80,7 @@ def _call_write_to_document(adapter, markdown, artifact_store):
         with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
             tool = WriterResourceTools(artifact_store=artifact_store)
             return tool.write_to_document(
-                markdown=markdown,
+                content=markdown,
                 target_document={'uri': 'feishu:///write-test.md', 'adapter': 'feishu'},
             )
 
@@ -536,15 +540,15 @@ def test_generate_writing_output_writes_markdown_file():
         assert '这是第一章正文。' in markdown
 
 
-def test_target_to_doc_ir():
+def test_document_to_docir():
     pytest.importorskip('fsspec')
     adapter = _make_doc_adapter()
 
     with tempfile.TemporaryDirectory() as d:
-        result = _call_target_to_doc_ir(adapter, d)
+        result = _call_document_to_docir(adapter, d)
 
         assert result['artifact_path'].endswith('doc_ir.json')
-        assert result['metadata']['step_name'] == 'target_to_doc_ir'
+        assert result['metadata']['step_name'] == 'document_to_docir'
         assert result['metadata']['counts']['blocks'] == 2
 
         doc_ir = load_artifact_json(result['artifact_path'], DocIR)
@@ -564,7 +568,7 @@ def test_write_to_document():
     adapter = _make_doc_adapter()
 
     with tempfile.TemporaryDirectory() as d:
-        result = _call_write_to_document(adapter, '# Hello\n\nworld', d)
+        result = _call_write_to_document(adapter, {'content': '# Hello\n\nworld'}, d)
 
         assert result['artifact_path'].endswith('write_result.json')
         assert result['metadata']['step_name'] == 'write_to_document'
@@ -673,3 +677,191 @@ def test_validate_draft_document_happy_path():
         assert report.result.is_passed is True
         assert report.target == 'draft-test-001'
         assert report.meta['draft_section_count'] == 1
+
+
+def _make_patch_set(hunks=None):
+    return PatchSet(
+        patch_id='patch-test-001',
+        target_doc_id='doc-test-001',
+        hunks=hunks or [],
+    )
+
+
+def _make_task(query='Revise the document.'):
+    return WritingTask(task_id='test-task', query=query, task_type='revise')
+
+
+def _make_failing_audit():
+    return AuditResult(
+        is_passed=False,
+        score=70,
+        summary='Validation failed: 1 high-severity issue.',
+        issues=[AuditIssue(
+            severity='high', category='evidence',
+            description='new_text contradicts locked fact.',
+            suggestion='Fix the factual error.',
+        )],
+    )
+
+
+# --- Scenario 1: Empty hunks (boundary) ---
+
+def test_validate_patch_set_empty():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()) as mock_llm:
+            result = tool.validate_patch_set(
+                patch_set=_make_patch_set(),
+                context=_make_context(),
+                task=_make_task(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert mock_llm.call_count == 1
+        assert audit.is_passed is True
+        assert audit.score == 100
+        assert result['metadata']['counts']['total_hunks'] == 0
+
+
+# --- Scenario 2: Single hunk (basic path) ---
+
+def test_validate_patch_set_single_hunk():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()) as mock_llm:
+            result = tool.validate_patch_set(
+                patch_set=_make_patch_set(hunks=[
+                    PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
+                              old_text='万古之前...', new_text='太古之初...',
+                              modify_type='replace'),
+                ]),
+                context=_make_context(),
+                task=_make_task(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert mock_llm.call_count == 1
+        assert audit.is_passed is True
+        assert result['metadata']['counts']['total_hunks'] == 1
+
+
+# --- Scenario 3: Multiple hunks, single LLM call ---
+
+def test_validate_patch_set_multi_hunk():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()) as mock_llm:
+            result = tool.validate_patch_set(
+                patch_set=_make_patch_set(hunks=[
+                    PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
+                              old_text='万古之前...', new_text='太古之初...',
+                              modify_type='replace'),
+                    PatchHunk(hunk_id='h2', target_block_id='blk-pro-02',
+                              old_text='second...', new_text='rewrite...',
+                              modify_type='replace'),
+                ]),
+                context=_make_context(),
+                task=_make_task(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert mock_llm.call_count == 1
+        assert audit.is_passed is True
+        assert result['metadata']['counts']['total_hunks'] == 2
+
+
+# --- Scenario 4: Failing validation ---
+
+def test_validate_patch_set_failing():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_failing_audit()) as mock_llm:
+            result = tool.validate_patch_set(
+                patch_set=_make_patch_set(hunks=[
+                    PatchHunk(hunk_id='h1', target_block_id='blk-pro-01',
+                              old_text='万古之前...', new_text='星辰大帝是九州最强者。',
+                              modify_type='replace'),
+                ]),
+                context=_make_context(),
+                task=_make_task(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert mock_llm.call_count == 1
+        assert audit.is_passed is False
+        assert audit.score == 70
+        assert len(audit.issues) == 1
+
+
+# --- Scenario 5: Hunk without matching ModifyInstruction ---
+
+def test_validate_patch_set_unmatched_instruction():
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
+        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()) as mock_llm:
+            result = tool.validate_patch_set(
+                patch_set=_make_patch_set(hunks=[
+                    PatchHunk(hunk_id='h1', target_block_id='unknown-id',
+                              old_text='xxx', new_text='yyy',
+                              modify_type='replace'),
+                ]),
+                context=_make_context(),
+                task=_make_task(),
+            )
+
+        audit = load_artifact_json(result['artifact_path'], AuditResult)
+        assert mock_llm.call_count == 1
+        assert audit.is_passed is True
+
+
+# ---------------------------------------------------------------------------
+# write_to_document boundary tests
+# ---------------------------------------------------------------------------
+
+
+def test_write_to_document_no_target():
+    # target_document=None -> locator empty -> logs warning, no local file saved.
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d)
+        result = tool.write_to_document(
+            content={'content': '# Local output'},
+            target_document=None,
+        )
+
+        assert result['metadata']['step_name'] == 'write_to_document'
+        assert result['metadata']['extra']['document_id'] == ''
+        assert result['metadata']['extra']['adapter'] == ''
+        assert 'markdown' not in result['metadata'].get('artifact_paths', {})
+
+
+def test_write_to_document_fs_failure():
+    # fs.write_file raises -> doc_id empty, no local file saved.
+    adapter = _make_doc_adapter()
+    adapter.write_file.side_effect = RuntimeError('network down')
+    adapter.resolve_link.side_effect = RuntimeError('network down')
+
+    with tempfile.TemporaryDirectory() as d:
+        with patch('lazyllm.tools.fs.client.FS._parse', return_value=('feishu', None, '/fail.md')):
+            with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
+                tool = WriterResourceTools(artifact_store=d)
+                result = tool.write_to_document(
+                    content={'content': '# Should survive'},
+                    target_document={'uri': 'feishu:///fail.md', 'adapter': 'feishu'},
+                )
+
+        assert result['metadata']['extra']['document_id'] == ''
+        assert result['metadata']['extra']['adapter'] == 'feishu'
+        assert 'markdown' not in result['metadata'].get('artifact_paths', {})
+
+
+def test_write_to_document_empty_target_dict():
+    # target_document={} -> locator empty, same as None.
+    with tempfile.TemporaryDirectory() as d:
+        tool = WriterResourceTools(artifact_store=d)
+        result = tool.write_to_document(
+            content={'content': '# Empty target'},
+            target_document={},
+        )
+
+        assert result['metadata']['extra']['document_id'] == ''
+        assert 'markdown' not in result['metadata'].get('artifact_paths', {})
