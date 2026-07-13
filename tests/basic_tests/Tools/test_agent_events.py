@@ -22,7 +22,11 @@ def add_one(value: int) -> int:
 
 
 def get_status() -> dict:
-    '''Return a structured status result.'''
+    '''Return a structured status result.
+
+    Returns:
+        dict: Structured status information.
+    '''
     return {'status': 'ok', 'content': 'Error handling reference'}
 
 
