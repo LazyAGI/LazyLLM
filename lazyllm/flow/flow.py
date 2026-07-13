@@ -671,7 +671,7 @@ class Switch(LazyLLMFlowsBase):
 class IFS(LazyLLMFlowsBase):
     def __init__(self, cond, tpath, fpath, post_action=None):
         super().__init__(cond, tpath, fpath, post_action=post_action)
-        self._cond_accepts_no_args = None
+        self._cond_with_input = None
         cond = self._items[0]
         if not isinstance(cond, bool):
             try:
@@ -679,25 +679,16 @@ class IFS(LazyLLMFlowsBase):
             except (TypeError, ValueError):
                 pass
             else:
-                try:
-                    signature.bind()
-                except TypeError:
-                    self._cond_accepts_no_args = False
-                else:
-                    parameters = signature.parameters.values()
-                    if not parameters or any(parameter.kind not in (
-                            inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD
-                    ) for parameter in parameters):
-                        self._cond_accepts_no_args = True
+                self._cond_with_input = bool(signature.parameters)
 
     def _run(self, __input, **kw):
         cond, tpath, fpath = self._items
         if isinstance(cond, bool):
             flag = cond
-        elif self._cond_accepts_no_args is True:
-            flag = cond()
-        elif self._cond_accepts_no_args is False:
+        elif self._cond_with_input is True:
             flag = self.invoke(cond, __input, **kw)
+        elif self._cond_with_input is False:
+            flag = self.invoke(cond, package())
         else:
             try:
                 flag = cond()

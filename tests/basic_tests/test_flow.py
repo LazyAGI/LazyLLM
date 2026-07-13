@@ -185,10 +185,22 @@ class TestFlow(object):
         assert ifs(is_1, t3, t1)(1) == 1
         assert ifs(is_1, t3, t1)(2) == 4
         assert ifs(lambda: True, t3, t1)(2) == 2
-        assert ifs(lambda x=0: x > 0, t3, t1)(2) == 4
+        assert ifs(lambda x=0: x > 0, t3, t1)(2) == 2
         assert ifs(lambda *args: args[0] > 0, t3, t1)(2) == 2
         assert ifs(False, t3, t1)(2) == 4
         assert 'missing 1 required positional argument' not in capfd.readouterr().err
+
+    def test_ifs_no_arg_condition_error(self):
+        calls = 0
+
+        def condition():
+            nonlocal calls
+            calls += 1
+            raise ValueError('no-arg condition failed')
+
+        with pytest.raises(lazyllm.flow.flow.FlowException, match='no-arg condition failed'):
+            ifs(condition, t3, t1)(2)
+        assert calls == 1
 
     def test_loop(self):
 
