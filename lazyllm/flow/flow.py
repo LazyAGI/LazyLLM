@@ -153,7 +153,6 @@ class FlowBase(SessionConfigableBase, metaclass=_MetaBind):
         return iter([self, self])
 
     def _find_user_instantiation_frame(self):
-        self._defined_file, self._defined_pos, self._defined_func = None, None, None
         try:
             for fm in inspect.stack():
                 if fm.frame.f_globals.get('__name__', '').startswith('lazyllm.flow') or fm.filename.startswith('<'):
@@ -163,7 +162,7 @@ class FlowBase(SessionConfigableBase, metaclass=_MetaBind):
                 self._defined_pos = f'"file: {self._defined_file}", line {fm.frame.f_lineno}({self._defined_func})'
                 break
         except Exception:
-            pass
+            self._defined_file, self._defined_pos, self._defined_func = None, None, None
 
     def _defined_at_the_same_scope(self, other: 'FlowBase'):
         return self._defined_file == other._defined_file and self._defined_func == other._defined_func
@@ -633,16 +632,11 @@ class Switch(LazyLLMFlowsBase):
             __input = __input[1] if len(__input) == 2 else __input[1:]
 
         if self._conversion:
-            exp = self.invoke(self._conversion, exp, **kw)
+            exp = self._conversion(*exp) if isinstance(exp, package) else self._conversion(exp)
 
         for idx, cond in enumerate(self.conds):
-            if callable(cond):
-                matched = bool(self.invoke(cond, exp, **kw))
-            elif cond == 'default':
-                matched = True
-            else:
-                matched = exp == cond or exp == package((cond,))
-            if matched:
+            if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or (
+                    exp == package((cond,))) or cond == 'default':
                 alias = self._item_names[idx] if self._item_names and idx < len(self._item_names) else None
                 actual = getattr(self._items[idx], '__name__', None) or type(self._items[idx]).__name__
                 branch = f'{alias} -> {actual}' if alias and alias != actual else actual
