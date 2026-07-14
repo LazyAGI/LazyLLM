@@ -117,6 +117,7 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase):
 
     def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1,
                  guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None, **kwargs):
+        # kwargs may include LazyLLM framework fields (stream_output / priority); ignore them.
         has_ref_image = files is not None and len(files) > 0
         if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
             LOG.warning(
@@ -128,12 +129,7 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase):
                       f'use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model.')
             raise ValueError(msg)
 
-        if has_ref_image:
-            image_results = self._load_images(files)
-            contents = [f'data:image/png;base64,{base64_str}' for base64_str, _ in image_results]
-        # Strip LazyLLM-only kwargs before calling the Ark SDK.
-        for key in ('stream_output', 'stream', 'priority'):
-            kwargs.pop(key, None)
+        # Only pass fields required/supported by Ark images.generate.
         api_params = {
             'model': model or self._model_name,
             'prompt': input,
@@ -141,15 +137,20 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase):
             'seed': seed,
             'guidance_scale': guidance_scale,
             'watermark': watermark,
-            **kwargs
+            'response_format': 'url',
+            'stream': False,
         }
         if has_ref_image:
+            image_results = self._load_images(files)
+            contents = [f'data:image/png;base64,{base64_str}' for base64_str, _ in image_results]
             api_params['image'] = contents
             if n > 1:
                 api_params['sequential_image_generation'] = 'auto'
                 max_images = min(n, 15)
                 sigo = volcenginesdkarkruntime.types.images.SequentialImageGenerationOptions
                 api_params['sequential_image_generation_options'] = sigo(max_images=max_images)
+            else:
+                api_params['sequential_image_generation'] = 'disabled'
         imagesResponse = self._ark_client(base_url=url).images.generate(**api_params)
         image_contents = [requests.get(result.url).content for result in imagesResponse.data]
         return encode_query_with_filepaths(None, bytes_to_file(image_contents))
@@ -204,15 +205,16 @@ class DoubaoText2Video(LazyLLMOnlineText2VideoModuleBase):
                  duration: int = 2, ratio: str = '16:9', watermark: bool = True,
                  camerafixed: bool = False, poll_interval: float = 3.0,
                  model: str = None, url: str = None, **kwargs):
+        # kwargs may include LazyLLM framework fields (stream_output / priority); ignore them.
         content = self._build_content(
             input=input, files=files, resolution=resolution, duration=duration,
             ratio=ratio, watermark=watermark, camerafixed=camerafixed)
         client = self._ark_client(base_url=url)
-        # Strip LazyLLM-only kwargs before calling the Ark SDK.
-        for key in ('stream_output', 'stream', 'priority'):
-            kwargs.pop(key, None)
+        # Only pass fields required by Ark content_generation.tasks.create.
         create_result = client.content_generation.tasks.create(
-            model=model or self._model_name, content=content, **kwargs)
+            model=model or self._model_name,
+            content=content,
+        )
         task_id = create_result.id
         while True:
             get_result = client.content_generation.tasks.get(task_id=task_id)
