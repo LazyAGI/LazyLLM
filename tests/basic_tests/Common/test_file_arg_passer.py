@@ -24,10 +24,10 @@ def test_relay_file_args_use_lazyllm_temp_dir(tmp_path):
     with lazyllm.config.temp('temp_dir', str(tmp_path)):
         reference = relay._prepare_obj_arg(dump_obj({'answer': 42}), force=True)
 
-    path = reference.removeprefix('@file:')
-    assert os.path.dirname(path) == str(tmp_path)
+    payloads = list(tmp_path.glob('lazyllm_relay_*.pkl'))
+    assert len(payloads) == 1
     assert load_obj(reference) == {'answer': 42}
-    assert not os.path.exists(path)
+    assert not payloads[0].exists()
 
 
 def test_relay_windows_command_quotes_paths_with_spaces(monkeypatch):

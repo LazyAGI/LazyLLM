@@ -61,9 +61,8 @@ class RelayServer(LazyLLMDeployBase):
         temp_dir = os.path.abspath(config['temp_dir'])
         os.makedirs(temp_dir, exist_ok=True)
         fd, path = tempfile.mkstemp(suffix='.pkl', prefix='lazyllm_relay_', dir=temp_dir)
-        os.close(fd)
         raw = base64.b64decode(serialised.encode('utf-8'))
-        with open(path, 'wb') as fp:
+        with os.fdopen(fd, 'wb') as fp:
             fp.write(raw)
         return f'@file:{path}'
 
