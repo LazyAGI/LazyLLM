@@ -123,6 +123,7 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             LLMType.STT: ('_stt', 'The default stt model name for '),
             LLMType.TTS: ('_tts', 'The default tts model name for '),
             LLMType.TEXT2IMAGE: ('_text2image', 'The default text2image model name for '),
+            LLMType.TEXT2VIDEO: ('_text2video', 'The default text2video model name for '),
         }
 
         check_and_add_config(key='default_source', description='The default model source for online modules.')

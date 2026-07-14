@@ -185,6 +185,8 @@ def simple_magic_detection(data: bytes) -> str:
     if data.startswith(b'RIFF') and len(data) >= 12 and data[8:12] == b'WAVE': return '.wav'
     if (data.startswith(b'ID3') or data.startswith(b'\xff\xfb') or data.startswith(b'\xff\xf3')): return '.mp3'
     if data.startswith(b'RIFF') and len(data) >= 12 and data[8:12] == b'WEBP': return '.webp'
+    # ISO BMFF (mp4/mov): size(4) + 'ftyp'
+    if len(data) >= 8 and data[4:8] == b'ftyp': return '.mp4'
     return '.bin'
 
 def bytes_to_file(bytes_str: Union[bytes, list[bytes]], target_dir: Optional[str] = None) -> Union[str, list[str]]:

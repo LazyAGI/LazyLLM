@@ -2584,7 +2584,10 @@ add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoText2Image', '''\
 
 Args:
     api_key (str, optional): 豆包API密钥，默认为None。
-    model_name (str, optional): 模型名称，默认为"doubao-seedream-3-0-t2i-250415"。
+    model_name (str, optional): 模型名称，默认为"doubao-seedream-4-0-250828"。
+        常用：``doubao-seedream-5-0-pro-260628`` / ``doubao-seedream-5-0-260128``（5.0 Lite）/
+        ``doubao-seedream-4-5-251128`` / ``doubao-seedream-4-0-250828`` /
+        ``doubao-seedream-3-0-t2i-250415``。
     return_trace (bool, optional): 是否返回追踪信息，默认为False。
     **kwargs: 其他传递给父类的参数。
 ''')
@@ -2597,9 +2600,38 @@ LazyLLMOnlineText2ImageModuleBase and calls Doubao via the Volcengine Ark SDK fo
 
 Args:
     api_key (str, optional): Doubao API key, defaults to None.
-    model_name (str, optional): Model name, defaults to "doubao-seedream-3-0-t2i-250415".
+    model_name (str, optional): Model name, defaults to "doubao-seedream-4-0-250828".
+        Common options: ``doubao-seedream-5-0-pro-260628`` / ``doubao-seedream-5-0-260128`` (5.0 Lite) /
+        ``doubao-seedream-4-5-251128`` / ``doubao-seedream-4-0-250828`` /
+        ``doubao-seedream-3-0-t2i-250415``.
     return_trace (bool, optional): Whether to return trace information, defaults to False.
     **kwargs: Other parameters passed to parent class.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoText2Video', '''\
+字节跳动豆包文生视频模块，基于 Seedance 系列模型，继承自 LazyLLMOnlineText2VideoModuleBase。
+
+通过火山引擎 Ark ``content_generation.tasks`` 异步接口生成视频，支持纯文本生视频以及首帧图生视频。
+
+Args:
+    api_key (str, optional): 豆包 API 密钥，默认为配置中的 doubao_api_key。
+    model (str, optional): 模型名称，默认为 "doubao-seedance-1-0-pro-fast-251015"。
+    url (str, optional): API 基础 URL，默认为 "https://ark.cn-beijing.volces.com/api/v3"。
+    return_trace (bool, optional): 是否返回追踪信息，默认为 False。
+    **kwargs: 其他传递给父类的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoText2Video', '''\
+ByteDance Doubao Text-to-Video module based on Seedance models, inherits from LazyLLMOnlineText2VideoModuleBase.
+
+Uses Volcengine Ark async ``content_generation.tasks`` API. Supports text-to-video and first-frame image-to-video.
+
+Args:
+    api_key (str, optional): Doubao API key, defaults to configured doubao_api_key.
+    model (str, optional): Model name, defaults to "doubao-seedance-1-0-pro-fast-251015".
+    url (str, optional): Base API URL, defaults to "https://ark.cn-beijing.volces.com/api/v3".
+    return_trace (bool, optional): Whether to return trace information, defaults to False.
+    **kwargs: Additional parameters passed to the parent class.
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.deepseek.DeepSeekChat', """\

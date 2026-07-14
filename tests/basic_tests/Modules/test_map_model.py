@@ -30,7 +30,13 @@ test_models = {
         'cogview-4',
         'wanx2.1-t2i-plus',
         'animate-anyone-template-gen2',
-        'doubao-seedance-1-0-pro-fast-251015'
+        'doubao-seedream-4-5-251128',
+        'doubao-seedream-4-0-250828',
+    ],
+    'text2video': [
+        'doubao-seedance-1-0-pro-fast-251015',
+        'doubao-seedance-1-0-pro-250528',
+        'doubao-seedance-1-5-pro-251215',
     ],
     'cross_modal_embed': [
         'doubao-embedding-vision-250615'
