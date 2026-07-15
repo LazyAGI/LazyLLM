@@ -14,6 +14,9 @@ _retriever_output_attrs_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = 
 _reranker_output_attrs_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
     contextvars.ContextVar('_lazyllm_reranker_output_attrs', default=None)
 )
+_llm_resolved_prompt_var: contextvars.ContextVar[Optional[Any]] = (
+    contextvars.ContextVar('_lazyllm_llm_resolved_prompt', default=None)
+)
 _switch_matched_attrs_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
     contextvars.ContextVar('_lazyllm_switch_matched_attrs', default=None)
 )
@@ -23,6 +26,7 @@ _ifs_matched_attrs_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
 
 _POST_PROCESS_INSTALLED = '__lazyllm_trace_post_process_installed__'
 _POST_PROCESS_ORIG = '__lazyllm_trace_post_process_orig__'
+_PROMPT_PROBE_INSTALLED = '__lazyllm_trace_prompt_probe_installed__'
 
 
 def _mro_names(target: Any) -> set[str]:
@@ -84,6 +88,14 @@ def record_reranker_output_attrs(nodes: Any) -> None:
     _reranker_output_attrs_var.set(
         _score_attrs(nodes, 'relevance_score', 'lazyllm.output.relevance_scores')
     )
+
+
+def record_llm_resolved_prompt(prompt: Any) -> None:
+    _llm_resolved_prompt_var.set(prompt)
+
+
+def pop_llm_resolved_prompt() -> Any:
+    return _pop_context_attrs(_llm_resolved_prompt_var) or None
 
 
 def enter_switch_ifs_matched_scope(target: Any) -> Optional[contextvars.Token]:
@@ -189,3 +201,29 @@ def remove_post_process_probe(obj: Any) -> None:
         return
     d.pop(_POST_PROCESS_ORIG, None)
     d.pop('_post_process', None)
+
+
+def install_prompt_probe(obj: Any) -> None:
+    prompter = getattr(obj, '_prompt', None)
+    if prompter is None:
+        return
+    pd = getattr(prompter, '__dict__', None)
+    if pd is None or pd.get(_PROMPT_PROBE_INSTALLED, False):
+        return
+    orig = prompter.generate_prompt
+
+    def _wrapper(*args, **kwargs):
+        result = orig(*args, **kwargs)
+        record_llm_resolved_prompt(result)
+        return result
+
+    prompter.generate_prompt = _wrapper
+    pd[_PROMPT_PROBE_INSTALLED] = True
+
+
+def remove_prompt_probe(obj: Any) -> None:
+    prompter = getattr(obj, '_prompt', None)
+    pd = getattr(prompter, '__dict__', None) if prompter is not None else None
+    if not pd or not pd.pop(_PROMPT_PROBE_INSTALLED, False):
+        return
+    pd.pop('generate_prompt', None)

@@ -9,7 +9,10 @@ from .output_attrs import (
     enter_switch_ifs_matched_scope,
     exit_switch_ifs_matched_scope,
     install_post_process_probe,
+    install_prompt_probe,
+    pop_llm_resolved_prompt,
     remove_post_process_probe,
+    remove_prompt_probe,
 )
 from .runtime import (
     finish_span,
@@ -79,10 +82,14 @@ class LazyTracingHook(LazyLLMHook):
         if self._span is not None:
             self._switch_ifs_matched_scope_token = enter_switch_ifs_matched_scope(self._obj)
             install_post_process_probe(self._obj)
+            install_prompt_probe(self._obj)
 
     def post_hook(self, output):
         if self._span is None:
             return
+        resolved_prompt = pop_llm_resolved_prompt()
+        if resolved_prompt is not None:
+            self._span.input = {'resolved_prompt': resolved_prompt}
         set_span_output(self._span, output)
         module_id = getattr(self._trace_target(), '_module_id', None)
         if module_id:
@@ -104,6 +111,7 @@ class LazyTracingHook(LazyLLMHook):
     def finalize(self):
         try:
             remove_post_process_probe(self._obj)
+            remove_prompt_probe(self._obj)
             if self._span is None:
                 return
             finish_span(self._span)
