@@ -34,7 +34,6 @@ class Anchor(BaseModel):
     block_id: str
     text_offset: Optional[int] = None
     text_end: Optional[int] = None
-    heading_path: List[str] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 

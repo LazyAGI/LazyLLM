@@ -59,6 +59,5 @@ class PatchResult(BaseModel):
 
 
 # Fields side-channelled through DocBlock.meta during DraftDocument <-> DocIR conversion.
-HEADING_PATH_KEY = 'heading_path'
 SECTION_META_FIELDS: Tuple[str, ...] = ('section_id', 'outline_node_id', 'instruction_id')
 BLOCK_META_FIELDS: Tuple[str, ...] = ('heading', 'outline_node_id')

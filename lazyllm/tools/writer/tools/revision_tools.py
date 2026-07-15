@@ -6,7 +6,6 @@ from ..data_models.context import WritingContext
 from ..data_models.docir import Anchor, DocBlock, DocIR
 from ..data_models.revision import (
     BLOCK_META_FIELDS,
-    HEADING_PATH_KEY,
     SECTION_META_FIELDS,
     LocateResult,
     ModifyInstruction,
@@ -205,7 +204,6 @@ class WriterRevisionTools(WriterToolBase):
                     modify_type=instr.modify_type,
                     anchor=Anchor(
                         block_id=block.block_id,
-                        heading_path=list(block.meta.get('heading_path', [])),
                     ),
                     old_text=None if instr.modify_type == 'insert' else block.text,
                     new_text=proposed.new_text,
@@ -319,7 +317,7 @@ class WriterRevisionTools(WriterToolBase):
         '''Convert a DraftDocument into a DocIR artifact.'''
         source_draft = self._unified_model(draft, DraftDocument)
         blocks: List[DocBlock] = []
-        self._flatten_sections(source_draft.sections, 1, [], blocks)
+        self._flatten_sections(source_draft.sections, 1, blocks)
         doc_ir = DocIR(
             doc_id=source_draft.draft_id,
             title=source_draft.title,
@@ -450,27 +448,22 @@ class WriterRevisionTools(WriterToolBase):
         self,
         sections: List[DraftSection],
         depth: int,
-        heading_path: List[str],
         blocks: List[DocBlock],
     ) -> None:
         for section in sections:
-            current_path = list(heading_path)
-            if section.title:
-                current_path.append(section.title)
-            blocks.append(self._heading_doc_block(section, depth, current_path, len(blocks)))
+            blocks.append(self._heading_doc_block(section, depth, len(blocks)))
             for idx, block in enumerate(section.blocks, start=1):
-                blocks.append(self._paragraph_doc_block(section, block, current_path, idx, len(blocks)))
-            self._flatten_sections(section.sub_sections, depth + 1, current_path, blocks)
+                blocks.append(self._paragraph_doc_block(section, block, idx, len(blocks)))
+            self._flatten_sections(section.sub_sections, depth + 1, blocks)
 
     def _heading_doc_block(
         self,
         section: DraftSection,
         depth: int,
-        heading_path: List[str],
         fallback_index: int,
     ) -> DocBlock:
         block_id = f'{section.section_id}::heading' if section.section_id else f'block-{fallback_index + 1}'
-        meta: Dict[str, Any] = {HEADING_PATH_KEY: list(heading_path)}
+        meta: Dict[str, Any] = {}
         for field in SECTION_META_FIELDS:
             val = getattr(section, field)
             if val:
@@ -487,7 +480,6 @@ class WriterRevisionTools(WriterToolBase):
         self,
         section: DraftSection,
         block: DraftBlock,
-        heading_path: List[str],
         local_index: int,
         fallback_index: int,
     ) -> DocBlock:
@@ -497,7 +489,7 @@ class WriterRevisionTools(WriterToolBase):
             block_id = f'{section.section_id}::block-{local_index}'
         else:
             block_id = f'block-{fallback_index + 1}'
-        meta: Dict[str, Any] = {HEADING_PATH_KEY: list(heading_path)}
+        meta: Dict[str, Any] = {}
         for field in BLOCK_META_FIELDS:
             val = getattr(block, field)
             if val:
