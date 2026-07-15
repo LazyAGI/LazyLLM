@@ -50,8 +50,7 @@ def _adapt_search_tool_input(tool_input: Union[Dict[str, Any], str]) -> Dict[str
 
 
 class GoogleDriveFS(LazyLLMFSBase):
-    __public_apis__ = LazyLLMFSBase.__public_apis__ + ['search', 'find']
-    __tool_public_apis__ = ['search', 'find', 'read', 'read_file']
+    __public_apis__ = ['search', 'find', 'read', 'read_file']
     __tool_schema_overrides__ = {'search': _search_tool_schema}
     __tool_input_adapters__ = {'search': _adapt_search_tool_input}
 
