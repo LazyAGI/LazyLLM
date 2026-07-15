@@ -1,5 +1,6 @@
 import atexit
 import contextvars
+import hashlib
 import functools
 import inspect
 import json
@@ -13,7 +14,7 @@ from lazyllm.common.globals import globals as llm_globals
 from lazyllm.configs import config
 from lazyllm.thirdparty import opentelemetry
 from lazyllm.tracing.backends import get_tracing_backend
-from lazyllm.tracing.semantics import SemanticType
+from lazyllm.tracing.semantics import SemanticType, is_valid_trace_id
 from .context import LazyTraceContext
 from .span import LazySpan, LazyTrace
 from .trace_config import collect_trace_config, resolve_semantic_type_for_target
@@ -31,6 +32,13 @@ def current_trace() -> Optional[LazyTrace]:
 
 class TracingSetupError(RuntimeError):
     pass
+ 
+ 
+def _normalize_trace_id(trace_id: str) -> str:
+    hex_str = trace_id.replace('-', '').replace('_', '').lower()
+    if is_valid_trace_id(hex_str):
+        return hex_str
+    return hashlib.sha256(trace_id.encode()).hexdigest()[:32]
 
 
 def get_trace_context() -> LazyTraceContext:
@@ -42,6 +50,8 @@ def set_trace_context(ctx) -> LazyTraceContext:
         tc = ctx
     else:
         tc = LazyTraceContext.from_dict(ctx if isinstance(ctx, dict) else {})
+    if tc.trace_id:
+        tc.trace_id = _normalize_trace_id(tc.trace_id)
     llm_globals['trace'] = tc.to_dict()
     return tc
 
