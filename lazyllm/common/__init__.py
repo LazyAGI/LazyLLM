@@ -16,7 +16,7 @@ from .globals import (globals, locals, LazyLlmResponse, LazyLlmRequest, encode_r
                       decode_request, init_session, teardown_session, new_session, SessionConfigableBase)
 from .bind import Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, Placeholder
 from .queue import RecentQueue, FileSystemQueue
-from .utils import compile_func, obj2str, str2obj, str2bool, dump_obj, load_obj
+from .utils import compile_func, obj2str, str2obj, str2bool, dump_obj, dump_obj_to_file, load_obj
 from .auth import (Credential, AuthStrategy, BearerTokenStrategy,
                    ApiKeyHeaderStrategy, QueryParamStrategy,
                    KeySelectPolicy, KeyPool, KeyAuthError, AllKeysExhaustedError)
@@ -52,6 +52,7 @@ __all__ = [
     'str2obj',
     'str2bool',
     'dump_obj',
+    'dump_obj_to_file',
     'load_obj',
     'is_valid_url',
     'is_valid_path',

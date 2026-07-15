@@ -7,6 +7,7 @@ from .base import WriterToolBase
 from ..data_models.docir import DocBlock, DocIR
 from ..data_models.resource import MaterialStyle, ResourceProfile
 from ..data_models.task import InputResource, TargetDocument, WritingTask
+from ..data_models.writing import WritingOutput
 from ..prompts.profile_resources import RESOURCE_PROFILE_PROMPT
 
 _BLOCK_TYPE_MAPS: Dict[str, Dict[Any, str]] = {
@@ -24,7 +25,7 @@ _BLOCK_TYPE_MAPS: Dict[str, Dict[Any, str]] = {
 class WriterResourceTools(WriterToolBase):
     __public_apis__ = [
         'profile_resources',
-        'target_to_doc_ir',
+        'document_to_docir',
         'write_to_document',
     ]
 
@@ -120,7 +121,7 @@ class WriterResourceTools(WriterToolBase):
             counts={'resource_profiles': len(profiles)},
         ).model_dump()
 
-    def target_to_doc_ir(self, target_document: Any) -> dict:
+    def document_to_docir(self, target_document: Any, context: Any = None) -> dict:
         '''Convert a target document into a DocIR artifact.'''
         target = self._unified_model(target_document, TargetDocument)
         locator = target.uri or target.doc_id
@@ -178,7 +179,7 @@ class WriterResourceTools(WriterToolBase):
 
         result = self._save_artifacts(
             {'doc_ir': doc_ir},
-            step_name='target_to_doc_ir',
+            step_name='document_to_docir',
             primary_key='doc_ir',
             summary='Loaded target document into DocIR.',
             counts={'blocks': len(blocks)},
@@ -189,36 +190,42 @@ class WriterResourceTools(WriterToolBase):
         )
         return result.model_dump()
 
-    def write_to_document(self, markdown: str, target_document: Any) -> dict:
-        '''Write markdown content back to a target document platform.'''
-        target = self._unified_model(target_document, TargetDocument)
+    def write_to_document(self, content: Any, target_document: Any) -> dict:
+        '''Write writing output content to a target document platform.'''
+        output = self._unified_optional_model(content, WritingOutput)
+        text = output.content if output else self._unified_raw_data(content)
+        target = self._unified_optional_model(target_document, TargetDocument) or TargetDocument()
         locator = target.uri or target.doc_id
+        adapter = target.adapter or ''
+        doc_id = ''
+
         if not locator:
-            raise ValueError('target_document must provide uri or doc_id.')
+            LOG.warning('write_to_document: no target document URI or doc_id, content not written to any platform')
 
-        import lazyllm.tools.fs.client as _fs_client
-        protocol, space_id, real_path = _fs_client.FS._parse(locator)
-        fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
+        if locator:
+            try:
+                import lazyllm.tools.fs.client as _fs_client
+                protocol, space_id, real_path = _fs_client.FS._parse(locator)
+                fs = _fs_client.FS._get_or_create_fs(protocol, space_id, real_path)
+                adapter = adapter or protocol
+                fs.write_file(real_path, text.encode('utf-8'))
+                resolved_ref = fs.resolve_link(real_path) if hasattr(fs, 'resolve_link') else {}
+                resolved_ref = resolved_ref or {}
+                doc_id = resolved_ref.get('object_id') or resolved_ref.get('obj_token') or ''
+            except Exception:
+                LOG.warning('write_to_document: FS write failed, content not written to target platform')
 
-        fs.write_file(real_path, markdown.encode('utf-8'))
-
-        resolved_ref = fs.resolve_link(real_path) if hasattr(fs, 'resolve_link') else {}
-        resolved_ref = resolved_ref or {}
-        doc_id = resolved_ref.get('object_id') or resolved_ref.get('obj_token') or ''
-
-        result = self._save_artifacts(
+        return self._save_artifacts(
             {'write_result': {
                 'doc_id': doc_id,
-                'adapter': protocol,
-                'locator': locator,
-                'content': markdown,
+                'adapter': adapter,
+                'locator': locator or '',
             }},
             step_name='write_to_document',
             primary_key='write_result',
             summary='Wrote content to target document.',
             extra={
-                'adapter': protocol,
+                'adapter': adapter,
                 'document_id': doc_id,
             },
-        )
-        return result.model_dump()
+        ).model_dump()

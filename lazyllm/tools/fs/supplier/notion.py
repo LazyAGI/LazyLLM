@@ -134,11 +134,7 @@ class NotionFile(CloudFSBufferedFile):
 class NotionFS(LinkDocumentFSBase):
 
     document_provider = 'notion'
-    __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search'], exclude=['copy'])
-    __tool_public_apis__ = [
-        'ls', 'search', 'info', 'exists', 'read', 'read_file',
-        'resolve_link', 'read_with_references',
-    ]
+    __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search', 'find'], exclude=['copy'])
     __tool_schema_overrides__ = {'ls': _ls_tool_schema}
     __tool_input_adapters__ = {'ls': _adapt_ls_tool_input}
 
@@ -221,7 +217,8 @@ class NotionFS(LinkDocumentFSBase):
         return self._fetch_content(_parsed_notion_ref_to_path(parsed))
 
     def search(self, query: str, object_type: str = '', limit: int = 20,
-               sort_direction: str = 'descending') -> List[Dict[str, Any]]:
+               sort_direction: str = 'descending', scope: str = '',
+               title_pattern: str = '') -> List[Dict[str, Any]]:
         query = (query or '').strip()
         if not query:
             raise ValueError('query is required')
@@ -236,6 +233,19 @@ class NotionFS(LinkDocumentFSBase):
         sort_direction = (sort_direction or 'descending').strip().lower()
         if sort_direction not in {'ascending', 'descending'}:
             sort_direction = 'descending'
+        title_regex = self._compile_title_regex(title_pattern)
+
+        scope_kind, scope_id = self._resolve_search_scope(scope)
+        if scope_kind in ('database', 'data_source'):
+            entries = [
+                self._object_to_entry(item)
+                for item in self._query_collection(scope_kind, scope_id)
+            ]
+            return [
+                entry for entry in entries
+                if self._entry_matches_query(entry, query)
+                and self._entry_matches_title_regex(entry, title_regex)
+            ][:limit]
 
         payload: Dict[str, Any] = {
             'query': query,
@@ -245,7 +255,146 @@ class NotionFS(LinkDocumentFSBase):
         if object_type:
             payload['filter'] = {'property': 'object', 'value': object_type}
         results = self._paginate_post(f'{self._base_url}/search', payload)
-        return [self._object_to_entry(item) for item in results[:limit]]
+        entries = [self._object_to_entry(item) for item in results]
+        return [
+            entry for entry in entries
+            if self._entry_matches_title_regex(entry, title_regex)
+        ][:limit]
+
+    def find(self, pattern: str, object_type: str = '', limit: int = 50,
+             scope: str = '') -> List[Dict[str, Any]]:
+        pattern = (pattern or '').strip()
+        if not pattern:
+            raise ValueError('pattern is required')
+        limit = self._clamp_find_limit(limit)
+        object_type = self._validate_find_object_type(object_type)
+        regex = self._compile_title_regex(pattern)
+
+        scope_kind, scope_id = self._resolve_search_scope(scope)
+        if scope_kind in ('database', 'data_source'):
+            return self._find_in_collection(scope_kind, scope_id, regex, limit)
+
+        return self._find_via_search_api(object_type, regex, limit)
+
+    @staticmethod
+    def _clamp_find_limit(limit: int) -> int:
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 50
+        return max(1, min(limit, _PAGE_SIZE))
+
+    @staticmethod
+    def _validate_find_object_type(object_type: str) -> str:
+        object_type = (object_type or '').strip().lower()
+        if object_type and object_type not in {'page', 'database'}:
+            raise ValueError('object_type must be page or database')
+        return object_type
+
+    def _find_in_collection(
+        self, kind: str, object_id: str, regex, limit: int,
+    ) -> List[Dict[str, Any]]:
+        entries = [
+            self._object_to_entry(item)
+            for item in self._query_collection(kind, object_id)
+        ]
+        return [
+            entry for entry in entries
+            if self._entry_matches_title_regex(entry, regex)
+        ][:limit]
+
+    def _find_via_search_api(
+        self, object_type: str, regex, limit: int,
+    ) -> List[Dict[str, Any]]:
+        payload: Dict[str, Any] = {
+            'page_size': _PAGE_SIZE,
+            'sort': {'direction': 'descending', 'timestamp': 'last_edited_time'},
+        }
+        if object_type:
+            payload['filter'] = {'property': 'object', 'value': object_type}
+        results: List[Dict[str, Any]] = []
+        cursor: Optional[str] = None
+        while len(results) < limit:
+            page = self._fetch_find_search_page(payload, cursor)
+            results.extend(self._collect_find_matches(page.get('results') or [], regex, limit, results))
+            cursor = self._next_find_cursor(page, results, limit)
+            if self._find_page_done(cursor, results, limit):
+                break
+        return results[:limit]
+
+    @staticmethod
+    def _next_find_cursor(
+        page: Dict[str, Any], results: List[Dict[str, Any]], limit: int,
+    ) -> Optional[str]:
+        if len(results) >= limit:
+            return None
+        return page.get('next_cursor') if page.get('has_more') else None
+
+    @staticmethod
+    def _find_page_done(
+        cursor: Optional[str], results: List[Dict[str, Any]], limit: int,
+    ) -> bool:
+        return not cursor or len(results) >= limit
+
+    def _fetch_find_search_page(
+        self, payload: Dict[str, Any], cursor: Optional[str],
+    ) -> Dict[str, Any]:
+        page_payload = dict(payload)
+        if cursor:
+            page_payload['start_cursor'] = cursor
+        return self._post(f'{self._base_url}/search', json=page_payload)
+
+    def _collect_find_matches(
+        self,
+        items: List[Dict[str, Any]], regex,
+        limit: int, results: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        if len(results) >= limit:
+            return []
+        collected: List[Dict[str, Any]] = []
+        for item in items:
+            if len(results) + len(collected) >= limit:
+                break
+            entry = self._object_to_entry(item)
+            title = entry.get('title') or entry.get('name') or ''
+            if title and regex.search(title):
+                collected.append(entry)
+        return collected
+
+    def _resolve_search_scope(self, scope: str = '') -> Tuple[str, str]:
+        scope = (scope or '').strip()
+        if not scope:
+            return '', ''
+        for prefix, kind in (('database:', 'database'), ('data_source:', 'data_source')):
+            if scope.startswith(prefix):
+                return kind, _normalize_notion_id(scope[len(prefix):])
+        kind, object_id = self._resolve_access_ref(scope)
+        if kind not in ('database', 'data_source'):
+            raise ValueError('scope must be a Notion database or data_source id/path')
+        return kind, object_id
+
+    @staticmethod
+    def _compile_title_regex(pattern: str):
+        pattern = (pattern or '').strip()
+        if not pattern:
+            return None
+        try:
+            return re.compile(pattern, re.IGNORECASE)
+        except re.error as e:
+            raise ValueError(f'Invalid regex pattern: {e}') from e
+
+    @staticmethod
+    def _entry_title(entry: Dict[str, Any]) -> str:
+        return entry.get('title') or entry.get('name') or ''
+
+    @classmethod
+    def _entry_matches_title_regex(cls, entry: Dict[str, Any], regex) -> bool:
+        return regex is None or bool(regex.search(cls._entry_title(entry)))
+
+    @classmethod
+    def _entry_matches_query(cls, entry: Dict[str, Any], query: str) -> bool:
+        title = cls._entry_title(entry).lower()
+        return all(part.lower() in title for part in query.split())
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
         parent_kind, parent_id, title = self._resolve_parent_ref(path)

@@ -5,7 +5,8 @@ from .onlineEmbeddingModuleBase import (
 )
 from .onlineMultiModalBase import (
     OnlineMultiModalBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineTTSModuleBase,
-    LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineImageEditingModuleBase
+    LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineImageEditingModuleBase,
+    LazyLLMOnlineText2VideoModuleBase,
 )
 
 
@@ -19,5 +20,6 @@ __all__ = [
     'LazyLLMOnlineSTTModuleBase',
     'LazyLLMOnlineTTSModuleBase',
     'LazyLLMOnlineText2ImageModuleBase',
-    'LazyLLMOnlineImageEditingModuleBase'
+    'LazyLLMOnlineImageEditingModuleBase',
+    'LazyLLMOnlineText2VideoModuleBase',
 ]

@@ -11,6 +11,7 @@ _TYPE_TO_SLOT: Dict[str, str] = {
     'cross_modal_embed': 'embed',
     'text2image': 'multimodal',
     'image_editing': 'multimodal',
+    'text2video': 'multimodal',
     'stt': 'multimodal',
     'tts': 'multimodal',
 }

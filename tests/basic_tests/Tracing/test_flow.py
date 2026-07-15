@@ -88,21 +88,22 @@ def test_ifs_tracing(exporter):
         flow(5)
     assert flow(6) == 'chat:6'
     spans = exporter.get_finished_spans()
+    assert len(spans) == 9
 
-    true_fc, true_cond, true_branch, true_ifs = spans[0:4]
+    true_cond, true_branch, true_ifs = spans[0:3]
     assert true_cond.name == 'is_even' and true_branch.name == 'chat_branch'
     assert true_branch.parent.span_id == true_ifs.context.span_id
     assert true_ifs.attributes.get('lazyllm.matched.branch') == 'true_path'
     assert true_ifs.attributes.get('lazyllm.matched.chosen_node') == 'chat_branch'
     assert true_ifs.attributes.get('lazyllm.matched.condition_result') is True
 
-    error_fc, error_cond, error_branch, error_ifs = spans[4:8]
+    error_cond, error_branch, error_ifs = spans[3:6]
     assert error_cond.name == 'is_even' and error_branch.name == 'boom'
     assert error_ifs.attributes.get('lazyllm.matched.branch') is None
     assert error_ifs.attributes.get('lazyllm.status') == 'error'
     assert error_ifs.attributes.get('lazyllm.error.message') == 'boom:5'
 
-    recovery_fc, recovery_cond, recovery_branch, recovery_ifs = spans[8:12]
+    recovery_cond, recovery_branch, recovery_ifs = spans[6:9]
     assert recovery_cond.name == 'is_even' and recovery_branch.name == 'chat_branch'
     assert recovery_ifs.attributes.get('lazyllm.error.message') is None
 

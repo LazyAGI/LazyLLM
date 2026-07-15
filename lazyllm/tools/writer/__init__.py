@@ -5,6 +5,7 @@ from .tools import (
     WriterPlanningTools,
     WriterQualityTools,
     WriterResourceTools,
+    WriterRevisionTools,
     WriterToolBase,
 )
 from .utils import Artifact, ArtifactModel, ToolResult, load_artifact_json, save_artifact_json
@@ -18,6 +19,7 @@ __all__ = [
     'WriterPlanningTools',
     'WriterQualityTools',
     'WriterResourceTools',
+    'WriterRevisionTools',
     'Artifact',
     'ArtifactModel',
     'ToolResult',

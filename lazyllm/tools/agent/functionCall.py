@@ -127,7 +127,7 @@ class FunctionCall(ModuleBase):
             tool_call_results = [
                 {
                     'role': 'tool',
-                    'content': _unwrap_tool_result(tool_call['tool_call_result']),
+                    'content': str(_unwrap_tool_result(tool_call['tool_call_result'])),
                     'tool_call_id': tool_call['id'],
                     'name': tool_call['function']['name'],
                 } for tool_call in workspace['tool_call_trace']
@@ -180,7 +180,7 @@ class FunctionCall(ModuleBase):
                         and (tc.get('function') or {}).get('name') in self._stop_tools
                     )
                     if not stop_failed:
-                        return '\n'.join(_unwrap_tool_result(r) for r in tool_calls_results)
+                        return '\n'.join(str(_unwrap_tool_result(r)) for r in tool_calls_results)
         else:
             llm_output = llm_output['content']
         return llm_output
