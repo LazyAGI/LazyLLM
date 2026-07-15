@@ -34,11 +34,11 @@ class TracingSetupError(RuntimeError):
     pass
  
  
-def _normalize_trace_id(trace_id: str) -> str:
-    hex_str = trace_id.replace('-', '').replace('_', '').lower()
-    if is_valid_trace_id(hex_str):
-        return hex_str
-    return hashlib.sha256(trace_id.encode()).hexdigest()[:32]
+def _normalize_trace_id(trace_id: Any) -> str:
+    trace_id_str = str(trace_id).replace('-', '').replace('_', '').lower()
+    if is_valid_trace_id(trace_id_str):
+        return trace_id_str
+    return hashlib.sha256(trace_id_str.encode()).hexdigest()[:32]
 
 
 def get_trace_context() -> LazyTraceContext:
