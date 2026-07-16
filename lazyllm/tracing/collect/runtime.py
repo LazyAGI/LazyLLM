@@ -32,8 +32,8 @@ def current_trace() -> Optional[LazyTrace]:
 
 class TracingSetupError(RuntimeError):
     pass
- 
- 
+
+
 def _normalize_trace_id(trace_id: Any) -> str:
     trace_id_str = str(trace_id).replace('-', '').replace('_', '').lower()
     if is_valid_trace_id(trace_id_str):

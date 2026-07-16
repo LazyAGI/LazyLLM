@@ -74,7 +74,7 @@ Validation rules:
 9. REQUIREMENT COVERAGE (category=coverage): If the writing context contains a query (the user's original writing request), check whether the output covers all requirements and topics specified in the query. Missing major topics or requirements → severity=high, category=coverage. Missing minor details → severity=medium, category=coverage.
 
 Scoring rules:
-- is_passed: false if any issue has severity=high, or if there are more than 3 severity=medium issues. Otherwise true.
+- is_passed: false only when there is a major structural problem (e.g., missing sections, outline severely misaligned, or document logic broken). Local issues (AI tone, style inconsistency, missing references, individual data discrepancies, etc.) must still be recorded in issues but do not affect is_passed.
 - score: Start at 100. Deduct 20 per high, 10 per medium, 3 per low. Minimum 0.
 - summary: A one-sentence overall assessment in the same language as the draft document.
 - issues: List every issue found. Empty list if none.
