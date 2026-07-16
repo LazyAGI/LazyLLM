@@ -385,7 +385,7 @@ class TestToolGroup:
         tm = ToolManager([dict(name='grp', desc='Group', tools=[t1, t2])])
         gateway = tm._tool_call['get_grp_methods']
         result = gateway({})
-        assert result.startswith('Activated tool group "grp".')
+        assert result.startswith('Activated Toolkit "grp".')
         assert 'alpha' in result
         assert 'beta' in result
 
@@ -490,8 +490,7 @@ class TestToolGroup:
         descs = grp.get_description()
         assert len(descs) == 1
         assert descs[0]['function']['name'] == 'get_grp_methods'
-        # desc = "Get available methods of grp. My group"
-        assert 'Get available methods of grp' in descs[0]['function']['description']
+        assert 'Gateway to activate the "grp" Toolkit' in descs[0]['function']['description']
         assert 'My group' in descs[0]['function']['description']
 
     def test_toolgroup_get_description_eager(self):

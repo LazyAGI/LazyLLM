@@ -386,12 +386,12 @@ class ToolGroup(ToolContainer):
             active = workspace.setdefault('_active_groups', [])
             if group_name not in active:
                 active.append(group_name)
-            return (f'Activated tool group "{group_name}". '
+            return (f'Activated Toolkit "{group_name}". '
                     f'Available tools: {", ".join(child_names)}')
 
         group_desc = docstring_parser.parse(self._desc).description if self._desc else ''
         desc = (
-            f'Gateway to activate the "{group_name}" tool group '
+            f'Gateway to activate the "{group_name}" Toolkit '
             f'{"(usage: " + group_desc + ")" if group_desc else ""}'
             f'. You MUST call this tool before using any tool from {group_name}.'
         )

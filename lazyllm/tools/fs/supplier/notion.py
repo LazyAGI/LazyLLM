@@ -120,6 +120,12 @@ class NotionFile(CloudFSBufferedFile):
 
 
 class NotionFS(LinkDocumentFSBase):
+    '''Read and manage authenticated Notion pages, databases, and documents.
+
+    Select this Toolkit for notion.so, notion.site, or notion.com browser URLs.
+    Resolve or read a supplied URL directly; use search/find when the exact page
+    is not known.
+    '''
 
     document_provider = 'notion'
     __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search', 'find'], exclude=['copy'])
@@ -205,6 +211,16 @@ class NotionFS(LinkDocumentFSBase):
     def search(self, query: str, object_type: str = '', limit: int = 20,
                sort_direction: str = 'descending', scope: str = '',
                title_pattern: str = '') -> List[Dict[str, Any]]:
+        '''Search connected Notion pages and databases.
+
+        Args:
+            query: Text to search for.
+            object_type: Optional object type filter, either page or database.
+            limit: Maximum result count.
+            sort_direction: Sort by last-edited time in ascending or descending order.
+            scope: Optional page, database, or data-source scope.
+            title_pattern: Optional title pattern filter.
+        '''
         query = (query or '').strip()
         if not query:
             raise ValueError('query is required')
@@ -249,6 +265,14 @@ class NotionFS(LinkDocumentFSBase):
 
     def find(self, pattern: str, object_type: str = '', limit: int = 50,
              scope: str = '') -> List[Dict[str, Any]]:
+        '''Find connected Notion objects matching a pattern.
+
+        Args:
+            pattern: Pattern to match.
+            object_type: Optional object type filter, either page or database.
+            limit: Maximum result count.
+            scope: Optional page, database, or data-source scope.
+        '''
         pattern = (pattern or '').strip()
         if not pattern:
             raise ValueError('pattern is required')
