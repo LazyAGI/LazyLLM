@@ -96,21 +96,21 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
 
     @abstractmethod
     def ls(self, path: str, detail: bool = True, **kwargs) -> List:
-        """List files and folders at a remote path.
+        '''List files and folders at a remote path.
 
         Args:
             path: Remote folder path.
             detail: Include metadata for each entry.
-        """
+        '''
         pass
 
     @abstractmethod
     def info(self, path: str, **kwargs) -> Dict[str, Any]:
-        """Get metadata for one remote file or folder.
+        '''Get metadata for one remote file or folder.
 
         Args:
             path: Remote file or folder path.
-        """
+        '''
         pass
 
     @abstractmethod
@@ -119,12 +119,12 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
         pass
 
     def mkdir(self, path: str, create_parents: bool = True, **kwargs) -> None:
-        """Create a folder in the remote file system.
+        '''Create a folder in the remote file system.
 
         Args:
             path: Remote folder path to create.
             create_parents: Create missing parent folders.
-        """
+        '''
         pass
 
     def makedirs(self, path: str, exist_ok: bool = False) -> None:
@@ -137,12 +137,12 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
         raise NotImplementedError(f'{self.__class__.__name__}.rm_file is not implemented')
 
     def rm(self, path: str, recursive: bool = False) -> None:
-        """Delete a remote file or folder.
+        '''Delete a remote file or folder.
 
         Args:
             path: Remote path to delete.
             recursive: Delete folder contents recursively.
-        """
+        '''
         if self.isdir(path) and recursive:  # type: ignore[attr-defined]
             for entry in self.ls(path, detail=True):
                 self.rm(entry['name'], recursive=True)
@@ -151,11 +151,11 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
             self.rm_file(path)
 
     def exists(self, path: str, **kwargs) -> bool:
-        """Check whether a remote path exists.
+        '''Check whether a remote path exists.
 
         Args:
             path: Remote file or folder path.
-        """
+        '''
         return super().exists(path, **kwargs)
 
     def put_file(self, lpath: str, rpath: str, **kwargs) -> None:
@@ -178,51 +178,51 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
             return fh.read()
 
     def read(self, path: str) -> str:
-        """Read a remote text file or document.
+        '''Read a remote text file or document.
 
         Args:
             path: Remote path or supplier-supported document URL.
-        """
+        '''
         return self.read_bytes(path).decode('utf-8')
 
     def read_file(self, path: str) -> str:
-        """Read a remote file as text.
+        '''Read a remote file as text.
 
         Args:
             path: Remote path or supplier-supported document URL.
-        """
+        '''
         return self.read_bytes(path).decode('utf-8')
 
     def write_file(self, path: str, data: bytes) -> None:
         self._upload_data(path, data)
 
     def write(self, path: str, content: str) -> None:
-        """Write text content to a remote file or document.
+        '''Write text content to a remote file or document.
 
         Args:
             path: Destination remote path.
             content: Text to write.
-        """
+        '''
         self._upload_data(path, content.encode('utf-8'))
 
     def copy(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
-        """Copy a remote file or folder.
+        '''Copy a remote file or folder.
 
         Args:
             path1: Existing remote path.
             path2: Destination remote path.
             recursive: Copy folder contents recursively.
-        """
+        '''
         raise NotImplementedError(f'{self.__class__.__name__}.copy is not implemented')
 
     def move(self, path1: str, path2: str, recursive: bool = False, **kwargs) -> None:
-        """Move a remote file or folder.
+        '''Move a remote file or folder.
 
         Args:
             path1: Existing remote path.
             path2: Destination remote path.
             recursive: Move folder contents recursively.
-        """
+        '''
         raise NotImplementedError(f'{self.__class__.__name__}.move is not implemented')
 
     def _materialize_rel_path(self, root: str, remote_path: str) -> str:
@@ -445,22 +445,22 @@ class LinkDocumentFSBase(LazyLLMFSBase):
         return {**ref, **standard}
 
     def resolve_link(self, url_or_path: str) -> Dict[str, Any]:
-        """Resolve a supplier document URL or path to document metadata.
+        '''Resolve a supplier document URL or path to document metadata.
 
         Args:
             url_or_path: Cloud-document browser URL or remote path.
-        """
+        '''
         resolver = getattr(self, '_resolve_document_ref', None)
         if callable(resolver):
             return self._standardize_document_ref(resolver(url_or_path))
         raise NotImplementedError(f'{self.__class__.__name__}.resolve_link is not implemented')
 
     def read_with_references(self, path: str) -> str:
-        """Read a cloud document and include its linked references.
+        '''Read a cloud document and include its linked references.
 
         Args:
             path: Cloud-document browser URL or remote path.
-        """
+        '''
         try:
             data = self.read_bytes(path, include_references=True)  # type: ignore[call-arg]
         except TypeError:
@@ -471,30 +471,30 @@ class LinkDocumentFSBase(LazyLLMFSBase):
         return self.read_bytes(url)
 
     def get_document_id(self, path: str) -> str:
-        """Resolve a cloud-document URL or path to its editable document id.
+        '''Resolve a cloud-document URL or path to its editable document id.
 
         Args:
             path: Cloud-document browser URL or remote path.
-        """
+        '''
         raise NotImplementedError(f'{self.__class__.__name__}.get_document_id is not implemented')
 
     def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
-        """List editable blocks in a cloud document.
+        '''List editable blocks in a cloud document.
 
         Args:
             path: Cloud-document browser URL or remote path.
             with_descendants: Include nested blocks.
-        """
+        '''
         raise NotImplementedError(f'{self.__class__.__name__}.get_doc_blocks is not implemented')
 
     def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
-        """Replace the text of one cloud-document block.
+        '''Replace the text of one cloud-document block.
 
         Args:
             path: Cloud-document browser URL or remote path.
             block_id: Block identifier.
             new_text: Replacement text.
-        """
+        '''
         raise NotImplementedError(f'{self.__class__.__name__}.update_doc_block_text is not implemented')
 
 

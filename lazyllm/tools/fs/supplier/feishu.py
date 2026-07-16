@@ -1153,14 +1153,14 @@ class FeishuWikiFS(FeishuFSBase):
 
     def search(self, query: Union[str, List[str]], space_id: str = '', node_id: str = '',
                page_size: int = 20) -> List[Dict[str, Any]]:
-        """Search Feishu Wiki nodes by text.
+        '''Search Feishu Wiki nodes by text.
 
         Args:
             query: Text to search for.
             space_id: Optional Wiki space id.
             node_id: Optional parent node scope.
             page_size: Maximum result count.
-        """
+        '''
         if isinstance(query, list):
             query = ' '.join(str(item).strip() for item in query if str(item).strip())
         query = (query or '').strip()
@@ -1296,13 +1296,13 @@ class FeishuWikiFS(FeishuFSBase):
         return len(results) >= max_results
 
     def find(self, pattern: str, space_id: str = '', max_results: int = 50) -> List[Dict[str, Any]]:
-        """Find Feishu Wiki nodes whose paths or titles match a pattern.
+        '''Find Feishu Wiki nodes whose paths or titles match a pattern.
 
         Args:
             pattern: Glob or regular-expression pattern.
             space_id: Optional Wiki space id.
             max_results: Maximum result count.
-        """
+        '''
         regex = self._compile_find_pattern(pattern)
         max_results = max(1, min(int(max_results), 200))
         sid = self._resolve_space_id(space_id)
