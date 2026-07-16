@@ -129,16 +129,6 @@ class NotionFS(LinkDocumentFSBase):
 
     document_provider = 'notion'
     __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search', 'find'], exclude=['copy'])
-    __tool_docs__ = {
-        'search': (
-            'Search connected Notion pages and databases.\n\nArgs:\n'
-            '    query: Text to search for.'
-        ),
-        'find': (
-            'Find connected Notion objects matching a pattern.\n\nArgs:\n'
-            '    pattern: Pattern to match.\n    max_results: Maximum result count.'
-        ),
-    }
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  dynamic_auth: bool = False, **storage_options):
@@ -221,6 +211,16 @@ class NotionFS(LinkDocumentFSBase):
     def search(self, query: str, object_type: str = '', limit: int = 20,
                sort_direction: str = 'descending', scope: str = '',
                title_pattern: str = '') -> List[Dict[str, Any]]:
+        """Search connected Notion pages and databases.
+
+        Args:
+            query: Text to search for.
+            object_type: Optional object type filter, either page or database.
+            limit: Maximum result count.
+            sort_direction: Sort by last-edited time in ascending or descending order.
+            scope: Optional page, database, or data-source scope.
+            title_pattern: Optional title pattern filter.
+        """
         query = (query or '').strip()
         if not query:
             raise ValueError('query is required')
@@ -265,6 +265,14 @@ class NotionFS(LinkDocumentFSBase):
 
     def find(self, pattern: str, object_type: str = '', limit: int = 50,
              scope: str = '') -> List[Dict[str, Any]]:
+        """Find connected Notion objects matching a pattern.
+
+        Args:
+            pattern: Pattern to match.
+            object_type: Optional object type filter, either page or database.
+            limit: Maximum result count.
+            scope: Optional page, database, or data-source scope.
+        """
         pattern = (pattern or '').strip()
         if not pattern:
             raise ValueError('pattern is required')

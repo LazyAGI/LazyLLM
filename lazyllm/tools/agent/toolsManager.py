@@ -277,10 +277,6 @@ class MethodModuleTool(ModuleTool):
 
     @staticmethod
     def _find_inherited_docstring(instance: Any, method_name: str) -> Optional[str]:
-        for cls in type(instance).__mro__:
-            tool_docs = cls.__dict__.get('__tool_docs__')
-            if isinstance(tool_docs, dict) and tool_docs.get(method_name):
-                return tool_docs[method_name]
         for cls in type(instance).__mro__[1:]:
             member = cls.__dict__.get(method_name)
             if member is not None and getattr(member, '__doc__', None):
