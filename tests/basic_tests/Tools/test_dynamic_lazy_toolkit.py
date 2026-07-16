@@ -2,7 +2,7 @@ from lazyllm.tools.agent.toolsManager import ToolManager
 
 
 class _DynamicToolkit:
-    """Toolkit used to verify request-local lazy registration."""
+    '''Toolkit used to verify request-local lazy registration.'''
 
     __public_apis__ = ['search']
 
@@ -13,14 +13,14 @@ class _DynamicToolkit:
         return self.lazy
 
     def search(self, query: str) -> str:
-        """Search for a query.
+        '''Search for a query.
 
         Args:
             query: Query text.
 
         Returns:
             Search result.
-        """
+        '''
         return query
 
 
