@@ -277,6 +277,10 @@ class MethodModuleTool(ModuleTool):
 
     @staticmethod
     def _find_inherited_docstring(instance: Any, method_name: str) -> Optional[str]:
+        for cls in type(instance).__mro__:
+            tool_docs = cls.__dict__.get('__tool_docs__')
+            if isinstance(tool_docs, dict) and tool_docs.get(method_name):
+                return tool_docs[method_name]
         for cls in type(instance).__mro__[1:]:
             member = cls.__dict__.get(method_name)
             if member is not None and getattr(member, '__doc__', None):
@@ -386,12 +390,12 @@ class ToolGroup(ToolContainer):
             active = workspace.setdefault('_active_groups', [])
             if group_name not in active:
                 active.append(group_name)
-            return (f'Activated tool group "{group_name}". '
+            return (f'Activated Toolkit "{group_name}". '
                     f'Available tools: {", ".join(child_names)}')
 
         group_desc = docstring_parser.parse(self._desc).description if self._desc else ''
         desc = (
-            f'Gateway to activate the "{group_name}" tool group '
+            f'Gateway to activate the "{group_name}" Toolkit '
             f'{"(usage: " + group_desc + ")" if group_desc else ""}'
             f'. You MUST call this tool before using any tool from {group_name}.'
         )

@@ -44,6 +44,50 @@ class LazyLLMFSBase(AbstractFileSystem, CredentialMixin, metaclass=_CloudFSMeta)
 
     __public_apis__ = ['ls', 'info', 'mkdir', 'rm',
                        'exists', 'read', 'read_file', 'write', 'move', 'copy']
+    __tool_docs__ = {
+        'ls': (
+            'List files and folders at a remote path.\n\nArgs:\n'
+            '    path: Remote folder path.\n    detail: Include metadata for each entry.'
+        ),
+        'info': (
+            'Get metadata for one remote file or folder.\n\nArgs:\n'
+            '    path: Remote file or folder path.'
+        ),
+        'mkdir': (
+            'Create a folder in the remote file system.\n\nArgs:\n'
+            '    path: Remote folder path to create.\n    create_parents: Create missing parent folders.'
+        ),
+        'rm': (
+            'Delete a remote file or folder.\n\nArgs:\n'
+            '    path: Remote path to delete.\n    recursive: Delete folder contents recursively.'
+        ),
+        'exists': (
+            'Check whether a remote path exists.\n\nArgs:\n'
+            '    path: Remote file or folder path.'
+        ),
+        'read': (
+            'Read a remote text file or document.\n\nArgs:\n'
+            '    path: Remote path or supplier-supported document URL.'
+        ),
+        'read_file': (
+            'Read a remote file as text.\n\nArgs:\n'
+            '    path: Remote path or supplier-supported document URL.'
+        ),
+        'write': (
+            'Write text content to a remote file or document.\n\nArgs:\n'
+            '    path: Destination remote path.\n    content: Text to write.'
+        ),
+        'move': (
+            'Move a remote file or folder.\n\nArgs:\n'
+            '    path1: Existing remote path.\n    path2: Destination remote path.\n'
+            '    recursive: Move folder contents recursively.'
+        ),
+        'copy': (
+            'Copy a remote file or folder.\n\nArgs:\n'
+            '    path1: Existing remote path.\n    path2: Destination remote path.\n'
+            '    recursive: Copy folder contents recursively.'
+        ),
+    }
     protocol: str = 'cloudfs'
 
     def __init__(self, token: Any, base_url: Optional[str] = None, asynchronous: bool = False,
@@ -300,6 +344,30 @@ class LinkDocumentFSBase(LazyLLMFSBase):
         'update_doc_block_text',
     ]
     __public_apis__ = LazyLLMFSBase.__public_apis__ + __document_public_apis__
+    __tool_docs__ = {
+        'resolve_link': (
+            'Resolve a supplier document URL or path to document metadata.\n\nArgs:\n'
+            '    url_or_path: Cloud-document browser URL or remote path.'
+        ),
+        'read_with_references': (
+            'Read a cloud document and include its linked references.\n\nArgs:\n'
+            '    path: Cloud-document browser URL or remote path.'
+        ),
+        'get_document_id': (
+            'Resolve a cloud-document URL or path to its editable document id.\n\nArgs:\n'
+            '    path: Cloud-document browser URL or remote path.'
+        ),
+        'get_doc_blocks': (
+            'List editable blocks in a cloud document.\n\nArgs:\n'
+            '    path: Cloud-document browser URL or remote path.\n'
+            '    with_descendants: Include nested blocks.'
+        ),
+        'update_doc_block_text': (
+            'Replace the text of one cloud-document block.\n\nArgs:\n'
+            '    path: Cloud-document browser URL or remote path.\n'
+            '    block_id: Block identifier.\n    text: Replacement text.'
+        ),
+    }
     link_path_prefix = '~link/'
 
     @staticmethod

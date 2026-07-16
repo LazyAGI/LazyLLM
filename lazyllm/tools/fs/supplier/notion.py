@@ -120,9 +120,25 @@ class NotionFile(CloudFSBufferedFile):
 
 
 class NotionFS(LinkDocumentFSBase):
+    '''Read and manage authenticated Notion pages, databases, and documents.
+
+    Select this Toolkit for notion.so, notion.site, or notion.com browser URLs.
+    Resolve or read a supplied URL directly; use search/find when the exact page
+    is not known.
+    '''
 
     document_provider = 'notion'
     __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search', 'find'], exclude=['copy'])
+    __tool_docs__ = {
+        'search': (
+            'Search connected Notion pages and databases.\n\nArgs:\n'
+            '    query: Text to search for.'
+        ),
+        'find': (
+            'Find connected Notion objects matching a pattern.\n\nArgs:\n'
+            '    pattern: Pattern to match.\n    max_results: Maximum result count.'
+        ),
+    }
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  dynamic_auth: bool = False, **storage_options):

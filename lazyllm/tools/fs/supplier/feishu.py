@@ -722,11 +722,31 @@ class FeishuWikiFile(CloudFSBufferedFile):
 
 
 class FeishuWikiFS(FeishuFSBase):
+    '''Read and manage authenticated Feishu/Lark Wiki spaces and documents.
+
+    Select this Toolkit for Feishu or Lark browser URLs, especially `/wiki/`
+    links. Use resolve_link to inspect a URL, read or read_with_references to
+    load its content, search/find to locate Wiki nodes, and editing methods only
+    when the user requests a change.
+    '''
+
     __lazyllm_registry_disable__ = True
     protocol = 'feishu'
     _fs_protocol_key = 'feishu'
     document_provider = 'feishu'
     __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search', 'find'])
+    __tool_docs__ = {
+        'search': (
+            'Search Feishu Wiki nodes by text.\n\nArgs:\n'
+            '    query: Text to search for.\n    space_id: Optional Wiki space id.\n'
+            '    node_id: Optional parent node scope.\n    page_size: Maximum result count.'
+        ),
+        'find': (
+            'Find Feishu Wiki nodes whose paths or titles match a pattern.\n\nArgs:\n'
+            '    pattern: Glob or regular-expression pattern.\n'
+            '    space_id: Optional Wiki space id.\n    max_results: Maximum result count.'
+        ),
+    }
 
     def _create_docx_node(self, title: str, parent_token: str = '') -> str:
         url = f'{self._base_url}/wiki/v2/spaces/{self._effective_space_id()}/nodes'
