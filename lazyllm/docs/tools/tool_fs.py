@@ -1869,7 +1869,7 @@ _add_fs_chinese('NotionFS.read_bytes', f'''\
 {_NOTION_DOCUMENT_LINK_WORKFLOW_ZH}
 
 Args:
-    path (str): Notion 页面、数据库或 block 路径，也可以是 Notion 浏览器链接或 notion:/ URI。
+    path (str): Notion 页面、数据库或 block 路径，也可以是 Notion 浏览器链接或 notion:/ URI；会容忍常见展示态包裹，如反引号、加粗标记、尖括号或 Markdown 链接。
     include_references (bool): 为 True 时在正文末尾追加 Notion 引用页脚，默认 False。
 
 Returns:
@@ -1881,7 +1881,7 @@ Read the full content for a Notion page, database, or block path and return UTF-
 {_NOTION_DOCUMENT_LINK_WORKFLOW_EN}
 
 Args:
-    path (str): Notion page, database, or block path; may also be a Notion browser link or notion:/ URI.
+    path (str): Notion page, database, or block path; may also be a Notion browser link or notion:/ URI. Common display wrappers such as backticks, bold markers, angle brackets, or Markdown links are tolerated.
     include_references (bool): When True, appends a Notion references footer after the body; default False.
 
 Returns:
@@ -1899,7 +1899,7 @@ Args:
     title_pattern (str): 可选标题/文件名正则过滤。
 
 Returns:
-    List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path 等字段。
+    List[Dict[str, Any]]: 搜索结果条目，包含 title、id、notion_path、url 等字段。
 ''')
 _add_fs_english('NotionFS.search', '''\
 Search Notion pages or databases visible to the current token by title. This uses Notion's official /v1/search endpoint to locate resources; it is not full-text page-body search.
@@ -1913,7 +1913,7 @@ Args:
     title_pattern (str): Optional title/filename regex filter.
 
 Returns:
-    List[Dict[str, Any]]: Search result entries with title, id, notion_path, and related metadata.
+    List[Dict[str, Any]]: Search result entries with title, id, notion_path, url, and related metadata.
 ''')
 
 _add_fs_chinese('NotionFS.find', '''\
@@ -2026,7 +2026,7 @@ _add_fs_chinese('NotionFS.resolve_notion_ref', f'''\
 {_NOTION_DOCUMENT_LINK_WORKFLOW_ZH}
 
 Args:
-    url_or_path (str): Notion 浏览器链接、notion:/ URI、页面/数据库/block ID 或路径。
+    url_or_path (str): Notion 浏览器链接、notion:/ URI、页面/数据库/block ID 或路径；会容忍常见展示态包裹，如反引号、加粗标记、尖括号或 Markdown 链接。
 
 Returns:
     Dict[str, Any]: 包含 object_id、object_type、title、notion_path、has_child 等字段的元信息。
@@ -2037,7 +2037,7 @@ Resolve a Notion URL, notion:/ URI, or page/database/block id into normalized me
 {_NOTION_DOCUMENT_LINK_WORKFLOW_EN}
 
 Args:
-    url_or_path (str): Notion browser link, notion:/ URI, page/database/block id, or path.
+    url_or_path (str): Notion browser link, notion:/ URI, page/database/block id, or path. Common display wrappers such as backticks, bold markers, angle brackets, or Markdown links are tolerated.
 
 Returns:
     Dict[str, Any]: Metadata including object_id, object_type, title, notion_path, and has_child.

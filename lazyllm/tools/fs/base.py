@@ -1,6 +1,7 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
 import os
 from abc import abstractmethod
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote, unquote
 
@@ -16,6 +17,24 @@ from lazyllm.common.registry import LazyLLMRegisterMetaABCClass
 
 AbstractFileSystem = thirdparty.fsspec.spec.AbstractFileSystem
 AbstractBufferedFile = thirdparty.fsspec.spec.AbstractBufferedFile
+
+_MARKDOWN_LINK_RE = re.compile(r'^\s*\[[^\]]*\]\(([^)]+)\)\s*$')
+
+
+def clean_document_ref(value: str) -> str:
+    ref = str(value or '').strip()
+    while True:
+        original = ref
+        ref = ref.rstrip('.,;，。；').strip()
+        match = _MARKDOWN_LINK_RE.match(ref)
+        if match:
+            ref = match.group(1).strip()
+        for left, right in (('**', '**'), ('`', '`'), ('"', '"'), ("'", "'"), ('<', '>')):
+            if ref.startswith(left) and ref.endswith(right) and len(ref) >= len(left) + len(right):
+                ref = ref[len(left):-len(right)].strip()
+        if ref == original:
+            break
+    return ref
 
 
 class CloudFSBufferedFile(AbstractBufferedFile):

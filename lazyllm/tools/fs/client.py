@@ -4,7 +4,7 @@ import threading
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
 from lazyllm import globals
-from lazyllm.tools.fs.base import LinkDocumentFSBase
+from lazyllm.tools.fs.base import LinkDocumentFSBase, clean_document_ref
 
 _PROTOCOL_RE = re.compile(r'^([a-zA-Z][a-zA-Z0-9+\-.]*)(@[^:/]+)?:/(.*)$')
 _FEISHU_BARE_URL_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
@@ -64,6 +64,7 @@ class _FSRouter:
         self._lock = threading.Lock()
 
     def _parse(self, path: str):
+        path = clean_document_ref(path)
         bare_protocol = _match_bare_document_url(path)
         if bare_protocol:
             return bare_protocol, 'dynamic', LinkDocumentFSBase.to_link_path(path)

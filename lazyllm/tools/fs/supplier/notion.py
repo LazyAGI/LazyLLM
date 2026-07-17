@@ -9,7 +9,7 @@ import lazyllm
 import requests
 from lazyllm import config
 
-from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
+from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile, clean_document_ref
 
 config.add('notion_token', str, None, 'NOTION_TOKEN', description='Notion API token (notion-client official env).')
 
@@ -45,6 +45,7 @@ def _find_notion_ids(text: str) -> List[str]:
 
 
 def _parse_notion_browser_url(url: str) -> Optional[Dict[str, str]]:
+    url = clean_document_ref(url)
     parsed = urlparse(url)
     if parsed.scheme not in ('http', 'https'):
         return None
@@ -79,6 +80,7 @@ def _is_notion_browser_url(path: str) -> bool:
 
 
 def _strip_notion_protocol(path: str) -> str:
+    path = clean_document_ref(path)
     if path.startswith('notion:/'):
         return path[len('notion:'):]
     return path
@@ -1418,6 +1420,7 @@ class NotionFS(LinkDocumentFSBase):
         return LazyLLMFSBase._entry(
             name=title or pid, ftype='directory', mtime=mtime, title=title,
             id=pid, object=page.get('object', 'page'), notion_path=f'notion:/~page/{pid}',
+            url=page.get('url') or '',
         )
 
     @staticmethod
@@ -1427,6 +1430,7 @@ class NotionFS(LinkDocumentFSBase):
         return LazyLLMFSBase._entry(
             name=title or did, ftype='directory', title=title, id=did,
             object=db.get('object', 'database'), notion_path=f'notion:/~database/{did}',
+            url=db.get('url') or '',
         )
 
     @staticmethod
@@ -1436,6 +1440,7 @@ class NotionFS(LinkDocumentFSBase):
         return LazyLLMFSBase._entry(
             name=title or did, ftype='directory', title=title, id=did,
             object=data_source.get('object', 'data_source'), notion_path=f'notion:/~data_source/{did}',
+            url=data_source.get('url') or '',
         )
 
     @staticmethod
