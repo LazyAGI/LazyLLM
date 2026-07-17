@@ -184,6 +184,7 @@ class LazyLLMAgentBase(ModuleBase):
         return {
             'tool_definitions': self._tools_manager.tools_description,
             'skills_prompt': skills_prompt or '',
+            'skill_prompt_parts': self._skill_manager.describe_prompt() if self._skill_manager else [],
             'workspace': self._workspace,
         }
 
