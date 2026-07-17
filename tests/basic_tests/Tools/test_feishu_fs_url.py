@@ -360,6 +360,9 @@ class TestFeishuToolRegistration(unittest.TestCase):
         names = {item['function']['name'] for item in manager.tools_description}
 
         self.assertEqual(names, {'get_FeishuWikiFS_methods'})
+        gateway = manager.tools_description[0]['function']
+        self.assertIn('Feishu', gateway['description'])
+        self.assertIn('Wiki', gateway['description'])
         manager._tool_call['get_FeishuWikiFS_methods']({})
         names = {item['function']['name'] for item in manager.tools_description}
 

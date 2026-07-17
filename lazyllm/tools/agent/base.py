@@ -178,6 +178,16 @@ class LazyLLMAgentBase(ModuleBase):
     def workspace(self) -> str:
         return self._workspace
 
+    def describe_context(self) -> Dict[str, Any]:
+        '''Return the model-facing static context without invoking the model or tools.'''
+        skills_prompt = self._skill_manager.build_prompt() if self._skill_manager else ''
+        return {
+            'tool_definitions': self._tools_manager.tools_description,
+            'skills_prompt': skills_prompt or '',
+            'skill_prompt_parts': self._skill_manager.describe_prompt() if self._skill_manager else [],
+            'workspace': self._workspace,
+        }
+
     @property
     def sandbox(self) -> Optional[LazyLLMSandboxBase]:
         return self._sandbox
