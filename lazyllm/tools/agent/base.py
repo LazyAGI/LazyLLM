@@ -27,18 +27,16 @@ def _write_agent_data(tag: str, **kwargs):
         json.dumps(payload, ensure_ascii=False, default=str))
 
 
-def _unwrap_tool_result(result: Any) -> str:
+def _unwrap_tool_result(result: Any) -> Any:
     # Unpack structured tool results produced by ToolManager._safe_call.
-    # {'ok': True,  'value': v}  → str(v)
+    # {'ok': True,  'value': v}  → v
     # {'ok': False, 'msg':   m}  → m  (already a human-readable error string)
-    # anything else              → str(result)  (sandbox output, parse errors, etc.)
+    # anything else              → result  (sandbox output, parse errors, etc.)
     if isinstance(result, dict) and 'ok' in result:
         if result['ok']:
-            return str(result.get('value', ''))
+            return result.get('value', '')
         return str(result.get('msg', repr(result)))
-    return str(result)
-
-
+    return result
 class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools: Optional[List[Union[str, Callable, Dict]]] = None,
                  max_retries: int = 5, return_trace: bool = False,
@@ -179,6 +177,16 @@ class LazyLLMAgentBase(ModuleBase):
     @property
     def workspace(self) -> str:
         return self._workspace
+
+    def describe_context(self) -> Dict[str, Any]:
+        '''Return the model-facing static context without invoking the model or tools.'''
+        skills_prompt = self._skill_manager.build_prompt() if self._skill_manager else ''
+        return {
+            'tool_definitions': self._tools_manager.tools_description,
+            'skills_prompt': skills_prompt or '',
+            'skill_prompt_parts': self._skill_manager.describe_prompt() if self._skill_manager else [],
+            'workspace': self._workspace,
+        }
 
     @property
     def sandbox(self) -> Optional[LazyLLMSandboxBase]:

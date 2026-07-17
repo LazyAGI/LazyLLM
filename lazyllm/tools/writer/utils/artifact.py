@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional, Type, TypeVar
 from pydantic import BaseModel, Field
 
@@ -60,7 +60,7 @@ def save_artifact_json(
 
     meta: Dict[str, Any] = {
         'created_by': created_by,
-        'created_at': datetime.now(timezone.utc).isoformat(),
+        'created_at': datetime.now().astimezone().isoformat(),
     }
     if extra_meta:
         meta.update(extra_meta)

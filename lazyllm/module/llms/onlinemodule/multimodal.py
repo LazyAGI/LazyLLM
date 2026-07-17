@@ -35,6 +35,7 @@ class OnlineMultiModalModule(_DynamicSourceRouterMixin, metaclass=_OnlineMultiMo
         'tts': LLMType.TTS,
         'text2image': LLMType.TEXT2IMAGE,
         'image_editing': LLMType.TEXT2IMAGE,
+        'text2video': LLMType.TEXT2VIDEO,
     }
 
     @staticmethod
@@ -44,6 +45,8 @@ class OnlineMultiModalModule(_DynamicSourceRouterMixin, metaclass=_OnlineMultiMo
         resolved = get_model_type(model) if model else None
         if resolved == 'sd':
             return 'text2image'
+        if resolved == 'text2video':
+            return 'text2video'
         if resolved not in OnlineMultiModalModule.TYPE_GROUP_MAP:
             raise ValueError(
                 f'Cannot infer multimodal type from model {model!r}. '

@@ -21,11 +21,21 @@ def add_one(value: int) -> int:
     return value + 1
 
 
+def get_status() -> dict:
+    '''Return a structured status result.
+
+    Returns:
+        dict: Structured status information.
+    '''
+    return {'status': 'ok', 'content': 'Error handling reference'}
+
+
 class _FakeLLM(object):
     def __init__(self, outputs, *, stream=False):
         self._outputs = outputs
         self._cursor = 0
         self._stream = stream
+        self.inputs = []
         self._module_id = f'fake-llm-{id(self)}'
 
     def share(self, prompt=None, format=None, stream=None, history=None, copy_static_params=False):
@@ -38,6 +48,7 @@ class _FakeLLM(object):
         return self
 
     def __call__(self, input, **kwargs):
+        self.inputs.append(input)
         output = self._outputs[self._cursor]
         self._cursor += 1
         if self._stream:
@@ -87,6 +98,38 @@ def _read_agent_events():
 
 
 class TestReactAgentEvents(object):
+    def test_react_agent_stream_preserves_structured_tool_results(self):
+        llm = _FakeLLM([
+            {
+                'role': 'assistant',
+                'content': 'Let me read the status.',
+                'tool_calls': [{
+                    'id': 'call-status',
+                    'type': 'function',
+                    'function': {'name': 'get_status', 'arguments': '{}'},
+                }],
+            },
+            {'role': 'assistant', 'content': 'Done.'},
+        ])
+        agent = ReactAgent(llm=llm, tools=[get_status], max_retries=1, stream=True,
+                           enable_builtin_tools=False)
+
+        assert agent('read status') == 'Done.'
+        events = _read_agent_events()
+        result_event = next(event for event in events if event.tag == 'tool_results')
+
+        assert result_event.tool_results[0]['result'] == {
+            'status': 'ok',
+            'content': 'Error handling reference',
+        }
+        tool_message = llm.inputs[1]['input'][0]
+
+        assert tool_message['role'] == 'tool'
+        assert tool_message['content'] == str({
+            'status': 'ok',
+            'content': 'Error handling reference',
+        })
+
     def test_react_agent_stream_emits_text_reasoning_and_tool_events(self):
         llm = _FakeLLM([
             {

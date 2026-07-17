@@ -671,13 +671,29 @@ class Switch(LazyLLMFlowsBase):
 class IFS(LazyLLMFlowsBase):
     def __init__(self, cond, tpath, fpath, post_action=None):
         super().__init__(cond, tpath, fpath, post_action=post_action)
+        self._cond_with_input = None
+        cond = self._items[0]
+        if not isinstance(cond, bool):
+            try:
+                signature = inspect.signature(cond)
+            except (TypeError, ValueError):
+                pass
+            else:
+                self._cond_with_input = bool(signature.parameters)
 
     def _run(self, __input, **kw):
         cond, tpath, fpath = self._items
-        try:
-            flag = cond()
-        except Exception:
-            flag = cond if isinstance(cond, bool) else self.invoke(cond, __input, **kw)
+        if isinstance(cond, bool):
+            flag = cond
+        elif self._cond_with_input is True:
+            flag = self.invoke(cond, __input, **kw)
+        elif self._cond_with_input is False:
+            flag = self.invoke(cond, package())
+        else:
+            try:
+                flag = cond()
+            except Exception:
+                flag = self.invoke(cond, __input, **kw)
         chosen = tpath if flag else fpath
         branch_label = 'true_path' if flag else 'false_path'
         name = getattr(chosen, '__name__', None) or type(chosen).__name__

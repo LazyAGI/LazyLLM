@@ -3,6 +3,7 @@ from .tools.context_tools import WriterContextTools
 from .tools.planning_tools import WriterPlanningTools
 from .tools.drafting_tools import WriterDraftingTools
 from .tools.quality_tools import WriterQualityTools
+from .tools.revision_tools import WriterRevisionTools
 
 
 class WriterToolKit:
@@ -25,6 +26,7 @@ class WriterToolKit:
         self.planning = WriterPlanningTools(llm=llm, artifact_store=artifact_store, adapters=self.adapters)
         self.drafting = WriterDraftingTools(llm=llm, artifact_store=artifact_store, adapters=self.adapters)
         self.quality = WriterQualityTools(llm=llm, artifact_store=artifact_store, adapters=self.adapters)
+        self.revision = WriterRevisionTools(llm=llm, artifact_store=artifact_store, adapters=self.adapters)
 
     def as_tool_groups(self):
         groups = [
@@ -56,6 +58,12 @@ class WriterToolKit:
                 name='writer_quality',
                 desc='Section and draft-document quality validation tools.',
                 tools=[self.quality],
+                lazy=self.lazy,
+            ),
+            dict(
+                name='writer_revision',
+                desc='Section and draft-document revision tools.',
+                tools=[self.revision],
                 lazy=self.lazy,
             ),
         ]

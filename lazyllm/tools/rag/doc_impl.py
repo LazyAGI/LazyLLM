@@ -531,28 +531,46 @@ class DocImpl:
         return result
 
     def _find_parent_with_node(self, nodes: list[DocNode], group: str):
-        result = set()
+        result = {}
+        score_by_parent = {}
 
-        def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
+        def update_parent(parent: DocNode, score) -> None:
+            uid = parent.uid
+            result[uid] = parent
+            if score is not None:
+                score_by_parent[uid] = max(score_by_parent.get(uid, score), score)
+
+        def recurse_parents(node: DocNode, score) -> None:
             if node.parent:
                 if node.parent._group == group:
-                    visited.add(node.parent)
+                    update_parent(node.parent, score)
                 else:
-                    recurse_parents(node.parent, visited)
+                    recurse_parents(node.parent, score)
 
         for node in nodes:
-            recurse_parents(node, result)
-        return list(result)
+            recurse_parents(node, node.similarity_score)
+        for uid, parent in result.items():
+            parent.similarity_score = score_by_parent.get(uid)
+        return list(result.values())
 
     def _find_parent_with_uid(self, nodes: list[DocNode], group: str):
         cur_group = nodes[0]._group
         cur_nodes = nodes
         while cur_group != group and cur_nodes[0].parent:
             name = self.node_groups[cur_group]['parent']
-            parent_uids = {n.parent for n in cur_nodes}
+            score_by_parent = {}
+            for n in cur_nodes:
+                if n.similarity_score is not None:
+                    score_by_parent[n.parent] = max(
+                        score_by_parent.get(n.parent, n.similarity_score),
+                        n.similarity_score
+                    )
+            parent_uids = set(n.parent for n in cur_nodes)
             kb_id = cur_nodes[0].global_metadata.get(RAG_KB_ID)
             parents = self._store.get_nodes(group=name, kb_id=kb_id, uids=list(parent_uids), display=True)
             if not parents: break
+            for parent in parents:
+                parent.similarity_score = score_by_parent.get(parent.uid)
             cur_group = parents[0]._group
             cur_nodes = parents
         return cur_nodes if cur_group == group else []

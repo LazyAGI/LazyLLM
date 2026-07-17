@@ -386,12 +386,12 @@ class ToolGroup(ToolContainer):
             active = workspace.setdefault('_active_groups', [])
             if group_name not in active:
                 active.append(group_name)
-            return (f'Activated tool group "{group_name}". '
+            return (f'Activated Toolkit "{group_name}". '
                     f'Available tools: {", ".join(child_names)}')
 
         group_desc = docstring_parser.parse(self._desc).description if self._desc else ''
         desc = (
-            f'Gateway to activate the "{group_name}" tool group '
+            f'Gateway to activate the "{group_name}" Toolkit '
             f'{"(usage: " + group_desc + ")" if group_desc else ""}'
             f'. You MUST call this tool before using any tool from {group_name}.'
         )
@@ -450,6 +450,14 @@ class SkipMixin:
         sources = self._key_source if isinstance(self._key_source, list) else [self._key_source]
         return not any(bool(self._resolve_one_key(src)) for src in sources)
 
+    def source_is_active(self, source: Union[str, Callable, List[Union[str, Callable]], None]) -> bool:
+        '''Resolve an arbitrary dynamic source with the same semantics as key_source.'''
+        if source is None:
+            return False
+        raw_sources = source if isinstance(source, list) else [source]
+        sources = [self._normalize_source(item) for item in raw_sources]
+        return any(bool(self._resolve_one_key(item)) for item in sources)
+
 
 class InstanceToolGroup(SkipMixin, ToolGroup):
     def __init__(self, instance: Any,
@@ -457,10 +465,12 @@ class InstanceToolGroup(SkipMixin, ToolGroup):
         if key_source is None: key_source = getattr(type(instance), '__key_source__', None)
         self._instance = instance
         SkipMixin.__init__(self, key_source)
+        lazy_source = getattr(type(instance), '__lazy_source__', None)
+        lazy = self.source_is_active(lazy_source) if lazy_source is not None else True
         tools = [MethodModuleTool(instance, m) for m in instance.__public_apis__]
         name = instance.__class__.__name__
         desc = getattr(type(instance), '__doc__', '') or ''
-        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=True, prefix=False)
+        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=lazy, prefix=False)
 
     @property
     def _tools(self) -> Dict[str, 'ModuleTool']:

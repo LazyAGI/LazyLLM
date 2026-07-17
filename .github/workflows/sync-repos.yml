@@ -16,7 +16,7 @@ jobs:
           dst_key: ${{ secrets.GITEE_GITCODE_PRIVATE_KEY }}
           dst_token: ${{ secrets.GITEE_TOKEN }}
           static_list: "LazyLLM"
-          force_push: true
+          force_update: true
   
   to_gitcode:
     runs-on: ubuntu-latest
@@ -29,4 +29,4 @@ jobs:
           dst_key: ${{ secrets.GITEE_GITCODE_PRIVATE_KEY }}
           dst_token: ${{ secrets.GITCODE_TOKEN }}
           static_list: "LazyLLM"
-          force_push: true
+          force_update: true

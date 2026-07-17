@@ -423,6 +423,29 @@ Args:
     **kwargs: Passed through.
 ''')
 
+_add_fs_chinese('LazyLLMFSBase.materialize_dir', '''\
+将远程目录递归物化到本地目录，并返回下载结果摘要。
+
+Args:
+    path (str): 远程目录路径。
+    local_dir (str): 本地目标目录。
+    **kwargs: 透传。
+
+Returns:
+    Dict[str, Any]: 包含 source_path、local_dir、materialized、file_count 和 files 的结果摘要。
+''')
+_add_fs_english('LazyLLMFSBase.materialize_dir', '''\
+Recursively materialize a remote directory into a local directory and return a download summary.
+
+Args:
+    path (str): Remote directory path.
+    local_dir (str): Local target directory.
+    **kwargs: Passed through.
+
+Returns:
+    Dict[str, Any]: Summary containing source_path, local_dir, materialized, file_count, and files.
+''')
+
 _add_fs_chinese('LazyLLMFSBase.close', '''\
 关闭 FS 占用的资源（如 HTTP session）。基类实现为关闭 _session；子类若持有其他资源可覆盖并在最后调用 super().close()。调用 close 后不应再使用该 FS 实例。
 ''')
@@ -1570,6 +1593,28 @@ Args:
     path1 (str): Source node path.
     path2 (str): Destination path; the last segment is the new title, preceding segments are the target parent path.
     recursive (bool): Whether to copy recursively (current implementation copies the node including its children).
+''')
+_add_feishu_chinese('FeishuWikiFS.resolve_wiki_ref', f'''\
+解析飞书 wiki URL、~node/~link 路径、裸飞书 URL 或标题路径，返回标准化节点元信息。用于 chat 中用户粘贴飞书链接后确定节点类型、标题和 ID，再读取正文。自动区分 wiki_node、docx、doc 类型。
+
+{_FEISHU_DOCUMENT_LINK_WORKFLOW_ZH}
+
+Args:
+    url_or_path (str): 飞书 wiki URL、~node/~link/~docx/~doc 路径或知识库标题路径。
+
+Returns:
+    Dict[str, Any]: 包含 node_token、space_id、title、obj_type、obj_token、has_child、creator、owner、node_creator 等字段。
+''')
+_add_feishu_english('FeishuWikiFS.resolve_wiki_ref', f'''\
+Resolve a Feishu wiki URL, ~node/~link path, bare Feishu URL, or title path into normalized node metadata. Use after users paste Feishu links to identify node type, title, and id before reading content. Automatically distinguishes wiki_node, docx, and doc types.
+
+{_FEISHU_DOCUMENT_LINK_WORKFLOW_EN}
+
+Args:
+    url_or_path (str): Feishu wiki URL, ~node/~link/~docx/~doc path, or wiki title path.
+
+Returns:
+    Dict[str, Any]: Metadata including node_token, space_id, title, obj_type, obj_token, has_child, creator, owner, and node_creator.
 ''')
 
 _add_fs_chinese('FeishuWikiFS.get_document_id', '''\
