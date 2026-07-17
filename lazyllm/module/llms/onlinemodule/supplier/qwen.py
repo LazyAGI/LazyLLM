@@ -2,7 +2,7 @@ import json
 import os
 import re
 import requests
-from typing import Tuple, List, Dict, Union, Optional
+from typing import Any, Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
@@ -60,8 +60,6 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
                          base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = dict()
-        if stream:
-            self._model_optional_params['incremental_output'] = True
         self.default_train_data = {
             'model': 'qwen-turbo',
             'training_file_ids': None,
@@ -82,6 +80,16 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
             }
         }
         self.fine_tuning_job_id = None
+
+    def _prepare_request_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        # DashScope rejects incremental_output unless the call is streaming.
+        # Apply it from the per-request stream flag, not construction-time stream=.
+        data = dict(data)
+        if data.get('stream'):
+            data['incremental_output'] = True
+        else:
+            data.pop('incremental_output', None)
+        return data
 
     def _get_system_prompt(self):
         return ('You are a large-scale language model from Alibaba Cloud, '
