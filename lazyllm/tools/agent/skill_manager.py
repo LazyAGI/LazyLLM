@@ -9,7 +9,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import yaml
 
-from lazyllm import config, ModuleBase
+from lazyllm import config, LOG, ModuleBase
 from lazyllm.thirdparty import fsspec
 from .shell_tool import shell_tool as _shell_tool
 
@@ -296,8 +296,33 @@ class SkillManager(ModuleBase):
         return meta if isinstance(meta, dict) else None
 
     @staticmethod
-    def _is_meta_valid(meta: dict) -> bool:
-        return meta is not None and _META_REQUIRED_FIELDS.issubset(meta.keys())
+    def _validate_meta(meta: Optional[dict]) -> Optional[Dict[str, str]]:
+        if not isinstance(meta, dict):
+            return {
+                'code': 'frontmatter_not_mapping',
+                'expected_type': 'dict',
+                'actual_type': type(meta).__name__,
+            }
+        for field in sorted(_META_REQUIRED_FIELDS):
+            if field not in meta:
+                return {
+                    'code': 'metadata_field_missing',
+                    'field': field,
+                }
+            value = meta[field]
+            if not isinstance(value, str):
+                return {
+                    'code': 'metadata_field_type_error',
+                    'field': field,
+                    'expected_type': 'str',
+                    'actual_type': type(value).__name__,
+                }
+            if not value.strip():
+                return {
+                    'code': 'metadata_field_value_error',
+                    'field': field,
+                }
+        return None
 
     def _skill_key_from_dir(self, skill_dir: str) -> str:
         normalized_dir = self._normalize_index_path(skill_dir)
@@ -325,37 +350,47 @@ class SkillManager(ModuleBase):
                 return
             skills_index: Dict[str, Dict] = {}
             for skill_dir, skill_md in self._iter_skill_files():
-                size = self._fs_getsize(skill_md)
-                if size is not None and size > self._max_skill_md_bytes:
-                    continue
                 try:
+                    size = self._fs_getsize(skill_md)
+                    if size is not None and size > self._max_skill_md_bytes:
+                        continue
                     content = self._fs_read(skill_md)
-                except Exception:
+                    if size is None and self._content_exceeds_limit(content):
+                        continue
+                    meta = self._extract_yaml_meta(content)
+                    validation_error = self._validate_meta(meta)
+                    if validation_error:
+                        details = ' '.join(
+                            f'{detail_key}={detail_value}'
+                            for detail_key, detail_value in validation_error.items()
+                        )
+                        LOG.warning(
+                            f'event=skill_load_skipped {details} skill_md={skill_md!r}'
+                        )
+                        continue
+                    name = meta['name']
+                    key = self._skill_key_from_dir(skill_dir)
+                    if not key or key in skills_index:
+                        continue
+                    skills_index[key] = {
+                        'key': key,
+                        'name': name,
+                        'description': meta['description'],
+                        'argument-hint': meta.get('argument-hint', ''),
+                        'disable-model-invocation': self._to_bool(meta.get('disable-model-invocation', False)),
+                        'user-invocable': self._to_bool(meta.get('user-invocable', True)),
+                        'allowed-tools': meta.get('allowed-tools'),
+                        'source': self._extract_protocol(skill_dir) or 'file',
+                        'path': skill_dir,
+                        'skill_md': skill_md,
+                        'raw_meta': meta,
+                    }
+                except Exception as exc:
+                    LOG.warning(
+                        'event=skill_load_skipped code=unexpected_skill_load_error '
+                        f'error_type={type(exc).__name__} skill_md={skill_md!r}'
+                    )
                     continue
-                if size is None and self._content_exceeds_limit(content):
-                    continue
-                meta = self._extract_yaml_meta(content)
-                if not self._is_meta_valid(meta):
-                    continue
-                name = meta.get('name')
-                if not name:
-                    continue
-                key = self._skill_key_from_dir(skill_dir)
-                if not key or key in skills_index:
-                    continue
-                skills_index[key] = {
-                    'key': key,
-                    'name': name,
-                    'description': meta.get('description', ''),
-                    'argument-hint': meta.get('argument-hint', ''),
-                    'disable-model-invocation': self._to_bool(meta.get('disable-model-invocation', False)),
-                    'user-invocable': self._to_bool(meta.get('user-invocable', True)),
-                    'allowed-tools': meta.get('allowed-tools'),
-                    'source': self._extract_protocol(skill_dir) or 'file',
-                    'path': skill_dir,
-                    'skill_md': skill_md,
-                    'raw_meta': meta,
-                }
             self._skills_index = skills_index
             if self._skills_expected:
                 self._skills_selected = [
