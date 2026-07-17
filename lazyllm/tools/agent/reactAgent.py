@@ -1,6 +1,6 @@
 from .base import LazyLLMAgentBase
 from lazyllm import loop, once_wrapper, LOG, locals
-from .functionCall import FunctionCall
+from .functionCall import FunctionCall, _compact_chat_history
 from typing import List, Any, Dict, Optional, Union, Callable
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
@@ -100,6 +100,16 @@ class ReactAgent(LazyLLMAgentBase):
         self._stop_tools = set(stop_tools) if stop_tools else set()
         if self._fc:
             self._fc._stop_tools = self._stop_tools
+
+    def describe_context(self, llm_chat_history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        '''Return the model-facing static context without invoking the model or tools.'''
+        description = super().describe_context()
+        description['system_prompt'] = self._prompt
+        history = list(llm_chat_history or [])
+        if self._keep_full_turns > 0:
+            history = _compact_chat_history(history, self._keep_full_turns)
+        description['history'] = history
+        return description
 
     def _stop(self, x):
         return (self._extra_stop_condition and self._extra_stop_condition(x)) or isinstance(x, str)

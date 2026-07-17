@@ -446,6 +446,40 @@ class SkillManager(ModuleBase):
         lines += ['**Available Skills**', skills_list or '- (none)']
         return f'{SKILLS_PROMPT}\n\n' + '\n'.join(lines)
 
+    def describe_prompt(self) -> List[Dict[str, str]]:
+        '''Return model-facing skill prompt parts for context observability.'''
+        visible_keys = self._visible_skill_keys()
+        directory_lines = ['**Skills Directory**']
+        if self._skills_dir:
+            directory_lines.append(self._format_skills_locations())
+        directory_lines.append('**Available Skills**')
+        parts = [{
+            'item_id': 'skills_usage_rules',
+            'title': 'Skill usage rules',
+            'source': 'skill.runtime',
+            'content': f'{SKILLS_PROMPT}\n\n' + '\n'.join(directory_lines) + ('\n' if visible_keys else ''),
+            'content_kind': 'instruction',
+        }]
+        for index, key in enumerate(visible_keys):
+            info = self._skills_index.get(key)
+            if not info:
+                continue
+            description = (info.get('description', '') or '')[:1024]
+            content = (
+                f'- {key}: {description} (source: {info.get("source", "file")}, '
+                f'path: {info.get("path")})'
+            )
+            if index < len(visible_keys) - 1:
+                content += '\n'
+            parts.append({
+                'item_id': f'skill_{key}',
+                'title': str(info.get('name') or key),
+                'source': str(info.get('source') or 'skill.registry'),
+                'content': content,
+                'content_kind': 'reference',
+            })
+        return parts
+
     @staticmethod
     def _to_bool(value) -> bool:
         if isinstance(value, bool):
