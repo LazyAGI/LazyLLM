@@ -145,6 +145,56 @@ class TestSkills(object):
         assert skill['status'] == 'ok'
         assert '# Demo' in skill['content']
 
+    def test_invalid_required_metadata_type_does_not_block_valid_skills(self):
+        fs = _MemoryCloudFS(
+            {
+                'skills': [
+                    {'name': 'skills/valid-skill', 'type': 'directory'},
+                    {'name': 'skills/bad-name', 'type': 'directory'},
+                    {'name': 'skills/bad-description', 'type': 'directory'},
+                ],
+                'skills/valid-skill': [
+                    {'name': 'skills/valid-skill/SKILL.md', 'type': 'file'},
+                ],
+                'skills/bad-name': [
+                    {'name': 'skills/bad-name/SKILL.md', 'type': 'file'},
+                ],
+                'skills/bad-description': [
+                    {'name': 'skills/bad-description/SKILL.md', 'type': 'file'},
+                ],
+            },
+            {
+                'skills/valid-skill/SKILL.md': (
+                    b'---\n'
+                    b'name: valid-skill\n'
+                    b'description: valid skill remains available\n'
+                    b'---\n'
+                    b'# Valid Skill\n'
+                ),
+                'skills/bad-name/SKILL.md': (
+                    b'---\n'
+                    b'name: 123\n'
+                    b'description: invalid name type\n'
+                    b'---\n'
+                    b'# Bad Name\n'
+                ),
+                'skills/bad-description/SKILL.md': (
+                    b'---\n'
+                    b'name: bad-description\n'
+                    b'description: 123\n'
+                    b'---\n'
+                    b'# Bad Description\n'
+                ),
+            },
+        )
+        manager = SkillManager(dir='skills', fs=fs)
+
+        prompt = manager.build_prompt()
+
+        assert 'valid skill remains available' in prompt
+        assert 'skills/bad-name' not in prompt
+        assert 'skills/bad-description' not in prompt
+
     def test_skill_manager_enforces_size_limit_when_info_has_no_size(self):
         fs = _MemoryCloudFS(
             {
