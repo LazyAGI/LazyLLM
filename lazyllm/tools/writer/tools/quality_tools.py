@@ -110,6 +110,7 @@ class WriterQualityTools(WriterToolBase):
         document = self._unified_model(draft_document, DraftDocument)
         writing_context = self._unified_model(context, WritingContext)
 
+        # TODO: restore strict is_passed once review-to-patch routing is ready.
         prompt = VALIDATE_DRAFT_DOCUMENT_PROMPT.format(
             draft_document_json=to_prompt_json(document),
             context_json=to_prompt_json(writing_context),
