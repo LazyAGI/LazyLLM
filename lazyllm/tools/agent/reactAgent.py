@@ -101,6 +101,12 @@ class ReactAgent(LazyLLMAgentBase):
         if self._fc:
             self._fc._stop_tools = self._stop_tools
 
+    def describe_context(self) -> Dict[str, Any]:
+        '''Return the model-facing static context without invoking the model or tools.'''
+        description = super().describe_context()
+        description['system_prompt'] = self._prompt
+        return description
+
     def _stop(self, x):
         return (self._extra_stop_condition and self._extra_stop_condition(x)) or isinstance(x, str)
 
