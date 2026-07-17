@@ -360,7 +360,10 @@ class SkillManager(ModuleBase):
                     meta = self._extract_yaml_meta(content)
                     validation_error = self._validate_meta(meta)
                     if validation_error:
-                        details = ' '.join(f'{key}={value}' for key, value in validation_error.items())
+                        details = ' '.join(
+                            f'{detail_key}={detail_value}'
+                            for detail_key, detail_value in validation_error.items()
+                        )
                         LOG.warning(
                             f'event=skill_load_skipped {details} skill_md={skill_md!r}'
                         )
