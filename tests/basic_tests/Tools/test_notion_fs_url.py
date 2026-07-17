@@ -8,6 +8,7 @@ from lazyllm import init_session, locals as lazyllm_locals
 from lazyllm.tools.fs.client import _FSRouter, dynamic_fs_config
 from lazyllm.tools.fs.supplier.notion import (
     NotionFS,
+    _adapt_ls_tool_input,
     _normalize_notion_id,
     _parse_notion_browser_url,
 )
@@ -158,12 +159,24 @@ class TestNotionToolRegistration(unittest.TestCase):
         manager._tool_call['get_NotionFS_methods']({})
         names = {item['function']['name'] for item in manager.tools_description}
 
+        self.assertIn('NotionFS_ls', names)
         self.assertIn('NotionFS_search', names)
         self.assertIn('NotionFS_find', names)
         self.assertIn('NotionFS_resolve_link', names)
         self.assertIn('NotionFS_read_with_references', names)
         self.assertIn('NotionFS_get_doc_blocks', names)
         self.assertNotIn('NotionFS_copy', names)
+
+    def test_ls_tool_defaults_empty_inputs_to_root(self):
+        self.assertEqual(_adapt_ls_tool_input({}), {'path': '/'})
+        self.assertEqual(_adapt_ls_tool_input({'path': ''}), {'path': '/'})
+        self.assertEqual(_adapt_ls_tool_input(''), {'path': '/'})
+
+        fs = NotionFS(dynamic_auth=True)
+        manager = ToolManager([(fs, lambda _instance: 'secret-token')])
+        manager._tool_call['get_NotionFS_methods']({})
+        tool = manager._tool_call['NotionFS_ls']
+        self.assertEqual(tool._validate_input({}), {'path': '/'})
 
 
 class TestNotionSearch(unittest.TestCase):
