@@ -121,6 +121,68 @@ class MapStore(LazyLLMStoreBase):
                     conn.commit()
         return
 
+    def create_collection(self, collection_name):
+        if self._sqlite_first:
+            with self._lock:
+                cur = self._open_conn().cursor()
+                self._ensure_table(cur, collection_name)
+                self._open_conn().commit()
+        return True
+
+    def collection_exists(self, collection_name):
+        if self._sqlite_first:
+            return bool(self._open_conn().execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (collection_name,)
+            ).fetchone())
+        return collection_name in self._collection2uids
+
+    def create(self, collection_name, data):
+        with self._lock:
+            existing = set(self._collection2uids.get(collection_name, set()))
+            incoming = [item.get('uid') for item in data]
+            if len(set(incoming)) != len(incoming) or existing.intersection(incoming):
+                raise FileExistsError('segment primary key already exists')
+            if self._sqlite_first:
+                conn = self._open_conn()
+                cur = conn.cursor()
+                self._ensure_table(cur, collection_name)
+                sql = f'''INSERT INTO {collection_name} (
+                    uid, doc_id, 'group', content, meta, global_meta, type, number, kb_id,
+                    excluded_embed_metadata_keys, excluded_llm_metadata_keys, parent, answer, image_keys)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+                try:
+                    cur.executemany(sql, [self._serialize_data(item) for item in data])
+                    conn.commit()
+                except sqlite3.IntegrityError as exc:
+                    conn.rollback()
+                    raise FileExistsError('segment primary key already exists') from exc
+            for item in data:
+                item['kb_id'] = item.get(RAG_KB_ID, DEFAULT_KB_ID)
+                self._cache_segment(collection_name, item)
+        return True
+
+    def patch(self, collection_name, criteria, set_fields=None, inc_fields=None):
+        set_fields, inc_fields = dict(set_fields or {}), dict(inc_fields or {})
+        if any(k != 'number' for k in set_fields | inc_fields):
+            raise ValueError('MapStore atomic patch currently supports number only')
+        with self._lock:
+            uids = self._get_uids_by_criteria(collection_name, criteria)
+            if self._sqlite_first and uids:
+                assignments, args = [], []
+                if 'number' in set_fields:
+                    assignments.append('number = ?'); args.append(set_fields['number'])
+                if 'number' in inc_fields:
+                    assignments.append('number = COALESCE(number, 0) + ?'); args.append(inc_fields['number'])
+                ph = ','.join('?' for _ in uids)
+                self._open_conn().execute(
+                    f'UPDATE {collection_name} SET {", ".join(assignments)} WHERE uid IN ({ph})', args + uids)
+                self._open_conn().commit()
+            for uid in uids:
+                item = self._uid2data[uid]
+                old = item.get('number', 0) or 0
+                item['number'] = set_fields.get('number', old) + inc_fields.get('number', 0)
+            return len(uids)
+
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         try:
@@ -283,6 +345,14 @@ class MapStore(LazyLLMStoreBase):
             return '', ()
         clauses, args = [], []
         for name, candidates in filters.items():
+            if name in {'uid', 'doc_id', 'kb_id', 'group', 'parent', 'number'}:
+                column = '"group"' if name == 'group' else name
+                values = list(candidates) if isinstance(candidates, (list, set, tuple)) else [candidates]
+                if not values:
+                    return ' WHERE 0', ()
+                clauses.append(f'{column} IN ({",".join("?" for _ in values)})')
+                args.extend(values)
+                continue
             path = self._json_path(name)
             if isinstance(candidates, (list, set, tuple)):
                 values = list(candidates)
@@ -438,7 +508,8 @@ class MapStore(LazyLLMStoreBase):
         for seg in segments:
             global_meta = seg.get('global_meta', {})
             for name, candidates in filters.items():
-                value = global_meta.get(name)
+                value = seg.get(name) if name in {'uid', 'doc_id', 'kb_id', 'group', 'parent', 'number'} \
+                    else global_meta.get(name)
                 if isinstance(candidates, (list, set)):
                     if value not in candidates:
                         break

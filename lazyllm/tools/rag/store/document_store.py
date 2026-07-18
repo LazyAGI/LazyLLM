@@ -12,6 +12,7 @@ from lazyllm import LOG, once_wrapper
 from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
                          BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID)
 from .hybrid import HybridStore, MapStore
+from .segment_store import SegmentStore
 from ..default_index import DefaultIndex
 from ..utils import parallel_do_embedding
 
@@ -42,10 +43,10 @@ class _DocumentStore(object):
             self._indices['default'] = DefaultIndex(self._embed, self)
 
     def _prepare_store(self, store: Union[Dict, LazyLLMStoreBase]) -> LazyLLMStoreBase:
+        # Keep Document's raw Segment layout while sharing the public facade's
+        # backend construction rules with non-Document domain users.
         if isinstance(store, dict):
-            # create store from store config
-            if store.get('indices'): store = self._convert_legacy_to_config(store)
-            store = self._create_store_from_config(store)
+            return SegmentStore.create_backend(store)
         if store.capability == StoreCapability.VECTOR:
             segment_store = MapStore(uri=os.path.join(store.dir, 'segments.db') if store.dir else None)
             return HybridStore(segment_store=segment_store, vector_store=store)

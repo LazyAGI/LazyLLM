@@ -96,6 +96,27 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
     need_embedding: bool = True
     supports_index_registration: bool = False
 
+    def create(self, collection_name: str, data: List[dict]) -> bool:
+        '''Create records without overwriting existing primary keys.
+
+        Backends opt in by overriding this method.  Keeping it non-abstract
+        preserves compatibility with third-party stores.
+        '''
+        raise NotImplementedError(f'{type(self).__name__} does not support create-only writes')
+
+    def patch(self, collection_name: str, criteria: dict,
+              set_fields: Optional[Dict[str, Any]] = None,
+              inc_fields: Optional[Dict[str, Union[int, float]]] = None) -> int:
+        '''Atomically patch matching records and return the affected count.'''
+        raise NotImplementedError(f'{type(self).__name__} does not support atomic patch')
+
+    def create_collection(self, collection_name: str) -> bool:
+        '''Create a collection when supported; lazy backends may no-op.'''
+        return True
+
+    def drop_collection(self, collection_name: str) -> bool:
+        return self.delete(collection_name, None)
+
     @property
     def dir(self):
         raise NotImplementedError

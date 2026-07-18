@@ -52,6 +52,7 @@
   - Flow: API Reference/flow.md
   - Module: API Reference/module.md
   - Tools: API Reference/tools.md
+  - SegmentStore: API Reference/segment_store.md
   - Configs: API Reference/configs.md
   - Launcher: API Reference/launcher.md
   - Hook: API Reference/hook.md

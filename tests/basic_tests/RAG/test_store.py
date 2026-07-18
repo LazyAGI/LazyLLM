@@ -68,6 +68,18 @@ def _contains_array_term(query, field):
 
 
 class TestSegmentStoreCriteria(unittest.TestCase):
+    def test_opensearch_keeps_tenant_filter_with_uid(self):
+        store = OpenSearchStore(uris=['http://localhost:9200'])
+
+        criteria = store._construct_criteria({'uid': ['ep-1'], 'kb_id': 'user-1'})
+
+        must = criteria['query']['bool']['must']
+        self.assertIn({'ids': {'values': ['ep-1']}}, must)
+        self.assertTrue(any(
+            clause.get('bool', {}).get('minimum_should_match') == 1
+            for clause in must
+        ))
+
     def test_opensearch_uses_terms_for_parent_and_number_lists(self):
         store = OpenSearchStore(uris=['http://localhost:9200'])
 

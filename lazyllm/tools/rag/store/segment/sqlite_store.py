@@ -72,6 +72,62 @@ class SQLiteStore(LazyLLMStoreBase):
         self._ddl_lock = threading.Lock()
         self._open_conn()
 
+    def create_collection(self, collection_name):
+        with self._ddl_lock:
+            cur = self._open_conn().cursor()
+            self._ensure_table(cur, collection_name)
+            self._ensure_fts(cur, collection_name)
+            self._open_conn().commit()
+        return True
+
+    def collection_exists(self, collection_name):
+        row = self._open_conn().execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (collection_name,)
+        ).fetchone()
+        return bool(row)
+
+    def create(self, collection_name, data):
+        if not data:
+            return True
+        try:
+            with self._ddl_lock:
+                conn = self._open_conn()
+                cur = conn.cursor()
+                self._ensure_table(cur, collection_name)
+                self._ensure_fts(cur, collection_name)
+                sql = (f'INSERT INTO "{collection_name}" ({self._COL_NAMES_SQL}) '
+                       f'VALUES ({self._COL_PLACEHOLDERS})')
+                cur.executemany(sql, [self._serialize_row(item) for item in data])
+                cur.executemany(f'INSERT INTO "{collection_name}_fts"(uid, content) VALUES (?, ?)',
+                                [(item['uid'], self._fts_content(item)) for item in data])
+                conn.commit()
+            return True
+        except sqlite3.IntegrityError as exc:
+            self._open_conn().rollback()
+            raise FileExistsError('segment primary key already exists') from exc
+
+    def patch(self, collection_name, criteria, set_fields=None, inc_fields=None):
+        set_fields, inc_fields = dict(set_fields or {}), dict(inc_fields or {})
+        allowed = {name.strip('"') for name, _ in self._COLS}
+        if any(k not in allowed for k in set_fields | inc_fields):
+            raise ValueError('SQLiteStore patch only supports canonical columns')
+        assignments, values = [], []
+        for key, value in set_fields.items():
+            assignments.append(f'"{key}" = ?')
+            values.append(value)
+        for key, value in inc_fields.items():
+            assignments.append(f'"{key}" = COALESCE("{key}", 0) + ?')
+            values.append(value)
+        if not assignments:
+            return 0
+        with self._ddl_lock:
+            conn = self._open_conn()
+            where, args = self._build_where(criteria)
+            cur = conn.execute(f'UPDATE "{collection_name}" SET {", ".join(assignments)}{where}',
+                               tuple(values) + args)
+            conn.commit()
+            return cur.rowcount
+
     def _ensure_table(self, cursor, table):
         col_defs = ', '.join(f'{name} {typ}' for name, typ in self._COLS)
         cursor.execute(f'CREATE TABLE IF NOT EXISTS "{table}" ({col_defs})')

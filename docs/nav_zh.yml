@@ -52,6 +52,7 @@
   - 工作流: API Reference/flow.md
   - 模块: API Reference/module.md
   - 工具: API Reference/tools.md
+  - SegmentStore: API Reference/segment_store.md
   - 配置: API Reference/configs.md
   - 启动器: API Reference/launcher.md
   - 钩子: API Reference/hook.md

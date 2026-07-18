@@ -112,6 +112,46 @@ class OpenSearchStore(LazyLLMStoreBase):
                 LOG.error(f'[OpenSearchStore - _ensure_index] Error creating index {name}: {e}')
                 raise e
 
+    def create_collection(self, collection_name):
+        self._ensure_index(collection_name)
+        return True
+
+    def collection_exists(self, collection_name):
+        return bool(self._client.indices.exists(index=collection_name))
+
+    def create(self, collection_name, data):
+        if not data:
+            return True
+        self._ensure_index(collection_name)
+        bulk_data = []
+        for segment in data:
+            segment = self._serialize_node(segment)
+            bulk_data.append({'create': {'_index': collection_name, '_id': segment[self._primary_key]}})
+            bulk_data.append(segment)
+        response = self._client.bulk(index=collection_name, body=bulk_data, refresh='wait_for')
+        if response.get('errors'):
+            conflicts = [item for item in response.get('items', [])
+                         if (item.get('create') or {}).get('status') == 409]
+            if conflicts:
+                raise FileExistsError('segment primary key already exists')
+            raise RuntimeError(f'OpenSearch create failed: {response.get("items", [])[:3]}')
+        return True
+
+    def patch(self, collection_name, criteria, set_fields=None, inc_fields=None):
+        set_fields, inc_fields = dict(set_fields or {}), dict(inc_fields or {})
+        params = {'set': set_fields, 'inc': inc_fields}
+        source = (
+            'for (entry in params.set.entrySet()) { ctx._source[entry.getKey()] = entry.getValue(); } '
+            'for (entry in params.inc.entrySet()) { def k = entry.getKey(); '
+            'ctx._source[k] = (ctx._source.containsKey(k) ? ctx._source[k] : 0) + entry.getValue(); }'
+        )
+        body = self._construct_criteria(criteria) or {'query': {'match_all': {}}}
+        body['script'] = {'lang': 'painless', 'source': source, 'params': params}
+        resp = self._client.update_by_query(index=collection_name, body=body, refresh=True, conflicts='abort')
+        if resp.get('failures'):
+            raise RuntimeError(f'OpenSearch patch failed: {resp["failures"]}')
+        return int(resp.get('updated', 0))
+
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         if not data: return
@@ -175,7 +215,7 @@ class OpenSearchStore(LazyLLMStoreBase):
             offset = max(kwargs.get('offset', 0) or 0, 0)
             return_total = kwargs.get('return_total', False)
             sort_by_number = kwargs.get('sort_by_number', False)
-            if criteria and self._primary_key in criteria:
+            if criteria and self._primary_key in criteria and len(criteria) == 1:
                 vals = criteria.pop(self._primary_key)
                 if not isinstance(vals, list):
                     vals = [vals]
@@ -341,7 +381,9 @@ class OpenSearchStore(LazyLLMStoreBase):
             vals = criteria.pop(self._primary_key)
             if not isinstance(vals, list):
                 vals = [vals]
-            return {'query': {'ids': {'values': vals}}}
+            must_clauses = [{'ids': {'values': vals}}]
+        else:
+            must_clauses = []
 
         exact_match_fields = {'doc_id', 'kb_id', 'group', 'parent'}
 
@@ -360,7 +402,6 @@ class OpenSearchStore(LazyLLMStoreBase):
                 must_clauses.append({'terms': {key: val}})
             else:
                 must_clauses.append({'term': {key: val}})
-        must_clauses = []
         if RAG_DOC_ID in criteria:
             val = criteria.pop(RAG_DOC_ID)
             _add_clause('doc_id', val)

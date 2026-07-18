@@ -7,6 +7,7 @@ from .store_base import (
 )
 from .hybrid import HybridStore, MapStore, SenseCoreStore, OceanBaseStore
 from .segment import OpenSearchStore, ElasticSearchStore, SQLiteStore
+from .segment_store import SegmentStore, SegmentStoreConflictError, SegmentStoreUnsupportedError
 from .vector import ChromaStore, MilvusStore
 
 __all__ = [
@@ -23,5 +24,8 @@ __all__ = [
     'LAZY_IMAGE_GROUP',
     'LAZY_ROOT_NAME',
     'EMBED_DEFAULT_KEY',
-    'BUILDIN_GLOBAL_META_DESC'
+    'BUILDIN_GLOBAL_META_DESC',
+    'SegmentStore',
+    'SegmentStoreConflictError',
+    'SegmentStoreUnsupportedError',
 ]
