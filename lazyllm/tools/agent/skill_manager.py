@@ -42,6 +42,12 @@ execute the workflow steps, constraints, and examples in order.
 to the user's actual goal, constraints, and available inputs; do not apply
 steps blindly.
 
+### Skill Selection Restraint
+Do not load a skill merely because it could improve or add structure to the answer.
+For simple questions, normal how-to guidance, and ordinary recommendations, answer directly
+or use the relevant tool without loading a heavyweight workflow. A skill whose own description
+says not to trigger on simple requests must not be loaded for those requests.
+
 ### Reference and Script Tools (Strict Constraint)
 **CRITICAL — Read Before Using `read_reference` or `run_script`:**
 

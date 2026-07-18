@@ -50,6 +50,11 @@ def _adapt_search_tool_input(tool_input: Union[Dict[str, Any], str]) -> Dict[str
 
 
 class GoogleDriveFS(LazyLLMFSBase):
+    __tool_auto_activate__ = [
+        r'https?://(?:drive|docs)\.google\.com(?:[/:?#]|$)',
+        r'谷歌云端硬盘|谷歌(?:文档|表格|幻灯片)|Google\s*云端硬盘',
+        r'(?<!\w)google\s+(?:drive|docs|sheets|slides)(?!\w)',
+    ]
     __public_apis__ = ['search', 'find', 'read', 'read_file']
     __tool_schema_overrides__ = {'search': _search_tool_schema}
     __tool_input_adapters__ = {'search': _adapt_search_tool_input}
