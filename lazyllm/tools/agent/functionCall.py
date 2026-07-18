@@ -188,6 +188,7 @@ class FunctionCall(ModuleBase):
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         if 'workspace' not in locals['_lazyllm_agent']:
             locals['_lazyllm_agent']['workspace'] = dict(history=llm_chat_history or [])
+        self._tools_manager.sync_active_groups(input, llm_chat_history)
         try:
             result = self._impl(input)
         except Exception:

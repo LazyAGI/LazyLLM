@@ -9,6 +9,7 @@ from lazyllm.common import LazyLLMRegisterMetaClass, kwargs
 from lazyllm.common.utils import SecurityVisitor
 from typing import Callable, Any, Union, Optional, get_type_hints, List, Dict, Type, Set
 import inspect
+import re
 from pydantic import create_model, BaseModel, ValidationError
 from lazyllm import LOG, locals as lazyllm_locals
 from typing import *  # noqa F403, to import all types for compile_func(), do not remove
@@ -324,14 +325,23 @@ class ToolContainer:
     def get_flat_tools(self) -> Dict[str, 'ModuleTool']: raise NotImplementedError
     def get_description(self, active_groups: Optional[Set[str]] = None) -> List[Dict]: raise NotImplementedError
     def get_leaf_names(self) -> List[str]: raise NotImplementedError
+    def get_auto_active_groups(self, text: str) -> Set[str]: return set()
+    def get_activation_path(self, group_name: str) -> Set[str]: return set()
 
 
 class ToolGroup(ToolContainer):
     def __init__(self, tools: List[Any], name: str, desc: str = '', lazy: bool = True,
                  prefix: Optional[Union[bool, str]] = True, _outer_prefix: Optional[str] = None,
-                 pick_first_valid: bool = False):
+                 pick_first_valid: bool = False,
+                 auto_activate: Optional[List[Union[str, Callable[[str], bool]]]] = None):
         self._name, self._desc, self._lazy = name, desc, lazy and not pick_first_valid
         self._pick_first_valid = pick_first_valid
+        self._auto_activate = list(auto_activate) if isinstance(auto_activate, (list, tuple)) \
+            else [auto_activate] if auto_activate else []
+        for rule in self._auto_activate:
+            if not callable(rule) and not isinstance(rule, str):
+                raise TypeError('auto_activate rules must be regex strings or callables')
+            if isinstance(rule, str): re.compile(rule)
         own_prefix: Optional[str] = name if prefix is True or prefix == '' \
             else None if prefix is False or prefix is None else prefix
         effective_prefix = f'{_outer_prefix}_{own_prefix}' if _outer_prefix and own_prefix \
@@ -383,6 +393,30 @@ class ToolGroup(ToolContainer):
 
     def get_leaf_names(self) -> List[str]:
         return [self._gateway_tool.name] if self._lazy else self._leaf_names
+
+    def get_auto_active_groups(self, text: str) -> Set[str]:
+        matched = any(
+            bool(rule(text)) if callable(rule) else bool(re.search(rule, text, re.IGNORECASE))
+            for rule in self._auto_activate
+        )
+        child_groups = {
+            group_name
+            for child in self._children if isinstance(child, ToolContainer)
+            for group_name in child.get_auto_active_groups(text)
+        }
+        if matched or child_groups:
+            return child_groups | ({self._name} if self._lazy else set())
+        return set()
+
+    def get_activation_path(self, group_name: str) -> Set[str]:
+        if self._name == group_name:
+            return {self._name} if self._lazy else set()
+        for child in self._children:
+            if not isinstance(child, ToolContainer): continue
+            child_path = child.get_activation_path(group_name)
+            if child_path:
+                return child_path | ({self._name} if self._lazy else set())
+        return set()
 
     def make_gateway_tool(self) -> 'ModuleTool':
         group_name = self._name
@@ -488,7 +522,9 @@ class InstanceToolGroup(SkipMixin, ToolGroup):
         ]
         name = instance.__class__.__name__
         desc = getattr(type(instance), '__doc__', '') or ''
-        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=lazy, prefix=False)
+        auto_activate = getattr(type(instance), '__tool_auto_activate__', None)
+        ToolGroup.__init__(self, tools=tools, name=name, desc=desc, lazy=lazy, prefix=False,
+                           auto_activate=auto_activate)
 
     @property
     def _tools(self) -> Dict[str, 'ModuleTool']:
@@ -516,6 +552,14 @@ class ToolGroupWrapper(SkipMixin, ToolContainer):
         if self.should_skip(): return []
         return self._inner.get_description(active_groups) if isinstance(self._inner, ToolContainer) \
             else [_build_tool_desc(self._inner)]
+
+    def get_auto_active_groups(self, text: str) -> Set[str]:
+        if self.should_skip() or not isinstance(self._inner, ToolContainer): return set()
+        return self._inner.get_auto_active_groups(text)
+
+    def get_activation_path(self, group_name: str) -> Set[str]:
+        if self.should_skip() or not isinstance(self._inner, ToolContainer): return set()
+        return self._inner.get_activation_path(group_name)
 
 
 def _child_is_valid(child) -> bool:
@@ -555,7 +599,8 @@ def _build_tool_from_element(
         pick_first_valid = element.get('pick_first_valid', False)
         group = ToolGroup(tools=element['tools'], name=element['name'], desc=element['desc'],
                           lazy=element.get('lazy', True), prefix=element.get('prefix', None),
-                          _outer_prefix=_outer_prefix, pick_first_valid=pick_first_valid)
+                          _outer_prefix=_outer_prefix, pick_first_valid=pick_first_valid,
+                          auto_activate=element.get('auto_activate'))
         if key_source is not None:
             return ToolGroupWrapper(group, key_source)
         return group
@@ -604,6 +649,34 @@ class ToolManager(ModuleBase):
     @property
     def tools_info(self):
         return self._tool_call
+
+    def sync_active_groups(self, input: Any = None, history: Optional[List[Dict[str, Any]]] = None) -> Set[str]:
+        '''Activate lazy Toolkits from registered input rules and structured gateway calls in history.'''
+        try:
+            workspace = lazyllm_locals['_lazyllm_agent'].setdefault('workspace', {})
+        except Exception:
+            return set()
+        active = set(workspace.get('_active_groups', []))
+        text = input if isinstance(input, str) else str(input.get('content', input.get('input', ''))) \
+            if isinstance(input, dict) else ''
+        if text:
+            for item in self._tools:
+                if isinstance(item, ToolContainer):
+                    active.update(item.get_auto_active_groups(text))
+        gateway_prefix, gateway_suffix = 'get_', '_methods'
+        for message in history or []:
+            if not isinstance(message, dict): continue
+            for tool_call in message.get('tool_calls') or []:
+                function = tool_call.get('function') if isinstance(tool_call, dict) else None
+                name = function.get('name', '') if isinstance(function, dict) else ''
+                if name.startswith(gateway_prefix) and name.endswith(gateway_suffix) \
+                        and name in self._tool_call:
+                    group_name = name[len(gateway_prefix):-len(gateway_suffix)]
+                    for item in self._tools:
+                        if isinstance(item, ToolContainer):
+                            active.update(item.get_activation_path(group_name))
+        workspace['_active_groups'] = list(active)
+        return active
 
     @property
     def sandbox(self):
