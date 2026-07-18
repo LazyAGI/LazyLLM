@@ -372,6 +372,10 @@ class TestToolGroup:
         assert 'alpha' in names
         assert 'beta' in names
         assert 'get_grp_methods' not in names
+        assert all(
+            'Gateway to activate' not in d['function']['description']
+            for d in tm.tools_description
+        )
 
     def test_lazy_mode_exposes_only_gateway_initially(self):
         t1, t2 = self._tool('alpha'), self._tool('beta')
