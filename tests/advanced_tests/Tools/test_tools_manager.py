@@ -524,6 +524,7 @@ class TestToolGroup:
         init_session()
         lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
         agent._pre_process('open special-link', history)
+        assert lazyllm_locals['_lazyllm_agent']['workspace']['history'] == history
         execution_tools = tm.tools_description
 
         init_session()

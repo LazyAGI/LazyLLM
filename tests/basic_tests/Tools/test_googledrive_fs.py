@@ -191,6 +191,49 @@ class TestGoogleDriveSearch(unittest.TestCase):
         self.assertEqual(search_tool._validate_input({'keywords': 'release'}), {'keywords': ['release']})
         self.assertEqual(search_tool._validate_input({'query': 'release'}), {'keywords': ['release']})
 
+    def test_google_drive_links_and_product_names_auto_expand_toolkit(self):
+        load_fs_docs_only(GoogleDriveFS.search)
+        matching_queries = (
+            '读取 https://drive.google.com/file/d/file-id/view',
+            '总结 https://docs.google.com/document/d/document-id/edit',
+            '请在 Google Drive 中搜索发布计划',
+            '查看谷歌云端硬盘里的季度报告',
+        )
+        for query in matching_queries:
+            with self.subTest(query=query):
+                init_session()
+                lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+                manager = ToolManager([dict(
+                    name='CloudFileToolkit',
+                    desc='Cloud files',
+                    tools=[(self._make_fs(), lambda _instance: 'secret-token')],
+                    lazy=True,
+                )])
+
+                manager.sync_active_groups(query)
+
+                names = {item['function']['name'] for item in manager.tools_description}
+                self.assertIn('GoogleDriveFS_search', names)
+                self.assertIn('GoogleDriveFS_read', names)
+                self.assertNotIn('get_CloudFileToolkit_methods', names)
+                self.assertNotIn('get_GoogleDriveFS_methods', names)
+
+    def test_ambiguous_drive_word_does_not_auto_expand_google_drive(self):
+        load_fs_docs_only(GoogleDriveFS.search)
+        init_session()
+        lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+        manager = ToolManager([dict(
+            name='CloudFileToolkit',
+            desc='Cloud files',
+            tools=[(self._make_fs(), lambda _instance: 'secret-token')],
+            lazy=True,
+        )])
+
+        manager.sync_active_groups('How do I drive safely in the rain?')
+
+        names = {item['function']['name'] for item in manager.tools_description}
+        self.assertEqual(names, {'get_CloudFileToolkit_methods'})
+
     def test_public_method_docs_are_loaded_from_central_registry(self):
         load_fs_docs_only(GoogleDriveFS.search)
 

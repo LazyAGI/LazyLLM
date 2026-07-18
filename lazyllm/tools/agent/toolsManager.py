@@ -650,12 +650,14 @@ class ToolManager(ModuleBase):
     def tools_info(self):
         return self._tool_call
 
-    def sync_active_groups(self, input: Any = None, history: Optional[List[Dict[str, Any]]] = None) -> Set[str]:
+    def sync_active_groups(self, input: Any = None, history: Optional[List[Dict[str, Any]]] = None) -> Set[str]:  # noqa C901
         '''Activate lazy Toolkits from registered input rules and structured gateway calls in history.'''
         try:
             workspace = lazyllm_locals['_lazyllm_agent'].setdefault('workspace', {})
         except Exception:
             return set()
+        if history is not None:
+            workspace.setdefault('history', list(history))
         active = set(workspace.get('_active_groups', []))
         text = input if isinstance(input, str) else str(input.get('content', input.get('input', ''))) \
             if isinstance(input, dict) else ''
