@@ -348,8 +348,9 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def _validate_api_key(self):
         try:
-            self._query_finetuned_jobs()
-            return True
+            models_url = urljoin(self._base_url, 'models')
+            response = requests.get(models_url, headers=self._header, timeout=10)
+            return response.status_code == 200
         except Exception:
             return False
 

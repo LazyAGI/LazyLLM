@@ -53,14 +53,9 @@ class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
         return msg
 
     def _validate_api_key(self):
-        '''Validate API Key by sending a minimal chat request'''
         try:
-            data = {
-                'model': self._model_name,
-                'messages': [{'role': 'user', 'content': 'test'}],
-                'max_tokens': 1
-            }
-            response = requests.post(self._chat_url, headers=self._header, json=data, timeout=10)
+            models_url = urljoin(self._base_url, 'models')
+            response = requests.get(models_url, headers=self._header, timeout=10)
             return response.status_code == 200
         except Exception:
             return False

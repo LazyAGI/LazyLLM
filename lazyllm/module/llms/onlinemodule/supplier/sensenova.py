@@ -172,12 +172,28 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
             status = r.json()['job']['status']
             return (fine_tuning_job_id, status)
 
+    def _get_validate_models_url(self, base_url: Optional[str] = None) -> str:
+        # Classic sensecore: https://api.sensenova.cn/compatible-mode/v1/
+        #   -> GET https://api.sensenova.cn/v1/llm/models (compatible-mode has no /models)
+        # Token plan: https://token.sensenova.cn/v1/chat/completions/
+        #   -> GET https://token.sensenova.cn/v1/models
+        base = (base_url or self._base_url or '').rstrip('/')
+        host = base.lower()
+        if 'token.sensenova.cn' in host:
+            return 'https://token.sensenova.cn/v1/models'
+        if 'api.sensenova.cn' in host:
+            return 'https://api.sensenova.cn/v1/llm/models'
+        if base.endswith('/chat/completions'):
+            return base[:-len('/chat/completions')] + '/models'
+        return urljoin(base + '/', 'models')
+
     def _validate_api_key(self):
-        fine_tune_url = urljoin('https://api.sensenova.cn/v1/llm/', 'models')
-        response = requests.get(fine_tune_url, headers=self._header)
-        if response.status_code == 200:
-            return True
-        return False
+        try:
+            models_url = self._get_validate_models_url()
+            response = requests.get(models_url, headers=self._header, timeout=10)
+            return response.status_code == 200
+        except Exception:
+            return False
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
         fine_tune_url = urljoin(self._base_url, f'fine-tunes/{fine_tuning_job_id}')

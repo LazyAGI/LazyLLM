@@ -1,6 +1,7 @@
 import time
 import lazyllm
 from typing import Dict, List, Union, Optional
+from urllib.parse import urljoin
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
     OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase,
@@ -30,15 +31,9 @@ class DoubaoChat(OnlineChatModuleBase):
                 'and support to user\'s questions and requests.')
 
     def _validate_api_key(self):
-        '''Validate API Key by sending a minimal request'''
         try:
-            # Doubao (Volcano Engine) validates API key using a minimal chat request
-            data = {
-                'model': self._model_name,
-                'messages': [{'role': 'user', 'content': 'hi'}],
-                'max_tokens': 1  # Only generate 1 token for validation
-            }
-            response = requests.post(self._chat_url, headers=self._header, json=data, timeout=10)
+            models_url = urljoin(self._base_url, 'models')
+            response = requests.get(models_url, headers=self._header, timeout=10)
             return response.status_code == 200
         except Exception:
             return False
