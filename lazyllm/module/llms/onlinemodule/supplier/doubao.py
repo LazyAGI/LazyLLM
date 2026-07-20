@@ -29,20 +29,6 @@ class DoubaoChat(OnlineChatModuleBase):
         return ('You are Doubao, an AI assistant. Your task is to provide appropriate responses '
                 'and support to user\'s questions and requests.')
 
-    def _validate_api_key(self):
-        '''Validate API Key by sending a minimal request'''
-        try:
-            # Doubao (Volcano Engine) validates API key using a minimal chat request
-            data = {
-                'model': self._model_name,
-                'messages': [{'role': 'user', 'content': 'hi'}],
-                'max_tokens': 1  # Only generate 1 token for validation
-            }
-            response = requests.post(self._chat_url, headers=self._header, json=data, timeout=10)
-            return response.status_code == 200
-        except Exception:
-            return False
-
 
 class DoubaoEmbed(LazyLLMOnlineEmbedModuleBase):
     def __init__(self,
