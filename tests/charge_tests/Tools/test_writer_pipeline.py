@@ -9,7 +9,7 @@ from lazyllm.tools.writer.tools.base import WriterToolBase
 from lazyllm.tools.writer.data_models.context import DocumentSummary, WritingContext
 from lazyllm.tools.writer.data_models.quality import AuditResult, ReviewReport
 from lazyllm.tools.writer.data_models.revision import LocateResult, ModifyPlan, PatchResult, PatchSet
-from lazyllm.tools.writer.data_models.task import InputResource, Selection, WritingTask
+from lazyllm.tools.writer.data_models.task import InputResource, Selection, TargetDocument, WritingTask
 from lazyllm.tools.writer.data_models.writer_ir import WriterBlock, WriterDocument
 from lazyllm.tools.writer.workflow.naive_writer_workflow import NaiveWriterWorkflow
 from lazyllm.tools.writer.utils import load_artifact_json
@@ -79,6 +79,7 @@ def test_write_workflow_e2e():
         api_key=get_api_key('qwen'), stream=False,
     )
     store = str(REPO_ROOT / 'tests' / 'charge_tests' / 'artifacts' / 'write_workflow_e2e')
+    target_path = str(Path(store) / 'target_document.md')
     wf = NaiveWriterWorkflow(llm=llm, artifact_store=store)
 
     task = WritingTask(
@@ -88,6 +89,12 @@ def test_write_workflow_e2e():
             'Cover system architecture, supported languages, deployment model, and security.'
         ),
         task_type='write',
+        target_document=TargetDocument(
+            doc_id='wf-e2e-output',
+            uri=target_path,
+            adapter='file',
+            title='Technical Overview of AI-Powered Coding Assistant',
+        ),
     )
     inputs = [
         InputResource(
@@ -185,6 +192,9 @@ def test_write_workflow_e2e():
     rendered = final.metadata.get('rendered_content', '')
     assert len(rendered) >= 100
     assert final.metadata.get('output_format') == 'markdown'
+
+    write_result = _load_stage(stages, 'write_result')
+    assert write_result is not None
 
     # --- Step 10: output_review ---
     out_review = _load_stage(stages, 'draft_document_review', ReviewReport)

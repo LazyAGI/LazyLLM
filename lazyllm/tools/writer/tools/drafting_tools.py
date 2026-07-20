@@ -148,6 +148,8 @@ class WriterDraftingTools(WriterToolBase):
                 'rendered_content': content,
             },
         )
+        for block in final_document.iter_blocks():
+            block.stage = 'final'
 
         result = self._save_artifacts(
             {'final_document': final_document},

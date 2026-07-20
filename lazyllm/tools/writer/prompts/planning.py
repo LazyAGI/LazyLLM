@@ -20,8 +20,10 @@ Requirements:
   DocumentFact.fact_id or ResourceProfile.resource_id present in the input. Additional fields are allowed.
 - references is a WriterBlock field only. Never put references inside block.authoring or
   block.authoring.constraints.
-- fact_constraints and references MUST only reference facts and resource_ids actually present
-  in the writing context or resource profiles. If none applies to a section, leave the list empty.
+- fact_constraints contains the literal factual statements that the section must preserve. Do not put
+  fact IDs or resource IDs in fact_constraints; identifiers belong only in references.
+- Every fact_constraints statement must be grounded in the writing context. If no factual statement
+  applies to a section, leave fact_constraints empty.
 - Prefer the target document title or task intent as document.title.
 - Use the writing context and resource profiles as constraints, not as content to copy blindly.
 - Leave spans, status, provider_binding and provider_payload empty; the system manages them.
@@ -55,8 +57,9 @@ Requirements:
 - instruction should restate or sharpen the section goal as a concrete, actionable writing directive.
 - constraints.section_goal should be concrete and actionable.
 - constraints.required_points should contain the key content that must appear in the section.
-- constraints.fact_constraints should preserve locked facts and important context facts relevant to this section.
-- constraints.fact_constraints MUST only contain facts actually present in the writing context.
+- constraints.fact_constraints should preserve the literal text of locked facts and important context facts
+  relevant to this section. It must not contain fact IDs or resource IDs.
+- constraints.fact_constraints MUST only contain factual statements actually present in the writing context.
   Do not output references in this step; the system preserves them from the authoritative outline.
 - constraints.style_constraints should include tone, pov, audience, and style requirements when applicable.
 - constraints.relation_constraints should describe dependencies on previous or later sections when useful.
