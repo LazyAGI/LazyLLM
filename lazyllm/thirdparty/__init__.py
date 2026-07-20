@@ -72,12 +72,14 @@ def load_toml_dict() -> dict[str, Any]:
     try:
         with open(toml_file_path, 'r') as f:
             return toml.load(f)
-    except FileNotFoundError:
-        LOG.error('pyproject.toml is missing. Please reinstall LazyLLM.')
-        raise FileNotFoundError('pyproject.toml is missing. Please reinstall LazyLLM.')
+    except (OSError, toml.TomlDecodeError):
+        LOG.warning('pyproject.toml not found or invalid; optional dependency hints will be unavailable.')
+        return {}
 
 def prepare_requirements_dict():
     toml_config = load_toml_dict()
+    if not toml_config:
+        return
 
     pattern = re.compile(r'''
         ^\s*
@@ -87,12 +89,12 @@ def prepare_requirements_dict():
         \s*$
     ''', re.VERBOSE)
 
-    required_dependencies = toml_config['project']['dependencies']
+    required_dependencies = toml_config.get('project', {}).get('dependencies', [])
     for dep in required_dependencies:
         name, version = split_package_version(dep, pattern)
         requirements[name] = version
 
-    optional_dependencies = toml_config['tool']['poetry']['dependencies']
+    optional_dependencies = toml_config.get('tool', {}).get('poetry', {}).get('dependencies', {})
     for name, spec in optional_dependencies.items():
         version = spec.get('version', '')
         if version == '*':
