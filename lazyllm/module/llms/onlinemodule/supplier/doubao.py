@@ -1,7 +1,6 @@
 import time
 import lazyllm
 from typing import Dict, List, Union, Optional
-from urllib.parse import urljoin
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import (
     OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase,
@@ -29,14 +28,6 @@ class DoubaoChat(OnlineChatModuleBase):
     def _get_system_prompt(self):
         return ('You are Doubao, an AI assistant. Your task is to provide appropriate responses '
                 'and support to user\'s questions and requests.')
-
-    def _validate_api_key(self):
-        try:
-            models_url = urljoin(self._base_url, 'models')
-            response = requests.get(models_url, headers=self._header, timeout=10)
-            return response.status_code == 200
-        except Exception:
-            return False
 
 
 class DoubaoEmbed(LazyLLMOnlineEmbedModuleBase):

@@ -123,11 +123,3 @@ class ClaudeChat(OnlineChatModuleBase):
             return message
         except Exception:
             return ''
-
-    def _validate_api_key(self):
-        try:
-            models_url = urljoin(self._base_url, 'models')
-            response = requests.get(models_url, headers=self._header, timeout=10)
-            return response.status_code == 200
-        except Exception:
-            return False

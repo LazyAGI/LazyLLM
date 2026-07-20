@@ -1,5 +1,3 @@
-from urllib.parse import urljoin
-import requests
 from lazyllm import LOG
 from typing import Optional
 from ..base import OnlineChatModuleBase
@@ -19,11 +17,3 @@ class DeepSeekChat(OnlineChatModuleBase):
 
     def _get_system_prompt(self):
         return 'You are an intelligent assistant developed by China\'s DeepSeek. You are a helpful assistanti.'
-
-    def _validate_api_key(self):
-        try:
-            models_url = urljoin(self._base_url, 'models')
-            response = requests.get(models_url, headers=self._header, timeout=10)
-            return response.status_code == 200
-        except Exception:
-            return False

@@ -56,14 +56,6 @@ class GLMChat(OnlineChatModuleBase, FileHandlerBase):
     def _get_models_list(self):
         return ['glm-4', 'glm-4v', 'glm-3-turbo', 'chatglm-turbo', 'cogview-3', 'embedding-2', 'text-embedding']
 
-    def _validate_api_key(self):
-        try:
-            models_url = urljoin(self._base_url, 'models')
-            response = requests.get(models_url, headers=self._header, timeout=10)
-            return response.status_code == 200
-        except Exception:
-            return False
-
     def _convert_file_format(self, filepath: str) -> str:
         with open(filepath, 'r', encoding='utf-8') as fr:
             dataset = [json.loads(line) for line in fr]
