@@ -1,6 +1,5 @@
 import json
 import re
-import requests
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase
