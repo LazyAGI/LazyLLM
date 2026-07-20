@@ -15,14 +15,16 @@ Requirements:
   section_goal, required_points, fact_constraints, style_constraints, relation_constraints,
   min_words, max_words, pov, tone, must_include, must_avoid.
 - Do not invent other constraints fields. Fill only the fields useful for the section.
-- block.source_refs holds resource/fact identifiers the section depends on.
-- Each element of block.source_refs is an object with at least an "id" field (the resource_id
-  or fact key) and a "kind" field ("resource" or "fact"). Example: {{"id": "res-3", "kind": "resource"}}.
-- fact_constraints and source_refs MUST only reference facts and resource_ids actually present
+- block.references holds identifiers for facts or resources the section depends on.
+- Each element of block.references is an object with at least an "id" field. The id must match a
+  DocumentFact.fact_id or ResourceProfile.resource_id present in the input. Additional fields are allowed.
+- references is a WriterBlock field only. Never put references inside block.authoring or
+  block.authoring.constraints.
+- fact_constraints and references MUST only reference facts and resource_ids actually present
   in the writing context or resource profiles. If none applies to a section, leave the list empty.
 - Prefer the target document title or task intent as document.title.
 - Use the writing context and resource profiles as constraints, not as content to copy blindly.
-- Leave spans, status, references, provider_binding and provider_payload empty; the system manages them.
+- Leave spans, status, provider_binding and provider_payload empty; the system manages them.
 
 Writing task:
 {task_json}
@@ -54,9 +56,8 @@ Requirements:
 - constraints.section_goal should be concrete and actionable.
 - constraints.required_points should contain the key content that must appear in the section.
 - constraints.fact_constraints should preserve locked facts and important context facts relevant to this section.
-- fact_constraints and source_refs MUST only reference facts and resource_ids actually present
-  in the writing context or resource profiles. If no specific fact or resource applies to a section,
-  leave the list empty.
+- constraints.fact_constraints MUST only contain facts actually present in the writing context.
+  Do not output references in this step; the system preserves them from the authoritative outline.
 - constraints.style_constraints should include tone, pov, audience, and style requirements when applicable.
 - constraints.relation_constraints should describe dependencies on previous or later sections when useful.
 - expected_blocks should be a concise block-level content plan for the draft tool.

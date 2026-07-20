@@ -707,34 +707,47 @@ def test_update_context_routes_draft_writer_block_from_artifact_path():
     assert updated.meta['context_updates'][0]['content_kind'] == 'WriterBlock:draft'
 
 
-def test_generate_section_instructions_drops_unavailable_source_refs():
+def test_generate_section_instructions_preserves_outline_references():
     context = WritingContext(context_id='ctx-no-refs')
-    outline = WritingOutline(
-        outline_id='outline-no-refs',
+    references = [{'id': 'resource-1', 'url': 'https://example.com/source'}]
+    outline = WriterDocument(
+        document_id='outline-no-refs',
+        stage='outline',
         title='无引用测试',
-        nodes=[
-            OutlineNode(
+        blocks=[
+            WriterBlock(
                 node_id='section-1',
-                title='第一节',
-                level=1,
-                constraints={
-                    'source_refs': ['unrelated-reference'],
-                    'fact_constraints': ['未在上下文中出现的事实'],
-                },
+                type='heading',
+                content='第一节',
+                stage='outline',
+                references=references,
+                authoring=WriterAuthoring(
+                    constraints=WriterConstraints(
+                        fact_constraints=['未在上下文中出现的事实'],
+                    ),
+                ),
             )
         ],
     )
-    llm_result = SectionInstructionList(
-        instructions=[
-            SectionInstruction(
-                instruction_id='instruction-section-1',
-                outline_node_id='section-1',
-                section_title='第一节',
-                section_goal='写第一节',
-                source_refs=['unrelated-reference'],
-                fact_constraints=['未在上下文中出现的事实'],
+    llm_result = WriterDocument(
+        document_id='outline-no-refs',
+        stage='outline',
+        blocks=[
+            WriterBlock(
+                node_id='section-1',
+                type='heading',
+                stage='outline',
+                references=[{'id': 'llm-invented-reference'}],
+                authoring=WriterAuthoring(
+                    origin_node_id='section-1',
+                    instruction_id='instruction-section-1',
+                    instruction='写第一节',
+                    constraints=WriterConstraints(
+                        fact_constraints=['未在上下文中出现的事实'],
+                    ),
+                ),
             )
-        ]
+        ],
     )
 
     with tempfile.TemporaryDirectory() as d:
@@ -742,25 +755,37 @@ def test_generate_section_instructions_drops_unavailable_source_refs():
         with patch.object(tool, '_call_llm_structured', return_value=llm_result):
             result = tool.generate_section_instructions(outline=outline, context=context)
 
-        instructions = load_artifact_json(
-            result['metadata']['artifact_paths']['section_instructions'],
-            SectionInstructionList,
+        outline_with_instructions = load_artifact_json(
+            result['metadata']['artifact_paths']['outline_with_instructions'],
+            WriterDocument,
         )
-        assert instructions.instructions[0].source_refs == []
-        assert instructions.instructions[0].fact_constraints == []
+        block = outline_with_instructions.blocks[0]
+        assert block.references == references
+        assert block.authoring.constraints.fact_constraints == []
 
 
 def test_generate_writing_output_writes_markdown_file():
     context = WritingContext(context_id='ctx-output-file', doc_id='doc-output-file')
-    draft_document = DraftDocument(
-        draft_id='draft-output-file',
+    draft_document = WriterDocument(
+        document_id='draft-output-file',
+        stage='draft',
         title='测试文档',
-        sections=[
-            DraftSection(
-                section_id='sec-1',
-                title='第一章',
-                blocks=[DraftBlock(block_id='block-1', content='这是第一章正文。')],
-            )
+        blocks=[
+            WriterBlock(
+                node_id='sec-1',
+                type='heading',
+                content='第一章',
+                stage='draft',
+                references=[{'id': 'resource-1', 'url': 'https://example.com/source'}],
+                children=[
+                    WriterBlock(
+                        node_id='block-1',
+                        type='paragraph',
+                        content='这是第一章正文。',
+                        stage='draft',
+                    ),
+                ],
+            ),
         ],
     )
 
@@ -771,9 +796,15 @@ def test_generate_writing_output_writes_markdown_file():
         )
 
         markdown_path = result['output_file_path']
-        assert result['artifact_path'].endswith('writing_output.json')
+        assert result['artifact_path'].endswith('final_document.json')
         assert markdown_path.endswith('writing_output.md')
         assert os.path.exists(markdown_path)
+
+        final_document = load_artifact_json(result['artifact_path'], WriterDocument)
+        assert final_document.blocks[0].references == [
+            {'id': 'resource-1', 'url': 'https://example.com/source'},
+        ]
+        assert final_document.provider_binding == {}
 
         with open(markdown_path, 'r', encoding='utf-8') as fh:
             markdown = fh.read()

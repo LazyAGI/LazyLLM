@@ -252,7 +252,7 @@ class WriterQualityTools(WriterToolBase):
             'section_title': outline_block.content,
             'type': outline_block.type,
             'numbering': outline_block.numbering,
-            'source_refs': outline_block.source_refs,
+            'references': outline_block.references,
             'authoring': authoring.model_dump() if authoring else None,
         }
 

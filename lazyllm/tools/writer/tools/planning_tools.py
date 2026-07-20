@@ -124,14 +124,14 @@ class WriterPlanningTools(WriterToolBase):
         outline.stage = 'outline'
         outline.document_id = outline.document_id or self._default_outline_id(task, context)
         outline.title = outline.title or self._default_outline_title(task)
-        valid_source_refs = self._valid_source_refs(context, profiles)
+        valid_reference_ids = self._valid_reference_ids(context, profiles)
         has_available_facts = self._has_available_facts(context, profiles)
         for index, block in enumerate(outline.blocks, start=1):
             self._normalize_outline_block(
                 block,
                 level=1,
                 fallback_id=f'section-{index}',
-                valid_source_refs=valid_source_refs,
+                valid_reference_ids=valid_reference_ids,
                 has_available_facts=has_available_facts,
             )
 
@@ -144,7 +144,7 @@ class WriterPlanningTools(WriterToolBase):
         *,
         level: int,
         fallback_id: str,
-        valid_source_refs: set[str],
+        valid_reference_ids: set[str],
         has_available_facts: bool,
     ) -> None:
         block.stage = 'outline'
@@ -155,7 +155,7 @@ class WriterPlanningTools(WriterToolBase):
         if block.authoring is None:
             block.authoring = WriterAuthoring()
 
-        block.source_refs = self._filter_source_refs(block.source_refs, valid_source_refs)
+        block.references = self._filter_references(block.references, valid_reference_ids)
         if not has_available_facts:
             block.authoring.constraints.fact_constraints = []
 
@@ -164,7 +164,7 @@ class WriterPlanningTools(WriterToolBase):
                 child,
                 level=level + 1,
                 fallback_id=f'{block.node_id}-{index}',
-                valid_source_refs=valid_source_refs,
+                valid_reference_ids=valid_reference_ids,
                 has_available_facts=has_available_facts,
             )
 
@@ -196,7 +196,6 @@ class WriterPlanningTools(WriterToolBase):
             for block in authoring_doc.iter_blocks()
             if block.authoring is not None
         }
-        valid_source_refs = self._valid_source_refs(context)
         has_available_facts = self._has_available_facts(context)
 
         for block in outline.blocks:
@@ -205,7 +204,6 @@ class WriterPlanningTools(WriterToolBase):
                 auth,
                 block,
                 outline,
-                valid_source_refs,
                 has_available_facts,
             )
 
@@ -223,7 +221,6 @@ class WriterPlanningTools(WriterToolBase):
         auth: Optional[WriterAuthoring],
         block: WriterBlock,
         outline: WriterDocument,
-        valid_source_refs: set[str],
         has_available_facts: bool,
     ) -> None:
         block_constraints = block.authoring.constraints if block.authoring else WriterConstraints()
@@ -258,8 +255,6 @@ class WriterPlanningTools(WriterToolBase):
         if not result.expected_blocks:
             result.expected_blocks = self._default_expected_blocks(block, block_constraints)
 
-        block.source_refs = self._filter_source_refs(block.source_refs, valid_source_refs)
-
         result.meta.update(
             {
                 'outline_node_level': block.numbering.get('level'),
@@ -280,7 +275,7 @@ class WriterPlanningTools(WriterToolBase):
             blocks.extend(constraints.required_points[:3])
         return blocks
 
-    def _valid_source_refs(
+    def _valid_reference_ids(
         self,
         context: WritingContext,
         profiles: Optional[List[ResourceProfile]] = None,
@@ -290,8 +285,8 @@ class WriterPlanningTools(WriterToolBase):
             if profile.resource_id:
                 refs.add(profile.resource_id)
         for fact in context.facts:
-            if fact.key:
-                refs.add(fact.key)
+            if fact.fact_id:
+                refs.add(fact.fact_id)
             refs.update(source for source in fact.source if source)
         return refs
 
@@ -304,15 +299,15 @@ class WriterPlanningTools(WriterToolBase):
             return True
         return any(profile.key_facts for profile in profiles or [])
 
-    def _filter_source_refs(
+    def _filter_references(
         self,
-        source_refs: List[Dict[str, Any]],
-        valid_source_refs: set[str],
+        references: List[Dict[str, Any]],
+        valid_reference_ids: set[str],
     ) -> List[Dict[str, Any]]:
-        if not valid_source_refs:
+        if not valid_reference_ids:
             return []
         return [
-            source_ref
-            for source_ref in source_refs
-            if source_ref.get('id') in valid_source_refs
+            reference
+            for reference in references
+            if reference.get('id') in valid_reference_ids
         ]

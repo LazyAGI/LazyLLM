@@ -147,9 +147,6 @@ class WriterDraftingTools(WriterToolBase):
                 'output_format': output_format,
                 'rendered_content': content,
             },
-            provider_binding={
-                'references': self._collect_output_references(draft_document, writing_context),
-            },
         )
 
         result = self._save_artifacts(
@@ -254,6 +251,7 @@ class WriterDraftingTools(WriterToolBase):
             if section_block.authoring:
                 self._copy_meta_value(section_block.authoring.meta, draft_block.authoring.meta, 'document_id')
                 self._copy_meta_value(section_block.authoring.meta, draft_block.authoring.meta, 'document_title')
+        draft_block.references = [dict(reference) for reference in section_block.references]
         return draft_block
 
     def _default_section_node_id(self, section_block: WriterBlock) -> str:
@@ -404,32 +402,6 @@ class WriterDraftingTools(WriterToolBase):
         for child in block.children:
             parts.extend(self._render_block_markdown(child, heading_level + 1))
         return parts
-
-    def _collect_output_references(
-        self,
-        document: WriterDocument,
-        context: WritingContext,
-    ) -> List[str]:
-        # References come from block.source_refs (List[Dict] with an "id" key),
-        # not from document.metadata — the latter is not populated for drafts.
-        references: List[str] = []
-        for block in document.iter_blocks():
-            for source_ref in block.source_refs:
-                ref_id = source_ref.get('id') if isinstance(source_ref, dict) else None
-                if ref_id:
-                    self._extend_unique(references, ref_id)
-        for fact in context.facts:
-            self._extend_unique(references, fact.source)
-        return references
-
-    def _extend_unique(self, target: List[str], values: Any) -> None:
-        if values is None:
-            return
-        if isinstance(values, str):
-            values = [values]
-        for value in values:
-            if value and value not in target:
-                target.append(str(value))
 
     def _copy_meta_value(self, source: dict, target: dict, key: str) -> None:
         value = source.get(key) if source else None

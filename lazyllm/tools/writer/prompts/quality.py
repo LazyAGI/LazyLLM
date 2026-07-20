@@ -19,7 +19,7 @@ Validation rules:
    - "不仅……而且……" used as a paragraph opening
    - "此外" used as a paragraph opening more than twice
 
-6. REFERENCE COMPLETENESS (category=evidence): If the outline block lists source_refs, check whether the draft appropriately references them. Missing references → severity=low, category=evidence.
+6. REFERENCE COMPLETENESS (category=evidence): If the outline block lists references, check whether the draft appropriately uses them. Missing references → severity=low, category=evidence.
 
 7. WORD COUNT (category=format): If authoring.constraints specifies min_words or max_words, estimate the draft's approximate word count and flag deviations. → severity=low, category=format.
 

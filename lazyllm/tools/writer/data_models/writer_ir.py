@@ -78,7 +78,6 @@ class WriterBlock(BaseModel):
     authoring: Optional[WriterAuthoring] = None
     numbering: Dict[str, Any] = Field(default_factory=dict)
     references: List[Dict[str, Any]] = Field(default_factory=list)
-    source_refs: List[Dict[str, Any]] = Field(default_factory=list)
     # Provider-neutral binding contract. Common keys are provider, uri, document_id,
     # block_id, parent_block_id and revision. IDs here belong to the external system.
     provider_binding: Dict[str, Any] = Field(default_factory=dict)

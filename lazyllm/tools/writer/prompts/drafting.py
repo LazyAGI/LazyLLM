@@ -14,11 +14,13 @@ Requirements:
 - Keep text blocks substantial enough to carry their intended idea.
 - Do not generate short summary-like or placeholder-like blocks just to match the expected_blocks count.
 - If expected_blocks is too coarse, add additional content blocks for setup, transition, evidence/detail, consequence, or closing as appropriate.
-- Respect authoring.constraints.required_points, fact_constraints, style_constraints, relation_constraints, and source_refs.
+- Respect authoring.constraints.required_points, fact_constraints, style_constraints, and relation_constraints.
+- Use the facts and resources identified by outline_block.references when relevant. Do not copy or rewrite
+  references in the output; the system carries them from the outline block.
 - Do not invent facts that conflict with the writing context.
 - If previous_blocks are provided, keep continuity and avoid repeating their content.
 - Fill node_id for the section root and for each child (e.g. draft-<node>-1). The system will normalize ids if needed.
-- Leave spans, status, references, provider_binding and provider_payload empty unless the content genuinely needs them.
+- Leave spans, status, references, provider_binding and provider_payload empty.
 
 Writing task:
 {task_json}
