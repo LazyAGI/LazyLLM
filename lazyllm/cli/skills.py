@@ -66,7 +66,7 @@ def _load_skill_meta(manager, folder):
             meta = manager._extract_yaml_meta(fp.read())
     except OSError as exc:
         return None, f'Failed to read SKILL.md ({exc}).'
-    if not manager._is_meta_valid(meta or {}):
+    if manager._validate_meta(meta or {}) is not None:
         return None, 'Invalid SKILL.md metadata.'
     return meta, None
 

@@ -2,14 +2,14 @@
 import os
 import re
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import parse_qs, unquote, urlparse
 
 import lazyllm
 import requests
 from lazyllm import config
 
-from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile
+from ..base import LazyLLMFSBase, LinkDocumentFSBase, CloudFSBufferedFile, clean_document_ref
 
 config.add('notion_token', str, None, 'NOTION_TOKEN', description='Notion API token (notion-client official env).')
 
@@ -45,6 +45,7 @@ def _find_notion_ids(text: str) -> List[str]:
 
 
 def _parse_notion_browser_url(url: str) -> Optional[Dict[str, str]]:
+    url = clean_document_ref(url)
     parsed = urlparse(url)
     if parsed.scheme not in ('http', 'https'):
         return None
@@ -79,6 +80,7 @@ def _is_notion_browser_url(path: str) -> bool:
 
 
 def _strip_notion_protocol(path: str) -> str:
+    path = clean_document_ref(path)
     if path.startswith('notion:/'):
         return path[len('notion:'):]
     return path
@@ -109,6 +111,18 @@ def _is_notion_object_not_found(exc: Exception) -> bool:
     return isinstance(body, dict) and body.get('code') == 'object_not_found'
 
 
+def _ls_tool_schema(path: str = '/', detail: bool = True) -> List:
+    return []
+
+
+def _adapt_ls_tool_input(tool_input: Union[Dict[str, Any], str]) -> Dict[str, Any]:
+    if isinstance(tool_input, str):
+        return {'path': tool_input.strip() or '/'}
+    adapted = dict(tool_input)
+    adapted['path'] = str(adapted.get('path') or '/').strip() or '/'
+    return adapted
+
+
 class NotionFile(CloudFSBufferedFile):
     def __init__(self, fs: 'NotionFS', path: str, include_references: bool = False, **kwargs) -> None:
         content = fs._fetch_content(path, include_references=include_references)
@@ -120,6 +134,9 @@ class NotionFile(CloudFSBufferedFile):
 
 
 class NotionFS(LinkDocumentFSBase):
+    __tool_auto_activate__ = [
+        r'https?://(?:[^\s/]+\.)?(?:notion\.(?:so|site|com))(?:[/:?#]|$)',
+    ]
     '''Read and manage authenticated Notion pages, databases, and documents.
 
     Select this Toolkit for notion.so, notion.site, or notion.com browser URLs.
@@ -129,6 +146,8 @@ class NotionFS(LinkDocumentFSBase):
 
     document_provider = 'notion'
     __public_apis__ = LinkDocumentFSBase.build_public_apis(extra=['search', 'find'], exclude=['copy'])
+    __tool_schema_overrides__ = {'ls': _ls_tool_schema}
+    __tool_input_adapters__ = {'ls': _adapt_ls_tool_input}
 
     def __init__(self, token: Optional[str] = None, base_url: Optional[str] = None,
                  dynamic_auth: bool = False, **storage_options):
@@ -1404,6 +1423,7 @@ class NotionFS(LinkDocumentFSBase):
         return LazyLLMFSBase._entry(
             name=title or pid, ftype='directory', mtime=mtime, title=title,
             id=pid, object=page.get('object', 'page'), notion_path=f'notion:/~page/{pid}',
+            url=page.get('url') or '',
         )
 
     @staticmethod
@@ -1413,6 +1433,7 @@ class NotionFS(LinkDocumentFSBase):
         return LazyLLMFSBase._entry(
             name=title or did, ftype='directory', title=title, id=did,
             object=db.get('object', 'database'), notion_path=f'notion:/~database/{did}',
+            url=db.get('url') or '',
         )
 
     @staticmethod
@@ -1422,6 +1443,7 @@ class NotionFS(LinkDocumentFSBase):
         return LazyLLMFSBase._entry(
             name=title or did, ftype='directory', title=title, id=did,
             object=data_source.get('object', 'data_source'), notion_path=f'notion:/~data_source/{did}',
+            url=data_source.get('url') or '',
         )
 
     @staticmethod

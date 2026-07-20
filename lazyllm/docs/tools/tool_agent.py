@@ -2025,6 +2025,12 @@ add_toolsmgr_chinese_doc('InstanceToolGroup', '''\
 将一个对象实例的所有 ``__public_apis__`` 方法统一封装为可注册到 ToolManager 的工具组。
 支持可选的 key_source 参数，用于在运行时检测凭据是否存在；当凭据不存在时，该组内所有工具会从 tools_description 中自动隐藏，LLM 不会感知到其存在。
 
+实例可以用以下可选类属性定制仅面向 LLM 的工具契约，而不改变原始 Python API：
+
+- ``__tool_public_apis__``：覆盖向 LLM 暴露的方法列表；未设置时继续使用 ``__public_apis__``。
+- ``__tool_schema_overrides__``：方法名到签名函数的映射，仅替换参数 schema，工具描述仍来自实际绑定方法。
+- ``__tool_input_adapters__``：方法名到输入适配函数的映射，在 schema 校验和调用前归一化工具输入。
+
 主要用于将 SearchBase、LazyLLMFSBase 等带有 __public_apis__ 的对象注册为 Agent 工具。
 
 Args:
@@ -2048,6 +2054,12 @@ Internal class; direct use is not normally required. The framework creates insta
 
 Wraps all ``__public_apis__`` methods of an object instance into a tool group that can be registered with ToolManager.
 Accepts an optional key_source parameter to detect credential availability at runtime; when the credential is absent, all tools in the group are automatically hidden from tools_description so the LLM is unaware of them.
+
+An instance may define these optional class attributes to customize its LLM-facing tool contract without changing the original Python API:
+
+- ``__tool_public_apis__``: Overrides the methods exposed to the LLM; falls back to ``__public_apis__`` when absent.
+- ``__tool_schema_overrides__``: Maps method names to signature functions used only for parameter schemas; descriptions still come from the bound methods.
+- ``__tool_input_adapters__``: Maps method names to input adapters that normalize tool input before schema validation and invocation.
 
 Primarily used to register objects with __public_apis__ (such as SearchBase or LazyLLMFSBase subclasses) as Agent tools.
 
@@ -2183,6 +2195,9 @@ Args:
     lazy (bool): 是否使用 lazy 模式，默认 True。``pick_first_valid=True`` 时自动忽略此参数（强制非 lazy）。
     pick_first_valid (bool): 是否启用 N选1 模式，默认 False。启用后从子工具中选择第一个凭据有效的工具暴露给 LLM；
         所有工具仍全量注册到 ``_tool_call``，每次 ``get_description`` 调用时实时检查凭据状态，不同 session 可选出不同工具。
+    auto_activate (Optional[List[Union[str, Callable[[str], bool]]]]): 自动激活规则列表。元素可以是正则字符串（大小写不敏感匹配）
+        或 ``Callable[[str], bool]``。当用户输入匹配任一规则时，``ToolManager.sync_active_groups`` 会自动激活该 lazy 工具组
+        （及其祖先路径），无需 LLM 先调用 gateway。也可传入单个规则（非 list）。默认 ``None``（不自动激活）。
     key_source: 凭据来源，格式与 ``InstanceToolGroup`` 的 ``key_source`` 参数相同。凭据不可用时整个工具组从 LLM 可见列表中隐藏。
 ''')
 
@@ -2227,6 +2242,10 @@ Args:
     lazy (bool): Whether to use lazy mode. Defaults to True. Ignored (forced False) when ``pick_first_valid=True``.
     pick_first_valid (bool): Whether to enable pick-first-valid mode. Defaults to False. When enabled, only the first child tool with a valid credential is exposed to the LLM.
         All tools are still registered in ``_tool_call``; the credential check runs on every ``get_description`` call, so different sessions can select different tools.
+    auto_activate (Optional[List[Union[str, Callable[[str], bool]]]]): Auto-activation rules. Each item may be a regex string
+        (matched case-insensitively) or a ``Callable[[str], bool]``. When user input matches any rule,
+        ``ToolManager.sync_active_groups`` activates this lazy group (and its ancestor path) without requiring the LLM
+        to call the gateway first. A single rule (non-list) is also accepted. Defaults to ``None`` (no auto-activation).
     key_source: Credential source, same format as the ``key_source`` parameter of ``InstanceToolGroup``. When the credential is unavailable, the entire tool group is hidden from the LLM.
 ''')
 
@@ -2357,7 +2376,7 @@ Activated tool group "search". Available tools: search_web, search_news
 ''')
 
 add_toolsmgr_chinese_doc('MethodModuleTool', '''\
-内部类，通常不需要直接使用。InstanceToolGroup 在初始化时会自动为实例的每个 ``__public_apis__`` 方法创建对应的 MethodModuleTool。
+内部类，通常不需要直接使用。InstanceToolGroup 在初始化时会自动为实例公开的每个工具方法创建对应的 MethodModuleTool。
 
 将对象实例的某个绑定方法封装为 ModuleTool，使其可被 ToolManager 管理和调用。
 工具名称由实例类名和方法名拼接而成（``ClassName_method_name``）；若方法名为 ``__call__``，则工具名直接使用类名。
@@ -2366,10 +2385,12 @@ add_toolsmgr_chinese_doc('MethodModuleTool', '''\
 Args:
     instance (Any): 持有目标方法的对象实例。
     method_name (str): 要封装的方法名称。
+    schema_func (Optional[Callable]): 可选的 schema 签名函数；默认使用目标绑定方法。
+    input_adapter (Optional[Callable]): 可选的输入归一化函数，在参数校验前执行。
 ''')
 
 add_toolsmgr_english_doc('MethodModuleTool', '''\
-Internal class; direct use is not normally required. InstanceToolGroup automatically creates a MethodModuleTool for each ``__public_apis__`` method of the instance during initialization.
+Internal class; direct use is not normally required. InstanceToolGroup automatically creates a MethodModuleTool for each tool-facing method exposed by the instance during initialization.
 
 Wraps a bound method of an object instance as a ModuleTool so it can be managed and invoked by ToolManager.
 The tool name is formed by concatenating the class name and method name (``ClassName_method_name``); if the method name is ``__call__``, the tool name is the class name alone.
@@ -2378,6 +2399,8 @@ The tool description and parameter schema are automatically parsed from the boun
 Args:
     instance (Any): The object instance holding the target method.
     method_name (str): The name of the method to wrap.
+    schema_func (Optional[Callable]): Optional signature function for schema generation; defaults to the target bound method.
+    input_adapter (Optional[Callable]): Optional input normalizer executed before parameter validation.
 ''')
 
 add_toolsmgr_chinese_doc('ToolGroup.get_flat_tools', '''\
@@ -2453,6 +2476,127 @@ Returns:
     ModuleTool: The gateway tool instance representing the entry point of this tool group.
 ''')
 
+add_toolsmgr_chinese_doc('ToolGroup.get_auto_active_groups', '''\
+根据用户输入文本，返回应自动激活的 lazy 工具组名称集合。
+
+匹配逻辑：
+
+- 若本工具组的 ``auto_activate`` 规则命中（正则大小写不敏感，或 callable 返回真值），或任一子 ``ToolContainer`` 命中，
+  则在结果中包含本工具组名称（仅当 ``lazy=True`` 时），并合并所有子容器返回的组名。
+- 嵌套场景下会递归收集子组命中结果，同时把祖先 lazy 组一并加入，以便 ``get_description`` 能正确展开整条路径。
+- 无规则命中且子组也未命中时返回空集合。
+
+Args:
+    text (str): 用户输入文本（通常来自当前轮 query）。
+
+Returns:
+    Set[str]: 应自动激活的工具组名称集合。
+''')
+
+add_toolsmgr_english_doc('ToolGroup.get_auto_active_groups', '''\
+Returns the set of lazy tool group names that should be auto-activated given the user input text.
+
+Matching rules:
+
+- If this group's ``auto_activate`` rules match (regex, case-insensitive; or a callable returning a truthy value),
+  or any child ``ToolContainer`` matches, the result includes this group's name (only when ``lazy=True``)
+  and merges all group names returned by child containers.
+- In nested groups, child matches are collected recursively and ancestor lazy groups are included as well,
+  so ``get_description`` can expand the full activation path.
+- Returns an empty set when neither this group nor any child matches.
+
+Args:
+    text (str): User input text (typically the current-turn query).
+
+Returns:
+    Set[str]: Set of tool group names that should be auto-activated.
+''')
+
+add_toolsmgr_example('ToolGroup.get_auto_active_groups', '''\
+>>> from lazyllm.tools.agent.toolsManager import ToolGroup
+>>> def alpha() -> str:
+...     \"\"\"Alpha tool.
+...
+...     Returns:
+...         str: Result.
+...     \"\"\"
+...     return 'a'
+...
+>>> group = ToolGroup(
+...     tools=[alpha], name='grp', desc='Group',
+...     auto_activate=[r'https?://[^\\s]+\\.example\\.com'],
+... )
+>>> sorted(group.get_auto_active_groups('read https://team.example.com/doc'))
+['grp']
+>>> group.get_auto_active_groups('hello')
+set()
+>>>
+>>> # Nested: matching an inner rule also activates ancestor lazy groups
+>>> inner = ToolGroup(tools=[alpha], name='inner', desc='Inner', auto_activate=['special-link'])
+>>> outer = ToolGroup(tools=[inner], name='outer', desc='Outer')
+>>> sorted(outer.get_auto_active_groups('open special-link'))
+['inner', 'outer']
+''')
+
+
+add_toolsmgr_chinese_doc('ToolGroup.get_activation_path', '''\
+返回激活指定工具组所需的祖先路径（含目标组自身）。
+
+用于从历史消息中的 gateway 调用（``get_<name>_methods``）还原激活状态：当目标组嵌套在多层 lazy 组内时，
+仅激活目标组不够，必须同时激活从根到目标的所有 lazy 祖先，子工具描述才能正确展开。
+
+- 若 ``group_name`` 等于本工具组名称：lazy 模式下返回 ``{self._name}``，非 lazy 返回空集合。
+- 若命中某个子 ``ToolContainer``：返回子路径并与本 lazy 组名取并集。
+- 未找到时返回空集合。
+
+Args:
+    group_name (str): 目标工具组名称。
+
+Returns:
+    Set[str]: 激活该组所需的工具组名称集合（含目标组及祖先）。
+''')
+
+add_toolsmgr_english_doc('ToolGroup.get_activation_path', '''\
+Returns the ancestor activation path required to activate the given tool group (including the target itself).
+
+Used to restore activation state from structured gateway calls (``get_<name>_methods``) in history:
+when the target is nested under multiple lazy groups, activating only the leaf is insufficient — all lazy
+ancestors from the root to the target must be activated so child tool descriptions can expand correctly.
+
+- If ``group_name`` equals this group's name: returns ``{self._name}`` in lazy mode, or an empty set otherwise.
+- If a child ``ToolContainer`` matches: returns the child path unioned with this lazy group's name.
+- Returns an empty set when the group is not found.
+
+Args:
+    group_name (str): Name of the target tool group.
+
+Returns:
+    Set[str]: Set of tool group names required to activate the target (including ancestors).
+''')
+
+add_toolsmgr_example('ToolGroup.get_activation_path', '''\
+>>> from lazyllm.tools.agent.toolsManager import ToolGroup
+>>> def alpha() -> str:
+...     \"\"\"Alpha tool.
+...
+...     Returns:
+...         str: Result.
+...     \"\"\"
+...     return 'a'
+...
+>>> group = ToolGroup(tools=[alpha], name='grp', desc='Group')
+>>> sorted(group.get_activation_path('grp'))
+['grp']
+>>> group.get_activation_path('other')
+set()
+>>>
+>>> # Nested: activating an inner group also requires the outer ancestor
+>>> inner = ToolGroup(tools=[alpha], name='inner', desc='Inner')
+>>> outer = ToolGroup(tools=[inner], name='outer', desc='Outer')
+>>> sorted(outer.get_activation_path('inner'))
+['inner', 'outer']
+''')
+
 add_toolsmgr_chinese_doc('ToolContainer', '''\
 内部抽象基类，定义工具容器的统一接口。``ToolGroup`` 和 ``ToolGroupWrapper`` 均继承自该类。
 ''')
@@ -2516,6 +2660,72 @@ Returns the list of "leaf tool names" exposed by this container, used by the par
 
 Returns:
     List[str]: List of leaf tool names.
+''')
+
+add_toolsmgr_chinese_doc('ToolContainer.get_auto_active_groups', '''\
+根据用户输入文本，返回应自动激活的 lazy 工具组名称集合。
+
+基类默认实现返回空集合。子类（如 ``ToolGroup``、``ToolGroupWrapper``）可覆盖此方法，
+实现基于 ``auto_activate`` 规则或内部委托的匹配逻辑。``ToolManager.sync_active_groups`` 会调用该方法。
+
+Args:
+    text (str): 用户输入文本。
+
+Returns:
+    Set[str]: 应自动激活的工具组名称集合；基类恒返回空集合。
+''')
+
+add_toolsmgr_english_doc('ToolContainer.get_auto_active_groups', '''\
+Returns the set of lazy tool group names that should be auto-activated given the user input text.
+
+The base implementation returns an empty set. Subclasses (such as ``ToolGroup`` and ``ToolGroupWrapper``)
+may override this method to implement matching via ``auto_activate`` rules or by delegating to an inner
+container. ``ToolManager.sync_active_groups`` invokes this method.
+
+Args:
+    text (str): User input text.
+
+Returns:
+    Set[str]: Set of tool group names that should be auto-activated; always empty for the base class.
+''')
+
+add_toolsmgr_example('ToolContainer.get_auto_active_groups', '''\
+>>> from lazyllm.tools.agent.toolsManager import ToolContainer
+>>> ToolContainer().get_auto_active_groups('anything')
+set()
+''')
+
+add_toolsmgr_chinese_doc('ToolContainer.get_activation_path', '''\
+返回激活指定工具组所需的祖先路径（含目标组自身）。
+
+基类默认实现返回空集合。子类可覆盖此方法，用于从历史 gateway 调用还原嵌套 lazy 组的激活路径。
+``ToolManager.sync_active_groups`` 在解析历史中的 ``get_<name>_methods`` 调用时会使用该方法。
+
+Args:
+    group_name (str): 目标工具组名称。
+
+Returns:
+    Set[str]: 激活该组所需的工具组名称集合；基类恒返回空集合。
+''')
+
+add_toolsmgr_english_doc('ToolContainer.get_activation_path', '''\
+Returns the ancestor activation path required to activate the given tool group (including the target itself).
+
+The base implementation returns an empty set. Subclasses may override this method to restore nested lazy-group
+activation from historical gateway calls. ``ToolManager.sync_active_groups`` uses this method when parsing
+``get_<name>_methods`` calls in history.
+
+Args:
+    group_name (str): Name of the target tool group.
+
+Returns:
+    Set[str]: Set of tool group names required to activate the target; always empty for the base class.
+''')
+
+add_toolsmgr_example('ToolContainer.get_activation_path', '''\
+>>> from lazyllm.tools.agent.toolsManager import ToolContainer
+>>> ToolContainer().get_activation_path('grp')
+set()
 ''')
 
 add_toolsmgr_chinese_doc('SkipMixin', '''\
@@ -2629,4 +2839,87 @@ Args:
 
 Returns:
     List[Dict]: List of tool description dicts, or an empty list when the credential is absent.
+''')
+
+add_toolsmgr_chinese_doc('ToolGroupWrapper.get_auto_active_groups', '''\
+若凭据不可用，或内部对象不是 ``ToolContainer``，则返回空集合；否则委托给内部工具组的
+``get_auto_active_groups``。
+
+Args:
+    text (str): 用户输入文本。
+
+Returns:
+    Set[str]: 应自动激活的工具组名称集合。
+''')
+
+add_toolsmgr_english_doc('ToolGroupWrapper.get_auto_active_groups', '''\
+Returns an empty set when the credential is unavailable or the inner object is not a ``ToolContainer``;
+otherwise delegates to the inner tool group's ``get_auto_active_groups``.
+
+Args:
+    text (str): User input text.
+
+Returns:
+    Set[str]: Set of tool group names that should be auto-activated.
+''')
+
+add_toolsmgr_example('ToolGroupWrapper.get_auto_active_groups', '''\
+>>> from lazyllm.tools.agent.toolsManager import ToolGroup, ToolGroupWrapper
+>>> def alpha() -> str:
+...     \"\"\"Alpha tool.
+...
+...     Returns:
+...         str: Result.
+...     \"\"\"
+...     return 'a'
+...
+>>> group = ToolGroup(
+...     tools=[alpha], name='grp', desc='Group',
+...     auto_activate=['special-link'],
+... )
+>>> wrapper = ToolGroupWrapper(group, key_source=None)
+>>> sorted(wrapper.get_auto_active_groups('open special-link'))
+['grp']
+>>> wrapper.get_auto_active_groups('hello')
+set()
+''')
+
+add_toolsmgr_chinese_doc('ToolGroupWrapper.get_activation_path', '''\
+若凭据不可用，或内部对象不是 ``ToolContainer``，则返回空集合；否则委托给内部工具组的
+``get_activation_path``。
+
+Args:
+    group_name (str): 目标工具组名称。
+
+Returns:
+    Set[str]: 激活该组所需的工具组名称集合。
+''')
+
+add_toolsmgr_english_doc('ToolGroupWrapper.get_activation_path', '''\
+Returns an empty set when the credential is unavailable or the inner object is not a ``ToolContainer``;
+otherwise delegates to the inner tool group's ``get_activation_path``.
+
+Args:
+    group_name (str): Name of the target tool group.
+
+Returns:
+    Set[str]: Set of tool group names required to activate the target.
+''')
+
+add_toolsmgr_example('ToolGroupWrapper.get_activation_path', '''\
+>>> from lazyllm.tools.agent.toolsManager import ToolGroup, ToolGroupWrapper
+>>> def alpha() -> str:
+...     \"\"\"Alpha tool.
+...
+...     Returns:
+...         str: Result.
+...     \"\"\"
+...     return 'a'
+...
+>>> group = ToolGroup(tools=[alpha], name='grp', desc='Group')
+>>> wrapper = ToolGroupWrapper(group, key_source=None)
+>>> sorted(wrapper.get_activation_path('grp'))
+['grp']
+>>> wrapper.get_activation_path('other')
+set()
 ''')

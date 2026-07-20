@@ -101,8 +101,15 @@ class ReactAgent(LazyLLMAgentBase):
         if self._fc:
             self._fc._stop_tools = self._stop_tools
 
-    def describe_context(self, llm_chat_history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def _prepare_tool_context(self, current_input: Any = None,
+                              llm_chat_history: Optional[List[Dict[str, Any]]] = None) -> None:
+        '''Apply the identical tool-activation policy for execution and context inspection.'''
+        self._tools_manager.sync_active_groups(current_input, llm_chat_history)
+
+    def describe_context(self, llm_chat_history: Optional[List[Dict[str, Any]]] = None,
+                         current_input: Any = None) -> Dict[str, Any]:
         '''Return the model-facing static context without invoking the model or tools.'''
+        self._prepare_tool_context(current_input, llm_chat_history)
         description = super().describe_context()
         description['system_prompt'] = self._prompt
         history = list(llm_chat_history or [])
@@ -126,6 +133,7 @@ class ReactAgent(LazyLLMAgentBase):
         self._agent = agent
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
+        self._prepare_tool_context(query, llm_chat_history)
         return (query, llm_chat_history or [])
 
     def _force_summarize_from_history(self, history: list) -> Optional[str]:
