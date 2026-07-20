@@ -31,7 +31,7 @@ DocBlock.model_rebuild()
 
 
 class Anchor(BaseModel):
-    block_id: str
+    node_id: str
     text_offset: Optional[int] = None
     text_end: Optional[int] = None
     meta: Dict[str, Any] = Field(default_factory=dict)

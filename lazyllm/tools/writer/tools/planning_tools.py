@@ -1,15 +1,15 @@
 from __future__ import annotations
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.resource import ResourceProfile
 from ..data_models.task import WritingTask
-from ..data_models.writing import (
-    OutlineNode,
-    SectionInstruction,
-    SectionInstructionList,
-    WritingOutline,
+from ..data_models.writer_ir import (
+    WriterAuthoring,
+    WriterBlock,
+    WriterConstraints,
+    WriterDocument,
 )
 from ..prompts import GENERATE_OUTLINE_PROMPT, GENERATE_SECTION_INSTRUCTIONS_PROMPT
 from ..utils import to_prompt_json
@@ -32,14 +32,16 @@ class WriterPlanningTools(WriterToolBase):
         writing_context = self._unified_model(context, WritingContext)
         profiles = self._unified_models(resource_profiles, ResourceProfile)
         execution_data = self._normalize_execution_results(execution_results)
+        document_id_hint = self._default_outline_id(writing_task, writing_context)
 
         prompt = GENERATE_OUTLINE_PROMPT.format(
             task_json=to_prompt_json(writing_task),
+            document_id_hint=document_id_hint,
             context_json=to_prompt_json(writing_context),
             resource_profiles_json=to_prompt_json(profiles),
             execution_results_json=to_prompt_json(execution_data),
         )
-        outline = self._call_llm_structured(prompt, WritingOutline)
+        outline = self._call_llm_structured(prompt, WriterDocument)
         outline = self._normalize_outline(outline, writing_task, writing_context, profiles, execution_data)
 
         result = self._save_artifacts(
@@ -49,8 +51,8 @@ class WriterPlanningTools(WriterToolBase):
             context_key=None,
             summary='Generated writing outline.',
             counts={
-                'top_level_sections': len(outline.nodes),
-                'outline_nodes': self._count_outline_nodes(outline.nodes),
+                'top_level_sections': len(outline.blocks),
+                'outline_nodes': self._count_outline_blocks(outline.blocks),
             },
             artifact_meta={
                 'task_id': writing_task.task_id,
@@ -67,37 +69,38 @@ class WriterPlanningTools(WriterToolBase):
         context: Any,
         execution_results: Any = None,
     ) -> dict:
-        writing_outline = self._unified_model(outline, WritingOutline)
+        writing_outline = self._unified_model(outline, WriterDocument)
         writing_context = self._unified_model(context, WritingContext)
         execution_data = self._normalize_execution_results(execution_results)
-        target_nodes = self._instruction_target_nodes(writing_outline)
+        target_blocks = self._instruction_target_blocks(writing_outline)
 
         prompt = GENERATE_SECTION_INSTRUCTIONS_PROMPT.format(
             outline_json=to_prompt_json(writing_outline),
-            target_outline_nodes_json=to_prompt_json(target_nodes),
+            target_outline_blocks_json=to_prompt_json(target_blocks),
             context_json=to_prompt_json(writing_context),
             execution_results_json=to_prompt_json(execution_data),
         )
-        instruction_list = self._call_llm_structured(prompt, SectionInstructionList)
-        instruction_list = self._normalize_section_instructions(
-            instruction_list,
+        # The LLM echoes the outline structure and fills only authoring. The input
+        # outline remains authoritative; we map authoring back by node_id.
+        authoring_doc = self._call_llm_structured(prompt, WriterDocument)
+        writing_outline = self._merge_section_authorings(
             writing_outline,
+            authoring_doc,
             writing_context,
-            target_nodes,
             execution_data,
         )
 
         result = self._save_artifacts(
-            {'section_instructions': instruction_list},
+            {'outline_with_instructions': writing_outline},
             step_name='generate_section_instructions',
-            primary_key='section_instructions',
+            primary_key='outline_with_instructions',
             context_key=None,
             summary='Generated section writing instructions.',
             counts={
-                'section_instructions': len(instruction_list.instructions),
+                'section_instructions': len(writing_outline.blocks),
             },
             artifact_meta={
-                'outline_id': writing_outline.outline_id,
+                'document_id': writing_outline.document_id,
                 'context_id': writing_context.context_id,
                 'has_execution_results': execution_data is not None,
             },
@@ -109,54 +112,58 @@ class WriterPlanningTools(WriterToolBase):
 
     def _normalize_outline(
         self,
-        outline: WritingOutline,
+        outline: WriterDocument,
         task: WritingTask,
         context: WritingContext,
         profiles: List[ResourceProfile],
         execution_results: Any,
-    ) -> WritingOutline:
-        if len(outline.nodes) < 3:
+    ) -> WriterDocument:
+        if len(outline.blocks) < 3:
             raise ValueError('generate_outline must produce at least 3 top-level sections.')
 
-        outline.outline_id = outline.outline_id or self._default_outline_id(task, context)
+        outline.stage = 'outline'
+        outline.document_id = outline.document_id or self._default_outline_id(task, context)
         outline.title = outline.title or self._default_outline_title(task)
         valid_source_refs = self._valid_source_refs(context, profiles)
         has_available_facts = self._has_available_facts(context, profiles)
-        for index, node in enumerate(outline.nodes, start=1):
-            self._normalize_outline_node(
-                node,
+        for index, block in enumerate(outline.blocks, start=1):
+            self._normalize_outline_block(
+                block,
                 level=1,
                 fallback_id=f'section-{index}',
                 valid_source_refs=valid_source_refs,
                 has_available_facts=has_available_facts,
             )
 
-        outline.meta.update(
-            {
-                'source': 'llm',
-            }
-        )
+        outline.metadata.setdefault('source', 'llm')
         return outline
 
-    def _normalize_outline_node(
+    def _normalize_outline_block(
         self,
-        node: OutlineNode,
+        block: WriterBlock,
         *,
         level: int,
         fallback_id: str,
         valid_source_refs: set[str],
         has_available_facts: bool,
     ) -> None:
-        node.level = level
-        node.node_id = node.node_id or fallback_id
-        node.constraints.source_refs = self._filter_source_refs(node.constraints.source_refs, valid_source_refs)
+        block.stage = 'outline'
+        if not block.type.strip():
+            block.type = 'heading'
+        block.node_id = block.node_id or fallback_id
+        block.numbering['level'] = level
+        if block.authoring is None:
+            block.authoring = WriterAuthoring()
+
+        block.source_refs = self._filter_source_refs(block.source_refs, valid_source_refs)
         if not has_available_facts:
-            node.constraints.fact_constraints = []
-        for index, child in enumerate(node.children, start=1):
-            self._normalize_outline_node(
+            block.authoring.constraints.fact_constraints = []
+
+        for index, child in enumerate(block.children, start=1):
+            self._normalize_outline_block(
                 child,
                 level=level + 1,
-                fallback_id=f'{node.node_id}-{index}',
+                fallback_id=f'{block.node_id}-{index}',
                 valid_source_refs=valid_source_refs,
                 has_available_facts=has_available_facts,
             )
@@ -171,131 +178,107 @@ class WriterPlanningTools(WriterToolBase):
         query = ' '.join(task.query.split())
         return query[:80] if query else 'Writing Outline'
 
-    def _count_outline_nodes(self, nodes: List[OutlineNode]) -> int:
-        return sum(1 + self._count_outline_nodes(node.children) for node in nodes)
+    def _count_outline_blocks(self, blocks: List[WriterBlock]) -> int:
+        return sum(1 + self._count_outline_blocks(block.children) for block in blocks)
 
-    def _instruction_target_nodes(self, outline: WritingOutline) -> List[OutlineNode]:
-        return outline.nodes
+    def _instruction_target_blocks(self, outline: WriterDocument) -> List[WriterBlock]:
+        return outline.blocks
 
-    def _normalize_section_instructions(
+    def _merge_section_authorings(
         self,
-        instruction_list: SectionInstructionList,
-        outline: WritingOutline,
+        outline: WriterDocument,
+        authoring_doc: WriterDocument,
         context: WritingContext,
-        target_nodes: List[OutlineNode],
         execution_results: Any,
-    ) -> SectionInstructionList:
-        instructions_by_node_id = {
-            instruction.outline_node_id: instruction
-            for instruction in instruction_list.instructions
-            if instruction.outline_node_id
+    ) -> WriterDocument:
+        authoring_by_origin = {
+            block.node_id: block.authoring
+            for block in authoring_doc.iter_blocks()
+            if block.authoring is not None
         }
         valid_source_refs = self._valid_source_refs(context)
         has_available_facts = self._has_available_facts(context)
 
-        normalized: List[SectionInstruction] = []
-        for node in target_nodes:
-            instruction = instructions_by_node_id.get(node.node_id or '')
-            if instruction is None:
-                instruction = self._instruction_from_outline_node(node)
-            normalized.append(
-                self._normalize_section_instruction(
-                    instruction,
-                    node,
-                    outline,
-                    valid_source_refs,
-                    has_available_facts,
-                )
+        for block in outline.blocks:
+            auth = authoring_by_origin.get(block.node_id)
+            self._normalize_section_authoring(
+                auth,
+                block,
+                outline,
+                valid_source_refs,
+                has_available_facts,
             )
 
-        instruction_list.instruction_set_id = (
-            instruction_list.instruction_set_id
-            or self._default_instruction_set_id(outline)
-        )
-        instruction_list.outline_id = instruction_list.outline_id or outline.outline_id
-        instruction_list.instructions = normalized
-        instruction_list.meta.update(
+        outline.metadata.update(
             {
-                'source': 'llm',
-                'outline_id': outline.outline_id,
-                'outline_title': outline.title,
+                'has_section_instructions': True,
                 'context_id': context.context_id,
                 'has_execution_results': execution_results is not None,
             }
         )
-        return instruction_list
+        return outline
 
-    def _normalize_section_instruction(
+    def _normalize_section_authoring(
         self,
-        instruction: SectionInstruction,
-        node: OutlineNode,
-        outline: WritingOutline,
+        auth: Optional[WriterAuthoring],
+        block: WriterBlock,
+        outline: WriterDocument,
         valid_source_refs: set[str],
         has_available_facts: bool,
-    ) -> SectionInstruction:
-        constraints = node.constraints
-        instruction.outline_node_id = instruction.outline_node_id or node.node_id or ''
-        instruction.instruction_id = instruction.instruction_id or f'instruction-{instruction.outline_node_id}'
-        instruction.section_title = instruction.section_title or node.title
-        instruction.section_goal = (
-            instruction.section_goal
-            or constraints.section_goal
-            or node.instruction
-            or f'Write the section: {node.title}'
+    ) -> None:
+        block_constraints = block.authoring.constraints if block.authoring else WriterConstraints()
+        result = auth if auth is not None else WriterAuthoring()
+
+        result.origin_node_id = block.node_id
+        result.instruction_id = result.instruction_id or f'instruction-{block.node_id}'
+        result.instruction = (
+            result.instruction
+            or block_constraints.section_goal
+            or (block.authoring.instruction if block.authoring else None)
+            or f'Write the section: {block.content}'
         )
-        if not instruction.required_points:
-            instruction.required_points = list(constraints.required_points)
-        if not instruction.source_refs:
-            instruction.source_refs = list(constraints.source_refs)
-        instruction.source_refs = self._filter_source_refs(instruction.source_refs, valid_source_refs)
-        if not instruction.fact_constraints:
-            instruction.fact_constraints = list(constraints.fact_constraints)
+
+        constraints = result.constraints
+        if not constraints.section_goal:
+            constraints.section_goal = block_constraints.section_goal
+        if not constraints.required_points:
+            constraints.required_points = list(block_constraints.required_points)
+        if not constraints.fact_constraints:
+            constraints.fact_constraints = list(block_constraints.fact_constraints)
         if not has_available_facts:
-            instruction.fact_constraints = []
-        if not instruction.style_constraints:
-            instruction.style_constraints = list(constraints.style_constraints)
-            if constraints.pov:
-                instruction.style_constraints.append(f'POV: {constraints.pov}')
-            if constraints.tone:
-                instruction.style_constraints.append(f'Tone: {constraints.tone}')
-        if not instruction.relation_constraints:
-            instruction.relation_constraints = list(constraints.relation_constraints)
-        if not instruction.expected_blocks:
-            instruction.expected_blocks = self._default_expected_blocks(node)
-        instruction.meta.update(
+            constraints.fact_constraints = []
+        if not constraints.style_constraints:
+            constraints.style_constraints = list(block_constraints.style_constraints)
+            if block_constraints.pov:
+                constraints.style_constraints.append(f'POV: {block_constraints.pov}')
+            if block_constraints.tone:
+                constraints.style_constraints.append(f'Tone: {block_constraints.tone}')
+        if not constraints.relation_constraints:
+            constraints.relation_constraints = list(block_constraints.relation_constraints)
+        if not result.expected_blocks:
+            result.expected_blocks = self._default_expected_blocks(block, block_constraints)
+
+        block.source_refs = self._filter_source_refs(block.source_refs, valid_source_refs)
+
+        result.meta.update(
             {
-                'outline_node_level': node.level,
-                'outline_node_instruction': node.instruction,
-                'outline_id': outline.outline_id,
-                'outline_title': outline.title,
+                'outline_node_level': block.numbering.get('level'),
+                'outline_node_instruction': block.authoring.instruction if block.authoring else None,
+                'document_id': outline.document_id,
+                'document_title': outline.title,
             }
         )
-        return instruction
+        block.authoring = result
 
-    def _instruction_from_outline_node(self, node: OutlineNode) -> SectionInstruction:
-        constraints = node.constraints
-        return SectionInstruction(
-            instruction_id=f'instruction-{node.node_id or node.title}',
-            outline_node_id=node.node_id or '',
-            section_title=node.title,
-            section_goal=constraints.section_goal or node.instruction or f'Write the section: {node.title}',
-            required_points=list(constraints.required_points),
-            source_refs=list(constraints.source_refs),
-            fact_constraints=list(constraints.fact_constraints),
-            style_constraints=list(constraints.style_constraints),
-            relation_constraints=list(constraints.relation_constraints),
-            expected_blocks=self._default_expected_blocks(node),
-        )
-
-    def _default_expected_blocks(self, node: OutlineNode) -> List[str]:
-        blocks = [node.title]
-        if node.constraints.required_points:
-            blocks.extend(node.constraints.required_points[:3])
+    def _default_expected_blocks(
+        self,
+        block: WriterBlock,
+        constraints: WriterConstraints,
+    ) -> List[str]:
+        blocks = [block.content] if block.content else []
+        if constraints.required_points:
+            blocks.extend(constraints.required_points[:3])
         return blocks
-
-    def _default_instruction_set_id(self, outline: WritingOutline) -> str:
-        source_id = outline.outline_id or 'outline'
-        return f'{source_id}-section-instructions'
 
     def _valid_source_refs(
         self,
@@ -321,7 +304,15 @@ class WriterPlanningTools(WriterToolBase):
             return True
         return any(profile.key_facts for profile in profiles or [])
 
-    def _filter_source_refs(self, source_refs: List[str], valid_source_refs: set[str]) -> List[str]:
+    def _filter_source_refs(
+        self,
+        source_refs: List[Dict[str, Any]],
+        valid_source_refs: set[str],
+    ) -> List[Dict[str, Any]]:
         if not valid_source_refs:
             return []
-        return [source_ref for source_ref in source_refs if source_ref in valid_source_refs]
+        return [
+            source_ref
+            for source_ref in source_refs
+            if source_ref.get('id') in valid_source_refs
+        ]
