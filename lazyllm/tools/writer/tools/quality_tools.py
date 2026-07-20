@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Any, Optional
 
 from .base import WriterToolBase
@@ -6,7 +7,7 @@ from ..data_models.context import WritingContext
 from ..data_models.quality import AuditResult, ReviewReport
 from ..data_models.revision import PatchSet
 from ..data_models.task import WritingTask
-from ..data_models.writing import DraftDocument, SectionInstruction, SectionInstructionList
+from ..data_models.writer_ir import WriterBlock, WriterDocument
 from ..prompts.quality import (
     VALIDATE_DRAFT_DOCUMENT_PROMPT,
     VALIDATE_PATCH_SET_PROMPT,
@@ -24,63 +25,67 @@ class WriterQualityTools(WriterToolBase):
 
     def validate_section(
         self,
-        draft_section: Any,
-        section_instruction: Any,
+        draft_block: Any,
+        outline_document: Any,
         context: Any,
     ) -> dict:
-        section_data = self._unified_raw_data(draft_section)
-        instruction_list = self._unified_model(section_instruction, SectionInstructionList)
+        draft = self._unified_model(draft_block, WriterBlock)
+        outline = self._unified_model(outline_document, WriterDocument)
         writing_context = self._unified_model(context, WritingContext)
+        self._require_stage(draft.stage, 'draft', 'draft_block')
+        self._require_stage(outline.stage, 'outline', 'outline_document')
 
-        instruction = self._match_instruction(section_data or {}, instruction_list)
-
-        if instruction is None:
+        outline_block = self._match_instruction(draft, outline)
+        if outline_block is None:
             fallback = AuditResult(
                 is_passed=True,
                 score=100,
-                summary='未找到匹配的章节指令，跳过详细校验。',
+                summary='未找到匹配的大纲节点写作指令，跳过详细校验。',
                 issues=[],
             )
             report = ReviewReport(
-                target=section_data.get('section_id') or section_data.get('title') if section_data else None,
+                target=draft.node_id or draft.content or None,
                 result=fallback,
             )
-            result = self._save_artifacts(
+            return self._save_artifacts(
                 {'section_review': report},
                 step_name='validate_section',
                 primary_key='section_review',
-                summary='Section validation skipped: no matching instruction.',
-                counts={'total_issues': 0, 'high_severity': 0, 'medium_severity': 0, 'low_severity': 0},
-                artifact_meta={'is_passed': True, 'score': 100, 'match_found': False},
-            )
-            return result.model_dump()
+                summary='Section validation skipped: no matching outline authoring.',
+                counts={
+                    'total_issues': 0,
+                    'high_severity': 0,
+                    'medium_severity': 0,
+                    'low_severity': 0,
+                },
+                artifact_meta={
+                    'draft_node_id': draft.node_id,
+                    'is_passed': True,
+                    'score': 100,
+                    'match_found': False,
+                },
+            ).model_dump()
 
         prompt = VALIDATE_SECTION_PROMPT.format(
-            section_json=to_prompt_json(section_data),
-            instruction_json=to_prompt_json(instruction),
+            section_json=to_prompt_json(draft),
+            instruction_json=to_prompt_json(self._instruction_view(outline_block)),
             context_json=to_prompt_json(writing_context),
         )
-
         audit_result = self._call_llm_structured(prompt, AuditResult)
-
-        section_title = section_data.get('title') if section_data else None
-        section_id = section_data.get('section_id') if section_data else None
+        authoring = outline_block.authoring
 
         report = ReviewReport(
-            target=section_id or section_title or instruction.section_title or 'unknown',
+            target=draft.node_id,
             result=audit_result,
             meta={
-                'instruction_id': instruction.instruction_id,
-                'outline_node_id': instruction.outline_node_id,
-                'section_title': instruction.section_title,
+                'instruction_id': authoring.instruction_id if authoring else None,
+                'outline_node_id': outline_block.node_id,
+                'section_title': outline_block.content or None,
             },
         )
+        counts = self._issue_counts(audit_result)
 
-        high_count = sum(1 for i in audit_result.issues if i.severity == 'high')
-        medium_count = sum(1 for i in audit_result.issues if i.severity == 'medium')
-        low_count = sum(1 for i in audit_result.issues if i.severity == 'low')
-
-        result = self._save_artifacts(
+        return self._save_artifacts(
             {'section_review': report},
             step_name='validate_section',
             primary_key='section_review',
@@ -88,52 +93,46 @@ class WriterQualityTools(WriterToolBase):
                     f'(score: {audit_result.score}/100)',
             counts={
                 'total_issues': len(audit_result.issues),
-                'high_severity': high_count,
-                'medium_severity': medium_count,
-                'low_severity': low_count,
+                **counts,
             },
             artifact_meta={
-                'section_id': section_id,
-                'section_title': section_title,
-                'instruction_id': instruction.instruction_id,
+                'draft_node_id': draft.node_id,
+                'outline_node_id': outline_block.node_id,
+                'instruction_id': authoring.instruction_id if authoring else None,
                 'is_passed': audit_result.is_passed,
                 'score': audit_result.score,
             },
-        )
-        return result.model_dump()
+        ).model_dump()
 
     def validate_draft_document(
         self,
         draft_document: Any,
         context: Any,
     ) -> dict:
-        document = self._unified_model(draft_document, DraftDocument)
+        document = self._unified_model(draft_document, WriterDocument)
         writing_context = self._unified_model(context, WritingContext)
+        self._require_stage(document.stage, 'draft', 'draft_document')
 
-        # TODO: restore strict is_passed once review-to-patch routing is ready.
         prompt = VALIDATE_DRAFT_DOCUMENT_PROMPT.format(
             draft_document_json=to_prompt_json(document),
             context_json=to_prompt_json(writing_context),
         )
-
         audit_result = self._call_llm_structured(prompt, AuditResult)
+        block_count = len(list(document.iter_blocks()))
 
         report = ReviewReport(
-            target=document.draft_id or document.title or 'untitled',
+            target=document.document_id,
             result=audit_result,
             meta={
-                'draft_id': document.draft_id,
+                'draft_document_id': document.document_id,
                 'draft_title': document.title,
-                'draft_section_count': len(document.sections),
+                'draft_block_count': block_count,
                 'context_id': writing_context.context_id,
             },
         )
+        counts = self._issue_counts(audit_result)
 
-        high_count = sum(1 for i in audit_result.issues if i.severity == 'high')
-        medium_count = sum(1 for i in audit_result.issues if i.severity == 'medium')
-        low_count = sum(1 for i in audit_result.issues if i.severity == 'low')
-
-        result = self._save_artifacts(
+        return self._save_artifacts(
             {'draft_document_review': report},
             step_name='validate_draft_document',
             primary_key='draft_document_review',
@@ -141,18 +140,16 @@ class WriterQualityTools(WriterToolBase):
                     f'(score: {audit_result.score}/100)',
             counts={
                 'total_issues': len(audit_result.issues),
-                'high_severity': high_count,
-                'medium_severity': medium_count,
-                'low_severity': low_count,
+                **counts,
             },
             artifact_meta={
-                'draft_id': document.draft_id,
+                'draft_document_id': document.document_id,
                 'draft_title': document.title,
+                'draft_block_count': block_count,
                 'is_passed': audit_result.is_passed,
                 'score': audit_result.score,
             },
-        )
-        return result.model_dump()
+        ).model_dump()
 
     def validate_patch_set(
         self,
@@ -163,15 +160,22 @@ class WriterQualityTools(WriterToolBase):
         patch = self._unified_model(patch_set, PatchSet)
         writing_context = self._unified_model(context, WritingContext)
         writing_task = self._unified_model(task, WritingTask)
-        task_query = writing_task.query
 
-        hunks_json = to_prompt_json(
-            [h.model_dump(exclude={'anchor', 'meta'}) for h in patch.hunks]
-        )
-
+        hunks_json = to_prompt_json([
+            hunk.model_dump(
+                exclude={'anchor', 'meta', 'target_block_id'},
+                exclude_none=True,
+            )
+            for hunk in patch.hunks
+        ])
         context_json = to_prompt_json({
-            'facts': [f.model_dump(exclude={'fact_id', 'source', 'applies_to_block_ids', 'locked'})
-                      for f in writing_context.facts if f.locked],
+            'facts': [
+                fact.model_dump(
+                    exclude={'fact_id', 'source', 'applies_to_block_ids', 'locked'},
+                )
+                for fact in writing_context.facts
+                if fact.locked
+            ],
             'style_profile': (
                 writing_context.style_profile.model_dump()
                 if writing_context.style_profile
@@ -180,15 +184,12 @@ class WriterQualityTools(WriterToolBase):
         })
 
         prompt = VALIDATE_PATCH_SET_PROMPT.format(
-            task_query=task_query,
+            task_query=writing_task.query,
             hunks_json=hunks_json,
             context_json=context_json,
         )
         audit_result = self._call_llm_structured(prompt, AuditResult)
-
-        high_count = sum(1 for i in audit_result.issues if i.severity == 'high')
-        medium_count = sum(1 for i in audit_result.issues if i.severity == 'medium')
-        low_count = sum(1 for i in audit_result.issues if i.severity == 'low')
+        counts = self._issue_counts(audit_result)
 
         return self._save_artifacts(
             {'patch_set_review': audit_result},
@@ -199,9 +200,7 @@ class WriterQualityTools(WriterToolBase):
             counts={
                 'total_hunks': len(patch.hunks),
                 'total_issues': len(audit_result.issues),
-                'high_severity': high_count,
-                'medium_severity': medium_count,
-                'low_severity': low_count,
+                **counts,
             },
             artifact_meta={
                 'patch_id': patch.patch_id,
@@ -213,28 +212,57 @@ class WriterQualityTools(WriterToolBase):
 
     def _match_instruction(
         self,
-        section_data: dict,
-        instruction_list: SectionInstructionList,
-    ) -> Optional[SectionInstruction]:
-        section_instruction_id = section_data.get('instruction_id') or ''
-        section_node_id = section_data.get('outline_node_id') or ''
-        section_title = section_data.get('title') or ''
+        draft_block: WriterBlock,
+        outline_document: WriterDocument,
+    ) -> Optional[WriterBlock]:
+        candidates = [
+            block for block in outline_document.iter_blocks()
+            if block.authoring is not None
+        ]
+        draft_authoring = draft_block.authoring
+        instruction_id = draft_authoring.instruction_id if draft_authoring else None
+        origin_node_id = draft_authoring.origin_node_id if draft_authoring else None
 
-        for inst in instruction_list.instructions:
-            if section_instruction_id and inst.instruction_id == section_instruction_id:
-                return inst
-            if section_node_id and inst.outline_node_id == section_node_id:
-                return inst
+        if instruction_id:
+            for block in candidates:
+                if block.authoring and block.authoring.instruction_id == instruction_id:
+                    return block
 
-        for inst in instruction_list.instructions:
-            if section_title and inst.section_title == section_title:
-                return inst
+        if origin_node_id:
+            for block in candidates:
+                if block.node_id == origin_node_id:
+                    return block
 
-        for section_block in section_data.get('blocks') or []:
-            block_heading = (section_block.get('heading') or '').strip()
-            if block_heading:
-                for inst in instruction_list.instructions:
-                    if block_heading == inst.section_title:
-                        return inst
+        for block in candidates:
+            if block.node_id == draft_block.node_id:
+                return block
+
+        draft_heading = draft_block.content.strip() if draft_block.type == 'heading' else ''
+        if draft_heading:
+            for block in candidates:
+                if block.content.strip() == draft_heading:
+                    return block
 
         return None
+
+    def _instruction_view(self, outline_block: WriterBlock) -> dict:
+        authoring = outline_block.authoring
+        return {
+            'outline_node_id': outline_block.node_id,
+            'section_title': outline_block.content,
+            'type': outline_block.type,
+            'numbering': outline_block.numbering,
+            'source_refs': outline_block.source_refs,
+            'authoring': authoring.model_dump() if authoring else None,
+        }
+
+    def _issue_counts(self, audit_result: AuditResult) -> dict:
+        return {
+            'high_severity': sum(1 for issue in audit_result.issues if issue.severity == 'high'),
+            'medium_severity': sum(1 for issue in audit_result.issues if issue.severity == 'medium'),
+            'low_severity': sum(1 for issue in audit_result.issues if issue.severity == 'low'),
+        }
+
+    def _require_stage(self, actual: str, expected: str, argument: str) -> None:
+        if actual != expected:
+            raise ValueError(f'{argument} must have stage={expected!r}, got {actual!r}')
