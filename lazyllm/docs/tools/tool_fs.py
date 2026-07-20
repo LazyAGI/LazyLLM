@@ -1121,6 +1121,42 @@ Return the current user OAuth refresh_token (may have been updated after refresh
 Returns:
     str: Current refresh_token, or empty string if not set or not yet authorized.
 ''')
+_add_feishu_chinese('FeishuFSBase.write_doc_blocks', '''\
+向已有飞书 Docx 文档末尾追加原生块，并返回写入后重新读取的完整块列表。
+
+输入是飞书原生块的扁平列表。每个块的 block_id 在本次写入中作为临时标识，父子关系仅由 parent_id 确定；输入中的 children 等读回元数据不会用于构建层级。源文档的 Page 块会被忽略，输入对象不会被修改。
+
+该方法只负责写入指定文档，不负责通过 URL 或 Wiki 路径解析文档，不会创建或清空目标文档。调用方应先准备受飞书嵌套块创建接口支持的规范化块。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档的 document_id，不能是浏览器 URL 或 Wiki 路径。
+    blocks (List[Dict[str, Any]]): 要追加的飞书原生扁平块；使用 parent_id 表示层级。
+
+Returns:
+    List[Dict[str, Any]]: 写入完成后从目标文档重新读取的完整飞书原生块列表。
+
+Raises:
+    TypeError: blocks 不是列表。
+    ValueError: blocks 为空，或包含当前结构化写入不支持的块类型。
+''')
+_add_feishu_english('FeishuFSBase.write_doc_blocks', '''\
+Append native blocks to an existing Feishu Docx document and return the complete block list read back after writing.
+
+The input is a flat list of native Feishu blocks. Each block_id is a temporary identifier for this write, and hierarchy is derived only from parent_id; read-side metadata such as children is not used to build the hierarchy. The source Page block is ignored, and the input objects are not mutated.
+
+This method only writes to the specified document. It does not resolve browser URLs or Wiki paths, create the target document, or clear existing content. The caller must provide normalized blocks supported by Feishu's nested-block creation API.
+
+Args:
+    document_id (str): The target Feishu Docx document_id, not a browser URL or Wiki path.
+    blocks (List[Dict[str, Any]]): Native flat Feishu blocks to append, with hierarchy expressed by parent_id.
+
+Returns:
+    List[Dict[str, Any]]: The complete native Feishu block list read from the target document after writing.
+
+Raises:
+    TypeError: blocks is not a list.
+    ValueError: blocks is empty or contains a block type unsupported by structured writing.
+''')
 _add_feishu_chinese('FeishuWikiFile', '''\
 飞书知识库节点对应的缓冲文件实现。打开时通过 FeishuWikiFS 拉取节点内容并缓存在内存，支持区间读。
 
