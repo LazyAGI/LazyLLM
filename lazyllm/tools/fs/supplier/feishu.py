@@ -291,10 +291,37 @@ class FeishuFSBase(LinkDocumentFSBase):
         return result.get('data', {}).get('file_token', '')
 
     _DOCX_BLOCK_TYPE_KEY: Dict[int, str] = {
-        2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
+        1: 'page', 2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
         7: 'heading5', 8: 'heading6', 9: 'heading7', 10: 'heading8', 11: 'heading9',
-        12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote',
+        12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote', 17: 'todo',
     }
+
+    @staticmethod
+    def _docx_element_plain_text(element: Dict[str, Any]) -> str:
+        for element_type in (
+            'text_run', 'mention_user', 'mention_doc', 'reminder',
+            'file', 'inline_block', 'equation', 'undefined_element',
+        ):
+            value = element.get(element_type)
+            if not isinstance(value, dict):
+                continue
+            for field in ('content', 'title', 'name', 'text'):
+                text = value.get(field)
+                if isinstance(text, str):
+                    return text
+        return ''
+
+    @staticmethod
+    def _docx_block_plain_text(block: Dict[str, Any]) -> str:
+        key = FeishuFSBase._DOCX_BLOCK_TYPE_KEY.get(block.get('block_type'))
+        if not key:
+            return ''
+        elements = (block.get(key) or {}).get('elements') or []
+        return ''.join(
+            FeishuFSBase._docx_element_plain_text(element)
+            for element in elements
+            if isinstance(element, dict)
+        )
 
     @staticmethod
     def _extract_table_grid(
@@ -1357,24 +1384,12 @@ class FeishuWikiFS(FeishuFSBase):
         return results
 
     def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
+        '''Return native Feishu blocks with an added derived ``plain_text`` field.'''
         document_id = self.get_document_id(path)
         blocks = self._get_doc_blocks_raw(document_id, with_descendants=with_descendants)
-        out: List[Dict[str, Any]] = []
-        for b in blocks:
-            entry: Dict[str, Any] = {
-                'block_id': b.get('block_id', ''),
-                'block_type': b.get('block_type'),
-                'parent_id': b.get('parent_id', ''),
-            }
-            if 'text' in b and isinstance(b['text'], dict):
-                plain = (b['text'].get('elements') or [])
-                texts = [
-                    e.get('text_run', {}).get('content', '')
-                    for e in plain if isinstance(e, dict)
-                ]
-                entry['plain_text'] = ''.join(texts)
-            out.append(entry)
-        return out
+        for block in blocks:
+            block.setdefault('plain_text', self._docx_block_plain_text(block))
+        return blocks
 
     def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
         document_id = self.get_document_id(path)

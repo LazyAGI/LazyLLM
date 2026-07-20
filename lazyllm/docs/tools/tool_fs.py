@@ -1408,7 +1408,7 @@ _add_fs_chinese('FeishuWikiFS', f'''\
 
 保持原格式（表格、标题等）:
     - 通过 open/raw_content 下载到的是纯文本，put_file 会新建文档并只追加段落，因此「下载-修改-上传」会丢失表格等格式。
-    - 若要保留原格式，请使用块级编辑：先 get_doc_blocks(path) 获取文档块列表（含 block_id、block_type、plain_text），再对需要修改的文本块调用 update_doc_block_text(path, block_id, new_text)。仅修改目标文本块，表格等其它块不会被改动。
+    - get_doc_blocks(path) 返回飞书 Block API 的原始 block 字段，包括 elements、style、children、表格属性和未知类型字段；每个 block 额外带有便于检索的派生 plain_text。可对需要修改的文本块调用 update_doc_block_text(path, block_id, new_text)，其它 block 不会被改动。
 ''')
 _add_fs_english('FeishuWikiFS', f'''\
 Feishu Wiki FS: Feishu Open Platform Wiki API; maps a wiki space into a filesystem. Directories are wiki folders/nodes; files are documents or attachments. Supports ls, info, open (r/w), mkdir, rm_file, put_file, fetch_url, and block-level text edit: get_document_id, get_doc_blocks, update_doc_block_text.
@@ -1435,7 +1435,7 @@ Link-based read paths (read-only, no space_id required):
 
 Preserving format (tables, headings, etc.):
     - open/raw_content returns plain text only; put_file creates a new doc and appends paragraphs, so download-modify-upload loses tables and other structure.
-    - To preserve format, use block-level edit: get_doc_blocks(path) to list blocks (block_id, block_type, plain_text), then update_doc_block_text(path, block_id, new_text) for the blocks you need to change; other blocks (e.g. tables) are left unchanged.
+    - get_doc_blocks(path) returns the native Feishu Block API fields, including elements, styles, children, table properties, and unknown block-type fields; each block also includes a derived plain_text value for search. Use update_doc_block_text(path, block_id, new_text) for targeted text changes; other blocks are left unchanged.
 ''')
 _add_fs_chinese('FeishuWikiFS.fetch_url', f'''\
 通过飞书浏览器链接直接拉取文档内容（只读），无需 space_id 也无需标题路径。已废弃，推荐使用 read_bytes(url) 或 open(url)。
@@ -1643,7 +1643,7 @@ Args:
     with_descendants (bool): 是否包含所有子孙块，默认 True。
 
 Returns:
-    list: 每项为 dict，含 block_id、block_type、parent_id；若为文本类块则含 plain_text。
+    list: 每项为飞书 Block API 的原始 dict，完整保留 elements、style、children、表格属性及未知字段，并附加派生 plain_text。
 ''')
 _add_fs_english('FeishuWikiFS.get_doc_blocks', '''\
 Get the document block list (flattened block tree). Use to locate blocks to edit while leaving tables and other non-text blocks unchanged.
@@ -1653,7 +1653,7 @@ Args:
     with_descendants (bool): Whether to include all descendant blocks; default True.
 
 Returns:
-    List[Dict[str, Any]]: Each item is a dict with block_id, block_type, parent_id; text blocks also have plain_text.
+    List[Dict[str, Any]]: Native Feishu Block API dictionaries with elements, styles, children, table properties, and unknown fields preserved, plus a derived plain_text value.
 ''')
 _add_fs_chinese('FeishuWikiFS.update_doc_block_text', '''\
 更新文档中指定块的文本内容。仅适用于支持文本的块（如 Text、Heading、Bullet 等）；表格等块不支持，调用会由飞书 API 报错。
