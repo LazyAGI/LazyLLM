@@ -2,7 +2,7 @@
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import requests
 
@@ -21,8 +21,9 @@ lazyllm_globals.config.add(
 )
 
 _SPACE_ID_DYNAMIC = 'dynamic'
-_FEISHU_URL_RE = re.compile(r'/(wiki|docx|docs)/([A-Za-z0-9_-]+)', re.IGNORECASE)
-_FEISHU_BARE_HOST_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
+_FEISHU_BARE_HOST_RE = re.compile(
+    r'^https?://(?:[^/@]+\.)*(?:feishu\.cn|larksuite\.com)(?::\d+)?/', re.IGNORECASE,
+)
 _FEISHU_WIKI_TILDE_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
 
 
@@ -43,19 +44,18 @@ _DEFAULT_OAUTH_SCOPE = (
 
 
 def _parse_feishu_browser_url(url: str) -> Optional[Dict[str, str]]:
-    clean = url.split('?')[0].split('#')[0].rstrip('/')
-    m = _FEISHU_URL_RE.search(clean)
-    if not m:
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or '').lower()
+    if parsed.scheme not in ('http', 'https') or not (
+        hostname in ('feishu.cn', 'larksuite.com')
+        or hostname.endswith(('.feishu.cn', '.larksuite.com'))
+    ):
         return None
-    type_part = m.group(1).lower()
-    token = m.group(2)
-    if type_part == 'wiki':
-        return {'kind': 'wiki_node', 'token': token}
-    if type_part == 'docx':
-        return {'kind': 'docx', 'token': token}
-    if type_part == 'docs':
-        return {'kind': 'doc', 'token': token}
-    return None
+    parts = parsed.path.strip('/').split('/')
+    if len(parts) != 2 or not parts[1]:
+        return None
+    kind = {'wiki': 'wiki_node', 'docx': 'docx', 'docs': 'doc'}.get(parts[0].lower())
+    return {'kind': kind, 'token': parts[1]} if kind else None
 
 
 def _is_wiki_locator_path(path: str) -> bool:
@@ -1006,6 +1006,8 @@ class FeishuWikiFS(FeishuFSBase):
         norm = path.lstrip('/')
         if self.is_link_path(norm):
             url = self.decode_link_path(norm)
+            if not _FEISHU_BARE_HOST_RE.match(url):
+                raise ValueError(f'Expected a Feishu document URL: {url!r}')
             parsed = _parse_feishu_browser_url(url)
             if not parsed:
                 return '', ''
@@ -1352,18 +1354,29 @@ class FeishuWikiFS(FeishuFSBase):
         return results[:max_results]
 
     def get_document_id(self, path: str) -> str:
-        self._require_space_id()
-        node_token = self._resolve_path_to_token(path)
-        if not node_token:
-            raise FileNotFoundError(f'Path not found: {path}')
+        if self.is_link_path(path):
+            path = self.decode_link_path(path)
+
+        parsed = _parse_feishu_browser_url(path)
+        if parsed:
+            if parsed['kind'] in ('doc', 'docx'):
+                return parsed['token']
+            node_token = parsed['token']
+        elif urlparse(path).scheme:
+            raise ValueError(f'Expected a Feishu document URL: {path!r}')
+        else:
+            node_token = self._resolve_path_to_token(path)
+            if not node_token:
+                raise FileNotFoundError(f'Path not found: {path}')
+
         node = self._get_node(node_token)
         obj_type = node.get('obj_type')
-        obj_token = node.get('obj_token') or ''
-        if obj_type not in ('doc', 'docx'):
+        document_id = node.get('obj_token') or ''
+        if obj_type not in ('doc', 'docx') or not document_id:
             raise ValueError(
-                f'Path is not a doc/docx node (obj_type={obj_type}), cannot get document_id'
+                f'Feishu target does not point to a document (obj_type={obj_type!r})'
             )
-        return obj_token
+        return document_id
 
     def _get_doc_blocks_raw(self, document_id: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}/children'

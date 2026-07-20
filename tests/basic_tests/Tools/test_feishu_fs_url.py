@@ -418,6 +418,70 @@ class TestFeishuNeedsWiki(unittest.TestCase):
             self.assertTrue(_feishu_needs_wiki(None, '/folder/file'))
 
 
+class TestFeishuGetDocumentId(unittest.TestCase):
+
+    def test_direct_document_url_returns_id_without_node_lookup(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._space_id = 'wikcnTest'
+        fs._get_node = MagicMock()
+
+        cases = {
+            'https://company.feishu.cn/docx/DocId123': 'DocId123',
+            'https://company.larksuite.com/docs/LegacyDocId': 'LegacyDocId',
+        }
+        for url, expected in cases.items():
+            with self.subTest(url=url):
+                self.assertEqual(fs.get_document_id(url), expected)
+        fs._get_node.assert_not_called()
+
+    def test_wiki_url_returns_document_obj_token(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._space_id = ''
+        fs._get_node = MagicMock(return_value={
+            'obj_type': 'docx',
+            'obj_token': 'DocId456',
+        })
+
+        result = fs.get_document_id('https://company.feishu.cn/wiki/NodeToken123')
+
+        self.assertEqual(result, 'DocId456')
+        fs._get_node.assert_called_once_with('NodeToken123')
+
+    def test_router_link_path_is_decoded(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._get_node = MagicMock()
+        path = fs.to_link_path('https://company.feishu.cn/docx/DocId789')
+
+        self.assertEqual(fs.get_document_id(path), 'DocId789')
+        fs._get_node.assert_not_called()
+
+    def test_title_path_returns_document_obj_token(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._resolve_path_to_token = MagicMock(return_value='NodeFromPath')
+        fs._get_node = MagicMock(return_value={
+            'obj_type': 'docx',
+            'obj_token': 'DocFromPath',
+        })
+
+        self.assertEqual(fs.get_document_id('/folder/document'), 'DocFromPath')
+        fs._resolve_path_to_token.assert_called_once_with('/folder/document')
+
+    def test_non_feishu_url_or_non_document_node_raises(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._get_node = MagicMock(return_value={'obj_type': 'sheet', 'obj_token': 'SheetId'})
+
+        for url in (
+            'https://example.com/docx/DocId',
+            'https://notfeishu.cn/docx/DocId',
+            'https://applink.feishu.cn/client/docs/open?'
+            'url=https%3A%2F%2Fcompany.feishu.cn%2Fdocx%2FDocId',
+        ):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                fs.get_document_id(url)
+        with self.assertRaises(ValueError):
+            fs.get_document_id('https://company.feishu.cn/wiki/SheetNode')
+
+
 class TestFeishuGetDocBlocks(unittest.TestCase):
 
     @staticmethod

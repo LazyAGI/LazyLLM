@@ -1618,19 +1618,19 @@ Returns:
 ''')
 
 _add_fs_chinese('FeishuWikiFS.get_document_id', '''\
-返回 Wiki 文档节点对应的飞书 docx document_id（即 obj_token）。path 必须指向 doc 或 docx 类型节点，否则抛出 ValueError。
+解析飞书或 Lark 浏览器文档链接或 Wiki 标题路径并返回对应的 document_id。docx/docs 直链直接返回链接中的 token；Wiki 链接和标题路径会查询节点并返回其 obj_token。非飞书链接或非文档节点会抛出 ValueError。
 
 Args:
-    path (str): Wiki 内文档路径（如 '/一级/文档标题'）。
+    path (str): 飞书 docx、docs、Wiki 文档链接或 Wiki 标题路径；也接受 FS Router 生成的 ~link 路径。不支持 AppLink 和短链。
 
 Returns:
     str: 文档的 document_id，用于飞书 docx API。
 ''')
 _add_fs_english('FeishuWikiFS.get_document_id', '''\
-Return the Feishu docx document_id (obj_token) for the wiki document at path. path must be a doc or docx node, otherwise ValueError is raised.
+Resolve a Feishu or Lark browser document URL or Wiki title path and return its document_id. Direct docx/docs URLs return their token; Wiki URLs and title paths resolve the node and return its obj_token. Non-Feishu URLs and non-document nodes raise ValueError.
 
 Args:
-    path (str): Wiki path to the document (e.g. '/level1/doc title').
+    path (str): Feishu docx, docs, or Wiki document URL, or a Wiki title path. FS Router ~link paths are also accepted. AppLinks and short URLs are not supported.
 
 Returns:
     str: The document_id for Feishu docx API.
