@@ -22,7 +22,7 @@ from lazyllm.tools.writer.data_models.revision import (
     PatchSet,
 )
 from lazyllm.tools.writer.data_models.task import InputResource
-from lazyllm.tools.writer.data_models.writing import (
+from lazyllm.tools.writer.data_models.planning import (
     SectionInstruction,
     SectionInstructionList,
 )

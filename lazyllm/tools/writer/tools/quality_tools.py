@@ -8,7 +8,7 @@ from ..data_models.quality import AuditResult, ReviewReport
 from ..data_models.revision import PatchSet
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import WriterBlock, WriterDocument
-from ..data_models.writing import SectionInstruction, SectionInstructionList
+from ..data_models.planning import SectionInstruction, SectionInstructionList
 from ..prompts.quality import (
     VALIDATE_DRAFT_DOCUMENT_PROMPT,
     VALIDATE_PATCH_SET_PROMPT,

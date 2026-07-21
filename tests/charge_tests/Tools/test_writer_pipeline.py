@@ -11,7 +11,7 @@ from lazyllm.tools.writer.data_models.quality import AuditResult, ReviewReport
 from lazyllm.tools.writer.data_models.revision import LocateResult, ModifyPlan, PatchResult, PatchSet
 from lazyllm.tools.writer.data_models.task import InputResource, Selection, TargetDocument, WritingTask
 from lazyllm.tools.writer.data_models.writer_ir import WriterBlock, WriterDocument
-from lazyllm.tools.writer.data_models.writing import SectionInstructionList
+from lazyllm.tools.writer.data_models.planning import SectionInstructionList
 from lazyllm.tools.writer.workflow.naive_writer_workflow import NaiveWriterWorkflow
 from lazyllm.tools.writer.utils import load_artifact_json
 from ...utils import get_api_key, get_path

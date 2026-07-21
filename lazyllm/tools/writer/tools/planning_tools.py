@@ -11,7 +11,7 @@ from ..data_models.writer_ir import (
     WriterConstraints,
     WriterDocument,
 )
-from ..data_models.writing import SectionInstruction, SectionInstructionList
+from ..data_models.planning import SectionInstruction, SectionInstructionList
 from ..prompts import GENERATE_OUTLINE_PROMPT, GENERATE_SECTION_INSTRUCTIONS_PROMPT
 from ..utils import to_prompt_json
 

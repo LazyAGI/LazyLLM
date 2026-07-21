@@ -10,7 +10,7 @@ from ..data_models.writer_ir import (
     WriterBlock,
     WriterDocument,
 )
-from ..data_models.writing import SectionInstruction, SectionInstructionList
+from ..data_models.planning import SectionInstruction, SectionInstructionList
 from ..prompts import GENERATE_DRAFT_SECTION_PROMPT
 from ..utils import to_prompt_json
 
