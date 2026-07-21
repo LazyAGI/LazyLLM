@@ -9,49 +9,24 @@ from .base import NativeBlock, NativePatchOperation, WriterAdapterBase
 
 
 _BLOCK_TYPE_FIELDS: Dict[int, str] = {
-    1: 'page',
-    2: 'text',
-    3: 'heading1',
-    4: 'heading2',
-    5: 'heading3',
-    6: 'heading4',
-    7: 'heading5',
-    8: 'heading6',
-    9: 'heading7',
-    10: 'heading8',
-    11: 'heading9',
-    12: 'bullet',
-    13: 'ordered',
-    14: 'code',
-    15: 'quote',
-    17: 'todo',
-    19: 'callout',
-    22: 'divider',
-    24: 'grid',
-    25: 'grid_column',
-    31: 'table',
-    32: 'table_cell',
-    34: 'quote_container',
+    1: 'page', 2: 'text',
+    **{block_type: f'heading{block_type - 2}' for block_type in range(3, 12)},
+    12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote', 17: 'todo',
+    19: 'callout', 22: 'divider', 24: 'grid', 25: 'grid_column',
+    31: 'table', 32: 'table_cell', 34: 'quote_container',
 }
 
 _BLOCK_TYPE_NAMES: Dict[int, str] = {
-    1: 'document',
-    2: 'paragraph',
+    1: 'document', 2: 'paragraph',
     **{block_type: 'heading' for block_type in range(3, 12)},
-    12: 'list_item',
-    13: 'list_item',
-    14: 'code',
-    15: 'quote',
-    17: 'todo',
-    19: 'callout',
-    22: 'divider',
-    24: 'grid',
-    25: 'grid_column',
-    27: 'image',
-    31: 'table',
-    32: 'table_cell',
-    34: 'quote_container',
-    48: 'link_preview',
+    12: 'list_item', 13: 'list_item', 14: 'code', 15: 'quote', 17: 'todo',
+    19: 'callout', 22: 'divider', 24: 'grid', 25: 'grid_column', 27: 'image',
+    31: 'table', 32: 'table_cell', 34: 'quote_container', 48: 'link_preview',
+}
+_IR_BLOCK_TYPES: Dict[str, int] = {
+    ir_type: block_type
+    for block_type, ir_type in _BLOCK_TYPE_NAMES.items()
+    if ir_type not in {'heading', 'list_item'} and block_type in _BLOCK_TYPE_FIELDS
 }
 
 _TEXT_BLOCK_TYPES = frozenset(range(2, 16)) | {17}
@@ -64,6 +39,7 @@ _STYLE_TO_IR = {
 }
 _STYLE_FROM_IR = {value: key for key, value in _STYLE_TO_IR.items()}
 _ELEMENT_TEXT_FIELDS = ('content', 'title', 'name', 'text')
+NativeUpdateRequest = Dict[str, Any]
 
 
 class FeishuWriterAdapter(WriterAdapterBase):
@@ -195,6 +171,26 @@ class FeishuWriterAdapter(WriterAdapterBase):
         }
         return handlers[patch.modify_type](patch, document)
 
+    def patch_to_update_requests(
+        self,
+        patch: PatchHunk,
+        document: WriterDocument,
+    ) -> List[NativeUpdateRequest]:
+        '''Return Feishu update_block requests for a replace patch.
+
+        This is a temporary compatibility entry point for replace-only callers.
+        Remove it after callers dispatch every classified result from
+        patch_to_operation() to create_block/update_block/delete_block/move_block.
+        '''
+        operation = self.patch_to_operation(patch, document)
+        if operation.operation != 'update':
+            raise ValueError(
+                f'Feishu patch produced {operation.operation!r}, not an update.')
+        requests = operation.params.get('requests')
+        if not isinstance(requests, list):
+            raise TypeError('Feishu update operation params.requests must be a list.')
+        return requests
+
     def _replace_patch_to_operation(
         self,
         patch: PatchHunk,
@@ -239,7 +235,8 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 'requests': [{
                     'block_id': block_id.strip(),
                     'update_text_elements': {
-                        'elements': self._plain_text_elements(replacement),
+                        'elements': self._replace_text_elements(
+                            raw_block, block.content, replacement),
                     },
                 }],
             },
@@ -364,10 +361,6 @@ class FeishuWriterAdapter(WriterAdapterBase):
         return raw
 
     def _block_type_from_ir(self, block: WriterBlock, original_type: Any) -> int:
-        if block.type == 'document':
-            return 1
-        if block.type == 'paragraph':
-            return 2
         if block.type == 'heading':
             level = block.numbering.get('level')
             if not isinstance(level, int) or isinstance(level, bool) or not 1 <= level <= 9:
@@ -378,18 +371,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             if not isinstance(ordered, bool):
                 raise ValueError('list_item blocks require boolean numbering.ordered.')
             return 13 if ordered else 12
-        mapped = {
-            'code': 14,
-            'quote': 15,
-            'todo': 17,
-            'callout': 19,
-            'divider': 22,
-            'grid': 24,
-            'grid_column': 25,
-            'table': 31,
-            'table_cell': 32,
-            'quote_container': 34,
-        }.get(block.type)
+        mapped = _IR_BLOCK_TYPES.get(block.type)
         if mapped is not None:
             return mapped
         if original_type is not None:
@@ -512,6 +494,137 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 text_run['text_element_style'] = raw_style
             elements.append({'text_run': text_run})
         return elements
+
+    @classmethod
+    def _replace_text_elements(
+        cls,
+        raw: NativeBlock,
+        original_text: str,
+        replacement_text: str,
+    ) -> List[Dict[str, Any]]:
+        '''Replace visible text while preserving unaffected Feishu rich-text elements.'''
+        content_field = _BLOCK_TYPE_FIELDS.get(raw.get('block_type'))
+        elements = deepcopy(
+            ((raw.get(content_field) or {}).get('elements') or [])
+            if content_field else []
+        )
+        if not elements:
+            return cls._plain_text_elements(replacement_text)
+
+        element_text = ''.join(cls._element_text(element) for element in elements)
+        if element_text != original_text:
+            raise ValueError(
+                'Feishu raw elements do not match the current Writer block content.')
+        if original_text == replacement_text:
+            return elements
+
+        start = 0
+        common_limit = min(len(original_text), len(replacement_text))
+        while start < common_limit and original_text[start] == replacement_text[start]:
+            start += 1
+
+        suffix = 0
+        suffix_limit = common_limit - start
+        while (
+            suffix < suffix_limit
+            and original_text[-suffix - 1] == replacement_text[-suffix - 1]
+        ):
+            suffix += 1
+
+        original_end = len(original_text) - suffix
+        replacement_end = len(replacement_text) - suffix
+        inserted_text = replacement_text[start:replacement_end]
+        prefix = cls._slice_elements(elements, 0, start)
+        tail = cls._slice_elements(elements, original_end, len(original_text))
+
+        inserted: List[Dict[str, Any]] = []
+        if inserted_text:
+            template = cls._replacement_text_run_template(elements, start, original_end)
+            text_run = deepcopy(template) if template is not None else {}
+            text_run['content'] = inserted_text
+            inserted.append({'text_run': text_run})
+        return cls._merge_adjacent_text_runs(prefix + inserted + tail)
+
+    @classmethod
+    def _slice_elements(
+        cls,
+        elements: List[Dict[str, Any]],
+        start: int,
+        end: int,
+    ) -> List[Dict[str, Any]]:
+        sliced: List[Dict[str, Any]] = []
+        offset = 0
+        for element in elements:
+            text = cls._element_text(element)
+            element_start, element_end = offset, offset + len(text)
+            offset = element_end
+            overlap_start = max(start, element_start)
+            overlap_end = min(end, element_end)
+            if overlap_start >= overlap_end:
+                continue
+            if isinstance(element.get('text_run'), dict):
+                copied = deepcopy(element)
+                copied['text_run']['content'] = text[
+                    overlap_start - element_start:overlap_end - element_start]
+                sliced.append(copied)
+            elif overlap_start == element_start and overlap_end == element_end:
+                sliced.append(deepcopy(element))
+            else:
+                raise ValueError('replace patch cannot split a non-text Feishu element.')
+        return sliced
+
+    @classmethod
+    def _replacement_text_run_template(
+        cls,
+        elements: List[Dict[str, Any]],
+        start: int,
+        end: int,
+    ) -> Optional[Dict[str, Any]]:
+        offset = 0
+        previous: Optional[Dict[str, Any]] = None
+        following: Optional[Dict[str, Any]] = None
+        for element in elements:
+            text = cls._element_text(element)
+            element_start, element_end = offset, offset + len(text)
+            offset = element_end
+            text_run = element.get('text_run')
+            if not isinstance(text_run, dict):
+                continue
+            if element_end <= start:
+                previous = text_run
+                continue
+            if following is None:
+                following = text_run
+            if element_start < end and element_end > start:
+                return text_run
+            if start == end and element_start <= start <= element_end:
+                return text_run
+        return previous or following
+
+    @staticmethod
+    def _merge_adjacent_text_runs(elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        merged: List[Dict[str, Any]] = []
+        for element in elements:
+            current = element.get('text_run')
+            previous = merged[-1].get('text_run') if merged else None
+            if isinstance(current, dict) and isinstance(previous, dict):
+                current_format = {key: value for key, value in current.items() if key != 'content'}
+                previous_format = {key: value for key, value in previous.items() if key != 'content'}
+                if current_format == previous_format:
+                    previous['content'] = previous.get('content', '') + current.get('content', '')
+                    continue
+            merged.append(element)
+        return merged
+
+    @classmethod
+    def _element_text(cls, element: Dict[str, Any]) -> str:
+        text_run = element.get('text_run')
+        if isinstance(text_run, dict):
+            content = text_run.get('content')
+            return content if isinstance(content, str) else ''
+        for value in element.values():
+            return cls._element_plain_text(value)
+        return ''
 
     @staticmethod
     def _plain_text_elements(text: str) -> List[Dict[str, Any]]:

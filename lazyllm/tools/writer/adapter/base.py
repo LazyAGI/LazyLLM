@@ -10,7 +10,6 @@ from ..data_models.writer_ir import WriterDocument, WriterStage
 
 
 NativeBlock = Dict[str, Any]
-NativeUpdateRequest = Dict[str, Any]
 NativePatchOperationType = Literal['create', 'update', 'delete', 'move']
 
 
@@ -90,26 +89,9 @@ class WriterAdapterBase(ABC):
         '''Convert one Writer patch hunk into a classified provider operation.'''
         raise NotImplementedError
 
-    def patch_to_update_requests(
-        self,
-        patch: PatchHunk,
-        document: WriterDocument,
-    ) -> List[NativeUpdateRequest]:
-        '''Return update requests for callers using the legacy replace-only path.'''
-        operation = self.patch_to_operation(patch, document)
-        if operation.operation != 'update':
-            raise ValueError(
-                f'{self._provider_key()} patch produced {operation.operation!r}, not an update.')
-        requests = operation.params.get('requests')
-        if not isinstance(requests, list):
-            raise TypeError('native update operation params.requests must be a list.')
-        return requests
-
-
 __all__ = [
     'NativeBlock',
     'NativePatchOperation',
     'NativePatchOperationType',
-    'NativeUpdateRequest',
     'WriterAdapterBase',
 ]
