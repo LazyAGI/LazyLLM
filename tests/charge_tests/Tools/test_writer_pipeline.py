@@ -7,18 +7,11 @@ from pydantic import BaseModel
 import lazyllm
 from lazyllm.tools.writer.tools.base import WriterToolBase
 from lazyllm.tools.writer.data_models.context import DocumentSummary, WritingContext
-from lazyllm.tools.writer.data_models.docir import DocIR
 from lazyllm.tools.writer.data_models.quality import AuditResult, ReviewReport
 from lazyllm.tools.writer.data_models.revision import LocateResult, ModifyPlan, PatchResult, PatchSet
-from lazyllm.tools.writer.data_models.task import InputResource, Selection, WritingTask
-from lazyllm.tools.writer.data_models.writing import (
-    DraftBlock,
-    DraftDocument,
-    DraftSection,
-    SectionInstructionList,
-    WritingOutline,
-    WritingOutput,
-)
+from lazyllm.tools.writer.data_models.task import InputResource, Selection, TargetDocument, WritingTask
+from lazyllm.tools.writer.data_models.writer_ir import WriterBlock, WriterDocument
+from lazyllm.tools.writer.data_models.writing import SectionInstructionList
 from lazyllm.tools.writer.workflow.naive_writer_workflow import NaiveWriterWorkflow
 from lazyllm.tools.writer.utils import load_artifact_json
 from ...utils import get_api_key, get_path
@@ -87,6 +80,7 @@ def test_write_workflow_e2e():
         api_key=get_api_key('qwen'), stream=False,
     )
     store = str(REPO_ROOT / 'tests' / 'charge_tests' / 'artifacts' / 'write_workflow_e2e')
+    target_path = str(Path(store) / 'target_document.md')
     wf = NaiveWriterWorkflow(llm=llm, artifact_store=store)
 
     task = WritingTask(
@@ -96,6 +90,12 @@ def test_write_workflow_e2e():
             'Cover system architecture, supported languages, deployment model, and security.'
         ),
         task_type='write',
+        target_document=TargetDocument(
+            doc_id='wf-e2e-output',
+            uri=target_path,
+            adapter='file',
+            title='Technical Overview of AI-Powered Coding Assistant',
+        ),
     )
     inputs = [
         InputResource(
@@ -151,22 +151,22 @@ def test_write_workflow_e2e():
     assert len(ctx.document_summary.key_points) >= 2
 
     # --- Step 3: outline ---
-    outline = _load_stage(stages, 'outline', WritingOutline)
+    outline = _load_stage(stages, 'outline', WriterDocument)
     assert outline is not None
-    assert len(outline.nodes) >= 1
+    assert len(outline.blocks) >= 1
 
     # --- Step 4: section_instructions ---
     instructions = _load_stage(stages, 'section_instructions', SectionInstructionList)
     assert instructions is not None
     assert len(instructions.instructions) >= 1
-    assert instructions.instructions[0].section_title
+    assert instructions.instructions[0].outline_node_id
 
-    # --- Step 5: draft_section ---
-    section = _load_stage(stages, 'draft_section', DraftSection)
-    assert section is not None
-    assert section.title
-    assert len(section.blocks) >= 2
-    assert section.blocks[0].content, 'Block 0 has empty content'
+    # --- Step 5: draft_block ---
+    draft_block = _load_stage(stages, 'draft_block', WriterBlock)
+    assert draft_block is not None
+    assert draft_block.content, 'draft block root must carry the section title'
+    assert draft_block.children
+    assert draft_block.children[0].content, 'first body block must not be empty'
 
     # --- Step 6: section_review ---
     review = _load_stage(stages, 'section_review', ReviewReport)
@@ -181,17 +181,21 @@ def test_write_workflow_e2e():
     assert len(ctx2.meta.get('context_updates', [])) >= 1
 
     # --- Step 8: draft_document ---
-    doc = _load_stage(stages, 'draft_document', DraftDocument)
+    doc = _load_stage(stages, 'draft_document', WriterDocument)
     assert doc is not None
     assert doc.title
-    assert len(doc.sections) >= 1
+    assert len(doc.blocks) >= 1
 
-    # --- Step 9: writing_output ---
-    output = _load_stage(stages, 'writing_output', WritingOutput)
-    assert output is not None
-    assert output.title
-    assert len(output.content) >= 100
-    assert output.output_format == 'markdown'
+    # --- Step 9: final_document ---
+    final = _load_stage(stages, 'final_document', WriterDocument)
+    assert final is not None
+    assert final.title
+    rendered = final.metadata.get('rendered_content', '')
+    assert len(rendered) >= 100
+    assert final.metadata.get('output_format') == 'markdown'
+
+    write_result = _load_stage(stages, 'write_result')
+    assert write_result is not None
 
     # --- Step 10: output_review ---
     out_review = _load_stage(stages, 'draft_document_review', ReviewReport)
@@ -211,7 +215,7 @@ def test_write_workflow_e2e():
 
 
 def test_revise_workflow_e2e():
-    '''End-to-end verify NaiveWriterWorkflow.revise() against a multi-section draft,
+    '''End-to-end verify NaiveWriterWorkflow.revise() against a multi-section document,
     covering cross-block and cross-section revision with Selection.'''
     llm = lazyllm.OnlineChatModule(
         source='qwen', model=QWEN_MODEL,
@@ -220,57 +224,55 @@ def test_revise_workflow_e2e():
     store = str(REPO_ROOT / 'tests' / 'charge_tests' / 'artifacts' / 'revise_workflow_e2e')
     wf = NaiveWriterWorkflow(llm=llm, artifact_store=store)
 
-    section_a = DraftSection(
-        section_id='sec-overview',
-        title='Product Overview',
-        blocks=[
-            DraftBlock(
-                block_id='blk-intro',
+    section_a = WriterBlock(
+        node_id='sec-overview', type='heading', content='Product Overview', stage='draft',
+        children=[
+            WriterBlock(
+                node_id='blk-intro', type='paragraph', stage='draft',
                 content='LazyCoder is an AI-powered coding assistant designed for professional developers.',
             ),
-            DraftBlock(
-                block_id='blk-pricing',
+            WriterBlock(
+                node_id='blk-pricing', type='paragraph', stage='draft',
                 content='LazyCoder offers a free tier with basic features, a Pro tier at $12/month, '
                         'and an Enterprise tier with custom pricing.',
             ),
         ],
     )
-    section_b = DraftSection(
-        section_id='sec-languages',
-        title='Supported Languages',
-        blocks=[
-            DraftBlock(
-                block_id='blk-lang-list',
+    section_b = WriterBlock(
+        node_id='sec-languages', type='heading', content='Supported Languages', stage='draft',
+        children=[
+            WriterBlock(
+                node_id='blk-lang-list', type='paragraph', stage='draft',
                 content='Currently supported languages include Python, JavaScript, TypeScript, '
                         'and Go. The team is actively working on expanding coverage.',
             ),
-            DraftBlock(
-                block_id='blk-lsp',
+            WriterBlock(
+                node_id='blk-lsp', type='paragraph', stage='draft',
                 content='IntelliSense and LSP integration is available for all supported languages. '
                         'Code completion quality varies by language maturity.',
             ),
         ],
     )
-    section_c = DraftSection(
-        section_id='sec-deployment',
-        title='Deployment & Security',
-        blocks=[
-            DraftBlock(
-                block_id='blk-deploy',
+    section_c = WriterBlock(
+        node_id='sec-deployment', type='heading', content='Deployment & Security', stage='draft',
+        children=[
+            WriterBlock(
+                node_id='blk-deploy', type='paragraph', stage='draft',
                 content='Deployment modes include on-premises Kubernetes, SaaS multi-tenant cloud, '
                         'and a single-tenant dedicated option for regulated industries.',
             ),
-            DraftBlock(
-                block_id='blk-security',
+            WriterBlock(
+                node_id='blk-security', type='paragraph', stage='draft',
                 content='All customer code is encrypted at rest and in transit. '
                         'The product has SOC 2 Type II certification.',
             ),
         ],
     )
-    draft = DraftDocument(
-        draft_id='draft-1',
+    document = WriterDocument(
+        document_id='draft-1',
+        stage='draft',
         title='LazyCoder Product Overview',
-        sections=[section_a, section_b, section_c],
+        blocks=[section_a, section_b, section_c],
     )
     context = WritingContext(
         context_id='revise-ut',
@@ -290,7 +292,7 @@ def test_revise_workflow_e2e():
             task_type='revise',
             selection=Selection(block_ids=['blk-lang-list', 'blk-deploy']),
         ).model_dump(),
-        document=draft,
+        document=document,
         context=context,
     )
     stages = result.get('stage_results') or {}
@@ -298,16 +300,16 @@ def test_revise_workflow_e2e():
 
     # --- locate ---
     locate = _load_stage(stages, 'locate_result', LocateResult)
-    assert locate.target_block_ids, 'locate must select at least one block.'
-    assert set(locate.target_block_ids) <= {'blk-lang-list', 'blk-deploy'}, (
-        f'locate must only pick blocks within selection, got {locate.target_block_ids}'
+    assert locate.target_node_ids, 'locate must select at least one block.'
+    assert set(locate.target_node_ids) <= {'blk-lang-list', 'blk-deploy'}, (
+        f'locate must only pick blocks within selection, got {locate.target_node_ids}'
     )
-    for bid in locate.target_block_ids:
-        assert locate.target_reasons.get(bid, '').strip(), f'missing reason for selected block {bid}.'
+    for nid in locate.target_node_ids:
+        assert locate.target_reasons.get(nid, '').strip(), f'missing reason for selected block {nid}.'
 
     # --- modify_plan ---
     plan = _load_stage(stages, 'modify_plan', ModifyPlan)
-    assert {i.target_block_id for i in plan.instructions} == set(locate.target_block_ids)
+    assert {i.target_node_id for i in plan.instructions} == set(locate.target_node_ids)
     for instr in plan.instructions:
         assert instr.modify_type in {'insert', 'replace', 'delete'}
         assert instr.instruction.strip()
@@ -316,18 +318,17 @@ def test_revise_workflow_e2e():
     patch = _load_stage(stages, 'patch_set', PatchSet)
     assert len(patch.hunks) == len(plan.instructions)
     original_text_by_id = {}
-    for s in [section_a, section_b, section_c]:
-        for b in s.blocks:
-            original_text_by_id[b.block_id] = b.content
+    for block in document.iter_blocks():
+        original_text_by_id[block.node_id] = block.content
     for hunk in patch.hunks:
-        assert hunk.anchor is not None and hunk.anchor.block_id == hunk.target_block_id
-        assert hunk.old_text == original_text_by_id[hunk.target_block_id]
-        assert hunk.new_text and hunk.new_text != hunk.old_text, f'new_text is a no-op for {hunk.target_block_id}.'
-    assert {h.target_block_id for h in patch.hunks} <= {'blk-lang-list', 'blk-deploy'}
+        assert hunk.anchor is not None and hunk.anchor.node_id == hunk.target_node_id
+        assert hunk.old_text == original_text_by_id[hunk.target_node_id]
+        assert hunk.new_text and hunk.new_text != hunk.old_text, f'new_text is a no-op for {hunk.target_node_id}.'
+    assert {h.target_node_id for h in patch.hunks} <= {'blk-lang-list', 'blk-deploy'}
     assert any('rust' in (h.new_text or '').lower() for h in patch.hunks
-               if h.target_block_id == 'blk-lang-list'), 'Rust must appear in blk-lang-list patch.'
+               if h.target_node_id == 'blk-lang-list'), 'Rust must appear in blk-lang-list patch.'
     assert any('financial' in (h.new_text or '').lower() for h in patch.hunks
-               if h.target_block_id == 'blk-deploy'), 'financial must appear in blk-deploy patch.'
+               if h.target_node_id == 'blk-deploy'), 'financial must appear in blk-deploy patch.'
 
     # --- patch_review ---
     review = _load_stage(stages, 'patch_review', AuditResult)
@@ -340,9 +341,9 @@ def test_revise_workflow_e2e():
     assert patch_result is not None and patch_result.success
     assert not patch_result.failed_hunks
 
-    # --- revised_doc_ir ---
-    revised_ir = load_artifact_json(stages['revised_doc_ir'], DocIR)
-    revised_text_by_id = {b.block_id: b.text for b in revised_ir.blocks}
+    # --- revised_document ---
+    revised = load_artifact_json(stages['revised_document'], WriterDocument)
+    revised_text_by_id = {b.node_id: b.content for b in revised.iter_blocks()}
     assert revised_text_by_id['blk-lang-list'] != original_text_by_id['blk-lang-list']
     assert revised_text_by_id['blk-deploy'] != original_text_by_id['blk-deploy']
     # Unchanged blocks
@@ -353,18 +354,16 @@ def test_revise_workflow_e2e():
     assert any('rust' in t.lower() for t in revised_text_by_id.values())
     assert any('financial' in t.lower() for t in revised_text_by_id.values())
 
-    # --- rebuild + writing_output ---
-    revised_draft = _load_stage(stages, 'revised_draft', DraftDocument)
-    assert revised_draft is not None and revised_draft.sections and revised_draft.title
-
+    # --- rebuild + final_document ---
     revised_context = _load_stage(stages, 'writing_context', WritingContext)
-    assert revised_context is not None and revised_context.draft_document is not None
+    assert revised_context is not None
 
-    output = _load_stage(stages, 'writing_output', WritingOutput)
-    assert output is not None and output.output_format == 'markdown'
-    assert len(output.content) >= 100
-    assert 'rust' in output.content.lower(), 'Rust must appear in the final output.'
-    assert 'financial' in output.content.lower(), 'Financial services must appear in the final output.'
+    final = _load_stage(stages, 'final_document', WriterDocument)
+    assert final is not None
+    rendered = final.metadata.get('rendered_content', '')
+    assert len(rendered) >= 100
+    assert 'rust' in rendered.lower(), 'Rust must appear in the final output.'
+    assert 'financial' in rendered.lower(), 'Financial services must appear in the final output.'
 
     primary = result.get('primary_result') or {}
     assert primary.get('artifact_path'), 'primary_result must carry an artifact_path.'

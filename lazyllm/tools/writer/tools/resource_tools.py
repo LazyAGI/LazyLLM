@@ -2,13 +2,15 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from lazyllm import LOG
+from pydantic import TypeAdapter, ValidationError
 
 from .base import WriterToolBase
-from ..data_models.docir import DocBlock, DocIR
 from ..data_models.resource import MaterialStyle, ResourceProfile
 from ..data_models.task import InputResource, TargetDocument, WritingTask
-from ..data_models.writing import WritingOutput
+from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterStage
 from ..prompts.profile_resources import RESOURCE_PROFILE_PROMPT
+
+_WRITER_STAGE_ADAPTER = TypeAdapter(WriterStage)
 
 _BLOCK_TYPE_MAPS: Dict[str, Dict[Any, str]] = {
     'feishu': {
@@ -122,7 +124,7 @@ class WriterResourceTools(WriterToolBase):
         ).model_dump()
 
     def document_to_docir(self, target_document: Any, context: Any = None) -> dict:
-        '''Convert a target document into a DocIR artifact.'''
+        '''Convert a target document into a WriterDocument artifact.'''
         target = self._unified_model(target_document, TargetDocument)
         locator = target.uri or target.doc_id
         if not locator:
@@ -142,58 +144,95 @@ class WriterResourceTools(WriterToolBase):
         raw_blocks = raw_blocks or []
 
         bt_map = _BLOCK_TYPE_MAPS.get(protocol, {})
-        blocks: List[DocBlock] = []
-        for raw in raw_blocks:
+        try:
+            stage = _WRITER_STAGE_ADAPTER.validate_python(target.meta.get('stage', 'final'))
+        except ValidationError as exc:
+            raise ValueError('target_document.meta.stage must be a valid WriterStage') from exc
+
+        blocks: List[WriterBlock] = []
+        for index, raw in enumerate(raw_blocks, start=1):
             if not isinstance(raw, dict):
                 continue
-            bt = raw.get('block_type', 'block')
-            if isinstance(bt, int):
-                bt = bt_map.get(bt, 'block')
-            if bt not in DocBlock.model_fields['block_type'].annotation.__args__:
-                bt = 'block'
-            blocks.append(DocBlock(
-                block_id=str(raw.get('block_id') or ''),
-                block_type=bt,
-                text=raw.get('plain_text') or '',
+            raw_block_type = raw.get('block_type', 'block')
+            block_type = (
+                bt_map.get(raw_block_type, 'block')
+                if isinstance(raw_block_type, int)
+                else str(raw_block_type or 'block')
+            )
+            external_block_id = str(raw.get('block_id') or '')
+            node_id = external_block_id or f'block-{index}'
+            blocks.append(WriterBlock(
+                node_id=node_id,
+                type=block_type,
+                content=raw.get('plain_text') or '',
+                stage=stage,
+                numbering=self._block_numbering(raw, raw_block_type, block_type),
+                provider_binding={
+                    'provider': protocol,
+                    'block_id': external_block_id,
+                    'parent_block_id': raw.get('parent_id') or raw.get('parent_block_id'),
+                },
+                provider_payload=raw,
             ))
 
-        doc_id = target.doc_id or document_id or (
+        external_document_id = target.doc_id or document_id or (
             resolved_ref.get('object_id')
             or resolved_ref.get('obj_token')
             or resolved_ref.get('node_token')
-            or None
+            or ''
         )
-        title = target.title or resolved_ref.get('title') or None
+        internal_document_id = str(external_document_id or locator)
+        title = target.title or resolved_ref.get('title') or ''
 
-        doc_ir = DocIR(
-            doc_id=doc_id,
-            source=target,
+        if not blocks and plain_text.strip():
+            blocks.append(WriterBlock(
+                node_id=f'{internal_document_id}-content',
+                type='paragraph',
+                content=plain_text,
+                stage=stage,
+                provider_binding={
+                    'provider': protocol,
+                    'document_id': external_document_id,
+                },
+            ))
+
+        document = WriterDocument(
+            document_id=internal_document_id,
+            stage=stage,
             title=title,
             blocks=blocks,
-            plain_text=plain_text or None,
-            adapter=protocol,
-            meta={
+            revision=resolved_ref.get('revision'),
+            metadata={
                 'block_count': len(blocks),
+                'source': target.model_dump(),
+            },
+            provider_binding={
+                'provider': protocol,
+                'uri': locator,
+                'document_id': external_document_id,
+                'revision': resolved_ref.get('revision'),
             },
         )
 
-        result = self._save_artifacts(
-            {'doc_ir': doc_ir},
+        return self._save_artifacts(
+            {'document': document},
             step_name='document_to_docir',
-            primary_key='doc_ir',
-            summary='Loaded target document into DocIR.',
+            primary_key='document',
+            summary='Loaded target document into WriterDocument.',
             counts={'blocks': len(blocks)},
             extra={
                 'adapter': protocol,
-                'document_id': doc_ir.doc_id,
+                'document_id': document.document_id,
+                'stage': document.stage,
             },
-        )
-        return result.model_dump()
+        ).model_dump()
 
     def write_to_document(self, content: Any, target_document: Any) -> dict:
-        '''Write writing output content to a target document platform.'''
-        output = self._unified_optional_model(content, WritingOutput)
-        text = output.content if output else self._unified_raw_data(content)
+        '''Render a final WriterDocument as Markdown and write it to a target platform.'''
+        document = self._unified_model(content, WriterDocument)
+        if document.stage != 'final':
+            raise ValueError(f'content must have stage="final", got {document.stage!r}')
+        text = self._render_document_markdown(document)
         target = self._unified_optional_model(target_document, TargetDocument) or TargetDocument()
         locator = target.uri or target.doc_id
         adapter = target.adapter or ''
@@ -229,3 +268,56 @@ class WriterResourceTools(WriterToolBase):
                 'document_id': doc_id,
             },
         ).model_dump()
+
+    def _block_numbering(
+        self,
+        raw: Dict[str, Any],
+        raw_block_type: Any,
+        block_type: str,
+    ) -> Dict[str, Any]:
+        numbering: Dict[str, Any] = {}
+        if block_type == 'heading':
+            level = raw.get('level') or raw.get('heading_level')
+            if level is None and isinstance(raw_block_type, int) and 3 <= raw_block_type <= 11:
+                level = raw_block_type - 2
+            if isinstance(level, int) and not isinstance(level, bool):
+                numbering['level'] = max(1, min(level, 9))
+        elif block_type == 'list_item':
+            ordered = raw.get('ordered')
+            if not isinstance(ordered, bool) and isinstance(raw_block_type, int):
+                ordered = raw_block_type == 13
+            if isinstance(ordered, bool):
+                numbering['ordered'] = ordered
+        return numbering
+
+    def _render_document_markdown(self, document: WriterDocument) -> str:
+        parts: List[str] = []
+        if document.title.strip():
+            parts.append(f'# {document.title.strip()}')
+
+        def render(block: WriterBlock) -> None:
+            content = block.content.strip()
+            if block.type == 'heading' and content:
+                level = block.numbering.get('level', 1)
+                if not isinstance(level, int) or isinstance(level, bool):
+                    level = 1
+                parts.append(f'{"#" * max(1, min(level, 9))} {content}')
+            elif block.type == 'list_item' and content:
+                marker = '1.' if block.numbering.get('ordered') else '-'
+                parts.append(f'{marker} {content}')
+            elif block.type == 'code' and content:
+                language = str(block.provider_payload.get('language') or '')
+                parts.append(f'```{language}\n{content}\n```')
+            elif block.type == 'quote' and content:
+                parts.append('\n'.join(f'> {line}' for line in content.splitlines()))
+            elif block.type == 'divider':
+                parts.append('---')
+            elif content:
+                parts.append(content)
+
+            for child in block.children:
+                render(child)
+
+        for block in document.blocks:
+            render(block)
+        return '\n\n'.join(parts)

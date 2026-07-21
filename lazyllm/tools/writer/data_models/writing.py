@@ -12,7 +12,7 @@ class OutlineNodeConstraints(BaseModel):
     fact_constraints: List[str] = Field(default_factory=list)
     style_constraints: List[str] = Field(default_factory=list)
     relation_constraints: List[str] = Field(default_factory=list)
-    source_refs: List[str] = Field(default_factory=list)
+    references: List[Dict[str, Any]] = Field(default_factory=list)
     min_words: Optional[int] = None
     max_words: Optional[int] = None
     pov: Optional[str] = None
@@ -47,7 +47,7 @@ class SectionInstruction(BaseModel):
     section_title: str
     section_goal: str
     required_points: List[str] = Field(default_factory=list)
-    source_refs: List[str] = Field(default_factory=list)
+    references: List[Dict[str, Any]] = Field(default_factory=list)
     fact_constraints: List[str] = Field(default_factory=list)
     style_constraints: List[str] = Field(default_factory=list)
     relation_constraints: List[str] = Field(default_factory=list)

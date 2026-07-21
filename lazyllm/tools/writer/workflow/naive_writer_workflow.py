@@ -7,7 +7,6 @@ from ..tools.planning_tools import WriterPlanningTools
 from ..tools.quality_tools import WriterQualityTools
 from ..tools.resource_tools import WriterResourceTools
 from ..tools.revision_tools import WriterRevisionTools
-from ..data_models.writing import DraftDocument
 
 
 class NaiveWriterWorkflow:
@@ -77,22 +76,22 @@ class NaiveWriterWorkflow:
             outline=self._artifact_ref(outline, 'outline'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
-        draft_section = self.drafting.generate_draft_section(
+        draft_block = self.drafting.generate_draft_section(
             task=task,
             section_instruction=self._artifact_ref(section_instructions, 'section_instructions'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
         section_review = self.quality.validate_section(
-            draft_section=self._artifact_ref(draft_section, 'draft_section'),
+            draft_block=self._artifact_ref(draft_block, 'draft_block'),
             section_instruction=self._artifact_ref(section_instructions, 'section_instructions'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
         writing_context = self.context.update_writing_context(
-            artifacts=self._artifact_ref(draft_section, 'draft_section'),
+            artifacts=self._artifact_ref(draft_block, 'draft_block'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
         draft_document = self.drafting.generate_draft_document(
-            draft_sections=self._artifact_ref(draft_section, 'draft_section'),
+            draft_blocks=self._artifact_ref(draft_block, 'draft_block'),
             context=self._artifact_ref(writing_context, 'writing_context'),
             outline=self._artifact_ref(outline, 'outline'),
         )
@@ -104,13 +103,13 @@ class NaiveWriterWorkflow:
             draft_document=self._artifact_ref(draft_document, 'draft_document'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
-        writing_output = self.drafting.generate_writing_output(
+        writing_output = self.drafting.generate_final_document(
             draft=self._artifact_ref(draft_document, 'draft_document'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
         target_doc = task.get('target_document') if isinstance(task, dict) else getattr(task, 'target_document', None)
         write_result = self.resource.write_to_document(
-            content=self._artifact_ref(writing_output, 'writing_output'),
+            content=self._artifact_ref(writing_output, 'final_document'),
             target_document=target_doc,
         )
 
@@ -121,11 +120,11 @@ class NaiveWriterWorkflow:
                 'writing_context': writing_context,
                 'outline': outline,
                 'section_instructions': section_instructions,
-                'draft_section': draft_section,
+                'draft_block': draft_block,
                 'section_review': section_review,
                 'draft_document': draft_document,
                 'draft_document_review': draft_document_review,
-                'writing_output': writing_output,
+                'final_document': writing_output,
                 'write_result': write_result,
             },
         }
@@ -137,27 +136,20 @@ class NaiveWriterWorkflow:
         context: Any,
     ) -> dict:
         context_ref = self._artifact_ref(context, 'writing_context')
-        if isinstance(document, DraftDocument):
-            doc_ir_result = self.revision.draft_to_doc_ir(draft=document)
-            doc_ir = self._artifact_ref(doc_ir_result, 'doc_ir')
-        else:
-            raise TypeError(
-                f'Unsupported document type {type(document).__name__!r}.'
-            )
 
         locate_result = self.revision.locate_revision_target(
             task=task,
-            doc_ir=doc_ir,
+            document=document,
             context=context_ref,
         )
         modify_plan = self.revision.generate_modify_plan(
             task=task,
-            doc_ir=doc_ir,
+            document=document,
             locate_result=self._artifact_ref(locate_result, 'locate_result'),
             context=context_ref,
         )
         patch_set = self.revision.generate_patch_set(
-            doc_ir=doc_ir,
+            document=document,
             modify_plan=self._artifact_ref(modify_plan, 'modify_plan'),
             context=context_ref,
         )
@@ -167,22 +159,19 @@ class NaiveWriterWorkflow:
             task=task,
         )
         patch_result = self.revision.apply_patch(
-            doc_ir=doc_ir,
+            document=document,
             patch_set=self._artifact_ref(patch_set, 'patch_set'),
             context=context_ref,
         )
 
-        revised_draft = self.revision.doc_ir_to_draft(
-            doc_ir=self._artifact_ref(patch_result, 'revised_doc_ir'),
-        )
-        revised_draft_ref = self._artifact_ref(revised_draft, 'revised_draft')
+        revised_document_ref = self._artifact_ref(patch_result, 'revised_document')
 
         writing_context = self.context.update_writing_context(
-            artifacts=revised_draft_ref,
+            artifacts=revised_document_ref,
             context=context_ref,
         )
-        writing_output = self.drafting.generate_writing_output(
-            draft=revised_draft_ref,
+        writing_output = self.drafting.generate_final_document(
+            draft=revised_document_ref,
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
 
@@ -195,10 +184,9 @@ class NaiveWriterWorkflow:
                 'patch_set': patch_set,
                 'patch_review': patch_review,
                 'patch_result': patch_result,
-                'revised_doc_ir': self._artifact_ref(patch_result, 'revised_doc_ir'),
-                'revised_draft': revised_draft,
+                'revised_document': revised_document_ref,
                 'writing_context': writing_context,
-                'writing_output': writing_output,
+                'final_document': writing_output,
             },
         }
 

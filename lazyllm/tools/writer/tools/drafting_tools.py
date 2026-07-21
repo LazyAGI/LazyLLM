@@ -1,19 +1,16 @@
 from __future__ import annotations
 import os
-from typing import Any, List
+from typing import Any, List, Optional
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.task import WritingTask
-from ..data_models.writing import (
-    DraftBlock,
-    DraftDocument,
-    DraftSection,
-    SectionInstruction,
-    SectionInstructionList,
-    WritingOutline,
-    WritingOutput,
+from ..data_models.writer_ir import (
+    WriterAuthoring,
+    WriterBlock,
+    WriterDocument,
 )
+from ..data_models.writing import SectionInstruction, SectionInstructionList
 from ..prompts import GENERATE_DRAFT_SECTION_PROMPT
 from ..utils import to_prompt_json
 
@@ -22,7 +19,7 @@ class WriterDraftingTools(WriterToolBase):
     __public_apis__ = [
         'generate_draft_section',
         'generate_draft_document',
-        'generate_writing_output',
+        'generate_final_document',
     ]
 
     def generate_draft_section(
@@ -30,76 +27,76 @@ class WriterDraftingTools(WriterToolBase):
         task: Any,
         section_instruction: Any,
         context: Any,
-        previous_sections: Any = None,
+        previous_blocks: Any = None,
     ) -> dict:
         writing_task = self._unified_model(task, WritingTask)
         instruction = self._unified_section_instruction(section_instruction)
         writing_context = self._unified_model(context, WritingContext)
-        previous_data = self._unified_raw_data(previous_sections)
+        previous_data = self._unified_raw_data(previous_blocks)
 
         prompt = GENERATE_DRAFT_SECTION_PROMPT.format(
             task_json=to_prompt_json(writing_task),
             section_instruction_json=to_prompt_json(instruction),
             context_json=to_prompt_json(writing_context),
-            previous_sections_json=to_prompt_json(previous_data),
+            previous_blocks_json=to_prompt_json(previous_data),
         )
-        draft_section = self._call_llm_structured(prompt, DraftSection)
-        draft_section = self._normalize_draft_section(draft_section, instruction)
+        draft_block = self._call_llm_structured(prompt, WriterBlock)
+        draft_block = self._normalize_draft_block(draft_block, instruction)
 
         result = self._save_artifacts(
-            {'draft_section': draft_section},
+            {'draft_block': draft_block},
             step_name='generate_draft_section',
-            primary_key='draft_section',
+            primary_key='draft_block',
             context_key=None,
             summary='Generated draft section.',
             counts={
-                'draft_blocks': len(draft_section.blocks),
-                'subtasks': len(draft_section.subtasks),
+                'draft_blocks': len(draft_block.children) + 1,
             },
             artifact_meta={
                 'task_id': writing_task.task_id,
                 'context_id': writing_context.context_id,
-                'instance_id': draft_section.section_id,
+                'node_id': draft_block.node_id,
                 'instruction_id': instruction.instruction_id,
-                'outline_node_id': instruction.outline_node_id,
+                'origin_node_id': instruction.outline_node_id,
                 'outline_title': instruction.meta.get('outline_title'),
             },
             artifact_filenames={
-                'draft_section': f'draft_section/{draft_section.section_id}.json',
+                'draft_block': f'draft_block/{draft_block.node_id}.json',
             },
         )
         return result.model_dump()
 
     def generate_draft_document(
         self,
-        draft_sections: Any,
+        draft_blocks: Any,
         context: Any,
         outline: Any = None,
         title: Any = None,
     ) -> dict:
-        sections = self._unified_draft_sections(draft_sections)
-        if not sections:
-            raise ValueError('draft_sections must contain at least one DraftSection.')
+        blocks = self._unified_draft_blocks(draft_blocks)
+        if not blocks:
+            raise ValueError('draft_blocks must contain at least one WriterBlock.')
 
         writing_context = self._unified_model(context, WritingContext)
-        writing_outline = self._unified_optional_model(outline, WritingOutline)
-        normalized_sections = [
-            self._normalize_document_section(section, index)
-            for index, section in enumerate(sections, start=1)
+        writing_outline = self._unified_optional_model(outline, WriterDocument)
+        normalized_blocks = [
+            self._normalize_document_block(block, index)
+            for index, block in enumerate(blocks, start=1)
         ]
-        draft_document = DraftDocument(
-            draft_id=self._default_draft_document_id(writing_context),
+        draft_document = WriterDocument(
+            document_id=self._default_draft_document_id(writing_context),
+            stage='draft',
             title=self._resolve_draft_document_title(
                 title,
                 writing_outline,
                 writing_context,
-                normalized_sections,
+                normalized_blocks,
             ),
-            sections=normalized_sections,
-            meta={
+            blocks=normalized_blocks,
+            metadata={
                 'source': 'generate_draft_document',
                 'context_id': writing_context.context_id,
-                'outline_id': writing_outline.outline_id if writing_outline else None,
+                'outline_id': writing_outline.document_id if writing_outline else None,
                 'outline_title': writing_outline.title if writing_outline else None,
             },
         )
@@ -111,21 +108,20 @@ class WriterDraftingTools(WriterToolBase):
             context_key=None,
             summary='Generated draft document.',
             counts={
-                'draft_sections': len(draft_document.sections),
-                'draft_blocks': self._count_draft_blocks(draft_document.sections),
-                'subtasks': self._count_draft_subtasks(draft_document.sections),
+                'draft_sections': len(draft_document.blocks),
+                'draft_blocks': self._count_draft_blocks(draft_document.blocks),
             },
             artifact_meta={
                 'context_id': writing_context.context_id,
                 'doc_id': writing_context.doc_id,
-                'outline_id': writing_outline.outline_id if writing_outline else None,
+                'outline_id': writing_outline.document_id if writing_outline else None,
                 'outline_title': writing_outline.title if writing_outline else None,
-                'draft_section_count': len(draft_document.sections),
+                'draft_section_count': len(draft_document.blocks),
             },
         )
         return result.model_dump()
 
-    def generate_writing_output(
+    def generate_final_document(
         self,
         draft: Any,
         context: Any,
@@ -136,39 +132,42 @@ class WriterDraftingTools(WriterToolBase):
 
         writing_context = self._unified_model(context, WritingContext)
         draft_document = self._unified_draft_document(draft, writing_context)
-        content = self._render_draft_document_markdown(draft_document)
-        writing_output = WritingOutput(
-            output_id=self._default_writing_output_id(draft_document, writing_context),
+        content = self._render_document_markdown(draft_document)
+        final_document = WriterDocument(
+            document_id=self._default_final_document_id(draft_document, writing_context),
+            stage='final',
             title=draft_document.title,
-            content=content,
-            output_format='markdown',
-            references=self._collect_output_references(draft_document, writing_context),
-            meta={
-                'source': 'generate_writing_output',
-                'draft_id': draft_document.draft_id,
+            blocks=[block.model_copy(deep=True) for block in draft_document.blocks],
+            metadata={
+                'source': 'generate_final_document',
+                'draft_id': draft_document.document_id,
                 'context_id': writing_context.context_id,
+                'output_format': output_format,
+                'rendered_content': content,
             },
         )
+        for block in final_document.iter_blocks():
+            block.stage = 'final'
 
         result = self._save_artifacts(
-            {'writing_output': writing_output},
-            step_name='generate_writing_output',
-            primary_key='writing_output',
+            {'final_document': final_document},
+            step_name='generate_final_document',
+            primary_key='final_document',
             context_key=None,
             summary='Generated writing output.',
             counts={
-                'characters': len(writing_output.content),
-                'draft_sections': len(draft_document.sections),
-                'draft_blocks': self._count_draft_blocks(draft_document.sections),
+                'characters': len(content),
+                'draft_sections': len(draft_document.blocks),
+                'draft_blocks': self._count_draft_blocks(draft_document.blocks),
             },
             artifact_meta={
                 'context_id': writing_context.context_id,
                 'doc_id': writing_context.doc_id,
-                'draft_id': draft_document.draft_id,
-                'output_format': writing_output.output_format,
+                'draft_id': draft_document.document_id,
+                'output_format': output_format,
             },
         )
-        output_file_path = self._write_writing_output_file(writing_output)
+        output_file_path = self._write_output_file(final_document, content)
         dumped = result.model_dump()
         dumped['output_file_path'] = output_file_path
         return dumped
@@ -180,99 +179,102 @@ class WriterDraftingTools(WriterToolBase):
             return self._select_section_instruction(value.instructions)
         if isinstance(value, str):
             value = self._load_artifact(value, validate_schema=False)
+            return self._unified_section_instruction(value)
         if isinstance(value, dict):
             if 'instructions' in value:
                 instruction_list = SectionInstructionList.model_validate(value)
                 return self._select_section_instruction(instruction_list.instructions)
             return SectionInstruction.model_validate(value)
         if isinstance(value, list):
-            instructions = [self._unified_section_instruction(item) for item in value]
+            instructions = [self._unified_model(item, SectionInstruction) for item in value]
             return self._select_section_instruction(instructions)
         raise TypeError(
-            'Expected SectionInstruction, SectionInstructionList, dict, or artifact path, '
+            'Expected SectionInstruction, SectionInstructionList, dict, list, or artifact path, '
             f'got {type(value).__name__}.'
         )
 
-    def _select_section_instruction(self, instructions: List[SectionInstruction]) -> SectionInstruction:
+    def _select_section_instruction(
+        self,
+        instructions: List[SectionInstruction],
+    ) -> SectionInstruction:
         if not instructions:
-            raise ValueError('section_instruction list is empty.')
+            raise ValueError('section instruction list is empty.')
         return instructions[0]
 
-    def _normalize_draft_section(
+    def _normalize_draft_block(
         self,
-        draft_section: DraftSection,
+        draft_block: WriterBlock,
         instruction: SectionInstruction,
-    ) -> DraftSection:
-        section_id = self._default_section_id(instruction)
-        draft_section.section_id = section_id
-        draft_section.outline_node_id = instruction.outline_node_id
-        draft_section.title = instruction.section_title
-        draft_section.instruction_id = instruction.instruction_id
+    ) -> WriterBlock:
+        section_id = self._default_section_node_id(instruction)
+        draft_block.node_id = section_id
+        draft_block.stage = 'draft'
+        draft_block.type = 'heading'
+        draft_block.content = instruction.section_title
 
-        if not draft_section.blocks:
-            draft_section.blocks.append(
-                DraftBlock(
-                    block_id=f'{section_id}-block-1',
-                    outline_node_id=instruction.outline_node_id,
-                    section_id=section_id,
-                    content='',
-                )
-            )
+        if not draft_block.children:
+            draft_block.children.append(WriterBlock(
+                node_id=f'{section_id}-block-1',
+                type='paragraph',
+                content='',
+                stage='draft',
+            ))
 
-        for index, block in enumerate(draft_section.blocks, start=1):
-            block.block_id = block.block_id or f'{section_id}-block-{index}'
-            block.outline_node_id = instruction.outline_node_id
-            block.section_id = section_id
-            for subtask in block.subtasks:
-                subtask.section_id = section_id
-                subtask.block_id = block.block_id
+        for index, child in enumerate(draft_block.children, start=1):
+            child.node_id = child.node_id or f'{section_id}-block-{index}'
+            child.stage = 'draft'
+            if not child.type.strip():
+                child.type = 'paragraph'
 
-        for subtask in draft_section.subtasks:
-            subtask.section_id = section_id
-
-        draft_section.meta.update(
-            {
-                'source': 'llm',
-                'instruction_id': instruction.instruction_id,
-                'outline_node_id': instruction.outline_node_id,
-            }
+        authoring_meta = {
+            'instruction_id': instruction.instruction_id,
+            'origin_node_id': instruction.outline_node_id,
+        }
+        for key in ('outline_id', 'outline_title'):
+            value = instruction.meta.get(key)
+            if value is not None:
+                authoring_meta[key] = value
+        draft_block.authoring = WriterAuthoring(
+            instruction_id=instruction.instruction_id,
+            origin_node_id=instruction.outline_node_id,
+            source='section_instruction',
+            meta=authoring_meta,
         )
-        self._copy_meta_value(instruction.meta, draft_section.meta, 'outline_id')
-        self._copy_meta_value(instruction.meta, draft_section.meta, 'outline_title')
-        return draft_section
 
-    def _default_section_id(self, instruction: SectionInstruction) -> str:
-        source_id = instruction.outline_node_id or instruction.instruction_id or 'section'
-        return f'draft-{source_id}'
+        draft_block.references = [dict(reference) for reference in instruction.references]
+        return draft_block
 
-    def _unified_draft_sections(self, value: Any) -> List[DraftSection]:
+    def _default_section_node_id(self, instruction: SectionInstruction) -> str:
+        return f'draft-{instruction.outline_node_id}'
+
+    def _unified_draft_blocks(self, value: Any) -> List[WriterBlock]:
         if value is None:
             return []
-        if isinstance(value, DraftSection):
+        if isinstance(value, WriterBlock):
             return [value]
-        if isinstance(value, DraftDocument):
-            return list(value.sections)
+        if isinstance(value, WriterDocument):
+            return list(value.blocks)
         if isinstance(value, str):
             value = self._load_artifact(value, validate_schema=False)
-            return self._unified_draft_sections(value)
+            return self._unified_draft_blocks(value)
         if isinstance(value, dict):
             if 'draft' in value:
-                return self._unified_draft_sections(value['draft'])
-            if 'sections' in value:
-                return self._unified_draft_sections(value['sections'])
-            return [DraftSection.model_validate(value)]
+                return self._unified_draft_blocks(value['draft'])
+            if 'blocks' in value:
+                return [WriterBlock.model_validate(b) for b in value['blocks']]
+            return [WriterBlock.model_validate(value)]
         if isinstance(value, list):
-            sections: List[DraftSection] = []
+            blocks: List[WriterBlock] = []
             for item in value:
-                sections.extend(self._unified_draft_sections(item))
-            return sections
+                blocks.extend(self._unified_draft_blocks(item))
+            return blocks
         raise TypeError(
-            'Expected DraftSection, DraftDocument, list, dict, or artifact path, '
+            'Expected WriterBlock, WriterDocument, list, dict, or artifact path, '
             f'got {type(value).__name__}.'
         )
 
-    def _unified_draft_document(self, value: Any, context: WritingContext) -> DraftDocument:
-        if isinstance(value, DraftDocument):
+    def _unified_draft_document(self, value: Any, context: WritingContext) -> WriterDocument:
+        if isinstance(value, WriterDocument):
             return value
         if isinstance(value, str):
             value = self._load_artifact(value, validate_schema=False)
@@ -282,65 +284,65 @@ class WriterDraftingTools(WriterToolBase):
                 return self._unified_draft_document(value['data'], context)
             if 'draft' in value:
                 return self._unified_draft_document(value['draft'], context)
-            if 'sections' in value:
-                return DraftDocument.model_validate(value)
+            if 'blocks' in value:
+                return WriterDocument.model_validate(value)
 
-        sections = self._unified_draft_sections(value)
-        if not sections:
-            raise ValueError('draft must contain at least one DraftSection.')
-        normalized_sections = [
-            self._normalize_document_section(section, index)
-            for index, section in enumerate(sections, start=1)
+        blocks = self._unified_draft_blocks(value)
+        if not blocks:
+            raise ValueError('draft must contain at least one WriterBlock.')
+        normalized_blocks = [
+            self._normalize_document_block(block, index)
+            for index, block in enumerate(blocks, start=1)
         ]
-        return DraftDocument(
-            draft_id=self._default_draft_document_id(context),
-            title=self._default_draft_document_title(context, normalized_sections),
-            sections=normalized_sections,
-            meta={
-                'source': 'generate_writing_output',
+        return WriterDocument(
+            document_id=self._default_draft_document_id(context),
+            stage='draft',
+            title=self._default_draft_document_title(context, normalized_blocks),
+            blocks=normalized_blocks,
+            metadata={
+                'source': 'generate_final_document',
                 'context_id': context.context_id,
             },
         )
 
-    def _normalize_document_section(self, section: DraftSection, index: int) -> DraftSection:
-        section_id = section.section_id or f'draft-section-{index}'
-        section.section_id = section_id
-        for block_index, block in enumerate(section.blocks, start=1):
-            block.block_id = block.block_id or f'{section_id}-block-{block_index}'
-            block.section_id = section_id
-            block.outline_node_id = block.outline_node_id or section.outline_node_id
-            for subtask in block.subtasks:
-                subtask.section_id = subtask.section_id or section_id
-                subtask.block_id = subtask.block_id or block.block_id
-        for subtask in section.subtasks:
-            subtask.section_id = subtask.section_id or section_id
-        return section
+    def _normalize_document_block(self, block: WriterBlock, index: int) -> WriterBlock:
+        node_id = block.node_id or f'draft-block-{index}'
+        block.node_id = node_id
+        block.stage = 'draft'
+        if not block.type.strip():
+            block.type = 'heading'
+        for child_index, child in enumerate(block.children, start=1):
+            child.node_id = child.node_id or f'{node_id}-block-{child_index}'
+            child.stage = 'draft'
+            if not child.type.strip():
+                child.type = 'paragraph'
+        return block
 
     def _default_draft_document_id(self, context: WritingContext) -> str:
         source_id = context.context_id or context.doc_id or 'document'
         return f'draft-document-{source_id}'
 
-    def _default_writing_output_id(
+    def _default_final_document_id(
         self,
-        draft_document: DraftDocument,
+        draft_document: WriterDocument,
         context: WritingContext,
     ) -> str:
-        source_id = draft_document.draft_id or context.context_id or context.doc_id or 'document'
+        source_id = draft_document.document_id or context.context_id or context.doc_id or 'document'
         return f'output-{source_id}'
 
     def _default_draft_document_title(
         self,
         context: WritingContext,
-        sections: List[DraftSection],
+        blocks: List[WriterBlock],
     ) -> str:
-        return self._resolve_draft_document_title(None, None, context, sections)
+        return self._resolve_draft_document_title(None, None, context, blocks)
 
     def _resolve_draft_document_title(
         self,
         title: Any,
-        outline: WritingOutline | None,
+        outline: Optional[WriterDocument],
         context: WritingContext,
-        sections: List[DraftSection],
+        blocks: List[WriterBlock],
     ) -> str:
         title = self._first_non_empty(
             title,
@@ -348,101 +350,53 @@ class WriterDraftingTools(WriterToolBase):
             context.meta.get('title') if context.meta else None,
             context.meta.get('document_title') if context.meta else None,
             context.meta.get('outline_title') if context.meta else None,
-            self._first_section_meta_value(sections, 'document_title'),
-            self._first_section_meta_value(sections, 'outline_title'),
+            self._first_block_authoring_meta(blocks, 'document_title'),
+            self._first_block_authoring_meta(blocks, 'outline_title'),
         )
         if title:
             return str(title)
         if context.doc_id:
             return context.doc_id
-        if sections and sections[0].title:
-            return sections[0].title
+        if blocks and blocks[0].content:
+            return blocks[0].content
         return 'Draft Document'
 
-    def _count_draft_blocks(self, sections: List[DraftSection]) -> int:
+    def _count_draft_blocks(self, blocks: List[WriterBlock]) -> int:
         total = 0
-        for section in sections:
-            total += len(section.blocks)
-            total += self._count_draft_blocks(section.sub_sections)
+        for block in blocks:
+            total += len(block.children)
+            total += self._count_draft_blocks(block.children)
         return total
 
-    def _count_draft_subtasks(self, sections: List[DraftSection]) -> int:
-        total = 0
-        for section in sections:
-            total += len(section.subtasks)
-            for block in section.blocks:
-                total += len(block.subtasks)
-            total += self._count_draft_subtasks(section.sub_sections)
-        return total
-
-    def _render_draft_document_markdown(self, draft_document: DraftDocument) -> str:
+    def _render_document_markdown(self, document: WriterDocument) -> str:
         parts: List[str] = []
-        if draft_document.title:
-            parts.append(f'# {draft_document.title.strip()}')
-        for section in draft_document.sections:
-            parts.extend(self._render_draft_section_markdown(section, level=2))
+        if document.title:
+            parts.append(f'# {document.title.strip()}')
+        for block in document.blocks:
+            parts.extend(self._render_block_markdown(block, level=2))
         return '\n\n'.join(part for part in parts if part).strip() + '\n'
 
-    def _render_draft_section_markdown(self, section: DraftSection, level: int) -> List[str]:
+    def _render_block_markdown(self, block: WriterBlock, level: int) -> List[str]:
         parts: List[str] = []
         heading_level = min(max(level, 1), 6)
-        if section.title:
-            parts.append(f'{"#" * heading_level} {section.title.strip()}')
-        for block in section.blocks:
-            block_text = self._render_draft_block_markdown(block, heading_level + 1)
-            if block_text:
-                parts.append(block_text)
-        for sub_section in section.sub_sections:
-            parts.extend(self._render_draft_section_markdown(sub_section, heading_level + 1))
+        if block.type == 'heading':
+            if block.content.strip():
+                parts.append(f'{"#" * heading_level} {block.content.strip()}')
+        else:
+            content = block.content.strip()
+            if content:
+                parts.append(content)
+        for child in block.children:
+            parts.extend(self._render_block_markdown(child, heading_level + 1))
         return parts
 
-    def _render_draft_block_markdown(self, block: DraftBlock, heading_level: int) -> str:
-        parts: List[str] = []
-        if block.heading:
-            level = min(max(heading_level, 1), 6)
-            parts.append(f'{"#" * level} {block.heading.strip()}')
-
-        content = block.content.strip()
-        if content:
-            parts.append(content)
-        elif block.subtasks:
-            placeholders = [subtask.placeholder for subtask in block.subtasks if subtask.placeholder]
-            parts.extend(placeholders)
-
-        return '\n\n'.join(part for part in parts if part).strip()
-
-    def _collect_output_references(
-        self,
-        draft_document: DraftDocument,
-        context: WritingContext,
-    ) -> List[str]:
-        references: List[str] = []
-        self._extend_unique(references, draft_document.meta.get('references', []))
-        self._extend_unique(references, draft_document.meta.get('source_refs', []))
-        for fact in context.facts:
-            self._extend_unique(references, fact.source)
-        return references
-
-    def _extend_unique(self, target: List[str], values: Any) -> None:
-        if values is None:
-            return
-        if isinstance(values, str):
-            values = [values]
-        for value in values:
-            if value and value not in target:
-                target.append(str(value))
-
-    def _copy_meta_value(self, source: dict, target: dict, key: str) -> None:
-        value = source.get(key) if source else None
-        if value and key not in target:
-            target[key] = value
-
-    def _first_section_meta_value(self, sections: List[DraftSection], key: str) -> Any:
-        for section in sections:
-            value = section.meta.get(key) if section.meta else None
-            if value:
-                return value
-            child_value = self._first_section_meta_value(section.sub_sections, key)
+    def _first_block_authoring_meta(self, blocks: List[WriterBlock], key: str) -> Any:
+        for block in blocks:
+            if block.authoring and block.authoring.meta:
+                value = block.authoring.meta.get(key)
+                if value:
+                    return value
+            child_value = self._first_block_authoring_meta(block.children, key)
             if child_value:
                 return child_value
         return None
@@ -453,14 +407,15 @@ class WriterDraftingTools(WriterToolBase):
                 return value
         return None
 
-    def _write_writing_output_file(self, writing_output: WritingOutput) -> str:
+    def _write_output_file(self, document: WriterDocument, content: str) -> str:
         if not self.artifact_store:
             raise ValueError('artifact_store is not set')
-        extension = self._output_file_extension(writing_output.output_format)
+        output_format = document.metadata.get('output_format', 'markdown')
+        extension = self._output_file_extension(output_format)
         path = os.path.join(self.artifact_store, f'writing_output.{extension}')
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, 'w', encoding='utf-8') as fh:
-            fh.write(writing_output.content)
+            fh.write(content)
         return os.path.abspath(path)
 
     def _output_file_extension(self, output_format: str) -> str:

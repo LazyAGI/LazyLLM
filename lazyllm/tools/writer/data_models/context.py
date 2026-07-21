@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from ..utils.artifact import ArtifactModel
-from .writing import DraftDocument, DraftSection, WritingOutline
+from .writer_ir import WriterBlock, WriterDocument
 
 
 class DocumentSummary(BaseModel):
@@ -46,9 +46,9 @@ class WritingContext(ArtifactModel):
     style_profile: Optional[StyleProfile] = None
     relation_graph: Optional[BlockRelationGraph] = None
     query: Optional[str] = None
-    outline: Optional['WritingOutline'] = None
-    draft_sections: List['DraftSection'] = Field(default_factory=list)
-    draft_document: Optional['DraftDocument'] = None
+    outline: Optional['WriterDocument'] = None
+    draft_sections: List['WriterBlock'] = Field(default_factory=list)
+    draft_document: Optional['WriterDocument'] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 

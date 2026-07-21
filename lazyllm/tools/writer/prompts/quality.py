@@ -1,37 +1,27 @@
 # flake8: noqa
-VALIDATE_SECTION_PROMPT = '''You are a section quality reviewer. Validate the given draft section against its writing instruction and context, and return an AuditResult.
+VALIDATE_SECTION_PROMPT = '''You are a section quality reviewer. Evaluate the draft WriterBlock subtree as a whole against its section instruction and writing context, then return an AuditResult.
 
-Validation rules:
+Review the section along these dimensions:
 
-1. FACT ACCURACY (category=evidence): Compare every specific data point, percentage, model name, and factual claim in the draft against the fact_constraints in the instruction and the facts in the writing context. Any discrepancy → severity=high, category=evidence.
+1. EVIDENCE GROUNDING (category=evidence)
+Treat writing-context facts as the authoritative evidence set. The section instruction's references identify the facts or resources intended for this section, while fact_constraints contains literal factual statements that must be preserved. Specific claims about product capabilities, implementations, metrics, named entities, security properties, or observed results must be supported by that evidence. General explanation may connect supported facts, but it must not turn assumptions into claims about the subject. Report contradictions or fabricated specifics as high severity and unsupported elaboration as medium severity. Do not require references to be repeated on paragraph children because the section root carries them.
 
-2. INSTRUCTION COMPLETENESS (category=coverage): Check whether the draft covers all required_points from the instruction and fulfills the section_goal. If the instruction or context specifies must_include / must_avoid, check each one. Missing required content → severity=medium, category=coverage. Severely incomplete (missing half or more of required content) → severity=high, category=coverage.
+2. AUTHORING FULFILLMENT (category=coverage)
+Judge whether the section achieves section_goal, covers required_points, respects must_include and must_avoid, and develops the requested ideas with useful substance. Treat expected_blocks as coverage and ordering guidance rather than mandatory visible headings or an exact paragraph count. Missing a major purpose is high severity; a local omission is medium severity.
 
-3. STRUCTURAL ALIGNMENT (category=format): Check whether the draft's block structure follows the instruction's expected_blocks plan. Major structural deviations (wrong heading hierarchy, missing promised subsections) → severity=medium, category=format.
+3. STRUCTURE AND COHERENCE (category=format or relevance)
+Check that the heading and prose form a coherent section, ideas progress without repetition or unrelated detours, and any explicit length or relationship constraints are respected. Use severity in proportion to the effect on readability or document placement.
 
-4. STYLE CONSISTENCY (category=style): Check whether tone, point-of-view, and formality match both the instruction's style_constraints and the writing context's style_profile. Significant deviation → severity=medium, category=style.
+4. STYLE AND READABILITY (category=style)
+Check tone, point of view, formality, audience fit, clarity, and natural prose. Flag repetitive templates, empty generalities, or conspicuously mechanical writing according to their actual impact rather than matching isolated phrases.
 
-5. AI-TONE DETECTION (category=style): Scan the entire draft for the following:
-   Forbidden expressions (each occurrence → severity=medium, category=style):
-   "在当今时代", "在当今信息爆炸的时代", "在当今……的时代", "综上所述", "不可否认的是", "众所周知", "值得一提的是", "毋庸置疑", "随着……的不断发展", "具有重要的理论意义和现实意义", "大势所趋", "赋能"
-   Repetitive template patterns (→ severity=low, category=style):
-   - "首先……其次……最后……" pattern used in 3 or more consecutive paragraphs
-   - "不仅……而且……" used as a paragraph opening
-   - "此外" used as a paragraph opening more than twice
+Scoring:
+- Start at 100; deduct 20 per high issue, 10 per medium issue, and 3 per low issue, with a minimum of 0.
+- is_passed is false when there is any high issue or more than three medium issues; otherwise it is true.
+- Include every material issue, but do not create separate issues for multiple symptoms of the same underlying problem.
+- Write a one-sentence summary in the same language as the draft.
 
-6. REFERENCE COMPLETENESS (category=evidence): If the instruction lists source_refs, check whether the draft appropriately references them. Missing references → severity=low, category=evidence.
-
-7. WORD COUNT (category=format): If the instruction specifies min_words or max_words, estimate the draft's approximate word count and flag deviations. → severity=low, category=format.
-
-8. OUTLINE POSITION (category=relevance): If the writing context contains an outline, verify that the current section's position in the overall document structure is correct. Check that the content does not overlap with neighboring sections and that relationships to previous/next sections match the outline. Misplaced content or section-level inconsistency → severity=medium, category=relevance.
-
-Scoring rules:
-- is_passed: false if any issue has severity=high, or if there are more than 3 severity=medium issues. Otherwise true.
-- score: Start at 100. Deduct 20 per high, 10 per medium, 3 per low. Minimum 0.
-- summary: A one-sentence overall assessment in the same language as the draft.
-- issues: List every issue found. Empty list if none.
-
-Draft section:
+Draft WriterBlock subtree:
 {section_json}
 
 Section instruction:
@@ -42,42 +32,27 @@ Writing context:
 '''
 
 
-VALIDATE_DRAFT_DOCUMENT_PROMPT = '''You are a draft-document quality reviewer. Validate the given draft document against the writing context and return an AuditResult.
+VALIDATE_DRAFT_DOCUMENT_PROMPT = '''You are a draft-document quality reviewer. Evaluate the supplied WriterDocument as a whole against the writing context, then return an AuditResult. Section-level checks may already have run; focus on problems that emerge at document level.
 
-This draft document has already passed section-level validation. Focus on: document structure, cross-chapter fact consistency, AI-tone deep scan, style consistency, reader adaptation, conclusion quality, and source attribution.
+Review the document along these dimensions:
 
-Validation rules:
+1. DOCUMENT INTEGRITY (category=format)
+Check that the title, ordered block hierarchy, headings, and prose form a usable document. Judge completeness only within the scope represented by the supplied draft; a draft may intentionally contain a subset of a larger outline. Do not report absent outline sections or unused context facts as omissions. Empty or structurally broken supplied sections are high severity.
 
-1. DOCUMENT STRUCTURE (category=format): Check that the draft document has a non-empty title, ordered sections, non-empty section titles, and non-empty block content. If the writing context contains an outline, verify that the section structure matches the outline. Missing title, missing major sections, empty sections, or incorrect hierarchy → severity=high, category=format.
+2. EVIDENCE AND CONSISTENCY (category=evidence)
+Treat writing-context facts as authoritative. Check that specific claims are grounded, repeated facts remain consistent across sections, and the document does not claim unsupported research, capabilities, measurements, or guarantees. References belong to the blocks that depend on them; do not require every context source to appear when it is irrelevant to the drafted scope. Contradictions and fabricated material claims are high severity; unsupported elaboration or weak attribution is medium severity.
 
-2. CROSS-CHAPTER FACT CONSISTENCY (category=evidence): Cross-check all data points in the full text against the facts in the writing context. The same data appearing in different chapters must have consistent values — no internal contradictions. Contradiction → severity=high, category=evidence. Data inconsistent with locked facts in context → severity=high, category=evidence.
+3. COVERAGE AND COHERENCE (category=coverage or relevance)
+Check that the supplied sections fulfill their authoring goals, develop their key points, avoid unnecessary overlap, and move logically from one idea to the next. Distinguish a missing central requirement within the drafted scope from a minor gap and assign severity accordingly.
 
-3. AI-TONE DEEP SCAN (category=style):
-   a) Forbidden expressions (each occurrence → severity=medium, category=style):
-      "在当今时代", "在当今信息爆炸的时代", "综上所述", "不可否认的是", "众所周知", "值得一提的是", "毋庸置疑", "随着……的不断发展", "具有重要的理论意义和现实意义", "大势所趋", "赋能"
-   b) Empty summary sentence detection (→ severity=low, category=style): Generic, content-free statements such as "深度学习是一种强大的工具，将在未来发挥越来越重要的作用", "人工智能是未来的发展方向", etc.
-   c) Repetitive template patterns (→ severity=low, category=style):
-      - "首先……其次……最后……" pattern in 3 or more consecutive paragraphs
-      - "不仅……而且……" as a paragraph opening
-      - "此外" as a paragraph opening more than twice
+4. STYLE AND AUDIENCE FIT (category=style)
+Judge consistency of tone, point of view, formality, terminology, and level of explanation across the document. Flag repetitive templates, empty generalities, abrupt shifts, or mechanical prose according to their actual effect on the reader.
 
-4. STYLE CONSISTENCY (category=style): Check that tone, point-of-view, and formality match the context's style_profile. The style should be uniform across all chapters — no mixing of academic tone in one chapter and casual tone in another. Significant deviation or inconsistency → severity=medium, category=style.
-
-5. REFERENCE COMPLETENESS (category=evidence): Check whether every model, data point, and claim is cited with source when sources are present in the writing context. References should cover at least all sources referenced in the context facts. Missing citations → severity=medium, category=evidence. Missing key sources → severity=high, category=evidence. If the context has no concrete source facts, do not invent missing-reference issues.
-
-6. READER ADAPTATION (category=coverage): Based on style_profile.audience in the context, check whether technical terms are explained on first use (required for non-expert audiences, optional for expert audiences). Unexplained terms for non-expert audience → severity=medium, category=coverage.
-
-7. CONCLUSION QUALITY (category=style): The conclusion chapter should end with open questions or forward-looking perspectives, not deterministic summaries. Ending with "总之，……" or "综上所述，……" followed by a definitive conclusion → severity=medium, category=style.
-
-8. SOURCE ATTRIBUTION (category=evidence): The output must not present itself as original research (e.g. "我们研究发现", "本文原创性地提出"). Information sources must be clearly attributed. Missing attribution or inappropriate stance → severity=medium, category=evidence.
-
-9. REQUIREMENT COVERAGE (category=coverage): If the writing context contains a query (the user's original writing request), check whether the output covers all requirements and topics specified in the query. Missing major topics or requirements → severity=high, category=coverage. Missing minor details → severity=medium, category=coverage.
-
-Scoring rules:
-- is_passed: false only when there is a major structural problem (e.g., missing sections, outline severely misaligned, or document logic broken). Local issues (AI tone, style inconsistency, missing references, individual data discrepancies, etc.) must still be recorded in issues but do not affect is_passed.
-- score: Start at 100. Deduct 20 per high, 10 per medium, 3 per low. Minimum 0.
-- summary: A one-sentence overall assessment in the same language as the draft document.
-- issues: List every issue found. Empty list if none.
+Scoring:
+- Start at 100; deduct 20 per high issue, 10 per medium issue, and 3 per low issue, with a minimum of 0.
+- is_passed is false when there is any high issue or more than three medium issues; otherwise it is true.
+- Consolidate related observations into one useful issue instead of listing superficial symptoms separately.
+- Write a one-sentence summary in the same language as the document.
 
 Draft document:
 {draft_document_json}
@@ -90,7 +65,7 @@ Writing context:
 VALIDATE_PATCH_SET_PROMPT = '''You are a PatchSet quality reviewer. Validate every hunk against the writing context before it is applied. Return an AuditResult.
 
 Each hunk includes:
-- target_block_id + old_text + new_text: the modification
+- target_node_id + old_text + new_text: the modification
 
 Validation rules:
 
@@ -117,7 +92,7 @@ Validation rules:
    - Loss of key transitional phrases → severity=low, category=relevance.
 
 Scoring: is_passed=false if any high or >3 medium. score=100-20*high-10*medium-3*low, min 0.
-Include hunk_id and target_block_id in each issue's location field.
+Include hunk_id and target_node_id in each issue's location field.
 
 User request:
 {task_query}
