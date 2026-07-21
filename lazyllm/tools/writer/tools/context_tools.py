@@ -34,30 +34,16 @@ class WriterContextTools(WriterToolBase):
         '''Create a WritingContext whose optional content document uses Writer IR.'''
         writing_task = self._unified_model(task, WritingTask)
         profiles = self._unified_models(resource_profiles, ResourceProfile)
-        source_document = self._unified_optional_model(document, WriterDocument)
+        source_doc = self._unified_optional_model(document, WriterDocument)
 
         context = WritingContext(
             context_id=writing_task.task_id or 'writer-context',
-            doc_id=self._resolve_doc_id(writing_task, source_document),
-            document_summary=self._build_document_summary(
-                writing_task,
-                profiles,
-                source_document,
-            ),
-            block_summaries=self._build_block_summaries(source_document),
+            doc_id=self._resolve_doc_id(writing_task, source_doc),
+            document_summary=self._build_document_summary(writing_task, profiles, source_doc),
+            block_summaries=self._build_block_summaries(source_doc),
             facts=self._build_facts(profiles),
             style_profile=self._build_style_profile(profiles),
             query=writing_task.query,
-            outline=(
-                source_document
-                if source_document and source_document.stage == 'outline'
-                else None
-            ),
-            draft_document=(
-                source_document
-                if source_document and source_document.stage == 'draft'
-                else None
-            ),
             meta={
                 'source': 'create_writing_context',
             },
@@ -78,8 +64,8 @@ class WriterContextTools(WriterToolBase):
                 'task_type': writing_task.task_type,
                 'doc_id': context.doc_id,
                 'resource_profile_count': len(profiles),
-                'has_writer_ir': source_document is not None,
-                'writer_stage': source_document.stage if source_document else None,
+                'has_writer_ir': source_doc is not None,
+                'writer_stage': source_doc.stage if source_doc else None,
             },
         ).model_dump()
 

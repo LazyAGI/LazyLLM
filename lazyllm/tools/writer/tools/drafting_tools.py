@@ -10,6 +10,7 @@ from ..data_models.writer_ir import (
     WriterBlock,
     WriterDocument,
 )
+from ..data_models.writing import SectionInstruction, SectionInstructionList
 from ..prompts import GENERATE_DRAFT_SECTION_PROMPT
 from ..utils import to_prompt_json
 
@@ -18,29 +19,29 @@ class WriterDraftingTools(WriterToolBase):
     __public_apis__ = [
         'generate_draft_section',
         'generate_draft_document',
-        'generate_writing_output',
+        'generate_final_document',
     ]
 
     def generate_draft_section(
         self,
         task: Any,
-        outline_block: Any,
+        section_instruction: Any,
         context: Any,
         previous_blocks: Any = None,
     ) -> dict:
         writing_task = self._unified_model(task, WritingTask)
-        section_block = self._unified_outline_block(outline_block)
+        instruction = self._unified_section_instruction(section_instruction)
         writing_context = self._unified_model(context, WritingContext)
         previous_data = self._unified_raw_data(previous_blocks)
 
         prompt = GENERATE_DRAFT_SECTION_PROMPT.format(
             task_json=to_prompt_json(writing_task),
-            outline_block_json=to_prompt_json(section_block),
+            section_instruction_json=to_prompt_json(instruction),
             context_json=to_prompt_json(writing_context),
             previous_blocks_json=to_prompt_json(previous_data),
         )
         draft_block = self._call_llm_structured(prompt, WriterBlock)
-        draft_block = self._normalize_draft_block(draft_block, section_block)
+        draft_block = self._normalize_draft_block(draft_block, instruction)
 
         result = self._save_artifacts(
             {'draft_block': draft_block},
@@ -55,12 +56,9 @@ class WriterDraftingTools(WriterToolBase):
                 'task_id': writing_task.task_id,
                 'context_id': writing_context.context_id,
                 'node_id': draft_block.node_id,
-                'instruction_id': section_block.authoring.instruction_id if section_block.authoring else None,
-                'origin_node_id': section_block.node_id,
-                'document_title': (
-                    section_block.authoring.meta.get('document_title')
-                    if section_block.authoring else None
-                ),
+                'instruction_id': instruction.instruction_id,
+                'origin_node_id': instruction.outline_node_id,
+                'outline_title': instruction.meta.get('outline_title'),
             },
             artifact_filenames={
                 'draft_block': f'draft_block/{draft_block.node_id}.json',
@@ -123,7 +121,7 @@ class WriterDraftingTools(WriterToolBase):
         )
         return result.model_dump()
 
-    def generate_writing_output(
+    def generate_final_document(
         self,
         draft: Any,
         context: Any,
@@ -141,7 +139,7 @@ class WriterDraftingTools(WriterToolBase):
             title=draft_document.title,
             blocks=[block.model_copy(deep=True) for block in draft_document.blocks],
             metadata={
-                'source': 'generate_writing_output',
+                'source': 'generate_final_document',
                 'draft_id': draft_document.document_id,
                 'context_id': writing_context.context_id,
                 'output_format': output_format,
@@ -153,7 +151,7 @@ class WriterDraftingTools(WriterToolBase):
 
         result = self._save_artifacts(
             {'final_document': final_document},
-            step_name='generate_writing_output',
+            step_name='generate_final_document',
             primary_key='final_document',
             context_key=None,
             summary='Generated writing output.',
@@ -174,43 +172,45 @@ class WriterDraftingTools(WriterToolBase):
         dumped['output_file_path'] = output_file_path
         return dumped
 
-    def _unified_outline_block(self, value: Any) -> WriterBlock:
-        if isinstance(value, WriterBlock):
+    def _unified_section_instruction(self, value: Any) -> SectionInstruction:
+        if isinstance(value, SectionInstruction):
             return value
-        if isinstance(value, WriterDocument):
-            return self._select_section_block(list(value.blocks))
+        if isinstance(value, SectionInstructionList):
+            return self._select_section_instruction(value.instructions)
         if isinstance(value, str):
             value = self._load_artifact(value, validate_schema=False)
+            return self._unified_section_instruction(value)
         if isinstance(value, dict):
-            if 'blocks' in value:
-                doc = WriterDocument.model_validate(value)
-                return self._select_section_block(list(doc.blocks))
-            return WriterBlock.model_validate(value)
+            if 'instructions' in value:
+                instruction_list = SectionInstructionList.model_validate(value)
+                return self._select_section_instruction(instruction_list.instructions)
+            return SectionInstruction.model_validate(value)
         if isinstance(value, list):
-            blocks = [self._unified_outline_block(item) for item in value]
-            return self._select_section_block(blocks)
+            instructions = [self._unified_model(item, SectionInstruction) for item in value]
+            return self._select_section_instruction(instructions)
         raise TypeError(
-            'Expected WriterBlock, WriterDocument, dict, or artifact path, '
+            'Expected SectionInstruction, SectionInstructionList, dict, list, or artifact path, '
             f'got {type(value).__name__}.'
         )
 
-    def _select_section_block(self, blocks: List[WriterBlock]) -> WriterBlock:
-        if not blocks:
-            raise ValueError('outline block list is empty.')
-        return blocks[0]
+    def _select_section_instruction(
+        self,
+        instructions: List[SectionInstruction],
+    ) -> SectionInstruction:
+        if not instructions:
+            raise ValueError('section instruction list is empty.')
+        return instructions[0]
 
     def _normalize_draft_block(
         self,
         draft_block: WriterBlock,
-        section_block: WriterBlock,
+        instruction: SectionInstruction,
     ) -> WriterBlock:
-        section_id = self._default_section_node_id(section_block)
-        draft_block.node_id = draft_block.node_id or section_id
+        section_id = self._default_section_node_id(instruction)
+        draft_block.node_id = section_id
         draft_block.stage = 'draft'
-        if not draft_block.type.strip():
-            draft_block.type = 'heading'
-        if not draft_block.content.strip():
-            draft_block.content = section_block.content
+        draft_block.type = 'heading'
+        draft_block.content = instruction.section_title
 
         if not draft_block.children:
             draft_block.children.append(WriterBlock(
@@ -226,41 +226,26 @@ class WriterDraftingTools(WriterToolBase):
             if not child.type.strip():
                 child.type = 'paragraph'
 
-        if draft_block.authoring is None and section_block.authoring is not None:
-            draft_block.authoring = WriterAuthoring(
-                instruction_id=section_block.authoring.instruction_id,
-                origin_node_id=section_block.node_id,
-                instruction=section_block.authoring.instruction,
-            )
-        elif draft_block.authoring is not None:
-            draft_block.authoring.origin_node_id = section_block.node_id
-            if section_block.authoring and section_block.authoring.instruction_id:
-                draft_block.authoring.instruction_id = (
-                    draft_block.authoring.instruction_id
-                    or section_block.authoring.instruction_id
-                )
+        authoring_meta = {
+            'instruction_id': instruction.instruction_id,
+            'origin_node_id': instruction.outline_node_id,
+        }
+        for key in ('outline_id', 'outline_title'):
+            value = instruction.meta.get(key)
+            if value is not None:
+                authoring_meta[key] = value
+        draft_block.authoring = WriterAuthoring(
+            instruction_id=instruction.instruction_id,
+            origin_node_id=instruction.outline_node_id,
+            source='section_instruction',
+            meta=authoring_meta,
+        )
 
-        if draft_block.authoring is not None:
-            draft_block.authoring.meta.update(
-                {
-                    'source': 'llm',
-                    'instruction_id': (
-                        section_block.authoring.instruction_id if section_block.authoring else None
-                    ),
-                    'origin_node_id': section_block.node_id,
-                }
-            )
-            if section_block.authoring:
-                self._copy_meta_value(section_block.authoring.meta, draft_block.authoring.meta, 'document_id')
-                self._copy_meta_value(section_block.authoring.meta, draft_block.authoring.meta, 'document_title')
-        draft_block.references = [dict(reference) for reference in section_block.references]
+        draft_block.references = [dict(reference) for reference in instruction.references]
         return draft_block
 
-    def _default_section_node_id(self, section_block: WriterBlock) -> str:
-        origin = section_block.node_id
-        if section_block.authoring and section_block.authoring.instruction_id:
-            origin = origin or section_block.authoring.instruction_id
-        return f'draft-{origin or "section"}'
+    def _default_section_node_id(self, instruction: SectionInstruction) -> str:
+        return f'draft-{instruction.outline_node_id}'
 
     def _unified_draft_blocks(self, value: Any) -> List[WriterBlock]:
         if value is None:
@@ -315,7 +300,7 @@ class WriterDraftingTools(WriterToolBase):
             title=self._default_draft_document_title(context, normalized_blocks),
             blocks=normalized_blocks,
             metadata={
-                'source': 'generate_writing_output',
+                'source': 'generate_final_document',
                 'context_id': context.context_id,
             },
         )
@@ -404,11 +389,6 @@ class WriterDraftingTools(WriterToolBase):
         for child in block.children:
             parts.extend(self._render_block_markdown(child, heading_level + 1))
         return parts
-
-    def _copy_meta_value(self, source: dict, target: dict, key: str) -> None:
-        value = source.get(key) if source else None
-        if value and key not in target:
-            target[key] = value
 
     def _first_block_authoring_meta(self, blocks: List[WriterBlock], key: str) -> Any:
         for block in blocks:

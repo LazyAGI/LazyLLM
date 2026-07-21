@@ -47,22 +47,20 @@ Execution results:
 GENERATE_SECTION_INSTRUCTIONS_PROMPT = '''Generate section-level writing instructions from the outline and writing context.
 
 Requirements:
-- Return a WriterDocument object that mirrors the input outline structure.
-- Echo document_id from the input outline verbatim. Keep stage="outline".
-- For every top-level block, echo its node_id and type verbatim, leave content/numbering/children empty,
-  and fill only block.authoring. The system merges your authoring back onto the authoritative outline;
-  never invent or reorder blocks, and never change node_id.
-- Each WriterAuthoring.origin_node_id MUST equal the outline block's node_id.
+- Return a SectionInstructionList object.
+- Generate exactly one SectionInstruction for every top-level block listed in target_outline_blocks.
+- Each instruction's outline_node_id MUST equal the corresponding outline block's node_id.
+- section_title MUST equal the corresponding outline block's content.
 - instruction_id should be stable, such as instruction-section-1 or instruction-ch01.
-- instruction should restate or sharpen the section goal as a concrete, actionable writing directive.
-- constraints.section_goal should be concrete and actionable.
-- constraints.required_points should contain the key content that must appear in the section.
-- constraints.fact_constraints should preserve the literal text of locked facts and important context facts
+- section_goal should be concrete and actionable.
+- required_points should contain the key content that must appear in the section.
+- fact_constraints should preserve the literal text of locked facts and important context facts
   relevant to this section. It must not contain fact IDs or resource IDs.
-- constraints.fact_constraints MUST only contain factual statements actually present in the writing context.
-  Do not output references in this step; the system preserves them from the authoritative outline.
-- constraints.style_constraints should include tone, pov, audience, and style requirements when applicable.
-- constraints.relation_constraints should describe dependencies on previous or later sections when useful.
+- fact_constraints MUST only contain factual statements actually present in the writing context.
+- references are owned by the authoritative outline. Leave references empty; the system copies them from
+  the matching outline block.
+- style_constraints should include tone, pov, audience, and style requirements when applicable.
+- relation_constraints should describe dependencies on previous or later sections when useful.
 - expected_blocks should be a concise block-level content plan for the draft tool.
 - For a normal section, expected_blocks should usually contain 3 to 6 planned content blocks unless the section is explicitly very short.
 - expected_blocks are planning labels for coverage and ordering, not visible headings that must appear in final text.
@@ -71,7 +69,7 @@ Requirements:
 Outline (authoritative structure):
 {outline_json}
 
-Target outline blocks to author (one block in your output per node_id here):
+Target outline blocks to author:
 {target_outline_blocks_json}
 
 Writing context:

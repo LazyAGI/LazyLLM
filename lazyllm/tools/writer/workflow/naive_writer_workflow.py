@@ -78,12 +78,12 @@ class NaiveWriterWorkflow:
         )
         draft_block = self.drafting.generate_draft_section(
             task=task,
-            outline_block=self._artifact_ref(section_instructions, 'outline_with_instructions'),
+            section_instruction=self._artifact_ref(section_instructions, 'section_instructions'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
         section_review = self.quality.validate_section(
             draft_block=self._artifact_ref(draft_block, 'draft_block'),
-            outline_document=self._artifact_ref(section_instructions, 'outline_with_instructions'),
+            section_instruction=self._artifact_ref(section_instructions, 'section_instructions'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
         writing_context = self.context.update_writing_context(
@@ -103,7 +103,7 @@ class NaiveWriterWorkflow:
             draft_document=self._artifact_ref(draft_document, 'draft_document'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
-        writing_output = self.drafting.generate_writing_output(
+        writing_output = self.drafting.generate_final_document(
             draft=self._artifact_ref(draft_document, 'draft_document'),
             context=self._artifact_ref(writing_context, 'writing_context'),
         )
@@ -119,7 +119,7 @@ class NaiveWriterWorkflow:
                 'resource_profiles': resource_profiles,
                 'writing_context': writing_context,
                 'outline': outline,
-                'outline_with_instructions': section_instructions,
+                'section_instructions': section_instructions,
                 'draft_block': draft_block,
                 'section_review': section_review,
                 'draft_document': draft_document,
@@ -170,7 +170,7 @@ class NaiveWriterWorkflow:
             artifacts=revised_document_ref,
             context=context_ref,
         )
-        writing_output = self.drafting.generate_writing_output(
+        writing_output = self.drafting.generate_final_document(
             draft=revised_document_ref,
             context=self._artifact_ref(writing_context, 'writing_context'),
         )

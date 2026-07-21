@@ -11,6 +11,7 @@ from ..data_models.writer_ir import (
     WriterConstraints,
     WriterDocument,
 )
+from ..data_models.writing import SectionInstruction, SectionInstructionList
 from ..prompts import GENERATE_OUTLINE_PROMPT, GENERATE_SECTION_INSTRUCTIONS_PROMPT
 from ..utils import to_prompt_json
 
@@ -72,7 +73,7 @@ class WriterPlanningTools(WriterToolBase):
         writing_outline = self._unified_model(outline, WriterDocument)
         writing_context = self._unified_model(context, WritingContext)
         execution_data = self._normalize_execution_results(execution_results)
-        target_blocks = self._instruction_target_blocks(writing_outline)
+        target_blocks = writing_outline.blocks
 
         prompt = GENERATE_SECTION_INSTRUCTIONS_PROMPT.format(
             outline_json=to_prompt_json(writing_outline),
@@ -80,27 +81,25 @@ class WriterPlanningTools(WriterToolBase):
             context_json=to_prompt_json(writing_context),
             execution_results_json=to_prompt_json(execution_data),
         )
-        # The LLM echoes the outline structure and fills only authoring. The input
-        # outline remains authoritative; we map authoring back by node_id.
-        authoring_doc = self._call_llm_structured(prompt, WriterDocument)
-        writing_outline = self._merge_section_authorings(
+        instruction_list = self._call_llm_structured(prompt, SectionInstructionList)
+        instruction_list = self._normalize_section_instructions(
+            instruction_list,
             writing_outline,
-            authoring_doc,
             writing_context,
             execution_data,
         )
 
         result = self._save_artifacts(
-            {'outline_with_instructions': writing_outline},
+            {'section_instructions': instruction_list},
             step_name='generate_section_instructions',
-            primary_key='outline_with_instructions',
+            primary_key='section_instructions',
             context_key=None,
             summary='Generated section writing instructions.',
             counts={
-                'section_instructions': len(writing_outline.blocks),
+                'section_instructions': len(instruction_list.instructions),
             },
             artifact_meta={
-                'document_id': writing_outline.document_id,
+                'outline_id': writing_outline.document_id,
                 'context_id': writing_context.context_id,
                 'has_execution_results': execution_data is not None,
             },
@@ -181,89 +180,105 @@ class WriterPlanningTools(WriterToolBase):
     def _count_outline_blocks(self, blocks: List[WriterBlock]) -> int:
         return sum(1 + self._count_outline_blocks(block.children) for block in blocks)
 
-    def _instruction_target_blocks(self, outline: WriterDocument) -> List[WriterBlock]:
-        return outline.blocks
-
-    def _merge_section_authorings(
+    def _normalize_section_instructions(
         self,
+        instruction_list: SectionInstructionList,
         outline: WriterDocument,
-        authoring_doc: WriterDocument,
         context: WritingContext,
         execution_results: Any,
-    ) -> WriterDocument:
-        authoring_by_origin = {
-            block.node_id: block.authoring
-            for block in authoring_doc.iter_blocks()
-            if block.authoring is not None
-        }
-        has_available_facts = self._has_available_facts(context)
+    ) -> SectionInstructionList:
+        target_blocks = outline.blocks
+        target_by_id = {block.node_id: block for block in target_blocks}
+        instruction_by_node_id: Dict[str, SectionInstruction] = {}
 
-        for block in outline.blocks:
-            auth = authoring_by_origin.get(block.node_id)
-            self._normalize_section_authoring(
-                auth,
+        for instruction in instruction_list.instructions:
+            node_id = instruction.outline_node_id
+            if node_id in instruction_by_node_id:
+                raise ValueError(f'Duplicate section instruction for outline node {node_id!r}.')
+            if node_id not in target_by_id:
+                raise ValueError(f'Section instruction references unknown outline node {node_id!r}.')
+            instruction_by_node_id[node_id] = instruction
+
+        missing_node_ids = [
+            block.node_id for block in target_blocks
+            if block.node_id not in instruction_by_node_id
+        ]
+        if missing_node_ids:
+            raise ValueError(
+                'Missing section instructions for outline nodes: '
+                + ', '.join(missing_node_ids)
+            )
+
+        has_available_facts = self._has_available_facts(context)
+        normalized = [
+            self._normalize_section_instruction(
+                instruction_by_node_id[block.node_id],
                 block,
                 outline,
                 has_available_facts,
             )
+            for block in target_blocks
+        ]
 
-        outline.metadata.update(
+        instruction_list.outline_id = outline.document_id
+        instruction_list.instruction_set_id = (
+            instruction_list.instruction_set_id
+            or f'{outline.document_id}-section-instructions'
+        )
+        instruction_list.instructions = normalized
+        instruction_list.meta.update(
             {
-                'has_section_instructions': True,
+                'source': 'llm',
+                'outline_id': outline.document_id,
+                'outline_title': outline.title,
                 'context_id': context.context_id,
                 'has_execution_results': execution_results is not None,
             }
         )
-        return outline
+        return instruction_list
 
-    def _normalize_section_authoring(
+    def _normalize_section_instruction(
         self,
-        auth: Optional[WriterAuthoring],
+        instruction: SectionInstruction,
         block: WriterBlock,
         outline: WriterDocument,
         has_available_facts: bool,
-    ) -> None:
+    ) -> SectionInstruction:
         block_constraints = block.authoring.constraints if block.authoring else WriterConstraints()
-        result = auth if auth is not None else WriterAuthoring()
 
-        result.origin_node_id = block.node_id
-        result.instruction_id = result.instruction_id or f'instruction-{block.node_id}'
-        result.instruction = (
-            result.instruction
-            or block_constraints.section_goal
-            or (block.authoring.instruction if block.authoring else None)
-            or f'Write the section: {block.content}'
-        )
+        if not instruction.instruction_id.strip():
+            raise ValueError(f'Section instruction for {block.node_id!r} has an empty instruction_id.')
+        if not instruction.section_goal.strip():
+            raise ValueError(f'Section instruction for {block.node_id!r} has an empty section_goal.')
 
-        constraints = result.constraints
-        if not constraints.section_goal:
-            constraints.section_goal = block_constraints.section_goal
-        if not constraints.required_points:
-            constraints.required_points = list(block_constraints.required_points)
-        if not constraints.fact_constraints:
-            constraints.fact_constraints = list(block_constraints.fact_constraints)
+        instruction.section_title = block.content
+        instruction.references = [dict(reference) for reference in block.references]
+        if not instruction.required_points:
+            instruction.required_points = list(block_constraints.required_points)
+        if not instruction.fact_constraints:
+            instruction.fact_constraints = list(block_constraints.fact_constraints)
         if not has_available_facts:
-            constraints.fact_constraints = []
-        if not constraints.style_constraints:
-            constraints.style_constraints = list(block_constraints.style_constraints)
+            instruction.fact_constraints = []
+        if not instruction.style_constraints:
+            instruction.style_constraints = list(block_constraints.style_constraints)
             if block_constraints.pov:
-                constraints.style_constraints.append(f'POV: {block_constraints.pov}')
+                instruction.style_constraints.append(f'POV: {block_constraints.pov}')
             if block_constraints.tone:
-                constraints.style_constraints.append(f'Tone: {block_constraints.tone}')
-        if not constraints.relation_constraints:
-            constraints.relation_constraints = list(block_constraints.relation_constraints)
-        if not result.expected_blocks:
-            result.expected_blocks = self._default_expected_blocks(block, block_constraints)
+                instruction.style_constraints.append(f'Tone: {block_constraints.tone}')
+        if not instruction.relation_constraints:
+            instruction.relation_constraints = list(block_constraints.relation_constraints)
+        if not instruction.expected_blocks:
+            instruction.expected_blocks = self._default_expected_blocks(block, block_constraints)
 
-        result.meta.update(
+        instruction.meta.update(
             {
                 'outline_node_level': block.numbering.get('level'),
                 'outline_node_instruction': block.authoring.instruction if block.authoring else None,
-                'document_id': outline.document_id,
-                'document_title': outline.title,
+                'outline_id': outline.document_id,
+                'outline_title': outline.title,
             }
         )
-        block.authoring = result
+        return instruction
 
     def _default_expected_blocks(
         self,

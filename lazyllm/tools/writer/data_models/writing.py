@@ -12,7 +12,7 @@ class OutlineNodeConstraints(BaseModel):
     fact_constraints: List[str] = Field(default_factory=list)
     style_constraints: List[str] = Field(default_factory=list)
     relation_constraints: List[str] = Field(default_factory=list)
-    source_refs: List[str] = Field(default_factory=list)
+    references: List[Dict[str, Any]] = Field(default_factory=list)
     min_words: Optional[int] = None
     max_words: Optional[int] = None
     pov: Optional[str] = None
@@ -42,12 +42,14 @@ class WritingOutline(ArtifactModel):
 
 
 class SectionInstruction(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     instruction_id: str
     outline_node_id: str
     section_title: str
     section_goal: str
     required_points: List[str] = Field(default_factory=list)
-    source_refs: List[str] = Field(default_factory=list)
+    references: List[Dict[str, Any]] = Field(default_factory=list)
     fact_constraints: List[str] = Field(default_factory=list)
     style_constraints: List[str] = Field(default_factory=list)
     relation_constraints: List[str] = Field(default_factory=list)

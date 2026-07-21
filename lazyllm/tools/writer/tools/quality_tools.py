@@ -8,6 +8,7 @@ from ..data_models.quality import AuditResult, ReviewReport
 from ..data_models.revision import PatchSet
 from ..data_models.task import WritingTask
 from ..data_models.writer_ir import WriterBlock, WriterDocument
+from ..data_models.writing import SectionInstruction, SectionInstructionList
 from ..prompts.quality import (
     VALIDATE_DRAFT_DOCUMENT_PROMPT,
     VALIDATE_PATCH_SET_PROMPT,
@@ -26,61 +27,34 @@ class WriterQualityTools(WriterToolBase):
     def validate_section(
         self,
         draft_block: Any,
-        outline_document: Any,
+        section_instruction: Any,
         context: Any,
     ) -> dict:
         draft = self._unified_model(draft_block, WriterBlock)
-        outline = self._unified_model(outline_document, WriterDocument)
+        instruction_list = self._unified_model(section_instruction, SectionInstructionList)
         writing_context = self._unified_model(context, WritingContext)
         self._require_stage(draft.stage, 'draft', 'draft_block')
-        self._require_stage(outline.stage, 'outline', 'outline_document')
 
-        outline_block = self._match_instruction(draft, outline)
-        if outline_block is None:
-            fallback = AuditResult(
-                is_passed=True,
-                score=100,
-                summary='未找到匹配的大纲节点写作指令，跳过详细校验。',
-                issues=[],
+        instruction = self._match_instruction(draft, instruction_list)
+        if instruction is None:
+            raise ValueError(
+                f'No section instruction matches draft block {draft.node_id!r}.'
             )
-            report = ReviewReport(
-                target=draft.node_id or draft.content or None,
-                result=fallback,
-            )
-            return self._save_artifacts(
-                {'section_review': report},
-                step_name='validate_section',
-                primary_key='section_review',
-                summary='Section validation skipped: no matching outline authoring.',
-                counts={
-                    'total_issues': 0,
-                    'high_severity': 0,
-                    'medium_severity': 0,
-                    'low_severity': 0,
-                },
-                artifact_meta={
-                    'draft_node_id': draft.node_id,
-                    'is_passed': True,
-                    'score': 100,
-                    'match_found': False,
-                },
-            ).model_dump()
 
         prompt = VALIDATE_SECTION_PROMPT.format(
             section_json=to_prompt_json(draft),
-            instruction_json=to_prompt_json(self._instruction_view(outline_block)),
+            instruction_json=to_prompt_json(instruction),
             context_json=to_prompt_json(writing_context),
         )
         audit_result = self._call_llm_structured(prompt, AuditResult)
-        authoring = outline_block.authoring
 
         report = ReviewReport(
             target=draft.node_id,
             result=audit_result,
             meta={
-                'instruction_id': authoring.instruction_id if authoring else None,
-                'outline_node_id': outline_block.node_id,
-                'section_title': outline_block.content or None,
+                'instruction_id': instruction.instruction_id,
+                'outline_node_id': instruction.outline_node_id,
+                'section_title': instruction.section_title,
             },
         )
         counts = self._issue_counts(audit_result)
@@ -97,8 +71,8 @@ class WriterQualityTools(WriterToolBase):
             },
             artifact_meta={
                 'draft_node_id': draft.node_id,
-                'outline_node_id': outline_block.node_id,
-                'instruction_id': authoring.instruction_id if authoring else None,
+                'outline_node_id': instruction.outline_node_id,
+                'instruction_id': instruction.instruction_id,
                 'is_passed': audit_result.is_passed,
                 'score': audit_result.score,
             },
@@ -213,48 +187,23 @@ class WriterQualityTools(WriterToolBase):
     def _match_instruction(
         self,
         draft_block: WriterBlock,
-        outline_document: WriterDocument,
-    ) -> Optional[WriterBlock]:
-        candidates = [
-            block for block in outline_document.iter_blocks()
-            if block.authoring is not None
-        ]
+        instruction_list: SectionInstructionList,
+    ) -> Optional[SectionInstruction]:
         draft_authoring = draft_block.authoring
         instruction_id = draft_authoring.instruction_id if draft_authoring else None
         origin_node_id = draft_authoring.origin_node_id if draft_authoring else None
 
         if instruction_id:
-            for block in candidates:
-                if block.authoring and block.authoring.instruction_id == instruction_id:
-                    return block
+            for instruction in instruction_list.instructions:
+                if instruction.instruction_id == instruction_id:
+                    return instruction
 
         if origin_node_id:
-            for block in candidates:
-                if block.node_id == origin_node_id:
-                    return block
-
-        for block in candidates:
-            if block.node_id == draft_block.node_id:
-                return block
-
-        draft_heading = draft_block.content.strip() if draft_block.type == 'heading' else ''
-        if draft_heading:
-            for block in candidates:
-                if block.content.strip() == draft_heading:
-                    return block
+            for instruction in instruction_list.instructions:
+                if instruction.outline_node_id == origin_node_id:
+                    return instruction
 
         return None
-
-    def _instruction_view(self, outline_block: WriterBlock) -> dict:
-        authoring = outline_block.authoring
-        return {
-            'outline_node_id': outline_block.node_id,
-            'section_title': outline_block.content,
-            'type': outline_block.type,
-            'numbering': outline_block.numbering,
-            'references': outline_block.references,
-            'authoring': authoring.model_dump() if authoring else None,
-        }
 
     def _issue_counts(self, audit_result: AuditResult) -> dict:
         return {

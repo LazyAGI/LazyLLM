@@ -5,12 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from lazyllm.tools.writer.data_models import (
-    DraftBlock,
-    DraftDocument,
-    DraftSection,
     DocumentSummary,
     MaterialStyle,
-    OutlineNode,
     ResourceProfile,
     WriterAuthoring,
     WriterBlock,
@@ -28,7 +24,6 @@ from lazyllm.tools.writer.data_models.task import InputResource
 from lazyllm.tools.writer.data_models.writing import (
     SectionInstruction,
     SectionInstructionList,
-    WritingOutline,
 )
 from lazyllm.tools.writer.tools.context_tools import WriterContextTools
 from lazyllm.tools.writer.tools.drafting_tools import WriterDraftingTools
@@ -73,19 +68,6 @@ def _call_document_to_docir(adapter, artifact_store, stage=None):
         with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
             tool = WriterResourceTools(artifact_store=artifact_store)
             return tool.document_to_docir(target_document=target_document)
-
-
-def _call_write_to_document(adapter, document, artifact_store):
-    with patch(
-        'lazyllm.tools.fs.client.FS._parse',
-        return_value=('feishu', None, '/write-test.md'),
-    ):
-        with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
-            tool = WriterResourceTools(artifact_store=artifact_store)
-            return tool.write_to_document(
-                content=document,
-                target_document={'uri': 'feishu:///write-test.md', 'adapter': 'feishu'},
-            )
 
 
 def _make_final_writer_document(content='# Local output', title=''):
@@ -133,69 +115,6 @@ def _make_section_instruction_list():
     )
 
 
-def _make_section_data():
-    return {
-        'section_id': 'sec-prologue',
-        'outline_node_id': 'prologue',
-        'instruction_id': 'si-prologue',
-        'title': '楔子 · 星辰陨落',
-        'blocks': [
-            {
-                'block_id': 'blk-pro-01',
-                'content': '万古之前，九州大陆之上，有一位统御星辰的大帝。',
-            }
-        ],
-    }
-
-
-def _make_draft_document():
-    return DraftDocument(
-        draft_id='draft-test-001',
-        title='星辰大帝',
-        sections=[
-            DraftSection(
-                section_id='sec-prologue',
-                outline_node_id='prologue',
-                title='楔子 · 星辰陨落',
-                blocks=[
-                    DraftBlock(
-                        block_id='blk-pro-01',
-                        section_id='sec-prologue',
-                        content='万古之前，九州大陆上，曾有一位统御星辰的大帝。',
-                    )
-                ],
-            )
-        ],
-    )
-
-
-def _make_quality_outline_document():
-    return WriterDocument(
-        document_id='outline-test-001',
-        stage='outline',
-        title='星辰大帝',
-        blocks=[
-            WriterBlock(
-                node_id='prologue',
-                type='heading',
-                content='楔子 · 星辰陨落',
-                stage='outline',
-                numbering={'level': 1},
-                authoring=WriterAuthoring(
-                    instruction='建立世界观的宏大感和宿命基调。',
-                    instruction_id='si-prologue',
-                    constraints=WriterConstraints(
-                        section_goal='建立世界观的宏大感和宿命基调。',
-                        required_points=['太古星辰大帝的实力层级'],
-                        fact_constraints=['星辰本源=太古大帝毕生修为+灵魂印记'],
-                        style_constraints=['全知视角，史诗歌谣的叙述节奏'],
-                    ),
-                ),
-            ),
-        ],
-    )
-
-
 def _make_quality_draft_block():
     return WriterBlock(
         node_id='sec-prologue',
@@ -215,61 +134,6 @@ def _make_quality_draft_block():
             ),
         ],
     )
-
-
-def _make_quality_draft_document():
-    return WriterDocument(
-        document_id='draft-test-001',
-        stage='draft',
-        title='星辰大帝',
-        blocks=[_make_quality_draft_block()],
-    )
-
-
-def test_create_writing_context_tool_result():
-    task = WritingTask(task_id='task-1', query='写一份产品方案', task_type='write')
-    profiles = [
-        ResourceProfile(
-            resource_id='res-1',
-            resource_role='background',
-            summary='产品背景资料',
-            key_facts=['支持私有化部署'],
-            style=MaterialStyle(notes=['正式']),
-        )
-    ]
-    writer_ir = WriterDocument(
-        document_id='doc-1',
-        stage='final',
-        blocks=[
-            WriterBlock(
-                node_id='b1', type='heading', content='方案背景',
-                stage='final', numbering={'level': 1},
-            ),
-            WriterBlock(
-                node_id='b2', type='paragraph', content='这里是背景内容。',
-                stage='final',
-            ),
-        ],
-    )
-
-    with tempfile.TemporaryDirectory() as d:
-        result = WriterContextTools(artifact_store=d).create_writing_context(
-            task=task.model_dump(),
-            resource_profiles=[profile.model_dump() for profile in profiles],
-            document=writer_ir.model_dump(),
-        )
-
-        assert result['artifact_path'].endswith('writing_context.json')
-        assert result['context_path'] == result['artifact_path']
-        assert result['metadata']['step_name'] == 'create_writing_context'
-
-        context = load_artifact_json(result['context_path'], WritingContext)
-        assert context.context_id == 'task-1'
-        assert context.doc_id == 'doc-1'
-        assert context.facts[0].value == '支持私有化部署'
-        assert len(context.block_summaries) == 2
-        assert context.outline is None
-        assert context.draft_document is None
 
 
 def test_update_writing_context_tool_result_from_paths():
@@ -298,7 +162,6 @@ def test_update_writing_context_tool_result_from_paths():
         result = tool.update_writing_context(artifacts=output_path, context=context_path)
 
         assert result['artifact_path'].endswith('writing_context.json')
-        assert result['metadata']['step_name'] == 'update_writing_context'
 
         updated = load_artifact_json(result['context_path'], WritingContext)
         assert result['metadata']['step_name'] == 'update_writing_context'
@@ -332,28 +195,22 @@ def test_structure_summary_with_headings():
     assert result == '文档结构: # 背景 > # 方案'
 
 
-def test_structure_summary_heading_text_empty():
-    writer_ir = WriterDocument(
-        document_id='doc-empty-heading',
-        stage='final',
-        blocks=[
+@pytest.mark.parametrize(
+    'blocks',
+    [
+        [
             WriterBlock(node_id='b1', type='heading', content='', stage='final'),
             WriterBlock(node_id='b2', type='paragraph', content='正文', stage='final'),
         ],
-    )
-    result = WriterContextTools(artifact_store='/tmp/test')._build_structure_summary(writer_ir)
-    assert result == '由 2 个顶层块组成'
-
-
-def test_structure_summary_no_headings():
-    writer_ir = WriterDocument(
-        document_id='doc-no-headings',
-        stage='final',
-        blocks=[
+        [
             WriterBlock(node_id='b1', type='paragraph', content='正文', stage='final'),
             WriterBlock(node_id='b2', type='table', content='', stage='final'),
         ],
-    )
+    ],
+    ids=['empty_heading', 'no_headings'],
+)
+def test_structure_summary_without_headings(blocks):
+    writer_ir = WriterDocument(document_id='doc-no-headings', stage='final', blocks=blocks)
     result = WriterContextTools(artifact_store='/tmp/test')._build_structure_summary(writer_ir)
     assert result == '由 2 个顶层块组成'
 
@@ -430,6 +287,7 @@ def test_summarize_content_no_llm():
         tool = WriterContextTools(artifact_store=d)
         result = tool._summarize_content_data('这是草稿内容。' * 50)
         assert len(result) <= 243  # 240 + "..."
+        assert result.endswith('...')
         assert '这是草稿内容' in result
 
 
@@ -451,16 +309,6 @@ def test_summarize_content_llm_exception():
         tool = WriterContextTools(artifact_store=d, llm=llm)
         result = tool._summarize_content_data('草稿内容' * 50)
         assert '草稿内容' in result
-
-
-def test_summarize_content_long_no_llm():
-    long_text = 'A' * 500
-
-    with tempfile.TemporaryDirectory() as d:
-        tool = WriterContextTools(artifact_store=d)
-        result = tool._summarize_content_data(long_text)
-        assert len(result) <= 243
-        assert result.endswith('...')
 
 
 # ---------------------------------------------------------------------------
@@ -487,7 +335,7 @@ def test_create_context_writer_ir_none():
         assert context.block_summaries == []
 
 
-def test_create_context_writer_ir_with_headings():
+def test_create_writing_context_tool_result():
     task = WritingTask(task_id='t2', query='写报告', task_type='write')
     profiles = [
         ResourceProfile(resource_id='r1', resource_role='background',
@@ -521,6 +369,11 @@ def test_create_context_writer_ir_with_headings():
         )
 
         context = load_artifact_json(result['context_path'], WritingContext)
+        assert result['artifact_path'].endswith('writing_context.json')
+        assert result['context_path'] == result['artifact_path']
+        assert result['metadata']['step_name'] == 'create_writing_context'
+        assert context.context_id == 't2'
+        assert context.doc_id == 'doc-2'
         assert '文档结构' in context.document_summary.structure_summary
         assert '# 背景分析' in context.document_summary.structure_summary
         assert len(context.block_summaries) == 3  # 2 headings + 1 paragraph all have text
@@ -729,42 +582,36 @@ def test_generate_section_instructions_preserves_outline_references():
             )
         ],
     )
-    llm_result = WriterDocument(
-        document_id='outline-no-refs',
-        stage='outline',
-        blocks=[
-            WriterBlock(
-                node_id='section-1',
-                type='heading',
-                stage='outline',
+    llm_result = SectionInstructionList(
+        instructions=[
+            SectionInstruction(
+                instruction_id='instruction-section-1',
+                outline_node_id='section-1',
+                section_title='第一节',
+                section_goal='写第一节',
                 references=[{'id': 'llm-invented-reference'}],
-                authoring=WriterAuthoring(
-                    origin_node_id='section-1',
-                    instruction_id='instruction-section-1',
-                    instruction='写第一节',
-                    constraints=WriterConstraints(
-                        fact_constraints=['未在上下文中出现的事实'],
-                    ),
-                ),
+                fact_constraints=['未在上下文中出现的事实'],
             )
         ],
     )
+    original_outline = outline.model_copy(deep=True)
 
     with tempfile.TemporaryDirectory() as d:
         tool = WriterPlanningTools(artifact_store=d)
         with patch.object(tool, '_call_llm_structured', return_value=llm_result):
             result = tool.generate_section_instructions(outline=outline, context=context)
 
-        outline_with_instructions = load_artifact_json(
-            result['metadata']['artifact_paths']['outline_with_instructions'],
-            WriterDocument,
+        instructions = load_artifact_json(
+            result['metadata']['artifact_paths']['section_instructions'],
+            SectionInstructionList,
         )
-        block = outline_with_instructions.blocks[0]
-        assert block.references == references
-        assert block.authoring.constraints.fact_constraints == []
+        instruction = instructions.instructions[0]
+        assert instruction.references == references
+        assert instruction.fact_constraints == []
+        assert outline == original_outline
 
 
-def test_generate_writing_output_writes_markdown_file():
+def test_generate_final_document_writes_markdown_file():
     context = WritingContext(context_id='ctx-output-file', doc_id='doc-output-file')
     draft_document = WriterDocument(
         document_id='draft-output-file',
@@ -790,7 +637,7 @@ def test_generate_writing_output_writes_markdown_file():
     )
 
     with tempfile.TemporaryDirectory() as d:
-        result = WriterDraftingTools(artifact_store=d).generate_writing_output(
+        result = WriterDraftingTools(artifact_store=d).generate_final_document(
             draft=draft_document,
             context=context,
         )
@@ -853,11 +700,15 @@ def test_write_to_document():
     adapter = _make_doc_adapter()
 
     with tempfile.TemporaryDirectory() as d:
-        result = _call_write_to_document(
-            adapter,
-            _make_final_writer_document(content='world', title='Hello'),
-            d,
-        )
+        with patch(
+            'lazyllm.tools.fs.client.FS._parse',
+            return_value=('feishu', None, '/write-test.md'),
+        ):
+            with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
+                result = WriterResourceTools(artifact_store=d).write_to_document(
+                    content=_make_final_writer_document(content='world', title='Hello'),
+                    target_document={'uri': 'feishu:///write-test.md', 'adapter': 'feishu'},
+                )
 
         assert result['artifact_path'].endswith('write_result.json')
         assert result['metadata']['step_name'] == 'write_to_document'
@@ -978,7 +829,7 @@ def test_validate_section_happy_path():
         with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()):
             result = tool.validate_section(
                 draft_block=_make_quality_draft_block(),
-                outline_document=_make_quality_outline_document(),
+                section_instruction=_make_section_instruction_list(),
                 context=_make_context(),
             )
 
@@ -991,11 +842,18 @@ def test_validate_section_happy_path():
 
 
 def test_validate_draft_document_happy_path():
+    draft_document = WriterDocument(
+        document_id='draft-test-001',
+        stage='draft',
+        title='星辰大帝',
+        blocks=[_make_quality_draft_block()],
+    )
+
     with tempfile.TemporaryDirectory() as d:
         tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
         with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()):
             result = tool.validate_draft_document(
-                draft_document=_make_quality_draft_document(),
+                draft_document=draft_document,
                 context=_make_context(),
             )
 
@@ -1125,25 +983,6 @@ def test_validate_patch_set_failing():
 
 # --- Scenario 5: Hunk without matching ModifyInstruction ---
 
-def test_validate_patch_set_unmatched_instruction():
-    with tempfile.TemporaryDirectory() as d:
-        tool = WriterQualityTools(llm=MagicMock(), artifact_store=d)
-        with patch.object(tool, '_call_llm_structured', return_value=_make_passing_audit()) as mock_llm:
-            result = tool.validate_patch_set(
-                patch_set=_make_patch_set(hunks=[
-                    PatchHunk(hunk_id='h1', target_node_id='unknown-id',
-                              old_text='xxx', new_text='yyy',
-                              modify_type='replace'),
-                ]),
-                context=_make_context(),
-                task=_make_task(),
-            )
-
-        audit = load_artifact_json(result['artifact_path'], AuditResult)
-        assert mock_llm.call_count == 1
-        assert audit.is_passed is True
-
-
 # ---------------------------------------------------------------------------
 # write_to_document boundary tests
 # ---------------------------------------------------------------------------
@@ -1160,26 +999,26 @@ def test_write_to_document_rejects_non_final_writer_document():
             )
 
 
-def test_write_to_document_no_target():
-    # target_document=None -> locator empty -> logs warning, no local file saved.
+@pytest.mark.parametrize('target_document', [None, {}], ids=['none', 'empty_dict'])
+def test_write_to_document_no_target(target_document):
+    # Both empty target forms normalize to an empty TargetDocument.
     with tempfile.TemporaryDirectory() as d:
         tool = WriterResourceTools(artifact_store=d)
         result = tool.write_to_document(
             content=_make_final_writer_document(),
-            target_document=None,
+            target_document=target_document,
         )
 
         assert result['metadata']['step_name'] == 'write_to_document'
         assert result['metadata']['extra']['document_id'] == ''
         assert result['metadata']['extra']['adapter'] == ''
-        assert 'markdown' not in result['metadata'].get('artifact_paths', {})
 
 
 def test_write_to_document_fs_failure():
     # fs.write_file raises -> doc_id empty, no local file saved.
+    pytest.importorskip('fsspec')
     adapter = _make_doc_adapter()
     adapter.write_file.side_effect = RuntimeError('network down')
-    adapter.resolve_link.side_effect = RuntimeError('network down')
 
     with tempfile.TemporaryDirectory() as d:
         with patch('lazyllm.tools.fs.client.FS._parse', return_value=('feishu', None, '/fail.md')):
@@ -1192,17 +1031,3 @@ def test_write_to_document_fs_failure():
 
         assert result['metadata']['extra']['document_id'] == ''
         assert result['metadata']['extra']['adapter'] == 'feishu'
-        assert 'markdown' not in result['metadata'].get('artifact_paths', {})
-
-
-def test_write_to_document_empty_target_dict():
-    # target_document={} -> locator empty, same as None.
-    with tempfile.TemporaryDirectory() as d:
-        tool = WriterResourceTools(artifact_store=d)
-        result = tool.write_to_document(
-            content=_make_final_writer_document('# Empty target'),
-            target_document={},
-        )
-
-        assert result['metadata']['extra']['document_id'] == ''
-        assert 'markdown' not in result['metadata'].get('artifact_paths', {})

@@ -1,10 +1,10 @@
 # flake8: noqa
-VALIDATE_SECTION_PROMPT = '''You are a section quality reviewer. Evaluate the draft WriterBlock subtree as a whole against its authoring plan and writing context, then return an AuditResult.
+VALIDATE_SECTION_PROMPT = '''You are a section quality reviewer. Evaluate the draft WriterBlock subtree as a whole against its section instruction and writing context, then return an AuditResult.
 
 Review the section along these dimensions:
 
 1. EVIDENCE GROUNDING (category=evidence)
-Treat writing-context facts as the authoritative evidence set. The outline block's references identify the facts or resources intended for this section, while fact_constraints contains literal factual statements that must be preserved. Specific claims about product capabilities, implementations, metrics, named entities, security properties, or observed results must be supported by that evidence. General explanation may connect supported facts, but it must not turn assumptions into claims about the subject. Report contradictions or fabricated specifics as high severity and unsupported elaboration as medium severity. Do not require references to be repeated on paragraph children because the section root carries them.
+Treat writing-context facts as the authoritative evidence set. The section instruction's references identify the facts or resources intended for this section, while fact_constraints contains literal factual statements that must be preserved. Specific claims about product capabilities, implementations, metrics, named entities, security properties, or observed results must be supported by that evidence. General explanation may connect supported facts, but it must not turn assumptions into claims about the subject. Report contradictions or fabricated specifics as high severity and unsupported elaboration as medium severity. Do not require references to be repeated on paragraph children because the section root carries them.
 
 2. AUTHORING FULFILLMENT (category=coverage)
 Judge whether the section achieves section_goal, covers required_points, respects must_include and must_avoid, and develops the requested ideas with useful substance. Treat expected_blocks as coverage and ordering guidance rather than mandatory visible headings or an exact paragraph count. Missing a major purpose is high severity; a local omission is medium severity.
@@ -24,7 +24,7 @@ Scoring:
 Draft WriterBlock subtree:
 {section_json}
 
-Matched outline WriterBlock authoring view:
+Section instruction:
 {instruction_json}
 
 Writing context:

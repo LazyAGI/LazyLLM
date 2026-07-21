@@ -11,6 +11,7 @@ from lazyllm.tools.writer.data_models.quality import AuditResult, ReviewReport
 from lazyllm.tools.writer.data_models.revision import LocateResult, ModifyPlan, PatchResult, PatchSet
 from lazyllm.tools.writer.data_models.task import InputResource, Selection, TargetDocument, WritingTask
 from lazyllm.tools.writer.data_models.writer_ir import WriterBlock, WriterDocument
+from lazyllm.tools.writer.data_models.writing import SectionInstructionList
 from lazyllm.tools.writer.workflow.naive_writer_workflow import NaiveWriterWorkflow
 from lazyllm.tools.writer.utils import load_artifact_json
 from ...utils import get_api_key, get_path
@@ -154,11 +155,11 @@ def test_write_workflow_e2e():
     assert outline is not None
     assert len(outline.blocks) >= 1
 
-    # --- Step 4: outline_with_instructions ---
-    instructions = _load_stage(stages, 'outline_with_instructions', WriterDocument)
+    # --- Step 4: section_instructions ---
+    instructions = _load_stage(stages, 'section_instructions', SectionInstructionList)
     assert instructions is not None
-    assert len(instructions.blocks) >= 1
-    assert instructions.blocks[0].authoring is not None
+    assert len(instructions.instructions) >= 1
+    assert instructions.instructions[0].outline_node_id
 
     # --- Step 5: draft_block ---
     draft_block = _load_stage(stages, 'draft_block', WriterBlock)
