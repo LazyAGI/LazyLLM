@@ -593,6 +593,132 @@ class FeishuFSBase(LinkDocumentFSBase):
                 break
         return results
 
+    def _create_descendant_blocks(
+        self,
+        document_id: str,
+        parent_block_id: str,
+        index: int,
+        children_id: List[str],
+        descendants: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{parent_block_id}/descendant'
+        response = self._post(
+            url,
+            json={
+                'index': index,
+                'children_id': children_id,
+                'descendants': descendants,
+            },
+        )
+        return (response or {}).get('data') or {}
+
+    def _batch_update_blocks(
+        self,
+        document_id: str,
+        requests: List[Dict[str, Any]],
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/batch_update'
+        response = self._patch(
+            url,
+            params={'document_revision_id': document_revision_id},
+            json={'requests': requests},
+        )
+        return (response or {}).get('data') or {}
+
+    def _batch_delete_child_blocks(
+        self,
+        document_id: str,
+        parent_block_id: str,
+        start_index: int,
+        end_index: int,
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        url = (
+            f'{self._base_url}/docx/v1/documents/{document_id}/blocks/'
+            f'{parent_block_id}/children/batch_delete'
+        )
+        response = self._delete(
+            url,
+            params={'document_revision_id': document_revision_id},
+            json={'start_index': start_index, 'end_index': end_index},
+        )
+        return (response or {}).get('data') or {}
+
+    def create_block(
+        self,
+        document_id: str,
+        parent_block_id: str,
+        index: int,
+        children_id: List[str],
+        descendants: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return self._create_descendant_blocks(
+            document_id, parent_block_id, index, children_id, descendants)
+
+    def update_block(
+        self,
+        document_id: str,
+        requests: List[Dict[str, Any]],
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        return self._batch_update_blocks(
+            document_id, requests, document_revision_id=document_revision_id)
+
+    def delete_block(
+        self,
+        document_id: str,
+        parent_block_id: str,
+        start_index: int,
+        end_index: int,
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        return self._batch_delete_child_blocks(
+            document_id,
+            parent_block_id,
+            start_index,
+            end_index,
+            document_revision_id=document_revision_id,
+        )
+
+    def move_block(
+        self,
+        document_id: str,
+        source_parent_block_id: str,
+        source_index: int,
+        target_parent_block_id: str,
+        target_index: int,
+        children_id: List[str],
+        descendants: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        if len(children_id) != 1:
+            raise ValueError('move_block requires exactly one root block.')
+        create_index = target_index
+        if source_parent_block_id == target_parent_block_id and source_index < target_index:
+            create_index += 1
+        create_data = self._create_descendant_blocks(
+            document_id,
+            target_parent_block_id,
+            create_index,
+            children_id,
+            descendants,
+        )
+        delete_index = source_index
+        if source_parent_block_id == target_parent_block_id and create_index <= source_index:
+            delete_index += len(children_id)
+        delete_data = self._batch_delete_child_blocks(
+            document_id,
+            source_parent_block_id,
+            delete_index,
+            delete_index + 1,
+            document_revision_id=create_data.get('document_revision_id', -1),
+        )
+        return {'create': create_data, 'delete': delete_data}
+
     def write_doc_blocks(
         self,
         document_id: str,

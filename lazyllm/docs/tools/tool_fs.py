@@ -1121,6 +1121,145 @@ Return the current user OAuth refresh_token (may have been updated after refresh
 Returns:
     str: Current refresh_token, or empty string if not set or not yet authorized.
 ''')
+_add_feishu_chinese('FeishuFSBase.create_block', '''\
+在指定飞书 Docx 文档的父块下创建原生块子树。
+
+该方法是飞书创建嵌套块接口的薄封装，不解析插入位置，不将扁平 blocks 转换为 descendants，也不读取目标文档。调用方必须提供符合飞书原生请求格式的参数。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档 ID。
+    parent_block_id (str): 目标父块 ID。
+    index (int): 在父块直接子块中的插入位置。
+    children_id (List[str]): 本次创建的顶层临时块 ID。
+    descendants (List[Dict[str, Any]]): 飞书原生 descendants。
+
+Returns:
+    Dict[str, Any]: 飞书响应中的原始 data。
+''')
+_add_feishu_english('FeishuFSBase.create_block', '''\
+Create native descendant blocks under a parent in a Feishu Docx document.
+
+This is a thin wrapper over Feishu's descendant-block endpoint. It does not resolve the insertion position,
+convert flat blocks into descendants, or read the target document. The caller must supply native Feishu request values.
+
+Args:
+    document_id (str): Target Feishu Docx document ID.
+    parent_block_id (str): Target parent block ID.
+    index (int): Insertion position among the parent's direct children.
+    children_id (List[str]): Temporary IDs of the top-level blocks to create.
+    descendants (List[Dict[str, Any]]): Native Feishu descendants.
+
+Returns:
+    Dict[str, Any]: Raw data from the Feishu response.
+''')
+_add_feishu_chinese('FeishuFSBase.update_block', '''\
+使用飞书原生 batch_update requests 批量更新文档块。
+
+该方法不从完整 Block 推断更新操作，也不自动拆分超过飞书单次限制的请求。调用方负责生成、分批 requests 并串联文档版本。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档 ID。
+    requests (List[Dict[str, Any]]): 飞书原生 batch_update requests。
+    document_revision_id (int): 要操作的文档版本，默认 -1。
+
+Returns:
+    Dict[str, Any]: 飞书响应中的原始 data。
+''')
+_add_feishu_english('FeishuFSBase.update_block', '''\
+Update document blocks with native Feishu batch_update requests.
+
+The method does not infer update operations from complete blocks or split requests that exceed Feishu's per-call limit.
+The caller is responsible for generating and batching requests and chaining document revisions.
+
+Args:
+    document_id (str): Target Feishu Docx document ID.
+    requests (List[Dict[str, Any]]): Native Feishu batch_update requests.
+    document_revision_id (int): Document revision to update; defaults to -1.
+
+Returns:
+    Dict[str, Any]: Raw data from the Feishu response.
+''')
+_add_feishu_chinese('FeishuFSBase.delete_block', '''\
+删除飞书父块下指定位置区间的直接子块。
+
+该方法直接封装飞书 batch_delete 接口。它不接收目标 block_id，不读取文档，也不解析父块或同级位置。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档 ID。
+    parent_block_id (str): 目标父块 ID。
+    start_index (int): 删除区间起始位置，包含。
+    end_index (int): 删除区间结束位置，不包含。
+    document_revision_id (int): 要操作的文档版本，默认 -1。
+
+Returns:
+    Dict[str, Any]: 飞书响应中的原始 data。
+
+''')
+_add_feishu_english('FeishuFSBase.delete_block', '''\
+Delete a positional range of direct children under a Feishu parent block.
+
+This method directly wraps Feishu's batch_delete endpoint. It does not accept a target block ID, read the document,
+or resolve the parent or sibling position.
+
+Args:
+    document_id (str): Target Feishu Docx document ID.
+    parent_block_id (str): Target parent block ID.
+    start_index (int): Inclusive start of the child range.
+    end_index (int): Exclusive end of the child range.
+    document_revision_id (int): Document revision to update; defaults to -1.
+
+Returns:
+    Dict[str, Any]: Raw data from the Feishu response.
+
+''')
+_add_feishu_chinese('FeishuFSBase.move_block', '''\
+通过创建后删除的方式移动一个已准备好的飞书 Block 子树。
+
+飞书没有原生 Block Move 接口。该方法使用调用方提供的父块、位置和原生 descendants 先创建副本，
+再使用创建返回的文档版本删除源块。target_index 表示移动完成后的最终位置；同父块移动时会自动修正创建和删除位置。
+该方法不读取文档、定位块或生成 descendants。创建的 Block 使用新 ID，评论和块历史不会迁移，两次请求不是原子操作。
+创建成功但删除失败时，目标副本会保留，并向调用方抛出删除异常。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档 ID。
+    source_parent_block_id (str): 源块的父块 ID。
+    source_index (int): 源块在父块直接子块中的位置。
+    target_parent_block_id (str): 目标父块 ID。
+    target_index (int): 移动完成后在目标父块中的位置。
+    children_id (List[str]): 包含单个顶层临时块 ID 的列表。
+    descendants (List[Dict[str, Any]]): 飞书原生 descendants。
+
+Returns:
+    Dict[str, Any]: 包含 create 和 delete 两个飞书原始 data 的字典。
+
+Raises:
+    ValueError: children_id 不是单个子树根块。
+''')
+_add_feishu_english('FeishuFSBase.move_block', '''\
+Move a prepared Feishu Block subtree by creating it and then deleting the source.
+
+Feishu has no native Block Move endpoint. This method creates a copy from caller-supplied parents, positions,
+and native descendants, then deletes the source using the revision returned by the create request. target_index is
+the final position after the move; create and delete positions are adjusted for moves under the same parent. The
+method does not read the document, locate blocks, or generate descendants. Created blocks receive new IDs; comments
+and block history are not transferred, and the two requests are not atomic. If deletion fails after creation, the
+destination copy remains and the deletion error is raised.
+
+Args:
+    document_id (str): Target Feishu Docx document ID.
+    source_parent_block_id (str): Parent ID of the source block.
+    source_index (int): Position of the source among its parent's direct children.
+    target_parent_block_id (str): Target parent block ID.
+    target_index (int): Final position under the target parent after the move.
+    children_id (List[str]): A list containing the single temporary root block ID to create.
+    descendants (List[Dict[str, Any]]): Native Feishu descendants.
+
+Returns:
+    Dict[str, Any]: A dictionary containing the raw create and delete response data.
+
+Raises:
+    ValueError: children_id does not contain exactly one subtree root.
+''')
 _add_feishu_chinese('FeishuFSBase.write_doc_blocks', '''\
 向已有飞书 Docx 文档末尾追加原生块，并返回写入后重新读取的完整块列表。
 
