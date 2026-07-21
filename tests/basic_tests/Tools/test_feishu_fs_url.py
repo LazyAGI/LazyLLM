@@ -418,6 +418,167 @@ class TestFeishuNeedsWiki(unittest.TestCase):
             self.assertTrue(_feishu_needs_wiki(None, '/folder/file'))
 
 
+class TestFeishuGetDocumentId(unittest.TestCase):
+
+    def test_direct_document_url_returns_id_without_node_lookup(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._space_id = 'wikcnTest'
+        fs._get_node = MagicMock()
+
+        cases = {
+            'https://company.feishu.cn/docx/DocId123': 'DocId123',
+            'https://company.larksuite.com/docs/LegacyDocId': 'LegacyDocId',
+        }
+        for url, expected in cases.items():
+            with self.subTest(url=url):
+                self.assertEqual(fs.get_document_id(url), expected)
+        fs._get_node.assert_not_called()
+
+    def test_wiki_url_returns_document_obj_token(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._space_id = ''
+        fs._get_node = MagicMock(return_value={
+            'obj_type': 'docx',
+            'obj_token': 'DocId456',
+        })
+
+        result = fs.get_document_id('https://company.feishu.cn/wiki/NodeToken123')
+
+        self.assertEqual(result, 'DocId456')
+        fs._get_node.assert_called_once_with('NodeToken123')
+
+    def test_router_link_path_is_decoded(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._get_node = MagicMock()
+        path = fs.to_link_path('https://company.feishu.cn/docx/DocId789')
+
+        self.assertEqual(fs.get_document_id(path), 'DocId789')
+        fs._get_node.assert_not_called()
+
+    def test_title_path_returns_document_obj_token(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._resolve_path_to_token = MagicMock(return_value='NodeFromPath')
+        fs._get_node = MagicMock(return_value={
+            'obj_type': 'docx',
+            'obj_token': 'DocFromPath',
+        })
+
+        self.assertEqual(fs.get_document_id('/folder/document'), 'DocFromPath')
+        fs._resolve_path_to_token.assert_called_once_with('/folder/document')
+
+    def test_non_feishu_url_or_non_document_node_raises(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._get_node = MagicMock(return_value={'obj_type': 'sheet', 'obj_token': 'SheetId'})
+
+        for url in (
+            'https://example.com/docx/DocId',
+            'https://notfeishu.cn/docx/DocId',
+            'https://applink.feishu.cn/client/docs/open?'
+            'url=https%3A%2F%2Fcompany.feishu.cn%2Fdocx%2FDocId',
+        ):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                fs.get_document_id(url)
+        with self.assertRaises(ValueError):
+            fs.get_document_id('https://company.feishu.cn/wiki/SheetNode')
+
+
+class TestFeishuGetDocBlocks(unittest.TestCase):
+
+    @staticmethod
+    def _make_fs(raw_blocks):
+        fs = object.__new__(FeishuWikiFS)
+        fs.get_document_id = MagicMock(return_value='doc-1')
+        fs._get_doc_blocks_raw = MagicMock(return_value=raw_blocks)
+        return fs
+
+    def test_preserves_raw_payload_and_adds_plain_text(self):
+        raw_blocks = [
+            {
+                'block_id': 'heading-1',
+                'block_type': 3,
+                'parent_id': 'doc-1',
+                'children': ['paragraph-1'],
+                'heading1': {
+                    'elements': [{
+                        'text_run': {
+                            'content': '项目标题',
+                            'text_element_style': {'bold': True},
+                        },
+                    }],
+                    'style': {'align': 1},
+                },
+                'comment_ids': ['comment-1'],
+                'future_field': {'kept': True},
+            },
+            {
+                'block_id': 'table-1',
+                'block_type': 31,
+                'children': ['cell-1', 'cell-2'],
+                'table': {
+                    'cells': ['cell-1', 'cell-2'],
+                    'property': {
+                        'row_size': 1,
+                        'column_size': 2,
+                        'column_width': [120, 240],
+                        'merge_info': [{'row_span': 1, 'col_span': 2}],
+                    },
+                },
+                'plain_text': 'provider-owned-value',
+            },
+        ]
+        fs = self._make_fs(raw_blocks)
+
+        result = fs.get_doc_blocks('/project', with_descendants=True)
+
+        expected = [{**raw_blocks[0], 'plain_text': '项目标题'}, raw_blocks[1]]
+        self.assertEqual(result, expected)
+        self.assertIs(result, raw_blocks)
+        self.assertEqual(raw_blocks[0]['plain_text'], '项目标题')
+        self.assertEqual(raw_blocks[1]['plain_text'], 'provider-owned-value')
+        fs._get_doc_blocks_raw.assert_called_once_with('doc-1', with_descendants=True)
+
+    def test_derives_plain_text_for_text_blocks_and_rich_elements(self):
+        text_blocks = {
+            1: 'page', 2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3',
+            6: 'heading4', 7: 'heading5', 8: 'heading6', 9: 'heading7',
+            10: 'heading8', 11: 'heading9', 12: 'bullet', 13: 'ordered',
+            14: 'code', 15: 'quote', 17: 'todo',
+        }
+        raw_blocks = [
+            {
+                'block_id': f'block-{block_type}',
+                'block_type': block_type,
+                field: {'elements': [{'text_run': {'content': f'text-{block_type}'}}]},
+            }
+            for block_type, field in text_blocks.items()
+        ]
+        elements = [
+            {'text_run': {'content': 'See ', 'text_element_style': {'italic': True}}},
+            {'mention_doc': {'token': 'doc-ref', 'title': 'Design Spec'}},
+            {'text_run': {'content': ' where '}},
+            {'equation': {'content': 'x^2'}},
+            {'file': {'file_token': 'file-1', 'name': 'appendix.pdf'}},
+            {'mention_user': {'user_id': 'user-1'}},
+            {'undefined_element': {'opaque': {'future': True}}},
+        ]
+        raw_blocks.append({
+            'block_id': 'paragraph-1',
+            'block_type': 2,
+            'text': {'elements': elements, 'style': {'align': 1}},
+        })
+        fs = self._make_fs(raw_blocks)
+
+        result = fs.get_doc_blocks('/project')
+
+        self.assertEqual(
+            [block['plain_text'] for block in result[:-1]],
+            [f'text-{block_type}' for block_type in text_blocks],
+        )
+        self.assertEqual(result[-1]['plain_text'], 'See Design Spec where x^2appendix.pdf')
+        self.assertEqual(result[-1]['text']['elements'], elements)
+        self.assertIs(result[-1]['text']['elements'], elements)
+
+
 if __name__ == '__main__':
     unittest.main()
 

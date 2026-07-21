@@ -1121,6 +1121,181 @@ Return the current user OAuth refresh_token (may have been updated after refresh
 Returns:
     str: Current refresh_token, or empty string if not set or not yet authorized.
 ''')
+_add_feishu_chinese('FeishuFSBase.create_block', '''\
+在指定飞书 Docx 文档的父块下创建原生块子树。
+
+该方法是飞书创建嵌套块接口的薄封装，不解析插入位置，不将扁平 blocks 转换为 descendants，也不读取目标文档。调用方必须提供符合飞书原生请求格式的参数。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档 ID。
+    parent_block_id (str): 目标父块 ID。
+    index (int): 在父块直接子块中的插入位置。
+    children_id (List[str]): 本次创建的顶层临时块 ID。
+    descendants (List[Dict[str, Any]]): 飞书原生 descendants。
+
+Returns:
+    Dict[str, Any]: 飞书响应中的原始 data。
+''')
+_add_feishu_english('FeishuFSBase.create_block', '''\
+Create native descendant blocks under a parent in a Feishu Docx document.
+
+This is a thin wrapper over Feishu's descendant-block endpoint. It does not resolve the insertion position,
+convert flat blocks into descendants, or read the target document. The caller must supply native Feishu request values.
+
+Args:
+    document_id (str): Target Feishu Docx document ID.
+    parent_block_id (str): Target parent block ID.
+    index (int): Insertion position among the parent's direct children.
+    children_id (List[str]): Temporary IDs of the top-level blocks to create.
+    descendants (List[Dict[str, Any]]): Native Feishu descendants.
+
+Returns:
+    Dict[str, Any]: Raw data from the Feishu response.
+''')
+_add_feishu_chinese('FeishuFSBase.update_block', '''\
+使用飞书原生 batch_update requests 批量更新文档块。
+
+该方法不从完整 Block 推断更新操作，也不自动拆分超过飞书单次限制的请求。调用方负责生成、分批 requests 并串联文档版本。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档 ID。
+    requests (List[Dict[str, Any]]): 飞书原生 batch_update requests。
+    document_revision_id (int): 要操作的文档版本，默认 -1。
+
+Returns:
+    Dict[str, Any]: 飞书响应中的原始 data。
+''')
+_add_feishu_english('FeishuFSBase.update_block', '''\
+Update document blocks with native Feishu batch_update requests.
+
+The method does not infer update operations from complete blocks or split requests that exceed Feishu's per-call limit.
+The caller is responsible for generating and batching requests and chaining document revisions.
+
+Args:
+    document_id (str): Target Feishu Docx document ID.
+    requests (List[Dict[str, Any]]): Native Feishu batch_update requests.
+    document_revision_id (int): Document revision to update; defaults to -1.
+
+Returns:
+    Dict[str, Any]: Raw data from the Feishu response.
+''')
+_add_feishu_chinese('FeishuFSBase.delete_block', '''\
+删除飞书父块下指定位置区间的直接子块。
+
+该方法直接封装飞书 batch_delete 接口。它不接收目标 block_id，不读取文档，也不解析父块或同级位置。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档 ID。
+    parent_block_id (str): 目标父块 ID。
+    start_index (int): 删除区间起始位置，包含。
+    end_index (int): 删除区间结束位置，不包含。
+    document_revision_id (int): 要操作的文档版本，默认 -1。
+
+Returns:
+    Dict[str, Any]: 飞书响应中的原始 data。
+
+''')
+_add_feishu_english('FeishuFSBase.delete_block', '''\
+Delete a positional range of direct children under a Feishu parent block.
+
+This method directly wraps Feishu's batch_delete endpoint. It does not accept a target block ID, read the document,
+or resolve the parent or sibling position.
+
+Args:
+    document_id (str): Target Feishu Docx document ID.
+    parent_block_id (str): Target parent block ID.
+    start_index (int): Inclusive start of the child range.
+    end_index (int): Exclusive end of the child range.
+    document_revision_id (int): Document revision to update; defaults to -1.
+
+Returns:
+    Dict[str, Any]: Raw data from the Feishu response.
+
+''')
+_add_feishu_chinese('FeishuFSBase.move_block', '''\
+通过创建后删除的方式移动一个已准备好的飞书 Block 子树。
+
+飞书没有原生 Block Move 接口。该方法使用调用方提供的父块、位置和原生 descendants 先创建副本，
+再使用创建返回的文档版本删除源块。target_index 表示移动完成后的最终位置；同父块移动时会自动修正创建和删除位置。
+该方法不读取文档、定位块或生成 descendants。创建的 Block 使用新 ID，评论和块历史不会迁移，两次请求不是原子操作。
+创建成功但删除失败时，目标副本会保留，并向调用方抛出删除异常。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档 ID。
+    source_parent_block_id (str): 源块的父块 ID。
+    source_index (int): 源块在父块直接子块中的位置。
+    target_parent_block_id (str): 目标父块 ID。
+    target_index (int): 移动完成后在目标父块中的位置。
+    children_id (List[str]): 包含单个顶层临时块 ID 的列表。
+    descendants (List[Dict[str, Any]]): 飞书原生 descendants。
+
+Returns:
+    Dict[str, Any]: 包含 create 和 delete 两个飞书原始 data 的字典。
+
+Raises:
+    ValueError: children_id 不是单个子树根块。
+''')
+_add_feishu_english('FeishuFSBase.move_block', '''\
+Move a prepared Feishu Block subtree by creating it and then deleting the source.
+
+Feishu has no native Block Move endpoint. This method creates a copy from caller-supplied parents, positions,
+and native descendants, then deletes the source using the revision returned by the create request. target_index is
+the final position after the move; create and delete positions are adjusted for moves under the same parent. The
+method does not read the document, locate blocks, or generate descendants. Created blocks receive new IDs; comments
+and block history are not transferred, and the two requests are not atomic. If deletion fails after creation, the
+destination copy remains and the deletion error is raised.
+
+Args:
+    document_id (str): Target Feishu Docx document ID.
+    source_parent_block_id (str): Parent ID of the source block.
+    source_index (int): Position of the source among its parent's direct children.
+    target_parent_block_id (str): Target parent block ID.
+    target_index (int): Final position under the target parent after the move.
+    children_id (List[str]): A list containing the single temporary root block ID to create.
+    descendants (List[Dict[str, Any]]): Native Feishu descendants.
+
+Returns:
+    Dict[str, Any]: A dictionary containing the raw create and delete response data.
+
+Raises:
+    ValueError: children_id does not contain exactly one subtree root.
+''')
+_add_feishu_chinese('FeishuFSBase.write_doc_blocks', '''\
+向已有飞书 Docx 文档末尾追加原生块，并返回写入后重新读取的完整块列表。
+
+输入是飞书原生块的扁平列表。每个块的 block_id 在本次写入中作为临时标识，父子关系仅由 parent_id 确定；输入中的 children 等读回元数据不会用于构建层级。源文档的 Page 块会被忽略，输入对象不会被修改。
+
+该方法只负责写入指定文档，不负责通过 URL 或 Wiki 路径解析文档，不会创建或清空目标文档。调用方应先准备受飞书嵌套块创建接口支持的规范化块。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档的 document_id，不能是浏览器 URL 或 Wiki 路径。
+    blocks (List[Dict[str, Any]]): 要追加的飞书原生扁平块；使用 parent_id 表示层级。
+
+Returns:
+    List[Dict[str, Any]]: 写入完成后从目标文档重新读取的完整飞书原生块列表。
+
+Raises:
+    TypeError: blocks 不是列表。
+    ValueError: blocks 为空，或包含当前结构化写入不支持的块类型。
+''')
+_add_feishu_english('FeishuFSBase.write_doc_blocks', '''\
+Append native blocks to an existing Feishu Docx document and return the complete block list read back after writing.
+
+The input is a flat list of native Feishu blocks. Each block_id is a temporary identifier for this write, and hierarchy is derived only from parent_id; read-side metadata such as children is not used to build the hierarchy. The source Page block is ignored, and the input objects are not mutated.
+
+This method only writes to the specified document. It does not resolve browser URLs or Wiki paths, create the target document, or clear existing content. The caller must provide normalized blocks supported by Feishu's nested-block creation API.
+
+Args:
+    document_id (str): The target Feishu Docx document_id, not a browser URL or Wiki path.
+    blocks (List[Dict[str, Any]]): Native flat Feishu blocks to append, with hierarchy expressed by parent_id.
+
+Returns:
+    List[Dict[str, Any]]: The complete native Feishu block list read from the target document after writing.
+
+Raises:
+    TypeError: blocks is not a list.
+    ValueError: blocks is empty or contains a block type unsupported by structured writing.
+''')
 _add_feishu_chinese('FeishuWikiFile', '''\
 飞书知识库节点对应的缓冲文件实现。打开时通过 FeishuWikiFS 拉取节点内容并缓存在内存，支持区间读。
 
@@ -1408,7 +1583,7 @@ _add_fs_chinese('FeishuWikiFS', f'''\
 
 保持原格式（表格、标题等）:
     - 通过 open/raw_content 下载到的是纯文本，put_file 会新建文档并只追加段落，因此「下载-修改-上传」会丢失表格等格式。
-    - 若要保留原格式，请使用块级编辑：先 get_doc_blocks(path) 获取文档块列表（含 block_id、block_type、plain_text），再对需要修改的文本块调用 update_doc_block_text(path, block_id, new_text)。仅修改目标文本块，表格等其它块不会被改动。
+    - get_doc_blocks(path) 返回飞书 Block API 的原始 block 字段，包括 elements、style、children、表格属性和未知类型字段；每个 block 额外带有便于检索的派生 plain_text。可对需要修改的文本块调用 update_doc_block_text(path, block_id, new_text)，其它 block 不会被改动。
 ''')
 _add_fs_english('FeishuWikiFS', f'''\
 Feishu Wiki FS: Feishu Open Platform Wiki API; maps a wiki space into a filesystem. Directories are wiki folders/nodes; files are documents or attachments. Supports ls, info, open (r/w), mkdir, rm_file, put_file, fetch_url, and block-level text edit: get_document_id, get_doc_blocks, update_doc_block_text.
@@ -1435,7 +1610,7 @@ Link-based read paths (read-only, no space_id required):
 
 Preserving format (tables, headings, etc.):
     - open/raw_content returns plain text only; put_file creates a new doc and appends paragraphs, so download-modify-upload loses tables and other structure.
-    - To preserve format, use block-level edit: get_doc_blocks(path) to list blocks (block_id, block_type, plain_text), then update_doc_block_text(path, block_id, new_text) for the blocks you need to change; other blocks (e.g. tables) are left unchanged.
+    - get_doc_blocks(path) returns the native Feishu Block API fields, including elements, styles, children, table properties, and unknown block-type fields; each block also includes a derived plain_text value for search. Use update_doc_block_text(path, block_id, new_text) for targeted text changes; other blocks are left unchanged.
 ''')
 _add_fs_chinese('FeishuWikiFS.fetch_url', f'''\
 通过飞书浏览器链接直接拉取文档内容（只读），无需 space_id 也无需标题路径。已废弃，推荐使用 read_bytes(url) 或 open(url)。
@@ -1618,19 +1793,19 @@ Returns:
 ''')
 
 _add_fs_chinese('FeishuWikiFS.get_document_id', '''\
-返回 Wiki 文档节点对应的飞书 docx document_id（即 obj_token）。path 必须指向 doc 或 docx 类型节点，否则抛出 ValueError。
+解析飞书或 Lark 浏览器文档链接或 Wiki 标题路径并返回对应的 document_id。docx/docs 直链直接返回链接中的 token；Wiki 链接和标题路径会查询节点并返回其 obj_token。非飞书链接或非文档节点会抛出 ValueError。
 
 Args:
-    path (str): Wiki 内文档路径（如 '/一级/文档标题'）。
+    path (str): 飞书 docx、docs、Wiki 文档链接或 Wiki 标题路径；也接受 FS Router 生成的 ~link 路径。不支持 AppLink 和短链。
 
 Returns:
     str: 文档的 document_id，用于飞书 docx API。
 ''')
 _add_fs_english('FeishuWikiFS.get_document_id', '''\
-Return the Feishu docx document_id (obj_token) for the wiki document at path. path must be a doc or docx node, otherwise ValueError is raised.
+Resolve a Feishu or Lark browser document URL or Wiki title path and return its document_id. Direct docx/docs URLs return their token; Wiki URLs and title paths resolve the node and return its obj_token. Non-Feishu URLs and non-document nodes raise ValueError.
 
 Args:
-    path (str): Wiki path to the document (e.g. '/level1/doc title').
+    path (str): Feishu docx, docs, or Wiki document URL, or a Wiki title path. FS Router ~link paths are also accepted. AppLinks and short URLs are not supported.
 
 Returns:
     str: The document_id for Feishu docx API.
@@ -1643,7 +1818,7 @@ Args:
     with_descendants (bool): 是否包含所有子孙块，默认 True。
 
 Returns:
-    list: 每项为 dict，含 block_id、block_type、parent_id；若为文本类块则含 plain_text。
+    list: 每项为飞书 Block API 的原始 dict，完整保留 elements、style、children、表格属性及未知字段，并附加派生 plain_text。
 ''')
 _add_fs_english('FeishuWikiFS.get_doc_blocks', '''\
 Get the document block list (flattened block tree). Use to locate blocks to edit while leaving tables and other non-text blocks unchanged.
@@ -1653,7 +1828,7 @@ Args:
     with_descendants (bool): Whether to include all descendant blocks; default True.
 
 Returns:
-    List[Dict[str, Any]]: Each item is a dict with block_id, block_type, parent_id; text blocks also have plain_text.
+    List[Dict[str, Any]]: Native Feishu Block API dictionaries with elements, styles, children, table properties, and unknown fields preserved, plus a derived plain_text value.
 ''')
 _add_fs_chinese('FeishuWikiFS.update_doc_block_text', '''\
 更新文档中指定块的文本内容。仅适用于支持文本的块（如 Text、Heading、Bullet 等）；表格等块不支持，调用会由飞书 API 报错。

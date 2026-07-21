@@ -2,7 +2,7 @@
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import requests
 
@@ -21,8 +21,9 @@ lazyllm_globals.config.add(
 )
 
 _SPACE_ID_DYNAMIC = 'dynamic'
-_FEISHU_URL_RE = re.compile(r'/(wiki|docx|docs)/([A-Za-z0-9_-]+)', re.IGNORECASE)
-_FEISHU_BARE_HOST_RE = re.compile(r'^https?://[^/]*(?:feishu\.cn|larksuite\.com)/', re.IGNORECASE)
+_FEISHU_BARE_HOST_RE = re.compile(
+    r'^https?://(?:[^/@]+\.)*(?:feishu\.cn|larksuite\.com)(?::\d+)?/', re.IGNORECASE,
+)
 _FEISHU_WIKI_TILDE_PREFIXES = ('~link/', '~node/', '~docx/', '~doc/')
 
 
@@ -43,19 +44,18 @@ _DEFAULT_OAUTH_SCOPE = (
 
 
 def _parse_feishu_browser_url(url: str) -> Optional[Dict[str, str]]:
-    clean = url.split('?')[0].split('#')[0].rstrip('/')
-    m = _FEISHU_URL_RE.search(clean)
-    if not m:
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or '').lower()
+    if parsed.scheme not in ('http', 'https') or not (
+        hostname in ('feishu.cn', 'larksuite.com')
+        or hostname.endswith(('.feishu.cn', '.larksuite.com'))
+    ):
         return None
-    type_part = m.group(1).lower()
-    token = m.group(2)
-    if type_part == 'wiki':
-        return {'kind': 'wiki_node', 'token': token}
-    if type_part == 'docx':
-        return {'kind': 'docx', 'token': token}
-    if type_part == 'docs':
-        return {'kind': 'doc', 'token': token}
-    return None
+    parts = parsed.path.strip('/').split('/')
+    if len(parts) != 2 or not parts[1]:
+        return None
+    kind = {'wiki': 'wiki_node', 'docx': 'docx', 'docs': 'doc'}.get(parts[0].lower())
+    return {'kind': kind, 'token': parts[1]} if kind else None
 
 
 def _is_wiki_locator_path(path: str) -> bool:
@@ -291,32 +291,59 @@ class FeishuFSBase(LinkDocumentFSBase):
         return result.get('data', {}).get('file_token', '')
 
     _DOCX_BLOCK_TYPE_KEY: Dict[int, str] = {
-        2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
+        1: 'page', 2: 'text', 3: 'heading1', 4: 'heading2', 5: 'heading3', 6: 'heading4',
         7: 'heading5', 8: 'heading6', 9: 'heading7', 10: 'heading8', 11: 'heading9',
-        12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote',
+        12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote', 17: 'todo',
+        19: 'callout', 22: 'divider', 24: 'grid', 25: 'grid_column',
+        31: 'table', 32: 'table_cell', 34: 'quote_container',
     }
+
+    @staticmethod
+    def _docx_element_plain_text(element: Dict[str, Any]) -> str:
+        for element_type in (
+            'text_run', 'mention_user', 'mention_doc', 'reminder',
+            'file', 'inline_block', 'equation', 'undefined_element',
+        ):
+            value = element.get(element_type)
+            if not isinstance(value, dict):
+                continue
+            for field in ('content', 'title', 'name', 'text'):
+                text = value.get(field)
+                if isinstance(text, str):
+                    return text
+        return ''
+
+    @staticmethod
+    def _docx_block_plain_text(block: Dict[str, Any]) -> str:
+        key = FeishuFSBase._DOCX_BLOCK_TYPE_KEY.get(block.get('block_type'))
+        if not key:
+            return ''
+        elements = (block.get(key) or {}).get('elements') or []
+        return ''.join(
+            FeishuFSBase._docx_element_plain_text(element)
+            for element in elements
+            if isinstance(element, dict)
+        )
 
     @staticmethod
     def _extract_table_grid(
         cell_ids: List[str], block_map: Dict[str, Dict[str, Any]],
         rows: int, cols: int,
-    ) -> List[List[str]]:
-        grid: List[str] = []
+    ) -> List[List[Optional[List[Dict[str, Any]]]]]:
+        grid: List[Optional[List[Dict[str, Any]]]] = []
         for cid in cell_ids:
             cell = block_map.get(cid)
             if cell is None:
-                grid.append('')
+                grid.append(None)
                 continue
-            cell_text = ''
+            elements: List[Dict[str, Any]] = []
             for tcid in (cell.get('children') or []):
                 txt_blk = block_map.get(tcid)
                 if txt_blk:
-                    parts = [(el.get('text_run') or {}).get('content', '')
-                             for el in (txt_blk.get('text') or {}).get('elements', [])]
-                    cell_text += ''.join(parts)
-            grid.append(cell_text if cell_text.strip() else '')
+                    elements.extend(txt_blk.get('text', {}).get('elements', []))
+            grid.append(elements if elements else None)
         return [
-            [grid[r * cols + c] if r * cols + c < len(grid) else ''
+            [grid[r * cols + c] if r * cols + c < len(grid) else None
              for c in range(cols)]
             for r in range(rows)
         ]
@@ -380,90 +407,337 @@ class FeishuFSBase(LinkDocumentFSBase):
         top_blocks = _walk(first_level)
         return top_blocks, block_children
 
+    @classmethod
+    def _prepare_docx_descendants(
+        cls, blocks: List[Dict[str, Any]],
+    ) -> Tuple[List[str], List[Dict[str, Any]]]:
+        content_blocks = [block for block in blocks if block.get('block_type') != 1]
+        raw_by_id = {block['block_id']: block for block in content_blocks}
+        children_by_parent: Dict[str, List[str]] = {}
+        for block in content_blocks:
+            parent_id = block.get('parent_id')
+            if parent_id in raw_by_id:
+                children_by_parent.setdefault(parent_id, []).append(block['block_id'])
+
+        root_block_ids: List[str] = []
+        descendants: List[Dict[str, Any]] = []
+        for block in content_blocks:
+            block_id = block['block_id']
+            block_type = block.get('block_type')
+            content_key = cls._DOCX_BLOCK_TYPE_KEY.get(block_type)
+            if content_key is None:
+                raise ValueError(f'Feishu block type {block_type!r} is not supported for structured writing.')
+            content = block.get(content_key)
+            if block_type == 22 and content is None:
+                content = {}
+            content = dict(content)
+            if block_type == 31:
+                content.pop('cells', None)
+                content.pop('merge_info', None)
+                prop = dict(content.get('property') or {})
+                prop.pop('merge_info', None)
+                content['property'] = prop
+
+            descendant = {
+                'block_id': block_id,
+                'block_type': block_type,
+                content_key: content,
+            }
+            children = children_by_parent.get(block_id)
+            if children:
+                descendant['children'] = children
+            descendants.append(descendant)
+            if block.get('parent_id') not in raw_by_id:
+                root_block_ids.append(block_id)
+        return root_block_ids, descendants
+
     def _resolve_and_insert_children(
-        self, document_id: str,
-        top_blocks: List[Dict[str, Any]],
+        self,
+        document_id: str,
         block_children: Dict[str, List[Dict[str, Any]]],
-        inserted_blocks: List[Dict[str, Any]],
-    ) -> None:
-        # Build mapping: Convert API temp_id → real Feishu block_id (from POST responses)
-        temp_to_real = {
-            top_blocks[i]['_temp_id']: inserted_blocks[i]['block_id']
-            for i in range(min(len(top_blocks), len(inserted_blocks)))
-            if top_blocks[i].get('_temp_id')
-        }
-
-        # BFS insert: for each level, post child blocks under their real parent
-        pending = block_children
+        block_id_map: Dict[str, str],
+    ) -> Dict[str, str]:
+        temp_to_real = dict(block_id_map)
+        pending = dict(block_children)
         while pending:
-            next_pending: Dict[str, List[Dict[str, Any]]] = {}
-            for temp_parent_id, child_blocks in pending.items():
-                real_parent_id = temp_to_real.get(temp_parent_id)
-                if not real_parent_id:
-                    continue
+            resolved = [parent_id for parent_id in pending if parent_id in temp_to_real]
+            if not resolved:
+                raise RuntimeError(
+                    'Feishu create descendant blocks has unresolved parent block ids: '
+                    f'{sorted(pending)}.'
+                )
+            for temp_parent_id in resolved:
+                _, child_map = self._append_docx_blocks(
+                    document_id,
+                    pending.pop(temp_parent_id),
+                    parent_block_id=temp_to_real[temp_parent_id],
+                )
+                temp_to_real.update(child_map)
+        return temp_to_real
 
-                clean = [c.copy() for c in child_blocks]
-                for c in clean:
-                    c.pop('_temp_id', None)
-                    c.pop('_table_cells', None)
+    def _get_docx_children(self, document_id: str, parent_block_id: str) -> List[Dict[str, Any]]:
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children'
+        items: List[Dict[str, Any]] = []
+        page_token: Optional[str] = None
+        while True:
+            params: Dict[str, Any] = {'page_size': 500}
+            if page_token:
+                params['page_token'] = page_token
+            data = (self._get(url, params=params) or {}).get('data') or {}
+            items.extend(data.get('items') or [])
+            page_token = data.get('page_token')
+            if not page_token:
+                break
+        return items
 
-                child_url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{real_parent_id}/children'
-                resp = self._post(child_url, json={'index': 0, 'children': clean})
-                if resp.get('code', 0) != 0:
-                    LOG.warning('Feishu create_descendant failed for parent %s: %s',
-                                real_parent_id, resp.get('msg', resp))
-                    continue
-                created = (resp.get('data') or {}).get('children') or []
+    def _reuse_docx_default_text(
+        self,
+        document_id: str,
+        blocks: List[Dict[str, Any]],
+        existing_blocks: List[Dict[str, Any]],
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+        if not blocks or not existing_blocks:
+            return blocks, {}
+        source, existing = blocks[0], existing_blocks[0]
+        source_id, existing_id = source.get('_temp_id'), existing.get('block_id')
+        if (
+            source.get('block_type') != 2
+            or existing.get('block_type') != 2
+            or self._docx_block_plain_text(existing)
+            or not source_id
+            or not existing_id
+        ):
+            return blocks, {}
+        elements = (source.get('text') or {}).get('elements') or []
+        if elements:
+            self._patch(
+                f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{existing_id}',
+                json={'update_text_elements': {'elements': elements}},
+            )
+        return blocks[1:], {source_id: existing_id}
 
-                for child_blk, real_child in zip(child_blocks, created):
-                    ctid = child_blk.get('_temp_id', '')
-                    if ctid and real_child.get('block_id'):
-                        temp_to_real[ctid] = real_child['block_id']
-                        grandchildren = block_children.get(ctid)
-                        if grandchildren:
-                            next_pending[ctid] = grandchildren
-            pending = next_pending
-
-    def _append_docx_blocks(self, document_id: str, blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _append_docx_blocks(
+        self,
+        document_id: str,
+        blocks: List[Dict[str, Any]],
+        *,
+        parent_block_id: Optional[str] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
         if not blocks:
-            return []
+            return [], {}
         inserted_blocks: List[Dict[str, Any]] = []
-        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}/children'
-        batch_size = 50
-        index = 0
+        block_id_map: Dict[str, str] = {}
+        parent_id = parent_block_id or document_id
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{parent_id}/children'
+        if parent_id != document_id and blocks[0].get('block_type') == 2:
+            existing_blocks = self._get_docx_children(document_id, parent_id)
+            insert_index = len(existing_blocks)
+            blocks, reused_map = self._reuse_docx_default_text(document_id, blocks, existing_blocks)
+            block_id_map.update(reused_map)
+        else:
+            insert_index = -1
         chunk: List[Dict[str, Any]] = []
-        for blk in blocks:
-            if blk.get('_table_cells') is not None:
+
+        def insert_blocks(source_blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+            nonlocal insert_index
+            payload = [{
+                key: value for key, value in block.items()
+                if key not in ('_temp_id', '_table_cells')
+            } for block in source_blocks]
+            response = self._post(url, json={'index': insert_index, 'children': payload})
+            created = (response.get('data') or {}).get('children') or []
+            inserted_blocks.extend(created)
+            if insert_index != -1:
+                insert_index += len(source_blocks)
+            for source, real in zip(source_blocks, created):
+                if source.get('_temp_id') and real.get('block_id'):
+                    block_id_map[source['_temp_id']] = real['block_id']
+            return created
+
+        for block in blocks:
+            if block.get('_table_cells') is not None:
                 if chunk:
-                    clean_chunk = [{k: v for k, v in c.items() if k != '_temp_id'} for c in chunk]
-                    resp = self._post(url, json={'index': index, 'children': clean_chunk})
-                    inserted_blocks.extend((resp.get('data') or {}).get('children') or [])
-                    index += len(chunk)
+                    insert_blocks(chunk)
                     chunk = []
-                payload = {k: v for k, v in blk.items() if k not in ('_table_cells', '_temp_id')}
-                resp = self._post(url, json={'index': index, 'children': [payload]})
-                created_list = (resp.get('data') or {}).get('children') or []
+                created_list = insert_blocks([block])
                 table_info = created_list[0] if created_list and isinstance(created_list[0], dict) else {}
-                if table_info:
-                    inserted_blocks.append(table_info)
                 table_block_id = table_info.get('block_id')
-                cell_ids: List[str] = (table_info.get('table') or {}).get('cells') or []
+                cell_ids = (table_info.get('table') or {}).get('cells') or []
                 if table_block_id:
-                    self._fill_table_cells(document_id, table_block_id, blk['_table_cells'], cell_ids)
-                index += 1
+                    self._fill_table_cells(
+                        document_id, table_block_id, block['_table_cells'], cell_ids)
             else:
-                chunk.append(blk)
-                if len(chunk) >= batch_size:
-                    clean_chunk = [{k: v for k, v in c.items() if k != '_temp_id'} for c in chunk]
-                    resp = self._post(url, json={'index': index, 'children': clean_chunk})
-                    inserted_blocks.extend((resp.get('data') or {}).get('children') or [])
-                    index += len(chunk)
+                chunk.append(block)
+                if len(chunk) == 50:
+                    insert_blocks(chunk)
                     chunk = []
         if chunk:
-            clean_chunk = [{k: v for k, v in c.items() if k != '_temp_id'} for c in chunk]
-            resp = self._post(url, json={'index': index, 'children': clean_chunk})
-            inserted_blocks.extend((resp.get('data') or {}).get('children') or [])
-        return inserted_blocks
+            insert_blocks(chunk)
+        return inserted_blocks, block_id_map
+
+    def _get_doc_blocks_raw(self, document_id: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}/children'
+        params: Dict[str, Any] = {'page_size': 500}
+        if with_descendants:
+            params['with_descendants'] = 'true'
+        results: List[Dict[str, Any]] = []
+        page_token: Optional[str] = None
+        while True:
+            if page_token:
+                params['page_token'] = page_token
+            data = self._get(url, params=params)
+            items = data.get('data', {}).get('items') or []
+            results.extend(items)
+            page_token = data.get('data', {}).get('page_token')
+            if not page_token:
+                break
+        return results
+
+    def _create_descendant_blocks(
+        self,
+        document_id: str,
+        parent_block_id: str,
+        index: int,
+        children_id: List[str],
+        descendants: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{parent_block_id}/descendant'
+        response = self._post(
+            url,
+            json={
+                'index': index,
+                'children_id': children_id,
+                'descendants': descendants,
+            },
+        )
+        return (response or {}).get('data') or {}
+
+    def _batch_update_blocks(
+        self,
+        document_id: str,
+        requests: List[Dict[str, Any]],
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/batch_update'
+        response = self._patch(
+            url,
+            params={'document_revision_id': document_revision_id},
+            json={'requests': requests},
+        )
+        return (response or {}).get('data') or {}
+
+    def _batch_delete_child_blocks(
+        self,
+        document_id: str,
+        parent_block_id: str,
+        start_index: int,
+        end_index: int,
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        url = (
+            f'{self._base_url}/docx/v1/documents/{document_id}/blocks/'
+            f'{parent_block_id}/children/batch_delete'
+        )
+        response = self._delete(
+            url,
+            params={'document_revision_id': document_revision_id},
+            json={'start_index': start_index, 'end_index': end_index},
+        )
+        return (response or {}).get('data') or {}
+
+    def create_block(
+        self,
+        document_id: str,
+        parent_block_id: str,
+        index: int,
+        children_id: List[str],
+        descendants: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return self._create_descendant_blocks(
+            document_id, parent_block_id, index, children_id, descendants)
+
+    def update_block(
+        self,
+        document_id: str,
+        requests: List[Dict[str, Any]],
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        return self._batch_update_blocks(
+            document_id, requests, document_revision_id=document_revision_id)
+
+    def delete_block(
+        self,
+        document_id: str,
+        parent_block_id: str,
+        start_index: int,
+        end_index: int,
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        return self._batch_delete_child_blocks(
+            document_id,
+            parent_block_id,
+            start_index,
+            end_index,
+            document_revision_id=document_revision_id,
+        )
+
+    def move_block(
+        self,
+        document_id: str,
+        source_parent_block_id: str,
+        source_index: int,
+        target_parent_block_id: str,
+        target_index: int,
+        children_id: List[str],
+        descendants: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        if len(children_id) != 1:
+            raise ValueError('move_block requires exactly one root block.')
+        create_index = target_index
+        if source_parent_block_id == target_parent_block_id and source_index < target_index:
+            create_index += 1
+        create_data = self._create_descendant_blocks(
+            document_id,
+            target_parent_block_id,
+            create_index,
+            children_id,
+            descendants,
+        )
+        delete_index = source_index
+        if source_parent_block_id == target_parent_block_id and create_index <= source_index:
+            delete_index += len(children_id)
+        delete_data = self._batch_delete_child_blocks(
+            document_id,
+            source_parent_block_id,
+            delete_index,
+            delete_index + 1,
+            document_revision_id=create_data.get('document_revision_id', -1),
+        )
+        return {'create': create_data, 'delete': delete_data}
+
+    def write_doc_blocks(
+        self,
+        document_id: str,
+        blocks: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        '''Append native blocks to an existing Feishu document.'''
+        if not isinstance(blocks, list):
+            raise TypeError(f'blocks must be a list, got {type(blocks).__name__}.')
+        if not blocks:
+            raise ValueError('blocks must not be empty.')
+        children_id, descendants = self._prepare_docx_descendants(blocks)
+        if descendants:
+            url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}/descendant'
+            self._post(url, json={
+                'index': -1,
+                'children_id': children_id,
+                'descendants': descendants,
+            })
+        return self._get_doc_blocks_raw(document_id, with_descendants=True)
 
     def _get_table_cells(self, document_id: str, table_block_id: str) -> List[Dict[str, Any]]:
         url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{table_block_id}/children'
@@ -488,7 +762,8 @@ class FeishuFSBase(LinkDocumentFSBase):
                 cell_blocks.extend(x for x in (row_data.get('items') or []) if x.get('block_type') == 32)
         return cell_blocks
 
-    def _write_cell_text(self, document_id: str, cell_block_id: str, text: str) -> None:
+    def _write_cell_text(self, document_id: str, cell_block_id: str,
+                         elements: List[Dict[str, Any]]) -> None:
         cell_children_url = (
             f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{cell_block_id}/children')
         cd = (self._get(cell_children_url, params={'page_size': 10}) or {}).get('data') or {}
@@ -496,23 +771,27 @@ class FeishuFSBase(LinkDocumentFSBase):
         if text_blocks:
             self._patch(
                 f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{text_blocks[0]["block_id"]}',
-                json={'update_text_elements': {'elements': [{'text_run': {'content': text}}]}})
+                json={'update_text_elements': {'elements': elements}})
         else:
             self._post(cell_children_url, json={
                 'index': 0,
-                'children': [{'block_type': 2, 'text': {'elements': [{'text_run': {'content': text}}]}}],
+                'children': [{'block_type': 2, 'text': {'elements': elements}}],
             })
 
-    def _fill_table_cells(self, document_id: str, table_block_id: str,
-                          grid: List[List[str]], cell_ids: Optional[List[str]] = None) -> None:
+    def _fill_table_cells(
+        self,
+        document_id: str,
+        table_block_id: str,
+        grid: List[List[Optional[List[Dict[str, Any]]]]],
+        cell_ids: Optional[List[str]] = None,
+    ) -> None:
         flat_cells = [c for row in grid for c in row]
         if not cell_ids:
             cell_blocks = self._get_table_cells(document_id, table_block_id)
             cell_ids = [b['block_id'] for b in cell_blocks if b.get('block_id')]
-        for cell_id, text in zip(cell_ids[:len(flat_cells)], flat_cells):
-            if cell_id and text:
-                self._write_cell_text(document_id, cell_id, text)
-
+        for cell_id, elements in zip(cell_ids[:len(flat_cells)], flat_cells):
+            if cell_id and elements:
+                self._write_cell_text(document_id, cell_id, elements)
 
 class FeishuFS(FeishuFSBase):
     __tool_auto_activate__ = [
@@ -683,9 +962,9 @@ class FeishuFS(FeishuFSBase):
                 return
             try:
                 top_blocks, block_children = self._convert_markdown_via_api(text)
-                inserted_blocks = self._append_docx_blocks(doc_id, top_blocks)
+                _, block_id_map = self._append_docx_blocks(doc_id, top_blocks)
                 if block_children:
-                    self._resolve_and_insert_children(doc_id, top_blocks, block_children, inserted_blocks)
+                    self._resolve_and_insert_children(doc_id, block_children, block_id_map)
             except (RuntimeError, requests.HTTPError):
                 LOG.warning('Convert API failed, falling back to file upload')
                 self._upload_file_to_drive(name, data, folder_token=parent_token)
@@ -979,6 +1258,8 @@ class FeishuWikiFS(FeishuFSBase):
         norm = path.lstrip('/')
         if self.is_link_path(norm):
             url = self.decode_link_path(norm)
+            if not _FEISHU_BARE_HOST_RE.match(url):
+                raise ValueError(f'Expected a Feishu document URL: {url!r}')
             parsed = _parse_feishu_browser_url(url)
             if not parsed:
                 return '', ''
@@ -1119,9 +1400,9 @@ class FeishuWikiFS(FeishuFSBase):
         if content_type in ('markdown', 'md'):
             try:
                 top_blocks, block_children = self._convert_markdown_via_api(text)
-                inserted_blocks = self._append_docx_blocks(doc_id, top_blocks)
+                _, block_id_map = self._append_docx_blocks(doc_id, top_blocks)
                 if block_children:
-                    self._resolve_and_insert_children(doc_id, top_blocks, block_children, inserted_blocks)
+                    self._resolve_and_insert_children(doc_id, block_children, block_id_map)
             except (RuntimeError, requests.HTTPError):
                 LOG.warning('Convert API failed, falling back to plain text append')
                 self._append_docx_text(doc_id, text)
@@ -1325,56 +1606,37 @@ class FeishuWikiFS(FeishuFSBase):
         return results[:max_results]
 
     def get_document_id(self, path: str) -> str:
-        self._require_space_id()
-        node_token = self._resolve_path_to_token(path)
-        if not node_token:
-            raise FileNotFoundError(f'Path not found: {path}')
+        if self.is_link_path(path):
+            path = self.decode_link_path(path)
+
+        parsed = _parse_feishu_browser_url(path)
+        if parsed:
+            if parsed['kind'] in ('doc', 'docx'):
+                return parsed['token']
+            node_token = parsed['token']
+        elif urlparse(path).scheme:
+            raise ValueError(f'Expected a Feishu document URL: {path!r}')
+        else:
+            node_token = self._resolve_path_to_token(path)
+            if not node_token:
+                raise FileNotFoundError(f'Path not found: {path}')
+
         node = self._get_node(node_token)
         obj_type = node.get('obj_type')
-        obj_token = node.get('obj_token') or ''
-        if obj_type not in ('doc', 'docx'):
+        document_id = node.get('obj_token') or ''
+        if obj_type not in ('doc', 'docx') or not document_id:
             raise ValueError(
-                f'Path is not a doc/docx node (obj_type={obj_type}), cannot get document_id'
+                f'Feishu target does not point to a document (obj_type={obj_type!r})'
             )
-        return obj_token
-
-    def _get_doc_blocks_raw(self, document_id: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
-        url = f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}/children'
-        params: Dict[str, Any] = {'page_size': 500}
-        if with_descendants:
-            params['with_descendants'] = 'true'
-        results: List[Dict[str, Any]] = []
-        page_token: Optional[str] = None
-        while True:
-            if page_token:
-                params['page_token'] = page_token
-            data = self._get(url, params=params)
-            items = data.get('data', {}).get('items') or []
-            results.extend(items)
-            page_token = data.get('data', {}).get('page_token')
-            if not page_token:
-                break
-        return results
+        return document_id
 
     def get_doc_blocks(self, path: str, with_descendants: bool = True) -> List[Dict[str, Any]]:
+        '''Return native Feishu blocks with an added derived ``plain_text`` field.'''
         document_id = self.get_document_id(path)
         blocks = self._get_doc_blocks_raw(document_id, with_descendants=with_descendants)
-        out: List[Dict[str, Any]] = []
-        for b in blocks:
-            entry: Dict[str, Any] = {
-                'block_id': b.get('block_id', ''),
-                'block_type': b.get('block_type'),
-                'parent_id': b.get('parent_id', ''),
-            }
-            if 'text' in b and isinstance(b['text'], dict):
-                plain = (b['text'].get('elements') or [])
-                texts = [
-                    e.get('text_run', {}).get('content', '')
-                    for e in plain if isinstance(e, dict)
-                ]
-                entry['plain_text'] = ''.join(texts)
-            out.append(entry)
-        return out
+        for block in blocks:
+            block.setdefault('plain_text', self._docx_block_plain_text(block))
+        return blocks
 
     def update_doc_block_text(self, path: str, block_id: str, new_text: str) -> None:
         document_id = self.get_document_id(path)
