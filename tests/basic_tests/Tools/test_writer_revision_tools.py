@@ -11,6 +11,7 @@ from lazyllm.tools.writer.data_models.revision import (
     PatchHunk,
     PatchSet,
 )
+from lazyllm.tools.writer.adapter.feishu import FeishuWriterAdapter
 from lazyllm.tools.writer.tools.revision_tools import WriterRevisionTools
 from lazyllm.tools.writer.utils import load_artifact_json
 
@@ -161,6 +162,60 @@ def test_apply_patch_supports_all_block_operations_atomically():
     assert revised.block_by_id('replace').content == 'new replacement'
     assert revised.block_by_id('delete') is None
     assert result['metadata']['counts'] == {'applied': 4, 'failed': 0}
+
+
+def test_revision_patch_contract_with_feishu_adapter():
+    adapter = FeishuWriterAdapter()
+    source = adapter.blocks_to_ir(
+        [{
+            'block_id': 'feishu-block-1',
+            'block_type': 2,
+            'parent_id': 'feishu-doc-1',
+            'text': {
+                'elements': [{
+                    'text_run': {
+                        'content': 'Original text',
+                        'text_element_style': {'bold': True},
+                    },
+                }],
+            },
+            'plain_text': 'Original text',
+        }],
+        external_document_id='feishu-doc-1',
+        stage='final',
+    )
+    target = source.blocks[0]
+    patch_set = PatchSet(
+        patch_id='patch-feishu-contract',
+        target_doc_id=source.document_id,
+        hunks=[PatchHunk(
+            hunk_id='replace-feishu-block',
+            target_node_id=target.node_id,
+            modify_type='replace',
+            old_text='Original text',
+            new_text='Revised text',
+        )],
+    )
+
+    with tempfile.TemporaryDirectory() as directory:
+        result = WriterRevisionTools(artifact_store=directory).apply_patch(
+            source, patch_set, WritingContext(
+                context_id='context-feishu-contract',
+                doc_id=source.document_id,
+                query='revise',
+            ),
+        )
+        revised = _revised_document(result)
+
+    operation = adapter.patch_to_operation(patch_set.hunks[0], source)
+    request = operation.params['requests'][0]
+    assert revised.block_by_id(target.node_id).content == 'Revised text'
+    assert operation.operation == 'update'
+    assert request['block_id'] == 'feishu-block-1'
+    assert request['update_text_elements']['elements'][0]['text_run']['content'] == 'Revised text'
+    assert request['update_text_elements']['elements'][0]['text_run']['text_element_style'] == {
+        'bold': True,
+    }
 
 
 def test_apply_patch_inserts_next_to_nested_anchor():

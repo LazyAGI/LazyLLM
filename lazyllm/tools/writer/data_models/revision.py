@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from pydantic import BaseModel, Field, model_validator
-from .docir import Anchor
 from .writer_ir import WriterAuthoring
 from ..utils.artifact import ArtifactModel
 
@@ -18,6 +17,13 @@ class LocateResult(ArtifactModel):
 ModifyType = Literal['insert', 'replace', 'delete', 'move']
 PatchPosition = Literal['before', 'after']
 PatchBlockType = Literal['paragraph', 'heading', 'list_item', 'code', 'quote']
+
+
+class Anchor(BaseModel):
+    node_id: str
+    text_offset: Optional[int] = None
+    text_end: Optional[int] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ModifyInstruction(BaseModel):

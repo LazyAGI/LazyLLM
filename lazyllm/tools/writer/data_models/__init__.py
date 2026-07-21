@@ -19,8 +19,7 @@ from .writing import (
     WritingOutput,
     WritingSubTask,
 )
-from .docir import Anchor, DocBlock, DocIR, DocSpan
-from .revision import LocateResult, ModifyInstruction, ModifyPlan, PatchBlock, PatchHunk, PatchResult, PatchSet
+from .revision import Anchor, LocateResult, ModifyInstruction, ModifyPlan, PatchBlock, PatchHunk, PatchResult, PatchSet
 from .multimodal import MediaAsset, MediaAssetLibrary, VisualInstruction
 from .quality import AuditIssue, AuditResult, ReviewReport
 from .writer_ir import WriterAuthoring, WriterBlock, WriterConstraints, WriterDocument, WriterSpan, WriterStage
@@ -48,9 +47,6 @@ __all__ = [
     'WritingOutline',
     'WritingSubTask',
     'Anchor',
-    'DocBlock',
-    'DocIR',
-    'DocSpan',
     'ModifyInstruction',
     'ModifyPlan',
     'PatchBlock',

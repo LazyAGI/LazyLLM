@@ -1609,17 +1609,25 @@ class FeishuWikiFS(FeishuFSBase):
         if self.is_link_path(path):
             path = self.decode_link_path(path)
 
-        parsed = _parse_feishu_browser_url(path)
-        if parsed:
-            if parsed['kind'] in ('doc', 'docx'):
-                return parsed['token']
-            node_token = parsed['token']
-        elif urlparse(path).scheme:
-            raise ValueError(f'Expected a Feishu document URL: {path!r}')
+        norm = path.lstrip('/')
+        if norm.startswith('~docx/'):
+            return norm[len('~docx/'):].rstrip('/').split('/')[0]
+        if norm.startswith('~doc/'):
+            return norm[len('~doc/'):].rstrip('/').split('/')[0]
+        if norm.startswith('~node/'):
+            node_token = norm[len('~node/'):].rstrip('/').split('/')[0]
         else:
-            node_token = self._resolve_path_to_token(path)
-            if not node_token:
-                raise FileNotFoundError(f'Path not found: {path}')
+            parsed = _parse_feishu_browser_url(path)
+            if parsed:
+                if parsed['kind'] in ('doc', 'docx'):
+                    return parsed['token']
+                node_token = parsed['token']
+            elif urlparse(path).scheme:
+                raise ValueError(f'Expected a Feishu document URL: {path!r}')
+            else:
+                node_token = self._resolve_path_to_token(path)
+                if not node_token:
+                    raise FileNotFoundError(f'Path not found: {path}')
 
         node = self._get_node(node_token)
         obj_type = node.get('obj_type')

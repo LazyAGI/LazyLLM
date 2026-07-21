@@ -455,6 +455,18 @@ class TestFeishuGetDocumentId(unittest.TestCase):
         self.assertEqual(fs.get_document_id(path), 'DocId789')
         fs._get_node.assert_not_called()
 
+    def test_router_document_locators_return_document_id(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._get_node = MagicMock(return_value={
+            'obj_type': 'docx',
+            'obj_token': 'DocFromNode',
+        })
+
+        self.assertEqual(fs.get_document_id('/~docx/DocId123'), 'DocId123')
+        self.assertEqual(fs.get_document_id('/~doc/LegacyDocId'), 'LegacyDocId')
+        self.assertEqual(fs.get_document_id('/~node/NodeToken'), 'DocFromNode')
+        fs._get_node.assert_called_once_with('NodeToken')
+
     def test_title_path_returns_document_obj_token(self):
         fs = object.__new__(FeishuWikiFS)
         fs._resolve_path_to_token = MagicMock(return_value='NodeFromPath')

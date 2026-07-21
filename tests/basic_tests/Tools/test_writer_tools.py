@@ -18,6 +18,7 @@ from lazyllm.tools.writer.data_models import (
 from lazyllm.tools.writer.data_models.quality import AuditIssue, AuditResult, ReviewReport
 from lazyllm.tools.writer.data_models.revision import (
     PatchHunk,
+    PatchResult,
     PatchSet,
 )
 from lazyllm.tools.writer.data_models.task import InputResource
@@ -41,13 +42,27 @@ def _make_doc_adapter():
         'object_type': 'docx',
         'title': '飞书文档',
         'has_child': False,
+        'revision': '12',
     }
     adapter.read_bytes.return_value = '第一段\n第二段'.encode('utf-8')
     adapter.get_document_id.return_value = 'doc-1'
     adapter.get_doc_blocks.return_value = [
-        {'block_id': 'b1', 'block_type': 'heading', 'plain_text': '标题', 'level': 1},
-        {'block_id': 'b2', 'block_type': 'paragraph', 'plain_text': '正文'},
+        {
+            'block_id': 'b1',
+            'block_type': 3,
+            'parent_id': 'doc-1',
+            'heading1': {'elements': [{'text_run': {'content': '标题'}}]},
+            'plain_text': '标题',
+        },
+        {
+            'block_id': 'b2',
+            'block_type': 2,
+            'parent_id': 'doc-1',
+            'text': {'elements': [{'text_run': {'content': '正文'}}]},
+            'plain_text': '正文',
+        },
     ]
+    adapter.write_doc_blocks.return_value = adapter.get_doc_blocks.return_value
     return adapter
 
 
@@ -672,17 +687,19 @@ def test_document_to_docir():
         assert result['metadata']['counts']['blocks'] == 2
 
         document = load_artifact_json(result['artifact_path'], WriterDocument)
-        assert document.document_id == 'doc-1'
+        assert document.document_id.startswith('writer-doc-')
         assert document.stage == 'final'
         assert document.title == '飞书文档'
         assert document.provider_binding['provider'] == 'feishu'
+        assert document.provider_binding['document_id'] == 'doc-1'
         assert [block.type for block in document.blocks] == ['heading', 'paragraph']
         assert [block.content for block in document.blocks] == ['标题', '正文']
-        assert [block.node_id for block in document.blocks] == ['b1', 'b2']
+        assert all(block.node_id.startswith('writer-node-') for block in document.blocks)
+        assert [block.provider_binding['block_id'] for block in document.blocks] == ['b1', 'b2']
         assert document.blocks[0].numbering == {'level': 1}
 
-        adapter.resolve_link.assert_called_once()
-        adapter.read_bytes.assert_called_once()
+        adapter.resolve_link.assert_not_called()
+        adapter.get_document_id.assert_called_once_with('~docx/doc-1')
         adapter.get_doc_blocks.assert_called_once()
 
 
@@ -714,47 +731,110 @@ def test_write_to_document():
         assert result['metadata']['step_name'] == 'write_to_document'
         assert result['metadata']['extra']['adapter'] == 'feishu'
 
-        adapter.write_file.assert_called_once()
-        args = adapter.write_file.call_args[0]
-        assert 'write-test' in args[0]
-        assert b'Hello' in args[1]
+        adapter.write_doc_blocks.assert_called_once()
+        document_id, blocks = adapter.write_doc_blocks.call_args[0]
+        assert document_id == 'doc-1'
+        assert len(blocks) == 1
+        assert blocks[0]['block_type'] == 2
+        assert blocks[0]['text']['elements'][0]['text_run']['content'] == 'world'
 
 
-def test_render_writer_document_markdown():
-    document = WriterDocument(
-        document_id='render-test',
-        stage='final',
-        title='测试文档',
-        blocks=[
-            WriterBlock(
-                node_id='heading-1',
-                type='heading',
-                content='章节',
-                stage='final',
-                numbering={'level': 2},
-            ),
-            WriterBlock(
-                node_id='list-1',
-                type='list_item',
-                content='第一项',
-                stage='final',
-                numbering={'ordered': True},
-            ),
-            WriterBlock(
-                node_id='code-1',
-                type='code',
-                content='print("hello")',
-                stage='final',
-                provider_payload={'language': 'python'},
-            ),
-        ],
-    )
+def test_apply_patch_to_document_dispatches_update_and_rereads():
+    pytest.importorskip('fsspec')
+    fs = _make_doc_adapter()
 
-    markdown = WriterResourceTools()._render_document_markdown(document)
-    assert '# 测试文档' in markdown
-    assert '## 章节' in markdown
-    assert '1. 第一项' in markdown
-    assert '```python\nprint("hello")\n```' in markdown
+    with tempfile.TemporaryDirectory() as d:
+        load_result = _call_document_to_docir(fs, d)
+        source = load_artifact_json(load_result['artifact_path'], WriterDocument)
+        target = source.blocks[1]
+        patch_set = PatchSet(
+            patch_id='patch-1',
+            target_doc_id=source.document_id,
+            hunks=[PatchHunk(
+                hunk_id='replace-b2',
+                target_node_id=target.node_id,
+                modify_type='replace',
+                old_text='正文',
+                new_text='修改后正文',
+            )],
+        )
+        fs.get_doc_blocks.return_value = [
+            fs.get_doc_blocks.return_value[0],
+            {
+                'block_id': 'b2',
+                'block_type': 2,
+                'parent_id': 'doc-1',
+                'text': {'elements': [{'text_run': {'content': '修改后正文'}}]},
+                'plain_text': '修改后正文',
+            },
+        ]
+
+        with patch(
+            'lazyllm.tools.fs.client.FS._parse',
+            return_value=('feishu', None, '~docx/doc-1'),
+        ):
+            with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=fs):
+                result = WriterResourceTools(artifact_store=d).apply_patch_to_document(
+                    patch_set=patch_set,
+                    source_document=source,
+                )
+
+        fs.update_block.assert_called_once()
+        update_kwargs = fs.update_block.call_args.kwargs
+        assert update_kwargs['document_id'] == 'doc-1'
+        assert update_kwargs['document_revision_id'] == -1
+        assert update_kwargs['requests'][0]['block_id'] == 'b2'
+        assert result['metadata']['step_name'] == 'apply_patch_to_document'
+        assert result['metadata']['counts'] == {'applied': 1, 'failed': 0}
+
+        patch_result = load_artifact_json(result['artifact_path'], PatchResult)
+        persisted_path = result['metadata']['artifact_paths']['persisted_document']
+        persisted = load_artifact_json(persisted_path, WriterDocument)
+        assert patch_result.applied_hunks == ['replace-b2']
+        assert persisted.blocks[1].content == '修改后正文'
+
+
+def test_apply_patch_to_document_rejects_document_mismatch():
+    source = _make_final_writer_document()
+    patch_set = PatchSet(target_doc_id='another-document')
+
+    with tempfile.TemporaryDirectory() as d:
+        with pytest.raises(ValueError, match='does not match'):
+            WriterResourceTools(artifact_store=d).apply_patch_to_document(
+                patch_set=patch_set,
+                source_document=source,
+            )
+
+
+def test_apply_patch_to_document_propagates_provider_failure():
+    pytest.importorskip('fsspec')
+    fs = _make_doc_adapter()
+
+    with tempfile.TemporaryDirectory() as d:
+        load_result = _call_document_to_docir(fs, d)
+        source = load_artifact_json(load_result['artifact_path'], WriterDocument)
+        target = source.blocks[1]
+        patch_set = PatchSet(
+            target_doc_id=source.document_id,
+            hunks=[PatchHunk(
+                target_node_id=target.node_id,
+                modify_type='replace',
+                old_text='正文',
+                new_text='修改后正文',
+            )],
+        )
+        fs.update_block.side_effect = RuntimeError('provider write failed')
+
+        with patch(
+            'lazyllm.tools.fs.client.FS._parse',
+            return_value=('feishu', None, '~docx/doc-1'),
+        ):
+            with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=fs):
+                with pytest.raises(RuntimeError, match='provider write failed'):
+                    WriterResourceTools(artifact_store=d).apply_patch_to_document(
+                        patch_set=patch_set,
+                        source_document=source,
+                    )
 
 
 @pytest.mark.parametrize(
@@ -1015,19 +1095,17 @@ def test_write_to_document_no_target(target_document):
 
 
 def test_write_to_document_fs_failure():
-    # fs.write_file raises -> doc_id empty, no local file saved.
+    # Structured provider write failures must be visible to the caller.
     pytest.importorskip('fsspec')
     adapter = _make_doc_adapter()
-    adapter.write_file.side_effect = RuntimeError('network down')
+    adapter.write_doc_blocks.side_effect = RuntimeError('network down')
 
     with tempfile.TemporaryDirectory() as d:
         with patch('lazyllm.tools.fs.client.FS._parse', return_value=('feishu', None, '/fail.md')):
             with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
                 tool = WriterResourceTools(artifact_store=d)
-                result = tool.write_to_document(
-                    content=_make_final_writer_document('# Should survive'),
-                    target_document={'uri': 'feishu:///fail.md', 'adapter': 'feishu'},
-                )
-
-        assert result['metadata']['extra']['document_id'] == ''
-        assert result['metadata']['extra']['adapter'] == 'feishu'
+                with pytest.raises(RuntimeError, match='network down'):
+                    tool.write_to_document(
+                        content=_make_final_writer_document('# Should survive'),
+                        target_document={'uri': 'feishu:///fail.md', 'adapter': 'feishu'},
+                    )
