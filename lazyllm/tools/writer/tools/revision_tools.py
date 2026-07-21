@@ -121,17 +121,9 @@ class WriterRevisionTools(WriterToolBase):
             if missing:
                 raise ValueError(f'locate_result has node_ids absent from document: {missing}.')
 
-            target_blocks = [block_map[nid] for nid in located.target_node_ids]
-            focused_doc = WriterDocument(
-                document_id=source_doc.document_id,
-                stage=source_doc.stage,
-                title=source_doc.title,
-                blocks=[b.model_copy(deep=True) for b in target_blocks],
-            )
-
             prompt = GENERATE_MODIFY_PLAN_PROMPT.format(
                 task_json=to_prompt_json(writing_task),
-                document_json=to_prompt_json(focused_doc),
+                document_json=to_prompt_json(source_doc),
                 locate_result_json=to_prompt_json(located),
                 context_json=to_prompt_json(writing_context),
             )
@@ -139,7 +131,12 @@ class WriterRevisionTools(WriterToolBase):
         else:
             modify_plan = ModifyPlan(scope='document', summary='No revision targets; nothing to plan.')
 
-        modify_plan = self._normalize_modify_plan(modify_plan, writing_task, located.target_node_ids)
+        modify_plan = self._normalize_modify_plan(
+            modify_plan,
+            writing_task,
+            located.target_node_ids,
+            {block.node_id for block in source_doc.iter_blocks()},
+        )
 
         result = self._save_artifacts(
             {'modify_plan': modify_plan},
@@ -192,13 +189,38 @@ class WriterRevisionTools(WriterToolBase):
             proposal_map: Dict[str, PatchHunk] = {
                 h.target_node_id: h for h in proposal.hunks if h.target_node_id
             }
+            if len(proposal_map) != len(proposal.hunks):
+                raise ValueError('patch proposal contains duplicate or empty target_node_id values.')
+            expected_targets = {instruction.target_node_id for instruction in plan.instructions}
+            unexpected_targets = set(proposal_map) - expected_targets
+            if unexpected_targets:
+                raise ValueError(
+                    f'patch proposal contains targets absent from modify_plan: {sorted(unexpected_targets)}.'
+                )
 
             for instr, block in zip(plan.instructions, target_blocks):
                 proposed = proposal_map.get(instr.target_node_id)
                 if proposed is None:
                     raise ValueError(f'lack hunk for block {instr.target_node_id!r}.')
-                if instr.modify_type != 'delete' and not proposed.new_text:
+                if proposed.modify_type != instr.modify_type:
+                    raise ValueError(
+                        f'patch hunk for {instr.target_node_id!r} changed modify_type '
+                        f'from {instr.modify_type!r} to {proposed.modify_type!r}.'
+                    )
+
+                position = instr.position or proposed.position
+                anchor_node_id = instr.anchor_node_id or proposed.anchor_node_id
+                if instr.modify_type == 'replace' and proposed.new_text is None:
                     raise ValueError(f'lack new_text for block {instr.target_node_id!r}.')
+                if instr.modify_type == 'insert':
+                    position = position or 'after'
+                    if not proposed.new_blocks:
+                        raise ValueError(f'lack new_blocks for insert at {instr.target_node_id!r}.')
+                if instr.modify_type == 'move' and (not anchor_node_id or not position):
+                    raise ValueError(
+                        f'move for {instr.target_node_id!r} requires anchor_node_id and position.'
+                    )
+
                 hunks.append(PatchHunk(
                     hunk_id=f'hunk-{instr.target_node_id}',
                     target_node_id=instr.target_node_id,
@@ -207,8 +229,12 @@ class WriterRevisionTools(WriterToolBase):
                         node_id=block.node_id,
                     ),
                     old_text=None if instr.modify_type == 'insert' else block.content,
-                    new_text=proposed.new_text,
-                    meta={'instruction': instr.instruction},
+                    new_text=proposed.new_text if instr.modify_type == 'replace' else None,
+                    new_blocks=[item.model_copy(deep=True) for item in proposed.new_blocks]
+                    if instr.modify_type == 'insert' else [],
+                    anchor_node_id=anchor_node_id if instr.modify_type == 'move' else None,
+                    position=position if instr.modify_type in {'insert', 'move'} else None,
+                    meta={**proposed.meta, 'instruction': instr.instruction},
                 ))
 
         patch_set = PatchSet(
@@ -245,49 +271,41 @@ class WriterRevisionTools(WriterToolBase):
         patch = self._unified_model(patch_set, PatchSet)
         writing_context = self._unified_model(context, WritingContext)
 
+        self._validate_patch(source_doc, patch)
         revised_doc = source_doc.model_copy(deep=True)
 
         applied: List[str] = []
-        failed: List[str] = []
-        if patch.hunks:
+        for hunk in patch.hunks:
             node_map: Dict[str, WriterBlock] = {b.node_id: b for b in revised_doc.iter_blocks()}
-            for hunk in patch.hunks:
-                target_id = hunk.target_node_id or ''
-                block = node_map.get(target_id)
-                if block is None:
-                    failed.append(target_id)
-                    continue
+            target = node_map[hunk.target_node_id]
 
-                applied_ok = False
-                if hunk.modify_type == 'insert':
-                    self._insert_sibling_after(revised_doc, block, WriterBlock(
-                        node_id=f'{target_id}::inserted',
-                        type=block.type or 'paragraph',
-                        content=hunk.new_text,
-                        stage=revised_doc.stage,
-                    ))
-                    applied_ok = True
-                elif hunk.old_text is not None and block.content == hunk.old_text:
-                    if hunk.modify_type == 'delete':
-                        self._remove_block(revised_doc, block)
-                    else:  # replace
-                        block.content = hunk.new_text
-                    applied_ok = True
+            if hunk.modify_type == 'replace':
+                target.content = hunk.new_text or ''
+                # A block-level replacement cannot safely retain offsets/styles from old spans.
+                target.spans = []
+            elif hunk.modify_type == 'insert':
+                new_blocks = self._build_inserted_blocks(revised_doc, hunk)
+                self._insert_siblings(revised_doc, target, new_blocks, hunk.position or 'after')
+            elif hunk.modify_type == 'delete':
+                self._remove_block(revised_doc, target)
+            elif hunk.modify_type == 'move':
+                anchor = node_map[hunk.anchor_node_id or '']
+                self._remove_block(revised_doc, target)
+                self._insert_siblings(revised_doc, anchor, [target], hunk.position or 'after')
+            else:
+                raise ValueError(f'unsupported modify_type: {hunk.modify_type!r}.')
 
-                if applied_ok:
-                    applied.append(target_id)
-                else:
-                    failed.append(target_id)
+            applied.append(hunk.hunk_id or hunk.target_node_id)
 
-            if not applied:
-                raise ValueError('apply_patch produced no applied hunks; every hunk failed to match.')
+        # Re-validate after mutations because pydantic assignment validation is not enabled.
+        revised_doc = WriterDocument.model_validate(revised_doc.model_dump())
 
         patch_result = PatchResult(
             patch_id=patch.patch_id,
-            success=not failed,
+            success=True,
             applied_hunks=applied,
-            failed_hunks=failed,
-            message='Patch applied.' if not failed else f'{len(failed)} hunk(s) failed to apply.',
+            failed_hunks=[],
+            message='Patch applied.',
             meta={
                 'original_doc_id': source_doc.document_id,
                 'target_node_ids': [h.target_node_id for h in patch.hunks],
@@ -300,7 +318,7 @@ class WriterRevisionTools(WriterToolBase):
             primary_key='patch_result',
             context_key=None,
             summary='Applied patch to document.',
-            counts={'applied': len(applied), 'failed': len(failed)},
+            counts={'applied': len(applied), 'failed': 0},
             artifact_meta={
                 'document_id': source_doc.document_id,
                 'context_id': writing_context.context_id,
@@ -317,6 +335,7 @@ class WriterRevisionTools(WriterToolBase):
         plan: ModifyPlan,
         task: WritingTask,
         located_node_ids: List[str],
+        valid_node_ids: set,
     ) -> ModifyPlan:
         plan.plan_id = plan.plan_id or f'plan-{task.task_id or "task"}'
         plan.task_id = task.task_id
@@ -336,6 +355,15 @@ class WriterRevisionTools(WriterToolBase):
                 raise ValueError(f'modify_plan has duplicate instruction for block {target_id!r}.')
             seen.add(target_id)
             instr.instruction_id = instr.instruction_id or f'instr-{target_id}'
+            if instr.modify_type == 'insert':
+                instr.position = instr.position or 'after'
+            if instr.modify_type == 'move':
+                if instr.anchor_node_id not in valid_node_ids:
+                    raise ValueError(
+                        f'move instruction anchor {instr.anchor_node_id!r} is absent from document.'
+                    )
+                if instr.anchor_node_id == target_id:
+                    raise ValueError('move instruction cannot use the target block as its own anchor.')
             normalized.append(instr)
 
         missing_instructions = located_set - seen
@@ -361,38 +389,150 @@ class WriterRevisionTools(WriterToolBase):
                 blocks.append(block)
         return blocks, missing
 
-    def _insert_sibling_after(
+    def _validate_patch(self, document: WriterDocument, patch: PatchSet) -> None:
+        if patch.target_doc_id != document.document_id:
+            raise ValueError(
+                f'patch target_doc_id {patch.target_doc_id!r} does not match '
+                f'document_id {document.document_id!r}.'
+            )
+
+        node_map = {block.node_id: block for block in document.iter_blocks()}
+        target_ids: set = set()
+        hunk_ids: set = set()
+        for hunk in patch.hunks:
+            target_id = hunk.target_node_id
+            if target_id in target_ids:
+                raise ValueError(f'patch contains multiple hunks for target {target_id!r}.')
+            target_ids.add(target_id)
+            if hunk.hunk_id:
+                if hunk.hunk_id in hunk_ids:
+                    raise ValueError(f'patch contains duplicate hunk_id {hunk.hunk_id!r}.')
+                hunk_ids.add(hunk.hunk_id)
+
+            self._validate_patch_hunk(node_map, hunk)
+
+        destructive_targets = {
+            hunk.target_node_id for hunk in patch.hunks
+            if hunk.modify_type in {'delete', 'move'}
+        }
+        for hunk in patch.hunks:
+            if hunk.modify_type == 'move' and hunk.anchor_node_id in destructive_targets:
+                raise ValueError(
+                    f'move anchor {hunk.anchor_node_id!r} is also deleted or moved by this patch.'
+                )
+
+    def _validate_patch_hunk(
+        self,
+        node_map: Dict[str, WriterBlock],
+        hunk: PatchHunk,
+    ) -> None:
+        target_id = hunk.target_node_id
+        target = node_map.get(target_id)
+        if target is None:
+            raise ValueError(f'patch target {target_id!r} is absent from document.')
+        if not target.editable:
+            raise ValueError(f'patch target {target_id!r} is not editable.')
+        if hunk.old_text is not None and target.content != hunk.old_text:
+            raise ValueError(f'patch old_text conflict for target {target_id!r}.')
+
+        validators = {
+            'replace': self._validate_replace_hunk,
+            'insert': self._validate_insert_hunk,
+            'move': self._validate_move_hunk,
+        }
+        validator = validators.get(hunk.modify_type)
+        if validator:
+            validator(node_map, target, hunk)
+
+    def _validate_replace_hunk(
+        self,
+        node_map: Dict[str, WriterBlock],
+        target: WriterBlock,
+        hunk: PatchHunk,
+    ) -> None:
+        if hunk.new_text is None:
+            raise ValueError(f'replace hunk for {target.node_id!r} requires new_text.')
+
+    def _validate_insert_hunk(
+        self,
+        node_map: Dict[str, WriterBlock],
+        target: WriterBlock,
+        hunk: PatchHunk,
+    ) -> None:
+        if not hunk.new_blocks:
+            raise ValueError(f'insert hunk for {target.node_id!r} requires new_blocks.')
+        if hunk.position not in {'before', 'after'}:
+            raise ValueError(f'insert hunk for {target.node_id!r} requires position.')
+
+    def _validate_move_hunk(
+        self,
+        node_map: Dict[str, WriterBlock],
+        target: WriterBlock,
+        hunk: PatchHunk,
+    ) -> None:
+        anchor_id = hunk.anchor_node_id or ''
+        anchor = node_map.get(anchor_id)
+        if anchor is None:
+            raise ValueError(f'move anchor {anchor_id!r} is absent from document.')
+        if anchor is target:
+            raise ValueError('move target cannot be its own anchor.')
+        if hunk.position not in {'before', 'after'}:
+            raise ValueError(f'move hunk for {target.node_id!r} requires position.')
+        if self._contains_block(target, anchor):
+            raise ValueError('move target cannot be moved relative to one of its descendants.')
+
+    def _build_inserted_blocks(
         self,
         document: WriterDocument,
-        target: WriterBlock,
-        new_block: WriterBlock,
+        hunk: PatchHunk,
+    ) -> List[WriterBlock]:
+        used_ids = {block.node_id for block in document.iter_blocks()}
+        base_id = hunk.hunk_id or f'hunk-{hunk.target_node_id}'
+        result: List[WriterBlock] = []
+        for index, patch_block in enumerate(hunk.new_blocks, start=1):
+            candidate = f'{base_id}::block-{index}'
+            suffix = 2
+            while candidate in used_ids:
+                candidate = f'{base_id}::block-{index}-{suffix}'
+                suffix += 1
+            used_ids.add(candidate)
+            result.append(WriterBlock(
+                node_id=candidate,
+                type=patch_block.type,
+                content=patch_block.content,
+                stage=document.stage,
+                authoring=patch_block.authoring.model_copy(deep=True)
+                if patch_block.authoring else None,
+                numbering=dict(patch_block.numbering),
+            ))
+        return result
+
+    def _insert_siblings(
+        self,
+        document: WriterDocument,
+        anchor: WriterBlock,
+        new_blocks: List[WriterBlock],
+        position: str,
     ) -> None:
-        parent, siblings = self._locate_sibling_list(document, target)
-        if siblings is None:
-            document.blocks.insert(document.blocks.index(target) + 1, new_block)
-        else:
-            siblings.insert(siblings.index(target) + 1, new_block)
+        siblings = self._sibling_list(document, anchor)
+        index = siblings.index(anchor) + (1 if position == 'after' else 0)
+        siblings[index:index] = new_blocks
 
     def _remove_block(self, document: WriterDocument, target: WriterBlock) -> None:
-        parent, siblings = self._locate_sibling_list(document, target)
-        if siblings is None:
-            document.blocks.remove(target)
-        else:
-            siblings.remove(target)
+        self._sibling_list(document, target).remove(target)
 
-    def _locate_sibling_list(
+    def _sibling_list(
         self,
         document: WriterDocument,
         target: WriterBlock,
-    ) -> Tuple[WriterBlock, List[WriterBlock]]:
-        '''Find the children list that owns target. Returns (parent, list) or (None, None) at top level.'''
+    ) -> List[WriterBlock]:
         for block in document.blocks:
             if target is block:
-                return None, None
+                return document.blocks
             owner = self._find_parent(block, target)
             if owner is not None:
-                return block, owner
-        return None, None
+                return owner
+        raise ValueError(f'block {target.node_id!r} is detached from document.')
 
     def _find_parent(
         self,
@@ -406,3 +546,9 @@ class WriterRevisionTools(WriterToolBase):
             if deeper is not None:
                 return deeper
         return None
+
+    def _contains_block(self, candidate: WriterBlock, target: WriterBlock) -> bool:
+        return any(
+            child is target or self._contains_block(child, target)
+            for child in candidate.children
+        )

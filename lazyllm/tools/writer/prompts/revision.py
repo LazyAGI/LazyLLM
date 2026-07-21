@@ -4,7 +4,9 @@ LOCATE_REVISION_TARGET_PROMPT = '''You are a revision target locator. Given a wr
 Rules:
 - Read task.query carefully — it contains the user's revision request.
 - Examine every document block and select the ones the revision acts on.
-- This covers blocks to change, and — when the request asks to add new content — the existing block right after which the new block should be inserted (the anchor).
+- For replace/delete, select the blocks whose content or existence changes.
+- For insert, select the existing block used as the insertion anchor.
+- For move, select the block being moved. Do not select the destination block merely because it is the destination.
 - Select node_ids ONLY from the candidate list below. Never invent node_ids.
 - Be precise: do not select blocks that are unrelated to the request.
 - target_reasons: for each selected node_id, give a one-sentence reason why it is involved.
@@ -30,11 +32,13 @@ GENERATE_MODIFY_PLAN_PROMPT = '''You are a modify plan generator. Given a writin
 Rules:
 - For each target block, decide the modify_type and write a clear, specific instruction.
 - modify_type must be one of:
-  - insert: insert a brand-new block right after the target block.
+  - insert: insert one or more brand-new blocks before or after the target block. The target block is the insertion anchor; set position to before or after.
   - replace: replace the target block's content with a new version.
   - delete: remove the target block.
+  - move: move the target block before or after another existing block. Set anchor_node_id to the destination block and position to before or after.
 - instruction: a concise description of what change to make to that block, derived from task.query.
 - Every ModifyInstruction.target_node_id must come from the locate_result's target_node_ids. Produce exactly one instruction per target block.
+- For move, anchor_node_id may reference any node_id in the supplied document, including a block outside the located target set.
 - scope: one of document / section / block / span — pick the most fitting one for this revision.
 - summary: one concise sentence describing the overall revision plan. Never leave it null.
 - Respect the writing context: keep facts consistent (never alter locked facts), preserve terminology and the style profile.
@@ -43,7 +47,7 @@ Rules:
 Writing task:
 {task_json}
 
-Document (WriterDocument, target blocks only):
+Document (complete WriterDocument, including possible move destinations):
 {document_json}
 
 Locate result:
@@ -61,12 +65,12 @@ Rules:
 - Each PatchHunk must have:
   - target_node_id: copied from the corresponding ModifyInstruction.
   - modify_type: copied from the corresponding ModifyInstruction.
-  - new_text depends on modify_type:
-    - replace: the FULL new content for that block after applying the instruction.
-    - insert: the FULL content of the new block to insert right after the target block.
-    - delete: leave new_text null.
-- Leave anchor and old_text as null — the system fills them from the document automatically.
-- new_text must be complete, self-contained prose. Never produce partial text, placeholders, or ellipsis-only output.
+  - replace: set new_text to the FULL new content of the target block. Leave new_blocks empty.
+  - insert: set position from the instruction and put every complete new block in new_blocks. Leave new_text null. Use paragraph unless the requested structure clearly requires heading, list_item, code, or quote.
+  - delete: leave new_text null and new_blocks empty.
+  - move: copy anchor_node_id and position from the instruction. Leave new_text null and new_blocks empty.
+- Leave anchor and old_text null. The system fills conflict-checking fields from the source document.
+- Generated text must be complete and self-contained. Never produce placeholders or ellipsis-only output.
 - Respect the writing context: keep facts consistent (never alter locked facts), preserve terminology and style.
 - Do not invent facts that conflict with the writing context.
 
