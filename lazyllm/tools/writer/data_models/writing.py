@@ -42,8 +42,6 @@ class WritingOutline(ArtifactModel):
 
 
 class SectionInstruction(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-
     instruction_id: str
     outline_node_id: str
     section_title: str
