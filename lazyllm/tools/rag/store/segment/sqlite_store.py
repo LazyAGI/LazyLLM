@@ -14,6 +14,8 @@ class SQLiteStore(LazyLLMStoreBase):
     capability = StoreCapability.SEGMENT
     need_embedding = False
     supports_index_registration = False
+    supports_query_fields_match_mode = True
+    supported_query_fields = frozenset({'content'})
 
     _COLS = [('uid', 'TEXT PRIMARY KEY'),
              ('doc_id', 'TEXT NOT NULL'),
@@ -268,7 +270,19 @@ class SQLiteStore(LazyLLMStoreBase):
                 return []
 
             cmatch = f'"{collection_name}_fts" MATCH ?'
-            q = [query if query.endswith('*') else query + '*']
+            match_mode = kwargs.get('match_mode')
+            if match_mode in ('any', 'all'):
+                terms = query.split()
+                if not terms:
+                    return []
+                escaped_terms = []
+                for term in terms:
+                    escaped = term.replace('"', '""')
+                    escaped_terms.append(f'"{escaped}"*')
+                fts_query = (' OR ' if match_mode == 'any' else ' AND ').join(escaped_terms)
+            else:
+                fts_query = query if query.endswith('*') else query + '*'
+            q = [fts_query]
             if filters:
                 fw, fa = self._build_fts_filter_where(filters)
                 where = f'{cmatch} AND {fw}'

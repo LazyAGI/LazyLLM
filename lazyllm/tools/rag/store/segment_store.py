@@ -160,10 +160,36 @@ class SegmentStore:
             self.normalize_collection_name(name), self._filters(filters))]
 
     def search(self, name: str, query: str, *, topk: int = 10,
-               filters: Optional[dict] = None) -> List[dict]:
-        return [self._from_raw(item) for item in self._segment_backend.search(
+               filters: Optional[dict] = None, query_fields: Optional[List[str]] = None,
+               match_mode: Optional[str] = None) -> List[dict]:
+        search_options = {}
+        if query_fields is not None:
+            if not isinstance(query_fields, list) or not query_fields:
+                raise ValueError('query_fields must be a non-empty list of field names')
+            if any(not isinstance(field, str) or not field.strip() for field in query_fields):
+                raise ValueError('query_fields must contain only non-empty field names')
+            normalized_fields = [field.strip() for field in query_fields]
+            search_options['query_fields'] = normalized_fields
+        if match_mode is not None:
+            if match_mode not in ('any', 'all'):
+                raise ValueError("match_mode must be 'any', 'all', or None")
+            search_options['match_mode'] = match_mode
+        backend = self._segment_backend
+        if search_options and not getattr(backend, 'supports_query_fields_match_mode', False):
+            raise SegmentStoreUnsupportedError(
+                f'{type(backend).__name__} does not support query_fields/match_mode'
+            )
+        supported_fields = getattr(backend, 'supported_query_fields', None)
+        if query_fields is not None and supported_fields is not None:
+            unsupported_fields = set(normalized_fields) - set(supported_fields)
+            if unsupported_fields:
+                raise SegmentStoreUnsupportedError(
+                    f'{type(backend).__name__} does not support query fields: '
+                    f'{sorted(unsupported_fields)!r}'
+                )
+        return [self._from_raw(item) for item in backend.search(
             self.normalize_collection_name(name), query=query, topk=topk,
-            filters=self._filters(filters))]
+            filters=self._filters(filters), **search_options)]
 
     def patch(self, name: str, filters: dict, *, set_fields=None, inc_fields=None) -> int:
         mapped_set = dict(set_fields or {})

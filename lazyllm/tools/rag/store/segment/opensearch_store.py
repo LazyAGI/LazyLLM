@@ -73,6 +73,7 @@ DEFAULT_MAPPING_BODY = {
 class OpenSearchStore(LazyLLMStoreBase):
     capability = StoreCapability.SEGMENT
     need_embedding = False
+    supports_query_fields_match_mode = True
     supports_index_registration = False
 
     def __init__(self, uris: List[str], client_kwargs: Optional[Dict] = None,
@@ -270,22 +271,26 @@ class OpenSearchStore(LazyLLMStoreBase):
     @override
     def search(self, collection_name: str, query: Optional[str] = None,
                topk: Optional[int] = 10, filters: Optional[dict] = None, **kwargs) -> List[dict]:  # noqa: C901
-        query_fields = ['*']
+        query_fields = kwargs.get('query_fields') or ['*']
         try:
             self._ensure_index(collection_name)
             must_clauses = []
             os_query = {}
-            text_query = {
-                'multi_match': {
-                    'query': query,
-                    'fields': query_fields,
-                }
-            }
+            multi_match = {'query': query, 'fields': query_fields}
+            if operator := {'any': 'or', 'all': 'and'}.get(kwargs.get('match_mode')):
+                multi_match['operator'] = operator
+            text_query = {'multi_match': multi_match}
             must_clauses.append(text_query)
 
             filter_query = self._construct_criteria(filters) if filters else {}
 
-            if must_clauses and filter_query:
+            explicit_search_contract = (
+                kwargs.get('query_fields') is not None or kwargs.get('match_mode') is not None
+            )
+            if must_clauses and filter_query and explicit_search_contract:
+                filter_clauses = filter_query['query']['bool']['must']
+                os_query = {'query': {'bool': {'must': must_clauses, 'filter': filter_clauses}}}
+            elif must_clauses and filter_query:
                 filter_must = filter_query['query']['bool']['must']
                 os_query = {'query': {'bool': {'must': must_clauses + filter_must}}}
             elif must_clauses:
