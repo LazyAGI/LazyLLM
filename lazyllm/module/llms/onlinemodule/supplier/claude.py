@@ -1,6 +1,5 @@
 import json
 import re
-import requests
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase
@@ -123,13 +122,3 @@ class ClaudeChat(OnlineChatModuleBase):
             return message
         except Exception:
             return ''
-
-    def _validate_api_key(self):
-        # Anthropic has no /v1/models endpoint; send a minimal request to verify the key.
-        try:
-            data = {'model': self._model_name, 'max_tokens': 1,
-                    'messages': [{'role': 'user', 'content': 'hi'}]}
-            response = requests.post(self._chat_url, json=data, headers=self._header, timeout=10)
-            return response.status_code == 200
-        except Exception:
-            return False
