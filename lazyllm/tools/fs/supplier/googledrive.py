@@ -26,6 +26,24 @@ _GOOGLE_WORKSPACE_EXPORT_TYPES = {
     'application/vnd.google-apps.document': 'text/plain',
     'application/vnd.google-apps.spreadsheet': 'text/csv',
 }
+_SEARCH_TOOL_DOC = '''Search Google Drive files by content keywords.
+
+Args:
+    keywords: One keyword or multiple keywords combined with AND.
+    file_name: Optional exact file-name scope.
+    drive_id: Optional shared-drive id.
+    folder_id: Optional direct parent-folder id.
+    limit: Maximum result count.
+'''
+_FIND_TOOL_DOC = '''Find Google Drive files whose names match a regex pattern.
+
+Args:
+    pattern: Python regular expression applied to file names.
+    drive_id: Optional shared-drive id.
+    folder_id: Optional direct parent-folder id.
+    limit: Maximum match count.
+    max_scan: Maximum candidate files to inspect.
+'''
 
 
 def _search_tool_schema(
@@ -58,6 +76,10 @@ class GoogleDriveFS(LazyLLMFSBase):
     __public_apis__ = ['search', 'find', 'read', 'read_file']
     __tool_schema_overrides__ = {'search': _search_tool_schema}
     __tool_input_adapters__ = {'search': _adapt_search_tool_input}
+    __tool_doc_overrides__ = {
+        'search': _SEARCH_TOOL_DOC,
+        'find': _FIND_TOOL_DOC,
+    }
 
     def __init__(
         self,

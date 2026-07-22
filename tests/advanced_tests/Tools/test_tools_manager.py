@@ -2,6 +2,7 @@ import lazyllm
 from lazyllm.tools import ToolManager
 from lazyllm.tools.agent.toolsManager import (
     InstanceToolGroup, ToolGroup, _build_tool_from_element, _gen_args_info_from_moduletool_and_docstring, register,
+    _build_tool_desc,
 )
 from lazyllm.tools.agent.reactAgent import ReactAgent
 from lazyllm.common import LazyLLMRegisterMetaClass
@@ -205,10 +206,19 @@ def mock_search_input_adapter(tool_input):
     return adapted
 
 
+MOCK_SEARCH_TOOL_DOC = '''
+Search with one or more normalized queries.
+
+Args:
+    queries: Query terms to search.
+'''
+
+
 class MockSearchWithToolContract(MockSearchForTest):
     __tool_public_apis__ = ['search']
     __tool_schema_overrides__ = {'search': mock_search_schema}
     __tool_input_adapters__ = {'search': mock_search_input_adapter}
+    __tool_doc_overrides__ = {'search': MOCK_SEARCH_TOOL_DOC}
 
 
 class TestInstanceToolGroup:
@@ -282,9 +292,14 @@ class TestInstanceToolGroup:
         grp = InstanceToolGroup(MockSearchWithToolContract())
 
         assert set(grp._tools) == {'MockSearchWithToolContract_search'}
-        schema = grp._tools['MockSearchWithToolContract_search'].params_schema.model_json_schema()
+        tool = grp._tools['MockSearchWithToolContract_search']
+        schema = tool.params_schema.model_json_schema()
         assert schema['properties']['queries']['type'] == 'array'
-        assert grp._tools['MockSearchWithToolContract_search']._validate_input(
+        assert tool.description == MOCK_SEARCH_TOOL_DOC.strip()
+        desc = _build_tool_desc(tool)
+        assert desc['function']['description'].strip() == 'Search with one or more normalized queries.'
+        assert desc['function']['parameters']['properties']['queries']['description'] == 'Query terms to search.'
+        assert tool._validate_input(
             {'queries': 'hello'}
         ) == {'queries': ['hello']}
 

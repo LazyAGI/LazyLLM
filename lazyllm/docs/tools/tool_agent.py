@@ -2028,8 +2028,9 @@ add_toolsmgr_chinese_doc('InstanceToolGroup', '''\
 实例可以用以下可选类属性定制仅面向 LLM 的工具契约，而不改变原始 Python API：
 
 - ``__tool_public_apis__``：覆盖向 LLM 暴露的方法列表；未设置时继续使用 ``__public_apis__``。
-- ``__tool_schema_overrides__``：方法名到签名函数的映射，仅替换参数 schema，工具描述仍来自实际绑定方法。
+- ``__tool_schema_overrides__``：方法名到签名函数的映射，仅替换参数 schema，工具描述默认仍来自实际绑定方法。
 - ``__tool_input_adapters__``：方法名到输入适配函数的映射，在 schema 校验和调用前归一化工具输入。
+- ``__tool_doc_overrides__``：方法名到工具 docstring 的映射，仅用于 Agent 工具注册描述；适合原始方法文档由集中式文档系统维护、运行时仍需工具描述的场景。
 
 主要用于将 SearchBase、LazyLLMFSBase 等带有 __public_apis__ 的对象注册为 Agent 工具。
 
@@ -2058,8 +2059,9 @@ Accepts an optional key_source parameter to detect credential availability at ru
 An instance may define these optional class attributes to customize its LLM-facing tool contract without changing the original Python API:
 
 - ``__tool_public_apis__``: Overrides the methods exposed to the LLM; falls back to ``__public_apis__`` when absent.
-- ``__tool_schema_overrides__``: Maps method names to signature functions used only for parameter schemas; descriptions still come from the bound methods.
+- ``__tool_schema_overrides__``: Maps method names to signature functions used only for parameter schemas; descriptions still come from the bound methods by default.
 - ``__tool_input_adapters__``: Maps method names to input adapters that normalize tool input before schema validation and invocation.
+- ``__tool_doc_overrides__``: Maps method names to tool docstrings used only for Agent tool registration; useful when the original method documentation is maintained by the centralized docs system but runtime tools still need descriptions.
 
 Primarily used to register objects with __public_apis__ (such as SearchBase or LazyLLMFSBase subclasses) as Agent tools.
 
@@ -2387,6 +2389,7 @@ Args:
     method_name (str): 要封装的方法名称。
     schema_func (Optional[Callable]): 可选的 schema 签名函数；默认使用目标绑定方法。
     input_adapter (Optional[Callable]): 可选的输入归一化函数，在参数校验前执行。
+    doc (Optional[str]): 可选的工具 docstring 覆盖；仅影响工具描述和参数说明，不改变原始方法文档。
 ''')
 
 add_toolsmgr_english_doc('MethodModuleTool', '''\
@@ -2401,6 +2404,7 @@ Args:
     method_name (str): The name of the method to wrap.
     schema_func (Optional[Callable]): Optional signature function for schema generation; defaults to the target bound method.
     input_adapter (Optional[Callable]): Optional input normalizer executed before parameter validation.
+    doc (Optional[str]): Optional tool docstring override; affects only tool descriptions and parameter descriptions without changing the original method documentation.
 ''')
 
 add_toolsmgr_chinese_doc('ToolGroup.get_flat_tools', '''\

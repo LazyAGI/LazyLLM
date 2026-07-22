@@ -264,14 +264,14 @@ if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
 
 class MethodModuleTool(ModuleTool):
     def __init__(self, instance: Any, method_name: str, schema_func: Optional[Callable] = None,
-                 input_adapter: Optional[Callable] = None):
+                 input_adapter: Optional[Callable] = None, doc: Optional[str] = None):
         object.__setattr__(self, '_instance', instance)
         object.__setattr__(self, '_method_name', method_name)
         object.__setattr__(self, '_input_adapter', input_adapter)
         bound = getattr(instance, method_name)
 
         def _apply(**kwargs): return bound(**kwargs)
-        _apply.__doc__ = bound.__doc__ or self._find_inherited_docstring(instance, method_name)
+        _apply.__doc__ = doc or bound.__doc__ or self._find_inherited_docstring(instance, method_name)
         _apply.__name__ = method_name
 
         super().__init__(execute_in_sandbox=False, apply_func=_apply, schema_func=schema_func or bound)
@@ -511,12 +511,14 @@ class InstanceToolGroup(SkipMixin, ToolGroup):
         public_apis = getattr(instance, '__tool_public_apis__', instance.__public_apis__)
         schema_overrides = getattr(instance, '__tool_schema_overrides__', {})
         input_adapters = getattr(instance, '__tool_input_adapters__', {})
+        doc_overrides = getattr(instance, '__tool_doc_overrides__', {})
         tools = [
             MethodModuleTool(
                 instance,
                 method_name,
                 schema_func=schema_overrides.get(method_name),
                 input_adapter=input_adapters.get(method_name),
+                doc=doc_overrides.get(method_name),
             )
             for method_name in public_apis
         ]
