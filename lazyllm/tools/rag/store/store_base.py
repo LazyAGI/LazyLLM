@@ -64,6 +64,7 @@ class Segment(BaseModel):
     answer: Optional[str] = ''
     image_keys: Optional[List[str]] = Field(default_factory=list)
     copy_source: Optional[Dict[str, str]] = Field(default_factory=dict)
+    counters: Dict[str, int] = Field(default_factory=dict)
 
 
 class StoreCapability(IntFlag):
@@ -95,6 +96,52 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
     capability: StoreCapability
     need_embedding: bool = True
     supports_index_registration: bool = False
+    supports_counters: bool = False
+    _COUNTER_NAME_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+    def create(self, collection_name: str, data: List[dict]) -> bool:
+        '''Create records without overwriting existing primary keys.
+
+        Backends opt in by overriding this method.  Keeping it non-abstract
+        preserves compatibility with third-party stores.  A batch is not a
+        transaction across records unless a concrete backend documents that.
+        '''
+        raise NotImplementedError(f'{type(self).__name__} does not support create-only writes')
+
+    def increment_counters(self, collection_name: str, criteria: dict,
+                           increments: Dict[str, int]) -> int:
+        '''Atomically increment named counters on every matching record.'''
+        raise NotImplementedError(f'{type(self).__name__} does not support named counters')
+
+    @classmethod
+    def _validate_counters(cls, counters: Dict[str, int], *, allow_empty: bool = True) -> Dict[str, int]:
+        if not isinstance(counters, dict):
+            raise ValueError('counters must be a dict')
+        if not counters and not allow_empty:
+            raise ValueError('counter increments must not be empty')
+        for name, value in counters.items():
+            if not isinstance(name, str) or not cls._COUNTER_NAME_PATTERN.fullmatch(name):
+                raise ValueError(f'invalid counter name: {name!r}')
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f'counter {name!r} must be an integer')
+        return dict(counters)
+
+    @staticmethod
+    def _validate_search_options(query_fields, match_mode, *, supported_fields=None):
+        normalized_fields = None
+        if query_fields is not None:
+            if not isinstance(query_fields, list) or not query_fields:
+                raise ValueError('query_fields must be a non-empty list of field names')
+            if any(not isinstance(field, str) or not field.strip() for field in query_fields):
+                raise ValueError('query_fields must contain only non-empty field names')
+            normalized_fields = [field.strip() for field in query_fields]
+            if supported_fields is not None:
+                unsupported = set(normalized_fields) - set(supported_fields)
+                if unsupported:
+                    raise ValueError(f'store does not support query fields: {sorted(unsupported)!r}')
+        if match_mode not in (None, 'any', 'all'):
+            raise ValueError("match_mode must be 'any', 'all', or None")
+        return normalized_fields, match_mode
 
     @property
     def dir(self):

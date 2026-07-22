@@ -8730,7 +8730,7 @@ Args:
     query (Optional[str]): Query string.
     topk (Optional[int]): Number of nearest neighbors.
     filters (Optional[dict]): Metadata filter map.
-    kwargs: Other search parameters
+    **kwargs: Other search parameters
 
 **Returns:**\n
 - List[dict]: Return matching results list and similarity 'score'.
@@ -8743,7 +8743,7 @@ Args:
     query (Optional[str]): 查询字符串。
     topk (Optional[int]): 返回邻近数量。
     filters (Optional[dict]): 元数据过滤映射。
-    kwargs: 其他搜索参数
+    **kwargs: 其他搜索参数
 
 **Returns:**\n
 - List[dict]: 返回匹配结果列表及相似度 'score'。
@@ -9496,3 +9496,61 @@ Returns:
 """)
 
 
+add_chinese_doc('rag.store.create_segment_store', """\
+构造文本切片存储 Adapter。
+
+该函数接收 ``LazyLLMStoreBase`` 实例或 ``type/kwargs`` 配置，验证结果具备
+``StoreCapability.SEGMENT`` 后直接返回具体 Adapter；不会包装、连接或组合存储。
+""")
+
+add_english_doc('rag.store.create_segment_store', """\
+Construct a text-segment store adapter.
+
+The function accepts a ``LazyLLMStoreBase`` instance or a ``type/kwargs`` configuration,
+validates ``StoreCapability.SEGMENT``, and returns the concrete adapter without wrapping,
+connecting, or composing stores.
+""")
+
+add_chinese_doc('rag.store.LazyLLMStoreBase.create', """\
+仅创建新切片，不覆盖已有主键。SQLite、OpenSearch 和 Elasticsearch Adapter
+在主键冲突时统一抛出 ``FileExistsError``；其他 Store 可不实现该可选能力。
+除非具体后端另有说明，批量创建不承诺跨记录事务。
+""")
+
+add_english_doc('rag.store.LazyLLMStoreBase.create', """\
+Create new segments without overwriting existing primary keys. SQLite, OpenSearch,
+and Elasticsearch adapters raise ``FileExistsError`` on conflict; other stores may
+leave this optional operation unsupported. Batch creation is not transactional across
+records unless a concrete backend documents otherwise.
+""")
+
+add_chinese_doc('rag.store.LazyLLMStoreBase.increment_counters', """\
+按条件原子增加一个或多个命名计数器。SQLite、OpenSearch 和 Elasticsearch
+Adapter 支持该能力，其他 Store 可通过 ``supports_counters`` 判断。
+""")
+
+add_english_doc('rag.store.LazyLLMStoreBase.increment_counters', """\
+Atomically increment one or more named counters on matching records. SQLite, OpenSearch,
+and Elasticsearch adapters support this capability; inspect ``supports_counters`` for other stores.
+""")
+
+add_chinese_doc('rag.store.LazyLLMStoreBase.get', """\
+读取切片。持久化 Segment Adapter 默认保持失败时返回空结果的兼容行为；传入
+``raise_on_error=True`` 可让 SQLite、OpenSearch 和 Elasticsearch 传播读取异常。
+""")
+
+add_english_doc('rag.store.LazyLLMStoreBase.get', """\
+Read segments. Persistent segment adapters preserve fail-soft empty results by default;
+pass ``raise_on_error=True`` to propagate SQLite, OpenSearch, and Elasticsearch read errors.
+""")
+
+add_chinese_doc('rag.store.LazyLLMStoreBase.search', """\
+检索切片。SQLite、OpenSearch 和 Elasticsearch 支持 ``query_fields``、
+``match_mode='any'|'all'`` 和 ``raise_on_error=True``；过滤条件独立于文本匹配。
+""")
+
+add_english_doc('rag.store.LazyLLMStoreBase.search', """\
+Search segments. SQLite, OpenSearch, and Elasticsearch support ``query_fields``,
+``match_mode='any'|'all'``, and ``raise_on_error=True`` while keeping filters separate
+from text matching.
+""")
