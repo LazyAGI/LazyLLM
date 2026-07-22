@@ -3,18 +3,13 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from ..data_models.revision import PatchHunk
+from ...fs.supplier.feishu import FeishuFSBase
+from ..data_models.revision import PatchBlock, PatchHunk
 from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan, WriterStage
 from .base import NativeBlock, NativePatchOperation, WriterAdapterBase
 
 
-_BLOCK_TYPE_FIELDS: Dict[int, str] = {
-    1: 'page', 2: 'text',
-    **{block_type: f'heading{block_type - 2}' for block_type in range(3, 12)},
-    12: 'bullet', 13: 'ordered', 14: 'code', 15: 'quote', 17: 'todo',
-    19: 'callout', 22: 'divider', 24: 'grid', 25: 'grid_column',
-    31: 'table', 32: 'table_cell', 34: 'quote_container',
-}
+_BLOCK_TYPE_FIELDS = FeishuFSBase._DOCX_BLOCK_TYPE_KEY
 
 _BLOCK_TYPE_NAMES: Dict[int, str] = {
     1: 'document', 2: 'paragraph',
@@ -39,6 +34,8 @@ _STYLE_TO_IR = {
 }
 _STYLE_FROM_IR = {value: key for key, value in _STYLE_TO_IR.items()}
 _ELEMENT_TEXT_FIELDS = ('content', 'title', 'name', 'text')
+
+
 class FeishuWriterAdapter(WriterAdapterBase):
     '''Convert between Feishu Docx blocks and Writer IR.'''
 
@@ -169,6 +166,73 @@ class FeishuWriterAdapter(WriterAdapterBase):
         }
         return handlers[patch.modify_type](patch, document)
 
+    def merge_refreshed_document(
+        self,
+        previous_document: WriterDocument,
+        refreshed_document: WriterDocument,
+        patch: Optional[PatchHunk] = None,
+        operation: Optional[NativePatchOperation] = None,
+    ) -> WriterDocument:
+        previous_ids = {
+            block.provider_binding.get('block_id'): block.node_id
+            for block in previous_document.iter_blocks()
+            if isinstance(block.provider_binding.get('block_id'), str)
+        }
+        for block in refreshed_document.iter_blocks():
+            node_id = previous_ids.get(block.provider_binding.get('block_id'))
+            if node_id is not None:
+                block.node_id = node_id
+
+        if operation is not None and operation.operation == 'move' and patch is not None:
+            previous_root = previous_document.block_by_id(patch.target_node_id)
+            if previous_root is None:
+                raise ValueError(
+                    f'move target node disappeared before synchronization: {patch.target_node_id!r}.'
+                )
+            target_parent_id = operation.params.get('target_parent_block_id')
+            target_index = operation.params.get('target_index')
+            if not isinstance(target_parent_id, str) or not isinstance(target_index, int):
+                raise ValueError('move operation lacks a valid target parent or target index.')
+            target_parent = next(
+                (
+                    block for block in refreshed_document.iter_blocks()
+                    if block.provider_binding.get('block_id') == target_parent_id
+                ),
+                None,
+            )
+            if target_parent is not None:
+                target_children = target_parent.children
+            elif refreshed_document.provider_binding.get('document_id') == target_parent_id:
+                target_children = refreshed_document.blocks
+            else:
+                raise ValueError(
+                    f'refreshed document does not contain target parent block {target_parent_id!r}.')
+            if target_index < 0 or target_index >= len(target_children):
+                raise ValueError('moved block is absent from the refreshed target position.')
+
+            def restore_subtree(previous: WriterBlock, refreshed: WriterBlock) -> None:
+                if (
+                    previous.type != refreshed.type
+                    or previous.content != refreshed.content
+                    or len(previous.children) != len(refreshed.children)
+                ):
+                    raise ValueError('refreshed moved subtree does not match the source subtree.')
+                refreshed.node_id = previous.node_id
+                for previous_child, refreshed_child in zip(previous.children, refreshed.children):
+                    restore_subtree(previous_child, refreshed_child)
+
+            restore_subtree(previous_root, target_children[target_index])
+
+        previous_blocks = {block.node_id: block for block in previous_document.iter_blocks()}
+        for block in refreshed_document.iter_blocks():
+            previous = previous_blocks.get(block.node_id)
+            if previous is None:
+                continue
+            block.status = previous.status
+            block.authoring = deepcopy(previous.authoring)
+            block.references = deepcopy(previous.references)
+        return WriterDocument.model_validate(refreshed_document.model_dump())
+
     def _replace_patch_to_operation(
         self,
         patch: PatchHunk,
@@ -225,28 +289,209 @@ class FeishuWriterAdapter(WriterAdapterBase):
         patch: PatchHunk,
         document: WriterDocument,
     ) -> NativePatchOperation:
-        '''Reserved for conversion to Feishu create_block parameters.'''
-        raise NotImplementedError(
-            'Feishu insert patch conversion to create_block is not implemented yet.')
+        '''Convert insert into Feishu create_block parameters.'''
+        anchor_id = patch.anchor_node_id or patch.target_node_id
+        anchor, parent, anchor_index = self._block_location(document, anchor_id)
+        self._require_feishu_binding(anchor, 'insert anchor')
+
+        position = patch.position or 'after'
+        insert_index = anchor_index + (1 if position == 'after' else 0)
+        parent_block_id = self._parent_block_id(document, anchor, parent)
+
+        patch_blocks = patch.new_blocks
+        if not patch_blocks:
+            if patch.new_text is None:
+                raise ValueError('insert patch must provide new_blocks or new_text.')
+            patch_blocks = [PatchBlock(type='paragraph', content=patch.new_text)]
+
+        id_prefix = patch.hunk_id or f'{patch.target_node_id}::insert'
+        writer_blocks = [
+            WriterBlock(
+                node_id=f'{id_prefix}::{index}',
+                type=patch_block.type,
+                content=patch_block.content,
+                stage=document.stage,
+                authoring=patch_block.authoring,
+                numbering=deepcopy(patch_block.numbering),
+            )
+            for index, patch_block in enumerate(patch_blocks)
+        ]
+        inserted_document = WriterDocument(
+            document_id=f'{document.document_id}::insert::{id_prefix}',
+            stage=document.stage,
+            blocks=writer_blocks,
+            provider_binding={
+                'provider': self.provider,
+                'document_id': document.provider_binding.get('document_id', ''),
+            },
+        )
+        children_id, descendants = FeishuFSBase._prepare_docx_descendants(
+            self.ir_to_blocks(inserted_document))
+        return NativePatchOperation(
+            operation='create',
+            params={
+                'parent_block_id': parent_block_id,
+                'index': insert_index,
+                'children_id': children_id,
+                'descendants': descendants,
+            },
+        )
 
     def _delete_patch_to_operation(
         self,
         patch: PatchHunk,
         document: WriterDocument,
     ) -> NativePatchOperation:
-        '''Reserved for conversion to Feishu delete_block parameters.'''
-        raise NotImplementedError(
-            'Feishu delete patch conversion to delete_block is not implemented yet.')
+        '''Convert delete into Feishu delete_block parameters.'''
+        block, parent, index = self._block_location(document, patch.target_node_id)
+        self._require_feishu_binding(block, 'delete target')
+        if block.type == 'document':
+            raise ValueError('delete patch cannot remove the Feishu document block.')
+        if patch.old_text is not None and patch.old_text != block.content:
+            raise ValueError('patch old_text does not match the current block content.')
+        return NativePatchOperation(
+            operation='delete',
+            params={
+                'parent_block_id': self._parent_block_id(document, block, parent),
+                'start_index': index,
+                'end_index': index + 1,
+            },
+        )
 
     def _move_patch_to_operation(
         self,
         patch: PatchHunk,
         document: WriterDocument,
     ) -> NativePatchOperation:
-        '''Reserved for conversion to Feishu move_block parameters.'''
-        raise NotImplementedError(
-            'Feishu move patch conversion to move_block is not implemented yet.')
+        '''Convert move into Feishu move_block parameters.'''
+        source, source_parent, source_index = self._block_location(
+            document, patch.target_node_id)
+        anchor, target_parent, anchor_index = self._block_location(
+            document, patch.anchor_node_id or '')
+        self._require_feishu_binding(source, 'move source')
+        self._require_feishu_binding(anchor, 'move anchor')
+        if source.type == 'document':
+            raise ValueError('move patch cannot move the Feishu document block.')
+        if patch.old_text is not None and patch.old_text != source.content:
+            raise ValueError('patch old_text does not match the current block content.')
+        if self._subtree_contains(source, anchor.node_id):
+            raise ValueError('move patch anchor cannot be the source node or its descendant.')
 
+        source_parent_block_id = self._parent_block_id(document, source, source_parent)
+        target_parent_block_id = self._parent_block_id(document, anchor, target_parent)
+        target_index = anchor_index + (1 if patch.position == 'after' else 0)
+        if (
+            source_parent_block_id == target_parent_block_id
+            and source_index < anchor_index
+        ):
+            target_index -= 1
+
+        id_prefix = patch.hunk_id or f'{patch.target_node_id}::move'
+        moved_root = self._clone_subtree_with_temporary_ids(source, id_prefix)
+        moved_document = WriterDocument(
+            document_id=f'{document.document_id}::move::{id_prefix}',
+            stage=document.stage,
+            blocks=[moved_root],
+            provider_binding={
+                'provider': self.provider,
+                'document_id': document.provider_binding.get('document_id', ''),
+            },
+        )
+        children_id, descendants = FeishuFSBase._prepare_docx_descendants(
+            self.ir_to_blocks(moved_document))
+        if len(children_id) != 1:
+            raise ValueError('move patch must produce exactly one root Feishu block.')
+        return NativePatchOperation(
+            operation='move',
+            params={
+                'source_parent_block_id': source_parent_block_id,
+                'source_index': source_index,
+                'target_parent_block_id': target_parent_block_id,
+                'target_index': target_index,
+                'children_id': children_id,
+                'descendants': descendants,
+            },
+        )
+
+    @staticmethod
+    def _block_location(
+        document: WriterDocument,
+        node_id: str,
+    ) -> Tuple[WriterBlock, Optional[WriterBlock], int]:
+        def find(
+            blocks: List[WriterBlock],
+            parent: Optional[WriterBlock],
+        ) -> Optional[Tuple[WriterBlock, Optional[WriterBlock], int]]:
+            for index, block in enumerate(blocks):
+                if block.node_id == node_id:
+                    return block, parent, index
+                nested = find(block.children, block)
+                if nested is not None:
+                    return nested
+            return None
+
+        location = find(document.blocks, None)
+        if location is None:
+            raise ValueError(f'patch target node does not exist: {node_id!r}.')
+        return location
+
+    def _require_feishu_binding(self, block: WriterBlock, label: str) -> str:
+        provider = block.provider_binding.get('provider')
+        if provider != self.provider:
+            raise ValueError(
+                f'{label} provider must be {self.provider!r}, got {provider!r}.')
+        block_id = block.provider_binding.get('block_id')
+        if not isinstance(block_id, str) or not block_id.strip():
+            raise ValueError(f'{label} does not have a Feishu block_id binding.')
+        return block_id.strip()
+
+    def _parent_block_id(
+        self,
+        document: WriterDocument,
+        block: WriterBlock,
+        parent: Optional[WriterBlock],
+    ) -> str:
+        if parent is not None:
+            return self._require_feishu_binding(parent, 'parent block')
+        parent_block_id = block.provider_binding.get('parent_block_id')
+        if not isinstance(parent_block_id, str) or not parent_block_id.strip():
+            parent_block_id = document.provider_binding.get('document_id')
+        if not isinstance(parent_block_id, str) or not parent_block_id.strip():
+            raise ValueError('patch target does not have a Feishu parent block binding.')
+        return parent_block_id.strip()
+
+    @classmethod
+    def _clone_subtree_with_temporary_ids(
+        self,
+        root: WriterBlock,
+        id_prefix: str,
+    ) -> WriterBlock:
+        cloned = root.model_copy(deep=True)
+        index = 0
+
+        def assign(block: WriterBlock) -> None:
+            nonlocal index
+            temporary_id = f'{id_prefix}::{index}'
+            index += 1
+            raw = deepcopy(self._raw_payload(block))
+            raw['block_id'] = temporary_id
+            raw.pop('parent_id', None)
+            raw.pop('children', None)
+            block.node_id = temporary_id
+            block.provider_binding = {}
+            block.provider_payload = {'raw_block': raw}
+            for child in block.children:
+                assign(child)
+
+        assign(cloned)
+        return cloned
+
+    @staticmethod
+    def _subtree_contains(root: WriterBlock, node_id: str) -> bool:
+        return root.node_id == node_id or any(
+            FeishuWriterAdapter._subtree_contains(child, node_id)
+            for child in root.children
+        )
     def _raw_block_to_ir(
         self,
         raw: NativeBlock,

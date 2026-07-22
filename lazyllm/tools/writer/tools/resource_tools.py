@@ -1,4 +1,5 @@
 from __future__ import annotations
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
 
 from lazyllm import LOG
@@ -207,39 +208,61 @@ class WriterResourceTools(WriterToolBase):
         persisted_document = source
         expected_title = patch.new_title if patch.new_title is not None else source.title
         title_updated = patch.new_title is not None and patch.new_title != source.title
-        for hunk in patch.hunks:
+        for hunk in patch.execution_hunks():
             operation = adapter.patch_to_operation(hunk, persisted_document)
             self._execute_native_operation(
                 fs, document_id, operation, persisted_document.revision)
             applied_hunks.append(hunk.hunk_id or hunk.target_node_id)
-            persisted_document = self._read_persisted_document(
+            refreshed_document = self._read_persisted_document(
                 fs=fs,
                 adapter=adapter,
                 real_path=real_path,
                 locator=locator,
                 document_id=document_id,
-                source_document=source.model_copy(update={'title': expected_title}),
+                source_document=persisted_document.model_copy(
+                    update={'title': expected_title}),
+            )
+            merge_refreshed = getattr(adapter, 'merge_refreshed_document', None)
+            persisted_document = (
+                merge_refreshed(
+                    persisted_document,
+                    refreshed_document,
+                    patch=hunk,
+                    operation=operation,
+                )
+                if callable(merge_refreshed) else refreshed_document
             )
 
         if title_updated:
             self._update_document_title(
                 fs, document_id, expected_title, persisted_document.revision)
-            persisted_document = self._read_persisted_document(
+            refreshed_document = self._read_persisted_document(
                 fs=fs,
                 adapter=adapter,
                 real_path=real_path,
                 locator=locator,
                 document_id=document_id,
-                source_document=source.model_copy(update={'title': expected_title}),
+                source_document=persisted_document.model_copy(
+                    update={'title': expected_title}),
+            )
+            merge_refreshed = getattr(adapter, 'merge_refreshed_document', None)
+            persisted_document = (
+                merge_refreshed(persisted_document, refreshed_document)
+                if callable(merge_refreshed) else refreshed_document
             )
         elif not patch.hunks:
-            persisted_document = self._read_persisted_document(
+            refreshed_document = self._read_persisted_document(
                 fs=fs,
                 adapter=adapter,
                 real_path=real_path,
                 locator=locator,
                 document_id=document_id,
-                source_document=source.model_copy(update={'title': expected_title}),
+                source_document=persisted_document,
+            )
+            merge_refreshed = getattr(adapter, 'merge_refreshed_document', None)
+            persisted_document = (
+                merge_refreshed(persisted_document, refreshed_document)
+                if callable(merge_refreshed) else refreshed_document
             )
 
         patch_result = PatchResult(
@@ -339,10 +362,11 @@ class WriterResourceTools(WriterToolBase):
             uri=locator,
             revision=None,
         )
-        document.metadata.update({
+        document.metadata = {
+            **deepcopy(source_document.metadata),
             'block_count': len(latest_blocks),
             'source': source_document.metadata.get('source', {}),
-        })
+        }
         return document
 
     def _writer_adapter(self, protocol: str) -> WriterAdapterBase:
