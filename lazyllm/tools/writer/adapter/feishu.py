@@ -39,9 +39,6 @@ _STYLE_TO_IR = {
 }
 _STYLE_FROM_IR = {value: key for key, value in _STYLE_TO_IR.items()}
 _ELEMENT_TEXT_FIELDS = ('content', 'title', 'name', 'text')
-NativeUpdateRequest = Dict[str, Any]
-
-
 class FeishuWriterAdapter(WriterAdapterBase):
     '''Convert between Feishu Docx blocks and Writer IR.'''
 
@@ -170,26 +167,6 @@ class FeishuWriterAdapter(WriterAdapterBase):
             'move': self._move_patch_to_operation,
         }
         return handlers[patch.modify_type](patch, document)
-
-    def patch_to_update_requests(
-        self,
-        patch: PatchHunk,
-        document: WriterDocument,
-    ) -> List[NativeUpdateRequest]:
-        '''Return Feishu update_block requests for a replace patch.
-
-        This is a temporary compatibility entry point for replace-only callers.
-        Remove it after callers dispatch every classified result from
-        patch_to_operation() to create_block/update_block/delete_block/move_block.
-        '''
-        operation = self.patch_to_operation(patch, document)
-        if operation.operation != 'update':
-            raise ValueError(
-                f'Feishu patch produced {operation.operation!r}, not an update.')
-        requests = operation.params.get('requests')
-        if not isinstance(requests, list):
-            raise TypeError('Feishu update operation params.requests must be a list.')
-        return requests
 
     def _replace_patch_to_operation(
         self,
