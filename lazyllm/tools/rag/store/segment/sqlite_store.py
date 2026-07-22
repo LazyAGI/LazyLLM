@@ -224,6 +224,8 @@ class SQLiteStore(LazyLLMStoreBase):
                     else [self._deserialize_row(r) for r in cur.fetchall()])
         except Exception as e:
             LOG.error(f'[SQLiteStore - get] Error: {e}')
+            if kwargs.get('raise_on_error'):
+                raise
             return ([], 0) if kwargs.get('return_total') else []
 
     @override
@@ -296,6 +298,8 @@ class SQLiteStore(LazyLLMStoreBase):
                     for r in conn.execute(sql, q + [topk]).fetchall()]
         except Exception as e:
             LOG.error(f'[SQLiteStore - search] Error: {e}')
+            if kwargs.get('raise_on_error'):
+                raise
             return []
 
     def _serialize_row(self, item):

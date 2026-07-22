@@ -155,13 +155,14 @@ class SegmentStore:
             self.normalize_collection_name(name), [self._to_raw(item) for item in data],
         ))
 
-    def get(self, name: str, filters: dict) -> List[dict]:
+    def get(self, name: str, filters: dict, *, strict: bool = False) -> List[dict]:
+        read_options = {'raise_on_error': True} if strict else {}
         return [self._from_raw(item) for item in self._segment_backend.get(
-            self.normalize_collection_name(name), self._filters(filters))]
+            self.normalize_collection_name(name), self._filters(filters), **read_options)]
 
     def search(self, name: str, query: str, *, topk: int = 10,
                filters: Optional[dict] = None, query_fields: Optional[List[str]] = None,
-               match_mode: Optional[str] = None) -> List[dict]:
+               match_mode: Optional[str] = None, strict: bool = False) -> List[dict]:
         search_options = {}
         if query_fields is not None:
             if not isinstance(query_fields, list) or not query_fields:
@@ -187,6 +188,8 @@ class SegmentStore:
                     f'{type(backend).__name__} does not support query fields: '
                     f'{sorted(unsupported_fields)!r}'
                 )
+        if strict:
+            search_options['raise_on_error'] = True
         return [self._from_raw(item) for item in backend.search(
             self.normalize_collection_name(name), query=query, topk=topk,
             filters=self._filters(filters), **search_options)]

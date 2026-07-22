@@ -7,6 +7,7 @@ from lazyllm.tools.rag.store import (
     SegmentStore,
     SegmentStoreConflictError,
     SegmentStoreUnsupportedError,
+    SQLiteStore,
 )
 
 
@@ -25,6 +26,16 @@ class _FakeOpenSearchClient:
         return {'hits': {'hits': []}}
 
 
+class _FailingOpenSearchIndices:
+    @staticmethod
+    def exists(index):
+        raise ConnectionError(f'OpenSearch unavailable for {index}')
+
+
+class _FailingOpenSearchClient:
+    indices = _FailingOpenSearchIndices()
+
+
 class _LegacySearchBackend:
     def __init__(self):
         self.calls = []
@@ -36,6 +47,23 @@ class _LegacySearchBackend:
             'topk': topk,
             'filters': filters,
         })
+        return []
+
+
+class _StrictReadBackend:
+    def __init__(self):
+        self.strict_values = []
+
+    def get(self, collection_name, filters, *, raise_on_error=False):
+        self.strict_values.append(raise_on_error)
+        if raise_on_error:
+            raise ConnectionError('segment backend unavailable')
+        return []
+
+    def search(self, collection_name, query=None, topk=10, filters=None, *, raise_on_error=False):
+        self.strict_values.append(raise_on_error)
+        if raise_on_error:
+            raise ConnectionError('segment search backend unavailable')
         return []
 
 
@@ -71,8 +99,12 @@ def test_sqlite_facade_create_scope_search_and_increment(tmp_path):
     assert store.search('episodes', 'segmentstore', filters={'user_id': 'user-1'})
     assert store.patch('episodes', {'id': 'ep-1', 'user_id': 'user-1'},
                        inc_fields={'hit_count': 1}) == 1
-    stored = store.get('episodes', {'id': 'ep-1', 'user_id': 'user-1'})[0]
+    stored = store.get('episodes', {'id': 'ep-1', 'user_id': 'user-1'}, strict=True)[0]
     assert stored['metadata']['hit_count'] == 1
+    assert store.delete('episodes', {'user_id': 'user-2'}) is True
+    assert store.get('episodes', {'id': 'ep-1', 'user_id': 'user-1'}, strict=True)
+    assert store.delete('episodes', {'user_id': 'user-1'}) is True
+    assert store.get('episodes', {'id': 'ep-1', 'user_id': 'user-1'}, strict=True) == []
 
 
 def test_facade_default_search_keeps_legacy_backend_signature_compatible():
@@ -87,6 +119,72 @@ def test_facade_default_search_keeps_legacy_backend_signature_compatible():
         'topk': 10,
         'filters': {'kb_id': 'user-1'},
     }]
+
+
+def test_facade_strict_get_propagates_backend_read_failure():
+    backend = _StrictReadBackend()
+    store = _facade_with_connected_backend(backend)
+
+    assert store.get('episodes', {'user_id': 'user-1'}) == []
+    with pytest.raises(ConnectionError, match='segment backend unavailable'):
+        store.get('episodes', {'user_id': 'user-1'}, strict=True)
+
+    assert backend.strict_values == [False, True]
+
+
+def test_facade_strict_search_propagates_backend_read_failure():
+    backend = _StrictReadBackend()
+    store = _facade_with_connected_backend(backend)
+
+    assert store.search('episodes', 'mars') == []
+    with pytest.raises(ConnectionError, match='segment search backend unavailable'):
+        store.search('episodes', 'mars', strict=True)
+
+    assert backend.strict_values == [False, True]
+
+
+def test_sqlite_strict_get_propagates_backend_read_failure(monkeypatch, tmp_path):
+    backend = SQLiteStore(db_path=str(tmp_path / 'strict-read.db'))
+    monkeypatch.setattr(
+        backend,
+        '_open_conn',
+        lambda: (_ for _ in ()).throw(ConnectionError('SQLite unavailable')),
+    )
+
+    assert backend.get('episodes') == []
+    with pytest.raises(ConnectionError, match='SQLite unavailable'):
+        backend.get('episodes', raise_on_error=True)
+
+
+def test_sqlite_strict_search_propagates_backend_read_failure(monkeypatch, tmp_path):
+    backend = SQLiteStore(db_path=str(tmp_path / 'strict-search.db'))
+    monkeypatch.setattr(
+        backend,
+        '_open_conn',
+        lambda: (_ for _ in ()).throw(ConnectionError('SQLite search unavailable')),
+    )
+
+    assert backend.search('episodes', query='mars') == []
+    with pytest.raises(ConnectionError, match='SQLite search unavailable'):
+        backend.search('episodes', query='mars', raise_on_error=True)
+
+
+def test_opensearch_strict_get_propagates_backend_read_failure():
+    backend = OpenSearchStore(uris=['http://localhost:9200'])
+    backend._client = _FailingOpenSearchClient()
+
+    assert backend.get('episodes') == []
+    with pytest.raises(ConnectionError, match='OpenSearch unavailable'):
+        backend.get('episodes', raise_on_error=True)
+
+
+def test_opensearch_strict_search_propagates_backend_read_failure():
+    backend = OpenSearchStore(uris=['http://localhost:9200'])
+    backend._client = _FailingOpenSearchClient()
+
+    assert backend.search('episodes', query='mars') == []
+    with pytest.raises(ConnectionError, match='OpenSearch unavailable'):
+        backend.search('episodes', query='mars', raise_on_error=True)
 
 
 @pytest.mark.parametrize(

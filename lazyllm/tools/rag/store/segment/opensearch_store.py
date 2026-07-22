@@ -266,6 +266,8 @@ class OpenSearchStore(LazyLLMStoreBase):
             return results
         except Exception as e:
             LOG.error(f'[OpenSearchStore - get] Error getting data from OpenSearch: {e}')
+            if kwargs.get('raise_on_error'):
+                raise
             return []
 
     @override
@@ -313,6 +315,8 @@ class OpenSearchStore(LazyLLMStoreBase):
 
         except Exception as e:
             LOG.error(f'[OpenSearchStore - search] Error searching data from OpenSearch: {e}')
+            if kwargs.get('raise_on_error'):
+                raise
             return []
 
     @override
