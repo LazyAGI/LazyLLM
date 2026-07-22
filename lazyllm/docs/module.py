@@ -3231,9 +3231,10 @@ Minimax 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
 提供基于 Minimax 平台的大语言模型对话能力。
 
 Args:
-    base_url (str, optional): API 基础地址，默认为 "https://api.minimaxi.com/v1/"
-    model (str, optional): 使用的模型名称，默认为 "MiniMax-M2"
+    base_url (str, optional): API 基础地址。默认使用国际站 "https://api.minimax.io/v1/"。
+    model (str, optional): 使用的模型名称，默认为 "MiniMax-M3"
     api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['minimax_api_key'] 中读取
+    region (str, optional): API 区域，可选 ``global`` 或 ``cn``。中国站使用 "https://api.minimaxi.com/v1/"。
     stream (bool, optional): 是否启用流式输出，默认为 True；启用时会自动设置请求参数
     return_trace (bool, optional): 是否返回追踪信息，默认为 False
     **kwargs: 其他传递给父类的可选参数
@@ -3245,9 +3246,11 @@ Minimax module, inheriting from OnlineChatModuleBase and FileHandlerBase.
 Provides large language model chat capabilities based on the Minimax platform.
 
 Args:
-    base_url (str, optional): Base API URL, defaults to "https://api.minimaxi.com/v1/"
-    model (str, optional): Model name to use, defaults to "MiniMax-M2"
+    base_url (str, optional): Base API URL, defaults to the global endpoint "https://api.minimax.io/v1/".
+    model (str, optional): Model name to use, defaults to "MiniMax-M3"
     api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
+    region (str, optional): API region, either ``global`` or ``cn``. The China endpoint is
+        "https://api.minimaxi.com/v1/".
     stream (bool, optional): Whether to enable streaming output, defaults to True; automatically configures request parameters when enabled
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Additional optional parameters passed to the parent classes
