@@ -516,7 +516,7 @@ class FeishuFSBase(LinkDocumentFSBase):
             )
         return blocks[1:], {source_id: existing_id}
 
-    def _append_docx_blocks(
+    def _append_docx_blocks(  # noqa: C901
         self,
         document_id: str,
         blocks: List[Dict[str, Any]],

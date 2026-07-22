@@ -373,7 +373,7 @@ class WriterRevisionTools(WriterToolBase):
         )
         return result.model_dump()
 
-    def _diff_documents(
+    def _diff_documents(  # noqa: C901
         self,
         source: WriterDocument,
         revised: WriterDocument,
@@ -696,7 +696,6 @@ class WriterRevisionTools(WriterToolBase):
         node_map = {block.node_id: block for block in document.iter_blocks()}
         hunk_ids: set = set()
         for hunk in patch.hunks:
-            target_id = hunk.target_node_id
             if hunk.hunk_id:
                 if hunk.hunk_id in hunk_ids:
                     raise ValueError(f'patch contains duplicate hunk_id {hunk.hunk_id!r}.')

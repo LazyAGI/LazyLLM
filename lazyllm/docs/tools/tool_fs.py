@@ -1179,6 +1179,38 @@ Args:
 Returns:
     Dict[str, Any]: Raw data from the Feishu response.
 ''')
+_add_feishu_chinese('FeishuFSBase.update_document_title', '''\
+更新飞书 Docx 文档的标题。
+
+该方法通过更新文档根 Page Block 的文本元素设置标题，不修改文档正文 Block。
+
+Args:
+    document_id (str): 目标飞书 Docx 文档 ID。
+    title (str): 新的文档标题。
+    document_revision_id (int): 要操作的文档版本，默认 -1。
+
+Returns:
+    Dict[str, Any]: 飞书响应中的原始 data。
+
+Raises:
+    TypeError: title 不是字符串。
+''')
+_add_feishu_english('FeishuFSBase.update_document_title', '''\
+Update the title of a Feishu Docx document.
+
+The method sets the title by updating the text elements of the document's root Page Block. It does not modify body blocks.
+
+Args:
+    document_id (str): Target Feishu Docx document ID.
+    title (str): New document title.
+    document_revision_id (int): Document revision to update; defaults to -1.
+
+Returns:
+    Dict[str, Any]: Raw data from the Feishu response.
+
+Raises:
+    TypeError: title is not a string.
+''')
 _add_feishu_chinese('FeishuFSBase.delete_block', '''\
 删除飞书父块下指定位置区间的直接子块。
 
