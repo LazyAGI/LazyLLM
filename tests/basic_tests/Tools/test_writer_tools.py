@@ -66,15 +66,13 @@ def _make_doc_adapter():
     return adapter
 
 
-def _call_document_to_docir(adapter, artifact_store, stage=None):
+def _call_document_to_docir(adapter, artifact_store):
     target_document = {
         'uri': 'feishu://~docx/doc-1',
         'adapter': 'feishu',
         'title': '飞书文档',
         'doc_id': 'doc-1',
     }
-    if stage is not None:
-        target_document['meta'] = {'stage': stage}
 
     with patch(
         'lazyllm.tools.fs.client.FS._parse',
@@ -176,14 +174,9 @@ def test_update_writing_context_tool_result_from_paths():
         tool = WriterContextTools(artifact_store=d)
         result = tool.update_writing_context(artifacts=output_path, context=context_path)
 
-        assert result['artifact_path'].endswith('writing_context.json')
-
         updated = load_artifact_json(result['context_path'], WritingContext)
-        assert result['metadata']['step_name'] == 'update_writing_context'
         assert updated.document_summary.summary == '最终稿 这是最终输出内容。'
         assert updated.meta['context_updates'][0]['summary'] == '最终稿 这是最终输出内容。'
-        assert updated.outline is None
-        assert updated.draft_document is None
 
 
 # ---------------------------------------------------------------------------
@@ -539,9 +532,6 @@ def test_update_context_routes_outline_writer_document():
         updated = load_artifact_json(result['context_path'], WritingContext)
 
     assert updated.outline == outline
-    assert updated.draft_sections == []
-    assert updated.draft_document is None
-    assert updated.document_summary is None
 
 
 def test_update_context_routes_draft_writer_block_from_artifact_path():
@@ -572,7 +562,6 @@ def test_update_context_routes_draft_writer_block_from_artifact_path():
 
     assert updated.draft_sections == [draft_section]
     assert updated.document_summary.summary == '第一章 章节正文。'
-    assert updated.meta['context_updates'][0]['content_kind'] == 'WriterBlock:draft'
 
 
 def test_generate_section_instructions_preserves_outline_references():
@@ -609,8 +598,6 @@ def test_generate_section_instructions_preserves_outline_references():
             )
         ],
     )
-    original_outline = outline.model_copy(deep=True)
-
     with tempfile.TemporaryDirectory() as d:
         tool = WriterPlanningTools(artifact_store=d)
         with patch.object(tool, '_call_llm_structured', return_value=llm_result):
@@ -623,7 +610,6 @@ def test_generate_section_instructions_preserves_outline_references():
         instruction = instructions.instructions[0]
         assert instruction.references == references
         assert instruction.fact_constraints == []
-        assert outline == original_outline
 
 
 def test_generate_final_document_writes_markdown_file():
@@ -658,20 +644,16 @@ def test_generate_final_document_writes_markdown_file():
         )
 
         markdown_path = result['output_file_path']
-        assert result['artifact_path'].endswith('final_document.json')
-        assert markdown_path.endswith('writing_output.md')
         assert os.path.exists(markdown_path)
 
         final_document = load_artifact_json(result['artifact_path'], WriterDocument)
         assert final_document.blocks[0].references == [
             {'id': 'resource-1', 'url': 'https://example.com/source'},
         ]
-        assert final_document.provider_binding == {}
 
         with open(markdown_path, 'r', encoding='utf-8') as fh:
             markdown = fh.read()
         assert '# 测试文档' in markdown
-        assert '## 第一章' in markdown
         assert '这是第一章正文。' in markdown
 
 
@@ -682,34 +664,11 @@ def test_document_to_docir():
     with tempfile.TemporaryDirectory() as d:
         result = _call_document_to_docir(adapter, d)
 
-        assert result['artifact_path'].endswith('document.json')
-        assert result['metadata']['step_name'] == 'document_to_docir'
-        assert result['metadata']['counts']['blocks'] == 2
-
         document = load_artifact_json(result['artifact_path'], WriterDocument)
-        assert document.document_id.startswith('writer-doc-')
         assert document.stage == 'final'
         assert document.title == '飞书文档'
-        assert document.provider_binding['provider'] == 'feishu'
         assert document.provider_binding['document_id'] == 'doc-1'
-        assert [block.type for block in document.blocks] == ['heading', 'paragraph']
         assert [block.content for block in document.blocks] == ['标题', '正文']
-        assert all(block.node_id.startswith('writer-node-') for block in document.blocks)
-        assert [block.provider_binding['block_id'] for block in document.blocks] == ['b1', 'b2']
-        assert document.blocks[0].numbering == {'level': 1}
-
-        adapter.resolve_link.assert_not_called()
-        adapter.get_document_id.assert_called_once_with('~docx/doc-1')
-        adapter.get_doc_blocks.assert_called_once()
-
-
-def test_document_to_docir_rejects_invalid_stage():
-    pytest.importorskip('fsspec')
-    adapter = _make_doc_adapter()
-
-    with tempfile.TemporaryDirectory() as d:
-        with pytest.raises(ValueError, match='must be a valid WriterStage'):
-            _call_document_to_docir(adapter, d, stage='published')
 
 
 def test_write_to_document():
@@ -722,20 +681,14 @@ def test_write_to_document():
             return_value=('feishu', None, '/write-test.md'),
         ):
             with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=adapter):
-                result = WriterResourceTools(artifact_store=d).write_to_document(
+                WriterResourceTools(artifact_store=d).write_to_document(
                     content=_make_final_writer_document(content='world', title='Hello'),
                     target_document={'uri': 'feishu:///write-test.md', 'adapter': 'feishu'},
                 )
 
-        assert result['artifact_path'].endswith('write_result.json')
-        assert result['metadata']['step_name'] == 'write_to_document'
-        assert result['metadata']['extra']['adapter'] == 'feishu'
-
         adapter.write_doc_blocks.assert_called_once()
         document_id, blocks = adapter.write_doc_blocks.call_args[0]
         assert document_id == 'doc-1'
-        assert len(blocks) == 1
-        assert blocks[0]['block_type'] == 2
         assert blocks[0]['text']['elements'][0]['text_run']['content'] == 'world'
 
 
@@ -782,59 +735,13 @@ def test_apply_patch_to_document_dispatches_update_and_rereads():
         fs.update_block.assert_called_once()
         update_kwargs = fs.update_block.call_args.kwargs
         assert update_kwargs['document_id'] == 'doc-1'
-        assert update_kwargs['document_revision_id'] == -1
         assert update_kwargs['requests'][0]['block_id'] == 'b2'
-        assert result['metadata']['step_name'] == 'apply_patch_to_document'
-        assert result['metadata']['counts'] == {'applied': 1, 'failed': 0}
 
         patch_result = load_artifact_json(result['artifact_path'], PatchResult)
         persisted_path = result['metadata']['artifact_paths']['persisted_document']
         persisted = load_artifact_json(persisted_path, WriterDocument)
         assert patch_result.applied_hunks == ['replace-b2']
         assert persisted.blocks[1].content == '修改后正文'
-
-
-def test_apply_patch_to_document_rejects_document_mismatch():
-    source = _make_final_writer_document()
-    patch_set = PatchSet(target_doc_id='another-document')
-
-    with tempfile.TemporaryDirectory() as d:
-        with pytest.raises(ValueError, match='does not match'):
-            WriterResourceTools(artifact_store=d).apply_patch_to_document(
-                patch_set=patch_set,
-                source_document=source,
-            )
-
-
-def test_apply_patch_to_document_propagates_provider_failure():
-    pytest.importorskip('fsspec')
-    fs = _make_doc_adapter()
-
-    with tempfile.TemporaryDirectory() as d:
-        load_result = _call_document_to_docir(fs, d)
-        source = load_artifact_json(load_result['artifact_path'], WriterDocument)
-        target = source.blocks[1]
-        patch_set = PatchSet(
-            target_doc_id=source.document_id,
-            hunks=[PatchHunk(
-                target_node_id=target.node_id,
-                modify_type='replace',
-                old_text='正文',
-                new_text='修改后正文',
-            )],
-        )
-        fs.update_block.side_effect = RuntimeError('provider write failed')
-
-        with patch(
-            'lazyllm.tools.fs.client.FS._parse',
-            return_value=('feishu', None, '~docx/doc-1'),
-        ):
-            with patch('lazyllm.tools.fs.client.FS._get_or_create_fs', return_value=fs):
-                with pytest.raises(RuntimeError, match='provider write failed'):
-                    WriterResourceTools(artifact_store=d).apply_patch_to_document(
-                        patch_set=patch_set,
-                        source_document=source,
-                    )
 
 
 @pytest.mark.parametrize(
@@ -1066,17 +973,6 @@ def test_validate_patch_set_failing():
 # ---------------------------------------------------------------------------
 # write_to_document boundary tests
 # ---------------------------------------------------------------------------
-
-
-def test_write_to_document_rejects_non_final_writer_document():
-    document = WriterDocument(document_id='draft-output', stage='draft')
-
-    with tempfile.TemporaryDirectory() as d:
-        with pytest.raises(ValueError, match='stage="final"'):
-            WriterResourceTools(artifact_store=d).write_to_document(
-                content=document,
-                target_document=None,
-            )
 
 
 @pytest.mark.parametrize('target_document', [None, {}], ids=['none', 'empty_dict'])

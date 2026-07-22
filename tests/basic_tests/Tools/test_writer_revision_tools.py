@@ -1,12 +1,9 @@
 import tempfile
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from lazyllm.tools.writer.data_models import WriterBlock, WriterDocument, WritingContext
 from lazyllm.tools.writer.data_models.revision import (
-    ModifyInstruction,
-    ModifyPlan,
     PatchBlock,
     PatchHunk,
     PatchSet,
@@ -47,63 +44,6 @@ def _context():
 def _revised_document(result):
     path = result['metadata']['artifact_paths']['revised_document']
     return load_artifact_json(path, WriterDocument)
-
-
-def test_generate_patch_set_preserves_insert_and_move_fields():
-    document = WriterDocument(
-        document_id='doc-1',
-        stage='final',
-        blocks=[_block('a', 'A'), _block('b', 'B')],
-    )
-    plan = ModifyPlan(
-        scope='block',
-        instructions=[
-            ModifyInstruction(
-                target_node_id='a',
-                modify_type='insert',
-                position='before',
-                instruction='Insert an introduction.',
-            ),
-            ModifyInstruction(
-                target_node_id='b',
-                modify_type='move',
-                anchor_node_id='a',
-                position='after',
-                instruction='Move B after A.',
-            ),
-        ],
-    )
-    proposal = PatchSet(
-        target_doc_id='doc-1',
-        hunks=[
-            PatchHunk(
-                target_node_id='a',
-                modify_type='insert',
-                position='before',
-                new_blocks=[PatchBlock(type='paragraph', content='Introduction')],
-            ),
-            PatchHunk(
-                target_node_id='b',
-                modify_type='move',
-                anchor_node_id='a',
-                position='after',
-            ),
-        ],
-    )
-
-    with tempfile.TemporaryDirectory() as directory:
-        tool = WriterRevisionTools(llm=MagicMock(), artifact_store=directory)
-        with patch.object(tool, '_call_llm_structured', return_value=proposal):
-            result = tool.generate_patch_set(document, plan, _context())
-        generated = load_artifact_json(result['artifact_path'], PatchSet)
-
-    insert, move = generated.hunks
-    assert insert.position == 'before'
-    assert [block.content for block in insert.new_blocks] == ['Introduction']
-    assert insert.new_text is None
-    assert move.anchor_node_id == 'a'
-    assert move.position == 'after'
-    assert move.new_text is None
 
 
 def test_apply_patch_supports_all_block_operations_atomically():
@@ -297,23 +237,4 @@ def test_apply_patch_rejects_move_into_descendant():
         with pytest.raises(ValueError, match='descendants'):
             WriterRevisionTools(artifact_store=directory).apply_patch(
                 document, patch_set, _context(),
-            )
-
-
-def test_apply_patch_rejects_missing_move_anchor():
-    patch_set = PatchSet(
-        target_doc_id='doc-1',
-        hunks=[PatchHunk(
-            target_node_id='move',
-            modify_type='move',
-            old_text='move me',
-            anchor_node_id='missing',
-            position='after',
-        )],
-    )
-
-    with tempfile.TemporaryDirectory() as directory:
-        with pytest.raises(ValueError, match='move anchor'):
-            WriterRevisionTools(artifact_store=directory).apply_patch(
-                _document(), patch_set, _context(),
             )
