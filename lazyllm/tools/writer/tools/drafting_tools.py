@@ -93,6 +93,7 @@ class WriterDraftingTools(WriterToolBase):
                 normalized_blocks,
             ),
             blocks=normalized_blocks,
+            ui_editable=False,
             metadata={
                 'source': 'generate_draft_document',
                 'context_id': writing_context.context_id,
@@ -138,6 +139,7 @@ class WriterDraftingTools(WriterToolBase):
             stage='final',
             title=draft_document.title,
             blocks=[block.model_copy(deep=True) for block in draft_document.blocks],
+            ui_editable=False,
             metadata={
                 'source': 'generate_final_document',
                 'draft_id': draft_document.document_id,
@@ -299,6 +301,7 @@ class WriterDraftingTools(WriterToolBase):
             stage='draft',
             title=self._default_draft_document_title(context, normalized_blocks),
             blocks=normalized_blocks,
+            ui_editable=False,
             metadata={
                 'source': 'generate_final_document',
                 'context_id': context.context_id,

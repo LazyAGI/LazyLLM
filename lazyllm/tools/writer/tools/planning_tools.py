@@ -123,6 +123,7 @@ class WriterPlanningTools(WriterToolBase):
         outline.stage = 'outline'
         outline.document_id = outline.document_id or self._default_outline_id(task, context)
         outline.title = outline.title or self._default_outline_title(task)
+        outline.ui_editable = False
         valid_reference_ids = self._valid_reference_ids(context, profiles)
         has_available_facts = self._has_available_facts(context, profiles)
         for index, block in enumerate(outline.blocks, start=1):

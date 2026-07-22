@@ -108,6 +108,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             revision=revision,
             metadata={'source_block_count': len(blocks)},
             provider_binding=binding,
+            ui_editable=False,
         )
 
     def ir_to_blocks(self, document: WriterDocument) -> List[NativeBlock]:

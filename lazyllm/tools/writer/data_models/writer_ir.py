@@ -112,6 +112,8 @@ class WriterDocument(BaseModel):
     revision: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
     provider_binding: Dict[str, Any] = Field(default_factory=dict)
+    # UI capability hint only. Backend patch/write permissions are enforced separately.
+    ui_editable: bool = False
 
     @model_validator(mode='after')
     def validate_document(self) -> 'WriterDocument':

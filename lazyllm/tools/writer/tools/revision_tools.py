@@ -177,6 +177,7 @@ class WriterRevisionTools(WriterToolBase):
                 stage=source_doc.stage,
                 title=source_doc.title,
                 blocks=[b.model_copy(deep=True) for b in target_blocks],
+                ui_editable=False,
             )
 
             prompt = GENERATE_PATCH_SET_PROMPT.format(
@@ -273,6 +274,7 @@ class WriterRevisionTools(WriterToolBase):
 
         self._validate_patch(source_doc, patch)
         revised_doc = source_doc.model_copy(deep=True)
+        revised_doc.ui_editable = False
 
         applied: List[str] = []
         for hunk in patch.hunks:

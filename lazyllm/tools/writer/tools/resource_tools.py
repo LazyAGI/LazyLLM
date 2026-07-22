@@ -95,6 +95,8 @@ class WriterResourceTools(WriterToolBase):
                     confidence = llm_result.confidence or 1.0
                     extracted_constraints = llm_result.extracted_constraints or {}
                     extracted_outline = llm_result.extracted_outline or None
+                    if extracted_outline is not None:
+                        extracted_outline.ui_editable = False
                 except Exception:
                     LOG.warning('profile_resources: LLM analysis failed, using rule-based fallback')
 
