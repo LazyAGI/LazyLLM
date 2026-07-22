@@ -178,6 +178,8 @@ class WriterResourceTools(WriterToolBase):
             self._resolve_document_target(target, source_document=document)
         if not hasattr(fs, 'write_doc_blocks'):
             raise TypeError(f'{type(fs).__name__} does not support structured document writes.')
+        if document.title:
+            self._update_document_title(fs, document_id, document.title, document.revision)
         native_blocks = adapter.ir_to_blocks(document)
         fs.write_doc_blocks(document_id, native_blocks)
         return self._save_write_result(document_id, protocol, locator, len(native_blocks))
@@ -203,6 +205,8 @@ class WriterResourceTools(WriterToolBase):
 
         applied_hunks: List[str] = []
         persisted_document = source
+        expected_title = patch.new_title if patch.new_title is not None else source.title
+        title_updated = patch.new_title is not None and patch.new_title != source.title
         for hunk in patch.hunks:
             operation = adapter.patch_to_operation(hunk, persisted_document)
             self._execute_native_operation(
@@ -214,17 +218,28 @@ class WriterResourceTools(WriterToolBase):
                 real_path=real_path,
                 locator=locator,
                 document_id=document_id,
-                source_document=source,
+                source_document=source.model_copy(update={'title': expected_title}),
             )
 
-        if not patch.hunks:
+        if title_updated:
+            self._update_document_title(
+                fs, document_id, expected_title, persisted_document.revision)
             persisted_document = self._read_persisted_document(
                 fs=fs,
                 adapter=adapter,
                 real_path=real_path,
                 locator=locator,
                 document_id=document_id,
-                source_document=source,
+                source_document=source.model_copy(update={'title': expected_title}),
+            )
+        elif not patch.hunks:
+            persisted_document = self._read_persisted_document(
+                fs=fs,
+                adapter=adapter,
+                real_path=real_path,
+                locator=locator,
+                document_id=document_id,
+                source_document=source.model_copy(update={'title': expected_title}),
             )
 
         patch_result = PatchResult(
@@ -236,7 +251,8 @@ class WriterResourceTools(WriterToolBase):
             meta={
                 'provider': protocol,
                 'external_document_id': document_id,
-                'operation_count': len(applied_hunks),
+                'operation_count': len(applied_hunks) + int(title_updated),
+                'title_updated': title_updated,
             },
         )
         return self._save_artifacts(
@@ -253,6 +269,22 @@ class WriterResourceTools(WriterToolBase):
                 'document_id': document_id,
             },
         ).model_dump()
+
+    @staticmethod
+    def _update_document_title(
+        fs: Any,
+        document_id: str,
+        title: str,
+        revision: Optional[str],
+    ) -> None:
+        update_title = getattr(fs, 'update_document_title', None)
+        if not callable(update_title):
+            raise TypeError(f'{type(fs).__name__} does not support document title updates.')
+        try:
+            revision_id = int(revision) if revision is not None else -1
+        except (TypeError, ValueError):
+            revision_id = -1
+        update_title(document_id, title, document_revision_id=revision_id)
 
     def _resolve_document_target(
         self,

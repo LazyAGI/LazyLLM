@@ -668,6 +668,26 @@ class FeishuFSBase(LinkDocumentFSBase):
         return self._batch_update_blocks(
             document_id, requests, document_revision_id=document_revision_id)
 
+    def update_document_title(
+        self,
+        document_id: str,
+        title: str,
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        if not isinstance(title, str):
+            raise TypeError(f'title must be a string, got {type(title).__name__}.')
+        response = self._patch(
+            f'{self._base_url}/docx/v1/documents/{document_id}/blocks/{document_id}',
+            params={'document_revision_id': document_revision_id},
+            json={
+                'update_text_elements': {
+                    'elements': [{'text_run': {'content': title}}],
+                },
+            },
+        )
+        return (response or {}).get('data') or {}
+
     def delete_block(
         self,
         document_id: str,

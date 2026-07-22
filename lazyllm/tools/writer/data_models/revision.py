@@ -96,6 +96,7 @@ class PatchHunk(BaseModel):
 class PatchSet(ArtifactModel):
     patch_id: Optional[str] = None
     target_doc_id: str
+    new_title: Optional[str] = None
     hunks: List[PatchHunk] = Field(default_factory=list)
     meta: Dict[str, Any] = Field(default_factory=dict)
 
