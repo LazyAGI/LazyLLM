@@ -8703,7 +8703,7 @@ add_chinese_doc('rag.store.segment.OpenSearchStore.get', """\
 Args:
     collection_name (str): 集合名称（索引名）
     criteria (Optional[dict]): 查询条件
-    **kwargs: 其他查询参数。``raise_on_error=True`` 时传播读取异常；默认返回空结果。
+    **kwargs: 其他查询参数
 
 Returns:
     List[dict]: 查询结果数据列表
@@ -8717,8 +8717,7 @@ Query data from specified collection based on criteria, supports primary key que
 Args:
     collection_name (str): Collection name (index name)
     criteria (Optional[dict]): Query criteria
-    **kwargs: Other query parameters. Set ``raise_on_error=True`` to propagate read failures;
-        by default failures return an empty result.
+    **kwargs: Other query parameters
 
 Returns:
     List[dict]: Query result data list
@@ -8731,8 +8730,7 @@ Args:
     query (Optional[str]): Query string.
     topk (Optional[int]): Number of nearest neighbors.
     filters (Optional[dict]): Metadata filter map.
-    kwargs: Other search parameters. Set ``raise_on_error=True`` to propagate search failures;
-        by default failures return an empty result.
+    **kwargs: Other search parameters
 
 **Returns:**\n
 - List[dict]: Return matching results list and similarity 'score'.
@@ -8745,7 +8743,7 @@ Args:
     query (Optional[str]): 查询字符串。
     topk (Optional[int]): 返回邻近数量。
     filters (Optional[dict]): 元数据过滤映射。
-    kwargs: 其他搜索参数。``raise_on_error=True`` 时传播检索异常；默认返回空结果。
+    **kwargs: 其他搜索参数
 
 **Returns:**\n
 - List[dict]: 返回匹配结果列表及相似度 'score'。
@@ -9413,8 +9411,7 @@ add_chinese_doc('rag.store.segment.SQLiteStore.get', """\
 Args:
     collection_name (str): 待查询集合。
     criteria (Optional[dict]): 过滤条件（uid/doc_id/kb_id/parent/number 及 json_extract 自定义字段）。
-    **kwargs: limit / offset / return_total / sort_by_number；``raise_on_error=True`` 时传播读取异常，
-        默认读取失败返回空结果。
+    **kwargs: limit / offset / return_total / sort_by_number。
 
 Returns:
     List[dict] 或 (List[dict], int): 切片列表或 (列表, 总数)。
@@ -9426,8 +9423,7 @@ Query segments by criteria with pagination (limit/offset), sorting (sort_by_numb
 Args:
     collection_name (str): Collection to query.
     criteria (Optional[dict]): Filter conditions (uid/doc_id/kb_id/parent/number, plus json_extract for custom fields).
-    **kwargs: limit / offset / return_total / sort_by_number. Set ``raise_on_error=True`` to
-        propagate read failures; by default failures return an empty result.
+    **kwargs: limit / offset / return_total / sort_by_number.
 
 Returns:
     List[dict] or (List[dict], int): Segment list or (list, total).
@@ -9441,7 +9437,7 @@ Args:
     query (Optional[str]): 搜索关键词（自动追加 ``*`` 分词前缀匹配）。
     topk (Optional[int]): 返回结果数上限（默认 10）。
     filters (Optional[dict]): 元数据过滤条件。
-    **kwargs: 其他参数。``raise_on_error=True`` 时传播检索异常；默认返回空结果。
+    **kwargs: 其他参数。
 
 Returns:
     List[dict]: 带 ``score`` 字段的切片列表（-rank 转换，越大越相关）。
@@ -9455,8 +9451,7 @@ Args:
     query (Optional[str]): Search keyword (``*`` auto-appended for prefix matching).
     topk (Optional[int]): Max results (default 10).
     filters (Optional[dict]): Metadata filter conditions.
-    **kwargs: Other parameters. Set ``raise_on_error=True`` to propagate search failures;
-        by default failures return an empty result.
+    **kwargs: Other parameters.
 
 Returns:
     List[dict]: Segment list with ``score`` field (negated FTS5 rank, higher = more relevant).
@@ -9511,6 +9506,9 @@ add_chinese_doc('rag.store.SegmentStore', """\
 Args:
     store (Union[Dict[str, Any], LazyLLMStoreBase]): backend 配置或已创建的存储实例。
     global_metadata_desc (Optional[dict]): 连接 backend 时使用的全局元数据描述。
+
+Note:
+    严格模式当前适用于 ``SQLiteStore`` 和 ``OpenSearchStore`` 的读取与检索。
 """)
 
 add_english_doc('rag.store.SegmentStore', """\
@@ -9523,6 +9521,9 @@ create-only writes, filtered reads, search, atomic field updates, and deletion.
 Args:
     store (Union[Dict[str, Any], LazyLLMStoreBase]): Backend configuration or an existing store instance.
     global_metadata_desc (Optional[dict]): Global metadata description used when connecting the backend.
+
+Note:
+    Strict mode currently applies to reads and searches backed by ``SQLiteStore`` and ``OpenSearchStore``.
 """)
 
 add_chinese_doc('rag.store.SegmentStore.get', """\
@@ -9531,8 +9532,7 @@ add_chinese_doc('rag.store.SegmentStore.get', """\
 Args:
     name (str): 集合名称。
     filters (dict): ``id``、``user_id`` 等公共过滤条件。
-    strict (bool): 是否启用严格读取。为 ``True`` 时，支持该契约的 backend 会传播读取异常；
-        默认为 ``False``，保留既有的 fail-soft 行为。
+    strict (bool): 是否启用严格读取，默认为 ``False``。
 
 Returns:
     List[dict]: 使用 ``id/content/metadata`` 结构表示的切片列表。
@@ -9544,8 +9544,7 @@ Read text segments matching the supplied filters.
 Args:
     name (str): Collection name.
     filters (dict): Public filters such as ``id`` and ``user_id``.
-    strict (bool): Whether to enable strict reads. When ``True``, backends that support the contract
-        propagate read failures. The default is ``False`` to preserve fail-soft behavior.
+    strict (bool): Whether to enable strict reads. Defaults to ``False``.
 
 Returns:
     List[dict]: Matching segments in the public ``id/content/metadata`` shape.
@@ -9561,7 +9560,7 @@ Args:
     filters (Optional[dict]): 公共过滤条件。
     query_fields (Optional[List[str]]): backend 应查询的字段列表。
     match_mode (Optional[str]): ``"any"`` 或 ``"all"``。
-    strict (bool): 为 ``True`` 时传播 backend 检索异常；默认为 ``False``。
+    strict (bool): 是否启用严格检索，默认为 ``False``。
 
 Returns:
     List[dict]: 带可选 ``score`` 的公共切片列表。
@@ -9577,7 +9576,7 @@ Args:
     filters (Optional[dict]): Public filter conditions.
     query_fields (Optional[List[str]]): Backend fields to query.
     match_mode (Optional[str]): Either ``"any"`` or ``"all"``.
-    strict (bool): Propagate backend search failures when ``True``; defaults to ``False``.
+    strict (bool): Whether to enable strict searches. Defaults to ``False``.
 
 Returns:
     List[dict]: Public segment records with an optional ``score``.
