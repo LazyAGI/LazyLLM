@@ -3,6 +3,7 @@ from lazyllm.tools import ToolManager
 from lazyllm.tools.agent.toolsManager import (
     InstanceToolGroup, ToolGroup, _build_tool_from_element, _gen_args_info_from_moduletool_and_docstring, register,
 )
+from lazyllm.tools.agent.reactAgent import ReactAgent
 from lazyllm.common import LazyLLMRegisterMetaClass
 from lazyllm import locals as lazyllm_locals, init_session
 from typing import List, Literal
@@ -371,6 +372,10 @@ class TestToolGroup:
         assert 'alpha' in names
         assert 'beta' in names
         assert 'get_grp_methods' not in names
+        assert all(
+            'Gateway to activate' not in d['function']['description']
+            for d in tm.tools_description
+        )
 
     def test_lazy_mode_exposes_only_gateway_initially(self):
         t1, t2 = self._tool('alpha'), self._tool('beta')
@@ -415,6 +420,118 @@ class TestToolGroup:
         assert result.startswith('Activated Toolkit "grp".')
         assert 'alpha' in result
         assert 'beta' in result
+
+    def test_auto_activate_rule_expands_matching_group(self):
+        t1 = self._tool('alpha')
+        tm = ToolManager([dict(
+            name='grp', desc='Group', tools=[t1],
+            auto_activate=[r'https?://[^\s]+\.example\.com'],
+        )])
+
+        tm.sync_active_groups('read https://team.example.com/doc/123')
+
+        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
+
+    def test_auto_activate_accepts_single_rule(self):
+        t1 = self._tool('alpha')
+        tm = ToolManager([dict(
+            name='grp', desc='Group', tools=[t1], auto_activate='special-link',
+        )])
+
+        tm.sync_active_groups('open special-link')
+
+        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
+
+    def test_auto_activate_rules_support_product_names_without_partial_word_matches(self):
+        t1 = self._tool('alpha')
+        tm = ToolManager([dict(
+            name='grp', desc='Group', tools=[t1],
+            auto_activate=[r'飞书|(?<!\w)feishu(?!\w)'],
+        )])
+
+        tm.sync_active_groups('请帮我查看飞书文档')
+        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
+
+        init_session()
+        lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+        tm.sync_active_groups('the prefeishuized value')
+        assert [d['function']['name'] for d in tm.tools_description] == ['get_grp_methods']
+
+        tm.sync_active_groups('search FEISHU for it')
+        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
+
+    def test_nested_auto_activate_expands_ancestors(self):
+        t1 = self._tool('alpha')
+        tm = ToolManager([dict(name='outer', desc='Outer', tools=[
+            dict(name='inner', desc='Inner', tools=[t1], auto_activate=['special-link']),
+        ])])
+
+        tm.sync_active_groups('open special-link')
+
+        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
+
+    def test_structured_gateway_call_in_history_restores_group(self):
+        t1 = self._tool('alpha')
+        tm = ToolManager([dict(name='grp', desc='Group', tools=[t1])])
+        history = [{
+            'role': 'assistant',
+            'tool_calls': [{'function': {'name': 'get_grp_methods', 'arguments': '{}'}}],
+        }]
+
+        tm.sync_active_groups('continue', history)
+
+        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
+
+    def test_nested_gateway_history_also_restores_ancestor(self):
+        t1 = self._tool('alpha')
+        tm = ToolManager([dict(name='outer', desc='Outer', tools=[
+            dict(name='inner', desc='Inner', tools=[t1]),
+        ])])
+        history = [{
+            'role': 'assistant',
+            'tool_calls': [{'function': {'name': 'get_inner_methods', 'arguments': '{}'}}],
+        }]
+
+        tm.sync_active_groups('continue', history)
+
+        assert [d['function']['name'] for d in tm.tools_description] == ['alpha']
+
+    def test_compacted_text_does_not_restore_group(self):
+        t1 = self._tool('alpha')
+        tm = ToolManager([dict(name='grp', desc='Group', tools=[t1])])
+        history = [{'role': 'assistant', 'content': 'Previously called get_grp_methods.'}]
+
+        tm.sync_active_groups('continue', history)
+
+        assert [d['function']['name'] for d in tm.tools_description] == ['get_grp_methods']
+
+    def test_react_execution_and_context_inspection_prepare_identical_tools(self):
+        t1 = self._tool('alpha')
+        tm = ToolManager([dict(
+            name='grp', desc='Group', tools=[t1], auto_activate='special-link',
+        )])
+        agent = object.__new__(ReactAgent)
+        object.__setattr__(agent, '_tools_manager', tm)
+        object.__setattr__(agent, '_skill_manager', None)
+        object.__setattr__(agent, '_workspace', '')
+        object.__setattr__(agent, '_prompt', 'test prompt')
+        object.__setattr__(agent, '_keep_full_turns', 0)
+        history = [{
+            'role': 'assistant',
+            'tool_calls': [{'function': {'name': 'get_grp_methods', 'arguments': '{}'}}],
+        }]
+
+        init_session()
+        lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+        agent._pre_process('open special-link', history)
+        assert lazyllm_locals['_lazyllm_agent']['workspace']['history'] == history
+        execution_tools = tm.tools_description
+
+        init_session()
+        lazyllm_locals['_lazyllm_agent'] = {'workspace': {}}
+        inspection_tools = agent.describe_context(history, 'open special-link')['tool_definitions']
+
+        assert inspection_tools == execution_tools
 
     def test_multilevel_lazy_outer_exposes_outer_gateway(self):
         t1, t2, t3 = self._tool('a'), self._tool('b'), self._tool('c')

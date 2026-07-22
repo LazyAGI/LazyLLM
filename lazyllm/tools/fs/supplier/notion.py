@@ -134,6 +134,9 @@ class NotionFile(CloudFSBufferedFile):
 
 
 class NotionFS(LinkDocumentFSBase):
+    __tool_auto_activate__ = [
+        r'https?://(?:[^\s/]+\.)?(?:notion\.(?:so|site|com))(?:[/:?#]|$)',
+    ]
     '''Read and manage authenticated Notion pages, databases, and documents.
 
     Select this Toolkit for notion.so, notion.site, or notion.com browser URLs.

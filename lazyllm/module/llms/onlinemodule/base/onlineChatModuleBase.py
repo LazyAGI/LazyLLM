@@ -16,6 +16,25 @@ from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase, StaticParams
 from .utils import LazyLLMOnlineBase, resolve_online_params
 
+
+def _is_input_inspection_failure(exc: Exception) -> bool:
+    detail = str(exc).lower()
+    return 'data_inspection_failed' in detail or 'input data may contain inappropriate content' in detail
+
+
+def _remove_prior_tool_traces(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    '''Drop untrusted tool payloads from older turns while preserving conversational history.'''
+    last_user_index = max(
+        (index for index, message in enumerate(messages) if message.get('role') == 'user'),
+        default=len(messages),
+    )
+    return [
+        message for index, message in enumerate(messages)
+        if index >= last_user_index
+        or (message.get('role') != 'tool' and not message.get('tool_calls'))
+    ]
+
+
 class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_PREFIX = []
@@ -217,7 +236,16 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
                     time.sleep(_RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)])
                     continue
                 raise
-            except requests.RequestException:
+            except requests.RequestException as exc:
+                if _is_input_inspection_failure(exc) and attempt < max_retries - 1:
+                    sanitized = _remove_prior_tool_traces(data.get('messages') or [])
+                    if len(sanitized) < len(data.get('messages') or []):
+                        data['messages'] = sanitized
+                        lazyllm.LOG.warning(
+                            'Provider rejected model input during content inspection; retrying without '
+                            'tool calls/results from prior turns while preserving conversation messages.'
+                        )
+                        continue
                 if attempt < max_retries - 1:
                     lazyllm.LOG.warning(f'Request failed (attempt {attempt + 1}), retrying...')
                     time.sleep(_RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)])
@@ -320,8 +348,9 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
     def _validate_api_key(self):
         try:
-            self._query_finetuned_jobs()
-            return True
+            models_url = urljoin(self._base_url, 'models')
+            response = requests.get(models_url, headers=self._header, timeout=10)
+            return response.status_code == 200
         except Exception:
             return False
 

@@ -28,16 +28,6 @@ class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return 'You are an intelligent assistant provided by SiliconFlow. You are a helpful assistant.'
 
-    def _validate_api_key(self):
-        '''Validate API Key by sending a minimal request'''
-        try:
-            # SiliconFlow validates API key using a minimal chat request
-            models_url = urljoin(self._base_url, 'models')
-            response = requests.get(models_url, headers=self._header, timeout=10)
-            return response.status_code == 200
-        except Exception:
-            return False
-
 
 class SiliconFlowEmbed(LazyLLMOnlineEmbedModuleBase):
     def __init__(self, embed_url: Optional[str] = None, embed_model_name: Optional[str] = None,
