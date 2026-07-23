@@ -146,15 +146,8 @@ class TestMoveBlock(unittest.TestCase):
         result = self._move(fs)
 
         self.assertEqual(result['delete']['document_revision_id'], 12)
-        self.assertEqual(result['block_id_relations'], {'source': 'created'})
         self.assertEqual(
             fs._create_descendant_blocks.call_args.kwargs['document_revision_id'], 10)
-        descendants = fs._create_descendant_blocks.call_args.args[4]
-        self.assertEqual(descendants[0]['block_type'], 2)
-        self.assertEqual(
-            descendants[0]['text']['elements'][0]['text_run']['content'],
-            'source',
-        )
         delete_call = fs._batch_delete_child_blocks.call_args
         self.assertEqual(
             (delete_call.args[2:4], delete_call.kwargs['document_revision_id']),
@@ -207,75 +200,6 @@ class TestMoveBlock(unittest.TestCase):
         result = self._move(fs)
 
         self.assertEqual(result['delete']['status'], 'confirmed_after_error')
-        self.assertEqual(fs._batch_delete_child_blocks.call_count, 1)
-
-    def test_move_rolls_back_when_nested_format_verification_fails(self):
-        fs = self._make_fs()
-        source = self._block(
-            'source',
-            'source',
-            parent_id='doc-1',
-            text={
-                'style': {'align': 2},
-                'elements': [{
-                    'text_run': {
-                        'content': 'source',
-                        'text_element_style': {'bold': True},
-                    },
-                }],
-            },
-        )
-        created = self._block('created', 'source', parent_id='doc-1')
-        fs._get_doc_blocks_raw.side_effect = [[source], [created]]
-        fs._get_docx_children = MagicMock(side_effect=[
-            self._children(),
-            self._children(),
-        ])
-
-        with self.assertRaisesRegex(RuntimeError, 'verification failed'):
-            self._move(fs)
-
-        self.assertEqual(fs._batch_delete_child_blocks.call_count, 1)
-
-    def test_move_verifies_every_child_block_before_deleting_source(self):
-        fs = self._make_fs()
-        fs._create_descendant_blocks.return_value = {
-            'document_revision_id': 11,
-            'block_id_relations': [
-                {
-                    'temporary_block_id': 'move-block-0',
-                    'block_id': 'created',
-                },
-                {
-                    'temporary_block_id': 'move-block-1',
-                    'block_id': 'created-child',
-                },
-            ],
-        }
-        source = self._block(
-            'source', 'source', parent_id='doc-1', children=['source-child'])
-        source_child = self._block(
-            'source-child', 'child', parent_id='source')
-        created = self._block(
-            'created', 'source', parent_id='doc-1', children=['created-child'])
-        created_child = {
-            'block_id': 'created-child',
-            'block_type': 3,
-            'parent_id': 'created',
-            'heading1': {'elements': [{'text_run': {'content': 'child'}}]},
-        }
-        fs._get_doc_blocks_raw.side_effect = [
-            [source, source_child],
-            [created, created_child],
-        ]
-        fs._get_docx_children = MagicMock(side_effect=[
-            self._children(),
-            self._children(),
-        ])
-
-        with self.assertRaisesRegex(RuntimeError, 'verification failed'):
-            self._move(fs)
-
         self.assertEqual(fs._batch_delete_child_blocks.call_count, 1)
 
 

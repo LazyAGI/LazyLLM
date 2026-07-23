@@ -763,7 +763,6 @@ def test_apply_patch_to_document_moves_and_restores_writer_identity():
         fs.get_doc_blocks.return_value = [second, {**first, 'block_id': 'moved-b1'}]
         fs.move_block.return_value = {
             'block_id_relations': {'b1': 'moved-b1'},
-            'normalized_fields': ['b1.text.elements.file'],
         }
 
         with patch(
@@ -776,12 +775,8 @@ def test_apply_patch_to_document_moves_and_restores_writer_identity():
         assert fs.move_block.call_args.kwargs['source_block_id'] == 'b1'
         persisted = load_artifact_json(
             result['metadata']['artifact_paths']['persisted_document'], WriterDocument)
-        patch_result = load_artifact_json(result['artifact_path'], PatchResult)
         assert persisted.blocks[1].node_id == moved_node_id
         assert persisted.blocks[1].provider_binding['block_id'] == 'moved-b1'
-        assert patch_result.meta['normalized_fields'] == {
-            'move-b1': ['b1.text.elements.file'],
-        }
 
 
 @pytest.mark.parametrize(

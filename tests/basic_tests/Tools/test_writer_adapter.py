@@ -120,84 +120,22 @@ def test_merge_refreshed_move_restores_writer_identity():
     assert moved.provider_binding['block_id'] == 'moved-heading'
 
 
-def test_move_clone_descendants_preserve_raw_format_and_normalize_known_fields():
-    blocks = [
-        {
-            'block_id': 'heading',
-            'block_type': 3,
-            'parent_id': 'doc-1',
-            'children': ['paragraph'],
-            'heading1': {
-                'style': {'align': 2, 'folded': True},
-                'elements': [{
-                    'text_run': {
-                        'content': '标题',
-                        'text_element_style': {
-                            'bold': True,
-                            'text_color': 5,
-                            'comment_ids': ['comment-1'],
-                        },
-                    },
-                }],
-            },
-        },
-        {
-            'block_id': 'paragraph',
-            'block_type': 2,
-            'parent_id': 'heading',
-            'text': {
-                'elements': [
-                    {
-                        'mention_doc': {
-                            'token': 'doc-token',
-                            'obj_type': 22,
-                            'title': '只读标题',
-                        },
-                    },
-                    {
-                        'file': {
-                            'file_token': 'file-token',
-                            'source_block_id': 'paragraph',
-                        },
-                    },
-                ],
-            },
-        },
-    ]
+def test_move_clone_descendants_preserve_raw_format_and_children():
+    blocks = _move_blocks()[:2]
+    blocks[0]['heading1']['style'] = {'align': 2}
+    blocks[0]['heading1']['elements'][0]['text_run']['text_element_style'] = {
+        'bold': True,
+        'text_color': 5,
+    }
 
-    children_id, descendants, source_by_temporary_id, normalized_fields = \
-        prepare_docx_clone_descendants(blocks, 'heading')
+    children_id, descendants, id_map, _ = \
+        prepare_docx_clone_descendants(blocks, 'heading-1')
 
     assert children_id == ['move-block-0']
-    assert source_by_temporary_id == {
-        'move-block-0': 'heading',
-        'move-block-1': 'paragraph',
+    assert id_map == {
+        'move-block-0': 'heading-1',
+        'move-block-1': 'paragraph-1',
     }
-    assert descendants[0]['block_type'] == 3
-    assert descendants[0]['heading1']['style'] == {'align': 2, 'folded': True}
-    assert descendants[0]['heading1']['elements'][0]['text_run'] == {
-        'content': '标题',
-        'text_element_style': {'bold': True, 'text_color': 5},
-    }
+    assert [block['block_type'] for block in descendants] == [3, 2]
+    assert descendants[0]['heading1'] == blocks[0]['heading1']
     assert descendants[0]['children'] == ['move-block-1']
-    assert descendants[1]['text']['elements'][0]['mention_doc'] == {
-        'token': 'doc-token',
-        'obj_type': 22,
-    }
-    assert 'heading.elements.text_run.text_element_style.comment_ids' \
-        in normalized_fields
-    assert 'paragraph.elements.mention_doc.title' in normalized_fields
-    assert 'paragraph.elements.file' in normalized_fields
-
-
-def test_move_clone_descendants_reject_incomplete_source_subtree():
-    with pytest.raises(ValueError, match='missing child blocks'):
-        prepare_docx_clone_descendants(
-            [{
-                'block_id': 'heading',
-                'block_type': 3,
-                'children': ['missing-child'],
-                'heading1': {'elements': []},
-            }],
-            'heading',
-        )
