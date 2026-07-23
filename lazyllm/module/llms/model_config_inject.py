@@ -89,6 +89,9 @@ def inject_model_config(model_config: Optional[Dict[str, Any]]) -> None:  # noqa
             bucket['model'] = model
         if base_url:
             bucket['url'] = base_url
+        max_input_tokens = role_cfg.get('max_input_tokens')
+        if max_input_tokens is not None:
+            bucket['max_input_tokens'] = max_input_tokens
         skip_auth = role_cfg.get('skip_auth')
         if skip_auth is not None:
             if isinstance(skip_auth, str):
