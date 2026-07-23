@@ -8,6 +8,7 @@ from ..utils.artifact import ArtifactModel
 class LocateResult(ArtifactModel):
     task_id: Optional[str] = None
     doc_id: Optional[str] = None
+    target_title: bool = False
     target_node_ids: List[str] = Field(default_factory=list)
     target_reasons: Dict[str, str] = Field(default_factory=dict)
     summary: Optional[str] = None
@@ -46,6 +47,7 @@ class ModifyPlan(BaseModel):
     plan_id: Optional[str] = None
     task_id: Optional[str] = None
     scope: Literal['document', 'section', 'block', 'span']
+    title_instruction: Optional[str] = None
     target_node_ids: List[str] = Field(default_factory=list)
     instructions: List[ModifyInstruction] = Field(default_factory=list)
     summary: Optional[str] = None

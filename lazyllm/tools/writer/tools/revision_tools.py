@@ -126,9 +126,9 @@ class WriterRevisionTools(WriterToolBase):
         writing_context = self._unified_model(context, WritingContext)
         user_selection = writing_task.selection
 
-        valid_node_ids = {b.node_id for b in source_doc.iter_blocks()}
-        if not valid_node_ids:
-            raise ValueError('document must contain at least one block.')
+        valid_node_ids = {
+            block.node_id for block in source_doc.iter_blocks() if block.editable
+        }
 
         candidate_node_ids = valid_node_ids
         if user_selection and user_selection.block_ids:
@@ -165,11 +165,14 @@ class WriterRevisionTools(WriterToolBase):
             primary_key='locate_result',
             context_key=None,
             summary=(
-                'No revision target blocks located.'
-                if not locate_result.target_node_ids
-                else 'Located revision target blocks.'
+                'No revision targets located.'
+                if not locate_result.target_node_ids and not locate_result.target_title
+                else 'Located revision targets.'
             ),
-            counts={'target_node_count': len(locate_result.target_node_ids)},
+            counts={
+                'target_node_count': len(locate_result.target_node_ids),
+                'target_title': int(locate_result.target_title),
+            },
             artifact_meta={
                 'task_id': writing_task.task_id,
                 'document_id': source_doc.document_id,
@@ -193,7 +196,7 @@ class WriterRevisionTools(WriterToolBase):
         located = self._unified_model(locate_result, LocateResult)
         writing_context = self._unified_model(context, WritingContext)
 
-        if located.target_node_ids:
+        if located.target_node_ids or located.target_title:
             block_map = {b.node_id: b for b in source_doc.iter_blocks()}
             missing = [nid for nid in located.target_node_ids if nid not in block_map]
             if missing:
@@ -214,6 +217,7 @@ class WriterRevisionTools(WriterToolBase):
             writing_task,
             located.target_node_ids,
             {block.node_id for block in source_doc.iter_blocks()},
+            target_title=located.target_title,
         )
 
         result = self._save_artifacts(
@@ -245,7 +249,7 @@ class WriterRevisionTools(WriterToolBase):
 
         hunks: List[PatchHunk] = []
         proposed_title: Optional[str] = None
-        if plan.instructions:
+        if plan.instructions or plan.title_instruction:
             block_map = {b.node_id: b for b in source_doc.iter_blocks()}
             target_blocks, missing = self._resolve_target_blocks(block_map, plan.instructions)
             if missing:
@@ -265,7 +269,8 @@ class WriterRevisionTools(WriterToolBase):
                 context_json=to_prompt_json(writing_context),
             )
             proposal = self._call_llm_structured(prompt, PatchSet)
-            proposed_title = proposal.new_title
+            proposed_title = self._normalize_proposed_title(
+                proposal.new_title, plan.title_instruction)
 
             proposal_map: Dict[str, PatchHunk] = {
                 h.target_node_id: h for h in proposal.hunks if h.target_node_id
@@ -654,10 +659,18 @@ class WriterRevisionTools(WriterToolBase):
         task: WritingTask,
         located_node_ids: List[str],
         valid_node_ids: set,
+        *,
+        target_title: bool = False,
     ) -> ModifyPlan:
         plan.plan_id = plan.plan_id or f'plan-{task.task_id or "task"}'
         plan.task_id = task.task_id
         plan.target_node_ids = list(located_node_ids)
+        if target_title:
+            if not plan.title_instruction or not plan.title_instruction.strip():
+                raise ValueError('modify_plan requires title_instruction for a title target.')
+            plan.title_instruction = plan.title_instruction.strip()
+        elif plan.title_instruction is not None:
+            raise ValueError('modify_plan has title_instruction without a title target.')
 
         located_set = set(located_node_ids)
         seen: set = set()
@@ -691,6 +704,20 @@ class WriterRevisionTools(WriterToolBase):
             )
         plan.instructions = normalized
         return plan
+
+    @staticmethod
+    def _normalize_proposed_title(
+        proposed_title: Optional[str],
+        title_instruction: Optional[str],
+    ) -> Optional[str]:
+        if title_instruction:
+            if not proposed_title or not proposed_title.strip():
+                raise ValueError('patch proposal lacks new_title for the title instruction.')
+            return proposed_title.strip()
+        if proposed_title is not None:
+            raise ValueError(
+                'patch proposal changes the document title without a title instruction.')
+        return None
 
     def _resolve_target_blocks(
         self,

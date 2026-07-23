@@ -4,6 +4,10 @@ LOCATE_REVISION_TARGET_PROMPT = '''You are a revision target locator. Given a wr
 Rules:
 - Read task.query carefully — it contains the user's revision request.
 - Examine every document block and select the ones the revision acts on.
+- If the request changes the document title, set target_title to true. The document
+  title is WriterDocument.title, not a content block; do not select a document/root
+  block merely to change the title.
+- If the request does not change the document title, set target_title to false.
 - For replace/delete, select the blocks whose content or existence changes.
 - For insert, select the existing block used as the insertion anchor.
 - For move, select the block being moved. Do not select the destination block merely because it is the destination.
@@ -30,6 +34,10 @@ Candidate node_ids (select from these only):
 GENERATE_MODIFY_PLAN_PROMPT = '''You are a modify plan generator. Given a writing task, the located target blocks, and the writing context, produce a ModifyPlan.
 
 Rules:
+- If locate_result.target_title is true, set title_instruction to a clear instruction
+  describing the requested document-title change. Otherwise leave title_instruction null.
+- A document-title change is separate from block instructions and does not need a
+  synthetic document/root block instruction.
 - For each target block, decide the modify_type and write a clear, specific instruction.
 - modify_type must be one of:
   - insert: insert one or more brand-new blocks before or after the target block. The target block is the insertion anchor; set position to before or after.
@@ -61,6 +69,9 @@ Writing context:
 GENERATE_PATCH_SET_PROMPT = '''You are a patch generator. Given a document, a modify plan, and the writing context, produce a PatchSet with concrete text changes.
 
 Rules:
+- If modify_plan.title_instruction is present, set new_title to the complete new
+  document title requested by that instruction. Otherwise leave new_title null.
+- A title-only revision must return hunks as an empty list.
 - For each ModifyInstruction, produce exactly one PatchHunk.
 - Each PatchHunk must have:
   - target_node_id: copied from the corresponding ModifyInstruction.

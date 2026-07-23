@@ -88,6 +88,15 @@ class FeishuWriterAdapter(WriterAdapterBase):
 
         nested_ids = {child_id for children in child_ids.values() for child_id in children}
         root_blocks = [writer_by_id[block_id] for block_id in source_order if block_id not in nested_ids]
+        resolved_title = title
+        if not resolved_title:
+            document_block = next((
+                writer_by_id[block_id]
+                for block_id in source_order
+                if raw_by_id[block_id].get('block_type') == 1
+            ), None)
+            if document_block is not None:
+                resolved_title = document_block.content
         binding: Dict[str, Any] = {
             'provider': self.provider,
             'document_id': external_document_id,
@@ -100,7 +109,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
         return WriterDocument(
             document_id=self.make_document_id(external_document_id),
             stage=stage,
-            title=title,
+            title=resolved_title,
             blocks=root_blocks,
             revision=revision,
             metadata={'source_block_count': len(blocks)},
