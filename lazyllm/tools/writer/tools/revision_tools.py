@@ -634,7 +634,7 @@ class WriterRevisionTools(WriterToolBase):
     @staticmethod
     def _validate_diffable_block(source: WriterBlock, revised: WriterBlock) -> None:
         fields = (
-            'type', 'stage', 'status', 'authoring', 'numbering', 'references',
+            'type', 'stage', 'authoring', 'numbering', 'references',
             'provider_binding', 'provider_payload', 'editable',
         )
         changed = [name for name in fields if getattr(source, name) != getattr(revised, name)]

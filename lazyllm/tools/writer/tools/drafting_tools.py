@@ -228,10 +228,7 @@ class WriterDraftingTools(WriterToolBase):
             if not child.type.strip():
                 child.type = 'paragraph'
 
-        authoring_meta = {
-            'instruction_id': instruction.instruction_id,
-            'origin_node_id': instruction.outline_node_id,
-        }
+        authoring_meta = {}
         for key in ('outline_id', 'outline_title'):
             value = instruction.meta.get(key)
             if value is not None:
@@ -239,7 +236,6 @@ class WriterDraftingTools(WriterToolBase):
         draft_block.authoring = WriterAuthoring(
             instruction_id=instruction.instruction_id,
             origin_node_id=instruction.outline_node_id,
-            source='section_instruction',
             meta=authoring_meta,
         )
 

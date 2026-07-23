@@ -45,16 +45,9 @@ class WriterAuthoring(BaseModel):
     # Provider/plugin extensions may add namespaced fields while the common contract
     # above remains validated.
     model_config = ConfigDict(extra='allow')
-
-    instruction: Optional[str] = None
     instruction_id: Optional[str] = None
     origin_node_id: Optional[str] = None
     constraints: WriterConstraints = Field(default_factory=WriterConstraints)
-    expected_blocks: List[str] = Field(default_factory=list)
-    pending_subtasks: List[str] = Field(default_factory=list)
-    revision_notes: List[str] = Field(default_factory=list)
-    visual_needs: List[Dict[str, Any]] = Field(default_factory=list)
-    source: Optional[str] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -74,7 +67,6 @@ class WriterBlock(BaseModel):
     spans: List[WriterSpan] = Field(default_factory=list)
     children: List['WriterBlock'] = Field(default_factory=list)
     stage: WriterStage
-    status: str = ''
     authoring: Optional[WriterAuthoring] = None
     numbering: Dict[str, Any] = Field(default_factory=dict)
     references: List[Dict[str, Any]] = Field(default_factory=list)

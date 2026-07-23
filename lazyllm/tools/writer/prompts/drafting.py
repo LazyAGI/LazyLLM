@@ -20,7 +20,7 @@ Requirements:
 - Do not invent facts that conflict with the writing context.
 - If previous_blocks are provided, keep continuity and avoid repeating their content.
 - Fill node_id for the section root and for each child (e.g. draft-<node>-1). The system will normalize ids if needed.
-- Leave spans, status, authoring, references, provider_binding and provider_payload empty.
+- Leave spans, authoring, references, provider_binding and provider_payload empty.
 
 Writing task:
 {task_json}
