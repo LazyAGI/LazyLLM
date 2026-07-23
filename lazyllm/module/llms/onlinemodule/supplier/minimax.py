@@ -13,10 +13,19 @@ from ..fileHandler import FileHandlerBase
 
 class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
+    MODEL_NAME = 'MiniMax-M3'
+    BASE_URLS = {
+        'global': 'https://api.minimax.io/v1/',
+        'cn': 'https://api.minimaxi.com/v1/',
+    }
+
     def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None,
-                 api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        base_url = base_url or 'https://api.minimaxi.com/v1/'
-        model = model or 'MiniMax-M2'
+                 api_key: str = None, stream: bool = True, return_trace: bool = False,
+                 region: str = 'global', **kwargs):
+        if region not in self.BASE_URLS:
+            raise ValueError(f'Unsupported MiniMax region: {region!r}. Expected one of {tuple(self.BASE_URLS)}')
+        base_url = base_url or self.BASE_URLS[region]
+        model = model or self.MODEL_NAME
         super().__init__(api_key=api_key or self._default_api_key(), base_url=base_url, model_name=model,
                          stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
@@ -51,19 +60,6 @@ class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
                 message['reasoning_content'] = text
 
         return msg
-
-    def _validate_api_key(self):
-        '''Validate API Key by sending a minimal chat request'''
-        try:
-            data = {
-                'model': self._model_name,
-                'messages': [{'role': 'user', 'content': 'test'}],
-                'max_tokens': 1
-            }
-            response = requests.post(self._chat_url, headers=self._header, json=data, timeout=10)
-            return response.status_code == 200
-        except Exception:
-            return False
 
 
 class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):

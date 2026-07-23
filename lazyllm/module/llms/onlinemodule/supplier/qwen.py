@@ -100,6 +100,14 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
             return url
         return urljoin(url, 'compatible-mode/v1/chat/completions')
 
+    def _validate_api_key(self):
+        try:
+            models_url = urljoin(self._base_url, 'compatible-mode/v1/models')
+            response = requests.get(models_url, headers=self._header, timeout=10)
+            return response.status_code == 200
+        except Exception:
+            return False
+
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
             dataset = [json.loads(line) for line in fr]

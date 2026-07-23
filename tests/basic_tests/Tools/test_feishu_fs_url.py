@@ -418,6 +418,55 @@ class TestFeishuNeedsWiki(unittest.TestCase):
             self.assertTrue(_feishu_needs_wiki(None, '/folder/file'))
 
 
+class TestFeishuGetDocumentId(unittest.TestCase):
+
+    def test_document_id_from_direct_and_wiki_urls(self):
+        fs = object.__new__(FeishuWikiFS)
+        fs._space_id = 'wikcnTest'
+        fs._get_node = MagicMock(return_value={
+            'obj_type': 'docx',
+            'obj_token': 'DocId456',
+        })
+
+        self.assertEqual(fs.get_document_id('https://company.feishu.cn/docx/DocId123'), 'DocId123')
+        self.assertEqual(fs.get_document_id('https://company.feishu.cn/wiki/NodeToken123'), 'DocId456')
+
+
+class TestFeishuGetDocBlocks(unittest.TestCase):
+
+    @staticmethod
+    def _make_fs(raw_blocks):
+        fs = object.__new__(FeishuWikiFS)
+        fs.get_document_id = MagicMock(return_value='doc-1')
+        fs._get_doc_blocks_raw = MagicMock(return_value=raw_blocks)
+        return fs
+
+    def test_preserves_raw_payload_and_adds_plain_text(self):
+        raw_blocks = [
+            {
+                'block_id': 'heading-1',
+                'block_type': 3,
+                'heading1': {
+                    'elements': [{'text_run': {'content': '项目标题'}}],
+                },
+                'future_field': {'kept': True},
+            },
+            {
+                'block_id': 'table-1',
+                'block_type': 31,
+                'plain_text': 'provider-owned-value',
+            },
+        ]
+        fs = self._make_fs(raw_blocks)
+
+        result = fs.get_doc_blocks('/project', with_descendants=True)
+
+        expected = [{**raw_blocks[0], 'plain_text': '项目标题'}, raw_blocks[1]]
+        self.assertEqual(result, expected)
+        self.assertEqual(raw_blocks[0]['plain_text'], '项目标题')
+        self.assertEqual(raw_blocks[1]['plain_text'], 'provider-owned-value')
+
+
 if __name__ == '__main__':
     unittest.main()
 
