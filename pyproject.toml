@@ -1,6 +1,7 @@
 [build-system]
 requires = ["scikit-build-core>=0.9", "pybind11>=2.11"]
-build-backend = "scikit_build_core.build"
+build-backend = "_build_backend"
+backend-path = ["."]
 
 [tool.scikit-build]
 wheel.packages = ["lazyllm"]
