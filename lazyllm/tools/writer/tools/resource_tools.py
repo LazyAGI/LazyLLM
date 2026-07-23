@@ -23,6 +23,8 @@ class WriterResourceTools(WriterToolBase):
         'document_to_docir',
         'create_document',
         'write_to_document',
+        'append_to_document',
+        'replace_document',
         'apply_patch_to_document',
     ]
 
@@ -231,7 +233,24 @@ class WriterResourceTools(WriterToolBase):
         ).model_dump()
 
     def write_to_document(self, content: Any, target_document: Any) -> dict:
-        '''Convert a final WriterDocument into native blocks and write them.'''
+        '''Backward-compatible alias for append_to_document().'''
+        return self.append_to_document(content, target_document)
+
+    def append_to_document(self, content: Any, target_document: Any) -> dict:
+        '''Append a final WriterDocument to an existing provider document.'''
+        return self._write_document(content, target_document, mode='append')
+
+    def replace_document(self, content: Any, target_document: Any) -> dict:
+        '''Replace an existing provider document with a final WriterDocument.'''
+        return self._write_document(content, target_document, mode='replace')
+
+    def _write_document(
+        self,
+        content: Any,
+        target_document: Any,
+        *,
+        mode: str,
+    ) -> dict:
         document = self._unified_model(content, WriterDocument)
         if document.stage != 'final':
             raise ValueError(f'content must have stage="final", got {document.stage!r}')
@@ -239,17 +258,23 @@ class WriterResourceTools(WriterToolBase):
         locator = self._target_locator(target, document)
 
         if not locator:
-            LOG.warning('write_to_document: no target document URI or doc_id, content not written to any platform')
+            LOG.warning(
+                '%s_to_document: no target document URI or doc_id, '
+                'content not written to any platform',
+                mode,
+            )
             return self._save_write_result('', '', '', 0)
 
         protocol, real_path, fs, adapter, locator, document_id = \
             self._resolve_document_target(target, source_document=document)
-        if not hasattr(fs, 'write_doc_blocks'):
-            raise TypeError(f'{type(fs).__name__} does not support structured document writes.')
+        method_name = 'replace_doc_blocks' if mode == 'replace' else 'write_doc_blocks'
+        write_blocks = getattr(fs, method_name, None)
+        if not callable(write_blocks):
+            raise TypeError(f'{type(fs).__name__} does not support {method_name}().')
         if document.title:
             self._update_document_title(fs, document_id, document.title, document.revision)
         native_blocks = adapter.ir_to_blocks(document)
-        fs.write_doc_blocks(document_id, native_blocks)
+        write_blocks(document_id, native_blocks)
         return self._save_write_result(document_id, protocol, locator, len(native_blocks))
 
     def apply_patch_to_document(
@@ -492,7 +517,7 @@ class WriterResourceTools(WriterToolBase):
 
         params = dict(operation.params)
         params.setdefault('document_id', document_id)
-        if operation.operation in {'create', 'update', 'delete', 'move'} \
+        if operation.operation in {'create', 'update', 'replace', 'delete', 'move'} \
                 and 'document_revision_id' not in params:
             try:
                 params['document_revision_id'] = int(revision) if revision is not None else -1

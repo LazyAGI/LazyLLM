@@ -1,7 +1,7 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
-from .writer_ir import WriterAuthoring
+from .writer_ir import WriterBlock
 from ..utils.artifact import ArtifactModel
 
 
@@ -15,16 +15,8 @@ class LocateResult(ArtifactModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
-ModifyType = Literal['insert', 'replace', 'delete', 'move']
+ModifyType = Literal['create', 'update', 'delete', 'move']
 PatchPosition = Literal['before', 'after']
-PatchBlockType = Literal['paragraph', 'heading', 'list_item', 'code', 'quote']
-
-
-class Anchor(BaseModel):
-    node_id: str
-    text_offset: Optional[int] = None
-    text_end: Optional[int] = None
-    meta: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ModifyInstruction(BaseModel):
@@ -54,44 +46,33 @@ class ModifyPlan(BaseModel):
     meta: Dict[str, Any] = Field(default_factory=dict)
 
 
-class PatchBlock(BaseModel):
-    '''Provider-neutral content for blocks created by an insert patch.'''
-
-    type: PatchBlockType
-    content: str = ''
-    numbering: Dict[str, Any] = Field(default_factory=dict)
-    authoring: Optional[WriterAuthoring] = None
-    meta: Dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode='after')
-    def validate_numbering(self) -> 'PatchBlock':
-        if self.type == 'heading':
-            level = self.numbering.get('level')
-            if not isinstance(level, int) or isinstance(level, bool) or not 1 <= level <= 9:
-                raise ValueError('heading requires numbering.level from 1 to 9')
-        elif self.type == 'list_item':
-            if not isinstance(self.numbering.get('ordered'), bool):
-                raise ValueError('list_item requires boolean numbering.ordered')
-        return self
-
-
 class PatchHunk(BaseModel):
     hunk_id: Optional[str] = None
     target_node_id: str
     modify_type: ModifyType
-    anchor: Optional[Anchor] = None
-    anchor_node_id: Optional[str] = None
-    text_range: Optional[Tuple[int, int]] = None
-    old_text: Optional[str] = None
-    new_text: Optional[str] = None
-    new_blocks: List[PatchBlock] = Field(default_factory=list)
-    position: Optional[PatchPosition] = None
+    block: Optional[WriterBlock] = None
+    parent_node_id: Optional[str] = None
+    index: Optional[int] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode='after')
-    def validate_move(self) -> 'PatchHunk':
-        if self.modify_type == 'move' and (not self.anchor_node_id or not self.position):
-            raise ValueError('move requires anchor_node_id and position')
+    def validate_operation(self) -> 'PatchHunk':
+        if not self.target_node_id.strip():
+            raise ValueError('target_node_id must not be empty')
+        if self.modify_type in {'create', 'update'}:
+            if self.block is None:
+                raise ValueError(f'{self.modify_type} requires block')
+            if self.block.node_id != self.target_node_id:
+                raise ValueError(
+                    f'{self.modify_type} block.node_id must equal target_node_id')
+        elif self.block is not None:
+            raise ValueError(f'{self.modify_type} must not provide block')
+        if self.modify_type in {'create', 'move'}:
+            if self.index is None or self.index < 0:
+                raise ValueError(f'{self.modify_type} requires a non-negative index')
+        elif self.parent_node_id is not None or self.index is not None:
+            raise ValueError(
+                f'{self.modify_type} must not provide parent_node_id or index')
         return self
 
 

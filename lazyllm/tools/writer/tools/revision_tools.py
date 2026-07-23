@@ -1,16 +1,15 @@
 from __future__ import annotations
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .base import WriterToolBase
 from ..data_models.context import WritingContext
 from ..data_models.revision import (
-    Anchor,
     LocateResult,
     ModifyInstruction,
     ModifyPlan,
     PatchHunk,
     PatchResult,
-    PatchBlock,
     PatchSet,
 )
 from ..data_models.task import WritingTask
@@ -40,24 +39,7 @@ def apply_patch_to_ir(
 
     applied: List[str] = []
     for hunk in patch_set.hunks:
-        node_map = {block.node_id: block for block in revised_doc.iter_blocks()}
-        target = node_map[hunk.target_node_id]
-
-        if hunk.modify_type == 'replace':
-            target.content = hunk.new_text or ''
-            target.spans = []
-        elif hunk.modify_type == 'insert':
-            new_blocks = tools._build_inserted_blocks(revised_doc, hunk)
-            tools._insert_siblings(revised_doc, target, new_blocks, hunk.position or 'after')
-        elif hunk.modify_type == 'delete':
-            tools._remove_block(revised_doc, target)
-        elif hunk.modify_type == 'move':
-            anchor = node_map[hunk.anchor_node_id or '']
-            tools._remove_block(revised_doc, target)
-            tools._insert_siblings(revised_doc, anchor, [target], hunk.position or 'after')
-        else:
-            raise ValueError(f'unsupported modify_type: {hunk.modify_type!r}.')
-
+        tools._apply_patch_hunk(revised_doc, hunk)
         applied.append(hunk.hunk_id or hunk.target_node_id)
 
     revised_doc = WriterDocument.model_validate(revised_doc.model_dump())
@@ -84,6 +66,57 @@ class WriterRevisionTools(WriterToolBase):
         'build_patch_set_from_documents',
         'apply_patch',
     ]
+
+    def _apply_patch_hunk(
+        self,
+        document: WriterDocument,
+        hunk: PatchHunk,
+    ) -> None:
+        target = document.block_by_id(hunk.target_node_id)
+        if hunk.modify_type == 'update':
+            if target is None or hunk.block is None:
+                raise ValueError(
+                    f'update target {hunk.target_node_id!r} is absent from document.')
+            self._apply_block_update(target, hunk.block)
+            return
+        if hunk.modify_type == 'create':
+            self._apply_create_hunk(document, hunk)
+            return
+        if target is None:
+            raise ValueError(
+                f'{hunk.modify_type} target {hunk.target_node_id!r} is absent from document.')
+        self._remove_block(document, target)
+        if hunk.modify_type == 'delete':
+            return
+        if hunk.modify_type != 'move':
+            raise ValueError(f'unsupported modify_type: {hunk.modify_type!r}.')
+        if hunk.parent_node_id and self._subtree_has_id(target, hunk.parent_node_id):
+            raise ValueError('move target cannot be moved into its own subtree.')
+        siblings = self._children_for_parent(document, hunk.parent_node_id)
+        if hunk.index is None or hunk.index > len(siblings):
+            raise ValueError(
+                f'move index for {hunk.target_node_id!r} is outside its parent.')
+        siblings.insert(hunk.index, target)
+
+    def _apply_create_hunk(
+        self,
+        document: WriterDocument,
+        hunk: PatchHunk,
+    ) -> None:
+        if document.block_by_id(hunk.target_node_id) is not None:
+            raise ValueError(
+                f'create target {hunk.target_node_id!r} already exists in document.')
+        if hunk.block is None:
+            raise ValueError(f'create hunk {hunk.target_node_id!r} lacks block.')
+        siblings = self._children_for_parent(document, hunk.parent_node_id)
+        if hunk.index is None or hunk.index > len(siblings):
+            raise ValueError(
+                f'create index for {hunk.target_node_id!r} is outside its parent.')
+        new_ids = [block.node_id for block in hunk.block.iter_blocks()]
+        existing_ids = {block.node_id for block in document.iter_blocks()}
+        if len(new_ids) != len(set(new_ids)) or existing_ids.intersection(new_ids):
+            raise ValueError('create block subtree contains duplicate node_ids.')
+        siblings.insert(hunk.index, hunk.block.model_copy(deep=True))
 
     def build_patch_set_from_documents(
         self,
@@ -247,90 +280,21 @@ class WriterRevisionTools(WriterToolBase):
         plan = self._unified_model(modify_plan, ModifyPlan)
         writing_context = self._unified_model(context, WritingContext)
 
-        hunks: List[PatchHunk] = []
-        proposed_title: Optional[str] = None
-        if plan.instructions or plan.title_instruction:
-            block_map = {b.node_id: b for b in source_doc.iter_blocks()}
-            target_blocks, missing = self._resolve_target_blocks(block_map, plan.instructions)
-            if missing:
-                raise ValueError(f'modify_plan targets node_ids absent from document: {missing}.')
-
-            focused_doc = WriterDocument(
-                document_id=source_doc.document_id,
-                stage=source_doc.stage,
-                title=source_doc.title,
-                blocks=[b.model_copy(deep=True) for b in target_blocks],
-                ui_editable=False,
-            )
-
-            prompt = GENERATE_PATCH_SET_PROMPT.format(
-                document_json=to_prompt_json(focused_doc),
-                modify_plan_json=to_prompt_json(plan),
-                context_json=to_prompt_json(writing_context),
-            )
-            proposal = self._call_llm_structured(prompt, PatchSet)
-            proposed_title = self._normalize_proposed_title(
-                proposal.new_title, plan.title_instruction)
-
-            proposal_map: Dict[str, PatchHunk] = {
-                h.target_node_id: h for h in proposal.hunks if h.target_node_id
-            }
-            if len(proposal_map) != len(proposal.hunks):
-                raise ValueError('patch proposal contains duplicate or empty target_node_id values.')
-            expected_targets = {instruction.target_node_id for instruction in plan.instructions}
-            unexpected_targets = set(proposal_map) - expected_targets
-            if unexpected_targets:
-                raise ValueError(
-                    f'patch proposal contains targets absent from modify_plan: {sorted(unexpected_targets)}.'
-                )
-
-            for instr, block in zip(plan.instructions, target_blocks):
-                proposed = proposal_map.get(instr.target_node_id)
-                if proposed is None:
-                    raise ValueError(f'lack hunk for block {instr.target_node_id!r}.')
-                if proposed.modify_type != instr.modify_type:
-                    raise ValueError(
-                        f'patch hunk for {instr.target_node_id!r} changed modify_type '
-                        f'from {instr.modify_type!r} to {proposed.modify_type!r}.'
-                    )
-
-                position = instr.position or proposed.position
-                anchor_node_id = instr.anchor_node_id or proposed.anchor_node_id
-                if instr.modify_type == 'replace' and proposed.new_text is None:
-                    raise ValueError(f'lack new_text for block {instr.target_node_id!r}.')
-                if instr.modify_type == 'insert':
-                    position = position or 'after'
-                    if not proposed.new_blocks:
-                        raise ValueError(f'lack new_blocks for insert at {instr.target_node_id!r}.')
-                if instr.modify_type == 'move' and (not anchor_node_id or not position):
-                    raise ValueError(
-                        f'move for {instr.target_node_id!r} requires anchor_node_id and position.'
-                    )
-
-                hunks.append(PatchHunk(
-                    hunk_id=f'hunk-{instr.target_node_id}',
-                    target_node_id=instr.target_node_id,
-                    modify_type=instr.modify_type,
-                    anchor=Anchor(
-                        node_id=block.node_id,
-                    ),
-                    old_text=None if instr.modify_type == 'insert' else block.content,
-                    new_text=proposed.new_text if instr.modify_type == 'replace' else None,
-                    new_blocks=[item.model_copy(deep=True) for item in proposed.new_blocks]
-                    if instr.modify_type == 'insert' else [],
-                    anchor_node_id=anchor_node_id if instr.modify_type == 'move' else None,
-                    position=position if instr.modify_type in {'insert', 'move'} else None,
-                    meta={**proposed.meta, 'instruction': instr.instruction},
-                ))
-
-        self._chain_repeated_after_moves(hunks)
         patch_set = PatchSet(
             patch_id=f'patch-{source_doc.document_id or "document"}',
             target_doc_id=source_doc.document_id or '',
-            new_title=proposed_title if proposed_title != source_doc.title else None,
-            hunks=hunks,
             meta={'source': 'generate_patch_set'},
         )
+        if plan.instructions or plan.title_instruction:
+            prompt = GENERATE_PATCH_SET_PROMPT.format(
+                document_json=to_prompt_json(source_doc),
+                modify_plan_json=to_prompt_json(plan),
+                context_json=to_prompt_json(writing_context),
+            )
+            revised = self._call_llm_structured(prompt, WriterDocument)
+            self._validate_model_revision(source_doc, revised, plan)
+            patch_set = self._diff_documents(source_doc, revised)
+            patch_set.meta['source'] = 'generate_patch_set'
 
         result = self._save_artifacts(
             {'patch_set': patch_set},
@@ -338,7 +302,7 @@ class WriterRevisionTools(WriterToolBase):
             primary_key='patch_set',
             context_key=None,
             summary='Generated patch set.',
-            counts={'hunk_count': len(hunks)},
+            counts={'hunk_count': len(patch_set.hunks)},
             artifact_meta={
                 'document_id': source_doc.document_id,
                 'context_id': writing_context.context_id,
@@ -348,26 +312,6 @@ class WriterRevisionTools(WriterToolBase):
             },
         )
         return result.model_dump()
-
-    @staticmethod
-    def _chain_repeated_after_moves(hunks: List[PatchHunk]) -> None:
-        '''Keep move hunk order by advancing anchors within consecutive groups.'''
-        previous_anchor: Optional[str] = None
-        previous_target: Optional[str] = None
-        for hunk in hunks:
-            if (
-                hunk.modify_type == 'move'
-                and hunk.position == 'after'
-                and hunk.anchor_node_id
-            ):
-                if hunk.anchor_node_id == previous_anchor and previous_target is not None:
-                    hunk.anchor_node_id = previous_target
-                else:
-                    previous_anchor = hunk.anchor_node_id
-                previous_target = hunk.target_node_id
-            else:
-                previous_anchor = None
-                previous_target = None
 
     def apply_patch(
         self,
@@ -415,9 +359,6 @@ class WriterRevisionTools(WriterToolBase):
         common_ids = set(source_map) & set(revised_map)
         new_ids = set(revised_map) - set(source_map)
         deleted_ids = set(source_map) - set(revised_map)
-
-        source_layout = self._document_layout(source)
-        revised_layout = self._document_layout(revised)
         hunks: List[PatchHunk] = []
 
         for node_id in self._ordered_node_ids(revised):
@@ -425,59 +366,73 @@ class WriterRevisionTools(WriterToolBase):
                 continue
             old_block = source_map[node_id]
             new_block = revised_map[node_id]
-            self._validate_diffable_block(old_block, new_block)
-            if old_block.content != new_block.content:
+            self._validate_preserved_block_fields(old_block, new_block)
+            if not self._same_mutable_block_fields(old_block, new_block):
                 hunks.append(PatchHunk(
                     hunk_id=f'update-{node_id}',
                     target_node_id=node_id,
-                    modify_type='replace',
-                    old_text=old_block.content,
-                    new_text=new_block.content,
+                    modify_type='update',
+                    block=new_block.model_copy(deep=True),
                 ))
 
-        hunks.extend(self._build_move_hunks(
-            source, revised, source_layout, revised_layout, common_ids))
-
-        for group in self._new_block_groups(revised, new_ids):
-            anchor_id, position = self._insert_anchor(group, revised_layout, common_ids)
-            if anchor_id is None:
-                raise ValueError(
-                    'insert cannot be represented because the target sibling list '
-                    'has no existing block anchor.'
-                )
-            patch_blocks: List[PatchBlock] = []
-            for node_id in group:
-                block = revised_map[node_id]
-                if block.children:
-                    raise ValueError('inserting blocks with children is not supported yet.')
-                if block.spans and any(span.style for span in block.spans):
-                    raise ValueError('inserting styled spans is not supported yet.')
-                patch_blocks.append(PatchBlock(
-                    type=block.type,
-                    content=block.content,
-                    numbering=dict(block.numbering),
-                    authoring=block.authoring.model_copy(deep=True) if block.authoring else None,
-                ))
-            hunks.append(PatchHunk(
-                hunk_id=f'insert-{group[0]}',
-                target_node_id=anchor_id,
-                modify_type='insert',
-                position=position,
-                new_blocks=patch_blocks,
-            ))
-
+        source_layout = self._document_layout(source)
         top_level_deletes = {
             node_id for node_id in deleted_ids
             if source_layout[node_id][0] not in deleted_ids
         }
-        for node_id in self._ordered_node_ids(source):
+        working = source.model_copy(deep=True)
+        for node_id in reversed(self._ordered_node_ids(source)):
             if node_id in top_level_deletes:
-                hunks.append(PatchHunk(
+                hunk = PatchHunk(
                     hunk_id=f'delete-{node_id}',
                     target_node_id=node_id,
                     modify_type='delete',
-                    old_text=source_map[node_id].content,
-                ))
+                )
+                hunks.append(hunk)
+                target = working.block_by_id(node_id)
+                if target is not None:
+                    self._remove_block(working, target)
+
+        target_parents: List[Optional[str]] = [None]
+        target_parents.extend(self._ordered_node_ids(revised))
+        for parent_id in target_parents:
+            target_children = revised.blocks if parent_id is None \
+                else revised_map[parent_id].children
+            if parent_id is not None and working.block_by_id(parent_id) is None:
+                continue
+            for index, desired_child in enumerate(target_children):
+                current = working.block_by_id(desired_child.node_id)
+                if current is None:
+                    created = self._copy_new_subtree(desired_child, new_ids)
+                    self._validate_new_subtree(created)
+                    hunk = PatchHunk(
+                        hunk_id=f'create-{desired_child.node_id}',
+                        target_node_id=desired_child.node_id,
+                        modify_type='create',
+                        block=created,
+                        parent_node_id=parent_id,
+                        index=index,
+                    )
+                    hunks.append(hunk)
+                    self._children_for_parent(working, parent_id).insert(
+                        index, created.model_copy(deep=True))
+                    continue
+                if desired_child.node_id not in common_ids:
+                    continue
+                current_parent, current_index = self._block_parent_index(
+                    working, desired_child.node_id)
+                if current_parent == parent_id and current_index == index:
+                    continue
+                hunk = PatchHunk(
+                    hunk_id=f'move-{desired_child.node_id}',
+                    target_node_id=desired_child.node_id,
+                    modify_type='move',
+                    parent_node_id=parent_id,
+                    index=index,
+                )
+                hunks.append(hunk)
+                self._remove_block(working, current)
+                self._children_for_parent(working, parent_id).insert(index, current)
 
         patch = PatchSet(
             patch_id=f'patch-{source.document_id}',
@@ -486,7 +441,8 @@ class WriterRevisionTools(WriterToolBase):
             hunks=hunks,
             meta={'source': 'document_diff'},
         )
-        self._validate_patch(source, patch)
+        applied, _ = apply_patch_to_ir(source, patch)
+        self._assert_revision_applied(applied, revised)
         return patch
 
     @staticmethod
@@ -496,162 +452,101 @@ class WriterRevisionTools(WriterToolBase):
     @staticmethod
     def _document_layout(
         document: WriterDocument,
-    ) -> Dict[str, Tuple[Optional[str], List[str], int]]:
-        layout: Dict[str, Tuple[Optional[str], List[str], int]] = {}
+    ) -> Dict[str, Tuple[Optional[str], int]]:
+        layout: Dict[str, Tuple[Optional[str], int]] = {}
 
         def walk(blocks: List[WriterBlock], parent_id: Optional[str]) -> None:
-            sibling_ids = [block.node_id for block in blocks]
             for index, block in enumerate(blocks):
-                layout[block.node_id] = (parent_id, sibling_ids, index)
+                layout[block.node_id] = (parent_id, index)
                 walk(block.children, block.node_id)
 
         walk(document.blocks, None)
         return layout
 
-    def _build_move_hunks(
-        self,
-        source: WriterDocument,
-        revised: WriterDocument,
-        source_layout: Dict[str, Tuple[Optional[str], List[str], int]],
-        revised_layout: Dict[str, Tuple[Optional[str], List[str], int]],
-        common_ids: Set[str],
-    ) -> List[PatchHunk]:
-        current_parent = {
-            node_id: source_layout[node_id][0] for node_id in common_ids
-        }
-        current_lists: Dict[Optional[str], List[str]] = {}
-        for node_id in self._ordered_node_ids(source):
-            if node_id in common_ids:
-                current_lists.setdefault(current_parent[node_id], []).append(node_id)
-
-        target_parents: List[Optional[str]] = [None]
-        target_parents.extend(
-            node_id for node_id in self._ordered_node_ids(revised)
-            if any(
-                revised_layout[child_id][0] == node_id
-                for child_id in common_ids
-            )
-        )
-
-        hunks: List[PatchHunk] = []
-        for parent_id in target_parents:
-            target_order = [
-                node_id for node_id in common_ids
-                if revised_layout[node_id][0] == parent_id
-            ]
-            target_order.sort(key=lambda node_id: revised_layout[node_id][2])
-            current_lists.setdefault(parent_id, [])
-
-            for index, node_id in enumerate(target_order):
-                current = current_lists[parent_id]
-                previous_id = target_order[index - 1] if index else None
-                correctly_placed = (
-                    current_parent[node_id] == parent_id
-                    and node_id in current
-                    and (
-                        (previous_id is None and current.index(node_id) == 0)
-                        or (
-                            previous_id is not None
-                            and current.index(node_id) == current.index(previous_id) + 1
-                        )
-                    )
-                )
-                if correctly_placed:
-                    continue
-
-                if previous_id is not None:
-                    anchor_id, position = previous_id, 'after'
-                else:
-                    anchor_id = next(
-                        (
-                            sibling_id for sibling_id in target_order[index + 1:]
-                            if current_parent[sibling_id] == parent_id
-                        ),
-                        None,
-                    )
-                    position = 'before'
-                if anchor_id is None:
-                    raise ValueError(
-                        f'move for {node_id!r} cannot be represented because its target '
-                        'parent has no stable sibling anchor.'
-                    )
-
-                old_parent = current_parent[node_id]
-                current_lists[old_parent].remove(node_id)
-                target_list = current_lists[parent_id]
-                anchor_index = target_list.index(anchor_id)
-                insert_index = anchor_index + (1 if position == 'after' else 0)
-                target_list.insert(insert_index, node_id)
-                current_parent[node_id] = parent_id
-                hunks.append(PatchHunk(
-                    hunk_id=f'move-{node_id}',
-                    target_node_id=node_id,
-                    modify_type='move',
-                    anchor_node_id=anchor_id,
-                    position=position,
-                ))
-        return hunks
-
-    def _new_block_groups(
-        self,
-        document: WriterDocument,
-        new_ids: Set[str],
-    ) -> List[List[str]]:
-        groups: List[List[str]] = []
-
-        def walk(blocks: List[WriterBlock]) -> None:
-            current: List[str] = []
-            for block in blocks:
-                if block.node_id in new_ids:
-                    current.append(block.node_id)
-                else:
-                    if current:
-                        groups.append(current)
-                        current = []
-                    walk(block.children)
-            if current:
-                groups.append(current)
-
-        walk(document.blocks)
-        return groups
-
     @staticmethod
-    def _insert_anchor(
-        group: List[str],
-        layout: Dict[str, Tuple[Optional[str], List[str], int]],
-        common_ids: Set[str],
-    ) -> Tuple[Optional[str], Optional[str]]:
-        _, siblings, first_index = layout[group[0]]
-        last_index = layout[group[-1]][2]
-        for sibling_id in reversed(siblings[:first_index]):
-            if sibling_id in common_ids:
-                return sibling_id, 'after'
-        for sibling_id in siblings[last_index + 1:]:
-            if sibling_id in common_ids:
-                return sibling_id, 'before'
-        return None, None
-
-    @staticmethod
-    def _validate_diffable_block(source: WriterBlock, revised: WriterBlock) -> None:
+    def _same_mutable_block_fields(source: WriterBlock, revised: WriterBlock) -> bool:
         fields = (
-            'type', 'stage', 'authoring', 'numbering', 'references',
-            'provider_binding', 'provider_payload', 'editable',
+            'type', 'content', 'spans', 'stage', 'authoring', 'numbering', 'references',
         )
-        changed = [name for name in fields if getattr(source, name) != getattr(revised, name)]
+        return all(getattr(source, field) == getattr(revised, field) for field in fields)
+
+    @staticmethod
+    def _validate_preserved_block_fields(
+        source: WriterBlock,
+        revised: WriterBlock,
+    ) -> None:
+        fields = ('provider_binding', 'provider_payload', 'editable')
+        changed = [
+            field for field in fields
+            if getattr(source, field) != getattr(revised, field)
+        ]
         if changed:
             raise ValueError(
-                f'block {source.node_id!r} changes unsupported fields: {changed}.'
-            )
-        if source.content == revised.content and source.spans != revised.spans:
-            raise ValueError(
-                f'block {source.node_id!r} changes spans without changing text; '
-                'span-only patches are not supported yet.'
-            )
-        if source.content != revised.content and any(span.style for span in revised.spans):
-            raise ValueError(
-                f'block {source.node_id!r} contains edited styled spans; '
-                'styled span patches are not supported yet.'
-            )
+                f'block {source.node_id!r} changes provider-managed fields: {changed}.')
+
+    @classmethod
+    def _copy_new_subtree(
+        cls,
+        block: WriterBlock,
+        new_ids: Set[str],
+    ) -> WriterBlock:
+        copied = block.model_copy(deep=True)
+        copied.children = [
+            cls._copy_new_subtree(child, new_ids)
+            for child in block.children
+            if child.node_id in new_ids
+        ]
+        return copied
+
+    @staticmethod
+    def _validate_new_subtree(block: WriterBlock) -> None:
+        for item in block.iter_blocks():
+            if item.provider_binding or item.provider_payload:
+                raise ValueError(
+                    f'new block {item.node_id!r} must not contain provider-managed fields.')
+
+    def _block_parent_index(
+        self,
+        document: WriterDocument,
+        node_id: str,
+    ) -> Tuple[Optional[str], int]:
+        layout = self._document_layout(document)
+        if node_id not in layout:
+            raise ValueError(f'block {node_id!r} is absent from document.')
+        return layout[node_id]
+
+    @classmethod
+    def _assert_revision_applied(
+        cls,
+        applied: WriterDocument,
+        revised: WriterDocument,
+    ) -> None:
+        def visible(document: WriterDocument) -> Dict[str, Any]:
+            return {
+                'document_id': document.document_id,
+                'stage': document.stage,
+                'title': document.title,
+                'blocks': [
+                    cls._visible_block(block) for block in document.blocks
+                ],
+            }
+
+        if visible(applied) != visible(revised):
+            raise ValueError('generated patch does not reproduce the revised WriterDocument.')
+
+    @classmethod
+    def _visible_block(cls, block: WriterBlock) -> Dict[str, Any]:
+        return {
+            'node_id': block.node_id,
+            'type': block.type,
+            'content': block.content,
+            'spans': [span.model_dump() for span in block.spans],
+            'stage': block.stage,
+            'authoring': block.authoring.model_dump() if block.authoring else None,
+            'numbering': block.numbering,
+            'references': block.references,
+            'children': [cls._visible_block(child) for child in block.children],
+        }
 
     def _normalize_modify_plan(
         self,
@@ -686,7 +581,7 @@ class WriterRevisionTools(WriterToolBase):
                 raise ValueError(f'modify_plan has duplicate instruction for block {target_id!r}.')
             seen.add(target_id)
             instr.instruction_id = instr.instruction_id or f'instr-{target_id}'
-            if instr.modify_type == 'insert':
+            if instr.modify_type == 'create':
                 instr.position = instr.position or 'after'
             if instr.modify_type == 'move':
                 if instr.anchor_node_id not in valid_node_ids:
@@ -706,33 +601,23 @@ class WriterRevisionTools(WriterToolBase):
         return plan
 
     @staticmethod
-    def _normalize_proposed_title(
-        proposed_title: Optional[str],
-        title_instruction: Optional[str],
-    ) -> Optional[str]:
-        if title_instruction:
-            if not proposed_title or not proposed_title.strip():
-                raise ValueError('patch proposal lacks new_title for the title instruction.')
-            return proposed_title.strip()
-        if proposed_title is not None:
-            raise ValueError(
-                'patch proposal changes the document title without a title instruction.')
-        return None
-
-    def _resolve_target_blocks(
-        self,
-        block_map: Dict[str, WriterBlock],
-        instructions: List[ModifyInstruction],
-    ) -> Tuple[List[WriterBlock], List[str]]:
-        blocks: List[WriterBlock] = []
-        missing: List[str] = []
-        for instr in instructions:
-            block = block_map.get(instr.target_node_id)
-            if block is None:
-                missing.append(instr.target_node_id)
-            else:
-                blocks.append(block)
-        return blocks, missing
+    def _validate_model_revision(
+        source: WriterDocument,
+        revised: WriterDocument,
+        plan: ModifyPlan,
+    ) -> None:
+        if source.document_id != revised.document_id:
+            raise ValueError('model revision changed document_id.')
+        if source.stage != revised.stage:
+            raise ValueError('model revision changed document stage.')
+        if source.revision != revised.revision:
+            raise ValueError('model revision changed document revision.')
+        if source.provider_binding != revised.provider_binding:
+            raise ValueError('model revision changed document provider_binding.')
+        if plan.title_instruction is None and source.title != revised.title:
+            raise ValueError('model revision changed title without a title instruction.')
+        if plan.title_instruction is not None and not revised.title.strip():
+            raise ValueError('model revision produced an empty title.')
 
     def _validate_patch(self, document: WriterDocument, patch: PatchSet) -> None:
         if patch.target_doc_id != document.document_id:
@@ -741,7 +626,6 @@ class WriterRevisionTools(WriterToolBase):
                 f'document_id {document.document_id!r}.'
             )
 
-        node_map = {block.node_id: block for block in document.iter_blocks()}
         hunk_ids: set = set()
         for hunk in patch.hunks:
             if hunk.hunk_id:
@@ -749,114 +633,33 @@ class WriterRevisionTools(WriterToolBase):
                     raise ValueError(f'patch contains duplicate hunk_id {hunk.hunk_id!r}.')
                 hunk_ids.add(hunk.hunk_id)
 
-            self._validate_patch_hunk(node_map, hunk)
-
-        destructive_targets = {
-            hunk.target_node_id for hunk in patch.hunks
-            if hunk.modify_type == 'delete'
-        }
-        for hunk in patch.hunks:
-            if hunk.modify_type == 'move' and hunk.anchor_node_id in destructive_targets:
-                raise ValueError(
-                    f'move anchor {hunk.anchor_node_id!r} is also deleted or moved by this patch.'
-                )
-
-    def _validate_patch_hunk(
-        self,
-        node_map: Dict[str, WriterBlock],
-        hunk: PatchHunk,
-    ) -> None:
-        target_id = hunk.target_node_id
-        target = node_map.get(target_id)
-        if target is None:
-            raise ValueError(f'patch target {target_id!r} is absent from document.')
+    @staticmethod
+    def _apply_block_update(target: WriterBlock, revised: WriterBlock) -> None:
         if not target.editable:
-            raise ValueError(f'patch target {target_id!r} is not editable.')
-        if hunk.old_text is not None and target.content != hunk.old_text:
-            raise ValueError(f'patch old_text conflict for target {target_id!r}.')
+            raise ValueError(f'patch target {target.node_id!r} is not editable.')
+        if target.node_id != revised.node_id:
+            raise ValueError('update cannot change block node_id.')
+        WriterRevisionTools._validate_preserved_block_fields(target, revised)
+        for field in (
+            'type', 'content', 'spans', 'stage', 'authoring', 'numbering', 'references',
+        ):
+            setattr(target, field, deepcopy(getattr(revised, field)))
 
-        validators = {
-            'replace': self._validate_replace_hunk,
-            'insert': self._validate_insert_hunk,
-            'move': self._validate_move_hunk,
-        }
-        validator = validators.get(hunk.modify_type)
-        if validator:
-            validator(node_map, target, hunk)
-
-    def _validate_replace_hunk(
-        self,
-        node_map: Dict[str, WriterBlock],
-        target: WriterBlock,
-        hunk: PatchHunk,
-    ) -> None:
-        if hunk.new_text is None:
-            raise ValueError(f'replace hunk for {target.node_id!r} requires new_text.')
-
-    def _validate_insert_hunk(
-        self,
-        node_map: Dict[str, WriterBlock],
-        target: WriterBlock,
-        hunk: PatchHunk,
-    ) -> None:
-        if not hunk.new_blocks:
-            raise ValueError(f'insert hunk for {target.node_id!r} requires new_blocks.')
-        if hunk.position not in {'before', 'after'}:
-            raise ValueError(f'insert hunk for {target.node_id!r} requires position.')
-
-    def _validate_move_hunk(
-        self,
-        node_map: Dict[str, WriterBlock],
-        target: WriterBlock,
-        hunk: PatchHunk,
-    ) -> None:
-        anchor_id = hunk.anchor_node_id or ''
-        anchor = node_map.get(anchor_id)
-        if anchor is None:
-            raise ValueError(f'move anchor {anchor_id!r} is absent from document.')
-        if anchor is target:
-            raise ValueError('move target cannot be its own anchor.')
-        if hunk.position not in {'before', 'after'}:
-            raise ValueError(f'move hunk for {target.node_id!r} requires position.')
-        if self._contains_block(target, anchor):
-            raise ValueError('move target cannot be moved relative to one of its descendants.')
-
-    def _build_inserted_blocks(
-        self,
+    @staticmethod
+    def _children_for_parent(
         document: WriterDocument,
-        hunk: PatchHunk,
+        parent_node_id: Optional[str],
     ) -> List[WriterBlock]:
-        used_ids = {block.node_id for block in document.iter_blocks()}
-        base_id = hunk.hunk_id or f'hunk-{hunk.target_node_id}'
-        result: List[WriterBlock] = []
-        for index, patch_block in enumerate(hunk.new_blocks, start=1):
-            candidate = f'{base_id}::block-{index}'
-            suffix = 2
-            while candidate in used_ids:
-                candidate = f'{base_id}::block-{index}-{suffix}'
-                suffix += 1
-            used_ids.add(candidate)
-            result.append(WriterBlock(
-                node_id=candidate,
-                type=patch_block.type,
-                content=patch_block.content,
-                stage=document.stage,
-                authoring=patch_block.authoring.model_copy(deep=True)
-                if patch_block.authoring else None,
-                numbering=dict(patch_block.numbering),
-            ))
-        return result
+        if parent_node_id is None:
+            return document.blocks
+        parent = document.block_by_id(parent_node_id)
+        if parent is None:
+            raise ValueError(f'parent block {parent_node_id!r} is absent from document.')
+        return parent.children
 
-    def _insert_siblings(
-        self,
-        document: WriterDocument,
-        anchor: WriterBlock,
-        new_blocks: List[WriterBlock],
-        position: str,
-    ) -> None:
-        siblings = self._sibling_list(document, anchor)
-        index = siblings.index(anchor) + (1 if position == 'after' else 0)
-        siblings[index:index] = new_blocks
+    @staticmethod
+    def _subtree_has_id(block: WriterBlock, node_id: str) -> bool:
+        return any(item.node_id == node_id for item in block.iter_blocks())
 
     def _remove_block(self, document: WriterDocument, target: WriterBlock) -> None:
         self._sibling_list(document, target).remove(target)
@@ -886,9 +689,3 @@ class WriterRevisionTools(WriterToolBase):
             if deeper is not None:
                 return deeper
         return None
-
-    def _contains_block(self, candidate: WriterBlock, target: WriterBlock) -> bool:
-        return any(
-            child is target or self._contains_block(child, target)
-            for child in candidate.children
-        )

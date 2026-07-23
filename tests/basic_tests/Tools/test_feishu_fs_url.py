@@ -131,8 +131,6 @@ class TestMoveBlock(unittest.TestCase):
             source_index=0,
             target_parent_block_id='doc-1',
             target_index=1,
-            target_anchor_block_id='anchor',
-            position='after',
             document_revision_id=10,
         )
 

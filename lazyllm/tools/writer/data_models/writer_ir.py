@@ -53,7 +53,7 @@ class WriterAuthoring(BaseModel):
 
 class WriterSpan(BaseModel):
     text: str = ''
-    style: List[str] = Field(default_factory=list)
+    style: Dict[str, Any] = Field(default_factory=dict)
 
 
 class WriterBlock(BaseModel):
@@ -87,6 +87,11 @@ class WriterBlock(BaseModel):
         if self.spans and ''.join(span.text for span in self.spans) != self.content:
             raise ValueError('content must equal the concatenated span text when spans are present')
         return self
+
+    def iter_blocks(self) -> Iterable['WriterBlock']:
+        yield self
+        for child in self.children:
+            yield from child.iter_blocks()
 
 
 WriterBlock.model_rebuild()

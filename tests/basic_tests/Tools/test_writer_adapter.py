@@ -1,16 +1,15 @@
 from copy import deepcopy
 
-import pytest
-
 from lazyllm.tools.writer.adapter.feishu import FeishuWriterAdapter
-from lazyllm.tools.writer.data_models import PatchBlock, PatchHunk
+from lazyllm.tools.writer.data_models import PatchHunk, WriterBlock, WriterSpan
 from lazyllm.tools.writer.utils.feishu_docx import prepare_docx_clone_descendants
 
 
 def _block(block_id, content, *, parent='doc-1', children=None, heading=False):
     field = 'heading1' if heading else 'text'
     block = {
-        'block_id': block_id, 'block_type': 3 if heading else 2,
+        'block_id': block_id,
+        'block_type': 3 if heading else 2,
         'parent_id': parent,
         field: {'elements': [{'text_run': {'content': content}}]},
     }
@@ -28,71 +27,111 @@ def _move_blocks():
     ]
 
 
-def test_insert_and_delete_build_native_operations():
+def test_create_and_delete_build_native_operations():
     adapter = FeishuWriterAdapter()
     document = adapter.blocks_to_ir(_move_blocks()[:2], external_document_id='doc-1')
-    heading, paragraph = document.blocks[0], document.blocks[0].children[0]
+    paragraph = document.blocks[0].children[0]
+    created = WriterBlock(
+        node_id='new-block',
+        type='paragraph',
+        content='新增段落',
+        spans=[WriterSpan(text='新增段落', style={'bold': True})],
+        stage='final',
+    )
 
     create = adapter.patch_to_operation(PatchHunk(
-        hunk_id='insert-1', target_node_id=heading.node_id,
-        modify_type='insert', position='after',
-        new_blocks=[PatchBlock(type='paragraph', content='新增段落')],
+        target_node_id=created.node_id,
+        modify_type='create',
+        block=created,
+        parent_node_id=None,
+        index=1,
     ), document)
     assert create.operation == 'create'
     assert (create.params['parent_block_id'], create.params['index']) == ('doc-1', 1)
-    assert create.params['descendants'][0]['block_type'] == 2
+    assert create.params['descendants'][0]['text']['elements'][0][
+        'text_run']['text_element_style'] == {'bold': True}
 
     delete = adapter.patch_to_operation(PatchHunk(
-        target_node_id=paragraph.node_id, modify_type='delete',
-        old_text=paragraph.content,
+        target_node_id=paragraph.node_id,
+        modify_type='delete',
     ), document)
     assert delete.operation == 'delete'
     assert delete.params == {
-        'parent_block_id': 'heading-1', 'start_index': 0, 'end_index': 1}
+        'parent_block_id': 'heading-1',
+        'start_index': 0,
+        'end_index': 1,
+    }
 
 
-@pytest.mark.parametrize(
-    ('source_path', 'anchor_path', 'position', 'expected'),
-    [
-        ((0,), (1,), 'after', ('doc-1', 0, 'doc-1', 1)),
-        ((0, 0), (1, 0), 'before', ('heading-1', 0, 'heading-2', 0)),
-    ],
-)
-def test_move_builds_same_and_cross_parent_operations(
-    source_path, anchor_path, position, expected,
-):
+def test_update_maps_styles_and_block_type_changes():
+    adapter = FeishuWriterAdapter()
+    document = adapter.blocks_to_ir(
+        [_block('paragraph-1', '段落一')],
+        external_document_id='doc-1',
+    )
+    source = document.blocks[0]
+
+    styled = source.model_copy(deep=True)
+    styled.spans[0].style = {
+        'bold': True,
+        'text_color': 5,
+        'background_color': 2,
+        'font_size': 16,
+    }
+    update = adapter.patch_to_operation(PatchHunk(
+        target_node_id=source.node_id,
+        modify_type='update',
+        block=styled,
+    ), document)
+    assert update.operation == 'update'
+    assert update.params['requests'][0]['update_text_elements']['elements'][0][
+        'text_run']['text_element_style'] == styled.spans[0].style
+
+    heading = styled.model_copy(deep=True)
+    heading.type = 'heading'
+    heading.numbering = {'level': 4}
+    replace = adapter.patch_to_operation(PatchHunk(
+        target_node_id=source.node_id,
+        modify_type='update',
+        block=heading,
+    ), document)
+    assert replace.operation == 'replace'
+    assert replace.params['replacement_block']['block_type'] == 6
+    assert 'heading4' in replace.params['replacement_block']
+
+
+def test_move_uses_parent_and_final_index():
     adapter = FeishuWriterAdapter()
     document = adapter.blocks_to_ir(_move_blocks(), external_document_id='doc-1')
+    source = document.blocks[0].children[0]
+    target_parent = document.blocks[1]
 
-    def locate(path):
-        root = document.blocks[path[0]]
-        return root if len(path) == 1 else root.children[path[1]]
-
-    source, anchor = locate(source_path), locate(anchor_path)
     operation = adapter.patch_to_operation(PatchHunk(
-        hunk_id='move-1', target_node_id=source.node_id, modify_type='move',
-        anchor_node_id=anchor.node_id, position=position,
+        target_node_id=source.node_id,
+        modify_type='move',
+        parent_node_id=target_parent.node_id,
+        index=1,
     ), document)
 
     assert operation.operation == 'move'
-    assert operation.params['source_block_id'] == source.provider_binding['block_id']
-    assert tuple(operation.params[key] for key in (
-        'source_parent_block_id', 'source_index',
-        'target_parent_block_id', 'target_index',
-    )) == expected
-    assert operation.params['target_anchor_block_id'] == \
-        anchor.provider_binding['block_id']
-    assert operation.params['position'] == position
-    assert 'descendants' not in operation.params
+    assert operation.params == {
+        'source_parent_block_id': 'heading-1',
+        'source_block_id': 'paragraph-1',
+        'source_index': 0,
+        'target_parent_block_id': 'heading-2',
+        'target_index': 1,
+    }
 
 
 def test_merge_refreshed_move_restores_writer_identity():
     adapter = FeishuWriterAdapter()
     previous = adapter.blocks_to_ir(_move_blocks(), external_document_id='doc-1')
-    source, anchor = previous.blocks
+    source = previous.blocks[0]
     patch = PatchHunk(
-        hunk_id='move-1', target_node_id=source.node_id, modify_type='move',
-        anchor_node_id=anchor.node_id, position='after',
+        target_node_id=source.node_id,
+        modify_type='move',
+        parent_node_id=None,
+        index=1,
     )
     operation = adapter.patch_to_operation(patch, previous)
 
@@ -136,6 +175,5 @@ def test_move_clone_descendants_preserve_raw_format_and_children():
         'move-block-0': 'heading-1',
         'move-block-1': 'paragraph-1',
     }
-    assert [block['block_type'] for block in descendants] == [3, 2]
     assert descendants[0]['heading1'] == blocks[0]['heading1']
     assert descendants[0]['children'] == ['move-block-1']

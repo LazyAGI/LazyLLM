@@ -8,8 +8,8 @@ Rules:
   title is WriterDocument.title, not a content block; do not select a document/root
   block merely to change the title.
 - If the request does not change the document title, set target_title to false.
-- For replace/delete, select the blocks whose content or existence changes.
-- For insert, select the existing block used as the insertion anchor.
+- For update/delete, select the blocks whose content, formatting, type, or existence changes.
+- For create, select the existing block used as the insertion anchor.
 - For move, select the block being moved. Do not select the destination block merely because it is the destination.
 - Select node_ids ONLY from the candidate list below. Never invent node_ids.
 - Be precise: do not select blocks that are unrelated to the request.
@@ -40,8 +40,8 @@ Rules:
   synthetic document/root block instruction.
 - For each target block, decide the modify_type and write a clear, specific instruction.
 - modify_type must be one of:
-  - insert: insert one or more brand-new blocks before or after the target block. The target block is the insertion anchor; set position to before or after.
-  - replace: replace the target block's content with a new version.
+  - create: insert one or more brand-new blocks before or after the target block. The target block is the insertion anchor; set position to before or after.
+  - update: update any user-visible field of the target block, including content, type, numbering, and spans.
   - delete: remove the target block.
   - move: move the target block before or after another existing block. Set anchor_node_id to the destination block and position to before or after.
 - instruction: a concise description of what change to make to that block, derived from task.query.
@@ -66,21 +66,20 @@ Writing context:
 '''
 
 
-GENERATE_PATCH_SET_PROMPT = '''You are a patch generator. Given a document, a modify plan, and the writing context, produce a PatchSet with concrete text changes.
+GENERATE_PATCH_SET_PROMPT = '''You are a document revision executor. Given a complete WriterDocument, a modify plan, and the writing context, return the complete revised WriterDocument.
 
 Rules:
-- If modify_plan.title_instruction is present, set new_title to the complete new
-  document title requested by that instruction. Otherwise leave new_title null.
-- A title-only revision must return hunks as an empty list.
-- For each ModifyInstruction, produce exactly one PatchHunk.
-- Each PatchHunk must have:
-  - target_node_id: copied from the corresponding ModifyInstruction.
-  - modify_type: copied from the corresponding ModifyInstruction.
-  - replace: set new_text to the FULL new content of the target block. Leave new_blocks empty.
-  - insert: set position from the instruction and put every complete new block in new_blocks. Leave new_text null. Use paragraph unless the requested structure clearly requires heading, list_item, code, or quote.
-  - delete: leave new_text null and new_blocks empty.
-  - move: copy anchor_node_id and position from the instruction. Leave new_text null and new_blocks empty.
-- Leave anchor and old_text null. The system fills conflict-checking fields from the source document.
+- Return a complete WriterDocument, not a PatchSet.
+- Preserve document_id, stage, revision, metadata, provider_binding, and ui_editable.
+- Preserve node_id, provider_binding, provider_payload, and editable for every existing block.
+- update: change the requested user-visible block fields. Heading levels belong in
+  type="heading" and numbering.level. Inline formatting belongs in spans.
+- create: add complete WriterBlock objects at the requested positions. Assign each new
+  block a unique node_id beginning with "writer-new-" and leave provider_binding and
+  provider_payload empty.
+- delete: remove the requested block subtree.
+- move: move the existing WriterBlock without changing its node_id or provider fields.
+- If title_instruction is absent, preserve the title exactly.
 - Generated text must be complete and self-contained. Never produce placeholders or ellipsis-only output.
 - Respect the writing context: keep facts consistent (never alter locked facts), preserve terminology and style.
 - Do not invent facts that conflict with the writing context.

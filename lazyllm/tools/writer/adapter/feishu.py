@@ -4,7 +4,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..utils.feishu_docx import DOCX_BLOCK_TYPE_FIELDS, prepare_docx_descendants
-from ..data_models.revision import PatchBlock, PatchHunk
+from ..data_models.revision import PatchHunk
 from ..data_models.writer_ir import WriterBlock, WriterDocument, WriterSpan, WriterStage
 from .base import NativeBlock, NativePatchOperation, WriterAdapterBase
 
@@ -26,13 +26,15 @@ _IR_BLOCK_TYPES: Dict[str, int] = {
 
 _TEXT_BLOCK_TYPES = frozenset(range(2, 16)) | {17}
 _STYLE_TO_IR = {
-    'bold': 'strong',
+    'bold': 'bold',
     'italic': 'italic',
     'underline': 'underline',
     'strikethrough': 'strikethrough',
-    'inline_code': 'code',
+    'inline_code': 'inline_code',
 }
-_STYLE_FROM_IR = {value: key for key, value in _STYLE_TO_IR.items()}
+_VALUE_STYLE_FIELDS = {
+    'text_color', 'background_color', 'font_size', 'font_family',
+}
 _ELEMENT_TEXT_FIELDS = ('content', 'title', 'name', 'text')
 
 
@@ -56,19 +58,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
         if not isinstance(blocks, list):
             raise TypeError(f'blocks must be a list, got {type(blocks).__name__}.')
 
-        raw_by_id: Dict[str, NativeBlock] = {}
-        source_order: List[str] = []
-        for index, raw in enumerate(blocks):
-            if not isinstance(raw, dict):
-                raise TypeError(f'blocks[{index}] must be a dict, got {type(raw).__name__}.')
-            block_id = raw.get('block_id')
-            if not isinstance(block_id, str) or not block_id.strip():
-                raise ValueError(f'blocks[{index}].block_id must be a non-empty string.')
-            block_id = block_id.strip()
-            if block_id in raw_by_id:
-                raise ValueError(f'duplicate Feishu block_id: {block_id!r}.')
-            raw_by_id[block_id] = raw
-            source_order.append(block_id)
+        raw_by_id, source_order = self._index_raw_blocks(blocks)
 
         child_ids = self._build_child_relations(raw_by_id, source_order)
         self._validate_relations(child_ids, source_order)
@@ -136,6 +126,25 @@ class FeishuWriterAdapter(WriterAdapterBase):
             ui_editable=False,
         )
 
+    @staticmethod
+    def _index_raw_blocks(
+        blocks: List[NativeBlock],
+    ) -> Tuple[Dict[str, NativeBlock], List[str]]:
+        raw_by_id: Dict[str, NativeBlock] = {}
+        source_order: List[str] = []
+        for index, raw in enumerate(blocks):
+            if not isinstance(raw, dict):
+                raise TypeError(f'blocks[{index}] must be a dict, got {type(raw).__name__}.')
+            block_id = raw.get('block_id')
+            if not isinstance(block_id, str) or not block_id.strip():
+                raise ValueError(f'blocks[{index}].block_id must be a non-empty string.')
+            block_id = block_id.strip()
+            if block_id in raw_by_id:
+                raise ValueError(f'duplicate Feishu block_id: {block_id!r}.')
+            raw_by_id[block_id] = raw
+            source_order.append(block_id)
+        return raw_by_id, source_order
+
     def ir_to_blocks(self, document: WriterDocument) -> List[NativeBlock]:
         if not isinstance(document, WriterDocument):
             raise TypeError(
@@ -187,8 +196,8 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 f'document must be a WriterDocument, got {type(document).__name__}.')
 
         handlers = {
-            'replace': self._replace_patch_to_operation,
-            'insert': self._insert_patch_to_operation,
+            'update': self._update_patch_to_operation,
+            'create': self._create_patch_to_operation,
             'delete': self._delete_patch_to_operation,
             'move': self._move_patch_to_operation,
         }
@@ -212,13 +221,35 @@ class FeishuWriterAdapter(WriterAdapterBase):
             if node_id is not None:
                 block.node_id = node_id
 
-        if operation is not None and operation.operation == 'move':
+        if operation is not None and operation.operation == 'create':
+            relations = (
+                operation_result.get('block_id_relations')
+                if isinstance(operation_result, dict) else None
+            )
+            if not isinstance(relations, list) or not relations:
+                raise ValueError('create operation did not return Feishu block ID relations.')
+            refreshed_by_block_id = {
+                block.provider_binding.get('block_id'): block
+                for block in refreshed_document.iter_blocks()
+                if isinstance(block.provider_binding.get('block_id'), str)
+            }
+            for relation in relations:
+                if not isinstance(relation, dict):
+                    continue
+                temporary_id = relation.get('temporary_block_id')
+                created_id = relation.get('block_id')
+                refreshed = refreshed_by_block_id.get(created_id)
+                if isinstance(temporary_id, str) and refreshed is not None:
+                    refreshed.node_id = temporary_id
+
+        if operation is not None and operation.operation in {'move', 'replace'}:
             relations = (
                 operation_result.get('block_id_relations')
                 if isinstance(operation_result, dict) else None
             )
             if not isinstance(relations, dict) or not relations:
-                raise ValueError('move operation did not return Feishu block ID relations.')
+                raise ValueError(
+                    f'{operation.operation} operation did not return Feishu block ID relations.')
             refreshed_by_block_id = {
                 block.provider_binding.get('block_id'): block
                 for block in refreshed_document.iter_blocks()
@@ -241,93 +272,86 @@ class FeishuWriterAdapter(WriterAdapterBase):
             block.references = deepcopy(previous.references)
         return WriterDocument.model_validate(refreshed_document.model_dump())
 
-    def _replace_patch_to_operation(
+    def _update_patch_to_operation(
         self,
         patch: PatchHunk,
         document: WriterDocument,
     ) -> NativePatchOperation:
-        '''Convert replace into a Feishu batch-update operation.'''
-
+        '''Convert a semantic block update into a Feishu update or replacement.'''
         block = document.block_by_id(patch.target_node_id)
         if block is None:
             raise ValueError(f'patch target node does not exist: {patch.target_node_id!r}.')
-        provider = block.provider_binding.get('provider')
-        if provider != self.provider:
-            raise ValueError(
-                f'patch target provider must be {self.provider!r}, got {provider!r}.')
-        block_id = block.provider_binding.get('block_id')
-        if not isinstance(block_id, str) or not block_id.strip():
-            raise ValueError('patch target does not have a Feishu block_id binding.')
+        if patch.block is None:
+            raise ValueError('update patch must provide block.')
+        block_id = self._require_feishu_binding(block, 'update target')
         raw_block = self._raw_payload(block)
-        block_type = raw_block.get('block_type')
-        if block_type not in _TEXT_BLOCK_TYPES or not block.editable:
+        original_type = raw_block.get('block_type')
+        if original_type not in _TEXT_BLOCK_TYPES or not block.editable:
             raise ValueError(
-                f'Feishu block type {block_type!r} does not support text replacement.')
-        if patch.new_text is None:
-            raise ValueError('replace patch must provide new_text.')
+                f'Feishu block type {original_type!r} does not support updates.')
 
-        replacement = patch.new_text
-        if patch.text_range is None:
-            if patch.old_text is not None and patch.old_text != block.content:
-                raise ValueError('patch old_text does not match the current block content.')
-        else:
-            start, end = patch.text_range
-            if start < 0 or end < start or end > len(block.content):
-                raise ValueError('patch text_range is outside the current block content.')
-            selected = block.content[start:end]
-            if patch.old_text is not None and patch.old_text != selected:
-                raise ValueError('patch old_text does not match the selected text range.')
-            replacement = f'{block.content[:start]}{replacement}{block.content[end:]}'
+        desired = block.model_copy(deep=True)
+        for field in (
+            'type', 'content', 'spans', 'stage', 'authoring', 'numbering', 'references',
+        ):
+            setattr(desired, field, deepcopy(getattr(patch.block, field)))
+        desired_raw = self._ir_block_to_raw(desired)
+        desired_type = desired_raw.get('block_type')
+
+        if desired_type != original_type:
+            _, parent, index = self._block_location(document, block.node_id)
+            content_field = _BLOCK_TYPE_FIELDS.get(desired_type)
+            if content_field is None:
+                raise ValueError(
+                    f'Feishu block type {desired_type!r} cannot replace a block.')
+            replacement_block = {
+                'block_type': desired_type,
+                content_field: deepcopy(desired_raw.get(content_field) or {}),
+            }
+            return NativePatchOperation(
+                operation='replace',
+                params={
+                    'parent_block_id': self._parent_block_id(document, block, parent),
+                    'source_block_id': block_id,
+                    'source_index': index,
+                    'replacement_block': replacement_block,
+                },
+            )
 
         return NativePatchOperation(
             operation='update',
             params={
                 'requests': [{
-                    'block_id': block_id.strip(),
+                    'block_id': block_id,
                     'update_text_elements': {
-                        'elements': self._replace_text_elements(
-                            raw_block, block.content, replacement),
+                        'elements': self._spans_to_elements(desired),
                     },
                 }],
             },
         )
 
-    def _insert_patch_to_operation(
+    def _create_patch_to_operation(
         self,
         patch: PatchHunk,
         document: WriterDocument,
     ) -> NativePatchOperation:
-        '''Convert insert into Feishu create_block parameters.'''
-        anchor_id = patch.anchor_node_id or patch.target_node_id
-        anchor, parent, anchor_index = self._block_location(document, anchor_id)
-        self._require_feishu_binding(anchor, 'insert anchor')
+        '''Convert a semantic block creation into Feishu descendant creation.'''
+        if patch.block is None or patch.index is None:
+            raise ValueError('create patch requires block and index.')
+        parent_block_id = document.provider_binding.get('document_id')
+        if patch.parent_node_id is not None:
+            parent = document.block_by_id(patch.parent_node_id)
+            if parent is None:
+                raise ValueError(
+                    f'create parent {patch.parent_node_id!r} is absent from document.')
+            parent_block_id = self._require_feishu_binding(parent, 'create parent')
+        if not isinstance(parent_block_id, str) or not parent_block_id:
+            raise ValueError('create patch does not have a Feishu parent binding.')
 
-        position = patch.position or 'after'
-        insert_index = anchor_index + (1 if position == 'after' else 0)
-        parent_block_id = self._parent_block_id(document, anchor, parent)
-
-        patch_blocks = patch.new_blocks
-        if not patch_blocks:
-            if patch.new_text is None:
-                raise ValueError('insert patch must provide new_blocks or new_text.')
-            patch_blocks = [PatchBlock(type='paragraph', content=patch.new_text)]
-
-        id_prefix = patch.hunk_id or f'{patch.target_node_id}::insert'
-        writer_blocks = [
-            WriterBlock(
-                node_id=f'{id_prefix}::{index}',
-                type=patch_block.type,
-                content=patch_block.content,
-                stage=document.stage,
-                authoring=patch_block.authoring,
-                numbering=deepcopy(patch_block.numbering),
-            )
-            for index, patch_block in enumerate(patch_blocks)
-        ]
         inserted_document = WriterDocument(
-            document_id=f'{document.document_id}::insert::{id_prefix}',
+            document_id=f'{document.document_id}::create::{patch.target_node_id}',
             stage=document.stage,
-            blocks=writer_blocks,
+            blocks=[patch.block.model_copy(deep=True)],
             provider_binding={
                 'provider': self.provider,
                 'document_id': document.provider_binding.get('document_id', ''),
@@ -339,7 +363,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
             operation='create',
             params={
                 'parent_block_id': parent_block_id,
-                'index': insert_index,
+                'index': patch.index,
                 'children_id': children_id,
                 'descendants': descendants,
             },
@@ -355,8 +379,6 @@ class FeishuWriterAdapter(WriterAdapterBase):
         self._require_feishu_binding(block, 'delete target')
         if block.type == 'document':
             raise ValueError('delete patch cannot remove the Feishu document block.')
-        if patch.old_text is not None and patch.old_text != block.content:
-            raise ValueError('patch old_text does not match the current block content.')
         return NativePatchOperation(
             operation='delete',
             params={
@@ -374,25 +396,25 @@ class FeishuWriterAdapter(WriterAdapterBase):
         '''Convert move into Feishu move_block parameters.'''
         source, source_parent, source_index = self._block_location(
             document, patch.target_node_id)
-        anchor, target_parent, anchor_index = self._block_location(
-            document, patch.anchor_node_id or '')
         source_block_id = self._require_feishu_binding(source, 'move source')
-        anchor_block_id = self._require_feishu_binding(anchor, 'move anchor')
         if source.type == 'document':
             raise ValueError('move patch cannot move the Feishu document block.')
-        if patch.old_text is not None and patch.old_text != source.content:
-            raise ValueError('patch old_text does not match the current block content.')
-        if self._subtree_contains(source, anchor.node_id):
-            raise ValueError('move patch anchor cannot be the source node or its descendant.')
+        if patch.index is None:
+            raise ValueError('move patch requires index.')
+        if patch.parent_node_id and self._subtree_contains(source, patch.parent_node_id):
+            raise ValueError('move target parent cannot be inside the source subtree.')
 
         source_parent_block_id = self._parent_block_id(document, source, source_parent)
-        target_parent_block_id = self._parent_block_id(document, anchor, target_parent)
-        target_index = anchor_index + (1 if patch.position == 'after' else 0)
-        if (
-            source_parent_block_id == target_parent_block_id
-            and source_index < anchor_index
-        ):
-            target_index -= 1
+        target_parent_block_id = document.provider_binding.get('document_id')
+        if patch.parent_node_id is not None:
+            target_parent = document.block_by_id(patch.parent_node_id)
+            if target_parent is None:
+                raise ValueError(
+                    f'move parent {patch.parent_node_id!r} is absent from document.')
+            target_parent_block_id = self._require_feishu_binding(
+                target_parent, 'move parent')
+        if not isinstance(target_parent_block_id, str) or not target_parent_block_id:
+            raise ValueError('move patch does not have a Feishu target parent binding.')
 
         return NativePatchOperation(
             operation='move',
@@ -401,9 +423,7 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 'source_block_id': source_block_id,
                 'source_index': source_index,
                 'target_parent_block_id': target_parent_block_id,
-                'target_index': target_index,
-                'target_anchor_block_id': anchor_block_id,
-                'position': patch.position,
+                'target_index': patch.index,
             },
         )
 
@@ -636,19 +656,28 @@ class FeishuWriterAdapter(WriterAdapterBase):
                 if not isinstance(text, str):
                     text = ''
                 raw_style = text_run.get('text_element_style') or {}
-                styles = [
-                    ir_style for feishu_style, ir_style in _STYLE_TO_IR.items()
+                styles: Dict[str, Any] = {
+                    ir_style: True
+                    for feishu_style, ir_style in _STYLE_TO_IR.items()
                     if raw_style.get(feishu_style) is True
-                ]
+                }
+                styles.update({
+                    field: deepcopy(raw_style[field])
+                    for field in _VALUE_STYLE_FIELDS
+                    if field in raw_style
+                })
                 if isinstance(raw_style.get('link'), dict) and raw_style['link'].get('url'):
-                    styles.append('link')
+                    styles['link'] = {'url': raw_style['link']['url']}
                 spans.append(WriterSpan(text=text, style=styles))
                 continue
 
             for element_type, value in element.items():
                 text = cls._element_plain_text(value)
                 if text:
-                    spans.append(WriterSpan(text=text, style=[f'feishu:{element_type}']))
+                    spans.append(WriterSpan(
+                        text=text,
+                        style={'feishu:element_type': element_type},
+                    ))
                 break
 
         if spans:
@@ -672,15 +701,23 @@ class FeishuWriterAdapter(WriterAdapterBase):
             return cls._plain_text_elements(block.content)
         elements: List[Dict[str, Any]] = []
         for span in block.spans:
-            unsupported = [style for style in span.style if style.startswith('feishu:')]
-            if unsupported:
+            provider_element = span.style.get('feishu:element_type')
+            if provider_element:
                 raise ValueError(
-                    f'cannot reconstruct provider elements from span styles: {unsupported}.')
+                    f'cannot reconstruct provider element {provider_element!r} from WriterSpan.')
             raw_style = {
-                _STYLE_FROM_IR[style]: True
-                for style in span.style
-                if style in _STYLE_FROM_IR
+                feishu_style: True
+                for feishu_style, ir_style in _STYLE_TO_IR.items()
+                if span.style.get(ir_style) is True
             }
+            raw_style.update({
+                field: deepcopy(span.style[field])
+                for field in _VALUE_STYLE_FIELDS
+                if field in span.style
+            })
+            link = span.style.get('link')
+            if isinstance(link, dict) and isinstance(link.get('url'), str):
+                raw_style['link'] = {'url': link['url']}
             text_run: Dict[str, Any] = {'content': span.text}
             if raw_style:
                 text_run['text_element_style'] = raw_style

@@ -12,6 +12,7 @@ from lazyllm.tools.writer.data_models import (
     WriterBlock,
     WriterConstraints,
     WriterDocument,
+    WriterSpan,
     WritingContext,
     WritingTask,
 )
@@ -96,6 +97,16 @@ def _make_final_writer_document(content='# Local output', title=''):
                 stage='final',
             ),
         ],
+    )
+
+
+def _patch_block(node_id, content):
+    return WriterBlock(
+        node_id=node_id,
+        type='paragraph',
+        content=content,
+        spans=[WriterSpan(text=content)],
+        stage='final',
     )
 
 
@@ -700,15 +711,17 @@ def test_apply_patch_to_document_dispatches_update_and_rereads():
         load_result = _call_document_to_docir(fs, d)
         source = load_artifact_json(load_result['artifact_path'], WriterDocument)
         target = source.blocks[1]
+        revised_target = target.model_copy(deep=True)
+        revised_target.content = '修改后正文'
+        revised_target.spans = [WriterSpan(text='修改后正文')]
         patch_set = PatchSet(
             patch_id='patch-1',
             target_doc_id=source.document_id,
             hunks=[PatchHunk(
-                hunk_id='replace-b2',
+                hunk_id='update-b2',
                 target_node_id=target.node_id,
-                modify_type='replace',
-                old_text='正文',
-                new_text='修改后正文',
+                modify_type='update',
+                block=revised_target,
             )],
         )
         fs.get_doc_blocks.return_value = [
@@ -740,7 +753,7 @@ def test_apply_patch_to_document_dispatches_update_and_rereads():
         patch_result = load_artifact_json(result['artifact_path'], PatchResult)
         persisted_path = result['metadata']['artifact_paths']['persisted_document']
         persisted = load_artifact_json(persisted_path, WriterDocument)
-        assert patch_result.applied_hunks == ['replace-b2']
+        assert patch_result.applied_hunks == ['update-b2']
         assert persisted.blocks[1].content == '修改后正文'
 
 
@@ -756,8 +769,8 @@ def test_apply_patch_to_document_moves_and_restores_writer_identity():
             hunk_id='move-b1',
             target_node_id=moved_node_id,
             modify_type='move',
-            anchor_node_id=source.blocks[1].node_id,
-            position='after',
+            parent_node_id=None,
+            index=1,
         )])
         first, second = fs.get_doc_blocks.return_value
         fs.get_doc_blocks.return_value = [second, {**first, 'block_id': 'moved-b1'}]
@@ -939,8 +952,8 @@ def test_validate_patch_set_single_hunk():
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_node_id='blk-pro-01',
-                              old_text='万古之前...', new_text='太古之初...',
-                              modify_type='replace'),
+                              block=_patch_block('blk-pro-01', '太古之初...'),
+                              modify_type='update'),
                 ]),
                 context=_make_context(),
                 task=_make_task(),
@@ -964,11 +977,11 @@ def test_validate_patch_set_multi_hunk():
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_node_id='blk-pro-01',
-                              old_text='万古之前...', new_text='太古之初...',
-                              modify_type='replace'),
+                              block=_patch_block('blk-pro-01', '太古之初...'),
+                              modify_type='update'),
                     PatchHunk(hunk_id='h2', target_node_id='blk-pro-02',
-                              old_text='second...', new_text='rewrite...',
-                              modify_type='replace'),
+                              block=_patch_block('blk-pro-02', 'rewrite...'),
+                              modify_type='update'),
                 ]),
                 context=_make_context(),
                 task=_make_task(),
@@ -989,8 +1002,9 @@ def test_validate_patch_set_failing():
             result = tool.validate_patch_set(
                 patch_set=_make_patch_set(hunks=[
                     PatchHunk(hunk_id='h1', target_node_id='blk-pro-01',
-                              old_text='万古之前...', new_text='星辰大帝是九州最强者。',
-                              modify_type='replace'),
+                              block=_patch_block(
+                                  'blk-pro-01', '星辰大帝是九州最强者。'),
+                              modify_type='update'),
                 ]),
                 context=_make_context(),
                 task=_make_task(),

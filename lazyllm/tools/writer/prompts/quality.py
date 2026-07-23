@@ -65,29 +65,30 @@ Writing context:
 VALIDATE_PATCH_SET_PROMPT = '''You are a PatchSet quality reviewer. Validate every hunk against the writing context before it is applied. Return an AuditResult.
 
 Each hunk includes:
-- target_node_id + old_text + new_text: the modification
+- modify_type + target_node_id
+- block: the complete target WriterBlock for create/update
+- parent_node_id + index: the destination for create/move
 
 Validation rules:
 
-1. FORMAT INTEGRITY (category=format): new_text must have:
+1. FORMAT INTEGRITY (category=format): block.content and block.spans must have:
    - Balanced markdown fences, valid heading levels, unbroken tables
    - No orphaned list markers, no unclosed link brackets
-   For hunks with modify_type='delete', new_text is expected to be empty — skip format checks.
+   For delete/move hunks without block, skip content format checks.
    Each violation → severity=medium, category=format.
 
-2. FACT CONSISTENCY (category=evidence): new_text vs locked facts in context.
+2. FACT CONSISTENCY (category=evidence): block.content vs locked facts in context.
    - Contradicts a locked fact → severity=high, category=evidence.
    - Unqualified factual claims → severity=medium, category=evidence.
 
-3. STYLE CONSISTENCY (category=style): new_text tone/pov/formality vs context.style_profile.
+3. STYLE CONSISTENCY (category=style): block.content and spans vs context.style_profile.
    - Significant deviation → severity=low, category=style.
 
-4. INTENT MATCH (category=coverage): Compare every hunk (diff old_text→new_text) against the user's original revision request below. Does the hunk fulfill what the user asked?
+4. INTENT MATCH (category=coverage): Compare every operation and target block against the user's original revision request below.
    - Hunk does not fulfill the request → severity=high, category=coverage.
    - Hunk partially addresses the request → severity=medium, category=coverage.
 
-5. CONTEXT CONTINUITY (category=relevance): replacing old_text with new_text must preserve semantic flow.
-   Judge this from the diff itself — does new_text fit the same contextual role as old_text?
+5. CONTEXT CONTINUITY (category=relevance): updated/created content must preserve semantic flow.
    - Abrupt tone/register shift → severity=medium, category=relevance.
    - Loss of key transitional phrases → severity=low, category=relevance.
 

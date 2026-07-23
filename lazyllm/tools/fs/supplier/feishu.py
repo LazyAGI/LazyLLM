@@ -1,4 +1,5 @@
 # Copyright (c) 2026 LazyAGI. All rights reserved.
+from copy import deepcopy
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -894,15 +895,11 @@ class FeishuFSBase(LinkDocumentFSBase):
         source_index: int,
         target_parent_block_id: str,
         target_index: int,
-        target_anchor_block_id: str,
-        position: str,
         *,
         document_revision_id: int = -1,
     ) -> Dict[str, Any]:
         if source_index < 0 or target_index < 0:
             raise ValueError('move_block source and target indexes must not be negative.')
-        if position not in {'before', 'after'}:
-            raise ValueError('move_block position must be before or after.')
         source_children = self._get_docx_children(document_id, source_parent_block_id)
         current_source_index = next(
             (
@@ -918,21 +915,10 @@ class FeishuFSBase(LinkDocumentFSBase):
             if source_parent_block_id == target_parent_block_id
             else self._get_docx_children(document_id, target_parent_block_id)
         )
-        current_anchor_index = next(
-            (
-                index for index, block in enumerate(target_children)
-                if block.get('block_id') == target_anchor_block_id
-            ),
-            None,
-        )
-        if current_anchor_index is None:
-            raise ValueError('move anchor block does not belong to the expected parent.')
-        target_index = current_anchor_index + (1 if position == 'after' else 0)
-        if (
-            source_parent_block_id == target_parent_block_id
-            and current_source_index < current_anchor_index
-        ):
-            target_index -= 1
+        max_target_index = len(target_children) - (
+            1 if source_parent_block_id == target_parent_block_id else 0)
+        if target_index > max_target_index:
+            raise ValueError('move target index is outside the target parent.')
 
         source_blocks = self._get_doc_blocks_raw(document_id, with_descendants=True)
         children_id, descendants, source_by_temporary_id, normalized_fields = \
@@ -971,6 +957,78 @@ class FeishuFSBase(LinkDocumentFSBase):
             'normalized_fields': normalized_fields,
         }
 
+    def replace_block(
+        self,
+        document_id: str,
+        parent_block_id: str,
+        source_block_id: str,
+        source_index: int,
+        replacement_block: Dict[str, Any],
+        *,
+        document_revision_id: int = -1,
+    ) -> Dict[str, Any]:
+        if source_index < 0:
+            raise ValueError('replace_block source index must not be negative.')
+        siblings = self._get_docx_children(document_id, parent_block_id)
+        current_source_index = next(
+            (
+                index for index, block in enumerate(siblings)
+                if block.get('block_id') == source_block_id
+            ),
+            None,
+        )
+        if current_source_index is None:
+            raise ValueError('replace source block does not belong to the expected parent.')
+        if not isinstance(replacement_block, dict):
+            raise TypeError('replacement_block must be a dict.')
+
+        source_blocks = self._get_doc_blocks_raw(document_id, with_descendants=True)
+        children_id, descendants, source_by_temporary_id, normalized_fields = \
+            prepare_docx_clone_descendants(source_blocks, source_block_id)
+        if len(children_id) != 1:
+            raise ValueError('replace_block requires exactly one root block.')
+
+        root_id = children_id[0]
+        root = next(
+            (block for block in descendants if block.get('block_id') == root_id),
+            None,
+        )
+        if root is None:
+            raise RuntimeError('replace source root is missing from its cloned subtree.')
+        children = root.get('children')
+        root.clear()
+        root.update(deepcopy(replacement_block))
+        root['block_id'] = root_id
+        if children:
+            root['children'] = children
+
+        create_data, created_revision, block_id_relations = \
+            self._create_and_verify_move_copy(
+                document_id,
+                parent_block_id,
+                current_source_index,
+                children_id,
+                descendants,
+                source_by_temporary_id,
+                document_revision_id,
+            )
+        created_root_block_id = block_id_relations[source_block_id]
+        delete_data = self._delete_move_source(
+            document_id,
+            parent_block_id,
+            source_block_id,
+            parent_block_id,
+            current_source_index,
+            created_root_block_id,
+            created_revision,
+        )
+        return {
+            'create': create_data,
+            'delete': delete_data,
+            'block_id_relations': block_id_relations,
+            'normalized_fields': normalized_fields,
+        }
+
     def write_doc_blocks(
         self,
         document_id: str,
@@ -989,6 +1047,45 @@ class FeishuFSBase(LinkDocumentFSBase):
                 'children_id': children_id,
                 'descendants': descendants,
             })
+        return self._get_doc_blocks_raw(document_id, with_descendants=True)
+
+    def replace_doc_blocks(
+        self,
+        document_id: str,
+        blocks: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        '''Replace all root content blocks in an existing Feishu document.'''
+        if not isinstance(blocks, list):
+            raise TypeError(f'blocks must be a list, got {type(blocks).__name__}.')
+        if not blocks:
+            raise ValueError('blocks must not be empty.')
+
+        existing_blocks = self._get_docx_children(document_id, document_id)
+        existing_count = len(existing_blocks)
+        children_id, descendants = self._prepare_docx_descendants(blocks)
+        document_revision_id = -1
+        if descendants:
+            created = self._create_descendant_blocks(
+                document_id,
+                document_id,
+                -1,
+                children_id,
+                descendants,
+            )
+            try:
+                document_revision_id = int(created.get('document_revision_id', -1))
+            except (TypeError, ValueError):
+                document_revision_id = -1
+
+        # Insert first so a failed write never destroys the existing document.
+        if existing_count:
+            self._batch_delete_child_blocks(
+                document_id,
+                document_id,
+                0,
+                existing_count,
+                document_revision_id=document_revision_id,
+            )
         return self._get_doc_blocks_raw(document_id, with_descendants=True)
 
     def _get_table_cells(self, document_id: str, table_block_id: str) -> List[Dict[str, Any]]:
